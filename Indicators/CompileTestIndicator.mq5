@@ -1,5 +1,5 @@
 #property copyright "Compile test"
-#property version   "1.00"
+#property version   "1.01"
 #property description "A simple moving-average indicator for compile testing."
 #property indicator_chart_window
 #property indicator_buffers 1
@@ -15,8 +15,7 @@ input int InpPeriod = 14;
 
 double IndicatorBuffer[];
 
-int OnInit()
-  {
+int OnInit() {
    if(InpPeriod < 1)
       return(INIT_PARAMETERS_INCORRECT);
 
