@@ -1,0 +1,15 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Compile current MQL5 file",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\OANDA MetaTrader 5-Codex\\metaeditor64.exe\" /compile:\"${file}\" /log",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

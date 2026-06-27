@@ -1,0 +1,37 @@
+# build files
+*.ex5
+
+# logs
+*.log
+
+# temporary files
+*.tmp
+*.bak
+*.old
+
+# zip files
+*.zip
+
+# MT5 generated output files
+Files/*.csv
+Files/*.log
+Files/*.txt
+
+# keep folder
+!Files/.gitkeep
+
+# tester/cache-like files
+Tester/
+Logs/
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# VS Code
+.vscode/*
+!.vscode/tasks.json
+!.vscode/settings.json
+
+# Codex / project rules should be committed
+!AGENTS.md
