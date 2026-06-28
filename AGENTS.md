@@ -44,6 +44,7 @@ Codexは、このファイルのルールを必ず守って作業してくださ
 ## Include / クラス構成
 
 * includeパスは既存の形式に合わせてください。
+* `#include` はパスのアルファベット順に並べてください。
 * 例：
 
   * `#include <Mstng\Oscillator\Ema200.mqh>`
