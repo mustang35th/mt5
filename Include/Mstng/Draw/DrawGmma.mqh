@@ -10,8 +10,9 @@
 #ifndef MSTNG_DRAW_GMMA_MQH
 #define MSTNG_DRAW_GMMA_MQH
 
-#include <Mstng\Draw\DrawUtil.mqh>
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawUtil.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\GmmaUtil.mqh>
 
@@ -25,8 +26,16 @@
  */
 class DrawGmma : public CObject {
 public:
+    /** 描画対象の市場コンテキスト */
+    MarketContext marketContext;
+
+    /** 互換用の描画対象シンボル */
     string symbolName;
+
+    /** 互換用の描画対象時間足 */
     ENUM_TIMEFRAMES timeFrame;
+
+    /** 互換用の時間足表示名 */
     string timeFrameLabel;
 
     string objectPrefix;
@@ -50,27 +59,27 @@ public:
         color fromDownColor = clrLightPink,
         int fromMaxBars = 500
     ) {
-        this.symbolName = fromSymbolName;
-        this.timeFrame = fromTimeFrame;
-        this.timeFrameLabel = TimeUtil::convertTimeFrameToString(this.timeFrame);
+        MarketContext context(fromSymbolName, fromTimeFrame);
+        this.initialize(context, fromObjectPrefix, fromUpColor, fromDownColor, fromMaxBars);
+    }
 
-        this.objectPrefix = fromObjectPrefix;
-        this.upColor = fromUpColor;
-        this.downColor = fromDownColor;
-        this.maxBars = fromMaxBars;
-
-        this.logger.setLevel(LOG_INFO);
-        this.logger.setSymbolNameAndTimeFrame(this.symbolName, this.timeFrame);
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "initialized. objectPrefix=%s, upColor=%d, downColor=%d, maxBars=%d",
-                this.objectPrefix,
-                (int)this.upColor,
-                (int)this.downColor,
-                this.maxBars
-            )
-        );
+    /**
+     * 市場コンテキストと描画設定を指定して初期化する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     * @param fromObjectPrefix 描画オブジェクト名プレフィックス
+     * @param fromUpColor 上昇時の塗り色
+     * @param fromDownColor 下降時の塗り色
+     * @param fromMaxBars 描画対象の最大バー数
+     */
+    DrawGmma(
+        MarketContext &fromMarketContext,
+        string fromObjectPrefix = "GmmaRect_",
+        color fromUpColor = clrLightBlue,
+        color fromDownColor = clrLightPink,
+        int fromMaxBars = 500
+    ) {
+        this.initialize(fromMarketContext, fromObjectPrefix, fromUpColor, fromDownColor, fromMaxBars);
     }
 
     /**
@@ -493,6 +502,47 @@ public:
 
 private:
     Logger logger;
+
+    /**
+     * 市場コンテキストと描画設定を初期化する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     * @param fromObjectPrefix 描画オブジェクト名プレフィックス
+     * @param fromUpColor 上昇時の塗り色
+     * @param fromDownColor 下降時の塗り色
+     * @param fromMaxBars 描画対象の最大バー数
+     */
+    void initialize(
+        MarketContext &fromMarketContext,
+        string fromObjectPrefix,
+        color fromUpColor,
+        color fromDownColor,
+        int fromMaxBars
+    ) {
+        this.marketContext = fromMarketContext;
+
+        this.symbolName = this.marketContext.symbolName;
+        this.timeFrame = this.marketContext.timeFrame;
+        this.timeFrameLabel = this.marketContext.timeFrameLabel;
+
+        this.objectPrefix = fromObjectPrefix;
+        this.upColor = fromUpColor;
+        this.downColor = fromDownColor;
+        this.maxBars = fromMaxBars;
+
+        this.logger.setLevel(LOG_INFO);
+        this.logger.setSymbolNameAndTimeFrame(this.marketContext.symbolName, this.marketContext.timeFrame);
+        this.logger.debug(
+            __FUNCTION__,
+            StringFormat(
+                "initialized. objectPrefix=%s, upColor=%d, downColor=%d, maxBars=%d",
+                this.objectPrefix,
+                (int)this.upColor,
+                (int)this.downColor,
+                this.maxBars
+            )
+        );
+    }
 };
 
 #endif // MSTNG_DRAW_GMMA_MQH
