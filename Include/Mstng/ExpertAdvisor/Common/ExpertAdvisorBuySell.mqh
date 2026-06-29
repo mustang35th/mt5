@@ -5,6 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
@@ -22,21 +23,32 @@ enum ENUM_EXPERT_ADVISOR_ENTRY_RANK {
 
 class ExpertAdvisorBuySell {
 public:
+    /** 判定対象の市場コンテキスト */
+    MarketContext marketContext;
+
     ENUM_EXPERT_ADVISOR_ENTRY_RANK rank;
     string rankLabel;
     
     bool isBuy;
-    
+
+    /**
+     * シンボルと時間足を指定して初期化する。
+     *
+     * @param fromSymbolName 判定対象シンボル
+     * @param fromTimeFrame 判定対象時間足
+     */
     ExpertAdvisorBuySell(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
-        this.logger.setLevel(LOG_INFO);
-        this.logger.setSymbolNameAndTimeFrame(fromSymbolName, fromTimeFrame);
-        
-        this.symbolName = fromSymbolName;
-        this.timeFrame = fromTimeFrame;
-        this.timeFrameLabel = TimeUtil::convertTimeFrameToString(this.timeFrame);
-        
-        this.rank = EXPERT_ADVISOR_ENTRY_RANK_NON;
-        this.rankLabel = ExpertAdvisorBuySell::convertEntryRankToString(this.rank);
+        MarketContext context(fromSymbolName, fromTimeFrame);
+        this.initialize(context);
+    }
+
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 判定対象の市場コンテキスト
+     */
+    ExpertAdvisorBuySell(MarketContext &fromMarketContext) {
+        this.initialize(fromMarketContext);
     }
     
     ~ExpertAdvisorBuySell() {
@@ -145,9 +157,33 @@ public:
 
 private:
     Logger logger;
-    
+
+    /** 互換用の判定対象シンボル */
     string symbolName;
+
+    /** 互換用の判定対象時間足 */
     ENUM_TIMEFRAMES timeFrame;
+
+    /** 互換用の時間足表示名 */
     string timeFrameLabel;
+
+    /**
+     * 市場コンテキストと初期ランクを設定する。
+     *
+     * @param fromMarketContext 判定対象の市場コンテキスト
+     */
+    void initialize(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+
+        this.logger.setLevel(LOG_INFO);
+        this.logger.setMarketContext(this.marketContext);
+
+        this.symbolName = this.marketContext.symbolName;
+        this.timeFrame = this.marketContext.timeFrame;
+        this.timeFrameLabel = this.marketContext.timeFrameLabel;
+
+        this.rank = EXPERT_ADVISOR_ENTRY_RANK_NON;
+        this.rankLabel = ExpertAdvisorBuySell::convertEntryRankToString(this.rank);
+    }
 
 };
