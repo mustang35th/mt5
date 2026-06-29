@@ -531,7 +531,7 @@ private:
         this.maxBars = fromMaxBars;
 
         this.logger.setLevel(LOG_INFO);
-        this.logger.setSymbolNameAndTimeFrame(this.marketContext.symbolName, this.marketContext.timeFrame);
+        this.logger.setMarketContext(this.marketContext);
         this.logger.debug(
             __FUNCTION__,
             StringFormat(
