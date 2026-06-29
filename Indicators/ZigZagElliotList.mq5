@@ -8,8 +8,9 @@
 #property version   "1.00"
 #property indicator_chart_window
 
-#include <Mstng\ExpertAdvisor\ExpertAdvisorOscillator.mqh>
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorOscillator.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 
 Logger gLogger;
@@ -32,7 +33,8 @@ int OnInit() {
     gTimeFrame = _Period;
     
     //gLogger.setLevel(LOG_INFO);
-    gLogger.setSymbolNameAndTimeFrame(gSymbolName, gTimeFrame);
+    MarketContext context(gSymbolName, gTimeFrame);
+    gLogger.setMarketContext(context);
     
     LogUtil::printMethodStart(gLogger, __FUNCTION__);
     
@@ -135,7 +137,7 @@ void printElliotAllByStochasticOrder(ElliotAllList *elliotAllList, bool isBuy) {
         ElliotAll *elliotAll = elliotAllList.elliotAllList.At(i);
         
         if (elliotAll != NULL) {
-            ExpertAdvisorOscillator *expertAdvisorOscillator = new ExpertAdvisorOscillator(elliotAll.symbolName, elliotAll.timeFrame);
+            ExpertAdvisorOscillator *expertAdvisorOscillator = new ExpertAdvisorOscillator(elliotAll.marketContext);
         
             if (expertAdvisorOscillator.isStochasticMainOrder(elliotAll)) {
                 if (elliotAll.elliotCurrent.isBuy == isBuy
