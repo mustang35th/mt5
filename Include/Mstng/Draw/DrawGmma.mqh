@@ -167,8 +167,8 @@ public:
             int timeIndex = rates_total - i - 2;
             this.logger.debug(__FUNCTION__, StringFormat("timeIndex = %d", timeIndex));
 
-            datetime time = iTime(this.symbolName, this.timeFrame, timeIndex);
-            datetime timeBefore = iTime(this.symbolName, this.timeFrame, timeIndex + 1);
+            datetime time = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex);
+            datetime timeBefore = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex + 1);
 
             string name = this.objectPrefix + IntegerToString((int)time);
 
@@ -305,8 +305,8 @@ public:
             int timeIndex = rates_total - i - 2;
             this.logger.debug(__FUNCTION__, StringFormat("timeIndex = %d", timeIndex));
 
-            datetime time = iTime(this.symbolName, this.timeFrame, timeIndex);
-            datetime timeBefore = iTime(this.symbolName, this.timeFrame, timeIndex + 1);
+            datetime time = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex);
+            datetime timeBefore = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex + 1);
 
             string name = this.objectPrefix + "Diff_" + IntegerToString((int)time);
 
@@ -448,8 +448,8 @@ public:
             int timeIndex = rates_total - i - 2;
             this.logger.debug(__FUNCTION__, StringFormat("timeIndex = %d", timeIndex));
 
-            datetime time = iTime(this.symbolName, this.timeFrame, timeIndex);
-            datetime timeBefore = iTime(this.symbolName, this.timeFrame, timeIndex + 1);
+            datetime time = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex);
+            datetime timeBefore = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex + 1);
 
             string name = this.objectPrefix + "Trend_" + IntegerToString((int)time);
 

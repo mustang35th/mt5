@@ -81,7 +81,7 @@ public:
      * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
      */
     void setTimeframesFromMn1To(MarketContext &fromMarketContext) {
-        this.setTimeframesFromMn1To(fromMarketContext.symbolName, fromMarketContext.timeFrame);
+        HandlePoolBase::setTimeframesFromMn1To(fromMarketContext);
     }
 
     /**
@@ -125,7 +125,7 @@ public:
      * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
      */
     void setTimeframesFromD1To(MarketContext &fromMarketContext) {
-        this.setTimeframesFromD1To(fromMarketContext.symbolName, fromMarketContext.timeFrame);
+        HandlePoolBase::setTimeframesFromD1To(fromMarketContext);
     }
 
     /**

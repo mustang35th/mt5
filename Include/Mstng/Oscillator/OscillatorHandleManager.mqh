@@ -10,6 +10,7 @@
 #ifndef MSTNG_OSCILLATOR_HANDLE_MANAGER_MQH
 #define MSTNG_OSCILLATOR_HANDLE_MANAGER_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Util\UtilAll.mqh>
@@ -160,8 +161,9 @@ private:
             }
 
             const string symbol = info.symbolName;
+            MarketContext context(symbol, this.timeFrame);
 
-            OscillatorHandlePool *pool = new OscillatorHandlePool(symbol, this.timeFrame);
+            OscillatorHandlePool *pool = new OscillatorHandlePool(context);
             this.poolList.Add(pool);
         }
     }

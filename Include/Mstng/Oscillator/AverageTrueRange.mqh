@@ -72,9 +72,28 @@ public:
         const int shiftValue,
         double &atrValueResult
     ) {
+        MarketContext context(symbolNameValue, timeFrameValue);
+
+        return this.getAtrValue(context, shiftValue, atrValueResult);
+    }
+
+    /**
+     * 市場コンテキストを使用してATR価格値を取得する。
+     *
+     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     * @param shiftValue シフト
+     * @param atrValueResult ATR価格値
+     * @return true: 取得成功
+     */
+    bool getAtrValue(
+        MarketContext &fromMarketContext,
+        const int shiftValue,
+        double &atrValueResult
+    ) {
+        this.logger.setMarketContext(fromMarketContext);
         atrValueResult = 0.0;
 
-        if (!this.ensureInitialized(symbolNameValue, timeFrameValue)) {
+        if (!this.ensureInitialized(fromMarketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize ATR handle");
 
             return false;
@@ -94,14 +113,14 @@ public:
 
         atrValueResult = buffer[0];
         this.atrValue = atrValueResult;
-        this.atrPips = this.convertPriceToPips(symbolNameValue, atrValueResult);
+        this.atrPips = this.convertPriceToPips(fromMarketContext.symbolName, atrValueResult);
 
         this.logger.debug(
             __FUNCTION__,
             StringFormat(
                 "symbol=%s timeFrame=%s shift=%d atrValue=%.8f atrPips=%.2f",
-                symbolNameValue,
-                TimeUtil::convertTimeFrameToString(timeFrameValue),
+                fromMarketContext.symbolName,
+                fromMarketContext.timeFrameLabel,
                 shiftValue,
                 this.atrValue,
                 this.atrPips
@@ -126,17 +145,9 @@ public:
         const int shiftValue,
         double &atrPipsResult
     ) {
-        atrPipsResult = 0.0;
+        MarketContext context(symbolNameValue, timeFrameValue);
 
-        double atrValueResult = 0.0;
-
-        if (!this.getAtrValue(symbolNameValue, timeFrameValue, shiftValue, atrValueResult)) {
-            return false;
-        }
-
-        atrPipsResult = this.atrPips;
-
-        return true;
+        return this.getAtrPips(context, shiftValue, atrPipsResult);
     }
 
     /**
@@ -152,12 +163,17 @@ public:
         const int shiftValue,
         double &atrPipsResult
     ) {
-        return this.getAtrPips(
-            fromMarketContext.symbolName,
-            fromMarketContext.timeFrame,
-            shiftValue,
-            atrPipsResult
-        );
+        atrPipsResult = 0.0;
+
+        double atrValueResult = 0.0;
+
+        if (!this.getAtrValue(fromMarketContext, shiftValue, atrValueResult)) {
+            return false;
+        }
+
+        atrPipsResult = this.atrPips;
+
+        return true;
     }
 
     /**
@@ -188,21 +204,33 @@ private:
      * @return true: 初期化成功
      */
     bool ensureInitialized(const string symbolNameValue, const ENUM_TIMEFRAMES timeFrameValue) {
+        MarketContext context(symbolNameValue, timeFrameValue);
+
+        return this.ensureInitialized(context);
+    }
+
+    /**
+     * 市場コンテキストを使用して初期化を確認する。
+     *
+     * @param fromMarketContext 初期化対象の市場コンテキスト
+     * @return true: 初期化成功
+     */
+    bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.averageTrueRangeHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "averageTrueRangeHandlePool is NULL");
 
             return false;
         }
 
-        int pooledHandle = this.averageTrueRangeHandlePool.getHandle(timeFrameValue);
+        int pooledHandle = this.averageTrueRangeHandlePool.getHandle(fromMarketContext.timeFrame);
 
         if (pooledHandle == INVALID_HANDLE) {
             this.logger.error(
                 __FUNCTION__,
                 StringFormat(
                     "failed to get ATR handle from pool. symbol=%s timeFrame=%s code=%d",
-                    symbolNameValue,
-                    TimeUtil::convertTimeFrameToString(timeFrameValue),
+                    fromMarketContext.symbolName,
+                    fromMarketContext.timeFrameLabel,
                     GetLastError()
                 )
             );

@@ -55,16 +55,32 @@ public:
     }
 
     bool getCrossCount(string symbol, ENUM_TIMEFRAMES period, int start, int &count) {
+        MarketContext context(symbol, period);
+
+        return this.getCrossCount(context, start, count);
+    }
+
+    /**
+     * 市場コンテキストを使用してストキャスティクスのクロス継続数を取得する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param start 取得開始シフト
+     * @param count クロス継続数
+     * @return 取得に成功した場合true
+     */
+    bool getCrossCount(MarketContext &fromMarketContext, int start, int &count) {
+        this.logger.setMarketContext(fromMarketContext);
+
         uint startCount = GetTickCount();
         count = 0;
         int len = 100;
 
-        if (!this.ensureInitialized(symbol, period)) {
+        if (!this.ensureInitialized(fromMarketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize stochastic handle");
             return false;
         }
 
-        int bars = Bars(symbol, period);
+        int bars = Bars(fromMarketContext.symbolName, fromMarketContext.timeFrame);
         if (bars <= start) {
             this.logger.error(__FUNCTION__, StringFormat("not enough bars. bars=%d start=%d", bars, start));
             return false;
@@ -86,7 +102,7 @@ public:
         int copiedMain = CopyBuffer(this.handle, 0, start, barsToCopy, mainBuffer);
         int copiedSignal = CopyBuffer(this.handle, 1, start, barsToCopy, signalBuffer);
         if (copiedMain <= 0 || copiedSignal <= 0) {
-            this.logger.error(__FUNCTION__, StringFormat("symbol = %s period = %s start = %d", symbol, TimeUtil::convertTimeFrameToString(period), start));
+            this.logger.error(__FUNCTION__, StringFormat("symbol = %s period = %s start = %d", fromMarketContext.symbolName, fromMarketContext.timeFrameLabel, start));
             this.logger.error(__FUNCTION__, StringFormat("CopyBuffer error. copiedMain=%d copiedSignal=%d code=%d", copiedMain, copiedSignal, GetLastError()));
             return false;
         }
@@ -115,23 +131,6 @@ public:
 
         this.logger.debug(__FUNCTION__, StringFormat("count=%s elapsed=%d ms", StringUtil::addSign(count), GetTickCount() - startCount));
         return true;
-    }
-
-    /**
-     * 市場コンテキストを使用してストキャスティクスのクロス継続数を取得する。
-     *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param start 取得開始シフト
-     * @param count クロス継続数
-     * @return 取得に成功した場合true
-     */
-    bool getCrossCount(MarketContext &fromMarketContext, int start, int &count) {
-        return this.getCrossCount(
-            fromMarketContext.symbolName,
-            fromMarketContext.timeFrame,
-            start,
-            count
-        );
     }
 
 private:
@@ -178,17 +177,29 @@ private:
     }
 
     bool ensureInitialized(string symbol, ENUM_TIMEFRAMES period) {
+        MarketContext context(symbol, period);
+
+        return this.ensureInitialized(context);
+    }
+
+    /**
+     * 市場コンテキストを使用してハンドルを初期化する。
+     *
+     * @param fromMarketContext 初期化対象の市場コンテキスト
+     * @return 初期化できた場合true
+     */
+    bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.stochasticHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "stochasticHandlePool is NULL");
             return false;
         }
-        int pooledHandle = this.stochasticHandlePool.getHandle(period);
+        int pooledHandle = this.stochasticHandlePool.getHandle(fromMarketContext.timeFrame);
         if (pooledHandle == INVALID_HANDLE) {
-            this.logger.error(__FUNCTION__, StringFormat("failed to get handle from pool. symbol=%s period=%d code=%d", symbol, (int)period, GetLastError()));
+            this.logger.error(__FUNCTION__, StringFormat("failed to get handle from pool. symbol=%s period=%d code=%d", fromMarketContext.symbolName, (int)fromMarketContext.timeFrame, GetLastError()));
             return false;
         }
         this.handle = pooledHandle;
-        this.logger.debug(__FUNCTION__, StringFormat("initialized from pool. symbol=%s period=%d handle=%d", symbol, (int)period, this.handle));
+        this.logger.debug(__FUNCTION__, StringFormat("initialized from pool. symbol=%s period=%d handle=%d", fromMarketContext.symbolName, (int)fromMarketContext.timeFrame, this.handle));
         return true;
     }
 
