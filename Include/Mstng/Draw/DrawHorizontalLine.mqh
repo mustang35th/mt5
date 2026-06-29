@@ -21,7 +21,7 @@ public:
     }
     
     void draw(ElliotAll &fromElliotAll) {
-        this.logger.setSymbolNameAndTimeFrame(fromElliotAll.symbolName, fromElliotAll.timeFrame);
+        this.logger.setMarketContext(fromElliotAll.marketContext);
         
         if (fromElliotAll.timeFrame < PERIOD_MN1) {
             Elliot *elliotHigher = fromElliotAll.getElliot(fromElliotAll.timeFrame, 1); // 上位足

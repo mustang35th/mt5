@@ -25,7 +25,7 @@ public:
      * @param fromElliotAll エリオット分析結果
      */
     void draw(ElliotAll &fromElliotAll) {
-        this.logger.setSymbolNameAndTimeFrame(fromElliotAll.symbolName, fromElliotAll.timeFrame);
+        this.logger.setMarketContext(fromElliotAll.marketContext);
 
         //Elliot *elliot = fromElliotAll.getElliot(fromElliotAll.timeFrame, 0);
         

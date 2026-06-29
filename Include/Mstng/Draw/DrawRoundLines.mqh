@@ -6,20 +6,25 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Draw\DrawUtil.mqh>
 #include <Mstng\Util\RateUtil.mqh>
 
 class DrawRoundLines {
 public:
     DrawRoundLines(string fromSymbolName) {
-        this.symbolName = fromSymbolName;
-        this.color100Pips = clrGold;
-        this.color50Pips = clrGold;
-        this.linesEachSide = 5;
-        this.useBidPrice = true;
-        this.chartId = 0;
+        this.initialize(fromSymbolName);
     }
-    
+
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    DrawRoundLines(MarketContext &fromMarketContext) {
+        this.initialize(fromMarketContext.symbolName);
+    }
+
     void draw() {
         double basePrice = this.getBasePrice();
         double stepPrice50Pips = RateUtil::pipsToPrice(STEP_50_PIPS, symbolName);
@@ -44,6 +49,20 @@ private:
     int linesEachSide;
     bool useBidPrice;
     long chartId;
+
+    /**
+     * 描画設定を初期化する。
+     *
+     * @param fromSymbolName 描画対象のシンボル名
+     */
+    void initialize(string fromSymbolName) {
+        this.symbolName = fromSymbolName;
+        this.color100Pips = clrGold;
+        this.color50Pips = clrGold;
+        this.linesEachSide = 5;
+        this.useBidPrice = true;
+        this.chartId = 0;
+    }
    
     double getBasePrice() {
         return useBidPrice
