@@ -8,6 +8,7 @@
 #ifndef MSTNG_AVERAGE_TRUE_RANGE_MQH
 #define MSTNG_AVERAGE_TRUE_RANGE_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Oscillator\AverageTrueRangeHandlePool.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
@@ -136,6 +137,27 @@ public:
         atrPipsResult = this.atrPips;
 
         return true;
+    }
+
+    /**
+     * 市場コンテキストを使用してATRのpips値を取得する。
+     *
+     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     * @param shiftValue シフト
+     * @param atrPipsResult ATR pips値
+     * @return true: 取得成功
+     */
+    bool getAtrPips(
+        MarketContext &fromMarketContext,
+        const int shiftValue,
+        double &atrPipsResult
+    ) {
+        return this.getAtrPips(
+            fromMarketContext.symbolName,
+            fromMarketContext.timeFrame,
+            shiftValue,
+            atrPipsResult
+        );
     }
 
     /**

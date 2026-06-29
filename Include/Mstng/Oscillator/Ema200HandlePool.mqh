@@ -10,6 +10,7 @@
 #ifndef MSTNG_EMA200_HANDLE_POOL_MQH
 #define MSTNG_EMA200_HANDLE_POOL_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Oscillator\HandlePoolBase.mqh>
 
 /**
@@ -75,6 +76,15 @@ public:
     }
 
     /**
+     * 市場コンテキストを使用してMN1から指定時間足までのハンドルを生成する。
+     *
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     */
+    void setTimeframesFromMn1To(MarketContext &fromMarketContext) {
+        this.setTimeframesFromMn1To(fromMarketContext.symbolName, fromMarketContext.timeFrame);
+    }
+
+    /**
      * D1 から指定時間足までのハンドルを生成します。
      *
      * @param fromSymbolName 対象シンボル
@@ -107,6 +117,15 @@ public:
         for (int i = startIndex; i <= lastIndex; i++) {
             this.createIfNeeded(i);
         }
+    }
+
+    /**
+     * 市場コンテキストを使用してD1から指定時間足までのハンドルを生成する。
+     *
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     */
+    void setTimeframesFromD1To(MarketContext &fromMarketContext) {
+        this.setTimeframesFromD1To(fromMarketContext.symbolName, fromMarketContext.timeFrame);
     }
 
     /**

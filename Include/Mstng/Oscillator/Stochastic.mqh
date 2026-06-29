@@ -7,6 +7,7 @@
 #ifndef __STOCHASTIC_MQH__
 #define __STOCHASTIC_MQH__
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Oscillator\StochasticHandlePool.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
@@ -114,6 +115,23 @@ public:
 
         this.logger.debug(__FUNCTION__, StringFormat("count=%s elapsed=%d ms", StringUtil::addSign(count), GetTickCount() - startCount));
         return true;
+    }
+
+    /**
+     * 市場コンテキストを使用してストキャスティクスのクロス継続数を取得する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param start 取得開始シフト
+     * @param count クロス継続数
+     * @return 取得に成功した場合true
+     */
+    bool getCrossCount(MarketContext &fromMarketContext, int start, int &count) {
+        return this.getCrossCount(
+            fromMarketContext.symbolName,
+            fromMarketContext.timeFrame,
+            start,
+            count
+        );
     }
 
 private:
