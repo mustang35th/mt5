@@ -28,7 +28,7 @@ public:
 
 private:
     static string getTitle(ElliotAll *fromElliotAll) {
-        string symbolName = fromElliotAll.symbolName;
+        string symbolName = fromElliotAll.marketContext.symbolName;
         string buySellLabel = fromElliotAll.elliotCurrent.buySellLabel;
         string mailTitile = fromElliotAll.mailTitile;
         

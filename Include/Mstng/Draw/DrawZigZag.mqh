@@ -21,15 +21,15 @@ public:
     void draw(ElliotAll &fromElliotAll) {
         this.logger.setMarketContext(fromElliotAll.marketContext);
 
-        if (fromElliotAll.timeFrame < PERIOD_MN1) {
-            Elliot *elliotHigher = fromElliotAll.getElliot(fromElliotAll.timeFrame, 1);
+        if (fromElliotAll.marketContext.timeFrame < PERIOD_MN1) {
+            Elliot *elliotHigher = fromElliotAll.getElliot(fromElliotAll.marketContext.timeFrame, 1);
 
             if (elliotHigher != NULL) {
                 this.draw(elliotHigher, true, 3, true);
             }
         }
 
-        Elliot *elliot = fromElliotAll.getElliot(fromElliotAll.timeFrame);
+        Elliot *elliot = fromElliotAll.getElliot(fromElliotAll.marketContext.timeFrame);
 
         if (elliot != NULL) {
             this.draw(elliot, false, 1);
@@ -46,7 +46,7 @@ private:
         this.logger.debug(__FUNCTION__, StringFormat("isUpper = %s", (string)isUpper));
 
         string preObjectName;
-        StringConcatenate(preObjectName, "ZigZag", elliot.timeFrameLabel);
+        StringConcatenate(preObjectName, "ZigZag", elliot.marketContext.timeFrameLabel);
 
         CArrayObj *waveList = &(elliot.waveList);
         int waveListTotal = waveList.Total();
@@ -57,7 +57,7 @@ private:
             Wave *wave = waveList.At(i);
             CArrayObj *zigZagPointList;
 
-            if (isOrg && elliot.timeFrame != PERIOD_MN1) {
+            if (isOrg && elliot.marketContext.timeFrame != PERIOD_MN1) {
                 zigZagPointList = &(wave.orgZigZagPointList);
             } else {
                 zigZagPointList = &(wave.zigZagPointList);
@@ -91,8 +91,8 @@ private:
                 datetime datetimeTo = zigZagPointTo.barTime;
 
                 if (isUpper) {
-                    datetimeFrom = this.getDatetime(elliot.timeFrame, datetimeFrom, rateFrom, isBuy, true);
-                    datetimeTo = this.getDatetime(elliot.timeFrame, datetimeTo, rateTo, isBuy, false);
+                    datetimeFrom = this.getDatetime(elliot.marketContext.timeFrame, datetimeFrom, rateFrom, isBuy, true);
+                    datetimeTo = this.getDatetime(elliot.marketContext.timeFrame, datetimeTo, rateTo, isBuy, false);
                 }
 
                 DrawUtil::setTrendLine(

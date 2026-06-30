@@ -23,8 +23,8 @@ public:
     void draw(ElliotAll &fromElliotAll) {
         this.logger.setMarketContext(fromElliotAll.marketContext);
         
-        if (fromElliotAll.timeFrame < PERIOD_MN1) {
-            Elliot *elliotHigher = fromElliotAll.getElliot(fromElliotAll.timeFrame, 1); // 上位足
+        if (fromElliotAll.marketContext.timeFrame < PERIOD_MN1) {
+            Elliot *elliotHigher = fromElliotAll.getElliot(fromElliotAll.marketContext.timeFrame, 1); // 上位足
             
             if (elliotHigher != NULL) {
                 this.draw(elliotHigher, 3, true);
@@ -41,7 +41,7 @@ private:
         this.logger.debug(__FUNCTION__, StringFormat("isUpper = %s", (string)isUpper));
         
         string preObjectName;
-        StringConcatenate(preObjectName, "HorizontalLine", elliot.timeFrameLabel);
+        StringConcatenate(preObjectName, "HorizontalLine", elliot.marketContext.timeFrameLabel);
         
         color lineColor = clrLightGray;
         
@@ -76,12 +76,12 @@ private:
             datetime datetimeTo = zigZagPointTo.barTime;
 
             if (isUpper) {
-                datetimeFrom = this.getDatetime(elliot.timeFrame, datetimeFrom, rateFrom, isBuy, true);
+                datetimeFrom = this.getDatetime(elliot.marketContext.timeFrame, datetimeFrom, rateFrom, isBuy, true);
                 
                 if (to == 0) {
-                    datetimeTo = iTime(elliot.symbolName, NULL, to);
+                    datetimeTo = iTime(elliot.marketContext.symbolName, NULL, to);
                 } else {
-                    datetimeTo = this.getDatetime(elliot.timeFrame, datetimeTo, rateTo, isBuy, false);
+                    datetimeTo = this.getDatetime(elliot.marketContext.timeFrame, datetimeTo, rateTo, isBuy, false);
                 }
             }
 
@@ -98,9 +98,9 @@ private:
             );
             
             DrawProperties drawProperties;
-            datetime drawDatetime = TimeUtil::addBars(datetimeTo, elliot.timeFrame, 3);
+            datetime drawDatetime = TimeUtil::addBars(datetimeTo, elliot.marketContext.timeFrame, 3);
             
-            int digits = RateUtil::getDigits(elliot.symbolName);
+            int digits = RateUtil::getDigits(elliot.marketContext.symbolName);
             string text = DoubleToString(rateFrom, digits);
             
             DrawUtil::setText(objectName + "Label", drawProperties.elliotFontFace, lineColor, 11, text, drawDatetime, rateFrom);

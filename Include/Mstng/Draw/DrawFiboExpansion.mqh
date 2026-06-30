@@ -27,7 +27,7 @@ public:
     void draw(ElliotAll &fromElliotAll) {
         this.logger.setMarketContext(fromElliotAll.marketContext);
 
-        //Elliot *elliot = fromElliotAll.getElliot(fromElliotAll.timeFrame, 0);
+        //Elliot *elliot = fromElliotAll.getElliot(fromElliotAll.marketContext.timeFrame, 0);
         
         Elliot *elliot = fromElliotAll.elliotCurrent;
         
@@ -56,7 +56,7 @@ private:
         this.logger.debug(__FUNCTION__, StringFormat("lineSize = %d", lineSize));
 
         string preObjectName;
-        StringConcatenate(preObjectName, Constant::PREFIX, "FiboExpansion", elliot.timeFrameLabel);
+        StringConcatenate(preObjectName, Constant::PREFIX, "FiboExpansion", elliot.marketContext.timeFrameLabel);
 
         color lineColor = clrLightGray;
         
