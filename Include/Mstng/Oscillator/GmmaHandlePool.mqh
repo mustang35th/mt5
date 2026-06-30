@@ -78,19 +78,9 @@ public:
      * @param lastTimeFrame  生成対象の終端時間足（固定8時間足のみ対応）
      */
     void setTimeframesFromMn1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
-        this.ensureSymbol(fromSymbolName);
+        MarketContext context(fromSymbolName, lastTimeFrame);
 
-        int lastIndex = this.findIndex(lastTimeFrame);
-
-        if (lastIndex < 0) {
-            Print("Unsupported timeframe: ", EnumToString(lastTimeFrame));
-
-            return;
-        }
-
-        for (int i = 0; i <= lastIndex; i++) {
-            this.createIfNeeded(i);
-        }
+        this.setTimeframesFromMn1To(context);
     }
 
     /**
@@ -113,30 +103,9 @@ public:
      * @param lastTimeFrame  生成対象の終端時間足（D1以下、固定8時間足のみ対応）
      */
     void setTimeframesFromD1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
-        this.ensureSymbol(fromSymbolName);
+        MarketContext context(fromSymbolName, lastTimeFrame);
 
-        int startIndex = this.findIndex(PERIOD_D1);
-        int lastIndex  = this.findIndex(lastTimeFrame);
-
-        if (startIndex < 0) {
-            Print("D1 timeframe is not configured in this pool.");
-            return;
-        }
-
-        if (lastIndex < 0) {
-            Print("Unsupported timeframe: ", EnumToString(lastTimeFrame));
-            return;
-        }
-
-        // lastTimeFrame は D1 以下である必要があります（MN1/W1 は不可）
-        if (lastIndex < startIndex) {
-            Print("lastTimeFrame must be D1 or lower. lastTimeFrame=", EnumToString(lastTimeFrame));
-            return;
-        }
-
-        for (int i = startIndex; i <= lastIndex; i++) {
-            this.createIfNeeded(i);
-        }
+        this.setTimeframesFromD1To(context);
     }
 
     /**
@@ -246,8 +215,8 @@ protected:
 
         ENUM_TIMEFRAMES timeFrame = this.timeframes[index];
 
-        int createdEma30Handle = iMA(this.symbolName, timeFrame, this.ema30Period, 0, this.maMethod, this.appliedPrice);
-        int createdEma60Handle = iMA(this.symbolName, timeFrame, this.ema60Period, 0, this.maMethod, this.appliedPrice);
+        int createdEma30Handle = iMA(this.marketContext.symbolName, timeFrame, this.ema30Period, 0, this.maMethod, this.appliedPrice);
+        int createdEma60Handle = iMA(this.marketContext.symbolName, timeFrame, this.ema60Period, 0, this.maMethod, this.appliedPrice);
 
         if (createdEma30Handle == INVALID_HANDLE || createdEma60Handle == INVALID_HANDLE) {
             this.releaseHandle(createdEma30Handle);
@@ -285,7 +254,8 @@ private:
                     int fromEma60Period,
                     ENUM_MA_METHOD fromMaMethod,
                     ENUM_APPLIED_PRICE fromAppliedPrice) {
-        this.symbolName = fromSymbolName;
+        MarketContext context(fromSymbolName, PERIOD_CURRENT);
+        this.initializeBase(context);
 
         this.ema30Period = fromEma30Period;
         this.ema60Period = fromEma60Period;
@@ -305,16 +275,6 @@ private:
             this.ema30Handles[i] = INVALID_HANDLE;
             this.ema60Handles[i] = INVALID_HANDLE;
         }
-    }
-
-    void ensureSymbol(string fromSymbolName) {
-        if (this.symbolName == fromSymbolName) {
-
-            return;
-        }
-
-        this.releaseAll();
-        this.symbolName = fromSymbolName;
     }
 
     int findIndex(ENUM_TIMEFRAMES timeFrame) {

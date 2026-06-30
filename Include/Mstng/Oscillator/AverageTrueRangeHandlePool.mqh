@@ -50,22 +50,9 @@ public:
      * @param lastTimeFrame 最終時間足
      */
     void setTimeframesFromMn1To(const string fromSymbolName, const ENUM_TIMEFRAMES lastTimeFrame) {
-        if (this.symbolName != fromSymbolName) {
-            this.releaseAll();
-            this.symbolName = fromSymbolName;
-        }
+        MarketContext context(fromSymbolName, lastTimeFrame);
 
-        int lastIndex = this.findIndex(lastTimeFrame);
-
-        if (lastIndex < 0) {
-            Print("Unsupported timeframe: ", EnumToString(lastTimeFrame));
-
-            return;
-        }
-
-        for (int i = 0; i <= lastIndex; i++) {
-            this.createIfNeeded(i);
-        }
+        this.setTimeframesFromMn1To(context);
     }
 
     /**
@@ -84,35 +71,9 @@ public:
      * @param lastTimeFrame 最終時間足
      */
     void setTimeframesFromD1To(const string fromSymbolName, const ENUM_TIMEFRAMES lastTimeFrame) {
-        if (this.symbolName != fromSymbolName) {
-            this.releaseAll();
-            this.symbolName = fromSymbolName;
-        }
+        MarketContext context(fromSymbolName, lastTimeFrame);
 
-        int startIndex = this.findIndex(PERIOD_D1);
-        int lastIndex = this.findIndex(lastTimeFrame);
-
-        if (startIndex < 0) {
-            Print("D1 timeframe is not configured in this pool.");
-
-            return;
-        }
-
-        if (lastIndex < 0) {
-            Print("Unsupported timeframe: ", EnumToString(lastTimeFrame));
-
-            return;
-        }
-
-        if (lastIndex < startIndex) {
-            Print("lastTimeFrame must be D1 or lower. lastTimeFrame=", EnumToString(lastTimeFrame));
-
-            return;
-        }
-
-        for (int i = startIndex; i <= lastIndex; i++) {
-            this.createIfNeeded(i);
-        }
+        this.setTimeframesFromD1To(context);
     }
 
     /**
@@ -176,7 +137,7 @@ protected:
         }
 
         ENUM_TIMEFRAMES timeFrame = this.timeframes[index];
-        int createdHandle = iATR(this.symbolName, timeFrame, this.period);
+        int createdHandle = iATR(this.marketContext.symbolName, timeFrame, this.period);
 
         if (createdHandle == INVALID_HANDLE) {
             Print("iATR failed. timeframe=", EnumToString(timeFrame), " err=", GetLastError());
@@ -201,7 +162,8 @@ private:
      * @param fromPeriod ATR期間
      */
     void initialize(const string fromSymbolName, const int fromPeriod) {
-        this.symbolName = fromSymbolName;
+        MarketContext context(fromSymbolName, PERIOD_CURRENT);
+        this.initializeBase(context);
         this.period = fromPeriod;
 
         this.timeframes[0] = PERIOD_MN1;

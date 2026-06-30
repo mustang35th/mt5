@@ -60,19 +60,9 @@ public:
      * @param lastTimeFrame 生成対象の終端時間足
      */
     void setTimeframesFromMn1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
-        this.ensureSymbol(fromSymbolName);
+        MarketContext context(fromSymbolName, lastTimeFrame);
 
-        int lastIndex = this.findIndex(lastTimeFrame);
-
-        if (lastIndex < 0) {
-            Print("Unsupported timeframe: ", EnumToString(lastTimeFrame));
-
-            return;
-        }
-
-        for (int i = 0; i <= lastIndex; i++) {
-            this.createIfNeeded(i);
-        }
+        this.setTimeframesFromMn1To(context);
     }
 
     /**
@@ -91,32 +81,9 @@ public:
      * @param lastTimeFrame 生成対象の終端時間足
      */
     void setTimeframesFromD1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
-        this.ensureSymbol(fromSymbolName);
+        MarketContext context(fromSymbolName, lastTimeFrame);
 
-        int startIndex = this.findIndex(PERIOD_D1);
-        int lastIndex = this.findIndex(lastTimeFrame);
-
-        if (startIndex < 0) {
-            Print("D1 timeframe is not configured in this pool.");
-
-            return;
-        }
-
-        if (lastIndex < 0) {
-            Print("Unsupported timeframe: ", EnumToString(lastTimeFrame));
-
-            return;
-        }
-
-        if (lastIndex < startIndex) {
-            Print("lastTimeFrame must be D1 or lower. lastTimeFrame=", EnumToString(lastTimeFrame));
-
-            return;
-        }
-
-        for (int i = startIndex; i <= lastIndex; i++) {
-            this.createIfNeeded(i);
-        }
+        this.setTimeframesFromD1To(context);
     }
 
     /**
@@ -216,7 +183,7 @@ protected:
 
         ENUM_TIMEFRAMES timeFrame = this.timeframes[index];
 
-        int createdHandle = iMA(this.symbolName, timeFrame, this.emaPeriod, 0, this.maMethod, this.appliedPrice);
+        int createdHandle = iMA(this.marketContext.symbolName, timeFrame, this.emaPeriod, 0, this.maMethod, this.appliedPrice);
 
         if (createdHandle == INVALID_HANDLE) {
             Print("iMA EMA200 failed. timeframe=", EnumToString(timeFrame), " err=", GetLastError());
@@ -259,7 +226,8 @@ private:
                     int fromEmaPeriod,
                     ENUM_MA_METHOD fromMaMethod,
                     ENUM_APPLIED_PRICE fromAppliedPrice) {
-        this.symbolName = fromSymbolName;
+        MarketContext context(fromSymbolName, PERIOD_CURRENT);
+        this.initializeBase(context);
 
         this.emaPeriod = fromEmaPeriod;
         this.maMethod = fromMaMethod;
