@@ -19,7 +19,7 @@ public:
     }
 
     void draw(ElliotAll &fromElliotAll) {
-        this.logger.setMarketContext(fromElliotAll.marketContext);
+        this.initializeMarketContext(fromElliotAll.marketContext);
 
         if (fromElliotAll.marketContext.timeFrame < PERIOD_MN1) {
             Elliot *elliotHigher = fromElliotAll.getElliot(fromElliotAll.marketContext.timeFrame, 1);

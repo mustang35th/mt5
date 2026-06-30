@@ -6,16 +6,15 @@
 #ifndef MSTNGEA_MARKET_NEWBARDETECTOR_MQH
 #define MSTNGEA_MARKET_NEWBARDETECTOR_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
+
 /**
  * 新規バー検出
  */
 class NewBarDetector {
 public:
-    /** シンボル名 */
-    string symbolName;
-
-    /** 時間足 */
-    ENUM_TIMEFRAMES timeFrame;
+    /** 新規バー検出対象の市場コンテキスト */
+    MarketContext marketContext;
 
     /**
      * コンストラクタ
@@ -24,10 +23,17 @@ public:
      * @param timeFrameValue 時間足
      */
     NewBarDetector(string symbolNameValue, ENUM_TIMEFRAMES timeFrameValue) {
-        // 基本情報を保持
-        this.symbolName = symbolNameValue;
-        this.timeFrame = timeFrameValue;
-        this.lastBarTime = 0;
+        MarketContext context(symbolNameValue, timeFrameValue);
+        this.initializeMarketContext(context);
+    }
+
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param marketContextValue 新規バー検出対象の市場コンテキスト
+     */
+    NewBarDetector(MarketContext &marketContextValue) {
+        this.initializeMarketContext(marketContextValue);
     }
 
     /**
@@ -37,7 +43,11 @@ public:
      */
     bool isNewBar() {
         // 現在バー時刻を取得
-        datetime currentBarTime = iTime(this.symbolName, this.timeFrame, 0);
+        datetime currentBarTime = iTime(
+            this.marketContext.symbolName,
+            this.marketContext.timeFrame,
+            0
+        );
 
         if (currentBarTime <= 0) {
             return false;
@@ -68,6 +78,16 @@ public:
 private:
     /** 最終バー時刻 */
     datetime lastBarTime;
+
+    /**
+     * 市場コンテキストを設定する。
+     *
+     * @param marketContextValue 新規バー検出対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &marketContextValue) {
+        this.marketContext = marketContextValue;
+        this.lastBarTime = 0;
+    }
 };
 
 #endif

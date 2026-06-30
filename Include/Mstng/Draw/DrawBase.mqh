@@ -14,9 +14,7 @@ public:
 
     DrawBase() {
         MarketContext context(_Symbol, (ENUM_TIMEFRAMES)_Period);
-        this.marketContext = context;
-        this.logger.setLevel(LOG_INFO);
-        this.logger.setMarketContext(this.marketContext);
+        this.initializeMarketContext(context);
     }
 
     ~DrawBase() {
@@ -28,6 +26,17 @@ protected:
 
     /** 処理経過およびエラー出力用ロガー */
     Logger logger;
+
+    /**
+     * 描画対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+        this.logger.setLevel(LOG_INFO);
+        this.logger.setMarketContext(this.marketContext);
+    }
 
     /**
      * 上位足で取得した価格が、現在足のどのバー時刻に対応するかを取得する。

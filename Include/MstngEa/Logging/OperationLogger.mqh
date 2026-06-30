@@ -6,6 +6,7 @@
 #ifndef MSTNGEA_LOGGING_OPERATIONLOGGER_MQH
 #define MSTNGEA_LOGGING_OPERATIONLOGGER_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <MstngEa\Logging\LogLevel.mqh>
 
 /**
@@ -13,11 +14,8 @@
  */
 class OperationLogger {
 public:
-    /** シンボル名 */
-    string symbolName;
-
-    /** 時間足 */
-    ENUM_TIMEFRAMES timeFrame;
+    /** ログ出力対象の市場コンテキスト */
+    MarketContext marketContext;
 
     /** ログレベル */
     EaLogLevel logLevel;
@@ -29,10 +27,17 @@ public:
      * @param timeFrameValue 時間足
      */
     OperationLogger(string symbolNameValue, ENUM_TIMEFRAMES timeFrameValue) {
-        // 基本情報を保持
-        this.symbolName = symbolNameValue;
-        this.timeFrame = timeFrameValue;
-        this.logLevel = LOG_LEVEL_INFO;
+        MarketContext context(symbolNameValue, timeFrameValue);
+        this.initializeMarketContext(context);
+    }
+
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param marketContextValue ログ出力対象の市場コンテキスト
+     */
+    OperationLogger(MarketContext &marketContextValue) {
+        this.initializeMarketContext(marketContextValue);
     }
 
     /**
@@ -111,6 +116,16 @@ public:
 
 private:
     /**
+     * 市場コンテキストを設定する。
+     *
+     * @param marketContextValue ログ出力対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &marketContextValue) {
+        this.marketContext = marketContextValue;
+        this.logLevel = LOG_LEVEL_INFO;
+    }
+
+    /**
      * ログ文字列出力
      *
      * @param logLevelValue ログレベル
@@ -187,9 +202,9 @@ private:
      */
     string buildFilePath() {
         // 共通データフォルダ配下の相対パスを返却
-        string timeFrameLabel = IntegerToString((int)this.timeFrame);
+        string timeFrameLabel = IntegerToString((int)this.marketContext.timeFrame);
         string filePath = "MstngEa\\Logs\\MstngEa_";
-        filePath += this.symbolName;
+        filePath += this.marketContext.symbolName;
         filePath += "_";
         filePath += timeFrameLabel;
         filePath += ".log";
