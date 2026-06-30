@@ -1,0 +1,5 @@
+root = true
+
+[Include/Mstng/**/*.mqh]
+charset = utf-8-bom
+

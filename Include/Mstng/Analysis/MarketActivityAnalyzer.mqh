@@ -1,4 +1,4 @@
-#ifndef __MARKET_ACTIVITY_ANALYZER_MQH__
+﻿#ifndef __MARKET_ACTIVITY_ANALYZER_MQH__
 #define __MARKET_ACTIVITY_ANALYZER_MQH__
 
 /** JSTオフセット秒。 */

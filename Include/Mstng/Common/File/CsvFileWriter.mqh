@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Package: Mstng.Common.File
  * File: CsvFileWriter.mqh
  */
