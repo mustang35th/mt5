@@ -72,7 +72,7 @@ public:
                 continue;
             }
 
-            if(pool.symbolName == key) {
+            if(pool.marketContext.symbolName == key) {
                 return pool;
             }
         }

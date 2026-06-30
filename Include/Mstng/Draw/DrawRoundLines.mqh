@@ -63,9 +63,6 @@ private:
     /** 描画対象の市場コンテキスト */
     MarketContext marketContext;
 
-    /** 互換用の描画対象シンボル名 */
-    string symbolName;
-
     /** 100pipsラインの色 */
     color color100Pips;
 
@@ -98,7 +95,6 @@ private:
      */
     void initialize(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
-        this.symbolName = this.marketContext.symbolName;
         this.color100Pips = clrGold;
         this.color50Pips = clrGold;
         this.linesEachSide = 5;

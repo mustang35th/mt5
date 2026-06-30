@@ -29,15 +29,6 @@ public:
     /** 描画対象の市場コンテキスト */
     MarketContext marketContext;
 
-    /** 互換用の描画対象シンボル */
-    string symbolName;
-
-    /** 互換用の描画対象時間足 */
-    ENUM_TIMEFRAMES timeFrame;
-
-    /** 互換用の時間足表示名 */
-    string timeFrameLabel;
-
     string objectPrefix;
     color upColor;
     color downColor;
@@ -520,10 +511,6 @@ private:
         int fromMaxBars
     ) {
         this.marketContext = fromMarketContext;
-
-        this.symbolName = this.marketContext.symbolName;
-        this.timeFrame = this.marketContext.timeFrame;
-        this.timeFrameLabel = this.marketContext.timeFrameLabel;
 
         this.objectPrefix = fromObjectPrefix;
         this.upColor = fromUpColor;
