@@ -4,6 +4,7 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Util\RateUtil.mqh>
 
 class FiboExpansionPriceInfo {
@@ -41,14 +42,34 @@ public:
      * @param endRate 2点目レート
      * @param baseRate 3点目レート
      * @param currentRate 現在レート
-     * @param symbolName 通貨ペア
+     * @param fromSymbolName 通貨ペア
      */
     void setData(
         const double startRate,
         const double endRate,
         const double baseRate,
         const double currentRate,
-        const string symbolName
+        const string fromSymbolName
+    ) {
+        MarketContext context(fromSymbolName, PERIOD_CURRENT);
+        this.setData(startRate, endRate, baseRate, currentRate, context);
+    }
+
+    /**
+     * MarketContextを使用してフィボナッチエクスパンション価格を設定する。
+     *
+     * @param startRate 1点目レート
+     * @param endRate 2点目レート
+     * @param baseRate 3点目レート
+     * @param currentRate 現在レート
+     * @param fromMarketContext 計算対象の市場コンテキスト
+     */
+    void setData(
+        const double startRate,
+        const double endRate,
+        const double baseRate,
+        const double currentRate,
+        MarketContext &fromMarketContext
     ) {
         this.clear();
 
@@ -70,13 +91,17 @@ public:
 
         double waveRate = endRate - startRate;
 
-        this.FE618Price = this.normalizePrice(baseRate + waveRate * 0.618, symbolName);
-        this.FE1000Price = this.normalizePrice(baseRate + waveRate * 1.000, symbolName);
-        this.FE1272Price = this.normalizePrice(baseRate + waveRate * 1.272, symbolName);
-        this.FE1618Price = this.normalizePrice(baseRate + waveRate * 1.618, symbolName);
-        this.FE2000Price = this.normalizePrice(baseRate + waveRate * 2.000, symbolName);
+        this.FE618Price = this.normalizePrice(baseRate + waveRate * 0.618, fromMarketContext.digits);
+        this.FE1000Price = this.normalizePrice(baseRate + waveRate * 1.000, fromMarketContext.digits);
+        this.FE1272Price = this.normalizePrice(baseRate + waveRate * 1.272, fromMarketContext.digits);
+        this.FE1618Price = this.normalizePrice(baseRate + waveRate * 1.618, fromMarketContext.digits);
+        this.FE2000Price = this.normalizePrice(baseRate + waveRate * 2.000, fromMarketContext.digits);
 
-        this.DistanceToFE2000Pips = RateUtil::getDiffPips(currentRate, this.FE2000Price, symbolName);
+        this.DistanceToFE2000Pips = RateUtil::getDiffPips(
+            currentRate,
+            this.FE2000Price,
+            fromMarketContext.symbolName
+        );
     }
 
     /**
@@ -127,10 +152,10 @@ private:
      * 価格を通貨ペアの桁数で丸める。
      *
      * @param price 価格
-     * @param symbolName 通貨ペア
+     * @param fromDigits 小数桁数
      * @return 丸め後価格
      */
-    double normalizePrice(const double price, const string symbolName) {
-        return NormalizeDouble(price, RateUtil::getDigits(symbolName));
+    double normalizePrice(const double price, const int fromDigits) {
+        return NormalizeDouble(price, fromDigits);
     }
 };

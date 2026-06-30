@@ -100,8 +100,7 @@ private:
             DrawProperties drawProperties;
             datetime drawDatetime = TimeUtil::addBars(datetimeTo, elliot.marketContext.timeFrame, 3);
             
-            int digits = RateUtil::getDigits(elliot.marketContext.symbolName);
-            string text = DoubleToString(rateFrom, digits);
+            string text = DoubleToString(rateFrom, elliot.marketContext.digits);
             
             DrawUtil::setText(objectName + "Label", drawProperties.elliotFontFace, lineColor, 11, text, drawDatetime, rateFrom);
             

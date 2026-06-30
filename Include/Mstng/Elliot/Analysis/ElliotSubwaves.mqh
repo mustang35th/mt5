@@ -88,16 +88,24 @@ private:
      * @param fromWaveList 内部波動設定対象Wave一覧
      */
     void initialize(MarketContext &fromMarketContext, CArrayObj &fromWaveList) {
-        this.marketContext = fromMarketContext;
-
         this.logger.setLevel(LOG_INFO);
-        this.logger.setMarketContext(this.marketContext);
+        this.initializeMarketContext(fromMarketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         WaveUtil::copyWaveList(fromWaveList, this.waveList);
 
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+    }
+
+    /**
+     * 市場コンテキストとロガーを初期化する。
+     *
+     * @param fromMarketContext 内部波動設定対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+        this.logger.setMarketContext(this.marketContext);
     }
 
     /**

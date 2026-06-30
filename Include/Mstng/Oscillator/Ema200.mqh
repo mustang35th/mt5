@@ -747,10 +747,8 @@ private:
      * 値を初期化します。
      */
     void resetValues() {
-        this.marketContext.symbolName = "";
-        this.marketContext.timeFrame = PERIOD_CURRENT;
-        this.marketContext.timeFrameLabel = "";
-        this.marketContext.digits = 0;
+        MarketContext context;
+        this.initializeMarketContext(context);
         this.close1 = 0.0;
         this.ema200Shift1 = 0.0;
         this.ema200Compare = 0.0;

@@ -386,6 +386,7 @@ private:
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
+        this.logger.setMarketContext(this.marketContext);
     }
 
     /**

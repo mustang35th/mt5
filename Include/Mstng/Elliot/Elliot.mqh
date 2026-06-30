@@ -207,7 +207,7 @@ public:
                 zigZagPoint1.rate,
                 zigZagPoint2.rate,
                 latestZigZagPoint.rate,
-                this.marketContext.symbolName
+                this.marketContext
             );
             
             //this.fiboExpansionPriceInfo.setDataByThreeRates(zigZagPoint0.rate, zigZagPoint1.rate, zigZagPoint2.rate);
