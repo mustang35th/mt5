@@ -13,6 +13,9 @@
 
 class Stochastic {
 public:
+    /** 取得対象の市場コンテキスト */
+    MarketContext marketContext;
+
     double main0;
     double signal0;
 
@@ -69,18 +72,18 @@ public:
      * @return 取得に成功した場合true
      */
     bool getCrossCount(MarketContext &fromMarketContext, int start, int &count) {
-        this.logger.setMarketContext(fromMarketContext);
+        this.initializeMarketContext(fromMarketContext);
 
         uint startCount = GetTickCount();
         count = 0;
         int len = 100;
 
-        if (!this.ensureInitialized(fromMarketContext)) {
+        if (!this.ensureInitialized(this.marketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize stochastic handle");
             return false;
         }
 
-        int bars = Bars(fromMarketContext.symbolName, fromMarketContext.timeFrame);
+        int bars = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
         if (bars <= start) {
             this.logger.error(__FUNCTION__, StringFormat("not enough bars. bars=%d start=%d", bars, start));
             return false;
@@ -102,7 +105,7 @@ public:
         int copiedMain = CopyBuffer(this.handle, 0, start, barsToCopy, mainBuffer);
         int copiedSignal = CopyBuffer(this.handle, 1, start, barsToCopy, signalBuffer);
         if (copiedMain <= 0 || copiedSignal <= 0) {
-            this.logger.error(__FUNCTION__, StringFormat("symbol = %s period = %s start = %d", fromMarketContext.symbolName, fromMarketContext.timeFrameLabel, start));
+            this.logger.error(__FUNCTION__, StringFormat("symbol = %s period = %s start = %d", this.marketContext.symbolName, this.marketContext.timeFrameLabel, start));
             this.logger.error(__FUNCTION__, StringFormat("CopyBuffer error. copiedMain=%d copiedSignal=%d code=%d", copiedMain, copiedSignal, GetLastError()));
             return false;
         }
@@ -134,6 +137,16 @@ public:
     }
 
 private:
+    /**
+     * 市場コンテキストとロガーを初期化する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+        this.logger.setMarketContext(this.marketContext);
+    }
+
     StochasticHandlePool *stochasticHandlePool;
     int handle;
     Logger logger;

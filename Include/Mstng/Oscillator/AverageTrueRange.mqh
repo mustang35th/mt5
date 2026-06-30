@@ -17,6 +17,9 @@
  */
 class AverageTrueRange {
 public:
+    /** ATR取得対象の市場コンテキスト */
+    MarketContext marketContext;
+
     /** ATR価格値 */
     double atrValue;
 
@@ -90,10 +93,10 @@ public:
         const int shiftValue,
         double &atrValueResult
     ) {
-        this.logger.setMarketContext(fromMarketContext);
+        this.initializeMarketContext(fromMarketContext);
         atrValueResult = 0.0;
 
-        if (!this.ensureInitialized(fromMarketContext)) {
+        if (!this.ensureInitialized(this.marketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize ATR handle");
 
             return false;
@@ -113,14 +116,14 @@ public:
 
         atrValueResult = buffer[0];
         this.atrValue = atrValueResult;
-        this.atrPips = this.convertPriceToPips(fromMarketContext.symbolName, atrValueResult);
+        this.atrPips = this.convertPriceToPips(this.marketContext.symbolName, atrValueResult);
 
         this.logger.debug(
             __FUNCTION__,
             StringFormat(
                 "symbol=%s timeFrame=%s shift=%d atrValue=%.8f atrPips=%.2f",
-                fromMarketContext.symbolName,
-                fromMarketContext.timeFrameLabel,
+                this.marketContext.symbolName,
+                this.marketContext.timeFrameLabel,
                 shiftValue,
                 this.atrValue,
                 this.atrPips
@@ -187,6 +190,16 @@ public:
     }
 
 private:
+    /**
+     * 市場コンテキストとロガーを初期化する。
+     *
+     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+        this.logger.setMarketContext(this.marketContext);
+    }
+
     /** ATRハンドルプール */
     AverageTrueRangeHandlePool *averageTrueRangeHandlePool;
 
