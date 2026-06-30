@@ -25,14 +25,31 @@
  */
 class OscillatorHandleManager : public CObject {
 public:
+    /** 複数シンボルのハンドル生成範囲を表す市場コンテキスト */
+    MarketContext marketContext;
+
     /**
      * @brief コンストラクタ
      *
      * @param fromTimeFrame Pool 側で使う終端時間足（例: PERIOD_M1 / PERIOD_H1 など）
      */
     OscillatorHandleManager(const ENUM_TIMEFRAMES fromTimeFrame) {
-        this.timeFrame = fromTimeFrame;
-        this.buildPools();
+        MarketContext context(
+            "ALL",
+            fromTimeFrame,
+            TimeUtil::convertTimeFrameToString(fromTimeFrame),
+            0
+        );
+        this.initialize(context);
+    }
+
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     */
+    OscillatorHandleManager(MarketContext &fromMarketContext) {
+        this.initialize(fromMarketContext);
     }
 
     /**
@@ -82,7 +99,7 @@ public:
 
     /**
      * @brief 各 Pool に対し setTimeframesFromMn1To() を実行します。
-     *        (MN1 -> this.timeFrame の範囲で各オシレーターのハンドルを準備)
+     *        (MN1 -> this.marketContext.timeFrame の範囲で各オシレーターのハンドルを準備)
      */
     void setTimeframesFromMn1ToAll() {
         const int total = this.poolList.Total();
@@ -97,7 +114,7 @@ public:
 
     /**
      * @brief 各 Pool に対し setTimeframesFromD1To() を実行します。
-     *        (D1 -> this.timeFrame の範囲で各オシレーターのハンドルを準備)
+     *        (D1 -> this.marketContext.timeFrame の範囲で各オシレーターのハンドルを準備)
      */
     void setTimeframesFromD1ToAll() {
         const int total = this.poolList.Total();
@@ -139,13 +156,21 @@ public:
     }
 
 private:
-    ENUM_TIMEFRAMES timeFrame;
-
     // Symbol list
     SymbolNameInfoAll symbolNameInfoAll;
 
     // Pools for each symbol
     CArrayObj poolList;
+
+    /**
+     * 市場コンテキストを初期化し、シンボル別プールを生成する。
+     *
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     */
+    void initialize(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+        this.buildPools();
+    }
 
     /**
      * @brief SymbolNameInfoAll の全シンボル分 Pool を生成して poolList に格納
@@ -161,7 +186,7 @@ private:
             }
 
             const string symbol = info.symbolName;
-            MarketContext context(symbol, this.timeFrame);
+            MarketContext context(symbol, this.marketContext.timeFrame);
 
             OscillatorHandlePool *pool = new OscillatorHandlePool(context);
             this.poolList.Add(pool);

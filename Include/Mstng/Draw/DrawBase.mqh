@@ -6,19 +6,27 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
 class DrawBase {
 public:
 
     DrawBase() {
+        MarketContext context(_Symbol, (ENUM_TIMEFRAMES)_Period);
+        this.marketContext = context;
         this.logger.setLevel(LOG_INFO);
+        this.logger.setMarketContext(this.marketContext);
     }
 
     ~DrawBase() {
     }
 
 protected:
+    /** 描画対象チャートの市場コンテキスト */
+    MarketContext marketContext;
+
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
 
     /**
@@ -38,8 +46,7 @@ protected:
         bool isBuy,
         bool isFrom
     ) {
-        string symbol = _Symbol;
-        ENUM_TIMEFRAMES currentTimeFrame = (ENUM_TIMEFRAMES)_Period;
+        ENUM_TIMEFRAMES currentTimeFrame = this.marketContext.timeFrame;
 
         int fromPeriodSeconds = PeriodSeconds(fromTimeFrame);
         int currentPeriodSeconds = PeriodSeconds(currentTimeFrame);
@@ -73,7 +80,7 @@ protected:
             return fromDatetime;
         }
 
-        int shift = iBarShift(symbol, currentTimeFrame, fromDatetime, false);
+        int shift = iBarShift(this.marketContext.symbolName, currentTimeFrame, fromDatetime, false);
 
         if (shift < 0) {
             this.logger.error(
@@ -100,13 +107,13 @@ protected:
             double rate = 0.0;
 
             if (isHigh) {
-                rate = iHigh(symbol, currentTimeFrame, i);
+                rate = iHigh(this.marketContext.symbolName, currentTimeFrame, i);
             } else {
-                rate = iLow(symbol, currentTimeFrame, i);
+                rate = iLow(this.marketContext.symbolName, currentTimeFrame, i);
             }
 
-            if (this.isSameRate(rate, fromRate, symbol)) {
-                return iTime(symbol, currentTimeFrame, i);
+            if (this.isSameRate(rate, fromRate, this.marketContext.symbolName)) {
+                return iTime(this.marketContext.symbolName, currentTimeFrame, i);
             }
         }
 
