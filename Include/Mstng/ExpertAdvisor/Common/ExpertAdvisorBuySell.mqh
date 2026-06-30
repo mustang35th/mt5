@@ -158,15 +158,6 @@ public:
 private:
     Logger logger;
 
-    /** 互換用の判定対象シンボル */
-    string symbolName;
-
-    /** 互換用の判定対象時間足 */
-    ENUM_TIMEFRAMES timeFrame;
-
-    /** 互換用の時間足表示名 */
-    string timeFrameLabel;
-
     /**
      * 市場コンテキストと初期ランクを設定する。
      *
@@ -177,10 +168,6 @@ private:
 
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
-
-        this.symbolName = this.marketContext.symbolName;
-        this.timeFrame = this.marketContext.timeFrame;
-        this.timeFrameLabel = this.marketContext.timeFrameLabel;
 
         this.rank = EXPERT_ADVISOR_ENTRY_RANK_NON;
         this.rankLabel = ExpertAdvisorBuySell::convertEntryRankToString(this.rank);
