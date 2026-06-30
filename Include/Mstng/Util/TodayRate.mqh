@@ -108,7 +108,7 @@ public:
      * @param fromMarketContext 取得対象の市場コンテキスト
      */
     void update(MarketContext &fromMarketContext) {
-        this.marketContext = fromMarketContext;
+        this.initializeMarketContext(fromMarketContext);
         this.updateValues();
     }
 
@@ -146,6 +146,15 @@ public:
     }
 
 private:
+    /**
+     * 市場コンテキストを初期化する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+    }
+
     /**
      * 保持している市場コンテキストを使用して最新値とラベルを更新する。
      */

@@ -94,12 +94,21 @@ private:
      * @param fromMarketContext 描画対象の市場コンテキスト
      */
     void initialize(MarketContext &fromMarketContext) {
-        this.marketContext = fromMarketContext;
+        this.initializeMarketContext(fromMarketContext);
         this.color100Pips = clrGold;
         this.color50Pips = clrGold;
         this.linesEachSide = 5;
         this.useBidPrice = true;
         this.chartId = 0;
+    }
+
+    /**
+     * 市場コンテキストを初期化する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
     }
    
     /**

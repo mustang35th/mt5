@@ -510,15 +510,13 @@ private:
         color fromDownColor,
         int fromMaxBars
     ) {
-        this.marketContext = fromMarketContext;
+        this.initializeMarketContext(fromMarketContext);
 
         this.objectPrefix = fromObjectPrefix;
         this.upColor = fromUpColor;
         this.downColor = fromDownColor;
         this.maxBars = fromMaxBars;
 
-        this.logger.setLevel(LOG_INFO);
-        this.logger.setMarketContext(this.marketContext);
         this.logger.debug(
             __FUNCTION__,
             StringFormat(
@@ -529,6 +527,17 @@ private:
                 this.maxBars
             )
         );
+    }
+
+    /**
+     * 市場コンテキストとロガーを初期化する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    void initializeMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+        this.logger.setLevel(LOG_INFO);
+        this.logger.setMarketContext(this.marketContext);
     }
 };
 
