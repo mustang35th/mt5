@@ -9,7 +9,6 @@
 #ifndef MSTNG_COMMON_MARKET_CONTEXT_MQH
 #define MSTNG_COMMON_MARKET_CONTEXT_MQH
 
-#include <Mstng\Util\RateUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
 /**
@@ -83,13 +82,22 @@ public:
     }
 
     /**
+     * 1ポイントの価格を取得する。
+     *
+     * @return 1ポイントの価格
+     */
+    double getPoint() const {
+        return SymbolInfoDouble(this.symbolName, SYMBOL_POINT);
+    }
+
+    /**
      * 銘柄名を設定し、小数桁数を更新する。
      *
      * @param fromSymbolName 銘柄名
      */
     void setSymbolName(string fromSymbolName) {
         this.symbolName = fromSymbolName;
-        this.digits = RateUtil::getDigits(this.symbolName);
+        this.digits = (int)SymbolInfoInteger(this.symbolName, SYMBOL_DIGITS);
     }
 
     /**

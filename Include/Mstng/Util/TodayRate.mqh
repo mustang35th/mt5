@@ -177,14 +177,14 @@ private:
         }
 
         // Spread（pips）
-        this.spread = RateUtil::getDiffPips(this.bid, this.ask, this.marketContext.symbolName);
+        this.spread = RateUtil::getDiffPips(this.bid, this.ask, this.marketContext);
 
         // D1 高値/安値（当日バー：shift=0）
         this.high = iHigh(this.marketContext.symbolName, PERIOD_D1, 0);
         this.low  = iLow(this.marketContext.symbolName, PERIOD_D1, 0);
 
         // Diff（pips、int）
-        double diffPips = RateUtil::getDiffPips(this.low, this.high, this.marketContext.symbolName);
+        double diffPips = RateUtil::getDiffPips(this.low, this.high, this.marketContext);
         this.diff = (int)MathRound(diffPips);
         
         

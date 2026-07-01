@@ -6,6 +6,7 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Common\MarketContext.mqh>
 
 /*
 
@@ -23,6 +24,16 @@ pips加減算
 
 class RateUtil {
 public:
+    /**
+     * 市場コンテキストの小数点桁数を取得する。
+     *
+     * @param fromMarketContext 変換対象の市場コンテキスト
+     * @return 小数点桁数
+     */
+    static int getDigits(MarketContext &fromMarketContext) {
+        return fromMarketContext.digits;
+    }
+
     // 小数点桁数を取得
     // 主に3桁or5桁
     static int getDigits(const string symbolName) {
@@ -37,12 +48,38 @@ public:
     }
 
     /**
+     * 市場コンテキストの1ポイントの価格を取得する。
+     *
+     * @param fromMarketContext 変換対象の市場コンテキスト
+     * @return 1ポイントの価格
+     */
+    static double getPoint(MarketContext &fromMarketContext) {
+        return fromMarketContext.getPoint();
+    }
+
+    /**
      * @brief 1 pip あたりのポイント数を返す (3/5桁なら10, それ以外は1)
      */
     static double getPipInPoints(const string symbolName) {
         int digits = getDigits(symbolName);
         
         return (digits == 5 || digits == 3) ? 10.0 : 1.0;
+    }
+
+    /**
+     * 市場コンテキストの1pipあたりのポイント数を取得する。
+     *
+     * @param fromMarketContext 変換対象の市場コンテキスト
+     * @return 1pipあたりのポイント数
+     */
+    static double getPipInPoints(MarketContext &fromMarketContext) {
+        int digits = RateUtil::getDigits(fromMarketContext);
+
+        if (digits == 5 || digits == 3) {
+            return 10.0;
+        }
+
+        return 1.0;
     }
 
     /**
@@ -60,6 +97,24 @@ public:
     }
 
     /**
+     * pipsを市場コンテキストの価格幅へ変換する。
+     *
+     * @param fromPips pips
+     * @param fromMarketContext 変換対象の市場コンテキスト
+     * @return 価格幅。ポイント取得失敗時は0
+     */
+    static double pipsToPrice(const double fromPips, MarketContext &fromMarketContext) {
+        double point = RateUtil::getPoint(fromMarketContext);
+
+        if (point <= 0) {
+            return 0;
+        }
+
+        double priceDiff = fromPips * RateUtil::getPipInPoints(fromMarketContext) * point;
+        return NormalizeDouble(priceDiff, RateUtil::getDigits(fromMarketContext));
+    }
+
+    /**
      * @brief 価格幅をpipsに変換 (例: 0.001 -> 10 pips)
      */
     static double priceToPips(const double priceDiff, const string symbolName) {
@@ -72,6 +127,24 @@ public:
         double pips = priceDiff / (getPipInPoints(symbolName) * point);
         return NormalizeDouble(pips, 1); // pipsは小数点第1位まで（0.1pips単位）で丸めるのが一般的
     }
+
+    /**
+     * 価格幅を市場コンテキストのpipsへ変換する。
+     *
+     * @param fromPriceDiff 価格幅
+     * @param fromMarketContext 変換対象の市場コンテキスト
+     * @return pips。ポイント取得失敗時は0
+     */
+    static double priceToPips(const double fromPriceDiff, MarketContext &fromMarketContext) {
+        double point = RateUtil::getPoint(fromMarketContext);
+
+        if (point <= 0) {
+            return 0;
+        }
+
+        double pips = fromPriceDiff / (RateUtil::getPipInPoints(fromMarketContext) * point);
+        return NormalizeDouble(pips, 1);
+    }
     
     static double getOffset(bool isBuy, double pips, string symbolName) {
         double offset = pipsToPrice(pips, symbolName);
@@ -80,6 +153,24 @@ public:
             offset = 0 - offset;
         }
         
+        return offset;
+    }
+
+    /**
+     * 売買方向に応じたpips価格オフセットを取得する。
+     *
+     * @param fromIsBuy BUY方向の場合true
+     * @param fromPips pips
+     * @param fromMarketContext 変換対象の市場コンテキスト
+     * @return 価格オフセット
+     */
+    static double getOffset(bool fromIsBuy, double fromPips, MarketContext &fromMarketContext) {
+        double offset = RateUtil::pipsToPrice(fromPips, fromMarketContext);
+
+        if (fromIsBuy) {
+            offset = 0 - offset;
+        }
+
         return offset;
     }
     
@@ -95,6 +186,24 @@ public:
         const double diffPrice = toRate - fromRate;
 
         return MathAbs(priceToPips(diffPrice, symbolName));
+    }
+
+    /**
+     * 2つのレート差を市場コンテキストのpipsで取得する。
+     *
+     * @param fromRate 基準レート
+     * @param toRate 比較先レート
+     * @param fromMarketContext 変換対象の市場コンテキスト
+     * @return レート差の絶対値
+     */
+    static double getDiffPips(
+        const double fromRate,
+        const double toRate,
+        MarketContext &fromMarketContext
+    ) {
+        const double diffPrice = toRate - fromRate;
+
+        return MathAbs(RateUtil::priceToPips(diffPrice, fromMarketContext));
     }
 
     /**

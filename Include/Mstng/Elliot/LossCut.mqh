@@ -115,7 +115,7 @@ public:
             this.rate = todayRate.ask;
         }
         
-        this.diff = RateUtil::getDiffPips(this.rate, this.lc0, this.marketContext.symbolName);
+        this.diff = RateUtil::getDiffPips(this.rate, this.lc0, this.marketContext);
         
         if (!this.marketContext.isJpy()) {
             double jpyAmount = 0.0;
@@ -125,9 +125,9 @@ public:
             }
         }
         
-        this.lc5 = lc0 + RateUtil::getOffset(this.isBuy, 5, this.marketContext.symbolName);
-        this.lc10 = lc0 + RateUtil::getOffset(this.isBuy, 10, this.marketContext.symbolName);
-        this.lc15 = lc0 + RateUtil::getOffset(this.isBuy, 15, this.marketContext.symbolName);
+        this.lc5 = lc0 + RateUtil::getOffset(this.isBuy, 5, this.marketContext);
+        this.lc10 = lc0 + RateUtil::getOffset(this.isBuy, 10, this.marketContext);
+        this.lc15 = lc0 + RateUtil::getOffset(this.isBuy, 15, this.marketContext);
         
         this.logger.debug(__FUNCTION__, StringFormat("%s", this.toString()));
         

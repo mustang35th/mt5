@@ -602,9 +602,8 @@ private:
             //ElliottWaveInfo *elliottWaveInfo = new ElliottWaveInfo(elliot.marketContext.timeFrameLabel, elliot.buySellLabel, 
             //    StringUtil::addSign(elliot.oscillator.oscillatorCount), StringUtil::addSign(elliot.oscillator.gmmaCrossCount), zigZagPoint.getTextIndexInfo());
             
-            ElliottWaveInfo *elliottWaveInfo = new ElliottWaveInfo();
-            
-            elliottWaveInfo.timeFrame = elliot.marketContext.timeFrameLabel;
+            ElliottWaveInfo *elliottWaveInfo = new ElliottWaveInfo(elliot.marketContext);
+
             elliottWaveInfo.buySell = elliot.buySellLabel;
             elliottWaveInfo.oscillator = StringUtil::addSign(elliot.oscillator.oscillatorCount);
             elliottWaveInfo.oscillatorS = StringUtil::addSign(elliot.oscillator.stochasticShort.count);

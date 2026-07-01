@@ -33,7 +33,26 @@ public:
         MarketContext context(_Symbol, (ENUM_TIMEFRAMES)_Period);
         this.initializeMarketContext(context);
         this.folderName = "ElliotAll";
-        this.fileName = this.createKeyFileName(this.marketContext.symbolName, this.marketContext.timeFrame);
+        this.fileName = this.createKeyFileName(this.marketContext);
+        this.useCommonFolder = true;
+        this.delimiter = ",";
+        this.flushEveryWrite = true;
+        this.useAnsi = true;
+        this.writeMode = CSV_FILE_WRITE_MODE_APPEND;
+
+        this.clearTrendAlignDecision();
+        this.clearHigherStochasticMainOrderDecision();
+    }
+
+    /**
+     * 市場コンテキストを使用して初期化する。
+     *
+     * @param fromMarketContext 出力対象の市場コンテキスト
+     */
+    ElliotAllFile(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+        this.folderName = "ElliotAll";
+        this.fileName = this.createKeyFileName(this.marketContext);
         this.useCommonFolder = true;
         this.delimiter = ",";
         this.flushEveryWrite = true;
@@ -162,7 +181,7 @@ public:
     ) {
         this.initializeMarketContext(fromMarketContext);
         this.folderName = folderNameValue;
-        this.fileName = this.createKeyFileName(this.marketContext.symbolName, this.marketContext.timeFrame);
+        this.fileName = this.createKeyFileName(this.marketContext);
         this.useCommonFolder = useCommonFolderValue;
         this.delimiter = delimiterValue;
         this.flushEveryWrite = flushEveryWriteValue;
@@ -242,6 +261,40 @@ public:
             startTimeFrameValue,
             this.marketContext.timeFrame
         );
+        this.useCommonFolder = useCommonFolderValue;
+        this.delimiter = delimiterValue;
+        this.flushEveryWrite = flushEveryWriteValue;
+        this.useAnsi = useAnsiValue;
+        this.writeMode = writeModeValue;
+
+        this.setupCsvFileWriter();
+    }
+
+    /**
+     * 市場コンテキストを使用して設定する。
+     *
+     * @param folderNameValue フォルダ名
+     * @param fileNameValue ファイル名
+     * @param fromMarketContext 出力対象の市場コンテキスト
+     * @param useCommonFolderValue 共有フォルダ使用有無
+     * @param delimiterValue 区切り文字
+     * @param flushEveryWriteValue 書き込み毎のフラッシュ有無
+     * @param useAnsiValue ANSI出力有無
+     * @param writeModeValue 出力モード
+     */
+    void setup(
+        const string folderNameValue,
+        const string fileNameValue,
+        MarketContext &fromMarketContext,
+        const bool useCommonFolderValue = true,
+        const string delimiterValue = ",",
+        const bool flushEveryWriteValue = true,
+        const bool useAnsiValue = true,
+        const ENUM_CSV_FILE_WRITE_MODE writeModeValue = CSV_FILE_WRITE_MODE_APPEND
+    ) {
+        this.initializeMarketContext(fromMarketContext);
+        this.folderName = folderNameValue;
+        this.fileName = fileNameValue;
         this.useCommonFolder = useCommonFolderValue;
         this.delimiter = delimiterValue;
         this.flushEveryWrite = flushEveryWriteValue;
@@ -1789,6 +1842,16 @@ private:
         const ENUM_TIMEFRAMES timeFrameValue
     ) const {
         return symbolNameValue + "_" + this.convertTimeFrameToString(timeFrameValue) + ".csv";
+    }
+
+    /**
+     * 市場コンテキストからキーファイル名を生成する。
+     *
+     * @param fromMarketContext 出力対象の市場コンテキスト
+     * @return キーファイル名
+     */
+    string createKeyFileName(MarketContext &fromMarketContext) const {
+        return this.createKeyFileName(fromMarketContext.symbolName, fromMarketContext.timeFrame);
     }
 
     /**

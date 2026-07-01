@@ -14,6 +14,7 @@
 #ifndef MSTNG_EXPERTADVISOR_ELLIOTTWAVEINFO_MQH
 #define MSTNG_EXPERTADVISOR_ELLIOTTWAVEINFO_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Object.mqh>
 
 /**
@@ -21,7 +22,10 @@
  */
 class ElliottWaveInfo : public CObject {
 public:
-    /** 時間足 */
+    /** 波動情報の市場コンテキスト */
+    MarketContext marketContext;
+
+    /** 互換用の時間足表示名 */
     string timeFrame;
     /** 売買 */
     string buySell;
@@ -42,6 +46,34 @@ public:
      * コンストラクタ
      */
     ElliottWaveInfo() {
+        this.initialize();
+    }
+
+    /**
+     * 市場コンテキストを使用して初期化する。
+     *
+     * @param fromMarketContext 波動情報の市場コンテキスト
+     */
+    ElliottWaveInfo(MarketContext &fromMarketContext) {
+        this.initialize();
+        this.setMarketContext(fromMarketContext);
+    }
+
+    /**
+     * 市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 波動情報の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+        this.timeFrame = this.marketContext.timeFrameLabel;
+    }
+
+private:
+    /**
+     * 波動情報を初期化する。
+     */
+    void initialize() {
         this.timeFrame = "";
         this.buySell = "";
         this.oscillator = "";

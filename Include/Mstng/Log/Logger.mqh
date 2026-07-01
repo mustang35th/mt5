@@ -46,6 +46,20 @@ public:
         this.chartMarketContext = context;
         this.initializeMarketContext(context);
     }
+
+    /**
+     * 市場コンテキストとログレベルを初期化する。
+     *
+     * @param fromMarketContext ログ出力対象の市場コンテキスト
+     * @param fromThreshold 出力対象とする最小ログレベル
+     */
+    Logger(MarketContext &fromMarketContext, LogLevel fromThreshold = LOG_DEBUG) {
+        this.levelThreshold = fromThreshold;
+
+        MarketContext chartContext(_Symbol, (ENUM_TIMEFRAMES)_Period);
+        this.chartMarketContext = chartContext;
+        this.initializeMarketContext(fromMarketContext);
+    }
     
     /**
      * デバッグログを出力する設定か判定する。
