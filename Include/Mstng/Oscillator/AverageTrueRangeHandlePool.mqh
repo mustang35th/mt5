@@ -36,6 +36,16 @@ public:
     }
 
     /**
+     * MarketContextを使用して初期化する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param fromPeriod ATR期間
+     */
+    AverageTrueRangeHandlePool(MarketContext &fromMarketContext, const int fromPeriod) {
+        this.initialize(fromMarketContext, fromPeriod);
+    }
+
+    /**
      * デストラクタ
      */
     ~AverageTrueRangeHandlePool() {
@@ -163,7 +173,18 @@ private:
      */
     void initialize(const string fromSymbolName, const int fromPeriod) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
-        this.initializeBase(context);
+
+        this.initialize(context, fromPeriod);
+    }
+
+    /**
+     * MarketContextを使用して初期化する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param fromPeriod ATR期間
+     */
+    void initialize(MarketContext &fromMarketContext, const int fromPeriod) {
+        this.initializeBase(fromMarketContext);
         this.period = fromPeriod;
 
         this.timeframes[0] = PERIOD_MN1;

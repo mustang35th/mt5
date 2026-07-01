@@ -155,7 +155,7 @@ private:
         ElliotAll *elliotAll = new ElliotAll(context);
         
         elliotAll.isTimer = this.isTimer;
-        elliotAll.setOscillatorHandlePool(oscillatorHandleManager.getPoolBySymbol(fromSymbolName));
+        elliotAll.setOscillatorHandlePool(oscillatorHandleManager.getPoolByMarketContext(context));
         
         elliotAll.analyze();
         

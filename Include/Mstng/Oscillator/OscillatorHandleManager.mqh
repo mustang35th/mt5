@@ -98,6 +98,16 @@ public:
     }
 
     /**
+     * MarketContextに対応するハンドルプールを取得する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @return 対応するハンドルプール。存在しない場合NULL
+     */
+    OscillatorHandlePool *getPoolByMarketContext(MarketContext &fromMarketContext) {
+        return this.getPoolBySymbol(fromMarketContext.symbolName);
+    }
+
+    /**
      * @brief 各 Pool に対し setTimeframesFromMn1To() を実行します。
      *        (MN1 -> this.marketContext.timeFrame の範囲で各オシレーターのハンドルを準備)
      */
@@ -185,8 +195,8 @@ private:
                 continue;
             }
 
-            const string symbol = info.symbolName;
-            MarketContext context(symbol, this.marketContext.timeFrame);
+            MarketContext context = this.marketContext;
+            context.setSymbolName(info.symbolName);
 
             OscillatorHandlePool *pool = new OscillatorHandlePool(context);
             this.poolList.Add(pool);

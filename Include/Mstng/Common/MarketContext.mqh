@@ -74,6 +74,15 @@ public:
     }
 
     /**
+     * 円建てシンボルか判定する。
+     *
+     * @return シンボル名にJPYを含む場合はtrue
+     */
+    bool isJpy() const {
+        return StringFind(this.symbolName, "JPY") >= 0;
+    }
+
+    /**
      * 銘柄名を設定し、小数桁数を更新する。
      *
      * @param fromSymbolName 銘柄名

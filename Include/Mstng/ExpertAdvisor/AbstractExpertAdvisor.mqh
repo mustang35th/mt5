@@ -403,7 +403,7 @@ protected:
         
         double diff = this.elliotAll.lossCut.diff;
         
-        if (!Util::isJpy(this.marketContext.symbolName)) {
+        if (!this.marketContext.isJpy()) {
             diff = this.elliotAll.lossCut.diffJpy;
         }
         

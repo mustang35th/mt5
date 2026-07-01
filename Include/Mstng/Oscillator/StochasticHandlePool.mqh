@@ -63,6 +63,27 @@ public:
     }
 
     /**
+     * MarketContextを使用して初期化する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param fromKPeriod %K期間
+     * @param fromDPeriod %D期間
+     * @param fromSlowing スローイング
+     * @param fromMaMethod MA種別
+     * @param fromPriceField 価格フィールド
+     */
+    StochasticHandlePool(
+        MarketContext &fromMarketContext,
+        int fromKPeriod,
+        int fromDPeriod,
+        int fromSlowing,
+        ENUM_MA_METHOD fromMaMethod,
+        ENUM_STO_PRICE fromPriceField
+    ) {
+        this.initialize(fromMarketContext, fromKPeriod, fromDPeriod, fromSlowing, fromMaMethod, fromPriceField);
+    }
+
+    /**
      * デストラクタ（念のため解放）
      */
     ~StochasticHandlePool() {
@@ -200,7 +221,29 @@ private:
                     ENUM_MA_METHOD fromMaMethod,
                     ENUM_STO_PRICE fromPriceField) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
-        this.initializeBase(context);
+
+        this.initialize(context, fromKPeriod, fromDPeriod, fromSlowing, fromMaMethod, fromPriceField);
+    }
+
+    /**
+     * MarketContextを使用して初期化する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param fromKPeriod %K期間
+     * @param fromDPeriod %D期間
+     * @param fromSlowing スローイング
+     * @param fromMaMethod MA種別
+     * @param fromPriceField 価格フィールド
+     */
+    void initialize(
+        MarketContext &fromMarketContext,
+        int fromKPeriod,
+        int fromDPeriod,
+        int fromSlowing,
+        ENUM_MA_METHOD fromMaMethod,
+        ENUM_STO_PRICE fromPriceField
+    ) {
+        this.initializeBase(fromMarketContext);
 
         this.kPeriod = fromKPeriod;
         this.dPeriod = fromDPeriod;

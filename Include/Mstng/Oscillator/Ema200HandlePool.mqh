@@ -47,6 +47,23 @@ public:
     }
 
     /**
+     * MarketContextを使用して初期化する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param fromEmaPeriod EMA期間
+     * @param fromMaMethod MA種別
+     * @param fromAppliedPrice 適用価格
+     */
+    Ema200HandlePool(
+        MarketContext &fromMarketContext,
+        int fromEmaPeriod,
+        ENUM_MA_METHOD fromMaMethod,
+        ENUM_APPLIED_PRICE fromAppliedPrice
+    ) {
+        this.initialize(fromMarketContext, fromEmaPeriod, fromMaMethod, fromAppliedPrice);
+    }
+
+    /**
      * デストラクタ
      */
     ~Ema200HandlePool() {
@@ -227,7 +244,25 @@ private:
                     ENUM_MA_METHOD fromMaMethod,
                     ENUM_APPLIED_PRICE fromAppliedPrice) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
-        this.initializeBase(context);
+
+        this.initialize(context, fromEmaPeriod, fromMaMethod, fromAppliedPrice);
+    }
+
+    /**
+     * MarketContextを使用して初期化する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param fromEmaPeriod EMA期間
+     * @param fromMaMethod MA種別
+     * @param fromAppliedPrice 適用価格
+     */
+    void initialize(
+        MarketContext &fromMarketContext,
+        int fromEmaPeriod,
+        ENUM_MA_METHOD fromMaMethod,
+        ENUM_APPLIED_PRICE fromAppliedPrice
+    ) {
+        this.initializeBase(fromMarketContext);
 
         this.emaPeriod = fromEmaPeriod;
         this.maMethod = fromMaMethod;

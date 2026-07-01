@@ -142,11 +142,12 @@ private:
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
 
-        this.stochasticShortHandlePool = StochasticHandlePool(this.marketContext.symbolName, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-        this.stochasticMiddleHandlePool = StochasticHandlePool(this.marketContext.symbolName, 14, 3, 3, MODE_SMA, STO_LOWHIGH);
-        this.stochasticLongHandlePool = StochasticHandlePool(this.marketContext.symbolName, 21, 5, 5, MODE_SMA, STO_LOWHIGH);
-        this.averageTrueRangeHandlePool = AverageTrueRangeHandlePool(this.marketContext.symbolName, 14);
-        this.ema200HandlePool = Ema200HandlePool(this.marketContext.symbolName, 200, MODE_EMA, PRICE_CLOSE);
+        this.stochasticShortHandlePool = StochasticHandlePool(this.marketContext, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
+        this.stochasticMiddleHandlePool = StochasticHandlePool(this.marketContext, 14, 3, 3, MODE_SMA, STO_LOWHIGH);
+        this.stochasticLongHandlePool = StochasticHandlePool(this.marketContext, 21, 5, 5, MODE_SMA, STO_LOWHIGH);
+        this.gmmaHandlePool = GmmaHandlePool(this.marketContext, 30, 60, MODE_EMA, PRICE_CLOSE);
+        this.averageTrueRangeHandlePool = AverageTrueRangeHandlePool(this.marketContext, 14);
+        this.ema200HandlePool = Ema200HandlePool(this.marketContext, 200, MODE_EMA, PRICE_CLOSE);
     }
 };
 

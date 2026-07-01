@@ -65,6 +65,25 @@ public:
     }
 
     /**
+     * MarketContextを使用して初期化する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param fromEma30Period EMA30の期間
+     * @param fromEma60Period EMA60の期間
+     * @param fromMaMethod MA種別
+     * @param fromAppliedPrice 適用価格
+     */
+    GmmaHandlePool(
+        MarketContext &fromMarketContext,
+        int fromEma30Period,
+        int fromEma60Period,
+        ENUM_MA_METHOD fromMaMethod,
+        ENUM_APPLIED_PRICE fromAppliedPrice
+    ) {
+        this.initialize(fromMarketContext, fromEma30Period, fromEma60Period, fromMaMethod, fromAppliedPrice);
+    }
+
+    /**
      * デストラクタ（念のため解放）
      */
     ~GmmaHandlePool() {
@@ -255,7 +274,27 @@ private:
                     ENUM_MA_METHOD fromMaMethod,
                     ENUM_APPLIED_PRICE fromAppliedPrice) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
-        this.initializeBase(context);
+
+        this.initialize(context, fromEma30Period, fromEma60Period, fromMaMethod, fromAppliedPrice);
+    }
+
+    /**
+     * MarketContextを使用して初期化する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param fromEma30Period EMA30の期間
+     * @param fromEma60Period EMA60の期間
+     * @param fromMaMethod MA種別
+     * @param fromAppliedPrice 適用価格
+     */
+    void initialize(
+        MarketContext &fromMarketContext,
+        int fromEma30Period,
+        int fromEma60Period,
+        ENUM_MA_METHOD fromMaMethod,
+        ENUM_APPLIED_PRICE fromAppliedPrice
+    ) {
+        this.initializeBase(fromMarketContext);
 
         this.ema30Period = fromEma30Period;
         this.ema60Period = fromEma60Period;

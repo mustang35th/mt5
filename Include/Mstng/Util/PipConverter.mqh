@@ -6,8 +6,33 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Common\MarketContext.mqh>
+
 class PipConverter {
 public:
+   /**
+    * 市場コンテキストを使用してpipsを円換算する。
+    *
+    * @param fromMarketContext 換算対象の市場コンテキスト
+    * @param fromPips pips
+    * @param fromLotSize ロットサイズ
+    * @param fromJpyAmount 円換算結果
+    * @return 換算成功時はtrue
+    */
+   static bool tryConvertPipsToJpy(
+      MarketContext &fromMarketContext,
+      double fromPips,
+      double fromLotSize,
+      double &fromJpyAmount
+   ) {
+      return PipConverter::tryConvertPipsToJpy(
+         fromMarketContext.symbolName,
+         fromPips,
+         fromLotSize,
+         fromJpyAmount
+      );
+   }
+
    static bool tryConvertPipsToJpy(string symbolName, double pips, double lotSize, double &jpyAmount) {
       jpyAmount = 0.0;
 

@@ -188,10 +188,10 @@ private:
         this.diff = (int)MathRound(diffPips);
         
         
-        if (!Util::isJpy(this.marketContext.symbolName)) {
+        if (!this.marketContext.isJpy()) {
             double jpyAmount = 0.0;
     
-            if (PipConverter::tryConvertPipsToJpy(this.marketContext.symbolName, this.diff, 100, jpyAmount)) {
+            if (PipConverter::tryConvertPipsToJpy(this.marketContext, this.diff, 100, jpyAmount)) {
                 this.diffJpy = (int)MathRound(jpyAmount);
             }
         }
