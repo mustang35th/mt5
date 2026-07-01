@@ -1841,7 +1841,9 @@ private:
         const string symbolNameValue,
         const ENUM_TIMEFRAMES timeFrameValue
     ) const {
-        return symbolNameValue + "_" + this.convertTimeFrameToString(timeFrameValue) + ".csv";
+        MarketContext context(symbolNameValue, timeFrameValue);
+
+        return this.createKeyFileName(context);
     }
 
     /**
@@ -1851,7 +1853,9 @@ private:
      * @return キーファイル名
      */
     string createKeyFileName(MarketContext &fromMarketContext) const {
-        return this.createKeyFileName(fromMarketContext.symbolName, fromMarketContext.timeFrame);
+        return fromMarketContext.symbolName
+            + "_" + this.convertTimeFrameToString(fromMarketContext.timeFrame)
+            + ".csv";
     }
 
     /**

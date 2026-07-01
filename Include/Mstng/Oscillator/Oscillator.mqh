@@ -630,7 +630,10 @@ private:
         this.gmmaCrossCount = crossCount;
         this.ema30 = ema30Value;
         this.ema60 = ema60Value;
-        this.ema30Ema60DiffPips = this.convertPriceDifferenceToPips(this.marketContext.symbolName, this.ema30 - this.ema60);
+        this.ema30Ema60DiffPips = this.convertPriceDifferenceToPips(
+            this.marketContext,
+            this.ema30 - this.ema60
+        );
 
         uint elapsed = GetTickCount() - startTick;
         this.logger.debug(
@@ -707,12 +710,15 @@ private:
     /**
      * 価格差をpipsへ変換
      *
-     * @param symbolNameValue シンボル名
+     * @param fromMarketContext 変換対象の市場コンテキスト
      * @param priceDifferenceValue 価格差
      * @return pips値
      */
-    double convertPriceDifferenceToPips(const string symbolNameValue, const double priceDifferenceValue) {
-        double pointPerPip = this.getPointPerPip();
+    double convertPriceDifferenceToPips(
+        MarketContext &fromMarketContext,
+        const double priceDifferenceValue
+    ) {
+        double pointPerPip = this.getPointPerPip(fromMarketContext);
 
         if (pointPerPip <= 0.0) {
             return 0.0;
@@ -724,13 +730,13 @@ private:
     /**
      * 1pips相当の価格幅を取得
      *
-     * @param symbolNameValue シンボル名
+     * @param fromMarketContext 変換対象の市場コンテキスト
      * @return 1pips相当の価格幅
      */
-    double getPointPerPip() {
-        double point = this.marketContext.getPoint();
+    double getPointPerPip(MarketContext &fromMarketContext) {
+        double point = fromMarketContext.getPoint();
 
-        if (this.marketContext.digits == 3 || this.marketContext.digits == 5) {
+        if (fromMarketContext.digits == 3 || fromMarketContext.digits == 5) {
             return point * 10.0;
         }
 

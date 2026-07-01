@@ -53,19 +53,9 @@ public:
      * @param barsNeeded   CopyRatesする本数
      */
     static void warmUp(string symbolName, const ENUM_TIMEFRAMES &timeFrames[], int barsNeeded = 200) {
-        SymbolSelect(symbolName, true);
+        MarketContext context(symbolName, PERIOD_CURRENT);
 
-        int total = ArraySize(timeFrames);
-
-        for (int i = 0; i < total; i++) {
-            ENUM_TIMEFRAMES tf = timeFrames[i];
-
-            MqlRates rates[];
-            ArraySetAsSeries(rates, true);
-
-            ResetLastError();
-            CopyRates(symbolName, tf, 0, barsNeeded, rates);
-        }
+        WarmUpSeriesUtil::warmUp(context, timeFrames, barsNeeded);
     }
 
     /**
@@ -80,7 +70,19 @@ public:
         const ENUM_TIMEFRAMES &timeFrames[],
         int barsNeeded = 200
     ) {
-        WarmUpSeriesUtil::warmUp(fromMarketContext.symbolName, timeFrames, barsNeeded);
+        SymbolSelect(fromMarketContext.symbolName, true);
+
+        int total = ArraySize(timeFrames);
+
+        for (int i = 0; i < total; i++) {
+            ENUM_TIMEFRAMES timeFrame = timeFrames[i];
+
+            MqlRates rates[];
+            ArraySetAsSeries(rates, true);
+
+            ResetLastError();
+            CopyRates(fromMarketContext.symbolName, timeFrame, 0, barsNeeded, rates);
+        }
     }
 
     /**

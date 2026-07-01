@@ -25,32 +25,29 @@ public:
       double fromLotSize,
       double &fromJpyAmount
    ) {
-      return PipConverter::tryConvertPipsToJpy(
-         fromMarketContext.symbolName,
-         fromPips,
-         fromLotSize,
-         fromJpyAmount
-      );
-   }
+      fromJpyAmount = 0.0;
 
-   static bool tryConvertPipsToJpy(string symbolName, double pips, double lotSize, double &jpyAmount) {
-      jpyAmount = 0.0;
-
-      string normalizedSymbol = normalizeSymbol(symbolName);
+      string normalizedSymbol = normalizeSymbol(fromMarketContext.symbolName);
       if (!isValidSymbol(normalizedSymbol)) {
          return false;
       }
 
       string quoteCurrency = getQuoteCurrency(normalizedSymbol);
       double pipSize = getPipSize(quoteCurrency);
-      double quoteAmount = lotSize * pipSize * pips;
+      double quoteAmount = fromLotSize * pipSize * fromPips;
 
       if (quoteCurrency == "JPY") {
-         jpyAmount = quoteAmount;
+         fromJpyAmount = quoteAmount;
          return true;
       }
 
-      return tryConvertQuoteAmountToJpy(quoteCurrency, quoteAmount, jpyAmount);
+      return tryConvertQuoteAmountToJpy(quoteCurrency, quoteAmount, fromJpyAmount);
+   }
+
+   static bool tryConvertPipsToJpy(string symbolName, double pips, double lotSize, double &jpyAmount) {
+      MarketContext context(symbolName, PERIOD_CURRENT);
+
+      return PipConverter::tryConvertPipsToJpy(context, pips, lotSize, jpyAmount);
    }
 
 private:

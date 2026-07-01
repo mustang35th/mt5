@@ -157,7 +157,7 @@ public:
 
         atrValueResult = buffer[0];
         this.atrValue = atrValueResult;
-        this.atrPips = this.convertPriceToPips(this.marketContext.symbolName, atrValueResult);
+        this.atrPips = this.convertPriceToPips(this.marketContext, atrValueResult);
 
         this.logger.debug(
             __FUNCTION__,
@@ -300,12 +300,12 @@ private:
     /**
      * 価格値をpipsへ変換
      *
-     * @param symbolNameValue シンボル名
+     * @param fromMarketContext 変換対象の市場コンテキスト
      * @param priceValue 価格値
      * @return pips値
      */
-    double convertPriceToPips(const string symbolNameValue, const double priceValue) {
-        double pointPerPip = this.getPointPerPip(symbolNameValue);
+    double convertPriceToPips(MarketContext &fromMarketContext, const double priceValue) {
+        double pointPerPip = this.getPointPerPip(fromMarketContext);
 
         if (pointPerPip <= 0.0) {
             return 0.0;
@@ -317,12 +317,12 @@ private:
     /**
      * 1pips相当の価格幅を取得
      *
-     * @param symbolNameValue シンボル名
+     * @param fromMarketContext 変換対象の市場コンテキスト
      * @return 1pips相当の価格幅
      */
-    double getPointPerPip(const string symbolNameValue) {
-        int digits = (int)SymbolInfoInteger(symbolNameValue, SYMBOL_DIGITS);
-        double point = SymbolInfoDouble(symbolNameValue, SYMBOL_POINT);
+    double getPointPerPip(MarketContext &fromMarketContext) {
+        int digits = fromMarketContext.digits;
+        double point = fromMarketContext.getPoint();
 
         if (digits == 3 || digits == 5) {
             return point * 10.0;

@@ -278,7 +278,10 @@ public:
         this.close1 = closeValue;
         this.ema200Shift1 = emaBuffer[1];
         this.ema200Compare = emaBuffer[fromCompareBarIndex];
-        this.slopePips = this.convertPriceDifferenceToPips(this.ema200Shift1 - this.ema200Compare);
+        this.slopePips = this.convertPriceDifferenceToPips(
+            this.marketContext,
+            this.ema200Shift1 - this.ema200Compare
+        );
         this.closePosition = this.determineClosePosition(this.close1, this.ema200Shift1);
         this.slopeDirection = this.determineSlopeDirection(this.slopePips, fromMinSlopePips);
 
@@ -518,7 +521,10 @@ public:
             return false;
         }
 
-        value = this.convertPriceDifferenceToPips(emaShift1Value - emaCompareValue);
+        value = this.convertPriceDifferenceToPips(
+            fromMarketContext,
+            emaShift1Value - emaCompareValue
+        );
 
         return true;
     }
@@ -1173,11 +1179,15 @@ private:
     /**
      * 価格差をpipsへ変換します。
      *
+     * @param fromMarketContext 変換対象の市場コンテキスト
      * @param priceDifferenceValue 価格差
      * @return pips値
      */
-    double convertPriceDifferenceToPips(double priceDifferenceValue) {
-        double pointPerPip = this.getPointPerPip();
+    double convertPriceDifferenceToPips(
+        MarketContext &fromMarketContext,
+        double priceDifferenceValue
+    ) {
+        double pointPerPip = this.getPointPerPip(fromMarketContext);
 
         if (pointPerPip <= 0.0) {
             return 0.0;
@@ -1189,12 +1199,13 @@ private:
     /**
      * 1pips相当の価格幅を取得します。
      *
+     * @param fromMarketContext 変換対象の市場コンテキスト
      * @return 1pips相当の価格幅
      */
-    double getPointPerPip() {
-        double point = this.marketContext.getPoint();
+    double getPointPerPip(MarketContext &fromMarketContext) {
+        double point = fromMarketContext.getPoint();
 
-        if (this.marketContext.digits == 3 || this.marketContext.digits == 5) {
+        if (fromMarketContext.digits == 3 || fromMarketContext.digits == 5) {
             return point * 10.0;
         }
 

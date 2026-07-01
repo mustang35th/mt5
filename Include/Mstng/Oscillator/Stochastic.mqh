@@ -192,9 +192,9 @@ private:
     int handle;
     Logger logger;
 
-    bool getMain(string symbol, ENUM_TIMEFRAMES period, int shift, double &value) {
+    bool getMain(MarketContext &fromMarketContext, int shift, double &value) {
         value = 0.0;
-        if (!this.ensureInitialized(symbol, period)) {
+        if (!this.ensureInitialized(fromMarketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize stochastic handle in getMain");
             return false;
         }
@@ -207,13 +207,22 @@ private:
             return false;
         }
         value = buffer[0];
-        this.logger.debug(__FUNCTION__, StringFormat("symbol=%s period=%d shift=%d main=%.5f", symbol, period, shift, value));
+        this.logger.debug(
+            __FUNCTION__,
+            StringFormat(
+                "symbol=%s period=%d shift=%d main=%.5f",
+                fromMarketContext.symbolName,
+                fromMarketContext.timeFrame,
+                shift,
+                value
+            )
+        );
         return true;
     }
 
-    bool getSignal(string symbol, ENUM_TIMEFRAMES period, int shift, double &value) {
+    bool getSignal(MarketContext &fromMarketContext, int shift, double &value) {
         value = 0.0;
-        if (!this.ensureInitialized(symbol, period)) {
+        if (!this.ensureInitialized(fromMarketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize stochastic handle in getSignal");
             return false;
         }
@@ -226,7 +235,16 @@ private:
             return false;
         }
         value = buffer[0];
-        this.logger.debug(__FUNCTION__, StringFormat("symbol=%s period=%d shift=%d signal=%.5f", symbol, period, shift, value));
+        this.logger.debug(
+            __FUNCTION__,
+            StringFormat(
+                "symbol=%s period=%d shift=%d signal=%.5f",
+                fromMarketContext.symbolName,
+                fromMarketContext.timeFrame,
+                shift,
+                value
+            )
+        );
         return true;
     }
 

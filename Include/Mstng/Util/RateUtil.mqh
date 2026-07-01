@@ -37,14 +37,18 @@ public:
     // 小数点桁数を取得
     // 主に3桁or5桁
     static int getDigits(const string symbolName) {
-        return (int)SymbolInfoInteger(symbolName, SYMBOL_DIGITS);
+        MarketContext context(symbolName, PERIOD_CURRENT);
+
+        return RateUtil::getDigits(context);
     }
 
     // 1ポイントの価格（0.00001など）を取得
     // USDJPY（3桁）なら 0.001
     // EURUSD（5桁）なら 0.00001
     static double getPoint(const string symbolName) {
-        return SymbolInfoDouble(symbolName, SYMBOL_POINT);
+        MarketContext context(symbolName, PERIOD_CURRENT);
+
+        return RateUtil::getPoint(context);
     }
 
     /**
@@ -61,9 +65,9 @@ public:
      * @brief 1 pip あたりのポイント数を返す (3/5桁なら10, それ以外は1)
      */
     static double getPipInPoints(const string symbolName) {
-        int digits = getDigits(symbolName);
-        
-        return (digits == 5 || digits == 3) ? 10.0 : 1.0;
+        MarketContext context(symbolName, PERIOD_CURRENT);
+
+        return RateUtil::getPipInPoints(context);
     }
 
     /**
@@ -86,14 +90,9 @@ public:
      * @brief pipsを実際の価格幅に変換 (例: 10 pips -> 0.001)
      */
     static double pipsToPrice(const double pips, const string symbolName) {
-        double point = getPoint(symbolName);
-        
-        if (point <= 0) {
-            return 0;
-        }
-        
-        double priceDiff = pips * getPipInPoints(symbolName) * point;
-        return NormalizeDouble(priceDiff, getDigits(symbolName));
+        MarketContext context(symbolName, PERIOD_CURRENT);
+
+        return RateUtil::pipsToPrice(pips, context);
     }
 
     /**
@@ -118,14 +117,9 @@ public:
      * @brief 価格幅をpipsに変換 (例: 0.001 -> 10 pips)
      */
     static double priceToPips(const double priceDiff, const string symbolName) {
-        double point = getPoint(symbolName);
-        
-        if (point <= 0) {
-            return 0;
-        }
-        
-        double pips = priceDiff / (getPipInPoints(symbolName) * point);
-        return NormalizeDouble(pips, 1); // pipsは小数点第1位まで（0.1pips単位）で丸めるのが一般的
+        MarketContext context(symbolName, PERIOD_CURRENT);
+
+        return RateUtil::priceToPips(priceDiff, context);
     }
 
     /**
@@ -147,13 +141,9 @@ public:
     }
     
     static double getOffset(bool isBuy, double pips, string symbolName) {
-        double offset = pipsToPrice(pips, symbolName);
-        
-        if (isBuy) {
-            offset = 0 - offset;
-        }
-        
-        return offset;
+        MarketContext context(symbolName, PERIOD_CURRENT);
+
+        return RateUtil::getOffset(isBuy, pips, context);
     }
 
     /**
@@ -183,9 +173,9 @@ public:
      * @return (toRate - fromRate) を pips に換算した値（例: 上がれば +）
      */
     static double getDiffPips(const double fromRate, const double toRate, const string symbolName) {
-        const double diffPrice = toRate - fromRate;
+        MarketContext context(symbolName, PERIOD_CURRENT);
 
-        return MathAbs(priceToPips(diffPrice, symbolName));
+        return RateUtil::getDiffPips(fromRate, toRate, context);
     }
 
     /**
