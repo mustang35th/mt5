@@ -27,12 +27,41 @@ public:
         this.isInitialized = false;
     }
 
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    Gmma(MarketContext &fromMarketContext) {
+        this.logger.setLevel(LOG_INFO);
+        this.ema30Handle = INVALID_HANDLE;
+        this.ema60Handle = INVALID_HANDLE;
+        this.gmmaHandlePool = NULL;
+        this.isInitialized = false;
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     Gmma(GmmaHandlePool *fromGmmaHandlePool) {
         this.logger.setLevel(LOG_INFO);
         this.ema30Handle = INVALID_HANDLE;
         this.ema60Handle = INVALID_HANDLE;
         this.gmmaHandlePool = fromGmmaHandlePool;
         this.isInitialized = false;
+    }
+
+    /**
+     * 市場コンテキストとGMMAハンドルプールを指定して初期化する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromGmmaHandlePool GMMAハンドルプール
+     */
+    Gmma(MarketContext &fromMarketContext, GmmaHandlePool *fromGmmaHandlePool) {
+        this.logger.setLevel(LOG_INFO);
+        this.ema30Handle = INVALID_HANDLE;
+        this.ema60Handle = INVALID_HANDLE;
+        this.gmmaHandlePool = fromGmmaHandlePool;
+        this.isInitialized = false;
+        this.initializeMarketContext(fromMarketContext);
     }
 
     void setGmmaHandlePool(GmmaHandlePool *fromGmmaHandlePool) {

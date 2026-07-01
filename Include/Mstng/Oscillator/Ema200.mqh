@@ -113,6 +113,20 @@ public:
     }
 
     /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    Ema200(MarketContext &fromMarketContext) {
+        this.logger.setLevel(LOG_INFO);
+        this.ema200HandlePool = NULL;
+        this.ema200Handle = INVALID_HANDLE;
+        this.isInitialized = false;
+        this.resetValues();
+        this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
      * コンストラクタ
      *
      * @param fromEma200HandlePool EMA200ハンドルプール
@@ -123,6 +137,21 @@ public:
         this.ema200Handle = INVALID_HANDLE;
         this.isInitialized = false;
         this.resetValues();
+    }
+
+    /**
+     * 市場コンテキストとEMA200ハンドルプールを指定して初期化する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromEma200HandlePool EMA200ハンドルプール
+     */
+    Ema200(MarketContext &fromMarketContext, Ema200HandlePool *fromEma200HandlePool) {
+        this.logger.setLevel(LOG_INFO);
+        this.ema200HandlePool = fromEma200HandlePool;
+        this.ema200Handle = INVALID_HANDLE;
+        this.isInitialized = false;
+        this.resetValues();
+        this.initializeMarketContext(fromMarketContext);
     }
 
     /**
@@ -149,6 +178,15 @@ public:
         this.ema200HandlePool = fromEma200HandlePool;
         this.ema200Handle = INVALID_HANDLE;
         this.isInitialized = false;
+    }
+
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
     }
 
     /**

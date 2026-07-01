@@ -38,6 +38,20 @@ public:
     }
 
     /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     */
+    AverageTrueRange(MarketContext &fromMarketContext) {
+        this.averageTrueRangeHandlePool = NULL;
+        this.handle = INVALID_HANDLE;
+        this.atrValue = 0.0;
+        this.atrPips = 0.0;
+        this.logger.setLevel(LOG_INFO);
+        this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
      * コンストラクタ
      *
      * @param fromAverageTrueRangeHandlePool ATRハンドルプール
@@ -48,6 +62,24 @@ public:
         this.atrValue = 0.0;
         this.atrPips = 0.0;
         this.logger.setLevel(LOG_INFO);
+    }
+
+    /**
+     * 市場コンテキストとATRハンドルプールを指定して初期化する。
+     *
+     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     * @param fromAverageTrueRangeHandlePool ATRハンドルプール
+     */
+    AverageTrueRange(
+        MarketContext &fromMarketContext,
+        AverageTrueRangeHandlePool *fromAverageTrueRangeHandlePool
+    ) {
+        this.averageTrueRangeHandlePool = fromAverageTrueRangeHandlePool;
+        this.handle = INVALID_HANDLE;
+        this.atrValue = 0.0;
+        this.atrPips = 0.0;
+        this.logger.setLevel(LOG_INFO);
+        this.initializeMarketContext(fromMarketContext);
     }
 
     /**

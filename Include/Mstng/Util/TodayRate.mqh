@@ -65,6 +65,7 @@ public:
      * デフォルトコンストラクタ。
      */
     TodayRate() {
+        this.initializeValues();
     }
     
     /**
@@ -73,25 +74,19 @@ public:
      * @param fromSymbolName 取得対象のシンボル名
      */
     TodayRate(string fromSymbolName) {
-        this.ask = 0.0;
-        this.bid = 0.0;
-        this.spread = 0.0;
-
-        this.high = 0.0;
-        this.low = 0.0;
-        this.diff = 0;
-        this.diffJpy = 0;
-
-        this.askLabel = "";
-        this.bidLabel = "";
-        this.spreadLabel = "";
-
-        this.highLabel = "";
-        this.lowLabel = "";
-        this.diffLabel = "";
-        this.diffJpyLabel = "";
+        this.initializeValues();
 
         this.update(fromSymbolName);
+    }
+
+    /**
+     * 市場コンテキストを指定して現在値と当日値幅を取得する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     */
+    TodayRate(MarketContext &fromMarketContext) {
+        this.initializeValues();
+        this.update(fromMarketContext);
     }
 
     /**
@@ -146,6 +141,29 @@ public:
     }
 
 private:
+    /**
+     * 保持している価格情報と表示文字列を初期化する。
+     */
+    void initializeValues() {
+        this.ask = 0.0;
+        this.bid = 0.0;
+        this.spread = 0.0;
+
+        this.high = 0.0;
+        this.low = 0.0;
+        this.diff = 0;
+        this.diffJpy = 0;
+
+        this.askLabel = "";
+        this.bidLabel = "";
+        this.spreadLabel = "";
+
+        this.highLabel = "";
+        this.lowLabel = "";
+        this.diffLabel = "";
+        this.diffJpyLabel = "";
+    }
+
     /**
      * 市場コンテキストを初期化する。
      *

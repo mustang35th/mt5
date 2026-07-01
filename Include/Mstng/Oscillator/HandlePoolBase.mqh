@@ -124,6 +124,15 @@ protected:
         this.initializeBase(Symbol());
     }
 
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     */
+    HandlePoolBase(MarketContext &fromMarketContext) {
+        this.initializeBase(fromMarketContext);
+    }
+
     ~HandlePoolBase() {
     }
 

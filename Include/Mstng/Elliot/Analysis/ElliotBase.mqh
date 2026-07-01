@@ -41,6 +41,15 @@ public:
     
     ElliotBase() {        
     }
+
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    ElliotBase(MarketContext &fromMarketContext) {
+        this.init(fromMarketContext);
+    }
     
     ~ElliotBase() {
     }

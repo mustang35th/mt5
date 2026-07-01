@@ -16,6 +16,15 @@ public:
     DrawHorizontalLine() {
         this.logger.setLevel(LOG_INFO);
     }
+
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    DrawHorizontalLine(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
     
     ~DrawHorizontalLine() {
     }

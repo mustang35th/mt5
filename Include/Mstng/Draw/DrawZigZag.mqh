@@ -15,6 +15,15 @@ public:
     DrawZigZag() {
     }
 
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    DrawZigZag(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     ~DrawZigZag() {
     }
 

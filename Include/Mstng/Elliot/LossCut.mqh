@@ -48,17 +48,17 @@ public:
     // コンストラクタ
     //LossCut(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
     LossCut() {
-        this.logger.setLevel(LOG_INFO);
-        
-        this.rate = 0;
-        
-        this.diff = 0;
-        this.diffJpy = 0;
-        
-        this.lc0 = 0;
-        this.lc5 = 0;
-        this.lc10 = 0;
-        this.lc15 = 0;
+        this.initializeValues();
+    }
+
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext ロスカット計算対象の市場コンテキスト
+     */
+    LossCut(MarketContext &fromMarketContext) {
+        this.initializeValues();
+        this.initializeMarketContext(fromMarketContext);
     }
     
     // デストラクタ
@@ -175,6 +175,24 @@ public:
 private:
     /** 処理経過およびエラー出力用ロガー */
     Logger logger;
+
+    /**
+     * ロスカット候補と売買情報を初期化する。
+     */
+    void initializeValues() {
+        this.logger.setLevel(LOG_INFO);
+
+        this.isBuy = false;
+        this.rate = 0;
+
+        this.diff = 0;
+        this.diffJpy = 0;
+
+        this.lc0 = 0;
+        this.lc5 = 0;
+        this.lc10 = 0;
+        this.lc15 = 0;
+    }
 
     /**
      * 市場コンテキストを初期化する。

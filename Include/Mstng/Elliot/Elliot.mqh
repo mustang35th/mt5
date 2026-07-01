@@ -435,6 +435,7 @@ private:
 
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
+        this.oscillator.setMarketContext(this.marketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 

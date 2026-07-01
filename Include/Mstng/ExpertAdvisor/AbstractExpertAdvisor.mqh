@@ -67,6 +67,16 @@ public:
     };
 
     /**
+     * 市場コンテキストと描画設定を指定して初期化する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromIsDrawArrow シグナル矢印を描画する場合true
+     */
+    AbstractExpertAdvisor(MarketContext &fromMarketContext, bool fromIsDrawArrow) {
+        this.init(fromMarketContext, fromIsDrawArrow);
+    };
+
+    /**
      * デストラクタ。
      */
     ~AbstractExpertAdvisor() {

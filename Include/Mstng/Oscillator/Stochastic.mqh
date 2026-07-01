@@ -27,12 +27,44 @@ public:
         this.signal0 = 0.0;
     }
 
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     */
+    Stochastic(MarketContext &fromMarketContext) {
+        this.logger.setLevel(LOG_INFO);
+        this.stochasticHandlePool = NULL;
+        this.handle = INVALID_HANDLE;
+        this.main0 = 0.0;
+        this.signal0 = 0.0;
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     Stochastic(StochasticHandlePool *fromStochasticHandlePool) {
         this.logger.setLevel(LOG_INFO);
         this.stochasticHandlePool = fromStochasticHandlePool;
         this.handle = INVALID_HANDLE;
         this.main0 = 0.0;
         this.signal0 = 0.0;
+    }
+
+    /**
+     * 市場コンテキストとストキャスティクスハンドルプールを指定して初期化する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param fromStochasticHandlePool ストキャスティクスハンドルプール
+     */
+    Stochastic(
+        MarketContext &fromMarketContext,
+        StochasticHandlePool *fromStochasticHandlePool
+    ) {
+        this.logger.setLevel(LOG_INFO);
+        this.stochasticHandlePool = fromStochasticHandlePool;
+        this.handle = INVALID_HANDLE;
+        this.main0 = 0.0;
+        this.signal0 = 0.0;
+        this.initializeMarketContext(fromMarketContext);
     }
 
     void setStochasticHandlePool(StochasticHandlePool *fromStochasticHandlePool) {

@@ -17,6 +17,15 @@ public:
         this.initializeMarketContext(context);
     }
 
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    DrawBase(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     ~DrawBase() {
     }
 

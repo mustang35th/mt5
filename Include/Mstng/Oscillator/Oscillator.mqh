@@ -85,7 +85,27 @@ public:
         this.resetValues();
     }
 
+    /**
+     * 市場コンテキストを指定して初期化する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    Oscillator(MarketContext &fromMarketContext) {
+        this.logger.setLevel(LOG_INFO);
+        this.resetValues();
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     ~Oscillator() {}
+
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
 
     void setBuySell() {
         this.isBuy = false;
@@ -209,11 +229,11 @@ public:
      * @return 更新に成功した場合true
      */
     bool update(MarketContext &fromMarketContext, OscillatorHandlePool *oscillatorHandlePool) {
+        this.resetValues();
         this.initializeMarketContext(fromMarketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         uint startTick = GetTickCount();
-        this.resetValues();
 
         if (oscillatorHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "oscillatorHandlePool is NULL");
@@ -513,6 +533,7 @@ private:
 
         // 既存利用箇所との互換性を維持する
         this.logger.setMarketContext(this.marketContext);
+        this.ema200.setMarketContext(this.marketContext);
     }
 
     void resetValues() {
@@ -582,7 +603,7 @@ private:
             this.logger.error(__FUNCTION__, "gmmaHandlePool is NULL.");
             return false;
         }
-        Gmma gmma(gmmaHandlePool);
+        Gmma gmma(this.marketContext, gmmaHandlePool);
         int trendCount = 0;
         int crossCount = 0;
 
@@ -739,7 +760,7 @@ private:
             return false;
         }
 
-        AverageTrueRange averageTrueRange(averageTrueRangeHandlePool);
+        AverageTrueRange averageTrueRange(this.marketContext, averageTrueRangeHandlePool);
         double atr14Pips = 0.0;
 
         if (!averageTrueRange.getAtrPips(this.marketContext, 0, atr14Pips)) {
@@ -791,7 +812,7 @@ private:
             this.logger.error(__FUNCTION__, StringFormat("stochasticHandlePool[%s] is NULL.", label));
             return false;
         }
-        Stochastic stochastic(stochasticHandlePool);
+        Stochastic stochastic(this.marketContext, stochasticHandlePool);
         int count = 0;
         if (!stochastic.getCrossCount(this.marketContext, 0, count)) {
             this.logger.error(__FUNCTION__, StringFormat("stochastic.getCrossCount failed. label=%s", label));
