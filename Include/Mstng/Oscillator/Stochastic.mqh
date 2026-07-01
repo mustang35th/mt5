@@ -72,6 +72,15 @@ public:
         this.handle = INVALID_HANDLE;
     }
 
+    /**
+     * 取得対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     ~Stochastic() {
         this.handle = INVALID_HANDLE;
         this.stochasticHandlePool = NULL;

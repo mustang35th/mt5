@@ -381,6 +381,8 @@ private:
 
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
+        this.todayRate.setMarketContext(this.marketContext);
+        this.lossCut.setMarketContext(this.marketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 

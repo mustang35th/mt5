@@ -93,6 +93,15 @@ public:
     }
 
     /**
+     * ATR取得対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
      * ATR価格値を取得
      *
      * @param symbolNameValue シンボル名

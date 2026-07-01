@@ -71,6 +71,15 @@ public:
     }
 
     /**
+     * ハンドル生成対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.ensureMarketContext(fromMarketContext);
+    }
+
+    /**
      * MN1 から指定時間足までのハンドルを生成します。
      *
      * @param fromSymbolName 対象シンボル

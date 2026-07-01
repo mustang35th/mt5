@@ -60,6 +60,18 @@ public:
     }
 
     /**
+     * ハンドル生成範囲の市場コンテキストを設定する。
+     *
+     * 既存のシンボル別プールを削除してから再構築する。
+     *
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.clear();
+        this.initialize(fromMarketContext);
+    }
+
+    /**
      * @brief 管理している Pool 数
      */
     int size() const {

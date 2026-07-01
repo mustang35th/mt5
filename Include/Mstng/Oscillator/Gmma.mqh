@@ -71,6 +71,15 @@ public:
         this.ema60Handle = INVALID_HANDLE;
     }
 
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     ~Gmma() {
         if (this.gmmaHandlePool == NULL) {
             this.releaseHandles();

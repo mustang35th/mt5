@@ -64,6 +64,15 @@ public:
     // デストラクタ
     ~LossCut() {
     }
+
+    /**
+     * ロスカット計算対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext ロスカット計算対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
     
     /** @return ロスカット候補を含む表示用テキスト */
     string getText() {

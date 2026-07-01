@@ -96,6 +96,17 @@ public:
     }
 
     /**
+     * 取得対象の市場コンテキストを設定する。
+     *
+     * このメソッドでは価格情報を取得しない。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
      * 市場コンテキストを使用して最新値を取得する。
      *
      * 日足高値・安値は、コンテキストの時間足にかかわらずPERIOD_D1から取得する。

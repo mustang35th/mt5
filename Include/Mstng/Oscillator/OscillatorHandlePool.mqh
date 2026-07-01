@@ -53,6 +53,18 @@ public:
         this.releaseAll();
     }
 
+    /**
+     * ハンドル生成範囲の市場コンテキストを設定する。
+     *
+     * 保持中の全ハンドルを解放してから各ハンドルプールを再初期化する。
+     *
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.releaseAll();
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     void setTimeframesFromMn1To() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
