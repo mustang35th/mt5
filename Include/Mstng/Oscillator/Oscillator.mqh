@@ -104,6 +104,7 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト
      */
     void setMarketContext(MarketContext &fromMarketContext) {
+        this.resetValues();
         this.initializeMarketContext(fromMarketContext);
     }
 

@@ -67,6 +67,29 @@ public:
     }
 
     /**
+     * 計算対象の市場コンテキストを設定する。
+     *
+     * 旧市場の計算バッファを破棄し、point値とLoggerを更新する。
+     *
+     * @param fromMarketContext 計算対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        ArrayResize(this.zigZagBuffer, 0);
+        ArrayResize(this.searchModeBuffer, 0);
+        ArrayResize(this.highMapBuffer, 0);
+        ArrayResize(this.lowMapBuffer, 0);
+
+        this.marketContext = fromMarketContext;
+        this.logger.setMarketContext(this.marketContext);
+        this.pointSize = this.marketContext.getPoint();
+
+        if (this.pointSize <= 0.0) {
+            Print("Error: Failed to get SYMBOL_POINT for ", this.marketContext.symbolName);
+            this.pointSize = 0.00001;
+        }
+    }
+
+    /**
      * ZigZagの計算を実行する
      * データを内部で取得するため、 ratesTotal と prevCalculated は Bar数はチャートから取得
      * @param zigZagBuffer 結果格納用バッファ(参照渡し)
@@ -290,24 +313,13 @@ private:
         int fromDeviation,
         int fromBackstep
     ) {
-        this.marketContext = fromMarketContext;
-
         this.logger.setLevel(LOG_INFO);
-        this.logger.setMarketContext(this.marketContext);
 
         // 既存利用箇所との互換性を維持する
         this.depth = fromDepth;
         this.deviation = fromDeviation;
         this.backstep = fromBackstep;
-
-        // MarketContextを使用してpointSizeを取得
-        this.pointSize = this.marketContext.getPoint();
-
-        if (this.pointSize <= 0.0) {
-            Print("Error: Failed to get SYMBOL_POINT for ", this.marketContext.symbolName);
-            // エラー処理としてデフォルト値0.00001などを設定
-            this.pointSize = 0.00001;
-        }
+        this.setMarketContext(fromMarketContext);
     }
     
     /**

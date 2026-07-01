@@ -111,6 +111,17 @@ public:
             this.releaseAt(i);
         }
     }
+
+    /**
+     * ハンドル生成対象の市場コンテキストを設定する。
+     *
+     * シンボルが変更された場合は、保持している全ハンドルを解放する。
+     *
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.ensureMarketContext(fromMarketContext);
+    }
     
 protected:
     enum TimeframeSize {

@@ -84,7 +84,7 @@ public:
      */
     Elliot(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
-        this.initializeMarketContext(context);
+        this.setMarketContext(context);
     }
 
     /**
@@ -95,13 +95,32 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト
      */
     Elliot(MarketContext &fromMarketContext) {
-        this.initializeMarketContext(fromMarketContext);
+        this.setMarketContext(fromMarketContext);
     }
     
     /**
      * デストラクタ。
      */
     ~Elliot() {
+    }
+
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * 保持している分析結果をクリアし、新しい市場コンテキストを
+     * OscillatorとLoggerへ反映する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.waveList.Clear();
+        this.zigZagPointList.Clear();
+        this.currentOhlcInfo.clear();
+        this.previousOhlcInfo.clear();
+        this.fiboExpansionPriceInfo.clear();
+        this.isBuy = false;
+        this.buySellLabel = "";
+        this.initializeMarketContext(fromMarketContext);
     }
 
     /**

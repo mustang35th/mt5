@@ -87,9 +87,7 @@ public:
      * デフォルトコンストラクタ。
      */
     ElliotAll() {
-        this.oscillatorHandlePool = NULL;
-        this.timeFrameInfoAll = NULL;
-        this.elliotCurrent = NULL;
+        this.initializeMembers();
     }
     
     /**
@@ -99,8 +97,9 @@ public:
     * @param fromTimeFrame 呼び出し元となる現在時間足
      */
     ElliotAll(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
+        this.initializeMembers();
         MarketContext context(fromSymbolName, fromTimeFrame);
-        this.initializeMarketContext(context);
+        this.setMarketContext(context);
     }
 
     /**
@@ -111,7 +110,8 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト
      */
     ElliotAll(MarketContext &fromMarketContext) {
-        this.initializeMarketContext(fromMarketContext);
+        this.initializeMembers();
+        this.setMarketContext(fromMarketContext);
     }
 
     /**
@@ -125,6 +125,30 @@ public:
             
             delete elliot;
         }
+    }
+
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * 既存の時間足別分析結果と時間足構成を破棄し、新しい市場向けに
+     * 再初期化する。ハンドルプールは市場依存のため再設定が必要となる。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.elliotList.Clear();
+        this.elliotCurrent = NULL;
+        this.isAnalysisSucceeded = false;
+        this.execTime = 0;
+        this.oscillatorHandlePool = NULL;
+
+        if (this.timeFrameInfoAll != NULL) {
+            delete this.timeFrameInfoAll;
+            this.timeFrameInfoAll = NULL;
+        }
+
+        this.initializeMarketContext(fromMarketContext);
+        this.timeFrameInfoAll = new TimeFrameInfoAll();
     }
     
     /**
@@ -372,6 +396,20 @@ private:
     TimeFrameInfoAll *timeFrameInfoAll;
 
     /**
+     * コンストラクタ共通の初期値を設定する。
+     */
+    void initializeMembers() {
+        this.execTime = 0;
+        this.timerSeconds = 0;
+        this.isTimer = false;
+        this.isAnalysisSucceeded = false;
+        this.isSendMail = false;
+        this.elliotCurrent = NULL;
+        this.oscillatorHandlePool = NULL;
+        this.timeFrameInfoAll = NULL;
+    }
+
+    /**
      * 市場コンテキストと互換用フィールドを初期化する。
      *
      * @param fromMarketContext 分析対象の市場コンテキスト
@@ -388,15 +426,6 @@ private:
 
         // 既存利用箇所との互換性を維持する
         StringUtil::splitCurrencyPairName(this.marketContext.symbolName, this.symbolNameLeft, this.symbolNameRight);
-
-        this.execTime = 0;
-        this.timerSeconds = 0;
-        this.isTimer = false;
-        this.isAnalysisSucceeded = false;
-        this.isSendMail = false;
-        this.elliotCurrent = NULL;
-        this.oscillatorHandlePool = NULL;
-        this.timeFrameInfoAll = new TimeFrameInfoAll();
 
         this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
         this.logger.debug(__FUNCTION__, "symbolNameLeft=" + this.symbolNameLeft);

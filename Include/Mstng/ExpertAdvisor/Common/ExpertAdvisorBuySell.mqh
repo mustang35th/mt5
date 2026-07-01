@@ -53,6 +53,21 @@ public:
     
     ~ExpertAdvisorBuySell() {
     }
+
+    /**
+     * 判定対象の市場コンテキストを設定する。
+     *
+     * 旧市場の売買方向と判定ランクを初期状態へ戻す。
+     *
+     * @param fromMarketContext 判定対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.marketContext = fromMarketContext;
+        this.logger.setMarketContext(this.marketContext);
+        this.rank = EXPERT_ADVISOR_ENTRY_RANK_NON;
+        this.rankLabel = ExpertAdvisorBuySell::convertEntryRankToString(this.rank);
+        this.isBuy = false;
+    }
     
     void setRank(ElliotAll *fromElliotAll) {
         if (fromElliotAll == NULL) {
@@ -164,13 +179,8 @@ private:
      * @param fromMarketContext 判定対象の市場コンテキスト
      */
     void initialize(MarketContext &fromMarketContext) {
-        this.marketContext = fromMarketContext;
-
         this.logger.setLevel(LOG_INFO);
-        this.logger.setMarketContext(this.marketContext);
-
-        this.rank = EXPERT_ADVISOR_ENTRY_RANK_NON;
-        this.rankLabel = ExpertAdvisorBuySell::convertEntryRankToString(this.rank);
+        this.setMarketContext(fromMarketContext);
     }
 
 };

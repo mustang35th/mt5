@@ -64,6 +64,7 @@ public:
      * デフォルトコンストラクタ。
      */
     AbstractExpertAdvisor() {
+        this.initializeMembers();
     };
 
     /**
@@ -73,6 +74,7 @@ public:
      * @param fromIsDrawArrow シグナル矢印を描画する場合true
      */
     AbstractExpertAdvisor(MarketContext &fromMarketContext, bool fromIsDrawArrow) {
+        this.initializeMembers();
         this.init(fromMarketContext, fromIsDrawArrow);
     };
 
@@ -80,9 +82,7 @@ public:
      * デストラクタ。
      */
     ~AbstractExpertAdvisor() {
-        delete this.expertAdvisorElliot;
-        
-        delete this.expertAdvisorOscillator;
+        this.releaseExpertAdvisorHelpers();
     };
     
     /**
@@ -104,7 +104,7 @@ public:
      * @param fromIsDrawArrow シグナル矢印を描画する場合true
      */
     void init(MarketContext &fromMarketContext, bool fromIsDrawArrow) {
-        this.initializeMarketContext(fromMarketContext);
+        this.setMarketContext(fromMarketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
@@ -114,13 +114,28 @@ public:
         this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
         this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
 
-        this.expertAdvisorElliot = new ExpertAdvisorElliot(this.marketContext);
-        this.expertAdvisorOscillator = new ExpertAdvisorOscillator(this.marketContext);
-        
         this.isDarwText = false;
         this.fontSize = 10;
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+    }
+
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * 判定補助クラスを新しい市場向けに再生成し、旧分析結果への
+     * 非所有参照と判定状態をクリアする。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.releaseExpertAdvisorHelpers();
+        this.elliottWaveInfoList.Clear();
+        this.resetAnalysisReferences();
+        this.initializeMarketContext(fromMarketContext);
+
+        this.expertAdvisorElliot = new ExpertAdvisorElliot(this.marketContext);
+        this.expertAdvisorOscillator = new ExpertAdvisorOscillator(this.marketContext);
     }
 
     /**
@@ -163,6 +178,7 @@ public:
         }
         
         delete this.expertAdvisorEma200;
+        this.expertAdvisorEma200 = NULL;
         
         this.logger.debug(__FUNCTION__, StringFormat("isEntry = %s", (string)this.isEntry));
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
@@ -451,6 +467,64 @@ protected:
     
 private:
     /**
+     * コンストラクタ共通の初期値を設定する。
+     */
+    void initializeMembers() {
+        this.expertAdvisorElliot = NULL;
+        this.expertAdvisorEma200 = NULL;
+        this.expertAdvisorOscillator = NULL;
+        this.resetAnalysisReferences();
+    }
+
+    /**
+     * 判定補助クラスを解放する。
+     */
+    void releaseExpertAdvisorHelpers() {
+        if (this.expertAdvisorElliot != NULL) {
+            delete this.expertAdvisorElliot;
+            this.expertAdvisorElliot = NULL;
+        }
+
+        if (this.expertAdvisorEma200 != NULL) {
+            delete this.expertAdvisorEma200;
+            this.expertAdvisorEma200 = NULL;
+        }
+
+        if (this.expertAdvisorOscillator != NULL) {
+            delete this.expertAdvisorOscillator;
+            this.expertAdvisorOscillator = NULL;
+        }
+    }
+
+    /**
+     * Elliott分析結果への非所有参照と判定状態を初期化する。
+     */
+    void resetAnalysisReferences() {
+        this.elliotAll = NULL;
+        this.elliotD1 = NULL;
+        this.elliotH4 = NULL;
+        this.elliotH1 = NULL;
+        this.elliotM15 = NULL;
+        this.elliotM5 = NULL;
+        this.elliotM1 = NULL;
+        this.elliotHigher2 = NULL;
+        this.elliotHigher1 = NULL;
+        this.elliotCurrent = NULL;
+        this.pointElliotCurrent_2 = NULL;
+        this.pointElliotCurrent_1 = NULL;
+        this.isBuy = false;
+        this.buySellLabel = "";
+        this.buySellSymbol = "";
+        this.isUptrend = false;
+        this.isAlert = false;
+        this.isEntry = false;
+        this.isSendMail = false;
+        this.alertText = "";
+        this.stopLoss = 0.0;
+        this.csvText = "";
+    }
+
+    /**
      * 市場コンテキストを初期化する。
      *
      * @param fromMarketContext 分析対象の市場コンテキスト
@@ -469,6 +543,11 @@ private:
      */
     bool setElliotAll(ElliotAll *fromElliotAll) {
         LogUtil::printMethodStart(logger, __FUNCTION__);
+
+        if (this.expertAdvisorEma200 != NULL) {
+            delete this.expertAdvisorEma200;
+            this.expertAdvisorEma200 = NULL;
+        }
         
         this.elliotAll = fromElliotAll;
         

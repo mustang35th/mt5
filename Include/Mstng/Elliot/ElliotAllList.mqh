@@ -59,6 +59,19 @@ public:
             }
         }
     }
+
+    /**
+     * 複数シンボル分析の基準となる市場コンテキストを設定する。
+     *
+     * 旧コンテキストで生成したElliotAll一覧を破棄する。
+     *
+     * @param fromMarketContext 複数シンボル分析の基準となる市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.elliotAllList.Clear();
+        this.marketContext = fromMarketContext;
+        this.logger.setMarketContext(this.marketContext);
+    }
     
     /**
      * 対象シンボルごとのElliotAllを生成して分析する。
@@ -139,8 +152,7 @@ private:
      * @param fromIsTimer タイマー実行の場合true
      */
     void initialize(MarketContext &fromMarketContext, bool fromIsTimer) {
-        this.marketContext = fromMarketContext;
-        this.logger.setMarketContext(this.marketContext);
+        this.setMarketContext(fromMarketContext);
         this.isTimer = fromIsTimer;
     }
     

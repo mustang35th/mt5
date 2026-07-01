@@ -71,6 +71,19 @@ public:
         this.clearPoints();
     }
 
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * 旧市場で取得したZigZagポイントを破棄し、Loggerを更新する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.clearPoints();
+        this.marketContext = fromMarketContext;
+        this.logger.setMarketContext(this.marketContext);
+    }
+
     void addPoint(bool isBuy) {
         ZigZagPoint *zigZagPoint0 = this.zigZagPointList.At(0);
         
@@ -175,15 +188,12 @@ private:
         int fromDeviation,
         int fromBackstep
     ) {
-        this.marketContext = fromMarketContext;
-
         this.logger.setLevel(LOG_INFO);
-        this.logger.setMarketContext(this.marketContext);
 
         this.depth = fromDepth;
         this.deviation = fromDeviation;
         this.backstep = fromBackstep;
-        this.zigZagPointList.Clear();
+        this.setMarketContext(fromMarketContext);
     }
 
     /**
