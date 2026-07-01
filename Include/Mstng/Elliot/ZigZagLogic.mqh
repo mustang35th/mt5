@@ -300,8 +300,10 @@ private:
         this.deviation = fromDeviation;
         this.backstep = fromBackstep;
 
-        // SymbolInfoDoubleを使用してpointSizeを取得
-        if (!SymbolInfoDouble(this.marketContext.symbolName, SYMBOL_POINT, this.pointSize)) {
+        // MarketContextを使用してpointSizeを取得
+        this.pointSize = this.marketContext.getPoint();
+
+        if (this.pointSize <= 0.0) {
             Print("Error: Failed to get SYMBOL_POINT for ", this.marketContext.symbolName);
             // エラー処理としてデフォルト値0.00001などを設定
             this.pointSize = 0.00001;

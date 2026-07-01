@@ -100,7 +100,7 @@ public:
         this.DistanceToFE2000Pips = RateUtil::getDiffPips(
             currentRate,
             this.FE2000Price,
-            fromMarketContext.symbolName
+            fromMarketContext
         );
     }
 

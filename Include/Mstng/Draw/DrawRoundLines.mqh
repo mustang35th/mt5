@@ -39,7 +39,7 @@ public:
      */
     void draw() {
         double basePrice = this.getBasePrice();
-        double stepPrice50Pips = RateUtil::pipsToPrice(STEP_50_PIPS, this.marketContext.symbolName);
+        double stepPrice50Pips = RateUtil::pipsToPrice(STEP_50_PIPS, this.marketContext);
         double anchorPrice = this.getAnchorPrice(basePrice, stepPrice50Pips);
         
         for (int i = -this.linesEachSide; i <= this.linesEachSide; i++) {
@@ -149,7 +149,7 @@ private:
      * @return 100pipsラインの場合true
      */
     bool is100PipsLine(double price) {
-        double stepPrice100Pips = RateUtil::pipsToPrice(STEP_100_PIPS, this.marketContext.symbolName);
+        double stepPrice100Pips = RateUtil::pipsToPrice(STEP_100_PIPS, this.marketContext);
         double ratio = price / stepPrice100Pips;
         
         return MathAbs(ratio - MathRound(ratio)) < 0.0000001;
@@ -181,7 +181,7 @@ private:
      */
     string createObjectName(double price, bool is100PipsLine) {
         string prefix = is100PipsLine ? "ROUND_100_" : "ROUND_050_";
-        return prefix + IntegerToString((int)MathRound(price / SymbolInfoDouble(this.marketContext.symbolName, SYMBOL_POINT)));
+        return prefix + IntegerToString((int)MathRound(price / this.marketContext.getPoint()));
     }
 };
 

@@ -141,7 +141,7 @@ public:
         if (isSuccess) {
             //spread = RateUtil::getDiffPips(tick.bid, tick.ask, symbolName);
             
-            double pointDouble = SymbolInfoDouble(fromMarketContext.symbolName, SYMBOL_POINT);
+            double pointDouble = fromMarketContext.getPoint();
             
             spread = ((tick.ask - tick.bid) / pointDouble) / 10;
         }

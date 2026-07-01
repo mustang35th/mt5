@@ -168,7 +168,7 @@ private:
             double rate = this.getBeforeRate(fromZigZagPointList);
             
             if (rate != zigZagPoint.rate) {
-                double shiftRate = RateUtil::pipsToPrice(10, this.marketContext.symbolName);  // 10pipsずらす
+                double shiftRate = RateUtil::pipsToPrice(10, this.marketContext);  // 10pipsずらす
             
                 if (this.isBuy) {
                     rate += shiftRate;
@@ -208,7 +208,7 @@ private:
         double rate = this.getBeforeRate(fromZigZagPointList, isUptrend);
         
         if (rate != zigZagPoint.rate) {
-            double shiftRate = RateUtil::pipsToPrice(10, this.marketContext.symbolName);  // 10pipsずらす
+            double shiftRate = RateUtil::pipsToPrice(10, this.marketContext);  // 10pipsずらす
         
             if (isUptrend) {
                 rate += shiftRate;
@@ -568,7 +568,7 @@ private:
         
         // シフトするrateの取得
         double rate = this.getBeforeRate(fromZigZagPointList, wave0.isUptrend);
-        double shiftRate = RateUtil::pipsToPrice(10, this.marketContext.symbolName);  // 10pipsずらす
+        double shiftRate = RateUtil::pipsToPrice(10, this.marketContext);  // 10pipsずらす
         
         //if (this.isBuy) {
         if (wave0.isUptrend) {

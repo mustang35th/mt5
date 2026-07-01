@@ -1148,7 +1148,7 @@ private:
     void createCommonValues(string &commonValues[]) const {
         ArrayResize(commonValues, ELLIOT_ALL_FILE_COMMON_FIELD_COUNT);
 
-        int digits = this.getSymbolDigits(this.marketContext.symbolName);
+        int digits = this.getSymbolDigits();
 
         datetime serverTime = TimeTradeServer();
 
@@ -1210,12 +1210,11 @@ private:
         double spreadPips = 0.0;
 
         if (ask > 0.0 && bid > 0.0) {
-            spreadPips = this.convertPriceDifferenceToPips(ask - bid, this.marketContext.symbolName);
+            spreadPips = this.convertPriceDifferenceToPips(ask - bid);
         } else {
             int spreadPoints = (int)SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_SPREAD);
             spreadPips = this.convertPriceDifferenceToPips(
-                spreadPoints * SymbolInfoDouble(this.marketContext.symbolName, SYMBOL_POINT),
-                this.marketContext.symbolName
+                spreadPoints * this.marketContext.getPoint()
             );
         }
 
@@ -1224,7 +1223,7 @@ private:
         double dailyRangePips = 0.0;
 
         if (dailyHigh > 0.0 && dailyLow > 0.0) {
-            dailyRangePips = this.convertPriceDifferenceToPips(dailyHigh - dailyLow, this.marketContext.symbolName);
+            dailyRangePips = this.convertPriceDifferenceToPips(dailyHigh - dailyLow);
         }
 
         int index = 0;
@@ -1580,14 +1579,11 @@ private:
     /**
      * 通貨ペア桁数取得
      *
-     * @param symbolNameValue 通貨ペア
      * @return 桁数
      */
-    int getSymbolDigits(const string symbolNameValue) const {
-        long digitsValue = 0;
-
-        if (SymbolInfoInteger(symbolNameValue, SYMBOL_DIGITS, digitsValue)) {
-            return (int)digitsValue;
+    int getSymbolDigits() const {
+        if (this.marketContext.digits > 0) {
+            return this.marketContext.digits;
         }
 
         return _Digits;
@@ -1596,12 +1592,11 @@ private:
     /**
      * pipsサイズ取得
      *
-     * @param symbolNameValue 通貨ペア
      * @return 1pipあたりの価格差
      */
-    double getPipSize(const string symbolNameValue) const {
-        int digits = this.getSymbolDigits(symbolNameValue);
-        double point = SymbolInfoDouble(symbolNameValue, SYMBOL_POINT);
+    double getPipSize() const {
+        int digits = this.getSymbolDigits();
+        double point = this.marketContext.getPoint();
 
         if (point <= 0.0) {
             point = _Point;
@@ -1618,14 +1613,10 @@ private:
      * 価格差をpipsへ変換
      *
      * @param priceDifferenceValue 価格差
-     * @param symbolNameValue 通貨ペア
      * @return pips
      */
-    double convertPriceDifferenceToPips(
-        const double priceDifferenceValue,
-        const string symbolNameValue
-    ) const {
-        double pipSize = this.getPipSize(symbolNameValue);
+    double convertPriceDifferenceToPips(const double priceDifferenceValue) const {
+        double pipSize = this.getPipSize();
 
         if (pipSize <= 0.0) {
             return 0.0;

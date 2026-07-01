@@ -1154,7 +1154,7 @@ private:
      * @return 1pips相当の価格幅
      */
     double getPointPerPip() {
-        double point = SymbolInfoDouble(this.marketContext.symbolName, SYMBOL_POINT);
+        double point = this.marketContext.getPoint();
 
         if (this.marketContext.digits == 3 || this.marketContext.digits == 5) {
             return point * 10.0;

@@ -480,7 +480,7 @@ private:
             ZigZagPoint *zigZagPointNext = this.zigZagPointList.At(i + 1);
             
             // 2 点間の値幅を pips に換算し、次の点に保持
-            zigZagPointNext.pipsDiff = RateUtil::getDiffPips(zigZagPoint.rate, zigZagPointNext.rate, this.marketContext.symbolName);
+            zigZagPointNext.pipsDiff = RateUtil::getDiffPips(zigZagPoint.rate, zigZagPointNext.rate, this.marketContext);
             
             zigZagPointNext.waveBarsFromStart = zigZagPoint.barIndex - zigZagPointNext.barIndex;
         }

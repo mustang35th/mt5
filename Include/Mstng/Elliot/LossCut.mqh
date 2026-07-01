@@ -147,7 +147,7 @@ public:
             displayDigits = _Digits;
 
             if (this.marketContext.symbolName != "") {
-                displayDigits = (int)SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_DIGITS);
+                displayDigits = this.marketContext.digits;
             }
         }
 
