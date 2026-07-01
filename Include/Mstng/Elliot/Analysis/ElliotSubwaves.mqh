@@ -48,6 +48,15 @@ public:
     
     ~ElliotSubwaves() {
     }
+
+    /**
+     * 内部波動設定対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 内部波動設定対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
     
     /**
      * 保持している全Waveへ内部波動情報を設定する。

@@ -35,6 +35,15 @@ public:
     }
 
     /**
+     * 描画対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
      * 現在価格の上下へラウンドナンバーラインを描画する。
      */
     void draw() {

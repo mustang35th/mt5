@@ -71,7 +71,7 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト
      */
     void init(MarketContext &fromMarketContext) {
-        this.initializeMarketContext(fromMarketContext);
+        this.setMarketContext(fromMarketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
@@ -103,7 +103,7 @@ public:
      * @param fromBuySellLabel 売買方向表示用ラベル
      */
     void init(MarketContext &fromMarketContext, bool fromIsBuy, string fromBuySellLabel) {
-        this.initializeMarketContext(fromMarketContext);
+        this.setMarketContext(fromMarketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -117,6 +117,17 @@ public:
         this.logger.debug(__FUNCTION__, "buySellLabel=" + this.buySellLabel);
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+    }
+
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.zigZagPointList.Clear();
+        this.waveList.Clear();
+        this.initializeMarketContext(fromMarketContext);
     }
 
 protected:

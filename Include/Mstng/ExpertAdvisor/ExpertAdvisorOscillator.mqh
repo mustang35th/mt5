@@ -38,6 +38,15 @@ public:
     ~ExpertAdvisorOscillator() {
     }
 
+    /**
+     * 判定対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 判定対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
     /*bool isStochasticCross_1(Elliot &elliot, bool isBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         

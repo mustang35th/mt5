@@ -48,6 +48,15 @@ public:
     
     ~ElliotRecount() {
     }
+
+    /**
+     * 再カウント対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 再カウント対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
     
     /**
      * 保持している全Waveを対象に再カウントを実行する。

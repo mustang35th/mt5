@@ -74,6 +74,15 @@ public:
     }
 
     /**
+     * 描画対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
      * 描画済みの GMMA 矩形オブジェクトを全削除します。
      */
     void clear(long chartId = 0) {

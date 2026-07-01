@@ -48,6 +48,18 @@ public:
     }
 
     /**
+     * 管理対象の市場コンテキストを設定する。
+     *
+     * 別市場のシグナル発生回数が混在しないよう、保持中の情報をクリアする。
+     *
+     * @param fromMarketContext 管理対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.signalInfoList.Clear();
+        this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
      * 指定シグナルの検出回数を加算する。
      *
      * 同じ時刻と売買方向のSignalInfoがない場合は新規作成する。

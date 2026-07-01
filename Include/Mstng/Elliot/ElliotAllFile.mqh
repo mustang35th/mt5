@@ -322,6 +322,15 @@ public:
      * @param fromMarketContext 出力対象の市場コンテキスト
      */
     void setKey(MarketContext &fromMarketContext) {
+        this.setMarketContext(fromMarketContext);
+    }
+
+    /**
+     * 出力対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 出力対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
     }
 

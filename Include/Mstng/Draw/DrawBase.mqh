@@ -29,6 +29,15 @@ public:
     ~DrawBase() {
     }
 
+    /**
+     * 描画対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 描画対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
+
 protected:
     /** 描画対象チャートの市場コンテキスト */
     MarketContext marketContext;

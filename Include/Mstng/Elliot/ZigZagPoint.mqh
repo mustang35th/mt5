@@ -102,7 +102,7 @@ public:
      */
     ZigZagPoint(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
-        this.marketContext = context;
+        this.setMarketContext(context);
     }
 
     /**
@@ -111,6 +111,15 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト
      */
     ZigZagPoint(MarketContext &fromMarketContext) {
+        this.setMarketContext(fromMarketContext);
+    }
+
+    /**
+     * 分析対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
     }
 

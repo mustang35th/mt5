@@ -37,6 +37,15 @@ public:
     
     ~ExpertAdvisorElliot() {
     }
+
+    /**
+     * 判定対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 判定対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.initializeMarketContext(fromMarketContext);
+    }
     
     bool isZigZagConfirmed(Elliot &elliot) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);

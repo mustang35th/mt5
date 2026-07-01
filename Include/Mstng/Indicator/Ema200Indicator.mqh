@@ -44,6 +44,18 @@ public:
     }
 
     /**
+     * 表示対象の市場コンテキストを設定する。
+     *
+     * 設定後はinit()を呼び出してハンドルと表示設定を再初期化する。
+     *
+     * @param fromMarketContext 表示対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.deinit();
+        this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
      * 初期化
      *
      * @param oscillatorHandlePool オシレーターハンドルプール

@@ -25,7 +25,7 @@ public:
     
     ZigZagCorrector(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
-        this.initializeMarketContext(context);
+        this.setMarketContext(context);
     }
 
     /**
@@ -34,10 +34,20 @@ public:
      * @param fromMarketContext 補正対象の市場コンテキスト
      */
     ZigZagCorrector(MarketContext &fromMarketContext) {
-        this.initializeMarketContext(fromMarketContext);
+        this.setMarketContext(fromMarketContext);
     }
     
     ~ZigZagCorrector() {
+    }
+
+    /**
+     * 補正対象の市場コンテキストを設定する。
+     *
+     * @param fromMarketContext 補正対象の市場コンテキスト
+     */
+    void setMarketContext(MarketContext &fromMarketContext) {
+        this.orgZigZagPointList.Clear();
+        this.initializeMarketContext(fromMarketContext);
     }
     
     /**
