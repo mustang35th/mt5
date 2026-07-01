@@ -11,7 +11,7 @@
 #include <Mstng\Log\LogUtil.mqh>
 
 /**
- * ZigZag計算の探索モード定義
+ * ZigZagの山・谷を確定する際の探索状態を定義する。
  */
 enum EnSearchMode {
     Extremum = 0, // 最初の極値を検索中
@@ -20,22 +20,28 @@ enum EnSearchMode {
 };
 
 /**
- * ZigZagインジケーターのビジネスロジッククラス
+ * 高値・安値データからZigZagの山と谷を算出する。
+ *
+ * 極値候補の抽出と交互性の判定を行い、価格および探索結果を公開バッファへ格納する。
  */
 class ZigZagLogic {
 public:
     /** 計算対象の市場コンテキスト */
     MarketContext marketContext;
 
+    /** ZigZagの山・谷の価格を格納する計算結果バッファ */
     double zigZagBuffer[];
+
+    /** 各バーで確定した山・谷の探索モードを格納するバッファ */
     int searchModeBuffer[];
     
     /**
-     * コンストラクタ
+     * シンボル、時間足およびZigZagパラメータを指定して初期化する。
+     *
      * @param fromSymbol シンボル名
-     * @param fromPeriod 期間 (タイムフレーム)
+     * @param fromPeriod 時間足
      * @param fromDepth 探索深さ
-     * @param fromDeviation 偏差（ポイント数）
+     * @param fromDeviation 偏差
      * @param fromBackstep バックステップ
      */
     ZigZagLogic(string fromSymbol, ENUM_TIMEFRAMES fromPeriod, int fromDepth, int fromDeviation, int fromBackstep) {
@@ -61,7 +67,7 @@ public:
     }
 
     /**
-     * デストラクタ
+     * デストラクタ。
      */
     ~ZigZagLogic() {
     }
@@ -90,10 +96,10 @@ public:
     }
 
     /**
-     * ZigZagの計算を実行する
-     * データを内部で取得するため、 ratesTotal と prevCalculated は Bar数はチャートから取得
-     * @param zigZagBuffer 結果格納用バッファ(参照渡し)
-     * @return 計算済みバー数
+     * 対象市場の高値・安値からZigZagを計算する。
+     *
+     * @param fromRatesTotal 取得および計算の対象とするバー数
+     * @return 実際に計算したバー数。価格データを取得できない場合は0
      */
     int calculate(int fromRatesTotal) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -287,16 +293,25 @@ public:
     }
 
 private:
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
     
-    // 入力パラメータ (メンバ変数)
+    /** 極値探索に使用する対象バー数 */
     int depth;
-    int deviation;
-    int backstep;
-    double pointSize; // _Pointの値
 
-    // 内部計算用バッファ
+    /** 極値候補を除外する最小価格差 */
+    int deviation;
+
+    /** 過去の極値候補を無効化する確認バー数 */
+    int backstep;
+
+    /** 対象シンボルの1ポイントの価格 */
+    double pointSize;
+
+    /** 高値候補を格納する内部計算バッファ */
     double highMapBuffer[];
+
+    /** 安値候補を格納する内部計算バッファ */
     double lowMapBuffer[];
 
     /**
@@ -323,7 +338,8 @@ private:
     }
     
     /**
-     * 指定範囲内の最高値のインデックスを検索する
+     * 指定範囲内の最高値のインデックスを検索する。
+     *
      * @param array 検索対象配列
      * @param fromDepth 検索深さ
      * @param start 検索開始位置
@@ -348,7 +364,8 @@ private:
     }
 
     /**
-     * 指定範囲内の最安値のインデックスを検索する
+     * 指定範囲内の最安値のインデックスを検索する。
+     *
      * @param array 検索対象配列
      * @param fromDepth 検索深さ
      * @param start 検索開始位置

@@ -16,12 +16,10 @@
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
- * @class OscillatorHandleManager
- * @brief SymbolNameInfoAll に含まれる全通貨ペア分の OscillatorHandlePool を管理します。
+ * 複数シンボルのOscillatorHandlePoolを管理するクラス。
  *
- * - OscillatorHandlePool を CArrayObj で保持
- * - コンストラクタで SymbolNameInfoAll の全シンボルを走査し Pool を new して List に追加
- * - デストラクタで Pool を delete（内部の releaseAll は Pool 側デストラクタで実行）
+ * SymbolNameInfoAllに登録されたシンボルごとにハンドルプールを生成し、
+ * 時間足範囲の設定、検索、ハンドル解放およびプール破棄を一括管理する。
  */
 class OscillatorHandleManager : public CObject {
 public:
@@ -29,9 +27,9 @@ public:
     MarketContext marketContext;
 
     /**
-     * @brief コンストラクタ
+     * 終端時間足を指定してシンボル別ハンドルプールを初期化する。
      *
-     * @param fromTimeFrame Pool 側で使う終端時間足（例: PERIOD_M1 / PERIOD_H1 など）
+     * @param fromTimeFrame ハンドルを生成する終端時間足
      */
     OscillatorHandleManager(const ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(
@@ -53,7 +51,9 @@ public:
     }
 
     /**
-     * @brief デストラクタ
+     * デストラクタ。
+     *
+     * 保持している全ハンドルプールを解放する。
      */
     ~OscillatorHandleManager() {
         this.clear();
@@ -72,36 +72,46 @@ public:
     }
 
     /**
-     * @brief 管理している Pool 数
+     * 管理しているハンドルプール数を取得する。
+     *
+     * @return ハンドルプール数
      */
     int size() const {
         return this.poolList.Total();
     }
 
     /**
-     * @brief index で Pool 取得（範囲外なら NULL）
+     * インデックスに対応するハンドルプールを取得する。
+     *
+     * @param index 取得対象インデックス
+     * @return 対応するハンドルプール。範囲外の場合NULL
      */
     OscillatorHandlePool* getPoolByIndex(const int index) {
-        if(index < 0 || index >= this.poolList.Total()) {
+        if (index < 0 || index >= this.poolList.Total()) {
             return NULL;
         }
         return (OscillatorHandlePool*)this.poolList.At(index);
     }
 
     /**
-     * @brief symbolName で Pool 取得（見つからなければ NULL）
+     * シンボル名に対応するハンドルプールを取得する。
+     *
+     * シンボル名の先頭6文字を検索キーとして使用する。
+     *
+     * @param fromSymbolName 取得対象シンボル
+     * @return 対応するハンドルプール。存在しない場合NULL
      */
     OscillatorHandlePool* getPoolBySymbol(const string fromSymbolName) {
         const string key = StringSubstr(fromSymbolName, 0, 6);
 
         const int total = this.poolList.Total();
-        for(int i = 0; i < total; i++) {
+        for (int i = 0; i < total; i++) {
             OscillatorHandlePool *pool = (OscillatorHandlePool*)this.poolList.At(i);
-            if(pool == NULL) {
+            if (pool == NULL) {
                 continue;
             }
 
-            if(pool.marketContext.symbolName == key) {
+            if (pool.marketContext.symbolName == key) {
                 return pool;
             }
         }
@@ -120,14 +130,13 @@ public:
     }
 
     /**
-     * @brief 各 Pool に対し setTimeframesFromMn1To() を実行します。
-     *        (MN1 -> this.marketContext.timeFrame の範囲で各オシレーターのハンドルを準備)
+     * 全プールでMN1から終端時間足までのハンドルを生成する。
      */
     void setTimeframesFromMn1ToAll() {
         const int total = this.poolList.Total();
-        for(int i = 0; i < total; i++) {
+        for (int i = 0; i < total; i++) {
             OscillatorHandlePool *pool = (OscillatorHandlePool*)this.poolList.At(i);
-            if(pool == NULL) {
+            if (pool == NULL) {
                 continue;
             }
             pool.setTimeframesFromMn1To();
@@ -135,14 +144,13 @@ public:
     }
 
     /**
-     * @brief 各 Pool に対し setTimeframesFromD1To() を実行します。
-     *        (D1 -> this.marketContext.timeFrame の範囲で各オシレーターのハンドルを準備)
+     * 全プールでD1から終端時間足までのハンドルを生成する。
      */
     void setTimeframesFromD1ToAll() {
         const int total = this.poolList.Total();
-        for(int i = 0; i < total; i++) {
+        for (int i = 0; i < total; i++) {
             OscillatorHandlePool *pool = (OscillatorHandlePool*)this.poolList.At(i);
-            if(pool == NULL) {
+            if (pool == NULL) {
                 continue;
             }
             pool.setTimeframesFromD1To();
@@ -150,13 +158,15 @@ public:
     }
 
     /**
-     * @brief 全 Pool の indicator handle を解放します（Pool 自体は保持）。
+     * 全プールが保持するインジケーターハンドルを解放する。
+     *
+     * OscillatorHandlePool自体は保持する。
      */
     void releaseAll() {
         const int total = this.poolList.Total();
-        for(int i = 0; i < total; i++) {
+        for (int i = 0; i < total; i++) {
             OscillatorHandlePool *pool = (OscillatorHandlePool*)this.poolList.At(i);
-            if(pool == NULL) {
+            if (pool == NULL) {
                 continue;
             }
             pool.releaseAll();
@@ -164,13 +174,13 @@ public:
     }
 
     /**
-     * @brief 全 Pool を delete し List を空にします。
+     * 全ハンドルプールを削除し、一覧を空にする。
      */
     void clear() {
         const int total = this.poolList.Total();
-        for(int i = 0; i < total; i++) {
+        for (int i = 0; i < total; i++) {
             CObject *obj = this.poolList.At(i);
-            if(obj != NULL) {
+            if (obj != NULL) {
                 delete obj;
             }
         }
@@ -178,10 +188,10 @@ public:
     }
 
 private:
-    // Symbol list
+    /** ハンドルプール生成対象のシンボル一覧 */
     SymbolNameInfoAll symbolNameInfoAll;
 
-    // Pools for each symbol
+    /** シンボル別OscillatorHandlePool一覧 */
     CArrayObj poolList;
 
     /**
@@ -195,15 +205,15 @@ private:
     }
 
     /**
-     * @brief SymbolNameInfoAll の全シンボル分 Pool を生成して poolList に格納
+     * 登録されている全シンボルのハンドルプールを生成する。
      */
     void buildPools() {
         const int total = this.symbolNameInfoAll.size();
 
-        for(int i = 0; i < total; i++) {
+        for (int i = 0; i < total; i++) {
             SymbolNameInfo *info = this.symbolNameInfoAll.getSymbolNameInfo(i);
             
-            if(info == NULL) {
+            if (info == NULL) {
                 continue;
             }
 
