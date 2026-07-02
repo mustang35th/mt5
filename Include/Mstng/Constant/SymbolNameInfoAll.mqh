@@ -5,9 +5,6 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-//+------------------------------------------------------------------+
-//|                                           SymbolNameInfoAll.mqh  |
-//+------------------------------------------------------------------+
 #property strict
 
 #ifndef __SYMBOL_NAME_INFO_ALL_MQH__
@@ -35,15 +32,14 @@ public:
      * 主要な通貨ペアを登録する。
      */
     SymbolNameInfoAll() {
-        //this.setAll();
-        
         this.setGmo();
-        
-        //this.setDiscretionary();
     }
     
+    /**
+     * 全対象を登録する。
+     */
     void setAll() {
-        // JPY 7
+        /** JPY 7 */
         this.add(ConstantCurrency::USDJPY, 101, true);
         this.add(ConstantCurrency::EURJPY, 102, true);
         this.add(ConstantCurrency::GBPJPY, 103, true);
@@ -52,7 +48,7 @@ public:
         this.add(ConstantCurrency::CADJPY, 106, true);
         this.add(ConstantCurrency::CHFJPY, 107, true);
 
-        // USD 6
+        /** USD 6 */
         this.add(ConstantCurrency::EURUSD, 111, true);
         this.add(ConstantCurrency::GBPUSD, 112, true);
         this.add(ConstantCurrency::AUDUSD, 113, true);
@@ -60,34 +56,37 @@ public:
         this.add(ConstantCurrency::USDCAD, 115, true);
         this.add(ConstantCurrency::USDCHF, 116, true);
 
-        // GBP 5
+        /** GBP 5 */
         this.add(ConstantCurrency::EURGBP, 121, true);
         this.add(ConstantCurrency::GBPAUD, 122, true);
         this.add(ConstantCurrency::GBPNZD, 123, true);
         this.add(ConstantCurrency::GBPCAD, 124, true);
         this.add(ConstantCurrency::GBPCHF, 125, true);
 
-        // EUR 4
+        /** EUR 4 */
         this.add(ConstantCurrency::EURAUD, 131, true);
         this.add(ConstantCurrency::EURNZD, 132, true);
         this.add(ConstantCurrency::EURCAD, 133, true);
         this.add(ConstantCurrency::EURCHF, 134, true);
 
-        // AUD 3
+        /** AUD 3 */
         this.add(ConstantCurrency::AUDNZD, 141, true);
         this.add(ConstantCurrency::AUDCAD, 142, true);
         this.add(ConstantCurrency::AUDCHF, 143, true);
 
-        // NZD 2
+        /** NZD 2 */
         this.add(ConstantCurrency::NZDCAD, 151, true);
         this.add(ConstantCurrency::NZDCHF, 152, true);
 
-        // CAD 1
+        /** CAD 1 */
         this.add(ConstantCurrency::CADCHF, 162, true);
     }
     
+    /**
+     * GMO取引用に対象を登録する。
+     */
     void setGmo() {
-        // JPY 7
+        /** JPY 7 */
         this.add(ConstantCurrency::USDJPY, 101, true);
         this.add(ConstantCurrency::EURJPY, 102, true);
         this.add(ConstantCurrency::GBPJPY, 103, true);
@@ -96,7 +95,7 @@ public:
         this.add(ConstantCurrency::CADJPY, 106, true);
         this.add(ConstantCurrency::CHFJPY, 107, true);
 
-        // USD 6
+        /** USD 6 */
         this.add(ConstantCurrency::EURUSD, 111, true);
         this.add(ConstantCurrency::GBPUSD, 112, true);
         this.add(ConstantCurrency::AUDUSD, 113, true);
@@ -104,52 +103,35 @@ public:
         this.add(ConstantCurrency::USDCAD, 115, false);
         this.add(ConstantCurrency::USDCHF, 116, true);
 
-        // GBP 5
+        /** GBP 5 */
         this.add(ConstantCurrency::EURGBP, 121, true);
         this.add(ConstantCurrency::GBPAUD, 122, true);
         this.add(ConstantCurrency::GBPNZD, 123, false);
         this.add(ConstantCurrency::GBPCAD, 124, false);
         this.add(ConstantCurrency::GBPCHF, 125, true);
 
-        // EUR 4
+        /** EUR 4 */
         this.add(ConstantCurrency::EURAUD, 131, true);
         this.add(ConstantCurrency::EURNZD, 132, false);
         this.add(ConstantCurrency::EURCAD, 133, false);
         this.add(ConstantCurrency::EURCHF, 134, true);
 
-        // AUD 3
+        /** AUD 3 */
         this.add(ConstantCurrency::AUDNZD, 141, true);
         this.add(ConstantCurrency::AUDCAD, 142, false);
         this.add(ConstantCurrency::AUDCHF, 143, false);
 
-        // NZD 2
+        /** NZD 2 */
         this.add(ConstantCurrency::NZDCAD, 151, false);
         this.add(ConstantCurrency::NZDCHF, 152, false);
 
-        // CAD 1
+        /** CAD 1 */
         this.add(ConstantCurrency::CADCHF, 162, false);
     }
     
-    /*
-    01
-    USD/JPY
-    NZD/USD
-    
-    02
-    GBP/JPY
-    AUD/USD
-    
-    03
-    AUD/JPY
-    EUR/USD
-    USD/CHF
-    
-    04
-    EUR/JPY
-    GBP/USD
-    */
+    /** ディスクリショナリー向けの登録を行う。 */
     void setDiscretionary() {
-        // JPY 7
+        /** JPY 7 */
         this.add(ConstantCurrency::USDJPY, 101, true);
         this.add(ConstantCurrency::EURJPY, 102, true);
         this.add(ConstantCurrency::GBPJPY, 103, true);
@@ -158,7 +140,7 @@ public:
         this.add(ConstantCurrency::CADJPY, 106, false);
         this.add(ConstantCurrency::CHFJPY, 107, false);
 
-        // USD 6
+        /** USD 6 */
         this.add(ConstantCurrency::EURUSD, 111, true);
         this.add(ConstantCurrency::GBPUSD, 112, true);
         this.add(ConstantCurrency::AUDUSD, 113, true);
@@ -166,29 +148,29 @@ public:
         this.add(ConstantCurrency::USDCAD, 115, false);
         this.add(ConstantCurrency::USDCHF, 116, true);
 
-        // GBP 5
+        /** GBP 5 */
         this.add(ConstantCurrency::EURGBP, 121, false);
         this.add(ConstantCurrency::GBPAUD, 122, false);
         this.add(ConstantCurrency::GBPNZD, 123, false);
         this.add(ConstantCurrency::GBPCAD, 124, false);
         this.add(ConstantCurrency::GBPCHF, 125, false);
 
-        // EUR 4
+        /** EUR 4 */
         this.add(ConstantCurrency::EURAUD, 131, false);
         this.add(ConstantCurrency::EURNZD, 132, false);
         this.add(ConstantCurrency::EURCAD, 133, false);
         this.add(ConstantCurrency::EURCHF, 134, false);
 
-        // AUD 3
+        /** AUD 3 */
         this.add(ConstantCurrency::AUDNZD, 141, false);
         this.add(ConstantCurrency::AUDCAD, 142, false);
         this.add(ConstantCurrency::AUDCHF, 143, false);
 
-        // NZD 2
+        /** NZD 2 */
         this.add(ConstantCurrency::NZDCAD, 151, false);
         this.add(ConstantCurrency::NZDCHF, 152, false);
 
-        // CAD 1
+        /** CAD 1 */
         this.add(ConstantCurrency::CADCHF, 162, false);
     }
 
@@ -255,7 +237,6 @@ public:
             return symbolNameInfo.code;
         }
 
-        // 見つからなかった場合は -1 を返す
         return -1;
     }
 
@@ -326,8 +307,11 @@ public:
     }
 
 private:
-    CArrayObj symbolNameInfoList;  // シンボル情報リスト
+    /** シンボル情報リスト */
+    CArrayObj symbolNameInfoList;
+    /** 通貨定数 */
     ConstantCurrency constantCurrency;
+    /** ロガー */
     Logger logger;
     
     /**

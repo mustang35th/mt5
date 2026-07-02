@@ -11,10 +11,13 @@
 #include <Mstng\Constant\TimeFrameInfo.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
-// 時間足リスト
+/**
+ * 時間足情報を一括管理するクラス。
+ */
 class TimeFrameInfoAll {
 public:
-    CArrayObj timeFrameInfoList;    // 時間足リスト
+    /** 時間足リスト */
+    CArrayObj timeFrameInfoList;
     
     /**
      * コンストラクタ。
@@ -33,15 +36,6 @@ public:
         this.add(PERIOD_D1);
         this.add(PERIOD_W1);
         this.add(PERIOD_MN1);
-        
-        /*this.add(PERIOD_M1, true);
-        this.add(PERIOD_M5, true);
-        this.add(PERIOD_M15, true);
-        this.add(PERIOD_H1, true);
-        this.add(PERIOD_H4, true);
-        this.add(PERIOD_D1);
-        this.add(PERIOD_W1);
-        this.add(PERIOD_MN1);*/
     }
 
     /**
@@ -63,6 +57,11 @@ public:
         this.timeFrameInfoList.Clear();
     }
     
+    /**
+     * 要素数を取得する。
+     *
+     * @return 時間足情報数
+     */
     int getCount() {
         return this.timeFrameInfoList.Total();
     }
@@ -152,6 +151,14 @@ public:
         return this.getTimeFrame(index + add);
     }
     
+    /**
+     * エリオット対象時間足を設定する。
+     *
+     * startTimeFrame 〜 endTimeFrame の範囲の時間足をtrueにする。
+     *
+     * @param startTimeFrame 開始時間足
+     * @param endTimeFrame   終了時間足
+     */
     void setElliotTarget(ENUM_TIMEFRAMES startTimeFrame, ENUM_TIMEFRAMES endTimeFrame) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -178,8 +185,8 @@ public:
     }
     
 private:
-    //CArrayObj timeFrameInfoList;    // 時間足リスト
-    Logger logger;                  // ロガー
+    /** ロガー */
+    Logger logger;
     
     /**
      * タイムフレーム情報を追加する。
@@ -191,10 +198,4 @@ private:
         
         this.timeFrameInfoList.Add(timeFrameInfo);
     }
-    
-    /*void add(ENUM_TIMEFRAMES addTimeFrame, bool fromIsLog) {
-        TimeFrameInfo *timeFrameInfo = new TimeFrameInfo(addTimeFrame, fromIsLog);
-        
-        this.timeFrameInfoList.Add(timeFrameInfo);
-    }*/
 };

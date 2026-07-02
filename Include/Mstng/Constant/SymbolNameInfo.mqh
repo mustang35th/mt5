@@ -12,21 +12,34 @@
 
 #include <Object.mqh>
 
-// シンボル情報
+/**
+ * 通貨ペア1件分のシンボル情報を保持するクラス。
+ */
 class SymbolNameInfo : public CObject {
 public:
+    /** シンボル名 */
     string symbolName;
+
+    /** コード */
     int code;
+
+    /** 取引対象可否 */
     bool isTarget;
     
-    // コンストラクタ
+    /**
+     * コンストラクタ。
+     *
+     * @param fromSymbolName シンボル名
+     * @param fromCode コード
+     * @param fromIsTarget 取引対象フラグ
+     */
     SymbolNameInfo(string fromSymbolName, int fromCode, bool fromIsTarget) {
         this.symbolName = fromSymbolName;
         this.code = fromCode;
         this.isTarget = fromIsTarget;
     }
     
-    // デストラクタ
+    /** デストラクタ。 */
     ~SymbolNameInfo() {
     }
 

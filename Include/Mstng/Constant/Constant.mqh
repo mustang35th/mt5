@@ -15,16 +15,24 @@
  */
 class Constant {
 public:
-    /// 共通のプレフィックス文字列
+    /** 共通のプレフィックス文字列 */
     static const string PREFIX;
 
-    /// 固定プレフィックス文字列
+    /** 固定プレフィックス文字列 */
     static const string PREFIX_FIXED;
     
+    /** 削除フラグ */
     static const int DELETE_FLG;
+    
+    /** 非表示ラベル */
     static const string DELETE_LABEL;
     
-    
+    /**
+     * BUY/Sell ラベル文字列を取得する。
+     *
+     * @param isBuy BUYなら"BUY"、SELLなら"SELL"
+     * @return ラベル文字列
+     */
     static string getBuySell(bool isBuy) {
         string text = "SELL";
         
@@ -36,9 +44,7 @@ public:
     }
 };
 
-//------------------------------------------------------------------
-// static 定数の定義部
-//------------------------------------------------------------------
+/** static 定数の定義部 */
 const string Constant::PREFIX = "Mstng";
 const string Constant::PREFIX_FIXED = "FixedMstng";
 
