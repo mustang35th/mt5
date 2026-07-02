@@ -9,13 +9,22 @@
 #include <Mstng\Util\UtilAll.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 
+/**
+ * フィボナッチエクスパンションを描画するクラスです。
+ */
 class DrawFiboExpansion {
 public:
 
+    /**
+     * デフォルトコンストラクタ。
+     */
     DrawFiboExpansion() {
         this.logger.setLevel(LOG_INFO);
     }
 
+    /**
+     * デストラクタ。
+     */
     ~DrawFiboExpansion() {
     }
 
@@ -41,6 +50,7 @@ public:
 
 
 private:
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
 
     /**

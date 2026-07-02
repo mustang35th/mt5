@@ -10,9 +10,15 @@
 #include <Mstng\Draw\DrawProperties.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 
+/**
+ * 高値/安値のポイントを繋いだ水平ラインを描画するクラスです。
+ */
 class DrawHorizontalLine : public DrawBase {
 public:
     
+    /**
+     * デフォルトコンストラクタ。
+     */
     DrawHorizontalLine() {
         this.logger.setLevel(LOG_INFO);
     }
@@ -26,9 +32,17 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
     
+    /**
+     * デストラクタ。
+     */
     ~DrawHorizontalLine() {
     }
     
+    /**
+     * 指定分析結果の高値安値ラインを描画する。
+     *
+     * @param fromElliotAll Elliot解析結果
+     */
     void draw(ElliotAll &fromElliotAll) {
         this.initializeMarketContext(fromElliotAll.marketContext);
         
@@ -42,6 +56,13 @@ public:
     }
     
 private:    
+    /**
+     * 波動のポイントを使って水平ラインを描画する。
+     *
+     * @param elliot 描画対象のElliot
+     * @param lineSize ライン幅
+     * @param isUpper 上位足由来ならtrue
+     */
     void draw(Elliot &elliot, int lineSize, bool isUpper = false) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         

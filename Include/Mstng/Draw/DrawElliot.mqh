@@ -26,9 +26,14 @@ enum ElliotColmun {
     COLMUN_ELLIOT
 };
 
+/**
+ * Elliotの波形・状態情報をチャート上に表形式・ラベル付きで描画するクラスです。
+ */
 class DrawElliot {
 public:
-    
+    /**
+     * 描画列幅の初期値を設定して初期化する。
+     */
     DrawElliot() {
         this.logger.setLevel(LOG_INFO);
         
@@ -46,10 +51,18 @@ public:
         this.addDrawPropertiesElliotList(true, 120);    // COLMUN_ELLIOT
     }
     
+    /**
+     * デストラクタ。
+     */
     ~DrawElliot() {
         
     }
-    
+
+    /**
+     * Elliot分析結果を描画する。
+     *
+     * @param fromElliotAll Elliot解析結果
+     */
     void draw(ElliotAll *fromElliotAll) {
         this.elliotAll = fromElliotAll;
         
@@ -97,7 +110,15 @@ public:
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
     
-    // エリオット描画
+    /**
+     * 指定Elliotの波形ラベルを描画する。
+     *
+     * @param elliot 描画対象Elliot
+     * @param fromName オブジェクト名プレフィックス
+     * @param fromFontSize 文字サイズ加算値
+     * @param upLevel 上方向オフセット
+     * @param downLevel 下方向オフセット
+     */
     void setElliot(Elliot &elliot, string fromName, int fromFontSize, double upLevel, double downLevel) {
         //this.logger.setLevel(LOG_DEBUG);
         
@@ -130,6 +151,9 @@ public:
         //this.logger.setLevel(LOG_INFO);
     }
     
+    /**
+     * 全時間足Elliotのサマリー表を描画する。
+     */
     void setElliotTable() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -149,6 +173,12 @@ public:
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
     
+    /**
+     * 1行分のElliotサマリーを描画する。
+     *
+     * @param elliot 表示対象Elliot
+     * @param objY Y座標
+     */
     void setElliotTable(Elliot &elliot, int objY) {
         int objX = 0;
         color fontColorAll = clrWhite;
@@ -373,19 +403,36 @@ public:
     }
 
 protected:
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
     
+    /** 描画共通設定 */
     DrawProperties drawProperties;
+    /** Elliot解析全体を保持する参照 */
     ElliotAll *elliotAll;
     
+    /** 列表示設定のリスト（時間軸ごとに表示可否・幅を保持） */
     CArrayObj drawPropertiesElliotList;
     
+    /**
+     * 列表示設定をリストに追加する。
+     *
+     * @param isVisible 列表示フラグ
+     * @param width 列幅
+     */
     void addDrawPropertiesElliotList(bool isVisible, int width) {
         DrawPropertiesElliot *drawPropertiesElliot = new DrawPropertiesElliot(isVisible, width);
         
         this.drawPropertiesElliotList.Add(drawPropertiesElliot);
     }
     
+    /**
+     * 対象インデックスの列表示設定を参照し、表示可否と列幅を返す。
+     *
+     * @param index 列インデックス
+     * @param width 列幅出力引数
+     * @return 表示対象ならtrue
+     */
     bool isVisible(int index, int &width) {
         bool isVisible = false;
         
@@ -399,7 +446,9 @@ protected:
         return isVisible;
     }
     
-    // ラベル
+    /**
+     * サマリー表のヘッダを描画する。
+     */
     void setLabel() {
         string preName = "ElliotLabel";
         color fontColor = clrWhite;
@@ -485,7 +534,9 @@ protected:
         this.setPipeAll(preName, objY);
     }
     
-    // パイプ描画
+    /**
+     * 列境界のパイプ文字列を描画する。
+     */
     void setPipeAll(string objectName, int objY) {
         int objX = 0;
         
@@ -502,8 +553,15 @@ protected:
         }
     }
     
-    // 波動の描画
-    // ZigZagPointから情報取得
+    /**
+     * 波動とポイント情報を描画する。
+     *
+     * @param wave 描画対象波
+     * @param name 表示名
+     * @param fontSize 文字サイズ
+     * @param upLevel 上方向オフセット
+     * @param downLevel 下方向オフセット
+     */
     void setWave(Wave &wave, string name, int fontSize, double upLevel, double downLevel) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -577,7 +635,14 @@ protected:
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
     
-    // 矢印描画のレート算出
+    /**
+     * 矢印ラベル表示のための価格位置を算出する。
+     *
+     * @param time 基準時間
+     * @param price 基準価格
+     * @param level レベルオフセット
+     * @return 調整後価格
+     */
     double getDrawPrice(const datetime time, const double price, const double level) {
         int x, y, cw;
         datetime t;
@@ -598,6 +663,12 @@ protected:
     }
 
 private:
+    /**
+     * 値の符号に応じて描画用フォントカラーを返す。
+     *
+     * @param value 判定値（正:上方向,負:下方向）
+     * @return フォント色
+     */
     color getColor(int value) {
         if (value == 0) {
             return clrWhite;

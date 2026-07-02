@@ -9,9 +9,16 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
+/**
+ * 描画クラス共通の基底クラス。
+ * 時間軸変換や価格一致判定など、描画処理で共通的に使う補助処理を提供します。
+ */
 class DrawBase {
 public:
 
+    /**
+     * デフォルトコンテキスト（シンボル/足）で初期化する。
+     */
     DrawBase() {
         MarketContext context(_Symbol, (ENUM_TIMEFRAMES)_Period);
         this.initializeMarketContext(context);
@@ -26,6 +33,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * デフォルトコンストラクタ。
+     */
     ~DrawBase() {
     }
 

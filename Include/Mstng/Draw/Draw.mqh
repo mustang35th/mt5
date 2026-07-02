@@ -120,6 +120,11 @@ public:
         DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight + 140, 145);
     }*/
     
+    /**
+     * シンボル名から市場コンテキストを作成し、Bid/Ask/Spreadを描画する。
+     *
+     * @param symbolName シンボル名
+     */
     void drawBidAsk(string symbolName) {
         MarketContext context(symbolName, PERIOD_CURRENT);
 
@@ -178,6 +183,9 @@ public:
         DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight + 140, 145);
     }
     
+    /**
+     * システム時刻（JST/サーバー）と実行時間を描画する。
+     */
     void drawTime() {
         color fontColor = clrWhite;
         string objectName = "Sysdate";
@@ -198,6 +206,9 @@ public:
         DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 250);
     }
     
+    /**
+     * シンボル情報と当日高値・安値を描画する。
+     */
     void drawTodayRate() {
         TodayRate todayRate = this.elliotAll.todayRate;
         
@@ -241,9 +252,12 @@ public:
     }
     
 private:
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
     
+    /** 表示設定 */
     DrawProperties drawProperties;
+    /** 描画対象のElliot全体データ */
     ElliotAll *elliotAll;
     
     /*void drawBgColor() {
@@ -280,6 +294,11 @@ private:
         DrawUtil::setBgColor(bgColor);
     }*/
     
+    /**
+     * 市場状況に応じた背景色を設定する。
+     *
+     * 現状は常に黒背景を設定する実装で、将来ロジック追加時の拡張ポイントです。
+     */
     void drawBgColor() {
         color bgColor = clrBlack;
     

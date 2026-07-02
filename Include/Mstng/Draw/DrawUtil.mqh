@@ -19,7 +19,17 @@
  */
 class DrawUtil {
 public:
-    // 矢印
+    /**
+     * 矢印を描画します。
+     *
+     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
+     * @param fontColor      色
+     * @param arrowCode      矢印コード
+     * @param arrowWidth     幅
+     * @param position       バーシフト位置
+     * @param offset         価格補正
+     * @param chartId        描画対象チャートID（0の場合はカレント）
+     */
     static void setArrow(string fromObjectName, color fontColor,  int arrowCode, int arrowWidth, int position, double offset, int chartId = 0) {
         //string objectName = Constant::PREFIX + fromObjectName;
         string objectName = Constant::PREFIX_FIXED + fromObjectName;
@@ -102,6 +112,18 @@ public:
         ObjectSetInteger(chartId, objectName, OBJPROP_YDISTANCE, objY);*/
     }
     
+    /**
+     * 固定プレフィックス付きでラベルを描画します。
+     *
+     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
+     * @param fontFace        フォント名
+     * @param fontColor       文字色
+     * @param fontSize        フォントサイズ
+     * @param text            表示テキスト
+     * @param objX            X座標（px）
+     * @param objY            Y座標（px）
+     * @param chartId         描画対象チャートID（0の場合はカレント）
+     */
     static void setLabelFixed(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, int objX, int objY, int chartId = 0) {
         // チャートオブジェクト名（共通プレフィックスを付与）
         string objectName = Constant::PREFIX_FIXED + fromObjectName;
@@ -121,6 +143,18 @@ public:
         ObjectDelete(chartId, objectName);
     }
     
+    /**
+     * ラベル描画処理を共通化します。
+     *
+     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
+     * @param fontFace        フォント名
+     * @param fontColor       文字色
+     * @param fontSize        フォントサイズ
+     * @param text            表示テキスト
+     * @param objX            X座標（px）
+     * @param objY            Y座標（px）
+     * @param chartId         描画対象チャートID（0の場合はカレント）
+     */
     static void setLabelCommon(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, int objX, int objY, int chartId) {
         string objectName = fromObjectName;
 
@@ -172,7 +206,18 @@ public:
         ObjectSetInteger(chartId, objectName, OBJPROP_FILL, true);
     }
 
-    // テキスト設定
+    /**
+     * 指定時刻・価格にラベルを設定します。
+     *
+     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
+     * @param fontFace        フォント名
+     * @param fontColor       文字色
+     * @param fontSize        フォントサイズ
+     * @param text            表示テキスト
+     * @param drawDatetime    表示位置の時間
+     * @param drawPrice       表示位置の価格
+     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     */
     static void setText(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, 
                     datetime drawDatetime, double drawPrice, int chartId = 0) {        
         string objectName = Constant::PREFIX + fromObjectName;
@@ -180,6 +225,18 @@ public:
         setTextCommon(objectName, fontFace, fontColor, fontSize, text, drawDatetime, drawPrice, chartId);
     }
     
+    /**
+     * 固定プレフィックス付きで時刻・価格にラベルを設定します。
+     *
+     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
+     * @param fontFace        フォント名
+     * @param fontColor       文字色
+     * @param fontSize        フォントサイズ
+     * @param text            表示テキスト
+     * @param drawDatetime    表示位置の時間
+     * @param drawPrice       表示位置の価格
+     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     */
     static void setTextFixed(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, 
                     datetime drawDatetime, double drawPrice, int chartId = 0) {        
         string objectName = Constant::PREFIX_FIXED + fromObjectName;
@@ -252,6 +309,18 @@ public:
         ObjectSetInteger(chartId, objectName, OBJPROP_ANCHOR, ANCHOR_LEFT);
     }
     
+    /**
+     * OBJ_TEXT を作成して共通的な文字設定を適用します。
+     *
+     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与済み）
+     * @param fontFace        フォント名
+     * @param fontColor       文字色
+     * @param fontSize        フォントサイズ
+     * @param text            表示テキスト
+     * @param drawDatetime    表示位置の時間
+     * @param drawPrice       表示位置の価格
+     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     */
     static void setTextCommon(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, 
                     datetime drawDatetime, double drawPrice, int chartId) {        
         string objectName = fromObjectName;

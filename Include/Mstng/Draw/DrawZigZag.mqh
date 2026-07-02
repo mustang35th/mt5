@@ -9,9 +9,15 @@
 #include <Mstng\Draw\DrawBase.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 
+/**
+ * ZigZagラインを描画するクラス。
+ */
 class DrawZigZag : public DrawBase {
 public:
 
+    /**
+     * デフォルトコンストラクタ。
+     */
     DrawZigZag() {
     }
 
@@ -24,9 +30,17 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * デストラクタ。
+     */
     ~DrawZigZag() {
     }
 
+    /**
+     * Elliot全体のZigZagを描画する。
+     *
+     * @param fromElliotAll Elliot解析結果
+     */
     void draw(ElliotAll &fromElliotAll) {
         this.initializeMarketContext(fromElliotAll.marketContext);
 
@@ -46,6 +60,14 @@ public:
     }
 
 private:
+    /**
+     * ZigZagポイント間を結ぶラインを描画する。
+     *
+     * @param elliot 描画対象のElliot
+     * @param isOrg オリジナルZigZagを使う場合true
+     * @param lineSize ライン幅
+     * @param isUpper 上位足描画の場合true
+     */
     void draw(Elliot &elliot, bool isOrg, int lineSize, bool isUpper = false) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 

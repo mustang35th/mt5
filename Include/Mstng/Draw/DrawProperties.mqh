@@ -9,21 +9,37 @@
 
 #include <Mstng\Util\UtilAll.mqh>
 
+/**
+ * 描画文字スタイルや色などの共通表示設定を保持する値オブジェクトです。
+ */
 class DrawProperties {
 public:
+    /** Elliotの描画に使うフォント名 */
     string elliotFontFace;
+    /** Elliotラベル（アラート）文字サイズ */
     int elliotAlertSize;
+    /** Elliot文字の基本サイズ */
     int elliotFontSize;
+    /** Elliotラベルの文字間隔（ピクセル） */
     int elliotPixelDistance;
-    uint fontPixelHeight;   // フォントサイズ計算用
+    /** フォントサイズ計算用ピクセル高さ */
+    uint fontPixelHeight;
 
+    /** 上昇判定時のラベル色 */
     color elliotUpColor;
+    /** 下降判定時のラベル色 */
     color elliotDownColor;
+    /** 未確定上昇ラベル色 */
     color elliotMikakuteiUpColor;
+    /** 未確定下降ラベル色 */
     color elliotMikakuteiDownColor;
     
+    /** 右寄せラベル描画時のX基準座標 */
     int objXRight;
     
+    /**
+     * 描画プロパティを初期化する。
+     */
     DrawProperties() {
         this.logger.setLevel(LOG_INFO);
         
@@ -43,9 +59,15 @@ public:
         this.setFontPixelHeight();
     }
 
+    /**
+     * デフォルトコンストラクタの対となるデストラクタ。
+     */
     ~DrawProperties() {
     }
     
+    /**
+     * フォントピクセル高さを再計測して保持します。
+     */
     void setFontPixelHeight() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         

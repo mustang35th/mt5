@@ -29,9 +29,13 @@ public:
     /** 描画対象の市場コンテキスト */
     MarketContext marketContext;
 
+    /** オブジェクト名プレフィックス */
     string objectPrefix;
+    /** 上昇時の塗り色 */
     color upColor;
+    /** 下降時の塗り色 */
     color downColor;
+    /** 描画対象の最大バー数 */
     int maxBars;
 
     /**
@@ -501,6 +505,7 @@ public:
     }
 
 private:
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
 
     /**
