@@ -88,7 +88,7 @@ private:
                 datetimeFrom = this.getDatetime(elliot.marketContext.timeFrame, datetimeFrom, rateFrom, isBuy, true);
                 
                 if (to == 0) {
-                    datetimeTo = iTime(elliot.marketContext.symbolName, NULL, to);
+                    datetimeTo = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, to);
                 } else {
                     datetimeTo = this.getDatetime(elliot.marketContext.timeFrame, datetimeTo, rateTo, isBuy, false);
                 }

@@ -129,14 +129,7 @@ public:
      */
     void releaseAll() {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
-            int currentHandle = this.handles[i];
-
-            if (currentHandle == INVALID_HANDLE) {
-                continue;
-            }
-
-            IndicatorRelease(currentHandle);
-            this.handles[i] = INVALID_HANDLE;
+            this.releaseAt(i);
         }
     }
 
@@ -165,6 +158,19 @@ protected:
         }
 
         this.handles[index] = createdHandle;
+    }
+
+    /**
+     * 指定indexのハンドルを解放する。
+     *
+     * @param index 時間足index
+     */
+    virtual void releaseAt(int index) {
+        if (index < 0 || index >= TIMEFRAME_SIZE) {
+            return;
+        }
+
+        this.releaseHandle(this.handles[index]);
     }
 
 private:

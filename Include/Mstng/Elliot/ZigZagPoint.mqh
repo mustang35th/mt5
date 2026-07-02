@@ -414,16 +414,18 @@ public:
      * @param fromBarIndex バーインデックス
      */
     void setBarIndexAndTime(MarketContext &fromMarketContext, int fromBarIndex) {
+        this.setMarketContext(fromMarketContext);
+
         // バー位置（シフト）を保存
         this.barIndex = fromBarIndex;
     
         // 対象バーの開始時刻を取得
-        this.barTime = iTime(fromMarketContext.symbolName, fromMarketContext.timeFrame, this.barIndex);
+        this.barTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, this.barIndex);
     
         // 次バーの開始時刻を取得（ユーティリティで算出）
         this.barTimeNext = TimeUtil::getNextBarTimeByShift(
-            fromMarketContext.symbolName,
-            fromMarketContext.timeFrame,
+            this.marketContext.symbolName,
+            this.marketContext.timeFrame,
             this.barIndex
         );
     }

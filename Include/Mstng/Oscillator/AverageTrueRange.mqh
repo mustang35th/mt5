@@ -305,30 +305,7 @@ private:
      * @return pips値
      */
     double convertPriceToPips(MarketContext &fromMarketContext, const double priceValue) {
-        double pointPerPip = this.getPointPerPip(fromMarketContext);
-
-        if (pointPerPip <= 0.0) {
-            return 0.0;
-        }
-
-        return priceValue / pointPerPip;
-    }
-
-    /**
-     * 1pips相当の価格幅を取得
-     *
-     * @param fromMarketContext 変換対象の市場コンテキスト
-     * @return 1pips相当の価格幅
-     */
-    double getPointPerPip(MarketContext &fromMarketContext) {
-        int digits = fromMarketContext.digits;
-        double point = fromMarketContext.getPoint();
-
-        if (digits == 3 || digits == 5) {
-            return point * 10.0;
-        }
-
-        return point;
+        return RateUtil::priceToPips(priceValue, fromMarketContext);
     }
 };
 

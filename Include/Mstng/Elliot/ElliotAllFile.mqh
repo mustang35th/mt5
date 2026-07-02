@@ -256,11 +256,7 @@ public:
     ) {
         this.initializeMarketContext(fromMarketContext);
         this.folderName = folderNameValue;
-        this.fileName = this.createMultiTimeFrameKeyFileName(
-            this.marketContext.symbolName,
-            startTimeFrameValue,
-            this.marketContext.timeFrame
-        );
+        this.fileName = this.createMultiTimeFrameKeyFileName(this.marketContext, startTimeFrameValue);
         this.useCommonFolder = useCommonFolderValue;
         this.delimiter = delimiterValue;
         this.flushEveryWrite = flushEveryWriteValue;
@@ -1853,9 +1849,33 @@ private:
      * @return キーファイル名
      */
     string createKeyFileName(MarketContext &fromMarketContext) const {
+        string timeFrameLabel = fromMarketContext.timeFrameLabel;
+
+        if (timeFrameLabel == "") {
+            timeFrameLabel = this.convertTimeFrameToString(fromMarketContext.timeFrame);
+        }
+
         return fromMarketContext.symbolName
-            + "_" + this.convertTimeFrameToString(fromMarketContext.timeFrame)
+            + "_" + timeFrameLabel
             + ".csv";
+    }
+
+    /**
+     * 市場コンテキストから複数時間足キーファイル名を生成する。
+     *
+     * @param fromMarketContext 出力対象の市場コンテキスト。時間足は終了時間足として使用する
+     * @param startTimeFrameValue 開始時間足
+     * @return キーファイル名
+     */
+    string createMultiTimeFrameKeyFileName(
+        MarketContext &fromMarketContext,
+        const ENUM_TIMEFRAMES startTimeFrameValue
+    ) const {
+        return this.createMultiTimeFrameKeyFileName(
+            fromMarketContext.symbolName,
+            startTimeFrameValue,
+            fromMarketContext.timeFrame
+        );
     }
 
     /**

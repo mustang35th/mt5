@@ -20,8 +20,10 @@ public:
     /** 複数シンボル分析の基準となる市場コンテキスト */
     MarketContext marketContext;
     
+    /** シンボル別オシレーターハンドル管理クラス */
     OscillatorHandleManager *oscillatorHandleManager;
     
+    /** シンボル別ElliotAll一覧 */
     CArrayObj elliotAllList;
     
     /**
@@ -49,15 +51,7 @@ public:
     }
 
     ~ElliotAllList() {
-        int total = this.elliotAllList.Total();
-
-        for (int i = 0; i < total; i++) {
-            ElliotAll *elliotAll = this.elliotAllList.At(i);
-
-            if (elliotAll != NULL) {
-                delete elliotAll;
-            }
-        }
+        this.clearElliotAllList();
     }
 
     /**
@@ -68,7 +62,7 @@ public:
      * @param fromMarketContext 複数シンボル分析の基準となる市場コンテキスト
      */
     void setMarketContext(MarketContext &fromMarketContext) {
-        this.elliotAllList.Clear();
+        this.clearElliotAllList();
         this.marketContext = fromMarketContext;
         this.logger.setMarketContext(this.marketContext);
     }
@@ -141,8 +135,10 @@ public:
     }
 
 private:
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
     
+    /** タイマー実行の場合true */
     bool isTimer;
 
     /**
@@ -174,6 +170,23 @@ private:
         this.elliotAllList.Add(elliotAll);
         
         this.logger.debug(__FUNCTION__, StringFormat("symbol = %s execTime = %dms", elliotAll.marketContext.symbolName, elliotAll.execTime));
+    }
+
+    /**
+     * 保持しているElliotAllを破棄し、一覧を空にする。
+     */
+    void clearElliotAllList() {
+        int total = this.elliotAllList.Total();
+
+        for (int i = 0; i < total; i++) {
+            ElliotAll *elliotAll = this.elliotAllList.At(i);
+
+            if (elliotAll != NULL) {
+                delete elliotAll;
+            }
+        }
+
+        this.elliotAllList.Clear();
     }
 
 };

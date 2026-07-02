@@ -139,7 +139,7 @@ protected:
                 rate = iLow(this.marketContext.symbolName, currentTimeFrame, i);
             }
 
-            if (this.isSameRate(rate, fromRate, this.marketContext.symbolName)) {
+            if (this.isSameRate(rate, fromRate, this.marketContext)) {
                 return iTime(this.marketContext.symbolName, currentTimeFrame, i);
             }
         }
@@ -200,11 +200,11 @@ private:
      *
      * @param leftPrice 比較対象1
      * @param rightPrice 比較対象2
-     * @param symbol シンボル
+     * @param fromMarketContext 比較対象の市場コンテキスト
      * @return 同一とみなせる場合true
      */
-    bool isSameRate(double leftPrice, double rightPrice, string symbol) {
-        double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+    bool isSameRate(double leftPrice, double rightPrice, MarketContext &fromMarketContext) {
+        double point = fromMarketContext.getPoint();
 
         if (point <= 0.0) {
             return leftPrice == rightPrice;

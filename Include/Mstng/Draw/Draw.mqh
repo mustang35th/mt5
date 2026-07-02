@@ -139,11 +139,7 @@ public:
         bool isSuccess = SymbolInfoTick(fromMarketContext.symbolName, tick);
         
         if (isSuccess) {
-            //spread = RateUtil::getDiffPips(tick.bid, tick.ask, symbolName);
-            
-            double pointDouble = fromMarketContext.getPoint();
-            
-            spread = ((tick.ask - tick.bid) / pointDouble) / 10;
+            spread = RateUtil::getDiffPips(tick.bid, tick.ask, fromMarketContext);
         }
         
         color fontColor = clrWhite;
