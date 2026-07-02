@@ -192,9 +192,6 @@ private:
                 countNon = 0;
             }
             
-            /*if (zigZagPoint.subElliotLabel == NULL) {
-                zigZagPoint.subElliotLabel = "";
-            }*/
         }
         
         

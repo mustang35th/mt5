@@ -169,11 +169,7 @@ public:
             
             WaveUtil::copyWaveList(elliotWithHigherAll.waveList, this.waveList);
             
-            /*if (this.needsReanalyzeWave0) { // 再分析が必要
-                this.analyzeElliotWave0();
-            }*/
-            
-            // 再カウント
+
         }
         
         this.setCCompleted();
@@ -215,7 +211,6 @@ public:
                 this.marketContext
             );
             
-            //this.fiboExpansionPriceInfo.setDataByThreeRates(zigZagPoint0.rate, zigZagPoint1.rate, zigZagPoint2.rate);
         }
         
     }
@@ -463,9 +458,6 @@ private:
         for (int i = 0; i < this.waveList.Total() - 1; i++) {
             Wave *wave = this.waveList.At(i);
             
-            /*if (wave.isImpulseWave()) { // Impulse設定
-                wave.isImpulse = true;
-            }*/
             
             // Fractal設定
             Wave *waveBefore = this.waveList.At(i + 1);
@@ -473,9 +465,6 @@ private:
             ZigZagPoint *latestPoint = waveBefore.getLatestPoint();
             
             if (latestPoint != NULL) {
-                /*if (latestPoint.elliotLabel == "C") {
-                    wave.isPrevCorrectionCCompleted = true;
-                }*/
                 
                 //　前回波動が修正波
                 // 1個　A

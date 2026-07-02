@@ -45,8 +45,6 @@ public:
     /** lc0から損失方向へ15pipsずらしたロスカット価格 */
     double lc15;
     
-    // コンストラクタ
-    //LossCut(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
     LossCut() {
         this.initializeValues();
     }
@@ -61,7 +59,6 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
     
-    // デストラクタ
     ~LossCut() {
     }
 

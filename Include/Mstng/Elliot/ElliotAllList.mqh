@@ -131,8 +131,6 @@ public:
             ElliotAll *elliotAll = this.elliotAllList.At(i);
 
             if (elliotAll != NULL) {
-                //Print("symbolName -> " + elliotAll.marketContext.symbolName);
-                //Print(elliotAll.getText());
                 
                 Print(elliotAll.getCsv());
             }

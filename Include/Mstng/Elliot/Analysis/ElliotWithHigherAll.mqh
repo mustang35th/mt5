@@ -99,10 +99,8 @@ public:
         }
         
         if (this.isReanalyze) {
-            //if (this.marketContext.timeFrame != PERIOD_M15) {
-                this.recount();        
-                this.setSubwaves();
-            //}
+            this.recount();
+            this.setSubwaves();
         }
         
         
@@ -134,7 +132,6 @@ private:
         this.isReanalyze = true;
 
         if (this.marketContext.timeFrame == PERIOD_M15) {
-            //this.isReanalyze = false;
         }
     }
     
@@ -154,38 +151,6 @@ private:
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
     
-    /*bool correctZigZagPointAtLatestWave(CArrayObj &fromZigZagPointList, bool isUptrend, double &oldRate) {
-        LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        
-        bool isCorrect = false;
-        
-        ZigZagPoint *zigZagPoint = fromZigZagPointList.At(0);
-        
-        if ((isUptrend && zigZagPoint.isPeak && this.isBuy) 
-                || (!isUptrend && !zigZagPoint.isPeak && !this.isBuy)){
-            double rate = this.getBeforeRate(fromZigZagPointList);
-            
-            if (rate != zigZagPoint.rate) {
-                double shiftRate = RateUtil::pipsToPrice(10, this.marketContext);  // 10pipsずらす
-            
-                if (this.isBuy) {
-                    rate += shiftRate;
-                } else {
-                    rate -= shiftRate;
-                }
-                
-                oldRate = zigZagPoint.rate;
-                zigZagPoint.rate = rate;
-            
-                isCorrect = true;
-            }
-        }
-        
-        this.logger.debug(__FUNCTION__, StringFormat("isCorrect = %s", (string)isCorrect));
-        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
-        
-        return isCorrect;
-    }*/
     
     /**
      * ポイント列の終端価格を確認し、補正が必要か判定する。
@@ -247,20 +212,11 @@ private:
         int zigZagIndex = 0;    // 処理中のindex
         
         for (int i = 0; i < waveTotal; i++) {
-            /*if (i == 0) {
-                this.logger.setLevel(LOG_DEBUG);
-            }*/
-            
             Wave *waveHigher = waveListHigher.At(i);
             
             this.logger.debug(__FUNCTION__, waveHigher.toString());
             
             CArrayObj *zigZagPointListHigher = &(waveHigher.orgZigZagPointList);
-            
-            /*this.logger.setLevel(LOG_DEBUG);
-            LogUtil::printZigZagPointList(this.logger, __FUNCTION__, zigZagPointListHigher);
-            this.logger.setLevel(LOG_INFO);*/
-            
             
             int startPoint = zigZagPointListHigher.Total() - 1;
             
@@ -335,7 +291,6 @@ private:
                             isCorrect = this.isCorrectionNeeded(zigZagPointListWithHigher, isUptrend, oldRate);
                         }
                     } else {
-                        //isCorrect = this.isCorrectionNeeded(zigZagPointListWithHigher, isUptrend, oldRate);
                     }
                     
                     if (!this.getWaveWithHigher(zigZagPointListWithHigher, isMotive, isUptrend, isLatest)) {    // 波動分析
@@ -346,8 +301,6 @@ private:
                     }
                     
                     if (isCorrect) {    //　rate戻す
-                        //Wave *wave = this.waveList.At(this.waveList.Total() - 1);
-                        //Wave *wave = this.waveList.At(totalBefore);
                         Wave *wave = this.waveList.At(0);
                         
                         ZigZagPoint *zigZagPointLast = ZigZagPointUtil::getLastNode(wave.zigZagPointList);
@@ -356,9 +309,8 @@ private:
                     }
                     
                     if (isLatest) {
-                        // 上位足に収まらない右側を追加
-                        if (elliotHigher.isBuy == this.isBuy) { // トレンド一致の場合
-                            this.addPointToWave0();
+                    if (elliotHigher.isBuy == this.isBuy) { // トレンド一致の場合
+                        this.addPointToWave0();
                             
                         } else {
                             if (!this.addWave0()) {
@@ -371,22 +323,6 @@ private:
                     }
                     
                 } else {    // ポイントが2未満は分析不可
-                    /*this.logger.error(__FUNCTION__, "上位足から波動分析　ポイント数小　分析不可");
-                    this.logger.error(__FUNCTION__, StringFormat("zigZagPointTotal = %d", zigZagPointTotal));
-                    this.logger.error(__FUNCTION__, StringFormat("i = %d", i));
-                    this.logger.error(__FUNCTION__, StringFormat("j = %d", j));
-                    
-                    this.logger.error(__FUNCTION__, "zigZagPointHigherLeft <<<<<");
-                    this.logger.error(__FUNCTION__, zigZagPointHigherLeft.toString());
-                    this.logger.error(__FUNCTION__, "zigZagPointHigherRight >>>>>");
-                    this.logger.error(__FUNCTION__, zigZagPointHigherRight.toString());
-                    
-                    if (zigZagPointTotal == 1) {
-                        ZigZagPoint *zigZagPoint = zigZagPointListWithHigher.At(0);
-                        
-                        this.logger.error(__FUNCTION__, "zigZagPoint");
-                        this.logger.error(__FUNCTION__, zigZagPoint.toString());
-                    }*/
                 }
                 
                 
@@ -394,12 +330,7 @@ private:
                 this.logger.debug(__FUNCTION__, "");
             }
             
-            //LogUtil::printZigZagPointList(this.logger, __FUNCTION__, zigZagPointList/*, "DrawZigZag.draw"*/);
-                        
-            //this.logger.setLevel(LOG_INFO);
         }
-        
-        //this.getWave0(true);
     
         this.analyzeWave();
         
@@ -449,13 +380,6 @@ private:
             if (this.isReanalyze && totalHigher > 1) {
                 int max = 3;
                 
-                bool isBreak = false;
-                
-                if (this.marketContext.timeFrame == _Period) {
-                    //max = 1;
-                    //isBreak = true;
-                }
-                
                 for (int i = 0; i < max; i++) {   // 再分析
                     // 同じ方向
                     if (!elliotWithHigher.reanalyzeSameTrend()) {
@@ -471,11 +395,6 @@ private:
                         break;
                     }
                     
-                    if (isBreak) {
-                        //break;
-                    }
-                    
-                    
                     // 左側を再分析
                     if (!elliotWithHigher.reanalyzeNarrowWaveLeft()) {
                         delete elliotWithHigher;
@@ -489,11 +408,6 @@ private:
                     if (elliotWithHigher.waveList.Total() == 1) {    // 波動の数が1の場合終了
                         break;
                     }
-                    
-                    if (isBreak) {
-                        //break;
-                    }
-                    
                     
                     // 右側を再分析
                     if (!elliotWithHigher.reanalyzeNarrowWaveRight()) {
@@ -564,11 +478,9 @@ private:
         CArrayObj fromZigZagPointList;
         ZigZagPointUtil::copyZigZagPointList(wave0.zigZagPointList, fromZigZagPointList);
         
-        // シフトするrateの取得
         double rate = this.getBeforeRate(fromZigZagPointList, wave0.isUptrend);
         double shiftRate = RateUtil::pipsToPrice(10, this.marketContext);  // 10pipsずらす
         
-        //if (this.isBuy) {
         if (wave0.isUptrend) {
             rate += shiftRate;
         } else {
@@ -576,7 +488,6 @@ private:
         }
         
         
-        // ポイントずらして分析
         ZigZagPoint *zigZagPointLast = ZigZagPointUtil::getLastNode(fromZigZagPointList);
         double workRate = zigZagPointLast.rate;
         
@@ -606,7 +517,6 @@ private:
         zigZagPointLast.rate = workRate;
         
         
-        // 旧リストからコピー
         for (int i = 1; i < workWaveList.Total(); i++) {
             Wave *wave = workWaveList.At(i);
             Wave *waveClone = wave.clone();
@@ -617,7 +527,7 @@ private:
         }
         
         
-        this.analyzeWave(); // 全体再分析
+        this.analyzeWave();
         
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
@@ -647,7 +557,6 @@ private:
         for (int i = 1; i < total - 1; i++) {
             ZigZagPoint *zigZagPoint = fromZigZagPointList.At(i);
             
-            //if (this.isBuy) {
             if (isUptrend) {
                 if (zigZagPoint.rate > rate) {
                     rate = zigZagPoint.rate;
@@ -671,8 +580,6 @@ private:
      * @return 最新Waveを追加できた場合true
      */
     bool addWave0() {
-        //this.logger.setLevel(LOG_DEBUG);
-        
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
@@ -713,8 +620,6 @@ private:
                 
                 Wave *wave0 = workWaveList.At(0);
                 
-                //this.getWaveWithHigher(workZigZagPointList, !wave0.isMotive, !wave0.isUptrend, true);
-                
                 if (!this.getWaveWithHigher(workZigZagPointList, !wave0.isMotive, !wave0.isUptrend, true)) {
                     this.logger.error(__FUNCTION__, "getWaveWithHigher false");
                     
@@ -723,8 +628,6 @@ private:
                     return false;
                 }
                 
-                
-                // 旧リストからコピー
                 for (int i = 0; i < workWaveList.Total(); i++) {
                     Wave *wave = workWaveList.At(i);
                     Wave *waveClone = wave.clone();
@@ -742,8 +645,6 @@ private:
         }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
-        
-        //this.logger.setLevel(LOG_INFO);
         
         return true;
     }
@@ -805,9 +706,6 @@ private:
         elliotSubwaves.setSubwaves();
         
         WaveUtil::copyWaveList(elliotSubwaves.waveList, this.waveList);
-        
-        //this.analyzeWave();
-        
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     

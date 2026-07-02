@@ -110,7 +110,6 @@ public:
      */
     void analyze() {
         this.setElliotLabel();
-        // this.setHighLow();
         this.setPipsAndWaveBarsFromStart();
         this.setFibonacci();
         this.setFibonacciExpansion();

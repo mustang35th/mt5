@@ -100,8 +100,6 @@ public:
     static bool getZigZagPointWithHigher(Logger &logger, CArrayObj &orgZigZagPointList, int start, 
                                         ZigZagPoint &zigZagPointHigherLeft, ZigZagPoint &zigZagPointHigherRight, 
                                         CArrayObj &zigZagPointList, bool isUpTrend, int &endIndex) {
-        //logger.setLevel(LOG_DEBUG);
-        
         LogUtil::printMethodStart(logger, __FUNCTION__);
         
         logger.debug(__FUNCTION__, "zigZagPointHigherLeft <<<<<");
@@ -117,8 +115,6 @@ public:
             TimeUtil::formatYyyymmddhhmiss(datetimeEnd)));
         
         logger.debug(__FUNCTION__, StringFormat("start = %d", start));
-        
-        //int endIndex = 0;
         
         int orgTotal = orgZigZagPointList.Total();
         
@@ -167,15 +163,9 @@ public:
         }
         
         
-        //LogUtil::printZigZagPointList(logger, __FUNCTION__, zigZagPointList);
-                
         logger.debug(__FUNCTION__, StringFormat("endIndex = %d", endIndex));
         LogUtil::printMethodEnd(logger, __FUNCTION__, true);
-        
-        //logger.setLevel(LOG_INFO);
-        
-        //return endIndex;
-        
+
         return true;
     }
 
@@ -232,35 +222,6 @@ private:
         
         return hasTwoLeftPoints;
     }
-    
-    // 上位足のポイント内に、下位足のポイントが2つあるか判定
-    // 2つある場合、ポイント追加しない場合あり
-    /*static bool isPointTwoTimes(Point &upperPointLeft, CList &pointList, Point &point, bool isUpTrend) {
-        bool isPointTwoTimes = false;
-        
-        // ポイントが上位足左側の中に収まる場合
-        if (upperPointLeft.time <= point.time && point.time <= upperPointLeft.nextTime) {
-            Point *pointBefore = pointList.GetLastNode();
-            
-            if (CheckPointer(pointBefore) != POINTER_INVALID) {
-                // １つ前のポイントが上位足左側の中に収まる場合
-                if (upperPointLeft.time <= pointBefore.time && pointBefore.time <= upperPointLeft.nextTime) {
-                    
-                    if (isUpTrend) {
-                        if (point.isTop) {
-                            isPointTwoTimes = true;
-                        }
-                    } else {
-                        if (!point.isTop) {
-                            isPointTwoTimes = true;
-                        }
-                    }
-                }
-            }
-        }
-        
-        return isPointTwoTimes;
-    }*/
 };    
 
 

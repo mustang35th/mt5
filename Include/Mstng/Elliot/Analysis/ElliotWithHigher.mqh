@@ -104,34 +104,6 @@ public:
         }
 
 
-        /*int count = 0;
-
-        while (position < this.orgZigZagPointList.Total()) {
-            int startPosition = 0;
-
-            if (position > 0) {
-                startPosition = position - 1;
-            }
-
-            this.getWave(startPosition, this.isMotive);
-
-            Wave *wave = WaveUtil::getLastNode(this.waveList);
-            position = startPosition + wave.zigZagPointList.Total();
-
-            this.logger.debug(__FUNCTION__, StringFormat("ループ内 position = %d", position));
-
-            if (++count > 9) {  // ループ10回で終了
-                this.logger.info(__FUNCTION__, "ループ10回で終了");
-
-                break;
-            }
-        }
-
-        this.analyzeWave();*/
-
-        //LogUtil::printWaveList(this.logger, __FUNCTION__, this.waveList);
-
-
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 
         return true;
@@ -148,7 +120,6 @@ public:
 
         ElliotReanalysisSameTrend *elliotReanalysisSameTrend = new ElliotReanalysisSameTrend(this.marketContext, this.waveList);
 
-        //elliotReanalysisSameTrend.analyze();
 
         if (!elliotReanalysisSameTrend.analyze()) {
             delete elliotReanalysisSameTrend;
@@ -180,7 +151,6 @@ public:
 
         ElliotReanalysisNarrowWaveLeft *elliotReanalysisNarrowWaveLeft = new ElliotReanalysisNarrowWaveLeft(this.marketContext, this.waveList);
 
-        //elliotReanalysisNarrowWaveLeft.analyze();
 
         if (!elliotReanalysisNarrowWaveLeft.analyze()) {
             delete elliotReanalysisNarrowWaveLeft;
@@ -212,7 +182,6 @@ public:
 
         ElliotReanalysisNarrowWaveRight *elliotReanalysisNarrowWaveRight = new ElliotReanalysisNarrowWaveRight(this.marketContext, this.waveList);
 
-        //elliotReanalysisNarrowWaveRight.analyze();
 
         if (!elliotReanalysisNarrowWaveRight.analyze()) {
             delete elliotReanalysisNarrowWaveRight;

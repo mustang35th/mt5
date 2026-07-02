@@ -162,13 +162,10 @@ public:
         zigZagPoint.subElliotIndex = this.subElliotIndex;
         zigZagPoint.subElliotLabel = this.subElliotLabel;
 
-        //zigZagPoint.existsOrg = this.existsOrg;
         zigZagPoint.orgElliotIndex = this.orgElliotIndex;
         zigZagPoint.orgElliotLabel = this.orgElliotLabel;
 
         zigZagPoint.isCorrect = this.isCorrect;
-        
-        //zigZagPoint.parentWave = this.parentWave;
         
         return zigZagPoint;
     }
@@ -296,12 +293,9 @@ public:
     string getTextSimple() {
         string text = "";
         
-        //text += this.getTextAddedPoint();
-        
         if (this.isAddedPoint) {
             text += "★";
         } else {
-            //text += this.getTextUnconfirmed();
         }
         
         if (this.parentWave != NULL) {
@@ -328,15 +322,6 @@ public:
         return text;
     }
     
-    /*string getTextUnconfirmed() {
-        string text = "";
-        
-        if (this.parentWave.isConfirmed) {
-            text += "未";
-        }
-        
-        return text;
-    }*/
     
     /**
      * 上位波動と下位波動を結合したラベルを取得する。
@@ -489,7 +474,6 @@ public:
         text += StringFormat("subElliotIndex=%s\n", this.subElliotIndex);
         text += StringFormat("subElliotLabel=%s\n", this.subElliotLabel);
         
-        //text += StringFormat("existsOrg=%s\n", this.existsOrg ? "true" : "false");
         text += StringFormat("orgElliotIndex=%d\n", this.orgElliotIndex);
         text += StringFormat("orgElliotLabel=%s\n", this.orgElliotLabel);
         

@@ -155,10 +155,6 @@ public:
         
         this.logger.debug(__FUNCTION__, StringFormat("zigZagPointList.Total = %d", this.zigZagPointList.Total()));
         
-        //ZigZagPoint *zigZagPoint = this.zigZagPointList.At(this.zigZagPointList.Total() - 1);
-        
-        //this.logger.debug(__FUNCTION__, "zigZagPointList Last = " + zigZagPoint.toString());
-        
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         if (this.zigZagPointList.Total() == 0) {

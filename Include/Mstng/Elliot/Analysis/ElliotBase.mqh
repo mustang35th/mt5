@@ -152,9 +152,6 @@ protected:
             wave.analyze();
         }
         
-        // 重複波動の削除
-        //this.deleteDuplicateWave();
-        
         // 確定処理
         if (waveTotal == 1) {
             Wave *wave0 = this.waveList.At(0);
@@ -383,8 +380,6 @@ protected:
                 startPosition = position - 1;
             }
             
-            //this.getWave(startPosition, isMotive);
-            
             if (!this.getWave(startPosition, isMotive)) {
                 this.logger.error(__FUNCTION__, "getWave false");
                 
@@ -406,8 +401,6 @@ protected:
                 return false;
             }
         }
-        
-        //this.logger.setLevel(LOG_INFO);   // 部分デバッグ用
         
         this.analyzeWave();
         
@@ -527,8 +520,6 @@ protected:
      * @return 判定起点を取得できた場合true
      */
     bool isUptrend(int zigZagIndex, bool &isUptrend) {
-        //this.logger.setLevel(LOG_DEBUG);
-        
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
@@ -573,8 +564,6 @@ protected:
         
         this.logger.debug(__FUNCTION__, StringFormat("isUptrend=%s", (string)isUptrend));
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
-        
-        //this.logger.setLevel(LOG_INFO);
         
         return true;
     }

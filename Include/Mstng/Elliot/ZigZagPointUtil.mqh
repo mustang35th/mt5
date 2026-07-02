@@ -111,8 +111,6 @@ public:
      * @return 一致するポイント。存在しない場合NULL
      */
     static ZigZagPoint *getFromBarIndex(CArrayObj &fromZigZagPointList, int barIndex, bool isPeak) {
-        //return fromZigZagPointList.At(fromZigZagPointList.Total() - 1);
-        
         int total = fromZigZagPointList.Total();
 
         for (int i = 0; i < total; i++) {
@@ -184,8 +182,6 @@ public:
                 ZigZagPointUtil::addPoint(toZigZagPointList, zigZagPoint);
             }
         }
-        
-        //LogUtil::printZigZagPointList(logger, __FUNCTION__, toZigZagPointList);
         
         LogUtil::printMethodEnd(logger, __FUNCTION__, true);
     }

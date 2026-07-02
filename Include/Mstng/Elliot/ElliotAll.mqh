@@ -162,8 +162,6 @@ public:
         uint startCount = GetTickCount();
         
         this.tradeTimeInfo.setData(TimeCurrent());
-        //this.time = TimeCurrent();
-        //this.timeJapan = TimeJapanUtil::getJapanTime(time);
         
         this.todayRate.update(this.marketContext);
         
@@ -179,9 +177,6 @@ public:
             this.lossCut.setData(this.elliotCurrent, this.todayRate);
         }
         
-        /*if (!this.marketActivityAnalyzer.update()) {
-            Print("MarketActivityAnalyzer update failed.");
-        }*/
         
         this.logger.debug(__FUNCTION__, this.getCsv());
         
@@ -527,7 +522,6 @@ private:
             elliotUppaer = this.getElliot(fromTimeFrame, 1);
         }
         
-        //elliot.analyze(elliotUppaer, oscillatorHandlePool); // 実行結果の判定必要
         
         if (!elliot.analyze(elliotUppaer, oscillatorHandlePool)) {
             this.logger.error(__FUNCTION__, StringFormat("elliot.analyze false timeFrame = %s", TimeUtil::convertTimeFrameToString(fromTimeFrame)));
