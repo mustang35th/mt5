@@ -625,7 +625,13 @@ private:
         return true;
     }
     
-    // 前までから高安値を取得
+    /**
+     * 直近ポイント群から、現在方向に対する高値/安値を取得する。
+     *
+     * @param fromZigZagPointList 取得対象のポイント列
+     * @param isUptrend true: 上昇トレンド方向、false: 下降トレンド方向
+     * @return 方向上の高値または低値
+     */
     double getBeforeRate(CArrayObj &fromZigZagPointList, bool isUptrend) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         

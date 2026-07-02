@@ -58,7 +58,7 @@ public:
      * シンボルと時間足を初期化する。
      *
      * @param fromSymbolName 分析対象シンボル
-    * @param fromTimeFrame 分析対象時間足
+     * @param fromTimeFrame 分析対象時間足
      */
     void init(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -88,7 +88,7 @@ public:
      * @param fromSymbolName 分析対象シンボル
      * @param fromTimeFrame 分析対象時間足
      * @param fromIsBuy 売買方向。true: BUY、false: SELL
-    * @param fromBuySellLabel 売買方向表示用ラベル
+     * @param fromBuySellLabel 売買方向表示用ラベル
      */
     void init(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, bool fromIsBuy, string fromBuySellLabel) {
         MarketContext context(fromSymbolName, fromTimeFrame);
