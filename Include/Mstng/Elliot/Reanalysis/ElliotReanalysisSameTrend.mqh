@@ -23,7 +23,7 @@ public:
      * @param fromTimeFrame 分析対象時間足
      * @param fromWaveList 再分析対象Wave一覧
      */
-    ElliotReanalysisSameTrend(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, CArrayObj &fromWaveList){
+    ElliotReanalysisSameTrend(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, CArrayObj &fromWaveList) {
         MarketContext context(fromSymbolName, fromTimeFrame);
         this.initialize(context, fromWaveList);
     }
@@ -38,23 +38,18 @@ public:
         this.initialize(fromMarketContext, fromWaveList);
     }
     
-    ~ElliotReanalysisSameTrend(){
+    ~ElliotReanalysisSameTrend() {
     }
     
     /**
-     * 同方向で連続するWaveを検索して最初の1組を再分析する。
+     * 同方向のWaveを検索して最初の1組を再分析する。
      *
-     * @return 再分析に成功した場合true。対象がない場合もtrue
+     * @return 再分析に成功した場合はtrue。対象がない場合はスキップしてtrue
      */
     bool analyze() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-                
-        /*
-        Wave0と1が対象
-        同じトレンドの場合
-        
-        Wave1の最後の高値・安値の間は省く
-        */
+
+        // Wave0（新しい側）とWave1（1つ前）が同一トレンドの場合のみ処理対象とする。
         
         int waveTotal = this.waveList.Total();
         
@@ -68,8 +63,6 @@ public:
         
         for (int i = 0; i < waveTotal - 1; i++) {
             if (this.isSameTrendBeforeWave(i)) {
-                //this.reanalyze(i);
-                
                 if (!this.reanalyze(i)) {
                     this.logger.error(__FUNCTION__, "reanalyze false");
                     LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
@@ -116,22 +109,12 @@ private:
         
         this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
         
-        /*
-        
-        前回の波動の最後から高値・安値取得
-        
-        Wave0,1削除
-        ↓
-        Wave0追加
-        */
+        // 前Waveの終端高値・安値を取得し、Wave0とWave1を統合する前提で再構築する。
                 
         double high;
         double low;
         
         this.setHighLowAtBeforeWave(waveIndex, high, low);
-        
-        
-        //this.excludePoint(waveIndex, high, low);
         
         if (!this.excludePoint(waveIndex, high, low)) {
             this.logger.error(__FUNCTION__, "excludePoint false");
@@ -178,7 +161,8 @@ private:
             } else {
                 double rate = zigZagPoint.rate;
                 
-                if (rate > high || low > rate) {    // 高値安値超えたら追加
+                // 前Wave終端レンジを超えた時点から、ポイントを統合リストへ移送する
+                if (rate > high || low > rate) {
                     isBreak = true;
                     
                     ZigZagPointUtil::addPoint(analyzedZigZagPointList, zigZagPoint);
@@ -188,16 +172,13 @@ private:
             }
         }
         
-        if (addCount == 0) {    // 追加ポイントがない場合は最後のみ追加
+        if (addCount == 0) {
+            // 追加ポイントがない場合は、対象Waveの最終ポイントだけを必ず保持する
             ZigZagPoint *zigZagPoint = ZigZagPointUtil::getLastNode(fromZigZagPointList);
             
             ZigZagPointUtil::addPoint(analyzedZigZagPointList, zigZagPoint);
         }
-        
-        //LogUtil::printZigZagPointList(this.logger, __FUNCTION__, analyzedZigZagPointList);
-        
-        
-        CArrayObj waveListNew;  // 再作成のリスト
+        CArrayObj waveListNew;  // 再構築用Wave一覧
         
         // 右側波動のコピー
         for (int i = 0; i < waveIndex; i++) {
@@ -221,8 +202,6 @@ private:
         
         WaveUtil::copyWaveList(waveListNew, this.waveList);
         
-        
-        //this.makeZigZagPointListAndReanalyze();
         
         if (!this.makeZigZagPointListAndReanalyze()) {
             this.logger.error(__FUNCTION__, "makeZigZagPointListAndReanalyze false");

@@ -44,7 +44,7 @@ public:
     /**
      * 右側基準の狭いWaveを検索して最初の1件を再分析する。
      *
-     * @return 再分析に成功した場合true。対象がない場合もtrue
+     * @return 再分析に成功した場合はtrue。対象がない場合はスキップしてtrue
      */
     bool analyze() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -60,7 +60,8 @@ public:
             return true;
         }
         
-        for (int i = 1; i < waveTotal; i++) {   // 最新は対象外のため1から開始
+        // 最新は未確定のため対象外。最古側を除外し、1から走査する。
+        for (int i = 1; i < waveTotal; i++) {
             if (this.isTarget(i)) {
                 if (!this.reanalyze(i)) {
                     this.logger.error(__FUNCTION__, "reanalyze false");
@@ -115,9 +116,15 @@ private:
         Wave *waveCurrent = this.waveList.At(waveIndex);
         Wave *waveNext = this.waveList.At(waveIndex - 1);
         
-        if (!this.isSameTrendBeforeWave(waveIndex - 1)  // 右側と比較するため-1
-                && waveCurrent.zigZagPointList.Total() > 2
-                && waveNext.zigZagPointList.Total() == 2) {   // 右側はポイント2個のみ対象
+        // 右側隣接Waveとの比較を行うため、waveIndex-1を参照する。
+        bool isTargetWave = !this.isSameTrendBeforeWave(waveIndex - 1);
+        bool isCurrentPointCountValid = waveCurrent.zigZagPointList.Total() > 2;
+        // 右側隣接Waveは2ポイントのみを対象とする。
+        bool isNextPointCountValid = waveNext.zigZagPointList.Total() == 2;
+
+        if (isTargetWave
+                && isCurrentPointCountValid
+                && isNextPointCountValid) {
             double high;
             double low;
             
@@ -245,16 +252,12 @@ private:
         
         WaveUtil::copyWaveList(waveListNew, this.waveList);        
         
-        //this.makeZigZagPointListAndReanalyze();
-        
         if (!this.makeZigZagPointListAndReanalyze()) {
             this.logger.error(__FUNCTION__, "makeZigZagPointListAndReanalyze false");
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             
             return false;
         }
-        
-        //this.analyzeWave();
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         

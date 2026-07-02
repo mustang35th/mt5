@@ -170,12 +170,7 @@ protected:
         }
         
         
-        /*if (CheckPointer(wave1) != POINTER_INVALID) {
-            wave0.setKakutei(wave1);
-        }
-        
-        // 再分析後のポイント設定
-        this.setAnalyzedZigZagPoint();*/
+        // 再分析後のポイント設定は既存実装で未使用のため現時点は実施しない。
         
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
@@ -370,14 +365,8 @@ protected:
         ZigZagPoint *zigZagPoint0 = this.zigZagPointList.At(0);
         ZigZagPoint *zigZagPointLast = this.zigZagPointList.At(total - 1);
         
-        /*if (zigZagPoint0.barIndex == 135) {
-            this.logger.setLevel(LOG_DEBUG);
-        }*/
-        
-        /* D1の3波が長くて、H4の波動が複数のWaveとなるため見直したい★★★★★
-        if (TimeUtil::formatYyyymmddhhmi(zigZagPoint0.barTime) == "202507280400") {
-            this.logger.setLevel(LOG_DEBUG);
-        }*/
+        // D1の3波が長くてH4の波動が複数のWaveとなるケースに備えたデバッグ条件は、
+        // 運用時には外部の一時デバッグフラグで制御する。
         
         this.logger.debug(__FUNCTION__, StringFormat("fromPosition = %d", fromPosition));
         this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
@@ -650,34 +639,6 @@ protected:
         ZigZagPointUtil::makeZigZagPointListFromWaveList(this.logger, this.waveList, this.zigZagPointList);
         
         LogUtil::printZigZagPointList(this.logger, __FUNCTION__, this.zigZagPointList);
-        
-        /*int waveTotal = this.waveList.Total();
-        bool isMotive = false;
-        
-        for (int i = 0; i < waveTotal ; i++) {
-            Wave *wave = this.waveList.At(i);
-            CArrayObj fromZigZagPointList = wave.zigZagPointList;
-            
-            if (i == 0) {
-                isMotive = wave.isMotive;
-            }
-            
-            int total = fromZigZagPointList.Total();
-            
-            for (int j = total - 1; j > 0; j--) {
-                ZigZagPoint *zigZagPoint = fromZigZagPointList.At(j);
-                
-                ZigZagPointUtil::addPoint(this.orgZigZagPointList, zigZagPoint);
-            }
-            
-            if (i == waveTotal - 1) {   // 先頭のWaveはPoint0を追加要
-                ZigZagPoint *zigZagPoint = fromZigZagPointList.At(0);
-                
-                ZigZagPointUtil::addPoint(this.orgZigZagPointList, zigZagPoint);
-            }
-        }
-        
-        LogUtil::printZigZagPointList(this.logger, __FUNCTION__, this.orgZigZagPointList);*/
         
         this.waveList.Clear();
         

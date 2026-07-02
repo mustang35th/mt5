@@ -44,7 +44,7 @@ public:
     /**
      * 左側基準の狭いWaveを検索して最初の1件を再分析する。
      *
-     * @return 再分析に成功した場合true。対象がない場合もtrue
+     * @return 再分析に成功した場合はtrue。対象がない場合はスキップしてtrue
      */
     bool analyze() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -62,8 +62,6 @@ public:
         
         for (int i = 0; i < waveTotal - 1; i++) {
             if (this.isTarget(i)) {
-                //this.reanalyze(i);
-                
                 if (!this.reanalyze(i)) {
                     this.logger.error(__FUNCTION__, "reanalyze false");
                     
@@ -200,9 +198,6 @@ private:
         
         
         WaveUtil::copyWaveList(waveListNew, this.waveList);
-        
-        
-        //this.makeZigZagPointListAndReanalyze();
         
         if (!this.makeZigZagPointListAndReanalyze()) {
             this.logger.error(__FUNCTION__, "makeZigZagPointListAndReanalyze false");
