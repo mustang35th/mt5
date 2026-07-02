@@ -162,7 +162,7 @@ public:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト
      * @param count BUY方向は正、SELL方向は負の継続件数
-     * @return 取得できた場合true
+     * @return 取得できた場合は true
      */
     bool getTrendCount(MarketContext &fromMarketContext, int &count) {
         this.initializeMarketContext(fromMarketContext);
@@ -289,7 +289,7 @@ public:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト
      * @param count プラス方向は正、マイナス方向は負の継続件数
-     * @return 取得できた場合true
+     * @return 取得できた場合は true
      */
     bool getCrossCount(MarketContext &fromMarketContext, int &count) {
         this.initializeMarketContext(fromMarketContext);
@@ -363,7 +363,7 @@ public:
      * @param shiftValue シフト
      * @param ema30Value EMA30値
      * @param ema60Value EMA60値
-     * @return true: 取得成功
+     * @return 取得できた場合は true
      */
     bool getEmaValues(
         string fromSymbolName,
@@ -384,7 +384,7 @@ public:
      * @param shiftValue シフト
      * @param ema30Value EMA30値
      * @param ema60Value EMA60値
-     * @return 取得できた場合true
+     * @return 取得できた場合は true
      */
     bool getEmaValues(
         MarketContext &fromMarketContext,
@@ -476,7 +476,7 @@ private:
      * 市場コンテキストを使用してGMMAハンドルを初期化する。
      *
      * @param fromMarketContext 分析対象の市場コンテキスト
-     * @return 初期化できた場合true
+     * @return 初期化できた場合は true
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.gmmaHandlePool != NULL) {

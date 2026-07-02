@@ -111,7 +111,7 @@ public:
      * @param timeFrameValue 時間足
      * @param shiftValue シフト
      * @param atrValueResult ATR価格値
-     * @return true: 取得成功
+     * @return 取得できた場合は true
      */
     bool getAtrValue(
         const string symbolNameValue,
@@ -130,7 +130,7 @@ public:
      * @param fromMarketContext ATR取得対象の市場コンテキスト
      * @param shiftValue シフト
      * @param atrValueResult ATR価格値
-     * @return true: 取得成功
+     * @return 取得できた場合は true
      */
     bool getAtrValue(
         MarketContext &fromMarketContext,
@@ -184,7 +184,7 @@ public:
      * @param timeFrameValue 時間足
      * @param shiftValue シフト
      * @param atrPipsResult ATR pips値
-     * @return true: 取得成功
+     * @return 取得できた場合は true
      */
     bool getAtrPips(
         const string symbolNameValue,
@@ -203,7 +203,7 @@ public:
      * @param fromMarketContext ATR取得対象の市場コンテキスト
      * @param shiftValue シフト
      * @param atrPipsResult ATR pips値
-     * @return true: 取得成功
+     * @return 取得できた場合は true
      */
     bool getAtrPips(
         MarketContext &fromMarketContext,
@@ -258,7 +258,7 @@ private:
      *
      * @param symbolNameValue シンボル名
      * @param timeFrameValue 時間足
-     * @return true: 初期化成功
+     * @return 初期化できた場合は true
      */
     bool ensureInitialized(const string symbolNameValue, const ENUM_TIMEFRAMES timeFrameValue) {
         MarketContext context(symbolNameValue, timeFrameValue);
@@ -270,7 +270,7 @@ private:
      * 市場コンテキストを使用して初期化を確認する。
      *
      * @param fromMarketContext 初期化対象の市場コンテキスト
-     * @return true: 初期化成功
+     * @return 初期化できた場合は true
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.averageTrueRangeHandlePool == NULL) {

@@ -36,7 +36,7 @@ public:
     /**
      * プラス判定
      *
-     * @return プラスの場合true
+     * @return プラスの場合は true
      */
     bool isPlus() {
         return this.count > 0;

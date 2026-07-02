@@ -110,7 +110,7 @@ public:
      * @param fromMarketContext 取得対象の市場コンテキスト
      * @param start 取得開始シフト
      * @param count クロス継続数
-     * @return 取得に成功した場合true
+     * @return 取得に成功した場合は true
      */
     bool getCrossCount(MarketContext &fromMarketContext, int start, int &count) {
         this.initializeMarketContext(fromMarketContext);
@@ -258,7 +258,7 @@ private:
      * 市場コンテキストを使用してハンドルを初期化する。
      *
      * @param fromMarketContext 初期化対象の市場コンテキスト
-     * @return 初期化できた場合true
+     * @return 初期化できた場合は true
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.stochasticHandlePool == NULL) {

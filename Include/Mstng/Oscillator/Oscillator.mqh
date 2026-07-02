@@ -163,7 +163,7 @@ public:
      * 3本のMain0値から詳細な並び順ENUMを設定する。
      * 詳細状態は stochasticMainOrder だけで管理する。
      *
-     * @param isBuyValue BUY判定の場合true
+     * @param isBuyValue BUY判定の場合は true
      */
     void setStochasticMainOrderFlag(const bool isBuyValue) {
         this.stochasticMainOrder = this.determineStochasticMainOrder(
@@ -209,7 +209,7 @@ public:
      * @param fromTimeFrame 分析対象時間足
      * @param fromDigits 小数桁数
      * @param oscillatorHandlePool Oscillatorハンドルプール
-     * @return 更新に成功した場合true
+     * @return 更新に成功した場合は true
      */
     bool update(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, int fromDigits, OscillatorHandlePool *oscillatorHandlePool) {
         MarketContext context(
@@ -227,7 +227,7 @@ public:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト
      * @param oscillatorHandlePool Oscillatorハンドルプール
-     * @return 更新に成功した場合true
+     * @return 更新に成功した場合は true
      */
     bool update(MarketContext &fromMarketContext, OscillatorHandlePool *oscillatorHandlePool) {
         this.resetValues();
@@ -347,7 +347,7 @@ public:
      *
      * SがLより上にある状態をBUY方向として扱う。
      *
-     * @return BUY方向の場合true
+     * @return BUY方向の場合は true
      */
     bool isBuyStochasticMainOrder() {
         return this.isBuyStochasticMainOrder(this.stochasticMainOrder);
@@ -359,7 +359,7 @@ public:
      * SがLより上にある状態をBUY方向として扱う。
      *
      * @param orderValue ストキャスMain0並び順
-     * @return BUY方向の場合true
+     * @return BUY方向の場合は true
      */
     bool isBuyStochasticMainOrder(const ENUM_STOCHASTIC_MAIN_ORDER orderValue) {
         return orderValue == STOCH_MAIN_ORDER_S_M_L
@@ -372,7 +372,7 @@ public:
      *
      * LがSより上にある状態をSELL方向として扱う。
      *
-     * @return SELL方向の場合true
+     * @return SELL方向の場合は true
      */
     bool isSellStochasticMainOrder() {
         return this.isSellStochasticMainOrder(this.stochasticMainOrder);
@@ -384,7 +384,7 @@ public:
      * LがSより上にある状態をSELL方向として扱う。
      *
      * @param orderValue ストキャスMain0並び順
-     * @return SELL方向の場合true
+     * @return SELL方向の場合は true
      */
     bool isSellStochasticMainOrder(const ENUM_STOCHASTIC_MAIN_ORDER orderValue) {
         return orderValue == STOCH_MAIN_ORDER_M_L_S
@@ -506,7 +506,7 @@ public:
     /**
      * EMA200がBUY方向か
      *
-     * @return BUY方向の場合true
+     * @return BUY方向の場合は true
      */
     bool isEma200Buy() {
         return this.ema200.isBuy;
@@ -515,7 +515,7 @@ public:
     /**
      * EMA200がSELL方向か
      *
-     * @return SELL方向の場合true
+     * @return SELL方向の場合は true
      */
     bool isEma200Sell() {
         return this.ema200.isSell;
@@ -658,7 +658,7 @@ private:
      * EMA200設定
      *
      * @param oscillatorHandlePool オシレーターハンドルプール
-     * @return true: 設定成功
+     * @return 設定できた場合は true
      */
     bool setEma200(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
@@ -748,7 +748,7 @@ private:
      * ATR14設定
      *
      * @param oscillatorHandlePool オシレーターハンドルプール
-     * @return true: 設定成功
+     * @return 設定できた場合は true
      */
     bool setAtr14(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
