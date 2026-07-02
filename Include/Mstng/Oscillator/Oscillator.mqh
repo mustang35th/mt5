@@ -52,13 +52,16 @@ public:
     /** 分析対象の市場コンテキスト */
     MarketContext marketContext;
 
-    /** 互換用の小数桁数 */
-    
+    /** 短期ストキャス状態 */
     StochasticStatus stochasticShort;
+    /** 中期ストキャス状態 */
     StochasticStatus stochasticMiddle;
+    /** 長期ストキャス状態 */
     StochasticStatus stochasticLong;
 
+    /** GMMAのトレンド継続カウント */
     int gmmaTrendCount;
+    /** GMMAのトレンド転換クロスカウント */
     int gmmaCrossCount;
 
     /** EMA30現在値 */
@@ -76,8 +79,11 @@ public:
     /** ATR14 pips値 */
     double atr14;
 
+    /** ストキャス/GMMAの総合判定値（売買での補助指標） */
     int oscillatorCount;
+    /** BUY判定フラグ */
     bool isBuy;
+    /** 3本ストキャスMain0の並び順 */
     ENUM_STOCHASTIC_MAIN_ORDER stochasticMainOrder;
     
     Oscillator() {
@@ -108,6 +114,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * ストキャス/GMMAを用いて売買方向フラグとoscillatorCountを設定します。
+     */
     void setBuySell() {
         this.isBuy = false;
         int plusCount = 0;
@@ -181,6 +190,12 @@ public:
             this.convertStochasticMainOrderLabel(this.stochasticMainOrder)));
     }
 
+    /**
+     * CSV列を生成します。
+     *
+     * @param isDetail 詳細列を含める場合は true
+     * @return CSV文字列
+     */
     string getCsv(bool isDetail = false) {
         string csv = "";
 
@@ -273,6 +288,11 @@ public:
         return true;
     }
 
+    /**
+     * 解析結果を1行文字列に整形して返します。
+     *
+     * @return 文字列表現
+     */
     string toString() {
         string result = "";
         result = "stochasticShortCount=" + this.stochasticShort.getCountText();
@@ -537,6 +557,9 @@ private:
         this.ema200.setMarketContext(this.marketContext);
     }
 
+    /**
+     * 内部状態を初期化します。
+     */
     void resetValues() {
         this.stochasticShort.resetValues();
         this.stochasticMiddle.resetValues();
@@ -593,6 +616,12 @@ private:
         return this.ema200.getCsv() + ",";
     }
 
+    /**
+     * GMMA情報（トレンド/クロス/EMA30,60）を更新します。
+     *
+     * @param oscillatorHandlePool ハンドルプール
+     * @return 更新できた場合は true
+     */
     bool setGmma(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
         if (oscillatorHandlePool == NULL) {
@@ -793,24 +822,50 @@ private:
         return true;
     }
 
+    /**
+     * 短期ストキャスの更新を実行します。
+     *
+     * @param oscillatorHandlePool ハンドルプール
+     * @return 更新できた場合は true
+     */
     bool setStochasticShort(OscillatorHandlePool *oscillatorHandlePool) {
         return this.setStochasticCommon(oscillatorHandlePool.getStochasticShortHandlePool(),
                                         this.stochasticShort,
                                         "Short");
     }
 
+    /**
+     * 中期ストキャスの更新を実行します。
+     *
+     * @param oscillatorHandlePool ハンドルプール
+     * @return 更新できた場合は true
+     */
     bool setStochasticMiddle(OscillatorHandlePool *oscillatorHandlePool) {
         return this.setStochasticCommon(oscillatorHandlePool.getStochasticMiddleHandlePool(),
                                         this.stochasticMiddle,
                                         "Middle");
     }
 
+    /**
+     * 長期ストキャスの更新を実行します。
+     *
+     * @param oscillatorHandlePool ハンドルプール
+     * @return 更新できた場合は true
+     */
     bool setStochasticLong(OscillatorHandlePool *oscillatorHandlePool) {
         return this.setStochasticCommon(oscillatorHandlePool.getStochasticLongHandlePool(),
                                         this.stochasticLong,
                                         "Long");
     }
 
+    /**
+     * ストキャス共通更新処理（Count/Main0/Signal0を取得）を行います。
+     *
+     * @param stochasticHandlePool ストキャスハンドルプール
+     * @param outStatus          出力先ステータス
+     * @param label              ラベル（Short/Middle/Long）
+     * @return 更新できた場合は true
+     */
     bool setStochasticCommon(StochasticHandlePool *stochasticHandlePool,
                              StochasticStatus &outStatus,
                              string label) {
@@ -992,6 +1047,12 @@ private:
         return "NONE";
     }
 
+    /**
+     * 真偽値を PLUS/MINUS ラベルに変換します。
+     *
+     * @param isPlus 判定対象
+     * @return "PLUS" または "MINUS"
+     */
     string convertPlusMinusLabel(bool isPlus) {
         if (isPlus) {
             return "PLUS";
@@ -999,6 +1060,12 @@ private:
         return "MINUS";
     }
 
+    /**
+     * 真偽値を文字列に変換します。
+     *
+     * @param value 判定値
+     * @return "true" または "false"
+     */
     string convertBoolLabel(bool value) {
         if (value) {
             return "true";
@@ -1006,6 +1073,12 @@ private:
         return "false";
     }
 
+    /**
+     * 売買フラグをラベル文字列に変換します。
+     *
+     * @param isBuyValue BUYフラグ
+     * @return "BUY" または "SELL"
+     */
     string convertBuySellLabel(bool isBuyValue) {
         if (isBuyValue) {
             return "BUY";
@@ -1013,6 +1086,7 @@ private:
         return "SELL";
     }
 };
+
 
 
 
