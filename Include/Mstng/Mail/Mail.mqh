@@ -9,8 +9,17 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
 
+/**
+ * メール送信のエントリを提供するクラス。
+ */
 class Mail {
 public:
+    /**
+     * メール内容を作成して送信します。
+     *
+     * @param fromElliotAll 解析結果を保持するインスタンス
+     * @param isSendMail     送信可否フラグ
+     */
     static void sendMail(ElliotAll *fromElliotAll, bool isSendMail = false) {
         string title = getTitle(fromElliotAll);
         string body = getBody(fromElliotAll);
@@ -27,6 +36,12 @@ public:
     }
 
 private:
+    /**
+     * メールタイトルを生成します。
+     *
+     * @param fromElliotAll 解析結果を保持するインスタンス
+     * @return メールタイトル文字列
+     */
     static string getTitle(ElliotAll *fromElliotAll) {
         string symbolName = fromElliotAll.marketContext.symbolName;
         string buySellLabel = fromElliotAll.elliotCurrent.buySellLabel;
@@ -35,6 +50,12 @@ private:
         return StringFormat("%s:%s:%s", symbolName, buySellLabel, mailTitile);
     }
     
+    /**
+     * メール本文を生成します。
+     *
+     * @param fromElliotAll 解析結果を保持するインスタンス
+     * @return メール本文文字列
+     */
     static string getBody(ElliotAll *fromElliotAll) {
         string text = "";
         
@@ -57,14 +78,14 @@ private:
         
         // ロスカット
         text += StringFormat("%s\n", fromElliotAll.lossCut.getText());
-	    
-	    // 市場分析
-	    //text += StringFormat("%s\n\n", fromElliotAll.marketActivityAnalyzer.toString());
-	    
-	    // エリオット
-	    text += "エリオット\n";
-	    text += StringFormat("%s\n", fromElliotAll.getText());
-	    
+        
+        // 市場分析
+        //text += StringFormat("%s\n\n", fromElliotAll.marketActivityAnalyzer.toString());
+        
+        // エリオット
+        text += "エリオット\n";
+        text += StringFormat("%s\n", fromElliotAll.getText());
+        
         return text;
     }
 
