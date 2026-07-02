@@ -56,12 +56,13 @@ public:
         
         if (waveTotal < 2) {
             this.logger.debug(__FUNCTION__, "対象外");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
             
             return true;
         }
         
         // 最新は未確定のため対象外。最古側を除外し、1から走査する。
-        for (int i = 1; i < waveTotal; i++) {
+        for (int i = 1; i < waveTotal - 1; i++) {
             if (this.isTarget(i)) {
                 if (!this.reanalyze(i)) {
                     this.logger.error(__FUNCTION__, "reanalyze false");

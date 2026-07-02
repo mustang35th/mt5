@@ -56,6 +56,7 @@ public:
         
         if (waveTotal < 2) {
             this.logger.debug(__FUNCTION__, "対象外");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
             
             return true;
         }
