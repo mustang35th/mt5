@@ -11,12 +11,12 @@
 #define __TIME_JAPAN_UTIL_MQH__
 
 /**
- * 日本時間ユーティリティ
+ * 日本時間ユーティリティ。
  */
 class TimeJapanUtil {
 public:
     /**
-     * サーバー時刻を日本時間へ変換
+     * サーバー時刻を日本時間へ変換します。
      *
      * @param fromDatetimeValue サーバー時刻
      * @return 日本時間
@@ -32,10 +32,10 @@ public:
     }
 
     /**
-     * JST差分時間を取得
+     * JSTとの差分時間（時間）を取得します。
      *
      * @param fromDatetimeValue サーバー時刻
-     * @return JST差分時間Hr
+     * @return JST差分時間（時間）
      */
     static int getJstOffsetHour(const datetime fromDatetimeValue) {
         // 夏時間判定
@@ -49,10 +49,10 @@ public:
     }
 
     /**
-     * 指定時間範囲か判定
+     * 指定時間帯かどうかを判定します。
      *
      * @param fromDatetimeValue サーバー時刻
-     * @return true: 指定時間範囲
+     * @return true の場合、指定時間帯
      */
     static bool isTimeRange(const datetime fromDatetimeValue) {
         // 日本時間取得
@@ -73,10 +73,10 @@ public:
 
 private:
     /**
-     * 夏時間か判定
+     * 夏時間かを判定します。
      *
      * @param fromDatetimeValue サーバー時刻
-     * @return true: 夏時間
+     * @return 夏時間期間内であれば true
      */
     static bool isSummerTime(const datetime fromDatetimeValue) {
         // 年取得
@@ -100,13 +100,13 @@ private:
     }
 
     /**
-     * 指定年月の第n曜日の日付を取得
+     * 指定年月の第 n 曜日を取得します。
      *
      * @param yearValue 年
      * @param monthValue 月
      * @param weekdayValue 曜日
-     * @param nthValue 第n
-     * @return 日
+     * @param nthValue 第 n
+     * @return 日付（1〜31）
      */
     static int getNthWeekdayOfMonth(
         const int yearValue,
@@ -134,7 +134,7 @@ private:
     }
 
     /**
-     * 夏時間開始日時を取得
+     * 夏時間開始日時を取得します。
      *
      * @param yearValue 年
      * @return 夏時間開始日時
@@ -154,7 +154,7 @@ private:
     }
 
     /**
-     * 夏時間終了日時を取得
+     * 夏時間終了日時を取得します。
      *
      * @param yearValue 年
      * @return 夏時間終了日時

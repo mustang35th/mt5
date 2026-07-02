@@ -7,10 +7,9 @@
 #property link      "https://www.mql5.com"
 
 /**
- * @class StringUtil
- * @brief 文字列に関するユーティリティメソッドを提供するクラス。
+ * 文字列に関するユーティリティメソッドを提供するクラス。
  *
- * <p>通貨ペア名の分割など、再利用性の高い文字列処理をまとめます。</p>
+ * 通貨ペア名の分割など、再利用性の高い文字列処理をまとめます。
  */
 class StringUtil {
 public:
@@ -32,7 +31,7 @@ public:
     }
 
     /**
-     * @brief 文字列が空（長さ0）かどうかを判定します。
+     * 文字列が空（長さ0）かどうかを判定します。
      *
      * @param target 判定対象文字列
      * @return 空文字であれば true、それ以外は false
@@ -42,17 +41,17 @@ public:
     }
         
     /**
-     * @brief 通貨ペア名を左右2つの通貨コードに分割します。
+     * 通貨ペア名を左右2つの通貨コードに分割します。
      *
-     * <p>主に "EURUSD" や "USDJPY" のような 6 文字の通貨ペア名を、
-     * 左3文字と右3文字に分割することを想定しています。<br>
-     * 例: "EURUSD" → left="EUR", right="USD"</p>
+     * 主に "EURUSD" や "USDJPY" のような 6 文字の通貨ペア名を、
+     * 左3文字と右3文字に分割することを想定しています。
+     * 例: "EURUSD" → left="EUR", right="USD"。
      *
-     * <p>通貨ペア名が 6 文字以外の場合は分割に失敗し、false を返します。</p>
+     * 6 文字以外の通貨ペア名は分割に失敗し、false を返します。
      *
-     * @param originalCurrencyPairName 元の通貨ペア名（例: "EURUSD"）。
-     * @param leftCurrencyName         分割後の左側（例: "EUR"）。
-     * @param rightCurrencyName        分割後の右側（例: "USD"）。
+     * @param originalCurrencyPairName 元の通貨ペア名（例: "EURUSD"）
+     * @param leftCurrencyName         分割後の左側（例: "EUR"）
+     * @param rightCurrencyName        分割後の右側（例: "USD"）
      *
      * @return 分割に成功した場合は true、想定外の形式で分割できなかった場合は false。
      */
@@ -78,9 +77,9 @@ public:
     }
     
     /**
-     * @brief 整数(1..99)をローマ数字に変換して返します。
+     * 整数(1..99)をローマ数字に変換して返します。
      *
-     * <p>例: 1→"I", 4→"IV", 9→"IX", 40→"XL", 58→"LVIII", 99→"XCIX"</p>
+     * 例: 1→"I", 4→"IV", 9→"IX", 40→"XL", 58→"LVIII", 99→"XCIX"
      *
      * @param value 変換対象（1..99）
      * @return ローマ数字。範囲外(<=0 または >99)は空文字を返します。

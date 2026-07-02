@@ -71,7 +71,7 @@ public:
     /**
      * シンボル名を指定して現在値と当日値幅を取得する。
      *
-     * @param fromSymbolName 取得対象のシンボル名
+     * @param fromSymbolName 取得対象のシンボル名。
      */
     TodayRate(string fromSymbolName) {
         this.initializeValues();
@@ -82,7 +82,7 @@ public:
     /**
      * 市場コンテキストを指定して現在値と当日値幅を取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param fromMarketContext 取得対象の市場コンテキスト。
      */
     TodayRate(MarketContext &fromMarketContext) {
         this.initializeValues();
@@ -111,7 +111,7 @@ public:
      *
      * 日足高値・安値は、コンテキストの時間足にかかわらずPERIOD_D1から取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param fromMarketContext 取得対象の市場コンテキスト。
      */
     void update(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
@@ -121,7 +121,7 @@ public:
     /**
      * シンボル名を使用して最新値を再取得する。
      *
-     * @param fromSymbolName 取得対象のシンボル名
+     * @param fromSymbolName 取得対象のシンボル名。
      */
     void update(string fromSymbolName) {
         MarketContext context(fromSymbolName, PERIOD_D1);
@@ -132,7 +132,7 @@ public:
     /**
      * 保持している価格情報を文字列化する。
      *
-     * @return 価格情報文字列
+     * @return 価格情報文字列。
      */
     string toString() {
         string text = "";
@@ -178,7 +178,7 @@ private:
     /**
      * 市場コンテキストを初期化する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param fromMarketContext 取得対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;

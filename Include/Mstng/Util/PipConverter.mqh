@@ -20,7 +20,7 @@ public:
      * @param fromPips        pips
      * @param fromLotSize ロットサイズ
      * @param fromJpyAmount   円換算結果（出力）
-     * @return 換算成功時はtrue
+     * @return 換算成功時は true。
      */
     static bool tryConvertPipsToJpy(
         MarketContext &fromMarketContext,
@@ -54,7 +54,7 @@ public:
      * @param fromPips       pips
      * @param fromLotSize    ロットサイズ
      * @param fromJpyAmount  円換算結果（出力）
-     * @return 換算成功時はtrue
+     * @return 換算成功時は true。
      */
     static bool tryConvertPipsToJpy(string fromSymbolName, double fromPips, double fromLotSize, double &fromJpyAmount) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
@@ -82,7 +82,7 @@ private:
      * 正規化シンボル名が6文字かどうかを検証する。
      *
      * @param fromNormalizedSymbol 正規化済みシンボル名
-     * @return 6文字なら true
+     * @return 6文字なら true、そうでなければ false。
      */
     static bool isValidSymbol(string fromNormalizedSymbol) {
         return StringLen(fromNormalizedSymbol) == 6;
@@ -118,7 +118,7 @@ private:
      * @param fromQuoteCurrency クォート通貨
      * @param fromQuoteAmount  金額
      * @param fromJpyAmount    換算結果（出力）
-     * @return 変換成功時 true
+     * @return 変換成功時 true、失敗時 false。
      */
     static bool tryConvertQuoteAmountToJpy(
         string fromQuoteCurrency,
@@ -149,7 +149,7 @@ private:
      *
      * @param fromSymbolName シンボル名
      * @param fromBidPrice Bid取得先（出力）
-     * @return Bid取得成功時 true
+     * @return Bid取得成功時 true、失敗時 false。
      */
     static bool tryGetBidPrice(string fromSymbolName, double &fromBidPrice) {
         fromBidPrice = 0.0;

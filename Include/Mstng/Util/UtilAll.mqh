@@ -10,6 +10,9 @@
 #ifndef __MSTNG_UTIL_ALL_MQH__
 #define __MSTNG_UTIL_ALL_MQH__
 
+/**
+ * Util 系の共通ユーティリティを一括で取り込むための集約ヘッダです。
+ */
 #include <Mstng\Draw\DrawUtil.mqh>
 
 #include <Mstng\Elliot\ZigZagPointUtil.mqh>

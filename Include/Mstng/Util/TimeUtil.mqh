@@ -7,20 +7,19 @@
 #property link      "https://www.mql5.com"
 
 /**
- * @class TimeUtil
- * @brief 時間足（ENUM_TIMEFRAMES）に関するユーティリティメソッドを提供するクラス。
+ * 時間足（ENUM_TIMEFRAMES）に関するユーティリティメソッドを提供するクラス。
  *
- * <p>主に ENUM_TIMEFRAMES を「M1」「H1」「D1」などの
- * 人間が読みやすい文字列表現に変換する処理をまとめています。</p>
+ * ENUM_TIMEFRAMES を「M1」「H1」「D1」などの
+ * 人間が読みやすい文字列表現へ変換する処理をまとめています。
  */
 class TimeUtil {
 public:
     /**
-     * @brief ENUM_TIMEFRAMES を人間が読める文字列に変換します。
+     * ENUM_TIMEFRAMES を人間が読める文字列に変換します。
      *
-     * <p>PERIOD_M1 → "M1"、PERIOD_H1 → "H1" のように、
-     * MT5 の時間足を文字列表現に変換します。<br>
-     * 想定外の値が渡された場合は "UNKNOWN" を返します。</p>
+     * PERIOD_M1 → "M1"、PERIOD_H1 → "H1" のように、
+     * MT5 の時間足を文字列表現に変換します。
+     * 想定外の値が渡された場合は "UNKNOWN" を返します。
      *
      * @param fromTimeFrame 変換対象の時間足（ENUM_TIMEFRAMES）。
      *
@@ -69,7 +68,7 @@ public:
     static string formatYyyymmddhhmi(datetime fromDatetime) {
         MqlDateTime dt;
         TimeToStruct(fromDatetime, dt);
-    
+
         return StringFormat("%04d%02d%02d%02d%02d",
                             dt.year,
                             dt.mon,
@@ -87,7 +86,7 @@ public:
     static string formatYyyymmddhhmiss(datetime fromDatetime) {
         MqlDateTime dt;
         TimeToStruct(fromDatetime, dt);
-    
+
         return StringFormat("%04d/%02d/%02d %02d:%02d:%02d",
                             dt.year,
                             dt.mon,
@@ -97,12 +96,12 @@ public:
                             dt.sec);
     }
 
-    
+
     /**
-     * @brief バーインデックスから「次の足」の datetime を取得します。
+     * バーインデックスから「次の足」の datetime を取得します。
      *
-     * <p>MT5 のバーインデックスは 0 が最新バーで、値が大きくなるほど過去の足です。<br>
-     * 「時間的に次の足」は、shift が 1 小さいバーになります。</p>
+     * MT5 のバーインデックスは 0 が最新バーで、値が大きくなるほど過去の足です。
+     * 「時間的に次の足」は、shift が 1 小さいバーになります。
      *
      * @param symbolName   対象シンボル（例: _Symbol）。
      * @param timeframe    対象時間足。
@@ -110,15 +109,16 @@ public:
      *
      * @return 次の足の datetime。存在しない場合は 0 を返します。
      */
-    static datetime getNextBarTimeByShift(string symbolName,
-                                          ENUM_TIMEFRAMES timeframe,
-                                          int shift) {
-        
+    static datetime getNextBarTimeByShift(
+        string symbolName,
+        ENUM_TIMEFRAMES timeframe,
+        int shift
+    ) {
         // shift が 0 の場合、まだ次の「確定足」は存在しないので、
         // 現在のバーの開始時刻 + PeriodSeconds を「次の足の時間」とみなします。
         if (shift == 0) {
             datetime currentBarTime = iTime(symbolName, timeframe, 0);
-            
+
             return (currentBarTime + PeriodSeconds(timeframe));
         }
 
@@ -126,15 +126,15 @@ public:
         int nextShift = shift - 1;
 
         if (nextShift < 0) {
-            
+
             return 0;
         }
 
         datetime nextBarTime = iTime(symbolName, timeframe, nextShift);
-        
+
         return nextBarTime;
     }
-    
+
     /**
      * datetime に指定した時間足の本数を加算した日時を返す。
      *
@@ -143,18 +143,18 @@ public:
      * @param barCount 加算する時間足の本数
      * @return 加算後の datetime
      */
-    static datetime addBars(datetime fromDatetime,
-                            ENUM_TIMEFRAMES timeframe,
-                            int barCount) {
+    static datetime addBars(
+        datetime fromDatetime,
+        ENUM_TIMEFRAMES timeframe,
+        int barCount
+    ) {
         int periodSeconds = PeriodSeconds(timeframe);
 
         if (periodSeconds <= 0) {
-
             return fromDatetime;
         }
 
         if (barCount == 0) {
-
             return fromDatetime;
         }
 

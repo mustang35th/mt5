@@ -7,8 +7,7 @@
 #property link      "https://www.mql5.com"
 
 /**
- * @class Util
- * @brief 汎用的なユーティリティメソッドを提供するクラス。
+ * 汎用的なユーティリティメソッドを提供するクラス。
  *
  * すべてのメソッドは static として定義されます。
  * インスタンス化は想定していません。
@@ -16,7 +15,7 @@
 class Util {
 public:
     /**
-     * @brief 引数が偶数かどうかを判定します。
+     * 引数が偶数かどうかを判定します。
      *
      * @param targetNumber 判定対象の整数値。
      * @return targetNumber が偶数であれば true、そうでなければ false。
@@ -26,7 +25,7 @@ public:
     }
 
     /**
-     * @brief 引数が奇数かどうかを判定します。
+     * 引数が奇数かどうかを判定します。
      *
      * @param targetNumber 判定対象の整数値。
      * @return targetNumber が奇数であれば true、そうでなければ false。
@@ -36,9 +35,9 @@ public:
     }
 
     /**
-     * @brief ストラテジーテスタで起動中かどうかを判定します。
+     * ストラテジーテスタで起動中かどうかを判定します。
      *
-     * @return ストラテジーテスタ実行中であれば true、それ以外は false
+     * @return ストラテジーテスタ実行中であれば true、それ以外は false。
      */
     static bool isStrategyTester() {
         return (bool)MQLInfoInteger(MQL_TESTER);
@@ -47,8 +46,8 @@ public:
     /**
      * シンボル名に JPY が含まれているか判定する。
      *
-     * @param fromSymbolName 対象シンボル名
-     * @return true: JPY を含む場合
+     * @param fromSymbolName 対象シンボル名。
+     * @return JPY を含む場合は true、含まれない場合は false。
      */
     static bool isJpy(string fromSymbolName) {
         if (StringFind(fromSymbolName, "JPY") >= 0) {
@@ -59,10 +58,10 @@ public:
     }
     
     /**
-     * 空CSVを取得
+     * 空CSV文字列を取得します。
      *
-     * @param countValue 空項目数
-     * @return 空CSV
+     * @param countValue 空項目数。
+     * @return 空要素で埋めたCSV文字列。
      */
     static string getCsvBlank(const int countValue) {
         if (countValue <= 0) {
