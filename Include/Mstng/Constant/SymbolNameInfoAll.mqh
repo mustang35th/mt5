@@ -225,7 +225,7 @@ public:
     /**
      * シンボル名からコードを取得する。
      *
-     * @param fromSymbol シンボル名（サフィックス付きでも可）
+     * @param fromSymbolName シンボル名（サフィックス付きでも可）
      * @return           対応するコード（見つからない場合は -1）
      */
     int getCode(string fromSymbolName) {
@@ -243,7 +243,7 @@ public:
     /**
      * シンボル名から GMO 取引可否フラグを取得する。
      *
-     * @param fromSymbol シンボル名（サフィックス付きでも可）
+     * @param fromSymbolName シンボル名（サフィックス付きでも可）
      * @return           GMO 取引可能なら true
      */
     bool isTarget(string fromSymbolName) {
@@ -286,7 +286,7 @@ public:
      * コードからシンボル名を取得する。
      *
      * @param fromCode コード
-     * @return         対応するシンボル名（見つからない場合は NULL）
+     * @return         対応するシンボル名（見つからない場合は空文字）
      */
     string getSymbol(int fromCode) {
         int total = this.symbolNameInfoList.Total();

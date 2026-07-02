@@ -44,10 +44,12 @@ public:
     }
 
     /**
-     * 文字列表現を返す
+     * 文字列表現を返す。
      *
      * 例:
      *  "symbolName=USDJPY code=1 isTarget=true"
+     *
+     * @return シンボル情報の文字列表現
      */
     string toString() {
         string isTargetText = "false";

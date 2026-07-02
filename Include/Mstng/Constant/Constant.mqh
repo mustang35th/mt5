@@ -30,13 +30,13 @@ public:
     /**
      * BUY/Sell ラベル文字列を取得する。
      *
-     * @param isBuy BUYなら"BUY"、SELLなら"SELL"
+     * @param fromIsBuy BUYなら"BUY"、SELLなら"SELL"
      * @return ラベル文字列
      */
-    static string getBuySell(bool isBuy) {
+    static string getBuySell(bool fromIsBuy) {
         string text = "SELL";
         
-        if (isBuy) {
+        if (fromIsBuy) {
             text = "BUY";
         }
         
