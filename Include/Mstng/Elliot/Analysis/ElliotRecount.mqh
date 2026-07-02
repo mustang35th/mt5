@@ -86,6 +86,7 @@ public:
     }
 
 private:
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
 
     /**

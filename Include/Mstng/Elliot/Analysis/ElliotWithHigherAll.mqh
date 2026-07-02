@@ -14,15 +14,13 @@
 #include <Mstng\Elliot\Analysis\ElliotWithHigherUtil.mqh>
 #include <Mstng\Elliot\Analysis\ZigZagCorrector.mqh>
 
-/*
-
-上位足からZigZagPointを取得
-↓
-波動分析
-↓
-再分析
-
-*/
+/**
+ * 上位足からZigZagポイントを取得し、下位足で再分析を行う処理フロー。
+ *
+ * 上位足からZigZagPointを取得し、
+ * 波動分析を経て、
+ * 再分析を実施する。
+ */
 
 #define ELLIOT_HIGHER_WAVES 5
 
