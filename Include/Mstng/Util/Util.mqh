@@ -44,8 +44,14 @@ public:
         return (bool)MQLInfoInteger(MQL_TESTER);
     }
     
-    static bool isJpy(string symbolName) {
-        if (StringFind(symbolName, "JPY") >= 0) {
+    /**
+     * シンボル名に JPY が含まれているか判定する。
+     *
+     * @param fromSymbolName 対象シンボル名
+     * @return true: JPY を含む場合
+     */
+    static bool isJpy(string fromSymbolName) {
+        if (StringFind(fromSymbolName, "JPY") >= 0) {
             return true;
         }
     

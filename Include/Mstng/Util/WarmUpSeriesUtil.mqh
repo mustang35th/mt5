@@ -117,6 +117,12 @@ public:
     }
 
 private:
+    /**
+     * MN1→...→fromTimeFrame までの時間足配列を構築する。
+     *
+     * @param fromTimeFrame 取得上限時間足
+     * @param fromOutTimeFrames 生成先配列（out）
+     */
     static void buildTimeframesFromMn1To(ENUM_TIMEFRAMES fromTimeFrame, ENUM_TIMEFRAMES &outTimeFrames[]) {
         ENUM_TIMEFRAMES all[] = {
             PERIOD_MN1,
@@ -145,11 +151,18 @@ private:
         }
     }
 
-    static int findIndex(const ENUM_TIMEFRAMES &array[], ENUM_TIMEFRAMES value) {
-        int total = ArraySize(array);
+    /**
+     * 配列内で指定値のインデックスを検索する。
+     *
+     * @param fromArray 対象配列
+     * @param fromValue 検索対象値
+     * @return 発見時はインデックス、見つからなければ-1
+     */
+    static int findIndex(const ENUM_TIMEFRAMES &fromArray[], ENUM_TIMEFRAMES fromValue) {
+        int total = ArraySize(fromArray);
 
         for (int i = 0; i < total; i++) {
-            if (array[i] == value) {
+            if (fromArray[i] == fromValue) {
                 return i;
             }
         }

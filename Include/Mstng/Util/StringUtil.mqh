@@ -95,7 +95,6 @@ public:
 
         // 99までに必要な記号セット（降順）
         const int    vals[] = {90, 50, 40, 10, 9, 5, 4, 1};
-        //const string syms[] = {"XC","L","XL","X","IX","V","IV","I"};  // 大文字
         const string syms[] = {"xc","l","xl","x","ix","v","iv","i"};    // 小文字
 
         for (int i = 0; i < ArraySize(vals); i++) {

@@ -8,99 +8,156 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 
+/**
+ * pips 価格を日本円換算するためのユーティリティクラス。
+ */
 class PipConverter {
 public:
-   /**
-    * 市場コンテキストを使用してpipsを円換算する。
-    *
-    * @param fromMarketContext 換算対象の市場コンテキスト
-    * @param fromPips pips
-    * @param fromLotSize ロットサイズ
-    * @param fromJpyAmount 円換算結果
-    * @return 換算成功時はtrue
-    */
-   static bool tryConvertPipsToJpy(
-      MarketContext &fromMarketContext,
-      double fromPips,
-      double fromLotSize,
-      double &fromJpyAmount
-   ) {
-      fromJpyAmount = 0.0;
+    /**
+     * 市場コンテキストを使用して pips を円換算する。
+     *
+     * @param fromMarketContext 換算対象の市場コンテキスト
+     * @param fromPips        pips
+     * @param fromLotSize ロットサイズ
+     * @param fromJpyAmount   円換算結果（出力）
+     * @return 換算成功時はtrue
+     */
+    static bool tryConvertPipsToJpy(
+        MarketContext &fromMarketContext,
+        double fromPips,
+        double fromLotSize,
+        double &fromJpyAmount
+    ) {
+        fromJpyAmount = 0.0;
 
-      string normalizedSymbol = normalizeSymbol(fromMarketContext.symbolName);
-      if (!isValidSymbol(normalizedSymbol)) {
-         return false;
-      }
+        string normalizedSymbol = normalizeSymbol(fromMarketContext.symbolName);
+        if (!isValidSymbol(normalizedSymbol)) {
+            return false;
+        }
 
-      string quoteCurrency = getQuoteCurrency(normalizedSymbol);
-      double pipSize = getPipSize(quoteCurrency);
-      double quoteAmount = fromLotSize * pipSize * fromPips;
+        string quoteCurrency = getQuoteCurrency(normalizedSymbol);
+        double pipSize = getPipSize(quoteCurrency);
+        double quoteAmount = fromLotSize * pipSize * fromPips;
 
-      if (quoteCurrency == "JPY") {
-         fromJpyAmount = quoteAmount;
-         return true;
-      }
+        if (quoteCurrency == "JPY") {
+            fromJpyAmount = quoteAmount;
+            return true;
+        }
 
-      return tryConvertQuoteAmountToJpy(quoteCurrency, quoteAmount, fromJpyAmount);
-   }
+        return tryConvertQuoteAmountToJpy(quoteCurrency, quoteAmount, fromJpyAmount);
+    }
 
-   static bool tryConvertPipsToJpy(string symbolName, double pips, double lotSize, double &jpyAmount) {
-      MarketContext context(symbolName, PERIOD_CURRENT);
+    /**
+     * シンボル名を使って pips を円換算する。
+     *
+     * @param fromSymbolName  換算対象シンボル名
+     * @param fromPips       pips
+     * @param fromLotSize    ロットサイズ
+     * @param fromJpyAmount  円換算結果（出力）
+     * @return 換算成功時はtrue
+     */
+    static bool tryConvertPipsToJpy(string fromSymbolName, double fromPips, double fromLotSize, double &fromJpyAmount) {
+        MarketContext context(fromSymbolName, PERIOD_CURRENT);
 
-      return PipConverter::tryConvertPipsToJpy(context, pips, lotSize, jpyAmount);
-   }
+        return PipConverter::tryConvertPipsToJpy(context, fromPips, fromLotSize, fromJpyAmount);
+    }
 
 private:
-   static string normalizeSymbol(string symbolName) {
-      string normalizedSymbol = symbolName;
-      StringToUpper(normalizedSymbol);
-      StringReplace(normalizedSymbol, "/", "");
-      return normalizedSymbol;
-   }
+    /**
+     * シンボル名を大文字化し、区切りを除去して標準化する。
+     *
+     * @param fromSymbolName 対象シンボル名
+     * @return 正規化済みシンボル名
+     */
+    static string normalizeSymbol(string fromSymbolName) {
+        string normalizedSymbol = fromSymbolName;
 
-   static bool isValidSymbol(string normalizedSymbol) {
-      return StringLen(normalizedSymbol) == 6;
-   }
+        StringToUpper(normalizedSymbol);
+        StringReplace(normalizedSymbol, "/", "");
 
-   static string getQuoteCurrency(string normalizedSymbol) {
-      return StringSubstr(normalizedSymbol, 3, 3);
-   }
+        return normalizedSymbol;
+    }
 
-   static double getPipSize(string quoteCurrency) {
-      if (quoteCurrency == "JPY") {
-         return 0.01;
-      }
+    /**
+     * 正規化シンボル名が6文字かどうかを検証する。
+     *
+     * @param fromNormalizedSymbol 正規化済みシンボル名
+     * @return 6文字なら true
+     */
+    static bool isValidSymbol(string fromNormalizedSymbol) {
+        return StringLen(fromNormalizedSymbol) == 6;
+    }
 
-      return 0.0001;
-   }
+    /**
+     * クォート通貨を取得する。
+     *
+     * @param fromNormalizedSymbol 正規化済みシンボル名
+     * @return 右3文字（クォート通貨）
+     */
+    static string getQuoteCurrency(string fromNormalizedSymbol) {
+        return StringSubstr(fromNormalizedSymbol, 3, 3);
+    }
 
-   static bool tryConvertQuoteAmountToJpy(string quoteCurrency, double quoteAmount, double &jpyAmount) {
-      string directSymbol = quoteCurrency + "JPY";
-      double directBidPrice = 0.0;
+    /**
+     * クォート通貨ごとの1 pip を金額で表した大きさを取得する。
+     *
+     * @param fromQuoteCurrency クォート通貨
+     * @return pips金額（JPYなら0.01、その他0.0001）
+     */
+    static double getPipSize(string fromQuoteCurrency) {
+        if (fromQuoteCurrency == "JPY") {
+            return 0.01;
+        }
 
-      if (tryGetBidPrice(directSymbol, directBidPrice)) {
-         jpyAmount = quoteAmount * directBidPrice;
-         return true;
-      }
+        return 0.0001;
+    }
 
-      string inverseSymbol = "JPY" + quoteCurrency;
-      double inverseBidPrice = 0.0;
+    /**
+     * JPY換算を試行する。
+     *
+     * @param fromQuoteCurrency クォート通貨
+     * @param fromQuoteAmount  金額
+     * @param fromJpyAmount    換算結果（出力）
+     * @return 変換成功時 true
+     */
+    static bool tryConvertQuoteAmountToJpy(
+        string fromQuoteCurrency,
+        double fromQuoteAmount,
+        double &fromJpyAmount
+    ) {
+        string directSymbol = fromQuoteCurrency + "JPY";
+        double directBidPrice = 0.0;
 
-      if (tryGetBidPrice(inverseSymbol, inverseBidPrice) && inverseBidPrice > 0.0) {
-         jpyAmount = quoteAmount / inverseBidPrice;
-         return true;
-      }
+        if (tryGetBidPrice(directSymbol, directBidPrice)) {
+            fromJpyAmount = fromQuoteAmount * directBidPrice;
+            return true;
+        }
 
-      return false;
-   }
+        string inverseSymbol = "JPY" + fromQuoteCurrency;
+        double inverseBidPrice = 0.0;
 
-   static bool tryGetBidPrice(string symbolName, double &bidPrice) {
-      bidPrice = 0.0;
+        if (tryGetBidPrice(inverseSymbol, inverseBidPrice) && inverseBidPrice > 0.0) {
+            fromJpyAmount = fromQuoteAmount / inverseBidPrice;
+            return true;
+        }
 
-      if (!SymbolSelect(symbolName, true)) {
-         return false;
-      }
+        return false;
+    }
 
-      return SymbolInfoDouble(symbolName, SYMBOL_BID, bidPrice);
-   }
+    /**
+     * 指定シンボルでBid価格を取得する。
+     *
+     * @param fromSymbolName シンボル名
+     * @param fromBidPrice Bid取得先（出力）
+     * @return Bid取得成功時 true
+     */
+    static bool tryGetBidPrice(string fromSymbolName, double &fromBidPrice) {
+        fromBidPrice = 0.0;
+
+        if (!SymbolSelect(fromSymbolName, true)) {
+            return false;
+        }
+
+        return SymbolInfoDouble(fromSymbolName, SYMBOL_BID, fromBidPrice);
+    }
 };

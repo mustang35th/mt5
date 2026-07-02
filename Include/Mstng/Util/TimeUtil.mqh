@@ -7,7 +7,7 @@
 #property link      "https://www.mql5.com"
 
 /**
- * @class TimeframeUtil
+ * @class TimeUtil
  * @brief 時間足（ENUM_TIMEFRAMES）に関するユーティリティメソッドを提供するクラス。
  *
  * <p>主に ENUM_TIMEFRAMES を「M1」「H1」「D1」などの
@@ -22,13 +22,13 @@ public:
      * MT5 の時間足を文字列表現に変換します。<br>
      * 想定外の値が渡された場合は "UNKNOWN" を返します。</p>
      *
-     * @param timeframe 変換対象の時間足（ENUM_TIMEFRAMES）。
+     * @param fromTimeFrame 変換対象の時間足（ENUM_TIMEFRAMES）。
      *
      * @return 時間足を表す文字列。
      */
-    static string convertTimeFrameToString(ENUM_TIMEFRAMES timeFrame) {
+    static string convertTimeFrameToString(ENUM_TIMEFRAMES fromTimeFrame) {
 
-        switch (timeFrame) {
+        switch (fromTimeFrame) {
 
             case PERIOD_CURRENT:  return "CURRENT";
 
@@ -78,6 +78,12 @@ public:
                             dt.min);
     }
     
+    /**
+     * datetime を "yyyy/mm/dd hh:mm:ss" 形式（例: 2025/12/24 09:15:30）に変換する。
+     *
+     * @param fromDatetime 対象日時
+     * @return 変換された日時文字列
+     */
     static string formatYyyymmddhhmiss(datetime fromDatetime) {
         MqlDateTime dt;
         TimeToStruct(fromDatetime, dt);
