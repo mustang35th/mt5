@@ -21,8 +21,15 @@ public:
     /** 補正対象の市場コンテキスト */
     MarketContext marketContext;
     
-    CArrayObj orgZigZagPointList;  // ZigZagのポイント
+    /** 補正対象の下位足ZigZagポイント一覧 */
+    CArrayObj orgZigZagPointList;
     
+    /**
+     * シンボル名と時間足を指定して初期化する。
+     *
+     * @param fromSymbolName 補正対象シンボル
+     * @param fromTimeFrame 補正対象時間足
+     */
     ZigZagCorrector(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
         this.setMarketContext(context);
@@ -37,6 +44,9 @@ public:
         this.setMarketContext(fromMarketContext);
     }
     
+    /**
+     * デストラクタ。
+     */
     ~ZigZagCorrector() {
     }
 
@@ -64,7 +74,7 @@ public:
         // ない場合、近くポイントを移動
         // 上位足topの場合、下位足もtop
         
-        // まずはは全体コピー
+        // まず全体コピー
         ZigZagPointUtil::copyZigZagPointList(fromZigZagPointList, this.orgZigZagPointList);
         
         CArrayObj waveListHigher;
@@ -98,6 +108,7 @@ public:
     }
 
 private:
+    /** 処理経過およびエラー出力用ロガー */
     Logger logger;
 
     /**

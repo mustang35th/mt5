@@ -22,10 +22,9 @@
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
- * ElliotAll クラスは、エリオット波動に関する全体処理を集約するためのクラスです。
- *
- * 現時点では空クラス（枠のみ）として定義します。
- * 後続の実装で、波動判定・ラベリング・検証ロジック等を追加する想定です。
+ * ElliotAll クラスは、複数時間足のElliott波動分析を統合して管理する。
+ * 時間足別Elliot生成、Oscillator共有、ロスカット候補、CSV/表示用文字列の
+ * 生成、補助判定までを1か所で扱う。
  */
 class ElliotAll : public CObject {
 public:
@@ -94,7 +93,7 @@ public:
      * 分析対象を指定して初期化する。
      *
      * @param fromSymbolName 分析対象シンボル
-    * @param fromTimeFrame 呼び出し元となる現在時間足
+     * @param fromTimeFrame 呼び出し元となる現在時間足
      */
     ElliotAll(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         this.initializeMembers();
@@ -550,7 +549,7 @@ private:
     /**
      * 実行環境に応じてElliott分析対象の時間足範囲を設定する。
      *
-     * 通常動作はMN1、テスター動作はD1を開始時間足とし、現在時間足までを
+     * タイマー実行時はMN1、その他通常時はD1を開始時間足とし、現在時間足までを
      * TimeFrameInfoAllの分析対象に設定する。
      *
      * @param fromTimeFrame 呼び出し元時間足。現在は保持済みtimeFrameを終了足に使用する

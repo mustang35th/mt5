@@ -143,40 +143,7 @@ private:
         this.fontSize = 20;
     }
 
-    /**
-     * 現在時間足に応じた上位時間足の売買方向が一致するか判定する。
-     *
-     * @return 必要な上位時間足の売買方向が一致する場合true
-     */
-    /*bool isBuySell() {
-        bool isBuySell = false;
-        
-        if (this.marketContext.timeFrame == PERIOD_M15) {
-            if (this.expertAdvisorElliot.isBuySell(this.elliotH4, this.isBuy)
-                    && this.expertAdvisorElliot.isBuySell(this.elliotH1, this.isBuy)) {
-                isBuySell = true;
-            }
-        }
-        
-        if (this.marketContext.timeFrame == PERIOD_M5) {
-            if (this.expertAdvisorElliot.isBuySell(this.elliotH4, this.isBuy)
-                    && this.expertAdvisorElliot.isBuySell(this.elliotH1, this.isBuy)
-                    && this.expertAdvisorElliot.isBuySell(this.elliotM15, this.isBuy)) {
-                isBuySell = true;
-            }
-        }
-        
-        if (this.marketContext.timeFrame == PERIOD_M1) {
-            if (this.expertAdvisorElliot.isBuySell(this.elliotH4, this.isBuy)
-                    && this.expertAdvisorElliot.isBuySell(this.elliotH1, this.isBuy)
-                    && this.expertAdvisorElliot.isBuySell(this.elliotM15, this.isBuy)
-                    && this.expertAdvisorElliot.isBuySell(this.elliotM5, this.isBuy)) {
-                isBuySell = true;
-            }
-        }
-        
-        return isBuySell;
-    }*/
+    // 旧バージョンの上位時間足判定実装（未使用）。必要時は再有効化して利用。
     
     /**
      * 指定したElliotの最新ポイントが第1波または第3波か判定する。

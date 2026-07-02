@@ -13,7 +13,8 @@
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
- * ATR取得
+ * AverageTrueRange指標の参照を行うクラス。
+ * 市場コンテキストを元にATR値・pips値を取得する。
  */
 class AverageTrueRange {
 public:
@@ -28,6 +29,8 @@ public:
 
     /**
      * コンストラクタ
+     *
+     * ロガーをINFOレベルで初期化し、初期値をセットする。
      */
     AverageTrueRange() {
         this.averageTrueRangeHandlePool = NULL;
@@ -83,7 +86,7 @@ public:
     }
 
     /**
-     * ATRハンドルプール設定
+     * ATRハンドルプールを設定する。
      *
      * @param fromAverageTrueRangeHandlePool ATRハンドルプール
      */
@@ -102,7 +105,7 @@ public:
     }
 
     /**
-     * ATR価格値を取得
+     * ATR価格値を取得する。
      *
      * @param symbolNameValue シンボル名
      * @param timeFrameValue 時間足
@@ -175,7 +178,7 @@ public:
     }
 
     /**
-     * ATR pips値を取得
+     * ATR pips値を取得する。
      *
      * @param symbolNameValue シンボル名
      * @param timeFrameValue 時間足
@@ -221,7 +224,7 @@ public:
     }
 
     /**
-     * pips文字列を取得
+     * pips文字列を取得する。
      *
      * @param digitsValue 小数桁数
      * @return pips文字列
@@ -251,7 +254,7 @@ private:
     Logger logger;
 
     /**
-     * 初期化確認
+     * 初期化確認を行う。
      *
      * @param symbolNameValue シンボル名
      * @param timeFrameValue 時間足

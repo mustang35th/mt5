@@ -12,12 +12,12 @@
 #include <Mstng\Oscillator\HandlePoolBase.mqh>
 
 /**
- * ATR のハンドルを時間足ごとに管理
+ * ATR のハンドルを時間足ごとに管理する。
  */
 class AverageTrueRangeHandlePool : public HandlePoolBase {
 public:
     /**
-     * コンストラクタ
+     * コンストラクタ。
      */
     AverageTrueRangeHandlePool() {
         // 初期化
@@ -25,7 +25,7 @@ public:
     }
 
     /**
-     * コンストラクタ
+     * コンストラクタ。
      *
      * @param fromSymbolName 対象シンボル
      * @param fromPeriod ATR期間
@@ -46,7 +46,7 @@ public:
     }
 
     /**
-     * デストラクタ
+     * デストラクタ。
      */
     ~AverageTrueRangeHandlePool() {
         // 全解放
@@ -63,7 +63,7 @@ public:
     }
 
     /**
-     * MN1 から指定時間足までのハンドルを生成
+     * M1 から指定時間足までのハンドルを生成する。
      *
      * @param fromSymbolName 対象シンボル
      * @param lastTimeFrame 最終時間足
@@ -75,7 +75,7 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してMN1から指定時間足までのハンドルを生成する。
+     * 市場コンテキストを使用してM1から指定時間足までのハンドルを生成する。
      *
      * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
      */
@@ -84,7 +84,7 @@ public:
     }
 
     /**
-     * D1 から指定時間足までのハンドルを生成
+     * D1 から指定時間足までのハンドルを生成する。
      *
      * @param fromSymbolName 対象シンボル
      * @param lastTimeFrame 最終時間足
@@ -105,10 +105,10 @@ public:
     }
 
     /**
-     * 指定時間足のハンドルを取得
+     * 指定時間足のハンドルを取得する。
      *
      * @param timeFrame 対象時間足
-     * @return ハンドル
+     * @return 対象時間足のATRハンドル。未設定時はINVALID_HANDLE
      */
     int getHandle(const ENUM_TIMEFRAMES timeFrame) {
         int index = this.findIndex(timeFrame);
@@ -125,7 +125,7 @@ public:
     }
 
     /**
-     * 全ハンドルを解放
+     * 全ハンドルを解放する。
      */
     void releaseAll() {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
@@ -181,7 +181,7 @@ private:
     int handles[TIMEFRAME_SIZE];
 
     /**
-     * 初期化
+     * 初期化処理を行う。
      *
      * @param fromSymbolName 対象シンボル
      * @param fromPeriod ATR期間

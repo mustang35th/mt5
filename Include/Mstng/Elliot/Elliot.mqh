@@ -13,27 +13,13 @@
 #include <Mstng\Elliot\OhlcInfo.mqh>
 #include <Mstng\Elliot\WaveUtil.mqh>
 
-/*
-
-1【3】
-↓
-elliotLabel【orgElliotLabel】
-
-Wave
- zigZagPointList
-  0 1 2 3
-  
- orgZigZagPointList
-  0 -1 -1 1
-  0  1  2 3
-
-zigZagPointListでリカウント
-↓
-zigZagPointList→orgZigZagPointListコピー
-↓
-zigZagPointListから不要は削除
-
-*/
+/**
+ * 内部用補助メモ:
+ * - リカウント対象のポイント整列は、上位の ZigZagPoint と比較して
+ *   不要なポイントを削除・再構築する流れで行う。
+ * - 上位足ラベルと下位足のポイント対応を保つための
+ *   補正・再構築の前提メモ。
+ */
 
 /**
  * 1つの時間足に対するElliott波動分析結果を保持するクラス。
@@ -80,7 +66,7 @@ public:
      * 分析対象を指定して初期化する。
      *
      * @param fromSymbolName 分析対象シンボル
-    * @param fromTimeFrame 分析対象時間足
+     * @param fromTimeFrame 分析対象時間足
      */
     Elliot(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -334,7 +320,6 @@ public:
         return this.waveList.At(0);
     }
     
-    // 最古の波動を取得
     /**
      * 最古のWaveを取得する。
      *

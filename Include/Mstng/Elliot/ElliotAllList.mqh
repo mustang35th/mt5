@@ -27,8 +27,10 @@ public:
     CArrayObj elliotAllList;
     
     /**
+     * 複数シンボル分析用コンテキストで初期化する。
+     *
      * @param fromTimeFrame 分析終了時間足
-     * @param fromIsTimer タイマー実行の場合true
+     * @param fromIsTimer true: タイマー実行
      */
     ElliotAllList(ENUM_TIMEFRAMES fromTimeFrame, bool fromIsTimer) {
         MarketContext context(
@@ -44,12 +46,15 @@ public:
      * 市場コンテキストとタイマー実行状態を指定して初期化する。
      *
      * @param fromMarketContext 複数シンボル分析の基準となる市場コンテキスト
-     * @param fromIsTimer タイマー実行の場合true
+     * @param fromIsTimer true: タイマー実行
      */
     ElliotAllList(MarketContext &fromMarketContext, bool fromIsTimer) {
         this.initialize(fromMarketContext, fromIsTimer);
     }
 
+    /**
+     * デストラクタ。保持したElliotAllを解放する。
+     */
     ~ElliotAllList() {
         this.clearElliotAllList();
     }
@@ -77,7 +82,7 @@ public:
         
         this.oscillatorHandleManager = fromOscillatorHandleManager;
         
-        // ⏰ 処理開始時刻を記録 (ミリ秒)
+        // 処理開始時刻を記録（ミリ秒）
         long startTime = GetTickCount();
         
         this.logger.debug(__FUNCTION__, StringFormat("setList:Start Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), startTime));
@@ -108,7 +113,7 @@ public:
         this.logger.debug(__FUNCTION__, StringFormat("symbolNameInfoAll isTarget = %d", count));
         this.logger.debug(__FUNCTION__, StringFormat("elliotAllList = %d", this.elliotAllList.Total()));
         
-        // ⏳ 処理終了時刻を記録し、実行時間を計算
+        // 処理終了時刻を記録し、実行時間を計算する
         long endTime = GetTickCount();
         long elapsedTime = endTime - startTime;
         
@@ -138,14 +143,14 @@ private:
     /** 処理経過およびエラー出力用ロガー */
     Logger logger;
     
-    /** タイマー実行の場合true */
+    /** true: タイマー実行 */
     bool isTimer;
 
     /**
      * 市場コンテキストとタイマー実行状態を初期化する。
      *
      * @param fromMarketContext 複数シンボル分析の基準となる市場コンテキスト
-     * @param fromIsTimer タイマー実行の場合true
+     * @param fromIsTimer true: タイマー実行
      */
     void initialize(MarketContext &fromMarketContext, bool fromIsTimer) {
         this.setMarketContext(fromMarketContext);
