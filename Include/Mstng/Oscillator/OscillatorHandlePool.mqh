@@ -65,6 +65,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * M1から上位時間足までのハンドル時間軸を再設定します。
+     */
     void setTimeframesFromMn1To() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
@@ -83,6 +86,9 @@ public:
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
 
+    /**
+     * D1から上位時間足までのハンドル時間軸を再設定します。
+     */
     void setTimeframesFromD1To() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
@@ -101,6 +107,9 @@ public:
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
 
+    /**
+     * 保持している全ハンドルプールを解放します。
+     */
     void releaseAll() {
         this.stochasticShortHandlePool.releaseAll();
         this.stochasticMiddleHandlePool.releaseAll();
@@ -110,26 +119,56 @@ public:
         this.averageTrueRangeHandlePool.releaseAll();
     }
 
+    /**
+     * 短期ストキャスティクスハンドルプールを取得します。
+     *
+     * @return 短期StochasticHandlePool（常に有効）
+     */
     StochasticHandlePool* getStochasticShortHandlePool() {
         return &this.stochasticShortHandlePool;
     }
 
+    /**
+     * 中期ストキャスティクスハンドルプールを取得します。
+     *
+     * @return 中期StochasticHandlePool（常に有効）
+     */
     StochasticHandlePool* getStochasticMiddleHandlePool() {
         return &this.stochasticMiddleHandlePool;
     }
 
+    /**
+     * 長期ストキャスティクスハンドルプールを取得します。
+     *
+     * @return 長期StochasticHandlePool（常に有効）
+     */
     StochasticHandlePool* getStochasticLongHandlePool() {
         return &this.stochasticLongHandlePool;
     }
 
+    /**
+     * GMMAハンドルプールを取得します。
+     *
+     * @return GmmaHandlePool（常に有効）
+     */
     GmmaHandlePool* getGmmaHandlePool() {
         return &this.gmmaHandlePool;
     }
 
+    /**
+     * EMA200ハンドルプールを取得します。
+     *
+     * @return Ema200HandlePool（常に有効）
+     */
     Ema200HandlePool* getEma200HandlePool() {
         return &this.ema200HandlePool;
     }
 
+    /**
+     * ATRハンドルプールを取得します。
+     *
+     * @return AverageTrueRangeHandlePool（常に有効）
+     */
     AverageTrueRangeHandlePool* getAverageTrueRangeHandlePool() {
         return &this.averageTrueRangeHandlePool;
     }
@@ -164,15 +203,3 @@ private:
 };
 
 #endif // MSTNG_OSCILLATOR_HANDLE_POOL_MQH
-
-
-
-
-
-
-
-
-
-
-
-
