@@ -10,14 +10,14 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
+/**
+ * Oscillatorの条件判定を行うEA補助クラスです。
+ *
+ * 主にElliot分析結果を元に
+ * GMMA/ストキャスティクス条件のシグナル判定を提供します。
+ */
 class ExpertAdvisorOscillator {
 public:
-    /**
-     * Oscillatorの条件判定を行うEA補助クラスです。
-     *
-     * 主にElliot分析結果を元に
-     * GMMA/ストキャスティクス条件のシグナル判定を提供します。
-     */
     /** 判定対象の市場コンテキスト */
     MarketContext marketContext;
 

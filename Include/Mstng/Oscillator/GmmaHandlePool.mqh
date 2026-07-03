@@ -230,6 +230,11 @@ public:
     }
 
 protected:
+    /**
+     * 指定インデックスのEMAハンドルを未生成時のみ生成します。
+     *
+     * @param index 時間足インデックス
+     */
     virtual void createIfNeeded(int index) {
         if (index < 0 || index >= TIMEFRAME_SIZE) {
 
@@ -259,6 +264,11 @@ protected:
         this.ema60Handles[index] = createdEma60Handle;
     }
 
+    /**
+     * インジケーターハンドルを解放します（INVALID_HANDLE の場合は何もしない）。
+     *
+     * @param fromHandle 対象ハンドル（解放後 INVALID_HANDLE）
+     */
     void releaseHandle(int &fromHandle) {
         if (fromHandle == INVALID_HANDLE) {
 
@@ -325,6 +335,12 @@ private:
         }
     }
 
+    /**
+     * 時間足配列から指定時間足のインデックスを取得します。
+     *
+     * @param timeFrame 検索対象時間足
+     * @return インデックス（未発見は -1）
+     */
     int findIndex(ENUM_TIMEFRAMES timeFrame) {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
             if (this.timeframes[i] == timeFrame) {

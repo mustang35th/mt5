@@ -7,19 +7,35 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Util\RateUtil.mqh>
 
+/**
+ * フィボナッチエクスパンションの各価格と
+ * FE2000 までの差分を保持するデータコンテナです。
+ */
 class FiboExpansionPriceInfo {
 public:
+    /** FE 618 の価格 */
     double FE618Price;
+    /** FE 1000 の価格 */
     double FE1000Price;
+    /** FE 1272 の価格 */
     double FE1272Price;
+    /** FE 1618 の価格 */
     double FE1618Price;
+    /** FE 2000 の価格 */
     double FE2000Price;
+    /** 現在価格から FE2000 までの差（pips） */
     double DistanceToFE2000Pips;
 
+    /**
+     * コンストラクタ。
+     */
     FiboExpansionPriceInfo() {
         this.clear();
     }
 
+    /**
+     * デストラクタ。
+     */
     ~FiboExpansionPriceInfo() {
     }
 

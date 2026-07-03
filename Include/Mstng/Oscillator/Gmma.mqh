@@ -311,6 +311,14 @@ public:
         return true;
     }
 
+    /**
+     * シンボル名と時間足を指定して GMMA クロス継続件数を取得する。
+     *
+     * @param fromSymbolName 対象シンボル
+     * @param fromTimeFrame 対象時間足
+     * @param count 出力: クロス継続件数
+     * @return 取得できた場合は true
+     */
     bool getCrossCount(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, int &count) {
         MarketContext context(fromSymbolName, fromTimeFrame);
 
@@ -504,6 +512,13 @@ private:
         this.logger.setMarketContext(this.marketContext);
     }
 
+    /**
+     * シンボル名と時間足でGMMAの初期化を行う。
+     *
+     * @param fromSymbolName 対象シンボル
+     * @param fromTimeFrame 対象時間足
+     * @return 初期化できた場合は true
+     */
     bool ensureInitialized(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
 
@@ -561,6 +576,9 @@ private:
         return true;
     }
 
+    /**
+     * GMMA用のハンドルを解放する。
+     */
     void releaseHandles() {
         if (this.gmmaHandlePool != NULL) {
             this.ema30Handle = INVALID_HANDLE;
@@ -577,6 +595,13 @@ private:
         }
     }
 
+    /**
+     * EMA30/EMA60の差分方向を比較する。
+     *
+     * @param ema30 EMA30値
+     * @param ema60 EMA60値
+     * @return EMA30 >= EMA60 のとき true
+     */
     bool isPlus(double ema30, double ema60) {
         return (ema30 >= ema60);
     }

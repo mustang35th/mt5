@@ -234,6 +234,14 @@ private:
     int handle;
     Logger logger;
 
+    /**
+     * 市場コンテキストを使用して Stochastic の %K（main）値を取得する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param shift 参照シフト
+     * @param value 取得した %K 値（out）
+     * @return 取得できた場合 true
+     */
     bool getMain(MarketContext &fromMarketContext, int shift, double &value) {
         value = 0.0;
         if (!this.ensureInitialized(fromMarketContext)) {
@@ -262,6 +270,14 @@ private:
         return true;
     }
 
+    /**
+     * 市場コンテキストを使用して Stochastic の %D（signal）値を取得する。
+     *
+     * @param fromMarketContext 対象の市場コンテキスト
+     * @param shift 参照シフト
+     * @param value 取得した %D 値（out）
+     * @return 取得できた場合 true
+     */
     bool getSignal(MarketContext &fromMarketContext, int shift, double &value) {
         value = 0.0;
         if (!this.ensureInitialized(fromMarketContext)) {
@@ -290,6 +306,13 @@ private:
         return true;
     }
 
+    /**
+     * シンボル名と時間足で Stochastic ハンドルを初期化する。
+     *
+     * @param symbol 対象シンボル
+     * @param period 対象時間足
+     * @return 初期化できた場合 true
+     */
     bool ensureInitialized(string symbol, ENUM_TIMEFRAMES period) {
         MarketContext context(symbol, period);
 
@@ -317,6 +340,13 @@ private:
         return true;
     }
 
+    /**
+     * メインラインとシグナルラインの大小を比較する。
+     *
+     * @param main %K 値
+     * @param signal %D 値
+     * @return main - signal >= 0 の場合 true
+     */
     bool isPlus(double main, double signal) {
         bool plus = false;
         this.logger.debug(__FUNCTION__, StringFormat("main=%.5f signal=%.5f", main, signal));

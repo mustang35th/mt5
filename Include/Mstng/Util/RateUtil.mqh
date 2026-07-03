@@ -8,6 +8,10 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 
+/**
+ * レート・ポイント・pips の変換など、
+ * 市場コンテキストに依存する価格単位計算を提供するユーティリティです。
+ */
 class RateUtil {
 public:
     /**

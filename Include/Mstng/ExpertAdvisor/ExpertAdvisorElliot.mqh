@@ -10,6 +10,10 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
+/**
+ * エリオット波の各種判定（ZigZag確定、方向一致、トレンド一致）を
+ * 担うヘルパークラスです。
+ */
 class ExpertAdvisorElliot {
 public:
     /** 判定対象の市場コンテキスト */
@@ -47,6 +51,12 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
     
+    /**
+     * 最新の ZigZag ポイントが確定しているか確認します。
+     *
+     * @param elliot 判定対象の Elliot
+     * @return 最新ポイントが未確定でなければ true
+     */
     bool isZigZagConfirmed(Elliot &elliot) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -67,6 +77,13 @@ public:
         return isZigZagConfirmed;
     }
     
+    /**
+     * 対象時間足の Elliot の方向が指定方向と一致するか判定します。
+     *
+     * @param elliot 判定対象の Elliot
+     * @param fromIsBuy BUY方向を期待する場合 true
+     * @return 方向が一致する場合 true
+     */
     bool isBuySell(Elliot &elliot, bool fromIsBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -149,6 +166,12 @@ public:
         return isBuySell;
     }
     
+    /**
+     * 最新の ZigZag ポイントがモチベート波か判定します。
+     *
+     * @param elliot 判定対象の Elliot
+     * @return 最新ポイントがモチベート波なら true
+     */
     bool isMotiveWave(Elliot &elliot) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -167,6 +190,13 @@ public:
         return isMotiveWave;
     }
     
+    /**
+     * Elliot のトレンド方向が期待方向と一致するか判定します。
+     *
+     * @param elliot 判定対象の Elliot
+     * @param fromIsUptrend 上昇トレンドを期待する場合 true
+     * @return トレンド方向が一致する場合 true
+     */
     bool isSameTrend(Elliot &elliot, bool fromIsUptrend) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         

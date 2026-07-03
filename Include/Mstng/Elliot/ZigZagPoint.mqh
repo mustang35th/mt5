@@ -12,6 +12,9 @@
 #include <Mstng\Util\TimeUtil.mqh>
 #include <Mstng\Util\Util.mqh>
 
+/**
+ * Wave 前方宣言。
+ */
 class Wave; // forward 宣言
 
 /**

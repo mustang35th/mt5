@@ -21,14 +21,20 @@ enum ENUM_EXPERT_ADVISOR_ENTRY_RANK {
     EXPERT_ADVISOR_ENTRY_RANK_NON = 7
 };
 
+/**
+ * エリオット波の時間足判定結果を元に、売買方向とエントリーランクを評価する。
+ */
 class ExpertAdvisorBuySell {
 public:
     /** 判定対象の市場コンテキスト */
     MarketContext marketContext;
 
+    /** 判定されたエントリーランク */
     ENUM_EXPERT_ADVISOR_ENTRY_RANK rank;
+    /** エントリーランク文字列 */
     string rankLabel;
     
+    /** M15 判定結果に対する売買方向 */
     bool isBuy;
 
     /**
@@ -51,6 +57,9 @@ public:
         this.initialize(fromMarketContext);
     }
     
+    /**
+     * デストラクタ。
+     */
     ~ExpertAdvisorBuySell() {
     }
 
@@ -69,6 +78,11 @@ public:
         this.isBuy = false;
     }
     
+    /**
+     * エリオット波データからランクと方向を更新する。
+     *
+     * @param fromElliotAll エリオット波の全時間足データ
+     */
     void setRank(ElliotAll *fromElliotAll) {
         if (fromElliotAll == NULL) {
             this.rank = EXPERT_ADVISOR_ENTRY_RANK_NON;
@@ -87,6 +101,15 @@ public:
         this.rankLabel = ExpertAdvisorBuySell::convertEntryRankToString(this.rank);
     }
     
+    /**
+     * D1/H4/H1/M15の一致数からエントリーランクを算出する。
+     *
+     * @param isBuyD1 D1の方向一致判定
+     * @param isBuyH4 H4の方向一致判定
+     * @param isBuyH1 H1の方向一致判定
+     * @param isBuyM15 M15の方向一致判定
+     * @return エントリーランク
+     */
     ENUM_EXPERT_ADVISOR_ENTRY_RANK getRank(bool isBuyD1, bool isBuyH4, bool isBuyH1, bool isBuyM15) {
         bool matchD1 = (isBuyD1 == isBuyM15);
         bool matchH4 = (isBuyH4 == isBuyM15);
@@ -143,6 +166,12 @@ public:
         return EXPERT_ADVISOR_ENTRY_RANK_NON;
     }
 
+    /**
+     * エントリーランクを表示文字列へ変換する。
+     *
+     * @param fromRank 変換対象ランク
+     * @return 文字列表現
+     */
     static string convertEntryRankToString(ENUM_EXPERT_ADVISOR_ENTRY_RANK fromRank) {
         switch(fromRank) {
             case EXPERT_ADVISOR_ENTRY_RANK_A:
@@ -166,11 +195,18 @@ public:
         }
     }
 
+    /**
+     * エントリーランク文字列を取得する。
+     *
+     * @param fromRank 取得対象ランク
+     * @return 文字列表現
+     */
     static string getEntryRankString(ENUM_EXPERT_ADVISOR_ENTRY_RANK fromRank) {
         return ExpertAdvisorBuySell::convertEntryRankToString(fromRank);
     }
 
 private:
+    /** ロガー */
     Logger logger;
 
     /**

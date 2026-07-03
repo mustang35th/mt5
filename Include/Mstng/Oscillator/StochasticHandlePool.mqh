@@ -188,6 +188,11 @@ public:
     }
 
 protected:
+    /**
+     * 指定インデックスの Stochastic ハンドルを未生成時のみ生成します。
+     *
+     * @param index 時間足インデックス
+     */
     virtual void createIfNeeded(int index) {
         if (index < 0 || index >= TIMEFRAME_SIZE) {
 
@@ -274,6 +279,12 @@ private:
         }
     }
 
+    /**
+     * 時間足配列から指定時間足のインデックスを取得します。
+     *
+     * @param timeFrame 検索対象時間足
+     * @return インデックス（未発見は -1）
+     */
     int findIndex(ENUM_TIMEFRAMES timeFrame) {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
             if (this.timeframes[i] == timeFrame) {

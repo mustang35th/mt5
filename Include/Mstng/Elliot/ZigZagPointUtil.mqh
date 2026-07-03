@@ -20,7 +20,12 @@
 class ZigZagPointUtil {
 public:
     
-    // ポイントを追加
+    /**
+     * ポイントを追加し、元データは保持せず clone をリストへ格納する。
+     *
+     * @param pointList 追加先のポイントリスト
+     * @param fromZigZagPoint 追加元のポイント
+     */
     static void addPoint(CArrayObj &pointList, ZigZagPoint &fromZigZagPoint) {
         ZigZagPoint *zigZagPoint = fromZigZagPoint.clone();
         
@@ -97,7 +102,12 @@ public:
         return index;
     }
     
-    /** @return ポイント一覧の最後の要素。空の場合NULL */
+    /**
+     * ポイント一覧の最後の要素を取得します。
+     *
+     * @param fromZigZagPointList 対象のポイント一覧
+     * @return 最後の要素。空の場合NULL
+     */
     static ZigZagPoint *getLastNode(CArrayObj &fromZigZagPointList) {
         return fromZigZagPointList.At(fromZigZagPointList.Total() - 1);
     }

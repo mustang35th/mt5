@@ -239,6 +239,11 @@ protected:
     virtual void createIfNeeded(int index) {
     }
 
+    /**
+     * 指定インデックスのリソースを解放します（派生クラス実装）。
+     *
+     * @param index 時間足インデックス
+     */
     virtual void releaseAt(int index) {
     }
 

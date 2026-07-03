@@ -84,6 +84,11 @@ public:
         this.logger.setMarketContext(this.marketContext);
     }
 
+    /**
+     * 新規の ZigZag ポイントを条件成立時に先頭へ追加します。
+     *
+     * @param isBuy 上昇方向判定フラグ
+     */
     void addPoint(bool isBuy) {
         ZigZagPoint *zigZagPoint0 = this.zigZagPointList.At(0);
         

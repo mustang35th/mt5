@@ -1630,6 +1630,13 @@ private:
         return priceDifferenceValue / pipSize;
     }
 
+    /**
+     * 共通項目を先頭に付与して行データを再構築します。
+     *
+     * @param sourceValues 元の行データ
+     * @param rowValues 結果を格納する配列（out）
+     * @return 結合後のフィールド数が一致した場合 true
+     */
     bool prependCommonValues(string &sourceValues[], string &rowValues[]) {
         string commonValues[];
         this.createCommonValues(commonValues);

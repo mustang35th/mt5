@@ -12,6 +12,10 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 
+/**
+ * 指定シンボルの価格系列を時間足単位で
+ * あらかじめ初期化（warm-up）するユーティリティです。
+ */
 class WarmUpSeriesUtil {
 public:
     /**
@@ -88,6 +92,10 @@ public:
     /**
      * シリーズ同期済みかを判定する。
      * CopyBuffer前のガード用途。
+     *
+     * @param symbolName 対象シンボル名
+     * @param timeFrame  対象時間足
+     * @return 同期済みの場合 true。
      */
     static bool isSeriesSynchronized(string symbolName, ENUM_TIMEFRAMES timeFrame) {
         MarketContext context(symbolName, timeFrame);

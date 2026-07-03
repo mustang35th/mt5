@@ -13,6 +13,9 @@
 #include <Mstng\Elliot\ZigZag.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
+/**
+ * Elliot 前方宣言。
+ */
 class Elliot; // forward 宣言
 
 /**
