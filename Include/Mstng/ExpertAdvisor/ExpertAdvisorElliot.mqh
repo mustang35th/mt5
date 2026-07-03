@@ -39,6 +39,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
     
+    /**
+     * ExpertAdvisorElliot を破棄します。
+     */
     ~ExpertAdvisorElliot() {
     }
 
@@ -221,6 +224,7 @@ public:
     }
     
 private:
+    /** ロガー。 */
     Logger logger;
 
     /**

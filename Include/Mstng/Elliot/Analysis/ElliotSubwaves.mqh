@@ -46,6 +46,9 @@ public:
         this.initialize(fromMarketContext, fromWaveList);
     }
     
+    /**
+     * ElliotSubwaves を破棄します。
+     */
     ~ElliotSubwaves() {
     }
 

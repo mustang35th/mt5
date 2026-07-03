@@ -38,6 +38,9 @@ public:
         this.initialize(fromMarketContext, fromWaveList);
     }
     
+    /**
+     * ElliotReanalysisNarrowWaveLeft を破棄します。
+     */
     ~ElliotReanalysisNarrowWaveLeft() {
     }
     

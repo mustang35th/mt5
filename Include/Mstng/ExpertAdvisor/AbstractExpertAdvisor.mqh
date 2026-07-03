@@ -240,6 +240,7 @@ protected:
     ExpertAdvisorElliot *expertAdvisorElliot;
     
     
+    /** EMA200 エキスパートアドバイザー。 */
     ExpertAdvisorEma200 *expertAdvisorEma200;
 
     /** オシレーター条件の判定補助クラス */

@@ -25,6 +25,7 @@ public:
     /** 分析対象の市場コンテキスト */
     MarketContext marketContext;
 
+    /** ZigZag の検出ポイントを保持するリスト。 */
     CArrayObj zigZagPointList;
     
     /**
@@ -129,6 +130,7 @@ public:
     /**
      * ZigZag インジケータを毎回新規に取得してポイントを更新します。
      *
+     * @param fromMaxBars 処理対象とする最大バー数
      * @return 正常に更新できた場合 true、失敗した場合 false
      */
     bool update(int fromMaxBars) {
@@ -170,9 +172,13 @@ public:
     }
 
 private:
+    /** ロガー。 */
     Logger logger;
+    /** ZigZag の Depth パラメータ。 */
     int depth;
+    /** ZigZag の Deviation パラメータ。 */
     int deviation;
+    /** ZigZag の Backstep パラメータ。 */
     int backstep;
 
     /**
@@ -263,7 +269,12 @@ private:
         zigZagPoint.setBarIndexAndTime(this.marketContext, position);
     }
 
-    // 山か判定
+    /**
+     * 検索モードから山（ピーク）かを判定します。
+     *
+     * @param fromSearchMode ZigZag の検索モード
+     * @return 山（ピーク）なら true、谷なら false
+     */
     bool isPeak(int fromSearchMode) {
         return fromSearchMode == 1;
     }

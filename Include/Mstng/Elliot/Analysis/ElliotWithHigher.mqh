@@ -62,6 +62,9 @@ public:
         this.initialize(fromMarketContext, fromIsBuy, fromBuySellLabel, fromZigZagPointList, fromIsMotive, fromIsLatest);
     }
 
+    /**
+     * ElliotWithHigher を破棄します。
+     */
     ~ElliotWithHigher(){
     }
 

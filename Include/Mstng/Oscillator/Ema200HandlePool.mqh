@@ -235,9 +235,13 @@ protected:
     }
 
 private:
+    /** EMA周期。 */
     int emaPeriod;
+    /** MA 計算方法。 */
     ENUM_MA_METHOD maMethod;
+    /** 価格種別。 */
     ENUM_APPLIED_PRICE appliedPrice;
+    /** 時間足ごとのEMA200ハンドル。 */
     int ema200Handles[TIMEFRAME_SIZE];
 
     /**

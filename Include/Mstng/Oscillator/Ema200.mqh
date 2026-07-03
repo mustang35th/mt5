@@ -770,9 +770,13 @@ private:
     /** EMA200ハンドルに対応する市場コンテキスト */
     MarketContext handleMarketContext;
 
+    /** EMA200ハンドル。 */
     int ema200Handle;
+    /** EMA200ハンドルプール。 */
     Ema200HandlePool *ema200HandlePool;
+    /** 初期化状態。 */
     bool isInitialized;
+    /** ロガー。 */
     Logger logger;
 
     /**

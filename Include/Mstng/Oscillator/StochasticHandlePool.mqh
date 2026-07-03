@@ -218,11 +218,17 @@ protected:
     }
 
 private:
+    /** K期間。 */
     int kPeriod;
+    /** D期間。 */
     int dPeriod;
+    /** スローイング期間。 */
     int slowing;
+    /** MA 計算方法。 */
     ENUM_MA_METHOD maMethod;
+    /** 価格参照方法。 */
     ENUM_STO_PRICE priceField;
+    /** 時間足別ハンドル配列。 */
     int handles[TIMEFRAME_SIZE];
 
     /**

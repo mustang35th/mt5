@@ -39,6 +39,9 @@ public:
         this.initialize(fromMarketContext, fromIsBuy, fromBuySellLabel);
     }
 
+    /**
+     * ElliotHighest を破棄します。
+     */
     ~ElliotHighest() {
     }
 

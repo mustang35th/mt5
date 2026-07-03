@@ -256,21 +256,35 @@ public:
     }
 
 private:
+    /** 分析対象シンボル配列。 */
     string symbols[];
+    /** 分析対象シンボル数。 */
     int symbolCount;
 
+    /** 市場活動を判定する高速バー数。 */
     int fastBars;
+    /** 市場活動を判定する低速バー数。 */
     int slowBars;
+    /** 活発状態を判定する閾値。 */
     double activeThreshold;
+    /** 落ち着いた状態を判定する閾値。 */
     double calmThreshold;
+    /** スプレッド異常を判定する比率。 */
     double dangerSpreadRatio;
+    /** スプレッド罰点を計算する重み。 */
     double spreadPenaltyWeight;
+    /** セッション時間帯調整を有効にする。 */
     bool useSessionAdjustment;
 
+    /** 直近計算した総合スコア。 */
     double lastScore;
+    /** 直近計算したレンジスコア。 */
     double lastRangeScore;
+    /** 直近計算したスプレッド比率。 */
     double lastSpreadRatio;
+    /** 直近で有効だったシンボル数。 */
     int lastValidSymbols;
+    /** 直近判定された市場レベル。 */
     MarketActivityLevel lastLevel;
 
     /**

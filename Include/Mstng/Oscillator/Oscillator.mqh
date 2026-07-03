@@ -552,6 +552,7 @@ public:
     }
 
 private:
+    /** ロガー。 */
     Logger logger;
 
     /**

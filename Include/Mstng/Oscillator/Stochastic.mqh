@@ -24,6 +24,9 @@ public:
     /** 直近Signal値 */
     double signal0;
 
+    /**
+     * Stochastic を生成します。
+     */
     Stochastic() {
         this.logger.setLevel(LOG_INFO);
         this.stochasticHandlePool = NULL;
@@ -230,8 +233,11 @@ private:
         this.logger.setMarketContext(this.marketContext);
     }
 
+    /** Stochastic ハンドルプール。 */
     StochasticHandlePool *stochasticHandlePool;
+    /** ハンドル値。 */
     int handle;
+    /** ロガー。 */
     Logger logger;
 
     /**

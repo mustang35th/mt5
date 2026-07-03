@@ -39,6 +39,9 @@ public:
     /** 分析済みWave。インデックス0が最新 */
     CArrayObj waveList;
     
+    /**
+     * ElliotBase を生成します。
+     */
     ElliotBase() {        
     }
 
@@ -51,6 +54,9 @@ public:
         this.init(fromMarketContext);
     }
     
+    /**
+     * ElliotBase を破棄します。
+     */
     ~ElliotBase() {
     }
     

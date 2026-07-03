@@ -280,13 +280,28 @@ protected:
     }
     
 private:
+    /** 30期間EMA周期。 */
     int ema30Period;
+    /** 60期間EMA周期。 */
     int ema60Period;
+    /** MA 計算方法。 */
     ENUM_MA_METHOD maMethod;
+    /** 価格種別。 */
     ENUM_APPLIED_PRICE appliedPrice;
+    /** 低速EMAの時間足別ハンドル配列。 */
     int ema30Handles[TIMEFRAME_SIZE];
+    /** 高速EMAの時間足別ハンドル配列。 */
     int ema60Handles[TIMEFRAME_SIZE];
     
+    /**
+     * 指定シンボル・パラメータでGMMAハンドルを初期化します。
+     *
+     * @param fromSymbolName 対象シンボル
+     * @param fromEma30Period 30期間EMA
+     * @param fromEma60Period 60期間EMA
+     * @param fromMaMethod MA計算方法
+     * @param fromAppliedPrice 価格種別
+     */
     void initialize(string fromSymbolName,
                     int fromEma30Period,
                     int fromEma60Period,

@@ -241,6 +241,7 @@ public:
         return isStochasticMainOrder;
     }
 private:
+    /** ロガー。 */
     Logger logger;
 
     /**

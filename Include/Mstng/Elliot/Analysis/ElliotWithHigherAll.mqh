@@ -56,6 +56,9 @@ public:
         this.initialize(fromMarketContext, fromIsBuy, fromBuySellLabel);
     }
     
+    /**
+     * ElliotWithHigherAll を破棄します。
+     */
     ~ElliotWithHigherAll() {
     }
 

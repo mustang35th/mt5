@@ -46,6 +46,9 @@ public:
         this.initialize(fromMarketContext, fromWaveList);
     }
     
+    /**
+     * ElliotRecount を破棄します。
+     */
     ~ElliotRecount() {
     }
 

@@ -496,10 +496,15 @@ private:
     /** GMMAハンドルに対応する市場コンテキスト */
     MarketContext handleMarketContext;
 
+    /** 30期間EMAハンドル。 */
     int ema30Handle;
+    /** 60期間EMAハンドル。 */
     int ema60Handle;
+    /** GMMAハンドルプール。 */
     GmmaHandlePool *gmmaHandlePool;
+    /** 初期化状態。 */
     bool isInitialized;
+    /** ロガー。 */
     Logger logger;
 
     /**

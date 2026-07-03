@@ -45,6 +45,9 @@ public:
     /** lc0から損失方向へ15pipsずらしたロスカット価格 */
     double lc15;
     
+    /**
+     * LossCut を生成します。
+     */
     LossCut() {
         this.initializeValues();
     }
@@ -59,6 +62,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
     
+    /**
+     * LossCut を破棄します。
+     */
     ~LossCut() {
     }
 

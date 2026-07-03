@@ -177,12 +177,19 @@ public:
     }
 
 private:
+    /** ロガー。 */
     Logger logger;
+    /** ストキャスティック短期のハンドルプール。 */
     StochasticHandlePool stochasticShortHandlePool;
+    /** ストキャスティック中期のハンドルプール。 */
     StochasticHandlePool stochasticMiddleHandlePool;
+    /** ストキャスティック長期のハンドルプール。 */
     StochasticHandlePool stochasticLongHandlePool;
+    /** GMMAハンドルプール。 */
     GmmaHandlePool gmmaHandlePool;
+    /** EMA200ハンドルプール。 */
     Ema200HandlePool ema200HandlePool;
+    /** ATRハンドルプール。 */
     AverageTrueRangeHandlePool averageTrueRangeHandlePool;
 
     /**

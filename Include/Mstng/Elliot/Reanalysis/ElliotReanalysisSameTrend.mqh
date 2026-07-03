@@ -38,6 +38,9 @@ public:
         this.initialize(fromMarketContext, fromWaveList);
     }
     
+    /**
+     * ElliotReanalysisSameTrend を破棄します。
+     */
     ~ElliotReanalysisSameTrend() {
     }
     

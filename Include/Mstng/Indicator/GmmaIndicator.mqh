@@ -126,18 +126,31 @@ public:
     }
 
 private:
+    /** 30期間EMAハンドル。 */
     int ema30;
+    /** 60期間EMAハンドル。 */
     int ema60;
+    /** 描画対象の最大バー数。 */
     int maxBars;
+    /** 上昇色。 */
     color upColor;
+    /** 下降色。 */
     color downColor;
+    /** 線分上昇色。 */
     color lineUpColor;
+    /** 線分下降色。 */
     color lineDownColor;
+    /** 30期間EMAのデータバッファ。 */
     double buffer30[];
+    /** 60期間EMAのデータバッファ。 */
     double buffer60[];
+    /** 30期間EMAハンドル。 */
     int handle30;
+    /** 60期間EMAハンドル。 */
     int handle60;
+    /** 描画クラス。 */
     DrawGmma *drawGmma;
+    /** 最終更新日時。 */
     datetime lasttimeGmma;
 
     /**

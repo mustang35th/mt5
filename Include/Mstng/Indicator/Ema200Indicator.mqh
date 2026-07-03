@@ -132,18 +132,31 @@ public:
     }
 
 private:
+    /** EMAの期間。 */
     int emaPeriod;
+    /** 描画に使用する最大バー数。 */
     int maxBars;
+    /** 表示開始インデックス。 */
     int startPlotIndex;
+    /** 表示対象の時間足数。 */
     int displayCount;
+    /** 表示対象の時間足配列。 */
     ENUM_TIMEFRAMES timeFrames[3];
+    /** 時間足ごとのEMAハンドル配列。 */
     int handles[3];
+    /** EMAの主軸データバッファ。 */
     double buffer0[];
+    /** EMAの短期データバッファ。 */
     double buffer1[];
+    /** EMAの長期データバッファ。 */
     double buffer2[];
+    /** 最終更新したM1バー時刻。 */
     datetime lastUpdateM1BarTime;
+    /** ラベル表示のシフト数。 */
     int labelShiftBars;
+    /** ラベル文字サイズ。 */
     int labelFontSize;
+    /** ラベル文字フォント。 */
     string labelFontFace;
 
     /**

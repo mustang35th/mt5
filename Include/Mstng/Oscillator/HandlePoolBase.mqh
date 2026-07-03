@@ -128,9 +128,14 @@ protected:
         TIMEFRAME_SIZE = 8
     };
 
+    /** 市場コンテキスト。 */
     MarketContext marketContext;
+    /** 対象時間足配列。 */
     ENUM_TIMEFRAMES timeframes[TIMEFRAME_SIZE];
 
+    /**
+     * デフォルトコンテキストで初期化します。
+     */
     HandlePoolBase() {
         this.initializeBase(Symbol());
     }
@@ -144,6 +149,9 @@ protected:
         this.initializeBase(fromMarketContext);
     }
 
+    /**
+     * リソースを解放します。
+     */
     ~HandlePoolBase() {
     }
 
@@ -235,7 +243,9 @@ protected:
         fromHandle = INVALID_HANDLE;
     }
 
-    // 派生クラス実装
+    /**
+     * 派生クラスでハンドル初期化を実装します。
+     */
     virtual void createIfNeeded(int index) {
     }
 
