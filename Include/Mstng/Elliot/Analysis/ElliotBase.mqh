@@ -259,7 +259,23 @@ protected:
                 }
             }
         }
-        
+
+        if (pointList.Total() == 1) {
+            ZigZagPoint *zigZagPointRest = this.zigZagPointList.At(zigZagIndex);
+
+            if (zigZagPointRest != NULL) {
+                ZigZagPointUtil::insertPoint(pointList, zigZagPointRest);
+            }
+        }
+
+        if (pointList.Total() < 2) {
+            this.logger.error(__FUNCTION__, StringFormat("pointList.Total < 2 fromZigZagIndex = %d", fromZigZagIndex));
+
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
         WaveUtil::addWave(
             this.logger,
             this.waveList,
@@ -380,6 +396,7 @@ protected:
         const int MAX_LOOP = 30;
         
         while (position < total) {
+            int previousPosition = position;
             int startPosition = 0;
             
             if (position > 0) {
@@ -396,8 +413,16 @@ protected:
             
             Wave *wave = WaveUtil::getLastNode(this.waveList);
             position = startPosition + wave.zigZagPointList.Total();
-            
+
             this.logger.debug(__FUNCTION__, StringFormat("ループ内 position = %d", position));
+
+            if (position <= previousPosition) {
+                this.logger.error(__FUNCTION__, StringFormat("position not advanced previousPosition = %d position = %d", previousPosition, position));
+
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
                         
             if (++count > MAX_LOOP) {
                 this.logger.error(__FUNCTION__, StringFormat("ループ終了 = %d回", MAX_LOOP));
