@@ -12,6 +12,12 @@
 
 class ExpertAdvisorOscillator {
 public:
+    /**
+     * Oscillatorの条件判定を行うEA補助クラスです。
+     *
+     * 主にElliot分析結果を元に
+     * GMMA/ストキャスティクス条件のシグナル判定を提供します。
+     */
     /** 判定対象の市場コンテキスト */
     MarketContext marketContext;
 
@@ -35,6 +41,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
     
+    /**
+     * デストラクタ。
+     */
     ~ExpertAdvisorOscillator() {
     }
 
@@ -75,6 +84,13 @@ public:
         return isStochasticCross_2;
     }*/
     
+    /**
+     * GMMAトレンドを1段階条件で評価する。
+     *
+     * @param elliot 対象Elliot
+     * @param isBuy 判定対象の方向（BUY時は>0条件）
+     * @return 条件を満たす場合true
+     */
     bool isGmmaTrend_1(Elliot &elliot, bool isBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -89,6 +105,13 @@ public:
         return isgmmaTrend_1;
     }
     
+    /**
+     * GMMAトレンドを2段階条件で評価する。
+     *
+     * @param elliot 対象Elliot
+     * @param isBuy 判定対象の方向（BUY時は>1条件）
+     * @return 条件を満たす場合true
+     */
     bool isGmmaTrend_2(Elliot &elliot, bool isBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -103,6 +126,13 @@ public:
         return isgmmaTrend_2;
     }
     
+    /**
+     * GMMAクロス継続を2段階条件で評価する。
+     *
+     * @param elliot 対象Elliot
+     * @param isBuy 判定対象の方向（BUY時は>1条件）
+     * @return 条件を満たす場合true
+     */
     bool isGmmaCross_2(Elliot &elliot, bool isBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -117,12 +147,26 @@ public:
         return isGmmaCross_2;
     }
     
+    /**
+     * 3本のストキャスティクス短中長カウントが中立か判定する。
+     *
+     * @param elliot 対象Elliot
+     * @return 2本以上同方向でなければtrue
+     */
     bool isTrendCountNeutral(Elliot *elliot) {
         Oscillator oscillator = elliot.oscillator;
         
         return this.isTrendCountNeutral(oscillator.stochasticShort.count, oscillator.stochasticMiddle.count, oscillator.stochasticLong.count);
     }
     
+    /**
+     * D1/H4基準を用いたストキャスティクス主順序（買い）判定を行う。
+     *
+     * D1/H4のいずれかがS_M_L、かつH1がS_M_LまたはM_S_Lであればtrue。
+     *
+     * @param elliotAll 対象のElliotAll
+     * @return 判定結果
+     */
     bool isStochasticMainOrder(ElliotAll *elliotAll) {
         Elliot *elliotD1 = elliotAll.getElliot(PERIOD_D1);
         Elliot *elliotH4 = elliotAll.getElliot(PERIOD_H4);
@@ -160,6 +204,14 @@ public:
         return isStochasticMainOrder;
     }
     
+    /**
+     * D1/H1のストキャスティクス主順序を比較する。
+     *
+     * BUYなら共に上昇優勢、SELLなら共に下降優勢を判定する。
+     *
+     * @param elliotAll 対象のElliotAll
+     * @return 判定結果
+     */
     bool isStochasticMainOrderD1H1(ElliotAll *elliotAll) {
         Elliot *elliotD1 = elliotAll.getElliot(PERIOD_D1);
         Elliot *elliotH1 = elliotAll.getElliot(PERIOD_H1);
@@ -203,6 +255,13 @@ private:
         this.logger.setMarketContext(this.marketContext);
     }
     
+    /**
+     * Elliott波動のストキャスティクス主順序が指定値か比較する。
+     *
+     * @param elliot 対象Elliot
+     * @param value 比較対象のストキャスティクス主順序
+     * @return 一致すればtrue
+     */
     bool isStochasticMainOrder(Elliot *elliot, ENUM_STOCHASTIC_MAIN_ORDER value) {
         bool isStochasticMainOrder = false;
         
@@ -213,6 +272,16 @@ private:
         return isStochasticMainOrder;
     }
     
+    /**
+     * ストキャスティクス短中長の連続加点を合算し、中立判定する。
+     *
+     * 2本以上が同方向（+1または-1）だと非中立。
+     *
+     * @param countShort 短期ストキャスティクス加点
+     * @param countMiddle 中期ストキャスティクス加点
+     * @param countLong 長期ストキャスティクス加点
+     * @return 中立ならtrue
+     */
     bool isTrendCountNeutral(int countShort, int countMiddle, int countLong) {
         int plusCount = 0;
         int minusCount = 0;
@@ -242,14 +311,37 @@ private:
         return true;
     }
     
+    /**
+     * buy/sell向けの単純閾値比較（+0/-0相当）を行う。
+     *
+     * @param isBuy BUY判定方向
+     * @param count 判定対象カウント
+     * @return 条件を満たす場合true
+     */
     bool isValue_1(bool isBuy, int count) {
         return this.isValue(isBuy, count, 0, 0);
     }
     
+    /**
+     * buy/sell向けの厳格閾値比較（+1/-1）を行う。
+     *
+     * @param isBuy BUY判定方向
+     * @param count 判定対象カウント
+     * @return 条件を満たす場合true
+     */
     bool isValue_2(bool isBuy, int count) {
         return this.isValue(isBuy, count, 1, -1);
     }
     
+    /**
+     * 汎用のbuy/sell別比較条件を評価する。
+     *
+     * @param isBuy BUY判定方向
+     * @param count 判定対象カウント
+     * @param buyValue BUY側の閾値
+     * @param sellValue SELL側の閾値
+     * @return 判定対象方向で条件を満たす場合true
+     */
     bool isValue(bool isBuy, int count, int buyValue, int sellValue) {
         bool isValue = false;
         
