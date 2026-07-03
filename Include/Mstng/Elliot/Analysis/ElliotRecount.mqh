@@ -92,6 +92,12 @@ private:
     /** 処理経過およびエラー出力用ロガー */
     Logger logger;
 
+    /** 浅い推進波と判定する最小フィボナッチエクスパンション率 */
+    static const double minMotiveFibonacciExpansionPercent;
+
+    /** 深い修正波と判定する最大フィボナッチリトレースメント率 */
+    static const double maxCorrectionFibonacciPercent;
+
     /**
      * 市場コンテキストおよびWave一覧を初期化する。
      *
@@ -204,7 +210,7 @@ private:
             if (Util::isOdd(i)) {
                 // 推進波
                 // i + 2 が存在する場合のみ、浅い推進波を削除対象にする
-                if (zigZagPoint.fibonacciExpansionPercent < 100
+                if (zigZagPoint.fibonacciExpansionPercent < ElliotRecount::minMotiveFibonacciExpansionPercent
                         && i + 2 < total) {
                     this.logger.debug(__FUNCTION__, "FEが浅い");
     
@@ -220,7 +226,7 @@ private:
                 }
             } else {
                 // 修正波
-                if (zigZagPoint.fibonacciPercent >= 85) {
+                if (zigZagPoint.fibonacciPercent >= ElliotRecount::maxCorrectionFibonacciPercent) {
                     this.logger.debug(__FUNCTION__, "フィボナッチが深い");
     
                     zigZagPoint.elliotIndex = Constant::DELETE_FLG;
@@ -240,6 +246,9 @@ private:
     }
     
 };
+
+const double ElliotRecount::minMotiveFibonacciExpansionPercent = 100.0;
+const double ElliotRecount::maxCorrectionFibonacciPercent = 85.0;
 
 
 
