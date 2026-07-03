@@ -47,6 +47,10 @@ enum ENUM_STOCHASTIC_MAIN_ORDER {
     STOCH_MAIN_ORDER_FLAT = 7
 };
 
+/**
+ * ストキャスティクス、GMMA、EMA200、ATRを統合して
+ * 売買判定とCSV文字列を提供するクラスです。
+ */
 class Oscillator {
 public:
     /** 分析対象の市場コンテキスト */
@@ -86,6 +90,9 @@ public:
     /** 3本ストキャスMain0の並び順 */
     ENUM_STOCHASTIC_MAIN_ORDER stochasticMainOrder;
     
+    /**
+     * デフォルトコンストラクタ。
+     */
     Oscillator() {
         this.logger.setLevel(LOG_INFO);
         this.resetValues();
@@ -102,6 +109,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * デストラクタ。
+     */
     ~Oscillator() {}
 
     /**

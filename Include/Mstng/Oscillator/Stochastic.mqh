@@ -11,12 +11,17 @@
 #include <Mstng\Oscillator\StochasticHandlePool.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
+/**
+ * ストキャスティクスのクロス継続を取得・判定するためのクラスです。
+ */
 class Stochastic {
 public:
     /** 取得対象の市場コンテキスト */
     MarketContext marketContext;
 
+    /** 直近Main0値 */
     double main0;
+    /** 直近Signal値 */
     double signal0;
 
     Stochastic() {
@@ -41,6 +46,11 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * ストキャスティクスハンドルプールを指定して初期化する。
+     *
+     * @param fromStochasticHandlePool ストキャスティクスハンドルプール
+     */
     Stochastic(StochasticHandlePool *fromStochasticHandlePool) {
         this.logger.setLevel(LOG_INFO);
         this.stochasticHandlePool = fromStochasticHandlePool;
@@ -67,6 +77,11 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * ストキャスティクスハンドルプールを差し替えます。
+     *
+     * @param fromStochasticHandlePool 置き換えるハンドルプール
+     */
     void setStochasticHandlePool(StochasticHandlePool *fromStochasticHandlePool) {
         this.stochasticHandlePool = fromStochasticHandlePool;
         this.handle = INVALID_HANDLE;
@@ -81,15 +96,33 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * デストラクタ。
+     */
     ~Stochastic() {
         this.handle = INVALID_HANDLE;
         this.stochasticHandlePool = NULL;
     }
 
+    /**
+     * 文字列ベースでクロス継続数を取得します。
+     *
+     * @param symbol シンボル名
+     * @param period 時間足
+     * @return クロス継続数
+     */
     int getCrossCount(string symbol, ENUM_TIMEFRAMES period) {
         return this.getCrossCount(symbol, period, 0);
     }
 
+    /**
+     * 開始シフト付きでクロス継続数を取得します。
+     *
+     * @param symbol シンボル名
+     * @param period 時間足
+     * @param start 取得開始シフト
+     * @return クロス継続数
+     */
     int getCrossCount(string symbol, ENUM_TIMEFRAMES period, int start) {
         int count = 0;
         if (!this.getCrossCount(symbol, period, start, count)) {
@@ -98,6 +131,15 @@ public:
         return count;
     }
 
+    /**
+     * 文字列入力でクロス継続数を取得し、結果参照を受け取ります。
+     *
+     * @param symbol シンボル名
+     * @param period 時間足
+     * @param start 取得開始シフト
+     * @param count クロス継続数
+     * @return 取得できた場合は true
+     */
     bool getCrossCount(string symbol, ENUM_TIMEFRAMES period, int start, int &count) {
         MarketContext context(symbol, period);
 

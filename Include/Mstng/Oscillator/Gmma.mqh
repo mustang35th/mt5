@@ -14,11 +14,17 @@
 #include <Mstng\Oscillator\GmmaUtil.mqh>
 #include <Mstng\Util\StringUtil.mqh>
 
+/**
+ * EMA30/EMA60差分を用いてGMMAトレンドを評価するための分析クラスです。
+ */
 class Gmma {
 public:
     /** 分析対象の市場コンテキスト */
     MarketContext marketContext;
 
+    /**
+     * デフォルトコンストラクタ。
+     */
     Gmma() {
         this.logger.setLevel(LOG_INFO);
         this.ema30Handle = INVALID_HANDLE;
@@ -41,6 +47,11 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * GMMAハンドルプールを指定して初期化する。
+     *
+     * @param fromGmmaHandlePool GMMAハンドルプール
+     */
     Gmma(GmmaHandlePool *fromGmmaHandlePool) {
         this.logger.setLevel(LOG_INFO);
         this.ema30Handle = INVALID_HANDLE;
@@ -64,6 +75,11 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * GMMAハンドルプールを設定します。
+     *
+     * @param fromGmmaHandlePool GMMAハンドルプール
+     */
     void setGmmaHandlePool(GmmaHandlePool *fromGmmaHandlePool) {
         this.gmmaHandlePool = fromGmmaHandlePool;
         this.isInitialized = false;
@@ -80,6 +96,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * デストラクタ。
+     */
     ~Gmma() {
         if (this.gmmaHandlePool == NULL) {
             this.releaseHandles();
@@ -89,6 +108,13 @@ public:
         }
     }
 
+    /**
+     * シンボル/時間足指定でGMMAクロス継続件数を取得する。
+     *
+     * @param fromSymbolName シンボル名
+     * @param fromTimeFrame 時間足
+     * @return プラス方向は正、マイナス方向は負。取得失敗時は0
+     */
     int getCrossCount(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         int count = 0;
         if (!this.getCrossCount(fromSymbolName, fromTimeFrame, count)) {
@@ -113,6 +139,13 @@ public:
         return count;
     }
 
+    /**
+     * シンボル/時間足指定でGMMAトレンド継続件数を取得する。
+     *
+     * @param fromSymbolName シンボル名
+     * @param fromTimeFrame 時間足
+     * @return BUY方向は正、SELL方向は負。取得失敗時は0
+     */
     int getTrendCount(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         int count = 0;
 
@@ -328,8 +361,13 @@ public:
         }
 
         int maxCheck = len;
-        if (copied30 < maxCheck) maxCheck = copied30;
-        if (copied60 < maxCheck) maxCheck = copied60;
+        if (copied30 - 1 < maxCheck) {
+            maxCheck = copied30 - 1;
+        }
+
+        if (copied60 - 1 < maxCheck) {
+            maxCheck = copied60 - 1;
+        }
         if (maxCheck <= 0) {
             this.logger.error(__FUNCTION__, StringFormat("maxCheck <= 0. maxCheck=%d", maxCheck));
             return false;

@@ -49,6 +49,9 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
 
+    /**
+     * デストラクタ。保持している各種ハンドルを解放します。
+     */
     ~OscillatorHandlePool() {
         this.releaseAll();
     }

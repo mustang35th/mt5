@@ -13,8 +13,11 @@
  */
 class StochasticStatus {
 public:
+    /** クロス継続数（正：上向き、負：下向き） */
     int count;
+    /** Main0の最新値 */
     double main0;
+    /** Signalの最新値 */
     double signal0;
 
     /**
@@ -71,6 +74,11 @@ public:
         return DoubleToString(this.signal0, digitsValue);
     }
     
+    /**
+     * ストキャス状態を簡易文字列で取得する。
+     *
+     * @return /count/main/signal/ 形式
+     */
     string getText() {
         return StringFormat("/%s/%s/%s/", this.getCountText(), this.getMain0Text(), this.getSignal0Text());
     }

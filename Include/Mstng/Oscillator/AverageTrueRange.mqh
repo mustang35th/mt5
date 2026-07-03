@@ -15,6 +15,7 @@
 /**
  * AverageTrueRange指標の参照を行うクラス。
  * 市場コンテキストを元にATR値・pips値を取得する。
+ * ATR（平均値レンジ）を参照するための軽量ラッパークラスです。
  */
 class AverageTrueRange {
 public:
