@@ -13,7 +13,9 @@
 
 /**
  * ログ出力のユーティリティクラスです。
- * 主に ZigZagPoint の情報を整形してログへ出力するためのメソッドを提供します。
+ *
+ * 主に ZigZagPoint や Wave の情報を整形して
+ * DEBUGログとして出力するための静的ヘルパーを提供します。
  */
 class LogUtil {
 public:
@@ -27,12 +29,6 @@ public:
     static string getTextIndex(int i) {
         return StringFormat("i = %d, ", i);
     }
-    
-    /*static void setLevelDebug(Logger &logger, ZigZagPoint *zigZagPoint, int barINdex) {
-        if (zigZagPoint.barIndex == barINdex) {
-            logger.setLevel(LOG_DEBUG);
-        }
-    }*/
     
     /**
      * メソッド終了と処理結果をデバッグログへ出力する。
