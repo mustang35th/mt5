@@ -64,7 +64,10 @@ protected:
                 
                 //&& this.isBuySell()
                 
-                && this.expertAdvisorElliot.isBuySellFromH4(this.elliotAll, this.isBuy)
+                //&& this.expertAdvisorElliot.isBuySellFromH4(this.elliotAll, this.isBuy)
+                //&& this.expertAdvisorElliot.isBuySellFromH1(this.elliotAll, this.isBuy)
+
+                && this.elliotAll.isBuySell(PERIOD_H4)
                 
                 && this.expertAdvisorElliot.isZigZagConfirmed(this.elliotCurrent)
                 
@@ -115,10 +118,17 @@ protected:
                 //&& this.isEma200BuySellHigher1()
                 
                 && this.isElliot1or3(this.elliotCurrent)
+                && this.expertAdvisorEma200.isCloseEma200DiffPipsWithin(
+                    this.elliotCurrent,
+                    this.getMaxCloseEma200DiffPips()
+                )
                 
         ) {
             this.isEntry = true;
-            this.isSendMail = true;
+
+            if (this.elliotCurrent.marketContext.timeFrame == PERIOD_M5) {
+                this.isSendMail = true;
+            }
         }
         
         this.logger.debug(__FUNCTION__, StringFormat("isEntry = %s", (string)this.isEntry));
@@ -129,6 +139,12 @@ protected:
     
     
 private:
+    /** Close1とEMA200[1]のエントリー許容距離pips。 */
+    static const double maxCloseEma200DiffPips;
+
+    /** JPYペアのClose1とEMA200[1]のエントリー許容距離pips。 */
+    static const double maxCloseEma200DiffPipsJpy;
+
     /**
      * 市場コンテキストを使用して共通設定とEA固有設定を初期化する。
      *
@@ -143,6 +159,19 @@ private:
         this.isDarwText = true;
         this.name = "MTF_3in3";
         this.fontSize = 20;
+    }
+
+    /**
+     * Close1とEMA200[1]のエントリー許容距離pipsを取得する。
+     *
+     * @return エントリー許容距離pips
+     */
+    double getMaxCloseEma200DiffPips() {
+        if (this.marketContext.isJpy()) {
+            return ExpertAdvisorMTF_3in3::maxCloseEma200DiffPipsJpy;
+        }
+
+        return ExpertAdvisorMTF_3in3::maxCloseEma200DiffPips;
     }
 
     // 旧バージョンの上位時間足判定実装（未使用）。必要時は再有効化して利用。
@@ -278,3 +307,5 @@ private:
     
 };
 
+const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPips = 20.0;
+const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPipsJpy = 25.0;

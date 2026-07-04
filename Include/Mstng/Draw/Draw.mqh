@@ -14,6 +14,7 @@
 #include <Mstng\Draw\DrawRoundLines.mqh>
 #include <Mstng\Draw\DrawZigZag.mqh>
 #include <Mstng\ExpertAdvisor\Common\ExpertAdvisorBuySell.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorEma200.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorOscillator.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 
@@ -314,15 +315,29 @@ private:
                 bgColor = downColor;
             }
         }*/
-        
-        /*if (this.elliotAll.isBuySell(PERIOD_D1)) {
-            if (this.elliotAll.elliotCurrent != NULL
-                    && this.elliotAll.elliotCurrent.isBuy) {
+
+        if (this.elliotAll.elliotCurrent == NULL) {
+            DrawUtil::setBgColor(bgColor);
+
+            return;
+        }
+
+        bool isBuy = this.elliotAll.elliotCurrent.isBuy;
+        ExpertAdvisorEma200 expertAdvisorEma200(isBuy);
+
+        Elliot *elliotHigher1 = this.elliotAll.getElliot(this.elliotAll.marketContext.timeFrame, 1);
+        Elliot *elliotCurrent = this.elliotAll.elliotCurrent;
+
+        if (this.elliotAll.isBuySell(PERIOD_H4)
+                && expertAdvisorEma200.isEma200BuySell(elliotHigher1)
+                && expertAdvisorEma200.isEma200BuySell(elliotCurrent)
+                && expertAdvisorEma200.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent)) {
+            if (isBuy) {
                 bgColor = upColor;
             } else {
                 bgColor = downColor;
             }
-        }*/
+        }
         
         DrawUtil::setBgColor(bgColor);
         

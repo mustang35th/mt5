@@ -100,6 +100,28 @@ public:
 
         return isEma200BuySell;
     }
+
+    /**
+     * Close1とEMA200[1]の距離が上限以内か判定する。
+     *
+     * @param elliot 判定対象
+     * @param fromMaxPips 距離上限pips
+     * @return 距離が上限以内の場合true
+     */
+    bool isCloseEma200DiffPipsWithin(Elliot *elliot, double fromMaxPips) {
+        if (elliot == NULL) {
+            return false;
+        }
+
+        double maxPips = MathAbs(fromMaxPips);
+        double closeEma200DiffPips = MathAbs(elliot.oscillator.ema200.closeEma200DiffPips);
+
+        if (closeEma200DiffPips <= maxPips) {
+            return true;
+        }
+
+        return false;
+    }
 };
 
 #endif

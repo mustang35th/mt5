@@ -129,6 +129,16 @@ public:
         Elliot *elliotH1 = fromElliotAll.getElliot(PERIOD_H1);
         Elliot *elliotM15 = fromElliotAll.getElliot(PERIOD_M15);
         Elliot *elliotM5 = fromElliotAll.getElliot(PERIOD_M5);
+
+        if (fromElliotAll.marketContext.timeFrame == PERIOD_H1) {
+            if (elliotH4 == NULL) {
+                return false;
+            }
+
+            if (this.isElliotBuySell(*elliotH4, fromIsBuy)) {
+                isBuySell = true;
+            }
+        }
     
         if (fromElliotAll.marketContext.timeFrame == PERIOD_M15) {
             if (elliotH4 == NULL || elliotH1 == NULL) {
