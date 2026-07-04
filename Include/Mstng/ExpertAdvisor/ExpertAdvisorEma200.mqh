@@ -45,27 +45,27 @@ public:
     }
 
     /**
-     * 現在足と1つ上位足のEMA200の並びが売買方向と一致するか判定する。
+     * 現在足と上位足のEMA200の並びが売買方向と一致するか判定する。
      *
-     * @param fromElliotHigher1 1つ上位足のElliot情報
+     * @param fromElliotHigher 上位足のElliot情報
      * @param fromElliotCurrent 現在足のElliot情報
      * @return 売買方向とEMA200の並びが一致する場合true
      */
-    bool isEma200CurrentAndHigher1(
-        Elliot &fromElliotHigher1,
+    bool isEma200CurrentAndHigher(
+        Elliot &fromElliotHigher,
         Elliot &fromElliotCurrent
     ) {
         bool isEma200 = false;
 
-        double ema200Higher1 = fromElliotHigher1.oscillator.ema200.ema200Shift1;
+        double ema200Higher = fromElliotHigher.oscillator.ema200.ema200Shift1;
         double ema200Current = fromElliotCurrent.oscillator.ema200.ema200Shift1;
 
         if (this.isBuy) {
-            if (ema200Current > ema200Higher1) {
+            if (ema200Current > ema200Higher) {
                 isEma200 = true;
             }
         } else {
-            if (ema200Current < ema200Higher1) {
+            if (ema200Current < ema200Higher) {
                 isEma200 = true;
             }
         }

@@ -53,7 +53,7 @@ public:
     void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
     }
-    
+
     /**
      * 最新の ZigZag ポイントが確定しているか確認します。
      *
@@ -87,7 +87,7 @@ public:
      * @param fromIsBuy BUY方向を期待する場合 true
      * @return 方向が一致する場合 true
      */
-    bool isBuySell(Elliot &elliot, bool fromIsBuy) {
+    bool isElliotBuySell(Elliot &elliot, bool fromIsBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         bool isBuySell = false;
@@ -113,13 +113,13 @@ public:
     }
     
     /**
-     * 現在時間足に応じた上位時間足の売買方向が一致するか判定する。
+     * H4から現在時間足までの上位時間足の売買方向が一致するか判定する。
      *
      * @param fromElliotAll 全時間足のElliot情報
      * @param fromIsBuy BUY方向の場合true
      * @return 必要な上位時間足の売買方向が一致する場合true
      */
-    bool isBuySell(
+    bool isBuySellFromH4(
         ElliotAll &fromElliotAll,
         bool fromIsBuy
     ) {
@@ -135,8 +135,8 @@ public:
                 return false;
             }
     
-            if (this.isBuySell(*elliotH4, fromIsBuy)
-                    && this.isBuySell(*elliotH1, fromIsBuy)) {
+            if (this.isElliotBuySell(*elliotH4, fromIsBuy)
+                    && this.isElliotBuySell(*elliotH1, fromIsBuy)) {
                 isBuySell = true;
             }
         }
@@ -146,9 +146,9 @@ public:
                 return false;
             }
     
-            if (this.isBuySell(*elliotH4, fromIsBuy)
-                    && this.isBuySell(*elliotH1, fromIsBuy)
-                    && this.isBuySell(*elliotM15, fromIsBuy)) {
+            if (this.isElliotBuySell(*elliotH4, fromIsBuy)
+                    && this.isElliotBuySell(*elliotH1, fromIsBuy)
+                    && this.isElliotBuySell(*elliotM15, fromIsBuy)) {
                 isBuySell = true;
             }
         }
@@ -158,10 +158,63 @@ public:
                 return false;
             }
     
-            if (this.isBuySell(*elliotH4, fromIsBuy)
-                    && this.isBuySell(*elliotH1, fromIsBuy)
-                    && this.isBuySell(*elliotM15, fromIsBuy)
-                    && this.isBuySell(*elliotM5, fromIsBuy)) {
+            if (this.isElliotBuySell(*elliotH4, fromIsBuy)
+                    && this.isElliotBuySell(*elliotH1, fromIsBuy)
+                    && this.isElliotBuySell(*elliotM15, fromIsBuy)
+                    && this.isElliotBuySell(*elliotM5, fromIsBuy)) {
+                isBuySell = true;
+            }
+        }
+
+        return isBuySell;
+    }
+
+    /**
+     * H1から現在時間足までの上位時間足の売買方向が一致するか判定する。
+     *
+     * @param fromElliotAll 全時間足のElliot情報
+     * @param fromIsBuy BUY方向の場合true
+     * @return 必要な上位時間足の売買方向が一致する場合true
+     */
+    bool isBuySellFromH1(
+        ElliotAll &fromElliotAll,
+        bool fromIsBuy
+    ) {
+        bool isBuySell = false;
+
+        Elliot *elliotH1 = fromElliotAll.getElliot(PERIOD_H1);
+        Elliot *elliotM15 = fromElliotAll.getElliot(PERIOD_M15);
+        Elliot *elliotM5 = fromElliotAll.getElliot(PERIOD_M5);
+
+        if (fromElliotAll.marketContext.timeFrame == PERIOD_M15) {
+            if (elliotH1 == NULL) {
+                return false;
+            }
+
+            if (this.isElliotBuySell(*elliotH1, fromIsBuy)) {
+                isBuySell = true;
+            }
+        }
+
+        if (fromElliotAll.marketContext.timeFrame == PERIOD_M5) {
+            if (elliotH1 == NULL || elliotM15 == NULL) {
+                return false;
+            }
+
+            if (this.isElliotBuySell(*elliotH1, fromIsBuy)
+                    && this.isElliotBuySell(*elliotM15, fromIsBuy)) {
+                isBuySell = true;
+            }
+        }
+
+        if (fromElliotAll.marketContext.timeFrame == PERIOD_M1) {
+            if (elliotH1 == NULL || elliotM15 == NULL || elliotM5 == NULL) {
+                return false;
+            }
+
+            if (this.isElliotBuySell(*elliotH1, fromIsBuy)
+                    && this.isElliotBuySell(*elliotM15, fromIsBuy)
+                    && this.isElliotBuySell(*elliotM5, fromIsBuy)) {
                 isBuySell = true;
             }
         }

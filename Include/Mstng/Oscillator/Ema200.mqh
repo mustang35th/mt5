@@ -71,6 +71,9 @@ public:
     /** EMA200[1] - EMA200[compareBarIndex] のpips */
     double slopePips;
 
+    /** Close1 - EMA200[1] のpips */
+    double closeEma200DiffPips;
+
     /** Close1 と EMA200[1] の位置関係 */
     ENUM_EMA200_POSITION closePosition;
 
@@ -282,6 +285,10 @@ public:
             this.marketContext,
             this.ema200Shift1 - this.ema200Compare
         );
+        this.closeEma200DiffPips = this.convertPriceDifferenceToPips(
+            this.marketContext,
+            this.close1 - this.ema200Shift1
+        );
         this.closePosition = this.determineClosePosition(this.close1, this.ema200Shift1);
         this.slopeDirection = this.determineSlopeDirection(this.slopePips, fromMinSlopePips);
 
@@ -293,13 +300,14 @@ public:
         this.logger.debug(
             __FUNCTION__,
             StringFormat(
-                "symbol=%s timeFrame=%s close1=%.8f ema200Shift1=%.8f ema200Compare=%.8f slopePips=%.2f closePosition=%s slopeDirection=%s upCount=%d downCount=%d trendCount=%s isBuy=%s isSell=%s buySellLabel=%s textLabel=%s",
+                "symbol=%s timeFrame=%s close1=%.8f ema200Shift1=%.8f ema200Compare=%.8f slopePips=%.2f closeEma200DiffPips=%.1f closePosition=%s slopeDirection=%s upCount=%d downCount=%d trendCount=%s isBuy=%s isSell=%s buySellLabel=%s textLabel=%s",
                 this.marketContext.symbolName,
                 this.marketContext.timeFrameLabel,
                 this.close1,
                 this.ema200Shift1,
                 this.ema200Compare,
                 this.slopePips,
+                this.closeEma200DiffPips,
                 this.convertClosePositionText(this.closePosition),
                 this.convertSlopeDirectionText(this.slopeDirection),
                 this.upCount,
@@ -715,13 +723,18 @@ public:
     /**
      * テキスト表示用の簡易文字列を取得します。
      *
-     * @return BUY/ABOVE/3.25/UP/+3 など
+     * @return BUY/ABOVE/1.23456/+12.3p/3.25/UP/+3 など
      */
     string getText() {
+        string ema200Shift1Text = DoubleToString(this.ema200Shift1, this.marketContext.digits);
+        string closeDiffPipsText = StringUtil::addSign(this.closeEma200DiffPips, 1);
+
         return StringFormat(
-            "%s/%s/%.2f/%s/%s",
+            "%s/%s/%s/%sp/%.2f/%s/%s",
             this.getBuySellLabel(),
             this.getClosePositionText(),
+            ema200Shift1Text,
+            closeDiffPipsText,
             this.slopePips,
             this.getSlopeDirectionText(),
             StringUtil::addSign(this.trendCount)
@@ -734,12 +747,16 @@ public:
      * @return CSV文字列
      */
     string getCsv() {
+        string close1Text = DoubleToString(this.close1, this.marketContext.digits);
+        string ema200Shift1Text = DoubleToString(this.ema200Shift1, this.marketContext.digits);
+        string ema200CompareText = DoubleToString(this.ema200Compare, this.marketContext.digits);
+
         return StringFormat(
-            "%s,%.8f,%.8f,%.8f,%.2f,%s,%d,%d,%s,%s,%s",
+            "%s,%s,%s,%s,%.2f,%s,%d,%d,%s,%s,%s",
             this.getClosePositionText(),
-            this.close1,
-            this.ema200Shift1,
-            this.ema200Compare,
+            close1Text,
+            ema200Shift1Text,
+            ema200CompareText,
             this.slopePips,
             this.getSlopeDirectionText(),
             this.upCount,
@@ -801,6 +818,7 @@ private:
         this.ema200Shift1 = 0.0;
         this.ema200Compare = 0.0;
         this.slopePips = 0.0;
+        this.closeEma200DiffPips = 0.0;
         this.closePosition = EMA200_POSITION_NONE;
         this.slopeDirection = EMA200_SLOPE_NONE;
         this.upCount = 0;

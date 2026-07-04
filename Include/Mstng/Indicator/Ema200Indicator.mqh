@@ -168,7 +168,7 @@ private:
         this.marketContext = fromMarketContext;
 
         this.emaPeriod = 200;
-        this.maxBars = 500;
+        this.maxBars = 1000;
         this.startPlotIndex = 2;
         this.displayCount = 0;
         this.lastUpdateM1BarTime = 0;
@@ -437,7 +437,8 @@ private:
             }
 
             ENUM_TIMEFRAMES labelTimeFrame = this.timeFrames[i];
-            string labelText = StringFormat("EMA200 %s", this.getTimeFrameLabel(labelTimeFrame));
+            string labelRate = DoubleToString(labelPrice, this.marketContext.digits);
+            string labelText = StringFormat("EMA200 %s %s", this.getTimeFrameLabel(labelTimeFrame), labelRate);
             string objectName = this.getLabelObjectName(labelTimeFrame);
             color labelColor = this.getLineColor(labelTimeFrame);
 

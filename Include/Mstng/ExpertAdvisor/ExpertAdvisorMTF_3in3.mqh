@@ -64,7 +64,7 @@ protected:
                 
                 //&& this.isBuySell()
                 
-                && this.expertAdvisorElliot.isBuySell(this.elliotAll, this.isBuy)
+                && this.expertAdvisorElliot.isBuySellFromH4(this.elliotAll, this.isBuy)
                 
                 && this.expertAdvisorElliot.isZigZagConfirmed(this.elliotCurrent)
                 
@@ -80,10 +80,12 @@ protected:
                 
                 //&& this.isElliot1or3(this.elliotCurrent)
                 
+                //&& this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher2)
                 && this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher1)
                 && this.expertAdvisorEma200.isEma200BuySell(this.elliotCurrent)
                 
-                && this.expertAdvisorEma200.isEma200CurrentAndHigher1(this.elliotHigher1, this.elliotCurrent)
+                //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher2, this.elliotHigher1)
+                && this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher1, this.elliotCurrent)
         ) {            
             isJudge = true;
         }

@@ -26,8 +26,28 @@ public:
         if (value > 0) {
             return "+" + IntegerToString(value);
         }
-    
+
         return IntegerToString(value);
+    }
+
+    /**
+     * 符号付き小数文字列を返す。
+     *
+     * 正の値には "+" を付与し、
+     * 0 と負の値は DoubleToString の結果をそのまま返す。
+     *
+     * @param value 数値
+     * @param digits 小数桁数
+     * @return 符号付き文字列
+     */
+    static string addSign(const double value, const int digits) {
+        string text = DoubleToString(value, digits);
+
+        if (value > 0.0) {
+            return "+" + text;
+        }
+
+        return text;
     }
 
     /**
