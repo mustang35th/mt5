@@ -6,6 +6,7 @@
 #ifndef MSTNGEA_APP_EACONTEXT_MQH
 #define MSTNGEA_APP_EACONTEXT_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Config\EaConfig.mqh>
@@ -27,6 +28,9 @@
  */
 class EaContext {
 public:
+    /** Market context */
+    MarketContext marketContext;
+
     /** シンボル名 */
     string symbolName;
 
@@ -92,6 +96,7 @@ public:
      */
     EaContext() {
         // 初期値を設定
+        this.marketContext = MarketContext();
         this.symbolName = "";
         this.timeFrame = PERIOD_CURRENT;
         this.oscillatorHandlePool = NULL;

@@ -6,11 +6,16 @@
 #ifndef MSTNGEA_LOGGING_CLOSETRADECLSVLOGGER_MQH
 #define MSTNGEA_LOGGING_CLOSETRADECLSVLOGGER_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
+
 /**
  * 決済結果CSV出力
  */
 class CloseTradeCsvLogger {
 public:
+    /** Market context */
+    MarketContext marketContext;
+
     /** シンボル名 */
     string symbolName;
 
@@ -32,9 +37,21 @@ public:
         ENUM_TIMEFRAMES timeFrameValue,
         ulong magicNumberValue
     ) {
-        this.symbolName = symbolNameValue;
-        this.timeFrame = timeFrameValue;
-        this.magicNumber = magicNumberValue;
+        MarketContext context(symbolNameValue, timeFrameValue);
+        this.initialize(context, magicNumberValue);
+    }
+
+    /**
+     * Constructor
+     *
+     * @param fromMarketContext Market context
+     * @param fromMagicNumber Magic number
+     */
+    CloseTradeCsvLogger(
+        MarketContext &fromMarketContext,
+        ulong fromMagicNumber
+    ) {
+        this.initialize(fromMarketContext, fromMagicNumber);
     }
 
     /**
@@ -123,8 +140,8 @@ public:
         string line = "";
         this.appendCsvField(line, this.formatDateTime(jstTime));
         this.appendCsvField(line, this.formatDateTime(serverTime));
-        this.appendCsvField(line, this.symbolName);
-        this.appendCsvField(line, IntegerToString((int)this.timeFrame));
+        this.appendCsvField(line, this.marketContext.symbolName);
+        this.appendCsvField(line, IntegerToString((int)this.marketContext.timeFrame));
         this.appendCsvField(line, (string)this.magicNumber);
         this.appendCsvField(line, strategyNameValue);
         this.appendCsvField(line, actionValue);
@@ -147,6 +164,19 @@ public:
     }
 
 private:
+    /**
+     * Initialize by market context.
+     *
+     * @param fromMarketContext Market context
+     * @param fromMagicNumber Magic number
+     */
+    void initialize(MarketContext &fromMarketContext, ulong fromMagicNumber) {
+        this.marketContext = fromMarketContext;
+        this.symbolName = fromMarketContext.symbolName;
+        this.timeFrame = fromMarketContext.timeFrame;
+        this.magicNumber = fromMagicNumber;
+    }
+
     /**
      * JST時刻変換
      *
@@ -312,9 +342,9 @@ private:
      * @return 出力先
      */
     string buildFilePath() {
-        string timeFrameLabel = IntegerToString((int)this.timeFrame);
+        string timeFrameLabel = IntegerToString((int)this.marketContext.timeFrame);
         string filePath = "MstngEa\\Trades\\MstngEa_";
-        filePath += this.symbolName;
+        filePath += this.marketContext.symbolName;
         filePath += "_";
         filePath += timeFrameLabel;
         filePath += "_";

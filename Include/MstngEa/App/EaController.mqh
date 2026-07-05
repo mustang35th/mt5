@@ -80,8 +80,8 @@ public:
      */
     void onNewBar() {
         ElliotAll *elliotAll = new ElliotAll(
-            this.eaContext.symbolName,
-            this.eaContext.timeFrame
+            this.eaContext.marketContext.symbolName,
+            this.eaContext.marketContext.timeFrame
         );
 
         if (elliotAll == NULL) {
@@ -388,7 +388,7 @@ private:
         MqlTick mqlTick;
         ZeroMemory(mqlTick);
 
-        if (!SymbolInfoTick(this.eaContext.symbolName, mqlTick)) {
+        if (!SymbolInfoTick(this.eaContext.marketContext.symbolName, mqlTick)) {
             return 0.0;
         }
 
@@ -405,8 +405,8 @@ private:
      * @return pips値
      */
     double getPipSize() {
-        int digits = (int)SymbolInfoInteger(this.eaContext.symbolName, SYMBOL_DIGITS);
-        double pointValue = SymbolInfoDouble(this.eaContext.symbolName, SYMBOL_POINT);
+        int digits = (int)SymbolInfoInteger(this.eaContext.marketContext.symbolName, SYMBOL_DIGITS);
+        double pointValue = SymbolInfoDouble(this.eaContext.marketContext.symbolName, SYMBOL_POINT);
 
         if (digits == 3 || digits == 5) {
             return pointValue * 10.0;
@@ -662,8 +662,16 @@ private:
             return;
         }
 
-        datetime signalTime = iTime(this.eaContext.symbolName, this.eaContext.timeFrame, 0);
-        double openPrice = iOpen(this.eaContext.symbolName, this.eaContext.timeFrame, 0);
+        datetime signalTime = iTime(
+            this.eaContext.marketContext.symbolName,
+            this.eaContext.marketContext.timeFrame,
+            0
+        );
+        double openPrice = iOpen(
+            this.eaContext.marketContext.symbolName,
+            this.eaContext.marketContext.timeFrame,
+            0
+        );
 
         if (signalTime <= 0) {
             return;
@@ -688,7 +696,7 @@ private:
     string buildStatusText() {
         // 表示文字列を組み立て
         string statusText = "State      : RUNNING\n";
-        statusText += "Symbol     : " + this.eaContext.symbolName + "\n";
+        statusText += "Symbol     : " + this.eaContext.marketContext.symbolName + "\n";
         statusText += "Timeframe  : " + this.getTimeFrameText() + "\n";
         statusText += "Strategy   : " + this.getStrategyNameText() + "\n";
         statusText += "Lot        : " + DoubleToString(this.eaContext.eaConfig.lotSize, 2) + "\n";
@@ -714,43 +722,43 @@ private:
      */
     string getTimeFrameText() {
 
-        if (this.eaContext.timeFrame == PERIOD_M1) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_M1) {
             return "M1";
         }
 
-        if (this.eaContext.timeFrame == PERIOD_M5) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_M5) {
             return "M5";
         }
 
-        if (this.eaContext.timeFrame == PERIOD_M15) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_M15) {
             return "M15";
         }
 
-        if (this.eaContext.timeFrame == PERIOD_M30) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_M30) {
             return "M30";
         }
 
-        if (this.eaContext.timeFrame == PERIOD_H1) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_H1) {
             return "H1";
         }
 
-        if (this.eaContext.timeFrame == PERIOD_H4) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_H4) {
             return "H4";
         }
 
-        if (this.eaContext.timeFrame == PERIOD_D1) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_D1) {
             return "D1";
         }
 
-        if (this.eaContext.timeFrame == PERIOD_W1) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_W1) {
             return "W1";
         }
 
-        if (this.eaContext.timeFrame == PERIOD_MN1) {
+        if (this.eaContext.marketContext.timeFrame == PERIOD_MN1) {
             return "MN1";
         }
 
-        return IntegerToString((int)this.eaContext.timeFrame);
+        return IntegerToString((int)this.eaContext.marketContext.timeFrame);
     }
 
     /**
@@ -849,7 +857,7 @@ private:
      */
     string getSpreadText() {
         MqlTick currentTick;
-        double pointValue = SymbolInfoDouble(this.eaContext.symbolName, SYMBOL_POINT);
+        double pointValue = SymbolInfoDouble(this.eaContext.marketContext.symbolName, SYMBOL_POINT);
 
         if (pointValue <= 0.0) {
             return "-";
@@ -857,10 +865,10 @@ private:
 
         double spreadPoints = 0.0;
 
-        if (SymbolInfoTick(this.eaContext.symbolName, currentTick)) {
+        if (SymbolInfoTick(this.eaContext.marketContext.symbolName, currentTick)) {
             spreadPoints = (currentTick.ask - currentTick.bid) / pointValue;
         } else {
-            spreadPoints = (double)SymbolInfoInteger(this.eaContext.symbolName, SYMBOL_SPREAD);
+            spreadPoints = (double)SymbolInfoInteger(this.eaContext.marketContext.symbolName, SYMBOL_SPREAD);
         }
 
         if (spreadPoints < 0.0) {
@@ -1083,7 +1091,7 @@ private:
             return false;
         }
 
-        double tolerance = SymbolInfoDouble(this.eaContext.symbolName, SYMBOL_POINT) * 2.0;
+        double tolerance = SymbolInfoDouble(this.eaContext.marketContext.symbolName, SYMBOL_POINT) * 2.0;
 
         if (positionSnapshotValue.isBuy) {
             return positionSnapshotValue.stopLoss >= (breakEvenPriceValue - tolerance);

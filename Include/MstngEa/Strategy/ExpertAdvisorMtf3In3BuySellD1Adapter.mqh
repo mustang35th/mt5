@@ -6,6 +6,7 @@
 #ifndef MSTNGEA_STRATEGY_EXPERTADVISORMTF3IN3BUYSELLD1ADAPTER_MQH
 #define MSTNGEA_STRATEGY_EXPERTADVISORMTF3IN3BUYSELLD1ADAPTER_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\ExpertAdvisor\ElliottWaveInfo.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3_BuySellD1.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
@@ -28,15 +29,22 @@ public:
         ENUM_TIMEFRAMES timeFrameValue,
         SignalCount *signalCountValue
     ) {
-        this.expertAdvisorMtf3In3BuySellD1 = new ExpertAdvisorMTF_3in3_BuySellD1(
-            symbolNameValue,
-            timeFrameValue,
-            false
-        );
-        this.signalCount = signalCountValue;
-        this.elliottInfoText = "-";
+        MarketContext context(symbolNameValue, timeFrameValue);
+        this.initialize(context, signalCountValue);
     }
 
+    /**
+     * Constructor
+     *
+     * @param fromMarketContext Market context
+     * @param fromSignalCount Signal count
+     */
+    ExpertAdvisorMtf3In3BuySellD1Adapter(
+        MarketContext &fromMarketContext,
+        SignalCount *fromSignalCount
+    ) {
+        this.initialize(fromMarketContext, fromSignalCount);
+    }
     /**
      * デストラクタ
      */
@@ -122,6 +130,22 @@ private:
 
     /** エリオット情報 */
     string elliottInfoText;
+
+    /**
+     * Initialize by market context.
+     *
+     * @param fromMarketContext Market context
+     * @param fromSignalCount Signal count
+     */
+    void initialize(MarketContext &fromMarketContext, SignalCount *fromSignalCount) {
+        this.expertAdvisorMtf3In3BuySellD1 = new ExpertAdvisorMTF_3in3_BuySellD1(
+            fromMarketContext.symbolName,
+            fromMarketContext.timeFrame,
+            false
+        );
+        this.signalCount = fromSignalCount;
+        this.elliottInfoText = "-";
+    }
 
     /**
      * エリオット情報文字列更新

@@ -6,6 +6,7 @@
 #ifndef MSTNGEA_TRADE_POSITIONSERVICE_MQH
 #define MSTNGEA_TRADE_POSITIONSERVICE_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <MstngEa\Domain\PositionSnapshot.mqh>
 
 /**
@@ -13,6 +14,9 @@
  */
 class PositionService {
 public:
+    /** Market context */
+    MarketContext marketContext;
+
     /** シンボル名 */
     string symbolName;
 
@@ -27,9 +31,18 @@ public:
      */
     PositionService(string symbolNameValue, ulong magicNumberValue) {
         // 基本情報を保持
-        this.symbolName = symbolNameValue;
-        this.magicNumber = magicNumberValue;
-        this.refresh();
+        MarketContext context(symbolNameValue, PERIOD_CURRENT);
+        this.initialize(context, magicNumberValue);
+    }
+
+    /**
+     * Constructor
+     *
+     * @param fromMarketContext Market context
+     * @param fromMagicNumber Magic number
+     */
+    PositionService(MarketContext &fromMarketContext, ulong fromMagicNumber) {
+        this.initialize(fromMarketContext, fromMagicNumber);
     }
 
     /**
@@ -55,7 +68,7 @@ public:
             string currentSymbolName = PositionGetString(POSITION_SYMBOL);
             long currentMagicNumber = PositionGetInteger(POSITION_MAGIC);
 
-            if (currentSymbolName != this.symbolName) {
+            if (currentSymbolName != this.marketContext.symbolName) {
                 continue;
             }
 
@@ -106,6 +119,19 @@ public:
     }
 
 private:
+    /**
+     * Initialize by market context.
+     *
+     * @param fromMarketContext Market context
+     * @param fromMagicNumber Magic number
+     */
+    void initialize(MarketContext &fromMarketContext, ulong fromMagicNumber) {
+        this.marketContext = fromMarketContext;
+        this.symbolName = fromMarketContext.symbolName;
+        this.magicNumber = fromMagicNumber;
+        this.refresh();
+    }
+
     /** ポジション状態 */
     PositionSnapshot positionSnapshot;
 };

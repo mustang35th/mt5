@@ -6,6 +6,8 @@
 #ifndef MSTNGEA_TRADE_TRADEREQUESTBUILDER_MQH
 #define MSTNGEA_TRADE_TRADEREQUESTBUILDER_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
+
 /**
  * 発注要求生成
  */
@@ -33,6 +35,28 @@ public:
         requestValue.volume = volumeValue;
         requestValue.deviation = 10;
         requestValue.type_filling = ORDER_FILLING_FOK;
+    }
+
+    /**
+     * Build market request.
+     *
+     * @param requestValue Trade request
+     * @param fromMarketContext Market context
+     * @param fromMagicNumber Magic number
+     * @param fromVolume Volume
+     */
+    static void buildMarketRequest(
+        MqlTradeRequest &requestValue,
+        MarketContext &fromMarketContext,
+        ulong fromMagicNumber,
+        double fromVolume
+    ) {
+        TradeRequestBuilder::buildMarketRequest(
+            requestValue,
+            fromMarketContext.symbolName,
+            fromMagicNumber,
+            fromVolume
+        );
     }
 };
 

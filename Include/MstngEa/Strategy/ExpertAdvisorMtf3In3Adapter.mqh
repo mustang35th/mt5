@@ -6,6 +6,7 @@
 #ifndef MSTNGEA_STRATEGY_EXPERTADVISORMTF3IN3ADAPTER_MQH
 #define MSTNGEA_STRATEGY_EXPERTADVISORMTF3IN3ADAPTER_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\ExpertAdvisor\ElliottWaveInfo.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
@@ -28,14 +29,21 @@ public:
         ENUM_TIMEFRAMES timeFrameValue,
         SignalCount *signalCountValue
     ) {
-        // 外部戦略を生成
-        this.expertAdvisorMtf3In3 = new ExpertAdvisorMTF_3in3(
-            symbolNameValue,
-            timeFrameValue,
-            false
-        );
-        this.signalCount = signalCountValue;
-        this.elliottInfoText = "-";
+        MarketContext context(symbolNameValue, timeFrameValue);
+        this.initialize(context, signalCountValue);
+    }
+
+    /**
+     * コンストラクタ
+     *
+     * @param fromMarketContext 市場コンテキスト
+     * @param fromSignalCount シグナル回数
+     */
+    ExpertAdvisorMtf3In3Adapter(
+        MarketContext &fromMarketContext,
+        SignalCount *fromSignalCount
+    ) {
+        this.initialize(fromMarketContext, fromSignalCount);
     }
 
     /**
@@ -126,6 +134,22 @@ private:
 
     /** エリオット情報 */
     string elliottInfoText;
+
+    /**
+     * 市場コンテキストを使用して初期化する。
+     *
+     * @param fromMarketContext 市場コンテキスト
+     * @param fromSignalCount シグナル回数
+     */
+    void initialize(MarketContext &fromMarketContext, SignalCount *fromSignalCount) {
+        // 外部戦略を生成
+        this.expertAdvisorMtf3In3 = new ExpertAdvisorMTF_3in3(
+            fromMarketContext,
+            false
+        );
+        this.signalCount = fromSignalCount;
+        this.elliottInfoText = "-";
+    }
 
     /**
      * エリオット情報文字列更新

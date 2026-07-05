@@ -9,6 +9,7 @@
 
 #property strict
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\App\EaContext.mqh>
@@ -50,6 +51,9 @@ string g_symbolName;
 /** 時間足 */
 ENUM_TIMEFRAMES g_timeFrame;
 
+/** Market context */
+MarketContext g_marketContext;
+
 /** オシレータハンドルプール */
 OscillatorHandlePool *g_oscillatorHandlePool;
 
@@ -74,12 +78,13 @@ int OnInit() {
     // 基本情報を初期化
     g_symbolName = _Symbol;
     g_timeFrame = _Period;
+    g_marketContext = MarketContext(g_symbolName, g_timeFrame);
 
     // 共有オブジェクトを生成
-    g_oscillatorHandlePool = new OscillatorHandlePool(g_symbolName, g_timeFrame);
+    g_oscillatorHandlePool = new OscillatorHandlePool(g_marketContext);
     g_oscillatorHandlePool.setTimeframesFromD1To();
 
-    g_signalCount = new SignalCount(g_symbolName, g_timeFrame);
+    g_signalCount = new SignalCount(g_marketContext);
     g_eaConfig = new EaConfig();
     g_eaConfig.strategyType = InpStrategyType;
     g_eaConfig.lotSize = InpLotSize;
@@ -92,6 +97,7 @@ int OnInit() {
     g_eaContext = new EaContext();
 
     // コンテキストへ依存を設定
+    g_eaContext.marketContext = g_marketContext;
     g_eaContext.symbolName = g_symbolName;
     g_eaContext.timeFrame = g_timeFrame;
     g_eaContext.oscillatorHandlePool = g_oscillatorHandlePool;
@@ -100,19 +106,16 @@ int OnInit() {
     g_eaContext.profitRetracementState = new ProfitRetracementState();
     g_eaContext.magicNumber = MagicNumberUtil::build(
         11,
-        g_symbolName,
-        g_timeFrame,
+        g_marketContext,
         g_eaConfig.strategyType
     );
-    g_eaContext.operationLogger = new OperationLogger(g_symbolName, g_timeFrame);
+    g_eaContext.operationLogger = new OperationLogger(g_marketContext);
     g_eaContext.tradeCsvLogger = new TradeCsvLogger(
-        g_symbolName,
-        g_timeFrame,
+        g_marketContext,
         g_eaContext.magicNumber
     );
     g_eaContext.closeTradeCsvLogger = new CloseTradeCsvLogger(
-        g_symbolName,
-        g_timeFrame,
+        g_marketContext,
         g_eaContext.magicNumber
     );
     g_eaContext.statusLabelView = new StatusLabelView(0, g_eaConfig.statusLabelName);
@@ -128,10 +131,10 @@ int OnInit() {
         0,
         g_eaConfig.statusLabelName + "_ElliottInfo"
     );
-    g_eaContext.newBarDetector = new NewBarDetector(g_symbolName, g_timeFrame);
-    g_eaContext.positionService = new PositionService(g_symbolName, g_eaContext.magicNumber);
+    g_eaContext.newBarDetector = new NewBarDetector(g_marketContext);
+    g_eaContext.positionService = new PositionService(g_marketContext, g_eaContext.magicNumber);
     g_eaContext.tradeExecutor = new TradeExecutor(
-        g_symbolName,
+        g_marketContext,
         g_eaContext.magicNumber,
         g_eaConfig.lotSize,
         g_eaContext.operationLogger,
@@ -141,8 +144,7 @@ int OnInit() {
     );
     g_eaContext.strategyAdapter = StrategyFactory::create(
         g_eaConfig.strategyType,
-        g_symbolName,
-        g_timeFrame,
+        g_marketContext,
         g_signalCount
     );
 

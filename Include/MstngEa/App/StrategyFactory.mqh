@@ -6,6 +6,7 @@
 #ifndef MSTNGEA_APP_STRATEGYFACTORY_MQH
 #define MSTNGEA_APP_STRATEGYFACTORY_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Config\StrategyType.mqh>
 #include <MstngEa\Strategy\ExpertAdvisorMtf3In3Adapter.mqh>
@@ -33,28 +34,42 @@ public:
         ENUM_TIMEFRAMES timeFrameValue,
         SignalCount *signalCountValue
     ) {
+        MarketContext context(symbolNameValue, timeFrameValue);
+        return StrategyFactory::create(strategyTypeValue, context, signalCountValue);
+    }
 
-        if (strategyTypeValue == STRATEGY_TYPE_MTF_3IN3) {
+    /**
+     * Create strategy.
+     *
+     * @param fromStrategyType Strategy type
+     * @param fromMarketContext Market context
+     * @param fromSignalCount Signal count
+     * @return Strategy
+     */
+    static IStrategyAdapter *create(
+        StrategyType fromStrategyType,
+        MarketContext &fromMarketContext,
+        SignalCount *fromSignalCount
+    ) {
+
+        if (fromStrategyType == STRATEGY_TYPE_MTF_3IN3) {
             return new ExpertAdvisorMtf3In3Adapter(
-                symbolNameValue,
-                timeFrameValue,
-                signalCountValue
+                fromMarketContext,
+                fromSignalCount
             );
         }
 
-        if (strategyTypeValue == STRATEGY_TYPE_MTF_3IN3_BUY_SELL_D1) {
+        if (fromStrategyType == STRATEGY_TYPE_MTF_3IN3_BUY_SELL_D1) {
             return new ExpertAdvisorMtf3In3BuySellD1Adapter(
-                symbolNameValue,
-                timeFrameValue,
-                signalCountValue
+                fromMarketContext,
+                fromSignalCount
             );
         }
 
-        if (strategyTypeValue == STRATEGY_TYPE_MTF_BUY_SELL_COUNT3) {
+        if (fromStrategyType == STRATEGY_TYPE_MTF_BUY_SELL_COUNT3) {
             return new ExpertAdvisorMtfBuySellCount3Adapter(
-                symbolNameValue,
-                timeFrameValue,
-                signalCountValue
+                fromMarketContext,
+                fromSignalCount
             );
         }
 

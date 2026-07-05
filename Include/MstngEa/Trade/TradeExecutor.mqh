@@ -6,6 +6,7 @@
 #ifndef MSTNGEA_TRADE_TRADEEXECUTOR_MQH
 #define MSTNGEA_TRADE_TRADEEXECUTOR_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <MstngEa\Logging\OperationLogger.mqh>
 #include <MstngEa\Logging\TradeCsvLogger.mqh>
 #include <MstngEa\Logging\CloseTradeCsvLogger.mqh>
@@ -17,6 +18,9 @@
  */
 class TradeExecutor {
 public:
+    /** Market context */
+    MarketContext marketContext;
+
     /** シンボル名 */
     string symbolName;
 
@@ -71,17 +75,47 @@ public:
         CloseProfitTextView *closeProfitTextViewValue
     ) {
         // 依存を保持
-        this.symbolName = symbolNameValue;
-        this.magicNumber = magicNumberValue;
-        this.lotSize = lotSizeValue;
-        this.operationLogger = operationLoggerValue;
-        this.tradeCsvLogger = tradeCsvLoggerValue;
-        this.closeTradeCsvLogger = closeTradeCsvLoggerValue;
-        this.closeProfitTextView = closeProfitTextViewValue;
-        this.lastRetcode = 0;
-        this.lastErrorMessage = "";
-        this.lastDealTicket = 0;
-        this.lastOrderTicket = 0;
+        MarketContext context(symbolNameValue, PERIOD_CURRENT);
+        this.initialize(
+            context,
+            magicNumberValue,
+            lotSizeValue,
+            operationLoggerValue,
+            tradeCsvLoggerValue,
+            closeTradeCsvLoggerValue,
+            closeProfitTextViewValue
+        );
+    }
+
+    /**
+     * Constructor
+     *
+     * @param fromMarketContext Market context
+     * @param fromMagicNumber Magic number
+     * @param fromLotSize Lot size
+     * @param fromOperationLogger Operation logger
+     * @param fromTradeCsvLogger Trade CSV logger
+     * @param fromCloseTradeCsvLogger Close trade CSV logger
+     * @param fromCloseProfitTextView Close profit view
+     */
+    TradeExecutor(
+        MarketContext &fromMarketContext,
+        ulong fromMagicNumber,
+        double fromLotSize,
+        OperationLogger *fromOperationLogger,
+        TradeCsvLogger *fromTradeCsvLogger,
+        CloseTradeCsvLogger *fromCloseTradeCsvLogger,
+        CloseProfitTextView *fromCloseProfitTextView
+    ) {
+        this.initialize(
+            fromMarketContext,
+            fromMagicNumber,
+            fromLotSize,
+            fromOperationLogger,
+            fromTradeCsvLogger,
+            fromCloseTradeCsvLogger,
+            fromCloseProfitTextView
+        );
     }
 
     /**
@@ -160,7 +194,7 @@ public:
 
         // 決済注文を構築
         request.action = TRADE_ACTION_DEAL;
-        request.symbol = this.symbolName;
+        request.symbol = this.marketContext.symbolName;
         request.magic = this.magicNumber;
         request.position = positionTicket;
         request.volume = this.normalizeVolume(positionVolume);
@@ -311,7 +345,7 @@ public:
         double normalizedStopLoss = this.normalizePrice(stopLossValue);
 
         if (!this.isValidStopLoss(orderType, marketPrice, normalizedStopLoss)) {
-            int digits = (int)SymbolInfoInteger(this.symbolName, SYMBOL_DIGITS);
+            int digits = (int)SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_DIGITS);
 
             this.lastErrorMessage = "Invalid break even stop loss. stopLoss="
                 + DoubleToString(normalizedStopLoss, digits)
@@ -328,7 +362,7 @@ public:
         ZeroMemory(result);
 
         request.action = TRADE_ACTION_SLTP;
-        request.symbol = this.symbolName;
+        request.symbol = this.marketContext.symbolName;
         request.magic = this.magicNumber;
         request.position = positionTicket;
         request.sl = normalizedStopLoss;
@@ -396,7 +430,7 @@ public:
         long dealEntry = HistoryDealGetInteger(transValue.deal, DEAL_ENTRY);
         long dealReason = HistoryDealGetInteger(transValue.deal, DEAL_REASON);
 
-        if (dealSymbolName != this.symbolName) {
+        if (dealSymbolName != this.marketContext.symbolName) {
             return;
         }
 
@@ -522,6 +556,40 @@ public:
 
 private:
     /**
+     * Initialize by market context.
+     *
+     * @param fromMarketContext Market context
+     * @param fromMagicNumber Magic number
+     * @param fromLotSize Lot size
+     * @param fromOperationLogger Operation logger
+     * @param fromTradeCsvLogger Trade CSV logger
+     * @param fromCloseTradeCsvLogger Close trade CSV logger
+     * @param fromCloseProfitTextView Close profit view
+     */
+    void initialize(
+        MarketContext &fromMarketContext,
+        ulong fromMagicNumber,
+        double fromLotSize,
+        OperationLogger *fromOperationLogger,
+        TradeCsvLogger *fromTradeCsvLogger,
+        CloseTradeCsvLogger *fromCloseTradeCsvLogger,
+        CloseProfitTextView *fromCloseProfitTextView
+    ) {
+        this.marketContext = fromMarketContext;
+        this.symbolName = fromMarketContext.symbolName;
+        this.magicNumber = fromMagicNumber;
+        this.lotSize = fromLotSize;
+        this.operationLogger = fromOperationLogger;
+        this.tradeCsvLogger = fromTradeCsvLogger;
+        this.closeTradeCsvLogger = fromCloseTradeCsvLogger;
+        this.closeProfitTextView = fromCloseProfitTextView;
+        this.lastRetcode = 0;
+        this.lastErrorMessage = "";
+        this.lastDealTicket = 0;
+        this.lastOrderTicket = 0;
+    }
+
+    /**
      * 新規発注
      *
      * @param strategyNameValue 戦略名
@@ -567,7 +635,7 @@ private:
         MqlTradeResult result;
         TradeRequestBuilder::buildMarketRequest(
             request,
-            this.symbolName,
+            this.marketContext,
             this.magicNumber,
             normalizedVolume
         );
@@ -663,7 +731,7 @@ private:
         double normalizedStopLoss = this.normalizePrice(stopLossValue);
 
         if (!this.isValidStopLoss(orderTypeValue, marketPriceValue, normalizedStopLoss)) {
-            int digits = (int)SymbolInfoInteger(this.symbolName, SYMBOL_DIGITS);
+            int digits = (int)SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_DIGITS);
 
             this.lastErrorMessage = "Invalid stop loss. stopLoss="
                 + DoubleToString(normalizedStopLoss, digits)
@@ -696,8 +764,8 @@ private:
         double pointValue = 0.0;
         double minimumDistance = 0.0;
 
-        SymbolInfoInteger(this.symbolName, SYMBOL_TRADE_STOPS_LEVEL, stopsLevelPoint);
-        SymbolInfoDouble(this.symbolName, SYMBOL_POINT, pointValue);
+        SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_TRADE_STOPS_LEVEL, stopsLevelPoint);
+        SymbolInfoDouble(this.marketContext.symbolName, SYMBOL_POINT, pointValue);
 
         if (pointValue > 0.0 && stopsLevelPoint > 0) {
             minimumDistance = stopsLevelPoint * pointValue;
@@ -734,7 +802,7 @@ private:
      * @return 正規化価格
      */
     double normalizePrice(double priceValue) {
-        int digits = (int)SymbolInfoInteger(this.symbolName, SYMBOL_DIGITS);
+        int digits = (int)SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_DIGITS);
 
         return NormalizeDouble(priceValue, digits);
     }
@@ -812,7 +880,7 @@ private:
     bool isTradeEnvironmentReady() {
         long tradeMode = SYMBOL_TRADE_MODE_DISABLED;
 
-        if (!SymbolInfoInteger(this.symbolName, SYMBOL_TRADE_MODE, tradeMode)) {
+        if (!SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_TRADE_MODE, tradeMode)) {
             this.lastErrorMessage = "Failed to read SYMBOL_TRADE_MODE";
             this.writeError(this.lastErrorMessage);
 
@@ -872,7 +940,7 @@ private:
             string currentSymbolName = PositionGetString(POSITION_SYMBOL);
             long currentMagicNumber = PositionGetInteger(POSITION_MAGIC);
 
-            if (currentSymbolName != this.symbolName) {
+            if (currentSymbolName != this.marketContext.symbolName) {
                 continue;
             }
 
@@ -952,7 +1020,7 @@ private:
     ENUM_ORDER_TYPE_FILLING resolveFillingType() {
         long fillingMode = 0;
 
-        if (!SymbolInfoInteger(this.symbolName, SYMBOL_FILLING_MODE, fillingMode)) {
+        if (!SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_FILLING_MODE, fillingMode)) {
             return ORDER_FILLING_FOK;
         }
 
@@ -977,7 +1045,7 @@ private:
         MqlTick mqlTick;
         ZeroMemory(mqlTick);
 
-        if (!SymbolInfoTick(this.symbolName, mqlTick)) {
+        if (!SymbolInfoTick(this.marketContext.symbolName, mqlTick)) {
             return 0.0;
         }
 
@@ -999,15 +1067,15 @@ private:
         double maxVolume = 0.0;
         double volumeStep = 0.0;
 
-        if (!SymbolInfoDouble(this.symbolName, SYMBOL_VOLUME_MIN, minVolume)) {
+        if (!SymbolInfoDouble(this.marketContext.symbolName, SYMBOL_VOLUME_MIN, minVolume)) {
             return 0.0;
         }
 
-        if (!SymbolInfoDouble(this.symbolName, SYMBOL_VOLUME_MAX, maxVolume)) {
+        if (!SymbolInfoDouble(this.marketContext.symbolName, SYMBOL_VOLUME_MAX, maxVolume)) {
             return 0.0;
         }
 
-        if (!SymbolInfoDouble(this.symbolName, SYMBOL_VOLUME_STEP, volumeStep)) {
+        if (!SymbolInfoDouble(this.marketContext.symbolName, SYMBOL_VOLUME_STEP, volumeStep)) {
             return 0.0;
         }
 

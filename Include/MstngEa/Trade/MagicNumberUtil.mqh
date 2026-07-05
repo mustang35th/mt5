@@ -6,6 +6,7 @@
 #ifndef MSTNGEA_TRADE_MAGICNUMBERUTIL_MQH
 #define MSTNGEA_TRADE_MAGICNUMBERUTIL_MQH
 
+#include <Mstng\Common\MarketContext.mqh>
 #include <MstngEa\Config\StrategyType.mqh>
 
 /**
@@ -35,6 +36,33 @@ public:
         int strategyCode = MagicNumberUtil::getStrategyCode(strategyTypeValue);
 
         string valueText = IntegerToString(eaCodeValue);
+        valueText += MagicNumberUtil::pad2(leftCode);
+        valueText += MagicNumberUtil::pad2(rightCode);
+        valueText += MagicNumberUtil::pad2(timeFrameCode);
+        valueText += MagicNumberUtil::pad2(strategyCode);
+
+        return (ulong)StringToInteger(valueText);
+    }
+
+    /**
+     * Build magic number.
+     *
+     * @param fromEaCode EA code
+     * @param fromMarketContext Market context
+     * @param fromStrategyType Strategy type
+     * @return Magic number
+     */
+    static ulong build(
+        int fromEaCode,
+        MarketContext &fromMarketContext,
+        StrategyType fromStrategyType
+    ) {
+        int leftCode = MagicNumberUtil::getCurrencyCode(StringSubstr(fromMarketContext.symbolName, 0, 3));
+        int rightCode = MagicNumberUtil::getCurrencyCode(StringSubstr(fromMarketContext.symbolName, 3, 3));
+        int timeFrameCode = MagicNumberUtil::getTimeFrameCode(fromMarketContext.timeFrame);
+        int strategyCode = MagicNumberUtil::getStrategyCode(fromStrategyType);
+
+        string valueText = IntegerToString(fromEaCode);
         valueText += MagicNumberUtil::pad2(leftCode);
         valueText += MagicNumberUtil::pad2(rightCode);
         valueText += MagicNumberUtil::pad2(timeFrameCode);
