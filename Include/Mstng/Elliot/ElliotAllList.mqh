@@ -69,6 +69,7 @@ public:
     void setMarketContext(MarketContext &fromMarketContext) {
         this.clearElliotAllList();
         this.marketContext = fromMarketContext;
+        this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
     }
     
