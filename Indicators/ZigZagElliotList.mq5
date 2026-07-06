@@ -10,6 +10,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorEma200.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorOscillator.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 
@@ -32,7 +33,7 @@ int OnInit() {
     gSymbolName = _Symbol;
     gTimeFrame = _Period;
     
-    //gLogger.setLevel(LOG_INFO);
+    gLogger.setLevel(LOG_INFO);
     MarketContext context(gSymbolName, gTimeFrame);
     gLogger.setMarketContext(context);
     
@@ -91,8 +92,8 @@ void exec() {
     
     elliotAllList.print();
     
-    printStochasticOrder(elliotAllList);
-    
+    //printStochasticOrder(elliotAllList);
+    printEma200(elliotAllList);
     //printD1BuySell(elliotAllList);
     
     //printH4M15BuySell(elliotAllList);
@@ -116,6 +117,71 @@ void setOscillatorHandleManager() {
     } else {
         gOscillatorHandleManager.setTimeframesFromD1ToAll();
     }
+}
+
+void printEma200(ElliotAllList *elliotAllList) {
+    Print("");
+    Print("▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼　Ema200　▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼");
+
+    printElliotAllByEma200(elliotAllList, true);
+    printElliotAllByEma200(elliotAllList, false);
+
+    Print("▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲　Ema200　▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲");
+}
+
+void printElliotAllByEma200(ElliotAllList *elliotAllList, bool isBuy) {
+    Print(StringFormat("Ema200 isBuy = %s", (string)isBuy));
+
+    int total = elliotAllList.elliotAllList.Total();
+
+    for (int i = 0; i < total; i++) {
+        ElliotAll *elliotAll = elliotAllList.elliotAllList.At(i);
+
+        if (elliotAll == NULL) {
+            continue;
+        }
+
+        if (!elliotAll.isAnalysisSucceeded) {
+            continue;
+        }
+
+        if (elliotAll.elliotCurrent == NULL) {
+            continue;
+        }
+
+        if (elliotAll.elliotCurrent.isBuy == isBuy) {
+            ExpertAdvisorEma200 expertAdvisorEma200(isBuy);
+
+            Elliot *elliotHigher1 = elliotAll.getElliot(elliotAll.marketContext.timeFrame, 1);
+            Elliot *elliotCurrent = elliotAll.elliotCurrent;
+
+            if (elliotHigher1 == NULL || elliotCurrent == NULL) {
+                continue;
+            }
+
+            if (elliotAll.isBuySell(PERIOD_H4)
+                    && expertAdvisorEma200.isEma200BuySell(elliotHigher1)
+                    && expertAdvisorEma200.isEma200BuySell(elliotCurrent)
+                    && expertAdvisorEma200.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent)) {
+                Print("  " + elliotAll.getCsv());
+            }
+
+            /*ExpertAdvisorOscillator *expertAdvisorOscillator = new ExpertAdvisorOscillator(elliotAll.marketContext);
+
+            if (expertAdvisorOscillator.isStochasticMainOrder(elliotAll)) {
+                if (elliotAll.elliotCurrent.isBuy == isBuy
+                        && elliotAll.isBuySell(PERIOD_H4)
+                        && expertAdvisorOscillator.isGmmaCross_2(elliotAll.elliotCurrent, isBuy)
+                ) {
+                    Print("  " + elliotAll.getCsv());
+                }
+            }
+
+            delete expertAdvisorOscillator;*/
+        }
+
+    }
+
 }
 
 void printStochasticOrder(ElliotAllList *elliotAllList) {

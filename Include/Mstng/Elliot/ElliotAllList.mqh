@@ -131,10 +131,18 @@ public:
         for (int i = 0; i < total; i++) {
             ElliotAll *elliotAll = this.elliotAllList.At(i);
 
-            if (elliotAll != NULL) {
+            if (elliotAll == NULL) {
+                continue;
+            }
+
+            if (!elliotAll.isAnalysisSucceeded) {
+                Print("ElliotAllList ERROR " + elliotAll.marketContext.symbolName);
+            }
+
+            /*if (elliotAll != NULL) {
                 
                 Print(elliotAll.getCsv());
-            }
+            }*/
         }
     }
 

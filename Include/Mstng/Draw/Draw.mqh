@@ -315,6 +315,13 @@ private:
                 bgColor = downColor;
             }
         }*/
+        
+        if (this.elliotAll.marketContext.timeFrame >= PERIOD_H1) {
+            DrawUtil::setBgColor(bgColor);
+
+            return;
+        }
+        
 
         if (this.elliotAll.elliotCurrent == NULL) {
             DrawUtil::setBgColor(bgColor);
