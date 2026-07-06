@@ -99,6 +99,9 @@ private:
     /** 縦線色 */
     color verticalLineColor;
 
+    /** 日足切り替わり縦線色 */
+    color dayLineColor;
+
     /** 最大表示ラベル数 */
     int maxLabelCount;
 
@@ -118,6 +121,7 @@ private:
         this.remainingFontSize = 9;
         this.fontColor = clrWhite;
         this.verticalLineColor = clrDimGray;
+        this.dayLineColor = clrSilver;
         this.maxLabelCount = 80;
     }
 
@@ -151,6 +155,20 @@ private:
             datetime barTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, i);
 
             if (barTime <= 0) {
+                continue;
+            }
+
+            if (this.marketContext.timeFrame == PERIOD_H1) {
+                if (!this.drawH1TimeFrameMark(barTime)) {
+                    continue;
+                }
+
+                labelCount++;
+
+                if (labelCount >= this.maxLabelCount) {
+                    return;
+                }
+
                 continue;
             }
 
@@ -201,15 +219,32 @@ private:
      * @param fromBarTime サーバー時刻のバー時刻
      */
     void drawVerticalLine(datetime fromBarTime) {
+        this.drawVerticalLine(fromBarTime, this.verticalLineColor, STYLE_DOT, 1);
+    }
+
+    /**
+     * 日本時間の目安になる縦線を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromLineColor 縦線色
+     * @param fromLineStyle 縦線スタイル
+     * @param fromLineWidth 縦線幅
+     */
+    void drawVerticalLine(
+        datetime fromBarTime,
+        color fromLineColor,
+        ENUM_LINE_STYLE fromLineStyle,
+        int fromLineWidth
+    ) {
         string objectName = this.verticalLinePrefix + IntegerToString((int)fromBarTime);
 
         if (!ObjectCreate(this.chartId, objectName, OBJ_VLINE, 0, fromBarTime, 0)) {
             return;
         }
 
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.verticalLineColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_STYLE, STYLE_DOT);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_WIDTH, 1);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromLineColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STYLE, fromLineStyle);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_WIDTH, fromLineWidth);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, true);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
@@ -263,6 +298,14 @@ private:
         MqlDateTime japanDateTime;
         TimeToStruct(japanTime, japanDateTime);
 
+        if (this.marketContext.timeFrame == PERIOD_M15) {
+            if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H4)) {
+                return true;
+            }
+
+            return false;
+        }
+
         if (this.marketContext.timeFrame < PERIOD_H1) {
             if (japanDateTime.min == 0) {
                 return true;
@@ -276,6 +319,51 @@ private:
         }
 
         if (japanDateTime.hour == 0 && japanDateTime.min == 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * H1表示用の時間足切り替わり目印を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @return true: 目印を描画した
+     */
+    bool drawH1TimeFrameMark(datetime fromBarTime) {
+        if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_D1)) {
+            this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_SOLID, 1);
+
+            return true;
+        }
+
+        if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H4)) {
+            this.drawVerticalLine(fromBarTime);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 指定時間足の開始バーか判定する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromTimeFrame 判定する時間足
+     * @return true: 指定時間足の開始バー
+     */
+    bool isTimeFrameOpenBar(datetime fromBarTime, ENUM_TIMEFRAMES fromTimeFrame) {
+        int barIndex = iBarShift(this.marketContext.symbolName, fromTimeFrame, fromBarTime, false);
+
+        if (barIndex < 0) {
+            return false;
+        }
+
+        datetime openTime = iTime(this.marketContext.symbolName, fromTimeFrame, barIndex);
+
+        if (openTime == fromBarTime) {
             return true;
         }
 
