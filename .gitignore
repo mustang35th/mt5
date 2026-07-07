@@ -17,6 +17,9 @@ Files/*.csv
 Files/*.log
 Files/*.txt
 *.chr
+*.dat
+*.tpl
+*.wnd
 
 # keep folder
 !Files/.gitkeep
