@@ -51,9 +51,10 @@ public:
      * - 既存描画（PREFIX 対象）を削除
      * - 各描画モジュールを呼び出して再描画
      *
-     * @param elliot Elliot 解析結果
+     * @param fromElliotAll Elliot 解析結果
+     * @param fromIsElliotInfoVisible エリオット情報表示有無
      */
-    void drawAll(ElliotAll *fromElliotAll) {
+    void drawAll(ElliotAll *fromElliotAll, bool fromIsElliotInfoVisible = true) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         this.elliotAll = fromElliotAll;
@@ -75,7 +76,7 @@ public:
         
         DrawElliot drawElliot;
         
-        drawElliot.draw(this.elliotAll);
+        drawElliot.draw(this.elliotAll, fromIsElliotInfoVisible);
         
         
         DrawHorizontalLine drawHorizontalLine;

@@ -62,15 +62,18 @@ public:
      * Elliot分析結果を描画する。
      *
      * @param fromElliotAll Elliot解析結果
+     * @param fromIsElliotInfoVisible エリオット情報表示有無
      */
-    void draw(ElliotAll *fromElliotAll) {
+    void draw(ElliotAll *fromElliotAll, bool fromIsElliotInfoVisible = true) {
         this.elliotAll = fromElliotAll;
         
         this.logger.setMarketContext(this.elliotAll.marketContext);
         
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        this.setLabel();
+        if (fromIsElliotInfoVisible) {
+            this.setLabel();
+        }
         
         int fontSize = 2;
         double upLevel = 0;
@@ -104,7 +107,9 @@ public:
             this.setElliot(elliot0, "Elliot0", 0, 0, 1.5);
         }
         
-        this.setElliotTable();
+        if (fromIsElliotInfoVisible) {
+            this.setElliotTable();
+        }
         
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);

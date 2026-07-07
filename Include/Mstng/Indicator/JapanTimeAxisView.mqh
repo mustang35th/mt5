@@ -159,15 +159,7 @@ private:
             }
 
             if (this.marketContext.timeFrame == PERIOD_H1) {
-                if (!this.drawH1TimeFrameMark(barTime)) {
-                    continue;
-                }
-
-                labelCount++;
-
-                if (labelCount >= this.maxLabelCount) {
-                    return;
-                }
+                this.drawH1TimeFrameMark(barTime);
 
                 continue;
             }
@@ -176,7 +168,7 @@ private:
                 continue;
             }
 
-            this.drawVerticalLine(barTime);
+            this.drawLowerTimeFrameVerticalLine(barTime);
             this.drawTimeLabel(barTime, drawPrice);
             labelCount++;
 
@@ -248,6 +240,23 @@ private:
         ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, true);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+    }
+
+    /**
+     * 下位足用の日本時間目安縦線を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     */
+    void drawLowerTimeFrameVerticalLine(datetime fromBarTime) {
+        if (this.marketContext.timeFrame == PERIOD_M5 || this.marketContext.timeFrame == PERIOD_M1) {
+            if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H4)) {
+                this.drawVerticalLine(fromBarTime, this.verticalLineColor, STYLE_SOLID, 1);
+
+                return;
+            }
+        }
+
+        this.drawVerticalLine(fromBarTime);
     }
 
     /**
