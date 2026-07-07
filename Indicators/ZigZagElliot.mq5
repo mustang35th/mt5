@@ -56,6 +56,11 @@ long g_lastExecuteTickCount = 0;
 ElliotAllFile g_elliotAllFile;
 ENUM_TIMEFRAMES LogStartTimeFrame = PERIOD_D1;
 
+/**
+ * インジケータを初期化する。
+ *
+ * @return 初期化結果
+ */
 int OnInit() {
     if (Util::isStrategyTester()) {
         g_isTimer = false;
@@ -116,6 +121,11 @@ int OnInit() {
     return INIT_SUCCEEDED;
 }
 
+/**
+ * インジケータ終了時の解放処理を行う。
+ *
+ * @param reason 終了理由
+ */
 void OnDeinit(const int reason) {
     LogUtil::printMethodStart(g_logger, __FUNCTION__);
     
@@ -163,11 +173,27 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
         return;
     }
 
+    // 大きいエリオット情報のみ表示切替し、波動ラベルやライン描画は残す。
     g_isElliotInfoVisible = !g_isElliotInfoVisible;
     updateElliotInfoButton();
     redrawElliotInfo();
 }
 
+/**
+ * ティック更新時の描画処理を行う。
+ *
+ * @param rates_total 全バー数
+ * @param prev_calculated 前回計算済みバー数
+ * @param time 時刻配列
+ * @param open 始値配列
+ * @param high 高値配列
+ * @param low 安値配列
+ * @param close 終値配列
+ * @param tick_volume ティック出来高配列
+ * @param volume 出来高配列
+ * @param spread スプレッド配列
+ * @return 次回計算用の処理済みバー数
+ */
 int OnCalculate(const int32_t rates_total,
                 const int32_t prev_calculated,
                 const datetime &time[],
@@ -196,6 +222,9 @@ int OnCalculate(const int32_t rates_total,
     return rates_total;
 }
 
+/**
+ * タイマー更新時の描画および解析処理を行う。
+ */
 void OnTimer() {
     updateJapanTimeAxisView();
     updateEma200Indicator();
@@ -213,6 +242,9 @@ void OnTimer() {
     execute();
 }
 
+/**
+ * 時間足に応じて実行間隔秒数を設定する。
+ */
 void updateTimerSeconds() {
     g_timerSeconds = 30;
 
@@ -229,6 +261,11 @@ void updateTimerSeconds() {
     }
 }
 
+/**
+ * 前回実行から設定秒数が経過したか判定する。
+ *
+ * @return true: 実行間隔を経過した
+ */
 bool isExecuteTimerElapsed() {
     if (g_lastExecuteTickCount <= 0) {
         return true;
@@ -244,6 +281,9 @@ bool isExecuteTimerElapsed() {
     return false;
 }
 
+/**
+ * エリオット分析とチャート描画を実行する。
+ */
 void execute() {
     LogUtil::printMethodStart(g_logger, __FUNCTION__);
     
@@ -323,6 +363,9 @@ void execute() {
     LogUtil::printMethodEnd(g_logger, __FUNCTION__, true);
 }
 
+/**
+ * 全時間足のエリオット分析結果を作成する。
+ */
 void setElliotAll() {
     delete g_elliotAll;
     
@@ -335,6 +378,9 @@ void setElliotAll() {
     g_elliotAll.analyze();
 }
 
+/**
+ * オシレーターハンドルプールを作成する。
+ */
 void setOscillatorHandlePool() {
     g_oscillatorHandlePool = new OscillatorHandlePool(g_marketContext);
     
@@ -345,16 +391,22 @@ void setOscillatorHandlePool() {
     }
 }
 
+/**
+ * シグナルカウントを作成する。
+ */
 void setSignalCount() {    
     g_signalCount = new SignalCount(g_marketContext);
 }
 
+/**
+ * シグナルカウントを削除する。
+ */
 void deleteSignalCount() {
     delete g_signalCount;
 }
 
 /**
- * エリオット情報表示ボタン名を取得する。
+ * エリオット情報表示ボタンのオブジェクト名を取得する。
  *
  * @return ボタン名
  */
@@ -363,7 +415,7 @@ string getElliotInfoButtonName() {
 }
 
 /**
- * エリオット情報表示ボタンを作成する。
+ * 大きいエリオット情報の表示切替ボタンを作成する。
  */
 void setElliotInfoButton() {
     string objectName = getElliotInfoButtonName();
@@ -374,6 +426,7 @@ void setElliotInfoButton() {
         return;
     }
 
+    // 実行時間表示の下へ固定し、再描画対象の通常プレフィックスとは分離する。
     ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
     ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 140);
     ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 270);
@@ -391,7 +444,7 @@ void setElliotInfoButton() {
 }
 
 /**
- * エリオット情報表示ボタンを更新する。
+ * 大きいエリオット情報の表示状態に合わせてボタン表示を更新する。
  */
 void updateElliotInfoButton() {
     string objectName = getElliotInfoButtonName();
@@ -408,6 +461,7 @@ void updateElliotInfoButton() {
         backgroundColor = clrDimGray;
     }
 
+    // ボタン状態と表示文字を同期して、現在の表示状態を見分けやすくする。
     ObjectSetInteger(0, objectName, OBJPROP_STATE, g_isElliotInfoVisible);
     ObjectSetInteger(0, objectName, OBJPROP_COLOR, clrWhite);
     ObjectSetInteger(0, objectName, OBJPROP_BGCOLOR, backgroundColor);
@@ -415,24 +469,28 @@ void updateElliotInfoButton() {
 }
 
 /**
- * エリオット情報表示を再描画する。
+ * 大きいエリオット情報の表示状態を反映してチャートを再描画する。
  */
 void redrawElliotInfo() {
     if (g_elliotAll == NULL) {
         return;
     }
 
+    // 通常描画を再実行して、非表示時のエリオット情報オブジェクトも削除する。
     gDraw.drawAll(g_elliotAll, g_isElliotInfoVisible);
     ChartRedraw(0);
 }
 
 /**
- * エリオット情報表示ボタンを削除する。
+ * 大きいエリオット情報の表示切替ボタンを削除する。
  */
 void deleteElliotInfoButton() {
     ObjectDelete(0, getElliotInfoButtonName());
 }
 
+/**
+ * GMMA表示用インジケータを設定する。
+ */
 void setGmmaIndicator() {
     deleteGmmaIndicator();
 
@@ -440,6 +498,9 @@ void setGmmaIndicator() {
     g_gmmaIndicator.init(g_oscillatorHandlePool);
 }
 
+/**
+ * GMMA表示用インジケータを削除する。
+ */
 void deleteGmmaIndicator() {
     if (g_gmmaIndicator != NULL) {
         g_gmmaIndicator.deinit();
@@ -449,7 +510,7 @@ void deleteGmmaIndicator() {
 }
 
 /**
- * 日本時間表示設定
+ * 日本時間表示を設定する。
  */
 void setJapanTimeAxisView() {
     deleteJapanTimeAxisView();
@@ -459,7 +520,7 @@ void setJapanTimeAxisView() {
 }
 
 /**
- * 日本時間表示更新
+ * 日本時間表示を更新する。
  */
 void updateJapanTimeAxisView() {
     if (g_japanTimeAxisView == NULL) {
@@ -470,7 +531,7 @@ void updateJapanTimeAxisView() {
 }
 
 /**
- * 日本時間表示削除
+ * 日本時間表示を削除する。
  */
 void deleteJapanTimeAxisView() {
     if (g_japanTimeAxisView != NULL) {
@@ -481,7 +542,7 @@ void deleteJapanTimeAxisView() {
 }
 
 /**
- * EMA200表示用インジケータ設定
+ * EMA200表示用インジケータを設定する。
  */
 void setEma200Indicator() {
     deleteEma200Indicator();
@@ -491,7 +552,7 @@ void setEma200Indicator() {
 }
 
 /**
- * EMA200表示用インジケータ更新
+ * EMA200表示用インジケータを更新する。
  */
 void updateEma200Indicator() {
     if (g_ema200Indicator == NULL) {
@@ -502,7 +563,7 @@ void updateEma200Indicator() {
 }
 
 /**
- * EMA200表示用インジケータ削除
+ * EMA200表示用インジケータを削除する。
  */
 void deleteEma200Indicator() {
     if (g_ema200Indicator != NULL) {
