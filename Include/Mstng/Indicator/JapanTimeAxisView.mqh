@@ -159,7 +159,7 @@ private:
             }
 
             if (this.marketContext.timeFrame == PERIOD_H1) {
-                this.drawH1TimeFrameMark(barTime);
+                this.drawH1TimeFrameMark(barTime, drawPrice);
 
                 continue;
             }
@@ -190,6 +190,29 @@ private:
         TimeToStruct(japanTime, japanDateTime);
 
         string labelText = IntegerToString(japanDateTime.hour) + "時";
+        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
+
+        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
+            return;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+    }
+
+    /**
+     * 日本時間の日付ラベルを描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     */
+    void drawDayLabel(datetime fromBarTime, double fromDrawPrice) {
+        string labelText = this.formatJapanDateLabel(fromBarTime);
         string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
         if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
@@ -338,11 +361,13 @@ private:
      * H1表示用の時間足切り替わり目印を描画する。
      *
      * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
      * @return true: 目印を描画した
      */
-    bool drawH1TimeFrameMark(datetime fromBarTime) {
+    bool drawH1TimeFrameMark(datetime fromBarTime, double fromDrawPrice) {
         if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_D1)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_SOLID, 1);
+            this.drawDayLabel(fromBarTime, fromDrawPrice);
 
             return true;
         }
@@ -354,6 +379,27 @@ private:
         }
 
         return false;
+    }
+
+    /**
+     * 日本時間の日付ラベル文字列を作成する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @return 日付ラベル文字列
+     */
+    string formatJapanDateLabel(datetime fromBarTime) {
+        datetime japanTime = TimeJapanUtil::getJapanTime(fromBarTime);
+        MqlDateTime japanDateTime;
+        TimeToStruct(japanTime, japanDateTime);
+
+        string weekNames[7] = {"日", "月", "火", "水", "木", "金", "土"};
+        string weekName = "";
+
+        if (japanDateTime.day_of_week >= 0 && japanDateTime.day_of_week < 7) {
+            weekName = weekNames[japanDateTime.day_of_week];
+        }
+
+        return StringFormat("%d/%d(%s)", japanDateTime.mon, japanDateTime.day, weekName);
     }
 
     /**

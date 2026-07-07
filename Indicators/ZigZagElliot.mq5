@@ -8,8 +8,8 @@
 #property version   "1.07"
 #property indicator_chart_window
 
-#property indicator_buffers 5
-#property indicator_plots   5
+#property indicator_buffers 6
+#property indicator_plots   6
 
 
 #include <Mstng\Common\MarketContext.mqh>
@@ -28,6 +28,7 @@
 #property indicator_type3   DRAW_LINE
 #property indicator_type4   DRAW_LINE
 #property indicator_type5   DRAW_LINE
+#property indicator_type6   DRAW_LINE
 
 GmmaIndicator *g_gmmaIndicator = NULL;
 Ema200Indicator *g_ema200Indicator = NULL;
