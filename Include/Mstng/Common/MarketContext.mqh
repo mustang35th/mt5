@@ -12,20 +12,20 @@
 #include <Mstng\Util\TimeUtil.mqh>
 
 /**
- * 市場コンテキスト。
+ * 銘柄、時間足、時間足表示名、小数桁数をまとめて保持する市場コンテキスト。
  */
 class MarketContext {
 public:
-    /** 銘柄名 */
+    /** 銘柄名。 */
     string symbolName;
 
-    /** 時間足 */
+    /** 時間足。 */
     ENUM_TIMEFRAMES timeFrame;
 
-    /** 時間足表示名 */
+    /** 時間足表示名。 */
     string timeFrameLabel;
 
-    /** 小数桁数 */
+    /** 小数桁数。 */
     int digits;
 
     /**
@@ -41,8 +41,8 @@ public:
     /**
      * 銘柄名と時間足を指定して初期化する。
      *
-     * @param fromSymbolName 銘柄名
-     * @param fromTimeFrame 時間足
+     * @param fromSymbolName 銘柄名。
+     * @param fromTimeFrame 時間足。
      */
     MarketContext(
         string fromSymbolName,
@@ -55,10 +55,10 @@ public:
     /**
      * 市場コンテキストの全項目を指定して初期化する。
      *
-     * @param fromSymbolName 銘柄名
-     * @param fromTimeFrame 時間足
-     * @param fromTimeFrameLabel 時間足表示名
-     * @param fromDigits 小数桁数
+     * @param fromSymbolName 銘柄名。
+     * @param fromTimeFrame 時間足。
+     * @param fromTimeFrameLabel 時間足表示名。
+     * @param fromDigits 小数桁数。
      */
     MarketContext(
         string fromSymbolName,
@@ -75,7 +75,7 @@ public:
     /**
      * 円建てシンボルか判定する。
      *
-     * @return シンボル名にJPYを含む場合はtrue
+     * @return シンボル名にJPYを含む場合true。
      */
     bool isJpy() const {
         return StringFind(this.symbolName, "JPY") >= 0;
@@ -84,7 +84,7 @@ public:
     /**
      * 1ポイントの価格を取得する。
      *
-     * @return 1ポイントの価格
+     * @return 1ポイントの価格。
      */
     double getPoint() const {
         return SymbolInfoDouble(this.symbolName, SYMBOL_POINT);
@@ -93,7 +93,7 @@ public:
     /**
      * 銘柄名を設定し、小数桁数を更新する。
      *
-     * @param fromSymbolName 銘柄名
+     * @param fromSymbolName 銘柄名。
      */
     void setSymbolName(string fromSymbolName) {
         this.symbolName = fromSymbolName;
@@ -103,7 +103,7 @@ public:
     /**
      * 時間足を設定し、時間足表示名を更新する。
      *
-     * @param fromTimeFrame 時間足
+     * @param fromTimeFrame 時間足。
      */
     void setTimeFrame(ENUM_TIMEFRAMES fromTimeFrame) {
         this.timeFrame = fromTimeFrame;

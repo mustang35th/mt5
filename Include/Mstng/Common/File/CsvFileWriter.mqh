@@ -1,29 +1,30 @@
 ﻿/**
- * Package: Mstng.Common.File
- * File: CsvFileWriter.mqh
+ * CSVファイル出力用クラス定義。
  */
 
 #ifndef __CSV_FILE_WRITER_MQH__
 #define __CSV_FILE_WRITER_MQH__
 
 /**
- * CSVファイル出力モード
+ * CSVファイルの出力モード。
  */
 enum ENUM_CSV_FILE_WRITE_MODE {
-    /** 追記 */
+    /** 追記。 */
     CSV_FILE_WRITE_MODE_APPEND = 0,
 
-    /** 上書 */
+    /** 上書き。 */
     CSV_FILE_WRITE_MODE_OVERWRITE = 1
 };
 
 /**
- * CSVファイル出力
+ * CSVファイルへヘッダー、行、任意文字列を出力するライター。
+ *
+ * 共有フォルダ使用有無、文字コード、追記または上書きの出力モードを保持する。
  */
 class CsvFileWriter {
 public:
     /**
-     * コンストラクタ
+     * 既定値で初期化する。
      */
     CsvFileWriter() {
         this.folderName = "";
@@ -38,15 +39,15 @@ public:
     }
 
     /**
-     * コンストラクタ
+     * 出力設定を指定して初期化する。
      *
-     * @param fileNameValue ファイル名
-     * @param useCommonFolderValue 共有フォルダ使用有無
-     * @param delimiterValue 区切り文字
-     * @param flushEveryWriteValue 書き込み毎のフラッシュ有無
-     * @param useAnsiValue ANSI出力有無
-     * @param folderNameValue フォルダ名
-     * @param writeModeValue 出力モード
+     * @param fileNameValue ファイル名。
+     * @param useCommonFolderValue 共有フォルダ使用有無。
+     * @param delimiterValue 区切り文字。
+     * @param flushEveryWriteValue 書き込み毎のフラッシュ有無。
+     * @param useAnsiValue ANSI出力有無。
+     * @param folderNameValue フォルダ名。
+     * @param writeModeValue 出力モード。
      */
     CsvFileWriter(
         const string fileNameValue,
@@ -69,22 +70,22 @@ public:
     }
 
     /**
-     * デストラクタ
+     * デストラクタ。
      */
     ~CsvFileWriter() {
         this.close();
     }
 
     /**
-     * 設定
+     * 出力設定を更新する。
      *
-     * @param fileNameValue ファイル名
-     * @param useCommonFolderValue 共有フォルダ使用有無
-     * @param delimiterValue 区切り文字
-     * @param flushEveryWriteValue 書き込み毎のフラッシュ有無
-     * @param useAnsiValue ANSI出力有無
-     * @param folderNameValue フォルダ名
-     * @param writeModeValue 出力モード
+     * @param fileNameValue ファイル名。
+     * @param useCommonFolderValue 共有フォルダ使用有無。
+     * @param delimiterValue 区切り文字。
+     * @param flushEveryWriteValue 書き込み毎のフラッシュ有無。
+     * @param useAnsiValue ANSI出力有無。
+     * @param folderNameValue フォルダ名。
+     * @param writeModeValue 出力モード。
      */
     void setup(
         const string fileNameValue,
@@ -108,15 +109,15 @@ public:
     }
 
     /**
-     * フォルダ指定設定
+     * フォルダ名を含めて出力設定を更新する。
      *
-     * @param folderNameValue フォルダ名
-     * @param fileNameValue ファイル名
-     * @param useCommonFolderValue 共有フォルダ使用有無
-     * @param delimiterValue 区切り文字
-     * @param flushEveryWriteValue 書き込み毎のフラッシュ有無
-     * @param useAnsiValue ANSI出力有無
-     * @param writeModeValue 出力モード
+     * @param folderNameValue フォルダ名。
+     * @param fileNameValue ファイル名。
+     * @param useCommonFolderValue 共有フォルダ使用有無。
+     * @param delimiterValue 区切り文字。
+     * @param flushEveryWriteValue 書き込み毎のフラッシュ有無。
+     * @param useAnsiValue ANSI出力有無。
+     * @param writeModeValue 出力モード。
      */
     void setupWithFolder(
         const string folderNameValue,
@@ -139,9 +140,9 @@ public:
     }
 
     /**
-     * フォルダ名設定
+     * フォルダ名を設定する。
      *
-     * @param folderNameValue フォルダ名
+     * @param folderNameValue フォルダ名。
      */
     void setFolderName(const string folderNameValue) {
         this.close();
@@ -150,9 +151,9 @@ public:
     }
 
     /**
-     * ファイル名設定
+     * ファイル名を設定する。
      *
-     * @param fileNameValue ファイル名
+     * @param fileNameValue ファイル名。
      */
     void setFileName(const string fileNameValue) {
         this.close();
@@ -161,9 +162,9 @@ public:
     }
 
     /**
-     * 出力モード設定
+     * 出力モードを設定する。
      *
-     * @param writeModeValue 出力モード
+     * @param writeModeValue 出力モード。
      */
     void setWriteMode(const ENUM_CSV_FILE_WRITE_MODE writeModeValue) {
         this.close();
@@ -172,9 +173,9 @@ public:
     }
 
     /**
-     * 出力モードに従って開く
+     * 出力モードに従ってファイルを開く。
      *
-     * @return 成功時true
+     * @return 成功時true。
      */
     bool open() {
         if (this.writeMode == CSV_FILE_WRITE_MODE_OVERWRITE) {
@@ -185,9 +186,9 @@ public:
     }
 
     /**
-     * 追記用に開く
+     * 追記用にファイルを開く。
      *
-     * @return 成功時true
+     * @return 成功時true。
      */
     bool openAppend() {
         if (this.isOpen()) {
@@ -202,9 +203,9 @@ public:
     }
 
     /**
-     * 上書用に開く
+     * 上書き用にファイルを開く。
      *
-     * @return 成功時true
+     * @return 成功時true。
      */
     bool openOverwrite() {
         if (this.isOpen()) {
@@ -227,7 +228,7 @@ public:
     }
 
     /**
-     * 閉じる
+     * ファイルを閉じる。
      */
     void close() {
         if (this.handle != INVALID_HANDLE) {
@@ -237,18 +238,18 @@ public:
     }
 
     /**
-     * オープン済み判定
+     * ファイルがオープン済みか判定する。
      *
-     * @return オープン済みの場合true
+     * @return オープン済みの場合true。
      */
     bool isOpen() const {
         return this.handle != INVALID_HANDLE;
     }
 
     /**
-     * ファイルサイズ取得
+     * ファイルサイズを取得する。
      *
-     * @return ファイルサイズ
+     * @return ファイルサイズ。
      */
     ulong size() {
         if (!this.open()) {
@@ -259,11 +260,11 @@ public:
     }
 
     /**
-     * ヘッダー出力
+     * CSVヘッダーを出力する。
      *
-     * @param headerValues ヘッダー値
-     * @param onlyIfEmptyValue 空ファイル時のみ出力するか
-     * @return 成功時true
+     * @param headerValues ヘッダー値。
+     * @param onlyIfEmptyValue 空ファイル時のみ出力する場合true。
+     * @return 成功時true。
      */
     bool writeHeader(string &headerValues[], const bool onlyIfEmptyValue = true) {
         if (!this.open()) {
@@ -278,10 +279,10 @@ public:
     }
 
     /**
-     * 行出力
+     * CSV行を出力する。
      *
-     * @param fieldValues フィールド値
-     * @return 成功時true
+     * @param fieldValues フィールド値。
+     * @return 成功時true。
      */
     bool writeRow(string &fieldValues[]) {
         if (!this.open()) {
@@ -313,10 +314,10 @@ public:
     }
 
     /**
-     * 行をそのまま出力
+     * 行をそのまま出力する。
      *
-     * @param lineValue 出力行
-     * @return 成功時true
+     * @param lineValue 出力行。
+     * @return 成功時true。
      */
     bool writeLine(const string lineValue) {
         if (!this.open()) {
@@ -347,10 +348,10 @@ public:
     }
 
     /**
-     * CSV行作成
+     * フィールド値からCSV行を作成する。
      *
-     * @param fieldValues フィールド値
-     * @return CSV行
+     * @param fieldValues フィールド値。
+     * @return CSV行。
      */
     string buildCsvLine(string &fieldValues[]) {
         string line = "";
@@ -368,11 +369,11 @@ public:
     }
 
     /**
-     * 日時文字列変換
+     * 日時を文字列へ変換する。
      *
-     * @param dateTimeValue 日時
-     * @param modeValue 変換モード
-     * @return 文字列
+     * @param dateTimeValue 日時。
+     * @param modeValue 変換モード。
+     * @return 文字列。
      */
     string toDateTimeString(
         const datetime dateTimeValue,
@@ -382,41 +383,41 @@ public:
     }
 
     /**
-     * double文字列変換
+     * double値を文字列へ変換する。
      *
-     * @param doubleValue 数値
-     * @param digitsValue 桁数
-     * @return 文字列
+     * @param doubleValue 数値。
+     * @param digitsValue 桁数。
+     * @return 文字列。
      */
     string toDoubleString(const double doubleValue, const int digitsValue = 5) const {
         return DoubleToString(doubleValue, digitsValue);
     }
 
     /**
-     * int文字列変換
+     * int値を文字列へ変換する。
      *
-     * @param intValue 数値
-     * @return 文字列
+     * @param intValue 数値。
+     * @return 文字列。
      */
     string toIntString(const int intValue) const {
         return IntegerToString(intValue);
     }
 
     /**
-     * long文字列変換
+     * long値を文字列へ変換する。
      *
-     * @param longValue 数値
-     * @return 文字列
+     * @param longValue 数値。
+     * @return 文字列。
      */
     string toLongString(const long longValue) const {
         return IntegerToString(longValue);
     }
 
     /**
-     * bool文字列変換
+     * bool値を文字列へ変換する。
      *
-     * @param boolValue 真偽値
-     * @return 文字列
+     * @param boolValue 真偽値。
+     * @return 文字列。
      */
     string toBoolString(const bool boolValue) const {
         if (boolValue) {
@@ -427,27 +428,27 @@ public:
     }
 
     /**
-     * ファイル名取得
+     * ファイル名を取得する。
      *
-     * @return ファイル名
+     * @return ファイル名。
      */
     string getFileName() const {
         return this.fileName;
     }
 
     /**
-     * フォルダ名取得
+     * フォルダ名を取得する。
      *
-     * @return フォルダ名
+     * @return フォルダ名。
      */
     string getFolderName() const {
         return this.folderName;
     }
 
     /**
-     * ファイルパス取得
+     * ファイルパスを取得する。
      *
-     * @return ファイルパス
+     * @return ファイルパス。
      */
     string getFilePath() const {
         string normalizedFolderName = this.normalizeFolderName(this.folderName);
@@ -460,65 +461,65 @@ public:
     }
 
     /**
-     * 出力モード取得
+     * 出力モードを取得する。
      *
-     * @return 出力モード
+     * @return 出力モード。
      */
     ENUM_CSV_FILE_WRITE_MODE getWriteMode() const {
         return this.writeMode;
     }
 
     /**
-     * 共有フォルダ使用有無取得
+     * 共有フォルダ使用有無を取得する。
      *
-     * @return 共有フォルダ使用時true
+     * @return 共有フォルダ使用時true。
      */
     bool isCommonFolder() const {
         return this.useCommonFolder;
     }
 
     /**
-     * 共通データフォルダ取得
+     * 共通データフォルダを取得する。
      *
-     * @return 共通データフォルダ
+     * @return 共通データフォルダ。
      */
     string getCommonDataPath() const {
         return TerminalInfoString(TERMINAL_COMMONDATA_PATH);
     }
 
 private:
-    /** フォルダ名 */
+    /** フォルダ名。 */
     string folderName;
 
-    /** ファイル名 */
+    /** ファイル名。 */
     string fileName;
 
-    /** 区切り文字 */
+    /** 区切り文字。 */
     string delimiter;
 
-    /** 共有フォルダ使用有無 */
+    /** 共有フォルダ使用有無。 */
     bool useCommonFolder;
 
-    /** ANSI出力有無 */
+    /** ANSI出力有無。 */
     bool useAnsi;
 
-    /** 書き込み毎のフラッシュ有無 */
+    /** 書き込み毎のフラッシュ有無。 */
     bool flushEveryWrite;
 
-    /** 出力モード */
+    /** 出力モード。 */
     ENUM_CSV_FILE_WRITE_MODE writeMode;
 
-    /** 上書実行済み */
+    /** 上書き実行済み。 */
     bool isOverwriteExecuted;
 
-    /** ファイルハンドル */
+    /** ファイルハンドル。 */
     int handle;
 
     /**
-     * ファイルを末尾位置で開く
+     * ファイルを末尾位置で開く。
      *
-     * @param methodNameValue 呼び出し元メソッド名
-     * @return 成功時true
+     * @param methodNameValue 呼び出し元メソッド名。
+     * @return 成功時true。
      */
     bool openFileAtEnd(const string methodNameValue) {
         ResetLastError();
@@ -553,9 +554,9 @@ private:
     }
 
     /**
-     * 既存ファイルがあれば削除
+     * 既存ファイルがあれば削除する。
      *
-     * @return 成功時true
+     * @return 成功時true。
      */
     bool deleteFileIfExists() {
         string filePath = this.getFilePath();
@@ -580,9 +581,9 @@ private:
     }
 
     /**
-     * 必要に応じてフォルダ作成
+     * 必要に応じてフォルダを作成する。
      *
-     * @return 成功時true
+     * @return 成功時true。
      */
     bool createFolderIfNeeded() {
         string normalizedFolderName = this.normalizeFolderName(this.folderName);
@@ -622,9 +623,9 @@ private:
     }
 
     /**
-     * 共通フォルダフラグ取得
+     * 共通フォルダフラグを取得する。
      *
-     * @return 共通フォルダフラグ
+     * @return 共通フォルダフラグ。
      */
     int getCommonFlag() const {
         if (this.useCommonFolder) {
@@ -635,10 +636,10 @@ private:
     }
 
     /**
-     * フォルダ名正規化
+     * フォルダ名を正規化する。
      *
-     * @param folderNameValue フォルダ名
-     * @return 正規化後フォルダ名
+     * @param folderNameValue フォルダ名。
+     * @return 正規化後フォルダ名。
      */
     string normalizeFolderName(const string folderNameValue) const {
         string normalizedFolderName = folderNameValue;
@@ -662,10 +663,10 @@ private:
     }
 
     /**
-     * CSVエスケープ
+     * CSV出力用に値をエスケープする。
      *
-     * @param valueValue 値
-     * @return エスケープ後文字列
+     * @param valueValue 値。
+     * @return エスケープ後文字列。
      */
     string escapeCsv(const string valueValue) {
         string escapedValue = valueValue;
