@@ -11,17 +11,18 @@
 #include <Mstng\Elliot\WaveUtil.mqh>
 
 /**
- * Elliott波動の再カウントを行うクラス。
+ * Elliott波動の再カウントを担当するクラス。
  *
  * Wave内のフィボナッチエクスパンションを確認し、浅い奇数波を
- * 再カウント対象としてポイント列を調整する。
+ * 再カウント対象として削除フラグに置き換える。
+ * 最終的に削除対象を除外したポイント列をWaveへ反映する。
  */
 class ElliotRecount {
 public:
-    /** 再カウント対象の市場コンテキスト */
+    /** 再カウント対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** 再カウント対象Wave。インデックス0が最新 */
+    /** 再カウント対象Wave一覧。インデックス0が最新。 */
     CArrayObj waveList;
 
     /**
@@ -47,7 +48,7 @@ public:
     }
     
     /**
-     * ElliotRecount を破棄します。
+     * デストラクタ。
      */
     ~ElliotRecount() {
     }
@@ -63,6 +64,9 @@ public:
     
     /**
      * 保持している全Waveを対象に再カウントを実行する。
+     *
+     * 元のElliott情報を退避した後、削除対象ポイントを判定し、
+     * DELETEフラグのポイントを除外した結果をWaveへ反映する。
      */
     void recount() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -89,13 +93,13 @@ public:
     }
 
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
-    /** 浅い推進波と判定する最小フィボナッチエクスパンション率 */
+    /** 浅い推進波と判定する最小フィボナッチエクスパンション率。 */
     static const double minMotiveFibonacciExpansionPercent;
 
-    /** 深い修正波と判定する最大フィボナッチリトレースメント率 */
+    /** 深い修正波と判定する最大フィボナッチリトレースメント率。 */
     static const double maxCorrectionFibonacciPercent;
 
     /**
@@ -126,7 +130,7 @@ private:
     }
     
     /**
-     * FE条件を満たさないポイントをWaveから除外する。
+     * DELETEフラグが付いたポイントをWaveから除外する。
      *
      * @param wave 処理対象Wave
      */
@@ -158,7 +162,10 @@ private:
     }
     
     /**
-     * 指定Waveの再カウント用ポイント列を作成する。
+     * 指定Waveの再カウント対象ポイントへDELETEフラグを設定する。
+     *
+     * 浅い推進波と深い修正波を削除対象とし、隣接ポイントも
+     * 必要に応じて同じ削除対象へ含める。
      *
      * @param wave 処理対象Wave
      */
@@ -209,7 +216,7 @@ private:
     
             if (Util::isOdd(i)) {
                 // 推進波
-                // i + 2 が存在する場合のみ、浅い推進波を削除対象にする
+                // i + 2が存在する場合のみ、浅い推進波を削除対象にする。
                 if (zigZagPoint.fibonacciExpansionPercent < ElliotRecount::minMotiveFibonacciExpansionPercent
                         && i + 2 < total) {
                     this.logger.debug(__FUNCTION__, "FEが浅い");

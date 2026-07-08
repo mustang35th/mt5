@@ -18,10 +18,10 @@
  */
 class ZigZagCorrector {
 public:
-    /** 補正対象の市場コンテキスト */
+    /** 補正対象の市場コンテキスト。 */
     MarketContext marketContext;
     
-    /** 補正対象の下位足ZigZagポイント一覧 */
+    /** 補正対象の下位足ZigZagポイント一覧。 */
     CArrayObj orgZigZagPointList;
     
     /**
@@ -63,18 +63,16 @@ public:
     /**
      * 下位足ZigZagポイントを上位足のポイント位置へ補正する。
      *
+     * 上位足ポイントの期間内に対応する下位足ポイントがない場合、
+     * 対象期間の高値または安値へ最も近い下位足ポイントを移動する。
+     *
      * @param elliotHigher 上位足Elliott分析結果
      * @param fromZigZagPointList 補正対象の下位足ポイント列
      */
     void correct(Elliot &elliotHigher, CArrayObj &fromZigZagPointList) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        // 同期するのは分析後に展開したZigZag
-        // 上位足のポイント内に下位足のポイントがあるか判定
-        // ない場合、近くポイントを移動
-        // 上位足topの場合、下位足もtop
-        
-        // まず全体コピー
+        // 分析後に展開したZigZagを補正対象としてコピーする。
         ZigZagPointUtil::copyZigZagPointList(fromZigZagPointList, this.orgZigZagPointList);
         
         CArrayObj waveListHigher;
@@ -108,7 +106,7 @@ public:
     }
 
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
     /**
@@ -129,6 +127,9 @@ private:
     
     /**
      * 1つの上位足ポイントに対応する下位足ポイントを補正する。
+     *
+     * 上位足ポイントが山の場合は対象期間の高値、谷の場合は安値へ
+     * 下位足ポイントの価格と時刻を合わせる。
      *
      * @param zigZagPointHigher 補正基準となる上位足ポイント
      */
@@ -159,7 +160,7 @@ private:
         int position = rightIndex;
         double rateNew = 0;
         
-        if (zigZagPoint.isPeak) {  // 買い
+        if (zigZagPoint.isPeak) {  // 山
             for (int i = rightIndex; i <= leftIndex; i++) {
                 double rate = iHigh(this.marketContext.symbolName, this.marketContext.timeFrame, i);
                 
@@ -169,7 +170,7 @@ private:
                 }
             }
             
-        } else {    // 売り
+        } else {    // 谷
             rateNew = 1000;
             
             for (int i = rightIndex; i <= leftIndex; i++) {
@@ -219,6 +220,9 @@ private:
     
     /**
      * 上位足ポイントの期間から補正対象となる下位足位置を取得する。
+     *
+     * 左境界側と右境界側を順に確認し、上位足ポイントと同じ山谷種別の
+     * 下位足ポイントを補正対象として返す。
      *
      * @param zigZagPointHigher 補正基準となる上位足ポイント
      * @return 補正対象インデックス。対象がない場合-1

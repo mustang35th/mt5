@@ -19,9 +19,9 @@
  */
 class ElliotWithHigher : public ElliotBase {
 public:
-    /** 最初に生成するWaveが推進波の場合true */
+    /** 最初に生成するWaveが推進波の場合true。 */
     bool isMotive;
-    /** 最新側のポイント列を分析する場合true */
+    /** 最新側のポイント列を分析する場合true。 */
     bool isLatest;
 
     /**
@@ -63,13 +63,16 @@ public:
     }
 
     /**
-     * ElliotWithHigher を破棄します。
+     * デストラクタ。
      */
     ~ElliotWithHigher(){
     }
 
     /**
      * 上位足同期済みポイント列のWave分析を実行する。
+     *
+     * 最新区間の場合は先頭Waveを生成してから、残りのポイント列を
+     * 過去方向へWaveとして切り出す。
      *
      * @return Waveを生成できた場合true
      */
@@ -113,7 +116,7 @@ public:
     }
 
     /**
-     * 同じ方向の連続Waveを再分析する。
+     * 同じ方向の連続Waveを再分析し、結果をwaveListへ反映する。
      *
      * @return 再分析に成功した場合true
      */
@@ -144,7 +147,7 @@ public:
     }
 
     /**
-     * 左側の狭いWaveを隣接Waveへ統合して再分析する。
+     * 左側の狭いWaveを隣接Waveへ統合して再分析し、結果をwaveListへ反映する。
      *
      * @return 再分析に成功した場合true
      */
@@ -175,7 +178,7 @@ public:
     }
 
     /**
-     * 右側の狭いWaveを隣接Waveへ統合して再分析する。
+     * 右側の狭いWaveを隣接Waveへ統合して再分析し、結果をwaveListへ反映する。
      *
      * @return 再分析に成功した場合true
      */

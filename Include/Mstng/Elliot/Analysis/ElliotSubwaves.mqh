@@ -13,15 +13,15 @@
 /**
  * Elliott波動の内部波動ラベルを設定するクラス。
  *
- * Wave内の通常ポイントと再カウントポイントを対応付け、内部波動を
- * Roman数字のラベルとしてZigZagPointへ設定する。
+ * 再カウント済みポイントと元のポイント列を対応付け、
+ * 削除対象として扱われた区間へRoman数字の内部波動ラベルを設定する。
  */
 class ElliotSubwaves {
 public:
-    /** 内部波動設定対象の市場コンテキスト */
+    /** 内部波動設定対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** 内部波動設定対象Wave。インデックス0が最新 */
+    /** 内部波動設定対象Wave一覧。インデックス0が最新。 */
     CArrayObj waveList;
 
     /**
@@ -47,7 +47,7 @@ public:
     }
     
     /**
-     * ElliotSubwaves を破棄します。
+     * デストラクタ。
      */
     ~ElliotSubwaves() {
     }
@@ -62,7 +62,10 @@ public:
     }
     
     /**
-     * 保持している全Waveへ内部波動情報を設定する。
+     * 保持している全Waveへ再カウント結果と内部波動情報を設定する。
+     *
+     * 再カウント済みポイント列を退避したうえで元のポイント列へ戻し、
+     * 再カウント結果と内部波動ラベルを順に反映する。
      */
     void setSubwaves() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -80,10 +83,10 @@ public:
             ZigZagPointUtil::copyZigZagPointList(wave.zigZagPointList, wave.recountZigZagPointList);
             ZigZagPointUtil::copyZigZagPointList(wave.orgZigZagPointList, wave.zigZagPointList);
             
-            // recountの設定
+            // 再カウント結果を元のポイント列へ反映する。
             this.setRecount(wave);
             
-            // subwavesの設定
+            // 内部波動ラベルを設定する。
             this.setSubwaves(wave);
         }
                 
@@ -91,7 +94,7 @@ public:
     }
     
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
     /**
@@ -122,7 +125,7 @@ private:
     }
 
     /**
-     * 再カウントポイントを元のWaveポイントへ反映する。
+     * 再カウント後のElliott番号とラベルを元のWaveポイントへ反映する。
      *
      * @param wave 処理対象Wave
      */
@@ -157,6 +160,9 @@ private:
     
     /**
      * 指定Waveのポイント列を走査して内部波動ラベルを設定する。
+     *
+     * DELETEフラグの連続区間を内部波動として数え、
+     * 通常ポイントへ戻る位置で元のElliott番号を補完する。
      *
      * @param wave 処理対象Wave
      */
@@ -202,11 +208,11 @@ private:
     }
     
     /**
-     * 指定範囲までの未設定ポイントへ内部波動ラベルを補完する。
+     * 指定範囲内の未設定ポイントへ基準ポイントのElliott番号を補完する。
      *
      * @param wave 処理対象Wave
      * @param endIndex ラベル設定終了位置
-     * @param countNon 設定済みでないポイントの基準数
+     * @param countNon 補完対象ポイント数
      */
     void setSubwaves(Wave *wave, int endIndex, int countNon) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);

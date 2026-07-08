@@ -18,29 +18,31 @@
  * Elliott波動分析の共通基底クラス。
  *
  * ZigZagポイント列からWaveを切り出し、波動ラベル、フィボナッチ情報、
- * 確定状態などの共通分析を行う。派生クラスは、最上位足や上位足連携などの
- * 分析方法に応じて本クラスのprotectedメソッドを使用する。
+ * 確定状態などの共通分析を行う。
+ *
+ * 派生クラスは、最上位足や上位足連携などの分析方法に応じて
+ * 本クラスのprotectedメソッドを使用する。
  *
  * zigZagPointListおよびwaveListは、インデックス0が最新データである。
  */
 class ElliotBase {
 public:
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
     
-    /** 売買方向。true: BUY、false: SELL */
+    /** 売買方向。true: BUY、false: SELL。 */
     bool isBuy;
-    /** 売買方向表示用ラベル */
+    /** 売買方向表示用ラベル。 */
     string buySellLabel;
     
-    /** ZigZagポイント。インデックス0が最新 */
+    /** ZigZagポイント一覧。インデックス0が最新。 */
     CArrayObj zigZagPointList;
     
-    /** 分析済みWave。インデックス0が最新 */
+    /** 分析済みWave一覧。インデックス0が最新。 */
     CArrayObj waveList;
     
     /**
-     * ElliotBase を生成します。
+     * デフォルトコンストラクタ。
      */
     ElliotBase() {        
     }
@@ -55,13 +57,13 @@ public:
     }
     
     /**
-     * ElliotBase を破棄します。
+     * デストラクタ。
      */
     ~ElliotBase() {
     }
     
     /**
-     * シンボルと時間足を初期化する。
+     * シンボルと時間足を指定して初期化する。
      *
      * @param fromSymbolName 分析対象シンボル
      * @param fromTimeFrame 分析対象時間足
@@ -89,7 +91,7 @@ public:
     }
     
     /**
-     * シンボル、時間足、売買方向を初期化する。
+     * シンボル、時間足、売買方向を指定して初期化する。
      *
      * @param fromSymbolName 分析対象シンボル
      * @param fromTimeFrame 分析対象時間足
@@ -128,6 +130,8 @@ public:
     /**
      * 分析対象の市場コンテキストを設定する。
      *
+     * 既存のZigZagポイント一覧とWave一覧をクリアし、ロガーの市場コンテキストも更新する。
+     *
      * @param fromMarketContext 分析対象の市場コンテキスト
      */
     void setMarketContext(MarketContext &fromMarketContext) {
@@ -137,7 +141,7 @@ public:
     }
 
 protected:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
     
     /**
@@ -184,6 +188,7 @@ protected:
      *
      * ZigZagポイントを2点単位で過去方向へ走査し、同方向の極値が
      * 起点を更新した位置で現在のWaveを終了する。
+     * 必要に応じて開始点を補完し、WaveUtil経由でwaveListへ追加する。
      *
      * @param fromZigZagIndex 切り出し開始位置。0が最新ポイント
      * @param isMotive true: 推進波、false: 修正波
@@ -319,8 +324,7 @@ protected:
         
         this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
         
-        // 最新の場合、0からだけでは確定できない
-        // トレンドが違う場合、1から波動取得
+        // 最新Waveの方向が売買方向と違う場合、1つ過去の位置から取得し直す。
         if (total > 2) {    // ポイント数=2が確定なので処理対象外
             if (!isSameTrend) {    // 次の波動が最新
                 // 最新ポイントの追加
@@ -442,14 +446,11 @@ protected:
     /**
      * 波動のトレンド方向と売買方向が一致しているかを判定する。
      *
-     * 判定ルール：
-     * - wave.isUptrend == true（上昇トレンド）の場合は、BUY（fromIsBuy==true）なら一致
-     * - wave.isUptrend == false（下降トレンド）の場合は、SELL（fromIsBuy==false）なら一致
+     * 上昇トレンドではBUY、下降トレンドではSELLの場合に一致とする。
      *
-     * @param wave       判定対象の波動
-     * @param fromIsBuy  売買方向（true: BUY, false: SELL）
-     *
-     * @return 一致する場合 true
+     * @param wave 判定対象のWave
+     * @param fromIsBuy 売買方向。true: BUY、false: SELL
+     * @return トレンド方向と売買方向が一致する場合true
      */
     bool isSameTrend(Wave &wave, bool fromIsBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -506,8 +507,8 @@ protected:
      * 指定Waveの1つ前のWaveから、終端2点の高値と安値を取得する。
      *
      * @param fromWaveIndex 基準Waveのインデックス
-     * @param high 取得した高値
-     * @param low 取得した安値
+     * @param high 取得した高値を格納する変数
+     * @param low 取得した安値を格納する変数
      */
     void setHighLowAtBeforeWave(int fromWaveIndex, double &high, double &low) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -587,7 +588,7 @@ protected:
                 if (zigZagPointBefore.rate < zigZagPoint.rate) {
                     isUptrend = true;    
                 }
-            } else {    // 前回ポイントなし　★★★★★
+            } else {    // 前回ポイントがない場合
                 this.logger.error(__FUNCTION__, "zigZagPointBefore is NULL!");
                 this.logger.error(__FUNCTION__, StringFormat("zigZagPoint = %s", zigZagPoint.toString()));
             }
@@ -614,11 +615,11 @@ protected:
         
         ZigZag zigZag(this.marketContext);
                 
-        // ZigZag を更新（転換点検出）
+        // ZigZagを更新する。
         bool updateResult = zigZag.update(fromMaxBars);
     
         if (!updateResult) {
-            // ZigZag の更新に失敗した場合は解析できないため終了
+            // ZigZagの更新に失敗した場合は解析できないため終了する。
             this.logger.error(__FUNCTION__, "ZigZag update failed.");
     
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
@@ -626,11 +627,11 @@ protected:
             return false;
         }
         
-        // ZigZag の転換点が不足するケースがあるため、売買方向に応じて最新ポイントを補完する
+        // ZigZagの転換点が不足するケースがあるため、売買方向に応じて最新ポイントを補完する。
         zigZag.addPoint(this.isBuy);
     
-        // ZigZag の転換点リストを、本クラスの保持リストへコピー（解析対象の点列として保持）
-        ZigZagPointUtil::copyZigZagPointList(zigZag.zigZagPointList, this.zigZagPointList);    // 全体のコピー
+        // ZigZagの転換点リストを、解析対象の点列として保持する。
+        ZigZagPointUtil::copyZigZagPointList(zigZag.zigZagPointList, this.zigZagPointList);
         
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
@@ -677,7 +678,7 @@ protected:
     
 private:
     /**
-     * 市場コンテキストを初期化する。
+     * 市場コンテキストとロガーを初期化する。
      *
      * @param fromMarketContext 分析対象の市場コンテキスト
      */
@@ -689,6 +690,9 @@ private:
 
     /**
      * 同方向の過去極値が比較対象を更新したか判定する。
+     *
+     * 上昇波では過去側の高値が比較基準を上回った場合、
+     * 下降波では過去側の安値が比較基準を下回った場合にWave終了とする。
      *
      * @param isUpTrend true: 上昇波、false: 下降波
      * @param pointBefore 過去側の同種極値

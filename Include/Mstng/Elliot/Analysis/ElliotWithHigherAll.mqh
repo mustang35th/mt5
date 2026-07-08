@@ -14,14 +14,7 @@
 #include <Mstng\Elliot\Analysis\ElliotWithHigherUtil.mqh>
 #include <Mstng\Elliot\Analysis\ZigZagCorrector.mqh>
 
-/**
- * 上位足からZigZagポイントを取得し、下位足で再分析を行う処理フロー。
- *
- * 上位足からZigZagPointを取得し、
- * 波動分析を経て、
- * 再分析を実施する。
- */
-
+/** 上位足から参照する最大Wave数。 */
 #define ELLIOT_HIGHER_WAVES 5
 
 /**
@@ -57,13 +50,17 @@ public:
     }
     
     /**
-     * ElliotWithHigherAll を破棄します。
+     * デストラクタ。
      */
     ~ElliotWithHigherAll() {
     }
 
     /**
      * 上位足を基準に下位足の全分析処理を実行する。
+     *
+     * 分析範囲のZigZagポイントを取得し、上位足ポイントへ補正した後、
+     * 上位足Wave区間ごとの下位足分析、必要時の最新Wave再分析、
+     * 再カウント、内部波動設定を順に行う。
      *
      * @param elliotHigher 上位足Elliott分析結果
      * @return 分析に成功した場合true
@@ -113,10 +110,10 @@ public:
     }
 
 private:
-    /** 再分析を実行する場合true */
+    /** 再分析を実行する場合true。 */
     bool isReanalyze;
 
-    /** 最新Waveの再分析が必要な場合true */
+    /** 最新Waveの再分析が必要な場合true。 */
     bool needsReanalyzeWave0;
 
     /**
@@ -141,6 +138,8 @@ private:
     /**
      * 上位足ポイントに合わせて下位足ZigZagポイントを補正する。
      *
+     * 補正後のポイント列は、ZigZagCorrectorの結果を現在の分析対象へ反映する。
+     *
      * @param elliotHigher 上位足Elliott分析結果
      */
     void correctZigZagPoint(Elliot &elliotHigher) {
@@ -157,6 +156,9 @@ private:
     
     /**
      * ポイント列の終端価格を確認し、補正が必要か判定する。
+     *
+     * 現在方向の高値または安値と先頭ポイントの価格が異なる場合、
+     * 波動分析用に先頭ポイントの価格を一時的に補正する。
      *
      * @param fromZigZagPointList 判定対象ポイント列
      * @param isUptrend true: 上昇波、false: 下降波
@@ -198,6 +200,9 @@ private:
     /**
      * 上位足の各Wave区間と同期して下位足Waveを生成する。
      *
+     * 上位足Waveの左右ポイントごとに下位足ポイントを抽出し、
+     * 推進波または修正波としてWaveを追加する。
+     *
      * @param elliotHigher 上位足Elliott分析結果
      * @return 同期分析に成功した場合true
      */
@@ -235,10 +240,10 @@ private:
                     elliotIndex = zigZagPointHigherRight.orgElliotIndex;
                 }
                 
-                // wave分析上位足連動
+                // 上位足のElliott番号から下位足Waveの種別を決める。
                 bool isMotive = false;
         
-                if (Util::isOdd(elliotIndex)) {  // 修正波の判定
+                if (Util::isOdd(elliotIndex)) {  // 奇数は推進波
                     isMotive = true;
                 }
                 
@@ -281,7 +286,7 @@ private:
                     this.logger.debug(__FUNCTION__, StringFormat("isLatest = %s", (string)isLatest));
                     
                     
-                    // ここにrate一時書き換え処理
+                    // 最新ポイントを一時補正する。
                     bool isCorrect = false;
                     double oldRate = 0;
                     int totalBefore = this.waveList.Total();
@@ -303,7 +308,7 @@ private:
                         return false;
                     }
                     
-                    if (isCorrect) {    //　rate戻す
+                    if (isCorrect) {    // 一時補正したrateを戻す。
                         Wave *wave = this.waveList.At(0);
                         
                         ZigZagPoint *zigZagPointLast = ZigZagPointUtil::getLastNode(wave.zigZagPointList);
@@ -344,6 +349,9 @@ private:
     
     /**
      * 上位足区間から抽出したポイント列をWaveとして分析する。
+     *
+     * 2点のみの場合は最小構成のWaveとして追加し、3点以上の場合は
+     * ElliotWithHigherで分析したうえで必要に応じて再分析を繰り返す。
      *
      * @param fromZigZagPointList 分析対象ポイント列
      * @param isMotive true: 推進波、false: 修正波
@@ -496,7 +504,7 @@ private:
         
         zigZagPointLast.rate = rate;
         
-        // pointList逆順に
+        // ポイント列を逆順へ入れ替える。
         CArrayObj reZigZagPointList;
         
         for (int i = 0; i < fromZigZagPointList.Total(); i++) {
@@ -514,9 +522,9 @@ private:
             return false;
         }
         
-        // ポイント戻す
+        // 一時補正したポイントを戻す。
         wave0 = this.waveList.At(0);
-        zigZagPointLast = ZigZagPointUtil::getLastNode(wave0.zigZagPointList);  // point取得見直し★★★★★
+        zigZagPointLast = ZigZagPointUtil::getLastNode(wave0.zigZagPointList);
         zigZagPointLast.rate = workRate;
         
         
