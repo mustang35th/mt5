@@ -117,6 +117,15 @@ private:
     /** D1表示で月ラベルを表示する最大バー数 */
     int d1MonthLabelMaxBars;
 
+    /** M1表示で15分ラベルを表示する最大バー数 */
+    int m1FifteenMinuteLabelMaxBars;
+
+    /** M1表示で1時間ラベルを表示する最大バー数 */
+    int m1HourLabelMaxBars;
+
+    /** M1表示でH4ラベルを表示する最大バー数 */
+    int m1FourHourLabelMaxBars;
+
     /**
      * 初期化する。
      *
@@ -139,6 +148,9 @@ private:
         this.h4DayLineMaxBars = 360;
         this.d1WeekLabelMaxBars = 180;
         this.d1MonthLabelMaxBars = 720;
+        this.m1FifteenMinuteLabelMaxBars = 180;
+        this.m1HourLabelMaxBars = 720;
+        this.m1FourHourLabelMaxBars = 2880;
     }
 
     /**
@@ -171,6 +183,12 @@ private:
             datetime barTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, i);
 
             if (barTime <= 0) {
+                continue;
+            }
+
+            if (this.marketContext.timeFrame == PERIOD_M1) {
+                this.drawM1TimeFrameMark(barTime, drawPrice, visibleBars);
+
                 continue;
             }
 
@@ -218,6 +236,52 @@ private:
         TimeToStruct(japanTime, japanDateTime);
 
         string labelText = IntegerToString(japanDateTime.hour) + "時";
+        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
+
+        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
+            return;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+    }
+
+    /**
+     * 日本時間の分単位ラベルを描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     */
+    void drawMinuteTimeLabel(datetime fromBarTime, double fromDrawPrice) {
+        string labelText = this.formatJapanMinuteTimeLabel(fromBarTime);
+        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
+
+        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
+            return;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+    }
+
+    /**
+     * 日本時間のH4ラベルを描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     */
+    void drawFourHourLabel(datetime fromBarTime, double fromDrawPrice) {
+        string labelText = this.formatJapanFourHourLabel(fromBarTime);
         string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
         if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
@@ -380,6 +444,21 @@ private:
     }
 
     /**
+     * M1用の日本時間目安縦線を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     */
+    void drawM1VerticalLine(datetime fromBarTime) {
+        if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H4)) {
+            this.drawVerticalLine(fromBarTime, this.verticalLineColor, STYLE_SOLID, 1);
+
+            return;
+        }
+
+        this.drawVerticalLine(fromBarTime);
+    }
+
+    /**
      * 残り時間ラベルを更新する。
      */
     void updateRemainingTimeLabel() {
@@ -448,6 +527,58 @@ private:
         }
 
         if (japanDateTime.hour == 0 && japanDateTime.min == 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * M1表示用の時間足切り替わり目印を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     * @param fromVisibleBars 表示中のバー数
+     * @return true: 目印を描画した
+     */
+    bool drawM1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+        if (fromVisibleBars <= this.m1FifteenMinuteLabelMaxBars) {
+            if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_M15)) {
+                this.drawM1VerticalLine(fromBarTime);
+                this.drawMinuteTimeLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (fromVisibleBars <= this.m1HourLabelMaxBars) {
+            if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H1)) {
+                this.drawM1VerticalLine(fromBarTime);
+                this.drawTimeLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (fromVisibleBars <= this.m1FourHourLabelMaxBars) {
+            if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H4)) {
+                this.drawVerticalLine(fromBarTime, this.verticalLineColor, STYLE_SOLID, 1);
+                this.drawFourHourLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_D1)) {
+            this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_SOLID, 1);
+            this.drawDayLabel(fromBarTime, fromDrawPrice);
+
             return true;
         }
 
@@ -570,6 +701,38 @@ private:
         }
 
         return StringFormat("%d/%d(%s)", japanDateTime.mon, japanDateTime.day, weekName);
+    }
+
+    /**
+     * 日本時間の分単位ラベル文字列を作成する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @return 分単位ラベル文字列
+     */
+    string formatJapanMinuteTimeLabel(datetime fromBarTime) {
+        datetime japanTime = TimeJapanUtil::getJapanTime(fromBarTime);
+        MqlDateTime japanDateTime;
+        TimeToStruct(japanTime, japanDateTime);
+
+        if (japanDateTime.min == 0) {
+            return IntegerToString(japanDateTime.hour) + "時";
+        }
+
+        return StringFormat("%d:%02d", japanDateTime.hour, japanDateTime.min);
+    }
+
+    /**
+     * 日本時間のH4ラベル文字列を作成する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @return H4ラベル文字列
+     */
+    string formatJapanFourHourLabel(datetime fromBarTime) {
+        datetime japanTime = TimeJapanUtil::getJapanTime(fromBarTime);
+        MqlDateTime japanDateTime;
+        TimeToStruct(japanTime, japanDateTime);
+
+        return StringFormat("H4 %d時", japanDateTime.hour);
     }
 
     /**
