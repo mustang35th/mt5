@@ -153,6 +153,12 @@ private:
     /** H1表示で週ラベルを表示する最大バー数 */
     int h1WeekLabelMaxBars;
 
+    /** W1表示で月ラベルを表示する最大バー数 */
+    int w1MonthLabelMaxBars;
+
+    /** W1表示で四半期ラベルを表示する最大バー数 */
+    int w1QuarterLabelMaxBars;
+
     /**
      * 初期化する。
      *
@@ -187,6 +193,8 @@ private:
         this.h1FourHourLabelMaxBars = 168;
         this.h1DayLabelMaxBars = 720;
         this.h1WeekLabelMaxBars = 2160;
+        this.w1MonthLabelMaxBars = 104;
+        this.w1QuarterLabelMaxBars = 260;
     }
 
     /**
@@ -254,6 +262,12 @@ private:
 
             if (this.marketContext.timeFrame == PERIOD_D1) {
                 this.drawD1TimeFrameMark(barTime, drawPrice, visibleBars);
+
+                continue;
+            }
+
+            if (this.marketContext.timeFrame == PERIOD_W1) {
+                this.drawW1TimeFrameMark(barTime, drawPrice, visibleBars);
 
                 continue;
             }
@@ -422,6 +436,29 @@ private:
      */
     void drawQuarterLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanQuarterLabel(fromBarTime);
+        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
+
+        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
+            return;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+    }
+
+    /**
+     * 日本時間の年ラベルを描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     */
+    void drawYearLabel(datetime fromBarTime, double fromDrawPrice) {
+        string labelText = this.formatJapanYearLabel(fromBarTime);
         string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
         if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
@@ -863,6 +900,47 @@ private:
     }
 
     /**
+     * W1表示用の時間足切り替わり目印を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     * @param fromVisibleBars 表示中のバー数
+     * @return true: 目印を描画した
+     */
+    bool drawW1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+        if (fromVisibleBars <= this.w1MonthLabelMaxBars) {
+            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1)) {
+                this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+                this.drawMonthLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (fromVisibleBars <= this.w1QuarterLabelMaxBars) {
+            if (this.isFirstChartBarInQuarter(fromBarTime)) {
+                this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+                this.drawQuarterLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (this.isFirstChartBarInYear(fromBarTime)) {
+            this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+            this.drawYearLabel(fromBarTime, fromDrawPrice);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * 日本時間の日付ラベル文字列を作成する。
      *
      * @param fromBarTime サーバー時刻のバー時刻
@@ -959,6 +1037,20 @@ private:
     }
 
     /**
+     * 日本時間の年ラベル文字列を作成する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @return 年ラベル文字列
+     */
+    string formatJapanYearLabel(datetime fromBarTime) {
+        datetime japanTime = TimeJapanUtil::getJapanTime(fromBarTime);
+        MqlDateTime japanDateTime;
+        TimeToStruct(japanTime, japanDateTime);
+
+        return StringFormat("%d年", japanDateTime.year);
+    }
+
+    /**
      * 指定時間足の開始バーか判定する。
      *
      * @param fromBarTime サーバー時刻のバー時刻
@@ -1052,6 +1144,28 @@ private:
         }
 
         if (japanDateTime.mon == 10) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 年へ切り替わった最初のチャート足か判定する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @return true: 年へ切り替わった最初のチャート足
+     */
+    bool isFirstChartBarInYear(datetime fromBarTime) {
+        if (!this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1)) {
+            return false;
+        }
+
+        datetime japanTime = TimeJapanUtil::getJapanTime(fromBarTime);
+        MqlDateTime japanDateTime;
+        TimeToStruct(japanTime, japanDateTime);
+
+        if (japanDateTime.mon == 1) {
             return true;
         }
 
