@@ -427,10 +427,10 @@ void setElliotInfoButton() {
         return;
     }
 
-    // 実行時間表示の下へ固定し、再描画対象の通常プレフィックスとは分離する。
-    ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+    // 右下へ固定し、再描画対象の通常プレフィックスとは分離する。
+    ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_RIGHT_LOWER);
     ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 140);
-    ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 270);
+    ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 45);
     ObjectSetInteger(0, objectName, OBJPROP_XSIZE, 130);
     ObjectSetInteger(0, objectName, OBJPROP_YSIZE, 24);
     ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 9);

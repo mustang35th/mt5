@@ -105,6 +105,12 @@ private:
     /** 最大表示ラベル数 */
     int maxLabelCount;
 
+    /** H4表示で日付ラベルを表示する最大バー数 */
+    int h4DayLabelMaxBars;
+
+    /** H4表示で日足縦線を表示する最大バー数 */
+    int h4DayLineMaxBars;
+
     /**
      * 初期化する。
      *
@@ -123,6 +129,8 @@ private:
         this.verticalLineColor = clrDimGray;
         this.dayLineColor = clrSilver;
         this.maxLabelCount = 80;
+        this.h4DayLabelMaxBars = 120;
+        this.h4DayLineMaxBars = 360;
     }
 
     /**
@@ -160,6 +168,12 @@ private:
 
             if (this.marketContext.timeFrame == PERIOD_H1) {
                 this.drawH1TimeFrameMark(barTime, drawPrice);
+
+                continue;
+            }
+
+            if (this.marketContext.timeFrame == PERIOD_H4) {
+                this.drawH4TimeFrameMark(barTime, drawPrice, visibleBars);
 
                 continue;
             }
@@ -213,6 +227,29 @@ private:
      */
     void drawDayLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanDateLabel(fromBarTime);
+        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
+
+        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
+            return;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+    }
+
+    /**
+     * 日本時間の週ラベルを描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     */
+    void drawWeekLabel(datetime fromBarTime, double fromDrawPrice) {
+        string labelText = this.formatJapanWeekLabel(fromBarTime);
         string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
         if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
@@ -382,6 +419,38 @@ private:
     }
 
     /**
+     * H4表示用の日足切り替わり目印を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     * @param fromVisibleBars 表示中のバー数
+     * @return true: 目印を描画した
+     */
+    bool drawH4TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+        if (fromVisibleBars <= this.h4DayLabelMaxBars && this.isTimeFrameOpenBar(fromBarTime, PERIOD_D1)) {
+            this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+            this.drawDayLabel(fromBarTime, fromDrawPrice);
+
+            return true;
+        }
+
+        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1)) {
+            this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+            this.drawWeekLabel(fromBarTime, fromDrawPrice);
+
+            return true;
+        }
+
+        if (fromVisibleBars <= this.h4DayLineMaxBars && this.isTimeFrameOpenBar(fromBarTime, PERIOD_D1)) {
+            this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * 日本時間の日付ラベル文字列を作成する。
      *
      * @param fromBarTime サーバー時刻のバー時刻
@@ -403,6 +472,20 @@ private:
     }
 
     /**
+     * 日本時間の週ラベル文字列を作成する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @return 週ラベル文字列
+     */
+    string formatJapanWeekLabel(datetime fromBarTime) {
+        datetime japanTime = TimeJapanUtil::getJapanTime(fromBarTime);
+        MqlDateTime japanDateTime;
+        TimeToStruct(japanTime, japanDateTime);
+
+        return StringFormat("%d/%d週", japanDateTime.mon, japanDateTime.day);
+    }
+
+    /**
      * 指定時間足の開始バーか判定する。
      *
      * @param fromBarTime サーバー時刻のバー時刻
@@ -419,6 +502,49 @@ private:
         datetime openTime = iTime(this.marketContext.symbolName, fromTimeFrame, barIndex);
 
         if (openTime == fromBarTime) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 指定時間足へ切り替わった最初のチャート足か判定する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromTimeFrame 判定する時間足
+     * @return true: 指定時間足へ切り替わった最初のチャート足
+     */
+    bool isFirstChartBarInTimeFrame(datetime fromBarTime, ENUM_TIMEFRAMES fromTimeFrame) {
+        int targetBarIndex = iBarShift(this.marketContext.symbolName, fromTimeFrame, fromBarTime, false);
+
+        if (targetBarIndex < 0) {
+            return false;
+        }
+
+        int chartBarIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, fromBarTime, true);
+
+        if (chartBarIndex < 0) {
+            chartBarIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, fromBarTime, false);
+        }
+
+        if (chartBarIndex < 0) {
+            return false;
+        }
+
+        datetime previousChartBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, chartBarIndex + 1);
+
+        if (previousChartBarTime <= 0) {
+            return this.isTimeFrameOpenBar(fromBarTime, fromTimeFrame);
+        }
+
+        int previousTargetBarIndex = iBarShift(this.marketContext.symbolName, fromTimeFrame, previousChartBarTime, false);
+
+        if (previousTargetBarIndex < 0) {
+            return false;
+        }
+
+        if (previousTargetBarIndex != targetBarIndex) {
             return true;
         }
 
