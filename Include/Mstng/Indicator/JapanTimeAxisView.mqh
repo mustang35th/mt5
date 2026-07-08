@@ -159,6 +159,12 @@ private:
     /** W1表示で四半期ラベルを表示する最大バー数 */
     int w1QuarterLabelMaxBars;
 
+    /** MN1表示で年ラベルを表示する最大バー数 */
+    int mn1YearLabelMaxBars;
+
+    /** MN1表示で5年ラベルを表示する最大バー数 */
+    int mn1FiveYearLabelMaxBars;
+
     /**
      * 初期化する。
      *
@@ -195,6 +201,8 @@ private:
         this.h1WeekLabelMaxBars = 2160;
         this.w1MonthLabelMaxBars = 104;
         this.w1QuarterLabelMaxBars = 260;
+        this.mn1YearLabelMaxBars = 120;
+        this.mn1FiveYearLabelMaxBars = 300;
     }
 
     /**
@@ -268,6 +276,12 @@ private:
 
             if (this.marketContext.timeFrame == PERIOD_W1) {
                 this.drawW1TimeFrameMark(barTime, drawPrice, visibleBars);
+
+                continue;
+            }
+
+            if (this.marketContext.timeFrame == PERIOD_MN1) {
+                this.drawMn1TimeFrameMark(barTime, drawPrice, visibleBars);
 
                 continue;
             }
@@ -941,6 +955,47 @@ private:
     }
 
     /**
+     * MN1表示用の時間足切り替わり目印を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     * @param fromVisibleBars 表示中のバー数
+     * @return true: 目印を描画した
+     */
+    bool drawMn1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+        if (fromVisibleBars <= this.mn1YearLabelMaxBars) {
+            if (this.isFirstChartBarInYear(fromBarTime)) {
+                this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+                this.drawYearLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (fromVisibleBars <= this.mn1FiveYearLabelMaxBars) {
+            if (this.isFirstChartBarInYearStep(fromBarTime, 5)) {
+                this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+                this.drawYearLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (this.isFirstChartBarInYearStep(fromBarTime, 10)) {
+            this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+            this.drawYearLabel(fromBarTime, fromDrawPrice);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * 日本時間の日付ラベル文字列を作成する。
      *
      * @param fromBarTime サーバー時刻のバー時刻
@@ -1166,6 +1221,33 @@ private:
         TimeToStruct(japanTime, japanDateTime);
 
         if (japanDateTime.mon == 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 指定年数の刻みへ切り替わった最初のチャート足か判定する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromYearStep 年数の刻み
+     * @return true: 指定年数の刻みへ切り替わった最初のチャート足
+     */
+    bool isFirstChartBarInYearStep(datetime fromBarTime, int fromYearStep) {
+        if (fromYearStep <= 0) {
+            return false;
+        }
+
+        if (!this.isFirstChartBarInYear(fromBarTime)) {
+            return false;
+        }
+
+        datetime japanTime = TimeJapanUtil::getJapanTime(fromBarTime);
+        MqlDateTime japanDateTime;
+        TimeToStruct(japanTime, japanDateTime);
+
+        if (japanDateTime.year % fromYearStep == 0) {
             return true;
         }
 
