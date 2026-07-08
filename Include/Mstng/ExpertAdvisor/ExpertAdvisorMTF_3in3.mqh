@@ -88,7 +88,7 @@ protected:
                 && this.expertAdvisorEma200.isEma200BuySell(this.elliotCurrent)
                 
                 //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher2, this.elliotHigher1)
-                && this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher1, this.elliotCurrent)
+                //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher1, this.elliotCurrent)
         ) {            
             isJudge = true;
         }

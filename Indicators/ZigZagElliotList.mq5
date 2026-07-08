@@ -162,7 +162,8 @@ void printElliotAllByEma200(ElliotAllList *elliotAllList, bool isBuy) {
             if (elliotAll.isBuySell(PERIOD_H4)
                     && expertAdvisorEma200.isEma200BuySell(elliotHigher1)
                     && expertAdvisorEma200.isEma200BuySell(elliotCurrent)
-                    && expertAdvisorEma200.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent)) {
+                    //&& expertAdvisorEma200.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent)
+            ) {
                 Print("  " + elliotAll.getCsv());
             }
 
