@@ -13,53 +13,51 @@
 #include <Mstng\Elliot\OhlcInfo.mqh>
 #include <Mstng\Elliot\WaveUtil.mqh>
 
-/**
- * 内部用補助メモ:
- * - リカウント対象のポイント整列は、上位の ZigZagPoint と比較して
- *   不要なポイントを削除・再構築する流れで行う。
- * - 上位足ラベルと下位足のポイント対応を保つための
- *   補正・再構築の前提メモ。
- */
+// 内部用補助メモ:
+// - リカウント対象のポイント整列は、上位のZigZagPointと比較して
+//   不要なポイントを削除・再構築する流れで行う。
+// - 上位足ラベルと下位足のポイント対応を保つための
+//   補正・再構築の前提メモ。
 
 /**
  * 1つの時間足に対するElliott波動分析結果を保持するクラス。
  *
- * OHLC、Oscillator、Wave、ZigZagポイント、フィボナッチエクスパンションを
- * 統合し、上位足を利用した分析とCSV・表示用情報を提供する。
+ * OHLC、Oscillator、Wave、ZigZagポイント、フィボナッチエクスパンションを統合し、
+ * 上位足を利用した分析結果とCSV・表示用情報を提供する。
  */
 class Elliot : public CObject {
 public:
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
     
-    /** 通貨ペア名を分割した左側の通貨コード */
+    /** 通貨ペア名を分割した左側の通貨コード。 */
     string symbolNameLeft;
 
-    /** 通貨ペア名を分割した右側の通貨コード */
+    /** 通貨ペア名を分割した右側の通貨コード。 */
     string symbolNameRight;
 
-    /** 売買方向。true: BUY、false: SELL */
+    /** 売買方向。true: BUY、false: SELL。 */
     bool isBuy;
 
-    /** 売買方向の表示用ラベル */
+    /** 売買方向の表示用ラベル。 */
     string buySellLabel;
     
-    /** 分析済みWave一覧。インデックス0が最新 */
+    /** 分析済みWave一覧。インデックス0が最新。 */
     CArrayObj waveList;
     
-    /** waveListから再構築したZigZagポイント一覧 */
+    /** waveListから再構築したZigZagポイント一覧。 */
     CArrayObj zigZagPointList;
     
-    /** ストキャスティクス、GMMA、EMA200、ATRの分析結果 */
+    /** ストキャスティクス、GMMA、EMA200、ATRの分析結果。 */
     Oscillator oscillator;
     
-    /** 現在足のOHLC情報 */
+    /** 現在足のOHLC情報。 */
     OhlcInfo currentOhlcInfo;
 
-    /** 1本前の確定足のOHLC情報 */
+    /** 1本前の確定足のOHLC情報。 */
     OhlcInfo previousOhlcInfo;
     
-    /** 最新Waveから算出したフィボナッチエクスパンション価格情報 */
+    /** 最新Waveから算出したフィボナッチエクスパンション価格情報。 */
     FiboExpansionPriceInfo fiboExpansionPriceInfo;
     
     /**
@@ -112,7 +110,10 @@ public:
     /**
      * 対象時間足のElliott波動分析を実行する。
      *
-     * @param elliotHigher 上位足分析結果。最上位足の場合NULL
+     * OHLC、Oscillator、Wave、フィボナッチエクスパンション、
+     * 表示用ZigZagポイント一覧を順に更新する。
+     *
+     * @param elliotHigher 上位足分析結果。最上位足の場合はNULL
      * @param oscillatorHandlePool Oscillatorハンドルプール
      * @return 分析に成功した場合true
      */
@@ -185,6 +186,8 @@ public:
     
     /**
      * 最新Waveの直近3基準点からフィボナッチエクスパンション価格情報を設定する。
+     *
+     * 最新Waveまたは必要なZigZagポイントが不足している場合は設定しない。
      */
     void setFiboExpansionPriceInfo() {
         Wave *latestWave = this.getLatestWave();
@@ -217,6 +220,8 @@ public:
     
     /**
      * 時間足単位のCSVデータを取得する。
+     *
+     * 共通項目、Oscillator項目、必要に応じてWave詳細項目を連結する。
      *
      * @param isDetail trueの場合、Oscillator詳細と過去ポイントを含める
      * @return CSVデータ。必要なWaveまたはポイントがない場合NULL
@@ -262,7 +267,7 @@ public:
     }
     
     /**
-     * 最新ZigZagポイントを取得する。
+     * 最新Waveの最新ZigZagポイントを取得する。
      *
      * @return 最新Waveの最新ZigZagポイント。取得できない場合NULL
      */
@@ -292,7 +297,7 @@ public:
     }
     
     /**
-     * 最新ポイントの1つ前を取得する。
+     * 最新Waveの1つ前のZigZagポイントを取得する。
      *
      * @return 最新Waveの1つ前のZigZagポイント。取得できない場合NULL
      */
@@ -309,7 +314,7 @@ public:
     /**
      * 最新Waveを取得する。
      *
-     * @return waveListのインデックス0にある最新Wave
+     * @return waveListのインデックス0にある最新Wave。存在しない場合NULL
      */
     Wave *getLatestWave() {
         return this.waveList.At(0);
@@ -318,7 +323,7 @@ public:
     /**
      * 最古のWaveを取得する。
      *
-     * @return waveListの最後にある最古のWave
+     * @return waveListの最後にある最古のWave。存在しない場合NULL
      */
     Wave *getOldestWave() {
         return this.waveList.At(this.waveList.Total() - 1);
@@ -326,6 +331,8 @@ public:
     
     /**
      * チャート表示用の分析結果テキストを取得する。
+     *
+     * 時間足、売買方向、EMA200、Oscillator、GMMAの要約を複数行で返す。
      *
      * @return チャート表示用テキスト
      */
@@ -421,11 +428,13 @@ public:
     }
     
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
     /**
      * 市場コンテキストと互換用フィールドを初期化する。
+     *
+     * Logger、Oscillator、通貨ペア分割フィールドを同じ市場コンテキストで揃える。
      *
      * @param fromMarketContext 分析対象の市場コンテキスト
      */
@@ -451,7 +460,9 @@ private:
     }
     
     /**
-     * 最新Waveの状態から修正C波完了フラグを設定する。
+     * 最新Waveの状態から前回修正波の最終Elliottラベルを設定する。
+     *
+     * 1つ前のWave末尾が修正波の場合、ポイント数に応じてA、C、Eを現在Waveへ引き継ぐ。
      */
     void setCCompleted() {
         
@@ -494,6 +505,8 @@ private:
     /**
      * 対象時間足のOscillator情報を更新し、売買方向を設定する。
      *
+     * Oscillatorの判定結果をisBuyとbuySellLabelへ反映する。
+     *
      * @param oscillatorHandlePool Oscillatorハンドルプール
      * @return 更新に成功した場合true
      */
@@ -515,6 +528,8 @@ private:
     
     /**
      * 全Waveから表示・参照用ZigZagポイント一覧を再構築する。
+     *
+     * 各WaveのZigZagポイントをクローンして、Elliot単位の一覧へ追加する。
      */
     void setZigZagPointList() {
         for (int i = 0; i < this.waveList.Total(); i++) {
