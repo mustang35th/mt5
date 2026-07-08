@@ -16,7 +16,7 @@
  */
 class TimeFrameInfoAll {
 public:
-    /** 時間足リスト */
+    /** 時間足リスト。 */
     CArrayObj timeFrameInfoList;
     
     /**
@@ -41,7 +41,7 @@ public:
     /**
      * デストラクタ。
      *
-     * 内部で保持している TimeFrameInfo インスタンスを解放する。
+     * 内部で保持しているTimeFrameInfoインスタンスを解放する。
      */
     ~TimeFrameInfoAll() {
         int total = this.timeFrameInfoList.Total();
@@ -60,7 +60,7 @@ public:
     /**
      * 要素数を取得する。
      *
-     * @return 時間足情報数
+     * @return 時間足情報数。
      */
     int getCount() {
         return this.timeFrameInfoList.Total();
@@ -69,13 +69,13 @@ public:
     /**
      * タイムフレームからインデックスを取得する。
      *
-     * PERIOD_CURRENT が渡された場合は、
+     * PERIOD_CURRENTが渡された場合は、
      * 現在チャートの Period() を使用する。
      *
      * 対応するタイムフレームが無い場合は 0 を返す。
      *
-     * @param fromTimeFrame 検索対象のタイムフレーム
-     * @return              見つかったインデックス（0 始まり）
+     * @param fromTimeFrame 検索対象のタイムフレーム。
+     * @return 見つかったインデックス。0始まり。
      */
     int getIndex(ENUM_TIMEFRAMES fromTimeFrame) {
         int index = 0;
@@ -107,8 +107,8 @@ public:
      *
      * 範囲外のインデックスが指定された場合は 0 を返す。
      *
-     * @param index インデックス（0 始まり）
-     * @return      対応するタイムフレーム
+     * @param index インデックス。0始まり。
+     * @return 対応するタイムフレーム。
      */
     ENUM_TIMEFRAMES getTimeFrame(int index) {
         this.logger.debug(
@@ -141,9 +141,9 @@ public:
      * 例:
      *   fromTimeFrame = PERIOD_M5, add = 1  → PERIOD_M15
      *
-     * @param fromTimeFrame 基準タイムフレーム
-     * @param add           ずらすインデックス数（負数も可）
-     * @return              対応するタイムフレーム
+     * @param fromTimeFrame 基準タイムフレーム。
+     * @param add ずらすインデックス数。負数も可。
+     * @return 対応するタイムフレーム。
      */
     ENUM_TIMEFRAMES getTimeFrame(ENUM_TIMEFRAMES fromTimeFrame, int add) {
         int index = this.getIndex(fromTimeFrame);
@@ -156,8 +156,8 @@ public:
      *
      * startTimeFrame 〜 endTimeFrame の範囲の時間足をtrueにする。
      *
-     * @param startTimeFrame 開始時間足
-     * @param endTimeFrame   終了時間足
+     * @param startTimeFrame 開始時間足。
+     * @param endTimeFrame 終了時間足。
      */
     void setElliotTarget(ENUM_TIMEFRAMES startTimeFrame, ENUM_TIMEFRAMES endTimeFrame) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -185,13 +185,13 @@ public:
     }
     
 private:
-    /** ロガー */
+    /** ロガー。 */
     Logger logger;
     
     /**
      * タイムフレーム情報を追加する。
      *
-     * @param addTimeFrame 追加するタイムフレーム
+     * @param addTimeFrame 追加するタイムフレーム。
      */
     void add(ENUM_TIMEFRAMES addTimeFrame) {
         TimeFrameInfo *timeFrameInfo = new TimeFrameInfo(addTimeFrame);

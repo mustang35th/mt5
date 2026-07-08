@@ -7,31 +7,29 @@
 #property link      "https://www.mql5.com"
 
 /**
- * Constant クラスは、アプリケーション全体で使用する
- * 文字列定数を集約して管理するためのクラスです。
+ * アプリケーション全体で使用する共通定数を集約するクラス。
  *
- * 完全に static な定数として利用することを想定しており、
- * インスタンスを生成せずに Constant::PREFIX などの形式で参照します。
+ * インスタンスを生成せずにConstant::PREFIXなどの形式で参照する。
  */
 class Constant {
 public:
-    /** 共通のプレフィックス文字列 */
+    /** 共通のプレフィックス文字列。 */
     static const string PREFIX;
 
-    /** 固定プレフィックス文字列 */
+    /** 固定プレフィックス文字列。 */
     static const string PREFIX_FIXED;
     
-    /** 削除フラグ */
+    /** 削除フラグ。 */
     static const int DELETE_FLG;
     
-    /** 非表示ラベル */
+    /** 非表示ラベル。 */
     static const string DELETE_LABEL;
     
     /**
-     * BUY/Sell ラベル文字列を取得する。
+     * BUYまたはSELLのラベル文字列を取得する。
      *
-     * @param fromIsBuy BUYなら"BUY"、SELLなら"SELL"
-     * @return ラベル文字列
+     * @param fromIsBuy BUYの場合true。
+     * @return ラベル文字列。
      */
     static string getBuySell(bool fromIsBuy) {
         string text = "SELL";
@@ -44,7 +42,7 @@ public:
     }
 };
 
-/** static 定数の定義部 */
+// static定数の定義部。
 const string Constant::PREFIX = "Mstng";
 const string Constant::PREFIX_FIXED = "FixedMstng";
 

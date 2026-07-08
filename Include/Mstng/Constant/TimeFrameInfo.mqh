@@ -13,29 +13,31 @@
  */
 class TimeFrameInfo : public CObject {
 public:
-    /** 時間足 */
+    /** 時間足。 */
     ENUM_TIMEFRAMES timeFrame;
 
-    /** エリオット処理対象 */
+    /** エリオット処理対象。 */
     bool isElliotTarget;
 
     /**
      * コンストラクタ。
      *
-     * @param fromTimeFrame 時間足
+     * @param fromTimeFrame 時間足。
      */
     TimeFrameInfo(ENUM_TIMEFRAMES fromTimeFrame) {
         this.timeFrame = fromTimeFrame;
     }
 
-    /** デストラクタ。 */
+    /**
+     * デストラクタ。
+     */
     ~TimeFrameInfo() {
     }
     
     /**
      * 文字列表現を返す。
      *
-     * @return 時間足情報の文字列
+     * @return 時間足情報の文字列。
      */
     string toString() {
         return StringFormat("TimeFrameInfo{timeFrame = %s, isElliotTarget = %s}",

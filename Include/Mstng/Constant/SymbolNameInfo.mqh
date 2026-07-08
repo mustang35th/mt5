@@ -17,21 +17,21 @@
  */
 class SymbolNameInfo : public CObject {
 public:
-    /** シンボル名 */
+    /** シンボル名。 */
     string symbolName;
 
-    /** コード */
+    /** コード。 */
     int code;
 
-    /** 取引対象可否 */
+    /** 取引対象可否。 */
     bool isTarget;
     
     /**
      * コンストラクタ。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromCode コード
-     * @param fromIsTarget 取引対象フラグ
+     * @param fromSymbolName シンボル名。
+     * @param fromCode コード。
+     * @param fromIsTarget 取引対象の場合true。
      */
     SymbolNameInfo(string fromSymbolName, int fromCode, bool fromIsTarget) {
         this.symbolName = fromSymbolName;
@@ -39,7 +39,9 @@ public:
         this.isTarget = fromIsTarget;
     }
     
-    /** デストラクタ。 */
+    /**
+     * デストラクタ。
+     */
     ~SymbolNameInfo() {
     }
 
@@ -49,7 +51,7 @@ public:
      * 例:
      *  "symbolName=USDJPY code=1 isTarget=true"
      *
-     * @return シンボル情報の文字列表現
+     * @return シンボル情報の文字列表現。
      */
     string toString() {
         string isTargetText = "false";
