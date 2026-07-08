@@ -17,34 +17,34 @@
 #include <Mstng\Oscillator\GmmaUtil.mqh>
 
 /**
- * GMMA の長期線（EMA30 / EMA60）の間を矩形で塗り分ける描画クラスです。
+ * GMMAの長期線の間を矩形で塗り分ける描画クラス。
  *
- * - EMA30 > EMA60 : upColor
- * - EMA30 < EMA60 : downColor
- *
- * 値の取得（CopyBuffer 等）は呼び出し元で行い、本クラスは描画のみに責務を限定します。
+ * EMA30とEMA60の位置関係、差分増減、またはトレンド判定に応じて色を決める。
+ * 値の取得は呼び出し元で行い、本クラスは描画のみに責務を限定する。
  */
 class DrawGmma : public CObject {
 public:
-    /** 描画対象の市場コンテキスト */
+    /** 描画対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** オブジェクト名プレフィックス */
+    /** オブジェクト名プレフィックス。 */
     string objectPrefix;
-    /** 上昇時の塗り色 */
+    /** 上昇時の塗り色。 */
     color upColor;
-    /** 下降時の塗り色 */
+    /** 下降時の塗り色。 */
     color downColor;
-    /** 描画対象の最大バー数 */
+    /** 描画対象の最大バー数。 */
     int maxBars;
 
     /**
-     * コンストラクタ
+     * シンボル、時間足および描画設定を指定して初期化する。
      *
-     * @param fromObjectPrefix 描画オブジェクト名プレフィックス（Constant::PREFIX の後ろに付く）
-     * @param fromUpColor      EMA30 > EMA60 の塗り色
-     * @param fromDownColor    EMA30 < EMA60 の塗り色
-     * @param fromMaxBars      描画対象の最大バー数
+     * @param fromSymbolName 描画対象シンボル
+     * @param fromTimeFrame 描画対象時間足
+     * @param fromObjectPrefix 描画オブジェクト名プレフィックス
+     * @param fromUpColor 上昇時の塗り色
+     * @param fromDownColor 下降時の塗り色
+     * @param fromMaxBars 描画対象の最大バー数
      */
     DrawGmma(
         string fromSymbolName,
@@ -87,7 +87,9 @@ public:
     }
 
     /**
-     * 描画済みの GMMA 矩形オブジェクトを全削除します。
+     * 描画済みのGMMA矩形オブジェクトを全削除する。
+     *
+     * @param chartId 描画対象チャートID
      */
     void clear(long chartId = 0) {
         string prefix = this.objectPrefix;
@@ -110,13 +112,13 @@ public:
     }
 
     /**
-     * GMMA長期線（EMA30 / EMA60）の間を矩形で描画します。
+     * GMMA長期線の間を矩形で描画する。
      *
-     * @param ema30Buffer     EMA30 バッファ
-     * @param ema60Buffer     EMA60 バッファ
-     * @param rates_total     総バー数
+     * @param ema30Buffer EMA30バッファ
+     * @param ema60Buffer EMA60バッファ
+     * @param rates_total 総バー数
      * @param prev_calculated 前回計算済みバー数
-     * @param chartId         描画対象チャートID
+     * @param chartId 描画対象チャートID
      */
     void drawLongTerm(
         const double &ema30Buffer[],
@@ -222,20 +224,15 @@ public:
     }
 
     /**
-     * GMMA長期線（EMA30 / EMA60）の差分増減に応じて、長期線の間を矩形で描画します。
+     * GMMA長期線の差分増減に応じて、長期線の間を矩形で描画する。
      *
-     * 差分は EMA30 - EMA60 で算出します。
-     * 1本前の足と現在足の差分を比較し、色を決定します。
+     * 差分はEMA30 - EMA60で算出し、1本前の足と現在足の差分を比較して色を決定する。
      *
-     * - 前回差分 == 今回差分 : 白色
-     * - 前回差分 <  今回差分 : upColor
-     * - 前回差分 >  今回差分 : downColor
-     *
-     * @param ema30Buffer     EMA30 バッファ
-     * @param ema60Buffer     EMA60 バッファ
-     * @param rates_total     総バー数
+     * @param ema30Buffer EMA30バッファ
+     * @param ema60Buffer EMA60バッファ
+     * @param rates_total 総バー数
      * @param prev_calculated 前回計算済みバー数
-     * @param chartId         描画対象チャートID
+     * @param chartId 描画対象チャートID
      */
     void drawLongTermDiff(
         const double &ema30Buffer[],
@@ -363,19 +360,15 @@ public:
 
 
     /**
-     * GMMA長期線（EMA30 / EMA60）のトレンド方向に応じて、長期線の間を矩形で描画します。
+     * GMMA長期線のトレンド方向に応じて、長期線の間を矩形で描画する。
      *
-     * GmmaUtil::getGmmaTrend の戻り値から色を決定します。
+     * GmmaUtil::getGmmaTrendの戻り値から色を決定する。
      *
-     * - GMMA_TREND_BUY  : upColor
-     * - GMMA_TREND_SELL : downColor
-     * - GMMA_TREND_NON  : clrWhite
-     *
-     * @param ema30Buffer     EMA30 バッファ
-     * @param ema60Buffer     EMA60 バッファ
-     * @param rates_total     総バー数
+     * @param ema30Buffer EMA30バッファ
+     * @param ema60Buffer EMA60バッファ
+     * @param rates_total 総バー数
      * @param prev_calculated 前回計算済みバー数
-     * @param chartId         描画対象チャートID
+     * @param chartId 描画対象チャートID
      */
     void drawLongTermTrend(
         const double &ema30Buffer[],
@@ -505,7 +498,7 @@ public:
     }
 
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
     /**

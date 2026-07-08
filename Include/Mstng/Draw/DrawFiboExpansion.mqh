@@ -10,7 +10,7 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 
 /**
- * フィボナッチエクスパンションを描画するクラスです。
+ * フィボナッチエクスパンションを描画するクラス。
  */
 class DrawFiboExpansion {
 public:
@@ -50,7 +50,7 @@ public:
 
 
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
     /**

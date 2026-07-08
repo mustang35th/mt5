@@ -14,21 +14,23 @@
 //#include <Mstng\Util\UtilAll.mqh>
 
 /**
- * チャート上の描画処理を行うユーティリティクラスです。
- * トレンドラインなど、価格と時間を指定してオブジェクトを描画する機能を提供します。
+ * チャート上の描画処理を行うユーティリティクラス。
+ *
+ * ラベル、テキスト、ライン、矩形、フィボナッチエクスパンションなどの
+ * チャートオブジェクト作成処理を提供する。
  */
 class DrawUtil {
 public:
     /**
-     * 矢印を描画します。
+     * 矢印を描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
-     * @param fontColor      色
-     * @param arrowCode      矢印コード
-     * @param arrowWidth     幅
-     * @param position       バーシフト位置
-     * @param offset         価格補正
-     * @param chartId        描画対象チャートID（0の場合はカレント）
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param fontColor 色
+     * @param arrowCode 矢印コード
+     * @param arrowWidth 幅
+     * @param position バーシフト位置
+     * @param offset 価格補正
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setArrow(string fromObjectName, color fontColor,  int arrowCode, int arrowWidth, int position, double offset, int chartId = 0) {
         //string objectName = Constant::PREFIX + fromObjectName;
@@ -47,24 +49,26 @@ public:
     }
     
     /**
-     * チャート背景色を設定します。
+     * チャート背景色を設定する。
      *
      * @param bgColor 背景色
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setBgColor(color bgColor, int chartId = 0) {
         ChartSetInteger(chartId, CHART_COLOR_BACKGROUND, bgColor);
     }
 
     /**
-     * 水平ラインを描画します。
-     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成します。
+     * 水平ラインを描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param rate            ラインの価格
-     * @param lineColor       ラインの色
-     * @param lineStyle       ラインのスタイル（スタイル定数）
-     * @param lineSize        ラインの太さ（ピクセル）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成する。
+     *
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param rate ラインの価格
+     * @param lineColor ラインの色
+     * @param lineStyle ラインのスタイル
+     * @param lineSize ラインの太さ。単位: ピクセル
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setHLine(string fromObjectName, double rate, color lineColor, int lineStyle, int lineSize, int chartId = 0) {
         // チャートオブジェクト名（共通プレフィックスを付与）
@@ -82,17 +86,18 @@ public:
     }
     
     /**
-     * ラベルを描画します。
-     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成します。
+     * ラベルを描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param objX            X座標（ピクセル）
-     * @param objY            Y座標（ピクセル）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成する。
+     *
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param objX X座標。単位: ピクセル
+     * @param objY Y座標。単位: ピクセル
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setLabel(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, int objX, int objY, int chartId = 0) {
         // チャートオブジェクト名（共通プレフィックスを付与）
@@ -113,16 +118,16 @@ public:
     }
     
     /**
-     * 固定プレフィックス付きでラベルを描画します。
+     * 固定プレフィックス付きでラベルを描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param objX            X座標（px）
-     * @param objY            Y座標（px）
-     * @param chartId         描画対象チャートID（0の場合はカレント）
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param objX X座標。単位: ピクセル
+     * @param objY Y座標。単位: ピクセル
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setLabelFixed(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, int objX, int objY, int chartId = 0) {
         // チャートオブジェクト名（共通プレフィックスを付与）
@@ -132,10 +137,10 @@ public:
     }
     
     /**
-     * 固定プレフィックス付きオブジェクトを削除します。
+     * 固定プレフィックス付きオブジェクトを削除する。
      *
-     * @param fromObjectName  削除するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * @param fromObjectName 削除するオブジェクト名。プレフィックス付与前
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void deleteFixedObject(string fromObjectName, int chartId = 0) {
         string objectName = Constant::PREFIX_FIXED + fromObjectName;
@@ -144,16 +149,16 @@ public:
     }
     
     /**
-     * ラベル描画処理を共通化します。
+     * ラベル描画処理を共通化する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param objX            X座標（px）
-     * @param objY            Y座標（px）
-     * @param chartId         描画対象チャートID（0の場合はカレント）
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与済み
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param objX X座標。単位: ピクセル
+     * @param objY Y座標。単位: ピクセル
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setLabelCommon(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, int objX, int objY, int chartId) {
         string objectName = fromObjectName;
@@ -171,18 +176,20 @@ public:
     }
     
     /**
-     * 矩形を描画します。
-     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成します。
+     * 矩形を描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param time1           始点の時間
-     * @param rate1           始点の価格
-     * @param time2           終点の時間
-     * @param rate2           終点の価格
-     * @param lineColor       ラインの色
-     * @param lineStyle       ラインのスタイル（スタイル定数）
-     * @param lineSize        ラインの太さ（ピクセル）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成する。
+     *
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param time1 始点の時間
+     * @param rate1 始点の価格
+     * @param time2 終点の時間
+     * @param rate2 終点の価格
+     * @param lineColor ラインの色
+     * @param lineStyle ラインのスタイル
+     * @param lineSize ラインの太さ。単位: ピクセル
+     * @param isPrefix 共通プレフィックスを付与する場合true
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setRectangle(string fromObjectName, datetime time1, double rate1, datetime time2, double rate2,
                                 color lineColor, int lineStyle, int lineSize, bool isPrefix = true, int chartId = 0) {
@@ -207,16 +214,16 @@ public:
     }
 
     /**
-     * 指定時刻・価格にラベルを設定します。
+     * 指定時刻と価格にテキストを設定する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param drawDatetime    表示位置の時間
-     * @param drawPrice       表示位置の価格
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param drawDatetime 表示位置の時間
+     * @param drawPrice 表示位置の価格
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setText(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, 
                     datetime drawDatetime, double drawPrice, int chartId = 0) {        
@@ -226,16 +233,16 @@ public:
     }
     
     /**
-     * 固定プレフィックス付きで時刻・価格にラベルを設定します。
+     * 固定プレフィックス付きで時刻と価格にテキストを設定する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与前）
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param drawDatetime    表示位置の時間
-     * @param drawPrice       表示位置の価格
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param drawDatetime 表示位置の時間
+     * @param drawPrice 表示位置の価格
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setTextFixed(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, 
                     datetime drawDatetime, double drawPrice, int chartId = 0) {        
@@ -245,17 +252,18 @@ public:
     }
     
     /**
-     * テキストを再配置して描画します。
-     * 既に同名のオブジェクトが存在する場合は一度削除し、時間と価格を更新します。
+     * テキストを再配置して描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param drawDatetime    表示位置の時間
-     * @param drawPrice       表示位置の価格
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * 既に同名のオブジェクトが存在する場合は一度削除し、時間と価格を更新する。
+     *
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param drawDatetime 表示位置の時間
+     * @param drawPrice 表示位置の価格
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setTextMove(string fromObjectName, string fontFace, color fontColor, int fontSize, string text,
                     datetime drawDatetime, double drawPrice, int chartId = 0) {
@@ -265,16 +273,16 @@ public:
     }
 
     /**
-     * 固定プレフィックスでテキストを再配置して描画します。
+     * 固定プレフィックスでテキストを再配置して描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param drawDatetime    表示位置の時間
-     * @param drawPrice       表示位置の価格
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param drawDatetime 表示位置の時間
+     * @param drawPrice 表示位置の価格
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setTextMoveFixed(string fromObjectName, string fontFace, color fontColor, int fontSize, string text,
                     datetime drawDatetime, double drawPrice, int chartId = 0) {
@@ -284,16 +292,16 @@ public:
     }
 
     /**
-     * テキストを再配置して描画します。
+     * テキストを再配置して描画する。
      *
-     * @param objectName      プレフィックス付与後のオブジェクト名
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param drawDatetime    表示位置の時間
-     * @param drawPrice       表示位置の価格
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * @param objectName プレフィックス付与後のオブジェクト名
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param drawDatetime 表示位置の時間
+     * @param drawPrice 表示位置の価格
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setTextMoveCommon(string objectName, string fontFace, color fontColor, int fontSize, string text,
                     datetime drawDatetime, double drawPrice, int chartId) {
@@ -310,16 +318,16 @@ public:
     }
     
     /**
-     * OBJ_TEXT を作成して共通的な文字設定を適用します。
+     * OBJ_TEXTを作成して共通的な文字設定を適用する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックス付与済み）
-     * @param fontFace        フォント名
-     * @param fontColor       文字色
-     * @param fontSize        フォントサイズ
-     * @param text            表示テキスト
-     * @param drawDatetime    表示位置の時間
-     * @param drawPrice       表示位置の価格
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与済み
+     * @param fontFace フォント名
+     * @param fontColor 文字色
+     * @param fontSize フォントサイズ
+     * @param text 表示テキスト
+     * @param drawDatetime 表示位置の時間
+     * @param drawPrice 表示位置の価格
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setTextCommon(string fromObjectName, string fontFace, color fontColor, int fontSize, string text, 
                     datetime drawDatetime, double drawPrice, int chartId) {        
@@ -336,19 +344,20 @@ public:
     }
         
     /**
-     * トレンドラインを描画します。
-     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成します。
+     * トレンドラインを描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param time1           始点の時間
-     * @param rate1           始点の価格
-     * @param time2           終点の時間
-     * @param rate2           終点の価格
-     * @param lineColor       ラインの色
-     * @param lineStyle       ラインのスタイル（スタイル定数）
-     * @param lineSize        ラインの太さ（ピクセル）
-     * @param isRayRight      true の場合、右方向に延長する（レイ表示）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成する。
+     *
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param time1 始点の時間
+     * @param rate1 始点の価格
+     * @param time2 終点の時間
+     * @param rate2 終点の価格
+     * @param lineColor ラインの色
+     * @param lineStyle ラインのスタイル
+     * @param lineSize ラインの太さ。単位: ピクセル
+     * @param isRayRight 右方向に延長する場合true
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setTrendLine(string fromObjectName, datetime time1, double rate1, datetime time2, double rate2, 
                                 color lineColor, int lineStyle, int lineSize, bool isRayRight, int chartId = 0) {
@@ -369,23 +378,24 @@ public:
     
 
     /**
-     * フィボナッチエクスパンションを描画します。
-     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成します。
-     * レベルは 61.8 / 100.0 / 127.2 / 161.8 / 200.0 を設定します。
+     * フィボナッチエクスパンションを描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param time1           1点目の時間
-     * @param rate1           1点目の価格
-     * @param time2           2点目の時間
-     * @param rate2           2点目の価格
-     * @param time3           3点目の時間
-     * @param rate3           3点目の価格
-     * @param lineColor       ラインの色
-     * @param lineStyle       ラインのスタイル（スタイル定数）
-     * @param lineSize        ラインの太さ（ピクセル）
-     * @param isRayRight      true の場合、右方向に延長する（レイ表示）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
-     * @return                作成に成功した場合 true
+     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成する。
+     * レベルは61.8、100.0、127.2、161.8、200.0を設定する。
+     *
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param time1 1点目の時間
+     * @param rate1 1点目の価格
+     * @param time2 2点目の時間
+     * @param rate2 2点目の価格
+     * @param time3 3点目の時間
+     * @param rate3 3点目の価格
+     * @param lineColor ラインの色
+     * @param lineStyle ラインのスタイル
+     * @param lineSize ラインの太さ。単位: ピクセル
+     * @param isRayRight 右方向に延長する場合true
+     * @param chartId 描画対象チャートID。0の場合はカレント
+     * @return 作成に成功した場合true
      */
     static bool setFibonacciExpansion(string fromObjectName, datetime time1, double rate1, datetime time2, double rate2,
                                         datetime time3, double rate3, color lineColor, int lineStyle, int lineSize,
@@ -418,15 +428,16 @@ public:
     }
     
     /**
-     * 垂直ラインを描画します。
-     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成します。
+     * 垂直ラインを描画する。
      *
-     * @param fromObjectName  描画するオブジェクト名（プレフィックスを付与する前の名称）
-     * @param time            ラインの時間
-     * @param lineColor       ラインの色
-     * @param lineStyle       ラインのスタイル（スタイル定数）
-     * @param lineSize        ラインの太さ（ピクセル）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * 既に同名のオブジェクトが存在する場合は一度削除し、新たに作成する。
+     *
+     * @param fromObjectName 描画するオブジェクト名。プレフィックス付与前
+     * @param time ラインの時間
+     * @param lineColor ラインの色
+     * @param lineStyle ラインのスタイル
+     * @param lineSize ラインの太さ。単位: ピクセル
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setVLine(string fromObjectName, datetime time, color lineColor, int lineStyle, int lineSize, int chartId = 0) {
         // チャートオブジェクト名（共通プレフィックスを付与）
@@ -446,13 +457,13 @@ public:
 
 private:
     /**
-     * フィボナッチエクスパンションの標準レベルを設定します。
+     * フィボナッチエクスパンションの標準レベルを設定する。
      *
-     * @param objectName      プレフィックス付与後のオブジェクト名
-     * @param lineColor       ラインの色
-     * @param lineStyle       ラインのスタイル（スタイル定数）
-     * @param lineSize        ラインの太さ（ピクセル）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * @param objectName プレフィックス付与後のオブジェクト名
+     * @param lineColor ラインの色
+     * @param lineStyle ラインのスタイル
+     * @param lineSize ラインの太さ。単位: ピクセル
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setFibonacciExpansionDefaultLevels(string objectName, color lineColor, int lineStyle, int lineSize, int chartId) {
         ObjectSetInteger(chartId, objectName, OBJPROP_LEVELS, 5);
@@ -465,16 +476,16 @@ private:
     }
     
     /**
-     * フィボナッチエクスパンションのレベルを設定します。
+     * フィボナッチエクスパンションのレベルを設定する。
      *
-     * @param objectName      プレフィックス付与後のオブジェクト名
-     * @param levelIndex      レベル番号
-     * @param levelValue      レベル値
-     * @param levelText       レベル表示名
-     * @param lineColor       ラインの色
-     * @param lineStyle       ラインのスタイル（スタイル定数）
-     * @param lineSize        ラインの太さ（ピクセル）
-     * @param chartId         描画対象のチャートID（0 の場合はカレントチャート）
+     * @param objectName プレフィックス付与後のオブジェクト名
+     * @param levelIndex レベル番号
+     * @param levelValue レベル値
+     * @param levelText レベル表示名
+     * @param lineColor ラインの色
+     * @param lineStyle ラインのスタイル
+     * @param lineSize ラインの太さ。単位: ピクセル
+     * @param chartId 描画対象チャートID。0の場合はカレント
      */
     static void setFibonacciExpansionLevel(string objectName, int levelIndex, double levelValue, string levelText,
                                             color lineColor, int lineStyle, int lineSize, int chartId) {

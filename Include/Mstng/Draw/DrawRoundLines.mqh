@@ -60,31 +60,31 @@ public:
     }
 
 private:
-    /** 水平線の太さ */
+    /** 水平線の太さ。 */
     static const int LINE_WIDTH;
 
-    /** 50pipsラインの間隔 */
+    /** 50pipsラインの間隔。 */
     static const int STEP_50_PIPS;
 
-    /** 100pipsラインの間隔 */
+    /** 100pipsラインの間隔。 */
     static const int STEP_100_PIPS;
     
-    /** 描画対象の市場コンテキスト */
+    /** 描画対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** 100pipsラインの色 */
+    /** 100pipsラインの色。 */
     color color100Pips;
 
-    /** 50pipsラインの色 */
+    /** 50pipsラインの色。 */
     color color50Pips;
 
-    /** 現在価格の上下へ描画する本数 */
+    /** 現在価格の上下へ描画する本数。 */
     int linesEachSide;
 
-    /** 基準価格にBidを使用する場合true */
+    /** 基準価格にBidを使用する場合true。 */
     bool useBidPrice;
 
-    /** 描画対象のチャートID */
+    /** 描画対象のチャートID。 */
     long chartId;
 
     /**

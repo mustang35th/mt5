@@ -11,6 +11,9 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
+/**
+ * Elliotサマリー表の列種別。
+ */
 enum ElliotColmun {
     COLMUN_TIME_FRAME,
     COLMUN_BUYSELL,
@@ -27,7 +30,7 @@ enum ElliotColmun {
 };
 
 /**
- * Elliotの波形・状態情報をチャート上に表形式・ラベル付きで描画するクラスです。
+ * Elliotの波形と状態情報をチャート上に表形式およびラベル付きで描画するクラス。
  */
 class DrawElliot {
 public:
@@ -408,15 +411,15 @@ public:
     }
 
 protected:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
     
-    /** 描画共通設定 */
+    /** 描画共通設定。 */
     DrawProperties drawProperties;
-    /** Elliot解析全体を保持する参照 */
+    /** Elliot解析全体を保持する参照。 */
     ElliotAll *elliotAll;
     
-    /** 列表示設定のリスト（時間軸ごとに表示可否・幅を保持） */
+    /** 列表示設定のリスト。時間軸ごとに表示可否と幅を保持する。 */
     CArrayObj drawPropertiesElliotList;
     
     /**
@@ -435,7 +438,7 @@ protected:
      * 対象インデックスの列表示設定を参照し、表示可否と列幅を返す。
      *
      * @param index 列インデックス
-     * @param width 列幅出力引数
+     * @param width 列幅を格納する変数
      * @return 表示対象ならtrue
      */
     bool isVisible(int index, int &width) {
@@ -671,7 +674,7 @@ private:
     /**
      * 値の符号に応じて描画用フォントカラーを返す。
      *
-     * @param value 判定値（正:上方向,負:下方向）
+     * @param value 判定値。正: 上方向、負: 下方向
      * @return フォント色
      */
     color getColor(int value) {

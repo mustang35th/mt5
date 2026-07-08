@@ -23,17 +23,16 @@
 /**
  * 描画処理の統括クラス。
  *
- * - Elliot の解析結果に基づき、チャート上へ各種オブジェクトを描画する。
- * - 描画対象（ZigZag / ラベル / 補助線など）は drawAll() 内で集約して呼び出す。
- * - 再描画時は PREFIX に紐づく既存オブジェクトを削除してから描画する。
+ * Elliotの解析結果に基づき、ZigZag、Elliottラベル、補助線、
+ * レート情報、背景色などをまとめて描画する。
+ * 再描画時はPREFIXに紐づく既存オブジェクトを削除してから描画する。
  */
 class Draw {
 public:
     /**
      * コンストラクタ。
      *
-     * Logger のログレベルを初期化する。
-     * （描画トラブルの調査をしやすいよう INFO をデフォルトとする）
+     * 描画処理用Loggerのログレベルを初期化する。
      */
     Draw() {
         this.logger.setLevel(LOG_INFO);
@@ -48,10 +47,9 @@ public:
     /**
      * すべての描画を実行する。
      *
-     * - 既存描画（PREFIX 対象）を削除
-     * - 各描画モジュールを呼び出して再描画
+     * 既存描画を削除し、各描画モジュールを順に呼び出して再描画する。
      *
-     * @param fromElliotAll Elliot 解析結果
+     * @param fromElliotAll Elliot解析結果
      * @param fromIsElliotInfoVisible エリオット情報表示有無
      */
     void drawAll(ElliotAll *fromElliotAll, bool fromIsElliotInfoVisible = true) {
@@ -59,7 +57,7 @@ public:
         
         this.elliotAll = fromElliotAll;
         
-        // 当プロジェクトのオブジェクト接頭辞（PREFIX）に該当するもののみ削除して再描画する
+        // 当プロジェクトのオブジェクト接頭辞に該当するもののみ削除して再描画する。
         ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
         
         if (this.elliotAll.marketContext.timeFrame <= PERIOD_H1) {
@@ -254,12 +252,12 @@ public:
     }
     
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
     
-    /** 表示設定 */
+    /** 表示設定。 */
     DrawProperties drawProperties;
-    /** 描画対象のElliot全体データ */
+    /** 描画対象のElliot全体データ。 */
     ElliotAll *elliotAll;
     
     /*void drawBgColor() {
@@ -299,7 +297,8 @@ private:
     /**
      * 市場状況に応じた背景色を設定する。
      *
-     * 現状は常に黒背景を設定する実装で、将来ロジック追加時の拡張ポイントです。
+     * 上位足とEMA200条件が揃った場合に背景色を売買方向へ合わせる。
+     * 条件を満たさない場合は黒背景を設定する。
      */
     void drawBgColor() {
         color bgColor = clrBlack;

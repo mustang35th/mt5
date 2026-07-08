@@ -11,7 +11,7 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 
 /**
- * 高値/安値のポイントを繋いだ水平ラインを描画するクラスです。
+ * 高値または安値のポイントを基準に水平ラインを描画するクラス。
  */
 class DrawHorizontalLine : public DrawBase {
 public:

@@ -24,7 +24,7 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext 描画対象の市場コンテキスト
+     * @param fromMarketContext 描画対象の市場コンテキスト。
      */
     DrawZigZag(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
@@ -39,7 +39,7 @@ public:
     /**
      * Elliot全体のZigZagを描画する。
      *
-     * @param fromElliotAll Elliot解析結果
+     * @param fromElliotAll Elliot解析結果。
      */
     void draw(ElliotAll &fromElliotAll) {
         this.initializeMarketContext(fromElliotAll.marketContext);
@@ -63,10 +63,10 @@ private:
     /**
      * ZigZagポイント間を結ぶラインを描画する。
      *
-     * @param elliot 描画対象のElliot
-     * @param isOrg オリジナルZigZagを使う場合true
-     * @param lineSize ライン幅
-     * @param isUpper 上位足描画の場合true
+     * @param elliot 描画対象のElliot。
+     * @param isOrg オリジナルZigZagを使う場合true。
+     * @param lineSize ライン幅。
+     * @param isUpper 上位足描画の場合true。
      */
     void draw(Elliot &elliot, bool isOrg, int lineSize, bool isUpper = false) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -146,9 +146,9 @@ private:
     /**
      * 描画色を取得する。
      *
-     * @param isBuy 上昇波の場合true
-     * @param isUpper 上位足描画の場合true
-     * @return 描画色
+     * @param isBuy 上昇波の場合true。
+     * @param isUpper 上位足描画の場合true。
+     * @return 描画色。
      */
     color getLineColor(bool isBuy, bool isUpper) {
         if (isBuy) {

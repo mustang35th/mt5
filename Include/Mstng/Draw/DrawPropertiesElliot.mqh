@@ -9,13 +9,13 @@
 #include <Object.mqh>
 
 /**
- * Elliot描画テーブルの列表示設定を保持する設定クラスです。
+ * Elliot描画テーブルの列表示設定を保持する設定クラス。
  */
 class DrawPropertiesElliot : public CObject {
 public:
-    /** 表示するか */
+    /** 表示する場合true。 */
     bool isVisible;
-    /** 列幅（ピクセル） */
+    /** 列幅。単位: ピクセル。 */
     int width;
     
     /**
