@@ -13,30 +13,27 @@
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
- * ZigZag クラスは、標準 ZigZag インジケータをラップし、
- * 転換ポイントを ZigZagPoint オブジェクトとして収集します。
+ * 標準ZigZag相当のロジックを使い、転換ポイントをZigZagPointとして収集するクラス。
  *
- * - コンストラクタで Depth / Deviation / Backstep を設定します。
- * - update() メソッド呼び出しごとに iCustom で ZigZag を新規取得します。
- * - 非ゼロの値（ZigZag の節目）を ZigZagPoint として保持します。
+ * Depth、Deviation、Backstepを指定してZigZagLogicを実行し、
+ * 検出した非ゼロ値をポイント一覧へ保持する。
  */
 class ZigZag {
 public:
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** ZigZag の検出ポイントを保持するリスト。 */
+    /** ZigZagの検出ポイントを保持するリスト。 */
     CArrayObj zigZagPointList;
     
     /**
-     * ZigZag クラスのコンストラクタ。
-     * ここで対象シンボル、時間足、ZigZag パラメータを設定します。
+     * シンボル、時間足およびZigZagパラメータを指定して初期化する。
      *
-     * @param fromSymbolName     対象シンボル名
-     * @param fromTimeFrame      対象時間足
-     * @param fromDepth          ZigZag の Depth（初期値 12）
-     * @param fromDeviation      ZigZag の Deviation（初期値 5）
-     * @param fromBackstep       ZigZag の Backstep（初期値 3）
+     * @param fromSymbolName 対象シンボル名
+     * @param fromTimeFrame 対象時間足
+     * @param fromDepth ZigZagのDepth
+     * @param fromDeviation ZigZagのDeviation
+     * @param fromBackstep ZigZagのBackstep
      */
     ZigZag(string fromSymbolName,
            ENUM_TIMEFRAMES fromTimeFrame,
@@ -66,7 +63,8 @@ public:
 
     /**
      * デストラクタ。
-     * 内部で確保した ZigZagPoint オブジェクトを解放します。
+     *
+     * 内部で確保したZigZagPointオブジェクトを解放する。
      */
     ~ZigZag() {
         this.clearPoints();
@@ -86,7 +84,7 @@ public:
     }
 
     /**
-     * 新規の ZigZag ポイントを条件成立時に先頭へ追加します。
+     * 条件成立時に補完ZigZagポイントを先頭へ追加する。
      *
      * @param isBuy 上昇方向判定フラグ
      */
@@ -110,8 +108,7 @@ public:
     }
     
     /**
-     * 内部に保持しているすべての ZigZagPoint オブジェクトを解放します。
-     * ポイントリストを再利用する前に呼び出されます。
+     * 内部に保持しているすべてのZigZagPointオブジェクトを解放する。
      */
     void clearPoints() {
         int totalPoints = this.zigZagPointList.Total();
@@ -128,10 +125,10 @@ public:
     }
 
     /**
-     * ZigZag インジケータを毎回新規に取得してポイントを更新します。
+     * ZigZagLogicを計算し、検出ポイントを更新する。
      *
      * @param fromMaxBars 処理対象とする最大バー数
-     * @return 正常に更新できた場合 true、失敗した場合 false
+     * @return 正常に更新できた場合true
      */
     bool update(int fromMaxBars) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -174,11 +171,11 @@ public:
 private:
     /** ロガー。 */
     Logger logger;
-    /** ZigZag の Depth パラメータ。 */
+    /** ZigZagのDepthパラメータ。 */
     int depth;
-    /** ZigZag の Deviation パラメータ。 */
+    /** ZigZagのDeviationパラメータ。 */
     int deviation;
-    /** ZigZag の Backstep パラメータ。 */
+    /** ZigZagのBackstepパラメータ。 */
     int backstep;
 
     /**
@@ -204,11 +201,11 @@ private:
     }
 
     /**
-     * 指定区間の最高値（High）を取得し、ZigZagPoint に設定する。
+     * 指定区間の最高値を取得し、ZigZagPointへ設定する。
      *
-     * @param start        取得開始シフト（0が最新足）
-     * @param end          取得終了シフト（start < end）
-     * @param zigZagPoint  設定対象
+     * @param start 取得開始シフト。0が最新足
+     * @param end 取得終了シフト
+     * @param zigZagPoint 設定対象ポイント
      */
     void getZigZagHigh(int start, int end, ZigZagPoint &zigZagPoint) {
         if (start < 0) {
@@ -237,11 +234,11 @@ private:
     }
 
     /**
-     * 指定区間の最安値（Low）を取得し、ZigZagPoint に設定する。
+     * 指定区間の最安値を取得し、ZigZagPointへ設定する。
      *
-     * @param start        取得開始シフト（0が最新足）
-     * @param end          取得終了シフト（start < end）
-     * @param zigZagPoint  設定対象
+     * @param start 取得開始シフト。0が最新足
+     * @param end 取得終了シフト
+     * @param zigZagPoint 設定対象ポイント
      */
     void getZigZagLow(int start, int end, ZigZagPoint &zigZagPoint) {
         if (start < 0) {
@@ -270,10 +267,10 @@ private:
     }
 
     /**
-     * 検索モードから山（ピーク）かを判定します。
+     * 検索モードから山かを判定する。
      *
-     * @param fromSearchMode ZigZag の検索モード
-     * @return 山（ピーク）なら true、谷なら false
+     * @param fromSearchMode ZigZagの検索モード
+     * @return 山の場合true、谷の場合false
      */
     bool isPeak(int fromSearchMode) {
         return fromSearchMode == 1;
@@ -282,14 +279,11 @@ private:
     /**
      * ポイント追加判定を行う。
      *
-     * 判定内容：
-     * - BUY の場合は zigZagPoint0 が山（peak）でないなら追加対象
-     * - SELL の場合は zigZagPoint0 が山（peak）なら追加対象
+     * BUYの場合は最新ポイントが谷、SELLの場合は最新ポイントが山なら追加対象とする。
      *
-     * @param isBuy         売買方向（true: BUY, false: SELL）
-     * @param zigZagPoint0  判定対象ポイント
-     *
-     * @return 追加する場合 true
+     * @param isBuy 売買方向。true: BUY、false: SELL
+     * @param zigZagPoint0 判定対象ポイント
+     * @return 追加する場合true
      */
     bool isPointAddCondition(bool isBuy, ZigZagPoint &zigZagPoint0) {
         bool isNeedAdd = false;

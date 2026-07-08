@@ -66,8 +66,8 @@ public:
     /**
      * Wave一覧をディープコピーする。
      *
-     * @param fromWaveList コピー元
-     * @param toWaveList コピー先
+     * @param fromWaveList コピー元Wave一覧
+     * @param toWaveList コピー先Wave一覧
      */
     static void copyWaveList(CArrayObj &fromWaveList, CArrayObj &toWaveList) {
         
@@ -102,6 +102,8 @@ public:
     }
 
     /**
+     * Wave一覧の最後の要素を取得する。
+     *
      * @param fromWaveList 対象Wave一覧
      * @return 最後のWave。空の場合NULL
      */

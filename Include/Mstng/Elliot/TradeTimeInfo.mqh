@@ -9,7 +9,7 @@
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
 /**
- * 取引セッション種別
+ * 取引セッション種別。
  */
 enum SessionType {
     sessionUnknown = 0,        // 未判定
@@ -22,68 +22,67 @@ enum SessionType {
 };
 
 /**
- * 取引時間情報
+ * 取引時間と取引セッション情報を保持するクラス。
  */
 class TradeTimeInfo {
 public:
-    /** サーバー時間 */
+    /** サーバー時間。 */
     datetime serverTime;
 
-    /** 日本時間 */
+    /** 日本時間。 */
     datetime jstTime;
 
-    /** JST差分時間 */
+    /** JST差分時間。 */
     int jstOffsetHour;
 
-    /** サーバー時間の時 */
+    /** サーバー時間の時。 */
     int serverHour;
 
-    /** サーバー時間の分 */
+    /** サーバー時間の分。 */
     int serverMinute;
 
-    /** 日本時間の時 */
+    /** 日本時間の時。 */
     int jstHour;
 
-    /** 日本時間の分 */
+    /** 日本時間の分。 */
     int jstMinute;
 
-    /** 曜日 */
+    /** 曜日。 */
     int dayOfWeek;
 
-    /** 取引セッション種別 */
+    /** 取引セッション種別。 */
     SessionType sessionType;
 
-    /** 東京時間 */
+    /** 東京時間の場合true。 */
     bool isTokyoSession;
 
-    /** ロンドン時間 */
+    /** ロンドン時間の場合true。 */
     bool isLondonSession;
 
-    /** ニューヨーク時間 */
+    /** ニューヨーク時間の場合true。 */
     bool isNewYorkSession;
 
-    /** ロンドンニューヨーク重複時間 */
+    /** ロンドンニューヨーク重複時間の場合true。 */
     bool isLondonNewYorkOverlap;
 
-    /** ロールオーバー時間 */
+    /** ロールオーバー時間の場合true。 */
     bool isRolloverTime;
 
-    /** 月曜早朝 */
+    /** 月曜早朝の場合true。 */
     bool isMondayEarly;
 
-    /** 金曜深夜 */
+    /** 金曜深夜の場合true。 */
     bool isFridayLate;
 
     /**
-     * コンストラクタ
+     * コンストラクタ。
      */
     TradeTimeInfo() {
-        // 初期化
         this.clear();
     }
 
     /**
-     * 初期化
+     * 取引時間情報を初期化する。
      */
     void clear() {
         // 時刻初期化
@@ -112,7 +111,7 @@ public:
     }
 
     /**
-     * データ設定
+     * サーバー時刻から取引時間情報を設定する。
      *
      * @param serverTimeValue サーバー時刻
      */
@@ -161,9 +160,9 @@ public:
     }
 
     /**
-     * 取引可能時間か判定
+     * 取引可能時間か判定する。
      *
-     * @return true: 取引可能
+     * @return 取引可能時間の場合true
      */
     bool isTradableTime() {
         if (this.isRolloverTime) {
@@ -190,7 +189,7 @@ public:
     }
 
     /**
-     * セッション名を取得
+     * セッション名を取得する。
      *
      * @return セッション名
      */
@@ -221,7 +220,7 @@ public:
     }
 
     /**
-     * CSVヘッダーを取得
+     * CSVヘッダーを取得する。
      *
      * @return CSVヘッダー
      */
@@ -245,7 +244,7 @@ public:
     }
 
     /**
-     * CSVデータを取得
+     * CSVデータを取得する。
      *
      * @return CSVデータ
      */
@@ -270,7 +269,7 @@ public:
 
 private:
     /**
-     * bool値をCSV用文字列へ変換
+     * bool値をCSV用文字列へ変換する。
      *
      * @param boolValue bool値
      * @return CSV用文字列
@@ -284,9 +283,9 @@ private:
     }
 
     /**
-     * 東京時間か判定
+     * 東京時間か判定する。
      *
-     * @return true: 東京時間
+     * @return 東京時間の場合true
      */
     bool isTokyoSessionTime() {
         // 東京時間判定
@@ -294,9 +293,9 @@ private:
     }
 
     /**
-     * ロンドン時間か判定
+     * ロンドン時間か判定する。
      *
-     * @return true: ロンドン時間
+     * @return ロンドン時間の場合true
      */
     bool isLondonSessionTime() {
         // 夏時間判定
@@ -308,9 +307,9 @@ private:
     }
 
     /**
-     * ニューヨーク時間か判定
+     * ニューヨーク時間か判定する。
      *
-     * @return true: ニューヨーク時間
+     * @return ニューヨーク時間の場合true
      */
     bool isNewYorkSessionTime() {
         // 夏時間判定
@@ -322,9 +321,9 @@ private:
     }
 
     /**
-     * ロンドンニューヨーク重複時間か判定
+     * ロンドンニューヨーク重複時間か判定する。
      *
-     * @return true: ロンドンニューヨーク重複時間
+     * @return ロンドンニューヨーク重複時間の場合true
      */
     bool isLondonNewYorkOverlapTime() {
         // 夏時間判定
@@ -336,9 +335,9 @@ private:
     }
 
     /**
-     * ロールオーバー時間帯か判定
+     * ロールオーバー時間帯か判定する。
      *
-     * @return true: ロールオーバー時間帯
+     * @return ロールオーバー時間帯の場合true
      */
     bool isRolloverTimeRange() {
         // JST 6時台から7時台
@@ -346,9 +345,9 @@ private:
     }
 
     /**
-     * 月曜早朝か判定
+     * 月曜早朝か判定する。
      *
-     * @return true: 月曜早朝
+     * @return 月曜早朝の場合true
      */
     bool isMondayEarlyTime() {
         if (this.dayOfWeek != 1) {
@@ -363,9 +362,9 @@ private:
     }
 
     /**
-     * 金曜深夜か判定
+     * 金曜深夜か判定する。
      *
-     * @return true: 金曜深夜
+     * @return 金曜深夜の場合true
      */
     bool isFridayLateTime() {
         if (this.dayOfWeek == 5 && this.jstHour >= 23) {
@@ -380,9 +379,9 @@ private:
     }
 
     /**
-     * 週末セッション除外時間か判定
+     * 週末セッション除外時間か判定する。
      *
-     * @return true: 週末セッション除外時間
+     * @return 週末セッション除外時間の場合true
      */
     bool isWeekendSessionBlockedTime() {
         if (this.dayOfWeek == 0) {
@@ -397,7 +396,7 @@ private:
     }
 
     /**
-     * セッション種別を解決
+     * セッション種別を解決する。
      *
      * @return 取引セッション種別
      */
@@ -426,11 +425,11 @@ private:
     }
 
     /**
-     * JST時間範囲内か判定
+     * JST時間範囲内か判定する。
      *
      * @param startHourValue 開始時
      * @param endHourValue 終了時
-     * @return true: 範囲内
+     * @return 範囲内の場合true
      */
     bool isInJstHourRange(const int startHourValue, const int endHourValue) {
         if (startHourValue == endHourValue) {

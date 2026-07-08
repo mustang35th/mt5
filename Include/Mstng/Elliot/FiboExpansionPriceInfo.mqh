@@ -9,21 +9,21 @@
 
 /**
  * フィボナッチエクスパンションの各価格と
- * FE2000 までの差分を保持するデータコンテナです。
+ * FE2000までの差分を保持するデータコンテナ。
  */
 class FiboExpansionPriceInfo {
 public:
-    /** FE 618 の価格 */
+    /** FE618の価格。 */
     double FE618Price;
-    /** FE 1000 の価格 */
+    /** FE1000の価格。 */
     double FE1000Price;
-    /** FE 1272 の価格 */
+    /** FE1272の価格。 */
     double FE1272Price;
-    /** FE 1618 の価格 */
+    /** FE1618の価格。 */
     double FE1618Price;
-    /** FE 2000 の価格 */
+    /** FE2000の価格。 */
     double FE2000Price;
-    /** 現在価格から FE2000 までの差（pips） */
+    /** 現在価格からFE2000までの差。単位: pips。 */
     double DistanceToFE2000Pips;
 
     /**
@@ -40,7 +40,7 @@ public:
     }
 
     /**
-     * 初期化する。
+     * 保持している価格と距離を初期化する。
      */
     void clear() {
         this.FE618Price = 0.0;
@@ -52,7 +52,7 @@ public:
     }
 
     /**
-     * フィボナッチエクスパンション価格を設定する。
+     * シンボル名を指定してフィボナッチエクスパンション価格を設定する。
      *
      * @param startRate 1点目レート
      * @param endRate 2点目レート
@@ -73,6 +73,9 @@ public:
 
     /**
      * MarketContextを使用してフィボナッチエクスパンション価格を設定する。
+     *
+     * 1点目から2点目までの値幅を3点目へ加算し、代表的なFE価格と
+     * 現在価格からFE2000までの距離を保持する。
      *
      * @param startRate 1点目レート
      * @param endRate 2点目レート

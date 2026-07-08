@@ -10,7 +10,6 @@
 #include <Mstng\Elliot\Elliot.mqh>
 #include <Mstng\Util\TodayRate.mqh>
 
-// ロスカット
 /**
  * 最新Elliottポイントを基準にロスカット価格を算出するクラス。
  *
@@ -18,35 +17,35 @@
  */
 class LossCut {
 public:
-    /** ロスカット計算対象の市場コンテキスト */
+    /** ロスカット計算対象の市場コンテキスト。 */
     MarketContext marketContext;
     
-    /** 売買方向。true: BUY、false: SELL */
+    /** 売買方向。true: BUY、false: SELL。 */
     bool isBuy;
     
-    /** ロスカット距離の計算基準レート。BUYはAsk、SELLはBid */
+    /** ロスカット距離の計算基準レート。BUYはAsk、SELLはBid。 */
     double rate;
     
-    /** 基準レートからlc0までの距離。単位: pips */
+    /** 基準レートからlc0までの距離。単位: pips。 */
     double diff;
 
-    /** diffを100通貨分の円へ換算した参考金額 */
+    /** diffを100通貨分の円へ換算した参考金額。 */
     double diffJpy;
     
-    /** 1つ前のZigZagポイントを使用した基準ロスカット価格 */
+    /** 1つ前のZigZagポイントを使用した基準ロスカット価格。 */
     double lc0;
 
-    /** lc0から損失方向へ5pipsずらしたロスカット価格 */
+    /** lc0から損失方向へ5pipsずらしたロスカット価格。 */
     double lc5;
 
-    /** lc0から損失方向へ10pipsずらしたロスカット価格 */
+    /** lc0から損失方向へ10pipsずらしたロスカット価格。 */
     double lc10;
 
-    /** lc0から損失方向へ15pipsずらしたロスカット価格 */
+    /** lc0から損失方向へ15pipsずらしたロスカット価格。 */
     double lc15;
     
     /**
-     * LossCut を生成します。
+     * デフォルトコンストラクタ。
      */
     LossCut() {
         this.initializeValues();
@@ -63,7 +62,7 @@ public:
     }
     
     /**
-     * LossCut を破棄します。
+     * デストラクタ。
      */
     ~LossCut() {
     }
@@ -77,7 +76,7 @@ public:
         this.initializeMarketContext(fromMarketContext);
     }
     
-    /** @return ロスカット候補を含む表示用テキスト */
+    /** @return ロスカット候補を含む表示用テキスト。 */
     string getText() {
         string text = "";
         
@@ -147,9 +146,9 @@ public:
     }
     
     /**
-     * @brief 内容を文字列化して返します。
+     * 内容を文字列化する。
      *
-     * @param digits 価格系の表示桁数（未指定時はシンボル桁 or _Digits）
+     * @param digits 価格系の表示桁数。未指定時はシンボル桁または_Digits
      * @return "LossCut{...}" 形式の文字列
      */
     string toString(const int digits = -1) const {
@@ -185,7 +184,7 @@ public:
     }
     
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
     /**

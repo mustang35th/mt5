@@ -162,7 +162,7 @@ protected:
             wave.analyze();
         }
         
-        // 確定処理
+        // 確定状態を設定する。
         if (waveTotal == 1) {
             Wave *wave0 = this.waveList.At(0);
             

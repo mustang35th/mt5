@@ -28,31 +28,31 @@
  */
 class ElliotAll : public CObject {
 public:
-    /** タイマーから分析を実行する場合true。テスターではfalse */
+    /** タイマーから分析を実行する場合true。テスターではfalse。 */
     bool isTimer;
 
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
     
-    /** 通貨ペア名を分割した左側の通貨コード */
+    /** 通貨ペア名を分割した左側の通貨コード。 */
     string symbolNameLeft;
 
-    /** 通貨ペア名を分割した右側の通貨コード */
+    /** 通貨ペア名を分割した右側の通貨コード。 */
     string symbolNameRight;
     
-    /** サーバー時刻、JST、取引セッション情報 */
+    /** サーバー時刻、JST、取引セッション情報。 */
     TradeTimeInfo tradeTimeInfo;
     
-    /** 直近の分析処理時間。単位: ミリ秒 */
+    /** 直近の分析処理時間。単位: ミリ秒。 */
     uint execTime;
 
-    /** インジケーター側で設定されたタイマー間隔。単位: 秒 */
+    /** インジケーター側で設定されたタイマー間隔。単位: 秒。 */
     int timerSeconds;
     
-    /** 当日高値・安値、Bid、Ask、スプレッド情報 */
+    /** 当日高値・安値、Bid、Ask、スプレッド情報。 */
     TodayRate todayRate;
 
-    /** 現在時間足のElliottポイントから算出したロスカット候補 */
+    /** 現在時間足のElliottポイントから算出したロスカット候補。 */
     LossCut lossCut;
     
     /**
@@ -62,24 +62,24 @@ public:
      */
     CArrayObj elliotList;
 
-    /** 対象時間足すべてのElliott分析が成功した場合true */
+    /** 対象時間足すべてのElliott分析が成功した場合true。 */
     bool isAnalysisSucceeded;
     
-    /** 現在時間足に対応するElliot。elliotList内要素への非所有参照 */
+    /** 現在時間足に対応するElliot。elliotList内要素への非所有参照。 */
     Elliot *elliotCurrent;
     
-    /** 分析結果メールを送信する場合true */
+    /** 分析結果メールを送信する場合true。 */
     bool isSendMail;
 
-    /** 分析結果メールの件名 */
+    /** 分析結果メールの件名。 */
     string mailTitile;
     
     //MarketActivityAnalyzer marketActivityAnalyzer;
     
-    /** 上位足ストキャスMain0並び順多数決判定 */
+    /** 上位足ストキャスMain0並び順多数決判定。 */
     HigherStochasticMainOrderDecision higherStochasticMainOrderDecision;
     
-    /** 上位足トレンド一致判定 */
+    /** 上位足トレンド一致判定。 */
     TrendAlignDecision trendAlignDecision;
     
     /**
@@ -369,7 +369,7 @@ public:
     
     
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
     
     /**
@@ -379,7 +379,7 @@ private:
      */
     OscillatorHandlePool *oscillatorHandlePool;
     
-    /** Elliott分析を開始する最上位時間足 */
+    /** Elliott分析を開始する最上位時間足。 */
     ENUM_TIMEFRAMES startTimeFrame;
 
     /**
@@ -431,7 +431,7 @@ private:
     }
     
     /**
-     * 上位足トレンド一致判定を設定
+     * 上位足トレンド一致判定を設定する。
      */
     void setTrendAlignDecision() {
         this.trendAlignDecision.setData(
@@ -443,7 +443,7 @@ private:
     }
     
     /**
-     * 上位足ストキャスMain0並び順多数決判定を設定
+     * 上位足ストキャスMain0並び順多数決判定を設定する。
      */
     void setHigherStochasticMainOrderDecision() {
         this.higherStochasticMainOrderDecision.setData(

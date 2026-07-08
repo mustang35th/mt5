@@ -14,8 +14,9 @@
 #include <Mstng\Elliot\Wave.mqh>
 
 /**
- * ZigZagPoint に関するユーティリティメソッドを集約したクラスです。
- * 主に ZigZagPoint リストの検索、コピー、挿入、再構築処理を提供します。
+ * ZigZagPointに関するリスト操作を集約したユーティリティ。
+ *
+ * ポイントリストの検索、コピー、挿入、Wave一覧からの再構築を提供する。
  */
 class ZigZagPointUtil {
 public:
@@ -33,12 +34,10 @@ public:
     }
     
     /**
-     * ZigZagPoint のリストをディープコピーします。
-     * fromZigZagPointList に含まれる各 ZigZagPoint を cloneZigZagPoint() で複製し、
-     * toZigZagPointList に追加します。
+     * ZigZagPointのリストをディープコピーする。
      *
-     * @param fromZigZagPointList コピー元の ZigZagPoint リスト
-     * @param toZigZagPointList   コピー先の ZigZagPoint リスト
+     * @param fromZigZagPointList コピー元のZigZagPointリスト
+     * @param toZigZagPointList コピー先のZigZagPointリスト
      */
     static void copyZigZagPointList(CArrayObj &fromZigZagPointList, CArrayObj &toZigZagPointList) {
         toZigZagPointList.Clear();
@@ -103,7 +102,7 @@ public:
     }
     
     /**
-     * ポイント一覧の最後の要素を取得します。
+     * ポイント一覧の最後の要素を取得する。
      *
      * @param fromZigZagPointList 対象のポイント一覧
      * @return 最後の要素。空の場合NULL
@@ -140,11 +139,10 @@ public:
     }
 
     /**
-     * 指定された ZigZagPoint をディープコピーして、リストの先頭に挿入します。
-     * 挿入時には元オブジェクトではなく cloneZigZagPoint() で作成したクローンを使用します。
+     * 指定されたZigZagPointをディープコピーし、リストの先頭に挿入する。
      *
-     * @param pointList 挿入先の ZigZagPoint リスト
-     * @param point     挿入元となる ZigZagPoint（クローンの元）
+     * @param pointList 挿入先のZigZagPointリスト
+     * @param fromZigZagPoint 挿入元となるZigZagPoint
      */
     static void insertPoint(CArrayObj &pointList, ZigZagPoint &fromZigZagPoint) {
         // 引数のポイントからクローンを生成

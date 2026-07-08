@@ -7,7 +7,7 @@
 #property link      "https://www.mql5.com"
 
 /**
- * フィボナッチ深さゾーン
+ * フィボナッチ深さゾーン。
  */
 enum ENUM_FIBO_DEPTH_ZONE {
     FIBO_DEPTH_UNKNOWN   = 0,  // 未判定
@@ -20,12 +20,12 @@ enum ENUM_FIBO_DEPTH_ZONE {
 };
 
 /**
- * フィボナッチ深さゾーン判定
+ * フィボナッチ深さからゾーン判定や分類名を取得するユーティリティ。
  */
 class FiboDepthZone {
 public:
     /**
-     * フィボナッチ深さからゾーンを取得
+     * フィボナッチ深さからゾーンを取得する。
      *
      * @param fiboDepthValue フィボナッチ深さ
      * @return フィボナッチ深さゾーン
@@ -71,7 +71,7 @@ public:
     }
 
     /**
-     * フィボナッチ深さゾーン名を取得
+     * フィボナッチ深さゾーン名を取得する。
      *
      * @param zoneValue フィボナッチ深さゾーン
      * @return ゾーン名
@@ -103,7 +103,7 @@ public:
     }
 
     /**
-     * フィボナッチ深さからゾーン名を取得
+     * フィボナッチ深さからゾーン名を取得する。
      *
      * @param fiboDepthValue フィボナッチ深さ
      * @return ゾーン名
@@ -116,10 +116,10 @@ public:
     }
 
     /**
-     * 3波エントリーに適した深さか判定
+     * 3波エントリーに適した深さか判定する。
      *
      * @param fiboDepthValue フィボナッチ深さ
-     * @return true: 適した深さ
+     * @return 適した深さの場合true
      */
     static bool isValidThirdWaveDepth(const double fiboDepthValue) {
         // ゾーン取得
@@ -137,10 +137,10 @@ public:
     }
 
     /**
-     * 有効なフィボナッチ深さか判定
+     * 有効なフィボナッチ深さか判定する。
      *
      * @param fiboDepthValue フィボナッチ深さ
-     * @return true: 有効
+     * @return 有効な深さの場合true
      */
     static bool isValidDepth(const double fiboDepthValue) {
         // ゾーン取得
@@ -158,10 +158,10 @@ public:
     }
 
     /**
-     * 浅い押し戻りか判定
+     * 浅い押し戻りか判定する。
      *
      * @param fiboDepthValue フィボナッチ深さ
-     * @return true: 浅い押し戻り
+     * @return 浅い押し戻りの場合true
      */
     static bool isShallow(const double fiboDepthValue) {
         // ゾーン取得
@@ -179,10 +179,10 @@ public:
     }
 
     /**
-     * 深い押し戻りか判定
+     * 深い押し戻りか判定する。
      *
      * @param fiboDepthValue フィボナッチ深さ
-     * @return true: 深い押し戻り
+     * @return 深い押し戻りの場合true
      */
     static bool isDeep(const double fiboDepthValue) {
         // ゾーン取得

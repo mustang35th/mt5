@@ -12,10 +12,9 @@
 #include <Mstng\Elliot\Elliot.mqh>
 
 /**
- * トレンド一致種別
+ * トレンド一致種別。
  */
-enum TrendAlignType
-{
+enum TrendAlignType {
     trendAlignNone = 0,  // 不一致
     trendAlignBuy = 1,   // BUY一致
     trendAlignSell = -1  // SELL一致
@@ -23,50 +22,49 @@ enum TrendAlignType
 
 
 /**
- * 複数時間足トレンド一致判定
+ * 複数時間足のトレンド一致を判定するクラス。
  */
 class TrendAlignDecision {
 public:
-    /** D1/H4/H1/M15一致判定 */
+    /** D1/H4/H1/M15一致判定。 */
     TrendAlignType trendAlignD1H4H1M15;
 
-    /** D1/H4/H1一致判定 */
+    /** D1/H4/H1一致判定。 */
     TrendAlignType trendAlignD1H4H1;
 
-    /** H4/H1/M15一致判定 */
+    /** H4/H1/M15一致判定。 */
     TrendAlignType trendAlignH4H1M15;
 
-    /** H4/H1一致判定 */
+    /** H4/H1一致判定。 */
     TrendAlignType trendAlignH4H1;
 
-    /** H1/M15一致判定 */
+    /** H1/M15一致判定。 */
     TrendAlignType trendAlignH1M15;
 
-    /** D1/H4/H1/M15一致ラベル */
+    /** D1/H4/H1/M15一致ラベル。 */
     string trendAlignD1H4H1M15Label;
 
-    /** D1/H4/H1一致ラベル */
+    /** D1/H4/H1一致ラベル。 */
     string trendAlignD1H4H1Label;
 
-    /** H4/H1/M15一致ラベル */
+    /** H4/H1/M15一致ラベル。 */
     string trendAlignH4H1M15Label;
 
-    /** H4/H1一致ラベル */
+    /** H4/H1一致ラベル。 */
     string trendAlignH4H1Label;
 
-    /** H1/M15一致ラベル */
+    /** H1/M15一致ラベル。 */
     string trendAlignH1M15Label;
 
     /**
-     * コンストラクタ
+     * コンストラクタ。
      */
     TrendAlignDecision() {
-        // 初期化
         this.clear();
     }
 
     /**
-     * 初期化
+     * 判定値と表示ラベルを初期化する。
      */
     void clear() {
         // 判定初期化
@@ -85,7 +83,7 @@ public:
     }
 
     /**
-     * エリオットからトレンド一致判定を設定
+     * 各時間足のElliotからトレンド一致判定を設定する。
      *
      * @param d1ElliotValue D1エリオット
      * @param h4ElliotValue H4エリオット
@@ -134,7 +132,7 @@ public:
     }
 
     /**
-     * D1/H4/H1/M15一致文字列を取得
+     * D1/H4/H1/M15一致文字列を取得する。
      *
      * @return BUY / SELL / NONE
      */
@@ -143,7 +141,7 @@ public:
     }
 
     /**
-     * D1/H4/H1一致文字列を取得
+     * D1/H4/H1一致文字列を取得する。
      *
      * @return BUY / SELL / NONE
      */
@@ -152,7 +150,7 @@ public:
     }
 
     /**
-     * H4/H1/M15一致文字列を取得
+     * H4/H1/M15一致文字列を取得する。
      *
      * @return BUY / SELL / NONE
      */
@@ -161,7 +159,7 @@ public:
     }
 
     /**
-     * H4/H1一致文字列を取得
+     * H4/H1一致文字列を取得する。
      *
      * @return BUY / SELL / NONE
      */
@@ -170,7 +168,7 @@ public:
     }
 
     /**
-     * H1/M15一致文字列を取得
+     * H1/M15一致文字列を取得する。
      *
      * @return BUY / SELL / NONE
      */
@@ -179,97 +177,97 @@ public:
     }
 
     /**
-     * D1/H4/H1/M15がBUY一致か判定
+     * D1/H4/H1/M15がBUY一致か判定する。
      *
-     * @return true: BUY一致
+     * @return BUY一致の場合true
      */
     bool isD1H4H1M15Buy() {
         return this.trendAlignD1H4H1M15 == trendAlignBuy;
     }
 
     /**
-     * D1/H4/H1/M15がSELL一致か判定
+     * D1/H4/H1/M15がSELL一致か判定する。
      *
-     * @return true: SELL一致
+     * @return SELL一致の場合true
      */
     bool isD1H4H1M15Sell() {
         return this.trendAlignD1H4H1M15 == trendAlignSell;
     }
 
     /**
-     * D1/H4/H1がBUY一致か判定
+     * D1/H4/H1がBUY一致か判定する。
      *
-     * @return true: BUY一致
+     * @return BUY一致の場合true
      */
     bool isD1H4H1Buy() {
         return this.trendAlignD1H4H1 == trendAlignBuy;
     }
 
     /**
-     * D1/H4/H1がSELL一致か判定
+     * D1/H4/H1がSELL一致か判定する。
      *
-     * @return true: SELL一致
+     * @return SELL一致の場合true
      */
     bool isD1H4H1Sell() {
         return this.trendAlignD1H4H1 == trendAlignSell;
     }
 
     /**
-     * H4/H1/M15がBUY一致か判定
+     * H4/H1/M15がBUY一致か判定する。
      *
-     * @return true: BUY一致
+     * @return BUY一致の場合true
      */
     bool isH4H1M15Buy() {
         return this.trendAlignH4H1M15 == trendAlignBuy;
     }
 
     /**
-     * H4/H1/M15がSELL一致か判定
+     * H4/H1/M15がSELL一致か判定する。
      *
-     * @return true: SELL一致
+     * @return SELL一致の場合true
      */
     bool isH4H1M15Sell() {
         return this.trendAlignH4H1M15 == trendAlignSell;
     }
 
     /**
-     * H4/H1がBUY一致か判定
+     * H4/H1がBUY一致か判定する。
      *
-     * @return true: BUY一致
+     * @return BUY一致の場合true
      */
     bool isH4H1Buy() {
         return this.trendAlignH4H1 == trendAlignBuy;
     }
 
     /**
-     * H4/H1がSELL一致か判定
+     * H4/H1がSELL一致か判定する。
      *
-     * @return true: SELL一致
+     * @return SELL一致の場合true
      */
     bool isH4H1Sell() {
         return this.trendAlignH4H1 == trendAlignSell;
     }
 
     /**
-     * H1/M15がBUY一致か判定
+     * H1/M15がBUY一致か判定する。
      *
-     * @return true: BUY一致
+     * @return BUY一致の場合true
      */
     bool isH1M15Buy() {
         return this.trendAlignH1M15 == trendAlignBuy;
     }
 
     /**
-     * H1/M15がSELL一致か判定
+     * H1/M15がSELL一致か判定する。
      *
-     * @return true: SELL一致
+     * @return SELL一致の場合true
      */
     bool isH1M15Sell() {
         return this.trendAlignH1M15 == trendAlignSell;
     }
 
     /**
-     * CSVヘッダーを取得
+     * CSVヘッダーを取得する。
      *
      * @return CSVヘッダー
      */
@@ -282,7 +280,7 @@ public:
     }
 
     /**
-     * CSVデータを取得
+     * CSVデータを取得する。
      *
      * @return CSVデータ
      */
@@ -295,7 +293,7 @@ public:
     }
 
     /**
-     * トレンド一致種別を文字列へ変換
+     * トレンド一致種別を文字列へ変換する。
      *
      * @param trendAlignTypeValue トレンド一致種別
      * @return BUY / SELL / NONE
@@ -314,7 +312,7 @@ public:
 
 private:
     /**
-     * 2時間足の一致種別を取得
+     * 2時間足の一致種別を取得する。
      *
      * @param elliot1Value エリオット1
      * @param elliot2Value エリオット2
@@ -339,7 +337,7 @@ private:
     }
 
     /**
-     * 3時間足の一致種別を取得
+     * 3時間足の一致種別を取得する。
      *
      * @param elliot1Value エリオット1
      * @param elliot2Value エリオット2
@@ -371,7 +369,7 @@ private:
     }
 
     /**
-     * 4時間足の一致種別を取得
+     * 4時間足の一致種別を取得する。
      *
      * @param elliot1Value エリオット1
      * @param elliot2Value エリオット2
@@ -407,10 +405,10 @@ private:
     }
 
     /**
-     * BUYトレンドか判定
+     * BUYトレンドか判定する。
      *
      * @param elliotValue エリオット
-     * @return true: BUYトレンド
+     * @return BUYトレンドの場合true
      */
     bool isBuyTrend(Elliot *elliotValue) {
         if (!this.hasLatestWave(elliotValue)) {
@@ -421,10 +419,10 @@ private:
     }
 
     /**
-     * SELLトレンドか判定
+     * SELLトレンドか判定する。
      *
      * @param elliotValue エリオット
-     * @return true: SELLトレンド
+     * @return SELLトレンドの場合true
      */
     bool isSellTrend(Elliot *elliotValue) {
         if (!this.hasLatestWave(elliotValue)) {
@@ -439,10 +437,10 @@ private:
     }
 
     /**
-     * 最新波動を持つか判定
+     * 最新波動を持つか判定する。
      *
      * @param elliotValue エリオット
-     * @return true: 最新波動あり
+     * @return 最新波動がある場合true
      */
     bool hasLatestWave(Elliot *elliotValue) {
         if (elliotValue == NULL) {

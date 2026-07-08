@@ -14,49 +14,49 @@
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
- * Elliot 前方宣言。
+ * Elliot前方宣言。
  */
 class Elliot; // forward 宣言
 
 /**
  * 波動情報クラス。
  *
- * ZigZagPoint のリストを保持し、Elliot ラベル付けや pips 差分などの
+ * ZigZagPointのリストを保持し、Elliotラベル付けやpips差分などの
  * 波動分析に必要な属性を設定する。
  */
 class Wave : public CObject {
 public:
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
     
-    /** 親となるWave一覧内のインデックス。0が最新 */
+    /** 親となるWave一覧内のインデックス。0が最新。 */
     int index;
     
-    /** Wave確定状態。true: 確定、false: 未確定 */
+    /** Wave確定状態。true: 確定、false: 未確定。 */
     bool isConfirmed;
 
-    /** Wave種別。true: 推進波、false: 修正波 */
+    /** Wave種別。true: 推進波、false: 修正波。 */
     bool isMotive;
 
-    /** Wave方向。true: 上昇、false: 下降 */
+    /** Wave方向。true: 上昇、false: 下降。 */
     bool isUptrend;
 
-    /** Wave方向の表示用ラベル。上昇は▲、下降は▼ */
+    /** Wave方向の表示用ラベル。上昇は▲、下降は▼。 */
     string trendLabel;
     
-    /** 1つ前のWaveにおける最終Elliottラベル */
+    /** 1つ前のWaveにおける最終Elliottラベル。 */
     string previousLastElliotLabel;
     
-    /** 分析に使用するZigZagポイント一覧 */
+    /** 分析に使用するZigZagポイント一覧。 */
     CArrayObj zigZagPointList;
 
-    /** 再カウント処理で生成されたZigZagポイント一覧 */
+    /** 再カウント処理で生成されたZigZagポイント一覧。 */
     CArrayObj recountZigZagPointList;
 
-    /** 補正・再分析前の元ZigZagポイント一覧 */
+    /** 補正・再分析前の元ZigZagポイント一覧。 */
     CArrayObj orgZigZagPointList;
     
-    /** このWaveを保持するElliotへの非所有参照 */
+    /** このWaveを保持するElliotへの非所有参照。 */
     Elliot *parentElliot;
     
     /**
@@ -68,14 +68,14 @@ public:
     /**
      * コンストラクタ。
      *
-     * 外部から渡された ZigZagPoint リストを内部リストへコピーし、
+     * 外部から渡されたZigZagPointリストを内部リストへコピーし、
      * 推進波／修正波、トレンド方向の属性を保持する。
      *
      * @param fromSymbolName 分析対象シンボル
      * @param fromTimeFrame 分析対象時間足
-     * @param fromZigZagPointList ZigZagPoint の参照リスト
-     * @param fromIsMotive        推進波かどうか
-     * @param fromIsUptrend       上昇トレンドかどうか
+     * @param fromZigZagPointList ZigZagPointの参照リスト
+     * @param fromIsMotive 推進波の場合true
+     * @param fromIsUptrend 上昇トレンドの場合true
      */
     Wave(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, CArrayObj &fromZigZagPointList, bool fromIsMotive, bool fromIsUptrend) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -97,8 +97,7 @@ public:
     /**
      * デストラクタ。
      *
-     * 現状、zigZagPointList の解放方針は ZigZagPointUtil 側の実装に依存する。
-     * （必要であればここで delete & Clear を追加する）
+     * 現状、zigZagPointListの解放方針はZigZagPointUtil側の実装に依存する。
      */
     ~Wave() {
     }
@@ -106,10 +105,7 @@ public:
     /**
      * 波動分析を実行する。
      *
-     * 現在有効化している処理:
-     * - Elliot ラベル付け
-     * - pips 差分の算出
-     *
+     * Elliotラベル、pips差分、フィボナッチ情報を設定する。
      */
     void analyze() {
         this.setElliotLabel();
@@ -119,11 +115,11 @@ public:
     }
     
     /**
-     * Wave を複製します（深いコピー）。
+     * Waveを複製する。
      *
-     * zigZagPointList の要素も複製して新しいリストに追加します。
+     * zigZagPointListとorgZigZagPointListの要素も複製して新しいリストに追加する。
      *
-     * @return 複製された Wave のポインタ（呼び出し側で delete するか、所有権管理に委譲）
+     * @return 複製したWave。所有権は呼び出し側へ移る
      */
     Wave *clone() {
         Wave *clonedWave = new Wave();
@@ -277,17 +273,11 @@ public:
     }
     
     /**
-     * zigZagPointList 内の全 ZigZagPoint に親 Wave（参照）を設定する。
+     * zigZagPointList内の全ZigZagPointへ親Wave参照を設定する。
      *
-     * 目的：
-     *  - ZigZagPoint 側から parentWave 経由で Wave 情報（trendLabel 等）へアクセスできるようにする。
+     * parentWaveは非所有参照のため、ZigZagPoint側では解放しない。
      *
-     * 注意：
-     *  - ZigZagPoint::parentWave は「参照」であり、ZigZagPoint 側では delete しない（所有権は Wave 側）。
-     *  - zigZagPointList は CArrayObj のため、At(i) の戻りは CObject* になることが多い。
-     *    そのため ZigZagPoint* へキャストして使用する。
-     *
-     * @param wave 設定する親 Wave（NULL も許容）
+     * @param wave 設定する親Wave。NULLも許容する
      */
     void setParentWave(Wave *wave) {
         for (int i = 0; i < this.zigZagPointList.Total(); i++) {
@@ -312,10 +302,10 @@ public:
     }
     
     /**
-     * デバッグ用に、この Wave の内容を文字列として返します。
+     * デバッグ用に、このWaveの内容を文字列として返す。
      *
-     * zigZagPointList は全要素を連結するとログが肥大化しやすいため、
-     * 件数と、先頭/末尾のポイント（取得できる場合）を出力します。
+     * zigZagPointListは全要素を連結するとログが肥大化しやすいため、
+     * 件数を中心に出力する。
      *
      * @return "Wave{...}" 形式の文字列
      */
@@ -360,7 +350,7 @@ public:
     }
 
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
     /**
@@ -392,7 +382,7 @@ private:
     }
 
     /**
-     * Elliot ラベル付けの設定を行う。
+     * Elliotラベル付けを設定する。
      *
      * - 推進波の場合: 数字ラベル
      * - 修正波の場合: アルファベットラベル
@@ -409,9 +399,9 @@ private:
     }
     
     /**
-     * ZigZagPoint に Elliot インデックスとラベルを設定する。
+     * ZigZagPointにElliotインデックスとラベルを設定する。
      *
-     * @param isAlphabet true の場合はアルファベット表記でラベルを生成する
+     * @param isAlphabet アルファベット表記でラベルを生成する場合true
      */
     void setElliotLabel(bool isAlphabet) {
         // 0 から順に Elliot インデックスを設定
@@ -469,11 +459,9 @@ private:
     }
     
     /**
-     * ZigZagPoint 間の pips 差分を計算して設定する。
+     * ZigZagPoint間のpips差分と開始からのバー数を計算して設定する。
      *
-     * - i と i+1 のレート差分を pips に換算し、
-     *   「次の点（i+1）」へ格納する。
-     *
+     * iとi+1のレート差分をpipsに換算し、次の点へ格納する。
      */
     void setPipsAndWaveBarsFromStart() {        
         // 最後の点は next が存在しないため Total()-1 まで

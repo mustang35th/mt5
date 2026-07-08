@@ -12,22 +12,24 @@
 #include <Mstng\Common\File\CsvFileWriter.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 
-/** エリオット全体情報 共通CSV列数 */
+/** エリオット全体情報の共通CSV列数。 */
 #define ELLIOT_ALL_FILE_COMMON_FIELD_COUNT 32
 
-/** エリオット全体情報 1時間足CSV列数 */
+/** エリオット全体情報の1時間足CSV列数。 */
 #define ELLIOT_ALL_FILE_TIMEFRAME_FIELD_COUNT 96
 
-/** 互換用：1時間足CSV列数 */
+/** 互換用の1時間足CSV列数。 */
 #define ELLIOT_ALL_FILE_FIELD_COUNT ELLIOT_ALL_FILE_TIMEFRAME_FIELD_COUNT
 
 /**
- * エリオット全体情報ファイル出力
+ * ElliotAllのCSV出力を担当するクラス。
+ *
+ * 共通項目、時間足別項目、複数時間足CSVを整形し、CsvFileWriterへ出力する。
  */
 class ElliotAllFile {
 public:
     /**
-     * コンストラクタ
+     * デフォルトコンストラクタ。
      */
     ElliotAllFile() {
         MarketContext context(_Symbol, (ENUM_TIMEFRAMES)_Period);
@@ -64,7 +66,7 @@ public:
     }
 
     /**
-     * コンストラクタ
+     * 出力先を指定して初期化する。
      *
      * @param folderNameValue フォルダ名
      * @param fileNameValue ファイル名
@@ -92,7 +94,7 @@ public:
     }
 
     /**
-     * 設定
+     * 出力先とCSV設定を指定する。
      *
      * @param folderNameValue フォルダ名
      * @param fileNameValue ファイル名
@@ -125,7 +127,7 @@ public:
     }
 
     /**
-     * 同一フォルダ内キー指定設定
+     * 同一フォルダ内でシンボルと時間足からキーを設定する。
      *
      * @param folderNameValue フォルダ名
      * @param symbolNameValue 通貨ペア
@@ -192,7 +194,7 @@ public:
     }
 
     /**
-     * 同一フォルダ内複数時間足キー指定設定
+     * 同一フォルダ内で複数時間足CSV用のキーを設定する。
      *
      * @param folderNameValue フォルダ名
      * @param symbolNameValue 通貨ペア
@@ -301,7 +303,7 @@ public:
     }
 
     /**
-     * キー設定
+     * シンボルと時間足からキーを設定する。
      *
      * @param symbolNameValue 通貨ペア
      * @param timeFrameValue 時間足
@@ -331,9 +333,9 @@ public:
     }
 
     /**
-     * 初期化
+     * CSVファイルを開き、単一時間足用ヘッダーを出力する。
      *
-     * @return 成功時true
+     * @return 初期化に成功した場合true
      */
     bool initialize() {
         this.setupCsvFileWriter();
@@ -346,11 +348,11 @@ public:
     }
 
     /**
-     * 複数時間足用に初期化
+     * CSVファイルを開き、複数時間足用ヘッダーを出力する。
      *
      * @param startTimeFrameValue 開始時間足
      * @param endTimeFrameValue 終了時間足
-     * @return 成功時true
+     * @return 初期化に成功した場合true
      */
     bool initializeMultiTimeFrame(
         const ENUM_TIMEFRAMES startTimeFrameValue,
@@ -366,14 +368,14 @@ public:
     }
 
     /**
-     * 終了
+     * CSVファイルを閉じる。
      */
     void close() {
         this.csvFileWriter.close();
     }
 
     /**
-     * トレンド一致判定を初期化
+     * トレンド一致判定を初期化する。
      */
     void clearTrendAlignDecision() {
         // トレンド一致判定初期化
@@ -385,7 +387,7 @@ public:
     }
 
     /**
-     * トレンド一致判定を設定
+     * 互換用の3項目でトレンド一致判定を設定する。
      *
      * @param d1H4H1M15Value D1/H4/H1/M15トレンド一致
      * @param h4H1M15Value H4/H1/M15トレンド一致
@@ -405,7 +407,7 @@ public:
     }
 
     /**
-     * トレンド一致判定を設定
+     * トレンド一致判定を設定する。
      *
      * @param d1H4H1M15Value D1/H4/H1/M15トレンド一致
      * @param d1H4H1Value D1/H4/H1トレンド一致
@@ -429,7 +431,7 @@ public:
     }
 
     /**
-     * 上位足ストキャスMain順序多数決判定を初期化
+     * 上位足ストキャスMain順序多数決判定を初期化する。
      */
     void clearHigherStochasticMainOrderDecision() {
         // 上位足ストキャスMain順序多数決判定初期化
@@ -440,7 +442,7 @@ public:
     }
 
     /**
-     * 上位足ストキャスMain順序多数決判定を設定
+     * 上位足ストキャスMain順序多数決判定を設定する。
      *
      * @param buySellValue 売買
      * @param buyCountValue 買い数
@@ -461,9 +463,9 @@ public:
     }
 
     /**
-     * ヘッダー出力
+     * 単一時間足用ヘッダーを出力する。
      *
-     * @return 成功時true
+     * @return 出力に成功した場合true
      */
     bool writeHeader() {
         string headerValues[];
@@ -473,11 +475,11 @@ public:
     }
 
     /**
-     * 複数時間足ヘッダー出力
+     * 複数時間足用ヘッダーを出力する。
      *
      * @param startTimeFrameValue 開始時間足
      * @param endTimeFrameValue 終了時間足
-     * @return 成功時true
+     * @return 出力に成功した場合true
      */
     bool writeMultiTimeFrameHeader(
         const ENUM_TIMEFRAMES startTimeFrameValue,
@@ -497,13 +499,13 @@ public:
     }
 
     /**
-     * CSV文字列行出力
+     * 1時間足分のCSV文字列を1行として出力する。
      *
      * 呼び出し側は、1時間足分のCSV文字列だけを渡す。
      * CSV出力時に左側へ共通情報を自動付与する。
      *
      * @param csvTextValue 1時間足CSV文字列
-     * @return 成功時true
+     * @return 出力に成功した場合true
      */
     bool writeRowCsvTextValue(const string csvTextValue) {
         string fieldValues[];
@@ -516,13 +518,13 @@ public:
     }
 
     /**
-     * 行出力
+     * 1時間足分のフィールド値を1行として出力する。
      *
      * 呼び出し側は、1時間足分の列だけを渡す。
      * CSV出力時に左側へ共通情報を自動付与する。
      *
      * @param fieldValues フィールド値
-     * @return 成功時true
+     * @return 出力に成功した場合true
      */
     bool writeRowValues(string &fieldValues[]) {
         int fieldCount = ArraySize(fieldValues);
@@ -546,7 +548,7 @@ public:
     }
 
     /**
-     * 複数時間足行出力
+     * 複数時間足分のフィールド値を1行として出力する。
      *
      * 呼び出し側は、複数時間足分の列だけを渡す。
      * CSV出力時に左側へ共通情報を自動付与する。
@@ -592,7 +594,7 @@ public:
     }
 
     /**
-     * 複数時間足CSV文字列行出力
+     * 複数時間足ごとのCSV文字列を1行として出力する。
      *
      * @param startTimeFrameValue 開始時間足
      * @param endTimeFrameValue 終了時間足
@@ -623,7 +625,7 @@ public:
     }
 
     /**
-     * 空CSVを取得
+     * 空CSVを取得する。
      *
      * 指定した項目数分の空CSVを作成する。
      *
@@ -645,7 +647,7 @@ public:
     }
 
     /**
-     * CSV文字列行出力
+     * 共通情報を含むCSV文字列を1行として出力する。
      *
      * 1つのstringに1行分のCSVデータが全て入っている場合に使用する。
      * 呼び出し側で、共通情報 + 時間足データを作成して渡す。
@@ -670,9 +672,9 @@ public:
     }
 
     /**
-     * 複数時間足CSV文字列から1行データ作成
+     * 複数時間足CSV文字列から1行データを作成する。
      *
-     * 作成されるrowValuesは共通情報なし。
+     * 作成されるrowValuesは共通情報を含まない。
      * writeMultiTimeFrameRowValues()で出力すると、共通情報が左側へ付与される。
      *
      * @param startTimeFrameValue 開始時間足
@@ -750,7 +752,7 @@ public:
     }
 
     /**
-     * 複数時間足フィールド数取得
+     * 複数時間足フィールド数を取得する。
      *
      * 共通情報を含まない、時間足部分のみの列数を返す。
      *
@@ -772,7 +774,7 @@ public:
     }
 
     /**
-     * 複数時間足フィールド数取得 共通情報付き
+     * 共通情報付きの複数時間足フィールド数を取得する。
      *
      * @param startTimeFrameValue 開始時間足
      * @param endTimeFrameValue 終了時間足
@@ -795,7 +797,7 @@ public:
     }
 
     /**
-     * 複数時間足ヘッダー値作成
+     * 複数時間足ヘッダー値を作成する。
      *
      * 共通情報なしのヘッダーを作成する。
      *
@@ -844,7 +846,7 @@ public:
     }
 
     /**
-     * 複数時間足ヘッダー値作成 共通情報付き
+     * 共通情報付きの複数時間足ヘッダー値を作成する。
      *
      * @param startTimeFrameValue 開始時間足
      * @param endTimeFrameValue 終了時間足
@@ -900,7 +902,7 @@ public:
     }
 
     /**
-     * 複数時間足行データ追加
+     * 複数時間足行データを追加する。
      *
      * @param sourceValues 追加元フィールド値
      * @param destinationValues 追加先フィールド値
@@ -945,7 +947,7 @@ public:
     }
 
     /**
-     * 時間足範囲取得
+     * 時間足範囲を取得する。
      *
      * @param startTimeFrameValue 開始時間足
      * @param endTimeFrameValue 終了時間足
@@ -961,7 +963,7 @@ public:
     }
 
     /**
-     * 通貨ペア取得
+     * 通貨ペアを取得する。
      *
      * @return 通貨ペア
      */
@@ -970,7 +972,7 @@ public:
     }
 
     /**
-     * 時間足取得
+     * 時間足を取得する。
      *
      * @return 時間足
      */
@@ -979,7 +981,7 @@ public:
     }
 
     /**
-     * 時間足ラベル取得
+     * 時間足ラベルを取得する。
      *
      * @return 時間足ラベル
      */
@@ -988,7 +990,7 @@ public:
     }
 
     /**
-     * キー取得
+     * キーを取得する。
      *
      * @return キー
      */
@@ -997,7 +999,7 @@ public:
     }
 
     /**
-     * ファイル名取得
+     * ファイル名を取得する。
      *
      * @return ファイル名
      */
@@ -1006,7 +1008,7 @@ public:
     }
 
     /**
-     * ファイルパス取得
+     * ファイルパスを取得する。
      *
      * @return ファイルパス
      */
@@ -1015,7 +1017,7 @@ public:
     }
 
     /**
-     * 共通データフォルダ取得
+     * 共通データフォルダを取得する。
      *
      * @return 共通データフォルダ
      */
@@ -1024,58 +1026,58 @@ public:
     }
 
 private:
-    /** CSVファイル出力 */
+    /** CSVファイル出力。 */
     CsvFileWriter csvFileWriter;
 
-    /** 出力対象の市場コンテキスト */
+    /** 出力対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** フォルダ名 */
+    /** フォルダ名。 */
     string folderName;
 
-    /** ファイル名 */
+    /** ファイル名。 */
     string fileName;
 
-    /** 共有フォルダ使用有無 */
+    /** 共有フォルダ使用有無。 */
     bool useCommonFolder;
 
-    /** 区切り文字 */
+    /** 区切り文字。 */
     string delimiter;
 
-    /** 書き込み毎のフラッシュ有無 */
+    /** 書き込み毎のフラッシュ有無。 */
     bool flushEveryWrite;
 
-    /** ANSI出力有無 */
+    /** ANSI出力有無。 */
     bool useAnsi;
 
-    /** 出力モード */
+    /** 出力モード。 */
     ENUM_CSV_FILE_WRITE_MODE writeMode;
 
-    /** D1/H4/H1/M15トレンド一致 */
+    /** D1/H4/H1/M15トレンド一致。 */
     string trendAlignD1H4H1M15;
 
-    /** D1/H4/H1トレンド一致 */
+    /** D1/H4/H1トレンド一致。 */
     string trendAlignD1H4H1;
 
-    /** H4/H1/M15トレンド一致 */
+    /** H4/H1/M15トレンド一致。 */
     string trendAlignH4H1M15;
 
-    /** H4/H1トレンド一致 */
+    /** H4/H1トレンド一致。 */
     string trendAlignH4H1;
 
-    /** H1/M15トレンド一致 */
+    /** H1/M15トレンド一致。 */
     string trendAlignH1M15;
 
-    /** 上位足ストキャスMain順序多数決売買 */
+    /** 上位足ストキャスMain順序多数決売買。 */
     string higherStochasticMainOrderBuySell;
 
-    /** 上位足ストキャスMain順序多数決買い数 */
+    /** 上位足ストキャスMain順序多数決買い数。 */
     int higherStochasticMainOrderBuyCount;
 
-    /** 上位足ストキャスMain順序多数決売り数 */
+    /** 上位足ストキャスMain順序多数決売り数。 */
     int higherStochasticMainOrderSellCount;
 
-    /** 上位足ストキャスMain順序多数決判定なし数 */
+    /** 上位足ストキャスMain順序多数決判定なし数。 */
     int higherStochasticMainOrderNoneCount;
 
     /**
@@ -1088,7 +1090,7 @@ private:
     }
 
     /**
-     * CSVファイル出力設定
+     * CSVファイル出力設定をCsvFileWriterへ反映する。
      */
     void setupCsvFileWriter() {
         this.csvFileWriter.setupWithFolder(
@@ -1103,7 +1105,7 @@ private:
     }
 
     /**
-     * 共通ヘッダー値作成
+     * 共通ヘッダー値を作成する。
      *
      * @param headerValues ヘッダー値
      */
@@ -1146,7 +1148,7 @@ private:
     }
 
     /**
-     * 共通値作成
+     * 共通値を作成する。
      *
      * @param commonValues 共通値
      */
@@ -1275,7 +1277,7 @@ private:
     }
 
     /**
-     * JST差分時間を取得
+     * JST差分時間を取得する。
      *
      * @param serverTimeValue サーバー時刻
      * @return JST差分時間
@@ -1292,7 +1294,7 @@ private:
     }
 
     /**
-     * 夏時間か判定
+     * 夏時間か判定する。
      *
      * @param serverTimeValue サーバー時刻
      * @return true: 夏時間
@@ -1319,7 +1321,7 @@ private:
     }
 
     /**
-     * 夏時間開始日時を取得
+     * 夏時間開始日時を取得する。
      *
      * @param yearValue 年
      * @return 夏時間開始日時
@@ -1339,7 +1341,7 @@ private:
     }
 
     /**
-     * 夏時間終了日時を取得
+     * 夏時間終了日時を取得する。
      *
      * @param yearValue 年
      * @return 夏時間終了日時
@@ -1359,7 +1361,7 @@ private:
     }
 
     /**
-     * 指定年月の第n曜日の日付を取得
+     * 指定年月の第n曜日の日付を取得する。
      *
      * @param yearValue 年
      * @param monthValue 月
@@ -1393,7 +1395,7 @@ private:
     }
 
     /**
-     * 週末セッション除外時間か判定
+     * 週末セッション除外時間か判定する。
      *
      * @param dayOfWeekValue 曜日
      * @return true: 週末セッション除外時間
@@ -1411,7 +1413,7 @@ private:
     }
 
     /**
-     * 東京セッションか判定
+     * 東京セッションか判定する。
      *
      * @param jstHourValue 日本時間の時
      * @return true: 東京セッション
@@ -1425,7 +1427,7 @@ private:
     }
 
     /**
-     * ロンドンセッションか判定
+     * ロンドンセッションか判定する。
      *
      * @param jstHourValue 日本時間の時
      * @param jstOffsetHourValue JST差分時間
@@ -1448,7 +1450,7 @@ private:
     }
 
     /**
-     * ニューヨークセッションか判定
+     * ニューヨークセッションか判定する。
      *
      * @param jstHourValue 日本時間の時
      * @param jstOffsetHourValue JST差分時間
@@ -1471,7 +1473,7 @@ private:
     }
 
     /**
-     * ロールオーバー時間か判定
+     * ロールオーバー時間か判定する。
      *
      * @param jstHourValue 日本時間の時
      * @param jstMinuteValue 日本時間の分
@@ -1486,7 +1488,7 @@ private:
     }
 
     /**
-     * 月曜早朝か判定
+     * 月曜早朝か判定する。
      *
      * @param dayOfWeekValue 曜日
      * @param jstHourValue 日本時間の時
@@ -1505,7 +1507,7 @@ private:
     }
 
     /**
-     * 金曜深夜か判定
+     * 金曜深夜か判定する。
      *
      * @param dayOfWeekValue 曜日
      * @param jstHourValue 日本時間の時
@@ -1524,7 +1526,7 @@ private:
     }
 
     /**
-     * セッション種別を取得
+     * セッション種別を取得する。
      *
      * @param isWeekendSessionBlockedTimeValue 週末セッション除外時間
      * @param isTokyoSessionValue 東京セッション
@@ -1568,7 +1570,7 @@ private:
     }
 
     /**
-     * bool値文字列変換
+     * bool値を文字列へ変換する。
      *
      * @param boolValue bool値
      * @return 文字列
@@ -1582,7 +1584,7 @@ private:
     }
 
     /**
-     * 通貨ペア桁数取得
+     * 通貨ペア桁数を取得する。
      *
      * @return 桁数
      */
@@ -1595,7 +1597,7 @@ private:
     }
 
     /**
-     * pipsサイズ取得
+     * pipsサイズを取得する。
      *
      * @return 1pipあたりの価格差
      */
@@ -1615,7 +1617,7 @@ private:
     }
 
     /**
-     * 価格差をpipsへ変換
+     * 価格差をpipsへ変換する。
      *
      * @param priceDifferenceValue 価格差
      * @return pips
@@ -1631,7 +1633,7 @@ private:
     }
 
     /**
-     * 共通項目を先頭に付与して行データを再構築します。
+     * 共通項目を先頭に付与して行データを再構築する。
      *
      * @param sourceValues 元の行データ
      * @param rowValues 結果を格納する配列（out）
@@ -1668,7 +1670,7 @@ private:
     }
 
     /**
-     * 共通ヘッダー + 1時間足ヘッダー作成
+     * 共通ヘッダーと1時間足ヘッダーを作成する。
      *
      * @param headerValues ヘッダー値
      */
@@ -1702,7 +1704,7 @@ private:
     }
 
     /**
-     * CSV文字列から行データ作成
+     * CSV文字列から行データを作成する。
      *
      * 1つのstringに全CSVデータが入っている場合に使用する。
      * 共通情報 + 時間足データを対象にする。
@@ -1770,7 +1772,7 @@ private:
     }
 
     /**
-     * 末尾区切り文字除去
+     * 末尾区切り文字を除去する。
      *
      * CSV文字列の末尾に付いた区切り文字だけを除去する。
      * 中間の空項目は維持する。
@@ -1806,7 +1808,7 @@ private:
     }
 
     /**
-     * 1時間足CSV文字列分解
+     * 1時間足CSV文字列を分解する。
      *
      * @param csvTextValue CSV文字列
      * @param fieldValues フィールド値
@@ -1834,7 +1836,7 @@ private:
     }
 
     /**
-     * キーファイル名作成
+     * キーファイル名を作成する。
      *
      * @param symbolNameValue 通貨ペア
      * @param timeFrameValue 時間足
@@ -1886,7 +1888,7 @@ private:
     }
 
     /**
-     * 複数時間足キーファイル名作成
+     * 複数時間足キーファイル名を作成する。
      *
      * @param symbolNameValue 通貨ペア
      * @param startTimeFrameValue 開始時間足
@@ -1905,7 +1907,7 @@ private:
     }
 
     /**
-     * 時間足文字列変換
+     * 時間足を文字列へ変換する。
      *
      * @param timeFrameValue 時間足
      * @return 時間足文字列
@@ -1939,7 +1941,7 @@ private:
     }
 
     /**
-     * ヘッダー値作成
+     * ヘッダー値を作成する。
      *
      * @param headerValues ヘッダー値
      */
@@ -2054,7 +2056,7 @@ private:
     }
 
     /**
-     * 時間足範囲作成
+     * 時間足範囲を作成する。
      *
      * @param startTimeFrameValue 開始時間足
      * @param endTimeFrameValue 終了時間足
@@ -2105,7 +2107,7 @@ private:
     }
 
     /**
-     * 対象時間足作成
+     * 対象時間足を作成する。
      *
      * @param supportedTimeFrames 対象時間足
      */
@@ -2120,7 +2122,7 @@ private:
     }
 
     /**
-     * 対象時間足インデックス検索
+     * 対象時間足インデックスを検索する。
      *
      * @param timeFrameValue 時間足
      * @return インデックス
@@ -2139,7 +2141,7 @@ private:
     }
 
     /**
-     * 1時間足フィールド数妥当性判定
+     * 1時間足フィールド数の妥当性を判定する。
      *
      * @param fieldCountValue フィールド数
      * @return 妥当な場合true

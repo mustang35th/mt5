@@ -12,53 +12,50 @@
 #include <Mstng\Elliot\Elliot.mqh>
 
 /**
- * 上位足ストキャスMain0並び順多数決判定
+ * 上位足ストキャスMain0の並び順を多数決で判定するクラス。
  */
 class HigherStochasticMainOrderDecision {
 public:
-    /** 売買判定済み */
+    /** 売買判定済みの場合true。 */
     bool isDetermined;
 
-    /** BUY判定 */
+    /** BUY判定の場合true。 */
     bool isBuy;
 
-    /** 売買ラベル */
+    /** 売買ラベル。 */
     string buySellLabel;
 
-    /** BUY数 */
+    /** BUY数。 */
     int buyCount;
 
-    /** SELL数 */
+    /** SELL数。 */
     int sellCount;
 
-    /** NONE数 */
+    /** NONE数。 */
     int noneCount;
 
     /**
-     * コンストラクタ
+     * コンストラクタ。
      */
     HigherStochasticMainOrderDecision() {
-        // 初期化
         this.clear();
     }
 
     /**
-     * 初期化
+     * 判定結果と集計値を初期化する。
      */
     void clear() {
-        // 判定結果初期化
         this.isDetermined = false;
         this.isBuy = false;
         this.buySellLabel = "NONE";
 
-        // 集計値初期化
         this.buyCount = 0;
         this.sellCount = 0;
         this.noneCount = 0;
     }
 
     /**
-     * 上位足エリオットから多数決判定を設定
+     * 上位足ElliotからストキャスMain0並び順の多数決判定を設定する。
      *
      * @param d1ElliotValue D1エリオット
      * @param h4ElliotValue H4エリオット
@@ -82,7 +79,7 @@ public:
     }
 
     /**
-     * 売買文字列を取得
+     * 売買文字列を取得する。
      *
      * @return BUY / SELL / NONE
      */
@@ -91,7 +88,7 @@ public:
     }
 
     /**
-     * 集計文字列を取得
+     * 集計文字列を取得する。
      *
      * @return 集計文字列
      */
@@ -106,7 +103,7 @@ public:
     }
 
     /**
-     * CSVヘッダーを取得
+     * CSVヘッダーを取得する。
      *
      * @return CSVヘッダー
      */
@@ -118,7 +115,7 @@ public:
     }
 
     /**
-     * CSVデータを取得
+     * CSVデータを取得する。
      *
      * @return CSVデータ
      */
@@ -131,7 +128,7 @@ public:
 
 private:
     /**
-     * エリオットのストキャスMain0並び順を集計
+     * ElliotのストキャスMain0並び順を集計する。
      *
      * @param elliotValue エリオット
      */
@@ -161,7 +158,7 @@ private:
     }
 
     /**
-     * 多数決判定を設定
+     * 多数決判定を設定する。
      */
     void setDecision() {
         // BUY多数決

@@ -13,86 +13,84 @@
 #include <Mstng\Util\Util.mqh>
 
 /**
- * Wave 前方宣言。
+ * Wave前方宣言。
  */
 class Wave; // forward 宣言
 
 /**
- * ZigZagPoint は ZigZag インジケータから検出された
- * ひとつの転換ポイントを表すデータクラスです。
+ * ZigZagインジケータから検出された転換ポイントを表すデータクラス。
  */
 class ZigZagPoint : public CObject {
 public:
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** ポイントの価格 */
+    /** ポイントの価格。 */
     double rate;
 
-    /** ローソク足の位置を表すバーインデックス */
+    /** ローソク足の位置を表すバーインデックス。 */
     int barIndex;
 
-    /** ローソク足の開始時刻 */
+    /** ローソク足の開始時刻。 */
     datetime barTime;
 
-    /** 次のローソク足の開始時刻 */
+    /** 次のローソク足の開始時刻。 */
     datetime barTimeNext;
 
-    /** 波動開始からの経過本数 */
+    /** 波動開始からの経過本数。 */
     int waveBarsFromStart;
 
-    /** ZigZagの山の場合true、谷の場合false */
+    /** ZigZagの山の場合true、谷の場合false。 */
     bool isPeak;
 
-    /** ZigZagから取得できず補完したポイントの場合true */
+    /** ZigZagから取得できず補完したポイントの場合true。 */
     bool isAddedPoint;
 
-    /** 前回ポイントとの価格差。単位はpips、小数点以下1桁 */
+    /** 前回ポイントとの価格差。単位: pips、小数点以下1桁。 */
     double pipsDiff;
 
-    /** 前回ポイントからのフィボナッチ・リトレースメント。単位は%、小数点以下1桁 */
+    /** 前回ポイントからのフィボナッチ・リトレースメント。単位: %、小数点以下1桁。 */
     double fibonacciPercent;
 
-    /** フィボナッチ深度ゾーン */
+    /** フィボナッチ深度ゾーン。 */
     ENUM_FIBO_DEPTH_ZONE fiboDepthZone;
 
-    /** フィボナッチ深度ゾーンの表示名 */
+    /** フィボナッチ深度ゾーンの表示名。 */
     string fiboDepthZoneLabel;
 
-    /** 前回ポイントからのフィボナッチ・エクスパンション。単位は%、小数点以下1桁 */
+    /** 前回ポイントからのフィボナッチ・エクスパンション。単位: %、小数点以下1桁。 */
     double fibonacciExpansionPercent;
 
-    /** エリオット波動ラベルがアルファベットの場合true */
+    /** エリオット波動ラベルがアルファベットの場合true。 */
     bool isElliotAlphabet;
 
-    /** エリオット波動番号 */
+    /** エリオット波動番号。 */
     int elliotIndex;
 
-    /** エリオット波動ラベル */
+    /** エリオット波動ラベル。 */
     string elliotLabel;
 
-    /** 下位波動番号 */
+    /** 下位波動番号。 */
     int subElliotIndex;
 
-    /** 下位波動ラベル */
+    /** 下位波動ラベル。 */
     string subElliotLabel;
 
-    /** 再分析前のエリオット波動番号 */
+    /** 再分析前のエリオット波動番号。 */
     int orgElliotIndex;
 
-    /** 再分析前のエリオット波動ラベル */
+    /** 再分析前のエリオット波動ラベル。 */
     string orgElliotLabel;
 
-    /** 補正済みポイントの場合true */
+    /** 補正済みポイントの場合true。 */
     bool isCorrect;
 
-    /** 親Waveへの非所有参照 */
+    /** 親Waveへの非所有参照。 */
     Wave *parentWave;
     
 public:
     /**
      * デフォルトコンストラクタ。
-     * 無効な状態を表す初期値を設定します。
      */
     ZigZagPoint() {
     }
@@ -127,9 +125,9 @@ public:
     }
 
     /**
-     * このインスタンスの内容を複製した ZigZagPoint を生成して返します。
+     * このインスタンスの内容を複製したZigZagPointを生成して返す。
      *
-     * @return 複製された ZigZagPoint。メモリ確保に失敗した場合は NULL。
+     * @return 複製したZigZagPoint。メモリ確保に失敗した場合はNULL
      */
     ZigZagPoint *clone() const {
         ZigZagPoint *zigZagPoint = new ZigZagPoint();
@@ -174,7 +172,7 @@ public:
     }
 
     /**
-     * CObject インターフェースに従い、このインスタンスの複製を返します。
+     * CObjectインターフェースに従い、このインスタンスの複製を返す。
      *
      * @return 複製された CObject。
      */
@@ -370,25 +368,14 @@ public:
     }
     
     /**
-     * 指定したシンボル・時間足・バーインデックスから、
-     * 本ポイントのバー情報（barIndex / barTime / barTimeNext）を設定する。
+     * シンボル、時間足、バーインデックスからバー情報を設定する。
      *
-     * 用途：
-     *  - ZigZag の転換点が「どのバーに相当するか」を保持し、
-     *    描画や差分計算（pipsDiff 等）で時刻情報を参照できるようにする。
+     * ZigZagの転換点がどのバーに相当するかを保持し、
+     * 描画や差分計算で参照できるようにする。
      *
-     * 設定内容：
-     *  - barIndex    : 対象バーのシフト（0=最新、1=1本前…）
-     *  - barTime     : 対象バーの開始時刻（iTime）
-     *  - barTimeNext : 次バーの開始時刻（TimeUtil で算出）
-     *
-     * 注意：
-     *  - fromBarIndex がヒストリ範囲外の場合、iTime が 0 を返す可能性がある。
-     *  - barTimeNext の算出ロジックは TimeUtil::getNextBarTimeByShift に依存する。
-     *
-     * @param fromSymbolName  シンボル名（例："USDJPY"）
-     * @param fromTimeframe   時間足（例：PERIOD_H1）
-     * @param fromBarIndex    バーインデックス（シフト）
+     * @param fromSymbolName シンボル名
+     * @param fromTimeframe 時間足
+     * @param fromBarIndex バーインデックス
      */
     void setBarIndexAndTime(string fromSymbolName, ENUM_TIMEFRAMES fromTimeframe, int fromBarIndex) {
         MarketContext context(fromSymbolName, fromTimeframe);
@@ -407,7 +394,7 @@ public:
         // バー位置（シフト）を保存
         this.barIndex = fromBarIndex;
     
-        // 対象バーの開始時刻を取得
+        // 対象バーの開始時刻を取得する。
         this.barTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, this.barIndex);
     
         // 次バーの開始時刻を取得（ユーティリティで算出）
@@ -428,13 +415,6 @@ public:
     
     /**
      * ZigZagPoint の内容を文字列化する。
-     *
-     * 仕様：
-     * - 先頭で改行する
-     * - 項目ごとに改行する
-     * - 「,」は出力しない
-     * - rate の小数点は symbolName から取得した digits に合わせる
-     * - コメントに単位/小数点指定がある double は反映する
      *
      * @return 内容文字列
      */
