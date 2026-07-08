@@ -126,6 +126,15 @@ private:
     /** M1表示でH4ラベルを表示する最大バー数 */
     int m1FourHourLabelMaxBars;
 
+    /** M5表示で1時間ラベルを表示する最大バー数 */
+    int m5HourLabelMaxBars;
+
+    /** M5表示でH4ラベルを表示する最大バー数 */
+    int m5FourHourLabelMaxBars;
+
+    /** M5表示で日付ラベルを表示する最大バー数 */
+    int m5DayLabelMaxBars;
+
     /**
      * 初期化する。
      *
@@ -151,6 +160,9 @@ private:
         this.m1FifteenMinuteLabelMaxBars = 180;
         this.m1HourLabelMaxBars = 720;
         this.m1FourHourLabelMaxBars = 2880;
+        this.m5HourLabelMaxBars = 180;
+        this.m5FourHourLabelMaxBars = 576;
+        this.m5DayLabelMaxBars = 1728;
     }
 
     /**
@@ -188,6 +200,12 @@ private:
 
             if (this.marketContext.timeFrame == PERIOD_M1) {
                 this.drawM1TimeFrameMark(barTime, drawPrice, visibleBars);
+
+                continue;
+            }
+
+            if (this.marketContext.timeFrame == PERIOD_M5) {
+                this.drawM5TimeFrameMark(barTime, drawPrice, visibleBars);
 
                 continue;
             }
@@ -578,6 +596,58 @@ private:
         if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_D1)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_SOLID, 1);
             this.drawDayLabel(fromBarTime, fromDrawPrice);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * M5表示用の時間足切り替わり目印を描画する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromDrawPrice 描画価格
+     * @param fromVisibleBars 表示中のバー数
+     * @return true: 目印を描画した
+     */
+    bool drawM5TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+        if (fromVisibleBars <= this.m5HourLabelMaxBars) {
+            if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H1)) {
+                this.drawLowerTimeFrameVerticalLine(fromBarTime);
+                this.drawTimeLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (fromVisibleBars <= this.m5FourHourLabelMaxBars) {
+            if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H4)) {
+                this.drawVerticalLine(fromBarTime, this.verticalLineColor, STYLE_SOLID, 1);
+                this.drawFourHourLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (fromVisibleBars <= this.m5DayLabelMaxBars) {
+            if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_D1)) {
+                this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_SOLID, 1);
+                this.drawDayLabel(fromBarTime, fromDrawPrice);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1)) {
+            this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
+            this.drawWeekLabel(fromBarTime, fromDrawPrice);
 
             return true;
         }
