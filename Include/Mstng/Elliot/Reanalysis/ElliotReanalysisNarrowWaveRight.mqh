@@ -13,11 +13,12 @@
  *
  * 対象Waveの右隣にある2ポイントWaveを基準とし、その高値・安値内で
  * 連続する対象Waveのポイントを除外してWave一覧を再構築する。
+ * 対象Waveの終端側を調整して、右側Waveとの重なりを整理する。
  */
 class ElliotReanalysisNarrowWaveRight : public ElliotBase {
 public:
     /**
-     * 再分析条件と元Wave一覧を設定する。
+     * シンボル、時間足および元Wave一覧を指定して初期化する。
      *
      * @param fromSymbolName 分析対象シンボル
      * @param fromTimeFrame 分析対象時間足
@@ -39,15 +40,15 @@ public:
     }
     
     /**
-     * ElliotReanalysisNarrowWaveRight を破棄します。
+     * デストラクタ。
      */
     ~ElliotReanalysisNarrowWaveRight() {
     }
     
     /**
-     * 右側基準の狭いWaveを検索して最初の1件を再分析する。
+     * 右側基準の狭いWaveを検索し、最初に見つかった1件を再分析する。
      *
-     * @return 再分析に成功した場合はtrue。対象がない場合はスキップしてtrue
+     * @return 再分析に成功した場合true。対象がない場合もtrue
      */
     bool analyze() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -106,6 +107,9 @@ private:
     /**
      * 指定Waveが右側基準の再分析対象か判定する。
      *
+     * 右隣Waveが異方向かつ2ポイント構成で、対象Wave内に右隣Waveの
+     * 値幅内へ収まる連続ポイントがある場合に再分析対象とする。
+     *
      * @param waveIndex 判定対象Wave位置
      * @return 右隣が異方向の2ポイントWaveで、狭い波動を含む場合true
      */
@@ -149,8 +153,8 @@ private:
      * 指定Waveの右隣にあるWave終端2点から高値と安値を取得する。
      *
      * @param fromWaveIndex 基準Wave位置
-     * @param high 取得した高値
-     * @param low 取得した安値
+     * @param high 取得した高値を格納する変数
+     * @param low 取得した安値を格納する変数
      */
     void setHighLowAtNextWave(int fromWaveIndex, double &high, double &low) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -185,6 +189,9 @@ private:
     
     /**
      * 右隣Waveの値幅内にある対象Waveの終端側ポイントを除外して再分析する。
+     *
+     * 最新ポイントと先頭ポイントを保持し、右隣Wave終端の値幅を抜けた位置から
+     * 中間ポイントを再分析用ポイント列へ追加する。
      *
      * @param waveIndex 再分析対象Wave位置
      * @return Wave一覧の再構築に成功した場合true
@@ -232,9 +239,9 @@ private:
         
         
         
-        CArrayObj waveListNew;  // 新しいリスト
+        CArrayObj waveListNew;  // 再構築用Wave一覧。
         
-        // 右側波動のコピー
+        // 右側Waveをコピーする。
         for (int i = 0; i < waveIndex; i++) {
             Wave *wave = this.waveList.At(i);
             
@@ -242,11 +249,11 @@ private:
         }
         
         
-        // 再分析Waveの追加
+        // 再分析Waveを追加する。
         WaveUtil::addWave(this.logger, waveListNew, this.marketContext, zigZagPointListReanalyze, waveCurrent.isMotive, waveCurrent.isUptrend);
         
         
-        // 残りのコピー
+        // 残りのWaveをコピーする。
         for (int i = waveIndex + 1; i < this.waveList.Total(); i++) {
             Wave *wave = this.waveList.At(i);
             
@@ -270,6 +277,9 @@ private:
     
     /**
      * 対象Waveに右隣Waveの値幅内で連続する2ポイントがあるか判定する。
+     *
+     * 右隣Wave終端の高値と安値の内側に、対象Wave内の隣接ポイントが
+     * 2つ続けて入る場合に狭い波動とみなす。
      *
      * @param waveIndex 判定対象Wave位置
      * @param high 基準高値

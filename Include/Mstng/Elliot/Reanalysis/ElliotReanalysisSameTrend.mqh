@@ -13,11 +13,12 @@
  *
  * 対象Waveと1つ前のWaveが同方向の場合、前Wave終端の高値・安値を超えるまでの
  * 対象Waveポイントを除外し、2つのWaveを1つへ統合する。
+ * 再構築後は、統合済みのWave一覧を再度ZigZagポイント列へ戻して分析し直す。
  */
 class ElliotReanalysisSameTrend : public ElliotBase {
 public:
     /**
-     * 再分析条件と元Wave一覧を設定する。
+     * シンボル、時間足および元Wave一覧を指定して初期化する。
      *
      * @param fromSymbolName 分析対象シンボル
      * @param fromTimeFrame 分析対象時間足
@@ -39,21 +40,19 @@ public:
     }
     
     /**
-     * ElliotReanalysisSameTrend を破棄します。
+     * デストラクタ。
      */
     ~ElliotReanalysisSameTrend() {
     }
     
     /**
-     * 同方向のWaveを検索して最初の1組を再分析する。
+     * 同方向で連続するWaveを検索し、最初に見つかった1組を再分析する。
      *
-     * @return 再分析に成功した場合はtrue。対象がない場合はスキップしてtrue
+     * @return 再分析に成功した場合true。対象がない場合もtrue
      */
     bool analyze() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
-        // Wave0（新しい側）とWave1（1つ前）が同一トレンドの場合のみ処理対象とする。
-        
         int waveTotal = this.waveList.Total();
         
         this.logger.debug(__FUNCTION__, StringFormat("waveTotal = %d", waveTotal));
@@ -105,6 +104,9 @@ private:
     /**
      * 指定Waveと1つ前のWaveを統合するための再分析を実行する。
      *
+     * 前Wave終端の高値と安値を基準に、対象Waveのポイントを除外して
+     * Wave一覧を再構築する。
+     *
      * @param waveIndex 新しい側の対象Wave位置
      * @return 再分析に成功した場合true
      */
@@ -113,8 +115,6 @@ private:
         
         this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
         
-        // 前Waveの終端高値・安値を取得し、Wave0とWave1を統合する前提で再構築する。
-                
         double high;
         double low;
         
@@ -147,7 +147,7 @@ private:
         
         CArrayObj analyzedZigZagPointList;
         
-        // 前波動のコピー
+        // 前Waveを統合先としてコピーする。
         Wave *waveBefore = this.waveList.At(waveIndex + 1);
         ZigZagPointUtil::copyZigZagPointList(waveBefore.zigZagPointList, analyzedZigZagPointList);
         
@@ -165,7 +165,7 @@ private:
             } else {
                 double rate = zigZagPoint.rate;
                 
-                // 前Wave終端レンジを超えた時点から、ポイントを統合リストへ移送する
+                // 前Wave終端レンジを超えた時点から、ポイントを統合リストへ移送する。
                 if (rate > high || low > rate) {
                     isBreak = true;
                     
@@ -177,14 +177,14 @@ private:
         }
         
         if (addCount == 0) {
-            // 追加ポイントがない場合は、対象Waveの最終ポイントだけを必ず保持する
+            // 追加ポイントがない場合は、対象Waveの最終ポイントだけを必ず保持する。
             ZigZagPoint *zigZagPoint = ZigZagPointUtil::getLastNode(fromZigZagPointList);
             
             ZigZagPointUtil::addPoint(analyzedZigZagPointList, zigZagPoint);
         }
-        CArrayObj waveListNew;  // 再構築用Wave一覧
+        CArrayObj waveListNew;  // 再構築用Wave一覧。
         
-        // 右側波動のコピー
+        // 右側Waveをコピーする。
         for (int i = 0; i < waveIndex; i++) {
             Wave *wave = this.waveList.At(i);
             
@@ -192,11 +192,11 @@ private:
         }
         
         
-        // 再分析Waveの追加
+        // 再分析Waveを追加する。
         WaveUtil::addWave(this.logger, waveListNew, this.marketContext, analyzedZigZagPointList, waveBefore.isMotive, waveBefore.isUptrend);
         
         
-        // 残りのコピー
+        // 残りのWaveをコピーする。
         for (int i = waveIndex + 2; i < this.waveList.Total(); i++) {
             Wave *wave = this.waveList.At(i);
             

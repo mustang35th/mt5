@@ -13,11 +13,12 @@
  *
  * 対象Waveと1つ前のWaveが異なる方向の場合に、前Wave終端の高値・安値内で
  * 連続するポイントを除外し、Wave一覧を再構築する。
+ * 対象Waveの先頭側を調整して、左側Waveとの重なりを整理する。
  */
 class ElliotReanalysisNarrowWaveLeft : public ElliotBase {
 public:
     /**
-     * 再分析条件と元Wave一覧を設定する。
+     * シンボル、時間足および元Wave一覧を指定して初期化する。
      *
      * @param fromSymbolName 分析対象シンボル
      * @param fromTimeFrame 分析対象時間足
@@ -39,15 +40,15 @@ public:
     }
     
     /**
-     * ElliotReanalysisNarrowWaveLeft を破棄します。
+     * デストラクタ。
      */
     ~ElliotReanalysisNarrowWaveLeft() {
     }
     
     /**
-     * 左側基準の狭いWaveを検索して最初の1件を再分析する。
+     * 左側基準の狭いWaveを検索し、最初に見つかった1件を再分析する。
      *
-     * @return 再分析に成功した場合はtrue。対象がない場合はスキップしてtrue
+     * @return 再分析に成功した場合true。対象がない場合もtrue
      */
     bool analyze() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -106,6 +107,9 @@ private:
     /**
      * 指定Waveが左側基準の再分析対象か判定する。
      *
+     * 1つ前のWaveと異方向で、前Wave終端の値幅内に連続ポイントがある場合に
+     * 再分析対象とする。
+     *
      * @param waveIndex 判定対象Wave位置
      * @return 前Waveと異方向で狭い波動を含む場合true
      */
@@ -136,6 +140,9 @@ private:
     
     /**
      * 前Waveの値幅内にある対象Waveの先頭側ポイントを除外して再分析する。
+     *
+     * 先頭ポイントと最新ポイントを保持し、前Wave終端の値幅を抜けた位置から
+     * 中間ポイントを再分析用ポイント列へ追加する。
      *
      * @param waveIndex 再分析対象Wave位置
      * @return Wave一覧の再構築に成功した場合true
@@ -182,7 +189,7 @@ private:
         
         CArrayObj waveListNew;
         
-        // 右側波動のコピー
+        // 右側Waveをコピーする。
         for (int i = 0; i < waveIndex; i++) {
             Wave *wave = this.waveList.At(i);
             
@@ -190,10 +197,10 @@ private:
         }
         
         
-        // 再分析Waveの追加
+        // 再分析Waveを追加する。
         WaveUtil::addWave(this.logger, waveListNew, this.marketContext, zigZagPointListReanalyze, waveCurrent.isMotive, waveCurrent.isUptrend);
         
-        // 残りのコピー
+        // 残りのWaveをコピーする。
         for (int i = waveIndex + 1; i < this.waveList.Total(); i++) {
             Wave *wave = this.waveList.At(i);
             
@@ -218,6 +225,9 @@ private:
     
     /**
      * 対象Waveに基準値幅内の連続2ポイントがあるか判定する。
+     *
+     * 前Wave終端の高値と安値の内側に、対象Wave内の隣接ポイントが
+     * 2つ続けて入る場合に狭い波動とみなす。
      *
      * @param waveIndex 判定対象Wave位置
      * @param high 基準高値
