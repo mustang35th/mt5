@@ -21,43 +21,43 @@
  */
 class AbstractExpertAdvisor {
 public:
-    /** EA判定名 */
+    /** EA判定名。 */
     string name;
 
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
     
-    /** BUY方向の場合true */
+    /** BUY方向の場合true。 */
     bool isBuy;
 
-    /** BUYまたはSELLの表示ラベル */
+    /** BUYまたはSELLの表示ラベル。 */
     string buySellLabel;
 
-    /** 売買方向の表示記号 */
+    /** 売買方向の表示記号。 */
     string buySellSymbol;
 
-    /** 現在波動が上昇トレンドの場合true */
+    /** 現在波動が上昇トレンドの場合true。 */
     bool isUptrend;
 
-    /** アラート条件を満たした場合true */
+    /** アラート条件を満たした場合true。 */
     bool isAlert;
 
-    /** エントリー条件を満たした場合true */
+    /** エントリー条件を満たした場合true。 */
     bool isEntry;
 
-    /** メールを送信する場合true */
+    /** メールを送信する場合true。 */
     bool isSendMail;
 
-    /** アラート表示文字列 */
+    /** アラート表示文字列。 */
     string alertText;
 
-    /** ロスカット価格 */
+    /** ロスカット価格。 */
     double stopLoss;
 
-    /** シグナル記録用CSV文字列 */
+    /** シグナル記録用CSV文字列。 */
     string csvText;
 
-    /** 時間足別Elliott波動情報一覧 */
+    /** 時間足別Elliott波動情報一覧。 */
     CArrayObj elliottWaveInfoList;
 
     /**
@@ -70,8 +70,8 @@ public:
     /**
      * 市場コンテキストと描画設定を指定して初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param fromIsDrawArrow シグナル矢印を描画する場合true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      */
     AbstractExpertAdvisor(MarketContext &fromMarketContext, bool fromIsDrawArrow) {
         this.initializeMembers();
@@ -88,9 +88,9 @@ public:
     /**
      * 分析対象と描画設定を指定して初期化する。
      *
-     * @param fromSymbolName 分析対象シンボル
-     * @param fromTimeFrame 分析対象時間足
-     * @param fromIsDrawArrow シグナル矢印を描画する場合true
+     * @param fromSymbolName 分析対象シンボル。
+     * @param fromTimeFrame 分析対象時間足。
+     * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      */
     void init(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, bool fromIsDrawArrow) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -100,8 +100,8 @@ public:
     /**
      * 市場コンテキストと描画設定を指定して初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param fromIsDrawArrow シグナル矢印を描画する場合true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      */
     void init(MarketContext &fromMarketContext, bool fromIsDrawArrow) {
         this.setMarketContext(fromMarketContext);
@@ -126,7 +126,7 @@ public:
      * 判定補助クラスを新しい市場向けに再生成し、旧分析結果への
      * 非所有参照と判定状態をクリアする。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.releaseExpertAdvisorHelpers();
@@ -141,9 +141,9 @@ public:
     /**
      * Elliott分析結果からアラートおよびエントリーを判定する。
      *
-     * @param fromElliotAll 全時間足のElliott分析結果
-     * @param signalCount 同一シグナルの発生回数管理
-     * @param entryCount エントリー対象とする発生回数
+     * @param fromElliotAll 全時間足のElliott分析結果。
+     * @param signalCount 同一シグナルの発生回数管理。
+     * @param entryCount エントリー対象とする発生回数。
      */
     void analyze(ElliotAll *fromElliotAll, SignalCount *signalCount, int entryCount = 1) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -187,9 +187,9 @@ public:
     /**
      * 保有方向と反対のGMMAクロスが発生したか判定する。
      *
-     * @param fromElliotAll 全時間足のElliott分析結果
-     * @param isBuyPosition BUYポジションの場合true
-     * @return 決済条件を満たす場合true
+     * @param fromElliotAll 全時間足のElliott分析結果。
+     * @param isBuyPosition BUYポジションの場合true。
+     * @return 決済条件を満たす場合true。
      */
     bool isExit(ElliotAll *fromElliotAll, bool isBuyPosition) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -215,7 +215,7 @@ public:
     /**
      * ロスカット価格を変更可能か判定する。
      *
-     * @return 変更可能な場合true。現状は常にfalse
+     * @return 変更可能な場合true。現状は常にfalse。
      */
     bool isStopLossModifiable() {
         bool isStopLossModifiable = false;
@@ -227,76 +227,76 @@ public:
     }
     
 protected:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
-    /** シグナル矢印を描画する場合true */
+    /** シグナル矢印を描画する場合true。 */
     bool isDrawArrow;
 
-    /** 矢印の代わりにテキストを描画する場合true */
+    /** 矢印の代わりにテキストを描画する場合true。 */
     bool isDarwText;
 
-    /** Elliott波動条件の判定補助クラス */
+    /** Elliott波動条件の判定補助クラス。 */
     ExpertAdvisorElliot *expertAdvisorElliot;
     
     
     /** EMA200 エキスパートアドバイザー。 */
     ExpertAdvisorEma200 *expertAdvisorEma200;
 
-    /** オシレーター条件の判定補助クラス */
+    /** オシレーター条件の判定補助クラス。 */
     ExpertAdvisorOscillator *expertAdvisorOscillator;
 
-    /** 全時間足のElliott分析結果への非所有参照 */
+    /** 全時間足のElliott分析結果への非所有参照。 */
     ElliotAll *elliotAll;
     
     //Elliot *elliotMN1;
     //Elliot *elliotW1;
-    /** D1のElliott分析結果への非所有参照 */
+    /** D1のElliott分析結果への非所有参照。 */
     Elliot *elliotD1;
 
-    /** H4のElliott分析結果への非所有参照 */
+    /** H4のElliott分析結果への非所有参照。 */
     Elliot *elliotH4;
 
-    /** H1のElliott分析結果への非所有参照 */
+    /** H1のElliott分析結果への非所有参照。 */
     Elliot *elliotH1;
 
-    /** M15のElliott分析結果への非所有参照 */
+    /** M15のElliott分析結果への非所有参照。 */
     Elliot *elliotM15;
 
-    /** M5のElliott分析結果への非所有参照 */
+    /** M5のElliott分析結果への非所有参照。 */
     Elliot *elliotM5;
 
-    /** M1のElliott分析結果への非所有参照 */
+    /** M1のElliott分析結果への非所有参照。 */
     Elliot *elliotM1;
 
-    /** 現在時間足から2つ上位のElliott分析結果への非所有参照 */
+    /** 現在時間足から2つ上位のElliott分析結果への非所有参照。 */
     Elliot *elliotHigher2;
 
-    /** 現在時間足から1つ上位のElliott分析結果への非所有参照 */
+    /** 現在時間足から1つ上位のElliott分析結果への非所有参照。 */
     Elliot *elliotHigher1;
 
-    /** 現在時間足のElliott分析結果への非所有参照 */
+    /** 現在時間足のElliott分析結果への非所有参照。 */
     Elliot *elliotCurrent;
 
-    /** 現在時間足の1つ前のZigZagポイントへの非所有参照 */
+    /** 現在時間足の1つ前のZigZagポイントへの非所有参照。 */
     ZigZagPoint *pointElliotCurrent_2;
 
-    /** 現在時間足の最新ZigZagポイントへの非所有参照 */
+    /** 現在時間足の最新ZigZagポイントへの非所有参照。 */
     ZigZagPoint *pointElliotCurrent_1;
 
-    /** チャート描画用フォントサイズ */
+    /** チャート描画用フォントサイズ。 */
     int fontSize;
 
-    /** BUY方向の矢印コード */
+    /** BUY方向の矢印コード。 */
     int arrowCdUp;
 
-    /** SELL方向の矢印コード */
+    /** SELL方向の矢印コード。 */
     int arrowCdDown;
 
     /**
      * 派生EA固有のアラート条件を判定する。
      *
-     * @return アラート条件を満たす場合true
+     * @return アラート条件を満たす場合true。
      */
     virtual bool isJudge() = 0;
 
@@ -308,7 +308,7 @@ protected:
     /**
      * M15の最新ポイントがエントリー対象波動か判定する。
      *
-     * @return 第1波、第3波、第5波またはC波の場合true
+     * @return 第1波、第3波、第5波またはC波の場合true。
      */
     bool isElliotM15() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -332,7 +332,7 @@ protected:
     /**
      * M5波動に対してM1の最新ポイントがエントリー対象波動か判定する。
      *
-     * @return M5とM1の波動条件を満たす場合true
+     * @return M5とM1の波動条件を満たす場合true。
      */
     bool isElliotM1() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -373,9 +373,9 @@ protected:
     /**
      * 指定したElliotのフィボナッチエクスパンションが上限以内か判定する。
      *
-     * @param elliot 判定対象
-     * @param inValue フィボナッチエクスパンション上限値
-     * @return 上限値以下の場合true
+     * @param elliot 判定対象。
+     * @param inValue フィボナッチエクスパンション上限値。
+     * @return 上限値以下の場合true。
      */
     bool isFibonacciExpansionPercent(Elliot *elliot, double inValue) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -399,8 +399,8 @@ protected:
     /**
      * 現在時間足のフィボナッチエクスパンションが上限以内か判定する。
      *
-     * @param inValue フィボナッチエクスパンション上限値
-     * @return 上限値以下の場合true
+     * @param inValue フィボナッチエクスパンション上限値。
+     * @return 上限値以下の場合true。
      */
     bool isFibonacciExpansionPercent(double inValue) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -422,8 +422,8 @@ protected:
     /**
      * ロスカット幅が指定値以内か判定する。
      *
-     * @param inValue ロスカット幅の上限値
-     * @return 上限値以下の場合true
+     * @param inValue ロスカット幅の上限値。
+     * @return 上限値以下の場合true。
      */
     bool isLossCut(double inValue) {
         bool isLossCut = false;
@@ -454,7 +454,7 @@ protected:
     /**
      * 現在スプレッドが許容範囲内か判定する。
      *
-     * @return スプレッドが3以下の場合true
+     * @return スプレッドが3以下の場合true。
      */
     bool isSpread() {
         bool isSpread = false;
@@ -528,7 +528,7 @@ private:
     /**
      * 市場コンテキストを初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
@@ -539,8 +539,8 @@ private:
     /**
      * Elliott分析結果を保持し、判定に使用する時間足別参照を設定する。
      *
-     * @param fromElliotAll 全時間足のElliott分析結果
-     * @return 判定に必要な情報を設定できた場合true
+     * @param fromElliotAll 全時間足のElliott分析結果。
+     * @return 判定に必要な情報を設定できた場合true。
      */
     bool setElliotAll(ElliotAll *fromElliotAll) {
         LogUtil::printMethodStart(logger, __FUNCTION__);

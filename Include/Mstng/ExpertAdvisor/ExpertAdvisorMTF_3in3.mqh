@@ -17,9 +17,9 @@ public:
     /**
      * 分析対象と描画設定を指定して初期化する。
      *
-     * @param fromSymbolName 分析対象シンボル
-     * @param fromTimeFrame 分析対象時間足
-     * @param fromIsDrawArrow シグナル矢印を描画する場合true
+     * @param fromSymbolName 分析対象シンボル。
+     * @param fromTimeFrame 分析対象時間足。
+     * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      */
     ExpertAdvisorMTF_3in3(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, bool fromIsDrawArrow = true) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -29,8 +29,8 @@ public:
     /**
      * 市場コンテキストと描画設定を指定して初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param fromIsDrawArrow シグナル矢印を描画する場合true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      */
     ExpertAdvisorMTF_3in3(MarketContext &fromMarketContext, bool fromIsDrawArrow = true) {
         this.initialize(fromMarketContext, fromIsDrawArrow);
@@ -46,7 +46,7 @@ protected:
     /**
      * スプレッド、トレンド、波動および各テクニカル条件からシグナルを判定する。
      *
-     * @return すべての判定条件を満たす場合true
+     * @return すべての判定条件を満たす場合true。
      */
     bool isJudge() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -148,8 +148,8 @@ private:
     /**
      * 市場コンテキストを使用して共通設定とEA固有設定を初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param fromIsDrawArrow シグナル矢印を描画する場合true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      */
     void initialize(MarketContext &fromMarketContext, bool fromIsDrawArrow) {
         this.logger.setLevel(LOG_INFO);
@@ -164,7 +164,7 @@ private:
     /**
      * Close1とEMA200[1]のエントリー許容距離pipsを取得する。
      *
-     * @return エントリー許容距離pips
+     * @return エントリー許容距離pips。
      */
     double getMaxCloseEma200DiffPips() {
         if (this.marketContext.isJpy()) {
@@ -179,8 +179,8 @@ private:
     /**
      * 指定したElliotの最新ポイントが第1波または第3波か判定する。
      *
-     * @param elliot 判定対象
-     * @return 最新ポイントが第1波または第3波の場合true
+     * @param elliot 判定対象。
+     * @return 最新ポイントが第1波または第3波の場合true。
      */
     bool isElliot1or3(Elliot *elliot) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -205,7 +205,7 @@ private:
     /**
      * 上位足と現在足が3波中の3波に該当するか判定する。
      *
-     * @return 3波中の3波に該当する場合true
+     * @return 3波中の3波に該当する場合true。
      */
     bool isElliot3in3() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -246,8 +246,8 @@ private:
     /**
      * 下位波動ラベルが判定対象として有効か確認する。
      *
-     * @param subElliotLabel 下位波動ラベル
-     * @return 空文字または第iii波の場合true
+     * @param subElliotLabel 下位波動ラベル。
+     * @return 空文字または第iii波の場合true。
      */
     bool isSubElliotLabel(string subElliotLabel) {
         bool isSubElliotLabel = false;
@@ -262,8 +262,8 @@ private:
     /**
      * 指定したElliotの最新ポイントが推進波か判定する。
      *
-     * @param elliot 判定対象
-     * @return 最新ポイントが第1波、第3波または第5波の場合true
+     * @param elliot 判定対象。
+     * @return 最新ポイントが第1波、第3波または第5波の場合true。
      */
     bool isElliot(Elliot *elliot) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -288,7 +288,7 @@ private:
     /**
      * 上位足と現在足の波動情報からアラート表示文字列を生成する。
      *
-     * @return アラート表示文字列
+     * @return アラート表示文字列。
      */
     string getAlertText() {
         string text = "";

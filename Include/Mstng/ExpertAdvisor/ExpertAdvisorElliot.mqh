@@ -12,18 +12,18 @@
 
 /**
  * エリオット波の各種判定（ZigZag確定、方向一致、トレンド一致）を
- * 担うヘルパークラスです。
+ * 担うヘルパークラス。
  */
 class ExpertAdvisorElliot {
 public:
-    /** 判定対象の市場コンテキスト */
+    /** 判定対象の市場コンテキスト。 */
     MarketContext marketContext;
 
     /**
      * 判定対象を指定して初期化する。
      *
-     * @param fromSymbolName 判定対象シンボル
-     * @param fromTimeFrame 判定対象時間足
+     * @param fromSymbolName 判定対象シンボル。
+     * @param fromTimeFrame 判定対象時間足。
      */
     ExpertAdvisorElliot(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -33,14 +33,14 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext 判定対象の市場コンテキスト
+     * @param fromMarketContext 判定対象の市場コンテキスト。
      */
     ExpertAdvisorElliot(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
     }
     
     /**
-     * ExpertAdvisorElliot を破棄します。
+     * デストラクタ。
      */
     ~ExpertAdvisorElliot() {
     }
@@ -48,27 +48,27 @@ public:
     /**
      * 判定対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext 判定対象の市場コンテキスト
+     * @param fromMarketContext 判定対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
     }
 
     /**
-     * 最新の ZigZag ポイントが確定しているか確認します。
+     * 最新のZigZagポイントが確定しているか確認する。
      *
-     * @param elliot 判定対象の Elliot
-     * @return 最新ポイントが未確定でなければ true
+     * @param elliot 判定対象のElliot。
+     * @return 最新ポイントが未確定でなければtrue。
      */
     bool isZigZagConfirmed(Elliot &elliot) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         bool isZigZagConfirmed = false;
         
-        // 最新のZigZagポイントを取得する
+        // 最新のZigZagポイントを取得する。
         ZigZagPoint *latestPoint = elliot.getLatestPoint();
         
-        // 追加途中のポイントでなければ、ZigZagは確定と判定する
+        // 追加途中のポイントでなければ、ZigZagは確定と判定する。
         if (!latestPoint.isAddedPoint) {
             isZigZagConfirmed = true;
         }
@@ -81,11 +81,11 @@ public:
     }
     
     /**
-     * 対象時間足の Elliot の方向が指定方向と一致するか判定します。
+     * 対象時間足のElliot方向が指定方向と一致するか判定する。
      *
-     * @param elliot 判定対象の Elliot
-     * @param fromIsBuy BUY方向を期待する場合 true
-     * @return 方向が一致する場合 true
+     * @param elliot 判定対象のElliot。
+     * @param fromIsBuy BUY方向を期待する場合true。
+     * @return 方向が一致する場合true。
      */
     bool isElliotBuySell(Elliot &elliot, bool fromIsBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -115,9 +115,9 @@ public:
     /**
      * H4から現在時間足までの上位時間足の売買方向が一致するか判定する。
      *
-     * @param fromElliotAll 全時間足のElliot情報
-     * @param fromIsBuy BUY方向の場合true
-     * @return 必要な上位時間足の売買方向が一致する場合true
+     * @param fromElliotAll 全時間足のElliot情報。
+     * @param fromIsBuy BUY方向の場合true。
+     * @return 必要な上位時間足の売買方向が一致する場合true。
      */
     bool isBuySellFromH4(
         ElliotAll &fromElliotAll,
@@ -182,9 +182,9 @@ public:
     /**
      * H1から現在時間足までの上位時間足の売買方向が一致するか判定する。
      *
-     * @param fromElliotAll 全時間足のElliot情報
-     * @param fromIsBuy BUY方向の場合true
-     * @return 必要な上位時間足の売買方向が一致する場合true
+     * @param fromElliotAll 全時間足のElliot情報。
+     * @param fromIsBuy BUY方向の場合true。
+     * @return 必要な上位時間足の売買方向が一致する場合true。
      */
     bool isBuySellFromH1(
         ElliotAll &fromElliotAll,
@@ -233,10 +233,10 @@ public:
     }
     
     /**
-     * 最新の ZigZag ポイントがモチベート波か判定します。
+     * 最新のZigZagポイントがモチベート波か判定する。
      *
-     * @param elliot 判定対象の Elliot
-     * @return 最新ポイントがモチベート波なら true
+     * @param elliot 判定対象のElliot。
+     * @return 最新ポイントがモチベート波ならtrue。
      */
     bool isMotiveWave(Elliot &elliot) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -257,11 +257,11 @@ public:
     }
     
     /**
-     * Elliot のトレンド方向が期待方向と一致するか判定します。
+     * Elliotのトレンド方向が期待方向と一致するか判定する。
      *
-     * @param elliot 判定対象の Elliot
-     * @param fromIsUptrend 上昇トレンドを期待する場合 true
-     * @return トレンド方向が一致する場合 true
+     * @param elliot 判定対象のElliot。
+     * @param fromIsUptrend 上昇トレンドを期待する場合true。
+     * @return トレンド方向が一致する場合true。
      */
     bool isSameTrend(Elliot &elliot, bool fromIsUptrend) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -293,7 +293,7 @@ private:
     /**
      * 市場コンテキストとロガーを初期化する。
      *
-     * @param fromMarketContext 判定対象の市場コンテキスト
+     * @param fromMarketContext 判定対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;

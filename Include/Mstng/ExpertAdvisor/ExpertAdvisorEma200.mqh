@@ -12,24 +12,24 @@
 #include <Mstng\Elliot\Elliot.mqh>
 
 /**
- * ExpertAdvisor用EMA200判定クラス
+ * ExpertAdvisor用のEMA200売買方向判定を行うクラス。
  */
 class ExpertAdvisorEma200 {
 public:
-    /** BUY方向の場合true */
+    /** BUY方向の場合true。 */
     bool isBuy;
 
     /**
-     * コンストラクタ
+     * BUY方向を既定値として初期化する。
      */
     ExpertAdvisorEma200() {
         this.isBuy = true;
     }
 
     /**
-     * コンストラクタ
+     * 売買方向を指定して初期化する。
      *
-     * @param fromIsBuy BUY方向の場合true
+     * @param fromIsBuy BUY方向の場合true。
      */
     ExpertAdvisorEma200(bool fromIsBuy) {
         this.isBuy = fromIsBuy;
@@ -38,7 +38,7 @@ public:
     /**
      * 売買方向を設定する。
      *
-     * @param fromIsBuy BUY方向の場合true
+     * @param fromIsBuy BUY方向の場合true。
      */
     void setIsBuy(bool fromIsBuy) {
         this.isBuy = fromIsBuy;
@@ -47,9 +47,9 @@ public:
     /**
      * 現在足と上位足のEMA200の並びが売買方向と一致するか判定する。
      *
-     * @param fromElliotHigher 上位足のElliot情報
-     * @param fromElliotCurrent 現在足のElliot情報
-     * @return 売買方向とEMA200の並びが一致する場合true
+     * @param fromElliotHigher 上位足のElliot情報。
+     * @param fromElliotCurrent 現在足のElliot情報。
+     * @return 売買方向とEMA200の並びが一致する場合true。
      */
     bool isEma200CurrentAndHigher(
         Elliot &fromElliotHigher,
@@ -76,8 +76,8 @@ public:
     /**
      * 指定したElliotのEMA200判定が現在の売買方向と一致するか判定する。
      *
-     * @param elliot 判定対象
-     * @return EMA200判定が現在の売買方向と一致する場合true
+     * @param elliot 判定対象。
+     * @return EMA200判定が現在の売買方向と一致する場合true。
      */
     bool isEma200BuySell(Elliot *elliot) {
         bool isEma200BuySell = false;
@@ -104,9 +104,9 @@ public:
     /**
      * Close1とEMA200[1]の距離が上限以内か判定する。
      *
-     * @param elliot 判定対象
-     * @param fromMaxPips 距離上限pips
-     * @return 距離が上限以内の場合true
+     * @param elliot 判定対象。
+     * @param fromMaxPips 距離上限pips。
+     * @return 距離が上限以内の場合true。
      */
     bool isCloseEma200DiffPipsWithin(Elliot *elliot, double fromMaxPips) {
         if (elliot == NULL) {
