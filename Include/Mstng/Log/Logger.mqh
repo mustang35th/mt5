@@ -13,21 +13,21 @@
  * ログ出力の重要度を表す列挙型。
  */
 enum LogLevel {
-    /** デバッグレベル */
+    /** デバッグレベル。 */
     LOG_DEBUG = 0,
 
-    /** 情報レベル */
+    /** 情報レベル。 */
     LOG_INFO,
 
-    /** 警告レベル */
+    /** 警告レベル。 */
     LOG_WARN,
 
-    /** エラーレベル */
+    /** エラーレベル。 */
     LOG_ERROR
 };
 
 /**
- * Printを使用してターミナルへログを出力するクラスです。
+ * Printを使用してターミナルへログを出力するクラス。
  *
  * 設定したログレベルと市場コンテキストを使用し、
  * シンボル名・時間足・メソッド名を含む形式で出力する。
@@ -37,7 +37,7 @@ public:
     /**
      * ログレベルと現在チャートの時間足を初期化する。
      *
-     * @param threshold 出力対象とする最小ログレベル
+     * @param threshold 出力対象とする最小ログレベル。
      */
     Logger(LogLevel threshold = LOG_DEBUG) {
         this.levelThreshold = threshold;
@@ -50,8 +50,8 @@ public:
     /**
      * 市場コンテキストとログレベルを初期化する。
      *
-     * @param fromMarketContext ログ出力対象の市場コンテキスト
-     * @param fromThreshold 出力対象とする最小ログレベル
+     * @param fromMarketContext ログ出力対象の市場コンテキスト。
+     * @param fromThreshold 出力対象とする最小ログレベル。
      */
     Logger(MarketContext &fromMarketContext, LogLevel fromThreshold = LOG_DEBUG) {
         this.levelThreshold = fromThreshold;
@@ -64,7 +64,7 @@ public:
     /**
      * デバッグログを出力する設定か判定する。
      *
-     * @return 最小ログレベルがLOG_DEBUGの場合true
+     * @return 最小ログレベルがLOG_DEBUGの場合true。
      */
     bool isDebugMode() {
         return (this.levelThreshold == LOG_DEBUG);
@@ -74,7 +74,7 @@ public:
     /**
      * 出力対象とする最小ログレベルを設定する。
      *
-     * @param threshold 出力対象とする最小ログレベル
+     * @param threshold 出力対象とする最小ログレベル。
      */
     void setLevel(LogLevel threshold) {
         this.levelThreshold = threshold;
@@ -83,8 +83,8 @@ public:
     /**
      * シンボル名と時間足を設定する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromTimeFrame 対象時間足
+     * @param fromSymbolName 対象シンボル。
+     * @param fromTimeFrame 対象時間足。
      */
     void setSymbolNameAndTimeFrame(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -94,7 +94,7 @@ public:
     /**
      * 市場コンテキストを設定する。
      *
-     * @param fromMarketContext ログ出力対象の市場コンテキスト
+     * @param fromMarketContext ログ出力対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
@@ -107,9 +107,9 @@ public:
      * DEBUGは対象時間足が現在チャートの時間足と一致する場合のみ出力する。
      * INFO/WARN/ERRORは時間足条件に関係なく出力する。
      *
-     * @param level ログレベル
-     * @param funcName 出力元のメソッド名
-     * @param message 出力メッセージ
+     * @param level ログレベル。
+     * @param funcName 出力元のメソッド名。
+     * @param message 出力メッセージ。
      */
     void log(LogLevel level, const string funcName, const string message) {
         if (level < this.levelThreshold) {
@@ -136,8 +136,8 @@ public:
     /**
      * DEBUGレベルのメッセージを出力する。
      *
-     * @param funcName 出力元のメソッド名
-     * @param message 出力メッセージ
+     * @param funcName 出力元のメソッド名。
+     * @param message 出力メッセージ。
      */
     void debug(const string funcName, const string message) {
         this.log(LOG_DEBUG, funcName, message);
@@ -146,8 +146,8 @@ public:
     /**
      * INFOレベルのメッセージを出力する。
      *
-     * @param funcName 出力元のメソッド名
-     * @param message 出力メッセージ
+     * @param funcName 出力元のメソッド名。
+     * @param message 出力メッセージ。
      */
     void info(const string funcName, const string message) {
         this.log(LOG_INFO, funcName, message);
@@ -156,8 +156,8 @@ public:
     /**
      * WARNレベルのメッセージを出力する。
      *
-     * @param funcName 出力元のメソッド名
-     * @param message 出力メッセージ
+     * @param funcName 出力元のメソッド名。
+     * @param message 出力メッセージ。
      */
     void warn(const string funcName, const string message) {
         this.log(LOG_WARN, funcName, message);
@@ -166,27 +166,27 @@ public:
     /**
      * ERRORレベルのメッセージを出力する。
      *
-     * @param funcName 出力元のメソッド名
-     * @param message 出力メッセージ
+     * @param funcName 出力元のメソッド名。
+     * @param message 出力メッセージ。
      */
     void error(const string funcName, const string message) {
         this.log(LOG_ERROR, funcName, message);
     }
     
 private:
-    /** 出力対象とする最小ログレベル */
+    /** 出力対象とする最小ログレベル。 */
     LogLevel levelThreshold;
 
-    /** 現在チャートの市場コンテキスト */
+    /** 現在チャートの市場コンテキスト。 */
     MarketContext chartMarketContext;
 
-    /** ログ出力対象の市場コンテキスト */
+    /** ログ出力対象の市場コンテキスト。 */
     MarketContext marketContext;
 
     /**
      * 市場コンテキストを設定する。
      *
-     * @param fromMarketContext ログ出力対象の市場コンテキスト
+     * @param fromMarketContext ログ出力対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
@@ -195,8 +195,8 @@ private:
     /**
      * ログレベルを表示用文字列に変換する。
      *
-     * @param level ログレベル
-     * @return ログレベルの表示用文字列
+     * @param level ログレベル。
+     * @return ログレベルの表示用文字列。
      */
     string levelToString(LogLevel level) {
         switch(level) {
