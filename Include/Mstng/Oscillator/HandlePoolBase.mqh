@@ -13,7 +13,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 
 /**
- * インジケータのハンドルを時間足ごとに管理する基底クラスです（固定8時間足）。
+ * インジケータのハンドルを時間足ごとに管理する基底クラス（固定8時間足）。
  *
  * 対象時間足:
  * - MN1, W1, D1, H4, H1, M15, M5, M1
@@ -25,10 +25,10 @@
 class HandlePoolBase {
 public:
     /**
-     * MN1 から指定時間足までのハンドルを生成します。
+     * MN1 から指定時間足までのハンドルを生成する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param lastTimeFrame  最終時間足（固定8時間足のみ対応）
+     * @param fromSymbolName 対象シンボル。
+     * @param lastTimeFrame  最終時間足（固定8時間足のみ対応）。
      */
     void setTimeframesFromMn1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -37,9 +37,9 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してMN1から対象時間足までのハンドルを生成します。
+     * 市場コンテキストを使用してMN1から対象時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
     void setTimeframesFromMn1To(MarketContext &fromMarketContext) {
         this.ensureMarketContext(fromMarketContext);
@@ -58,10 +58,10 @@ public:
     }
 
     /**
-     * D1から指定時間足までのハンドルを生成します。
+     * D1から指定時間足までのハンドルを生成する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param lastTimeFrame 最終時間足
+     * @param fromSymbolName 対象シンボル。
+     * @param lastTimeFrame 最終時間足。
      */
     void setTimeframesFromD1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -70,9 +70,9 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してD1から対象時間足までのハンドルを生成します。
+     * 市場コンテキストを使用してD1から対象時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
     void setTimeframesFromD1To(MarketContext &fromMarketContext) {
         this.ensureMarketContext(fromMarketContext);
@@ -104,7 +104,7 @@ public:
     }
 
     /**
-     * 全ハンドルを解放します。
+     * 全ハンドルを解放する。
      */
     void releaseAll() {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
@@ -117,7 +117,7 @@ public:
      *
      * シンボルが変更された場合は、保持している全ハンドルを解放する。
      *
-     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.ensureMarketContext(fromMarketContext);
@@ -134,7 +134,7 @@ protected:
     ENUM_TIMEFRAMES timeframes[TIMEFRAME_SIZE];
 
     /**
-     * デフォルトコンテキストで初期化します。
+     * デフォルトコンテキストで初期化する。
      */
     HandlePoolBase() {
         this.initializeBase(Symbol());
@@ -143,22 +143,22 @@ protected:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
     HandlePoolBase(MarketContext &fromMarketContext) {
         this.initializeBase(fromMarketContext);
     }
 
     /**
-     * リソースを解放します。
+     * リソースを解放する。
      */
     ~HandlePoolBase() {
     }
 
     /**
-     * 市場コンテキストと対象時間足配列を初期化します。
+     * 市場コンテキストと対象時間足配列を初期化する。
      *
-     * @param fromSymbolName 対象シンボル
+     * @param fromSymbolName 対象シンボル。
      */
     void initializeBase(string fromSymbolName) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
@@ -167,9 +167,9 @@ protected:
     }
 
     /**
-     * 市場コンテキストと対象時間足配列を初期化します。
+     * 市場コンテキストと対象時間足配列を初期化する。
      *
-     * @param fromMarketContext 初期化に使用する市場コンテキスト
+     * @param fromMarketContext 初期化に使用する市場コンテキスト。
      */
     void initializeBase(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
@@ -187,7 +187,7 @@ protected:
     /**
      * シンボルが変わった場合は、全ハンドルを解放して切り替えます。
      *
-     * @param fromSymbolName 対象シンボル
+     * @param fromSymbolName 対象シンボル。
      */
     void ensureSymbol(string fromSymbolName) {
         MarketContext context(fromSymbolName, this.marketContext.timeFrame);
@@ -198,7 +198,7 @@ protected:
     /**
      * 市場コンテキストが変わった場合は、必要に応じてハンドルを解放して切り替えます。
      *
-     * @param fromMarketContext 切り替え先の市場コンテキスト
+     * @param fromMarketContext 切り替え先の市場コンテキスト。
      */
     void ensureMarketContext(MarketContext &fromMarketContext) {
         if (this.marketContext.symbolName == fromMarketContext.symbolName) {
@@ -212,10 +212,10 @@ protected:
     }
 
     /**
-     * 対象8時間足内のインデックスを返します。
+     * 対象8時間足内のインデックスを返す。
      *
-     * @param timeFrame 対象時間足
-     * @return インデックス（対象外は -1）
+     * @param timeFrame 対象時間足。
+     * @return インデックス（対象外は -1）。
      */
     int findIndex(ENUM_TIMEFRAMES timeFrame) {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
@@ -229,9 +229,9 @@ protected:
     }
 
     /**
-     * ハンドルを解放します（INVALID_HANDLE は何もしません）。
+     * ハンドルを解放する（INVALID_HANDLE は何もしない）。
      *
-     * @param fromHandle 解放対象ハンドル（解放後 INVALID_HANDLE を設定）
+     * @param fromHandle 解放対象ハンドル（解放後 INVALID_HANDLE を設定）。
      */
     void releaseHandle(int &fromHandle) {
         if (fromHandle == INVALID_HANDLE) {
@@ -244,15 +244,15 @@ protected:
     }
 
     /**
-     * 派生クラスでハンドル初期化を実装します。
+     * 派生クラスでハンドル初期化を実装する。
      */
     virtual void createIfNeeded(int index) {
     }
 
     /**
-     * 指定インデックスのリソースを解放します（派生クラス実装）。
+     * 指定インデックスのリソースを解放する（派生クラス実装）。
      *
-     * @param index 時間足インデックス
+     * @param index 時間足インデックス。
      */
     virtual void releaseAt(int index) {
     }

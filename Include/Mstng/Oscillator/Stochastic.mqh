@@ -12,20 +12,20 @@
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
- * ストキャスティクスのクロス継続を取得・判定するためのクラスです。
+ * ストキャスティクスのクロス継続を取得・判定するためのクラス。
  */
 class Stochastic {
 public:
-    /** 取得対象の市場コンテキスト */
+    /** 取得対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** 直近Main0値 */
+    /** 直近Main0値。 */
     double main0;
-    /** 直近Signal値 */
+    /** 直近Signal値。 */
     double signal0;
 
     /**
-     * Stochastic を生成します。
+     * Stochastic を生成する。
      */
     Stochastic() {
         this.logger.setLevel(LOG_INFO);
@@ -38,7 +38,7 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param fromMarketContext 取得対象の市場コンテキスト。
      */
     Stochastic(MarketContext &fromMarketContext) {
         this.logger.setLevel(LOG_INFO);
@@ -52,7 +52,7 @@ public:
     /**
      * ストキャスティクスハンドルプールを指定して初期化する。
      *
-     * @param fromStochasticHandlePool ストキャスティクスハンドルプール
+     * @param fromStochasticHandlePool ストキャスティクスハンドルプール。
      */
     Stochastic(StochasticHandlePool *fromStochasticHandlePool) {
         this.logger.setLevel(LOG_INFO);
@@ -65,8 +65,8 @@ public:
     /**
      * 市場コンテキストとストキャスティクスハンドルプールを指定して初期化する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param fromStochasticHandlePool ストキャスティクスハンドルプール
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromStochasticHandlePool ストキャスティクスハンドルプール。
      */
     Stochastic(
         MarketContext &fromMarketContext,
@@ -83,7 +83,7 @@ public:
     /**
      * ストキャスティクスハンドルプールを差し替えます。
      *
-     * @param fromStochasticHandlePool 置き換えるハンドルプール
+     * @param fromStochasticHandlePool 置き換えるハンドルプール。
      */
     void setStochasticHandlePool(StochasticHandlePool *fromStochasticHandlePool) {
         this.stochasticHandlePool = fromStochasticHandlePool;
@@ -93,7 +93,7 @@ public:
     /**
      * 取得対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param fromMarketContext 取得対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
@@ -108,23 +108,23 @@ public:
     }
 
     /**
-     * 文字列ベースでクロス継続数を取得します。
+     * 文字列ベースでクロス継続数を取得する。
      *
-     * @param symbol シンボル名
-     * @param period 時間足
-     * @return クロス継続数
+     * @param symbol シンボル名。
+     * @param period 時間足。
+     * @return クロス継続数。
      */
     int getCrossCount(string symbol, ENUM_TIMEFRAMES period) {
         return this.getCrossCount(symbol, period, 0);
     }
 
     /**
-     * 開始シフト付きでクロス継続数を取得します。
+     * 開始シフト付きでクロス継続数を取得する。
      *
-     * @param symbol シンボル名
-     * @param period 時間足
-     * @param start 取得開始シフト
-     * @return クロス継続数
+     * @param symbol シンボル名。
+     * @param period 時間足。
+     * @param start 取得開始シフト。
+     * @return クロス継続数。
      */
     int getCrossCount(string symbol, ENUM_TIMEFRAMES period, int start) {
         int count = 0;
@@ -137,11 +137,11 @@ public:
     /**
      * 文字列入力でクロス継続数を取得し、結果参照を受け取ります。
      *
-     * @param symbol シンボル名
-     * @param period 時間足
-     * @param start 取得開始シフト
-     * @param count クロス継続数
-     * @return 取得できた場合は true
+     * @param symbol シンボル名。
+     * @param period 時間足。
+     * @param start 取得開始シフト。
+     * @param count クロス継続数。
+     * @return 取得できた場合は true。
      */
     bool getCrossCount(string symbol, ENUM_TIMEFRAMES period, int start, int &count) {
         MarketContext context(symbol, period);
@@ -152,10 +152,10 @@ public:
     /**
      * 市場コンテキストを使用してストキャスティクスのクロス継続数を取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param start 取得開始シフト
-     * @param count クロス継続数
-     * @return 取得に成功した場合は true
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param start 取得開始シフト。
+     * @param count クロス継続数。
+     * @return 取得に成功した場合は true。
      */
     bool getCrossCount(MarketContext &fromMarketContext, int start, int &count) {
         this.initializeMarketContext(fromMarketContext);
@@ -226,7 +226,7 @@ private:
     /**
      * 市場コンテキストとロガーを初期化する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param fromMarketContext 取得対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
@@ -243,10 +243,10 @@ private:
     /**
      * 市場コンテキストを使用して Stochastic の %K（main）値を取得する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param shift 参照シフト
-     * @param value 取得した %K 値（out）
-     * @return 取得できた場合 true
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param shift 参照シフト。
+     * @param value 取得した %K 値（out）。
+     * @return 取得できた場合 true。
      */
     bool getMain(MarketContext &fromMarketContext, int shift, double &value) {
         value = 0.0;
@@ -279,10 +279,10 @@ private:
     /**
      * 市場コンテキストを使用して Stochastic の %D（signal）値を取得する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param shift 参照シフト
-     * @param value 取得した %D 値（out）
-     * @return 取得できた場合 true
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param shift 参照シフト。
+     * @param value 取得した %D 値（out）。
+     * @return 取得できた場合 true。
      */
     bool getSignal(MarketContext &fromMarketContext, int shift, double &value) {
         value = 0.0;
@@ -315,9 +315,9 @@ private:
     /**
      * シンボル名と時間足で Stochastic ハンドルを初期化する。
      *
-     * @param symbol 対象シンボル
-     * @param period 対象時間足
-     * @return 初期化できた場合 true
+     * @param symbol 対象シンボル。
+     * @param period 対象時間足。
+     * @return 初期化できた場合 true。
      */
     bool ensureInitialized(string symbol, ENUM_TIMEFRAMES period) {
         MarketContext context(symbol, period);
@@ -328,8 +328,8 @@ private:
     /**
      * 市場コンテキストを使用してハンドルを初期化する。
      *
-     * @param fromMarketContext 初期化対象の市場コンテキスト
-     * @return 初期化できた場合は true
+     * @param fromMarketContext 初期化対象の市場コンテキスト。
+     * @return 初期化できた場合は true。
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.stochasticHandlePool == NULL) {
@@ -349,9 +349,9 @@ private:
     /**
      * メインラインとシグナルラインの大小を比較する。
      *
-     * @param main %K 値
-     * @param signal %D 値
-     * @return main - signal >= 0 の場合 true
+     * @param main %K 値。
+     * @param signal %D 値。
+     * @return main - signal >= 0 の場合 true。
      */
     bool isPlus(double main, double signal) {
         bool plus = false;

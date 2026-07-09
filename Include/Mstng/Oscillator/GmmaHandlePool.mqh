@@ -14,7 +14,7 @@
 #include <Mstng\Oscillator\HandlePoolBase.mqh>
 
 /**
- * GMMA（本実装では EMA30 / EMA60）のハンドルを時間足ごとに管理するクラスです（固定8時間足）。
+ * GMMA（本実装では EMA30 / EMA60）のハンドルを時間足ごとに管理するクラス（固定8時間足）。
  *
  * 対象時間足:
  * - MN1, W1, D1, H4, H1, M15, M5, M1
@@ -41,7 +41,7 @@ public:
      * - maMethod      = MODE_EMA
      * - appliedPrice  = PRICE_CLOSE
      *
-     * symbolName はカレントシンボル（Symbol()）を設定します。
+     * symbolName はカレントシンボル（Symbol()）を設定する。
      */
     GmmaHandlePool() {
         this.initialize(Symbol(), 30, 60, MODE_EMA, PRICE_CLOSE);
@@ -50,11 +50,11 @@ public:
     /**
      * コンストラクタ
      *
-     * @param fromSymbolName   対象シンボル
-     * @param fromEma30Period  EMA30 の期間
-     * @param fromEma60Period  EMA60 の期間
-     * @param fromMaMethod     MA種別（通常 MODE_EMA）
-     * @param fromAppliedPrice 適用価格
+     * @param fromSymbolName   対象シンボル。
+     * @param fromEma30Period  EMA30 の期間。
+     * @param fromEma60Period  EMA60 の期間。
+     * @param fromMaMethod     MA種別（通常 MODE_EMA）。
+     * @param fromAppliedPrice 適用価格。
      */
     GmmaHandlePool(string fromSymbolName,
                    int fromEma30Period,
@@ -67,11 +67,11 @@ public:
     /**
      * MarketContextを使用して初期化する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param fromEma30Period EMA30の期間
-     * @param fromEma60Period EMA60の期間
-     * @param fromMaMethod MA種別
-     * @param fromAppliedPrice 適用価格
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param fromEma30Period EMA30の期間。
+     * @param fromEma60Period EMA60の期間。
+     * @param fromMaMethod MA種別。
+     * @param fromAppliedPrice 適用価格。
      */
     GmmaHandlePool(
         MarketContext &fromMarketContext,
@@ -93,17 +93,17 @@ public:
     /**
      * ハンドル生成対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.ensureMarketContext(fromMarketContext);
     }
 
     /**
-     * MN1 から指定時間足までのハンドルを生成します。
+     * MN1 から指定時間足までのハンドルを生成する。
      *
-     * @param fromSymbolName 対象シンボル（変更時は全ハンドルを解放して再作成します）
-     * @param lastTimeFrame  生成対象の終端時間足（固定8時間足のみ対応）
+     * @param fromSymbolName 対象シンボル（変更時は全ハンドルを解放して再作成する）。
+     * @param lastTimeFrame  生成対象の終端時間足（固定8時間足のみ対応）。
      */
     void setTimeframesFromMn1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -114,21 +114,21 @@ public:
     /**
      * 市場コンテキストを使用してMN1から指定時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setTimeframesFromMn1To(MarketContext &fromMarketContext) {
         HandlePoolBase::setTimeframesFromMn1To(fromMarketContext);
     }
 
     /**
-     * D1 から指定時間足までのハンドルを生成します。
+     * D1 から指定時間足までのハンドルを生成する。
      *
      * 例:
      * - lastTimeFrame=PERIOD_H1 -> D1, H4, H1
      * - lastTimeFrame=PERIOD_M1 -> D1, H4, H1, M15, M5, M1
      *
-     * @param fromSymbolName 対象シンボル（変更時は全ハンドルを解放して再作成します）
-     * @param lastTimeFrame  生成対象の終端時間足（D1以下、固定8時間足のみ対応）
+     * @param fromSymbolName 対象シンボル（変更時は全ハンドルを解放して再作成する）。
+     * @param lastTimeFrame  生成対象の終端時間足（D1以下、固定8時間足のみ対応）。
      */
     void setTimeframesFromD1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -139,16 +139,16 @@ public:
     /**
      * 市場コンテキストを使用してD1から指定時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setTimeframesFromD1To(MarketContext &fromMarketContext) {
         HandlePoolBase::setTimeframesFromD1To(fromMarketContext);
     }
 
     /**
-     * パラメータを設定します。
+     * パラメータを設定する。
      *
-     * 既存ハンドルは「パラメータが変わった場合のみ」全解放します。
+     * 既存ハンドルは「パラメータが変わった場合のみ」全解放する。
      */
     void setParameters(int fromEma30Period,
                        int fromEma60Period,
@@ -186,7 +186,7 @@ public:
     }
 
     /**
-     * EMA30 ハンドルを取得します（未生成なら生成）。
+     * EMA30 ハンドルを取得する（未生成なら生成）。
      */
     int getEma30Handle(ENUM_TIMEFRAMES timeFrame) {
         int index = this.findIndex(timeFrame);
@@ -203,7 +203,7 @@ public:
     }
 
     /**
-     * EMA60 ハンドルを取得します（未生成なら生成）。
+     * EMA60 ハンドルを取得する（未生成なら生成）。
      */
     int getEma60Handle(ENUM_TIMEFRAMES timeFrame) {
         int index = this.findIndex(timeFrame);
@@ -220,7 +220,7 @@ public:
     }
 
     /**
-     * 全ハンドルを解放します。
+     * 全ハンドルを解放する。
      */
     void releaseAll() {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
@@ -231,9 +231,9 @@ public:
 
 protected:
     /**
-     * 指定インデックスのEMAハンドルを未生成時のみ生成します。
+     * 指定インデックスのEMAハンドルを未生成時のみ生成する。
      *
-     * @param index 時間足インデックス
+     * @param index 時間足インデックス。
      */
     virtual void createIfNeeded(int index) {
         if (index < 0 || index >= TIMEFRAME_SIZE) {
@@ -265,9 +265,9 @@ protected:
     }
 
     /**
-     * インジケーターハンドルを解放します（INVALID_HANDLE の場合は何もしない）。
+     * インジケーターハンドルを解放する（INVALID_HANDLE の場合は何もしない）。
      *
-     * @param fromHandle 対象ハンドル（解放後 INVALID_HANDLE）
+     * @param fromHandle 対象ハンドル（解放後 INVALID_HANDLE）。
      */
     void releaseHandle(int &fromHandle) {
         if (fromHandle == INVALID_HANDLE) {
@@ -294,13 +294,13 @@ private:
     int ema60Handles[TIMEFRAME_SIZE];
     
     /**
-     * 指定シンボル・パラメータでGMMAハンドルを初期化します。
+     * 指定シンボル・パラメータでGMMAハンドルを初期化する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromEma30Period 30期間EMA
-     * @param fromEma60Period 60期間EMA
-     * @param fromMaMethod MA計算方法
-     * @param fromAppliedPrice 価格種別
+     * @param fromSymbolName 対象シンボル。
+     * @param fromEma30Period 30期間EMA。
+     * @param fromEma60Period 60期間EMA。
+     * @param fromMaMethod MA計算方法。
+     * @param fromAppliedPrice 価格種別。
      */
     void initialize(string fromSymbolName,
                     int fromEma30Period,
@@ -315,11 +315,11 @@ private:
     /**
      * MarketContextを使用して初期化する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param fromEma30Period EMA30の期間
-     * @param fromEma60Period EMA60の期間
-     * @param fromMaMethod MA種別
-     * @param fromAppliedPrice 適用価格
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param fromEma30Period EMA30の期間。
+     * @param fromEma60Period EMA60の期間。
+     * @param fromMaMethod MA種別。
+     * @param fromAppliedPrice 適用価格。
      */
     void initialize(
         MarketContext &fromMarketContext,
@@ -351,10 +351,10 @@ private:
     }
 
     /**
-     * 時間足配列から指定時間足のインデックスを取得します。
+     * 時間足配列から指定時間足のインデックスを取得する。
      *
-     * @param timeFrame 検索対象時間足
-     * @return インデックス（未発見は -1）
+     * @param timeFrame 検索対象時間足。
+     * @return インデックス（未発見は -1）。
      */
     int findIndex(ENUM_TIMEFRAMES timeFrame) {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {

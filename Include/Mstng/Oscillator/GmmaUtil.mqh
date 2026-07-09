@@ -31,11 +31,11 @@ public:
      * 両方とも下降している場合は売りトレンドと判定する。
      * 上昇・下降が揃わない場合はトレンドなしとする。
      *
-     * @param ema30Before EMA30の1本前の値
-     * @param ema30Current EMA30の現在値
-     * @param ema60Before EMA60の1本前の値
-     * @param ema60Current EMA60の現在値
-     * @return GMMAトレンド
+     * @param ema30Before EMA30の1本前の値。
+     * @param ema30Current EMA30の現在値。
+     * @param ema60Before EMA60の1本前の値。
+     * @param ema60Current EMA60の現在値。
+     * @return GMMAトレンド。
      */
     static ENUM_GMMA_TREND getGmmaTrend(double ema30Before, double ema30Current,
                                         double ema60Before, double ema60Current) {

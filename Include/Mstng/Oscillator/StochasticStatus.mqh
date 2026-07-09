@@ -13,11 +13,11 @@
  */
 class StochasticStatus {
 public:
-    /** クロス継続数（正：上向き、負：下向き） */
+    /** クロス継続数（正：上向き、負：下向き）。 */
     int count;
-    /** Main0の最新値 */
+    /** Main0の最新値。 */
     double main0;
-    /** Signalの最新値 */
+    /** Signalの最新値。 */
     double signal0;
 
     /**
@@ -39,7 +39,7 @@ public:
     /**
      * プラス判定
      *
-     * @return プラスの場合は true
+     * @return プラスの場合は true。
      */
     bool isPlus() {
         return this.count > 0;
@@ -48,7 +48,7 @@ public:
     /**
      * カウント文字列取得
      *
-     * @return 符号付きカウント文字列
+     * @return 符号付きカウント文字列。
      */
     string getCountText() {
         return StringUtil::addSign(this.count);
@@ -57,8 +57,8 @@ public:
     /**
      * Main文字列取得
      *
-     * @param digitsValue 桁数
-     * @return Main文字列
+     * @param digitsValue 桁数。
+     * @return Main文字列。
      */
     string getMain0Text(const int digitsValue = 2) {
         return DoubleToString(this.main0, digitsValue);
@@ -67,8 +67,8 @@ public:
     /**
      * Signal文字列取得
      *
-     * @param digitsValue 桁数
-     * @return Signal文字列
+     * @param digitsValue 桁数。
+     * @return Signal文字列。
      */
     string getSignal0Text(const int digitsValue = 2) {
         return DoubleToString(this.signal0, digitsValue);
@@ -77,7 +77,7 @@ public:
     /**
      * ストキャス状態を簡易文字列で取得する。
      *
-     * @return /count/main/signal/ 形式
+     * @return /count/main/signal/ 形式。
      */
     string getText() {
         return StringFormat("/%s/%s/%s/", this.getCountText(), this.getMain0Text(), this.getSignal0Text());

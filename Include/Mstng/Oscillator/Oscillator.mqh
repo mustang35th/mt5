@@ -22,72 +22,72 @@
  * L = Long
  */
 enum ENUM_STOCHASTIC_MAIN_ORDER {
-    /** 未判定 */
+    /** 未判定。 */
     STOCH_MAIN_ORDER_NONE = 0,
 
-    /** Short >= Middle >= Long */
+    /** Short >= Middle >= Long。 */
     STOCH_MAIN_ORDER_S_M_L = 1,
 
-    /** Short >= Long >= Middle */
+    /** Short >= Long >= Middle。 */
     STOCH_MAIN_ORDER_S_L_M = 2,
 
-    /** Middle >= Short >= Long */
+    /** Middle >= Short >= Long。 */
     STOCH_MAIN_ORDER_M_S_L = 3,
 
-    /** Middle >= Long >= Short */
+    /** Middle >= Long >= Short。 */
     STOCH_MAIN_ORDER_M_L_S = 4,
 
-    /** Long >= Short >= Middle */
+    /** Long >= Short >= Middle。 */
     STOCH_MAIN_ORDER_L_S_M = 5,
 
-    /** Long >= Middle >= Short */
+    /** Long >= Middle >= Short。 */
     STOCH_MAIN_ORDER_L_M_S = 6,
 
-    /** 3本がほぼ同値 */
+    /** 3本がほぼ同値。 */
     STOCH_MAIN_ORDER_FLAT = 7
 };
 
 /**
  * ストキャスティクス、GMMA、EMA200、ATRを統合して
- * 売買判定とCSV文字列を提供するクラスです。
+ * 売買判定とCSV文字列を提供するクラス。
  */
 class Oscillator {
 public:
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** 短期ストキャス状態 */
+    /** 短期ストキャス状態。 */
     StochasticStatus stochasticShort;
-    /** 中期ストキャス状態 */
+    /** 中期ストキャス状態。 */
     StochasticStatus stochasticMiddle;
-    /** 長期ストキャス状態 */
+    /** 長期ストキャス状態。 */
     StochasticStatus stochasticLong;
 
-    /** GMMAのトレンド継続カウント */
+    /** GMMAのトレンド継続カウント。 */
     int gmmaTrendCount;
-    /** GMMAのトレンド転換クロスカウント */
+    /** GMMAのトレンド転換クロスカウント。 */
     int gmmaCrossCount;
 
-    /** EMA30現在値 */
+    /** EMA30現在値。 */
     double ema30;
 
-    /** EMA60現在値 */
+    /** EMA60現在値。 */
     double ema60;
 
-    /** EMA30とEMA60の差分pips値 */
+    /** EMA30とEMA60の差分pips値。 */
     double ema30Ema60DiffPips;
 
-    /** EMA200状態 */
+    /** EMA200状態。 */
     Ema200 ema200;
 
-    /** ATR14 pips値 */
+    /** ATR14 pips値。 */
     double atr14;
 
-    /** ストキャス/GMMAの総合判定値（売買での補助指標） */
+    /** ストキャス/GMMAの総合判定値（売買での補助指標）。 */
     int oscillatorCount;
-    /** BUY判定フラグ */
+    /** BUY判定フラグ。 */
     bool isBuy;
-    /** 3本ストキャスMain0の並び順 */
+    /** 3本ストキャスMain0の並び順。 */
     ENUM_STOCHASTIC_MAIN_ORDER stochasticMainOrder;
     
     /**
@@ -101,7 +101,7 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     Oscillator(MarketContext &fromMarketContext) {
         this.logger.setLevel(LOG_INFO);
@@ -117,7 +117,7 @@ public:
     /**
      * 分析対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.resetValues();
@@ -125,7 +125,7 @@ public:
     }
 
     /**
-     * ストキャス/GMMAを用いて売買方向フラグとoscillatorCountを設定します。
+     * ストキャス/GMMAを用いて売買方向フラグとoscillatorCountを設定する。
      */
     void setBuySell() {
         this.isBuy = false;
@@ -182,7 +182,7 @@ public:
      * 3本のMain0値から詳細な並び順ENUMを設定する。
      * 詳細状態は stochasticMainOrder だけで管理する。
      *
-     * @param isBuyValue BUY判定の場合は true
+     * @param isBuyValue BUY判定の場合は true。
      */
     void setStochasticMainOrderFlag(const bool isBuyValue) {
         this.stochasticMainOrder = this.determineStochasticMainOrder(
@@ -201,10 +201,10 @@ public:
     }
 
     /**
-     * CSV列を生成します。
+     * CSV列を生成する。
      *
-     * @param isDetail 詳細列を含める場合は true
-     * @return CSV文字列
+     * @param isDetail 詳細列を含める場合は true。
+     * @return CSV文字列。
      */
     string getCsv(bool isDetail = false) {
         string csv = "";
@@ -230,11 +230,11 @@ public:
     /**
      * 分析対象を指定してOscillator情報を更新する。
      *
-     * @param fromSymbolName 分析対象シンボル
-     * @param fromTimeFrame 分析対象時間足
-     * @param fromDigits 小数桁数
-     * @param oscillatorHandlePool Oscillatorハンドルプール
-     * @return 更新に成功した場合は true
+     * @param fromSymbolName 分析対象シンボル。
+     * @param fromTimeFrame 分析対象時間足。
+     * @param fromDigits 小数桁数。
+     * @param oscillatorHandlePool Oscillatorハンドルプール。
+     * @return 更新に成功した場合は true。
      */
     bool update(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, int fromDigits, OscillatorHandlePool *oscillatorHandlePool) {
         MarketContext context(
@@ -250,9 +250,9 @@ public:
     /**
      * 市場コンテキストを指定してOscillator情報を更新する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param oscillatorHandlePool Oscillatorハンドルプール
-     * @return 更新に成功した場合は true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param oscillatorHandlePool Oscillatorハンドルプール。
+     * @return 更新に成功した場合は true。
      */
     bool update(MarketContext &fromMarketContext, OscillatorHandlePool *oscillatorHandlePool) {
         this.resetValues();
@@ -299,9 +299,9 @@ public:
     }
 
     /**
-     * 解析結果を1行文字列に整形して返します。
+     * 解析結果を1行文字列に整形して返す。
      *
-     * @return 文字列表現
+     * @return 文字列表現。
      */
     string toString() {
         string result = "";
@@ -330,7 +330,7 @@ public:
     /**
      * 互換用：短期ストキャスカウント取得
      *
-     * @return カウント
+     * @return カウント。
      */
     int getStochasticShortCount() {
         return this.stochasticShort.count;
@@ -339,7 +339,7 @@ public:
     /**
      * 互換用：中期ストキャスカウント取得
      *
-     * @return カウント
+     * @return カウント。
      */
     int getStochasticMiddleCount() {
         return this.stochasticMiddle.count;
@@ -348,7 +348,7 @@ public:
     /**
      * 互換用：長期ストキャスカウント取得
      *
-     * @return カウント
+     * @return カウント。
      */
     int getStochasticLongCount() {
         return this.stochasticLong.count;
@@ -357,7 +357,7 @@ public:
     /**
      * ストキャスMain0並び順取得
      *
-     * @return ストキャスMain0並び順
+     * @return ストキャスMain0並び順。
      */
     ENUM_STOCHASTIC_MAIN_ORDER getStochasticMainOrder() {
         return this.stochasticMainOrder;
@@ -366,7 +366,7 @@ public:
     /**
      * ストキャスMain0並び順文字列取得
      *
-     * @return ストキャスMain0並び順文字列
+     * @return ストキャスMain0並び順文字列。
      */
     string getStochasticMainOrderText() {
         return this.convertStochasticMainOrderLabel(this.stochasticMainOrder);
@@ -377,7 +377,7 @@ public:
      *
      * SがLより上にある状態をBUY方向として扱う。
      *
-     * @return BUY方向の場合は true
+     * @return BUY方向の場合は true。
      */
     bool isBuyStochasticMainOrder() {
         return this.isBuyStochasticMainOrder(this.stochasticMainOrder);
@@ -388,8 +388,8 @@ public:
      *
      * SがLより上にある状態をBUY方向として扱う。
      *
-     * @param orderValue ストキャスMain0並び順
-     * @return BUY方向の場合は true
+     * @param orderValue ストキャスMain0並び順。
+     * @return BUY方向の場合は true。
      */
     bool isBuyStochasticMainOrder(const ENUM_STOCHASTIC_MAIN_ORDER orderValue) {
         return orderValue == STOCH_MAIN_ORDER_S_M_L
@@ -402,7 +402,7 @@ public:
      *
      * LがSより上にある状態をSELL方向として扱う。
      *
-     * @return SELL方向の場合は true
+     * @return SELL方向の場合は true。
      */
     bool isSellStochasticMainOrder() {
         return this.isSellStochasticMainOrder(this.stochasticMainOrder);
@@ -413,8 +413,8 @@ public:
      *
      * LがSより上にある状態をSELL方向として扱う。
      *
-     * @param orderValue ストキャスMain0並び順
-     * @return SELL方向の場合は true
+     * @param orderValue ストキャスMain0並び順。
+     * @return SELL方向の場合は true。
      */
     bool isSellStochasticMainOrder(const ENUM_STOCHASTIC_MAIN_ORDER orderValue) {
         return orderValue == STOCH_MAIN_ORDER_M_L_S
@@ -425,7 +425,7 @@ public:
     /**
      * 現在のストキャスMain0並び順の売買方向文字列取得
      *
-     * @return BUY / SELL / NONE
+     * @return BUY / SELL / NONE。
      */
     string getStochasticMainOrderDirectionText() {
         return this.getStochasticMainOrderDirectionText(this.stochasticMainOrder);
@@ -434,8 +434,8 @@ public:
     /**
      * 指定したストキャスMain0並び順の売買方向文字列取得
      *
-     * @param orderValue ストキャスMain0並び順
-     * @return BUY / SELL / NONE
+     * @param orderValue ストキャスMain0並び順。
+     * @return BUY / SELL / NONE。
      */
     string getStochasticMainOrderDirectionText(const ENUM_STOCHASTIC_MAIN_ORDER orderValue) {
         if (this.isBuyStochasticMainOrder(orderValue)) {
@@ -452,7 +452,7 @@ public:
     /**
      * ストキャスMain0並び順カラー取得
      *
-     * @return ストキャスMain0並び順カラー
+     * @return ストキャスMain0並び順カラー。
      */
     color getStochasticMainOrderColor() {
         return this.convertStochasticMainOrderColor(this.stochasticMainOrder);
@@ -461,7 +461,7 @@ public:
     /**
      * ストキャスMain0並び順カラーラベル取得
      *
-     * @return ストキャスMain0並び順カラーラベル
+     * @return ストキャスMain0並び順カラーラベル。
      */
     string getStochasticMainOrderColorLabel() {
         return this.convertStochasticMainOrderColorLabel(this.stochasticMainOrder);
@@ -471,8 +471,8 @@ public:
     /**
      * EMA30文字列取得
      *
-     * @param digitsValue 桁数
-     * @return EMA30文字列
+     * @param digitsValue 桁数。
+     * @return EMA30文字列。
      */
     string getEma30Text(const int digitsValue) {
         return DoubleToString(this.ema30, digitsValue);
@@ -481,8 +481,8 @@ public:
     /**
      * EMA60文字列取得
      *
-     * @param digitsValue 桁数
-     * @return EMA60文字列
+     * @param digitsValue 桁数。
+     * @return EMA60文字列。
      */
     string getEma60Text(const int digitsValue) {
         return DoubleToString(this.ema60, digitsValue);
@@ -491,8 +491,8 @@ public:
     /**
      * EMA30とEMA60の差分pips文字列取得
      *
-     * @param digitsValue 桁数
-     * @return EMA30とEMA60の差分pips文字列
+     * @param digitsValue 桁数。
+     * @return EMA30とEMA60の差分pips文字列。
      */
     string getEma30Ema60DiffPipsText(const int digitsValue = 1) {
         return DoubleToString(this.ema30Ema60DiffPips, digitsValue);
@@ -501,9 +501,9 @@ public:
     /**
      * EMA CSV取得
      *
-     * @param priceDigitsValue 価格桁数
-     * @param pipsDigitsValue pips桁数
-     * @return EMA CSV文字列
+     * @param priceDigitsValue 価格桁数。
+     * @param pipsDigitsValue pips桁数。
+     * @return EMA CSV文字列。
      */
     string getEmaCsv(const int priceDigitsValue, const int pipsDigitsValue = 1) {
         return this.getEma30Text(priceDigitsValue)
@@ -516,8 +516,8 @@ public:
     /**
      * ATR14文字列取得
      *
-     * @param digitsValue 桁数
-     * @return ATR14文字列
+     * @param digitsValue 桁数。
+     * @return ATR14文字列。
      */
     string getAtr14Text(const int digitsValue = 1) {
         return DoubleToString(this.atr14, digitsValue);
@@ -526,8 +526,8 @@ public:
     /**
      * ATR14 CSV取得
      *
-     * @param digitsValue 桁数
-     * @return ATR14 CSV文字列
+     * @param digitsValue 桁数。
+     * @return ATR14 CSV文字列。
      */
     string getAtr14Csv(const int digitsValue = 1) {
         return this.getAtr14Text(digitsValue) + ",";
@@ -536,7 +536,7 @@ public:
     /**
      * EMA200がBUY方向か
      *
-     * @return BUY方向の場合は true
+     * @return BUY方向の場合は true。
      */
     bool isEma200Buy() {
         return this.ema200.isBuy;
@@ -545,7 +545,7 @@ public:
     /**
      * EMA200がSELL方向か
      *
-     * @return SELL方向の場合は true
+     * @return SELL方向の場合は true。
      */
     bool isEma200Sell() {
         return this.ema200.isSell;
@@ -558,7 +558,7 @@ private:
     /**
      * 市場コンテキストと互換用フィールドを初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
@@ -569,7 +569,7 @@ private:
     }
 
     /**
-     * 内部状態を初期化します。
+     * 内部状態を初期化する。
      */
     void resetValues() {
         this.stochasticShort.resetValues();
@@ -590,9 +590,9 @@ private:
     /**
      * ストキャス状態CSV取得
      *
-     * @param labelValue ラベル
-     * @param stochasticStatus ストキャス状態
-     * @return CSV文字列
+     * @param labelValue ラベル。
+     * @param stochasticStatus ストキャス状態。
+     * @return CSV文字列。
      */
     string getStochasticStatusCsv(
         StochasticStatus &stochasticStatus
@@ -608,7 +608,7 @@ private:
     /**
      * GMMA CSV取得
      *
-     * @return CSV文字列
+     * @return CSV文字列。
      */
     string getGmmaCsv() {
         return StringFormat(
@@ -621,17 +621,17 @@ private:
     /**
      * EMA200 CSV取得
      *
-     * @return EMA200 CSV文字列
+     * @return EMA200 CSV文字列。
      */
     string getEma200Csv() {
         return this.ema200.getCsv() + ",";
     }
 
     /**
-     * GMMA情報（トレンド/クロス/EMA30,60）を更新します。
+     * GMMA情報（トレンド/クロス/EMA30,60）を更新する。
      *
-     * @param oscillatorHandlePool ハンドルプール
-     * @return 更新できた場合は true
+     * @param oscillatorHandlePool ハンドルプール。
+     * @return 更新できた場合は true。
      */
     bool setGmma(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
@@ -697,8 +697,8 @@ private:
     /**
      * EMA200設定
      *
-     * @param oscillatorHandlePool オシレーターハンドルプール
-     * @return 設定できた場合は true
+     * @param oscillatorHandlePool オシレーターハンドルプール。
+     * @return 設定できた場合は true。
      */
     bool setEma200(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
@@ -750,9 +750,9 @@ private:
     /**
      * 価格差をpipsへ変換
      *
-     * @param fromMarketContext 変換対象の市場コンテキスト
-     * @param priceDifferenceValue 価格差
-     * @return pips値
+     * @param fromMarketContext 変換対象の市場コンテキスト。
+     * @param priceDifferenceValue 価格差。
+     * @return pips値。
      */
     double convertPriceDifferenceToPips(
         MarketContext &fromMarketContext,
@@ -770,8 +770,8 @@ private:
     /**
      * 1pips相当の価格幅を取得
      *
-     * @param fromMarketContext 変換対象の市場コンテキスト
-     * @return 1pips相当の価格幅
+     * @param fromMarketContext 変換対象の市場コンテキスト。
+     * @return 1pips相当の価格幅。
      */
     double getPointPerPip(MarketContext &fromMarketContext) {
         double point = fromMarketContext.getPoint();
@@ -787,8 +787,8 @@ private:
     /**
      * ATR14設定
      *
-     * @param oscillatorHandlePool オシレーターハンドルプール
-     * @return 設定できた場合は true
+     * @param oscillatorHandlePool オシレーターハンドルプール。
+     * @return 設定できた場合は true。
      */
     bool setAtr14(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
@@ -834,10 +834,10 @@ private:
     }
 
     /**
-     * 短期ストキャスの更新を実行します。
+     * 短期ストキャスの更新を実行する。
      *
-     * @param oscillatorHandlePool ハンドルプール
-     * @return 更新できた場合は true
+     * @param oscillatorHandlePool ハンドルプール。
+     * @return 更新できた場合は true。
      */
     bool setStochasticShort(OscillatorHandlePool *oscillatorHandlePool) {
         return this.setStochasticCommon(oscillatorHandlePool.getStochasticShortHandlePool(),
@@ -846,10 +846,10 @@ private:
     }
 
     /**
-     * 中期ストキャスの更新を実行します。
+     * 中期ストキャスの更新を実行する。
      *
-     * @param oscillatorHandlePool ハンドルプール
-     * @return 更新できた場合は true
+     * @param oscillatorHandlePool ハンドルプール。
+     * @return 更新できた場合は true。
      */
     bool setStochasticMiddle(OscillatorHandlePool *oscillatorHandlePool) {
         return this.setStochasticCommon(oscillatorHandlePool.getStochasticMiddleHandlePool(),
@@ -858,10 +858,10 @@ private:
     }
 
     /**
-     * 長期ストキャスの更新を実行します。
+     * 長期ストキャスの更新を実行する。
      *
-     * @param oscillatorHandlePool ハンドルプール
-     * @return 更新できた場合は true
+     * @param oscillatorHandlePool ハンドルプール。
+     * @return 更新できた場合は true。
      */
     bool setStochasticLong(OscillatorHandlePool *oscillatorHandlePool) {
         return this.setStochasticCommon(oscillatorHandlePool.getStochasticLongHandlePool(),
@@ -872,10 +872,10 @@ private:
     /**
      * ストキャス共通更新処理（Count/Main0/Signal0を取得）を行います。
      *
-     * @param stochasticHandlePool ストキャスハンドルプール
-     * @param outStatus          出力先ステータス
-     * @param label              ラベル（Short/Middle/Long）
-     * @return 更新できた場合は true
+     * @param stochasticHandlePool ストキャスハンドルプール。
+     * @param outStatus          出力先ステータス。
+     * @param label              ラベル（Short/Middle/Long）。
+     * @return 更新できた場合は true。
      */
     bool setStochasticCommon(StochasticHandlePool *stochasticHandlePool,
                              StochasticStatus &outStatus,
@@ -903,11 +903,11 @@ private:
     /**
      * ストキャスMain0並び順判定
      *
-     * @param shortMainValue 短期Main0
-     * @param middleMainValue 中期Main0
-     * @param longMainValue 長期Main0
-     * @param epsilonValue 同値判定の許容差
-     * @return ストキャスMain0並び順
+     * @param shortMainValue 短期Main0。
+     * @param middleMainValue 中期Main0。
+     * @param longMainValue 長期Main0。
+     * @param epsilonValue 同値判定の許容差。
+     * @return ストキャスMain0並び順。
      */
     ENUM_STOCHASTIC_MAIN_ORDER determineStochasticMainOrder(
         const double shortMainValue,
@@ -955,8 +955,8 @@ private:
      *
      * 買い方向は青系、売り方向は赤系、中立はグレー系にする。
      *
-     * @param orderValue ストキャスMain0並び順
-     * @return 色
+     * @param orderValue ストキャスMain0並び順。
+     * @return 色。
      */
     color convertStochasticMainOrderColor(const ENUM_STOCHASTIC_MAIN_ORDER orderValue) {
         switch (orderValue) {
@@ -995,8 +995,8 @@ private:
     /**
      * ストキャスMain0並び順カラーラベル変換
      *
-     * @param orderValue ストキャスMain0並び順
-     * @return 色ラベル
+     * @param orderValue ストキャスMain0並び順。
+     * @return 色ラベル。
      */
     string convertStochasticMainOrderColorLabel(const ENUM_STOCHASTIC_MAIN_ORDER orderValue) {
         switch (orderValue) {
@@ -1028,8 +1028,8 @@ private:
     /**
      * ストキャスMain0並び順ラベル変換
      *
-     * @param orderValue ストキャスMain0並び順
-     * @return ラベル
+     * @param orderValue ストキャスMain0並び順。
+     * @return ラベル。
      */
     string convertStochasticMainOrderLabel(const ENUM_STOCHASTIC_MAIN_ORDER orderValue) {
         switch (orderValue) {
@@ -1059,10 +1059,10 @@ private:
     }
 
     /**
-     * 真偽値を PLUS/MINUS ラベルに変換します。
+     * 真偽値を PLUS/MINUS ラベルに変換する。
      *
-     * @param isPlus 判定対象
-     * @return "PLUS" または "MINUS"
+     * @param isPlus 判定対象。
+     * @return "PLUS" または "MINUS"。
      */
     string convertPlusMinusLabel(bool isPlus) {
         if (isPlus) {
@@ -1072,10 +1072,10 @@ private:
     }
 
     /**
-     * 真偽値を文字列に変換します。
+     * 真偽値を文字列に変換する。
      *
-     * @param value 判定値
-     * @return "true" または "false"
+     * @param value 判定値。
+     * @return "true" または "false"。
      */
     string convertBoolLabel(bool value) {
         if (value) {
@@ -1085,10 +1085,10 @@ private:
     }
 
     /**
-     * 売買フラグをラベル文字列に変換します。
+     * 売買フラグをラベル文字列に変換する。
      *
-     * @param isBuyValue BUYフラグ
-     * @return "BUY" または "SELL"
+     * @param isBuyValue BUYフラグ。
+     * @return "BUY" または "SELL"。
      */
     string convertBuySellLabel(bool isBuyValue) {
         if (isBuyValue) {

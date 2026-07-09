@@ -23,13 +23,13 @@
  */
 class OscillatorHandleManager : public CObject {
 public:
-    /** 複数シンボルのハンドル生成範囲を表す市場コンテキスト */
+    /** 複数シンボルのハンドル生成範囲を表す市場コンテキスト。 */
     MarketContext marketContext;
 
     /**
      * 終端時間足を指定してシンボル別ハンドルプールを初期化する。
      *
-     * @param fromTimeFrame ハンドルを生成する終端時間足
+     * @param fromTimeFrame ハンドルを生成する終端時間足。
      */
     OscillatorHandleManager(const ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(
@@ -44,7 +44,7 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     OscillatorHandleManager(MarketContext &fromMarketContext) {
         this.initialize(fromMarketContext);
@@ -64,7 +64,7 @@ public:
      *
      * 既存のシンボル別プールを削除してから再構築する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.clear();
@@ -74,7 +74,7 @@ public:
     /**
      * 管理しているハンドルプール数を取得する。
      *
-     * @return ハンドルプール数
+     * @return ハンドルプール数。
      */
     int size() const {
         return this.poolList.Total();
@@ -83,8 +83,8 @@ public:
     /**
      * インデックスに対応するハンドルプールを取得する。
      *
-     * @param index 取得対象インデックス
-     * @return 対応するハンドルプール。範囲外の場合NULL
+     * @param index 取得対象インデックス。
+     * @return 対応するハンドルプール。範囲外の場合NULL。
      */
     OscillatorHandlePool* getPoolByIndex(const int index) {
         if (index < 0 || index >= this.poolList.Total()) {
@@ -98,8 +98,8 @@ public:
      *
      * シンボル名の先頭6文字を検索キーとして使用する。
      *
-     * @param fromSymbolName 取得対象シンボル
-     * @return 対応するハンドルプール。存在しない場合NULL
+     * @param fromSymbolName 取得対象シンボル。
+     * @return 対応するハンドルプール。存在しない場合NULL。
      */
     OscillatorHandlePool* getPoolBySymbol(const string fromSymbolName) {
         const string key = StringSubstr(fromSymbolName, 0, 6);
@@ -122,8 +122,8 @@ public:
     /**
      * MarketContextに対応するハンドルプールを取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @return 対応するハンドルプール。存在しない場合NULL
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @return 対応するハンドルプール。存在しない場合NULL。
      */
     OscillatorHandlePool *getPoolByMarketContext(MarketContext &fromMarketContext) {
         return this.getPoolBySymbol(fromMarketContext.symbolName);
@@ -188,16 +188,16 @@ public:
     }
 
 private:
-    /** ハンドルプール生成対象のシンボル一覧 */
+    /** ハンドルプール生成対象のシンボル一覧。 */
     SymbolNameInfoAll symbolNameInfoAll;
 
-    /** シンボル別OscillatorHandlePool一覧 */
+    /** シンボル別OscillatorHandlePool一覧。 */
     CArrayObj poolList;
 
     /**
      * 市場コンテキストを初期化し、シンボル別プールを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void initialize(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;

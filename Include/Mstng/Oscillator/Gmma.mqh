@@ -15,11 +15,11 @@
 #include <Mstng\Util\StringUtil.mqh>
 
 /**
- * EMA30/EMA60差分を用いてGMMAトレンドを評価するための分析クラスです。
+ * EMA30/EMA60差分を用いてGMMAトレンドを評価するための分析クラス。
  */
 class Gmma {
 public:
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
 
     /**
@@ -36,7 +36,7 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     Gmma(MarketContext &fromMarketContext) {
         this.logger.setLevel(LOG_INFO);
@@ -50,7 +50,7 @@ public:
     /**
      * GMMAハンドルプールを指定して初期化する。
      *
-     * @param fromGmmaHandlePool GMMAハンドルプール
+     * @param fromGmmaHandlePool GMMAハンドルプール。
      */
     Gmma(GmmaHandlePool *fromGmmaHandlePool) {
         this.logger.setLevel(LOG_INFO);
@@ -63,8 +63,8 @@ public:
     /**
      * 市場コンテキストとGMMAハンドルプールを指定して初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param fromGmmaHandlePool GMMAハンドルプール
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromGmmaHandlePool GMMAハンドルプール。
      */
     Gmma(MarketContext &fromMarketContext, GmmaHandlePool *fromGmmaHandlePool) {
         this.logger.setLevel(LOG_INFO);
@@ -76,9 +76,9 @@ public:
     }
 
     /**
-     * GMMAハンドルプールを設定します。
+     * GMMAハンドルプールを設定する。
      *
-     * @param fromGmmaHandlePool GMMAハンドルプール
+     * @param fromGmmaHandlePool GMMAハンドルプール。
      */
     void setGmmaHandlePool(GmmaHandlePool *fromGmmaHandlePool) {
         this.gmmaHandlePool = fromGmmaHandlePool;
@@ -90,7 +90,7 @@ public:
     /**
      * 分析対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
@@ -111,9 +111,9 @@ public:
     /**
      * シンボル/時間足指定でGMMAクロス継続件数を取得する。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @return プラス方向は正、マイナス方向は負。取得失敗時は0
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @return プラス方向は正、マイナス方向は負。取得失敗時は0。
      */
     int getCrossCount(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         int count = 0;
@@ -126,8 +126,8 @@ public:
     /**
      * 市場コンテキストを指定してGMMAクロス継続件数を取得する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @return プラス方向は正、マイナス方向は負の継続件数。取得失敗時は0
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @return プラス方向は正、マイナス方向は負の継続件数。取得失敗時は0。
      */
     int getCrossCount(MarketContext &fromMarketContext) {
         int count = 0;
@@ -142,9 +142,9 @@ public:
     /**
      * シンボル/時間足指定でGMMAトレンド継続件数を取得する。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @return BUY方向は正、SELL方向は負。取得失敗時は0
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @return BUY方向は正、SELL方向は負。取得失敗時は0。
      */
     int getTrendCount(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         int count = 0;
@@ -159,8 +159,8 @@ public:
     /**
      * 市場コンテキストを指定してGMMAトレンド継続件数を取得する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @return BUY方向は正、SELL方向は負の継続件数。取得失敗時は0
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @return BUY方向は正、SELL方向は負の継続件数。取得失敗時は0。
      */
     int getTrendCount(MarketContext &fromMarketContext) {
         int count = 0;
@@ -179,10 +179,10 @@ public:
      * GmmaUtil::getGmmaTrend の戻り値が連続している本数を返す。
      * BUY は正の値、SELL は負の値、NON は 0 を返す。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param count 件数
-     * @return 取得できた場合 true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param count 件数。
+     * @return 取得できた場合 true。
      */
     bool getTrendCount(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, int &count) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -193,9 +193,9 @@ public:
     /**
      * 市場コンテキストを指定してGMMAトレンド継続件数を取得する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param count BUY方向は正、SELL方向は負の継続件数
-     * @return 取得できた場合は true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param count BUY方向は正、SELL方向は負の継続件数。
+     * @return 取得できた場合は true。
      */
     bool getTrendCount(MarketContext &fromMarketContext, int &count) {
         this.initializeMarketContext(fromMarketContext);
@@ -314,10 +314,10 @@ public:
     /**
      * シンボル名と時間足を指定して GMMA クロス継続件数を取得する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromTimeFrame 対象時間足
-     * @param count 出力: クロス継続件数
-     * @return 取得できた場合は true
+     * @param fromSymbolName 対象シンボル。
+     * @param fromTimeFrame 対象時間足。
+     * @param count 出力: クロス継続件数。
+     * @return 取得できた場合は true。
      */
     bool getCrossCount(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, int &count) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -328,9 +328,9 @@ public:
     /**
      * 市場コンテキストを指定してGMMAクロス継続件数を取得する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param count プラス方向は正、マイナス方向は負の継続件数
-     * @return 取得できた場合は true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param count プラス方向は正、マイナス方向は負の継続件数。
+     * @return 取得できた場合は true。
      */
     bool getCrossCount(MarketContext &fromMarketContext, int &count) {
         this.initializeMarketContext(fromMarketContext);
@@ -404,12 +404,12 @@ public:
     /**
      * EMA30/EMA60値を取得
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param shiftValue シフト
-     * @param ema30Value EMA30値
-     * @param ema60Value EMA60値
-     * @return 取得できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param shiftValue シフト。
+     * @param ema30Value EMA30値。
+     * @param ema60Value EMA60値。
+     * @return 取得できた場合は true。
      */
     bool getEmaValues(
         string fromSymbolName,
@@ -426,11 +426,11 @@ public:
     /**
      * 市場コンテキストを指定してEMA30およびEMA60を取得する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param shiftValue シフト
-     * @param ema30Value EMA30値
-     * @param ema60Value EMA60値
-     * @return 取得できた場合は true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param shiftValue シフト。
+     * @param ema30Value EMA30値。
+     * @param ema60Value EMA60値。
+     * @return 取得できた場合は true。
      */
     bool getEmaValues(
         MarketContext &fromMarketContext,
@@ -493,7 +493,7 @@ public:
     }
 
 private:
-    /** GMMAハンドルに対応する市場コンテキスト */
+    /** GMMAハンドルに対応する市場コンテキスト。 */
     MarketContext handleMarketContext;
 
     /** 30期間EMAハンドル。 */
@@ -510,7 +510,7 @@ private:
     /**
      * 市場コンテキストを初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
@@ -520,9 +520,9 @@ private:
     /**
      * シンボル名と時間足でGMMAの初期化を行う。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromTimeFrame 対象時間足
-     * @return 初期化できた場合は true
+     * @param fromSymbolName 対象シンボル。
+     * @param fromTimeFrame 対象時間足。
+     * @return 初期化できた場合は true。
      */
     bool ensureInitialized(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -533,8 +533,8 @@ private:
     /**
      * 市場コンテキストを使用してGMMAハンドルを初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @return 初期化できた場合は true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @return 初期化できた場合は true。
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.gmmaHandlePool != NULL) {
@@ -603,9 +603,9 @@ private:
     /**
      * EMA30/EMA60の差分方向を比較する。
      *
-     * @param ema30 EMA30値
-     * @param ema60 EMA60値
-     * @return EMA30 >= EMA60 のとき true
+     * @param ema30 EMA30値。
+     * @param ema60 EMA60値。
+     * @return EMA30 >= EMA60 のとき true。
      */
     bool isPlus(double ema30, double ema60) {
         return (ema30 >= ema60);

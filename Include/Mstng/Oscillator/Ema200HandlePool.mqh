@@ -14,7 +14,7 @@
 #include <Mstng\Oscillator\HandlePoolBase.mqh>
 
 /**
- * EMA200のハンドルを時間足ごとに管理するクラスです。
+ * EMA200のハンドルを時間足ごとに管理するクラス。
  *
  * 対象時間足:
  * - MN1, W1, D1, H4, H1, M15, M5, M1
@@ -34,10 +34,10 @@ public:
     /**
      * コンストラクタ
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromEmaPeriod EMA期間
-     * @param fromMaMethod MA種別
-     * @param fromAppliedPrice 適用価格
+     * @param fromSymbolName 対象シンボル。
+     * @param fromEmaPeriod EMA期間。
+     * @param fromMaMethod MA種別。
+     * @param fromAppliedPrice 適用価格。
      */
     Ema200HandlePool(string fromSymbolName,
                      int fromEmaPeriod,
@@ -49,10 +49,10 @@ public:
     /**
      * MarketContextを使用して初期化する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param fromEmaPeriod EMA期間
-     * @param fromMaMethod MA種別
-     * @param fromAppliedPrice 適用価格
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param fromEmaPeriod EMA期間。
+     * @param fromMaMethod MA種別。
+     * @param fromAppliedPrice 適用価格。
      */
     Ema200HandlePool(
         MarketContext &fromMarketContext,
@@ -73,17 +73,17 @@ public:
     /**
      * ハンドル生成対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.ensureMarketContext(fromMarketContext);
     }
 
     /**
-     * MN1 から指定時間足までのハンドルを生成します。
+     * MN1 から指定時間足までのハンドルを生成する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param lastTimeFrame 生成対象の終端時間足
+     * @param fromSymbolName 対象シンボル。
+     * @param lastTimeFrame 生成対象の終端時間足。
      */
     void setTimeframesFromMn1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -94,17 +94,17 @@ public:
     /**
      * 市場コンテキストを使用してMN1から指定時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setTimeframesFromMn1To(MarketContext &fromMarketContext) {
         HandlePoolBase::setTimeframesFromMn1To(fromMarketContext);
     }
 
     /**
-     * D1 から指定時間足までのハンドルを生成します。
+     * D1 から指定時間足までのハンドルを生成する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param lastTimeFrame 生成対象の終端時間足
+     * @param fromSymbolName 対象シンボル。
+     * @param lastTimeFrame 生成対象の終端時間足。
      */
     void setTimeframesFromD1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -115,20 +115,20 @@ public:
     /**
      * 市場コンテキストを使用してD1から指定時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setTimeframesFromD1To(MarketContext &fromMarketContext) {
         HandlePoolBase::setTimeframesFromD1To(fromMarketContext);
     }
 
     /**
-     * パラメータを設定します。
+     * パラメータを設定する。
      *
-     * 既存ハンドルはパラメータが変わった場合のみ全解放します。
+     * 既存ハンドルはパラメータが変わった場合のみ全解放する。
      *
-     * @param fromEmaPeriod EMA期間
-     * @param fromMaMethod MA種別
-     * @param fromAppliedPrice 適用価格
+     * @param fromEmaPeriod EMA期間。
+     * @param fromMaMethod MA種別。
+     * @param fromAppliedPrice 適用価格。
      */
     void setParameters(int fromEmaPeriod,
                        ENUM_MA_METHOD fromMaMethod,
@@ -160,12 +160,12 @@ public:
     }
 
     /**
-     * EMA200ハンドルを取得します。
+     * EMA200ハンドルを取得する。
      *
-     * 未生成の場合は生成します。
+     * 未生成の場合は生成する。
      *
-     * @param timeFrame 対象時間足
-     * @return EMA200ハンドル
+     * @param timeFrame 対象時間足。
+     * @return EMA200ハンドル。
      */
     int getEma200Handle(ENUM_TIMEFRAMES timeFrame) {
         int index = this.findIndex(timeFrame);
@@ -182,7 +182,7 @@ public:
     }
 
     /**
-     * 全ハンドルを解放します。
+     * 全ハンドルを解放する。
      */
     void releaseAll() {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
@@ -192,9 +192,9 @@ public:
 
 protected:
     /**
-     * 指定indexのハンドルを必要に応じて生成します。
+     * 指定indexのハンドルを必要に応じて生成する。
      *
-     * @param index 時間足index
+     * @param index 時間足index。
      */
     virtual void createIfNeeded(int index) {
         if (index < 0 || index >= TIMEFRAME_SIZE) {
@@ -221,9 +221,9 @@ protected:
     }
 
     /**
-     * 指定indexのハンドルを解放します。
+     * 指定indexのハンドルを解放する。
      *
-     * @param index 時間足index
+     * @param index 時間足index。
      */
     virtual void releaseAt(int index) {
         if (index < 0 || index >= TIMEFRAME_SIZE) {
@@ -245,12 +245,12 @@ private:
     int ema200Handles[TIMEFRAME_SIZE];
 
     /**
-     * 初期化します。
+     * 初期化する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromEmaPeriod EMA期間
-     * @param fromMaMethod MA種別
-     * @param fromAppliedPrice 適用価格
+     * @param fromSymbolName 対象シンボル。
+     * @param fromEmaPeriod EMA期間。
+     * @param fromMaMethod MA種別。
+     * @param fromAppliedPrice 適用価格。
      */
     void initialize(string fromSymbolName,
                     int fromEmaPeriod,
@@ -264,10 +264,10 @@ private:
     /**
      * MarketContextを使用して初期化する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param fromEmaPeriod EMA期間
-     * @param fromMaMethod MA種別
-     * @param fromAppliedPrice 適用価格
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param fromEmaPeriod EMA期間。
+     * @param fromMaMethod MA種別。
+     * @param fromAppliedPrice 適用価格。
      */
     void initialize(
         MarketContext &fromMarketContext,

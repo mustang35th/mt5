@@ -13,19 +13,18 @@
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
- * AverageTrueRange指標の参照を行うクラス。
- * 市場コンテキストを元にATR値・pips値を取得する。
- * ATR（平均値レンジ）を参照するための軽量ラッパークラスです。
+ * ATR（Average True Range）を参照する軽量ラッパークラス。
+ * 市場コンテキストを元にATR値とpips換算値を取得する。
  */
 class AverageTrueRange {
 public:
-    /** ATR取得対象の市場コンテキスト */
+    /** ATR取得対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** ATR価格値 */
+    /** ATR価格値。 */
     double atrValue;
 
-    /** ATR pips値 */
+    /** ATR pips値。 */
     double atrPips;
 
     /**
@@ -44,7 +43,7 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     * @param fromMarketContext ATR取得対象の市場コンテキスト。
      */
     AverageTrueRange(MarketContext &fromMarketContext) {
         this.averageTrueRangeHandlePool = NULL;
@@ -58,7 +57,7 @@ public:
     /**
      * コンストラクタ
      *
-     * @param fromAverageTrueRangeHandlePool ATRハンドルプール
+     * @param fromAverageTrueRangeHandlePool ATRハンドルプール。
      */
     AverageTrueRange(AverageTrueRangeHandlePool *fromAverageTrueRangeHandlePool) {
         this.averageTrueRangeHandlePool = fromAverageTrueRangeHandlePool;
@@ -71,8 +70,8 @@ public:
     /**
      * 市場コンテキストとATRハンドルプールを指定して初期化する。
      *
-     * @param fromMarketContext ATR取得対象の市場コンテキスト
-     * @param fromAverageTrueRangeHandlePool ATRハンドルプール
+     * @param fromMarketContext ATR取得対象の市場コンテキスト。
+     * @param fromAverageTrueRangeHandlePool ATRハンドルプール。
      */
     AverageTrueRange(
         MarketContext &fromMarketContext,
@@ -89,7 +88,7 @@ public:
     /**
      * ATRハンドルプールを設定する。
      *
-     * @param fromAverageTrueRangeHandlePool ATRハンドルプール
+     * @param fromAverageTrueRangeHandlePool ATRハンドルプール。
      */
     void setAverageTrueRangeHandlePool(AverageTrueRangeHandlePool *fromAverageTrueRangeHandlePool) {
         this.averageTrueRangeHandlePool = fromAverageTrueRangeHandlePool;
@@ -99,7 +98,7 @@ public:
     /**
      * ATR取得対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     * @param fromMarketContext ATR取得対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
@@ -108,11 +107,11 @@ public:
     /**
      * ATR価格値を取得する。
      *
-     * @param symbolNameValue シンボル名
-     * @param timeFrameValue 時間足
-     * @param shiftValue シフト
-     * @param atrValueResult ATR価格値
-     * @return 取得できた場合は true
+     * @param symbolNameValue シンボル名。
+     * @param timeFrameValue 時間足。
+     * @param shiftValue シフト。
+     * @param atrValueResult ATR価格値。
+     * @return 取得できた場合は true。
      */
     bool getAtrValue(
         const string symbolNameValue,
@@ -128,10 +127,10 @@ public:
     /**
      * 市場コンテキストを使用してATR価格値を取得する。
      *
-     * @param fromMarketContext ATR取得対象の市場コンテキスト
-     * @param shiftValue シフト
-     * @param atrValueResult ATR価格値
-     * @return 取得できた場合は true
+     * @param fromMarketContext ATR取得対象の市場コンテキスト。
+     * @param shiftValue シフト。
+     * @param atrValueResult ATR価格値。
+     * @return 取得できた場合は true。
      */
     bool getAtrValue(
         MarketContext &fromMarketContext,
@@ -181,11 +180,11 @@ public:
     /**
      * ATR pips値を取得する。
      *
-     * @param symbolNameValue シンボル名
-     * @param timeFrameValue 時間足
-     * @param shiftValue シフト
-     * @param atrPipsResult ATR pips値
-     * @return 取得できた場合は true
+     * @param symbolNameValue シンボル名。
+     * @param timeFrameValue 時間足。
+     * @param shiftValue シフト。
+     * @param atrPipsResult ATR pips値。
+     * @return 取得できた場合は true。
      */
     bool getAtrPips(
         const string symbolNameValue,
@@ -201,10 +200,10 @@ public:
     /**
      * 市場コンテキストを使用してATRのpips値を取得する。
      *
-     * @param fromMarketContext ATR取得対象の市場コンテキスト
-     * @param shiftValue シフト
-     * @param atrPipsResult ATR pips値
-     * @return 取得できた場合は true
+     * @param fromMarketContext ATR取得対象の市場コンテキスト。
+     * @param shiftValue シフト。
+     * @param atrPipsResult ATR pips値。
+     * @return 取得できた場合は true。
      */
     bool getAtrPips(
         MarketContext &fromMarketContext,
@@ -227,8 +226,8 @@ public:
     /**
      * pips文字列を取得する。
      *
-     * @param digitsValue 小数桁数
-     * @return pips文字列
+     * @param digitsValue 小数桁数。
+     * @return pips文字列。
      */
     string getAtrPipsText(const int digitsValue = 1) {
         return DoubleToString(this.atrPips, digitsValue);
@@ -238,28 +237,28 @@ private:
     /**
      * 市場コンテキストとロガーを初期化する。
      *
-     * @param fromMarketContext ATR取得対象の市場コンテキスト
+     * @param fromMarketContext ATR取得対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
         this.logger.setMarketContext(this.marketContext);
     }
 
-    /** ATRハンドルプール */
+    /** ATRハンドルプール。 */
     AverageTrueRangeHandlePool *averageTrueRangeHandlePool;
 
-    /** ハンドル */
+    /** ハンドル。 */
     int handle;
 
-    /** ロガー */
+    /** ロガー。 */
     Logger logger;
 
     /**
      * 初期化確認を行う。
      *
-     * @param symbolNameValue シンボル名
-     * @param timeFrameValue 時間足
-     * @return 初期化できた場合は true
+     * @param symbolNameValue シンボル名。
+     * @param timeFrameValue 時間足。
+     * @return 初期化できた場合は true。
      */
     bool ensureInitialized(const string symbolNameValue, const ENUM_TIMEFRAMES timeFrameValue) {
         MarketContext context(symbolNameValue, timeFrameValue);
@@ -270,8 +269,8 @@ private:
     /**
      * 市場コンテキストを使用して初期化を確認する。
      *
-     * @param fromMarketContext 初期化対象の市場コンテキスト
-     * @return 初期化できた場合は true
+     * @param fromMarketContext 初期化対象の市場コンテキスト。
+     * @return 初期化できた場合は true。
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.averageTrueRangeHandlePool == NULL) {
@@ -304,9 +303,9 @@ private:
     /**
      * 価格値をpipsへ変換
      *
-     * @param fromMarketContext 変換対象の市場コンテキスト
-     * @param priceValue 価格値
-     * @return pips値
+     * @param fromMarketContext 変換対象の市場コンテキスト。
+     * @param priceValue 価格値。
+     * @return pips値。
      */
     double convertPriceToPips(MarketContext &fromMarketContext, const double priceValue) {
         return RateUtil::priceToPips(priceValue, fromMarketContext);

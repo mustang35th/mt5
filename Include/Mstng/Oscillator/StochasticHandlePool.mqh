@@ -14,7 +14,7 @@
 #include <Mstng\Oscillator\HandlePoolBase.mqh>
 
 /**
- * Stochastic のハンドルを時間足ごとに管理するクラスです（固定8時間足）。
+ * Stochastic のハンドルを時間足ごとに管理するクラス（固定8時間足）。
  *
  * 対象時間足:
  * - MN1, W1, D1, H4, H1, M15, M5, M1
@@ -37,7 +37,7 @@ public:
      * - maMethod   = MODE_SMA
      * - priceField = STO_LOWHIGH
      *
-     * symbolName はカレントシンボル（Symbol()）を設定します。
+     * symbolName はカレントシンボル（Symbol()）を設定する。
      */
     StochasticHandlePool() {
         this.initialize(Symbol(), 5, 3, 3, MODE_SMA, STO_LOWHIGH);
@@ -46,12 +46,12 @@ public:
     /**
      * コンストラクタ
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromKPeriod    %K期間
-     * @param fromDPeriod    %D期間
-     * @param fromSlowing    スローイング
-     * @param fromMaMethod   平滑化のMA種別
-     * @param fromPriceField 価格フィールド
+     * @param fromSymbolName 対象シンボル。
+     * @param fromKPeriod    %K期間。
+     * @param fromDPeriod    %D期間。
+     * @param fromSlowing    スローイング。
+     * @param fromMaMethod   平滑化のMA種別。
+     * @param fromPriceField 価格フィールド。
      */
     StochasticHandlePool(string fromSymbolName,
                          int fromKPeriod,
@@ -65,12 +65,12 @@ public:
     /**
      * MarketContextを使用して初期化する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param fromKPeriod %K期間
-     * @param fromDPeriod %D期間
-     * @param fromSlowing スローイング
-     * @param fromMaMethod MA種別
-     * @param fromPriceField 価格フィールド
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param fromKPeriod %K期間。
+     * @param fromDPeriod %D期間。
+     * @param fromSlowing スローイング。
+     * @param fromMaMethod MA種別。
+     * @param fromPriceField 価格フィールド。
      */
     StochasticHandlePool(
         MarketContext &fromMarketContext,
@@ -93,20 +93,20 @@ public:
     /**
      * ハンドル生成対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.ensureMarketContext(fromMarketContext);
     }
 
     /**
-     * MN1 から指定時間足までのハンドルを生成します。
+     * MN1 から指定時間足までのハンドルを生成する。
      *
      * 例:
      * - lastTimeFrame=H1  -> MN1, W1, D1, H4, H1 を生成
      * - lastTimeFrame=M5  -> MN1, W1, D1, H4, H1, M15, M5 を生成
      *
-     * @param lastTimeFrame 生成対象の終端時間足（固定8時間足のみ対応）
+     * @param lastTimeFrame 生成対象の終端時間足（固定8時間足のみ対応）。
      */
     void setTimeframesFromMn1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -117,21 +117,21 @@ public:
     /**
      * 市場コンテキストを使用してMN1から指定時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setTimeframesFromMn1To(MarketContext &fromMarketContext) {
         HandlePoolBase::setTimeframesFromMn1To(fromMarketContext);
     }
 
     /**
-     * D1 から指定した時間足までの Stochastic ハンドルを初期化します。
+     * D1 から指定した時間足までの Stochastic ハンドルを初期化する。
      *
      * 例:
      * - lastTimeFrame=H1 -> D1, H4, H1
      * - lastTimeFrame=M1 -> D1, H4, H1, M15, M5, M1
      *
-     * @param fromSymbolName シンボル名（変更時は内部ハンドルを全解放して作り直します）
-     * @param lastTimeFrame  最も小さい時間足（D1以下）
+     * @param fromSymbolName シンボル名（変更時は内部ハンドルを全解放して作り直す）。
+     * @param lastTimeFrame  最も小さい時間足（D1以下）。
      */
     void setTimeframesFromD1To(string fromSymbolName, ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -142,7 +142,7 @@ public:
     /**
      * 市場コンテキストを使用してD1から指定時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setTimeframesFromD1To(MarketContext &fromMarketContext) {
         HandlePoolBase::setTimeframesFromD1To(fromMarketContext);
@@ -151,10 +151,10 @@ public:
 
 
     /**
-     * 指定時間足のハンドルを返します（未生成なら生成）。
+     * 指定時間足のハンドルを返す（未生成なら生成）。
      *
-     * @param timeFrame 対象時間足（固定8時間足のみ対応）
-     * @return ハンドル（対象外 or 失敗時 INVALID_HANDLE）
+     * @param timeFrame 対象時間足（固定8時間足のみ対応）。
+     * @return ハンドル（対象外 or 失敗時 INVALID_HANDLE）。
      */
     int getHandle(ENUM_TIMEFRAMES timeFrame) {
         int index = this.findIndex(timeFrame);
@@ -171,7 +171,7 @@ public:
     }
 
     /**
-     * 全ハンドルを解放します。
+     * 全ハンドルを解放する。
      */
     void releaseAll() {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {
@@ -189,9 +189,9 @@ public:
 
 protected:
     /**
-     * 指定インデックスの Stochastic ハンドルを未生成時のみ生成します。
+     * 指定インデックスの Stochastic ハンドルを未生成時のみ生成する。
      *
-     * @param index 時間足インデックス
+     * @param index 時間足インデックス。
      */
     virtual void createIfNeeded(int index) {
         if (index < 0 || index >= TIMEFRAME_SIZE) {
@@ -232,7 +232,7 @@ private:
     int handles[TIMEFRAME_SIZE];
 
     /**
-     * 初期化処理を共通化します。
+     * 初期化処理を共通化する。
      */
     void initialize(string fromSymbolName,
                     int fromKPeriod,
@@ -248,12 +248,12 @@ private:
     /**
      * MarketContextを使用して初期化する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param fromKPeriod %K期間
-     * @param fromDPeriod %D期間
-     * @param fromSlowing スローイング
-     * @param fromMaMethod MA種別
-     * @param fromPriceField 価格フィールド
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param fromKPeriod %K期間。
+     * @param fromDPeriod %D期間。
+     * @param fromSlowing スローイング。
+     * @param fromMaMethod MA種別。
+     * @param fromPriceField 価格フィールド。
      */
     void initialize(
         MarketContext &fromMarketContext,
@@ -286,10 +286,10 @@ private:
     }
 
     /**
-     * 時間足配列から指定時間足のインデックスを取得します。
+     * 時間足配列から指定時間足のインデックスを取得する。
      *
-     * @param timeFrame 検索対象時間足
-     * @return インデックス（未発見は -1）
+     * @param timeFrame 検索対象時間足。
+     * @return インデックス（未発見は -1）。
      */
     int findIndex(ENUM_TIMEFRAMES timeFrame) {
         for (int i = 0; i < TIMEFRAME_SIZE; i++) {

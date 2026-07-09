@@ -18,16 +18,16 @@
  * EMA200と確定足Closeの位置関係です。
  */
 enum ENUM_EMA200_POSITION {
-    /** 未判定 */
+    /** 未判定。 */
     EMA200_POSITION_NONE = 0,
 
-    /** Close1がEMA200[1]より上 */
+    /** Close1がEMA200[1]より上。 */
     EMA200_POSITION_ABOVE = 1,
 
-    /** Close1がEMA200[1]より下 */
+    /** Close1がEMA200[1]より下。 */
     EMA200_POSITION_BELOW = -1,
 
-    /** Close1とEMA200[1]が同値 */
+    /** Close1とEMA200[1]が同値。 */
     EMA200_POSITION_EQUAL = 2
 };
 
@@ -35,18 +35,18 @@ enum ENUM_EMA200_POSITION {
  * EMA200の傾き方向です。
  */
 enum ENUM_EMA200_SLOPE_DIRECTION {
-    /** 未判定、または横ばい */
+    /** 未判定、または横ばい。 */
     EMA200_SLOPE_NONE = 0,
 
-    /** 上向き */
+    /** 上向き。 */
     EMA200_SLOPE_UP = 1,
 
-    /** 下向き */
+    /** 下向き。 */
     EMA200_SLOPE_DOWN = -1
 };
 
 /**
- * EMA200状態管理クラスです。
+ * EMA200状態管理クラス。
  *
  * 管理対象:
  * 1. Close1 が EMA200 の上か下か
@@ -56,52 +56,52 @@ enum ENUM_EMA200_SLOPE_DIRECTION {
  */
 class Ema200 {
 public:
-    /** 分析対象の市場コンテキスト */
+    /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** 確定足終値 */
+    /** 確定足終値。 */
     double close1;
 
-    /** EMA200[1] */
+    /** EMA200[1]。 */
     double ema200Shift1;
 
-    /** 比較対象EMA200。標準はEMA200[4] */
+    /** 比較対象EMA200。標準はEMA200[4]。 */
     double ema200Compare;
 
-    /** EMA200[1] - EMA200[compareBarIndex] のpips */
+    /** EMA200[1] - EMA200[compareBarIndex] のpips。 */
     double slopePips;
 
-    /** Close1 - EMA200[1] のpips */
+    /** Close1 - EMA200[1] のpips。 */
     double closeEma200DiffPips;
 
-    /** Close1 と EMA200[1] の位置関係 */
+    /** Close1 と EMA200[1] の位置関係。 */
     ENUM_EMA200_POSITION closePosition;
 
-    /** EMA200の傾き方向 */
+    /** EMA200の傾き方向。 */
     ENUM_EMA200_SLOPE_DIRECTION slopeDirection;
 
-    /** EMA200上昇回数 */
+    /** EMA200上昇回数。 */
     int upCount;
 
-    /** EMA200下降回数 */
+    /** EMA200下降回数。 */
     int downCount;
 
-    /** 上昇優勢なら正、下降優勢なら負、同数なら0 */
+    /** 上昇優勢なら正、下降優勢なら負、同数なら0。 */
     int trendCount;
 
-    /** BUY方向判定 */
+    /** BUY方向判定。 */
     bool isBuy;
 
-    /** SELL方向判定 */
+    /** SELL方向判定。 */
     bool isSell;
 
-    /** BUY / SELL / NONE の表示用ラベル */
+    /** BUY / SELL / NONE の表示用ラベル。 */
     string buySellLabel;
 
-    /** EMA200 + 時間足 + BUY/SELL/NONE の表示用ラベル */
+    /** EMA200 + 時間足 + BUY/SELL/NONE の表示用ラベル。 */
     string textLabel;
 
-    /** BUY/SELL時だけ表示するラベル。NONE時は空文字 */
+    /** BUY/SELL時だけ表示するラベル。NONE時は空文字。 */
     string signalTextLabel;
 
     /**
@@ -118,7 +118,7 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     Ema200(MarketContext &fromMarketContext) {
         this.logger.setLevel(LOG_INFO);
@@ -132,7 +132,7 @@ public:
     /**
      * コンストラクタ
      *
-     * @param fromEma200HandlePool EMA200ハンドルプール
+     * @param fromEma200HandlePool EMA200ハンドルプール。
      */
     Ema200(Ema200HandlePool *fromEma200HandlePool) {
         this.logger.setLevel(LOG_INFO);
@@ -145,8 +145,8 @@ public:
     /**
      * 市場コンテキストとEMA200ハンドルプールを指定して初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param fromEma200HandlePool EMA200ハンドルプール
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromEma200HandlePool EMA200ハンドルプール。
      */
     Ema200(MarketContext &fromMarketContext, Ema200HandlePool *fromEma200HandlePool) {
         this.logger.setLevel(LOG_INFO);
@@ -169,9 +169,9 @@ public:
     }
 
     /**
-     * EMA200ハンドルプールを設定します。
+     * EMA200ハンドルプールを設定する。
      *
-     * @param fromEma200HandlePool EMA200ハンドルプール
+     * @param fromEma200HandlePool EMA200ハンドルプール。
      */
     void setEma200HandlePool(Ema200HandlePool *fromEma200HandlePool) {
         if (this.ema200HandlePool == NULL) {
@@ -186,21 +186,21 @@ public:
     /**
      * 分析対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
     }
 
     /**
-     * EMA200状態を更新します。
+     * EMA200状態を更新する。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param fromCompareBarIndex 傾き比較足。標準は4でEMA200[1]とEMA200[4]を比較する
-     * @param fromCountBars 上昇/下降を数える本数。標準は4でEMA200[1]からEMA200[5]までを比較する
-     * @param fromMinSlopePips 最低傾きpips。この値未満は横ばい扱い
-     * @return 更新できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param fromCompareBarIndex 傾き比較足。標準は4でEMA200[1]とEMA200[4]を比較する。
+     * @param fromCountBars 上昇/下降を数える本数。標準は4でEMA200[1]からEMA200[5]までを比較する。
+     * @param fromMinSlopePips 最低傾きpips。この値未満は横ばい扱い。
+     * @return 更新できた場合は true。
      */
     bool update(
         string fromSymbolName,
@@ -220,13 +220,13 @@ public:
     }
 
     /**
-     * 市場コンテキストを指定してEMA200状態を更新します。
+     * 市場コンテキストを指定してEMA200状態を更新する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @param fromCompareBarIndex 傾き比較足。標準は4でEMA200[1]とEMA200[4]を比較する
-     * @param fromCountBars 上昇/下降を数える本数。標準は4でEMA200[1]からEMA200[5]までを比較する
-     * @param fromMinSlopePips 最低傾きpips。この値未満は横ばい扱い
-     * @return 更新できた場合は true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromCompareBarIndex 傾き比較足。標準は4でEMA200[1]とEMA200[4]を比較する。
+     * @param fromCountBars 上昇/下降を数える本数。標準は4でEMA200[1]からEMA200[5]までを比較する。
+     * @param fromMinSlopePips 最低傾きpips。この値未満は横ばい扱い。
+     * @return 更新できた場合は true。
      */
     bool update(
         MarketContext &fromMarketContext,
@@ -324,49 +324,49 @@ public:
     }
 
     /**
-     * Close1 が EMA200[1] より上かを判定します。
+     * Close1 が EMA200[1] より上かを判定する。
      *
-     * @return 上の場合は true
+     * @return 上の場合は true。
      */
     bool isClose1AboveEma200() {
         return this.closePosition == EMA200_POSITION_ABOVE;
     }
 
     /**
-     * Close1 が EMA200[1] より下かを判定します。
+     * Close1 が EMA200[1] より下かを判定する。
      *
-     * @return 下の場合は true
+     * @return 下の場合は true。
      */
     bool isClose1BelowEma200() {
         return this.closePosition == EMA200_POSITION_BELOW;
     }
 
     /**
-     * EMA200が上向きかを判定します。
+     * EMA200が上向きかを判定する。
      *
-     * @return 上向きの場合は true
+     * @return 上向きの場合は true。
      */
     bool isUpSlope() {
         return this.slopeDirection == EMA200_SLOPE_UP;
     }
 
     /**
-     * EMA200が下向きかを判定します。
+     * EMA200が下向きかを判定する。
      *
-     * @return 下向きの場合は true
+     * @return 下向きの場合は true。
      */
     bool isDownSlope() {
         return this.slopeDirection == EMA200_SLOPE_DOWN;
     }
 
     /**
-     * EMA200値を取得します。
+     * EMA200値を取得する。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param fromShiftValue シフト
-     * @param ema200Value EMA200値
-     * @return 取得できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param fromShiftValue シフト。
+     * @param ema200Value EMA200値。
+     * @return 取得できた場合は true。
      */
     bool getEmaValue(
         string fromSymbolName,
@@ -380,12 +380,12 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してEMA200値を取得します。
+     * 市場コンテキストを使用してEMA200値を取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param fromShiftValue シフト
-     * @param ema200Value EMA200値
-     * @return 取得できた場合は true
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromShiftValue シフト。
+     * @param ema200Value EMA200値。
+     * @return 取得できた場合は true。
      */
     bool getEmaValue(
         MarketContext &fromMarketContext,
@@ -434,14 +434,14 @@ public:
     }
 
     /**
-     * Close1のEMA200位置を取得します。
+     * Close1のEMA200位置を取得する。
      *
      * 戻り値は ABOVE=1、BELOW=-1、EQUAL=2、NONE=0 です。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param position 位置関係
-     * @return 取得できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param position 位置関係。
+     * @return 取得できた場合は true。
      */
     bool getClosePosition(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, ENUM_EMA200_POSITION &position) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -450,11 +450,11 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してClose1のEMA200位置を取得します。
+     * 市場コンテキストを使用してClose1のEMA200位置を取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param position 位置関係
-     * @return 取得できた場合は true
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param position 位置関係。
+     * @return 取得できた場合は true。
      */
     bool getClosePosition(MarketContext &fromMarketContext, ENUM_EMA200_POSITION &position) {
         position = EMA200_POSITION_NONE;
@@ -476,15 +476,15 @@ public:
     }
 
     /**
-     * EMA200[1]と指定過去足の傾きをpipsで取得します。
+     * EMA200[1]と指定過去足の傾きをpipsで取得する。
      *
      * 正の値は上向き、負の値は下向きです。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param fromCompareBarIndex 比較する過去足
-     * @param value 傾きpips
-     * @return 取得できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param fromCompareBarIndex 比較する過去足。
+     * @param value 傾きpips。
+     * @return 取得できた場合は true。
      */
     bool getSlopePips(
         string fromSymbolName,
@@ -498,12 +498,12 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してEMA200の傾きをpipsで取得します。
+     * 市場コンテキストを使用してEMA200の傾きをpipsで取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param fromCompareBarIndex 比較する過去足
-     * @param value 傾きpips
-     * @return 取得できた場合は true
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromCompareBarIndex 比較する過去足。
+     * @param value 傾きpips。
+     * @return 取得できた場合は true。
      */
     bool getSlopePips(
         MarketContext &fromMarketContext,
@@ -538,14 +538,14 @@ public:
     }
 
     /**
-     * EMA200の傾き方向を取得します。
+     * EMA200の傾き方向を取得する。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param fromCompareBarIndex 比較する過去足
-     * @param fromMinSlopePips 最低傾きpips
-     * @param direction 傾き方向
-     * @return 取得できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param fromCompareBarIndex 比較する過去足。
+     * @param fromMinSlopePips 最低傾きpips。
+     * @param direction 傾き方向。
+     * @return 取得できた場合は true。
      */
     bool getSlopeDirection(
         string fromSymbolName,
@@ -565,13 +565,13 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してEMA200の傾き方向を取得します。
+     * 市場コンテキストを使用してEMA200の傾き方向を取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param fromCompareBarIndex 比較する過去足
-     * @param fromMinSlopePips 最低傾きpips
-     * @param direction 傾き方向
-     * @return 取得できた場合は true
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromCompareBarIndex 比較する過去足。
+     * @param fromMinSlopePips 最低傾きpips。
+     * @param direction 傾き方向。
+     * @return 取得できた場合は true。
      */
     bool getSlopeDirection(
         MarketContext &fromMarketContext,
@@ -593,15 +593,15 @@ public:
     }
 
     /**
-     * EMA200の上昇/下降回数を取得します。
+     * EMA200の上昇/下降回数を取得する。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param fromStartBarIndex 開始足。通常は1
-     * @param fromCountBars 判定本数
-     * @param fromUpCount 上昇回数
-     * @param fromDownCount 下降回数
-     * @return 取得できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param fromStartBarIndex 開始足。通常は1。
+     * @param fromCountBars 判定本数。
+     * @param fromUpCount 上昇回数。
+     * @param fromDownCount 下降回数。
+     * @return 取得できた場合は true。
      */
     bool getUpDownCount(
         string fromSymbolName,
@@ -623,14 +623,14 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してEMA200の上昇・下降回数を取得します。
+     * 市場コンテキストを使用してEMA200の上昇・下降回数を取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param fromStartBarIndex 開始足
-     * @param fromCountBars 判定本数
-     * @param fromUpCount 上昇回数
-     * @param fromDownCount 下降回数
-     * @return 取得できた場合は true
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromStartBarIndex 開始足。
+     * @param fromCountBars 判定本数。
+     * @param fromUpCount 上昇回数。
+     * @param fromDownCount 下降回数。
+     * @return 取得できた場合は true。
      */
     bool getUpDownCount(
         MarketContext &fromMarketContext,
@@ -676,54 +676,54 @@ public:
     }
 
     /**
-     * Close位置関係テキストを取得します。
+     * Close位置関係テキストを取得する。
      *
-     * @return ABOVE / BELOW / EQUAL / NONE
+     * @return ABOVE / BELOW / EQUAL / NONE。
      */
     string getClosePositionText() {
         return this.convertClosePositionText(this.closePosition);
     }
 
     /**
-     * 傾き方向テキストを取得します。
+     * 傾き方向テキストを取得する。
      *
-     * @return UP / DOWN / FLAT
+     * @return UP / DOWN / FLAT。
      */
     string getSlopeDirectionText() {
         return this.convertSlopeDirectionText(this.slopeDirection);
     }
 
     /**
-     * BUY/SELL表示用ラベルを取得します。
+     * BUY/SELL表示用ラベルを取得する。
      *
-     * @return BUY / SELL / NONE
+     * @return BUY / SELL / NONE。
      */
     string getBuySellLabel() {
         return this.buySellLabel;
     }
 
     /**
-     * テキスト表示用ラベルを取得します。
+     * テキスト表示用ラベルを取得する。
      *
-     * @return EMA200 M15 BUY など
+     * @return EMA200 M15 BUY など。
      */
     string getTextLabel() {
         return this.textLabel;
     }
 
     /**
-     * BUY/SELL時だけ表示するテキストラベルを取得します。
+     * BUY/SELL時だけ表示するテキストラベルを取得する。
      *
-     * @return BUY/SELL時は EMA200 M15 BUY など、NONE時は空文字
+     * @return BUY/SELL時は EMA200 M15 BUY など、NONE時は空文字。
      */
     string getSignalTextLabel() {
         return this.signalTextLabel;
     }
 
     /**
-     * テキスト表示用の簡易文字列を取得します。
+     * テキスト表示用の簡易文字列を取得する。
      *
-     * @return BUY/ABOVE/1.23456/+12.3p/3.25/UP/+3 など
+     * @return BUY/ABOVE/1.23456/+12.3p/3.25/UP/+3 など。
      */
     string getText() {
         string ema200Shift1Text = DoubleToString(this.ema200Shift1, this.marketContext.digits);
@@ -742,9 +742,9 @@ public:
     }
 
     /**
-     * CSV文字列を取得します。
+     * CSV文字列を取得する。
      *
-     * @return CSV文字列
+     * @return CSV文字列。
      */
     string getCsv() {
         string close1Text = DoubleToString(this.close1, this.marketContext.digits);
@@ -768,23 +768,23 @@ public:
     }
 
     /**
-     * CSVヘッダーを取得します。
+     * CSVヘッダーを取得する。
      *
-     * @return CSVヘッダー
+     * @return CSVヘッダー。
      */
     static string getCsvHeader() {
         return "Ema200ClosePosition,Ema200Close1,Ema200Shift1,Ema200Compare,Ema200SlopePips,Ema200SlopeDirection,Ema200UpCount,Ema200DownCount,Ema200TrendCount,Ema200IsBuy,Ema200IsSell";
     }
 
     /**
-     * 値をクリアします。
+     * 値をクリアする。
      */
     void clear() {
         this.resetValues();
     }
 
 private:
-    /** EMA200ハンドルに対応する市場コンテキスト */
+    /** EMA200ハンドルに対応する市場コンテキスト。 */
     MarketContext handleMarketContext;
 
     /** EMA200ハンドル。 */
@@ -797,9 +797,9 @@ private:
     Logger logger;
 
     /**
-     * 市場コンテキストと互換用フィールドを初期化します。
+     * 市場コンテキストと互換用フィールドを初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
+     * @param fromMarketContext 分析対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
@@ -809,7 +809,7 @@ private:
     }
 
     /**
-     * 値を初期化します。
+     * 値を初期化する。
      */
     void resetValues() {
         MarketContext context;
@@ -832,11 +832,11 @@ private:
     }
 
     /**
-     * EMA200ハンドルを初期化します。
+     * EMA200ハンドルを初期化する。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @return 初期化できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @return 初期化できた場合は true。
      */
     bool ensureInitialized(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -845,10 +845,10 @@ private:
     }
 
     /**
-     * 市場コンテキストを使用してEMA200ハンドルを初期化します。
+     * 市場コンテキストを使用してEMA200ハンドルを初期化する。
      *
-     * @param fromMarketContext 分析対象の市場コンテキスト
-     * @return 初期化できた場合は true
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @return 初期化できた場合は true。
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.ema200HandlePool != NULL) {
@@ -911,7 +911,7 @@ private:
     }
 
     /**
-     * EMA200ハンドルを解放します。
+     * EMA200ハンドルを解放する。
      */
     void releaseHandle() {
         if (this.ema200HandlePool != NULL) {
@@ -930,11 +930,11 @@ private:
     }
 
     /**
-     * EMA200値を0から指定shiftまで取得します。
+     * EMA200値を0から指定shiftまで取得する。
      *
-     * @param maxShift 最大shift
-     * @param emaBuffer EMA200配列
-     * @return 取得できた場合は true
+     * @param maxShift 最大shift。
+     * @param emaBuffer EMA200配列。
+     * @return 取得できた場合は true。
      */
     bool copyEmaValues(int maxShift, double &emaBuffer[]) {
         if (maxShift < 0) {
@@ -968,13 +968,13 @@ private:
     }
 
     /**
-     * 終値を取得します。
+     * 終値を取得する。
      *
-     * @param fromSymbolName シンボル名
-     * @param fromTimeFrame 時間足
-     * @param fromShiftValue シフト
-     * @param closeValue 終値
-     * @return 取得できた場合は true
+     * @param fromSymbolName シンボル名。
+     * @param fromTimeFrame 時間足。
+     * @param fromShiftValue シフト。
+     * @param closeValue 終値。
+     * @return 取得できた場合は true。
      */
     bool getCloseValue(
         string fromSymbolName,
@@ -988,12 +988,12 @@ private:
     }
 
     /**
-     * 市場コンテキストを使用して終値を取得します。
+     * 市場コンテキストを使用して終値を取得する。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
-     * @param fromShiftValue シフト
-     * @param closeValue 終値
-     * @return 取得できた場合は true
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromShiftValue シフト。
+     * @param closeValue 終値。
+     * @return 取得できた場合は true。
      */
     bool getCloseValue(
         MarketContext &fromMarketContext,
@@ -1041,11 +1041,11 @@ private:
     }
 
     /**
-     * CloseとEMA200の位置関係を判定します。
+     * CloseとEMA200の位置関係を判定する。
      *
-     * @param closeValue Close値
-     * @param emaValue EMA200値
-     * @return 位置関係
+     * @param closeValue Close値。
+     * @param emaValue EMA200値。
+     * @return 位置関係。
      */
     ENUM_EMA200_POSITION determineClosePosition(double closeValue, double emaValue) {
         if (closeValue > emaValue) {
@@ -1060,11 +1060,11 @@ private:
     }
 
     /**
-     * 傾き方向を判定します。
+     * 傾き方向を判定する。
      *
-     * @param fromSlopePips 傾きpips
-     * @param fromMinSlopePips 最低傾きpips
-     * @return 傾き方向
+     * @param fromSlopePips 傾きpips。
+     * @param fromMinSlopePips 最低傾きpips。
+     * @return 傾き方向。
      */
     ENUM_EMA200_SLOPE_DIRECTION determineSlopeDirection(double fromSlopePips, double fromMinSlopePips) {
         double minSlopePipsValue = fromMinSlopePips;
@@ -1097,13 +1097,13 @@ private:
     }
 
     /**
-     * 上昇/下降回数を設定します。
+     * 上昇/下降回数を設定する。
      *
-     * @param emaBuffer EMA200配列
-     * @param fromStartBarIndex 開始足
-     * @param fromCountBars 判定本数
-     * @param fromUpCount 上昇回数
-     * @param fromDownCount 下降回数
+     * @param emaBuffer EMA200配列。
+     * @param fromStartBarIndex 開始足。
+     * @param fromCountBars 判定本数。
+     * @param fromUpCount 上昇回数。
+     * @param fromDownCount 下降回数。
      */
     void setUpDownCount(
         const double &emaBuffer[],
@@ -1125,11 +1125,11 @@ private:
     }
 
     /**
-     * トレンドカウントを判定します。
+     * トレンドカウントを判定する。
      *
-     * @param fromUpCount 上昇回数
-     * @param fromDownCount 下降回数
-     * @return 上昇優勢なら正、下降優勢なら負、同数なら0
+     * @param fromUpCount 上昇回数。
+     * @param fromDownCount 下降回数。
+     * @return 上昇優勢なら正、下降優勢なら負、同数なら0。
      */
     int determineTrendCount(int fromUpCount, int fromDownCount) {
         if (fromUpCount > fromDownCount) {
@@ -1144,7 +1144,7 @@ private:
     }
 
     /**
-     * BUY/SELL方向を設定します。
+     * BUY/SELL方向を設定する。
      */
     void setBuySell() {
         this.isBuy = false;
@@ -1168,7 +1168,7 @@ private:
     }
 
     /**
-     * テキスト表示用ラベルを設定します。
+     * テキスト表示用ラベルを設定する。
      */
     void setTextLabels() {
         this.buySellLabel = "NONE";
@@ -1199,11 +1199,11 @@ private:
     }
 
     /**
-     * 価格差をpipsへ変換します。
+     * 価格差をpipsへ変換する。
      *
-     * @param fromMarketContext 変換対象の市場コンテキスト
-     * @param priceDifferenceValue 価格差
-     * @return pips値
+     * @param fromMarketContext 変換対象の市場コンテキスト。
+     * @param priceDifferenceValue 価格差。
+     * @return pips値。
      */
     double convertPriceDifferenceToPips(
         MarketContext &fromMarketContext,
@@ -1219,10 +1219,10 @@ private:
     }
 
     /**
-     * 1pips相当の価格幅を取得します。
+     * 1pips相当の価格幅を取得する。
      *
-     * @param fromMarketContext 変換対象の市場コンテキスト
-     * @return 1pips相当の価格幅
+     * @param fromMarketContext 変換対象の市場コンテキスト。
+     * @return 1pips相当の価格幅。
      */
     double getPointPerPip(MarketContext &fromMarketContext) {
         double point = fromMarketContext.getPoint();
@@ -1235,10 +1235,10 @@ private:
     }
 
     /**
-     * Close位置関係を文字列へ変換します。
+     * Close位置関係を文字列へ変換する。
      *
-     * @param positionValue Close位置関係
-     * @return 文字列
+     * @param positionValue Close位置関係。
+     * @return 文字列。
      */
     string convertClosePositionText(ENUM_EMA200_POSITION positionValue) {
         if (positionValue == EMA200_POSITION_ABOVE) {
@@ -1257,10 +1257,10 @@ private:
     }
 
     /**
-     * 傾き方向を文字列へ変換します。
+     * 傾き方向を文字列へ変換する。
      *
-     * @param directionValue 傾き方向
-     * @return 文字列
+     * @param directionValue 傾き方向。
+     * @return 文字列。
      */
     string convertSlopeDirectionText(ENUM_EMA200_SLOPE_DIRECTION directionValue) {
         if (directionValue == EMA200_SLOPE_UP) {
@@ -1275,10 +1275,10 @@ private:
     }
 
     /**
-     * boolを文字列へ変換します。
+     * boolを文字列へ変換する。
      *
-     * @param value bool値
-     * @return true / false
+     * @param value bool値。
+     * @return true / false。
      */
     string convertBoolText(bool value) {
         if (value) {

@@ -27,8 +27,8 @@ public:
     /**
      * コンストラクタ。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromPeriod ATR期間
+     * @param fromSymbolName 対象シンボル。
+     * @param fromPeriod ATR期間。
      */
     AverageTrueRangeHandlePool(const string fromSymbolName, const int fromPeriod) {
         // 初期化
@@ -38,8 +38,8 @@ public:
     /**
      * MarketContextを使用して初期化する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param fromPeriod ATR期間
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param fromPeriod ATR期間。
      */
     AverageTrueRangeHandlePool(MarketContext &fromMarketContext, const int fromPeriod) {
         this.initialize(fromMarketContext, fromPeriod);
@@ -56,7 +56,7 @@ public:
     /**
      * ハンドル生成対象の市場コンテキストを設定する。
      *
-     * @param fromMarketContext ハンドル生成対象の市場コンテキスト
+     * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.ensureMarketContext(fromMarketContext);
@@ -65,8 +65,8 @@ public:
     /**
      * M1 から指定時間足までのハンドルを生成する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param lastTimeFrame 最終時間足
+     * @param fromSymbolName 対象シンボル。
+     * @param lastTimeFrame 最終時間足。
      */
     void setTimeframesFromMn1To(const string fromSymbolName, const ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -77,7 +77,7 @@ public:
     /**
      * 市場コンテキストを使用してM1から指定時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setTimeframesFromMn1To(MarketContext &fromMarketContext) {
         HandlePoolBase::setTimeframesFromMn1To(fromMarketContext);
@@ -86,8 +86,8 @@ public:
     /**
      * D1 から指定時間足までのハンドルを生成する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param lastTimeFrame 最終時間足
+     * @param fromSymbolName 対象シンボル。
+     * @param lastTimeFrame 最終時間足。
      */
     void setTimeframesFromD1To(const string fromSymbolName, const ENUM_TIMEFRAMES lastTimeFrame) {
         MarketContext context(fromSymbolName, lastTimeFrame);
@@ -98,7 +98,7 @@ public:
     /**
      * 市場コンテキストを使用してD1から指定時間足までのハンドルを生成する。
      *
-     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト
+     * @param fromMarketContext ハンドル生成範囲の基準となる市場コンテキスト。
      */
     void setTimeframesFromD1To(MarketContext &fromMarketContext) {
         HandlePoolBase::setTimeframesFromD1To(fromMarketContext);
@@ -107,8 +107,8 @@ public:
     /**
      * 指定時間足のハンドルを取得する。
      *
-     * @param timeFrame 対象時間足
-     * @return 対象時間足のATRハンドル。未設定時はINVALID_HANDLE
+     * @param timeFrame 対象時間足。
+     * @return 対象時間足のATRハンドル。未設定時はINVALID_HANDLE。
      */
     int getHandle(const ENUM_TIMEFRAMES timeFrame) {
         int index = this.findIndex(timeFrame);
@@ -137,7 +137,7 @@ protected:
     /**
      * 必要に応じてハンドルを生成
      *
-     * @param index インデックス
+     * @param index インデックス。
      */
     virtual void createIfNeeded(int index) {
         if (index < 0 || index >= TIMEFRAME_SIZE) {
@@ -163,7 +163,7 @@ protected:
     /**
      * 指定indexのハンドルを解放する。
      *
-     * @param index 時間足index
+     * @param index 時間足index。
      */
     virtual void releaseAt(int index) {
         if (index < 0 || index >= TIMEFRAME_SIZE) {
@@ -174,17 +174,17 @@ protected:
     }
 
 private:
-    /** ATR期間 */
+    /** ATR期間。 */
     int period;
 
-    /** ハンドル配列 */
+    /** ハンドル配列。 */
     int handles[TIMEFRAME_SIZE];
 
     /**
      * 初期化処理を行う。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromPeriod ATR期間
+     * @param fromSymbolName 対象シンボル。
+     * @param fromPeriod ATR期間。
      */
     void initialize(const string fromSymbolName, const int fromPeriod) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
@@ -195,8 +195,8 @@ private:
     /**
      * MarketContextを使用して初期化する。
      *
-     * @param fromMarketContext 対象の市場コンテキスト
-     * @param fromPeriod ATR期間
+     * @param fromMarketContext 対象の市場コンテキスト。
+     * @param fromPeriod ATR期間。
      */
     void initialize(MarketContext &fromMarketContext, const int fromPeriod) {
         this.initializeBase(fromMarketContext);
