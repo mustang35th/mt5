@@ -16,10 +16,10 @@
 class TimeJapanUtil {
 public:
     /**
-     * サーバー時刻を日本時間へ変換します。
+     * サーバー時刻を日本時間へ変換する。
      *
-     * @param fromDatetimeValue サーバー時刻
-     * @return 日本時間
+     * @param fromDatetimeValue サーバー時刻。
+     * @return 日本時間。
      */
     static datetime getJapanTime(const datetime fromDatetimeValue) {
         // JST差分時間取得
@@ -32,10 +32,10 @@ public:
     }
 
     /**
-     * JSTとの差分時間（時間）を取得します。
+     * JSTとの差分時間（時間）を取得する。
      *
-     * @param fromDatetimeValue サーバー時刻
-     * @return JST差分時間（時間）
+     * @param fromDatetimeValue サーバー時刻。
+     * @return JST差分時間（時間）。
      */
     static int getJstOffsetHour(const datetime fromDatetimeValue) {
         // 夏時間判定
@@ -49,10 +49,10 @@ public:
     }
 
     /**
-     * 指定時間帯かどうかを判定します。
+     * 指定時間帯かどうかを判定する。
      *
-     * @param fromDatetimeValue サーバー時刻
-     * @return true の場合、指定時間帯
+     * @param fromDatetimeValue サーバー時刻。
+     * @return true の場合、指定時間帯。
      */
     static bool isTimeRange(const datetime fromDatetimeValue) {
         // 日本時間取得
@@ -73,10 +73,10 @@ public:
 
 private:
     /**
-     * 夏時間かを判定します。
+     * 夏時間かを判定する。
      *
-     * @param fromDatetimeValue サーバー時刻
-     * @return 夏時間期間内であれば true
+     * @param fromDatetimeValue サーバー時刻。
+     * @return 夏時間期間内であれば true。
      */
     static bool isSummerTime(const datetime fromDatetimeValue) {
         // 年取得
@@ -100,13 +100,13 @@ private:
     }
 
     /**
-     * 指定年月の第 n 曜日を取得します。
+     * 指定年月の第 n 曜日を取得する。
      *
-     * @param yearValue 年
-     * @param monthValue 月
-     * @param weekdayValue 曜日
-     * @param nthValue 第 n
-     * @return 日付（1〜31）
+     * @param yearValue 年。
+     * @param monthValue 月。
+     * @param weekdayValue 曜日。
+     * @param nthValue 第 n。
+     * @return 日付（1〜31）。
      */
     static int getNthWeekdayOfMonth(
         const int yearValue,
@@ -134,10 +134,10 @@ private:
     }
 
     /**
-     * 夏時間開始日時を取得します。
+     * 夏時間開始日時を取得する。
      *
-     * @param yearValue 年
-     * @return 夏時間開始日時
+     * @param yearValue 年。
+     * @return 夏時間開始日時。
      */
     static datetime getDstStartDatetime(const int yearValue) {
         // 3月第2日曜取得
@@ -154,10 +154,10 @@ private:
     }
 
     /**
-     * 夏時間終了日時を取得します。
+     * 夏時間終了日時を取得する。
      *
-     * @param yearValue 年
-     * @return 夏時間終了日時
+     * @param yearValue 年。
+     * @return 夏時間終了日時。
      */
     static datetime getDstEndDatetime(const int yearValue) {
         // 11月第1日曜取得

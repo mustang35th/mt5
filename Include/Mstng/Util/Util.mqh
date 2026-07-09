@@ -15,7 +15,7 @@
 class Util {
 public:
     /**
-     * 引数が偶数かどうかを判定します。
+     * 引数が偶数かどうかを判定する。
      *
      * @param targetNumber 判定対象の整数値。
      * @return targetNumber が偶数であれば true、そうでなければ false。
@@ -25,7 +25,7 @@ public:
     }
 
     /**
-     * 引数が奇数かどうかを判定します。
+     * 引数が奇数かどうかを判定する。
      *
      * @param targetNumber 判定対象の整数値。
      * @return targetNumber が奇数であれば true、そうでなければ false。
@@ -35,7 +35,7 @@ public:
     }
 
     /**
-     * ストラテジーテスタで起動中かどうかを判定します。
+     * ストラテジーテスタで起動中かどうかを判定する。
      *
      * @return ストラテジーテスタ実行中であれば true、それ以外は false。
      */
@@ -58,7 +58,7 @@ public:
     }
     
     /**
-     * 空CSV文字列を取得します。
+     * 空CSV文字列を取得する。
      *
      * @param countValue 空項目数。
      * @return 空要素で埋めたCSV文字列。

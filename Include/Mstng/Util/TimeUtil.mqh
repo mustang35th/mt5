@@ -10,16 +10,16 @@
  * 時間足（ENUM_TIMEFRAMES）に関するユーティリティメソッドを提供するクラス。
  *
  * ENUM_TIMEFRAMES を「M1」「H1」「D1」などの
- * 人間が読みやすい文字列表現へ変換する処理をまとめています。
+ * 人間が読みやすい文字列表現へ変換する処理をまとめる。
  */
 class TimeUtil {
 public:
     /**
-     * ENUM_TIMEFRAMES を人間が読める文字列に変換します。
+     * ENUM_TIMEFRAMES を人間が読める文字列に変換する。
      *
      * PERIOD_M1 → "M1"、PERIOD_H1 → "H1" のように、
-     * MT5 の時間足を文字列表現に変換します。
-     * 想定外の値が渡された場合は "UNKNOWN" を返します。
+     * MT5 の時間足を文字列表現に変換する。
+     * 想定外の値が渡された場合は "UNKNOWN" を返す。
      *
      * @param fromTimeFrame 変換対象の時間足（ENUM_TIMEFRAMES）。
      *
@@ -62,8 +62,8 @@ public:
     /**
      * datetime を "yyyymmddhhmi" 形式（例: 202512240915）に変換する。
      *
-     * @param fromDatetime 対象日時
-     * @return "yyyymmddhhmi" 形式の文字列
+     * @param fromDatetime 対象日時。
+     * @return "yyyymmddhhmi" 形式の文字列。
      */
     static string formatYyyymmddhhmi(datetime fromDatetime) {
         MqlDateTime dt;
@@ -80,8 +80,8 @@ public:
     /**
      * datetime を "yyyy/mm/dd hh:mm:ss" 形式（例: 2025/12/24 09:15:30）に変換する。
      *
-     * @param fromDatetime 対象日時
-     * @return 変換された日時文字列
+     * @param fromDatetime 対象日時。
+     * @return 変換された日時文字列。
      */
     static string formatYyyymmddhhmiss(datetime fromDatetime) {
         MqlDateTime dt;
@@ -98,7 +98,7 @@ public:
 
 
     /**
-     * バーインデックスから「次の足」の datetime を取得します。
+     * バーインデックスから「次の足」の datetime を取得する。
      *
      * MT5 のバーインデックスは 0 が最新バーで、値が大きくなるほど過去の足です。
      * 「時間的に次の足」は、shift が 1 小さいバーになります。
@@ -107,7 +107,7 @@ public:
      * @param timeframe    対象時間足。
      * @param shift        基準となるバーインデックス（0 = 最新バー）。
      *
-     * @return 次の足の datetime。存在しない場合は 0 を返します。
+     * @return 次の足の datetime。存在しない場合は 0 を返す。
      */
     static datetime getNextBarTimeByShift(
         string symbolName,
@@ -138,10 +138,10 @@ public:
     /**
      * datetime に指定した時間足の本数を加算した日時を返す。
      *
-     * @param fromDatetime 元の datetime
-     * @param timeframe 加算対象の時間足
-     * @param barCount 加算する時間足の本数
-     * @return 加算後の datetime
+     * @param fromDatetime 元の datetime。
+     * @param timeframe 加算対象の時間足。
+     * @param barCount 加算する時間足の本数。
+     * @return 加算後の datetime。
      */
     static datetime addBars(
         datetime fromDatetime,

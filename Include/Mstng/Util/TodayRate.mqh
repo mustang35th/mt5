@@ -16,49 +16,49 @@
  */
 class TodayRate {
 public:
-    /** 取得対象の市場コンテキスト */
+    /** 取得対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** 現在のAsk価格 */
+    /** 現在のAsk価格。 */
     double ask;
 
-    /** 現在のBid価格 */
+    /** 現在のBid価格。 */
     double bid;
 
-    /** スプレッド（pips） */
+    /** スプレッド（pips）。 */
     double spread;
 
-    /** 当日の日足高値 */
+    /** 当日の日足高値。 */
     double high;
 
-    /** 当日の日足安値 */
+    /** 当日の日足安値。 */
     double low;
 
-    /** 当日の日足高値・安値の差（pips） */
+    /** 当日の日足高値・安値の差（pips）。 */
     int diff;
 
-    /** 当日値幅を円換算した値 */
+    /** 当日値幅を円換算した値。 */
     int diffJpy;
     
-    /** Ask表示文字列 */
+    /** Ask表示文字列。 */
     string askLabel;
 
-    /** Bid表示文字列 */
+    /** Bid表示文字列。 */
     string bidLabel;
 
-    /** スプレッド表示文字列 */
+    /** スプレッド表示文字列。 */
     string spreadLabel;
 
-    /** 日足高値表示文字列 */
+    /** 日足高値表示文字列。 */
     string highLabel;
 
-    /** 日足安値表示文字列 */
+    /** 日足安値表示文字列。 */
     string lowLabel;
 
-    /** 日足値幅表示文字列 */
+    /** 日足値幅表示文字列。 */
     string diffLabel;
 
-    /** 円換算値幅表示文字列 */
+    /** 円換算値幅表示文字列。 */
     string diffJpyLabel;
 
     /**
@@ -100,7 +100,7 @@ public:
      *
      * このメソッドでは価格情報を取得しない。
      *
-     * @param fromMarketContext 取得対象の市場コンテキスト
+     * @param fromMarketContext 取得対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);

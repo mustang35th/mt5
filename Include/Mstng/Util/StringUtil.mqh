@@ -19,8 +19,8 @@ public:
      * 正の値には "+" を付与し、
      * 0 と負の値は IntegerToString の結果をそのまま返す。
      *
-     * @param value 数値
-     * @return      符号付き文字列
+     * @param value 数値。
+     * @return      符号付き文字列。
      */
     static string addSign(const int value) {
         if (value > 0) {
@@ -36,9 +36,9 @@ public:
      * 正の値には "+" を付与し、
      * 0 と負の値は DoubleToString の結果をそのまま返す。
      *
-     * @param value 数値
-     * @param digits 小数桁数
-     * @return 符号付き文字列
+     * @param value 数値。
+     * @param digits 小数桁数。
+     * @return 符号付き文字列。
      */
     static string addSign(const double value, const int digits) {
         string text = DoubleToString(value, digits);
@@ -51,27 +51,27 @@ public:
     }
 
     /**
-     * 文字列が空（長さ0）かどうかを判定します。
+     * 文字列が空（長さ0）かどうかを判定する。
      *
-     * @param target 判定対象文字列
-     * @return 空文字であれば true、それ以外は false
+     * @param target 判定対象文字列。
+     * @return 空文字であれば true、それ以外は false。
      */
     static bool isEmpty(const string target) {
         return StringLen(target) == 0;
     }
         
     /**
-     * 通貨ペア名を左右2つの通貨コードに分割します。
+     * 通貨ペア名を左右2つの通貨コードに分割する。
      *
      * 主に "EURUSD" や "USDJPY" のような 6 文字の通貨ペア名を、
      * 左3文字と右3文字に分割することを想定しています。
      * 例: "EURUSD" → left="EUR", right="USD"。
      *
-     * 6 文字以外の通貨ペア名は分割に失敗し、false を返します。
+     * 6 文字以外の通貨ペア名は分割に失敗し、false を返す。
      *
-     * @param originalCurrencyPairName 元の通貨ペア名（例: "EURUSD"）
-     * @param leftCurrencyName         分割後の左側（例: "EUR"）
-     * @param rightCurrencyName        分割後の右側（例: "USD"）
+     * @param originalCurrencyPairName 元の通貨ペア名（例: "EURUSD"）。
+     * @param leftCurrencyName         分割後の左側（例: "EUR"）。
+     * @param rightCurrencyName        分割後の右側（例: "USD"）。
      *
      * @return 分割に成功した場合は true、想定外の形式で分割できなかった場合は false。
      */
@@ -97,12 +97,12 @@ public:
     }
     
     /**
-     * 整数(1..99)をローマ数字に変換して返します。
+     * 整数(1..99)をローマ数字に変換して返す。
      *
      * 例: 1→"I", 4→"IV", 9→"IX", 40→"XL", 58→"LVIII", 99→"XCIX"
      *
-     * @param value 変換対象（1..99）
-     * @return ローマ数字。範囲外(<=0 または >99)は空文字を返します。
+     * @param value 変換対象（1..99）。
+     * @return ローマ数字。範囲外(<=0 または >99)は空文字を返す。
      */
     static string toRoman(const int value) {
         if (value <= 0 || value > 99) {
@@ -127,11 +127,11 @@ public:
     }
     
     /**
-     * 指定した整数値をゼロパディングして文字列として返します。
+     * 指定した整数値をゼロパディングして文字列として返す。
      *
-     * @param fromValue 元の整数値
-     * @param digits    最低桁数
-     * @return ゼロパディングされた文字列
+     * @param fromValue 元の整数値。
+     * @param digits    最低桁数。
+     * @return ゼロパディングされた文字列。
      */
     static string zeroPadding(int fromValue, int digits) {
         int  value   = fromValue;

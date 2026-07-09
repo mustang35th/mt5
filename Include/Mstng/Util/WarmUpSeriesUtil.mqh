@@ -14,7 +14,7 @@
 
 /**
  * 指定シンボルの価格系列を時間足単位で
- * あらかじめ初期化（warm-up）するユーティリティです。
+ * あらかじめ初期化（warm-up）するユーティリティクラス。
  */
 class WarmUpSeriesUtil {
 public:
@@ -24,9 +24,9 @@ public:
      *
      * 対象時間足は固定8本（MN1、W1、D1、H4、H1、M15、M5、M1）のみです。
      *
-     * @param symbolName     シンボル名
+     * @param symbolName     シンボル名。
      * @param fromTimeFrame  対象上限時間足（例：PERIOD_W1 の場合、MN1/W1 まで）。
-     * @param barsNeeded     各時間足で CopyRates するバー本数（同期促進目的）
+     * @param barsNeeded     各時間足で CopyRates するバー本数（同期促進目的）。
      */
     static void warmUpFromMn1To(string symbolName, ENUM_TIMEFRAMES fromTimeFrame, int barsNeeded = 200) {
         MarketContext context(symbolName, fromTimeFrame);
@@ -52,7 +52,7 @@ public:
     /**
      * 指定した時間足配列を warm-up する。
      *
-     * @param symbolName   シンボル名
+     * @param symbolName   シンボル名。
      * @param timeFrames   対象時間足配列。
      * @param barsNeeded   CopyRates する本数。
      */
@@ -65,7 +65,7 @@ public:
     /**
      * 市場コンテキストのシンボルについて指定時間足配列をウォームアップする。
      *
-     * @param fromMarketContext ウォームアップ対象の市場コンテキスト
+     * @param fromMarketContext ウォームアップ対象の市場コンテキスト。
      * @param timeFrames 対象時間足配列。
      * @param barsNeeded CopyRates する本数。
      */
@@ -93,8 +93,8 @@ public:
      * シリーズ同期済みかを判定する。
      * CopyBuffer前のガード用途。
      *
-     * @param symbolName 対象シンボル名
-     * @param timeFrame  対象時間足
+     * @param symbolName 対象シンボル名。
+     * @param timeFrame  対象時間足。
      * @return 同期済みの場合 true。
      */
     static bool isSeriesSynchronized(string symbolName, ENUM_TIMEFRAMES timeFrame) {
@@ -106,7 +106,7 @@ public:
     /**
      * 市場コンテキストの価格系列が同期済みかを判定する。
      *
-     * @param fromMarketContext 判定対象の市場コンテキスト
+     * @param fromMarketContext 判定対象の市場コンテキスト。
      * @return 同期済みの場合 true。
      */
     static bool isSeriesSynchronized(MarketContext &fromMarketContext) {
@@ -128,7 +128,7 @@ private:
     /**
      * MN1→...→fromTimeFrame までの時間足配列を構築する。
      *
-     * @param fromTimeFrame 取得上限時間足
+     * @param fromTimeFrame 取得上限時間足。
      * @param fromOutTimeFrames 生成先配列（out）。
      */
     static void buildTimeframesFromMn1To(ENUM_TIMEFRAMES fromTimeFrame, ENUM_TIMEFRAMES &outTimeFrames[]) {
@@ -162,7 +162,7 @@ private:
     /**
      * 配列内で指定値のインデックスを検索する。
      *
-     * @param fromArray 対象配列
+     * @param fromArray 対象配列。
      * @param fromValue 検索対象値。
      * @return 発見時はインデックス、見つからなければ-1。
      */
