@@ -18,6 +18,14 @@
 #define ELLIOT_HIGHER_WAVES 5
 
 /**
+ * 上位足同期後の再分析を繰り返す最大ラウンド数。
+ *
+ * 1ラウンドで同方向Wave統合、左側の狭いWave統合、右側の狭いWave統合を順に試す。
+ * 過剰な統合で下位足の細部を潰しすぎないよう、再分析は最大3ラウンドに制限する。
+ */
+#define ELLIOT_REANALYZE_MAX_ROUNDS 3
+
+/**
  * 上位足と同期して下位足のElliott波動を総合分析するクラス。
  *
  * 上位足のWave区間ごとに下位足ポイントを抽出し、ZigZag補正、Wave生成、
@@ -389,9 +397,7 @@ private:
             this.logger.debug(__FUNCTION__, StringFormat("elliotWithHigher.waveList.Total = %d", totalHigher));
             
             if (this.isReanalyze && totalHigher > 1) {
-                int max = 3;
-                
-                for (int i = 0; i < max; i++) {   // 再分析
+                for (int i = 0; i < ELLIOT_REANALYZE_MAX_ROUNDS; i++) {   // 再分析
                     // 同じ方向
                     if (!elliotWithHigher.reanalyzeSameTrend()) {
                         delete elliotWithHigher;
