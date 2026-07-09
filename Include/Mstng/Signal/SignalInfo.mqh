@@ -18,8 +18,8 @@ public:
     /**
      * シグナル識別情報を指定して初期化する。
      *
-     * @param fromTime シグナルの基準時刻
-     * @param fromIsBuy 売買方向。true: BUY、false: SELL
+     * @param fromTime シグナルの基準時刻。
+     * @param fromIsBuy 売買方向。true: BUY、false: SELL。
      */
     SignalInfo(datetime fromTime, bool fromIsBuy) {
         this.time = fromTime;
@@ -36,7 +36,7 @@ public:
     /**
      * シグナル検出回数を加算する。
      *
-     * @return 加算後の検出回数
+     * @return 加算後の検出回数。
      */
     int addCount() {
         this.count++;
@@ -47,9 +47,9 @@ public:
     /**
      * 指定した識別情報と同じシグナルか判定する。
      *
-     * @param fromTime シグナルの基準時刻
-     * @param fromIsBuy 売買方向。true: BUY、false: SELL
-     * @return 時刻と売買方向が一致する場合true
+     * @param fromTime シグナルの基準時刻。
+     * @param fromIsBuy 売買方向。true: BUY、false: SELL。
+     * @return 時刻と売買方向が一致する場合はtrue。
      */
     bool isEqual(datetime fromTime, bool fromIsBuy) {
         bool isEqual = false;
@@ -62,13 +62,13 @@ public:
     }
 
 private:
-    /** 基準となるZigZagポイントの時刻 */
+    /** 基準となるZigZagポイントの時刻。 */
     datetime time;
 
-    /** 売買方向。true: BUY、false: SELL */
+    /** 売買方向。true: BUY、false: SELL。 */
     bool isBuy;
     
-    /** 同一シグナルの検出回数 */
+    /** 同一シグナルの検出回数。 */
     int count;
 
 };

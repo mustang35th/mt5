@@ -18,14 +18,14 @@
  */
 class SignalCount : public CObject {
 public:
-    /** 管理対象の市場コンテキスト */
+    /** 管理対象の市場コンテキスト。 */
     MarketContext marketContext;
 
     /**
      * 分析対象を指定して初期化する。
      *
-     * @param fromSymbolName 対象シンボル
-     * @param fromTimeFrame 対象時間足
+     * @param fromSymbolName 対象シンボル。
+     * @param fromTimeFrame 対象時間足。
      */
     SignalCount(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame) {
         MarketContext context(fromSymbolName, fromTimeFrame);
@@ -35,7 +35,7 @@ public:
     /**
      * 市場コンテキストを指定して初期化する。
      *
-     * @param fromMarketContext 管理対象の市場コンテキスト
+     * @param fromMarketContext 管理対象の市場コンテキスト。
      */
     SignalCount(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
@@ -52,7 +52,7 @@ public:
      *
      * 別市場のシグナル発生回数が混在しないよう、保持中の情報をクリアする。
      *
-     * @param fromMarketContext 管理対象の市場コンテキスト
+     * @param fromMarketContext 管理対象の市場コンテキスト。
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.signalInfoList.Clear();
@@ -64,9 +64,9 @@ public:
      *
      * 同じ時刻と売買方向のSignalInfoがない場合は新規作成する。
      *
-     * @param time シグナルの基準時刻
-     * @param isBuy 売買方向。true: BUY、false: SELL
-     * @return 加算後の検出回数
+     * @param time シグナルの基準時刻。
+     * @param isBuy 売買方向。true: BUY、false: SELL。
+     * @return 加算後の検出回数。
      */
     int addCount(datetime time, bool isBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -97,16 +97,16 @@ public:
 
 
 private:
-    /** 処理経過およびエラー出力用ロガー */
+    /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
     
-    /** 時刻・売買方向別のSignalInfo一覧 */
+    /** 時刻・売買方向別のSignalInfo一覧。 */
     CArrayObj signalInfoList;
 
     /**
      * 市場コンテキストとロガーを初期化する。
      *
-     * @param fromMarketContext 管理対象の市場コンテキスト
+     * @param fromMarketContext 管理対象の市場コンテキスト。
      */
     void initializeMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
@@ -118,9 +118,9 @@ private:
     /**
      * 指定時刻と売買方向に一致するSignalInfoを取得する。
      *
-     * @param time シグナルの基準時刻
-     * @param isBuy 売買方向。true: BUY、false: SELL
-     * @return 一致するSignalInfo。一致しない場合NULL
+     * @param time シグナルの基準時刻。
+     * @param isBuy 売買方向。true: BUY、false: SELL。
+     * @return 一致するSignalInfo。一致しない場合はNULL。
      */
     SignalInfo *getSignalInfo(datetime time, bool isBuy) {
         
