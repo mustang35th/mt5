@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.00"
+#property version   "1.01"
 #property indicator_chart_window
 
 #include <Mstng\Common\MarketContext.mqh>
@@ -162,7 +162,7 @@ void printElliotAllByEma200(ElliotAllList *elliotAllList, bool isBuy) {
             if (elliotAll.isBuySell(PERIOD_H4)
                     && expertAdvisorEma200.isEma200BuySell(elliotHigher1)
                     && expertAdvisorEma200.isEma200BuySell(elliotCurrent)
-                    //&& expertAdvisorEma200.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent)
+                    && expertAdvisorEma200.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent)
             ) {
                 Print("  " + elliotAll.getCsv());
             }

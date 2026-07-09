@@ -24,9 +24,13 @@ public:
         string title = getTitle(fromElliotAll);
         string body = getBody(fromElliotAll);
         
-        Print(__FUNCTION__, " isSendMail = ", isSendMail);
-        Print(__FUNCTION__, " title = ", title);
-        Print(__FUNCTION__, " body = ", body);
+        if (fromElliotAll.isTimer && fromElliotAll.marketContext.timeFrame == PERIOD_M1) {
+            Print(__FUNCTION__, " title = ", title);
+        } else {
+            Print(__FUNCTION__, " isSendMail = ", isSendMail);
+            Print(__FUNCTION__, " title = ", title);
+            Print(__FUNCTION__, " body = ", body);
+        }
         
         if (isSendMail) {
             if (fromElliotAll.isTimer) {

@@ -31,7 +31,7 @@ public:
      * 主要な通貨ペアを登録する。
      */
     SymbolNameInfoAll() {
-        this.setGmo();
+        this.setDiscretionary();
     }
     
     /**
