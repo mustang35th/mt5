@@ -10,15 +10,15 @@
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
 
 /**
- * メール送信のエントリを提供するクラス。
+ * Elliott分析結果を元にメールタイトルと本文を生成して送信するクラス。
  */
 class Mail {
 public:
     /**
-     * メール内容を作成して送信します。
+     * メール内容を作成して送信する。
      *
-     * @param fromElliotAll 解析結果を保持するインスタンス
-     * @param isSendMail     送信可否フラグ
+     * @param fromElliotAll 解析結果を保持するインスタンス。
+     * @param isSendMail 送信する場合true。
      */
     static void sendMail(ElliotAll *fromElliotAll, bool isSendMail = false) {
         string title = getTitle(fromElliotAll);
@@ -37,10 +37,10 @@ public:
 
 private:
     /**
-     * メールタイトルを生成します。
+     * メールタイトルを生成する。
      *
-     * @param fromElliotAll 解析結果を保持するインスタンス
-     * @return メールタイトル文字列
+     * @param fromElliotAll 解析結果を保持するインスタンス。
+     * @return メールタイトル文字列。
      */
     static string getTitle(ElliotAll *fromElliotAll) {
         string symbolName = fromElliotAll.marketContext.symbolName;
@@ -51,17 +51,17 @@ private:
     }
     
     /**
-     * メール本文を生成します。
+     * メール本文を生成する。
      *
-     * @param fromElliotAll 解析結果を保持するインスタンス
-     * @return メール本文文字列
+     * @param fromElliotAll 解析結果を保持するインスタンス。
+     * @return メール本文文字列。
      */
     static string getBody(ElliotAll *fromElliotAll) {
         string text = "";
         
         text += StringFormat("%s\n", TimeUtil::formatYyyymmddhhmiss(fromElliotAll.tradeTimeInfo.jstTime));
         
-        // レート
+        // レート。
         TodayRate todayRate = fromElliotAll.todayRate;
         
         text += StringFormat("Bid:%s Ask:%s spread:%spips\n", todayRate.bidLabel, todayRate.askLabel, todayRate.spreadLabel);
@@ -76,13 +76,13 @@ private:
         
         text += StringFormat("GMT:%s\n\n", TimeUtil::formatYyyymmddhhmiss(fromElliotAll.tradeTimeInfo.serverTime));
         
-        // ロスカット
+        // ロスカット。
         text += StringFormat("%s\n", fromElliotAll.lossCut.getText());
         
-        // 市場分析
+        // 市場分析。
         //text += StringFormat("%s\n\n", fromElliotAll.marketActivityAnalyzer.toString());
         
-        // エリオット
+        // エリオット。
         text += "エリオット\n";
         text += StringFormat("%s\n", fromElliotAll.getText());
         
