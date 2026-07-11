@@ -41,6 +41,9 @@ public:
 
         this.eaContext.positionService.refresh();
 
+        // 建値移動前の初期リスク幅を保持
+        this.refreshProfitRetracementState();
+
         this.tryBreakEven();
         this.eaContext.positionService.refresh();
 
@@ -416,6 +419,33 @@ private:
     }
 
     /**
+     * 利益戻し決済状態を現在ポジションで更新する。
+     *
+     * 建値移動で初期ストップロスが失われる前に、初期リスク幅を保持する。
+     */
+    void refreshProfitRetracementState() {
+        if (this.eaContext.eaConfig == NULL) {
+            return;
+        }
+
+        if (!this.eaContext.eaConfig.useProfitRetracementExit) {
+            return;
+        }
+
+        if (this.eaContext.profitRetracementState == NULL) {
+            return;
+        }
+
+        if (!this.eaContext.positionService.hasPosition()) {
+            this.eaContext.profitRetracementState.reset();
+            return;
+        }
+
+        PositionSnapshot positionSnapshot = this.eaContext.positionService.getSnapshot();
+        this.updateProfitRetracementState(positionSnapshot);
+    }
+
+    /**
      * 利益戻し決済判定
      *
      * @return true: 決済実行
@@ -488,9 +518,14 @@ private:
     void updateProfitRetracementState(PositionSnapshot &positionSnapshotValue) {
 
         if (this.eaContext.profitRetracementState.positionTicket != positionSnapshotValue.ticket) {
+            this.eaContext.profitRetracementState.reset();
             this.eaContext.profitRetracementState.positionTicket = positionSnapshotValue.ticket;
             this.eaContext.profitRetracementState.maxFloatingProfit = positionSnapshotValue.floatingProfit;
-            this.eaContext.profitRetracementState.activated = false;
+
+            if (positionSnapshotValue.stopLoss > 0.0) {
+                this.eaContext.profitRetracementState.initialRiskDistance =
+                    this.calculateBreakEvenRiskDistance(positionSnapshotValue);
+            }
         }
 
         if (positionSnapshotValue.floatingProfit
@@ -502,12 +537,47 @@ private:
             return;
         }
 
-        if (this.eaContext.profitRetracementState.maxFloatingProfit
-            < this.eaContext.eaConfig.profitRetracementStart) {
+        if (!this.isProfitRetracementStartTriggered(positionSnapshotValue)) {
             return;
         }
 
         this.eaContext.profitRetracementState.activated = true;
+    }
+
+    /**
+     * 初期リスク幅に対して利益戻し決済の開始R倍率へ到達したか判定する。
+     *
+     * @param fromPositionSnapshot ポジション状態。
+     * @return 開始価格へ到達した場合true。
+     */
+    bool isProfitRetracementStartTriggered(PositionSnapshot &fromPositionSnapshot) {
+        if (this.eaContext.eaConfig.profitRetracementStartR <= 0.0) {
+            return false;
+        }
+
+        double initialRiskDistance = this.eaContext.profitRetracementState.initialRiskDistance;
+
+        if (initialRiskDistance <= 0.0) {
+            return false;
+        }
+
+        double currentPrice = this.getCurrentBreakEvenJudgePrice(fromPositionSnapshot);
+
+        if (currentPrice <= 0.0) {
+            return false;
+        }
+
+        double triggerDistance = initialRiskDistance
+            * this.eaContext.eaConfig.profitRetracementStartR;
+        double triggerPrice = fromPositionSnapshot.openPrice;
+
+        if (fromPositionSnapshot.isBuy) {
+            triggerPrice += triggerDistance;
+            return currentPrice >= triggerPrice;
+        }
+
+        triggerPrice -= triggerDistance;
+        return currentPrice <= triggerPrice;
     }
 
     /**
@@ -957,8 +1027,8 @@ private:
         string stateText = this.getTrailExitStateText();
         string text = enabledText;
         text += " / ";
-        text += DoubleToString(this.eaContext.eaConfig.profitRetracementStart, 0);
-        text += " / ";
+        text += DoubleToString(this.eaContext.eaConfig.profitRetracementStartR, 1);
+        text += "R / ";
         text += DoubleToString(this.eaContext.eaConfig.profitRetracementRate * 100.0, 0);
         text += "% / ";
         text += stateText;

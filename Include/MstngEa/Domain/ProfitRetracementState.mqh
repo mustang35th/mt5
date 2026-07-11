@@ -17,6 +17,9 @@ public:
     /** 最大含み益 */
     double maxFloatingProfit;
 
+    /** エントリー価格から初期ストップロスまでの価格差 */
+    double initialRiskDistance;
+
     /** 監視開始済み */
     bool activated;
 
@@ -26,6 +29,7 @@ public:
     ProfitRetracementState() {
         this.positionTicket = 0;
         this.maxFloatingProfit = 0.0;
+        this.initialRiskDistance = 0.0;
         this.activated = false;
     }
 
@@ -35,6 +39,7 @@ public:
     void reset() {
         this.positionTicket = 0;
         this.maxFloatingProfit = 0.0;
+        this.initialRiskDistance = 0.0;
         this.activated = false;
     }
 };

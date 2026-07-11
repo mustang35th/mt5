@@ -28,8 +28,8 @@ public:
     /** 利益戻し決済使用 */
     bool useProfitRetracementExit;
 
-    /** 利益戻し決済開始損益 */
-    double profitRetracementStart;
+    /** 利益戻し決済開始R倍率 */
+    double profitRetracementStartR;
 
     /** 利益戻し決済戻し率 */
     double profitRetracementRate;
@@ -53,11 +53,11 @@ public:
         this.slippage = 10;
         this.statusLabelName = "MstngEa_StatusLabel";
         this.useProfitRetracementExit = true;
-        this.profitRetracementStart = 300.0;
+        this.profitRetracementStartR = 1.5;
         this.profitRetracementRate = 0.30;
         this.useBreakEven = true;
-        this.breakEvenTriggerR = 0.8;
-        this.breakEvenPlusPips = 0.0;
+        this.breakEvenTriggerR = 1.0;
+        this.breakEvenPlusPips = 1.0;
     }
 };
 

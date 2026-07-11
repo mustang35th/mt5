@@ -5,7 +5,7 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.01"
+#property version   "1.02"
 
 #property strict
 
@@ -30,8 +30,8 @@ input int InpPanelRefreshMilliseconds = 1000;
 /** 利益戻し決済使用 */
 input bool InpUseProfitRetracementExit = true;
 
-/** 利益戻し決済開始損益 */
-input double InpProfitRetracementStart = 300.0;
+/** 利益戻し決済開始R倍率 */
+input double InpProfitRetracementStartR = 1.5;
 
 /** 利益戻し決済戻し率 */
 input double InpProfitRetracementRate = 0.30;
@@ -40,10 +40,10 @@ input double InpProfitRetracementRate = 0.30;
 input bool InpUseBreakEven = true;
 
 /** 建値移動発動R倍率 */
-input double InpBreakEvenTriggerR = 0.8;
+input double InpBreakEvenTriggerR = 1.0;
 
 /** 建値移動加算pips */
-input double InpBreakEvenPlusPips = 0.0;
+input double InpBreakEvenPlusPips = 1.0;
 
 /** シンボル名 */
 string g_symbolName;
@@ -89,7 +89,7 @@ int OnInit() {
     g_eaConfig.strategyType = InpStrategyType;
     g_eaConfig.lotSize = InpLotSize;
     g_eaConfig.useProfitRetracementExit = InpUseProfitRetracementExit;
-    g_eaConfig.profitRetracementStart = InpProfitRetracementStart;
+    g_eaConfig.profitRetracementStartR = InpProfitRetracementStartR;
     g_eaConfig.profitRetracementRate = InpProfitRetracementRate;
     g_eaConfig.useBreakEven = InpUseBreakEven;
     g_eaConfig.breakEvenTriggerR = InpBreakEvenTriggerR;
