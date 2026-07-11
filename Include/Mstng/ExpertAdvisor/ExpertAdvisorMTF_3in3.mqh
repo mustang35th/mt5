@@ -110,7 +110,7 @@ protected:
         this.elliotAll.mailTitile += this.marketContext.timeFrameLabel;
         
         if (1 == 1
-                //&& this.isLossCut(30)
+                && this.isLossCut(30)
                 
                 //&& this.isFibonacciExpansionPercent(this.elliotHigher1, 127.2)
                 //&& this.isFibonacciExpansionPercent(this.elliotCurrent, 127.2)

@@ -420,19 +420,15 @@ protected:
     }
 
     /**
-     * ロスカット幅が指定値以内か判定する。
+     * ロスカット基準点までの距離が指定したpips上限以内か判定する。
      *
-     * @param inValue ロスカット幅の上限値。
-     * @return 上限値以下の場合true。
+     * @param inValue ロスカット基準点までの距離の上限pips。
+     * @return 距離が上限pips以下の場合true。
      */
     bool isLossCut(double inValue) {
         bool isLossCut = false;
         
         double diff = this.elliotAll.lossCut.diff;
-        
-        if (!this.marketContext.isJpy()) {
-            diff = this.elliotAll.lossCut.diffJpy;
-        }
         
         if (diff <= inValue) {
             isLossCut = true;
