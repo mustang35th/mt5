@@ -20,7 +20,8 @@
 /**
  * 上位足同期後の再分析を繰り返す最大ラウンド数。
  *
- * 1ラウンドで同方向Wave統合、左側の狭いWave統合、右側の狭いWave統合を順に試す。
+ * 1ラウンドで同方向Wave統合、3分割継続波統合、左側の狭いWave統合、
+ * 右側の狭いWave統合を順に試す。
  * 過剰な統合で下位足の細部を潰しすぎないよう、再分析は最大3ラウンドに制限する。
  */
 #define ELLIOT_REANALYZE_MAX_ROUNDS 3
@@ -408,6 +409,20 @@ private:
                         return false;
                     }
                     
+                    if (elliotWithHigher.waveList.Total() == 1) {    // 波動の数が1の場合終了
+                        break;
+                    }
+
+                    // 3分割された継続波を再分析
+                    if (!elliotWithHigher.reanalyzeThreeWaveContinuation()) {
+                        delete elliotWithHigher;
+
+                        this.logger.error(__FUNCTION__, "elliotWithHigher.reanalyzeThreeWaveContinuation false");
+                        LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                        return false;
+                    }
+
                     if (elliotWithHigher.waveList.Total() == 1) {    // 波動の数が1の場合終了
                         break;
                     }

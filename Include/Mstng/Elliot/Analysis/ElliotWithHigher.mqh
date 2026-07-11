@@ -10,12 +10,13 @@
 #include <Mstng\Elliot\Reanalysis\ElliotReanalysisNarrowWaveLeft.mqh>
 #include <Mstng\Elliot\Reanalysis\ElliotReanalysisNarrowWaveRight.mqh>
 #include <Mstng\Elliot\Reanalysis\ElliotReanalysisSameTrend.mqh>
+#include <Mstng\Elliot\Reanalysis\ElliotReanalysisThreeWaveContinuation.mqh>
 
 
 /**
  * 上位足と同期済みのポイント列をWaveとして分析するクラス。
  *
- * 通常分析に加え、同一方向Waveや狭いWaveを対象とした再分析を提供する。
+ * 通常分析に加え、同一方向Wave、3分割された継続波、狭いWaveを対象とした再分析を提供する。
  */
 class ElliotWithHigher : public ElliotBase {
 public:
@@ -139,6 +140,38 @@ public:
         WaveUtil::copyWaveList(elliotReanalysisSameTrend.waveList, this.waveList);
 
         delete elliotReanalysisSameTrend;
+
+
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
+    }
+
+    /**
+     * 3分割された同方向の継続波を再分析し、結果をwaveListへ反映する。
+     *
+     * @return 再分析に成功した場合true
+     */
+    bool reanalyzeThreeWaveContinuation() {
+        LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+
+        ElliotReanalysisThreeWaveContinuation *elliotReanalysisThreeWaveContinuation
+                = new ElliotReanalysisThreeWaveContinuation(this.marketContext, this.waveList);
+
+
+        if (!elliotReanalysisThreeWaveContinuation.analyze()) {
+            delete elliotReanalysisThreeWaveContinuation;
+
+            this.logger.error(__FUNCTION__, "elliotReanalysisThreeWaveContinuation.analyze false");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        WaveUtil::copyWaveList(elliotReanalysisThreeWaveContinuation.waveList, this.waveList);
+
+        delete elliotReanalysisThreeWaveContinuation;
 
 
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
