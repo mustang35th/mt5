@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.08"
+#property version   "1.09"
 #property indicator_chart_window
 
 #property indicator_buffers 6
@@ -14,6 +14,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Draw\Draw.mqh>
+#include <Mstng\Draw\DrawElliotVerticalFit.mqh>
 #include <Mstng\Elliot\ElliotAllFile.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
 #include <Mstng\Indicator\Ema200Indicator.mqh>
@@ -33,6 +34,7 @@
 GmmaIndicator *g_gmmaIndicator = NULL;
 Ema200Indicator *g_ema200Indicator = NULL;
 JapanTimeAxisView *g_japanTimeAxisView = NULL;
+DrawElliotVerticalFit *g_drawElliotVerticalFit = NULL;
 
 Logger g_logger;
 
@@ -94,7 +96,9 @@ int OnInit() {
     setGmmaIndicator();
     setEma200Indicator();
     setJapanTimeAxisView();
+    setElliotVerticalFit();
     setElliotInfoButton();
+    setElliotVerticalFitButton();
     
 
     if (!g_isTimer) {
@@ -134,7 +138,9 @@ void OnDeinit(const int reason) {
     deleteGmmaIndicator();
     deleteEma200Indicator();
     deleteJapanTimeAxisView();
+    deleteElliotVerticalFit();
     deleteElliotInfoButton();
+    deleteElliotVerticalFitButton();
     
     
     deleteSignalCount();
@@ -166,18 +172,30 @@ void OnDeinit(const int reason) {
  * @param sparam string型イベント値
  */
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam) {
+    if (id == CHARTEVENT_CHART_CHANGE) {
+        if (updateElliotVerticalFit(false)) {
+            redrawElliotInfo();
+        }
+
+        return;
+    }
+
     if (id != CHARTEVENT_OBJECT_CLICK) {
         return;
     }
 
-    if (sparam != getElliotInfoButtonName()) {
+    if (sparam == getElliotVerticalFitButtonName()) {
+        toggleElliotVerticalFit();
+
         return;
     }
 
-    // 大きいエリオット情報のみ表示切替し、波動ラベルやライン描画は残す。
-    g_isElliotInfoVisible = !g_isElliotInfoVisible;
-    updateElliotInfoButton();
-    redrawElliotInfo();
+    if (sparam == getElliotInfoButtonName()) {
+        // 大きいエリオット情報のみ表示切替し、波動ラベルやライン描画は残す。
+        g_isElliotInfoVisible = !g_isElliotInfoVisible;
+        updateElliotInfoButton();
+        redrawElliotInfo();
+    }
 }
 
 /**
@@ -229,6 +247,10 @@ int OnCalculate(const int32_t rates_total,
 void OnTimer() {
     updateJapanTimeAxisView();
     updateEma200Indicator();
+
+    if (updateElliotVerticalFit(false)) {
+        redrawElliotInfo();
+    }
 
     if (!g_isInitialized) {
         updateTimerSeconds();
@@ -303,6 +325,8 @@ void execute() {
     }
     
     setElliotAll();
+
+    updateElliotVerticalFit(true);
         
     gDraw.drawAll(g_elliotAll, g_isElliotInfoVisible);
 
@@ -487,6 +511,145 @@ void redrawElliotInfo() {
  */
 void deleteElliotInfoButton() {
     ObjectDelete(0, getElliotInfoButtonName());
+}
+
+/**
+ * Elliott上下FIT制御を作成する。
+ */
+void setElliotVerticalFit() {
+    deleteElliotVerticalFit();
+
+    g_drawElliotVerticalFit = new DrawElliotVerticalFit();
+}
+
+/**
+ * Elliott上下FIT制御を削除する。
+ *
+ * FITが有効な場合は、変更前の価格軸設定を復元してから解放する。
+ */
+void deleteElliotVerticalFit() {
+    if (g_drawElliotVerticalFit != NULL) {
+        g_drawElliotVerticalFit.restore();
+        delete g_drawElliotVerticalFit;
+        g_drawElliotVerticalFit = NULL;
+    }
+}
+
+/**
+ * Elliott上下FITボタンのオブジェクト名を取得する。
+ *
+ * @return ボタン名
+ */
+string getElliotVerticalFitButtonName() {
+    return Constant::PREFIX_FIXED + "ElliotVerticalFitButton";
+}
+
+/**
+ * Elliott波動ラベルの上下FIT切替ボタンを作成する。
+ */
+void setElliotVerticalFitButton() {
+    string objectName = getElliotVerticalFitButtonName();
+
+    ObjectDelete(0, objectName);
+
+    if (!ObjectCreate(0, objectName, OBJ_BUTTON, 0, 0, 0)) {
+        return;
+    }
+
+    // 波動情報ボタンの左隣へ固定し、通常描画の削除対象から分離する。
+    ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_RIGHT_LOWER);
+    ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 280);
+    ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 45);
+    ObjectSetInteger(0, objectName, OBJPROP_XSIZE, 130);
+    ObjectSetInteger(0, objectName, OBJPROP_YSIZE, 24);
+    ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 9);
+    ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, objectName, OBJPROP_HIDDEN, true);
+    ObjectSetInteger(0, objectName, OBJPROP_BACK, false);
+    ObjectSetInteger(0, objectName, OBJPROP_ZORDER, 1000);
+    ObjectSetInteger(0, objectName, OBJPROP_BORDER_COLOR, clrWhite);
+    ObjectSetString(0, objectName, OBJPROP_FONT, "Meiryo UI");
+
+    updateElliotVerticalFitButton();
+}
+
+/**
+ * Elliott上下FIT状態に合わせてボタン表示を更新する。
+ */
+void updateElliotVerticalFitButton() {
+    string objectName = getElliotVerticalFitButtonName();
+
+    if (ObjectFind(0, objectName) < 0) {
+        return;
+    }
+
+    bool isEnabled = false;
+
+    if (g_drawElliotVerticalFit != NULL) {
+        isEnabled = g_drawElliotVerticalFit.isEnabled();
+    }
+
+    string text = "波動上下FIT";
+    color backgroundColor = clrDimGray;
+
+    if (isEnabled) {
+        text = "上下FIT解除";
+        backgroundColor = clrDarkGreen;
+    }
+
+    ObjectSetInteger(0, objectName, OBJPROP_STATE, isEnabled);
+    ObjectSetInteger(0, objectName, OBJPROP_COLOR, clrWhite);
+    ObjectSetInteger(0, objectName, OBJPROP_BGCOLOR, backgroundColor);
+    ObjectSetString(0, objectName, OBJPROP_TEXT, text);
+}
+
+/**
+ * Elliott上下FITの有効・無効を切り替える。
+ */
+void toggleElliotVerticalFit() {
+    if (g_drawElliotVerticalFit == NULL || g_elliotAll == NULL) {
+        updateElliotVerticalFitButton();
+
+        return;
+    }
+
+    if (g_drawElliotVerticalFit.isEnabled()) {
+        if (!g_drawElliotVerticalFit.restore()) {
+            updateElliotVerticalFitButton();
+
+            return;
+        }
+    } else {
+        if (!g_drawElliotVerticalFit.enable(g_elliotAll)) {
+            updateElliotVerticalFitButton();
+
+            return;
+        }
+    }
+
+    updateElliotVerticalFitButton();
+    redrawElliotInfo();
+}
+
+/**
+ * 表示範囲または分析結果に合わせてElliott上下FITを更新する。
+ *
+ * @param fromForce trueの場合、表示範囲が同じでも再計算する
+ * @return 価格軸を更新した場合true
+ */
+bool updateElliotVerticalFit(bool fromForce) {
+    if (g_drawElliotVerticalFit == NULL || g_elliotAll == NULL) {
+        return false;
+    }
+
+    return g_drawElliotVerticalFit.update(g_elliotAll, fromForce);
+}
+
+/**
+ * Elliott上下FITボタンを削除する。
+ */
+void deleteElliotVerticalFitButton() {
+    ObjectDelete(0, getElliotVerticalFitButtonName());
 }
 
 /**
