@@ -51,8 +51,13 @@ public:
      *
      * @param fromElliotAll Elliot解析結果
      * @param fromIsElliotInfoVisible エリオット情報表示有無
+     * @param fromClampElliotVertical Elliottラベルを上下端へ収める場合true
      */
-    void drawAll(ElliotAll *fromElliotAll, bool fromIsElliotInfoVisible = true) {
+    void drawAll(
+        ElliotAll *fromElliotAll,
+        bool fromIsElliotInfoVisible = true,
+        bool fromClampElliotVertical = false
+    ) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         this.elliotAll = fromElliotAll;
@@ -74,7 +79,11 @@ public:
         
         DrawElliot drawElliot;
         
-        drawElliot.draw(this.elliotAll, fromIsElliotInfoVisible);
+        drawElliot.draw(
+            this.elliotAll,
+            fromIsElliotInfoVisible,
+            fromClampElliotVertical
+        );
         
         
         DrawHorizontalLine drawHorizontalLine;

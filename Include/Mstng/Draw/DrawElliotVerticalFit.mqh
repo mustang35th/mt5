@@ -18,15 +18,19 @@
  * 現在表示中のローソク足と、DrawElliotが描画する現在足および上位2足の
  * ZigZagポイントから価格範囲を算出し、ラベル用の上下余白を加えて固定する。
  * FIT解除時は、変更前の価格軸設定を復元する。
+ * Visual Testerでは価格軸固定を使用せず、DrawElliot側のラベル位置補正を有効化する。
  */
 class DrawElliotVerticalFit {
 public:
     /**
      * 価格軸設定と表示範囲の初期値を設定する。
+     *
+     * @param fromUseLabelClamp ラベル位置補正を使用する場合true
      */
-    DrawElliotVerticalFit() {
+    DrawElliotVerticalFit(bool fromUseLabelClamp = false) {
         this.logger.setLevel(LOG_INFO);
         this.chartId = 0;
+        this.useLabelClamp = fromUseLabelClamp;
         this.isEnabledValue = false;
         this.isOriginalScaleSaved = false;
         this.originalScaleFix = false;
@@ -65,6 +69,13 @@ public:
         }
 
         this.logger.setMarketContext(fromElliotAll.marketContext);
+
+        if (this.useLabelClamp) {
+            this.isEnabledValue = true;
+            this.clearChartView();
+
+            return true;
+        }
 
         double fixedMin = 0;
         double fixedMax = 0;
@@ -111,6 +122,10 @@ public:
             return false;
         }
 
+        if (this.useLabelClamp) {
+            return true;
+        }
+
         if (!fromForce && !this.isChartViewChanged()) {
             return false;
         }
@@ -147,6 +162,13 @@ public:
      * @return 復元できた場合true
      */
     bool restore() {
+        if (this.useLabelClamp) {
+            this.isEnabledValue = false;
+            this.clearChartView();
+
+            return true;
+        }
+
         if (!this.isOriginalScaleSaved) {
             this.isEnabledValue = false;
             this.clearChartView();
@@ -228,6 +250,9 @@ private:
 
     /** 操作対象チャートID。 */
     long chartId;
+
+    /** ラベル位置補正を使用する場合true。 */
+    bool useLabelClamp;
 
     /** 上下FITが有効な場合true。 */
     bool isEnabledValue;

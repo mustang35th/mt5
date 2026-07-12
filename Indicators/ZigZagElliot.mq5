@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.10"
+#property version   "1.16"
 #property indicator_chart_window
 
 #property indicator_buffers 6
@@ -185,7 +185,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
     }
 
     if (sparam == getElliotVerticalFitButtonName()) {
-        toggleElliotVerticalFit();
+        syncElliotVerticalFitButtonState();
 
         return;
     }
@@ -237,6 +237,7 @@ int OnCalculate(const int32_t rates_total,
     }
 
     execute();
+    syncElliotVerticalFitButtonState();
     
     return rates_total;
 }
@@ -328,7 +329,11 @@ void execute() {
 
     updateElliotVerticalFit(true);
         
-    gDraw.drawAll(g_elliotAll, g_isElliotInfoVisible);
+    gDraw.drawAll(
+        g_elliotAll,
+        g_isElliotInfoVisible,
+        isElliotVerticalFitLabelClampEnabled()
+    );
 
     // ⏳ 処理終了時刻を記録し、実行時間を計算
     long endTime = GetTickCount();
@@ -502,7 +507,11 @@ void redrawElliotInfo() {
     }
 
     // 通常描画を再実行して、非表示時のエリオット情報オブジェクトも削除する。
-    gDraw.drawAll(g_elliotAll, g_isElliotInfoVisible);
+    gDraw.drawAll(
+        g_elliotAll,
+        g_isElliotInfoVisible,
+        isElliotVerticalFitLabelClampEnabled()
+    );
     ChartRedraw(0);
 }
 
@@ -514,12 +523,35 @@ void deleteElliotInfoButton() {
 }
 
 /**
+ * Visual TesterでElliottラベルを上下端へ収めるか判定する。
+ *
+ * @return ラベルクランプを使用する場合true
+ */
+bool isElliotVerticalFitLabelClampMode() {
+    return Util::isStrategyTester() && MQLInfoInteger(MQL_VISUAL_MODE);
+}
+
+/**
+ * Elliottラベルの上下端クランプが有効か判定する。
+ *
+ * @return 有効な場合true
+ */
+bool isElliotVerticalFitLabelClampEnabled() {
+    if (!isElliotVerticalFitLabelClampMode() || g_drawElliotVerticalFit == NULL) {
+        return false;
+    }
+
+    return g_drawElliotVerticalFit.isEnabled();
+}
+
+/**
  * Elliott上下FIT制御を作成する。
  */
 void setElliotVerticalFit() {
     deleteElliotVerticalFit();
 
-    g_drawElliotVerticalFit = new DrawElliotVerticalFit();
+    bool useLabelClamp = isElliotVerticalFitLabelClampMode();
+    g_drawElliotVerticalFit = new DrawElliotVerticalFit(useLabelClamp);
 }
 
 /**
@@ -615,12 +647,14 @@ void toggleElliotVerticalFit() {
 
     if (g_drawElliotVerticalFit.isEnabled()) {
         if (!g_drawElliotVerticalFit.restore()) {
+            g_logger.error(__FUNCTION__, "Elliott vertical fit restore failed");
             updateElliotVerticalFitButton();
 
             return;
         }
     } else {
         if (!g_drawElliotVerticalFit.enable(g_elliotAll)) {
+            g_logger.error(__FUNCTION__, "Elliott vertical fit enable failed");
             updateElliotVerticalFitButton();
 
             return;
@@ -628,7 +662,61 @@ void toggleElliotVerticalFit() {
     }
 
     updateElliotVerticalFitButton();
+    g_logger.info(
+        __FUNCTION__,
+        StringFormat(
+            "enabled=%s labelClampMode=%s",
+            (string)g_drawElliotVerticalFit.isEnabled(),
+            (string)isElliotVerticalFitLabelClampMode()
+        )
+    );
     redrawElliotInfo();
+}
+
+/**
+ * ボタン状態をElliott上下FITへ反映する。
+ *
+ * Visual TesterではOnChartEventとOnCalculateの両方から呼ばれる場合があるため、
+ * ボタン状態とFIT状態が異なる場合だけ切替処理を実行する。
+ */
+void syncElliotVerticalFitButtonState() {
+    if (g_drawElliotVerticalFit == NULL || g_elliotAll == NULL) {
+        return;
+    }
+
+    string objectName = getElliotVerticalFitButtonName();
+
+    if (ObjectFind(0, objectName) < 0) {
+        return;
+    }
+
+    long buttonStateValue = 0;
+
+    ResetLastError();
+
+    if (!ObjectGetInteger(0, objectName, OBJPROP_STATE, 0, buttonStateValue)) {
+        g_logger.error(
+            __FUNCTION__,
+            StringFormat("ObjectGetInteger OBJPROP_STATE failed. error=%d", GetLastError())
+        );
+
+        return;
+    }
+
+    bool buttonState = (bool)buttonStateValue;
+    bool fitState = g_drawElliotVerticalFit.isEnabled();
+
+    if (buttonState != fitState) {
+        g_logger.info(
+            __FUNCTION__,
+            StringFormat(
+                "buttonState=%s fitState=%s",
+                (string)buttonState,
+                (string)fitState
+            )
+        );
+        toggleElliotVerticalFit();
+    }
 }
 
 /**

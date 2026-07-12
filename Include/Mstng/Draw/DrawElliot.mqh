@@ -39,6 +39,7 @@ public:
      */
     DrawElliot() {
         this.logger.setLevel(LOG_INFO);
+        this.clampVertical = false;
         
         this.addDrawPropertiesElliotList(true, 90); // COLMUN_TIME_FRAME
         this.addDrawPropertiesElliotList(true, 110);    // COLMUN_BUYSELL
@@ -66,9 +67,15 @@ public:
      *
      * @param fromElliotAll Elliot解析結果
      * @param fromIsElliotInfoVisible エリオット情報表示有無
+     * @param fromClampVertical Elliottラベルを上下端へ収める場合true
      */
-    void draw(ElliotAll *fromElliotAll, bool fromIsElliotInfoVisible = true) {
+    void draw(
+        ElliotAll *fromElliotAll,
+        bool fromIsElliotInfoVisible = true,
+        bool fromClampVertical = false
+    ) {
         this.elliotAll = fromElliotAll;
+        this.clampVertical = fromClampVertical;
         
         this.logger.setMarketContext(this.elliotAll.marketContext);
         
@@ -89,7 +96,7 @@ public:
             upLevel = 3;
             downLevel = 4.5;
             
-            this.setElliot(elliot2, "Elliot2", fontSize, upLevel, downLevel);
+            this.setElliot(elliot2, "Elliot2", fontSize, upLevel, downLevel, 0);
         }
         
         
@@ -100,14 +107,14 @@ public:
             upLevel = 2;
             downLevel = 3;
             
-            this.setElliot(elliot1, "Elliot1", fontSize, upLevel, downLevel);
+            this.setElliot(elliot1, "Elliot1", fontSize, upLevel, downLevel, 1);
         }
         
         
         Elliot *elliot0 = this.elliotAll.getElliot(this.elliotAll.marketContext.timeFrame);
         
         if (elliot0 != NULL) {
-            this.setElliot(elliot0, "Elliot0", 0, 0, 1.5);
+            this.setElliot(elliot0, "Elliot0", 0, 0, 1.5, 2);
         }
         
         if (fromIsElliotInfoVisible) {
@@ -126,8 +133,16 @@ public:
      * @param fromFontSize 文字サイズ加算値
      * @param upLevel 上方向オフセット
      * @param downLevel 下方向オフセット
+     * @param fromEdgeLane 上下端で使用する表示レーン
      */
-    void setElliot(Elliot &elliot, string fromName, int fromFontSize, double upLevel, double downLevel) {
+    void setElliot(
+        Elliot &elliot,
+        string fromName,
+        int fromFontSize,
+        double upLevel,
+        double downLevel,
+        int fromEdgeLane
+    ) {
         //this.logger.setLevel(LOG_DEBUG);
         
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
@@ -150,7 +165,7 @@ public:
                 LogUtil::printZigZagPointList(this.logger, __FUNCTION__, wave.zigZagPointList);
             }*/
             
-            this.setWave(wave, fromName, fontSize, upLevel, downLevel);
+            this.setWave(wave, fromName, fontSize, upLevel, downLevel, fromEdgeLane);
         }
         
         
@@ -418,6 +433,9 @@ protected:
     DrawProperties drawProperties;
     /** Elliot解析全体を保持する参照。 */
     ElliotAll *elliotAll;
+
+    /** Elliottラベルをチャート上下端へ収める場合true。 */
+    bool clampVertical;
     
     /** 列表示設定のリスト。時間軸ごとに表示可否と幅を保持する。 */
     CArrayObj drawPropertiesElliotList;
@@ -569,8 +587,16 @@ protected:
      * @param fontSize 文字サイズ
      * @param upLevel 上方向オフセット
      * @param downLevel 下方向オフセット
+     * @param fromEdgeLane 上下端で使用する表示レーン
      */
-    void setWave(Wave &wave, string name, int fontSize, double upLevel, double downLevel) {
+    void setWave(
+        Wave &wave,
+        string name,
+        int fontSize,
+        double upLevel,
+        double downLevel,
+        int fromEdgeLane
+    ) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
@@ -633,7 +659,13 @@ protected:
                 string objectName = name + elliotId;
                 
                 datetime drawDatetime = zigZagPoint.barTime;
-                double drawPrice = this.getDrawPrice(drawDatetime, zigZagPoint.rate, level);
+                double drawPrice = this.getDrawPrice(
+                    drawDatetime,
+                    zigZagPoint.rate,
+                    level,
+                    fontSize,
+                    fromEdgeLane
+                );
                 
                 DrawUtil::setText(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawDatetime, drawPrice);
             }
@@ -649,12 +681,23 @@ protected:
      * @param time 基準時間
      * @param price 基準価格
      * @param level レベルオフセット
+     * @param fromFontSize 文字サイズ
+     * @param fromEdgeLane 上下端で使用する表示レーン
      * @return 調整後価格
      */
-    double getDrawPrice(const datetime time, const double price, const double level) {
-        int x, y, cw;
-        datetime t;
-        double p;
+    double getDrawPrice(
+        const datetime time,
+        const double price,
+        const double level,
+        const int fromFontSize,
+        const int fromEdgeLane
+    ) {
+        int xPosition = 0;
+        int yPosition = 0;
+        int subWindow = 0;
+        datetime drawTime = 0;
+        double convertedPrice = 0;
+        double drawPrice = price;
     
         double distance = 0;
         
@@ -664,10 +707,93 @@ protected:
        	    distance = (level - 1) * (double)drawProperties.fontPixelHeight + level * drawProperties.elliotPixelDistance;
         }
        
-        ChartTimePriceToXY(0, 0, time, price, x, y);
-        ChartXYToTimePrice(0, x, y + (int)distance, cw, t, p);
-        
-        return p;
+        if (ChartTimePriceToXY(0, 0, time, price, xPosition, yPosition)) {
+            if (ChartXYToTimePrice(
+                    0,
+                    xPosition,
+                    yPosition + (int)distance,
+                    subWindow,
+                    drawTime,
+                    convertedPrice
+            )) {
+                drawPrice = convertedPrice;
+            }
+        }
+
+        if (this.clampVertical) {
+            return this.clampDrawPrice(drawPrice, fromFontSize, fromEdgeLane);
+        }
+
+        return drawPrice;
+    }
+
+    /**
+     * ラベル中心価格をチャート上下端の表示レーン内へ収める。
+     *
+     * @param fromPrice 補正前価格
+     * @param fromFontSize 文字サイズ
+     * @param fromEdgeLane 上下端で使用する表示レーン
+     * @return 上下端へ収めた価格
+     */
+    double clampDrawPrice(
+        const double fromPrice,
+        const int fromFontSize,
+        const int fromEdgeLane
+    ) {
+        int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+        double priceMin = ChartGetDouble(0, CHART_PRICE_MIN, 0);
+        double priceMax = ChartGetDouble(0, CHART_PRICE_MAX, 0);
+
+        if (chartHeight <= 1 || priceMax <= priceMin) {
+            return fromPrice;
+        }
+
+        int baseFontSize = drawProperties.elliotFontSize;
+
+        if (baseFontSize <= 0) {
+            return fromPrice;
+        }
+
+        double baseFontHeight = (double)drawProperties.fontPixelHeight;
+
+        if (baseFontHeight <= 0) {
+            baseFontHeight = (double)baseFontSize;
+        }
+
+        int edgeLane = fromEdgeLane;
+
+        if (edgeLane < 0) {
+            edgeLane = 0;
+        }
+
+        double labelHeight = baseFontHeight * (double)fromFontSize / (double)baseFontSize;
+        double maxFontSize = (double)(baseFontSize + 4);
+        double maxLabelHeight = baseFontHeight * maxFontSize / (double)baseFontSize;
+        double edgeInset = labelHeight / 2.0 + (double)drawProperties.elliotPixelDistance;
+
+        edgeInset += (double)edgeLane * (
+            maxLabelHeight + (double)drawProperties.elliotPixelDistance
+        );
+
+        double maxInset = ((double)chartHeight - 1.0) / 2.0;
+
+        if (edgeInset > maxInset) {
+            edgeInset = maxInset;
+        }
+
+        double pricePerPixel = (priceMax - priceMin) / ((double)chartHeight - 1.0);
+        double topPrice = priceMax - edgeInset * pricePerPixel;
+        double bottomPrice = priceMin + edgeInset * pricePerPixel;
+
+        if (fromPrice > topPrice) {
+            return topPrice;
+        }
+
+        if (fromPrice < bottomPrice) {
+            return bottomPrice;
+        }
+
+        return fromPrice;
     }
 
 private:
