@@ -370,7 +370,7 @@ void execute() {
         if (g_elliotAll.isAnalysisSucceeded) {
             string csvText = g_elliotAll.getCsv(true);
             
-            Print(csvText);
+            //Print(csvText);
             
             if (!g_elliotAllFile.writeCsvTextValue(csvText)) {
                 Print("writeCsvTextValue failed");

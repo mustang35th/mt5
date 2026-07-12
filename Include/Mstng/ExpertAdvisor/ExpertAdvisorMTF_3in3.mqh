@@ -196,6 +196,12 @@ private:
             isElliot1or3 = true;
         }
         
+        if (elliot.marketContext.timeFrame == PERIOD_M1) {
+            if (elliotLabel == "5") {
+                isElliot1or3 = true;
+            }
+        }
+        
         this.logger.debug(__FUNCTION__, StringFormat("isElliot1or3 = %s", (string)isElliot1or3));
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
