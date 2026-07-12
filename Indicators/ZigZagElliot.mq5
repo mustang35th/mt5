@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.16"
+#property version   "1.17"
 #property indicator_chart_window
 
 #property indicator_buffers 6
@@ -43,6 +43,8 @@ int g_timerSeconds = 30;
 
 bool g_isInitialized = false;
 bool g_isElliotInfoVisible = true;
+/** Elliott上下FITの初回適用待ちの場合true。 */
+bool initialElliotVerticalFitPending = true;
 
 MarketContext g_marketContext;
 
@@ -65,6 +67,8 @@ ENUM_TIMEFRAMES LogStartTimeFrame = PERIOD_D1;
  * @return 初期化結果
  */
 int OnInit() {
+    initialElliotVerticalFitPending = true;
+
     if (Util::isStrategyTester()) {
         g_isTimer = false;
     }
@@ -328,6 +332,8 @@ void execute() {
     setElliotAll();
 
     updateElliotVerticalFit(true);
+
+    applyInitialElliotVerticalFit();
         
     gDraw.drawAll(
         g_elliotAll,
@@ -542,6 +548,36 @@ bool isElliotVerticalFitLabelClampEnabled() {
     }
 
     return g_drawElliotVerticalFit.isEnabled();
+}
+
+/**
+ * 初回のElliott分析成功後に上下FITを有効化する。
+ *
+ * 一度適用した後は、ユーザーが解除しても自動で再適用しない。
+ */
+void applyInitialElliotVerticalFit() {
+    if (!initialElliotVerticalFitPending) {
+        return;
+    }
+
+    if (g_drawElliotVerticalFit == NULL || g_elliotAll == NULL) {
+        return;
+    }
+
+    if (!g_elliotAll.isAnalysisSucceeded) {
+        return;
+    }
+
+    if (!g_drawElliotVerticalFit.isEnabled()) {
+        if (!g_drawElliotVerticalFit.enable(g_elliotAll)) {
+            g_logger.error(__FUNCTION__, "initial Elliott vertical fit enable failed");
+
+            return;
+        }
+    }
+
+    initialElliotVerticalFitPending = false;
+    updateElliotVerticalFitButton();
 }
 
 /**
