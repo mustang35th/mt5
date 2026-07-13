@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.17"
+#property version   "1.18"
 #property indicator_chart_window
 
 #property indicator_buffers 6
@@ -253,16 +253,16 @@ void OnTimer() {
     updateJapanTimeAxisView();
     updateEma200Indicator();
 
-    if (updateElliotVerticalFit(false)) {
-        redrawElliotInfo();
-    }
-
     if (!g_isInitialized) {
         updateTimerSeconds();
         g_isInitialized = true;
     }
 
     if (!isExecuteTimerElapsed()) {
+        if (updateElliotVerticalFit(false)) {
+            redrawElliotInfo();
+        }
+
         return;
     }
 
@@ -340,6 +340,10 @@ void execute() {
         g_isElliotInfoVisible,
         isElliotVerticalFitLabelClampEnabled()
     );
+
+    if (!Util::isStrategyTester()) {
+        ChartRedraw(0);
+    }
 
     // ⏳ 処理終了時刻を記録し、実行時間を計算
     long endTime = GetTickCount();

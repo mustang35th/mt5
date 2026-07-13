@@ -219,8 +219,6 @@ public:
             }
         }
 
-        ChartRedraw(this.chartId);
-
         if (!isRestored) {
             return false;
         }
@@ -642,8 +640,6 @@ private:
                 return false;
             }
         }
-
-        ChartRedraw(this.chartId);
 
         return true;
     }
