@@ -109,8 +109,12 @@ protected:
         
         this.elliotAll.mailTitile += this.marketContext.timeFrameLabel;
         
+        /*if (this.marketContext.timeFrame == PERIOD_M1) {
+            this.elliotAll.mailTitile = "*" + this.elliotAll.mailTitile;
+        }*/
+        
         if (1 == 1
-                && this.isLossCut(30)
+                //&& this.isLossCut(30)
                 
                 //&& this.isFibonacciExpansionPercent(this.elliotHigher1, 127.2)
                 //&& this.isFibonacciExpansionPercent(this.elliotCurrent, 127.2)
@@ -126,7 +130,8 @@ protected:
         ) {
             this.isEntry = true;
 
-            if (this.elliotCurrent.marketContext.timeFrame == PERIOD_M5) {
+            if (this.elliotCurrent.marketContext.timeFrame == PERIOD_M5
+                    || this.elliotCurrent.marketContext.timeFrame == PERIOD_M1) {
                 this.isSendMail = true;
             }
         }

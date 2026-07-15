@@ -24,13 +24,13 @@ public:
         string title = getTitle(fromElliotAll);
         string body = getBody(fromElliotAll);
         
-        if (fromElliotAll.isTimer && fromElliotAll.marketContext.timeFrame == PERIOD_M1) {
+        /*if (fromElliotAll.isTimer && fromElliotAll.marketContext.timeFrame == PERIOD_M1) {
             Print(__FUNCTION__, " title = ", title);
-        } else {
+        } else {*/
             Print(__FUNCTION__, " isSendMail = ", isSendMail);
             Print(__FUNCTION__, " title = ", title);
             Print(__FUNCTION__, " body = ", body);
-        }
+        //}
         
         if (isSendMail) {
             if (fromElliotAll.isTimer) {
@@ -51,7 +51,13 @@ private:
         string buySellLabel = fromElliotAll.elliotCurrent.buySellLabel;
         string mailTitile = fromElliotAll.mailTitile;
         
-        return StringFormat("%s:%s:%s", symbolName, buySellLabel, mailTitile);
+        string mark = "";
+        
+        if (fromElliotAll.marketContext.timeFrame == PERIOD_M5) {
+            mark = "*";
+        }
+        
+        return StringFormat("%s%s:%s:%s", mark, symbolName, buySellLabel, mailTitile);
     }
     
     /**
