@@ -58,7 +58,7 @@ public:
     }
 
     /**
-     * D1から指定時間足までのハンドルを生成する。
+     * D1から指定時間足までのハンドルを、指定時間足からD1の順で生成する。
      *
      * @param fromSymbolName 対象シンボル。
      * @param lastTimeFrame 最終時間足。
@@ -70,7 +70,7 @@ public:
     }
 
     /**
-     * 市場コンテキストを使用してD1から対象時間足までのハンドルを生成する。
+     * 市場コンテキストを使用してD1から対象時間足までのハンドルを、対象時間足からD1の順で生成する。
      *
      * @param fromMarketContext ハンドル生成対象の市場コンテキスト。
      */
@@ -98,7 +98,7 @@ public:
             return;
         }
 
-        for (int i = startIndex; i <= lastIndex; i++) {
+        for (int i = lastIndex; i >= startIndex; i--) {
             this.createIfNeeded(i);
         }
     }
