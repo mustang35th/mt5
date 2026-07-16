@@ -1,0 +1,140 @@
+﻿//+------------------------------------------------------------------+
+//|                                      CurrencyStrengthInfo.mqh |
+//|                                  Copyright 2026, MetaQuotes Ltd. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2026, MetaQuotes Ltd."
+#property link      "https://www.mql5.com"
+#property strict
+
+#ifndef MSTNG_CURRENCY_STRENGTH_INFO_MQH
+#define MSTNG_CURRENCY_STRENGTH_INFO_MQH
+
+#include <Object.mqh>
+
+/**
+ * 1通貨分の時間足別強弱スコアを保持する。
+ */
+class CurrencyStrengthInfo : public CObject {
+public:
+    /** 通貨コード。 */
+    string currencyName;
+
+    /**
+     * 通貨コードを指定して初期化する。
+     *
+     * @param fromCurrencyName 通貨コード。
+     */
+    CurrencyStrengthInfo(string fromCurrencyName) {
+        this.currencyName = fromCurrencyName;
+        this.reset();
+    }
+
+    /**
+     * 時間足別の集計値を初期化する。
+     */
+    void reset() {
+        for (int i = 0; i < 4; i++) {
+            this.rawScores[i] = 0;
+            this.sampleCounts[i] = 0;
+        }
+    }
+
+    /**
+     * 指定時間足へ強弱値を加算する。
+     *
+     * @param fromTimeFrameIndex 時間足番号。
+     * @param fromScore 加算する強弱値。
+     */
+    void addScore(int fromTimeFrameIndex, int fromScore) {
+        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 4) {
+            return;
+        }
+
+        this.rawScores[fromTimeFrameIndex] += fromScore;
+        this.sampleCounts[fromTimeFrameIndex]++;
+    }
+
+    /**
+     * 指定時間足の正規化済みスコアを取得する。
+     *
+     * @param fromTimeFrameIndex 時間足番号。
+     * @return -100から100までの強弱スコア。
+     */
+    double getScore(int fromTimeFrameIndex) {
+        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 4) {
+            return 0.0;
+        }
+
+        int sampleCount = this.sampleCounts[fromTimeFrameIndex];
+
+        if (sampleCount <= 0) {
+            return 0.0;
+        }
+
+        double maximumScore = (double)sampleCount * 3.0;
+
+        return ((double)this.rawScores[fromTimeFrameIndex] / maximumScore) * 100.0;
+    }
+
+    /**
+     * 指定時間足の有効票数を取得する。
+     *
+     * @param fromTimeFrameIndex 時間足番号。
+     * @return 有効票数。
+     */
+    int getSampleCount(int fromTimeFrameIndex) {
+        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 4) {
+            return 0;
+        }
+
+        return this.sampleCounts[fromTimeFrameIndex];
+    }
+
+    /**
+     * 全時間足の正規化済み総合スコアを取得する。
+     *
+     * @return -100から100までの総合スコア。
+     */
+    double getTotalScore() {
+        int rawScore = 0;
+        int sampleCount = 0;
+
+        for (int i = 0; i < 4; i++) {
+            rawScore += this.rawScores[i];
+            sampleCount += this.sampleCounts[i];
+        }
+
+        if (sampleCount <= 0) {
+            return 0.0;
+        }
+
+        double maximumScore = (double)sampleCount * 3.0;
+
+        return ((double)rawScore / maximumScore) * 100.0;
+    }
+
+    /**
+     * 全時間足の有効票数を取得する。
+     *
+     * @return 有効票数。
+     */
+    int getTotalSampleCount() {
+        int sampleCount = 0;
+
+        for (int i = 0; i < 4; i++) {
+            sampleCount += this.sampleCounts[i];
+        }
+
+        return sampleCount;
+    }
+
+private:
+    /** 時間足別の未正規化スコア。 */
+    int rawScores[4];
+
+    /** 時間足別の有効票数。 */
+    int sampleCounts[4];
+};
+
+#endif

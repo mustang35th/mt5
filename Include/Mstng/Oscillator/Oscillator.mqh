@@ -299,6 +299,72 @@ public:
     }
 
     /**
+     * 3本のストキャスだけを更新して売買方向を設定する。
+     *
+     * GMMA、EMA200およびATRを更新しない軽量判定として、複数シンボルの
+     * 売買方向集計に使用する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromOscillatorHandlePool オシレーターハンドルプール。
+     * @return 更新に成功した場合true。
+     */
+    bool updateBuySell(
+        MarketContext &fromMarketContext,
+        OscillatorHandlePool *fromOscillatorHandlePool
+    ) {
+        this.resetValues();
+        this.initializeMarketContext(fromMarketContext);
+
+        LogUtil::printMethodStart(this.logger, __FUNCTION__);
+        uint startTick = GetTickCount();
+
+        if (fromOscillatorHandlePool == NULL) {
+            this.logger.error(__FUNCTION__, "fromOscillatorHandlePool is NULL");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        if (!this.setStochasticCurrent(
+            fromOscillatorHandlePool.getStochasticShortHandlePool(),
+            this.stochasticShort,
+            "Short"
+        )) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        if (!this.setStochasticCurrent(
+            fromOscillatorHandlePool.getStochasticMiddleHandlePool(),
+            this.stochasticMiddle,
+            "Middle"
+        )) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        if (!this.setStochasticCurrent(
+            fromOscillatorHandlePool.getStochasticLongHandlePool(),
+            this.stochasticLong,
+            "Long"
+        )) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        this.setBuySell();
+
+        uint elapsed = GetTickCount() - startTick;
+        this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
+    }
+
+    /**
      * 解析結果を1行文字列に整形して返す。
      *
      * @return 文字列表現。
@@ -867,6 +933,52 @@ private:
         return this.setStochasticCommon(oscillatorHandlePool.getStochasticLongHandlePool(),
                                         this.stochasticLong,
                                         "Long");
+    }
+
+    /**
+     * 現在のMainとSignalだけを使用してストキャス方向を更新する。
+     *
+     * @param fromStochasticHandlePool ストキャスハンドルプール。
+     * @param fromStatus 出力先ステータス。
+     * @param fromLabel ログ用ラベル。
+     * @return 更新できた場合true。
+     */
+    bool setStochasticCurrent(
+        StochasticHandlePool *fromStochasticHandlePool,
+        StochasticStatus &fromStatus,
+        string fromLabel
+    ) {
+        if (fromStochasticHandlePool == NULL) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("fromStochasticHandlePool[%s] is NULL", fromLabel)
+            );
+
+            return false;
+        }
+
+        Stochastic stochastic(this.marketContext, fromStochasticHandlePool);
+        bool isPlus = false;
+
+        if (!stochastic.getCurrentDirection(this.marketContext, isPlus)) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("getCurrentDirection failed: %s", fromLabel)
+            );
+
+            return false;
+        }
+
+        fromStatus.count = -1;
+
+        if (isPlus) {
+            fromStatus.count = 1;
+        }
+
+        fromStatus.main0 = stochastic.main0;
+        fromStatus.signal0 = stochastic.signal0;
+
+        return true;
     }
 
     /**

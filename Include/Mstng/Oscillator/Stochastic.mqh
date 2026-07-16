@@ -222,6 +222,35 @@ public:
         return true;
     }
 
+    /**
+     * 現在のMainとSignalだけを取得して方向を判定する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromIsPlus MainがSignal以上の場合true。
+     * @return 取得に成功した場合true。
+     */
+    bool getCurrentDirection(
+        MarketContext &fromMarketContext,
+        bool &fromIsPlus
+    ) {
+        this.initializeMarketContext(fromMarketContext);
+        this.main0 = 0.0;
+        this.signal0 = 0.0;
+        fromIsPlus = false;
+
+        if (!this.getMain(fromMarketContext, 0, this.main0)) {
+            return false;
+        }
+
+        if (!this.getSignal(fromMarketContext, 0, this.signal0)) {
+            return false;
+        }
+
+        fromIsPlus = this.isPlus(this.main0, this.signal0);
+
+        return true;
+    }
+
 private:
     /**
      * 市場コンテキストとロガーを初期化する。

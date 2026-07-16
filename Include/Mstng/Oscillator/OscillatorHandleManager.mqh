@@ -130,6 +130,46 @@ public:
     }
 
     /**
+     * MarketContextと完全一致するハンドルプールを取得し、未登録なら生成する。
+     *
+     * 接頭辞または接尾辞付きの実シンボルを動的に追加する場合に使用する。
+     *
+     * @param fromMarketContext 取得または生成する市場コンテキスト。
+     * @return 対応するハンドルプール。生成に失敗した場合NULL。
+     */
+    OscillatorHandlePool *getOrCreatePool(MarketContext &fromMarketContext) {
+        int total = this.poolList.Total();
+
+        for (int i = 0; i < total; i++) {
+            OscillatorHandlePool *oscillatorHandlePool = this.poolList.At(i);
+
+            if (oscillatorHandlePool == NULL) {
+                continue;
+            }
+
+            if (oscillatorHandlePool.marketContext.symbolName
+                    == fromMarketContext.symbolName) {
+                return oscillatorHandlePool;
+            }
+        }
+
+        OscillatorHandlePool *oscillatorHandlePool =
+            new OscillatorHandlePool(fromMarketContext);
+
+        if (oscillatorHandlePool == NULL) {
+            return NULL;
+        }
+
+        if (!this.poolList.Add(oscillatorHandlePool)) {
+            delete oscillatorHandlePool;
+
+            return NULL;
+        }
+
+        return oscillatorHandlePool;
+    }
+
+    /**
      * 全プールでMN1から終端時間足までのハンドルを生成する。
      */
     void setTimeframesFromMn1ToAll() {
