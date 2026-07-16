@@ -172,7 +172,7 @@ private:
         this.marketContext = fromMarketContext;
 
         this.emaPeriod = 200;
-        this.maxBars = 1000;
+        this.maxBars = 2000;
         this.startPlotIndex = 2;
         this.displayCount = 0;
         this.lastUpdateM1BarTime = 0;
