@@ -13,6 +13,7 @@
 #include <Mstng\Constant\TimeFrameInfoAll.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorEma200.mqh>
+#include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
 enum DrawElliotAllListColumn {
@@ -590,12 +591,16 @@ private:
      * @param fromTotal 全件数。
      */
     void updateTitle(string fromTimeFrameText, int fromReadyCount, int fromTotal) {
+        datetime serverTime = TimeCurrent();
+        datetime japanTime = TimeJapanUtil::getJapanTime(serverTime);
+
         string titleText = StringFormat(
-            "ZigZag Elliot List  %s  READY %d/%d  %s",
+            "ZigZag Elliot List %s READY %d/%d JST %s SV %s",
             fromTimeFrameText,
             fromReadyCount,
             fromTotal,
-            TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES)
+            this.formatTitleTime(japanTime),
+            this.formatTitleTime(serverTime)
         );
 
         ObjectSetString(
@@ -603,6 +608,25 @@ private:
             this.objectPrefix + "Title",
             OBJPROP_TEXT,
             titleText
+        );
+    }
+
+    /**
+     * タイトル表示用の日時文字列へ変換する。
+     *
+     * @param fromDatetime 変換対象日時。
+     * @return 月日と時分を表す文字列。
+     */
+    string formatTitleTime(datetime fromDatetime) {
+        MqlDateTime dateTime;
+        TimeToStruct(fromDatetime, dateTime);
+
+        return StringFormat(
+            "%02d/%02d %02d:%02d",
+            dateTime.mon,
+            dateTime.day,
+            dateTime.hour,
+            dateTime.min
         );
     }
 
