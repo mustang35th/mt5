@@ -9,6 +9,7 @@
 #property indicator_chart_window
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Draw\DrawElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorEma200.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorOscillator.mqh>
@@ -21,6 +22,7 @@ bool gIsTimer = true;
 string gSymbolName;
 ENUM_TIMEFRAMES gTimeFrame;
 
+DrawElliotAllList *gDrawElliotAllList;
 OscillatorHandleManager *gOscillatorHandleManager;
 
 static datetime gStaticLasttime;
@@ -39,6 +41,7 @@ int OnInit() {
     
     LogUtil::printMethodStart(gLogger, __FUNCTION__);
     
+    gDrawElliotAllList = new DrawElliotAllList(0);
     setOscillatorHandleManager();
     
     LogUtil::printMethodEnd(gLogger, __FUNCTION__, true);
@@ -49,6 +52,12 @@ int OnInit() {
 void OnDeinit(const int reason) {
     LogUtil::printMethodStart(gLogger, __FUNCTION__);
     
+    if (gDrawElliotAllList != NULL) {
+        gDrawElliotAllList.clear();
+        delete gDrawElliotAllList;
+        gDrawElliotAllList = NULL;
+    }
+
     delete gOscillatorHandleManager;
     
     LogUtil::printMethodEnd(gLogger, __FUNCTION__, true);
@@ -97,6 +106,12 @@ void exec() {
     //printD1BuySell(elliotAllList);
     
     //printH4M15BuySell(elliotAllList);
+
+    if (gDrawElliotAllList != NULL) {
+        if (!gDrawElliotAllList.draw(elliotAllList)) {
+            gLogger.error(__FUNCTION__, "failed to draw ElliotAll list panel");
+        }
+    }
     
     delete elliotAllList;
     
@@ -133,6 +148,7 @@ void printElliotAllByEma200(ElliotAllList *elliotAllList, bool isBuy) {
     Print(StringFormat("Ema200 isBuy = %s", (string)isBuy));
 
     int total = elliotAllList.elliotAllList.Total();
+    ExpertAdvisorEma200 expertAdvisorEma200(isBuy);
 
     for (int i = 0; i < total; i++) {
         ElliotAll *elliotAll = elliotAllList.elliotAllList.At(i);
@@ -141,31 +157,8 @@ void printElliotAllByEma200(ElliotAllList *elliotAllList, bool isBuy) {
             continue;
         }
 
-        if (!elliotAll.isAnalysisSucceeded) {
-            continue;
-        }
-
-        if (elliotAll.elliotCurrent == NULL) {
-            continue;
-        }
-
-        if (elliotAll.elliotCurrent.isBuy == isBuy) {
-            ExpertAdvisorEma200 expertAdvisorEma200(isBuy);
-
-            Elliot *elliotHigher1 = elliotAll.getElliot(elliotAll.marketContext.timeFrame, 1);
-            Elliot *elliotCurrent = elliotAll.elliotCurrent;
-
-            if (elliotHigher1 == NULL || elliotCurrent == NULL) {
-                continue;
-            }
-
-            if (elliotAll.isBuySell(PERIOD_H4)
-                    && expertAdvisorEma200.isEma200BuySell(elliotHigher1)
-                    && expertAdvisorEma200.isEma200BuySell(elliotCurrent)
-                    && expertAdvisorEma200.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent)
-            ) {
-                Print("  " + elliotAll.getCsv());
-            }
+        if (expertAdvisorEma200.isEma200Candidate(elliotAll)) {
+            Print("  " + elliotAll.getCsv());
 
             /*ExpertAdvisorOscillator *expertAdvisorOscillator = new ExpertAdvisorOscillator(elliotAll.marketContext);
 

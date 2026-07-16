@@ -9,7 +9,7 @@
 #ifndef MSTNG_EXPERT_ADVISOR_EMA200_MQH
 #define MSTNG_EXPERT_ADVISOR_EMA200_MQH
 
-#include <Mstng\Elliot\Elliot.mqh>
+#include <Mstng\Elliot\ElliotAll.mqh>
 
 /**
  * ExpertAdvisor用のEMA200売買方向判定を行うクラス。
@@ -42,6 +42,55 @@ public:
      */
     void setIsBuy(bool fromIsBuy) {
         this.isBuy = fromIsBuy;
+    }
+
+    /**
+     * 複数時間足のEMA200候補条件を満たすか判定する。
+     *
+     * @param fromElliotAll 判定対象。
+     * @return EMA200候補条件を満たす場合true。
+     */
+    bool isEma200Candidate(ElliotAll *fromElliotAll) {
+        if (fromElliotAll == NULL) {
+            return false;
+        }
+
+        if (!fromElliotAll.isAnalysisSucceeded) {
+            return false;
+        }
+
+        Elliot *elliotCurrent = fromElliotAll.elliotCurrent;
+
+        if (elliotCurrent == NULL) {
+            return false;
+        }
+
+        if (elliotCurrent.isBuy != this.isBuy) {
+            return false;
+        }
+
+        Elliot *elliotHigher1 = fromElliotAll.getElliot(
+            fromElliotAll.marketContext.timeFrame,
+            1
+        );
+
+        if (elliotHigher1 == NULL) {
+            return false;
+        }
+
+        if (!fromElliotAll.isBuySell(PERIOD_H4)) {
+            return false;
+        }
+
+        if (!this.isEma200BuySell(elliotHigher1)) {
+            return false;
+        }
+
+        if (!this.isEma200BuySell(elliotCurrent)) {
+            return false;
+        }
+
+        return this.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent);
     }
 
     /**
