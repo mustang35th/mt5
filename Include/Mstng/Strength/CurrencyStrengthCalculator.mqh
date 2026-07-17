@@ -19,11 +19,12 @@
 #include <Mstng\Oscillator\Oscillator.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthInfo.mqh>
+#include <Mstng\Strength\CurrencyStrengthPairVote.mqh>
 #include <Mstng\Util\StringUtil.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
- * 全28通貨ペアのストキャス方向から8通貨の相対強弱を算出する。
+ * 全28通貨ペアの時間足別売買方向から8通貨の相対強弱を算出する。
  */
 class CurrencyStrengthCalculator {
 public:
@@ -59,7 +60,7 @@ public:
     }
 
     /**
-     * D1、H4、H1、M15の通貨強弱を集計する。
+     * D1、H4、H1、M15の売買方向を各1票として通貨強弱を集計する。
      *
      * 1通貨ペア内の全時間足を取得できた場合だけ票へ反映する。
      *
@@ -148,6 +149,9 @@ public:
             }
 
             int pairScores[4];
+            bool pairIsBuyList[4];
+            int pairOscillatorCounts[4];
+            datetime pairBarTimes[4];
             bool isPairValid = true;
 
             for (int j = 0; j < this.getTimeFrameCount(); j++) {
@@ -160,21 +164,52 @@ public:
                     break;
                 }
 
-                if (oscillator.oscillatorCount == 0) {
-                    isPairValid = false;
-                    break;
+                pairScores[j] = -1;
+
+                if (oscillator.isBuy) {
+                    pairScores[j] = 1;
                 }
 
-                pairScores[j] = oscillator.oscillatorCount;
+                pairIsBuyList[j] = oscillator.isBuy;
+                pairOscillatorCounts[j] = oscillator.oscillatorCount;
+                pairBarTimes[j] = iTime(symbolName, timeFrame, 0);
             }
 
             if (!isPairValid) {
                 continue;
             }
 
+            int firstVoteIndex = ArraySize(this.pairVotes);
+            int pairVoteCount = this.getTimeFrameCount();
+
+            if (ArrayResize(
+                this.pairVotes,
+                firstVoteIndex + pairVoteCount
+            ) != firstVoteIndex + pairVoteCount) {
+                this.logger.error(__FUNCTION__, "pairVotes ArrayResize failed");
+
+                return false;
+            }
+
             for (int j = 0; j < this.getTimeFrameCount(); j++) {
                 baseInfo.addScore(j, pairScores[j]);
                 profitInfo.addScore(j, 0 - pairScores[j]);
+
+                CurrencyStrengthPairVote pairVote;
+                pairVote.pairOrder = i;
+                pairVote.timeFrameOrder = j;
+                pairVote.canonicalSymbolName = canonicalSymbolName;
+                pairVote.resolvedSymbolName = symbolName;
+                pairVote.timeFrame = this.getTimeFrame(j);
+                pairVote.barTime = pairBarTimes[j];
+                pairVote.baseCurrency = baseCurrency;
+                pairVote.quoteCurrency = profitCurrency;
+                pairVote.isBuy = pairIsBuyList[j];
+                pairVote.oscillatorCount = pairOscillatorCounts[j];
+                pairVote.baseScore = pairScores[j];
+                pairVote.baseScoreAfter = (int)baseInfo.getScore(j);
+                pairVote.quoteScoreAfter = (int)profitInfo.getScore(j);
+                this.pairVotes[firstVoteIndex + j] = pairVote;
             }
 
             this.resolvedSymbolNames[i] = symbolName;
@@ -191,6 +226,35 @@ public:
      */
     int size() {
         return this.currencyStrengthInfoList.Total();
+    }
+
+    /**
+     * 保持している通貨強弱票数を取得する。
+     *
+     * @return 通貨強弱票数。
+     */
+    int getPairVoteCount() {
+        return ArraySize(this.pairVotes);
+    }
+
+    /**
+     * 指定番号の通貨強弱票を取得する。
+     *
+     * @param fromIndex 票番号。
+     * @param fromPairVote 取得結果の格納先。
+     * @return 取得できた場合true。
+     */
+    bool getPairVote(
+        int fromIndex,
+        CurrencyStrengthPairVote &fromPairVote
+    ) {
+        if (fromIndex < 0 || fromIndex >= ArraySize(this.pairVotes)) {
+            return false;
+        }
+
+        fromPairVote = this.pairVotes[fromIndex];
+
+        return true;
     }
 
     /**
@@ -371,6 +435,9 @@ private:
     /** 正規名に対応する実シンボル名一覧。 */
     string resolvedSymbolNames[];
 
+    /** 今回の集計へ反映した通貨強弱票一覧。 */
+    CurrencyStrengthPairVote pairVotes[];
+
     /**
      * 通貨別強弱情報を追加する。
      *
@@ -394,6 +461,7 @@ private:
      */
     void reset() {
         this.validPairCount = 0;
+        ArrayResize(this.pairVotes, 0);
         int total = this.currencyStrengthInfoList.Total();
 
         for (int i = 0; i < total; i++) {
@@ -420,6 +488,7 @@ private:
         }
 
         this.currencyStrengthInfoList.Clear();
+        ArrayFree(this.pairVotes);
     }
 
     /**

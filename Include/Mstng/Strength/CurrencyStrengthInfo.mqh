@@ -56,10 +56,10 @@ public:
     }
 
     /**
-     * 指定時間足の正規化済みスコアを取得する。
+     * 指定時間足の未正規化スコアを取得する。
      *
      * @param fromTimeFrameIndex 時間足番号。
-     * @return -100から100までの強弱スコア。
+     * @return 指定時間足の有効票合計。
      */
     double getScore(int fromTimeFrameIndex) {
         if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 4) {
@@ -72,9 +72,7 @@ public:
             return 0.0;
         }
 
-        double maximumScore = (double)sampleCount * 3.0;
-
-        return ((double)this.rawScores[fromTimeFrameIndex] / maximumScore) * 100.0;
+        return (double)this.rawScores[fromTimeFrameIndex];
     }
 
     /**
@@ -92,9 +90,9 @@ public:
     }
 
     /**
-     * 全時間足の正規化済み総合スコアを取得する。
+     * 全時間足の未正規化総合スコアを取得する。
      *
-     * @return -100から100までの総合スコア。
+     * @return 全時間足の有効票合計。
      */
     double getTotalScore() {
         int rawScore = 0;
@@ -109,9 +107,7 @@ public:
             return 0.0;
         }
 
-        double maximumScore = (double)sampleCount * 3.0;
-
-        return ((double)rawScore / maximumScore) * 100.0;
+        return (double)rawScore;
     }
 
     /**
