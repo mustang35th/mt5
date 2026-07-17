@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                                    CurrencyStrengthElliot.mq5 |
+//|                                       CurrencyStrengthElliot.mq5 |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
