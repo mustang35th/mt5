@@ -9,7 +9,9 @@
 #ifndef MSTNG_CURRENCY_STRENGTH_PERSISTENCE_SERVICE_MQH
 #define MSTNG_CURRENCY_STRENGTH_PERSISTENCE_SERVICE_MQH
 
-#include <Mstng\Database\Dao\CurrencyStrengthDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthPairVoteDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthResultDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthRunDao.mqh>
 #include <Mstng\Database\Entity\CurrencyStrengthPairVoteEntity.mqh>
 #include <Mstng\Database\Entity\CurrencyStrengthResultEntity.mqh>
 #include <Mstng\Database\Entity\CurrencyStrengthRunEntity.mqh>
@@ -25,15 +27,53 @@
 class CurrencyStrengthPersistenceService {
 public:
     /**
-     * 使用するDAOを指定して初期化する。
+     * データベースハンドルと使用する3 DAOを指定して初期化する。
      *
-     * @param fromCurrencyStrengthDao 通貨強弱DAO。
+     * @param fromDatabaseHandle データベースハンドル。
+     * @param fromRunDao 集計単位DAO。
+     * @param fromPairVoteDao 票内訳DAO。
+     * @param fromResultDao 通貨別結果DAO。
      */
     CurrencyStrengthPersistenceService(
-        CurrencyStrengthDao *fromCurrencyStrengthDao
+        const int fromDatabaseHandle,
+        CurrencyStrengthRunDao *fromRunDao,
+        CurrencyStrengthPairVoteDao *fromPairVoteDao,
+        CurrencyStrengthResultDao *fromResultDao
     ) {
-        this.currencyStrengthDao = fromCurrencyStrengthDao;
+        this.databaseHandle = fromDatabaseHandle;
+        this.runDao = fromRunDao;
+        this.pairVoteDao = fromPairVoteDao;
+        this.resultDao = fromResultDao;
         this.logger.setLevel(LOG_INFO);
+    }
+
+    /**
+     * 通貨強弱のテーブル、インデックス、確認用ビューを準備する。
+     *
+     * @return 全データベースオブジェクトを準備できた場合true。
+     */
+    bool createTables() {
+        if (!this.isReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (!this.enableForeignKeys()) {
+            return false;
+        }
+
+        if (!this.runDao.createTable()) {
+            return false;
+        }
+
+        if (!this.pairVoteDao.createTable()) {
+            return false;
+        }
+
+        if (!this.resultDao.createTable()) {
+            return false;
+        }
+
+        return this.pairVoteDao.createContributionsView();
     }
 
     /**
@@ -57,9 +97,7 @@ public:
         const long fromSourceChartId,
         CurrencyStrengthCalculator *fromCalculator
     ) {
-        if (this.currencyStrengthDao == NULL) {
-            this.logger.error(__FUNCTION__, "currencyStrengthDao is NULL.");
-
+        if (!this.isReady(__FUNCTION__)) {
             return false;
         }
 
@@ -109,11 +147,110 @@ public:
             return false;
         }
 
-        return this.currencyStrengthDao.saveSnapshot(
+        return this.saveSnapshot(
             runEntity,
             voteEntities,
             resultEntities
         );
+    }
+
+    /**
+     * 1回分の集計、票内訳、通貨別結果をトランザクション保存する。
+     *
+     * @param fromRunEntity 集計単位エンティティ。
+     * @param fromVoteEntities 票内訳エンティティ一覧。
+     * @param fromResultEntities 通貨別結果エンティティ一覧。
+     * @return 全レコードを保存できた場合true。
+     */
+    bool saveSnapshot(
+        CurrencyStrengthRunEntity &fromRunEntity,
+        CurrencyStrengthPairVoteEntity &fromVoteEntities[],
+        CurrencyStrengthResultEntity &fromResultEntities[]
+    ) {
+        if (!this.isReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (!this.setSnapshotUpdatedAt(
+            fromRunEntity,
+            fromVoteEntities,
+            fromResultEntities
+        )) {
+            return false;
+        }
+
+        fromRunEntity.id = 0;
+        fromRunEntity.voteCount = ArraySize(fromVoteEntities);
+
+        ResetLastError();
+
+        if (!DatabaseTransactionBegin(this.databaseHandle)) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseTransactionBegin failed. error=%d",
+                    GetLastError()
+                )
+            );
+
+            return false;
+        }
+
+        bool isSaved = this.runDao.insert(fromRunEntity);
+
+        if (isSaved) {
+            this.setVoteRunIds(fromRunEntity.id, fromVoteEntities);
+            this.setResultRunIds(fromRunEntity.id, fromResultEntities);
+            isSaved = this.pairVoteDao.insertAll(fromVoteEntities);
+        }
+
+        if (isSaved) {
+            isSaved = this.resultDao.insertAll(fromResultEntities);
+        }
+
+        if (!isSaved) {
+            this.rollbackTransaction(__FUNCTION__);
+            this.clearSnapshotIds(
+                fromRunEntity,
+                fromVoteEntities,
+                fromResultEntities
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseTransactionCommit(this.databaseHandle)) {
+            int commitErrorCode = GetLastError();
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseTransactionCommit failed. error=%d",
+                    commitErrorCode
+                )
+            );
+            this.rollbackTransaction(__FUNCTION__);
+            this.clearSnapshotIds(
+                fromRunEntity,
+                fromVoteEntities,
+                fromResultEntities
+            );
+
+            return false;
+        }
+
+        this.logger.info(
+            __FUNCTION__,
+            StringFormat(
+                "Snapshot saved. runId=%I64d votes=%d results=%d",
+                fromRunEntity.id,
+                ArraySize(fromVoteEntities),
+                ArraySize(fromResultEntities)
+            )
+        );
+
+        return true;
     }
 
     /**
@@ -123,18 +260,25 @@ public:
      * @return 削除に成功した場合true。
      */
     bool deleteRunsBefore(const datetime fromCalculatedAt) {
-        if (this.currencyStrengthDao == NULL) {
-            this.logger.error(__FUNCTION__, "currencyStrengthDao is NULL.");
-
+        if (!this.isReady(__FUNCTION__)) {
             return false;
         }
 
-        return this.currencyStrengthDao.deleteRunsBefore(fromCalculatedAt);
+        return this.runDao.deleteBefore(fromCalculatedAt);
     }
 
 private:
-    /** 通貨強弱DAO。 */
-    CurrencyStrengthDao *currencyStrengthDao;
+    /** データベースハンドル。 */
+    int databaseHandle;
+
+    /** 集計単位DAO。 */
+    CurrencyStrengthRunDao *runDao;
+
+    /** 票内訳DAO。 */
+    CurrencyStrengthPairVoteDao *pairVoteDao;
+
+    /** 通貨別結果DAO。 */
+    CurrencyStrengthResultDao *resultDao;
 
     /** ロガー。 */
     Logger logger;
@@ -176,6 +320,9 @@ private:
         if (fromEntity.validPairCount == fromEntity.expectedPairCount) {
             fromEntity.isComplete = 1;
         }
+
+        fromEntity.updatedAt = 0;
+        fromEntity.updatedAtText = "";
     }
 
     /**
@@ -235,6 +382,8 @@ private:
             fromEntities[i].baseScore = pairVote.baseScore;
             fromEntities[i].baseScoreAfter = pairVote.baseScoreAfter;
             fromEntities[i].quoteScoreAfter = pairVote.quoteScoreAfter;
+            fromEntities[i].updatedAt = 0;
+            fromEntities[i].updatedAtText = "";
         }
 
         return true;
@@ -285,6 +434,234 @@ private:
             fromEntities[i].m15SampleCount = currencyStrengthInfo.getSampleCount(3);
             fromEntities[i].totalSampleCount =
                 currencyStrengthInfo.getTotalSampleCount();
+            fromEntities[i].updatedAt = 0;
+            fromEntities[i].updatedAtText = "";
+        }
+
+        return true;
+    }
+
+    /**
+     * スナップショット全体へ同一のレコード更新時刻を設定する。
+     *
+     * @param fromRunEntity 集計単位エンティティ。
+     * @param fromVoteEntities 票内訳エンティティ一覧。
+     * @param fromResultEntities 通貨別結果エンティティ一覧。
+     * @return 更新時刻を設定できた場合true。
+     */
+    bool setSnapshotUpdatedAt(
+        CurrencyStrengthRunEntity &fromRunEntity,
+        CurrencyStrengthPairVoteEntity &fromVoteEntities[],
+        CurrencyStrengthResultEntity &fromResultEntities[]
+    ) {
+        datetime updatedAt = TimeLocal();
+
+        if (updatedAt <= 0) {
+            updatedAt = TimeCurrent();
+        }
+
+        if (updatedAt <= 0) {
+            this.logger.error(__FUNCTION__, "updatedAt could not be obtained.");
+
+            return false;
+        }
+
+        string updatedAtText = TimeToString(
+            updatedAt,
+            TIME_DATE | TIME_SECONDS
+        );
+        fromRunEntity.updatedAt = updatedAt;
+        fromRunEntity.updatedAtText = updatedAtText;
+
+        int voteCount = ArraySize(fromVoteEntities);
+
+        for (int i = 0; i < voteCount; i++) {
+            fromVoteEntities[i].updatedAt = updatedAt;
+            fromVoteEntities[i].updatedAtText = updatedAtText;
+        }
+
+        int resultCount = ArraySize(fromResultEntities);
+
+        for (int i = 0; i < resultCount; i++) {
+            fromResultEntities[i].updatedAt = updatedAt;
+            fromResultEntities[i].updatedAtText = updatedAtText;
+        }
+
+        return true;
+    }
+
+    /**
+     * SQLiteの外部キー制約を有効化する。
+     *
+     * @return 外部キー制約を有効化できた場合true。
+     */
+    bool enableForeignKeys() {
+        ResetLastError();
+
+        if (!DatabaseExecute(this.databaseHandle, "PRAGMA foreign_keys = ON")) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseExecute failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(
+            this.databaseHandle,
+            "PRAGMA foreign_keys"
+        );
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseRead(requestHandle)) {
+            int readErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+            );
+
+            return false;
+        }
+
+        int isEnabled = 0;
+        ResetLastError();
+
+        if (!DatabaseColumnInteger(requestHandle, 0, isEnabled)) {
+            int columnErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseColumnInteger failed. error=%d",
+                    columnErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        DatabaseFinalize(requestHandle);
+
+        if (isEnabled != 1) {
+            this.logger.error(__FUNCTION__, "foreign key setting is disabled.");
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 票内訳配列へ集計IDを設定する。
+     *
+     * @param fromRunId 集計ID。
+     * @param fromEntities 設定対象エンティティ配列。
+     */
+    void setVoteRunIds(
+        const long fromRunId,
+        CurrencyStrengthPairVoteEntity &fromEntities[]
+    ) {
+        int entityCount = ArraySize(fromEntities);
+
+        for (int i = 0; i < entityCount; i++) {
+            fromEntities[i].runId = fromRunId;
+        }
+    }
+
+    /**
+     * 通貨別結果配列へ集計IDを設定する。
+     *
+     * @param fromRunId 集計ID。
+     * @param fromEntities 設定対象エンティティ配列。
+     */
+    void setResultRunIds(
+        const long fromRunId,
+        CurrencyStrengthResultEntity &fromEntities[]
+    ) {
+        int entityCount = ArraySize(fromEntities);
+
+        for (int i = 0; i < entityCount; i++) {
+            fromEntities[i].runId = fromRunId;
+        }
+    }
+
+    /**
+     * 保存失敗時に集計IDをクリアする。
+     *
+     * @param fromRunEntity 集計エンティティ。
+     * @param fromVoteEntities 票内訳エンティティ配列。
+     * @param fromResultEntities 通貨別結果エンティティ配列。
+     */
+    void clearSnapshotIds(
+        CurrencyStrengthRunEntity &fromRunEntity,
+        CurrencyStrengthPairVoteEntity &fromVoteEntities[],
+        CurrencyStrengthResultEntity &fromResultEntities[]
+    ) {
+        fromRunEntity.id = 0;
+        this.setVoteRunIds(0, fromVoteEntities);
+        this.setResultRunIds(0, fromResultEntities);
+    }
+
+    /**
+     * 実行中のトランザクションをロールバックする。
+     *
+     * @param fromMethodName 呼び出し元メソッド名。
+     */
+    void rollbackTransaction(const string fromMethodName) {
+        ResetLastError();
+
+        if (!DatabaseTransactionRollback(this.databaseHandle)) {
+            this.logger.error(
+                fromMethodName,
+                StringFormat(
+                    "DatabaseTransactionRollback failed. error=%d",
+                    GetLastError()
+                )
+            );
+        }
+    }
+
+    /**
+     * データベースハンドルと3 DAOが利用可能か確認する。
+     *
+     * @param fromMethodName 呼び出し元メソッド名。
+     * @return 利用可能な場合true。
+     */
+    bool isReady(const string fromMethodName) {
+        if (this.databaseHandle == INVALID_HANDLE) {
+            this.logger.error(fromMethodName, "databaseHandle is INVALID_HANDLE.");
+
+            return false;
+        }
+
+        if (this.runDao == NULL) {
+            this.logger.error(fromMethodName, "runDao is NULL.");
+
+            return false;
+        }
+
+        if (this.pairVoteDao == NULL) {
+            this.logger.error(fromMethodName, "pairVoteDao is NULL.");
+
+            return false;
+        }
+
+        if (this.resultDao == NULL) {
+            this.logger.error(fromMethodName, "resultDao is NULL.");
+
+            return false;
         }
 
         return true;

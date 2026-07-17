@@ -65,6 +65,12 @@ struct CurrencyStrengthPairVoteEntity {
 
     /** 票反映後の決済通貨累積値。 */
     int quoteScoreAfter;
+
+    /** レコード更新時刻。 */
+    datetime updatedAt;
+
+    /** レコード更新時刻表示文字列。 */
+    string updatedAtText;
 };
 
 #endif // MSTNG_DATABASE_ENTITY_CURRENCY_STRENGTH_PAIR_VOTE_ENTITY_MQH

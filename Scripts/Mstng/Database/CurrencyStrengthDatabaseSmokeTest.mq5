@@ -8,10 +8,13 @@
 #property version   "1.00"
 #property script_show_inputs
 
-#include <Mstng\Database\Dao\CurrencyStrengthDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthPairVoteDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthResultDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthRunDao.mqh>
 #include <Mstng\Database\Entity\CurrencyStrengthPairVoteEntity.mqh>
 #include <Mstng\Database\Entity\CurrencyStrengthResultEntity.mqh>
 #include <Mstng\Database\Entity\CurrencyStrengthRunEntity.mqh>
+#include <Mstng\Database\Service\CurrencyStrengthPersistenceService.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
@@ -83,6 +86,8 @@ void initializeRunEntity(
     fromEntity.validPairCount = 1;
     fromEntity.voteCount = 0;
     fromEntity.isComplete = 1;
+    fromEntity.updatedAt = 0;
+    fromEntity.updatedAtText = "";
 }
 
 /**
@@ -119,6 +124,8 @@ void initializePairVoteEntity(
     fromEntity.baseScore = 1;
     fromEntity.baseScoreAfter = 1;
     fromEntity.quoteScoreAfter = -1;
+    fromEntity.updatedAt = 0;
+    fromEntity.updatedAtText = "";
 }
 
 /**
@@ -146,6 +153,8 @@ void initializeResultEntity(
     fromEntity.h1SampleCount = 1;
     fromEntity.m15SampleCount = 1;
     fromEntity.totalSampleCount = 4;
+    fromEntity.updatedAt = 0;
+    fromEntity.updatedAtText = "";
 }
 
 /**
@@ -223,6 +232,112 @@ bool readRecordCount(
     ResetLastError();
 
     if (!DatabaseColumnLong(requestHandle, 0, fromRecordCount)) {
+        int columnErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "DatabaseColumnLong failed. tableName=%s error=%d",
+                fromTableName,
+                columnErrorCode
+            )
+        );
+
+        return false;
+    }
+
+    DatabaseFinalize(requestHandle);
+
+    return true;
+}
+
+/**
+ * 指定した集計内で期待する更新時刻と異なるレコード件数を取得する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromTableName テーブル名。
+ * @param fromIdColumnName 集計ID列名。
+ * @param fromRunId 集計ID。
+ * @param fromUpdatedAt 期待するレコード更新時刻。
+ * @param fromUpdatedAtText 期待するレコード更新時刻表示文字列。
+ * @param fromMismatchCount 不一致件数の格納先。
+ * @param fromLogger ロガー。
+ * @return 不一致件数を取得できた場合true。
+ */
+bool readUpdatedAtMismatchCount(
+    const int fromDatabaseHandle,
+    const string fromTableName,
+    const string fromIdColumnName,
+    const long fromRunId,
+    const datetime fromUpdatedAt,
+    const string fromUpdatedAtText,
+    long &fromMismatchCount,
+    Logger &fromLogger
+) {
+    string sql = "SELECT COUNT(*) FROM " + fromTableName;
+    sql += " WHERE " + fromIdColumnName + " = ?1";
+    sql += " AND (updated_at <> ?2 OR updated_at_text <> ?3)";
+
+    ResetLastError();
+    int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
+
+    if (requestHandle == INVALID_HANDLE) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "DatabasePrepare failed. tableName=%s error=%d",
+                fromTableName,
+                GetLastError()
+            )
+        );
+
+        return false;
+    }
+
+    bool isBound = DatabaseBind(requestHandle, 0, fromRunId);
+
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 1, fromUpdatedAt);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 2, fromUpdatedAtText);
+    }
+
+    if (!isBound) {
+        int bindErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "DatabaseBind failed. tableName=%s error=%d",
+                fromTableName,
+                bindErrorCode
+            )
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseRead(requestHandle)) {
+        int readErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "DatabaseRead failed. tableName=%s error=%d",
+                fromTableName,
+                readErrorCode
+            )
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseColumnLong(requestHandle, 0, fromMismatchCount)) {
         int columnErrorCode = GetLastError();
         DatabaseFinalize(requestHandle);
         fromLogger.error(
@@ -349,9 +464,17 @@ void OnStart() {
         return;
     }
 
-    CurrencyStrengthDao currencyStrengthDao(database.getHandle());
+    CurrencyStrengthRunDao runDao(database.getHandle());
+    CurrencyStrengthPairVoteDao pairVoteDao(database.getHandle());
+    CurrencyStrengthResultDao resultDao(database.getHandle());
+    CurrencyStrengthPersistenceService persistenceService(
+        database.getHandle(),
+        GetPointer(runDao),
+        GetPointer(pairVoteDao),
+        GetPointer(resultDao)
+    );
 
-    if (!currencyStrengthDao.createTables()) {
+    if (!persistenceService.createTables()) {
         logger.error(
             __FUNCTION__,
             "Currency strength database smoke test failed at createTables."
@@ -377,7 +500,7 @@ void OnStart() {
     initializeResultEntity("USD", 1, resultEntities[0]);
     initializeResultEntity("JPY", -1, resultEntities[1]);
 
-    if (!currencyStrengthDao.saveSnapshot(
+    if (!persistenceService.saveSnapshot(
         runEntity,
         voteEntities,
         resultEntities
@@ -395,8 +518,15 @@ void OnStart() {
     long voteCount = 0;
     long resultCount = 0;
     long contributionCount = 0;
+    long runUpdatedAtMismatchCount = 0;
+    long voteUpdatedAtMismatchCount = 0;
+    long resultUpdatedAtMismatchCount = 0;
     string timeFrameText = "";
     string barTimeText = "";
+    string expectedUpdatedAtText = TimeToString(
+        runEntity.updatedAt,
+        TIME_DATE | TIME_SECONDS
+    );
     bool isCountRead = readRecordCount(
         database.getHandle(),
         "currency_strength_runs",
@@ -413,6 +543,45 @@ void OnStart() {
             "run_id",
             runEntity.id,
             voteCount,
+            logger
+        );
+    }
+
+    if (isCountRead) {
+        isCountRead = readUpdatedAtMismatchCount(
+            database.getHandle(),
+            "currency_strength_runs",
+            "id",
+            runEntity.id,
+            runEntity.updatedAt,
+            runEntity.updatedAtText,
+            runUpdatedAtMismatchCount,
+            logger
+        );
+    }
+
+    if (isCountRead) {
+        isCountRead = readUpdatedAtMismatchCount(
+            database.getHandle(),
+            "currency_strength_pair_votes",
+            "run_id",
+            runEntity.id,
+            runEntity.updatedAt,
+            runEntity.updatedAtText,
+            voteUpdatedAtMismatchCount,
+            logger
+        );
+    }
+
+    if (isCountRead) {
+        isCountRead = readUpdatedAtMismatchCount(
+            database.getHandle(),
+            "currency_strength_results",
+            "run_id",
+            runEntity.id,
+            runEntity.updatedAt,
+            runEntity.updatedAtText,
+            resultUpdatedAtMismatchCount,
             logger
         );
     }
@@ -465,6 +634,11 @@ void OnStart() {
             || resultCount != 2
             || contributionCount != 8
             || timeFrameText != "D1"
+            || runEntity.updatedAt <= 0
+            || runEntity.updatedAtText != expectedUpdatedAtText
+            || runUpdatedAtMismatchCount != 0
+            || voteUpdatedAtMismatchCount != 0
+            || resultUpdatedAtMismatchCount != 0
             || barTimeText != TimeToString(
                 calculatedAt,
                 TIME_DATE | TIME_SECONDS
@@ -472,14 +646,18 @@ void OnStart() {
         logger.error(
             __FUNCTION__,
             StringFormat(
-                "Currency strength database smoke test mismatch. runId=%I64d runs=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s",
+                "Currency strength database smoke test mismatch. runId=%I64d runs=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s runUpdatedAtMismatch=%I64d voteUpdatedAtMismatch=%I64d resultUpdatedAtMismatch=%I64d",
                 runEntity.id,
                 runCount,
                 voteCount,
                 resultCount,
                 contributionCount,
                 timeFrameText,
-                barTimeText
+                barTimeText,
+                runEntity.updatedAtText,
+                runUpdatedAtMismatchCount,
+                voteUpdatedAtMismatchCount,
+                resultUpdatedAtMismatchCount
             )
         );
         database.close();
@@ -490,14 +668,15 @@ void OnStart() {
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Currency strength database smoke test passed. fileName=%s runId=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s",
+            "Currency strength database smoke test passed. fileName=%s runId=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s",
             database.getFileName(),
             runEntity.id,
             voteCount,
             resultCount,
             contributionCount,
             timeFrameText,
-            barTimeText
+            barTimeText,
+            runEntity.updatedAtText
         )
     );
 

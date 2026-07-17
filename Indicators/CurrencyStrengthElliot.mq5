@@ -13,7 +13,9 @@
 #property indicator_type1   DRAW_NONE
 
 #include <Mstng\Common\MarketContext.mqh>
-#include <Mstng\Database\Dao\CurrencyStrengthDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthPairVoteDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthResultDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthRunDao.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthPersistenceService.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthList.mqh>
@@ -41,7 +43,9 @@ DrawCurrencyStrengthList *gDrawCurrencyStrengthList;
 OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
 SqliteDatabase *gCurrencyStrengthDatabase;
-CurrencyStrengthDao *gCurrencyStrengthDao;
+CurrencyStrengthPairVoteDao *gCurrencyStrengthPairVoteDao;
+CurrencyStrengthResultDao *gCurrencyStrengthResultDao;
+CurrencyStrengthRunDao *gCurrencyStrengthRunDao;
 CurrencyStrengthPersistenceService *gCurrencyStrengthPersistenceService;
 datetime gLastSavedM15BarTime;
 datetime gLastDatabaseCleanupTime;
@@ -218,22 +222,34 @@ bool initializeDatabase() {
         return false;
     }
 
-    gCurrencyStrengthDao = new CurrencyStrengthDao(
+    gCurrencyStrengthRunDao = new CurrencyStrengthRunDao(
+        gCurrencyStrengthDatabase.getHandle()
+    );
+    gCurrencyStrengthPairVoteDao = new CurrencyStrengthPairVoteDao(
+        gCurrencyStrengthDatabase.getHandle()
+    );
+    gCurrencyStrengthResultDao = new CurrencyStrengthResultDao(
         gCurrencyStrengthDatabase.getHandle()
     );
 
-    if (gCurrencyStrengthDao == NULL) {
+    if (gCurrencyStrengthRunDao == NULL
+            || gCurrencyStrengthPairVoteDao == NULL
+            || gCurrencyStrengthResultDao == NULL) {
         return false;
     }
 
-    if (!gCurrencyStrengthDao.createTables()) {
+    gCurrencyStrengthPersistenceService = new CurrencyStrengthPersistenceService(
+        gCurrencyStrengthDatabase.getHandle(),
+        gCurrencyStrengthRunDao,
+        gCurrencyStrengthPairVoteDao,
+        gCurrencyStrengthResultDao
+    );
+
+    if (gCurrencyStrengthPersistenceService == NULL) {
         return false;
     }
 
-    gCurrencyStrengthPersistenceService =
-        new CurrencyStrengthPersistenceService(gCurrencyStrengthDao);
-
-    return gCurrencyStrengthPersistenceService != NULL;
+    return gCurrencyStrengthPersistenceService.createTables();
 }
 
 /**
@@ -323,9 +339,19 @@ void releaseDatabaseResources() {
         gCurrencyStrengthPersistenceService = NULL;
     }
 
-    if (gCurrencyStrengthDao != NULL) {
-        delete gCurrencyStrengthDao;
-        gCurrencyStrengthDao = NULL;
+    if (gCurrencyStrengthResultDao != NULL) {
+        delete gCurrencyStrengthResultDao;
+        gCurrencyStrengthResultDao = NULL;
+    }
+
+    if (gCurrencyStrengthPairVoteDao != NULL) {
+        delete gCurrencyStrengthPairVoteDao;
+        gCurrencyStrengthPairVoteDao = NULL;
+    }
+
+    if (gCurrencyStrengthRunDao != NULL) {
+        delete gCurrencyStrengthRunDao;
+        gCurrencyStrengthRunDao = NULL;
     }
 
     if (gCurrencyStrengthDatabase != NULL) {

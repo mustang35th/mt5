@@ -47,6 +47,12 @@ struct CurrencyStrengthRunEntity {
 
     /** 完全集計フラグ。trueの場合は1、falseの場合は0。 */
     int isComplete;
+
+    /** レコード更新時刻。 */
+    datetime updatedAt;
+
+    /** レコード更新時刻表示文字列。 */
+    string updatedAtText;
 };
 
 #endif // MSTNG_DATABASE_ENTITY_CURRENCY_STRENGTH_RUN_ENTITY_MQH

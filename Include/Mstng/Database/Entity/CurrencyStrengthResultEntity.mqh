@@ -53,6 +53,12 @@ struct CurrencyStrengthResultEntity {
 
     /** 全時間足の票数。 */
     int totalSampleCount;
+
+    /** レコード更新時刻。 */
+    datetime updatedAt;
+
+    /** レコード更新時刻表示文字列。 */
+    string updatedAtText;
 };
 
 #endif // MSTNG_DATABASE_ENTITY_CURRENCY_STRENGTH_RESULT_ENTITY_MQH
