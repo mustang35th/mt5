@@ -9,6 +9,11 @@
 #property script_show_inputs
 
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthPairVoteDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthResultDao.mqh>
+#include <Mstng\Database\Dao\CurrencyStrengthRunDao.mqh>
+#include <Mstng\Database\Service\CurrencyStrengthPersistenceService.mqh>
+#include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
@@ -25,6 +30,19 @@ input int retryIntervalMilliseconds = 1000;
 
 /** 1票ごとの詳細を出力する場合true。 */
 input bool printVoteDetails = false;
+
+/** 実判定結果をデータベースへ保存する場合true。 */
+input bool databaseEnabled = true;
+
+/** 実判定結果の保存先データベースファイル名。 */
+input string databaseFileName =
+    "mstng-currency-strength-calculation-smoke-test.sqlite";
+
+/** データベースを共有フォルダへ保存する場合true。 */
+input bool databaseUseCommonFolder = true;
+
+/** 集計ルール識別子。 */
+const string calculationVersion = "pair-direction-raw-v1";
 
 /**
  * bool値をログ用文字列へ変換する。
@@ -806,6 +824,95 @@ bool validateCurrencyResults(
 }
 
 /**
+ * 検証済みの実判定結果をデータベースへ保存する。
+ *
+ * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromLogger ロガー。
+ * @return スナップショットを保存できた場合true。
+ */
+bool saveDatabaseSnapshot(
+    CurrencyStrengthCalculator &fromCalculator,
+    Logger &fromLogger
+) {
+    datetime calculatedAt = TimeCurrent();
+
+    if (calculatedAt <= 0) {
+        calculatedAt = TimeLocal();
+    }
+
+    datetime m15BarTime = iTime(_Symbol, PERIOD_M15, 0);
+
+    if (calculatedAt <= 0 || m15BarTime <= 0) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "invalid snapshot time. calculatedAt=%I64d m15BarTime=%I64d",
+                (long)calculatedAt,
+                (long)m15BarTime
+            )
+        );
+
+        return false;
+    }
+
+    SqliteDatabase database(
+        databaseFileName,
+        databaseUseCommonFolder
+    );
+
+    if (!database.open()) {
+        fromLogger.error(__FUNCTION__, "database open failed.");
+
+        return false;
+    }
+
+    CurrencyStrengthRunDao runDao(database.getHandle());
+    CurrencyStrengthPairVoteDao pairVoteDao(database.getHandle());
+    CurrencyStrengthResultDao resultDao(database.getHandle());
+    CurrencyStrengthPersistenceService persistenceService(
+        database.getHandle(),
+        GetPointer(runDao),
+        GetPointer(pairVoteDao),
+        GetPointer(resultDao)
+    );
+
+    if (!persistenceService.createTables()) {
+        fromLogger.error(__FUNCTION__, "database object creation failed.");
+        database.close();
+
+        return false;
+    }
+
+    bool isSaved = persistenceService.save(
+        calculatedAt,
+        m15BarTime,
+        calculationVersion,
+        AccountInfoString(ACCOUNT_SERVER),
+        AccountInfoInteger(ACCOUNT_LOGIN),
+        ChartID(),
+        GetPointer(fromCalculator)
+    );
+    database.close();
+
+    if (!isSaved) {
+        fromLogger.error(__FUNCTION__, "database snapshot save failed.");
+
+        return false;
+    }
+
+    fromLogger.info(
+        __FUNCTION__,
+        StringFormat(
+            "database snapshot saved. fileName=%s common=%s",
+            databaseFileName,
+            getBooleanText(databaseUseCommonFolder)
+        )
+    );
+
+    return true;
+}
+
+/**
  * 28通貨ペアの実isBuy判定動作確認を実行する。
  */
 void OnStart() {
@@ -829,6 +936,12 @@ void OnStart() {
                 retryIntervalMilliseconds
             )
         );
+
+        return;
+    }
+
+    if (databaseEnabled && StringLen(databaseFileName) == 0) {
+        logger.error(__FUNCTION__, "databaseFileName is empty.");
 
         return;
     }
@@ -882,13 +995,29 @@ void OnStart() {
         return;
     }
 
+    string databaseStatus = "SKIPPED";
+
+    if (databaseEnabled) {
+        if (!saveDatabaseSnapshot(calculator, logger)) {
+            logger.error(
+                __FUNCTION__,
+                "Currency strength calculation smoke test FAILED: database save error."
+            );
+
+            return;
+        }
+
+        databaseStatus = "SAVED";
+    }
+
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Currency strength calculation smoke test PASSED. pairs=%d votes=%d currencies=%d",
+            "Currency strength calculation smoke test PASSED. pairs=%d votes=%d currencies=%d database=%s",
             calculator.validPairCount,
             calculator.getPairVoteCount(),
-            calculator.size()
+            calculator.size(),
+            databaseStatus
         )
     );
 }
