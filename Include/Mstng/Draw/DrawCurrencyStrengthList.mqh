@@ -50,7 +50,7 @@ public:
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
-        this.panelWidth = 804;
+        this.panelWidth = 1000;
         this.headerHeight = 25;
         this.columnHeaderYDistance = 39;
         this.separatorYDistance = 58;
@@ -574,6 +574,17 @@ private:
             fromRowIndex,
             10,
             this.formatAverageScore(
+                fromCurrencyStrengthInfo.getLongMediumTermAverageScore(),
+                coverage
+            ),
+            this.getScoreColor(
+                fromCurrencyStrengthInfo.getLongMediumTermAverageScore()
+            )
+        );
+        this.setCell(
+            fromRowIndex,
+            11,
+            this.formatAverageScore(
                 fromCurrencyStrengthInfo.getMediumTermAverageScore(),
                 coverage
             ),
@@ -583,7 +594,18 @@ private:
         );
         this.setCell(
             fromRowIndex,
-            11,
+            12,
+            this.formatAverageScore(
+                fromCurrencyStrengthInfo.getMediumShortTermAverageScore(),
+                coverage
+            ),
+            this.getScoreColor(
+                fromCurrencyStrengthInfo.getMediumShortTermAverageScore()
+            )
+        );
+        this.setCell(
+            fromRowIndex,
+            13,
             this.formatAverageScore(
                 fromCurrencyStrengthInfo.getShortTermAverageScore(),
                 coverage
@@ -594,7 +616,7 @@ private:
         );
         this.setCell(
             fromRowIndex,
-            12,
+            14,
             this.formatScore(
                 totalScore,
                 fromCurrencyStrengthInfo.getTotalSampleCount()
@@ -610,7 +632,7 @@ private:
 
         this.setCell(
             fromRowIndex,
-            13,
+            15,
             IntegerToString(coverage),
             coverageColor
         );
@@ -793,7 +815,7 @@ private:
      * @return 全列数。
      */
     int getColumnCount() {
-        return 14;
+        return 16;
     }
 
     /**
@@ -825,13 +847,17 @@ private:
             case 9:
                 return 508;
             case 10:
-                return 566;
+                return 570;
             case 11:
-                return 624;
+                return 660;
             case 12:
-                return 690;
+                return 718;
             case 13:
-                return 766;
+                return 818;
+            case 14:
+                return 884;
+            case 15:
+                return 960;
         }
 
         return 14;
@@ -867,18 +893,26 @@ private:
         }
 
         if (fromColumnIndex == 10) {
-            return "MID";
+            return "LONG-MID";
         }
 
         if (fromColumnIndex == 11) {
-            return "SHORT";
+            return "MID";
         }
 
         if (fromColumnIndex == 12) {
-            return "TOTAL";
+            return "MID-SHORT";
         }
 
         if (fromColumnIndex == 13) {
+            return "SHORT";
+        }
+
+        if (fromColumnIndex == 14) {
+            return "TOTAL";
+        }
+
+        if (fromColumnIndex == 15) {
             return "N";
         }
 

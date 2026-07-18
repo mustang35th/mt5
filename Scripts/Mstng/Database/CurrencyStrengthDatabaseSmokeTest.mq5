@@ -78,7 +78,7 @@ void initializeRunEntity(
     fromEntity.id = 0;
     fromEntity.calculatedAt = fromCalculatedAt;
     fromEntity.m15BarTime = fromCalculatedAt;
-    fromEntity.calculationVersion = "pair-direction-raw-v5-smoke-test";
+    fromEntity.calculationVersion = "pair-direction-raw-v6-smoke-test";
     fromEntity.sourceServer = AccountInfoString(ACCOUNT_SERVER);
     fromEntity.sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
     fromEntity.sourceChartId = ChartID();
@@ -174,11 +174,17 @@ void initializeResultEntity(
     fromEntity.longTermAverageRank = 2;
     fromEntity.mediumTermAverageRank = 2;
     fromEntity.shortTermAverageRank = 1;
+    fromEntity.longMediumTermAverageScore = (double)(fromScore * 3) / 5.0;
+    fromEntity.longMediumTermAverageRank = 2;
+    fromEntity.mediumShortTermAverageScore = (double)fromScore / 5.0;
+    fromEntity.mediumShortTermAverageRank = 2;
 
     if (fromScore > 0) {
         fromEntity.longTermAverageRank = 1;
         fromEntity.mediumTermAverageRank = 1;
         fromEntity.shortTermAverageRank = 2;
+        fromEntity.longMediumTermAverageRank = 1;
+        fromEntity.mediumShortTermAverageRank = 1;
     }
 
     fromEntity.updatedAt = 0;
@@ -416,10 +422,20 @@ bool readResultMismatchCount(
     sql += "(d1_score + h4_score + h1_score) / 3.0) > 0.000001 OR ";
     sql += "ABS(short_term_average_score - ";
     sql += "(h1_score + m15_score + m5_score) / 3.0) > 0.000001 OR ";
+    sql += "ABS(long_medium_term_average_score - ";
+    sql += "(mn1_score + w1_score + d1_score + h4_score + h1_score) ";
+    sql += "/ 5.0) > 0.000001 OR ";
+    sql += "ABS(medium_short_term_average_score - ";
+    sql += "(d1_score + h4_score + h1_score + m15_score + m5_score) ";
+    sql += "/ 5.0) > 0.000001 OR ";
     sql += "(currency_name = 'USD' AND (long_term_average_rank <> 1 OR ";
-    sql += "medium_term_average_rank <> 1 OR short_term_average_rank <> 2)) OR ";
+    sql += "medium_term_average_rank <> 1 OR short_term_average_rank <> 2 OR ";
+    sql += "long_medium_term_average_rank <> 1 OR ";
+    sql += "medium_short_term_average_rank <> 1)) OR ";
     sql += "(currency_name = 'JPY' AND (long_term_average_rank <> 2 OR ";
-    sql += "medium_term_average_rank <> 2 OR short_term_average_rank <> 1)) OR ";
+    sql += "medium_term_average_rank <> 2 OR short_term_average_rank <> 1 OR ";
+    sql += "long_medium_term_average_rank <> 2 OR ";
+    sql += "medium_short_term_average_rank <> 2)) OR ";
     sql += "(currency_name = 'USD' AND d1_score <> 1) OR ";
     sql += "(currency_name = 'JPY' AND d1_score <> -1) OR ";
     sql += "currency_name NOT IN ('USD', 'JPY'))";
@@ -806,7 +822,7 @@ void OnStart() {
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Currency strength database smoke test passed. fileName=%s runId=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s",
+            "Currency strength database smoke test passed. fileName=%s runId=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s averages=5 ranks=5",
             database.getFileName(),
             runEntity.id,
             voteCount,

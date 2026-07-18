@@ -347,6 +347,16 @@ public:
     }
 
     /**
+     * 指定通貨の長中期平均スコア順位を取得する。
+     *
+     * @param fromCurrencyIndex 通貨番号。
+     * @return 降順の競技順位。完全な集計でない場合は0。
+     */
+    int getLongMediumTermAverageRank(int fromCurrencyIndex) {
+        return this.getAverageRank(fromCurrencyIndex, 3);
+    }
+
+    /**
      * 指定通貨の中期平均スコア順位を取得する。
      *
      * @param fromCurrencyIndex 通貨番号。
@@ -354,6 +364,16 @@ public:
      */
     int getMediumTermAverageRank(int fromCurrencyIndex) {
         return this.getAverageRank(fromCurrencyIndex, 1);
+    }
+
+    /**
+     * 指定通貨の中短期平均スコア順位を取得する。
+     *
+     * @param fromCurrencyIndex 通貨番号。
+     * @return 降順の競技順位。完全な集計でない場合は0。
+     */
+    int getMediumShortTermAverageRank(int fromCurrencyIndex) {
+        return this.getAverageRank(fromCurrencyIndex, 4);
     }
 
     /**
@@ -485,7 +505,7 @@ private:
      * 自分より平均スコアが高い通貨数に1を加え、同点は同順位とする。
      *
      * @param fromCurrencyIndex 通貨番号。
-     * @param fromAverageType 0=長期、1=中期、2=短期。
+     * @param fromAverageType 0=長期、1=中期、2=短期、3=長中期、4=中短期。
      * @return 降順の競技順位。順位を算出できない場合は0。
      */
     int getAverageRank(int fromCurrencyIndex, int fromAverageType) {
@@ -531,7 +551,7 @@ private:
      * 指定期間の平均スコアを取得する。
      *
      * @param fromInfo 通貨別集計結果。
-     * @param fromAverageType 0=長期、1=中期、2=短期。
+     * @param fromAverageType 0=長期、1=中期、2=短期、3=長中期、4=中短期。
      * @return 平均スコア。取得できない場合は0。
      */
     double getAverageScore(
@@ -549,6 +569,10 @@ private:
                 return fromInfo.getMediumTermAverageScore();
             case 2:
                 return fromInfo.getShortTermAverageScore();
+            case 3:
+                return fromInfo.getLongMediumTermAverageScore();
+            case 4:
+                return fromInfo.getMediumShortTermAverageScore();
         }
 
         return 0.0;

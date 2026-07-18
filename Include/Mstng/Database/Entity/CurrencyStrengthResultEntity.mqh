@@ -78,11 +78,23 @@ struct CurrencyStrengthResultEntity {
     /** 長期平均スコア順位。 */
     int longTermAverageRank;
 
+    /** 長中期スコア平均。 */
+    double longMediumTermAverageScore;
+
+    /** 長中期平均スコア順位。 */
+    int longMediumTermAverageRank;
+
     /** 中期スコア平均。 */
     double mediumTermAverageScore;
 
     /** 中期平均スコア順位。 */
     int mediumTermAverageRank;
+
+    /** 中短期スコア平均。 */
+    double mediumShortTermAverageScore;
+
+    /** 中短期平均スコア順位。 */
+    int mediumShortTermAverageRank;
 
     /** 短期スコア平均。 */
     double shortTermAverageScore;

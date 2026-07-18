@@ -444,10 +444,18 @@ private:
                 currencyStrengthInfo.getLongTermAverageScore();
             fromEntities[i].longTermAverageRank =
                 fromCalculator.getLongTermAverageRank(i);
+            fromEntities[i].longMediumTermAverageScore =
+                currencyStrengthInfo.getLongMediumTermAverageScore();
+            fromEntities[i].longMediumTermAverageRank =
+                fromCalculator.getLongMediumTermAverageRank(i);
             fromEntities[i].mediumTermAverageScore =
                 currencyStrengthInfo.getMediumTermAverageScore();
             fromEntities[i].mediumTermAverageRank =
                 fromCalculator.getMediumTermAverageRank(i);
+            fromEntities[i].mediumShortTermAverageScore =
+                currencyStrengthInfo.getMediumShortTermAverageScore();
+            fromEntities[i].mediumShortTermAverageRank =
+                fromCalculator.getMediumShortTermAverageRank(i);
             fromEntities[i].shortTermAverageScore =
                 currencyStrengthInfo.getShortTermAverageScore();
             fromEntities[i].shortTermAverageRank =
