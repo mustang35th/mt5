@@ -34,7 +34,7 @@ public:
      * 時間足別の集計値を初期化する。
      */
     void reset() {
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 7; i++) {
             this.rawScores[i] = 0;
             this.sampleCounts[i] = 0;
         }
@@ -47,7 +47,7 @@ public:
      * @param fromScore 加算する強弱値。
      */
     void addScore(int fromTimeFrameIndex, int fromScore) {
-        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 6) {
+        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 7) {
             return;
         }
 
@@ -62,7 +62,7 @@ public:
      * @return 指定時間足の有効票合計。
      */
     double getScore(int fromTimeFrameIndex) {
-        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 6) {
+        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 7) {
             return 0.0;
         }
 
@@ -82,7 +82,7 @@ public:
      * @return 有効票数。
      */
     int getSampleCount(int fromTimeFrameIndex) {
-        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 6) {
+        if (fromTimeFrameIndex < 0 || fromTimeFrameIndex >= 7) {
             return 0;
         }
 
@@ -98,7 +98,7 @@ public:
         int rawScore = 0;
         int sampleCount = 0;
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 7; i++) {
             rawScore += this.rawScores[i];
             sampleCount += this.sampleCounts[i];
         }
@@ -118,7 +118,7 @@ public:
     int getTotalSampleCount() {
         int sampleCount = 0;
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 7; i++) {
             sampleCount += this.sampleCounts[i];
         }
 
@@ -127,10 +127,10 @@ public:
 
 private:
     /** 時間足別の未正規化スコア。 */
-    int rawScores[6];
+    int rawScores[7];
 
     /** 時間足別の有効票数。 */
-    int sampleCounts[6];
+    int sampleCounts[7];
 };
 
 #endif

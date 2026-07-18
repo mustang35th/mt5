@@ -429,6 +429,7 @@ private:
             fromEntities[i].h4Score = (int)currencyStrengthInfo.getScore(3);
             fromEntities[i].h1Score = (int)currencyStrengthInfo.getScore(4);
             fromEntities[i].m15Score = (int)currencyStrengthInfo.getScore(5);
+            fromEntities[i].m5Score = (int)currencyStrengthInfo.getScore(6);
             fromEntities[i].totalScore = (int)currencyStrengthInfo.getTotalScore();
             fromEntities[i].mn1SampleCount = currencyStrengthInfo.getSampleCount(0);
             fromEntities[i].w1SampleCount = currencyStrengthInfo.getSampleCount(1);
@@ -436,6 +437,7 @@ private:
             fromEntities[i].h4SampleCount = currencyStrengthInfo.getSampleCount(3);
             fromEntities[i].h1SampleCount = currencyStrengthInfo.getSampleCount(4);
             fromEntities[i].m15SampleCount = currencyStrengthInfo.getSampleCount(5);
+            fromEntities[i].m5SampleCount = currencyStrengthInfo.getSampleCount(6);
             fromEntities[i].totalSampleCount =
                 currencyStrengthInfo.getTotalSampleCount();
             fromEntities[i].updatedAt = 0;

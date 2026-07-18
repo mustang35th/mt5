@@ -50,7 +50,7 @@ public:
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
-        this.panelWidth = 564;
+        this.panelWidth = 622;
         this.headerHeight = 25;
         this.columnHeaderYDistance = 39;
         this.separatorYDistance = 58;
@@ -547,7 +547,7 @@ private:
             this.getScoreColor(totalScore)
         );
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 7; i++) {
             int sampleCount = fromCurrencyStrengthInfo.getSampleCount(i);
             double score = fromCurrencyStrengthInfo.getScore(i);
             this.setCell(
@@ -560,7 +560,7 @@ private:
 
         this.setCell(
             fromRowIndex,
-            8,
+            9,
             this.formatScore(
                 totalScore,
                 fromCurrencyStrengthInfo.getTotalSampleCount()
@@ -577,7 +577,7 @@ private:
 
         this.setCell(
             fromRowIndex,
-            9,
+            10,
             IntegerToString(coverage),
             coverageColor
         );
@@ -739,7 +739,7 @@ private:
      * @return 全列数。
      */
     int getColumnCount() {
-        return 10;
+        return 11;
     }
 
     /**
@@ -767,9 +767,11 @@ private:
             case 7:
                 return 386;
             case 8:
-                return 450;
+                return 444;
             case 9:
-                return 526;
+                return 508;
+            case 10:
+                return 584;
         }
 
         return 14;
@@ -794,17 +796,17 @@ private:
             return "CCY";
         }
 
-        if (2 <= fromColumnIndex && fromColumnIndex <= 7) {
+        if (2 <= fromColumnIndex && fromColumnIndex <= 8) {
             return TimeUtil::convertTimeFrameToString(
                 fromCalculator.getTimeFrame(fromColumnIndex - 2)
             );
         }
 
-        if (fromColumnIndex == 8) {
+        if (fromColumnIndex == 9) {
             return "TOTAL";
         }
 
-        if (fromColumnIndex == 9) {
+        if (fromColumnIndex == 10) {
             return "N";
         }
 

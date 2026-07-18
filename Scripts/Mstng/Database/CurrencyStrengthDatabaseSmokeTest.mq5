@@ -78,7 +78,7 @@ void initializeRunEntity(
     fromEntity.id = 0;
     fromEntity.calculatedAt = fromCalculatedAt;
     fromEntity.m15BarTime = fromCalculatedAt;
-    fromEntity.calculationVersion = "pair-direction-raw-v2-smoke-test";
+    fromEntity.calculationVersion = "pair-direction-raw-v3-smoke-test";
     fromEntity.sourceServer = AccountInfoString(ACCOUNT_SERVER);
     fromEntity.sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
     fromEntity.sourceChartId = ChartID();
@@ -149,14 +149,16 @@ void initializeResultEntity(
     fromEntity.h4Score = fromScore;
     fromEntity.h1Score = fromScore;
     fromEntity.m15Score = fromScore;
-    fromEntity.totalScore = fromScore * 6;
+    fromEntity.m5Score = fromScore;
+    fromEntity.totalScore = fromScore * 7;
     fromEntity.mn1SampleCount = 1;
     fromEntity.w1SampleCount = 1;
     fromEntity.d1SampleCount = 1;
     fromEntity.h4SampleCount = 1;
     fromEntity.h1SampleCount = 1;
     fromEntity.m15SampleCount = 1;
-    fromEntity.totalSampleCount = 6;
+    fromEntity.m5SampleCount = 1;
+    fromEntity.totalSampleCount = 7;
     fromEntity.updatedAt = 0;
     fromEntity.updatedAtText = "";
 }
@@ -380,11 +382,12 @@ bool readResultMismatchCount(
     sql += "WHERE run_id = ?1 AND (";
     sql += "mn1_score <> d1_score OR w1_score <> d1_score OR ";
     sql += "h4_score <> d1_score OR h1_score <> d1_score OR ";
-    sql += "m15_score <> d1_score OR total_score <> d1_score * 6 OR ";
+    sql += "m15_score <> d1_score OR m5_score <> d1_score OR ";
+    sql += "total_score <> d1_score * 7 OR ";
     sql += "mn1_sample_count <> 1 OR w1_sample_count <> 1 OR ";
     sql += "d1_sample_count <> 1 OR h4_sample_count <> 1 OR ";
     sql += "h1_sample_count <> 1 OR m15_sample_count <> 1 OR ";
-    sql += "total_sample_count <> 6 OR ";
+    sql += "m5_sample_count <> 1 OR total_sample_count <> 7 OR ";
     sql += "(currency_name = 'USD' AND d1_score <> 1) OR ";
     sql += "(currency_name = 'JPY' AND d1_score <> -1) OR ";
     sql += "currency_name NOT IN ('USD', 'JPY'))";
@@ -577,13 +580,14 @@ void OnStart() {
     initializeRunEntity(calculatedAt, runEntity);
 
     CurrencyStrengthPairVoteEntity voteEntities[];
-    ArrayResize(voteEntities, 6);
+    ArrayResize(voteEntities, 7);
     initializePairVoteEntity(0, PERIOD_MN1, calculatedAt, voteEntities[0]);
     initializePairVoteEntity(1, PERIOD_W1, calculatedAt, voteEntities[1]);
     initializePairVoteEntity(2, PERIOD_D1, calculatedAt, voteEntities[2]);
     initializePairVoteEntity(3, PERIOD_H4, calculatedAt, voteEntities[3]);
     initializePairVoteEntity(4, PERIOD_H1, calculatedAt, voteEntities[4]);
     initializePairVoteEntity(5, PERIOD_M15, calculatedAt, voteEntities[5]);
+    initializePairVoteEntity(6, PERIOD_M5, calculatedAt, voteEntities[6]);
 
     CurrencyStrengthResultEntity resultEntities[];
     ArrayResize(resultEntities, 2);
@@ -730,9 +734,9 @@ void OnStart() {
 
     if (runEntity.id <= 0
             || runCount != 1
-            || voteCount != 6
+            || voteCount != 7
             || resultCount != 2
-            || contributionCount != 12
+            || contributionCount != 14
             || timeFrameText != "MN1"
             || runEntity.updatedAt <= 0
             || runEntity.updatedAtText != expectedUpdatedAtText

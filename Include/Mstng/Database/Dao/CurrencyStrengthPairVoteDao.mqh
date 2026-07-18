@@ -355,6 +355,7 @@ private:
         sql += StringFormat("WHEN %d THEN 'H4' ", (int)PERIOD_H4);
         sql += StringFormat("WHEN %d THEN 'H1' ", (int)PERIOD_H1);
         sql += StringFormat("WHEN %d THEN 'M15' ", (int)PERIOD_M15);
+        sql += StringFormat("WHEN %d THEN 'M5' ", (int)PERIOD_M5);
         sql += "ELSE CAST(time_frame AS TEXT) END ";
         sql += "WHERE time_frame_text = ''";
 
@@ -371,7 +372,7 @@ private:
     }
 
     /**
-     * 既存4時間足データの集計順を6時間足の共通順へ移行する。
+     * 既存4時間足データの集計順を7時間足の共通順へ移行する。
      *
      * UNIQUE制約との衝突を避けるため一時的な負数へ退避してから、
      * D1、H4、H1、M15を2、3、4、5へ移動する。

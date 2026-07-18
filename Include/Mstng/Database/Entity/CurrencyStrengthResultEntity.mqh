@@ -42,6 +42,9 @@ struct CurrencyStrengthResultEntity {
     /** M15の未正規化合計。 */
     int m15Score;
 
+    /** M5の未正規化合計。 */
+    int m5Score;
+
     /** 全時間足の未正規化合計。 */
     int totalScore;
 
@@ -62,6 +65,9 @@ struct CurrencyStrengthResultEntity {
 
     /** M15の票数。 */
     int m15SampleCount;
+
+    /** M5の票数。 */
+    int m5SampleCount;
 
     /** 全時間足の票数。 */
     int totalSampleCount;
