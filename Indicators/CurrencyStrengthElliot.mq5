@@ -22,10 +22,12 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
+#include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 
 input int refreshSeconds = 60;
 input int panelXDistance = 12;
 input int panelYDistance = 12;
+input CurrencyStrengthSortType sortType = CURRENCY_STRENGTH_SORT_TOTAL;
 input bool databaseEnabled = true;
 input string databaseFileName = "mstng-currency-strength.sqlite";
 input bool databaseUseCommonFolder = true;
@@ -83,7 +85,8 @@ int OnInit() {
     gDrawCurrencyStrengthList = new DrawCurrencyStrengthList(
         0,
         panelXDistance,
-        panelYDistance
+        panelYDistance,
+        sortType
     );
     gOscillatorHandleManager = new OscillatorHandleManager(PERIOD_M15);
     gCurrencyStrengthCalculator = new CurrencyStrengthCalculator();

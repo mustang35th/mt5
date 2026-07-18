@@ -12,6 +12,7 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
+#include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
@@ -26,11 +27,13 @@ public:
      * @param fromChartId 描画対象チャートID。0の場合はカレント。
      * @param fromXDistance チャート左端からの距離。
      * @param fromYDistance チャート上端からの距離。
+     * @param fromSortType 並び替え基準。
      */
     DrawCurrencyStrengthList(
         long fromChartId = 0,
         int fromXDistance = 12,
-        int fromYDistance = 12
+        int fromYDistance = 12,
+        CurrencyStrengthSortType fromSortType = CURRENCY_STRENGTH_SORT_TOTAL
     ) {
         this.chartId = fromChartId;
         string baseObjectPrefix = Constant::PREFIX_FIXED + "CurrencyStrengthList_";
@@ -50,6 +53,7 @@ public:
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
+        this.sortType = fromSortType;
         this.panelWidth = 1000;
         this.headerHeight = 25;
         this.columnHeaderYDistance = 39;
@@ -153,6 +157,9 @@ private:
 
     /** チャート上端からの距離。 */
     int yDistance;
+
+    /** 一覧の並び替え基準。 */
+    CurrencyStrengthSortType sortType;
 
     /** パネル幅。 */
     int panelWidth;
@@ -275,12 +282,18 @@ private:
         }
 
         for (int i = 0; i < this.getColumnCount(); i++) {
+            color columnHeaderColor = this.headerColor;
+
+            if (i == this.getSortColumnIndex()) {
+                columnHeaderColor = this.warningColor;
+            }
+
             if (!this.createLabel(
                 this.getHeaderObjectName(i),
                 this.getColumnLeftOffset(i),
                 this.columnHeaderYDistance,
                 this.bodyFontSize,
-                this.headerColor,
+                columnHeaderColor,
                 this.getHeaderText(i, fromCalculator)
             )) {
                 this.destroyObjects();
@@ -455,7 +468,7 @@ private:
     }
 
     /**
-     * 総合スコア降順の表示順を生成する。
+     * 選択スコア、総合スコア、通貨コードの優先順で表示順を生成する。
      *
      * @param fromCalculator 集計結果。
      * @param fromDisplayOrder 表示順の格納先。
@@ -484,23 +497,12 @@ private:
             while (j >= 0) {
                 CurrencyStrengthInfo *previousInfo =
                     fromCalculator.getInfo(fromDisplayOrder[j]);
-                bool shouldShift = false;
 
                 if (previousInfo == NULL || currentInfo == NULL) {
                     break;
                 }
 
-                int previousSampleCount = previousInfo.getTotalSampleCount();
-                int currentSampleCount = currentInfo.getTotalSampleCount();
-
-                if (previousSampleCount <= 0 && currentSampleCount > 0) {
-                    shouldShift = true;
-                } else if (previousSampleCount > 0 && currentSampleCount > 0
-                        && previousInfo.getTotalScore() < currentInfo.getTotalScore()) {
-                    shouldShift = true;
-                }
-
-                if (!shouldShift) {
+                if (!this.shouldShiftDisplayOrder(currentInfo, previousInfo)) {
                     break;
                 }
 
@@ -510,6 +512,130 @@ private:
 
             fromDisplayOrder[j + 1] = currentIndex;
         }
+    }
+
+    /**
+     * 現在要素を直前要素より前へ移動するか判定する。
+     *
+     * 選択スコア降順、総合スコア降順、通貨コード昇順の順で比較する。
+     * スコア差が0.000001以内の場合は同点として次の比較条件を使用する。
+     *
+     * @param fromCurrentInfo 現在要素。
+     * @param fromPreviousInfo 直前要素。
+     * @return 現在要素を前へ移動する場合true。
+     */
+    bool shouldShiftDisplayOrder(
+        CurrencyStrengthInfo *fromCurrentInfo,
+        CurrencyStrengthInfo *fromPreviousInfo
+    ) {
+        if (fromCurrentInfo == NULL || fromPreviousInfo == NULL) {
+            return false;
+        }
+
+        const double scoreTolerance = 0.000001;
+        double scoreDifference = this.getSortScore(fromCurrentInfo)
+            - this.getSortScore(fromPreviousInfo);
+
+        if (scoreDifference > scoreTolerance) {
+            return true;
+        }
+
+        if (scoreDifference < 0.0 - scoreTolerance) {
+            return false;
+        }
+
+        double totalScoreDifference = fromCurrentInfo.getTotalScore()
+            - fromPreviousInfo.getTotalScore();
+
+        if (totalScoreDifference > scoreTolerance) {
+            return true;
+        }
+
+        if (totalScoreDifference < 0.0 - scoreTolerance) {
+            return false;
+        }
+
+        return StringCompare(
+            fromCurrentInfo.currencyName,
+            fromPreviousInfo.currencyName
+        ) < 0;
+    }
+
+    /**
+     * 指定通貨の選択中スコアを取得する。
+     *
+     * @param fromCurrencyStrengthInfo 通貨別集計結果。
+     * @return 選択中の並び替えスコア。
+     */
+    double getSortScore(CurrencyStrengthInfo *fromCurrencyStrengthInfo) {
+        if (fromCurrencyStrengthInfo == NULL) {
+            return 0.0;
+        }
+
+        switch (this.sortType) {
+            case CURRENCY_STRENGTH_SORT_LONG:
+                return fromCurrencyStrengthInfo.getLongTermAverageScore();
+            case CURRENCY_STRENGTH_SORT_LONG_MEDIUM:
+                return fromCurrencyStrengthInfo.getLongMediumTermAverageScore();
+            case CURRENCY_STRENGTH_SORT_MEDIUM:
+                return fromCurrencyStrengthInfo.getMediumTermAverageScore();
+            case CURRENCY_STRENGTH_SORT_MEDIUM_SHORT:
+                return fromCurrencyStrengthInfo.getMediumShortTermAverageScore();
+            case CURRENCY_STRENGTH_SORT_SHORT:
+                return fromCurrencyStrengthInfo.getShortTermAverageScore();
+            case CURRENCY_STRENGTH_SORT_TOTAL:
+                return fromCurrencyStrengthInfo.getTotalScore();
+        }
+
+        return fromCurrencyStrengthInfo.getTotalScore();
+    }
+
+    /**
+     * 選択中の並び替え名を取得する。
+     *
+     * @return タイトル表示用の並び替え名。
+     */
+    string getSortTypeText() {
+        switch (this.sortType) {
+            case CURRENCY_STRENGTH_SORT_LONG:
+                return "LONG";
+            case CURRENCY_STRENGTH_SORT_LONG_MEDIUM:
+                return "LONG-MID";
+            case CURRENCY_STRENGTH_SORT_MEDIUM:
+                return "MID";
+            case CURRENCY_STRENGTH_SORT_MEDIUM_SHORT:
+                return "MID-SHORT";
+            case CURRENCY_STRENGTH_SORT_SHORT:
+                return "SHORT";
+            case CURRENCY_STRENGTH_SORT_TOTAL:
+                return "TOTAL";
+        }
+
+        return "TOTAL";
+    }
+
+    /**
+     * 選択中の並び替えに対応する列番号を取得する。
+     *
+     * @return 強調表示する列番号。
+     */
+    int getSortColumnIndex() {
+        switch (this.sortType) {
+            case CURRENCY_STRENGTH_SORT_LONG:
+                return 9;
+            case CURRENCY_STRENGTH_SORT_LONG_MEDIUM:
+                return 10;
+            case CURRENCY_STRENGTH_SORT_MEDIUM:
+                return 11;
+            case CURRENCY_STRENGTH_SORT_MEDIUM_SHORT:
+                return 12;
+            case CURRENCY_STRENGTH_SORT_SHORT:
+                return 13;
+            case CURRENCY_STRENGTH_SORT_TOTAL:
+                return 14;
+        }
+
+        return 14;
     }
 
     /**
@@ -646,10 +772,11 @@ private:
     void updateTitle(CurrencyStrengthCalculator *fromCalculator) {
         datetime japanTime = TimeJapanUtil::getJapanTime(TimeCurrent());
         string titleText = StringFormat(
-            "Elliot Currency Strength  PAIRS %d/%d  JST %s",
+            "Elliot Currency Strength  JST %s  %d/%d  %s",
+            this.formatTitleTime(japanTime),
             fromCalculator.validPairCount,
             fromCalculator.getExpectedPairCount(),
-            this.formatTitleTime(japanTime)
+            this.getSortTypeText()
         );
 
         ObjectSetString(
