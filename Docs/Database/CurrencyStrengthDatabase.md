@@ -6,7 +6,7 @@
 |---|---|
 | 対象機能 | 主要8通貨・28通貨ペアの通貨強弱集計履歴 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| 集計ルール | `pair-direction-raw-v3` |
+| 集計ルール | `pair-direction-raw-v4` |
 | 最終更新日 | 2026-07-18 |
 | 実装 | `CurrencyStrengthElliot`、`CurrencyStrengthPersistenceService`、3 Entity・3 DAO |
 
@@ -60,6 +60,16 @@
 
 各通貨は1時間足につき7ペアへ登場するため、完全な集計における時間足別スコアは-7～+7です。各通貨の全7時間足の票数は49票、総合スコアは-49～+49です。
 
+時間軸ごとの傾向確認用として、未正規化スコア3本の単純算術平均を集計します。
+
+| 期間 | 対象時間足 | 計算式 |
+|---|---|---|
+| 長期 | MN1、W1、D1 | `(mn1_score + w1_score + d1_score) / 3.0` |
+| 中期 | D1、H4、H1 | `(d1_score + h4_score + h1_score) / 3.0` |
+| 短期 | H1、M15、M5 | `(h1_score + m15_score + m5_score) / 3.0` |
+
+D1は長期と中期、H1は中期と短期へ重複して使用します。平均値は票数による正規化ではなく、指定した3時間足を固定分母3で平均した値です。完全な集計における各平均の範囲は-7～+7で、1/3刻みになります。ランキング、最強・最弱判定、TOTALは従来どおり7時間足の未正規化合計を使用します。
+
 ## 4. テーブル関係
 
 ```text
@@ -97,7 +107,7 @@ currency_strength_runs (1)
 | 1 | `id` | INTEGER | long | PRIMARY KEY, AUTOINCREMENT | 集計ID |
 | 2 | `calculated_at` | INTEGER | datetime | NOT NULL | 集計時刻。`TimeCurrent()`優先、取得不可時は`TimeLocal()` |
 | 3 | `m15_bar_time` | INTEGER | datetime | NOT NULL | 保存判定の基準となるチャートシンボルのM15現在足開始時刻 |
-| 4 | `calculation_version` | TEXT | string | NOT NULL | 集計ルール識別子。現行は`pair-direction-raw-v3` |
+| 4 | `calculation_version` | TEXT | string | NOT NULL | 集計ルール識別子。現行は`pair-direction-raw-v4` |
 | 5 | `source_server` | TEXT | string | NOT NULL | 集計元の取引サーバー名 |
 | 6 | `source_login` | INTEGER | long | NOT NULL | 集計元の口座ログイン番号 |
 | 7 | `source_chart_id` | INTEGER | long | NOT NULL | 保存元チャートID |
@@ -190,8 +200,11 @@ ON currency_strength_pair_votes(run_id, pair_order, time_frame_order);
 | 17 | `m15_sample_count` | INTEGER | int | NOT NULL | M15の票数 |
 | 18 | `m5_sample_count` | INTEGER | int | NOT NULL | M5の票数 |
 | 19 | `total_sample_count` | INTEGER | int | NOT NULL | 7時間足の合計票数。完全な集計では49 |
-| 20 | `updated_at` | INTEGER | datetime | NOT NULL | スナップショットのDB保存時刻 |
-| 21 | `updated_at_text` | TEXT | string | NOT NULL | `updated_at`の目視用文字列 |
+| 20 | `long_term_average_score` | REAL | double | NOT NULL | MN1、W1、D1のスコア平均 |
+| 21 | `medium_term_average_score` | REAL | double | NOT NULL | D1、H4、H1のスコア平均 |
+| 22 | `short_term_average_score` | REAL | double | NOT NULL | H1、M15、M5のスコア平均 |
+| 23 | `updated_at` | INTEGER | datetime | NOT NULL | スナップショットのDB保存時刻 |
+| 24 | `updated_at_text` | TEXT | string | NOT NULL | `updated_at`の目視用文字列 |
 
 ### 8.2 制約
 
@@ -332,20 +345,32 @@ m5_score INTEGER NOT NULL DEFAULT 0
 m5_sample_count INTEGER NOT NULL DEFAULT 0
 ```
 
-既存の`pair-direction-raw-v1`はMN1とW1を集計していないため、対応する4列は0のままとします。v1と`pair-direction-raw-v2`はM5を集計していないため、M5の2列は0のままとします。既存行の`total_score`と`total_sample_count`は当時の時間足数の値を維持し、再計算しません。新規の`pair-direction-raw-v3`では7時間足すべてを保存し、完全な集計の`total_sample_count`は49です。
+既存の`pair-direction-raw-v1`はMN1とW1を集計していないため、対応する4列は0のままとします。v1と`pair-direction-raw-v2`はM5を集計していないため、M5の2列は0のままとします。既存行の`total_score`と`total_sample_count`は当時の時間足数の値を維持し、再計算しません。`pair-direction-raw-v3`以降では7時間足すべてを保存し、完全な集計の`total_sample_count`は49です。
 
 新規CREATE時は論理的な時間足順にMN1・W1列をD1列より前、M5列をM15列の後へ配置します。ALTER TABLEは列を末尾へ追加するため、既存DBの物理列順は新規DBと異なります。DAOはINSERT列名を明示して保存します。
 
-### 11.3 PairVote表示列
+### 11.3 Resultの期間別平均スコア列
+
+既存の`currency_strength_results`に列がない場合は、次の3列を追加します。
+
+```sql
+long_term_average_score REAL NOT NULL DEFAULT 0.0
+medium_term_average_score REAL NOT NULL DEFAULT 0.0
+short_term_average_score REAL NOT NULL DEFAULT 0.0
+```
+
+既存のv1～v3行は期間別平均を保存していないため、追加した3列は0のままとし、履歴値を再計算しません。新規の`pair-direction-raw-v4`から3平均を保存します。新規CREATE時は`total_sample_count`の後へ配置します。ALTER TABLEでは物理的に末尾へ追加されますが、DAOはINSERT列名を明示して保存します。
+
+### 11.4 PairVote表示列
 
 既存テーブルに列がない場合は、`time_frame_text`と`bar_time_text`を`TEXT NOT NULL DEFAULT ''`で追加します。
 
 - 空の`time_frame_text`はMN1、W1、D1、H4、H1、M15、M5へ変換し、その他の値は時間足数値の文字列にします。
 - 空の`bar_time_text`は`bar_time`からSQLiteの`strftime`で生成します。
 
-### 11.4 旧PairVote順序の二段階移行
+### 11.5 旧PairVote順序の二段階移行
 
-`pair-direction-raw-v1`の`time_frame_order`は0=D1、1=H4、2=H1、3=M15です。共通の7時間足順へ合わせるため、既存v1票を2=D1、3=H4、4=H1、5=M15へ移行します。履歴Runの`calculation_version`は`pair-direction-raw-v1`のまま維持し、MN1・W1・M5票は追加しません。v2票の順序は変更せず、新規v3票のM5は6=M5で保存します。
+`pair-direction-raw-v1`の`time_frame_order`は0=D1、1=H4、2=H1、3=M15です。共通の7時間足順へ合わせるため、既存v1票を2=D1、3=H4、4=H1、5=M15へ移行します。履歴Runの`calculation_version`は`pair-direction-raw-v1`のまま維持し、MN1・W1・M5票は追加しません。v2票の順序は変更せず、v3以降のM5は6=M5で保存します。
 
 `UNIQUE(run_id, pair_order, time_frame_order)`との一時的な衝突を避けるため、移行は同一トランザクション内で次の二段階で実行します。
 
@@ -376,14 +401,15 @@ WHERE (time_frame_order = -100 AND time_frame = {PERIOD_D1})
    OR (time_frame_order = -103 AND time_frame = {PERIOD_M15});
 ```
 
-対象は`calculation_version`ではなく、旧orderと実際の`time_frame`の一致で限定します。このため移行済み行や新規v2・v3行は再実行しても変更されません。二段階の途中で失敗した場合はトランザクションをROLLBACKします。移行後のv1 Runは112票のまま、v2の完全なRunは168票、v3の完全なRunは196票です。
+対象は`calculation_version`ではなく、旧orderと実際の`time_frame`の一致で限定します。このため移行済み行や新規v2以降の行は再実行しても変更されません。二段階の途中で失敗した場合はトランザクションをROLLBACKします。移行後のv1 Runは112票のまま、v2の完全なRunは168票、v3・v4の完全なRunは196票です。
 
-### 11.5 移行上の注意
+### 11.6 移行上の注意
 
 - 新規CREATEしたDBの列にはDEFAULT句がありません。ALTER TABLEで追加した更新時刻・表示列にはDEFAULT 0または空文字が残ります。
 - ALTER TABLEで追加したMN1・W1・M5の6列には`DEFAULT 0`が残ります。
+- ALTER TABLEで追加した期間別平均の3列には`DEFAULT 0.0`が残ります。
 - ALTER TABLEは列を末尾へ追加するため、古いDBでは新規CREATE時と物理列順が異なる場合があります。INSERTは列名を指定するため保存処理には影響しません。
-- 自動移行の対象は表示列、更新時刻列、MN1・W1・M5のResult列、および旧PairVote順序です。それ以外の列や制約の差異は自動再構築しません。
+- 自動移行の対象は表示列、更新時刻列、MN1・W1・M5・期間別平均のResult列、および旧PairVote順序です。それ以外の列や制約の差異は自動再構築しません。
 - 補完対象は数値0または空文字のレコードだけです。非空の誤値は修正しません。
 - 通常保存の日時文字列はMQL5、既存データ移行の日時文字列はSQLiteで生成するため、環境によって時刻解釈が異なる可能性があります。
 
@@ -442,6 +468,9 @@ SELECT currency_name,
        m15_sample_count,
        m5_sample_count,
        total_sample_count,
+       long_term_average_score,
+       medium_term_average_score,
+       short_term_average_score,
        updated_at_text
 FROM currency_strength_results
 WHERE run_id = (SELECT MAX(id) FROM currency_strength_runs)
@@ -474,7 +503,7 @@ ORDER BY calculated_total DESC, currency_name;
 
 ### 13.6 完全集計件数の確認
 
-`pair-direction-raw-v3`の完全なRunでは、`vote_count`と実票数が196、Resultが8、Contributionが392になります。
+`pair-direction-raw-v4`の完全なRunでは、`vote_count`と実票数が196、Resultが8、Contributionが392になります。
 
 ```sql
 SELECT
@@ -497,7 +526,7 @@ SELECT
 
 ### 13.7 時間足順序の確認
 
-v3の完全なRunでは0～6が各28票になります。
+v3・v4の完全なRunでは0～6が各28票になります。
 
 ```sql
 SELECT time_frame_order,
@@ -525,10 +554,10 @@ PRAGMA foreign_key_check;
 `Scripts/Mstng/Database/CurrencyStrengthDatabaseSmokeTest.mq5`は次のテストデータを保存します。
 
 - Run: 1件
-- USDJPY BUY票: MN1、W1、D1、H4、H1、M15、M5の7件
+- USDJPY票: MN1、W1、D1、H4、M15はBUY、H1、M5はSELLの7件
 - Result: USD、JPYの2件
 - Contributionsビュー: 14件
 
-Run ID、件数、先頭票の時間足・バー時刻文字列、7時間足のResult値、3テーブルの`updated_at`と`updated_at_text`の一致を検証します。DBファイルと保存したテストレコードは実行後も残ります。
+Run ID、件数、先頭票の時間足・バー時刻文字列、7時間足のResult値、長期・中期・短期平均、3テーブルの`updated_at`と`updated_at_text`の一致を検証します。DBファイルと保存したテストレコードは実行後も残ります。
 
 このテストはCalculatorからEntityへの通常変換、保存条件、保持期間削除、ROLLBACK、および既定の`recreateDatabaseObjects = true`では既存DBのALTER TABLE経路を直接検証しません。

@@ -72,6 +72,15 @@ struct CurrencyStrengthResultEntity {
     /** 全時間足の票数。 */
     int totalSampleCount;
 
+    /** 長期スコア平均。 */
+    double longTermAverageScore;
+
+    /** 中期スコア平均。 */
+    double mediumTermAverageScore;
+
+    /** 短期スコア平均。 */
+    double shortTermAverageScore;
+
     /** レコード更新時刻。 */
     datetime updatedAt;
 

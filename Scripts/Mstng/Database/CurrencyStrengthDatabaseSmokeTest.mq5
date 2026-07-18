@@ -78,7 +78,7 @@ void initializeRunEntity(
     fromEntity.id = 0;
     fromEntity.calculatedAt = fromCalculatedAt;
     fromEntity.m15BarTime = fromCalculatedAt;
-    fromEntity.calculationVersion = "pair-direction-raw-v3-smoke-test";
+    fromEntity.calculationVersion = "pair-direction-raw-v4-smoke-test";
     fromEntity.sourceServer = AccountInfoString(ACCOUNT_SERVER);
     fromEntity.sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
     fromEntity.sourceChartId = ChartID();
@@ -91,16 +91,18 @@ void initializeRunEntity(
 }
 
 /**
- * USDJPYのBUY票エンティティを初期化する。
+ * USDJPYの票エンティティを初期化する。
  *
  * @param fromTimeFrameOrder 時間足の集計順。
  * @param fromTimeFrame 時間足。
+ * @param fromIsBuy BUY票の場合true。
  * @param fromBarTime 判定対象のバー時刻。
  * @param fromEntity 初期化対象エンティティ。
  */
 void initializePairVoteEntity(
     const int fromTimeFrameOrder,
     const ENUM_TIMEFRAMES fromTimeFrame,
+    const bool fromIsBuy,
     const datetime fromBarTime,
     CurrencyStrengthPairVoteEntity &fromEntity
 ) {
@@ -119,11 +121,18 @@ void initializePairVoteEntity(
     );
     fromEntity.baseCurrency = "USD";
     fromEntity.quoteCurrency = "JPY";
-    fromEntity.isBuy = 1;
-    fromEntity.oscillatorCount = 2;
-    fromEntity.baseScore = 1;
-    fromEntity.baseScoreAfter = 1;
-    fromEntity.quoteScoreAfter = -1;
+    fromEntity.isBuy = 0;
+    fromEntity.oscillatorCount = -2;
+    fromEntity.baseScore = -1;
+
+    if (fromIsBuy) {
+        fromEntity.isBuy = 1;
+        fromEntity.oscillatorCount = 2;
+        fromEntity.baseScore = 1;
+    }
+
+    fromEntity.baseScoreAfter = fromEntity.baseScore;
+    fromEntity.quoteScoreAfter = 0 - fromEntity.baseScore;
     fromEntity.updatedAt = 0;
     fromEntity.updatedAtText = "";
 }
@@ -147,10 +156,10 @@ void initializeResultEntity(
     fromEntity.w1Score = fromScore;
     fromEntity.d1Score = fromScore;
     fromEntity.h4Score = fromScore;
-    fromEntity.h1Score = fromScore;
+    fromEntity.h1Score = 0 - fromScore;
     fromEntity.m15Score = fromScore;
-    fromEntity.m5Score = fromScore;
-    fromEntity.totalScore = fromScore * 7;
+    fromEntity.m5Score = 0 - fromScore;
+    fromEntity.totalScore = fromScore * 3;
     fromEntity.mn1SampleCount = 1;
     fromEntity.w1SampleCount = 1;
     fromEntity.d1SampleCount = 1;
@@ -159,6 +168,9 @@ void initializeResultEntity(
     fromEntity.m15SampleCount = 1;
     fromEntity.m5SampleCount = 1;
     fromEntity.totalSampleCount = 7;
+    fromEntity.longTermAverageScore = (double)fromScore;
+    fromEntity.mediumTermAverageScore = (double)fromScore / 3.0;
+    fromEntity.shortTermAverageScore = (double)(0 - fromScore) / 3.0;
     fromEntity.updatedAt = 0;
     fromEntity.updatedAtText = "";
 }
@@ -381,13 +393,19 @@ bool readResultMismatchCount(
     string sql = "SELECT COUNT(*) FROM currency_strength_results ";
     sql += "WHERE run_id = ?1 AND (";
     sql += "mn1_score <> d1_score OR w1_score <> d1_score OR ";
-    sql += "h4_score <> d1_score OR h1_score <> d1_score OR ";
-    sql += "m15_score <> d1_score OR m5_score <> d1_score OR ";
-    sql += "total_score <> d1_score * 7 OR ";
+    sql += "h4_score <> d1_score OR h1_score <> 0 - d1_score OR ";
+    sql += "m15_score <> d1_score OR m5_score <> 0 - d1_score OR ";
+    sql += "total_score <> d1_score * 3 OR ";
     sql += "mn1_sample_count <> 1 OR w1_sample_count <> 1 OR ";
     sql += "d1_sample_count <> 1 OR h4_sample_count <> 1 OR ";
     sql += "h1_sample_count <> 1 OR m15_sample_count <> 1 OR ";
     sql += "m5_sample_count <> 1 OR total_sample_count <> 7 OR ";
+    sql += "ABS(long_term_average_score - ";
+    sql += "(mn1_score + w1_score + d1_score) / 3.0) > 0.000001 OR ";
+    sql += "ABS(medium_term_average_score - ";
+    sql += "(d1_score + h4_score + h1_score) / 3.0) > 0.000001 OR ";
+    sql += "ABS(short_term_average_score - ";
+    sql += "(h1_score + m15_score + m5_score) / 3.0) > 0.000001 OR ";
     sql += "(currency_name = 'USD' AND d1_score <> 1) OR ";
     sql += "(currency_name = 'JPY' AND d1_score <> -1) OR ";
     sql += "currency_name NOT IN ('USD', 'JPY'))";
@@ -581,13 +599,13 @@ void OnStart() {
 
     CurrencyStrengthPairVoteEntity voteEntities[];
     ArrayResize(voteEntities, 7);
-    initializePairVoteEntity(0, PERIOD_MN1, calculatedAt, voteEntities[0]);
-    initializePairVoteEntity(1, PERIOD_W1, calculatedAt, voteEntities[1]);
-    initializePairVoteEntity(2, PERIOD_D1, calculatedAt, voteEntities[2]);
-    initializePairVoteEntity(3, PERIOD_H4, calculatedAt, voteEntities[3]);
-    initializePairVoteEntity(4, PERIOD_H1, calculatedAt, voteEntities[4]);
-    initializePairVoteEntity(5, PERIOD_M15, calculatedAt, voteEntities[5]);
-    initializePairVoteEntity(6, PERIOD_M5, calculatedAt, voteEntities[6]);
+    initializePairVoteEntity(0, PERIOD_MN1, true, calculatedAt, voteEntities[0]);
+    initializePairVoteEntity(1, PERIOD_W1, true, calculatedAt, voteEntities[1]);
+    initializePairVoteEntity(2, PERIOD_D1, true, calculatedAt, voteEntities[2]);
+    initializePairVoteEntity(3, PERIOD_H4, true, calculatedAt, voteEntities[3]);
+    initializePairVoteEntity(4, PERIOD_H1, false, calculatedAt, voteEntities[4]);
+    initializePairVoteEntity(5, PERIOD_M15, true, calculatedAt, voteEntities[5]);
+    initializePairVoteEntity(6, PERIOD_M5, false, calculatedAt, voteEntities[6]);
 
     CurrencyStrengthResultEntity resultEntities[];
     ArrayResize(resultEntities, 2);

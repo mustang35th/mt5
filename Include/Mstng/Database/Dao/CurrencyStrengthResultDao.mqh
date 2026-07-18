@@ -57,6 +57,9 @@ public:
         sql += "m15_sample_count INTEGER NOT NULL,";
         sql += "m5_sample_count INTEGER NOT NULL,";
         sql += "total_sample_count INTEGER NOT NULL,";
+        sql += "long_term_average_score REAL NOT NULL,";
+        sql += "medium_term_average_score REAL NOT NULL,";
+        sql += "short_term_average_score REAL NOT NULL,";
         sql += "updated_at INTEGER NOT NULL,";
         sql += "updated_at_text TEXT NOT NULL,";
         sql += "FOREIGN KEY(run_id) REFERENCES currency_strength_runs(id) ";
@@ -69,6 +72,10 @@ public:
         }
 
         if (!this.migrateTimeFrameColumns()) {
+            return false;
+        }
+
+        if (!this.migrateAverageScoreColumns()) {
             return false;
         }
 
@@ -114,11 +121,12 @@ public:
         sql += " h1_score, m15_score, m5_score, total_score, mn1_sample_count,";
         sql += " w1_sample_count, d1_sample_count, h4_sample_count,";
         sql += " h1_sample_count, m15_sample_count, m5_sample_count,";
-        sql += " total_sample_count,";
+        sql += " total_sample_count, long_term_average_score,";
+        sql += " medium_term_average_score, short_term_average_score,";
         sql += " updated_at, updated_at_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,";
-        sql += " ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20";
+        sql += " ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23";
         sql += ")";
 
         ResetLastError();
@@ -228,6 +236,32 @@ private:
         return this.ensureColumn(
             "m5_sample_count",
             "INTEGER NOT NULL DEFAULT 0"
+        );
+    }
+
+    /**
+     * 既存の通貨別集計結果テーブルへ期間別平均スコア列を追加する。
+     *
+     * @return 列の存在確認または追加に成功した場合はtrue。
+     */
+    bool migrateAverageScoreColumns() {
+        if (!this.ensureColumn(
+            "long_term_average_score",
+            "REAL NOT NULL DEFAULT 0.0"
+        )) {
+            return false;
+        }
+
+        if (!this.ensureColumn(
+            "medium_term_average_score",
+            "REAL NOT NULL DEFAULT 0.0"
+        )) {
+            return false;
+        }
+
+        return this.ensureColumn(
+            "short_term_average_score",
+            "REAL NOT NULL DEFAULT 0.0"
         );
     }
 
@@ -478,12 +512,33 @@ private:
             );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 18, fromEntity.updatedAt);
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                18,
+                fromEntity.longTermAverageScore
+            );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 19,
+                fromEntity.mediumTermAverageScore
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                20,
+                fromEntity.shortTermAverageScore
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 21, fromEntity.updatedAt);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                22,
                 fromEntity.updatedAtText
             );
         }

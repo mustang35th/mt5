@@ -42,7 +42,7 @@ input string databaseFileName =
 input bool databaseUseCommonFolder = true;
 
 /** 集計ルール識別子。 */
-const string calculationVersion = "pair-direction-raw-v3";
+const string calculationVersion = "pair-direction-raw-v4";
 
 /**
  * bool値をログ用文字列へ変換する。
@@ -365,6 +365,12 @@ void printCurrencyResults(
             );
         }
 
+        resultText += StringFormat(
+            " long=%.2f medium=%.2f short=%.2f",
+            currencyStrengthInfo.getLongTermAverageScore(),
+            currencyStrengthInfo.getMediumTermAverageScore(),
+            currencyStrengthInfo.getShortTermAverageScore()
+        );
         resultText += StringFormat(
             " total=%s(samples=%d)",
             StringUtil::addSign((int)currencyStrengthInfo.getTotalScore()),
@@ -725,6 +731,9 @@ bool validateCurrencyResults(
     bool isValid = true;
     int totalScore = 0;
     int totalSampleCount = 0;
+    double longTermAverageScoreTotal = 0.0;
+    double mediumTermAverageScoreTotal = 0.0;
+    double shortTermAverageScoreTotal = 0.0;
     int timeFrameScores[7];
 
     for (int j = 0; j < fromCalculator.getTimeFrameCount(); j++) {
@@ -769,6 +778,57 @@ bool validateCurrencyResults(
                 isValid = false;
             }
         }
+
+        double expectedLongTermAverageScore = (
+            currencyStrengthInfo.getScore(0)
+            + currencyStrengthInfo.getScore(1)
+            + currencyStrengthInfo.getScore(2)
+        ) / 3.0;
+        double expectedMediumTermAverageScore = (
+            currencyStrengthInfo.getScore(2)
+            + currencyStrengthInfo.getScore(3)
+            + currencyStrengthInfo.getScore(4)
+        ) / 3.0;
+        double expectedShortTermAverageScore = (
+            currencyStrengthInfo.getScore(4)
+            + currencyStrengthInfo.getScore(5)
+            + currencyStrengthInfo.getScore(6)
+        ) / 3.0;
+        double longTermAverageScore =
+            currencyStrengthInfo.getLongTermAverageScore();
+        double mediumTermAverageScore =
+            currencyStrengthInfo.getMediumTermAverageScore();
+        double shortTermAverageScore =
+            currencyStrengthInfo.getShortTermAverageScore();
+
+        if (MathAbs(
+                longTermAverageScore - expectedLongTermAverageScore
+            ) > 0.000001
+                || MathAbs(
+                    mediumTermAverageScore - expectedMediumTermAverageScore
+                ) > 0.000001
+                || MathAbs(
+                    shortTermAverageScore - expectedShortTermAverageScore
+                ) > 0.000001) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "average score mismatch. currency=%s long=%.8f/%.8f medium=%.8f/%.8f short=%.8f/%.8f",
+                    currencyStrengthInfo.currencyName,
+                    longTermAverageScore,
+                    expectedLongTermAverageScore,
+                    mediumTermAverageScore,
+                    expectedMediumTermAverageScore,
+                    shortTermAverageScore,
+                    expectedShortTermAverageScore
+                )
+            );
+            isValid = false;
+        }
+
+        longTermAverageScoreTotal += longTermAverageScore;
+        mediumTermAverageScoreTotal += mediumTermAverageScore;
+        shortTermAverageScoreTotal += shortTermAverageScore;
 
         if ((int)currencyStrengthInfo.getTotalScore() != calculatedTotalScore
                 || currencyStrengthInfo.getTotalSampleCount()
@@ -815,6 +875,21 @@ bool validateCurrencyResults(
                 "all currency total mismatch. score=%d/0 samples=%d/392",
                 totalScore,
                 totalSampleCount
+            )
+        );
+        isValid = false;
+    }
+
+    if (MathAbs(longTermAverageScoreTotal) > 0.000001
+            || MathAbs(mediumTermAverageScoreTotal) > 0.000001
+            || MathAbs(shortTermAverageScoreTotal) > 0.000001) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "all currency average score is not zero. long=%.8f medium=%.8f short=%.8f",
+                longTermAverageScoreTotal,
+                mediumTermAverageScoreTotal,
+                shortTermAverageScoreTotal
             )
         );
         isValid = false;

@@ -76,6 +76,45 @@ public:
     }
 
     /**
+     * 長期スコア平均を取得する。
+     *
+     * @return MN1、W1、D1の未正規化スコア平均。
+     */
+    double getLongTermAverageScore() {
+        return (
+            this.getScore(0)
+            + this.getScore(1)
+            + this.getScore(2)
+        ) / 3.0;
+    }
+
+    /**
+     * 中期スコア平均を取得する。
+     *
+     * @return D1、H4、H1の未正規化スコア平均。
+     */
+    double getMediumTermAverageScore() {
+        return (
+            this.getScore(2)
+            + this.getScore(3)
+            + this.getScore(4)
+        ) / 3.0;
+    }
+
+    /**
+     * 短期スコア平均を取得する。
+     *
+     * @return H1、M15、M5の未正規化スコア平均。
+     */
+    double getShortTermAverageScore() {
+        return (
+            this.getScore(4)
+            + this.getScore(5)
+            + this.getScore(6)
+        ) / 3.0;
+    }
+
+    /**
      * 指定時間足の有効票数を取得する。
      *
      * @param fromTimeFrameIndex 時間足番号。

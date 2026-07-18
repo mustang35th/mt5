@@ -50,7 +50,7 @@ public:
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
-        this.panelWidth = 622;
+        this.panelWidth = 804;
         this.headerHeight = 25;
         this.columnHeaderYDistance = 39;
         this.separatorYDistance = 58;
@@ -533,6 +533,7 @@ private:
         }
 
         double totalScore = fromCurrencyStrengthInfo.getTotalScore();
+        int coverage = fromCurrencyStrengthInfo.getSampleCount(0);
         string rankText = "-";
 
         if (fromIsRankingValid) {
@@ -561,6 +562,39 @@ private:
         this.setCell(
             fromRowIndex,
             9,
+            this.formatAverageScore(
+                fromCurrencyStrengthInfo.getLongTermAverageScore(),
+                coverage
+            ),
+            this.getScoreColor(
+                fromCurrencyStrengthInfo.getLongTermAverageScore()
+            )
+        );
+        this.setCell(
+            fromRowIndex,
+            10,
+            this.formatAverageScore(
+                fromCurrencyStrengthInfo.getMediumTermAverageScore(),
+                coverage
+            ),
+            this.getScoreColor(
+                fromCurrencyStrengthInfo.getMediumTermAverageScore()
+            )
+        );
+        this.setCell(
+            fromRowIndex,
+            11,
+            this.formatAverageScore(
+                fromCurrencyStrengthInfo.getShortTermAverageScore(),
+                coverage
+            ),
+            this.getScoreColor(
+                fromCurrencyStrengthInfo.getShortTermAverageScore()
+            )
+        );
+        this.setCell(
+            fromRowIndex,
+            12,
             this.formatScore(
                 totalScore,
                 fromCurrencyStrengthInfo.getTotalSampleCount()
@@ -568,7 +602,6 @@ private:
             this.getScoreColor(totalScore)
         );
 
-        int coverage = fromCurrencyStrengthInfo.getSampleCount(0);
         color coverageColor = this.normalColor;
 
         if (coverage < 7) {
@@ -577,7 +610,7 @@ private:
 
         this.setCell(
             fromRowIndex,
-            10,
+            13,
             IntegerToString(coverage),
             coverageColor
         );
@@ -697,6 +730,27 @@ private:
     }
 
     /**
+     * 平均スコアを小数2桁の符号付き文字列へ変換する。
+     *
+     * @param fromScore 平均スコア。
+     * @param fromSampleCount 有効票数。
+     * @return 表示文字列。有効票がない場合はハイフン。
+     */
+    string formatAverageScore(double fromScore, int fromSampleCount) {
+        if (fromSampleCount <= 0) {
+            return "-";
+        }
+
+        string scoreText = DoubleToString(fromScore, 2);
+
+        if (fromScore > 0.0) {
+            scoreText = "+" + scoreText;
+        }
+
+        return scoreText;
+    }
+
+    /**
      * タイトル表示用の日時文字列へ変換する。
      *
      * @param fromDatetime 変換対象日時。
@@ -739,7 +793,7 @@ private:
      * @return 全列数。
      */
     int getColumnCount() {
-        return 11;
+        return 14;
     }
 
     /**
@@ -771,7 +825,13 @@ private:
             case 9:
                 return 508;
             case 10:
-                return 584;
+                return 566;
+            case 11:
+                return 624;
+            case 12:
+                return 690;
+            case 13:
+                return 766;
         }
 
         return 14;
@@ -803,10 +863,22 @@ private:
         }
 
         if (fromColumnIndex == 9) {
-            return "TOTAL";
+            return "LONG";
         }
 
         if (fromColumnIndex == 10) {
+            return "MID";
+        }
+
+        if (fromColumnIndex == 11) {
+            return "SHORT";
+        }
+
+        if (fromColumnIndex == 12) {
+            return "TOTAL";
+        }
+
+        if (fromColumnIndex == 13) {
             return "N";
         }
 

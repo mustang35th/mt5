@@ -440,6 +440,12 @@ private:
             fromEntities[i].m5SampleCount = currencyStrengthInfo.getSampleCount(6);
             fromEntities[i].totalSampleCount =
                 currencyStrengthInfo.getTotalSampleCount();
+            fromEntities[i].longTermAverageScore =
+                currencyStrengthInfo.getLongTermAverageScore();
+            fromEntities[i].mediumTermAverageScore =
+                currencyStrengthInfo.getMediumTermAverageScore();
+            fromEntities[i].shortTermAverageScore =
+                currencyStrengthInfo.getShortTermAverageScore();
             fromEntities[i].updatedAt = 0;
             fromEntities[i].updatedAtText = "";
         }
