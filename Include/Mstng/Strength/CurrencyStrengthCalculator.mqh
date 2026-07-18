@@ -337,6 +337,36 @@ public:
     }
 
     /**
+     * 指定通貨の長期平均スコア順位を取得する。
+     *
+     * @param fromCurrencyIndex 通貨番号。
+     * @return 降順の競技順位。完全な集計でない場合は0。
+     */
+    int getLongTermAverageRank(int fromCurrencyIndex) {
+        return this.getAverageRank(fromCurrencyIndex, 0);
+    }
+
+    /**
+     * 指定通貨の中期平均スコア順位を取得する。
+     *
+     * @param fromCurrencyIndex 通貨番号。
+     * @return 降順の競技順位。完全な集計でない場合は0。
+     */
+    int getMediumTermAverageRank(int fromCurrencyIndex) {
+        return this.getAverageRank(fromCurrencyIndex, 1);
+    }
+
+    /**
+     * 指定通貨の短期平均スコア順位を取得する。
+     *
+     * @param fromCurrencyIndex 通貨番号。
+     * @return 降順の競技順位。完全な集計でない場合は0。
+     */
+    int getShortTermAverageRank(int fromCurrencyIndex) {
+        return this.getAverageRank(fromCurrencyIndex, 2);
+    }
+
+    /**
      * 集計対象の全通貨ペア数を取得する。
      *
      * @return 全通貨ペア数。
@@ -448,6 +478,81 @@ private:
 
     /** 今回の集計へ反映した通貨強弱票一覧。 */
     CurrencyStrengthPairVote pairVotes[];
+
+    /**
+     * 指定通貨の期間別平均スコア順位を取得する。
+     *
+     * 自分より平均スコアが高い通貨数に1を加え、同点は同順位とする。
+     *
+     * @param fromCurrencyIndex 通貨番号。
+     * @param fromAverageType 0=長期、1=中期、2=短期。
+     * @return 降順の競技順位。順位を算出できない場合は0。
+     */
+    int getAverageRank(int fromCurrencyIndex, int fromAverageType) {
+        if (this.validPairCount < this.getExpectedPairCount()) {
+            return 0;
+        }
+
+        CurrencyStrengthInfo *targetInfo = this.getInfo(fromCurrencyIndex);
+
+        if (targetInfo == NULL || targetInfo.getTotalSampleCount() <= 0) {
+            return 0;
+        }
+
+        double targetScore = this.getAverageScore(targetInfo, fromAverageType);
+        int rank = 1;
+        int total = this.size();
+
+        for (int i = 0; i < total; i++) {
+            if (i == fromCurrencyIndex) {
+                continue;
+            }
+
+            CurrencyStrengthInfo *otherInfo = this.getInfo(i);
+
+            if (otherInfo == NULL || otherInfo.getTotalSampleCount() <= 0) {
+                continue;
+            }
+
+            double otherScore = this.getAverageScore(
+                otherInfo,
+                fromAverageType
+            );
+
+            if (otherScore - targetScore > 0.000001) {
+                rank++;
+            }
+        }
+
+        return rank;
+    }
+
+    /**
+     * 指定期間の平均スコアを取得する。
+     *
+     * @param fromInfo 通貨別集計結果。
+     * @param fromAverageType 0=長期、1=中期、2=短期。
+     * @return 平均スコア。取得できない場合は0。
+     */
+    double getAverageScore(
+        CurrencyStrengthInfo *fromInfo,
+        int fromAverageType
+    ) {
+        if (fromInfo == NULL) {
+            return 0.0;
+        }
+
+        switch (fromAverageType) {
+            case 0:
+                return fromInfo.getLongTermAverageScore();
+            case 1:
+                return fromInfo.getMediumTermAverageScore();
+            case 2:
+                return fromInfo.getShortTermAverageScore();
+        }
+
+        return 0.0;
+    }
 
     /**
      * 通貨別強弱情報を追加する。

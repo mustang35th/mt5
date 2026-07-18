@@ -78,7 +78,7 @@ void initializeRunEntity(
     fromEntity.id = 0;
     fromEntity.calculatedAt = fromCalculatedAt;
     fromEntity.m15BarTime = fromCalculatedAt;
-    fromEntity.calculationVersion = "pair-direction-raw-v4-smoke-test";
+    fromEntity.calculationVersion = "pair-direction-raw-v5-smoke-test";
     fromEntity.sourceServer = AccountInfoString(ACCOUNT_SERVER);
     fromEntity.sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
     fromEntity.sourceChartId = ChartID();
@@ -171,6 +171,16 @@ void initializeResultEntity(
     fromEntity.longTermAverageScore = (double)fromScore;
     fromEntity.mediumTermAverageScore = (double)fromScore / 3.0;
     fromEntity.shortTermAverageScore = (double)(0 - fromScore) / 3.0;
+    fromEntity.longTermAverageRank = 2;
+    fromEntity.mediumTermAverageRank = 2;
+    fromEntity.shortTermAverageRank = 1;
+
+    if (fromScore > 0) {
+        fromEntity.longTermAverageRank = 1;
+        fromEntity.mediumTermAverageRank = 1;
+        fromEntity.shortTermAverageRank = 2;
+    }
+
     fromEntity.updatedAt = 0;
     fromEntity.updatedAtText = "";
 }
@@ -406,6 +416,10 @@ bool readResultMismatchCount(
     sql += "(d1_score + h4_score + h1_score) / 3.0) > 0.000001 OR ";
     sql += "ABS(short_term_average_score - ";
     sql += "(h1_score + m15_score + m5_score) / 3.0) > 0.000001 OR ";
+    sql += "(currency_name = 'USD' AND (long_term_average_rank <> 1 OR ";
+    sql += "medium_term_average_rank <> 1 OR short_term_average_rank <> 2)) OR ";
+    sql += "(currency_name = 'JPY' AND (long_term_average_rank <> 2 OR ";
+    sql += "medium_term_average_rank <> 2 OR short_term_average_rank <> 1)) OR ";
     sql += "(currency_name = 'USD' AND d1_score <> 1) OR ";
     sql += "(currency_name = 'JPY' AND d1_score <> -1) OR ";
     sql += "currency_name NOT IN ('USD', 'JPY'))";

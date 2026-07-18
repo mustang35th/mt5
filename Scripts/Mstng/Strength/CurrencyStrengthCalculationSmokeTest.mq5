@@ -42,7 +42,7 @@ input string databaseFileName =
 input bool databaseUseCommonFolder = true;
 
 /** 集計ルール識別子。 */
-const string calculationVersion = "pair-direction-raw-v4";
+const string calculationVersion = "pair-direction-raw-v5";
 
 /**
  * bool値をログ用文字列へ変換する。
@@ -366,10 +366,13 @@ void printCurrencyResults(
         }
 
         resultText += StringFormat(
-            " long=%.2f medium=%.2f short=%.2f",
+            " long=%.2f(rank=%d) medium=%.2f(rank=%d) short=%.2f(rank=%d)",
             currencyStrengthInfo.getLongTermAverageScore(),
+            fromCalculator.getLongTermAverageRank(i),
             currencyStrengthInfo.getMediumTermAverageScore(),
-            currencyStrengthInfo.getShortTermAverageScore()
+            fromCalculator.getMediumTermAverageRank(i),
+            currencyStrengthInfo.getShortTermAverageScore(),
+            fromCalculator.getShortTermAverageRank(i)
         );
         resultText += StringFormat(
             " total=%s(samples=%d)",
@@ -800,6 +803,40 @@ bool validateCurrencyResults(
             currencyStrengthInfo.getMediumTermAverageScore();
         double shortTermAverageScore =
             currencyStrengthInfo.getShortTermAverageScore();
+        int expectedLongTermAverageRank = 1;
+        int expectedMediumTermAverageRank = 1;
+        int expectedShortTermAverageRank = 1;
+
+        for (int j = 0; j < fromCalculator.size(); j++) {
+            if (j == i) {
+                continue;
+            }
+
+            CurrencyStrengthInfo *otherInfo = fromCalculator.getInfo(j);
+
+            if (otherInfo == NULL) {
+                continue;
+            }
+
+            if (otherInfo.getLongTermAverageScore()
+                    - longTermAverageScore > 0.000001) {
+                expectedLongTermAverageRank++;
+            }
+
+            if (otherInfo.getMediumTermAverageScore()
+                    - mediumTermAverageScore > 0.000001) {
+                expectedMediumTermAverageRank++;
+            }
+
+            if (otherInfo.getShortTermAverageScore()
+                    - shortTermAverageScore > 0.000001) {
+                expectedShortTermAverageRank++;
+            }
+        }
+
+        int longTermAverageRank = fromCalculator.getLongTermAverageRank(i);
+        int mediumTermAverageRank = fromCalculator.getMediumTermAverageRank(i);
+        int shortTermAverageRank = fromCalculator.getShortTermAverageRank(i);
 
         if (MathAbs(
                 longTermAverageScore - expectedLongTermAverageScore
@@ -821,6 +858,31 @@ bool validateCurrencyResults(
                     expectedMediumTermAverageScore,
                     shortTermAverageScore,
                     expectedShortTermAverageScore
+                )
+            );
+            isValid = false;
+        }
+
+        if (longTermAverageRank != expectedLongTermAverageRank
+                || mediumTermAverageRank != expectedMediumTermAverageRank
+                || shortTermAverageRank != expectedShortTermAverageRank
+                || longTermAverageRank < 1
+                || longTermAverageRank > fromCalculator.size()
+                || mediumTermAverageRank < 1
+                || mediumTermAverageRank > fromCalculator.size()
+                || shortTermAverageRank < 1
+                || shortTermAverageRank > fromCalculator.size()) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "average rank mismatch. currency=%s long=%d/%d medium=%d/%d short=%d/%d",
+                    currencyStrengthInfo.currencyName,
+                    longTermAverageRank,
+                    expectedLongTermAverageRank,
+                    mediumTermAverageRank,
+                    expectedMediumTermAverageRank,
+                    shortTermAverageRank,
+                    expectedShortTermAverageRank
                 )
             );
             isValid = false;
@@ -1037,6 +1099,18 @@ void OnStart() {
 
     OscillatorHandleManager oscillatorHandleManager(PERIOD_M15);
     CurrencyStrengthCalculator calculator;
+
+    if (calculator.getLongTermAverageRank(0) != 0
+            || calculator.getMediumTermAverageRank(0) != 0
+            || calculator.getShortTermAverageRank(0) != 0) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength calculation smoke test FAILED: incomplete ranks must be zero."
+        );
+
+        return;
+    }
+
     bool isComplete = calculateWithRetry(
         GetPointer(oscillatorHandleManager),
         calculator,

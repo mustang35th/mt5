@@ -442,10 +442,16 @@ private:
                 currencyStrengthInfo.getTotalSampleCount();
             fromEntities[i].longTermAverageScore =
                 currencyStrengthInfo.getLongTermAverageScore();
+            fromEntities[i].longTermAverageRank =
+                fromCalculator.getLongTermAverageRank(i);
             fromEntities[i].mediumTermAverageScore =
                 currencyStrengthInfo.getMediumTermAverageScore();
+            fromEntities[i].mediumTermAverageRank =
+                fromCalculator.getMediumTermAverageRank(i);
             fromEntities[i].shortTermAverageScore =
                 currencyStrengthInfo.getShortTermAverageScore();
+            fromEntities[i].shortTermAverageRank =
+                fromCalculator.getShortTermAverageRank(i);
             fromEntities[i].updatedAt = 0;
             fromEntities[i].updatedAtText = "";
         }
