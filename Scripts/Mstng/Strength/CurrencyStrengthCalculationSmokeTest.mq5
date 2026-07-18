@@ -1047,15 +1047,34 @@ bool saveDatabaseSnapshot(
         calculatedAt = TimeLocal();
     }
 
+    datetime m5BarTime = iTime(_Symbol, PERIOD_M5, 0);
     datetime m15BarTime = iTime(_Symbol, PERIOD_M15, 0);
 
-    if (calculatedAt <= 0 || m15BarTime <= 0) {
+    if (calculatedAt <= 0 || m5BarTime <= 0 || m15BarTime <= 0) {
         fromLogger.error(
             __FUNCTION__,
             StringFormat(
-                "invalid snapshot time. calculatedAt=%I64d m15BarTime=%I64d",
+                "invalid snapshot time. calculatedAt=%I64d m5BarTime=%I64d m15BarTime=%I64d",
                 (long)calculatedAt,
+                (long)m5BarTime,
                 (long)m15BarTime
+            )
+        );
+
+        return false;
+    }
+
+    int m15PeriodSeconds = PeriodSeconds(PERIOD_M15);
+
+    if (m15PeriodSeconds <= 0
+            || m5BarTime < m15BarTime
+            || m5BarTime >= m15BarTime + m15PeriodSeconds) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "M5/M15 bar time mismatch. m5BarTime=%s m15BarTime=%s",
+                TimeToString(m5BarTime, TIME_DATE | TIME_SECONDS),
+                TimeToString(m15BarTime, TIME_DATE | TIME_SECONDS)
             )
         );
 
@@ -1092,8 +1111,10 @@ bool saveDatabaseSnapshot(
 
     bool isSaved = persistenceService.save(
         calculatedAt,
+        m5BarTime,
         m15BarTime,
         calculationVersion,
+        "LIVE",
         AccountInfoString(ACCOUNT_SERVER),
         AccountInfoInteger(ACCOUNT_LOGIN),
         ChartID(),
@@ -1110,9 +1131,11 @@ bool saveDatabaseSnapshot(
     fromLogger.info(
         __FUNCTION__,
         StringFormat(
-            "database snapshot saved. fileName=%s common=%s",
+            "database snapshot saved. fileName=%s common=%s m5BarTime=%s m15BarTime=%s",
             databaseFileName,
-            getBooleanText(databaseUseCommonFolder)
+            getBooleanText(databaseUseCommonFolder),
+            TimeToString(m5BarTime, TIME_DATE | TIME_SECONDS),
+            TimeToString(m15BarTime, TIME_DATE | TIME_SECONDS)
         )
     );
 

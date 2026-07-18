@@ -69,16 +69,26 @@ bool dropDatabaseObjects(
  * 通貨強弱の集計エンティティを初期化する。
  *
  * @param fromCalculatedAt 集計時刻。
+ * @param fromM5BarTime M5足開始時刻。
+ * @param fromM15BarTime M15足開始時刻。
  * @param fromEntity 初期化対象エンティティ。
  */
 void initializeRunEntity(
     const datetime fromCalculatedAt,
+    const datetime fromM5BarTime,
+    const datetime fromM15BarTime,
     CurrencyStrengthRunEntity &fromEntity
 ) {
     fromEntity.id = 0;
     fromEntity.calculatedAt = fromCalculatedAt;
-    fromEntity.m15BarTime = fromCalculatedAt;
+    fromEntity.m5BarTime = fromM5BarTime;
+    fromEntity.m5BarTimeText = TimeToString(
+        fromM5BarTime,
+        TIME_DATE | TIME_SECONDS
+    );
+    fromEntity.m15BarTime = fromM15BarTime;
     fromEntity.calculationVersion = "pair-direction-raw-v6-smoke-test";
+    fromEntity.sourceMode = "TESTER";
     fromEntity.sourceServer = AccountInfoString(ACCOUNT_SERVER);
     fromEntity.sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
     fromEntity.sourceChartId = ChartID();
@@ -196,7 +206,7 @@ void initializeResultEntity(
  *
  * @param fromDatabaseHandle データベースハンドル。
  * @param fromTableName テーブルまたはビュー名。
- * @param fromIdColumnName 集計ID列名。
+ * @param fromIdColumnName 集計ID列名。空文字の場合はテーブル全件を取得する。
  * @param fromRunId 集計ID。
  * @param fromRecordCount 取得した件数の格納先。
  * @param fromLogger ロガー。
@@ -211,7 +221,11 @@ bool readRecordCount(
     Logger &fromLogger
 ) {
     string sql = "SELECT COUNT(*) FROM " + fromTableName;
-    sql += " WHERE " + fromIdColumnName + " = ?1";
+    bool hasIdCondition = StringLen(fromIdColumnName) > 0;
+
+    if (hasIdCondition) {
+        sql += " WHERE " + fromIdColumnName + " = ?1";
+    }
 
     ResetLastError();
     int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
@@ -231,7 +245,7 @@ bool readRecordCount(
 
     ResetLastError();
 
-    if (!DatabaseBind(requestHandle, 0, fromRunId)) {
+    if (hasIdCondition && !DatabaseBind(requestHandle, 0, fromRunId)) {
         int bindErrorCode = GetLastError();
         DatabaseFinalize(requestHandle);
         fromLogger.error(
@@ -275,6 +289,210 @@ bool readRecordCount(
                 fromTableName,
                 columnErrorCode
             )
+        );
+
+        return false;
+    }
+
+    DatabaseFinalize(requestHandle);
+
+    return true;
+}
+
+/**
+ * M5スナップショット自然キーに一致するRun件数を取得する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromM5BarTime M5足開始時刻。
+ * @param fromCalculationVersion 集計ルール識別子。
+ * @param fromSourceMode 集計実行モード。
+ * @param fromSourceServer 集計元サーバー名。
+ * @param fromSourceLogin 集計元ログイン番号。
+ * @param fromRecordCount 取得した件数の格納先。
+ * @param fromLogger ロガー。
+ * @return 件数を取得できた場合true。
+ */
+bool readSnapshotRunCount(
+    const int fromDatabaseHandle,
+    const datetime fromM5BarTime,
+    const string fromCalculationVersion,
+    const string fromSourceMode,
+    const string fromSourceServer,
+    const long fromSourceLogin,
+    long &fromRecordCount,
+    Logger &fromLogger
+) {
+    string sql = "SELECT COUNT(*) FROM currency_strength_runs ";
+    sql += "WHERE m5_bar_time = ?1 AND calculation_version = ?2 ";
+    sql += "AND source_mode = ?3 ";
+    sql += "AND source_server = ?4 AND source_login = ?5";
+
+    ResetLastError();
+    int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
+
+    if (requestHandle == INVALID_HANDLE) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+        );
+
+        return false;
+    }
+
+    bool isBound = DatabaseBind(requestHandle, 0, fromM5BarTime);
+
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 1, fromCalculationVersion);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 2, fromSourceMode);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 3, fromSourceServer);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 4, fromSourceLogin);
+    }
+
+    if (!isBound) {
+        int bindErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseRead(requestHandle)) {
+        int readErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseColumnLong(requestHandle, 0, fromRecordCount)) {
+        int columnErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseColumnLong failed. error=%d", columnErrorCode)
+        );
+
+        return false;
+    }
+
+    DatabaseFinalize(requestHandle);
+
+    return true;
+}
+
+/**
+ * 更新後Runの保存値と期待値が異なる件数を取得する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromRunId 集計ID。
+ * @param fromCalculatedAt 集計時刻。
+ * @param fromM5BarTime M5足開始時刻。
+ * @param fromM5BarTimeText M5足開始時刻文字列。
+ * @param fromM15BarTime M15足開始時刻。
+ * @param fromSourceMode 集計実行モード。
+ * @param fromSourceChartId 保存元チャートID。
+ * @param fromMismatchCount 不一致件数の格納先。
+ * @param fromLogger ロガー。
+ * @return 件数を取得できた場合true。
+ */
+bool readRunValueMismatchCount(
+    const int fromDatabaseHandle,
+    const long fromRunId,
+    const datetime fromCalculatedAt,
+    const datetime fromM5BarTime,
+    const string fromM5BarTimeText,
+    const datetime fromM15BarTime,
+    const string fromSourceMode,
+    const long fromSourceChartId,
+    long &fromMismatchCount,
+    Logger &fromLogger
+) {
+    string sql = "SELECT COUNT(*) FROM currency_strength_runs ";
+    sql += "WHERE id = ?1 AND (calculated_at <> ?2 OR m5_bar_time <> ?3 ";
+    sql += "OR m5_bar_time_text <> ?4 OR m15_bar_time <> ?5 ";
+    sql += "OR source_mode <> ?6 OR source_chart_id <> ?7)";
+
+    ResetLastError();
+    int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
+
+    if (requestHandle == INVALID_HANDLE) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+        );
+
+        return false;
+    }
+
+    bool isBound = DatabaseBind(requestHandle, 0, fromRunId);
+
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 1, fromCalculatedAt);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 2, fromM5BarTime);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 3, fromM5BarTimeText);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 4, fromM15BarTime);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 5, fromSourceMode);
+    }
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 6, fromSourceChartId);
+    }
+
+    if (!isBound) {
+        int bindErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseRead(requestHandle)) {
+        int readErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseColumnLong(requestHandle, 0, fromMismatchCount)) {
+        int columnErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseColumnLong failed. error=%d", columnErrorCode)
         );
 
         return false;
@@ -396,6 +614,7 @@ bool readUpdatedAtMismatchCount(
  *
  * @param fromDatabaseHandle データベースハンドル。
  * @param fromRunId 集計ID。
+ * @param fromUsdScore USDの期待スコア。
  * @param fromMismatchCount 不一致件数の格納先。
  * @param fromLogger ロガー。
  * @return 件数を取得できた場合true。
@@ -403,6 +622,7 @@ bool readUpdatedAtMismatchCount(
 bool readResultMismatchCount(
     const int fromDatabaseHandle,
     const long fromRunId,
+    const int fromUsdScore,
     long &fromMismatchCount,
     Logger &fromLogger
 ) {
@@ -428,16 +648,16 @@ bool readResultMismatchCount(
     sql += "ABS(medium_short_term_average_score - ";
     sql += "(d1_score + h4_score + h1_score + m15_score + m5_score) ";
     sql += "/ 5.0) > 0.000001 OR ";
-    sql += "(currency_name = 'USD' AND (long_term_average_rank <> 1 OR ";
+    sql += "(d1_score > 0 AND (long_term_average_rank <> 1 OR ";
     sql += "medium_term_average_rank <> 1 OR short_term_average_rank <> 2 OR ";
     sql += "long_medium_term_average_rank <> 1 OR ";
     sql += "medium_short_term_average_rank <> 1)) OR ";
-    sql += "(currency_name = 'JPY' AND (long_term_average_rank <> 2 OR ";
+    sql += "(d1_score < 0 AND (long_term_average_rank <> 2 OR ";
     sql += "medium_term_average_rank <> 2 OR short_term_average_rank <> 1 OR ";
     sql += "long_medium_term_average_rank <> 2 OR ";
     sql += "medium_short_term_average_rank <> 2)) OR ";
-    sql += "(currency_name = 'USD' AND d1_score <> 1) OR ";
-    sql += "(currency_name = 'JPY' AND d1_score <> -1) OR ";
+    sql += "(currency_name = 'USD' AND d1_score <> ?2) OR ";
+    sql += "(currency_name = 'JPY' AND d1_score <> 0 - ?2) OR ";
     sql += "currency_name NOT IN ('USD', 'JPY'))";
 
     ResetLastError();
@@ -454,7 +674,13 @@ bool readResultMismatchCount(
 
     ResetLastError();
 
-    if (!DatabaseBind(requestHandle, 0, fromRunId)) {
+    bool isBound = DatabaseBind(requestHandle, 0, fromRunId);
+
+    if (isBound) {
+        isBound = DatabaseBind(requestHandle, 1, fromUsdScore);
+    }
+
+    if (!isBound) {
         int bindErrorCode = GetLastError();
         DatabaseFinalize(requestHandle);
         fromLogger.error(
@@ -497,12 +723,14 @@ bool readResultMismatchCount(
 }
 
 /**
- * 指定した集計の先頭票から時間足・バー時刻文字列を取得する。
+ * 指定した集計の先頭票から表示文字列と判定値を取得する。
  *
  * @param fromDatabaseHandle データベースハンドル。
  * @param fromRunId 集計ID。
  * @param fromTimeFrameText 時間足文字列の格納先。
  * @param fromBarTimeText バー時刻文字列の格納先。
+ * @param fromIsBuy BUY判定値の格納先。
+ * @param fromOscillatorCount オシレーター値の格納先。
  * @param fromLogger ロガー。
  * @return 文字列を取得できた場合true。
  */
@@ -511,9 +739,11 @@ bool readFirstVoteText(
     const long fromRunId,
     string &fromTimeFrameText,
     string &fromBarTimeText,
+    long &fromIsBuy,
+    long &fromOscillatorCount,
     Logger &fromLogger
 ) {
-    string sql = "SELECT time_frame_text, bar_time_text ";
+    string sql = "SELECT time_frame_text, bar_time_text, is_buy, oscillator_count ";
     sql += "FROM currency_strength_pair_votes ";
     sql += "WHERE run_id = ?1 ";
     sql += "ORDER BY pair_order, time_frame_order LIMIT 1";
@@ -562,13 +792,19 @@ bool readFirstVoteText(
     if (isRead) {
         isRead = DatabaseColumnText(requestHandle, 1, fromBarTimeText);
     }
+    if (isRead) {
+        isRead = DatabaseColumnLong(requestHandle, 2, fromIsBuy);
+    }
+    if (isRead) {
+        isRead = DatabaseColumnLong(requestHandle, 3, fromOscillatorCount);
+    }
 
     if (!isRead) {
         int columnErrorCode = GetLastError();
         DatabaseFinalize(requestHandle);
         fromLogger.error(
             __FUNCTION__,
-            StringFormat("DatabaseColumnText failed. error=%d", columnErrorCode)
+            StringFormat("DatabaseColumn failed. error=%d", columnErrorCode)
         );
 
         return false;
@@ -623,19 +859,39 @@ void OnStart() {
         return;
     }
 
-    datetime calculatedAt = TimeLocal();
+    datetime firstCalculatedAt = TimeLocal();
+
+    if (firstCalculatedAt <= 0) {
+        logger.error(__FUNCTION__, "Currency strength database smoke test failed at TimeLocal.");
+        database.close();
+
+        return;
+    }
+
+    long firstCalculatedAtValue = (long)firstCalculatedAt;
+    datetime m5BarTime = (datetime)(
+        firstCalculatedAtValue - firstCalculatedAtValue % 300
+    );
+    datetime m15BarTime = (datetime)(
+        firstCalculatedAtValue - firstCalculatedAtValue % 900
+    );
     CurrencyStrengthRunEntity runEntity;
-    initializeRunEntity(calculatedAt, runEntity);
+    initializeRunEntity(
+        firstCalculatedAt,
+        m5BarTime,
+        m15BarTime,
+        runEntity
+    );
 
     CurrencyStrengthPairVoteEntity voteEntities[];
     ArrayResize(voteEntities, 7);
-    initializePairVoteEntity(0, PERIOD_MN1, true, calculatedAt, voteEntities[0]);
-    initializePairVoteEntity(1, PERIOD_W1, true, calculatedAt, voteEntities[1]);
-    initializePairVoteEntity(2, PERIOD_D1, true, calculatedAt, voteEntities[2]);
-    initializePairVoteEntity(3, PERIOD_H4, true, calculatedAt, voteEntities[3]);
-    initializePairVoteEntity(4, PERIOD_H1, false, calculatedAt, voteEntities[4]);
-    initializePairVoteEntity(5, PERIOD_M15, true, calculatedAt, voteEntities[5]);
-    initializePairVoteEntity(6, PERIOD_M5, false, calculatedAt, voteEntities[6]);
+    initializePairVoteEntity(0, PERIOD_MN1, true, m5BarTime, voteEntities[0]);
+    initializePairVoteEntity(1, PERIOD_W1, true, m5BarTime, voteEntities[1]);
+    initializePairVoteEntity(2, PERIOD_D1, true, m5BarTime, voteEntities[2]);
+    initializePairVoteEntity(3, PERIOD_H4, true, m5BarTime, voteEntities[3]);
+    initializePairVoteEntity(4, PERIOD_H1, false, m5BarTime, voteEntities[4]);
+    initializePairVoteEntity(5, PERIOD_M15, true, m5BarTime, voteEntities[5]);
+    initializePairVoteEntity(6, PERIOD_M5, false, m5BarTime, voteEntities[6]);
 
     CurrencyStrengthResultEntity resultEntities[];
     ArrayResize(resultEntities, 2);
@@ -656,6 +912,65 @@ void OnStart() {
         return;
     }
 
+    long firstRunId = runEntity.id;
+    datetime firstUpdatedAt = runEntity.updatedAt;
+
+    if (firstRunId <= 0 || firstUpdatedAt <= 0) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength database smoke test failed after first saveSnapshot."
+        );
+        database.close();
+
+        return;
+    }
+
+    Sleep(1100);
+
+    datetime secondCalculatedAt = TimeLocal();
+
+    if (secondCalculatedAt <= firstCalculatedAt) {
+        secondCalculatedAt = firstCalculatedAt + 1;
+    }
+
+    initializeRunEntity(
+        secondCalculatedAt,
+        m5BarTime,
+        m15BarTime,
+        runEntity
+    );
+    runEntity.sourceChartId = ChartID() + 1;
+
+    initializePairVoteEntity(0, PERIOD_MN1, false, m5BarTime, voteEntities[0]);
+    initializePairVoteEntity(1, PERIOD_W1, false, m5BarTime, voteEntities[1]);
+    initializePairVoteEntity(2, PERIOD_D1, false, m5BarTime, voteEntities[2]);
+    initializePairVoteEntity(3, PERIOD_H4, false, m5BarTime, voteEntities[3]);
+    initializePairVoteEntity(4, PERIOD_H1, true, m5BarTime, voteEntities[4]);
+    initializePairVoteEntity(5, PERIOD_M15, false, m5BarTime, voteEntities[5]);
+    initializePairVoteEntity(6, PERIOD_M5, true, m5BarTime, voteEntities[6]);
+    initializeResultEntity("USD", -1, resultEntities[0]);
+    initializeResultEntity("JPY", 1, resultEntities[1]);
+
+    datetime secondSaveStartedAt = TimeGMT();
+
+    if (!persistenceService.saveSnapshot(
+        runEntity,
+        voteEntities,
+        resultEntities
+    )) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength database smoke test failed at second saveSnapshot."
+        );
+        database.close();
+
+        return;
+    }
+
+    datetime secondSaveEndedAt = TimeGMT();
+
+    long totalRunCount = 0;
+    long snapshotRunCount = 0;
     long runCount = 0;
     long voteCount = 0;
     long resultCount = 0;
@@ -663,21 +978,59 @@ void OnStart() {
     long runUpdatedAtMismatchCount = 0;
     long voteUpdatedAtMismatchCount = 0;
     long resultUpdatedAtMismatchCount = 0;
+    long runValueMismatchCount = 0;
     long resultMismatchCount = 0;
+    long firstVoteIsBuy = 0;
+    long firstVoteOscillatorCount = 0;
     string timeFrameText = "";
     string barTimeText = "";
-    string expectedUpdatedAtText = TimeToString(
-        runEntity.updatedAt,
-        TIME_DATE | TIME_SECONDS
-    );
     bool isCountRead = readRecordCount(
         database.getHandle(),
         "currency_strength_runs",
-        "id",
-        runEntity.id,
-        runCount,
+        "",
+        0,
+        totalRunCount,
         logger
     );
+
+    if (isCountRead) {
+        isCountRead = readSnapshotRunCount(
+            database.getHandle(),
+            runEntity.m5BarTime,
+            runEntity.calculationVersion,
+            runEntity.sourceMode,
+            runEntity.sourceServer,
+            runEntity.sourceLogin,
+            snapshotRunCount,
+            logger
+        );
+    }
+
+    if (isCountRead) {
+        isCountRead = readRecordCount(
+            database.getHandle(),
+            "currency_strength_runs",
+            "id",
+            runEntity.id,
+            runCount,
+            logger
+        );
+    }
+
+    if (isCountRead) {
+        isCountRead = readRunValueMismatchCount(
+            database.getHandle(),
+            runEntity.id,
+            secondCalculatedAt,
+            m5BarTime,
+            runEntity.m5BarTimeText,
+            m15BarTime,
+            runEntity.sourceMode,
+            runEntity.sourceChartId,
+            runValueMismatchCount,
+            logger
+        );
+    }
 
     if (isCountRead) {
         isCountRead = readRecordCount(
@@ -735,6 +1088,8 @@ void OnStart() {
             runEntity.id,
             timeFrameText,
             barTimeText,
+            firstVoteIsBuy,
+            firstVoteOscillatorCount,
             logger
         );
     }
@@ -743,6 +1098,7 @@ void OnStart() {
         isCountRead = readResultMismatchCount(
             database.getHandle(),
             runEntity.id,
+            -1,
             resultMismatchCount,
             logger
         );
@@ -781,33 +1137,56 @@ void OnStart() {
     }
 
     if (runEntity.id <= 0
+            || runEntity.id != firstRunId
+            || (recreateDatabaseObjects && totalRunCount != 1)
+            || snapshotRunCount != 1
             || runCount != 1
             || voteCount != 7
             || resultCount != 2
             || contributionCount != 14
             || timeFrameText != "MN1"
+            || firstVoteIsBuy != 0
+            || firstVoteOscillatorCount != -2
             || runEntity.updatedAt <= 0
-            || runEntity.updatedAtText != expectedUpdatedAtText
+            || runEntity.updatedAt <= firstUpdatedAt
+            || secondSaveStartedAt <= 0
+            || secondSaveEndedAt < secondSaveStartedAt
+            || runEntity.updatedAt < secondSaveStartedAt
+            || runEntity.updatedAt > secondSaveEndedAt
+            || StringLen(runEntity.updatedAtText) == 0
+            || runEntity.m5BarTime != m5BarTime
+            || runEntity.m5BarTimeText != TimeToString(
+                m5BarTime,
+                TIME_DATE | TIME_SECONDS
+            )
+            || runEntity.m15BarTime != m15BarTime
             || runUpdatedAtMismatchCount != 0
             || voteUpdatedAtMismatchCount != 0
             || resultUpdatedAtMismatchCount != 0
+            || runValueMismatchCount != 0
             || resultMismatchCount != 0
             || barTimeText != TimeToString(
-                calculatedAt,
+                m5BarTime,
                 TIME_DATE | TIME_SECONDS
             )) {
         logger.error(
             __FUNCTION__,
             StringFormat(
-                "Currency strength database smoke test mismatch. runId=%I64d runs=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s runUpdatedAtMismatch=%I64d voteUpdatedAtMismatch=%I64d resultUpdatedAtMismatch=%I64d resultMismatch=%I64d",
+                "Currency strength database smoke test mismatch. firstRunId=%I64d runId=%I64d totalRuns=%I64d snapshotRuns=%I64d runs=%I64d votes=%I64d results=%I64d contributions=%I64d firstVoteIsBuy=%I64d firstVoteOscillatorCount=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s runValueMismatch=%I64d runUpdatedAtMismatch=%I64d voteUpdatedAtMismatch=%I64d resultUpdatedAtMismatch=%I64d resultMismatch=%I64d",
+                firstRunId,
                 runEntity.id,
+                totalRunCount,
+                snapshotRunCount,
                 runCount,
                 voteCount,
                 resultCount,
                 contributionCount,
+                firstVoteIsBuy,
+                firstVoteOscillatorCount,
                 timeFrameText,
                 barTimeText,
                 runEntity.updatedAtText,
+                runValueMismatchCount,
                 runUpdatedAtMismatchCount,
                 voteUpdatedAtMismatchCount,
                 resultUpdatedAtMismatchCount,
@@ -822,9 +1201,11 @@ void OnStart() {
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Currency strength database smoke test passed. fileName=%s runId=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s averages=5 ranks=5",
+            "Currency strength database smoke test passed. fileName=%s runId=%I64d saves=2 totalRuns=%I64d snapshotRuns=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s averages=5 ranks=5",
             database.getFileName(),
             runEntity.id,
+            totalRunCount,
+            snapshotRunCount,
             voteCount,
             resultCount,
             contributionCount,

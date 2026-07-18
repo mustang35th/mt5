@@ -80,8 +80,10 @@ public:
      * 1回分の通貨強弱集計を保存する。
      *
      * @param fromCalculatedAt 集計時刻。
+     * @param fromM5BarTime M5現在足の開始時刻。
      * @param fromM15BarTime M15現在足の開始時刻。
      * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceMode 集計実行モード。
      * @param fromSourceServer 口座サーバー名。
      * @param fromSourceLogin 口座ログイン番号。
      * @param fromSourceChartId 保存元チャートID。
@@ -90,14 +92,28 @@ public:
      */
     bool save(
         const datetime fromCalculatedAt,
+        const datetime fromM5BarTime,
         const datetime fromM15BarTime,
         const string fromCalculationVersion,
+        const string fromSourceMode,
         const string fromSourceServer,
         const long fromSourceLogin,
         const long fromSourceChartId,
         CurrencyStrengthCalculator *fromCalculator
     ) {
         if (!this.isReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (fromM5BarTime <= 0) {
+            this.logger.error(__FUNCTION__, "fromM5BarTime is invalid.");
+
+            return false;
+        }
+
+        if (fromSourceMode == "") {
+            this.logger.error(__FUNCTION__, "fromSourceMode is invalid.");
+
             return false;
         }
 
@@ -126,8 +142,10 @@ public:
         CurrencyStrengthRunEntity runEntity;
         this.buildRunEntity(
             fromCalculatedAt,
+            fromM5BarTime,
             fromM15BarTime,
             fromCalculationVersion,
+            fromSourceMode,
             fromSourceServer,
             fromSourceLogin,
             fromSourceChartId,
@@ -171,6 +189,18 @@ public:
             return false;
         }
 
+        if (fromRunEntity.m5BarTime <= 0) {
+            this.logger.error(__FUNCTION__, "fromRunEntity.m5BarTime is invalid.");
+
+            return false;
+        }
+
+        if (fromRunEntity.sourceMode == "") {
+            this.logger.error(__FUNCTION__, "fromRunEntity.sourceMode is invalid.");
+
+            return false;
+        }
+
         if (!this.setSnapshotUpdatedAt(
             fromRunEntity,
             fromVoteEntities,
@@ -196,7 +226,32 @@ public:
             return false;
         }
 
-        bool isSaved = this.runDao.insert(fromRunEntity);
+        long existingRunId = 0;
+        bool isUpdated = false;
+        bool isSaved = this.runDao.findIdBySnapshotKey(
+            fromRunEntity.m5BarTime,
+            fromRunEntity.calculationVersion,
+            fromRunEntity.sourceMode,
+            fromRunEntity.sourceServer,
+            fromRunEntity.sourceLogin,
+            existingRunId
+        );
+
+        if (isSaved && existingRunId > 0) {
+            isUpdated = true;
+            fromRunEntity.id = existingRunId;
+            isSaved = this.runDao.update(fromRunEntity);
+
+            if (isSaved) {
+                isSaved = this.pairVoteDao.deleteByRunId(existingRunId);
+            }
+
+            if (isSaved) {
+                isSaved = this.resultDao.deleteByRunId(existingRunId);
+            }
+        } else if (isSaved) {
+            isSaved = this.runDao.insert(fromRunEntity);
+        }
 
         if (isSaved) {
             this.setVoteRunIds(fromRunEntity.id, fromVoteEntities);
@@ -240,10 +295,17 @@ public:
             return false;
         }
 
+        string saveAction = "saved";
+
+        if (isUpdated) {
+            saveAction = "updated";
+        }
+
         this.logger.info(
             __FUNCTION__,
             StringFormat(
-                "Snapshot saved. runId=%I64d votes=%d results=%d",
+                "Snapshot %s. runId=%I64d votes=%d results=%d",
+                saveAction,
                 fromRunEntity.id,
                 ArraySize(fromVoteEntities),
                 ArraySize(fromResultEntities)
@@ -257,14 +319,18 @@ public:
      * 指定時刻より古い通貨強弱集計を削除する。
      *
      * @param fromCalculatedAt 削除境界時刻。
+     * @param fromSourceMode 削除対象の集計実行モード。
      * @return 削除に成功した場合true。
      */
-    bool deleteRunsBefore(const datetime fromCalculatedAt) {
+    bool deleteRunsBefore(
+        const datetime fromCalculatedAt,
+        const string fromSourceMode
+    ) {
         if (!this.isReady(__FUNCTION__)) {
             return false;
         }
 
-        return this.runDao.deleteBefore(fromCalculatedAt);
+        return this.runDao.deleteBefore(fromCalculatedAt, fromSourceMode);
     }
 
 private:
@@ -287,8 +353,10 @@ private:
      * 集計単位エンティティを生成する。
      *
      * @param fromCalculatedAt 集計時刻。
+     * @param fromM5BarTime M5現在足の開始時刻。
      * @param fromM15BarTime M15現在足の開始時刻。
      * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceMode 集計実行モード。
      * @param fromSourceServer 口座サーバー名。
      * @param fromSourceLogin 口座ログイン番号。
      * @param fromSourceChartId 保存元チャートID。
@@ -297,8 +365,10 @@ private:
      */
     void buildRunEntity(
         const datetime fromCalculatedAt,
+        const datetime fromM5BarTime,
         const datetime fromM15BarTime,
         const string fromCalculationVersion,
+        const string fromSourceMode,
         const string fromSourceServer,
         const long fromSourceLogin,
         const long fromSourceChartId,
@@ -307,8 +377,14 @@ private:
     ) {
         fromEntity.id = 0;
         fromEntity.calculatedAt = fromCalculatedAt;
+        fromEntity.m5BarTime = fromM5BarTime;
+        fromEntity.m5BarTimeText = TimeToString(
+            fromM5BarTime,
+            TIME_DATE | TIME_SECONDS
+        );
         fromEntity.m15BarTime = fromM15BarTime;
         fromEntity.calculationVersion = fromCalculationVersion;
+        fromEntity.sourceMode = fromSourceMode;
         fromEntity.sourceServer = fromSourceServer;
         fromEntity.sourceLogin = fromSourceLogin;
         fromEntity.sourceChartId = fromSourceChartId;
@@ -480,22 +556,13 @@ private:
         CurrencyStrengthPairVoteEntity &fromVoteEntities[],
         CurrencyStrengthResultEntity &fromResultEntities[]
     ) {
-        datetime updatedAt = TimeLocal();
+        datetime updatedAt = 0;
+        string updatedAtText = "";
 
-        if (updatedAt <= 0) {
-            updatedAt = TimeCurrent();
-        }
-
-        if (updatedAt <= 0) {
-            this.logger.error(__FUNCTION__, "updatedAt could not be obtained.");
-
+        if (!this.readDatabaseUpdatedAt(updatedAt, updatedAtText)) {
             return false;
         }
 
-        string updatedAtText = TimeToString(
-            updatedAt,
-            TIME_DATE | TIME_SECONDS
-        );
         fromRunEntity.updatedAt = updatedAt;
         fromRunEntity.updatedAtText = updatedAtText;
 
@@ -512,6 +579,87 @@ private:
             fromResultEntities[i].updatedAt = updatedAt;
             fromResultEntities[i].updatedAtText = updatedAtText;
         }
+
+        return true;
+    }
+
+    /**
+     * SQLiteの実時計からレコード更新時刻を取得する。
+     *
+     * @param fromUpdatedAt Unix秒の格納先。
+     * @param fromUpdatedAtText ローカル時刻表示文字列の格納先。
+     * @return 更新時刻を取得できた場合true。
+     */
+    bool readDatabaseUpdatedAt(
+        datetime &fromUpdatedAt,
+        string &fromUpdatedAtText
+    ) {
+        fromUpdatedAt = 0;
+        fromUpdatedAtText = "";
+
+        string sql = "SELECT CAST(strftime('%s', 'now') AS INTEGER), ";
+        sql += "strftime('%Y.%m.%d %H:%M:%S', 'now', 'localtime')";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseRead(requestHandle)) {
+            int readErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+            );
+
+            return false;
+        }
+
+        long updatedAt = 0;
+        ResetLastError();
+        bool isRead = DatabaseColumnLong(requestHandle, 0, updatedAt);
+
+        if (isRead) {
+            isRead = DatabaseColumnText(
+                requestHandle,
+                1,
+                fromUpdatedAtText
+            );
+        }
+
+        if (!isRead) {
+            int columnErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseColumn read failed. error=%d",
+                    columnErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        DatabaseFinalize(requestHandle);
+
+        if (updatedAt <= 0 || fromUpdatedAtText == "") {
+            this.logger.error(__FUNCTION__, "database updated time is invalid.");
+
+            return false;
+        }
+
+        fromUpdatedAt = (datetime)updatedAt;
 
         return true;
     }

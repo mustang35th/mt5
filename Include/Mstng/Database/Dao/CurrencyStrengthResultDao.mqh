@@ -210,6 +210,55 @@ public:
         return true;
     }
 
+    /**
+     * 指定した集計IDの通貨別結果をすべて削除する。
+     *
+     * @param fromRunId 削除対象の集計ID。
+     * @return 削除処理に成功した場合true。
+     */
+    bool deleteByRunId(const long fromRunId) {
+        if (!this.isDatabaseReady(__FUNCTION__)) {
+            return false;
+        }
+
+        string sql = "DELETE FROM currency_strength_results ";
+        sql += "WHERE run_id = ?1";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseBind(requestHandle, 0, fromRunId)) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        bool isExecuted = this.executeRequest(
+            requestHandle,
+            __FUNCTION__,
+            "delete results by run id"
+        );
+        DatabaseFinalize(requestHandle);
+
+        return isExecuted;
+    }
+
 private:
     /** データベースハンドル。 */
     int databaseHandle;
@@ -369,7 +418,7 @@ private:
 
         sql = "UPDATE currency_strength_results ";
         sql += "SET updated_at_text = ";
-        sql += "strftime('%Y.%m.%d %H:%M:%S', updated_at, 'unixepoch') ";
+        sql += "strftime('%Y.%m.%d %H:%M:%S', updated_at, 'unixepoch', 'localtime') ";
         sql += "WHERE updated_at_text = ''";
 
         return this.executeSql(

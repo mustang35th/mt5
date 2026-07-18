@@ -37,6 +37,8 @@ public:
     CurrencyStrengthCalculator() {
         this.logger.setLevel(LOG_INFO);
         this.validPairCount = 0;
+        this.lastCalculationFatalError = false;
+        this.lastPreparationFailureReason = "";
         int symbolCount = this.symbolNameInfoAll.size();
         ArrayResize(
             this.resolvedSymbolNames,
@@ -73,10 +75,56 @@ public:
      * @return 集計処理を実行できた場合true。
      */
     bool calculate(OscillatorHandleManager *fromOscillatorHandleManager) {
+        return this.calculateAt(fromOscillatorHandleManager, "", 0);
+    }
+
+    /**
+     * 指定M5足開始時点で確定済みの各時間足から売買方向を集計する。
+     *
+     * 1通貨ペア内の全時間足を取得できた場合だけ票へ反映する。
+     * 対象時刻が0の場合は、従来どおり各時間足の現在足を参照する。
+     *
+     * @param fromOscillatorHandleManager シンボル別ハンドル管理クラス。
+     * @param fromReferenceSymbolName 時間足境界の基準シンボル名。
+     * @param fromTargetM5BarTime スナップショット対象のM5足開始時刻。
+     * @return 集計処理を実行できた場合true。
+     */
+    bool calculateAt(
+        OscillatorHandleManager *fromOscillatorHandleManager,
+        const string fromReferenceSymbolName,
+        const datetime fromTargetM5BarTime
+    ) {
         this.reset();
 
         if (fromOscillatorHandleManager == NULL) {
+            this.lastCalculationFatalError = true;
             this.logger.error(__FUNCTION__, "fromOscillatorHandleManager is NULL");
+
+            return false;
+        }
+
+        datetime expectedBarTimes[7];
+
+        for (int i = 0; i < this.getTimeFrameCount(); i++) {
+            expectedBarTimes[i] = 0;
+        }
+
+        if (fromTargetM5BarTime > 0
+                && !this.resolveExpectedBarTimes(
+                    fromReferenceSymbolName,
+                    fromTargetM5BarTime,
+                    expectedBarTimes
+                )) {
+            this.setPreparationFailureReason(
+                StringFormat(
+                    "reference bar resolution failed. symbol=%s target=%s",
+                    fromReferenceSymbolName,
+                    TimeToString(
+                        fromTargetM5BarTime,
+                        TIME_DATE | TIME_MINUTES
+                    )
+                )
+            );
 
             return false;
         }
@@ -98,6 +146,9 @@ public:
             }
 
             if (StringLen(symbolName) == 0) {
+                this.setPreparationFailureReason(
+                    "symbol resolution failed. symbol=" + canonicalSymbolName
+                );
                 this.logger.error(
                     __FUNCTION__,
                     "symbol resolution failed: " + canonicalSymbolName
@@ -107,6 +158,9 @@ public:
             }
 
             if (!SymbolSelect(symbolName, true)) {
+                this.setPreparationFailureReason(
+                    "SymbolSelect failed. symbol=" + symbolName
+                );
                 this.logger.error(__FUNCTION__, "SymbolSelect failed: " + symbolName);
                 this.resolvedSymbolNames[i] = "";
 
@@ -118,12 +172,25 @@ public:
                 fromOscillatorHandleManager.getOrCreatePool(poolContext);
 
             if (oscillatorHandlePool == NULL) {
+                this.setPreparationFailureReason(
+                    "oscillator handle pool is NULL. symbol=" + symbolName
+                );
                 this.logger.error(__FUNCTION__, "oscillatorHandlePool is NULL: " + symbolName);
 
                 continue;
             }
 
-            if (!this.preparePair(symbolName, oscillatorHandlePool)) {
+            int pairShifts[7];
+            datetime pairBarTimes[7];
+
+            if (!this.preparePair(
+                symbolName,
+                oscillatorHandlePool,
+                fromTargetM5BarTime,
+                expectedBarTimes,
+                pairShifts,
+                pairBarTimes
+            )) {
                 continue;
             }
 
@@ -156,15 +223,27 @@ public:
             int pairScores[7];
             bool pairIsBuyList[7];
             int pairOscillatorCounts[7];
-            datetime pairBarTimes[7];
             bool isPairValid = true;
 
-            for (int j = 0; j < this.getTimeFrameCount(); j++) {
+            // 始値モデルの時間足制約に合わせ、M5から上位足の順に参照する。
+            for (int j = this.getTimeFrameCount() - 1; j >= 0; j--) {
                 ENUM_TIMEFRAMES timeFrame = this.getTimeFrame(j);
                 MarketContext context(symbolName, timeFrame);
                 Oscillator oscillator(context);
 
-                if (!oscillator.updateBuySell(context, oscillatorHandlePool)) {
+                if (!oscillator.updateBuySell(
+                    context,
+                    oscillatorHandlePool,
+                    pairShifts[j]
+                )) {
+                    this.setPreparationFailureReason(
+                        StringFormat(
+                            "oscillator update failed. symbol=%s timeFrame=%s shift=%d",
+                            symbolName,
+                            EnumToString(timeFrame),
+                            pairShifts[j]
+                        )
+                    );
                     isPairValid = false;
                     break;
                 }
@@ -177,7 +256,6 @@ public:
 
                 pairIsBuyList[j] = oscillator.isBuy;
                 pairOscillatorCounts[j] = oscillator.oscillatorCount;
-                pairBarTimes[j] = iTime(symbolName, timeFrame, 0);
             }
 
             if (!isPairValid) {
@@ -191,6 +269,7 @@ public:
                 this.pairVotes,
                 firstVoteIndex + pairVoteCount
             ) != firstVoteIndex + pairVoteCount) {
+                this.lastCalculationFatalError = true;
                 this.logger.error(__FUNCTION__, "pairVotes ArrayResize failed");
 
                 return false;
@@ -240,6 +319,24 @@ public:
      */
     int getPairVoteCount() {
         return ArraySize(this.pairVotes);
+    }
+
+    /**
+     * 直近集計で最初に検出した準備不足理由を取得する。
+     *
+     * @return 準備不足理由。検出されていない場合は空文字。
+     */
+    string getLastPreparationFailureReason() {
+        return this.lastPreparationFailureReason;
+    }
+
+    /**
+     * 直近集計が再試行待ちではなく致命的エラーで失敗したか判定する。
+     *
+     * @return 致命的エラーが発生した場合true。
+     */
+    bool hasLastCalculationFatalError() {
+        return this.lastCalculationFatalError;
     }
 
     /**
@@ -493,6 +590,12 @@ private:
     /** ロガー。 */
     Logger logger;
 
+    /** 直近集計で致命的エラーが発生した場合true。 */
+    bool lastCalculationFatalError;
+
+    /** 直近集計で最初に検出した準備不足理由。 */
+    string lastPreparationFailureReason;
+
     /** 正規名に対応する実シンボル名一覧。 */
     string resolvedSymbolNames[];
 
@@ -601,6 +704,8 @@ private:
      */
     void reset() {
         this.validPairCount = 0;
+        this.lastCalculationFatalError = false;
+        this.lastPreparationFailureReason = "";
         ArrayResize(this.pairVotes, 0);
         int total = this.currencyStrengthInfoList.Total();
 
@@ -632,31 +737,169 @@ private:
     }
 
     /**
+     * 始値モデルで最初に参照するM5系列を同期する。
+     *
+     * M5の同期が完了するまで上位足へアクセスしないことで、シンボルごとの
+     * 利用可能な最小時間足をM5に固定する。
+     *
+     * @param fromSymbolName 同期対象シンボル名。
+     * @return M5系列が同期済みの場合true。
+     */
+    bool warmUpM5Series(const string fromSymbolName) {
+        ENUM_TIMEFRAMES timeFrames[1];
+        timeFrames[0] = PERIOD_M5;
+
+        MarketContext warmUpContext(fromSymbolName, PERIOD_M5);
+        WarmUpSeriesUtil::warmUp(warmUpContext, timeFrames, 200);
+
+        return WarmUpSeriesUtil::isSeriesSynchronized(warmUpContext);
+    }
+
+    /**
+     * 基準M5足の開始時点で確定している時間足別バー時刻を取得する。
+     *
+     * @param fromReferenceSymbolName 時間足境界の基準シンボル名。
+     * @param fromTargetM5BarTime スナップショット対象のM5足開始時刻。
+     * @param fromBarTimes 時間足別の確定バー時刻格納先。
+     * @return 全時間足の確定バー時刻を取得できた場合true。
+     */
+    bool resolveExpectedBarTimes(
+        const string fromReferenceSymbolName,
+        const datetime fromTargetM5BarTime,
+        datetime &fromBarTimes[]
+    ) {
+        if (fromReferenceSymbolName == "" || fromTargetM5BarTime <= 0) {
+            return false;
+        }
+
+        if (!SymbolSelect(fromReferenceSymbolName, true)) {
+            return false;
+        }
+
+        if (!this.warmUpM5Series(fromReferenceSymbolName)) {
+            return false;
+        }
+
+        ENUM_TIMEFRAMES warmUpTimeFrames[7];
+        int timeFrameCount = this.getTimeFrameCount();
+
+        for (int i = 0; i < timeFrameCount; i++) {
+            int timeFrameIndex = timeFrameCount - 1 - i;
+            warmUpTimeFrames[i] = this.getTimeFrame(timeFrameIndex);
+        }
+
+        MarketContext warmUpContext(fromReferenceSymbolName, PERIOD_M15);
+        WarmUpSeriesUtil::warmUp(warmUpContext, warmUpTimeFrames, 200);
+
+        // 配列格納順は維持し、系列参照だけをM5から上位足の順にする。
+        for (int i = timeFrameCount - 1; i >= 0; i--) {
+            ENUM_TIMEFRAMES timeFrame = this.getTimeFrame(i);
+            MarketContext context(fromReferenceSymbolName, timeFrame);
+
+            if (!WarmUpSeriesUtil::isSeriesSynchronized(context)) {
+                return false;
+            }
+
+            int containingShift = iBarShift(
+                fromReferenceSymbolName,
+                timeFrame,
+                fromTargetM5BarTime,
+                true
+            );
+
+            if (containingShift < 0) {
+                containingShift = iBarShift(
+                    fromReferenceSymbolName,
+                    timeFrame,
+                    fromTargetM5BarTime,
+                    false
+                );
+            }
+
+            if (containingShift < 0) {
+                return false;
+            }
+
+            datetime containingBarTime = iTime(
+                fromReferenceSymbolName,
+                timeFrame,
+                containingShift
+            );
+
+            if (containingBarTime <= 0
+                    || containingBarTime > fromTargetM5BarTime) {
+                return false;
+            }
+
+            if (timeFrame == PERIOD_M5
+                    && containingBarTime != fromTargetM5BarTime) {
+                return false;
+            }
+
+            datetime sourceBarTime = iTime(
+                fromReferenceSymbolName,
+                timeFrame,
+                containingShift + 1
+            );
+
+            if (sourceBarTime <= 0 || sourceBarTime >= fromTargetM5BarTime) {
+                return false;
+            }
+
+            fromBarTimes[i] = sourceBarTime;
+        }
+
+        return true;
+    }
+
+    /**
      * 指定ペアの価格系列と3本のストキャスハンドルを準備する。
      *
-     * MN1、W1、D1、H4、H1、M15、M5の全ハンドルを一括生成しておくことで、
+     * M5、M15、H1、H4、D1、W1、MN1の順で全ハンドルを一括生成しておくことで、
      * 最初に未準備だったハンドルだけがタイマーごとに順次生成されることを防ぐ。
      *
      * @param fromSymbolName 準備対象の実シンボル名。
      * @param fromOscillatorHandlePool 対象シンボルのハンドルプール。
+     * @param fromM5BarTime スナップショット対象のM5足開始時刻。0の場合は現在足。
+     * @param fromExpectedBarTimes 時間足別の期待する確定バー時刻。
+     * @param fromShifts 時間足別の参照シフト格納先。
+     * @param fromBarTimes 時間足別の足開始時刻格納先。
      * @return 全価格系列と全ストキャスバッファが準備済みの場合true。
      */
     bool preparePair(
         string fromSymbolName,
-        OscillatorHandlePool *fromOscillatorHandlePool
+        OscillatorHandlePool *fromOscillatorHandlePool,
+        const datetime fromM5BarTime,
+        const datetime &fromExpectedBarTimes[],
+        int &fromShifts[],
+        datetime &fromBarTimes[]
     ) {
         if (fromOscillatorHandlePool == NULL) {
+            this.setPreparationFailureReason(
+                "oscillator handle pool is NULL. symbol=" + fromSymbolName
+            );
+
             return false;
         }
 
-        ENUM_TIMEFRAMES timeFrames[7];
+        if (!this.warmUpM5Series(fromSymbolName)) {
+            this.setPreparationFailureReason(
+                "M5 series is not synchronized. symbol=" + fromSymbolName
+            );
 
-        for (int i = 0; i < this.getTimeFrameCount(); i++) {
-            timeFrames[i] = this.getTimeFrame(i);
+            return false;
+        }
+
+        ENUM_TIMEFRAMES warmUpTimeFrames[7];
+        int timeFrameCount = this.getTimeFrameCount();
+
+        for (int i = 0; i < timeFrameCount; i++) {
+            int timeFrameIndex = timeFrameCount - 1 - i;
+            warmUpTimeFrames[i] = this.getTimeFrame(timeFrameIndex);
         }
 
         MarketContext warmUpContext(fromSymbolName, PERIOD_M15);
-        WarmUpSeriesUtil::warmUp(warmUpContext, timeFrames, 200);
+        WarmUpSeriesUtil::warmUp(warmUpContext, warmUpTimeFrames, 200);
 
         StochasticHandlePool *shortHandlePool =
             fromOscillatorHandlePool.getStochasticShortHandlePool();
@@ -666,22 +909,126 @@ private:
             fromOscillatorHandlePool.getStochasticLongHandlePool();
         bool isReady = true;
 
-        for (int i = 0; i < this.getTimeFrameCount(); i++) {
-            MarketContext context(fromSymbolName, timeFrames[i]);
+        // 始値モデルでは各シンボルの最初の参照時間足をM5に固定する。
+        for (int i = timeFrameCount - 1; i >= 0; i--) {
+            ENUM_TIMEFRAMES timeFrame = this.getTimeFrame(i);
+            MarketContext context(fromSymbolName, timeFrame);
 
             if (!WarmUpSeriesUtil::isSeriesSynchronized(context)) {
+                this.setPreparationFailureReason(
+                    StringFormat(
+                        "series is not synchronized. symbol=%s timeFrame=%s",
+                        fromSymbolName,
+                        EnumToString(timeFrame)
+                    )
+                );
                 isReady = false;
             }
 
-            if (!this.isStochasticHandleReady(shortHandlePool, timeFrames[i])) {
+            int shift = 0;
+
+            if (fromM5BarTime > 0) {
+                shift = iBarShift(
+                    fromSymbolName,
+                    timeFrame,
+                    fromExpectedBarTimes[i],
+                    true
+                );
+
+                if (shift < 0) {
+                    // 実バー欠損時は期待時刻より前の直近確定足を使用する。
+                    shift = iBarShift(
+                        fromSymbolName,
+                        timeFrame,
+                        fromExpectedBarTimes[i],
+                        false
+                    );
+                }
+            }
+
+            datetime barTime = 0;
+
+            if (shift >= 0) {
+                barTime = iTime(fromSymbolName, timeFrame, shift);
+            }
+
+            if (shift < 0 || barTime <= 0) {
+                this.setPreparationFailureReason(
+                    StringFormat(
+                        "source bar was not found. symbol=%s timeFrame=%s shift=%d",
+                        fromSymbolName,
+                        EnumToString(timeFrame),
+                        shift
+                    )
+                );
                 isReady = false;
             }
 
-            if (!this.isStochasticHandleReady(middleHandlePool, timeFrames[i])) {
+            // 次の足が未生成でshift 0に残っていても、対象時刻より前なら確定足として扱う。
+            if (fromM5BarTime > 0
+                    && (barTime > fromExpectedBarTimes[i]
+                        || barTime >= fromM5BarTime)) {
+                this.setPreparationFailureReason(
+                    StringFormat(
+                        "source bar time is invalid. symbol=%s timeFrame=%s barTime=%s expected=%s target=%s",
+                        fromSymbolName,
+                        EnumToString(timeFrame),
+                        TimeToString(barTime, TIME_DATE | TIME_MINUTES),
+                        TimeToString(
+                            fromExpectedBarTimes[i],
+                            TIME_DATE | TIME_MINUTES
+                        ),
+                        TimeToString(fromM5BarTime, TIME_DATE | TIME_MINUTES)
+                    )
+                );
                 isReady = false;
             }
 
-            if (!this.isStochasticHandleReady(longHandlePool, timeFrames[i])) {
+            fromShifts[i] = shift;
+            fromBarTimes[i] = barTime;
+
+            if (!this.isStochasticHandleReady(
+                shortHandlePool,
+                timeFrame,
+                shift
+            )) {
+                this.setStochasticPreparationFailureReason(
+                    fromSymbolName,
+                    timeFrame,
+                    "short",
+                    shortHandlePool,
+                    shift
+                );
+                isReady = false;
+            }
+
+            if (!this.isStochasticHandleReady(
+                middleHandlePool,
+                timeFrame,
+                shift
+            )) {
+                this.setStochasticPreparationFailureReason(
+                    fromSymbolName,
+                    timeFrame,
+                    "middle",
+                    middleHandlePool,
+                    shift
+                );
+                isReady = false;
+            }
+
+            if (!this.isStochasticHandleReady(
+                longHandlePool,
+                timeFrame,
+                shift
+            )) {
+                this.setStochasticPreparationFailureReason(
+                    fromSymbolName,
+                    timeFrame,
+                    "long",
+                    longHandlePool,
+                    shift
+                );
                 isReady = false;
             }
         }
@@ -694,13 +1041,15 @@ private:
      *
      * @param fromStochasticHandlePool 対象ストキャスハンドルプール。
      * @param fromTimeFrame 対象時間足。
+     * @param fromShift 参照シフト。
      * @return ハンドルが有効で1本以上計算済みの場合true。
      */
     bool isStochasticHandleReady(
         StochasticHandlePool *fromStochasticHandlePool,
-        ENUM_TIMEFRAMES fromTimeFrame
+        ENUM_TIMEFRAMES fromTimeFrame,
+        const int fromShift
     ) {
-        if (fromStochasticHandlePool == NULL) {
+        if (fromStochasticHandlePool == NULL || fromShift < 0) {
             return false;
         }
 
@@ -710,7 +1059,63 @@ private:
             return false;
         }
 
-        return BarsCalculated(handle) > 0;
+        return BarsCalculated(handle) > fromShift;
+    }
+
+    /**
+     * 最初に検出した準備不足理由を保持する。
+     *
+     * @param fromReason 準備不足理由。
+     */
+    void setPreparationFailureReason(const string fromReason) {
+        if (this.lastPreparationFailureReason != "") {
+            return;
+        }
+
+        this.lastPreparationFailureReason = fromReason;
+    }
+
+    /**
+     * ストキャスの準備不足状況を最初の理由として保持する。
+     *
+     * @param fromSymbolName 対象シンボル名。
+     * @param fromTimeFrame 対象時間足。
+     * @param fromOscillatorName ストキャス種別。
+     * @param fromStochasticHandlePool 対象ハンドルプール。
+     * @param fromShift 参照シフト。
+     */
+    void setStochasticPreparationFailureReason(
+        const string fromSymbolName,
+        const ENUM_TIMEFRAMES fromTimeFrame,
+        const string fromOscillatorName,
+        StochasticHandlePool *fromStochasticHandlePool,
+        const int fromShift
+    ) {
+        if (this.lastPreparationFailureReason != "") {
+            return;
+        }
+
+        int handle = INVALID_HANDLE;
+        int calculatedBars = -1;
+
+        if (fromStochasticHandlePool != NULL) {
+            handle = fromStochasticHandlePool.getHandle(fromTimeFrame);
+        }
+
+        if (handle != INVALID_HANDLE) {
+            calculatedBars = BarsCalculated(handle);
+        }
+
+        this.lastPreparationFailureReason = StringFormat(
+            "stochastic is not ready. symbol=%s timeFrame=%s oscillator=%s seriesBars=%d calculatedBars=%d requiredCalculatedBars=%d shift=%d",
+            fromSymbolName,
+            EnumToString(fromTimeFrame),
+            fromOscillatorName,
+            Bars(fromSymbolName, fromTimeFrame),
+            calculatedBars,
+            fromShift + 1,
+            fromShift
+        );
     }
 
     /**

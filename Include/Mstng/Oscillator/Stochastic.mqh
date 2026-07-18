@@ -233,16 +233,36 @@ public:
         MarketContext &fromMarketContext,
         bool &fromIsPlus
     ) {
+        return this.getDirection(fromMarketContext, 0, fromIsPlus);
+    }
+
+    /**
+     * 指定シフトのMainとSignalを取得して方向を判定する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromShift 参照シフト。
+     * @param fromIsPlus MainがSignal以上の場合true。
+     * @return 取得に成功した場合true。
+     */
+    bool getDirection(
+        MarketContext &fromMarketContext,
+        const int fromShift,
+        bool &fromIsPlus
+    ) {
         this.initializeMarketContext(fromMarketContext);
         this.main0 = 0.0;
         this.signal0 = 0.0;
         fromIsPlus = false;
 
-        if (!this.getMain(fromMarketContext, 0, this.main0)) {
+        if (fromShift < 0) {
             return false;
         }
 
-        if (!this.getSignal(fromMarketContext, 0, this.signal0)) {
+        if (!this.getMain(fromMarketContext, fromShift, this.main0)) {
+            return false;
+        }
+
+        if (!this.getSignal(fromMarketContext, fromShift, this.signal0)) {
             return false;
         }
 
@@ -287,8 +307,13 @@ private:
         ArraySetAsSeries(buffer, true);
         ResetLastError();
         int copied = CopyBuffer(this.handle, 0, shift, 1, buffer);
-        if (copied <= 0) {
+        if (copied != 1) {
             this.logger.error(__FUNCTION__, StringFormat("CopyBuffer(main) error. code=%d", GetLastError()));
+            return false;
+        }
+
+        if (!MathIsValidNumber(buffer[0]) || buffer[0] == EMPTY_VALUE) {
+            this.logger.error(__FUNCTION__, "CopyBuffer(main) returned invalid value");
             return false;
         }
         value = buffer[0];
@@ -323,8 +348,13 @@ private:
         ArraySetAsSeries(buffer, true);
         ResetLastError();
         int copied = CopyBuffer(this.handle, 1, shift, 1, buffer);
-        if (copied <= 0) {
+        if (copied != 1) {
             this.logger.error(__FUNCTION__, StringFormat("CopyBuffer(signal) error. code=%d", GetLastError()));
+            return false;
+        }
+
+        if (!MathIsValidNumber(buffer[0]) || buffer[0] == EMPTY_VALUE) {
+            this.logger.error(__FUNCTION__, "CopyBuffer(signal) returned invalid value");
             return false;
         }
         value = buffer[0];

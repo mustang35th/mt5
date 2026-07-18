@@ -312,6 +312,26 @@ public:
         MarketContext &fromMarketContext,
         OscillatorHandlePool *fromOscillatorHandlePool
     ) {
+        return this.updateBuySell(
+            fromMarketContext,
+            fromOscillatorHandlePool,
+            0
+        );
+    }
+
+    /**
+     * 指定シフトの3本のストキャスだけを更新して売買方向を設定する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromOscillatorHandlePool オシレーターハンドルプール。
+     * @param fromShift 参照シフト。
+     * @return 更新に成功した場合true。
+     */
+    bool updateBuySell(
+        MarketContext &fromMarketContext,
+        OscillatorHandlePool *fromOscillatorHandlePool,
+        const int fromShift
+    ) {
         this.resetValues();
         this.initializeMarketContext(fromMarketContext);
 
@@ -325,30 +345,33 @@ public:
             return false;
         }
 
-        if (!this.setStochasticCurrent(
+        if (!this.setStochasticAtShift(
             fromOscillatorHandlePool.getStochasticShortHandlePool(),
             this.stochasticShort,
-            "Short"
+            "Short",
+            fromShift
         )) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
 
             return false;
         }
 
-        if (!this.setStochasticCurrent(
+        if (!this.setStochasticAtShift(
             fromOscillatorHandlePool.getStochasticMiddleHandlePool(),
             this.stochasticMiddle,
-            "Middle"
+            "Middle",
+            fromShift
         )) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
 
             return false;
         }
 
-        if (!this.setStochasticCurrent(
+        if (!this.setStochasticAtShift(
             fromOscillatorHandlePool.getStochasticLongHandlePool(),
             this.stochasticLong,
-            "Long"
+            "Long",
+            fromShift
         )) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
 
@@ -936,17 +959,19 @@ private:
     }
 
     /**
-     * 現在のMainとSignalだけを使用してストキャス方向を更新する。
+     * 指定シフトのMainとSignalだけを使用してストキャス方向を更新する。
      *
      * @param fromStochasticHandlePool ストキャスハンドルプール。
      * @param fromStatus 出力先ステータス。
      * @param fromLabel ログ用ラベル。
+     * @param fromShift 参照シフト。
      * @return 更新できた場合true。
      */
-    bool setStochasticCurrent(
+    bool setStochasticAtShift(
         StochasticHandlePool *fromStochasticHandlePool,
         StochasticStatus &fromStatus,
-        string fromLabel
+        string fromLabel,
+        const int fromShift
     ) {
         if (fromStochasticHandlePool == NULL) {
             this.logger.error(
@@ -960,10 +985,14 @@ private:
         Stochastic stochastic(this.marketContext, fromStochasticHandlePool);
         bool isPlus = false;
 
-        if (!stochastic.getCurrentDirection(this.marketContext, isPlus)) {
+        if (!stochastic.getDirection(this.marketContext, fromShift, isPlus)) {
             this.logger.error(
                 __FUNCTION__,
-                StringFormat("getCurrentDirection failed: %s", fromLabel)
+                StringFormat(
+                    "getDirection failed: label=%s shift=%d",
+                    fromLabel,
+                    fromShift
+                )
             );
 
             return false;

@@ -40,8 +40,11 @@ public:
         string sql = "CREATE TABLE IF NOT EXISTS currency_strength_runs (";
         sql += "id INTEGER PRIMARY KEY AUTOINCREMENT,";
         sql += "calculated_at INTEGER NOT NULL,";
+        sql += "m5_bar_time INTEGER NOT NULL DEFAULT 0,";
+        sql += "m5_bar_time_text TEXT NOT NULL DEFAULT '',";
         sql += "m15_bar_time INTEGER NOT NULL,";
         sql += "calculation_version TEXT NOT NULL,";
+        sql += "source_mode TEXT NOT NULL DEFAULT 'LEGACY',";
         sql += "source_server TEXT NOT NULL,";
         sql += "source_login INTEGER NOT NULL,";
         sql += "source_chart_id INTEGER NOT NULL,";
@@ -57,6 +60,14 @@ public:
             return false;
         }
 
+        if (!this.migrateM5BarTimeColumns()) {
+            return false;
+        }
+
+        if (!this.migrateSourceModeColumn()) {
+            return false;
+        }
+
         if (!this.migrateUpdatedAtColumns()) {
             return false;
         }
@@ -66,6 +77,32 @@ public:
         sql += "ON currency_strength_runs(calculated_at)";
 
         if (!this.executeSql(sql, "currency strength run index")) {
+            return false;
+        }
+
+        sql = "CREATE UNIQUE INDEX IF NOT EXISTS ";
+        sql += "idx_currency_strength_runs_snapshot_mode_key ";
+        sql += "ON currency_strength_runs(";
+        sql += "m5_bar_time, calculation_version, source_mode,";
+        sql += " source_server, source_login";
+        sql += ") WHERE m5_bar_time > 0";
+
+        if (!this.executeSql(sql, "currency strength run snapshot key index")) {
+            return false;
+        }
+
+        if (!this.executeSql(
+            "DROP INDEX IF EXISTS idx_currency_strength_runs_snapshot_key",
+            "drop legacy currency strength run snapshot key index"
+        )) {
+            return false;
+        }
+
+        sql = "CREATE INDEX IF NOT EXISTS ";
+        sql += "idx_currency_strength_runs_source_mode_calculated_at ";
+        sql += "ON currency_strength_runs(source_mode, calculated_at)";
+
+        if (!this.executeSql(sql, "currency strength run source mode index")) {
             return false;
         }
 
@@ -93,12 +130,12 @@ public:
         fromEntity.id = 0;
 
         string sql = "INSERT INTO currency_strength_runs (";
-        sql += "calculated_at, m15_bar_time, calculation_version, source_server,";
-        sql += " source_login, source_chart_id, expected_pair_count,";
-        sql += " valid_pair_count, vote_count, is_complete, updated_at,";
-        sql += " updated_at_text";
+        sql += "calculated_at, m5_bar_time, m5_bar_time_text, m15_bar_time,";
+        sql += " calculation_version, source_mode, source_server, source_login,";
+        sql += " source_chart_id, expected_pair_count, valid_pair_count,";
+        sql += " vote_count, is_complete, updated_at, updated_at_text";
         sql += ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,";
-        sql += " ?11, ?12)";
+        sql += " ?11, ?12, ?13, ?14, ?15)";
 
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
@@ -148,20 +185,212 @@ public:
     }
 
     /**
+     * M5バー時刻と集計元が一致する集計IDを取得する。
+     *
+     * 該当レコードが存在しない場合はfromRunIdへ0を設定してtrueを返す。
+     *
+     * @param fromM5BarTime 集計基準となるM5バー時刻。
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceMode 集計実行モード。
+     * @param fromSourceServer 集計元の取引サーバー名。
+     * @param fromSourceLogin 集計元の口座ログイン番号。
+     * @param fromRunId 取得した集計IDの格納先。
+     * @return 検索処理に成功した場合true。
+     */
+    bool findIdBySnapshotKey(
+        const datetime fromM5BarTime,
+        const string fromCalculationVersion,
+        const string fromSourceMode,
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        long &fromRunId
+    ) {
+        fromRunId = 0;
+
+        if (!this.isDatabaseReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (fromM5BarTime <= 0) {
+            return true;
+        }
+
+        string sql = "SELECT id FROM currency_strength_runs ";
+        sql += "WHERE m5_bar_time = ?1 ";
+        sql += "AND calculation_version = ?2 ";
+        sql += "AND source_mode = ?3 ";
+        sql += "AND source_server = ?4 ";
+        sql += "AND source_login = ?5 ";
+        sql += "ORDER BY id DESC LIMIT 1";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+        bool isBound = DatabaseBind(requestHandle, 0, fromM5BarTime);
+
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                1,
+                fromCalculationVersion
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 2, fromSourceMode);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 3, fromSourceServer);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 4, fromSourceLogin);
+        }
+
+        if (!isBound) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseRead(requestHandle)) {
+            int readErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+
+            if (readErrorCode == ERR_DATABASE_NO_MORE_DATA) {
+                return true;
+            }
+
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseColumnLong(requestHandle, 0, fromRunId)) {
+            int columnErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseColumnLong failed. error=%d",
+                    columnErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        DatabaseFinalize(requestHandle);
+
+        return true;
+    }
+
+    /**
+     * 既存の通貨強弱集計履歴を更新する。
+     *
+     * @param fromEntity 更新対象エンティティ。
+     * @return 更新処理に成功した場合true。
+     */
+    bool update(CurrencyStrengthRunEntity &fromEntity) {
+        if (!this.isDatabaseReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (fromEntity.id <= 0) {
+            this.logger.error(__FUNCTION__, "fromEntity.id is invalid.");
+
+            return false;
+        }
+
+        string sql = "UPDATE currency_strength_runs SET ";
+        sql += "calculated_at = ?1, m5_bar_time = ?2, ";
+        sql += "m5_bar_time_text = ?3, m15_bar_time = ?4, ";
+        sql += "calculation_version = ?5, source_mode = ?6, ";
+        sql += "source_server = ?7, source_login = ?8, ";
+        sql += "source_chart_id = ?9, expected_pair_count = ?10, ";
+        sql += "valid_pair_count = ?11, vote_count = ?12, ";
+        sql += "is_complete = ?13, updated_at = ?14, ";
+        sql += "updated_at_text = ?15 WHERE id = ?16";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+        bool isBound = this.bind(requestHandle, fromEntity);
+
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 15, fromEntity.id);
+        }
+
+        if (!isBound) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        bool isExecuted = this.executeRequest(
+            requestHandle,
+            __FUNCTION__,
+            "update run"
+        );
+        DatabaseFinalize(requestHandle);
+
+        return isExecuted;
+    }
+
+    /**
      * 指定時刻より古い集計履歴を削除する。
      *
      * 外部キーのCASCADEが有効な場合は関連レコードも削除される。
      *
      * @param fromCalculatedAt 削除対象を判定する集計時刻。
+     * @param fromSourceMode 削除対象の集計実行モード。
      * @return 削除処理に成功した場合はtrue。
      */
-    bool deleteBefore(const datetime fromCalculatedAt) {
+    bool deleteBefore(
+        const datetime fromCalculatedAt,
+        const string fromSourceMode
+    ) {
         if (!this.isDatabaseReady(__FUNCTION__)) {
             return false;
         }
 
         string sql = "DELETE FROM currency_strength_runs ";
-        sql += "WHERE calculated_at < ?1";
+        sql += "WHERE calculated_at < ?1 AND source_mode = ?2";
 
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
@@ -177,7 +406,13 @@ public:
 
         ResetLastError();
 
-        if (!DatabaseBind(requestHandle, 0, fromCalculatedAt)) {
+        bool isBound = DatabaseBind(requestHandle, 0, fromCalculatedAt);
+
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 1, fromSourceMode);
+        }
+
+        if (!isBound) {
             int bindErrorCode = GetLastError();
             DatabaseFinalize(requestHandle);
             this.logger.error(
@@ -204,6 +439,41 @@ private:
 
     /** ロガー。 */
     Logger logger;
+
+    /**
+     * 既存の集計履歴テーブルへM5バー時刻列を追加する。
+     *
+     * 旧レコードは時刻を推測せず0と空文字のまま保持する。
+     *
+     * @return 列追加または存在確認に成功した場合true。
+     */
+    bool migrateM5BarTimeColumns() {
+        if (!this.ensureColumn(
+            "m5_bar_time",
+            "INTEGER NOT NULL DEFAULT 0"
+        )) {
+            return false;
+        }
+
+        return this.ensureColumn(
+            "m5_bar_time_text",
+            "TEXT NOT NULL DEFAULT ''"
+        );
+    }
+
+    /**
+     * 既存の集計履歴テーブルへ集計実行モード列を追加する。
+     *
+     * 移行前レコードはライブまたはテスターを判別できないためLEGACYとする。
+     *
+     * @return 列追加または存在確認に成功した場合true。
+     */
+    bool migrateSourceModeColumn() {
+        return this.ensureColumn(
+            "source_mode",
+            "TEXT NOT NULL DEFAULT 'LEGACY'"
+        );
+    }
 
     /**
      * 既存の集計履歴テーブルへ更新時刻列を追加して値を補完する。
@@ -237,7 +507,7 @@ private:
 
         sql = "UPDATE currency_strength_runs ";
         sql += "SET updated_at_text = ";
-        sql += "strftime('%Y.%m.%d %H:%M:%S', updated_at, 'unixepoch') ";
+        sql += "strftime('%Y.%m.%d %H:%M:%S', updated_at, 'unixepoch', 'localtime') ";
         sql += "WHERE updated_at_text = ''";
 
         return this.executeSql(
@@ -372,56 +642,77 @@ private:
             isBound = DatabaseBind(
                 fromRequestHandle,
                 1,
-                fromEntity.m15BarTime
+                fromEntity.m5BarTime
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 2,
-                fromEntity.calculationVersion
+                fromEntity.m5BarTimeText
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 3,
-                fromEntity.sourceServer
+                fromEntity.m15BarTime
             );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 4, fromEntity.sourceLogin);
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                4,
+                fromEntity.calculationVersion
+            );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 5, fromEntity.sourceChartId);
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                5,
+                fromEntity.sourceMode
+            );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 6,
+                fromEntity.sourceServer
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 7, fromEntity.sourceLogin);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 8, fromEntity.sourceChartId);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                9,
                 fromEntity.expectedPairCount
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                7,
+                10,
                 fromEntity.validPairCount
             );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 8, fromEntity.voteCount);
+            isBound = DatabaseBind(fromRequestHandle, 11, fromEntity.voteCount);
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 9, fromEntity.isComplete);
+            isBound = DatabaseBind(fromRequestHandle, 12, fromEntity.isComplete);
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 10, fromEntity.updatedAt);
+            isBound = DatabaseBind(fromRequestHandle, 13, fromEntity.updatedAt);
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                11,
+                14,
                 fromEntity.updatedAtText
             );
         }

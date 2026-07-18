@@ -24,6 +24,15 @@
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 
+/**
+ * 通貨強弱集計の実行結果。
+ */
+enum CurrencyStrengthExecutionStatus {
+    currencyStrengthExecutionSucceeded = 0,
+    currencyStrengthExecutionNotReady = 1,
+    currencyStrengthExecutionFailed = 2
+};
+
 input int refreshSeconds = 60;
 input int panelXDistance = 12;
 input int panelYDistance = 12;
@@ -33,10 +42,19 @@ input string databaseFileName = "mstng-currency-strength.sqlite";
 input bool databaseUseCommonFolder = true;
 input bool databaseSaveEveryRefresh = false;
 input bool databaseSavePartialRuns = false;
+input datetime databaseSaveStartTime = D'2026.07.16 00:00';
 input int databaseRetentionDays = 30;
 
 /** 集計ルール識別子。 */
 const string calculationVersion = "pair-direction-raw-v6";
+/** テスター確定足集計ルール識別子。 */
+const string testerCalculationVersion = "pair-direction-closed-v1";
+/** ライブ集計の実行モード。 */
+const string liveSourceMode = "LIVE";
+/** テスター集計の実行モード。 */
+const string testerSourceMode = "TESTER";
+/** テスター診断ログを約1日ごとに出力するM5足数。 */
+const int testerDiagnosticLogIntervalBars = 288;
 
 double gHiddenBuffer[];
 
@@ -49,8 +67,16 @@ CurrencyStrengthPairVoteDao *gCurrencyStrengthPairVoteDao;
 CurrencyStrengthResultDao *gCurrencyStrengthResultDao;
 CurrencyStrengthRunDao *gCurrencyStrengthRunDao;
 CurrencyStrengthPersistenceService *gCurrencyStrengthPersistenceService;
+datetime gFirstTargetM5BarTime;
+datetime gLastTesterAttemptM5BarTime;
+datetime gLastProcessedM5BarTime;
+datetime gTesterWarmUpPreparedAt;
 datetime gLastSavedM15BarTime;
 datetime gLastDatabaseCleanupTime;
+int gTesterWarmUpAttemptCount;
+int gTesterSkippedSnapshotCount;
+int gTesterPersistedSnapshotCount;
+string gLastSkippedPreparationFailureReason;
 
 /**
  * インジケーターを初期化する。
@@ -58,10 +84,18 @@ datetime gLastDatabaseCleanupTime;
  * @return 初期化結果。
  */
 int OnInit() {
-    if (MQLInfoInteger(MQL_TESTER)) {
-        Print("CurrencyStrengthElliot does not support Strategy Tester");
+    bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+
+    if (MQLInfoInteger(MQL_OPTIMIZATION)) {
+        Print("CurrencyStrengthElliot does not support optimization");
 
         return INIT_FAILED;
+    }
+
+    if (isTester && _Period != PERIOD_M5) {
+        Print("CurrencyStrengthElliot requires M5 in Strategy Tester");
+
+        return INIT_PARAMETERS_INCORRECT;
     }
 
     if (refreshSeconds < 1 || databaseRetentionDays < 0) {
@@ -69,6 +103,12 @@ int OnInit() {
     }
 
     if (databaseEnabled && databaseFileName == "") {
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if (isTester && databaseEnabled && !databaseUseCommonFolder) {
+        Print("CurrencyStrengthElliot requires Common database folder in Strategy Tester");
+
         return INIT_PARAMETERS_INCORRECT;
     }
 
@@ -99,25 +139,48 @@ int OnInit() {
         return INIT_FAILED;
     }
 
+    gFirstTargetM5BarTime = 0;
+    gLastTesterAttemptM5BarTime = 0;
+    gLastProcessedM5BarTime = 0;
+    gTesterWarmUpPreparedAt = 0;
     gLastSavedM15BarTime = 0;
     gLastDatabaseCleanupTime = 0;
+    gTesterWarmUpAttemptCount = 0;
+    gTesterSkippedSnapshotCount = 0;
+    gTesterPersistedSnapshotCount = 0;
+    gLastSkippedPreparationFailureReason = "";
+
+    if (isTester) {
+        gLogger.info(
+            __FUNCTION__,
+            StringFormat(
+                "tester database save window initialized. from=%s",
+                getOptionalTimeText(databaseSaveStartTime, "TEST_START")
+            )
+        );
+    }
 
     if (databaseEnabled && !initializeDatabase()) {
-        gLogger.error(
-            __FUNCTION__,
-            "currency strength database initialization failed; persistence disabled"
-        );
+        gLogger.error(__FUNCTION__, "currency strength database initialization failed");
         releaseDatabaseResources();
+
+        if (isTester) {
+            releaseResources();
+
+            return INIT_FAILED;
+        }
     }
 
-    if (!EventSetTimer(refreshSeconds)) {
-        gLogger.error(__FUNCTION__, "EventSetTimer failed");
-        releaseResources();
+    if (!isTester) {
+        if (!EventSetTimer(refreshSeconds)) {
+            gLogger.error(__FUNCTION__, "EventSetTimer failed");
+            releaseResources();
 
-        return INIT_FAILED;
+            return INIT_FAILED;
+        }
+
+        execute(0);
     }
-
-    execute();
 
     return INIT_SUCCEEDED;
 }
@@ -129,6 +192,11 @@ int OnInit() {
  */
 void OnDeinit(const int reason) {
     EventKillTimer();
+
+    if (MQLInfoInteger(MQL_TESTER)) {
+        logTesterSnapshotSummary();
+    }
+
     releaseResources();
 }
 
@@ -136,11 +204,15 @@ void OnDeinit(const int reason) {
  * タイマーごとに通貨強弱を更新する。
  */
 void OnTimer() {
-    execute();
+    if (MQLInfoInteger(MQL_TESTER)) {
+        return;
+    }
+
+    execute(0);
 }
 
 /**
- * オブジェクト描画専用のため計算本数だけを返す。
+ * テスターでは新しいM5足ごとに通貨強弱を集計する。
  *
  * @return 計算済み本数。
  */
@@ -156,54 +228,434 @@ int OnCalculate(
     const long &volume[],
     const int &spread[]
 ) {
+    if (!MQLInfoInteger(MQL_TESTER)) {
+        return ratesTotal;
+    }
+
+    processTesterSnapshots();
+
     return ratesTotal;
 }
 
 /**
- * 全28通貨ペアを集計してランキングを更新する。
+ * テスターの未処理M5スナップショットを古い順に保存する。
  */
-void execute() {
+void processTesterSnapshots() {
+    datetime currentM5BarTime = iTime(_Symbol, PERIOD_M5, 0);
+
+    if (currentM5BarTime <= 0) {
+        return;
+    }
+
+    if (currentM5BarTime == gLastTesterAttemptM5BarTime) {
+        return;
+    }
+
+    gLastTesterAttemptM5BarTime = currentM5BarTime;
+
+    if (databaseEnabled
+            && databaseSaveStartTime > 0
+            && currentM5BarTime < databaseSaveStartTime) {
+        prepareTesterWarmUp(currentM5BarTime);
+
+        return;
+    }
+
+    if (gFirstTargetM5BarTime <= 0) {
+        gFirstTargetM5BarTime = currentM5BarTime;
+        gLogger.info(
+            __FUNCTION__,
+            StringFormat(
+                "tester snapshot processing started. firstM5=%s warmUpPreparedAt=%s",
+                TimeToString(
+                    gFirstTargetM5BarTime,
+                    TIME_DATE | TIME_MINUTES
+                ),
+                getOptionalTimeText(gTesterWarmUpPreparedAt, "NONE")
+            )
+        );
+    }
+
+    int startShift = -1;
+
+    if (gLastProcessedM5BarTime > 0) {
+        int lastProcessedShift = iBarShift(
+            _Symbol,
+            PERIOD_M5,
+            gLastProcessedM5BarTime,
+            true
+        );
+
+        if (lastProcessedShift > 0) {
+            startShift = lastProcessedShift - 1;
+        }
+    } else {
+        startShift = iBarShift(
+            _Symbol,
+            PERIOD_M5,
+            gFirstTargetM5BarTime,
+            true
+        );
+    }
+
+    for (int i = startShift; i >= 0; i--) {
+        datetime targetM5BarTime = iTime(_Symbol, PERIOD_M5, i);
+
+        if (targetM5BarTime <= 0) {
+            break;
+        }
+
+        CurrencyStrengthExecutionStatus executionStatus = execute(
+            targetM5BarTime
+        );
+
+        if (executionStatus != currencyStrengthExecutionSucceeded) {
+            if (executionStatus != currencyStrengthExecutionNotReady
+                    || i <= 0) {
+                break;
+            }
+
+            logSkippedTesterSnapshot(targetM5BarTime);
+            gLastProcessedM5BarTime = targetM5BarTime;
+
+            continue;
+        }
+
+        gLastProcessedM5BarTime = targetM5BarTime;
+    }
+}
+
+/**
+ * DB保存開始前に系列とストキャスハンドルを一度準備する。
+ *
+ * @param fromM5BarTime ウォームアップ中のM5足開始時刻。
+ */
+void prepareTesterWarmUp(const datetime fromM5BarTime) {
+    if (gTesterWarmUpPreparedAt > 0
+            || gCurrencyStrengthCalculator == NULL
+            || gOscillatorHandleManager == NULL) {
+        return;
+    }
+
+    gTesterWarmUpAttemptCount++;
+
+    if (!gCurrencyStrengthCalculator.calculateAt(
+        gOscillatorHandleManager,
+        _Symbol,
+        fromM5BarTime
+    )) {
+        if (gTesterWarmUpAttemptCount == 1
+                || gTesterWarmUpAttemptCount
+                    % testerDiagnosticLogIntervalBars == 0) {
+            gLogger.info(
+                __FUNCTION__,
+                StringFormat(
+                    "tester warm-up is waiting. m5=%s attempt=%d reason=%s",
+                    TimeToString(fromM5BarTime, TIME_DATE | TIME_MINUTES),
+                    gTesterWarmUpAttemptCount,
+                    getPreparationFailureReason()
+                )
+            );
+        }
+
+        return;
+    }
+
+    gTesterWarmUpPreparedAt = fromM5BarTime;
+    gLogger.info(
+        __FUNCTION__,
+        StringFormat(
+            "tester warm-up resources initialized. m5=%s pairs=%d/%d reason=%s",
+            TimeToString(fromM5BarTime, TIME_DATE | TIME_MINUTES),
+            gCurrencyStrengthCalculator.validPairCount,
+            gCurrencyStrengthCalculator.getExpectedPairCount(),
+            getPreparationFailureReason()
+        )
+    );
+}
+
+/**
+ * 再確認後も未準備だったM5スナップショットを記録する。
+ *
+ * @param fromM5BarTime スキップ対象のM5足開始時刻。
+ */
+void logSkippedTesterSnapshot(const datetime fromM5BarTime) {
+    gTesterSkippedSnapshotCount++;
+    string reason = getPreparationFailureReason();
+    bool shouldLog = (
+        gTesterSkippedSnapshotCount == 1
+            || gTesterSkippedSnapshotCount
+                % testerDiagnosticLogIntervalBars == 0
+    );
+    gLastSkippedPreparationFailureReason = reason;
+
+    if (!shouldLog) {
+        return;
+    }
+
+    gLogger.error(
+        __FUNCTION__,
+        StringFormat(
+            "tester snapshot skipped after retry. m5=%s skipped=%d pairs=%d/%d votes=%d reason=%s",
+            TimeToString(fromM5BarTime, TIME_DATE | TIME_MINUTES),
+            gTesterSkippedSnapshotCount,
+            gCurrencyStrengthCalculator.validPairCount,
+            gCurrencyStrengthCalculator.getExpectedPairCount(),
+            gCurrencyStrengthCalculator.getPairVoteCount(),
+            reason
+        )
+    );
+}
+
+/**
+ * 直近集計の準備不足理由をログ用文字列として取得する。
+ *
+ * @return 準備不足理由。不明な場合はUNKNOWN。
+ */
+string getPreparationFailureReason() {
+    if (gCurrencyStrengthCalculator == NULL) {
+        return "calculator is NULL";
+    }
+
+    string reason = gCurrencyStrengthCalculator.getLastPreparationFailureReason();
+
+    if (reason == "") {
+        return "UNKNOWN";
+    }
+
+    return reason;
+}
+
+/**
+ * テスター集計の終了サマリーを出力する。
+ */
+void logTesterSnapshotSummary() {
+    string skippedReason = gLastSkippedPreparationFailureReason;
+
+    if (skippedReason == "") {
+        skippedReason = "NONE";
+    }
+
+    gLogger.info(
+        __FUNCTION__,
+        StringFormat(
+            "tester snapshot summary. persisted=%d skipped=%d lastProcessedM5=%s warmUpPreparedAt=%s lastSkippedReason=%s",
+            gTesterPersistedSnapshotCount,
+            gTesterSkippedSnapshotCount,
+            getOptionalTimeText(gLastProcessedM5BarTime, "NONE"),
+            getOptionalTimeText(gTesterWarmUpPreparedAt, "NONE"),
+            skippedReason
+        )
+    );
+}
+
+/**
+ * 0を任意の代替文字列として日時を表示する。
+ *
+ * @param fromTime 表示対象日時。
+ * @param fromEmptyText 日時が0の場合の表示文字列。
+ * @return 日時または代替文字列。
+ */
+string getOptionalTimeText(
+    const datetime fromTime,
+    const string fromEmptyText
+) {
+    if (fromTime <= 0) {
+        return fromEmptyText;
+    }
+
+    return TimeToString(fromTime, TIME_DATE | TIME_MINUTES);
+}
+
+/**
+ * 全28通貨ペアを集計してランキングを更新する。
+ *
+ * @param fromM5BarTime 保存対象のM5足開始時刻。0の場合は現在足を使用する。
+ * @return 成功、未準備、または処理失敗。
+ */
+CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     if (gCurrencyStrengthCalculator == NULL
             || gOscillatorHandleManager == NULL
             || gDrawCurrencyStrengthList == NULL) {
-        return;
+        return currencyStrengthExecutionFailed;
     }
 
-    if (!gCurrencyStrengthCalculator.calculate(gOscillatorHandleManager)) {
-        gLogger.error(__FUNCTION__, "currency strength calculation failed");
+    bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+    datetime m5BarTime = fromM5BarTime;
 
-        return;
+    if (m5BarTime <= 0) {
+        m5BarTime = iTime(_Symbol, PERIOD_M5, 0);
     }
 
-    if (!gDrawCurrencyStrengthList.draw(gCurrencyStrengthCalculator)) {
+    bool isCalculated = false;
+
+    if (isTester) {
+        isCalculated = gCurrencyStrengthCalculator.calculateAt(
+            gOscillatorHandleManager,
+            _Symbol,
+            m5BarTime
+        );
+    } else {
+        isCalculated = gCurrencyStrengthCalculator.calculate(
+            gOscillatorHandleManager
+        );
+    }
+
+    if (!isCalculated) {
+        if (!isTester) {
+            gLogger.error(__FUNCTION__, "currency strength calculation failed");
+
+            return currencyStrengthExecutionFailed;
+        }
+
+        if (gCurrencyStrengthCalculator.hasLastCalculationFatalError()) {
+            return currencyStrengthExecutionFailed;
+        }
+
+        return currencyStrengthExecutionNotReady;
+    }
+
+    if ((!isTester || MQLInfoInteger(MQL_VISUAL_MODE))
+            && !gDrawCurrencyStrengthList.draw(gCurrencyStrengthCalculator)) {
         gLogger.error(__FUNCTION__, "currency strength draw failed");
     }
 
     datetime calculatedAt = TimeCurrent();
 
-    if (calculatedAt <= 0) {
+    if (isTester) {
+        calculatedAt = m5BarTime;
+    } else if (calculatedAt <= 0) {
         calculatedAt = TimeLocal();
     }
 
-    datetime m15BarTime = iTime(_Symbol, PERIOD_M15, 0);
+    datetime m15BarTime = getBarTimeAt(
+        _Symbol,
+        PERIOD_M15,
+        m5BarTime
+    );
+    bool saveDatabase = shouldSaveDatabase(m15BarTime);
+    bool isComplete = (
+        gCurrencyStrengthCalculator.validPairCount
+            == gCurrencyStrengthCalculator.getExpectedPairCount()
+    );
 
-    if (shouldSaveDatabase(m15BarTime)) {
+    if (isTester) {
+        if (!databaseEnabled) {
+            if (isComplete) {
+                return currencyStrengthExecutionSucceeded;
+            }
+
+            return currencyStrengthExecutionNotReady;
+        }
+
+        if (gCurrencyStrengthPersistenceService == NULL
+                || m5BarTime <= 0
+                || m15BarTime <= 0) {
+            return currencyStrengthExecutionFailed;
+        }
+
+        if (!databaseSavePartialRuns && !isComplete) {
+            return currencyStrengthExecutionNotReady;
+        }
+
+        saveDatabase = true;
+    }
+
+    if (saveDatabase) {
+        string activeCalculationVersion = calculationVersion;
+        string sourceMode = liveSourceMode;
+
+        if (isTester) {
+            activeCalculationVersion = testerCalculationVersion;
+            sourceMode = testerSourceMode;
+        }
+
         if (gCurrencyStrengthPersistenceService.save(
             calculatedAt,
+            m5BarTime,
             m15BarTime,
-            calculationVersion,
+            activeCalculationVersion,
+            sourceMode,
             AccountInfoString(ACCOUNT_SERVER),
             AccountInfoInteger(ACCOUNT_LOGIN),
             ChartID(),
             gCurrencyStrengthCalculator
         )) {
             gLastSavedM15BarTime = m15BarTime;
+
+            if (isTester) {
+                gTesterPersistedSnapshotCount++;
+            }
         } else {
             gLogger.error(__FUNCTION__, "currency strength database save failed");
+
+            if (isTester) {
+                return currencyStrengthExecutionFailed;
+            }
         }
     }
 
+    if (isTester) {
+        if (databaseSavePartialRuns && databaseEnabled) {
+            return currencyStrengthExecutionSucceeded;
+        }
+
+        if (isComplete) {
+            return currencyStrengthExecutionSucceeded;
+        }
+
+        return currencyStrengthExecutionNotReady;
+    }
+
     cleanupDatabase(calculatedAt);
+
+    return currencyStrengthExecutionSucceeded;
+}
+
+/**
+ * 指定時刻を含むバーの開始時刻を取得する。
+ *
+ * @param fromSymbolName 対象シンボル名。
+ * @param fromTimeFrame 対象時間足。
+ * @param fromTargetTime 基準時刻。
+ * @return バー開始時刻。取得できない場合は0。
+ */
+datetime getBarTimeAt(
+    const string fromSymbolName,
+    const ENUM_TIMEFRAMES fromTimeFrame,
+    const datetime fromTargetTime
+) {
+    if (fromSymbolName == "" || fromTargetTime <= 0) {
+        return 0;
+    }
+
+    int shift = iBarShift(
+        fromSymbolName,
+        fromTimeFrame,
+        fromTargetTime,
+        true
+    );
+
+    if (shift < 0) {
+        shift = iBarShift(
+            fromSymbolName,
+            fromTimeFrame,
+            fromTargetTime,
+            false
+        );
+    }
+
+    if (shift < 0) {
+        return 0;
+    }
+
+    datetime barTime = iTime(fromSymbolName, fromTimeFrame, shift);
+
+    if (barTime <= 0 || barTime > fromTargetTime) {
+        return 0;
+    }
+
+    return barTime;
 }
 
 /**
@@ -301,7 +753,10 @@ void cleanupDatabase(const datetime fromCalculatedAt) {
     long retentionSeconds = (long)databaseRetentionDays * 86400;
     datetime cutoff = (datetime)((long)fromCalculatedAt - retentionSeconds);
 
-    if (!gCurrencyStrengthPersistenceService.deleteRunsBefore(cutoff)) {
+    if (!gCurrencyStrengthPersistenceService.deleteRunsBefore(
+        cutoff,
+        liveSourceMode
+    )) {
         gLogger.error(__FUNCTION__, "old currency strength run deletion failed");
 
         return;
@@ -315,6 +770,15 @@ void cleanupDatabase(const datetime fromCalculatedAt) {
  */
 void releaseResources() {
     releaseDatabaseResources();
+
+    gFirstTargetM5BarTime = 0;
+    gLastTesterAttemptM5BarTime = 0;
+    gLastProcessedM5BarTime = 0;
+    gTesterWarmUpPreparedAt = 0;
+    gTesterWarmUpAttemptCount = 0;
+    gTesterSkippedSnapshotCount = 0;
+    gTesterPersistedSnapshotCount = 0;
+    gLastSkippedPreparationFailureReason = "";
 
     if (gDrawCurrencyStrengthList != NULL) {
         gDrawCurrencyStrengthList.clear();

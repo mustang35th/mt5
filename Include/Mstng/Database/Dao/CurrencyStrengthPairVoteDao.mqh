@@ -190,6 +190,55 @@ public:
     }
 
     /**
+     * 指定した集計IDの票内訳をすべて削除する。
+     *
+     * @param fromRunId 削除対象の集計ID。
+     * @return 削除処理に成功した場合true。
+     */
+    bool deleteByRunId(const long fromRunId) {
+        if (!this.isDatabaseReady(__FUNCTION__)) {
+            return false;
+        }
+
+        string sql = "DELETE FROM currency_strength_pair_votes ";
+        sql += "WHERE run_id = ?1";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseBind(requestHandle, 0, fromRunId)) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        bool isExecuted = this.executeRequest(
+            requestHandle,
+            __FUNCTION__,
+            "delete pair votes by run id"
+        );
+        DatabaseFinalize(requestHandle);
+
+        return isExecuted;
+    }
+
+    /**
      * 基軸・決済通貨の票を1通貨1行へ展開する確認用ビューを作成する。
      *
      * @return 作成または再作成に成功した場合はtrue。
@@ -210,7 +259,10 @@ public:
         sql += "SELECT v.id AS vote_id,";
         sql += "v.run_id AS run_id,";
         sql += "r.calculated_at AS calculated_at,";
+        sql += "r.m5_bar_time AS m5_bar_time,";
+        sql += "r.m5_bar_time_text AS m5_bar_time_text,";
         sql += "r.m15_bar_time AS m15_bar_time,";
+        sql += "r.source_mode AS source_mode,";
         sql += "v.pair_order AS pair_order,";
         sql += "v.time_frame_order AS time_frame_order,";
         sql += "v.canonical_symbol_name AS canonical_symbol_name,";
@@ -233,7 +285,10 @@ public:
         sql += "SELECT v.id AS vote_id,";
         sql += "v.run_id AS run_id,";
         sql += "r.calculated_at AS calculated_at,";
+        sql += "r.m5_bar_time AS m5_bar_time,";
+        sql += "r.m5_bar_time_text AS m5_bar_time_text,";
         sql += "r.m15_bar_time AS m15_bar_time,";
+        sql += "r.source_mode AS source_mode,";
         sql += "v.pair_order AS pair_order,";
         sql += "v.time_frame_order AS time_frame_order,";
         sql += "v.canonical_symbol_name AS canonical_symbol_name,";
@@ -297,7 +352,7 @@ private:
 
         sql = "UPDATE currency_strength_pair_votes ";
         sql += "SET updated_at_text = ";
-        sql += "strftime('%Y.%m.%d %H:%M:%S', updated_at, 'unixepoch') ";
+        sql += "strftime('%Y.%m.%d %H:%M:%S', updated_at, 'unixepoch', 'localtime') ";
         sql += "WHERE updated_at_text = ''";
 
         return this.executeSql(sql, "pair vote updated at text migration");

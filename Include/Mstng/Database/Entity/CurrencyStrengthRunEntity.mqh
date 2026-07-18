@@ -12,7 +12,7 @@
 /**
  * 通貨強弱集計1回分のデータベースレコード。
  *
- * DatabaseReadBindで読み込む列順にフィールドを定義する。
+ * DAOが保存する論理列順にフィールドを定義する。
  */
 struct CurrencyStrengthRunEntity {
     /** 集計ID。 */
@@ -21,11 +21,20 @@ struct CurrencyStrengthRunEntity {
     /** 集計時刻。 */
     datetime calculatedAt;
 
+    /** 集計基準となるM5バー時刻。 */
+    datetime m5BarTime;
+
+    /** 集計基準となるM5バー時刻表示文字列。 */
+    string m5BarTimeText;
+
     /** 集計基準となるM15バー時刻。 */
     datetime m15BarTime;
 
     /** 集計ルールのバージョン。 */
     string calculationVersion;
+
+    /** 集計実行モード。LIVE、TESTERまたはLEGACY。 */
+    string sourceMode;
 
     /** 集計元の取引サーバー名。 */
     string sourceServer;
