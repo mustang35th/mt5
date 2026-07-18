@@ -37,10 +37,15 @@ public:
     CurrencyStrengthCalculator() {
         this.logger.setLevel(LOG_INFO);
         this.validPairCount = 0;
+        int symbolCount = this.symbolNameInfoAll.size();
         ArrayResize(
             this.resolvedSymbolNames,
-            this.symbolNameInfoAll.size()
+            symbolCount
         );
+
+        for (int i = 0; i < symbolCount; i++) {
+            this.resolvedSymbolNames[i] = "";
+        }
 
         this.addCurrency(ConstantCurrency::USD);
         this.addCurrency(ConstantCurrency::JPY);
@@ -88,11 +93,11 @@ public:
             string canonicalSymbolName = symbolNameInfo.symbolName;
             string symbolName = this.resolvedSymbolNames[i];
 
-            if (symbolName == "") {
+            if (StringLen(symbolName) == 0) {
                 symbolName = this.resolveSymbolName(canonicalSymbolName);
             }
 
-            if (symbolName == "") {
+            if (StringLen(symbolName) == 0) {
                 this.logger.error(
                     __FUNCTION__,
                     "symbol resolution failed: " + canonicalSymbolName

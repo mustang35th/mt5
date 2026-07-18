@@ -1,0 +1,894 @@
+//+------------------------------------------------------------------+
+//|                   CurrencyStrengthCalculationSmokeTest.mq5      |
+//|                                  Copyright 2026, MetaQuotes Ltd. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2026, MetaQuotes Ltd."
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+#property script_show_inputs
+
+#include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Log\Logger.mqh>
+#include <Mstng\Oscillator\OscillatorHandleManager.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
+#include <Mstng\Strength\CurrencyStrengthInfo.mqh>
+#include <Mstng\Strength\CurrencyStrengthPairVote.mqh>
+#include <Mstng\Util\StringUtil.mqh>
+#include <Mstng\Util\TimeUtil.mqh>
+
+/** 全28通貨ペアが準備されるまでの待機上限秒。 */
+input int timeoutSeconds = 180;
+
+/** 集計の再試行間隔ミリ秒。 */
+input int retryIntervalMilliseconds = 1000;
+
+/** 1票ごとの詳細を出力する場合true。 */
+input bool printVoteDetails = false;
+
+/**
+ * bool値をログ用文字列へ変換する。
+ *
+ * @param fromValue 変換対象。
+ * @return trueまたはfalse。
+ */
+string getBooleanText(const bool fromValue) {
+    if (fromValue) {
+        return "true";
+    }
+
+    return "false";
+}
+
+/**
+ * isBuyを売買方向文字列へ変換する。
+ *
+ * @param fromIsBuy BUY判定の場合true。
+ * @return BUYまたはSELL。
+ */
+string getDirectionText(const bool fromIsBuy) {
+    if (fromIsBuy) {
+        return "BUY";
+    }
+
+    return "SELL";
+}
+
+/**
+ * 通貨コードに対応する集計番号を取得する。
+ *
+ * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromCurrencyName 通貨コード。
+ * @return 集計番号。見つからない場合は-1。
+ */
+int findCurrencyIndex(
+    CurrencyStrengthCalculator &fromCalculator,
+    const string fromCurrencyName
+) {
+    for (int i = 0; i < fromCalculator.size(); i++) {
+        CurrencyStrengthInfo *currencyStrengthInfo = fromCalculator.getInfo(i);
+
+        if (currencyStrengthInfo == NULL) {
+            continue;
+        }
+
+        if (currencyStrengthInfo.currencyName == fromCurrencyName) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+/**
+ * 全28通貨ペアの実判定が揃うまで集計を再試行する。
+ *
+ * @param fromOscillatorHandleManager オシレーターハンドル管理クラス。
+ * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromTimeoutSeconds 待機上限秒。
+ * @param fromRetryIntervalMilliseconds 再試行間隔ミリ秒。
+ * @param fromLogger ロガー。
+ * @return 28通貨ペア・112票が揃った場合true。
+ */
+bool calculateWithRetry(
+    OscillatorHandleManager *fromOscillatorHandleManager,
+    CurrencyStrengthCalculator &fromCalculator,
+    const int fromTimeoutSeconds,
+    const int fromRetryIntervalMilliseconds,
+    Logger &fromLogger
+) {
+    uint startTickCount = GetTickCount();
+    uint timeoutMilliseconds = (uint)(fromTimeoutSeconds * 1000);
+    int attemptCount = 0;
+
+    while (!IsStopped()) {
+        attemptCount++;
+
+        if (!fromCalculator.calculate(fromOscillatorHandleManager)) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat("calculate failed. attempt=%d", attemptCount)
+            );
+
+            return false;
+        }
+
+        int expectedPairCount = fromCalculator.getExpectedPairCount();
+        int expectedVoteCount = expectedPairCount * fromCalculator.getTimeFrameCount();
+        int validPairCount = fromCalculator.validPairCount;
+        int voteCount = fromCalculator.getPairVoteCount();
+        uint elapsedMilliseconds = GetTickCount() - startTickCount;
+
+        if (validPairCount == expectedPairCount
+                && voteCount == expectedVoteCount) {
+            fromLogger.info(
+                __FUNCTION__,
+                StringFormat(
+                    "all pairs ready. attempt=%d elapsed=%.1f sec pairs=%d votes=%d",
+                    attemptCount,
+                    (double)elapsedMilliseconds / 1000.0,
+                    validPairCount,
+                    voteCount
+                )
+            );
+
+            return true;
+        }
+
+        fromLogger.info(
+            __FUNCTION__,
+            StringFormat(
+                "waiting for history and indicators. attempt=%d elapsed=%.1f sec pairs=%d/%d votes=%d/%d",
+                attemptCount,
+                (double)elapsedMilliseconds / 1000.0,
+                validPairCount,
+                expectedPairCount,
+                voteCount,
+                expectedVoteCount
+            )
+        );
+
+        if (elapsedMilliseconds >= timeoutMilliseconds) {
+            break;
+        }
+
+        uint remainingMilliseconds = timeoutMilliseconds - elapsedMilliseconds;
+        int sleepMilliseconds = fromRetryIntervalMilliseconds;
+
+        if ((uint)sleepMilliseconds > remainingMilliseconds) {
+            sleepMilliseconds = (int)remainingMilliseconds;
+        }
+
+        if (sleepMilliseconds > 0) {
+            Sleep(sleepMilliseconds);
+        }
+    }
+
+    if (IsStopped()) {
+        fromLogger.warn(__FUNCTION__, "script stopped while waiting for data.");
+    } else {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "timeout. pairs=%d/%d votes=%d/%d",
+                fromCalculator.validPairCount,
+                fromCalculator.getExpectedPairCount(),
+                fromCalculator.getPairVoteCount(),
+                fromCalculator.getExpectedPairCount()
+                    * fromCalculator.getTimeFrameCount()
+            )
+        );
+    }
+
+    return false;
+}
+
+/**
+ * 実際のisBuy判定を通貨ペア単位で出力する。
+ *
+ * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromPrintVoteDetails 1票ごとの詳細を出力する場合true。
+ * @param fromLogger ロガー。
+ */
+void printPairVotes(
+    CurrencyStrengthCalculator &fromCalculator,
+    const bool fromPrintVoteDetails,
+    Logger &fromLogger
+) {
+    string pairSummary = "";
+    string previousCanonicalSymbolName = "";
+    int voteCount = fromCalculator.getPairVoteCount();
+
+    for (int i = 0; i < voteCount; i++) {
+        CurrencyStrengthPairVote pairVote;
+
+        if (!fromCalculator.getPairVote(i, pairVote)) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat("getPairVote failed. voteIndex=%d", i)
+            );
+
+            continue;
+        }
+
+        if (pairVote.canonicalSymbolName != previousCanonicalSymbolName) {
+            if (pairSummary != "") {
+                fromLogger.info(__FUNCTION__, pairSummary);
+            }
+
+            previousCanonicalSymbolName = pairVote.canonicalSymbolName;
+            pairSummary = StringFormat(
+                "pairOrder=%d pair=%s resolved=%s",
+                pairVote.pairOrder,
+                pairVote.canonicalSymbolName,
+                pairVote.resolvedSymbolName
+            );
+        }
+
+        pairSummary += StringFormat(
+            " %s=%s(isBuy=%s,oscillatorCount=%s)",
+            TimeUtil::convertTimeFrameToString(pairVote.timeFrame),
+            getDirectionText(pairVote.isBuy),
+            getBooleanText(pairVote.isBuy),
+            StringUtil::addSign(pairVote.oscillatorCount)
+        );
+
+        if (fromPrintVoteDetails) {
+            fromLogger.info(
+                __FUNCTION__,
+                StringFormat(
+                    "vote pair=%s timeFrame=%s barTime=%s isBuy=%s direction=%s oscillatorCount=%s base=%s(%s -> %s) quote=%s(%s -> %s)",
+                    pairVote.canonicalSymbolName,
+                    TimeUtil::convertTimeFrameToString(pairVote.timeFrame),
+                    TimeToString(pairVote.barTime, TIME_DATE | TIME_SECONDS),
+                    getBooleanText(pairVote.isBuy),
+                    getDirectionText(pairVote.isBuy),
+                    StringUtil::addSign(pairVote.oscillatorCount),
+                    pairVote.baseCurrency,
+                    StringUtil::addSign(pairVote.baseScore),
+                    StringUtil::addSign(pairVote.baseScoreAfter),
+                    pairVote.quoteCurrency,
+                    StringUtil::addSign(0 - pairVote.baseScore),
+                    StringUtil::addSign(pairVote.quoteScoreAfter)
+                )
+            );
+        }
+    }
+
+    if (pairSummary != "") {
+        fromLogger.info(__FUNCTION__, pairSummary);
+    }
+}
+
+/**
+ * 集計できなかった通貨ペアを出力する。
+ *
+ * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromLogger ロガー。
+ */
+void printMissingPairs(
+    CurrencyStrengthCalculator &fromCalculator,
+    Logger &fromLogger
+) {
+    bool completedPairOrders[28];
+    SymbolNameInfoAll symbolNameInfoAll;
+
+    for (int i = 0; i < 28; i++) {
+        completedPairOrders[i] = false;
+    }
+
+    for (int i = 0; i < fromCalculator.getPairVoteCount(); i++) {
+        CurrencyStrengthPairVote pairVote;
+
+        if (!fromCalculator.getPairVote(i, pairVote)) {
+            continue;
+        }
+
+        if (pairVote.pairOrder >= 0 && pairVote.pairOrder < 28) {
+            completedPairOrders[pairVote.pairOrder] = true;
+        }
+    }
+
+    string missingPairs = "";
+
+    for (int i = 0; i < 28; i++) {
+        if (completedPairOrders[i]) {
+            continue;
+        }
+
+        SymbolNameInfo *symbolNameInfo = symbolNameInfoAll.getSymbolNameInfo(i);
+
+        if (symbolNameInfo == NULL) {
+            continue;
+        }
+
+        if (missingPairs != "") {
+            missingPairs += ",";
+        }
+
+        missingPairs += symbolNameInfo.symbolName;
+    }
+
+    if (missingPairs != "") {
+        fromLogger.warn(__FUNCTION__, "missing pairs=" + missingPairs);
+    }
+}
+
+/**
+ * 通貨別の未正規化集計結果を出力する。
+ *
+ * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromLogger ロガー。
+ */
+void printCurrencyResults(
+    CurrencyStrengthCalculator &fromCalculator,
+    Logger &fromLogger
+) {
+    for (int i = 0; i < fromCalculator.size(); i++) {
+        CurrencyStrengthInfo *currencyStrengthInfo = fromCalculator.getInfo(i);
+
+        if (currencyStrengthInfo == NULL) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat("currency info is NULL. currencyIndex=%d", i)
+            );
+
+            continue;
+        }
+
+        string resultText = "currency=" + currencyStrengthInfo.currencyName;
+
+        for (int j = 0; j < fromCalculator.getTimeFrameCount(); j++) {
+            resultText += StringFormat(
+                " %s=%s(samples=%d)",
+                TimeUtil::convertTimeFrameToString(fromCalculator.getTimeFrame(j)),
+                StringUtil::addSign((int)currencyStrengthInfo.getScore(j)),
+                currencyStrengthInfo.getSampleCount(j)
+            );
+        }
+
+        resultText += StringFormat(
+            " total=%s(samples=%d)",
+            StringUtil::addSign((int)currencyStrengthInfo.getTotalScore()),
+            currencyStrengthInfo.getTotalSampleCount()
+        );
+        fromLogger.info(__FUNCTION__, resultText);
+    }
+
+    fromLogger.info(
+        __FUNCTION__,
+        "pair signal=" + fromCalculator.getPairSignalText()
+    );
+}
+
+/**
+ * 28通貨ペア・112票の内容と累積値を検証する。
+ *
+ * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromLogger ロガー。
+ * @return 全票が期待値どおりの場合true。
+ */
+bool validatePairVotes(
+    CurrencyStrengthCalculator &fromCalculator,
+    Logger &fromLogger
+) {
+    bool isValid = true;
+    int timeFrameCount = fromCalculator.getTimeFrameCount();
+    int expectedPairCount = fromCalculator.getExpectedPairCount();
+    int expectedVoteCount = expectedPairCount * timeFrameCount;
+    int currencyCount = fromCalculator.size();
+    int runningScores[8][4];
+    int runningSampleCounts[8][4];
+    SymbolNameInfoAll symbolNameInfoAll;
+
+    if (expectedPairCount != 28
+            || timeFrameCount != 4
+            || currencyCount != 8) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "definition count mismatch. expectedPairs=%d timeFrames=%d currencies=%d",
+                expectedPairCount,
+                timeFrameCount,
+                currencyCount
+            )
+        );
+
+        return false;
+    }
+
+    if (fromCalculator.validPairCount != expectedPairCount
+            || fromCalculator.getPairVoteCount() != expectedVoteCount) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "result count mismatch. validPairs=%d/%d votes=%d/%d",
+                fromCalculator.validPairCount,
+                expectedPairCount,
+                fromCalculator.getPairVoteCount(),
+                expectedVoteCount
+            )
+        );
+
+        return false;
+    }
+
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 4; j++) {
+            runningScores[i][j] = 0;
+            runningSampleCounts[i][j] = 0;
+        }
+    }
+
+    for (int i = 0; i < fromCalculator.getPairVoteCount(); i++) {
+        CurrencyStrengthPairVote pairVote;
+
+        if (!fromCalculator.getPairVote(i, pairVote)) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat("getPairVote failed. voteIndex=%d", i)
+            );
+            isValid = false;
+
+            continue;
+        }
+
+        int expectedPairOrder = i / timeFrameCount;
+        int expectedTimeFrameOrder = i % timeFrameCount;
+        SymbolNameInfo *expectedSymbolNameInfo =
+            symbolNameInfoAll.getSymbolNameInfo(expectedPairOrder);
+
+        if (pairVote.pairOrder != expectedPairOrder
+                || pairVote.timeFrameOrder != expectedTimeFrameOrder) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "vote order mismatch. voteIndex=%d pairOrder=%d/%d timeFrameOrder=%d/%d",
+                    i,
+                    pairVote.pairOrder,
+                    expectedPairOrder,
+                    pairVote.timeFrameOrder,
+                    expectedTimeFrameOrder
+                )
+            );
+            isValid = false;
+        }
+
+        if (expectedSymbolNameInfo == NULL
+                || pairVote.canonicalSymbolName != expectedSymbolNameInfo.symbolName) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "canonical symbol mismatch. voteIndex=%d canonical=%s",
+                    i,
+                    pairVote.canonicalSymbolName
+                )
+            );
+            isValid = false;
+        }
+
+        if (pairVote.timeFrame != fromCalculator.getTimeFrame(expectedTimeFrameOrder)
+                || pairVote.barTime <= 0
+                || StringLen(pairVote.resolvedSymbolName) == 0) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "market data mismatch. voteIndex=%d resolved=%s timeFrame=%s barTime=%s",
+                    i,
+                    pairVote.resolvedSymbolName,
+                    TimeUtil::convertTimeFrameToString(pairVote.timeFrame),
+                    TimeToString(pairVote.barTime, TIME_DATE | TIME_SECONDS)
+                )
+            );
+            isValid = false;
+        }
+
+        string expectedBaseCurrency = "";
+        string expectedQuoteCurrency = "";
+
+        if (!StringUtil::splitCurrencyPairName(
+                pairVote.canonicalSymbolName,
+                expectedBaseCurrency,
+                expectedQuoteCurrency
+            )
+                || pairVote.baseCurrency != expectedBaseCurrency
+                || pairVote.quoteCurrency != expectedQuoteCurrency) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "currency split mismatch. voteIndex=%d pair=%s base=%s quote=%s",
+                    i,
+                    pairVote.canonicalSymbolName,
+                    pairVote.baseCurrency,
+                    pairVote.quoteCurrency
+                )
+            );
+            isValid = false;
+        }
+
+        if (StringLen(pairVote.resolvedSymbolName) > 0) {
+            string resolvedBaseCurrency = "";
+            string resolvedQuoteCurrency = "";
+            bool isResolvedBaseCurrencyRead = SymbolInfoString(
+                pairVote.resolvedSymbolName,
+                SYMBOL_CURRENCY_BASE,
+                resolvedBaseCurrency
+            );
+            bool isResolvedQuoteCurrencyRead = SymbolInfoString(
+                pairVote.resolvedSymbolName,
+                SYMBOL_CURRENCY_PROFIT,
+                resolvedQuoteCurrency
+            );
+
+            if (!isResolvedBaseCurrencyRead
+                    || !isResolvedQuoteCurrencyRead
+                    || resolvedBaseCurrency != expectedBaseCurrency
+                    || resolvedQuoteCurrency != expectedQuoteCurrency) {
+                fromLogger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "resolved symbol currency mismatch. voteIndex=%d pair=%s resolved=%s base=%s/%s quote=%s/%s",
+                        i,
+                        pairVote.canonicalSymbolName,
+                        pairVote.resolvedSymbolName,
+                        resolvedBaseCurrency,
+                        expectedBaseCurrency,
+                        resolvedQuoteCurrency,
+                        expectedQuoteCurrency
+                    )
+                );
+                isValid = false;
+            }
+        }
+
+        int expectedBaseScore = -1;
+
+        if (pairVote.isBuy) {
+            expectedBaseScore = 1;
+        }
+
+        if (pairVote.baseScore != expectedBaseScore) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "base score mismatch. voteIndex=%d isBuy=%s baseScore=%d",
+                    i,
+                    getBooleanText(pairVote.isBuy),
+                    pairVote.baseScore
+                )
+            );
+            isValid = false;
+        }
+
+        bool isOscillatorCountValid = false;
+
+        if (pairVote.isBuy
+                && (pairVote.oscillatorCount == 2
+                    || pairVote.oscillatorCount == 3)) {
+            isOscillatorCountValid = true;
+        }
+
+        if (!pairVote.isBuy
+                && (pairVote.oscillatorCount == -3
+                    || pairVote.oscillatorCount == -2)) {
+            isOscillatorCountValid = true;
+        }
+
+        if (!isOscillatorCountValid) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "oscillator count mismatch. voteIndex=%d isBuy=%s oscillatorCount=%d",
+                    i,
+                    getBooleanText(pairVote.isBuy),
+                    pairVote.oscillatorCount
+                )
+            );
+            isValid = false;
+        }
+
+        int baseCurrencyIndex = findCurrencyIndex(
+            fromCalculator,
+            pairVote.baseCurrency
+        );
+        int quoteCurrencyIndex = findCurrencyIndex(
+            fromCalculator,
+            pairVote.quoteCurrency
+        );
+
+        if (baseCurrencyIndex < 0 || quoteCurrencyIndex < 0
+                || expectedTimeFrameOrder < 0
+                || expectedTimeFrameOrder >= 4) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "currency index mismatch. voteIndex=%d baseIndex=%d quoteIndex=%d timeFrameOrder=%d",
+                    i,
+                    baseCurrencyIndex,
+                    quoteCurrencyIndex,
+                    expectedTimeFrameOrder
+                )
+            );
+            isValid = false;
+
+            continue;
+        }
+
+        runningScores[baseCurrencyIndex][expectedTimeFrameOrder] +=
+            pairVote.baseScore;
+        runningScores[quoteCurrencyIndex][expectedTimeFrameOrder] +=
+            0 - pairVote.baseScore;
+        runningSampleCounts[baseCurrencyIndex][expectedTimeFrameOrder]++;
+        runningSampleCounts[quoteCurrencyIndex][expectedTimeFrameOrder]++;
+
+        if (pairVote.baseScoreAfter
+                    != runningScores[baseCurrencyIndex][expectedTimeFrameOrder]
+                || pairVote.quoteScoreAfter
+                    != runningScores[quoteCurrencyIndex][expectedTimeFrameOrder]) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "running score mismatch. voteIndex=%d baseAfter=%d/%d quoteAfter=%d/%d",
+                    i,
+                    pairVote.baseScoreAfter,
+                    runningScores[baseCurrencyIndex][expectedTimeFrameOrder],
+                    pairVote.quoteScoreAfter,
+                    runningScores[quoteCurrencyIndex][expectedTimeFrameOrder]
+                )
+            );
+            isValid = false;
+        }
+    }
+
+    for (int i = 0; i < currencyCount; i++) {
+        CurrencyStrengthInfo *currencyStrengthInfo = fromCalculator.getInfo(i);
+
+        if (currencyStrengthInfo == NULL) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat("currency info is NULL. currencyIndex=%d", i)
+            );
+            isValid = false;
+
+            continue;
+        }
+
+        for (int j = 0; j < timeFrameCount; j++) {
+            if ((int)currencyStrengthInfo.getScore(j) != runningScores[i][j]
+                    || currencyStrengthInfo.getSampleCount(j)
+                        != runningSampleCounts[i][j]) {
+                fromLogger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "recalculation mismatch. currency=%s timeFrame=%s score=%d/%d samples=%d/%d",
+                        currencyStrengthInfo.currencyName,
+                        TimeUtil::convertTimeFrameToString(
+                            fromCalculator.getTimeFrame(j)
+                        ),
+                        (int)currencyStrengthInfo.getScore(j),
+                        runningScores[i][j],
+                        currencyStrengthInfo.getSampleCount(j),
+                        runningSampleCounts[i][j]
+                    )
+                );
+                isValid = false;
+            }
+        }
+    }
+
+    return isValid;
+}
+
+/**
+ * 通貨別集計の票数とゼロサムを検証する。
+ *
+ * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromLogger ロガー。
+ * @return 全通貨の集計値が期待どおりの場合true。
+ */
+bool validateCurrencyResults(
+    CurrencyStrengthCalculator &fromCalculator,
+    Logger &fromLogger
+) {
+    if (fromCalculator.getTimeFrameCount() != 4
+            || fromCalculator.size() != 8) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "definition count mismatch. timeFrames=%d currencies=%d",
+                fromCalculator.getTimeFrameCount(),
+                fromCalculator.size()
+            )
+        );
+
+        return false;
+    }
+
+    bool isValid = true;
+    int totalScore = 0;
+    int totalSampleCount = 0;
+    int timeFrameScores[4];
+
+    for (int j = 0; j < 4; j++) {
+        timeFrameScores[j] = 0;
+    }
+
+    for (int i = 0; i < fromCalculator.size(); i++) {
+        CurrencyStrengthInfo *currencyStrengthInfo = fromCalculator.getInfo(i);
+
+        if (currencyStrengthInfo == NULL) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat("currency info is NULL. currencyIndex=%d", i)
+            );
+            isValid = false;
+
+            continue;
+        }
+
+        int calculatedTotalScore = 0;
+        int calculatedTotalSampleCount = 0;
+
+        for (int j = 0; j < fromCalculator.getTimeFrameCount(); j++) {
+            int score = (int)currencyStrengthInfo.getScore(j);
+            int sampleCount = currencyStrengthInfo.getSampleCount(j);
+            calculatedTotalScore += score;
+            calculatedTotalSampleCount += sampleCount;
+            timeFrameScores[j] += score;
+
+            if (sampleCount != 7) {
+                fromLogger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "sample count mismatch. currency=%s timeFrame=%s samples=%d/7",
+                        currencyStrengthInfo.currencyName,
+                        TimeUtil::convertTimeFrameToString(
+                            fromCalculator.getTimeFrame(j)
+                        ),
+                        sampleCount
+                    )
+                );
+                isValid = false;
+            }
+        }
+
+        if ((int)currencyStrengthInfo.getTotalScore() != calculatedTotalScore
+                || currencyStrengthInfo.getTotalSampleCount()
+                    != calculatedTotalSampleCount
+                || calculatedTotalSampleCount != 28) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "currency total mismatch. currency=%s score=%d/%d samples=%d/%d",
+                    currencyStrengthInfo.currencyName,
+                    (int)currencyStrengthInfo.getTotalScore(),
+                    calculatedTotalScore,
+                    currencyStrengthInfo.getTotalSampleCount(),
+                    28
+                )
+            );
+            isValid = false;
+        }
+
+        totalScore += calculatedTotalScore;
+        totalSampleCount += calculatedTotalSampleCount;
+    }
+
+    for (int j = 0; j < fromCalculator.getTimeFrameCount(); j++) {
+        if (timeFrameScores[j] != 0) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "time frame score is not zero. timeFrame=%s score=%d",
+                    TimeUtil::convertTimeFrameToString(
+                        fromCalculator.getTimeFrame(j)
+                    ),
+                    timeFrameScores[j]
+                )
+            );
+            isValid = false;
+        }
+    }
+
+    if (totalScore != 0 || totalSampleCount != 224) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "all currency total mismatch. score=%d/0 samples=%d/224",
+                totalScore,
+                totalSampleCount
+            )
+        );
+        isValid = false;
+    }
+
+    return isValid;
+}
+
+/**
+ * 28通貨ペアの実isBuy判定動作確認を実行する。
+ */
+void OnStart() {
+    Logger logger(LOG_INFO);
+
+    if (MQLInfoInteger(MQL_TESTER)) {
+        logger.error(
+            __FUNCTION__,
+            "Run this script on an online chart, not in Strategy Tester."
+        );
+
+        return;
+    }
+
+    if (timeoutSeconds <= 0 || retryIntervalMilliseconds <= 0) {
+        logger.error(
+            __FUNCTION__,
+            StringFormat(
+                "invalid inputs. timeoutSeconds=%d retryIntervalMilliseconds=%d",
+                timeoutSeconds,
+                retryIntervalMilliseconds
+            )
+        );
+
+        return;
+    }
+
+    if (!TerminalInfoInteger(TERMINAL_CONNECTED)) {
+        logger.error(
+            __FUNCTION__,
+            "Terminal is not connected. Connect to the broker before running."
+        );
+
+        return;
+    }
+
+    logger.info(
+        __FUNCTION__,
+        "Currency strength calculation smoke test started. current bar shift=0."
+    );
+
+    OscillatorHandleManager oscillatorHandleManager(PERIOD_M15);
+    CurrencyStrengthCalculator calculator;
+    bool isComplete = calculateWithRetry(
+        GetPointer(oscillatorHandleManager),
+        calculator,
+        timeoutSeconds,
+        retryIntervalMilliseconds,
+        logger
+    );
+
+    printPairVotes(calculator, printVoteDetails, logger);
+    printCurrencyResults(calculator, logger);
+
+    if (!isComplete) {
+        printMissingPairs(calculator, logger);
+        logger.error(
+            __FUNCTION__,
+            "Currency strength calculation smoke test FAILED: all 28 pairs were not ready."
+        );
+
+        return;
+    }
+
+    bool arePairVotesValid = validatePairVotes(calculator, logger);
+    bool areCurrencyResultsValid = validateCurrencyResults(calculator, logger);
+
+    if (!arePairVotesValid || !areCurrencyResultsValid) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength calculation smoke test FAILED: validation error."
+        );
+
+        return;
+    }
+
+    logger.info(
+        __FUNCTION__,
+        StringFormat(
+            "Currency strength calculation smoke test PASSED. pairs=%d votes=%d currencies=%d",
+            calculator.validPairCount,
+            calculator.getPairVoteCount(),
+            calculator.size()
+        )
+    );
+}
