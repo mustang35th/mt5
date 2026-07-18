@@ -65,7 +65,7 @@ public:
     }
 
     /**
-     * D1、H4、H1、M15の売買方向を各1票として通貨強弱を集計する。
+     * MN1、W1、D1、H4、H1、M15の売買方向を各1票として通貨強弱を集計する。
      *
      * 1通貨ペア内の全時間足を取得できた場合だけ票へ反映する。
      *
@@ -153,10 +153,10 @@ public:
                 continue;
             }
 
-            int pairScores[4];
-            bool pairIsBuyList[4];
-            int pairOscillatorCounts[4];
-            datetime pairBarTimes[4];
+            int pairScores[6];
+            bool pairIsBuyList[6];
+            int pairOscillatorCounts[6];
+            datetime pairBarTimes[6];
             bool isPairValid = true;
 
             for (int j = 0; j < this.getTimeFrameCount(); j++) {
@@ -306,24 +306,28 @@ public:
      * @return 時間足数。
      */
     int getTimeFrameCount() {
-        return 4;
+        return 6;
     }
 
     /**
      * 指定番号の集計対象時間足を取得する。
      *
      * @param fromIndex 時間足番号。
-     * @return D1、H4、H1、M15のいずれか。範囲外の場合PERIOD_CURRENT。
+     * @return MN1、W1、D1、H4、H1、M15のいずれか。範囲外の場合PERIOD_CURRENT。
      */
     ENUM_TIMEFRAMES getTimeFrame(int fromIndex) {
         switch (fromIndex) {
             case 0:
-                return PERIOD_D1;
+                return PERIOD_MN1;
             case 1:
-                return PERIOD_H4;
+                return PERIOD_W1;
             case 2:
-                return PERIOD_H1;
+                return PERIOD_D1;
             case 3:
+                return PERIOD_H4;
+            case 4:
+                return PERIOD_H1;
+            case 5:
                 return PERIOD_M15;
         }
 
@@ -499,7 +503,7 @@ private:
     /**
      * 指定ペアの価格系列と3本のストキャスハンドルを準備する。
      *
-     * D1、H4、H1、M15の全ハンドルを一括生成しておくことで、
+     * MN1、W1、D1、H4、H1、M15の全ハンドルを一括生成しておくことで、
      * 最初に未準備だったハンドルだけがタイマーごとに順次生成されることを防ぐ。
      *
      * @param fromSymbolName 準備対象の実シンボル名。
@@ -514,7 +518,7 @@ private:
             return false;
         }
 
-        ENUM_TIMEFRAMES timeFrames[4];
+        ENUM_TIMEFRAMES timeFrames[6];
 
         for (int i = 0; i < this.getTimeFrameCount(); i++) {
             timeFrames[i] = this.getTimeFrame(i);

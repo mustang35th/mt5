@@ -70,6 +70,10 @@ public:
             return false;
         }
 
+        if (!this.migrateTimeFrameOrder()) {
+            return false;
+        }
+
         if (!this.migrateUpdatedAtColumns()) {
             return false;
         }
@@ -345,6 +349,8 @@ private:
 
         string sql = "UPDATE currency_strength_pair_votes ";
         sql += "SET time_frame_text = CASE time_frame ";
+        sql += StringFormat("WHEN %d THEN 'MN1' ", (int)PERIOD_MN1);
+        sql += StringFormat("WHEN %d THEN 'W1' ", (int)PERIOD_W1);
         sql += StringFormat("WHEN %d THEN 'D1' ", (int)PERIOD_D1);
         sql += StringFormat("WHEN %d THEN 'H4' ", (int)PERIOD_H4);
         sql += StringFormat("WHEN %d THEN 'H1' ", (int)PERIOD_H1);
@@ -362,6 +368,120 @@ private:
         sql += "WHERE bar_time_text = ''";
 
         return this.executeSql(sql, "pair vote bar time text migration");
+    }
+
+    /**
+     * 既存4時間足データの集計順を6時間足の共通順へ移行する。
+     *
+     * UNIQUE制約との衝突を避けるため一時的な負数へ退避してから、
+     * D1、H4、H1、M15を2、3、4、5へ移動する。
+     *
+     * @return 移行に成功した場合はtrue。
+     */
+    bool migrateTimeFrameOrder() {
+        ResetLastError();
+
+        if (!DatabaseTransactionBegin(this.databaseHandle)) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseTransactionBegin failed. error=%d",
+                    GetLastError()
+                )
+            );
+
+            return false;
+        }
+
+        string sql = "UPDATE currency_strength_pair_votes ";
+        sql += "SET time_frame_order = -100 - time_frame_order WHERE ";
+        sql += StringFormat(
+            "(time_frame_order = 0 AND time_frame = %d) ",
+            (int)PERIOD_D1
+        );
+        sql += StringFormat(
+            "OR (time_frame_order = 1 AND time_frame = %d) ",
+            (int)PERIOD_H4
+        );
+        sql += StringFormat(
+            "OR (time_frame_order = 2 AND time_frame = %d) ",
+            (int)PERIOD_H1
+        );
+        sql += StringFormat(
+            "OR (time_frame_order = 3 AND time_frame = %d)",
+            (int)PERIOD_M15
+        );
+
+        if (!this.executeSql(sql, "pair vote time frame order staging")) {
+            this.rollbackTimeFrameOrderMigration();
+
+            return false;
+        }
+
+        sql = "UPDATE currency_strength_pair_votes ";
+        sql += "SET time_frame_order = CASE time_frame ";
+        sql += StringFormat("WHEN %d THEN 2 ", (int)PERIOD_D1);
+        sql += StringFormat("WHEN %d THEN 3 ", (int)PERIOD_H4);
+        sql += StringFormat("WHEN %d THEN 4 ", (int)PERIOD_H1);
+        sql += StringFormat("WHEN %d THEN 5 ", (int)PERIOD_M15);
+        sql += "ELSE time_frame_order END WHERE ";
+        sql += StringFormat(
+            "(time_frame_order = -100 AND time_frame = %d) ",
+            (int)PERIOD_D1
+        );
+        sql += StringFormat(
+            "OR (time_frame_order = -101 AND time_frame = %d) ",
+            (int)PERIOD_H4
+        );
+        sql += StringFormat(
+            "OR (time_frame_order = -102 AND time_frame = %d) ",
+            (int)PERIOD_H1
+        );
+        sql += StringFormat(
+            "OR (time_frame_order = -103 AND time_frame = %d)",
+            (int)PERIOD_M15
+        );
+
+        if (!this.executeSql(sql, "pair vote time frame order migration")) {
+            this.rollbackTimeFrameOrderMigration();
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseTransactionCommit(this.databaseHandle)) {
+            int commitErrorCode = GetLastError();
+            this.rollbackTimeFrameOrderMigration();
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseTransactionCommit failed. error=%d",
+                    commitErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 時間足順移行トランザクションをロールバックする。
+     */
+    void rollbackTimeFrameOrderMigration() {
+        ResetLastError();
+
+        if (!DatabaseTransactionRollback(this.databaseHandle)) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseTransactionRollback failed. error=%d",
+                    GetLastError()
+                )
+            );
+        }
     }
 
     /**

@@ -50,7 +50,7 @@ public:
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
-        this.panelWidth = 448;
+        this.panelWidth = 564;
         this.headerHeight = 25;
         this.columnHeaderYDistance = 39;
         this.separatorYDistance = 58;
@@ -547,7 +547,7 @@ private:
             this.getScoreColor(totalScore)
         );
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 6; i++) {
             int sampleCount = fromCurrencyStrengthInfo.getSampleCount(i);
             double score = fromCurrencyStrengthInfo.getScore(i);
             this.setCell(
@@ -560,7 +560,7 @@ private:
 
         this.setCell(
             fromRowIndex,
-            6,
+            8,
             this.formatScore(
                 totalScore,
                 fromCurrencyStrengthInfo.getTotalSampleCount()
@@ -577,7 +577,7 @@ private:
 
         this.setCell(
             fromRowIndex,
-            7,
+            9,
             IntegerToString(coverage),
             coverageColor
         );
@@ -739,7 +739,7 @@ private:
      * @return 全列数。
      */
     int getColumnCount() {
-        return 8;
+        return 10;
     }
 
     /**
@@ -763,9 +763,13 @@ private:
             case 5:
                 return 270;
             case 6:
-                return 334;
+                return 328;
             case 7:
-                return 410;
+                return 386;
+            case 8:
+                return 450;
+            case 9:
+                return 526;
         }
 
         return 14;
@@ -790,17 +794,17 @@ private:
             return "CCY";
         }
 
-        if (2 <= fromColumnIndex && fromColumnIndex <= 5) {
+        if (2 <= fromColumnIndex && fromColumnIndex <= 7) {
             return TimeUtil::convertTimeFrameToString(
                 fromCalculator.getTimeFrame(fromColumnIndex - 2)
             );
         }
 
-        if (fromColumnIndex == 6) {
+        if (fromColumnIndex == 8) {
             return "TOTAL";
         }
 
-        if (fromColumnIndex == 7) {
+        if (fromColumnIndex == 9) {
             return "N";
         }
 

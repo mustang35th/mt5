@@ -41,11 +41,15 @@ public:
         sql += "id INTEGER PRIMARY KEY AUTOINCREMENT,";
         sql += "run_id INTEGER NOT NULL,";
         sql += "currency_name TEXT NOT NULL,";
+        sql += "mn1_score INTEGER NOT NULL,";
+        sql += "w1_score INTEGER NOT NULL,";
         sql += "d1_score INTEGER NOT NULL,";
         sql += "h4_score INTEGER NOT NULL,";
         sql += "h1_score INTEGER NOT NULL,";
         sql += "m15_score INTEGER NOT NULL,";
         sql += "total_score INTEGER NOT NULL,";
+        sql += "mn1_sample_count INTEGER NOT NULL,";
+        sql += "w1_sample_count INTEGER NOT NULL,";
         sql += "d1_sample_count INTEGER NOT NULL,";
         sql += "h4_sample_count INTEGER NOT NULL,";
         sql += "h1_sample_count INTEGER NOT NULL,";
@@ -59,6 +63,10 @@ public:
         sql += ")";
 
         if (!this.executeSql(sql, "currency_strength_results table")) {
+            return false;
+        }
+
+        if (!this.migrateTimeFrameColumns()) {
             return false;
         }
 
@@ -100,12 +108,14 @@ public:
         }
 
         string sql = "INSERT INTO currency_strength_results (";
-        sql += "run_id, currency_name, d1_score, h4_score, h1_score, m15_score,";
-        sql += " total_score, d1_sample_count, h4_sample_count, h1_sample_count,";
-        sql += " m15_sample_count, total_sample_count, updated_at, updated_at_text";
+        sql += "run_id, currency_name, mn1_score, w1_score, d1_score, h4_score,";
+        sql += " h1_score, m15_score, total_score, mn1_sample_count,";
+        sql += " w1_sample_count, d1_sample_count, h4_sample_count,";
+        sql += " h1_sample_count, m15_sample_count, total_sample_count,";
+        sql += " updated_at, updated_at_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,";
-        sql += " ?13, ?14";
+        sql += " ?13, ?14, ?15, ?16, ?17, ?18";
         sql += ")";
 
         ResetLastError();
@@ -181,19 +191,46 @@ private:
     Logger logger;
 
     /**
+     * 既存の通貨別集計結果テーブルへMN1・W1列を追加する。
+     *
+     * @return 列の存在確認または追加に成功した場合はtrue。
+     */
+    bool migrateTimeFrameColumns() {
+        if (!this.ensureColumn("mn1_score", "INTEGER NOT NULL DEFAULT 0")) {
+            return false;
+        }
+
+        if (!this.ensureColumn("w1_score", "INTEGER NOT NULL DEFAULT 0")) {
+            return false;
+        }
+
+        if (!this.ensureColumn(
+            "mn1_sample_count",
+            "INTEGER NOT NULL DEFAULT 0"
+        )) {
+            return false;
+        }
+
+        return this.ensureColumn(
+            "w1_sample_count",
+            "INTEGER NOT NULL DEFAULT 0"
+        );
+    }
+
+    /**
      * 既存の通貨別集計結果テーブルへレコード更新時刻列を追加して値を補完する。
      *
      * @return 列追加と既存値の補完に成功した場合はtrue。
      */
     bool migrateUpdatedAtColumns() {
-        if (!this.ensureUpdatedAtColumn(
+        if (!this.ensureColumn(
             "updated_at",
             "INTEGER NOT NULL DEFAULT 0"
         )) {
             return false;
         }
 
-        if (!this.ensureUpdatedAtColumn(
+        if (!this.ensureColumn(
             "updated_at_text",
             "TEXT NOT NULL DEFAULT ''"
         )) {
@@ -224,13 +261,13 @@ private:
     }
 
     /**
-     * 通貨別集計結果テーブルにレコード更新時刻列が存在することを保証する。
+     * 通貨別集計結果テーブルに指定列が存在することを保証する。
      *
      * @param fromColumnName 確認・追加する列名。
      * @param fromColumnDefinition 追加する列の定義。
      * @return 列の存在確認または追加に成功した場合はtrue。
      */
-    bool ensureUpdatedAtColumn(
+    bool ensureColumn(
         const string fromColumnName,
         const string fromColumnDefinition
     ) {
@@ -347,62 +384,82 @@ private:
             isBound = DatabaseBind(fromRequestHandle, 1, fromEntity.currencyName);
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 2, fromEntity.d1Score);
+            isBound = DatabaseBind(fromRequestHandle, 2, fromEntity.mn1Score);
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 3, fromEntity.h4Score);
+            isBound = DatabaseBind(fromRequestHandle, 3, fromEntity.w1Score);
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 4, fromEntity.h1Score);
+            isBound = DatabaseBind(fromRequestHandle, 4, fromEntity.d1Score);
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 5, fromEntity.m15Score);
+            isBound = DatabaseBind(fromRequestHandle, 5, fromEntity.h4Score);
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 6, fromEntity.totalScore);
+            isBound = DatabaseBind(fromRequestHandle, 6, fromEntity.h1Score);
         }
         if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                7,
-                fromEntity.d1SampleCount
-            );
+            isBound = DatabaseBind(fromRequestHandle, 7, fromEntity.m15Score);
         }
         if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                8,
-                fromEntity.h4SampleCount
-            );
+            isBound = DatabaseBind(fromRequestHandle, 8, fromEntity.totalScore);
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 9,
-                fromEntity.h1SampleCount
+                fromEntity.mn1SampleCount
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 10,
-                fromEntity.m15SampleCount
+                fromEntity.w1SampleCount
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 11,
-                fromEntity.totalSampleCount
+                fromEntity.d1SampleCount
             );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 12, fromEntity.updatedAt);
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                12,
+                fromEntity.h4SampleCount
+            );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 13,
+                fromEntity.h1SampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                14,
+                fromEntity.m15SampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                15,
+                fromEntity.totalSampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 16, fromEntity.updatedAt);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                17,
                 fromEntity.updatedAtText
             );
         }

@@ -23,7 +23,7 @@
 #include <Mstng\Util\TimeUtil.mqh>
 
 /** 全28通貨ペアが準備されるまでの待機上限秒。 */
-input int timeoutSeconds = 180;
+input int timeoutSeconds = 600;
 
 /** 集計の再試行間隔ミリ秒。 */
 input int retryIntervalMilliseconds = 1000;
@@ -42,7 +42,7 @@ input string databaseFileName =
 input bool databaseUseCommonFolder = true;
 
 /** 集計ルール識別子。 */
-const string calculationVersion = "pair-direction-raw-v1";
+const string calculationVersion = "pair-direction-raw-v2";
 
 /**
  * bool値をログ用文字列へ変換する。
@@ -106,7 +106,7 @@ int findCurrencyIndex(
  * @param fromTimeoutSeconds 待機上限秒。
  * @param fromRetryIntervalMilliseconds 再試行間隔ミリ秒。
  * @param fromLogger ロガー。
- * @return 28通貨ペア・112票が揃った場合true。
+ * @return 28通貨ペア・168票が揃った場合true。
  */
 bool calculateWithRetry(
     OscillatorHandleManager *fromOscillatorHandleManager,
@@ -380,7 +380,7 @@ void printCurrencyResults(
 }
 
 /**
- * 28通貨ペア・112票の内容と累積値を検証する。
+ * 28通貨ペア・168票の内容と累積値を検証する。
  *
  * @param fromCalculator 通貨強弱計算クラス。
  * @param fromLogger ロガー。
@@ -395,12 +395,12 @@ bool validatePairVotes(
     int expectedPairCount = fromCalculator.getExpectedPairCount();
     int expectedVoteCount = expectedPairCount * timeFrameCount;
     int currencyCount = fromCalculator.size();
-    int runningScores[8][4];
-    int runningSampleCounts[8][4];
+    int runningScores[8][6];
+    int runningSampleCounts[8][6];
     SymbolNameInfoAll symbolNameInfoAll;
 
     if (expectedPairCount != 28
-            || timeFrameCount != 4
+            || timeFrameCount != 6
             || currencyCount != 8) {
         fromLogger.error(
             __FUNCTION__,
@@ -432,7 +432,7 @@ bool validatePairVotes(
     }
 
     for (int i = 0; i < 8; i++) {
-        for (int j = 0; j < 4; j++) {
+        for (int j = 0; j < timeFrameCount; j++) {
             runningScores[i][j] = 0;
             runningSampleCounts[i][j] = 0;
         }
@@ -616,7 +616,7 @@ bool validatePairVotes(
 
         if (baseCurrencyIndex < 0 || quoteCurrencyIndex < 0
                 || expectedTimeFrameOrder < 0
-                || expectedTimeFrameOrder >= 4) {
+                || expectedTimeFrameOrder >= timeFrameCount) {
             fromLogger.error(
                 __FUNCTION__,
                 StringFormat(
@@ -708,7 +708,7 @@ bool validateCurrencyResults(
     CurrencyStrengthCalculator &fromCalculator,
     Logger &fromLogger
 ) {
-    if (fromCalculator.getTimeFrameCount() != 4
+    if (fromCalculator.getTimeFrameCount() != 6
             || fromCalculator.size() != 8) {
         fromLogger.error(
             __FUNCTION__,
@@ -725,9 +725,9 @@ bool validateCurrencyResults(
     bool isValid = true;
     int totalScore = 0;
     int totalSampleCount = 0;
-    int timeFrameScores[4];
+    int timeFrameScores[6];
 
-    for (int j = 0; j < 4; j++) {
+    for (int j = 0; j < fromCalculator.getTimeFrameCount(); j++) {
         timeFrameScores[j] = 0;
     }
 
@@ -773,7 +773,7 @@ bool validateCurrencyResults(
         if ((int)currencyStrengthInfo.getTotalScore() != calculatedTotalScore
                 || currencyStrengthInfo.getTotalSampleCount()
                     != calculatedTotalSampleCount
-                || calculatedTotalSampleCount != 28) {
+                || calculatedTotalSampleCount != 42) {
             fromLogger.error(
                 __FUNCTION__,
                 StringFormat(
@@ -782,7 +782,7 @@ bool validateCurrencyResults(
                     (int)currencyStrengthInfo.getTotalScore(),
                     calculatedTotalScore,
                     currencyStrengthInfo.getTotalSampleCount(),
-                    28
+                    42
                 )
             );
             isValid = false;
@@ -808,11 +808,11 @@ bool validateCurrencyResults(
         }
     }
 
-    if (totalScore != 0 || totalSampleCount != 224) {
+    if (totalScore != 0 || totalSampleCount != 336) {
         fromLogger.error(
             __FUNCTION__,
             StringFormat(
-                "all currency total mismatch. score=%d/0 samples=%d/224",
+                "all currency total mismatch. score=%d/0 samples=%d/336",
                 totalScore,
                 totalSampleCount
             )

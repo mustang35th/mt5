@@ -24,6 +24,12 @@ struct CurrencyStrengthResultEntity {
     /** 通貨名。 */
     string currencyName;
 
+    /** MN1の未正規化合計。 */
+    int mn1Score;
+
+    /** W1の未正規化合計。 */
+    int w1Score;
+
     /** D1の未正規化合計。 */
     int d1Score;
 
@@ -38,6 +44,12 @@ struct CurrencyStrengthResultEntity {
 
     /** 全時間足の未正規化合計。 */
     int totalScore;
+
+    /** MN1の票数。 */
+    int mn1SampleCount;
+
+    /** W1の票数。 */
+    int w1SampleCount;
 
     /** D1の票数。 */
     int d1SampleCount;

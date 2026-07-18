@@ -34,7 +34,7 @@ input bool databaseSavePartialRuns = false;
 input int databaseRetentionDays = 30;
 
 /** 集計ルール識別子。 */
-const string calculationVersion = "pair-direction-raw-v1";
+const string calculationVersion = "pair-direction-raw-v2";
 
 double gHiddenBuffer[];
 
