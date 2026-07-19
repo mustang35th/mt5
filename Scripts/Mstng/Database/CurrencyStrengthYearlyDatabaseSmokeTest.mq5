@@ -728,12 +728,14 @@ void OnStart() {
             && ArraySize(rankPoints) == 2
             && rankPoints[0].runId == year2025RunId
             && rankPoints[0].m5BarTime == year2025M5BarTime
+            && rankPoints[0].sourceMode == "TESTER"
             && rankPoints[0].baseLongMediumTermAverageRank == 8
             && rankPoints[0].baseMediumShortTermAverageRank == 7
             && rankPoints[0].quoteLongMediumTermAverageRank == 1
             && rankPoints[0].quoteMediumShortTermAverageRank == 2
             && rankPoints[1].runId == year2026RunId
             && rankPoints[1].m5BarTime == year2026M5BarTime
+            && rankPoints[1].sourceMode == "TESTER"
             && rankPoints[1].baseLongMediumTermAverageRank == 1
             && rankPoints[1].baseMediumShortTermAverageRank == 2
             && rankPoints[1].quoteLongMediumTermAverageRank == 8
@@ -758,12 +760,14 @@ void OnStart() {
             && ArraySize(rankPoints) == 2
             && rankPoints[0].runId == year2025LiveRunId
             && rankPoints[0].m5BarTime == year2025M5BarTime
+            && rankPoints[0].sourceMode == "LIVE"
             && rankPoints[0].baseLongMediumTermAverageRank == 1
             && rankPoints[0].baseMediumShortTermAverageRank == 2
             && rankPoints[0].quoteLongMediumTermAverageRank == 8
             && rankPoints[0].quoteMediumShortTermAverageRank == 7
             && rankPoints[1].runId == year2026RunId
             && rankPoints[1].m5BarTime == year2026M5BarTime
+            && rankPoints[1].sourceMode == "TESTER"
             && rankPoints[1].baseLongMediumTermAverageRank == 1
             && rankPoints[1].baseMediumShortTermAverageRank == 2
             && rankPoints[1].quoteLongMediumTermAverageRank == 8

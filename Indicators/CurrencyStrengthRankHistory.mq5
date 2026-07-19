@@ -44,8 +44,10 @@
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthLatestRankLabels.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankAlignmentLabel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankPeriodLabel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankSignalLabel.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankSourceLabel.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
@@ -97,8 +99,10 @@ double gQuoteActualRankBuffer[];
 Logger gLogger;
 CurrencyStrengthYearlyRankQueryService *gRankQueryService = NULL;
 DrawCurrencyStrengthLatestRankLabels *gLatestRankLabelsDraw = NULL;
+DrawCurrencyStrengthRankAlignmentLabel *gRankAlignmentLabelDraw = NULL;
 DrawCurrencyStrengthRankPeriodLabel *gRankPeriodLabelDraw = NULL;
 DrawCurrencyStrengthRankSignalLabel *gRankSignalLabelDraw = NULL;
+DrawCurrencyStrengthRankSourceLabel *gRankSourceLabelDraw = NULL;
 CurrencyStrengthPairRankPoint gRankPoints[];
 string gBaseCurrency = "";
 string gQuoteCurrency = "";
@@ -228,12 +232,52 @@ int OnInit() {
         return INIT_FAILED;
     }
 
+    gRankAlignmentLabelDraw = new DrawCurrencyStrengthRankAlignmentLabel(
+        ChartID(),
+        drawObjectSuffix
+    );
+
+    if (gRankAlignmentLabelDraw == NULL) {
+        delete gLatestRankLabelsDraw;
+        gLatestRankLabelsDraw = NULL;
+        delete gRankPeriodLabelDraw;
+        gRankPeriodLabelDraw = NULL;
+        gRankQueryService.close();
+        delete gRankQueryService;
+        gRankQueryService = NULL;
+
+        return INIT_FAILED;
+    }
+
     gRankSignalLabelDraw = new DrawCurrencyStrengthRankSignalLabel(
         ChartID(),
         drawObjectSuffix
     );
 
     if (gRankSignalLabelDraw == NULL) {
+        delete gRankAlignmentLabelDraw;
+        gRankAlignmentLabelDraw = NULL;
+        delete gLatestRankLabelsDraw;
+        gLatestRankLabelsDraw = NULL;
+        delete gRankPeriodLabelDraw;
+        gRankPeriodLabelDraw = NULL;
+        gRankQueryService.close();
+        delete gRankQueryService;
+        gRankQueryService = NULL;
+
+        return INIT_FAILED;
+    }
+
+    gRankSourceLabelDraw = new DrawCurrencyStrengthRankSourceLabel(
+        ChartID(),
+        drawObjectSuffix
+    );
+
+    if (gRankSourceLabelDraw == NULL) {
+        delete gRankSignalLabelDraw;
+        gRankSignalLabelDraw = NULL;
+        delete gRankAlignmentLabelDraw;
+        gRankAlignmentLabelDraw = NULL;
         delete gLatestRankLabelsDraw;
         gLatestRankLabelsDraw = NULL;
         delete gRankPeriodLabelDraw;
@@ -261,6 +305,11 @@ int OnInit() {
  * @param reason 終了理由。
  */
 void OnDeinit(const int reason) {
+    if (gRankSourceLabelDraw != NULL) {
+        delete gRankSourceLabelDraw;
+        gRankSourceLabelDraw = NULL;
+    }
+
     if (gRankSignalLabelDraw != NULL) {
         delete gRankSignalLabelDraw;
         gRankSignalLabelDraw = NULL;
@@ -269,6 +318,11 @@ void OnDeinit(const int reason) {
     if (gLatestRankLabelsDraw != NULL) {
         delete gLatestRankLabelsDraw;
         gLatestRankLabelsDraw = NULL;
+    }
+
+    if (gRankAlignmentLabelDraw != NULL) {
+        delete gRankAlignmentLabelDraw;
+        gRankAlignmentLabelDraw = NULL;
     }
 
     if (gRankPeriodLabelDraw != NULL) {
@@ -575,6 +629,8 @@ void drawLatestRankLabels(
     if (ArraySize(gRankPoints) == 0) {
         gLatestRankLabelsDraw.clear();
         drawRankSignalLabel(subWindow, 0, 0);
+        drawRankAlignmentLabel(subWindow, 0, 0, 0, 0);
+        drawRankSourceLabel(subWindow, "");
 
         return;
     }
@@ -593,6 +649,8 @@ void drawLatestRankLabels(
     if (latestBufferIndex < 0) {
         gLatestRankLabelsDraw.clear();
         drawRankSignalLabel(subWindow, 0, 0);
+        drawRankAlignmentLabel(subWindow, 0, 0, 0, 0);
+        drawRankSourceLabel(subWindow, "");
 
         return;
     }
@@ -605,6 +663,23 @@ void drawLatestRankLabels(
     );
     drawRankSignalLabel(subWindow, baseRank, quoteRank);
     datetime latestBarTime = fromTime[latestBufferIndex];
+    int pointIndex = findRankPointIndex(floorToM5(latestBarTime));
+
+    if (pointIndex >= 0) {
+        CurrencyStrengthPairRankPoint point = gRankPoints[pointIndex];
+        drawRankAlignmentLabel(
+            subWindow,
+            point.baseLongMediumTermAverageRank,
+            point.quoteLongMediumTermAverageRank,
+            point.baseMediumShortTermAverageRank,
+            point.quoteMediumShortTermAverageRank
+        );
+        drawRankSourceLabel(subWindow, point.sourceMode);
+    } else {
+        drawRankAlignmentLabel(subWindow, 0, 0, 0, 0);
+        drawRankSourceLabel(subWindow, "");
+    }
+
     int basePixelOffset = 18;
     int quotePixelOffset = 18;
 
@@ -665,11 +740,13 @@ void drawRankSignalLabel(
             && fromBaseRank <= 8
             && fromQuoteRank >= 1
             && fromQuoteRank <= 8) {
-        if (fromBaseRank < fromQuoteRank) {
-            signalText = "BUY";
+        int rankDifference = fromQuoteRank - fromBaseRank;
+
+        if (rankDifference > 0) {
+            signalText = StringFormat("BUY +%d", rankDifference);
             signalColor = clrAqua;
-        } else if (fromBaseRank > fromQuoteRank) {
-            signalText = "SELL";
+        } else if (rankDifference < 0) {
+            signalText = StringFormat("SELL %d", rankDifference);
             signalColor = clrHotPink;
         }
     }
@@ -680,6 +757,102 @@ void drawRankSignalLabel(
         signalColor
     )) {
         gLogger.error(__FUNCTION__, "rank signal label draw failed");
+    }
+}
+
+/**
+ * 長中期と中短期の順位方向一致状態を描画する。
+ *
+ * @param fromSubWindow 描画対象サブウィンドウ番号。
+ * @param fromBaseLongMediumRank 基軸通貨の長中期順位。
+ * @param fromQuoteLongMediumRank 決済通貨の長中期順位。
+ * @param fromBaseMediumShortRank 基軸通貨の中短期順位。
+ * @param fromQuoteMediumShortRank 決済通貨の中短期順位。
+ */
+void drawRankAlignmentLabel(
+    const int fromSubWindow,
+    const int fromBaseLongMediumRank,
+    const int fromQuoteLongMediumRank,
+    const int fromBaseMediumShortRank,
+    const int fromQuoteMediumShortRank
+) {
+    if (gRankAlignmentLabelDraw == NULL) {
+        return;
+    }
+
+    string alignmentText = "-";
+    color alignmentColor = clrSilver;
+
+    if (fromBaseLongMediumRank >= 1
+            && fromBaseLongMediumRank <= 8
+            && fromQuoteLongMediumRank >= 1
+            && fromQuoteLongMediumRank <= 8
+            && fromBaseMediumShortRank >= 1
+            && fromBaseMediumShortRank <= 8
+            && fromQuoteMediumShortRank >= 1
+            && fromQuoteMediumShortRank <= 8) {
+        int longMediumDifference =
+            fromQuoteLongMediumRank - fromBaseLongMediumRank;
+        int mediumShortDifference =
+            fromQuoteMediumShortRank - fromBaseMediumShortRank;
+
+        if (longMediumDifference > 0 && mediumShortDifference > 0) {
+            alignmentText = "STRONG BUY";
+            alignmentColor = clrAqua;
+        } else if (longMediumDifference < 0
+                && mediumShortDifference < 0) {
+            alignmentText = "STRONG SELL";
+            alignmentColor = clrHotPink;
+        } else {
+            alignmentText = "MIXED";
+            alignmentColor = clrGold;
+        }
+    }
+
+    if (!gRankAlignmentLabelDraw.draw(
+        fromSubWindow,
+        alignmentText,
+        alignmentColor
+    )) {
+        gLogger.error(__FUNCTION__, "rank alignment label draw failed");
+    }
+}
+
+/**
+ * 最新順位点の取得元を描画する。
+ *
+ * @param fromSubWindow 描画対象サブウィンドウ番号。
+ * @param fromSourceMode 最新順位点の集計実行モード。
+ */
+void drawRankSourceLabel(
+    const int fromSubWindow,
+    const string fromSourceMode
+) {
+    if (gRankSourceLabelDraw == NULL) {
+        return;
+    }
+
+    string sourceText = "SOURCE: -";
+    color sourceColor = clrDimGray;
+    string liveSourceMode =
+        CurrencyStrengthCalculationProfile::getSourceMode(false);
+    string testerSourceMode =
+        CurrencyStrengthCalculationProfile::getSourceMode(true);
+
+    if (fromSourceMode == liveSourceMode) {
+        sourceText = "SOURCE: LIVE";
+        sourceColor = clrLime;
+    } else if (fromSourceMode == testerSourceMode) {
+        sourceText = "SOURCE: TESTER";
+        sourceColor = clrSilver;
+    }
+
+    if (!gRankSourceLabelDraw.draw(
+        fromSubWindow,
+        sourceText,
+        sourceColor
+    )) {
+        gLogger.error(__FUNCTION__, "rank source label draw failed");
     }
 }
 
@@ -1020,6 +1193,7 @@ bool isSameRankPoint(
     return fromLeft.runId == fromRight.runId
         && fromLeft.m5BarTime == fromRight.m5BarTime
         && fromLeft.updatedAt == fromRight.updatedAt
+        && fromLeft.sourceMode == fromRight.sourceMode
         && fromLeft.baseLongMediumTermAverageRank
             == fromRight.baseLongMediumTermAverageRank
         && fromLeft.baseMediumShortTermAverageRank

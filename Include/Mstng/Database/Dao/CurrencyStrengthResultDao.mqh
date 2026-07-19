@@ -461,6 +461,7 @@ public:
 
         string sql = "SELECT ";
         sql += "runs.id, runs.m5_bar_time, runs.updated_at,";
+        sql += " runs.source_mode,";
         sql += " base_result.long_medium_term_average_rank,";
         sql += " base_result.medium_short_term_average_rank,";
         sql += " quote_result.long_medium_term_average_rank,";

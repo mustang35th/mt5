@@ -25,6 +25,9 @@ struct CurrencyStrengthPairRankPoint {
     /** 集計レコード更新時刻。 */
     datetime updatedAt;
 
+    /** 集計実行モード。 */
+    string sourceMode;
+
     /** 基軸通貨の長中期平均スコア順位。 */
     int baseLongMediumTermAverageRank;
 
@@ -44,6 +47,7 @@ struct CurrencyStrengthPairRankPoint {
         this.runId = 0;
         this.m5BarTime = 0;
         this.updatedAt = 0;
+        this.sourceMode = "";
         this.baseLongMediumTermAverageRank = 0;
         this.baseMediumShortTermAverageRank = 0;
         this.quoteLongMediumTermAverageRank = 0;
