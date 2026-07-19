@@ -9,7 +9,7 @@
 | LIVE集計ルール | `pair-direction-raw-v6` |
 | TESTER集計ルール | `pair-direction-closed-v1` |
 | 最終更新日 | 2026-07-19 |
-| 実装 | `CurrencyStrengthElliot`、`CurrencyStrengthYearlyPersistenceService`、`CurrencyStrengthPersistenceService`、3 Entity・3 DAO |
+| 実装 | `CurrencyStrengthElliot`、`CurrencyStrengthYearlyPersistenceService`、`CurrencyStrengthPersistenceService`、`CurrencyStrengthYearlyRankQueryService`、3 Entity・3 DAO |
 
 本書は、通貨強弱集計で使用する3テーブル、1ビュー、インデックス、保存処理および既存DB移行処理を定義します。
 
@@ -159,11 +159,21 @@ ON currency_strength_runs(
 )
 WHERE m5_bar_time > 0;
 
+CREATE INDEX IF NOT EXISTS idx_currency_strength_runs_rank_lookup
+ON currency_strength_runs(
+    calculation_version,
+    source_mode,
+    source_server,
+    source_login,
+    m5_bar_time DESC
+)
+WHERE is_complete = 1 AND m5_bar_time > 0;
+
 CREATE INDEX IF NOT EXISTS idx_currency_strength_runs_source_mode_calculated_at
 ON currency_strength_runs(source_mode, calculated_at);
 ```
 
-`m5_bar_time > 0`のRunは、M5足開始時刻・集計ルール・実行モード・取引サーバー・口座の組み合わせを自然キーとします。同じテストを再実行してもRunを増やさず、既存Runを更新します。`source_mode`を含むため、同じM5時刻・口座でもLIVEとTESTERのRunは別レコードとして共存できます。`m5_bar_time = 0`の旧Runは部分UNIQUEインデックスの対象外です。旧インデックス`idx_currency_strength_runs_snapshot_key`は新しいインデックス作成後に削除します。
+`m5_bar_time > 0`のRunは、M5足開始時刻・集計ルール・実行モード・取引サーバー・口座の組み合わせを自然キーとします。同じテストを再実行してもRunを増やさず、既存Runを更新します。`source_mode`を含むため、同じM5時刻・口座でもLIVEとTESTERのRunは別レコードとして共存できます。`m5_bar_time = 0`の旧Runは部分UNIQUEインデックスの対象外です。`idx_currency_strength_runs_rank_lookup`は完全Runの順位検索で等価条件を先に絞り、指定M5時刻以前を新しい順に取得するために使用します。旧インデックス`idx_currency_strength_runs_snapshot_key`は新しいインデックス作成後に削除します。
 
 ## 7. `currency_strength_pair_votes`
 
@@ -733,6 +743,7 @@ HAVING COUNT(*) > 1;
 - 2回目の中短期平均: USDは-0.20・順位2、JPYは+0.20・順位1
 - 3回目のRun: 最初のRunから5分後の別Run。M15区間が同じでもM5時刻が異なれば保存
 - 新規DBの列順: Run、PairVote、Result、およびContributionビューが本仕様書どおりで、Runに`m15_bar_time`がないこと
+- 順位検索: 指定M5時刻以前の同一RunからUSD・JPYの長中期・中短期順位を取得し、未来のRunを参照しないこと
 
 2回目もRun IDが変わらないこと、自然キー該当件数が1であること、子件数が増えないこと、2回目のRun・先頭票・Result値へ置換されたことを検証します。続いて3回目が別Runとなり、自然キー該当件数が各1件であることを検証します。Run全件数が2件であることと新規DBの物理列順は、実行前に3テーブルを削除する`recreateDatabaseObjects = true`の場合だけ検証します。また、`source_mode = TESTER`、`updated_at`が2回目保存時の実時刻であり、3テーブルの`updated_at`と`updated_at_text`が一致することを確認します。DBファイルと保存したテストレコードは実行後も残ります。
 
@@ -745,7 +756,29 @@ HAVING COUNT(*) > 1;
 - 両DBがRun 1件、PairVote 7件、Result 2件、Contribution 14件になること
 - 2025年分の再保存でRun IDと件数を維持し、Run値と子レコードを更新すること
 - 更新後の2025年先頭票とUSD結果がSELL値、2026年側がBUY値のまま維持されること
+- 順位検索で対象年のRunを優先し、2027年DBがない場合は2026年Runへフォールバックすること
+- READONLYの2027年照会前後で2027年DBファイルが作成されないこと
 
 既定のテストファイルは`mstng-currency-strength-yearly-smoke-test-2025.sqlite`と`mstng-currency-strength-yearly-smoke-test-2026.sqlite`です。実行前にこの2ファイルを削除し、実行後は確認用として残します。本番DBのベースファイル名を指定して実行してはいけません。
 
 `Scripts/Mstng/Strength/CurrencyStrengthCalculationSmokeTest.mq5`は28通貨ペアの実判定について、5種類の平均を時間足別スコアから再計算し、8通貨内の競技順位、全通貨の平均合計0、部分集計時の順位0、およびM5基準時刻と`source_mode = LIVE`を渡したDB保存を検証します。このスクリプトはオンラインチャート用であり、TESTERの確定足集計やM5追いつき処理は検証しません。
+
+## 15. ZigZagElliotの順位表示
+
+`ZigZagElliot`は表示中シンボルの基軸通貨と決済通貨をシンボルプロパティから取得し、右中央のパネルへ長中期順位と中短期順位を表示します。取得元のM5時刻も併記します。
+
+DBは対象M5時刻の年別ファイルをREADONLYで開き、ファイル作成、テーブル作成、既存DB移行を行いません。対象年に該当Runがない場合は前年DBも検索します。基軸通貨と決済通貨は必ず同じ完全Runから取得します。LIVEでは`pair-direction-raw-v6 / LIVE`、TESTERでは`pair-direction-closed-v1 / TESTER`を使用し、取引サーバーとログイン番号も一致するRunだけを検索します。
+
+既存DBへ順位検索用インデックスを追加する場合は、保存側の`CurrencyStrengthElliot`を一度起動してDB初期化を実行します。`ZigZagElliot`のREADONLY接続だけではインデックスを追加しません。
+
+検索上限は現在時刻をM5間隔へ切り下げた時刻です。SQL条件を`m5_bar_time <= 検索上限`とするため、ストラテジーテスターで未来の集計結果を参照しません。対象DBまたはレコードが存在しない場合は順位を`-`とし、インジケーター本体の処理は継続します。
+
+主な入力値は次のとおりです。
+
+| 入力値 | 既定値 | 内容 |
+|---|---:|---|
+| `currencyStrengthRankVisible` | `true` | 順位パネルの表示有無 |
+| `currencyStrengthRankPanelXDistance` | `12` | チャート右端からの距離 |
+| `currencyStrengthDatabaseFileName` | `mstng-currency-strength.sqlite` | 年付与前のDBファイル名 |
+| `currencyStrengthDatabaseSplitByYear` | `true` | 年別DBを使用する場合true |
+| `currencyStrengthDatabaseUseCommonFolder` | `true` | Commonフォルダを使用する場合true |

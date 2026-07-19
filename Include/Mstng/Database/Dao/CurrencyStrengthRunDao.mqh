@@ -96,6 +96,17 @@ public:
             return false;
         }
 
+        sql = "CREATE INDEX IF NOT EXISTS ";
+        sql += "idx_currency_strength_runs_rank_lookup ";
+        sql += "ON currency_strength_runs(";
+        sql += "calculation_version, source_mode, source_server,";
+        sql += " source_login, m5_bar_time DESC";
+        sql += ") WHERE is_complete = 1 AND m5_bar_time > 0";
+
+        if (!this.executeSql(sql, "currency strength run rank lookup index")) {
+            return false;
+        }
+
         if (!this.executeSql(
             "DROP INDEX IF EXISTS idx_currency_strength_runs_snapshot_key",
             "drop legacy currency strength run snapshot key index"

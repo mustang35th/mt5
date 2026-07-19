@@ -15,6 +15,7 @@
 #include <Mstng\Database\Entity\CurrencyStrengthResultEntity.mqh>
 #include <Mstng\Database\Entity\CurrencyStrengthRunEntity.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthPersistenceService.mqh>
+#include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
@@ -1064,6 +1065,144 @@ bool verifyNewDatabaseColumnOrders(
 }
 
 /**
+ * 指定時刻以前の通貨ペア順位検索を検証する。
+ *
+ * @param fromSameM5RunId 未来レコード保存前から存在する集計ID。
+ * @param fromSameM5BarTime 未来レコード保存前から存在するM5足開始時刻。
+ * @param fromNextM5RunId 次のM5足の集計ID。
+ * @param fromNextM5BarTime 次のM5足開始時刻。
+ * @param fromCalculationVersion 集計ルール識別子。
+ * @param fromSourceMode 集計実行モード。
+ * @param fromSourceServer 集計元サーバー名。
+ * @param fromSourceLogin 集計元ログイン番号。
+ * @param fromLogger ロガー。
+ * @return 順位検索結果が期待値と一致した場合true。
+ */
+bool verifyPairRankQuery(
+    const long fromSameM5RunId,
+    const datetime fromSameM5BarTime,
+    const long fromNextM5RunId,
+    const datetime fromNextM5BarTime,
+    const string fromCalculationVersion,
+    const string fromSourceMode,
+    const string fromSourceServer,
+    const long fromSourceLogin,
+    Logger &fromLogger
+) {
+    CurrencyStrengthYearlyRankQueryService queryService(
+        databaseFileName,
+        false,
+        useCommonFolder
+    );
+    CurrencyStrengthPairRankInfo rankInfo;
+    ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS queryStatus =
+        queryService.findLatestPairRanksAtOrBefore(
+            fromSameM5BarTime,
+            fromCalculationVersion + "-not-found",
+            fromSourceMode,
+            fromSourceServer,
+            fromSourceLogin,
+            "USD",
+            "JPY",
+            rankInfo
+        );
+
+    if (queryStatus != CURRENCY_STRENGTH_PAIR_RANK_QUERY_RECORD_NOT_FOUND) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "record-not-found status mismatch. status=%d",
+                (int)queryStatus
+            )
+        );
+
+        return false;
+    }
+
+    queryStatus = queryService.findLatestPairRanksAtOrBefore(
+        fromSameM5BarTime,
+        fromCalculationVersion,
+        fromSourceMode,
+        fromSourceServer,
+        fromSourceLogin,
+        "USD",
+        "JPY",
+        rankInfo
+    );
+
+    if (queryStatus != CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
+            || rankInfo.runId != fromSameM5RunId
+            || rankInfo.m5BarTime != fromSameM5BarTime
+            || rankInfo.m5BarTime > fromSameM5BarTime
+            || rankInfo.baseCurrency != "USD"
+            || rankInfo.baseLongMediumTermAverageRank != 2
+            || rankInfo.baseMediumShortTermAverageRank != 2
+            || rankInfo.quoteCurrency != "JPY"
+            || rankInfo.quoteLongMediumTermAverageRank != 1
+            || rankInfo.quoteMediumShortTermAverageRank != 1) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "same M5 pair rank mismatch. status=%d runId=%I64d m5=%s base=%s baseRanks=%d/%d quote=%s quoteRanks=%d/%d",
+                (int)queryStatus,
+                rankInfo.runId,
+                TimeToString(rankInfo.m5BarTime, TIME_DATE | TIME_MINUTES),
+                rankInfo.baseCurrency,
+                rankInfo.baseLongMediumTermAverageRank,
+                rankInfo.baseMediumShortTermAverageRank,
+                rankInfo.quoteCurrency,
+                rankInfo.quoteLongMediumTermAverageRank,
+                rankInfo.quoteMediumShortTermAverageRank
+            )
+        );
+
+        return false;
+    }
+
+    queryStatus = queryService.findLatestPairRanksAtOrBefore(
+        fromNextM5BarTime,
+        fromCalculationVersion,
+        fromSourceMode,
+        fromSourceServer,
+        fromSourceLogin,
+        "USD",
+        "JPY",
+        rankInfo
+    );
+
+    if (queryStatus != CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
+            || rankInfo.runId != fromNextM5RunId
+            || rankInfo.m5BarTime != fromNextM5BarTime
+            || rankInfo.m5BarTime > fromNextM5BarTime
+            || rankInfo.baseCurrency != "USD"
+            || rankInfo.baseLongMediumTermAverageRank != 1
+            || rankInfo.baseMediumShortTermAverageRank != 1
+            || rankInfo.quoteCurrency != "JPY"
+            || rankInfo.quoteLongMediumTermAverageRank != 2
+            || rankInfo.quoteMediumShortTermAverageRank != 2) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "next M5 pair rank mismatch. status=%d runId=%I64d m5=%s base=%s baseRanks=%d/%d quote=%s quoteRanks=%d/%d",
+                (int)queryStatus,
+                rankInfo.runId,
+                TimeToString(rankInfo.m5BarTime, TIME_DATE | TIME_MINUTES),
+                rankInfo.baseCurrency,
+                rankInfo.baseLongMediumTermAverageRank,
+                rankInfo.baseMediumShortTermAverageRank,
+                rankInfo.quoteCurrency,
+                rankInfo.quoteLongMediumTermAverageRank,
+                rankInfo.quoteMediumShortTermAverageRank
+            )
+        );
+
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * 通貨強弱SQLite動作確認スクリプトを実行する。
  */
 void OnStart() {
@@ -1564,6 +1703,26 @@ void OnStart() {
                 nextM5SnapshotRunCount,
                 finalTotalRunCount
             )
+        );
+        database.close();
+
+        return;
+    }
+
+    if (!verifyPairRankQuery(
+        sameM5RunId,
+        m5BarTime,
+        runEntity.id,
+        nextM5BarTime,
+        runEntity.calculationVersion,
+        runEntity.sourceMode,
+        runEntity.sourceServer,
+        runEntity.sourceLogin,
+        logger
+    )) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength database smoke test failed at pair rank query."
         );
         database.close();
 

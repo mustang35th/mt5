@@ -17,6 +17,7 @@
 #include <Mstng\Draw\DrawCurrencyStrengthList.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 
@@ -42,14 +43,6 @@ input bool databaseSavePartialRuns = false;
 input datetime databaseSaveStartTime = D'2026.07.16 00:00';
 input int databaseRetentionDays = 30;
 
-/** 集計ルール識別子。 */
-const string calculationVersion = "pair-direction-raw-v6";
-/** テスター確定足集計ルール識別子。 */
-const string testerCalculationVersion = "pair-direction-closed-v1";
-/** ライブ集計の実行モード。 */
-const string liveSourceMode = "LIVE";
-/** テスター集計の実行モード。 */
-const string testerSourceMode = "TESTER";
 /** テスター診断ログを約1日ごとに出力するM5足数。 */
 const int testerDiagnosticLogIntervalBars = 288;
 
@@ -549,13 +542,13 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     }
 
     if (saveDatabase) {
-        string activeCalculationVersion = calculationVersion;
-        string sourceMode = liveSourceMode;
-
-        if (isTester) {
-            activeCalculationVersion = testerCalculationVersion;
-            sourceMode = testerSourceMode;
-        }
+        string activeCalculationVersion =
+            CurrencyStrengthCalculationProfile::getCalculationVersion(
+                isTester
+            );
+        string sourceMode = CurrencyStrengthCalculationProfile::getSourceMode(
+            isTester
+        );
 
         if (gCurrencyStrengthPersistenceService.save(
             calculatedAt,
@@ -683,7 +676,7 @@ void cleanupDatabase(const datetime fromCalculatedAt) {
 
     if (!gCurrencyStrengthPersistenceService.deleteRunsBefore(
         cutoff,
-        liveSourceMode
+        CurrencyStrengthCalculationProfile::getSourceMode(false)
     )) {
         gLogger.error(__FUNCTION__, "old currency strength run deletion failed");
 

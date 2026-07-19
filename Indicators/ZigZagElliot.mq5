@@ -13,7 +13,9 @@
 
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
 #include <Mstng\Draw\Draw.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthPairRank.mqh>
 #include <Mstng\Draw\DrawElliotVerticalFit.mqh>
 #include <Mstng\Elliot\ElliotAllFile.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
@@ -21,8 +23,15 @@
 #include <Mstng\Indicator\GmmaIndicator.mqh>
 #include <Mstng\Indicator\JapanTimeAxisView.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
+
+input bool currencyStrengthRankVisible = true;
+input int currencyStrengthRankPanelXDistance = 12;
+input string currencyStrengthDatabaseFileName = "mstng-currency-strength.sqlite";
+input bool currencyStrengthDatabaseSplitByYear = true;
+input bool currencyStrengthDatabaseUseCommonFolder = true;
 
 #property indicator_type1   DRAW_LINE
 #property indicator_type2   DRAW_LINE
@@ -54,6 +63,20 @@ ElliotAll *g_elliotAll;
 SignalCount *g_signalCount;
 
 Draw gDraw;
+
+DrawCurrencyStrengthPairRank *gCurrencyStrengthPairRankDraw = NULL;
+CurrencyStrengthYearlyRankQueryService *gCurrencyStrengthRankQueryService = NULL;
+string gCurrencyStrengthBaseCurrency = "";
+string gCurrencyStrengthQuoteCurrency = "";
+long gCurrencyStrengthLastRunId = 0;
+datetime gCurrencyStrengthLastM5BarTime = 0;
+datetime gCurrencyStrengthLastUpdatedAt = 0;
+datetime gCurrencyStrengthLastQueryM5BarTime = 0;
+int gCurrencyStrengthBaseLongMediumRank = 0;
+int gCurrencyStrengthBaseMediumShortRank = 0;
+int gCurrencyStrengthQuoteLongMediumRank = 0;
+int gCurrencyStrengthQuoteMediumShortRank = 0;
+bool gCurrencyStrengthRankAvailable = false;
 
 static datetime g_staticLasttime;
 long g_lastExecuteTickCount = 0;
@@ -103,6 +126,7 @@ int OnInit() {
     setElliotVerticalFit();
     setElliotInfoButton();
     setElliotVerticalFitButton();
+    setCurrencyStrengthPairRank();
     
 
     if (!g_isTimer) {
@@ -145,6 +169,7 @@ void OnDeinit(const int reason) {
     deleteElliotVerticalFit();
     deleteElliotInfoButton();
     deleteElliotVerticalFitButton();
+    deleteCurrencyStrengthPairRank();
     
     
     deleteSignalCount();
@@ -177,6 +202,10 @@ void OnDeinit(const int reason) {
  */
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam) {
     if (id == CHARTEVENT_CHART_CHANGE) {
+        if (gCurrencyStrengthPairRankDraw != NULL) {
+            gCurrencyStrengthPairRankDraw.reposition();
+        }
+
         if (updateElliotVerticalFit(false)) {
             redrawElliotInfo();
         }
@@ -314,6 +343,8 @@ bool isExecuteTimerElapsed() {
  */
 void execute() {
     LogUtil::printMethodStart(g_logger, __FUNCTION__);
+
+    updateCurrencyStrengthPairRank();
     
     // ⏰ 処理開始時刻を記録 (ミリ秒)
     long startTime = GetTickCount();    
@@ -401,6 +432,242 @@ void execute() {
     g_staticLasttime = temptime;
     
     LogUtil::printMethodEnd(g_logger, __FUNCTION__, true);
+}
+
+/**
+ * 通貨強弱順位のDB参照サービスと表示パネルを作成する。
+ */
+void setCurrencyStrengthPairRank() {
+    deleteCurrencyStrengthPairRank();
+
+    if (!currencyStrengthRankVisible) {
+        return;
+    }
+
+    gCurrencyStrengthBaseCurrency = SymbolInfoString(
+        g_marketContext.symbolName,
+        SYMBOL_CURRENCY_BASE
+    );
+    gCurrencyStrengthQuoteCurrency = SymbolInfoString(
+        g_marketContext.symbolName,
+        SYMBOL_CURRENCY_PROFIT
+    );
+
+    int panelXDistance = currencyStrengthRankPanelXDistance;
+
+    if (panelXDistance < 0) {
+        panelXDistance = 0;
+    }
+
+    gCurrencyStrengthPairRankDraw = new DrawCurrencyStrengthPairRank(
+        0,
+        panelXDistance
+    );
+
+    if (gCurrencyStrengthPairRankDraw == NULL) {
+        g_logger.error(__FUNCTION__, "currency strength rank draw allocation failed");
+
+        return;
+    }
+
+    gCurrencyStrengthPairRankDraw.drawUnavailable(
+        gCurrencyStrengthBaseCurrency,
+        gCurrencyStrengthQuoteCurrency
+    );
+
+    if (currencyStrengthDatabaseFileName == ""
+            || gCurrencyStrengthBaseCurrency == ""
+            || gCurrencyStrengthQuoteCurrency == "") {
+        g_logger.error(
+            __FUNCTION__,
+            StringFormat(
+                "currency strength rank setting is invalid. file=%s base=%s quote=%s",
+                currencyStrengthDatabaseFileName,
+                gCurrencyStrengthBaseCurrency,
+                gCurrencyStrengthQuoteCurrency
+            )
+        );
+
+        return;
+    }
+
+    gCurrencyStrengthRankQueryService =
+        new CurrencyStrengthYearlyRankQueryService(
+            currencyStrengthDatabaseFileName,
+            currencyStrengthDatabaseSplitByYear,
+            currencyStrengthDatabaseUseCommonFolder
+        );
+
+    if (gCurrencyStrengthRankQueryService == NULL) {
+        g_logger.error(__FUNCTION__, "currency strength rank service allocation failed");
+    }
+}
+
+/**
+ * 現在時刻以前の最新集計から表示通貨ペアの順位を更新する。
+ */
+void updateCurrencyStrengthPairRank() {
+    if (!currencyStrengthRankVisible
+            || gCurrencyStrengthPairRankDraw == NULL
+            || gCurrencyStrengthRankQueryService == NULL) {
+        return;
+    }
+
+    datetime targetM5BarTime = getCurrencyStrengthTargetM5BarTime();
+
+    if (targetM5BarTime <= 0) {
+        return;
+    }
+
+    bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+
+    if (isTester && targetM5BarTime == gCurrencyStrengthLastQueryM5BarTime) {
+        return;
+    }
+
+    gCurrencyStrengthLastQueryM5BarTime = targetM5BarTime;
+
+    string calculationVersion =
+        CurrencyStrengthCalculationProfile::getCalculationVersion(isTester);
+    string sourceMode = CurrencyStrengthCalculationProfile::getSourceMode(
+        isTester
+    );
+
+    CurrencyStrengthPairRankInfo rankInfo;
+    ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS queryStatus =
+        gCurrencyStrengthRankQueryService.findLatestPairRanksAtOrBefore(
+            targetM5BarTime,
+            calculationVersion,
+            sourceMode,
+            AccountInfoString(ACCOUNT_SERVER),
+            AccountInfoInteger(ACCOUNT_LOGIN),
+            gCurrencyStrengthBaseCurrency,
+            gCurrencyStrengthQuoteCurrency,
+            rankInfo
+        );
+
+    if (queryStatus != CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
+        if (queryStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR
+                || !gCurrencyStrengthRankAvailable) {
+            return;
+        }
+
+        if (gCurrencyStrengthPairRankDraw.drawUnavailable(
+            gCurrencyStrengthBaseCurrency,
+            gCurrencyStrengthQuoteCurrency
+        )) {
+            gCurrencyStrengthLastRunId = 0;
+            gCurrencyStrengthLastM5BarTime = 0;
+            gCurrencyStrengthLastUpdatedAt = 0;
+            gCurrencyStrengthBaseLongMediumRank = 0;
+            gCurrencyStrengthBaseMediumShortRank = 0;
+            gCurrencyStrengthQuoteLongMediumRank = 0;
+            gCurrencyStrengthQuoteMediumShortRank = 0;
+            gCurrencyStrengthRankAvailable = false;
+        } else {
+            g_logger.error(
+                __FUNCTION__,
+                "currency strength unavailable rank draw failed"
+            );
+        }
+
+        return;
+    }
+
+    bool isChanged = !gCurrencyStrengthRankAvailable;
+
+    if (rankInfo.runId != gCurrencyStrengthLastRunId
+            || rankInfo.m5BarTime != gCurrencyStrengthLastM5BarTime
+            || rankInfo.updatedAt != gCurrencyStrengthLastUpdatedAt
+            || rankInfo.baseLongMediumTermAverageRank
+                != gCurrencyStrengthBaseLongMediumRank
+            || rankInfo.baseMediumShortTermAverageRank
+                != gCurrencyStrengthBaseMediumShortRank
+            || rankInfo.quoteLongMediumTermAverageRank
+                != gCurrencyStrengthQuoteLongMediumRank
+            || rankInfo.quoteMediumShortTermAverageRank
+                != gCurrencyStrengthQuoteMediumShortRank) {
+        isChanged = true;
+    }
+
+    if (isChanged && !gCurrencyStrengthPairRankDraw.draw(rankInfo)) {
+        g_logger.error(__FUNCTION__, "currency strength rank draw failed");
+
+        return;
+    }
+
+    gCurrencyStrengthLastRunId = rankInfo.runId;
+    gCurrencyStrengthLastM5BarTime = rankInfo.m5BarTime;
+    gCurrencyStrengthLastUpdatedAt = rankInfo.updatedAt;
+    gCurrencyStrengthBaseLongMediumRank =
+        rankInfo.baseLongMediumTermAverageRank;
+    gCurrencyStrengthBaseMediumShortRank =
+        rankInfo.baseMediumShortTermAverageRank;
+    gCurrencyStrengthQuoteLongMediumRank =
+        rankInfo.quoteLongMediumTermAverageRank;
+    gCurrencyStrengthQuoteMediumShortRank =
+        rankInfo.quoteMediumShortTermAverageRank;
+    gCurrencyStrengthRankAvailable = true;
+}
+
+/**
+ * DB検索上限となる現在のM5バー開始時刻を取得する。
+ *
+ * テスターの始値モデルで下位時間足を参照しないよう、
+ * 現在時刻をM5間隔へ切り下げる。
+ *
+ * @return 現在のM5バー開始時刻。取得できない場合は0。
+ */
+datetime getCurrencyStrengthTargetM5BarTime() {
+    datetime currentTime = TimeCurrent();
+
+    if (currentTime <= 0) {
+        currentTime = iTime(
+            g_marketContext.symbolName,
+            g_marketContext.timeFrame,
+            0
+        );
+    }
+
+    int m5Seconds = PeriodSeconds(PERIOD_M5);
+
+    if (currentTime <= 0 || m5Seconds <= 0) {
+        return 0;
+    }
+
+    long currentSeconds = (long)currentTime;
+    long elapsedSeconds = currentSeconds % m5Seconds;
+
+    return (datetime)(currentSeconds - elapsedSeconds);
+}
+
+/**
+ * 通貨強弱順位のDB参照サービスと表示パネルを解放する。
+ */
+void deleteCurrencyStrengthPairRank() {
+    if (gCurrencyStrengthRankQueryService != NULL) {
+        gCurrencyStrengthRankQueryService.close();
+        delete gCurrencyStrengthRankQueryService;
+        gCurrencyStrengthRankQueryService = NULL;
+    }
+
+    if (gCurrencyStrengthPairRankDraw != NULL) {
+        gCurrencyStrengthPairRankDraw.clear();
+        delete gCurrencyStrengthPairRankDraw;
+        gCurrencyStrengthPairRankDraw = NULL;
+    }
+
+    gCurrencyStrengthBaseCurrency = "";
+    gCurrencyStrengthQuoteCurrency = "";
+    gCurrencyStrengthLastRunId = 0;
+    gCurrencyStrengthLastM5BarTime = 0;
+    gCurrencyStrengthLastUpdatedAt = 0;
+    gCurrencyStrengthLastQueryM5BarTime = 0;
+    gCurrencyStrengthBaseLongMediumRank = 0;
+    gCurrencyStrengthBaseMediumShortRank = 0;
+    gCurrencyStrengthQuoteLongMediumRank = 0;
+    gCurrencyStrengthQuoteMediumShortRank = 0;
+    gCurrencyStrengthRankAvailable = false;
 }
 
 /**

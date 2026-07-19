@@ -86,6 +86,52 @@ public:
     }
 
     /**
+     * データベースを読み取り専用で開く。
+     *
+     * 存在しないデータベースファイルは作成しない。
+     *
+     * @return オープンに成功した場合はtrue。
+     */
+    bool openReadOnly() {
+        if (this.isOpen()) {
+            return true;
+        }
+
+        uint flags = DATABASE_OPEN_READONLY;
+
+        if (this.useCommonFolder) {
+            flags = flags | DATABASE_OPEN_COMMON;
+        }
+
+        ResetLastError();
+        this.databaseHandle = DatabaseOpen(this.fileName, flags);
+
+        if (this.databaseHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseOpen failed. fileName=%s readOnly=1 error=%d",
+                    this.fileName,
+                    GetLastError()
+                )
+            );
+
+            return false;
+        }
+
+        this.logger.info(
+            __FUNCTION__,
+            StringFormat(
+                "Database opened. fileName=%s common=%d readOnly=1",
+                this.fileName,
+                (int)this.useCommonFolder
+            )
+        );
+
+        return true;
+    }
+
+    /**
      * データベースを閉じる。
      */
     void close() {
