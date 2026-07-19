@@ -8,8 +8,8 @@
 | DBMS | MetaTrader 5組み込みSQLite |
 | LIVE集計ルール | `pair-direction-raw-v6` |
 | TESTER集計ルール | `pair-direction-closed-v1` |
-| 最終更新日 | 2026-07-18 |
-| 実装 | `CurrencyStrengthElliot`、`CurrencyStrengthPersistenceService`、3 Entity・3 DAO |
+| 最終更新日 | 2026-07-19 |
+| 実装 | `CurrencyStrengthElliot`、`CurrencyStrengthYearlyPersistenceService`、`CurrencyStrengthPersistenceService`、3 Entity・3 DAO |
 
 本書は、通貨強弱集計で使用する3テーブル、1ビュー、インデックス、保存処理および既存DB移行処理を定義します。
 
@@ -19,15 +19,23 @@
 
 | 項目 | 既定値 |
 |---|---|
-| ファイル名 | `mstng-currency-strength.sqlite` |
+| ベースファイル名 | `mstng-currency-strength.sqlite` |
+| 年別分割 | `databaseSplitByYear = true` |
+| 実ファイル名 | `mstng-currency-strength-YYYY.sqlite` |
 | DB保存有無 | `databaseEnabled = true` |
 | Commonフォルダ使用 | `databaseUseCommonFolder = true` |
 | オープンモード | READWRITE、CREATE、Common使用時はCOMMON |
 
+既定では、保存対象Runの`m5_bar_time`からブローカー時刻の西暦年を取得し、ベースファイル名の拡張子直前へ`-YYYY`を追加します。たとえば2026年のRunは`mstng-currency-strength-2026.sqlite`へ保存します。`calculated_at`が翌年でも`m5_bar_time`が前年なら前年DBが保存先です。Run、196件のPairVote、8件のResultは必ず同じ年DBへ1トランザクションで保存します。
+
 保存場所は次のとおりです。
 
-- Commonフォルダ使用時: `%APPDATA%\MetaQuotes\Terminal\Common\Files\mstng-currency-strength.sqlite`
-- Commonフォルダ未使用時: 対象ターミナルの`MQL5\Files\mstng-currency-strength.sqlite`
+- Commonフォルダ使用時: `%APPDATA%\MetaQuotes\Terminal\Common\Files\mstng-currency-strength-2026.sqlite`
+- Commonフォルダ未使用時: 対象ターミナルの`MQL5\Files\mstng-currency-strength-2026.sqlite`
+
+年が変わる場合は、新年DBのオープンとテーブル準備に成功してから旧年DBを閉じます。同じ年へ再保存する場合は同じDB接続と既存の自然キーUpsertを使用します。`databaseSplitByYear = false`にすると、従来どおり`databaseFileName`をそのまま単一DBとして使用します。
+
+年別DBの`run_id`はファイル内でのみ一意です。複数年を扱う処理では、Runを`年またはDBファイル名 + run_id`で識別します。既存の単一DB`mstng-currency-strength.sqlite`は自動移行しません。年別分割を有効にした後も旧ファイルは残るため、必要な履歴移行は別途実施します。
 
 ### 2.2 スモークテスト用
 
@@ -47,7 +55,7 @@ LIVEでは従来どおり各時間足の現在足を判定し、`calculation_ver
 
 TESTERでは新しいM5足の開始時刻をスナップショット基準時刻`T`とし、`calculated_at`と`m5_bar_time`の両方へ`T`を保存します。各時間足について`T`の時点で確定済みの最新足、すなわち開始時刻が`T`より前で、`T`を含む足の1本前にあたる足を判定します。基準チャートシンボルで時間足別の確定足開始時刻を決め、各通貨ペアで同じ開始時刻の足を優先します。実履歴にその足がない場合は、期待時刻より前に存在する直近の確定足へフォールバックし、実際の時刻をPairVoteの`bar_time`へ保存します。TESTERの保存値は`calculation_version = pair-direction-closed-v1`、`source_mode = TESTER`です。
 
-TESTERの`m15_bar_time`には`T`を含むM15足の開始時刻を保存します。一方、PairVoteの`bar_time`には実際に判定した確定足の開始時刻を保存します。このためM5票の`bar_time`は`T`ではなく直前M5足の開始時刻となり、M15票の`bar_time`も`m15_bar_time`より前になります。
+Runの基準時刻は`m5_bar_time`だけです。PairVoteの`bar_time`には実際に判定した確定足の開始時刻を保存します。このためM5票の`bar_time`は`T`ではなく直前M5足、M15票も`T`より前の確定済みM15足の開始時刻となります。
 
 1通貨ペア・1時間足につき1票として、次の規則で加算します。
 
@@ -118,21 +126,20 @@ currency_strength_runs (1)
 | No. | 列名 | SQLite型 | MQL5型 | 制約 | 説明 |
 |---:|---|---|---|---|---|
 | 1 | `id` | INTEGER | long | PRIMARY KEY, AUTOINCREMENT | 集計ID |
-| 2 | `calculated_at` | INTEGER | datetime | NOT NULL | テスターまたはチャート上で集計した市場時刻 |
-| 3 | `m5_bar_time` | INTEGER | datetime | NOT NULL, DEFAULT 0 | 集計基準となるチャートシンボルのM5足開始時刻 |
-| 4 | `m5_bar_time_text` | TEXT | string | NOT NULL, DEFAULT '' | `m5_bar_time`の目視用文字列 |
-| 5 | `m15_bar_time` | INTEGER | datetime | NOT NULL | 同じ集計時点に対応するM15足開始時刻 |
+| 2 | `m5_bar_time` | INTEGER | datetime | NOT NULL, DEFAULT 0 | 集計基準となるチャートシンボルのM5足開始時刻 |
+| 3 | `m5_bar_time_text` | TEXT | string | NOT NULL, DEFAULT '' | `m5_bar_time`の目視用文字列 |
+| 4 | `calculated_at` | INTEGER | datetime | NOT NULL | テスターまたはチャート上で集計した市場時刻 |
+| 5 | `source_mode` | TEXT | string | NOT NULL, DEFAULT 'LEGACY' | 集計実行モード。新規保存は`LIVE`または`TESTER`、移行前Runは`LEGACY` |
 | 6 | `calculation_version` | TEXT | string | NOT NULL | 集計ルール識別子。LIVEは`pair-direction-raw-v6`、TESTERは`pair-direction-closed-v1` |
-| 7 | `source_mode` | TEXT | string | NOT NULL, DEFAULT 'LEGACY' | 集計実行モード。新規保存は`LIVE`または`TESTER`、移行前Runは`LEGACY` |
-| 8 | `source_server` | TEXT | string | NOT NULL | 集計元の取引サーバー名 |
-| 9 | `source_login` | INTEGER | long | NOT NULL | 集計元の口座ログイン番号 |
-| 10 | `source_chart_id` | INTEGER | long | NOT NULL | 保存元チャートID。自然キーには含めない |
-| 11 | `expected_pair_count` | INTEGER | int | NOT NULL | 期待する通貨ペア数。現行は28 |
-| 12 | `valid_pair_count` | INTEGER | int | NOT NULL | 7時間足すべてを取得できた有効通貨ペア数 |
-| 13 | `vote_count` | INTEGER | int | NOT NULL | 保存した票数。`valid_pair_count × 7` |
-| 14 | `is_complete` | INTEGER | int | NOT NULL | 完全集計の場合1、部分集計の場合0 |
-| 15 | `updated_at` | INTEGER | datetime | NOT NULL | スナップショットをINSERTまたはUPDATEした実時刻 |
-| 16 | `updated_at_text` | TEXT | string | NOT NULL | `updated_at`のローカル時刻表示文字列 |
+| 7 | `is_complete` | INTEGER | int | NOT NULL | 完全集計の場合1、部分集計の場合0 |
+| 8 | `valid_pair_count` | INTEGER | int | NOT NULL | 7時間足すべてを取得できた有効通貨ペア数 |
+| 9 | `expected_pair_count` | INTEGER | int | NOT NULL | 期待する通貨ペア数。現行は28 |
+| 10 | `vote_count` | INTEGER | int | NOT NULL | 保存した票数。`valid_pair_count × 7` |
+| 11 | `source_server` | TEXT | string | NOT NULL | 集計元の取引サーバー名 |
+| 12 | `source_login` | INTEGER | long | NOT NULL | 集計元の口座ログイン番号 |
+| 13 | `source_chart_id` | INTEGER | long | NOT NULL | 保存元チャートID。自然キーには含めない |
+| 14 | `updated_at` | INTEGER | datetime | NOT NULL | スナップショットをINSERTまたはUPDATEした実時刻 |
+| 15 | `updated_at_text` | TEXT | string | NOT NULL | `updated_at`のローカル時刻表示文字列 |
 
 `is_complete`にDBのCHECK制約はありません。Serviceが`valid_pair_count == expected_pair_count`の場合に1を設定します。
 
@@ -168,20 +175,20 @@ ON currency_strength_runs(source_mode, calculated_at);
 |---:|---|---|---|---|---|
 | 1 | `id` | INTEGER | long | PRIMARY KEY, AUTOINCREMENT | 票ID |
 | 2 | `run_id` | INTEGER | long | NOT NULL, FK | `currency_strength_runs.id` |
-| 3 | `pair_order` | INTEGER | int | NOT NULL | 28通貨ペア内の集計順。先頭は0 |
-| 4 | `time_frame_order` | INTEGER | int | NOT NULL | 0=MN1、1=W1、2=D1、3=H4、4=H1、5=M15、6=M5 |
-| 5 | `canonical_symbol_name` | TEXT | string | NOT NULL | 標準通貨ペア名。例: `USDJPY` |
-| 6 | `resolved_symbol_name` | TEXT | string | NOT NULL | ブローカー環境で解決した実シンボル名 |
-| 7 | `time_frame` | INTEGER | int | NOT NULL | `ENUM_TIMEFRAMES`の数値 |
-| 8 | `time_frame_text` | TEXT | string | NOT NULL | 時間足表示文字列。`MN1`、`W1`、`D1`、`H4`、`H1`、`M15`、`M5` |
+| 3 | `canonical_symbol_name` | TEXT | string | NOT NULL | 標準通貨ペア名。例: `USDJPY` |
+| 4 | `resolved_symbol_name` | TEXT | string | NOT NULL | ブローカー環境で解決した実シンボル名 |
+| 5 | `pair_order` | INTEGER | int | NOT NULL | 28通貨ペア内の集計順。先頭は0 |
+| 6 | `time_frame` | INTEGER | int | NOT NULL | `ENUM_TIMEFRAMES`の数値 |
+| 7 | `time_frame_text` | TEXT | string | NOT NULL | 時間足表示文字列。`MN1`、`W1`、`D1`、`H4`、`H1`、`M15`、`M5` |
+| 8 | `time_frame_order` | INTEGER | int | NOT NULL | 0=MN1、1=W1、2=D1、3=H4、4=H1、5=M15、6=M5 |
 | 9 | `bar_time` | INTEGER | datetime | NOT NULL | 判定に使用した足の開始時刻。LIVEは現在足、TESTERは基準時刻`T`より前の確定足 |
 | 10 | `bar_time_text` | TEXT | string | NOT NULL | `bar_time`の目視用文字列 |
-| 11 | `base_currency` | TEXT | string | NOT NULL | 基軸通貨コード |
-| 12 | `quote_currency` | TEXT | string | NOT NULL | 決済通貨コード |
-| 13 | `is_buy` | INTEGER | int | NOT NULL, CHECK(is_buy IN (0, 1)) | BUYの場合1、SELLの場合0 |
-| 14 | `oscillator_count` | INTEGER | int | NOT NULL | 判定元のオシレーター総合値 |
-| 15 | `base_score` | INTEGER | int | NOT NULL, CHECK(base_score IN (-1, 1)) | 基軸通貨へ加算した票。BUY=+1、SELL=-1 |
-| 16 | `base_score_after` | INTEGER | int | NOT NULL | 票反映後の基軸通貨・時間足別累積値 |
+| 11 | `is_buy` | INTEGER | int | NOT NULL, CHECK(is_buy IN (0, 1)) | BUYの場合1、SELLの場合0 |
+| 12 | `oscillator_count` | INTEGER | int | NOT NULL | 判定元のオシレーター総合値 |
+| 13 | `base_currency` | TEXT | string | NOT NULL | 基軸通貨コード |
+| 14 | `base_score` | INTEGER | int | NOT NULL, CHECK(base_score IN (-1, 1)) | 基軸通貨へ加算した票。BUY=+1、SELL=-1 |
+| 15 | `base_score_after` | INTEGER | int | NOT NULL | 票反映後の基軸通貨・時間足別累積値 |
+| 16 | `quote_currency` | TEXT | string | NOT NULL | 決済通貨コード |
 | 17 | `quote_score_after` | INTEGER | int | NOT NULL | 票反映後の決済通貨・時間足別累積値 |
 | 18 | `updated_at` | INTEGER | datetime | NOT NULL | スナップショットのDB保存時刻 |
 | 19 | `updated_at_text` | TEXT | string | NOT NULL | `updated_at`の目視用文字列 |
@@ -215,32 +222,32 @@ ON currency_strength_pair_votes(run_id, pair_order, time_frame_order);
 | 1 | `id` | INTEGER | long | PRIMARY KEY, AUTOINCREMENT | 集計結果ID |
 | 2 | `run_id` | INTEGER | long | NOT NULL, FK | `currency_strength_runs.id` |
 | 3 | `currency_name` | TEXT | string | NOT NULL | 通貨コード |
-| 4 | `mn1_score` | INTEGER | int | NOT NULL | MN1の未正規化合計 |
-| 5 | `w1_score` | INTEGER | int | NOT NULL | W1の未正規化合計 |
-| 6 | `d1_score` | INTEGER | int | NOT NULL | D1の未正規化合計 |
-| 7 | `h4_score` | INTEGER | int | NOT NULL | H4の未正規化合計 |
-| 8 | `h1_score` | INTEGER | int | NOT NULL | H1の未正規化合計 |
-| 9 | `m15_score` | INTEGER | int | NOT NULL | M15の未正規化合計 |
-| 10 | `m5_score` | INTEGER | int | NOT NULL | M5の未正規化合計 |
-| 11 | `total_score` | INTEGER | int | NOT NULL | 7時間足の未正規化合計 |
-| 12 | `mn1_sample_count` | INTEGER | int | NOT NULL | MN1の票数 |
-| 13 | `w1_sample_count` | INTEGER | int | NOT NULL | W1の票数 |
-| 14 | `d1_sample_count` | INTEGER | int | NOT NULL | D1の票数 |
-| 15 | `h4_sample_count` | INTEGER | int | NOT NULL | H4の票数 |
-| 16 | `h1_sample_count` | INTEGER | int | NOT NULL | H1の票数 |
-| 17 | `m15_sample_count` | INTEGER | int | NOT NULL | M15の票数 |
-| 18 | `m5_sample_count` | INTEGER | int | NOT NULL | M5の票数 |
-| 19 | `total_sample_count` | INTEGER | int | NOT NULL | 7時間足の合計票数。完全な集計では49 |
-| 20 | `long_term_average_score` | REAL | double | NOT NULL | MN1、W1、D1のスコア平均 |
-| 21 | `long_term_average_rank` | INTEGER | int | NOT NULL | 長期平均の競技順位。未確定は0 |
-| 22 | `long_medium_term_average_score` | REAL | double | NOT NULL | MN1、W1、D1、H4、H1のスコア平均 |
-| 23 | `long_medium_term_average_rank` | INTEGER | int | NOT NULL | 長中期平均の競技順位。未確定は0 |
-| 24 | `medium_term_average_score` | REAL | double | NOT NULL | D1、H4、H1のスコア平均 |
-| 25 | `medium_term_average_rank` | INTEGER | int | NOT NULL | 中期平均の競技順位。未確定は0 |
-| 26 | `medium_short_term_average_score` | REAL | double | NOT NULL | D1、H4、H1、M15、M5のスコア平均 |
-| 27 | `medium_short_term_average_rank` | INTEGER | int | NOT NULL | 中短期平均の競技順位。未確定は0 |
-| 28 | `short_term_average_score` | REAL | double | NOT NULL | H1、M15、M5のスコア平均 |
-| 29 | `short_term_average_rank` | INTEGER | int | NOT NULL | 短期平均の競技順位。未確定は0 |
+| 4 | `total_score` | INTEGER | int | NOT NULL | 7時間足の未正規化合計 |
+| 5 | `total_sample_count` | INTEGER | int | NOT NULL | 7時間足の合計票数。完全な集計では49 |
+| 6 | `long_medium_term_average_score` | REAL | double | NOT NULL | MN1、W1、D1、H4、H1のスコア平均 |
+| 7 | `long_medium_term_average_rank` | INTEGER | int | NOT NULL | 長中期平均の競技順位。未確定は0 |
+| 8 | `medium_short_term_average_score` | REAL | double | NOT NULL | D1、H4、H1、M15、M5のスコア平均 |
+| 9 | `medium_short_term_average_rank` | INTEGER | int | NOT NULL | 中短期平均の競技順位。未確定は0 |
+| 10 | `long_term_average_score` | REAL | double | NOT NULL | MN1、W1、D1のスコア平均 |
+| 11 | `long_term_average_rank` | INTEGER | int | NOT NULL | 長期平均の競技順位。未確定は0 |
+| 12 | `medium_term_average_score` | REAL | double | NOT NULL | D1、H4、H1のスコア平均 |
+| 13 | `medium_term_average_rank` | INTEGER | int | NOT NULL | 中期平均の競技順位。未確定は0 |
+| 14 | `short_term_average_score` | REAL | double | NOT NULL | H1、M15、M5のスコア平均 |
+| 15 | `short_term_average_rank` | INTEGER | int | NOT NULL | 短期平均の競技順位。未確定は0 |
+| 16 | `mn1_score` | INTEGER | int | NOT NULL | MN1の未正規化合計 |
+| 17 | `w1_score` | INTEGER | int | NOT NULL | W1の未正規化合計 |
+| 18 | `d1_score` | INTEGER | int | NOT NULL | D1の未正規化合計 |
+| 19 | `h4_score` | INTEGER | int | NOT NULL | H4の未正規化合計 |
+| 20 | `h1_score` | INTEGER | int | NOT NULL | H1の未正規化合計 |
+| 21 | `m15_score` | INTEGER | int | NOT NULL | M15の未正規化合計 |
+| 22 | `m5_score` | INTEGER | int | NOT NULL | M5の未正規化合計 |
+| 23 | `mn1_sample_count` | INTEGER | int | NOT NULL | MN1の票数 |
+| 24 | `w1_sample_count` | INTEGER | int | NOT NULL | W1の票数 |
+| 25 | `d1_sample_count` | INTEGER | int | NOT NULL | D1の票数 |
+| 26 | `h4_sample_count` | INTEGER | int | NOT NULL | H4の票数 |
+| 27 | `h1_sample_count` | INTEGER | int | NOT NULL | H1の票数 |
+| 28 | `m15_sample_count` | INTEGER | int | NOT NULL | M15の票数 |
+| 29 | `m5_sample_count` | INTEGER | int | NOT NULL | M5の票数 |
 | 30 | `updated_at` | INTEGER | datetime | NOT NULL | スナップショットのDB保存時刻 |
 | 31 | `updated_at_text` | TEXT | string | NOT NULL | `updated_at`の目視用文字列 |
 
@@ -268,29 +275,28 @@ ON currency_strength_results(run_id, currency_name);
 
 | No. | 列名 | 元データ・計算式 |
 |---:|---|---|
-| 1 | `vote_id` | `pair_votes.id` |
-| 2 | `run_id` | `pair_votes.run_id` |
-| 3 | `calculated_at` | `runs.calculated_at` |
-| 4 | `m5_bar_time` | `runs.m5_bar_time` |
-| 5 | `m5_bar_time_text` | `runs.m5_bar_time_text` |
-| 6 | `m15_bar_time` | `runs.m15_bar_time` |
-| 7 | `source_mode` | `runs.source_mode` |
-| 8 | `pair_order` | `pair_votes.pair_order` |
-| 9 | `time_frame_order` | `pair_votes.time_frame_order` |
-| 10 | `canonical_symbol_name` | `pair_votes.canonical_symbol_name` |
-| 11 | `resolved_symbol_name` | `pair_votes.resolved_symbol_name` |
-| 12 | `time_frame` | `pair_votes.time_frame` |
-| 13 | `time_frame_text` | `pair_votes.time_frame_text` |
-| 14 | `bar_time` | `pair_votes.bar_time` |
-| 15 | `bar_time_text` | `pair_votes.bar_time_text` |
-| 16 | `updated_at` | `pair_votes.updated_at` |
-| 17 | `updated_at_text` | `pair_votes.updated_at_text` |
-| 18 | `currency_side` | `BASE`または`QUOTE` |
-| 19 | `currency_name` | BASE行は`base_currency`、QUOTE行は`quote_currency` |
-| 20 | `score` | BASE行は`base_score`、QUOTE行は`0 - base_score` |
-| 21 | `score_after` | BASE行は`base_score_after`、QUOTE行は`quote_score_after` |
-| 22 | `is_buy` | `pair_votes.is_buy` |
-| 23 | `oscillator_count` | `pair_votes.oscillator_count` |
+| 1 | `run_id` | `pair_votes.run_id` |
+| 2 | `m5_bar_time` | `runs.m5_bar_time` |
+| 3 | `m5_bar_time_text` | `runs.m5_bar_time_text` |
+| 4 | `source_mode` | `runs.source_mode` |
+| 5 | `currency_name` | BASE行は`base_currency`、QUOTE行は`quote_currency` |
+| 6 | `currency_side` | `BASE`または`QUOTE` |
+| 7 | `score` | BASE行は`base_score`、QUOTE行は`0 - base_score` |
+| 8 | `score_after` | BASE行は`base_score_after`、QUOTE行は`quote_score_after` |
+| 9 | `canonical_symbol_name` | `pair_votes.canonical_symbol_name` |
+| 10 | `resolved_symbol_name` | `pair_votes.resolved_symbol_name` |
+| 11 | `time_frame` | `pair_votes.time_frame` |
+| 12 | `time_frame_text` | `pair_votes.time_frame_text` |
+| 13 | `bar_time` | `pair_votes.bar_time` |
+| 14 | `bar_time_text` | `pair_votes.bar_time_text` |
+| 15 | `is_buy` | `pair_votes.is_buy` |
+| 16 | `oscillator_count` | `pair_votes.oscillator_count` |
+| 17 | `pair_order` | `pair_votes.pair_order` |
+| 18 | `time_frame_order` | `pair_votes.time_frame_order` |
+| 19 | `vote_id` | `pair_votes.id` |
+| 20 | `calculated_at` | `runs.calculated_at` |
+| 21 | `updated_at` | `pair_votes.updated_at` |
+| 22 | `updated_at_text` | `pair_votes.updated_at_text` |
 
 ## 10. 保存処理
 
@@ -301,12 +307,13 @@ ON currency_strength_results(run_id, currency_name);
 | 入力 | 既定値 | 動作 |
 |---|---:|---|
 | `refreshSeconds` | 60 | 初期化直後と60秒ごとに再集計 |
-| `databaseSaveEveryRefresh` | false | 同じM15足では保存しない |
+| `databaseSplitByYear` | true | `m5_bar_time`の年ごとにDBファイルを分割 |
+| `databaseSaveEveryRefresh` | false | 同じM5足では保存しない |
 | `databaseSavePartialRuns` | false | 28ペアすべて有効な場合だけ保存 |
 | `databaseSaveStartTime` | `2026.07.16 00:00` | TESTERのDB保存開始時刻。0はテスト開始時刻から保存 |
 | `databaseRetentionDays` | 30 | 30日より古いLIVE Runを削除 |
 
-- 通常チャートでは従来どおりタイマーで再集計し、現在のM15足が最後に保存成功したM15足と異なる場合に保存します。LIVEの保存失敗時は保存済みM15時刻を更新せず、次回タイマーで再試行します。
+- 通常チャートではタイマーで再集計し、現在のM5足が最後に保存成功したM5足と異なる場合に保存します。LIVEの保存失敗時は保存済みM5時刻を更新せず、次回タイマーで再試行します。
 - ストラテジーテスターではタイマーを使用せず、`OnCalculate()`で新しいM5足を検出して集計・保存します。未処理のM5足が複数ある場合は古い時刻から順に追いつき処理を行います。
 - TESTERでは同じM5足の全ティックで再計算せず、新しいM5足を検出した時だけ処理します。28ペア未準備の現在足は保留し、次のM5足で旧足として1回だけ再確認します。再確認後も未準備の場合は、M5時刻、ペア数、票数、および最初に検出した準備不足理由をログへ出力してその足をスキップし、後続時刻へ進みます。
 - TESTERのDB保存失敗は未準備スキップと区別し、処理済みM5時刻を進めません。次のM5足で同じ基準時刻`T`から再試行し、後続時刻を先に保存しません。
@@ -353,6 +360,7 @@ INSERT、UPDATE、子削除またはCOMMITに失敗した場合はROLLBACKし、
 ### 10.4 保持期間
 
 - DB有効なLIVEでは、その更新が保存対象かどうかにかかわらず、初回の計算成功後と、前回の削除成功から24時間以上経過した場合に削除を実行します。
+- 年別分割時は、存在する年別DBを確認し、現在選択中の年を含む各DBへ同じ削除条件を適用します。存在しない年の空DBは作成しません。
 - `source_mode = LIVE`かつ`calculated_at < 現在時刻 - databaseRetentionDays × 86400`のRunだけが対象です。TESTERとLEGACYのRunは保持期間削除の対象外です。
 - 境界時刻と同値のRunは削除しません。
 - `databaseRetentionDays = 0`で自動削除を無効化します。
@@ -379,7 +387,9 @@ m5_bar_time_text TEXT NOT NULL DEFAULT ''
 source_mode TEXT NOT NULL DEFAULT 'LEGACY'
 ```
 
-M5基準時刻列を持たない旧DBでは、移行前のRunがどのM5足で集計されたか確定できないため、追加後も`m5_bar_time = 0`、`m5_bar_time_text = ''`のまま維持します。履歴の`m15_bar_time`からM5時刻を推測して補完しません。`source_mode`追加前のRunは、M5基準時刻の有無にかかわらずLIVEとTESTERを判別できないため`source_mode = LEGACY`とし、既存のM5基準時刻値は変更しません。
+M5基準時刻列を持たない旧DBでは、移行前のRunがどのM5足で集計されたか確定できないため、追加後も`m5_bar_time = 0`、`m5_bar_time_text = ''`のまま維持します。`source_mode`追加前のRunは、M5基準時刻の有無にかかわらずLIVEとTESTERを判別できないため`source_mode = LEGACY`とし、既存のM5基準時刻値は変更しません。
+
+新規CREATEするRunテーブルには`m15_bar_time`を作成しません。旧スキーマに同列がある場合も、テーブル再構築や列削除は行わず物理列を残します。DAOは旧列の有無を検出し、旧DBへの保存時だけ`m5_bar_time`を15分境界へ丸めた互換値を設定して、旧列の`NOT NULL`制約を満たします。この互換値はEntity、保存間隔判定、自然キー、およびContributionビューでは使用しません。
 
 移行後は`source_mode`を含む部分UNIQUEインデックス`idx_currency_strength_runs_snapshot_mode_key`を作成し、旧インデックス`idx_currency_strength_runs_snapshot_key`を削除します。`m5_bar_time = 0`の旧Runは部分UNIQUEインデックスの対象外であるため、旧Run同士の重複は移行を妨げません。
 
@@ -417,7 +427,7 @@ m5_sample_count INTEGER NOT NULL DEFAULT 0
 
 既存の`pair-direction-raw-v1`はMN1とW1を集計していないため、対応する4列は0のままとします。v1と`pair-direction-raw-v2`はM5を集計していないため、M5の2列は0のままとします。既存行の`total_score`と`total_sample_count`は当時の時間足数の値を維持し、再計算しません。`pair-direction-raw-v3`以降では7時間足すべてを保存し、完全な集計の`total_sample_count`は49です。
 
-新規CREATE時は論理的な時間足順にMN1・W1列をD1列より前、M5列をM15列の後へ配置します。ALTER TABLEは列を末尾へ追加するため、既存DBの物理列順は新規DBと異なります。DAOはINSERT列名を明示して保存します。
+新規CREATE時は、合計、期間別平均・順位を前方に配置し、その後の時間足別詳細をMN1、W1、D1、H4、H1、M15、M5の順に配置します。ALTER TABLEは列を末尾へ追加するため、既存DBの物理列順は新規DBと異なります。DAOはINSERT列名を明示して保存します。
 
 ### 11.4 Resultの長期・中期・短期平均スコア列
 
@@ -454,7 +464,7 @@ medium_short_term_average_score REAL NOT NULL DEFAULT 0.0
 medium_short_term_average_rank INTEGER NOT NULL DEFAULT 0
 ```
 
-既存のv1～v5行は長中期・中短期平均を保存していないため、追加した4列は0のままとし、履歴値を再計算しません。新規の`pair-direction-raw-v6`から2平均と完全Runの競技順位を保存します。部分Runでは2順位を0とします。新規CREATE時は長中期を長期の後、中短期を中期の後へ配置します。ALTER TABLEでは物理的に末尾へ追加されますが、DAOはINSERT列名を明示して保存します。
+既存のv1～v5行は長中期・中短期平均を保存していないため、追加した4列は0のままとし、履歴値を再計算しません。新規の`pair-direction-raw-v6`から2平均と完全Runの競技順位を保存します。部分Runでは2順位を0とします。新規CREATE時の平均列は、長中期、中短期、長期、中期、短期の順とし、各スコアの直後に順位を配置します。ALTER TABLEでは物理的に末尾へ追加されますが、DAOはINSERT列名を明示して保存します。
 
 ### 11.7 PairVote表示列
 
@@ -548,6 +558,18 @@ ORDER BY pair_order, time_frame_order;
 
 ```sql
 SELECT currency_name,
+       total_score,
+       total_sample_count,
+       long_medium_term_average_score,
+       long_medium_term_average_rank,
+       medium_short_term_average_score,
+       medium_short_term_average_rank,
+       long_term_average_score,
+       long_term_average_rank,
+       medium_term_average_score,
+       medium_term_average_rank,
+       short_term_average_score,
+       short_term_average_rank,
        mn1_score,
        w1_score,
        d1_score,
@@ -555,7 +577,6 @@ SELECT currency_name,
        h1_score,
        m15_score,
        m5_score,
-       total_score,
        mn1_sample_count,
        w1_sample_count,
        d1_sample_count,
@@ -563,17 +584,6 @@ SELECT currency_name,
        h1_sample_count,
        m15_sample_count,
        m5_sample_count,
-       total_sample_count,
-       long_term_average_score,
-       long_term_average_rank,
-       long_medium_term_average_score,
-       long_medium_term_average_rank,
-       medium_term_average_score,
-       medium_term_average_rank,
-       medium_short_term_average_score,
-       medium_short_term_average_rank,
-       short_term_average_score,
-       short_term_average_rank,
        updated_at_text
 FROM currency_strength_results
 WHERE run_id = (SELECT MAX(id) FROM currency_strength_runs)
@@ -712,7 +722,7 @@ HAVING COUNT(*) > 1;
 
 ## 14. スモークテスト
 
-`Scripts/Mstng/Database/CurrencyStrengthDatabaseSmokeTest.mq5`は、`source_mode = TESTER`を含む同じM5自然キーへ、内容の異なるスナップショットを2回保存します。
+`Scripts/Mstng/Database/CurrencyStrengthDatabaseSmokeTest.mq5`は、`source_mode = TESTER`を含む同じM5自然キーへ、内容の異なるスナップショットを2回保存した後、同じM15区間内の次のM5時刻へ3回目を保存します。
 
 - 自然キー該当Run: 1件。Run全件数も1件となるのは`recreateDatabaseObjects = true`の場合だけ
 - 1回目のUSDJPY票: MN1、W1、D1、H4、M15はBUY、H1、M5はSELLの7件
@@ -721,9 +731,21 @@ HAVING COUNT(*) > 1;
 - Contributionsビュー: 14件。`source_mode`列は親Runを参照
 - 2回目の長中期平均: USDは-0.60・順位2、JPYは+0.60・順位1
 - 2回目の中短期平均: USDは-0.20・順位2、JPYは+0.20・順位1
+- 3回目のRun: 最初のRunから5分後の別Run。M15区間が同じでもM5時刻が異なれば保存
+- 新規DBの列順: Run、PairVote、Result、およびContributionビューが本仕様書どおりで、Runに`m15_bar_time`がないこと
 
-2回目もRun IDが変わらないこと、自然キー該当件数が1であること、子件数が増えないこと、2回目のRun・先頭票・Result値へ置換されたことを検証します。Run全件数が1であることは、実行前に3テーブルを削除する`recreateDatabaseObjects = true`の場合だけ検証します。また、`source_mode = TESTER`、`updated_at`が2回目保存時の実時刻であり、3テーブルの`updated_at`と`updated_at_text`が一致することを確認します。DBファイルと保存したテストレコードは実行後も残ります。
+2回目もRun IDが変わらないこと、自然キー該当件数が1であること、子件数が増えないこと、2回目のRun・先頭票・Result値へ置換されたことを検証します。続いて3回目が別Runとなり、自然キー該当件数が各1件であることを検証します。Run全件数が2件であることと新規DBの物理列順は、実行前に3テーブルを削除する`recreateDatabaseObjects = true`の場合だけ検証します。また、`source_mode = TESTER`、`updated_at`が2回目保存時の実時刻であり、3テーブルの`updated_at`と`updated_at_text`が一致することを確認します。DBファイルと保存したテストレコードは実行後も残ります。
 
 このテストはCalculatorからEntityへの通常変換、保存条件、保持期間削除、ROLLBACK、および既定の`recreateDatabaseObjects = true`では既存DBのALTER TABLE経路を直接検証しません。
 
-`Scripts/Mstng/Strength/CurrencyStrengthCalculationSmokeTest.mq5`は28通貨ペアの実判定について、5種類の平均を時間足別スコアから再計算し、8通貨内の競技順位、全通貨の平均合計0、部分集計時の順位0、およびM5・M15基準時刻と`source_mode = LIVE`を渡したDB保存を検証します。このスクリプトはオンラインチャート用であり、TESTERの確定足集計やM5追いつき処理は検証しません。
+`Scripts/Mstng/Database/CurrencyStrengthYearlyDatabaseSmokeTest.mq5`は、2025年12月31日23:55と2026年1月1日00:00のM5時刻を別ファイルへ保存し、2025年分を再保存します。
+
+- `calculated_at`を2026年にした2025年M5 Runが2025年DBへ保存されること
+- 2025年DBと2026年DBが別ファイルになること
+- 両DBがRun 1件、PairVote 7件、Result 2件、Contribution 14件になること
+- 2025年分の再保存でRun IDと件数を維持し、Run値と子レコードを更新すること
+- 更新後の2025年先頭票とUSD結果がSELL値、2026年側がBUY値のまま維持されること
+
+既定のテストファイルは`mstng-currency-strength-yearly-smoke-test-2025.sqlite`と`mstng-currency-strength-yearly-smoke-test-2026.sqlite`です。実行前にこの2ファイルを削除し、実行後は確認用として残します。本番DBのベースファイル名を指定して実行してはいけません。
+
+`Scripts/Mstng/Strength/CurrencyStrengthCalculationSmokeTest.mq5`は28通貨ペアの実判定について、5種類の平均を時間足別スコアから再計算し、8通貨内の競技順位、全通貨の平均合計0、部分集計時の順位0、およびM5基準時刻と`source_mode = LIVE`を渡したDB保存を検証します。このスクリプトはオンラインチャート用であり、TESTERの確定足集計やM5追いつき処理は検証しません。

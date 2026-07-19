@@ -81,7 +81,6 @@ public:
      *
      * @param fromCalculatedAt 集計時刻。
      * @param fromM5BarTime M5現在足の開始時刻。
-     * @param fromM15BarTime M15現在足の開始時刻。
      * @param fromCalculationVersion 集計ルール識別子。
      * @param fromSourceMode 集計実行モード。
      * @param fromSourceServer 口座サーバー名。
@@ -93,7 +92,6 @@ public:
     bool save(
         const datetime fromCalculatedAt,
         const datetime fromM5BarTime,
-        const datetime fromM15BarTime,
         const string fromCalculationVersion,
         const string fromSourceMode,
         const string fromSourceServer,
@@ -143,7 +141,6 @@ public:
         this.buildRunEntity(
             fromCalculatedAt,
             fromM5BarTime,
-            fromM15BarTime,
             fromCalculationVersion,
             fromSourceMode,
             fromSourceServer,
@@ -354,7 +351,6 @@ private:
      *
      * @param fromCalculatedAt 集計時刻。
      * @param fromM5BarTime M5現在足の開始時刻。
-     * @param fromM15BarTime M15現在足の開始時刻。
      * @param fromCalculationVersion 集計ルール識別子。
      * @param fromSourceMode 集計実行モード。
      * @param fromSourceServer 口座サーバー名。
@@ -366,7 +362,6 @@ private:
     void buildRunEntity(
         const datetime fromCalculatedAt,
         const datetime fromM5BarTime,
-        const datetime fromM15BarTime,
         const string fromCalculationVersion,
         const string fromSourceMode,
         const string fromSourceServer,
@@ -382,7 +377,6 @@ private:
             fromM5BarTime,
             TIME_DATE | TIME_SECONDS
         );
-        fromEntity.m15BarTime = fromM15BarTime;
         fromEntity.calculationVersion = fromCalculationVersion;
         fromEntity.sourceMode = fromSourceMode;
         fromEntity.sourceServer = fromSourceServer;
@@ -516,22 +510,22 @@ private:
             fromEntities[i].m5SampleCount = currencyStrengthInfo.getSampleCount(6);
             fromEntities[i].totalSampleCount =
                 currencyStrengthInfo.getTotalSampleCount();
-            fromEntities[i].longTermAverageScore =
-                currencyStrengthInfo.getLongTermAverageScore();
-            fromEntities[i].longTermAverageRank =
-                fromCalculator.getLongTermAverageRank(i);
             fromEntities[i].longMediumTermAverageScore =
                 currencyStrengthInfo.getLongMediumTermAverageScore();
             fromEntities[i].longMediumTermAverageRank =
                 fromCalculator.getLongMediumTermAverageRank(i);
-            fromEntities[i].mediumTermAverageScore =
-                currencyStrengthInfo.getMediumTermAverageScore();
-            fromEntities[i].mediumTermAverageRank =
-                fromCalculator.getMediumTermAverageRank(i);
             fromEntities[i].mediumShortTermAverageScore =
                 currencyStrengthInfo.getMediumShortTermAverageScore();
             fromEntities[i].mediumShortTermAverageRank =
                 fromCalculator.getMediumShortTermAverageRank(i);
+            fromEntities[i].longTermAverageScore =
+                currencyStrengthInfo.getLongTermAverageScore();
+            fromEntities[i].longTermAverageRank =
+                fromCalculator.getLongTermAverageRank(i);
+            fromEntities[i].mediumTermAverageScore =
+                currencyStrengthInfo.getMediumTermAverageScore();
+            fromEntities[i].mediumTermAverageRank =
+                fromCalculator.getMediumTermAverageRank(i);
             fromEntities[i].shortTermAverageScore =
                 currencyStrengthInfo.getShortTermAverageScore();
             fromEntities[i].shortTermAverageRank =

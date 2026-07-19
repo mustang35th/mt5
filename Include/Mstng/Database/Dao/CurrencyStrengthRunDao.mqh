@@ -24,6 +24,8 @@ public:
      */
     CurrencyStrengthRunDao(const int fromDatabaseHandle) {
         this.databaseHandle = fromDatabaseHandle;
+        this.hasLegacyM15BarTimeColumn = false;
+        this.isLegacySchemaInspected = false;
         this.logger.setLevel(LOG_INFO);
     }
 
@@ -39,19 +41,18 @@ public:
 
         string sql = "CREATE TABLE IF NOT EXISTS currency_strength_runs (";
         sql += "id INTEGER PRIMARY KEY AUTOINCREMENT,";
-        sql += "calculated_at INTEGER NOT NULL,";
         sql += "m5_bar_time INTEGER NOT NULL DEFAULT 0,";
         sql += "m5_bar_time_text TEXT NOT NULL DEFAULT '',";
-        sql += "m15_bar_time INTEGER NOT NULL,";
-        sql += "calculation_version TEXT NOT NULL,";
+        sql += "calculated_at INTEGER NOT NULL,";
         sql += "source_mode TEXT NOT NULL DEFAULT 'LEGACY',";
+        sql += "calculation_version TEXT NOT NULL,";
+        sql += "is_complete INTEGER NOT NULL,";
+        sql += "valid_pair_count INTEGER NOT NULL,";
+        sql += "expected_pair_count INTEGER NOT NULL,";
+        sql += "vote_count INTEGER NOT NULL,";
         sql += "source_server TEXT NOT NULL,";
         sql += "source_login INTEGER NOT NULL,";
         sql += "source_chart_id INTEGER NOT NULL,";
-        sql += "expected_pair_count INTEGER NOT NULL,";
-        sql += "valid_pair_count INTEGER NOT NULL,";
-        sql += "vote_count INTEGER NOT NULL,";
-        sql += "is_complete INTEGER NOT NULL,";
         sql += "updated_at INTEGER NOT NULL,";
         sql += "updated_at_text TEXT NOT NULL";
         sql += ")";
@@ -69,6 +70,10 @@ public:
         }
 
         if (!this.migrateUpdatedAtColumns()) {
+            return false;
+        }
+
+        if (!this.inspectLegacyM15BarTimeColumn()) {
             return false;
         }
 
@@ -127,15 +132,12 @@ public:
             return false;
         }
 
-        fromEntity.id = 0;
+        if (!this.ensureLegacySchemaInspected()) {
+            return false;
+        }
 
-        string sql = "INSERT INTO currency_strength_runs (";
-        sql += "calculated_at, m5_bar_time, m5_bar_time_text, m15_bar_time,";
-        sql += " calculation_version, source_mode, source_server, source_login,";
-        sql += " source_chart_id, expected_pair_count, valid_pair_count,";
-        sql += " vote_count, is_complete, updated_at, updated_at_text";
-        sql += ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,";
-        sql += " ?11, ?12, ?13, ?14, ?15)";
+        fromEntity.id = 0;
+        string sql = this.buildInsertSql();
 
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
@@ -151,7 +153,9 @@ public:
 
         ResetLastError();
 
-        if (!this.bind(requestHandle, fromEntity)) {
+        int nextParameterIndex = 0;
+
+        if (!this.bind(requestHandle, fromEntity, nextParameterIndex)) {
             int bindErrorCode = GetLastError();
             DatabaseFinalize(requestHandle);
             this.logger.error(
@@ -316,21 +320,17 @@ public:
             return false;
         }
 
+        if (!this.ensureLegacySchemaInspected()) {
+            return false;
+        }
+
         if (fromEntity.id <= 0) {
             this.logger.error(__FUNCTION__, "fromEntity.id is invalid.");
 
             return false;
         }
 
-        string sql = "UPDATE currency_strength_runs SET ";
-        sql += "calculated_at = ?1, m5_bar_time = ?2, ";
-        sql += "m5_bar_time_text = ?3, m15_bar_time = ?4, ";
-        sql += "calculation_version = ?5, source_mode = ?6, ";
-        sql += "source_server = ?7, source_login = ?8, ";
-        sql += "source_chart_id = ?9, expected_pair_count = ?10, ";
-        sql += "valid_pair_count = ?11, vote_count = ?12, ";
-        sql += "is_complete = ?13, updated_at = ?14, ";
-        sql += "updated_at_text = ?15 WHERE id = ?16";
+        string sql = this.buildUpdateSql();
 
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
@@ -345,10 +345,19 @@ public:
         }
 
         ResetLastError();
-        bool isBound = this.bind(requestHandle, fromEntity);
+        int nextParameterIndex = 0;
+        bool isBound = this.bind(
+            requestHandle,
+            fromEntity,
+            nextParameterIndex
+        );
 
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 15, fromEntity.id);
+            isBound = DatabaseBind(
+                requestHandle,
+                nextParameterIndex,
+                fromEntity.id
+            );
         }
 
         if (!isBound) {
@@ -437,8 +446,113 @@ private:
     /** データベースハンドル。 */
     int databaseHandle;
 
+    /** 旧M15バー時刻列の存在有無。 */
+    bool hasLegacyM15BarTimeColumn;
+
+    /** 旧スキーマ確認済みフラグ。 */
+    bool isLegacySchemaInspected;
+
     /** ロガー。 */
     Logger logger;
+
+    /**
+     * 新旧スキーマに対応するINSERT文を生成する。
+     *
+     * @return INSERT文。
+     */
+    string buildInsertSql() {
+        string sql = "INSERT INTO currency_strength_runs (";
+        sql += "m5_bar_time, m5_bar_time_text, calculated_at";
+
+        if (this.hasLegacyM15BarTimeColumn) {
+            sql += ", m15_bar_time";
+        }
+
+        sql += ", source_mode, calculation_version, is_complete";
+        sql += ", valid_pair_count, expected_pair_count, vote_count";
+        sql += ", source_server, source_login, source_chart_id";
+        sql += ", updated_at, updated_at_text) VALUES (";
+        int parameterCount = 14;
+
+        if (this.hasLegacyM15BarTimeColumn) {
+            parameterCount = 15;
+        }
+
+        for (int i = 1; i <= parameterCount; i++) {
+            if (i > 1) {
+                sql += ", ";
+            }
+
+            sql += StringFormat("?%d", i);
+        }
+
+        sql += ")";
+
+        return sql;
+    }
+
+    /**
+     * 新旧スキーマに対応するUPDATE文を生成する。
+     *
+     * @return UPDATE文。
+     */
+    string buildUpdateSql() {
+        string sql = "UPDATE currency_strength_runs SET ";
+        sql += "m5_bar_time = ?1, m5_bar_time_text = ?2, ";
+        sql += "calculated_at = ?3";
+        int parameterNumber = 4;
+
+        if (this.hasLegacyM15BarTimeColumn) {
+            sql += StringFormat(", m15_bar_time = ?%d", parameterNumber);
+            parameterNumber++;
+        }
+
+        sql += StringFormat(", source_mode = ?%d", parameterNumber++);
+        sql += StringFormat(", calculation_version = ?%d", parameterNumber++);
+        sql += StringFormat(", is_complete = ?%d", parameterNumber++);
+        sql += StringFormat(", valid_pair_count = ?%d", parameterNumber++);
+        sql += StringFormat(", expected_pair_count = ?%d", parameterNumber++);
+        sql += StringFormat(", vote_count = ?%d", parameterNumber++);
+        sql += StringFormat(", source_server = ?%d", parameterNumber++);
+        sql += StringFormat(", source_login = ?%d", parameterNumber++);
+        sql += StringFormat(", source_chart_id = ?%d", parameterNumber++);
+        sql += StringFormat(", updated_at = ?%d", parameterNumber++);
+        sql += StringFormat(", updated_at_text = ?%d", parameterNumber++);
+        sql += StringFormat(" WHERE id = ?%d", parameterNumber);
+
+        return sql;
+    }
+
+    /**
+     * 旧M15バー時刻列の存在有無を確認する。
+     *
+     * @return 確認に成功した場合true。
+     */
+    bool inspectLegacyM15BarTimeColumn() {
+        bool hasColumnValue = false;
+
+        if (!this.hasColumn("m15_bar_time", hasColumnValue)) {
+            return false;
+        }
+
+        this.hasLegacyM15BarTimeColumn = hasColumnValue;
+        this.isLegacySchemaInspected = true;
+
+        return true;
+    }
+
+    /**
+     * 旧スキーマが確認済みであることを保証する。
+     *
+     * @return 確認済みまたは確認に成功した場合true。
+     */
+    bool ensureLegacySchemaInspected() {
+        if (this.isLegacySchemaInspected) {
+            return true;
+        }
+
+        return this.inspectLegacyM15BarTimeColumn();
+    }
 
     /**
      * 既存の集計履歴テーブルへM5バー時刻列を追加する。
@@ -626,98 +740,141 @@ private:
      *
      * @param fromRequestHandle リクエストハンドル。
      * @param fromEntity バインド対象エンティティ。
+     * @param fromNextParameterIndex 次に使用するパラメーター位置の格納先。
      * @return 全パラメーターのバインドに成功した場合はtrue。
      */
     bool bind(
         const int fromRequestHandle,
-        CurrencyStrengthRunEntity &fromEntity
+        CurrencyStrengthRunEntity &fromEntity,
+        int &fromNextParameterIndex
     ) {
+        fromNextParameterIndex = 0;
         bool isBound = DatabaseBind(
             fromRequestHandle,
-            0,
-            fromEntity.calculatedAt
+            fromNextParameterIndex++,
+            fromEntity.m5BarTime
         );
 
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                1,
-                fromEntity.m5BarTime
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                2,
+                fromNextParameterIndex++,
                 fromEntity.m5BarTimeText
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                3,
-                fromEntity.m15BarTime
+                fromNextParameterIndex++,
+                fromEntity.calculatedAt
+            );
+        }
+
+        if (isBound && this.hasLegacyM15BarTimeColumn) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                fromNextParameterIndex++,
+                this.calculateLegacyM15BarTime(fromEntity.m5BarTime)
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                4,
-                fromEntity.calculationVersion
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                5,
+                fromNextParameterIndex++,
                 fromEntity.sourceMode
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                6,
-                fromEntity.sourceServer
+                fromNextParameterIndex++,
+                fromEntity.calculationVersion
             );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 7, fromEntity.sourceLogin);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 8, fromEntity.sourceChartId);
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                9,
+                fromNextParameterIndex++,
+                fromEntity.isComplete
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                fromNextParameterIndex++,
+                fromEntity.validPairCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                fromNextParameterIndex++,
                 fromEntity.expectedPairCount
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                10,
-                fromEntity.validPairCount
+                fromNextParameterIndex++,
+                fromEntity.voteCount
             );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 11, fromEntity.voteCount);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 12, fromEntity.isComplete);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 13, fromEntity.updatedAt);
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                14,
+                fromNextParameterIndex++,
+                fromEntity.sourceServer
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                fromNextParameterIndex++,
+                fromEntity.sourceLogin
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                fromNextParameterIndex++,
+                fromEntity.sourceChartId
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                fromNextParameterIndex++,
+                fromEntity.updatedAt
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                fromNextParameterIndex++,
                 fromEntity.updatedAtText
             );
         }
 
         return isBound;
+    }
+
+    /**
+     * 旧DB互換用のM15バー時刻をM5バー時刻から算出する。
+     *
+     * @param fromM5BarTime M5バー時刻。
+     * @return 対応するM15バー開始時刻。
+     */
+    datetime calculateLegacyM15BarTime(const datetime fromM5BarTime) {
+        long m5BarTimeValue = (long)fromM5BarTime;
+        int m15PeriodSeconds = PeriodSeconds(PERIOD_M15);
+
+        if (m5BarTimeValue <= 0 || m15PeriodSeconds <= 0) {
+            return 0;
+        }
+
+        return (datetime)(
+            m5BarTimeValue - m5BarTimeValue % m15PeriodSeconds
+        );
     }
 
     /**

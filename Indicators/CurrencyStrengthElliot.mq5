@@ -13,11 +13,7 @@
 #property indicator_type1   DRAW_NONE
 
 #include <Mstng\Common\MarketContext.mqh>
-#include <Mstng\Database\Dao\CurrencyStrengthPairVoteDao.mqh>
-#include <Mstng\Database\Dao\CurrencyStrengthResultDao.mqh>
-#include <Mstng\Database\Dao\CurrencyStrengthRunDao.mqh>
-#include <Mstng\Database\Service\CurrencyStrengthPersistenceService.mqh>
-#include <Mstng\Database\SqliteDatabase.mqh>
+#include <Mstng\Database\Service\CurrencyStrengthYearlyPersistenceService.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthList.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
@@ -39,6 +35,7 @@ input int panelYDistance = 12;
 input CurrencyStrengthSortType sortType = CURRENCY_STRENGTH_SORT_TOTAL;
 input bool databaseEnabled = true;
 input string databaseFileName = "mstng-currency-strength.sqlite";
+input bool databaseSplitByYear = true;
 input bool databaseUseCommonFolder = true;
 input bool databaseSaveEveryRefresh = false;
 input bool databaseSavePartialRuns = false;
@@ -62,16 +59,12 @@ Logger gLogger;
 DrawCurrencyStrengthList *gDrawCurrencyStrengthList;
 OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
-SqliteDatabase *gCurrencyStrengthDatabase;
-CurrencyStrengthPairVoteDao *gCurrencyStrengthPairVoteDao;
-CurrencyStrengthResultDao *gCurrencyStrengthResultDao;
-CurrencyStrengthRunDao *gCurrencyStrengthRunDao;
-CurrencyStrengthPersistenceService *gCurrencyStrengthPersistenceService;
+CurrencyStrengthYearlyPersistenceService *gCurrencyStrengthPersistenceService;
 datetime gFirstTargetM5BarTime;
 datetime gLastTesterAttemptM5BarTime;
 datetime gLastProcessedM5BarTime;
 datetime gTesterWarmUpPreparedAt;
-datetime gLastSavedM15BarTime;
+datetime gLastSavedM5BarTime;
 datetime gLastDatabaseCleanupTime;
 int gTesterWarmUpAttemptCount;
 int gTesterSkippedSnapshotCount;
@@ -143,7 +136,7 @@ int OnInit() {
     gLastTesterAttemptM5BarTime = 0;
     gLastProcessedM5BarTime = 0;
     gTesterWarmUpPreparedAt = 0;
-    gLastSavedM15BarTime = 0;
+    gLastSavedM5BarTime = 0;
     gLastDatabaseCleanupTime = 0;
     gTesterWarmUpAttemptCount = 0;
     gTesterSkippedSnapshotCount = 0;
@@ -528,12 +521,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         calculatedAt = TimeLocal();
     }
 
-    datetime m15BarTime = getBarTimeAt(
-        _Symbol,
-        PERIOD_M15,
-        m5BarTime
-    );
-    bool saveDatabase = shouldSaveDatabase(m15BarTime);
+    bool saveDatabase = shouldSaveDatabase(m5BarTime);
     bool isComplete = (
         gCurrencyStrengthCalculator.validPairCount
             == gCurrencyStrengthCalculator.getExpectedPairCount()
@@ -549,8 +537,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         }
 
         if (gCurrencyStrengthPersistenceService == NULL
-                || m5BarTime <= 0
-                || m15BarTime <= 0) {
+                || m5BarTime <= 0) {
             return currencyStrengthExecutionFailed;
         }
 
@@ -573,7 +560,6 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         if (gCurrencyStrengthPersistenceService.save(
             calculatedAt,
             m5BarTime,
-            m15BarTime,
             activeCalculationVersion,
             sourceMode,
             AccountInfoString(ACCOUNT_SERVER),
@@ -581,7 +567,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
             ChartID(),
             gCurrencyStrengthCalculator
         )) {
-            gLastSavedM15BarTime = m15BarTime;
+            gLastSavedM5BarTime = m5BarTime;
 
             if (isTester) {
                 gTesterPersistedSnapshotCount++;
@@ -613,110 +599,52 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
 }
 
 /**
- * 指定時刻を含むバーの開始時刻を取得する。
- *
- * @param fromSymbolName 対象シンボル名。
- * @param fromTimeFrame 対象時間足。
- * @param fromTargetTime 基準時刻。
- * @return バー開始時刻。取得できない場合は0。
- */
-datetime getBarTimeAt(
-    const string fromSymbolName,
-    const ENUM_TIMEFRAMES fromTimeFrame,
-    const datetime fromTargetTime
-) {
-    if (fromSymbolName == "" || fromTargetTime <= 0) {
-        return 0;
-    }
-
-    int shift = iBarShift(
-        fromSymbolName,
-        fromTimeFrame,
-        fromTargetTime,
-        true
-    );
-
-    if (shift < 0) {
-        shift = iBarShift(
-            fromSymbolName,
-            fromTimeFrame,
-            fromTargetTime,
-            false
-        );
-    }
-
-    if (shift < 0) {
-        return 0;
-    }
-
-    datetime barTime = iTime(fromSymbolName, fromTimeFrame, shift);
-
-    if (barTime <= 0 || barTime > fromTargetTime) {
-        return 0;
-    }
-
-    return barTime;
-}
-
-/**
  * 通貨強弱データベースを初期化する。
  *
  * @return 初期化に成功した場合true。
  */
 bool initializeDatabase() {
-    gCurrencyStrengthDatabase = new SqliteDatabase(
+    gCurrencyStrengthPersistenceService = new CurrencyStrengthYearlyPersistenceService(
         databaseFileName,
+        databaseSplitByYear,
         databaseUseCommonFolder
-    );
-
-    if (gCurrencyStrengthDatabase == NULL) {
-        return false;
-    }
-
-    if (!gCurrencyStrengthDatabase.open()) {
-        return false;
-    }
-
-    gCurrencyStrengthRunDao = new CurrencyStrengthRunDao(
-        gCurrencyStrengthDatabase.getHandle()
-    );
-    gCurrencyStrengthPairVoteDao = new CurrencyStrengthPairVoteDao(
-        gCurrencyStrengthDatabase.getHandle()
-    );
-    gCurrencyStrengthResultDao = new CurrencyStrengthResultDao(
-        gCurrencyStrengthDatabase.getHandle()
-    );
-
-    if (gCurrencyStrengthRunDao == NULL
-            || gCurrencyStrengthPairVoteDao == NULL
-            || gCurrencyStrengthResultDao == NULL) {
-        return false;
-    }
-
-    gCurrencyStrengthPersistenceService = new CurrencyStrengthPersistenceService(
-        gCurrencyStrengthDatabase.getHandle(),
-        gCurrencyStrengthRunDao,
-        gCurrencyStrengthPairVoteDao,
-        gCurrencyStrengthResultDao
     );
 
     if (gCurrencyStrengthPersistenceService == NULL) {
         return false;
     }
 
-    return gCurrencyStrengthPersistenceService.createTables();
+    datetime initialM5BarTime = 0;
+
+    if (MQLInfoInteger(MQL_TESTER) && databaseSaveStartTime > 0) {
+        initialM5BarTime = databaseSaveStartTime;
+    }
+
+    if (initialM5BarTime <= 0) {
+        initialM5BarTime = iTime(_Symbol, PERIOD_M5, 0);
+    }
+
+    if (initialM5BarTime <= 0) {
+        initialM5BarTime = TimeCurrent();
+    }
+
+    if (initialM5BarTime <= 0) {
+        initialM5BarTime = TimeLocal();
+    }
+
+    return gCurrencyStrengthPersistenceService.openFor(initialM5BarTime);
 }
 
 /**
  * 現在の集計結果をデータベースへ保存するか判定する。
  *
- * @param fromM15BarTime M15現在足の開始時刻。
+ * @param fromM5BarTime M5現在足の開始時刻。
  * @return 保存対象の場合true。
  */
-bool shouldSaveDatabase(const datetime fromM15BarTime) {
+bool shouldSaveDatabase(const datetime fromM5BarTime) {
     if (gCurrencyStrengthPersistenceService == NULL
             || gCurrencyStrengthCalculator == NULL
-            || fromM15BarTime <= 0) {
+            || fromM5BarTime <= 0) {
         return false;
     }
 
@@ -730,7 +658,7 @@ bool shouldSaveDatabase(const datetime fromM15BarTime) {
         return true;
     }
 
-    return fromM15BarTime != gLastSavedM15BarTime;
+    return fromM5BarTime != gLastSavedM5BarTime;
 }
 
 /**
@@ -806,27 +734,6 @@ void releaseDatabaseResources() {
         gCurrencyStrengthPersistenceService = NULL;
     }
 
-    if (gCurrencyStrengthResultDao != NULL) {
-        delete gCurrencyStrengthResultDao;
-        gCurrencyStrengthResultDao = NULL;
-    }
-
-    if (gCurrencyStrengthPairVoteDao != NULL) {
-        delete gCurrencyStrengthPairVoteDao;
-        gCurrencyStrengthPairVoteDao = NULL;
-    }
-
-    if (gCurrencyStrengthRunDao != NULL) {
-        delete gCurrencyStrengthRunDao;
-        gCurrencyStrengthRunDao = NULL;
-    }
-
-    if (gCurrencyStrengthDatabase != NULL) {
-        gCurrencyStrengthDatabase.close();
-        delete gCurrencyStrengthDatabase;
-        gCurrencyStrengthDatabase = NULL;
-    }
-
-    gLastSavedM15BarTime = 0;
+    gLastSavedM5BarTime = 0;
     gLastDatabaseCleanupTime = 0;
 }

@@ -18,23 +18,32 @@ struct CurrencyStrengthRunEntity {
     /** 集計ID。 */
     long id;
 
-    /** 集計時刻。 */
-    datetime calculatedAt;
-
     /** 集計基準となるM5バー時刻。 */
     datetime m5BarTime;
 
     /** 集計基準となるM5バー時刻表示文字列。 */
     string m5BarTimeText;
 
-    /** 集計基準となるM15バー時刻。 */
-    datetime m15BarTime;
+    /** 集計時刻。 */
+    datetime calculatedAt;
+
+    /** 集計実行モード。LIVE、TESTERまたはLEGACY。 */
+    string sourceMode;
 
     /** 集計ルールのバージョン。 */
     string calculationVersion;
 
-    /** 集計実行モード。LIVE、TESTERまたはLEGACY。 */
-    string sourceMode;
+    /** 完全集計フラグ。trueの場合は1、falseの場合は0。 */
+    int isComplete;
+
+    /** 集計できた通貨ペア数。 */
+    int validPairCount;
+
+    /** 期待する通貨ペア数。 */
+    int expectedPairCount;
+
+    /** 保存した票数。 */
+    int voteCount;
 
     /** 集計元の取引サーバー名。 */
     string sourceServer;
@@ -44,18 +53,6 @@ struct CurrencyStrengthRunEntity {
 
     /** 集計元のチャートID。 */
     long sourceChartId;
-
-    /** 期待する通貨ペア数。 */
-    int expectedPairCount;
-
-    /** 集計できた通貨ペア数。 */
-    int validPairCount;
-
-    /** 保存した票数。 */
-    int voteCount;
-
-    /** 完全集計フラグ。trueの場合は1、falseの場合は0。 */
-    int isComplete;
 
     /** レコード更新時刻。 */
     datetime updatedAt;

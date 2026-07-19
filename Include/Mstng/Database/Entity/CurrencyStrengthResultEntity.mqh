@@ -24,6 +24,42 @@ struct CurrencyStrengthResultEntity {
     /** 通貨名。 */
     string currencyName;
 
+    /** 全時間足の未正規化合計。 */
+    int totalScore;
+
+    /** 全時間足の票数。 */
+    int totalSampleCount;
+
+    /** 長中期スコア平均。 */
+    double longMediumTermAverageScore;
+
+    /** 長中期平均スコア順位。 */
+    int longMediumTermAverageRank;
+
+    /** 中短期スコア平均。 */
+    double mediumShortTermAverageScore;
+
+    /** 中短期平均スコア順位。 */
+    int mediumShortTermAverageRank;
+
+    /** 長期スコア平均。 */
+    double longTermAverageScore;
+
+    /** 長期平均スコア順位。 */
+    int longTermAverageRank;
+
+    /** 中期スコア平均。 */
+    double mediumTermAverageScore;
+
+    /** 中期平均スコア順位。 */
+    int mediumTermAverageRank;
+
+    /** 短期スコア平均。 */
+    double shortTermAverageScore;
+
+    /** 短期平均スコア順位。 */
+    int shortTermAverageRank;
+
     /** MN1の未正規化合計。 */
     int mn1Score;
 
@@ -45,9 +81,6 @@ struct CurrencyStrengthResultEntity {
     /** M5の未正規化合計。 */
     int m5Score;
 
-    /** 全時間足の未正規化合計。 */
-    int totalScore;
-
     /** MN1の票数。 */
     int mn1SampleCount;
 
@@ -68,39 +101,6 @@ struct CurrencyStrengthResultEntity {
 
     /** M5の票数。 */
     int m5SampleCount;
-
-    /** 全時間足の票数。 */
-    int totalSampleCount;
-
-    /** 長期スコア平均。 */
-    double longTermAverageScore;
-
-    /** 長期平均スコア順位。 */
-    int longTermAverageRank;
-
-    /** 長中期スコア平均。 */
-    double longMediumTermAverageScore;
-
-    /** 長中期平均スコア順位。 */
-    int longMediumTermAverageRank;
-
-    /** 中期スコア平均。 */
-    double mediumTermAverageScore;
-
-    /** 中期平均スコア順位。 */
-    int mediumTermAverageRank;
-
-    /** 中短期スコア平均。 */
-    double mediumShortTermAverageScore;
-
-    /** 中短期平均スコア順位。 */
-    int mediumShortTermAverageRank;
-
-    /** 短期スコア平均。 */
-    double shortTermAverageScore;
-
-    /** 短期平均スコア順位。 */
-    int shortTermAverageRank;
 
     /** レコード更新時刻。 */
     datetime updatedAt;

@@ -70,13 +70,11 @@ bool dropDatabaseObjects(
  *
  * @param fromCalculatedAt 集計時刻。
  * @param fromM5BarTime M5足開始時刻。
- * @param fromM15BarTime M15足開始時刻。
  * @param fromEntity 初期化対象エンティティ。
  */
 void initializeRunEntity(
     const datetime fromCalculatedAt,
     const datetime fromM5BarTime,
-    const datetime fromM15BarTime,
     CurrencyStrengthRunEntity &fromEntity
 ) {
     fromEntity.id = 0;
@@ -86,7 +84,6 @@ void initializeRunEntity(
         fromM5BarTime,
         TIME_DATE | TIME_SECONDS
     );
-    fromEntity.m15BarTime = fromM15BarTime;
     fromEntity.calculationVersion = "pair-direction-raw-v6-smoke-test";
     fromEntity.sourceMode = "TESTER";
     fromEntity.sourceServer = AccountInfoString(ACCOUNT_SERVER);
@@ -178,16 +175,16 @@ void initializeResultEntity(
     fromEntity.m15SampleCount = 1;
     fromEntity.m5SampleCount = 1;
     fromEntity.totalSampleCount = 7;
-    fromEntity.longTermAverageScore = (double)fromScore;
-    fromEntity.mediumTermAverageScore = (double)fromScore / 3.0;
-    fromEntity.shortTermAverageScore = (double)(0 - fromScore) / 3.0;
-    fromEntity.longTermAverageRank = 2;
-    fromEntity.mediumTermAverageRank = 2;
-    fromEntity.shortTermAverageRank = 1;
     fromEntity.longMediumTermAverageScore = (double)(fromScore * 3) / 5.0;
     fromEntity.longMediumTermAverageRank = 2;
     fromEntity.mediumShortTermAverageScore = (double)fromScore / 5.0;
     fromEntity.mediumShortTermAverageRank = 2;
+    fromEntity.longTermAverageScore = (double)fromScore;
+    fromEntity.longTermAverageRank = 2;
+    fromEntity.mediumTermAverageScore = (double)fromScore / 3.0;
+    fromEntity.mediumTermAverageRank = 2;
+    fromEntity.shortTermAverageScore = (double)(0 - fromScore) / 3.0;
+    fromEntity.shortTermAverageRank = 1;
 
     if (fromScore > 0) {
         fromEntity.longTermAverageRank = 1;
@@ -404,7 +401,6 @@ bool readSnapshotRunCount(
  * @param fromCalculatedAt 集計時刻。
  * @param fromM5BarTime M5足開始時刻。
  * @param fromM5BarTimeText M5足開始時刻文字列。
- * @param fromM15BarTime M15足開始時刻。
  * @param fromSourceMode 集計実行モード。
  * @param fromSourceChartId 保存元チャートID。
  * @param fromMismatchCount 不一致件数の格納先。
@@ -417,7 +413,6 @@ bool readRunValueMismatchCount(
     const datetime fromCalculatedAt,
     const datetime fromM5BarTime,
     const string fromM5BarTimeText,
-    const datetime fromM15BarTime,
     const string fromSourceMode,
     const long fromSourceChartId,
     long &fromMismatchCount,
@@ -425,8 +420,8 @@ bool readRunValueMismatchCount(
 ) {
     string sql = "SELECT COUNT(*) FROM currency_strength_runs ";
     sql += "WHERE id = ?1 AND (calculated_at <> ?2 OR m5_bar_time <> ?3 ";
-    sql += "OR m5_bar_time_text <> ?4 OR m15_bar_time <> ?5 ";
-    sql += "OR source_mode <> ?6 OR source_chart_id <> ?7)";
+    sql += "OR m5_bar_time_text <> ?4 OR source_mode <> ?5 ";
+    sql += "OR source_chart_id <> ?6)";
 
     ResetLastError();
     int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
@@ -452,13 +447,10 @@ bool readRunValueMismatchCount(
         isBound = DatabaseBind(requestHandle, 3, fromM5BarTimeText);
     }
     if (isBound) {
-        isBound = DatabaseBind(requestHandle, 4, fromM15BarTime);
+        isBound = DatabaseBind(requestHandle, 4, fromSourceMode);
     }
     if (isBound) {
-        isBound = DatabaseBind(requestHandle, 5, fromSourceMode);
-    }
-    if (isBound) {
-        isBound = DatabaseBind(requestHandle, 6, fromSourceChartId);
+        isBound = DatabaseBind(requestHandle, 5, fromSourceChartId);
     }
 
     if (!isBound) {
@@ -816,6 +808,262 @@ bool readFirstVoteText(
 }
 
 /**
+ * DBオブジェクトの列順が期待どおりか確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromObjectName テーブルまたはビュー名。
+ * @param fromExpectedColumnNames 期待する列名一覧。
+ * @param fromLogger ロガー。
+ * @return 列順が一致する場合true。
+ */
+bool verifyColumnOrder(
+    const int fromDatabaseHandle,
+    const string fromObjectName,
+    const string &fromExpectedColumnNames[],
+    Logger &fromLogger
+) {
+    string sql = "PRAGMA table_info(" + fromObjectName + ")";
+    ResetLastError();
+    int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
+
+    if (requestHandle == INVALID_HANDLE) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "DatabasePrepare failed. object=%s error=%d",
+                fromObjectName,
+                GetLastError()
+            )
+        );
+
+        return false;
+    }
+
+    int columnIndex = 0;
+
+    while (true) {
+        ResetLastError();
+
+        if (!DatabaseRead(requestHandle)) {
+            int readErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+
+            if (readErrorCode != ERR_DATABASE_NO_MORE_DATA) {
+                fromLogger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "DatabaseRead failed. object=%s error=%d",
+                        fromObjectName,
+                        readErrorCode
+                    )
+                );
+
+                return false;
+            }
+
+            if (columnIndex != ArraySize(fromExpectedColumnNames)) {
+                fromLogger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "column count mismatch. object=%s expected=%d actual=%d",
+                        fromObjectName,
+                        ArraySize(fromExpectedColumnNames),
+                        columnIndex
+                    )
+                );
+
+                return false;
+            }
+
+            return true;
+        }
+
+        string columnName = "";
+
+        if (!DatabaseColumnText(requestHandle, 1, columnName)) {
+            int columnErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseColumnText failed. object=%s error=%d",
+                    fromObjectName,
+                    columnErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        if (columnIndex >= ArraySize(fromExpectedColumnNames)
+                || columnName != fromExpectedColumnNames[columnIndex]) {
+            string expectedColumnName = "NONE";
+
+            if (columnIndex < ArraySize(fromExpectedColumnNames)) {
+                expectedColumnName = fromExpectedColumnNames[columnIndex];
+            }
+
+            DatabaseFinalize(requestHandle);
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "column order mismatch. object=%s index=%d expected=%s actual=%s",
+                    fromObjectName,
+                    columnIndex,
+                    expectedColumnName,
+                    columnName
+                )
+            );
+
+            return false;
+        }
+
+        columnIndex++;
+    }
+}
+
+/**
+ * 新規通貨強弱DBの列順を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 全DBオブジェクトの列順が一致する場合true。
+ */
+bool verifyNewDatabaseColumnOrders(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    string runColumnNames[15];
+    runColumnNames[0] = "id";
+    runColumnNames[1] = "m5_bar_time";
+    runColumnNames[2] = "m5_bar_time_text";
+    runColumnNames[3] = "calculated_at";
+    runColumnNames[4] = "source_mode";
+    runColumnNames[5] = "calculation_version";
+    runColumnNames[6] = "is_complete";
+    runColumnNames[7] = "valid_pair_count";
+    runColumnNames[8] = "expected_pair_count";
+    runColumnNames[9] = "vote_count";
+    runColumnNames[10] = "source_server";
+    runColumnNames[11] = "source_login";
+    runColumnNames[12] = "source_chart_id";
+    runColumnNames[13] = "updated_at";
+    runColumnNames[14] = "updated_at_text";
+
+    if (!verifyColumnOrder(
+        fromDatabaseHandle,
+        "currency_strength_runs",
+        runColumnNames,
+        fromLogger
+    )) {
+        return false;
+    }
+
+    string voteColumnNames[19];
+    voteColumnNames[0] = "id";
+    voteColumnNames[1] = "run_id";
+    voteColumnNames[2] = "canonical_symbol_name";
+    voteColumnNames[3] = "resolved_symbol_name";
+    voteColumnNames[4] = "pair_order";
+    voteColumnNames[5] = "time_frame";
+    voteColumnNames[6] = "time_frame_text";
+    voteColumnNames[7] = "time_frame_order";
+    voteColumnNames[8] = "bar_time";
+    voteColumnNames[9] = "bar_time_text";
+    voteColumnNames[10] = "is_buy";
+    voteColumnNames[11] = "oscillator_count";
+    voteColumnNames[12] = "base_currency";
+    voteColumnNames[13] = "base_score";
+    voteColumnNames[14] = "base_score_after";
+    voteColumnNames[15] = "quote_currency";
+    voteColumnNames[16] = "quote_score_after";
+    voteColumnNames[17] = "updated_at";
+    voteColumnNames[18] = "updated_at_text";
+
+    if (!verifyColumnOrder(
+        fromDatabaseHandle,
+        "currency_strength_pair_votes",
+        voteColumnNames,
+        fromLogger
+    )) {
+        return false;
+    }
+
+    string resultColumnNames[31];
+    resultColumnNames[0] = "id";
+    resultColumnNames[1] = "run_id";
+    resultColumnNames[2] = "currency_name";
+    resultColumnNames[3] = "total_score";
+    resultColumnNames[4] = "total_sample_count";
+    resultColumnNames[5] = "long_medium_term_average_score";
+    resultColumnNames[6] = "long_medium_term_average_rank";
+    resultColumnNames[7] = "medium_short_term_average_score";
+    resultColumnNames[8] = "medium_short_term_average_rank";
+    resultColumnNames[9] = "long_term_average_score";
+    resultColumnNames[10] = "long_term_average_rank";
+    resultColumnNames[11] = "medium_term_average_score";
+    resultColumnNames[12] = "medium_term_average_rank";
+    resultColumnNames[13] = "short_term_average_score";
+    resultColumnNames[14] = "short_term_average_rank";
+    resultColumnNames[15] = "mn1_score";
+    resultColumnNames[16] = "w1_score";
+    resultColumnNames[17] = "d1_score";
+    resultColumnNames[18] = "h4_score";
+    resultColumnNames[19] = "h1_score";
+    resultColumnNames[20] = "m15_score";
+    resultColumnNames[21] = "m5_score";
+    resultColumnNames[22] = "mn1_sample_count";
+    resultColumnNames[23] = "w1_sample_count";
+    resultColumnNames[24] = "d1_sample_count";
+    resultColumnNames[25] = "h4_sample_count";
+    resultColumnNames[26] = "h1_sample_count";
+    resultColumnNames[27] = "m15_sample_count";
+    resultColumnNames[28] = "m5_sample_count";
+    resultColumnNames[29] = "updated_at";
+    resultColumnNames[30] = "updated_at_text";
+
+    if (!verifyColumnOrder(
+        fromDatabaseHandle,
+        "currency_strength_results",
+        resultColumnNames,
+        fromLogger
+    )) {
+        return false;
+    }
+
+    string contributionColumnNames[22];
+    contributionColumnNames[0] = "run_id";
+    contributionColumnNames[1] = "m5_bar_time";
+    contributionColumnNames[2] = "m5_bar_time_text";
+    contributionColumnNames[3] = "source_mode";
+    contributionColumnNames[4] = "currency_name";
+    contributionColumnNames[5] = "currency_side";
+    contributionColumnNames[6] = "score";
+    contributionColumnNames[7] = "score_after";
+    contributionColumnNames[8] = "canonical_symbol_name";
+    contributionColumnNames[9] = "resolved_symbol_name";
+    contributionColumnNames[10] = "time_frame";
+    contributionColumnNames[11] = "time_frame_text";
+    contributionColumnNames[12] = "bar_time";
+    contributionColumnNames[13] = "bar_time_text";
+    contributionColumnNames[14] = "is_buy";
+    contributionColumnNames[15] = "oscillator_count";
+    contributionColumnNames[16] = "pair_order";
+    contributionColumnNames[17] = "time_frame_order";
+    contributionColumnNames[18] = "vote_id";
+    contributionColumnNames[19] = "calculated_at";
+    contributionColumnNames[20] = "updated_at";
+    contributionColumnNames[21] = "updated_at_text";
+
+    return verifyColumnOrder(
+        fromDatabaseHandle,
+        "currency_strength_contributions",
+        contributionColumnNames,
+        fromLogger
+    );
+}
+
+/**
  * 通貨強弱SQLite動作確認スクリプトを実行する。
  */
 void OnStart() {
@@ -859,6 +1107,20 @@ void OnStart() {
         return;
     }
 
+    if (recreateDatabaseObjects
+            && !verifyNewDatabaseColumnOrders(
+                database.getHandle(),
+                logger
+            )) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength database smoke test failed at column order."
+        );
+        database.close();
+
+        return;
+    }
+
     datetime firstCalculatedAt = TimeLocal();
 
     if (firstCalculatedAt <= 0) {
@@ -870,16 +1132,12 @@ void OnStart() {
 
     long firstCalculatedAtValue = (long)firstCalculatedAt;
     datetime m5BarTime = (datetime)(
-        firstCalculatedAtValue - firstCalculatedAtValue % 300
-    );
-    datetime m15BarTime = (datetime)(
         firstCalculatedAtValue - firstCalculatedAtValue % 900
     );
     CurrencyStrengthRunEntity runEntity;
     initializeRunEntity(
         firstCalculatedAt,
         m5BarTime,
-        m15BarTime,
         runEntity
     );
 
@@ -936,7 +1194,6 @@ void OnStart() {
     initializeRunEntity(
         secondCalculatedAt,
         m5BarTime,
-        m15BarTime,
         runEntity
     );
     runEntity.sourceChartId = ChartID() + 1;
@@ -1024,7 +1281,6 @@ void OnStart() {
             secondCalculatedAt,
             m5BarTime,
             runEntity.m5BarTimeText,
-            m15BarTime,
             runEntity.sourceMode,
             runEntity.sourceChartId,
             runValueMismatchCount,
@@ -1159,7 +1415,6 @@ void OnStart() {
                 m5BarTime,
                 TIME_DATE | TIME_SECONDS
             )
-            || runEntity.m15BarTime != m15BarTime
             || runUpdatedAtMismatchCount != 0
             || voteUpdatedAtMismatchCount != 0
             || resultUpdatedAtMismatchCount != 0
@@ -1198,14 +1453,131 @@ void OnStart() {
         return;
     }
 
+    long sameM5RunId = runEntity.id;
+    datetime nextM5BarTime = m5BarTime + PeriodSeconds(PERIOD_M5);
+    initializeRunEntity(
+        secondCalculatedAt + PeriodSeconds(PERIOD_M5),
+        nextM5BarTime,
+        runEntity
+    );
+    initializePairVoteEntity(
+        0,
+        PERIOD_MN1,
+        true,
+        nextM5BarTime,
+        voteEntities[0]
+    );
+    initializePairVoteEntity(
+        1,
+        PERIOD_W1,
+        true,
+        nextM5BarTime,
+        voteEntities[1]
+    );
+    initializePairVoteEntity(
+        2,
+        PERIOD_D1,
+        true,
+        nextM5BarTime,
+        voteEntities[2]
+    );
+    initializePairVoteEntity(
+        3,
+        PERIOD_H4,
+        true,
+        nextM5BarTime,
+        voteEntities[3]
+    );
+    initializePairVoteEntity(
+        4,
+        PERIOD_H1,
+        false,
+        nextM5BarTime,
+        voteEntities[4]
+    );
+    initializePairVoteEntity(
+        5,
+        PERIOD_M15,
+        true,
+        nextM5BarTime,
+        voteEntities[5]
+    );
+    initializePairVoteEntity(
+        6,
+        PERIOD_M5,
+        false,
+        nextM5BarTime,
+        voteEntities[6]
+    );
+    initializeResultEntity("USD", 1, resultEntities[0]);
+    initializeResultEntity("JPY", -1, resultEntities[1]);
+
+    if (!persistenceService.saveSnapshot(
+        runEntity,
+        voteEntities,
+        resultEntities
+    )) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength database smoke test failed at next M5 save."
+        );
+        database.close();
+
+        return;
+    }
+
+    long nextM5SnapshotRunCount = 0;
+    long finalTotalRunCount = 0;
+    bool isNextM5Verified = readSnapshotRunCount(
+        database.getHandle(),
+        runEntity.m5BarTime,
+        runEntity.calculationVersion,
+        runEntity.sourceMode,
+        runEntity.sourceServer,
+        runEntity.sourceLogin,
+        nextM5SnapshotRunCount,
+        logger
+    );
+
+    if (isNextM5Verified) {
+        isNextM5Verified = readRecordCount(
+            database.getHandle(),
+            "currency_strength_runs",
+            "",
+            0,
+            finalTotalRunCount,
+            logger
+        );
+    }
+
+    if (!isNextM5Verified
+            || runEntity.id <= 0
+            || runEntity.id == sameM5RunId
+            || nextM5SnapshotRunCount != 1
+            || (recreateDatabaseObjects && finalTotalRunCount != 2)) {
+        logger.error(
+            __FUNCTION__,
+            StringFormat(
+                "Currency strength next M5 verification failed. sameM5RunId=%I64d nextM5RunId=%I64d snapshotRuns=%I64d totalRuns=%I64d",
+                sameM5RunId,
+                runEntity.id,
+                nextM5SnapshotRunCount,
+                finalTotalRunCount
+            )
+        );
+        database.close();
+
+        return;
+    }
+
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Currency strength database smoke test passed. fileName=%s runId=%I64d saves=2 totalRuns=%I64d snapshotRuns=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s averages=5 ranks=5",
+            "Currency strength database smoke test passed. fileName=%s runId=%I64d saves=3 totalRuns=%I64d nextM5SnapshotRuns=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s averages=5 ranks=5",
             database.getFileName(),
             runEntity.id,
-            totalRunCount,
-            snapshotRunCount,
+            finalTotalRunCount,
+            nextM5SnapshotRunCount,
             voteCount,
             resultCount,
             contributionCount,

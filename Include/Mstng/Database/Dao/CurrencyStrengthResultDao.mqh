@@ -41,6 +41,18 @@ public:
         sql += "id INTEGER PRIMARY KEY AUTOINCREMENT,";
         sql += "run_id INTEGER NOT NULL,";
         sql += "currency_name TEXT NOT NULL,";
+        sql += "total_score INTEGER NOT NULL,";
+        sql += "total_sample_count INTEGER NOT NULL,";
+        sql += "long_medium_term_average_score REAL NOT NULL,";
+        sql += "long_medium_term_average_rank INTEGER NOT NULL,";
+        sql += "medium_short_term_average_score REAL NOT NULL,";
+        sql += "medium_short_term_average_rank INTEGER NOT NULL,";
+        sql += "long_term_average_score REAL NOT NULL,";
+        sql += "long_term_average_rank INTEGER NOT NULL,";
+        sql += "medium_term_average_score REAL NOT NULL,";
+        sql += "medium_term_average_rank INTEGER NOT NULL,";
+        sql += "short_term_average_score REAL NOT NULL,";
+        sql += "short_term_average_rank INTEGER NOT NULL,";
         sql += "mn1_score INTEGER NOT NULL,";
         sql += "w1_score INTEGER NOT NULL,";
         sql += "d1_score INTEGER NOT NULL,";
@@ -48,7 +60,6 @@ public:
         sql += "h1_score INTEGER NOT NULL,";
         sql += "m15_score INTEGER NOT NULL,";
         sql += "m5_score INTEGER NOT NULL,";
-        sql += "total_score INTEGER NOT NULL,";
         sql += "mn1_sample_count INTEGER NOT NULL,";
         sql += "w1_sample_count INTEGER NOT NULL,";
         sql += "d1_sample_count INTEGER NOT NULL,";
@@ -56,17 +67,6 @@ public:
         sql += "h1_sample_count INTEGER NOT NULL,";
         sql += "m15_sample_count INTEGER NOT NULL,";
         sql += "m5_sample_count INTEGER NOT NULL,";
-        sql += "total_sample_count INTEGER NOT NULL,";
-        sql += "long_term_average_score REAL NOT NULL,";
-        sql += "long_term_average_rank INTEGER NOT NULL,";
-        sql += "long_medium_term_average_score REAL NOT NULL,";
-        sql += "long_medium_term_average_rank INTEGER NOT NULL,";
-        sql += "medium_term_average_score REAL NOT NULL,";
-        sql += "medium_term_average_rank INTEGER NOT NULL,";
-        sql += "medium_short_term_average_score REAL NOT NULL,";
-        sql += "medium_short_term_average_rank INTEGER NOT NULL,";
-        sql += "short_term_average_score REAL NOT NULL,";
-        sql += "short_term_average_rank INTEGER NOT NULL,";
         sql += "updated_at INTEGER NOT NULL,";
         sql += "updated_at_text TEXT NOT NULL,";
         sql += "FOREIGN KEY(run_id) REFERENCES currency_strength_runs(id) ";
@@ -128,16 +128,16 @@ public:
         }
 
         string sql = "INSERT INTO currency_strength_results (";
-        sql += "run_id, currency_name, mn1_score, w1_score, d1_score, h4_score,";
-        sql += " h1_score, m15_score, m5_score, total_score, mn1_sample_count,";
-        sql += " w1_sample_count, d1_sample_count, h4_sample_count,";
-        sql += " h1_sample_count, m15_sample_count, m5_sample_count,";
-        sql += " total_sample_count, long_term_average_score,";
-        sql += " long_term_average_rank, long_medium_term_average_score,";
-        sql += " long_medium_term_average_rank, medium_term_average_score,";
-        sql += " medium_term_average_rank, medium_short_term_average_score,";
-        sql += " medium_short_term_average_rank, short_term_average_score,";
-        sql += " short_term_average_rank,";
+        sql += "run_id, currency_name, total_score, total_sample_count,";
+        sql += " long_medium_term_average_score, long_medium_term_average_rank,";
+        sql += " medium_short_term_average_score, medium_short_term_average_rank,";
+        sql += " long_term_average_score, long_term_average_rank,";
+        sql += " medium_term_average_score, medium_term_average_rank,";
+        sql += " short_term_average_score, short_term_average_rank,";
+        sql += " mn1_score, w1_score, d1_score, h4_score, h1_score,";
+        sql += " m15_score, m5_score, mn1_sample_count, w1_sample_count,";
+        sql += " d1_sample_count, h4_sample_count, h1_sample_count,";
+        sql += " m15_sample_count, m5_sample_count,";
         sql += " updated_at, updated_at_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,";
@@ -551,153 +551,153 @@ private:
             isBound = DatabaseBind(fromRequestHandle, 1, fromEntity.currencyName);
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 2, fromEntity.mn1Score);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 3, fromEntity.w1Score);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 4, fromEntity.d1Score);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 5, fromEntity.h4Score);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 6, fromEntity.h1Score);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 7, fromEntity.m15Score);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 8, fromEntity.m5Score);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 9, fromEntity.totalScore);
+            isBound = DatabaseBind(fromRequestHandle, 2, fromEntity.totalScore);
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                10,
-                fromEntity.mn1SampleCount
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                11,
-                fromEntity.w1SampleCount
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                12,
-                fromEntity.d1SampleCount
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                13,
-                fromEntity.h4SampleCount
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                14,
-                fromEntity.h1SampleCount
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                15,
-                fromEntity.m15SampleCount
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                16,
-                fromEntity.m5SampleCount
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                17,
+                3,
                 fromEntity.totalSampleCount
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                18,
-                fromEntity.longTermAverageScore
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                19,
-                fromEntity.longTermAverageRank
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                20,
+                4,
                 fromEntity.longMediumTermAverageScore
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                21,
+                5,
                 fromEntity.longMediumTermAverageRank
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                22,
-                fromEntity.mediumTermAverageScore
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                23,
-                fromEntity.mediumTermAverageRank
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                24,
+                6,
                 fromEntity.mediumShortTermAverageScore
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                25,
+                7,
                 fromEntity.mediumShortTermAverageRank
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                26,
+                8,
+                fromEntity.longTermAverageScore
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                9,
+                fromEntity.longTermAverageRank
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                10,
+                fromEntity.mediumTermAverageScore
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                11,
+                fromEntity.mediumTermAverageRank
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                12,
                 fromEntity.shortTermAverageScore
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                27,
+                13,
                 fromEntity.shortTermAverageRank
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 14, fromEntity.mn1Score);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 15, fromEntity.w1Score);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 16, fromEntity.d1Score);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 17, fromEntity.h4Score);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 18, fromEntity.h1Score);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 19, fromEntity.m15Score);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 20, fromEntity.m5Score);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                21,
+                fromEntity.mn1SampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                22,
+                fromEntity.w1SampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                23,
+                fromEntity.d1SampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                24,
+                fromEntity.h4SampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                25,
+                fromEntity.h1SampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                26,
+                fromEntity.m15SampleCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                27,
+                fromEntity.m5SampleCount
             );
         }
         if (isBound) {

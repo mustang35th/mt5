@@ -40,20 +40,20 @@ public:
         string sql = "CREATE TABLE IF NOT EXISTS currency_strength_pair_votes (";
         sql += "id INTEGER PRIMARY KEY AUTOINCREMENT,";
         sql += "run_id INTEGER NOT NULL,";
-        sql += "pair_order INTEGER NOT NULL,";
-        sql += "time_frame_order INTEGER NOT NULL,";
         sql += "canonical_symbol_name TEXT NOT NULL,";
         sql += "resolved_symbol_name TEXT NOT NULL,";
+        sql += "pair_order INTEGER NOT NULL,";
         sql += "time_frame INTEGER NOT NULL,";
         sql += "time_frame_text TEXT NOT NULL,";
+        sql += "time_frame_order INTEGER NOT NULL,";
         sql += "bar_time INTEGER NOT NULL,";
         sql += "bar_time_text TEXT NOT NULL,";
-        sql += "base_currency TEXT NOT NULL,";
-        sql += "quote_currency TEXT NOT NULL,";
         sql += "is_buy INTEGER NOT NULL CHECK(is_buy IN (0, 1)),";
         sql += "oscillator_count INTEGER NOT NULL,";
+        sql += "base_currency TEXT NOT NULL,";
         sql += "base_score INTEGER NOT NULL CHECK(base_score IN (-1, 1)),";
         sql += "base_score_after INTEGER NOT NULL,";
+        sql += "quote_currency TEXT NOT NULL,";
         sql += "quote_score_after INTEGER NOT NULL,";
         sql += "updated_at INTEGER NOT NULL,";
         sql += "updated_at_text TEXT NOT NULL,";
@@ -114,10 +114,10 @@ public:
         }
 
         string sql = "INSERT INTO currency_strength_pair_votes (";
-        sql += "run_id, pair_order, time_frame_order, canonical_symbol_name,";
-        sql += " resolved_symbol_name, time_frame, time_frame_text, bar_time,";
-        sql += " bar_time_text, base_currency, quote_currency, is_buy,";
-        sql += " oscillator_count, base_score, base_score_after,";
+        sql += "run_id, canonical_symbol_name, resolved_symbol_name, pair_order,";
+        sql += " time_frame, time_frame_text, time_frame_order, bar_time,";
+        sql += " bar_time_text, is_buy, oscillator_count, base_currency,";
+        sql += " base_score, base_score_after, quote_currency,";
         sql += " quote_score_after, updated_at, updated_at_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,";
@@ -256,55 +256,53 @@ public:
         }
 
         string sql = "CREATE VIEW currency_strength_contributions AS ";
-        sql += "SELECT v.id AS vote_id,";
-        sql += "v.run_id AS run_id,";
-        sql += "r.calculated_at AS calculated_at,";
+        sql += "SELECT v.run_id AS run_id,";
         sql += "r.m5_bar_time AS m5_bar_time,";
         sql += "r.m5_bar_time_text AS m5_bar_time_text,";
-        sql += "r.m15_bar_time AS m15_bar_time,";
         sql += "r.source_mode AS source_mode,";
-        sql += "v.pair_order AS pair_order,";
-        sql += "v.time_frame_order AS time_frame_order,";
+        sql += "v.base_currency AS currency_name,";
+        sql += "'BASE' AS currency_side,";
+        sql += "v.base_score AS score,";
+        sql += "v.base_score_after AS score_after,";
         sql += "v.canonical_symbol_name AS canonical_symbol_name,";
         sql += "v.resolved_symbol_name AS resolved_symbol_name,";
         sql += "v.time_frame AS time_frame,";
         sql += "v.time_frame_text AS time_frame_text,";
         sql += "v.bar_time AS bar_time,";
         sql += "v.bar_time_text AS bar_time_text,";
-        sql += "v.updated_at AS updated_at,";
-        sql += "v.updated_at_text AS updated_at_text,";
-        sql += "'BASE' AS currency_side,";
-        sql += "v.base_currency AS currency_name,";
-        sql += "v.base_score AS score,";
-        sql += "v.base_score_after AS score_after,";
         sql += "v.is_buy AS is_buy,";
-        sql += "v.oscillator_count AS oscillator_count ";
+        sql += "v.oscillator_count AS oscillator_count,";
+        sql += "v.pair_order AS pair_order,";
+        sql += "v.time_frame_order AS time_frame_order,";
+        sql += "v.id AS vote_id,";
+        sql += "r.calculated_at AS calculated_at,";
+        sql += "v.updated_at AS updated_at,";
+        sql += "v.updated_at_text AS updated_at_text ";
         sql += "FROM currency_strength_pair_votes v ";
         sql += "INNER JOIN currency_strength_runs r ON r.id = v.run_id ";
         sql += "UNION ALL ";
-        sql += "SELECT v.id AS vote_id,";
-        sql += "v.run_id AS run_id,";
-        sql += "r.calculated_at AS calculated_at,";
+        sql += "SELECT v.run_id AS run_id,";
         sql += "r.m5_bar_time AS m5_bar_time,";
         sql += "r.m5_bar_time_text AS m5_bar_time_text,";
-        sql += "r.m15_bar_time AS m15_bar_time,";
         sql += "r.source_mode AS source_mode,";
-        sql += "v.pair_order AS pair_order,";
-        sql += "v.time_frame_order AS time_frame_order,";
+        sql += "v.quote_currency AS currency_name,";
+        sql += "'QUOTE' AS currency_side,";
+        sql += "(0 - v.base_score) AS score,";
+        sql += "v.quote_score_after AS score_after,";
         sql += "v.canonical_symbol_name AS canonical_symbol_name,";
         sql += "v.resolved_symbol_name AS resolved_symbol_name,";
         sql += "v.time_frame AS time_frame,";
         sql += "v.time_frame_text AS time_frame_text,";
         sql += "v.bar_time AS bar_time,";
         sql += "v.bar_time_text AS bar_time_text,";
-        sql += "v.updated_at AS updated_at,";
-        sql += "v.updated_at_text AS updated_at_text,";
-        sql += "'QUOTE' AS currency_side,";
-        sql += "v.quote_currency AS currency_name,";
-        sql += "(0 - v.base_score) AS score,";
-        sql += "v.quote_score_after AS score_after,";
         sql += "v.is_buy AS is_buy,";
-        sql += "v.oscillator_count AS oscillator_count ";
+        sql += "v.oscillator_count AS oscillator_count,";
+        sql += "v.pair_order AS pair_order,";
+        sql += "v.time_frame_order AS time_frame_order,";
+        sql += "v.id AS vote_id,";
+        sql += "r.calculated_at AS calculated_at,";
+        sql += "v.updated_at AS updated_at,";
+        sql += "v.updated_at_text AS updated_at_text ";
         sql += "FROM currency_strength_pair_votes v ";
         sql += "INNER JOIN currency_strength_runs r ON r.id = v.run_id";
 
@@ -656,37 +654,37 @@ private:
         bool isBound = DatabaseBind(fromRequestHandle, 0, fromEntity.runId);
 
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 1, fromEntity.pairOrder);
-        }
-        if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                2,
-                fromEntity.timeFrameOrder
-            );
-        }
-        if (isBound) {
-            isBound = DatabaseBind(
-                fromRequestHandle,
-                3,
+                1,
                 fromEntity.canonicalSymbolName
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                4,
+                2,
                 fromEntity.resolvedSymbolName
             );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 5, fromEntity.timeFrame);
+            isBound = DatabaseBind(fromRequestHandle, 3, fromEntity.pairOrder);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 4, fromEntity.timeFrame);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                5,
+                fromEntity.timeFrameText
+            );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 6,
-                fromEntity.timeFrameText
+                fromEntity.timeFrameOrder
             );
         }
         if (isBound) {
@@ -700,29 +698,37 @@ private:
             );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 9, fromEntity.baseCurrency);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 10, fromEntity.quoteCurrency);
-        }
-        if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 11, fromEntity.isBuy);
+            isBound = DatabaseBind(fromRequestHandle, 9, fromEntity.isBuy);
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                12,
+                10,
                 fromEntity.oscillatorCount
             );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 13, fromEntity.baseScore);
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                11,
+                fromEntity.baseCurrency
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 12, fromEntity.baseScore);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                13,
+                fromEntity.baseScoreAfter
+            );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 14,
-                fromEntity.baseScoreAfter
+                fromEntity.quoteCurrency
             );
         }
         if (isBound) {
