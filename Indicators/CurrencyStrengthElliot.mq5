@@ -473,19 +473,11 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         m5BarTime = iTime(_Symbol, PERIOD_M5, 0);
     }
 
-    bool isCalculated = false;
-
-    if (isTester) {
-        isCalculated = gCurrencyStrengthCalculator.calculateAt(
-            gOscillatorHandleManager,
-            _Symbol,
-            m5BarTime
-        );
-    } else {
-        isCalculated = gCurrencyStrengthCalculator.calculate(
-            gOscillatorHandleManager
-        );
-    }
+    bool isCalculated = gCurrencyStrengthCalculator.calculateAt(
+        gOscillatorHandleManager,
+        _Symbol,
+        m5BarTime
+    );
 
     if (!isCalculated) {
         if (!isTester) {

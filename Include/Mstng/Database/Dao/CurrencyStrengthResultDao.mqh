@@ -12,6 +12,7 @@
 #include <Mstng\Database\Entity\CurrencyStrengthResultEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
+#include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
 
 /**
  * 通貨単位の通貨強弱集計結果をSQLiteへ保存・参照するDAO。
@@ -408,6 +409,183 @@ public:
         fromIsFound = true;
 
         return true;
+    }
+
+    /**
+     * 指定期間の完全集計から通貨ペアの順位を時刻昇順で取得する。
+     *
+     * 上限超過を呼び出し元で検知できるように、対象レコードが多い場合は
+     * fromMaximumPointCountより1件多く取得する。
+     *
+     * @param fromStartM5BarTime 検索開始となるM5バー時刻。
+     * @param fromEndM5BarTime 検索終了となるM5バー時刻。
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceMode 集計実行モード。
+     * @param fromSourceServer 集計元の取引サーバー名。
+     * @param fromSourceLogin 集計元の口座ログイン番号。
+     * @param fromBaseCurrency 基軸通貨。
+     * @param fromQuoteCurrency 決済通貨。
+     * @param fromMaximumPointCount 呼び出し元が受け入れる最大件数。
+     * @param fromPoints 取得結果の格納先。
+     * @return 検索処理に成功した場合true。
+     */
+    bool findPairRankPointsInRange(
+        const datetime fromStartM5BarTime,
+        const datetime fromEndM5BarTime,
+        const string fromCalculationVersion,
+        const string fromSourceMode,
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const string fromBaseCurrency,
+        const string fromQuoteCurrency,
+        const int fromMaximumPointCount,
+        CurrencyStrengthPairRankPoint &fromPoints[]
+    ) {
+        ArrayResize(fromPoints, 0);
+
+        if (!this.isDatabaseReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (fromStartM5BarTime <= 0
+                || fromEndM5BarTime < fromStartM5BarTime
+                || fromCalculationVersion == ""
+                || fromSourceMode == ""
+                || fromBaseCurrency == ""
+                || fromQuoteCurrency == ""
+                || fromMaximumPointCount < 0) {
+            this.logger.error(__FUNCTION__, "search condition is invalid.");
+
+            return false;
+        }
+
+        string sql = "SELECT ";
+        sql += "runs.id, runs.m5_bar_time, runs.updated_at,";
+        sql += " base_result.long_medium_term_average_rank,";
+        sql += " base_result.medium_short_term_average_rank,";
+        sql += " quote_result.long_medium_term_average_rank,";
+        sql += " quote_result.medium_short_term_average_rank ";
+        sql += "FROM currency_strength_runs runs ";
+        sql += "INNER JOIN currency_strength_results base_result ";
+        sql += "ON base_result.run_id = runs.id ";
+        sql += "AND base_result.currency_name = ?1 ";
+        sql += "INNER JOIN currency_strength_results quote_result ";
+        sql += "ON quote_result.run_id = runs.id ";
+        sql += "AND quote_result.currency_name = ?2 ";
+        sql += "WHERE runs.m5_bar_time >= ?3 ";
+        sql += "AND runs.m5_bar_time <= ?4 ";
+        sql += "AND runs.m5_bar_time > 0 ";
+        sql += "AND runs.calculation_version = ?5 ";
+        sql += "AND runs.source_mode = ?6 ";
+        sql += "AND runs.source_server = ?7 ";
+        sql += "AND runs.source_login = ?8 ";
+        sql += "AND runs.is_complete = 1 ";
+        sql += "ORDER BY runs.m5_bar_time ASC LIMIT ?9";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        int readLimit = fromMaximumPointCount + 1;
+        ResetLastError();
+        bool isBound = DatabaseBind(requestHandle, 0, fromBaseCurrency);
+
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 1, fromQuoteCurrency);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 2, fromStartM5BarTime);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 3, fromEndM5BarTime);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                4,
+                fromCalculationVersion
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 5, fromSourceMode);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 6, fromSourceServer);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 7, fromSourceLogin);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 8, readLimit);
+        }
+
+        if (!isBound) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        while (true) {
+            CurrencyStrengthPairRankPoint point;
+            point.reset();
+            ResetLastError();
+            bool isRead = DatabaseReadBind(requestHandle, point);
+            int readErrorCode = GetLastError();
+
+            if (!isRead) {
+                DatabaseFinalize(requestHandle);
+
+                if (readErrorCode == ERR_DATABASE_NO_MORE_DATA) {
+                    return true;
+                }
+
+                ArrayResize(fromPoints, 0);
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "DatabaseReadBind failed. error=%d",
+                        readErrorCode
+                    )
+                );
+
+                return false;
+            }
+
+            int pointIndex = ArraySize(fromPoints);
+
+            if (ArrayResize(
+                fromPoints,
+                pointIndex + 1,
+                readLimit
+            ) != pointIndex + 1) {
+                DatabaseFinalize(requestHandle);
+                ArrayResize(fromPoints, 0);
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "ArrayResize failed. requested=%d",
+                        pointIndex + 1
+                    )
+                );
+
+                return false;
+            }
+
+            fromPoints[pointIndex] = point;
+        }
     }
 
 private:

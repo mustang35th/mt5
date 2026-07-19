@@ -16,6 +16,7 @@
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairVote.mqh>
@@ -40,9 +41,6 @@ input string databaseFileName =
 
 /** データベースを共有フォルダへ保存する場合true。 */
 input bool databaseUseCommonFolder = true;
-
-/** 集計ルール識別子。 */
-const string calculationVersion = "pair-direction-raw-v6";
 
 /**
  * bool値をログ用文字列へ変換する。
@@ -103,6 +101,7 @@ int findCurrencyIndex(
  *
  * @param fromOscillatorHandleManager オシレーターハンドル管理クラス。
  * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromM5BarTime スナップショット基準のM5足開始時刻。
  * @param fromTimeoutSeconds 待機上限秒。
  * @param fromRetryIntervalMilliseconds 再試行間隔ミリ秒。
  * @param fromLogger ロガー。
@@ -111,6 +110,7 @@ int findCurrencyIndex(
 bool calculateWithRetry(
     OscillatorHandleManager *fromOscillatorHandleManager,
     CurrencyStrengthCalculator &fromCalculator,
+    const datetime fromM5BarTime,
     const int fromTimeoutSeconds,
     const int fromRetryIntervalMilliseconds,
     Logger &fromLogger
@@ -122,10 +122,19 @@ bool calculateWithRetry(
     while (!IsStopped()) {
         attemptCount++;
 
-        if (!fromCalculator.calculate(fromOscillatorHandleManager)) {
+        bool isCalculated = fromCalculator.calculateAt(
+            fromOscillatorHandleManager,
+            _Symbol,
+            fromM5BarTime
+        );
+
+        if (!isCalculated && fromCalculator.hasLastCalculationFatalError()) {
             fromLogger.error(
                 __FUNCTION__,
-                StringFormat("calculate failed. attempt=%d", attemptCount)
+                StringFormat(
+                    "fatal calculation error. attempt=%d",
+                    attemptCount
+                )
             );
 
             return false;
@@ -1034,11 +1043,13 @@ bool validateCurrencyResults(
  * 検証済みの実判定結果をデータベースへ保存する。
  *
  * @param fromCalculator 通貨強弱計算クラス。
+ * @param fromM5BarTime スナップショット基準のM5足開始時刻。
  * @param fromLogger ロガー。
  * @return スナップショットを保存できた場合true。
  */
 bool saveDatabaseSnapshot(
     CurrencyStrengthCalculator &fromCalculator,
+    const datetime fromM5BarTime,
     Logger &fromLogger
 ) {
     datetime calculatedAt = TimeCurrent();
@@ -1047,15 +1058,13 @@ bool saveDatabaseSnapshot(
         calculatedAt = TimeLocal();
     }
 
-    datetime m5BarTime = iTime(_Symbol, PERIOD_M5, 0);
-
-    if (calculatedAt <= 0 || m5BarTime <= 0) {
+    if (calculatedAt <= 0 || fromM5BarTime <= 0) {
         fromLogger.error(
             __FUNCTION__,
             StringFormat(
                 "invalid snapshot time. calculatedAt=%I64d m5BarTime=%I64d",
                 (long)calculatedAt,
-                (long)m5BarTime
+                (long)fromM5BarTime
             )
         );
 
@@ -1092,8 +1101,8 @@ bool saveDatabaseSnapshot(
 
     bool isSaved = persistenceService.save(
         calculatedAt,
-        m5BarTime,
-        calculationVersion,
+        fromM5BarTime,
+        CurrencyStrengthCalculationProfile::getCalculationVersion(false),
         "LIVE",
         AccountInfoString(ACCOUNT_SERVER),
         AccountInfoInteger(ACCOUNT_LOGIN),
@@ -1114,7 +1123,7 @@ bool saveDatabaseSnapshot(
             "database snapshot saved. fileName=%s common=%s m5BarTime=%s",
             databaseFileName,
             getBooleanText(databaseUseCommonFolder),
-            TimeToString(m5BarTime, TIME_DATE | TIME_SECONDS)
+            TimeToString(fromM5BarTime, TIME_DATE | TIME_SECONDS)
         )
     );
 
@@ -1164,9 +1173,20 @@ void OnStart() {
         return;
     }
 
+    datetime m5BarTime = iTime(_Symbol, PERIOD_M5, 0);
+
+    if (m5BarTime <= 0) {
+        logger.error(__FUNCTION__, "current M5 bar time is unavailable.");
+
+        return;
+    }
+
     logger.info(
         __FUNCTION__,
-        "Currency strength calculation smoke test started. current bar shift=0."
+        StringFormat(
+            "Currency strength calculation smoke test started. closed bars before m5BarTime=%s.",
+            TimeToString(m5BarTime, TIME_DATE | TIME_SECONDS)
+        )
     );
 
     OscillatorHandleManager oscillatorHandleManager(PERIOD_M15);
@@ -1188,6 +1208,7 @@ void OnStart() {
     bool isComplete = calculateWithRetry(
         GetPointer(oscillatorHandleManager),
         calculator,
+        m5BarTime,
         timeoutSeconds,
         retryIntervalMilliseconds,
         logger
@@ -1221,7 +1242,7 @@ void OnStart() {
     string databaseStatus = "SKIPPED";
 
     if (databaseEnabled) {
-        if (!saveDatabaseSnapshot(calculator, logger)) {
+        if (!saveDatabaseSnapshot(calculator, m5BarTime, logger)) {
             logger.error(
                 __FUNCTION__,
                 "Currency strength calculation smoke test FAILED: database save error."

@@ -15,17 +15,13 @@
 class CurrencyStrengthCalculationProfile {
 public:
     /**
-     * 実行環境に対応する集計ルール識別子を取得する。
+     * 確定足基準の集計ルール識別子を取得する。
      *
-     * @param fromTester ストラテジーテスターの場合true。
+     * @param fromTester ストラテジーテスターの場合true。識別子は実行環境共通。
      * @return 集計ルール識別子。
      */
     static string getCalculationVersion(const bool fromTester) {
-        if (fromTester) {
-            return "pair-direction-closed-v1";
-        }
-
-        return "pair-direction-raw-v6";
+        return "pair-direction-closed-v1";
     }
 
     /**

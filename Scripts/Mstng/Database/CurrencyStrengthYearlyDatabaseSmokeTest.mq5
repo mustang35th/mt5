@@ -16,6 +16,7 @@
 #include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
 /** 動作確認用データベースのベースファイル名。 */
@@ -622,6 +623,38 @@ void OnStart() {
             && !FileIsExist(year2027FileName, fileFlags);
     } else {
         isRankVerified = false;
+    }
+
+    CurrencyStrengthPairRankPoint rankPoints[];
+
+    if (isRankVerified) {
+        rankQueryStatus = rankQueryService.findPairRankPointsInRange(
+            year2025M5BarTime,
+            year2026M5BarTime,
+            "yearly-smoke-v1",
+            "TESTER",
+            "yearly-smoke",
+            1,
+            "USD",
+            "JPY",
+            2,
+            rankPoints
+        );
+        isRankVerified = rankQueryStatus
+                == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
+            && ArraySize(rankPoints) == 2
+            && rankPoints[0].runId == year2025RunId
+            && rankPoints[0].m5BarTime == year2025M5BarTime
+            && rankPoints[0].baseLongMediumTermAverageRank == 8
+            && rankPoints[0].baseMediumShortTermAverageRank == 7
+            && rankPoints[0].quoteLongMediumTermAverageRank == 1
+            && rankPoints[0].quoteMediumShortTermAverageRank == 2
+            && rankPoints[1].runId == year2026RunId
+            && rankPoints[1].m5BarTime == year2026M5BarTime
+            && rankPoints[1].baseLongMediumTermAverageRank == 1
+            && rankPoints[1].baseMediumShortTermAverageRank == 2
+            && rankPoints[1].quoteLongMediumTermAverageRank == 8
+            && rankPoints[1].quoteMediumShortTermAverageRank == 7;
     }
 
     if (!isRankVerified) {

@@ -103,6 +103,51 @@ public:
     // CADクロス。
     /** CADCHF通貨ペア文字列。 */
     static const string CADCHF;
+
+    /**
+     * 通貨コードに対応する表示色を取得する。
+     *
+     * @param fromCurrencyName 通貨コード。
+     * @return 通貨の表示色。未知の通貨の場合は白。
+     */
+    static color getColor(const string fromCurrencyName) {
+        string currencyName = fromCurrencyName;
+        StringToUpper(currencyName);
+
+        if (currencyName == USD) {
+            return clrOrange;
+        }
+
+        if (currencyName == JPY) {
+            return clrAqua;
+        }
+
+        if (currencyName == EUR) {
+            return clrRed;
+        }
+
+        if (currencyName == GBP) {
+            return clrLime;
+        }
+
+        if (currencyName == AUD) {
+            return clrDodgerBlue;
+        }
+
+        if (currencyName == NZD) {
+            return clrHotPink;
+        }
+
+        if (currencyName == CAD) {
+            return clrBlueViolet;
+        }
+
+        if (currencyName == CHF) {
+            return clrBrown;
+        }
+
+        return clrWhite;
+    }
 };
 
 // 単一通貨。

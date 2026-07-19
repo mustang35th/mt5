@@ -241,17 +241,10 @@ public:
     /**
      * 基軸・決済通貨の票を1通貨1行へ展開する確認用ビューを作成する。
      *
-     * @return 作成または再作成に成功した場合はtrue。
+     * @return 作成、再作成または存在確認に成功した場合はtrue。
      */
     bool createContributionsView() {
         if (!this.isDatabaseReady(__FUNCTION__)) {
-            return false;
-        }
-
-        if (!this.executeSql(
-            "DROP VIEW IF EXISTS currency_strength_contributions",
-            "drop currency_strength_contributions view"
-        )) {
             return false;
         }
 
@@ -306,6 +299,28 @@ public:
         sql += "FROM currency_strength_pair_votes v ";
         sql += "INNER JOIN currency_strength_runs r ON r.id = v.run_id";
 
+        string currentViewSql = "";
+        bool viewExists = false;
+
+        if (!this.findViewDefinition(
+            "currency_strength_contributions",
+            currentViewSql,
+            viewExists
+        )) {
+            return false;
+        }
+
+        if (viewExists && currentViewSql == sql) {
+            return true;
+        }
+
+        if (viewExists && !this.executeSql(
+            "DROP VIEW currency_strength_contributions",
+            "drop currency_strength_contributions view"
+        )) {
+            return false;
+        }
+
         return this.executeSql(sql, "currency_strength_contributions view");
     }
 
@@ -315,6 +330,88 @@ private:
 
     /** ロガー。 */
     Logger logger;
+
+    /**
+     * sqlite_masterからビュー定義を取得する。
+     *
+     * @param fromViewName 取得するビュー名。
+     * @param fromViewSql ビュー定義SQLの格納先。
+     * @param fromIsFound ビューが存在する場合true。
+     * @return ビュー定義の検索に成功した場合true。
+     */
+    bool findViewDefinition(
+        const string fromViewName,
+        string &fromViewSql,
+        bool &fromIsFound
+    ) {
+        fromViewSql = "";
+        fromIsFound = false;
+        string sql = "SELECT sql FROM sqlite_master ";
+        sql += "WHERE type = 'view' AND name = ?1";
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseBind(requestHandle, 0, fromViewName)) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseRead(requestHandle)) {
+            int readErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+
+            if (readErrorCode == ERR_DATABASE_NO_MORE_DATA) {
+                return true;
+            }
+
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseColumnText(requestHandle, 0, fromViewSql)) {
+            int columnErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseColumnText failed. error=%d",
+                    columnErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        DatabaseFinalize(requestHandle);
+        fromIsFound = true;
+
+        return true;
+    }
 
     /**
      * 既存の票内訳テーブルへ更新時刻列を追加して値を補完する。
