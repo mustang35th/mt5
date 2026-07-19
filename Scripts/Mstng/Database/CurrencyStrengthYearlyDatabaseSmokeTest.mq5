@@ -275,12 +275,21 @@ bool readDatabaseSummary(
         "(SELECT COUNT(*) FROM currency_strength_pair_votes), "
         "(SELECT COUNT(*) FROM currency_strength_results), "
         "(SELECT COUNT(*) FROM currency_strength_contributions), "
-        "(SELECT source_chart_id FROM currency_strength_runs LIMIT 1), "
-        "(SELECT calculated_at FROM currency_strength_runs LIMIT 1), "
-        "(SELECT is_buy FROM currency_strength_pair_votes "
-        " WHERE pair_order = 0 AND time_frame_order = 0 LIMIT 1), "
-        "(SELECT mn1_score FROM currency_strength_results "
-        " WHERE currency_name = 'USD' LIMIT 1)";
+        "(SELECT source_chart_id FROM currency_strength_runs "
+        " WHERE source_mode = 'TESTER' LIMIT 1), "
+        "(SELECT calculated_at FROM currency_strength_runs "
+        " WHERE source_mode = 'TESTER' LIMIT 1), "
+        "(SELECT pair_vote.is_buy "
+        " FROM currency_strength_pair_votes pair_vote "
+        " INNER JOIN currency_strength_runs run ON run.id = pair_vote.run_id "
+        " WHERE run.source_mode = 'TESTER' "
+        " AND pair_vote.pair_order = 0 "
+        " AND pair_vote.time_frame_order = 0 LIMIT 1), "
+        "(SELECT result.mn1_score "
+        " FROM currency_strength_results result "
+        " INNER JOIN currency_strength_runs run ON run.id = result.run_id "
+        " WHERE run.source_mode = 'TESTER' "
+        " AND result.currency_name = 'USD' LIMIT 1)";
     ResetLastError();
     int requestHandle = DatabasePrepare(database.getHandle(), sql);
 
@@ -537,6 +546,32 @@ void OnStart() {
         return;
     }
 
+    initializeRunEntity(
+        D'2026.01.01 00:10',
+        year2025M5BarTime,
+        202503,
+        runEntity
+    );
+    runEntity.sourceMode = "LIVE";
+    initializeChildEntities(
+        year2025M5BarTime,
+        true,
+        voteEntities,
+        resultEntities
+    );
+
+    if (!persistenceService.saveSnapshot(
+        runEntity,
+        voteEntities,
+        resultEntities
+    ) || runEntity.id == year2025RunId) {
+        logger.error(__FUNCTION__, "2025 LIVE snapshot save failed.");
+
+        return;
+    }
+
+    long year2025LiveRunId = runEntity.id;
+
     persistenceService.close();
     CurrencyStrengthYearlyRankQueryService rankQueryService(
         databaseFileName,
@@ -625,6 +660,54 @@ void OnStart() {
         isRankVerified = false;
     }
 
+    if (isRankVerified) {
+        rankQueryStatus =
+            rankQueryService.findLatestPairRanksAtOrBeforePreferLive(
+                year2025M5BarTime,
+                "yearly-smoke-v1",
+                "yearly-smoke",
+                1,
+                "USD",
+                "JPY",
+                pairRankInfo
+            );
+        isRankVerified = rankQueryStatus
+                == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
+            && pairRankInfo.runId == year2025LiveRunId
+            && verifyPairRankInfo(
+                pairRankInfo,
+                year2025M5BarTime,
+                1,
+                2,
+                8,
+                7
+            );
+    }
+
+    if (isRankVerified) {
+        rankQueryStatus =
+            rankQueryService.findLatestPairRanksAtOrBeforePreferLive(
+                year2026M5BarTime,
+                "yearly-smoke-v1",
+                "yearly-smoke",
+                1,
+                "USD",
+                "JPY",
+                pairRankInfo
+            );
+        isRankVerified = rankQueryStatus
+                == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
+            && pairRankInfo.runId == year2026RunId
+            && verifyPairRankInfo(
+                pairRankInfo,
+                year2026M5BarTime,
+                1,
+                2,
+                8,
+                7
+            );
+    }
+
     CurrencyStrengthPairRankPoint rankPoints[];
 
     if (isRankVerified) {
@@ -649,6 +732,36 @@ void OnStart() {
             && rankPoints[0].baseMediumShortTermAverageRank == 7
             && rankPoints[0].quoteLongMediumTermAverageRank == 1
             && rankPoints[0].quoteMediumShortTermAverageRank == 2
+            && rankPoints[1].runId == year2026RunId
+            && rankPoints[1].m5BarTime == year2026M5BarTime
+            && rankPoints[1].baseLongMediumTermAverageRank == 1
+            && rankPoints[1].baseMediumShortTermAverageRank == 2
+            && rankPoints[1].quoteLongMediumTermAverageRank == 8
+            && rankPoints[1].quoteMediumShortTermAverageRank == 7;
+    }
+
+    if (isRankVerified) {
+        rankQueryStatus =
+            rankQueryService.findPairRankPointsInRangePreferLive(
+                year2025M5BarTime,
+                year2026M5BarTime,
+                "yearly-smoke-v1",
+                "yearly-smoke",
+                1,
+                "USD",
+                "JPY",
+                2,
+                rankPoints
+            );
+        isRankVerified = rankQueryStatus
+                == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
+            && ArraySize(rankPoints) == 2
+            && rankPoints[0].runId == year2025LiveRunId
+            && rankPoints[0].m5BarTime == year2025M5BarTime
+            && rankPoints[0].baseLongMediumTermAverageRank == 1
+            && rankPoints[0].baseMediumShortTermAverageRank == 2
+            && rankPoints[0].quoteLongMediumTermAverageRank == 8
+            && rankPoints[0].quoteMediumShortTermAverageRank == 7
             && rankPoints[1].runId == year2026RunId
             && rankPoints[1].m5BarTime == year2026M5BarTime
             && rankPoints[1].baseLongMediumTermAverageRank == 1
@@ -718,10 +831,10 @@ void OnStart() {
     }
 
     isVerified = isVerified
-        && year2025RunCount == 1
-        && year2025VoteCount == 7
-        && year2025ResultCount == 2
-        && year2025ContributionCount == 14
+        && year2025RunCount == 2
+        && year2025VoteCount == 14
+        && year2025ResultCount == 4
+        && year2025ContributionCount == 28
         && year2025SourceChartId == 202502
         && actualYear2025CalculatedAt == (long)year2025CalculatedAt
         && year2025FirstVoteIsBuy == 0

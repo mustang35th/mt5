@@ -529,16 +529,12 @@ void updateCurrencyStrengthPairRank() {
 
     string calculationVersion =
         CurrencyStrengthCalculationProfile::getCalculationVersion(isTester);
-    string sourceMode = CurrencyStrengthCalculationProfile::getSourceMode(
-        isTester
-    );
 
     CurrencyStrengthPairRankInfo rankInfo;
     ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS queryStatus =
-        gCurrencyStrengthRankQueryService.findLatestPairRanksAtOrBefore(
+        gCurrencyStrengthRankQueryService.findLatestPairRanksAtOrBeforePreferLive(
             targetM5BarTime,
             calculationVersion,
-            sourceMode,
             AccountInfoString(ACCOUNT_SERVER),
             AccountInfoInteger(ACCOUNT_LOGIN),
             gCurrencyStrengthBaseCurrency,

@@ -43,6 +43,9 @@
 
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthLatestRankLabels.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankPeriodLabel.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankSignalLabel.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
@@ -58,7 +61,10 @@ enum CurrencyStrengthRankDatabaseProfile {
     CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE = 1,
 
     /** インジケータの実行環境に合わせて自動選択する。 */
-    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_AUTO = 2
+    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_AUTO = 2,
+
+    /** 同じM5時刻はLIVEを優先し、LIVEがない時刻をTESTERで補完する。 */
+    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER = 3
 };
 
 /**
@@ -76,8 +82,9 @@ input CurrencyStrengthRankPeriod rankPeriod =
     CURRENCY_STRENGTH_RANK_PERIOD_LONG_MEDIUM;
 input int historyDays = 30;
 input int refreshSeconds = 15;
+input int subPanelHeight = 120;
 input CurrencyStrengthRankDatabaseProfile databaseProfile =
-    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_TESTER;
+    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;
 input string databaseFileName = "mstng-currency-strength.sqlite";
 input bool databaseSplitByYear = true;
 input bool databaseUseCommonFolder = true;
@@ -89,6 +96,9 @@ double gQuoteActualRankBuffer[];
 
 Logger gLogger;
 CurrencyStrengthYearlyRankQueryService *gRankQueryService = NULL;
+DrawCurrencyStrengthLatestRankLabels *gLatestRankLabelsDraw = NULL;
+DrawCurrencyStrengthRankPeriodLabel *gRankPeriodLabelDraw = NULL;
+DrawCurrencyStrengthRankSignalLabel *gRankSignalLabelDraw = NULL;
 CurrencyStrengthPairRankPoint gRankPoints[];
 string gBaseCurrency = "";
 string gQuoteCurrency = "";
@@ -98,6 +108,7 @@ datetime gLastQueryTargetM5BarTime = 0;
 datetime gLastDisplayStartM5BarTime = 0;
 ulong gLastQueryTickCount = 0;
 bool gRankPointCacheReady = false;
+bool gRankPeriodLabelReady = false;
 
 /**
  * インジケータを初期化する。
@@ -113,7 +124,10 @@ int OnInit() {
         return INIT_FAILED;
     }
 
-    if (historyDays < 1 || historyDays > 366 || refreshSeconds < 1) {
+    if (historyDays < 1
+            || historyDays > 366
+            || refreshSeconds < 1
+            || subPanelHeight < 0) {
         return INIT_PARAMETERS_INCORRECT;
     }
 
@@ -131,6 +145,11 @@ int OnInit() {
     }
 
     if (!initializeBuffers()) {
+        return INIT_FAILED;
+    }
+
+    if (subPanelHeight > 0
+            && !IndicatorSetInteger(INDICATOR_HEIGHT, subPanelHeight)) {
         return INIT_FAILED;
     }
 
@@ -157,9 +176,13 @@ int OnInit() {
         CurrencyStrengthCalculationProfile::getCalculationVersion(
             useTesterProfile
         );
-    gSourceMode = CurrencyStrengthCalculationProfile::getSourceMode(
-        useTesterProfile
-    );
+    if (usesLiveThenTesterDatabaseProfile()) {
+        gSourceMode = "LIVE>TESTER";
+    } else {
+        gSourceMode = CurrencyStrengthCalculationProfile::getSourceMode(
+            useTesterProfile
+        );
+    }
     configurePlots();
 
     gRankQueryService = new CurrencyStrengthYearlyRankQueryService(
@@ -172,11 +195,62 @@ int OnInit() {
         return INIT_FAILED;
     }
 
+    string drawObjectSuffix = StringFormat(
+        "%d_%I64u",
+        (int)rankPeriod,
+        GetTickCount64()
+    );
+    gRankPeriodLabelDraw = new DrawCurrencyStrengthRankPeriodLabel(
+        ChartID(),
+        drawObjectSuffix
+    );
+
+    if (gRankPeriodLabelDraw == NULL) {
+        gRankQueryService.close();
+        delete gRankQueryService;
+        gRankQueryService = NULL;
+
+        return INIT_FAILED;
+    }
+
+    gLatestRankLabelsDraw = new DrawCurrencyStrengthLatestRankLabels(
+        ChartID(),
+        drawObjectSuffix
+    );
+
+    if (gLatestRankLabelsDraw == NULL) {
+        delete gRankPeriodLabelDraw;
+        gRankPeriodLabelDraw = NULL;
+        gRankQueryService.close();
+        delete gRankQueryService;
+        gRankQueryService = NULL;
+
+        return INIT_FAILED;
+    }
+
+    gRankSignalLabelDraw = new DrawCurrencyStrengthRankSignalLabel(
+        ChartID(),
+        drawObjectSuffix
+    );
+
+    if (gRankSignalLabelDraw == NULL) {
+        delete gLatestRankLabelsDraw;
+        gLatestRankLabelsDraw = NULL;
+        delete gRankPeriodLabelDraw;
+        gRankPeriodLabelDraw = NULL;
+        gRankQueryService.close();
+        delete gRankQueryService;
+        gRankQueryService = NULL;
+
+        return INIT_FAILED;
+    }
+
     ArrayResize(gRankPoints, 0);
     gLastQueryTargetM5BarTime = 0;
     gLastDisplayStartM5BarTime = 0;
     gLastQueryTickCount = 0;
     gRankPointCacheReady = false;
+    gRankPeriodLabelReady = false;
 
     return INIT_SUCCEEDED;
 }
@@ -187,6 +261,21 @@ int OnInit() {
  * @param reason 終了理由。
  */
 void OnDeinit(const int reason) {
+    if (gRankSignalLabelDraw != NULL) {
+        delete gRankSignalLabelDraw;
+        gRankSignalLabelDraw = NULL;
+    }
+
+    if (gLatestRankLabelsDraw != NULL) {
+        delete gLatestRankLabelsDraw;
+        gLatestRankLabelsDraw = NULL;
+    }
+
+    if (gRankPeriodLabelDraw != NULL) {
+        delete gRankPeriodLabelDraw;
+        gRankPeriodLabelDraw = NULL;
+    }
+
     if (gRankQueryService != NULL) {
         gRankQueryService.close();
         delete gRankQueryService;
@@ -197,6 +286,7 @@ void OnDeinit(const int reason) {
     gCalculationVersion = "";
     gSourceMode = "";
     gRankPointCacheReady = false;
+    gRankPeriodLabelReady = false;
 }
 
 /**
@@ -216,6 +306,10 @@ int OnCalculate(
     const long &volume[],
     const int &spread[]
 ) {
+    if (!gRankPeriodLabelReady) {
+        gRankPeriodLabelReady = drawRankPeriodLabel();
+    }
+
     if (ratesTotal <= 0 || gRankQueryService == NULL) {
         return 0;
     }
@@ -283,8 +377,30 @@ int OnCalculate(
     }
 
     gLastDisplayStartM5BarTime = displayStartM5BarTime;
+    drawLatestRankLabels(ratesTotal, time);
 
     return ratesTotal;
+}
+
+/**
+ * チャート変更時に期間名ラベルの表示位置を再確認する。
+ *
+ * @param fromEventId イベントID。
+ * @param fromLongParameter long型イベント値。
+ * @param fromDoubleParameter double型イベント値。
+ * @param fromStringParameter string型イベント値。
+ */
+void OnChartEvent(
+    const int fromEventId,
+    const long &fromLongParameter,
+    const double &fromDoubleParameter,
+    const string &fromStringParameter
+) {
+    if (fromEventId != CHARTEVENT_CHART_CHANGE) {
+        return;
+    }
+
+    gRankPeriodLabelReady = drawRankPeriodLabel();
 }
 
 /**
@@ -386,24 +502,6 @@ void configurePlots() {
             historyDays
         )
     );
-
-    configureRankLevelLabels();
-}
-
-/**
- * 負数へ変換した描画位置へ実順位の水平レベル名を設定する。
- */
-void configureRankLevelLabels() {
-    for (int i = 0; i < 8; i++) {
-        int actualRank = i + 1;
-        string levelText = StringFormat("Rank %d", actualRank);
-
-        if (actualRank == 1) {
-            levelText += " Top";
-        }
-
-        IndicatorSetString(INDICATOR_LEVELTEXT, i, levelText);
-    }
 }
 
 /**
@@ -417,6 +515,236 @@ string getRankPeriodLabel() {
     }
 
     return "Long-Medium";
+}
+
+/**
+ * 選択中の順位期間をチャート表示用の日本語へ変換する。
+ *
+ * @return 長中期または中短期。
+ */
+string getRankPeriodDisplayLabel() {
+    if (rankPeriod == CURRENCY_STRENGTH_RANK_PERIOD_MEDIUM_SHORT) {
+        return "中短期";
+    }
+
+    return "長中期";
+}
+
+/**
+ * 選択中の順位期間をサブパネル右上へ描画する。
+ *
+ * @return 描画に成功した場合true。
+ */
+bool drawRankPeriodLabel() {
+    if (gRankPeriodLabelDraw == NULL) {
+        return false;
+    }
+
+    int subWindow = ChartWindowFind();
+
+    if (subWindow <= 0) {
+        return false;
+    }
+
+    return gRankPeriodLabelDraw.draw(
+        subWindow,
+        getRankPeriodDisplayLabel()
+    );
+}
+
+/**
+ * 最新順位線の右側へ順位と通貨名を描画する。
+ *
+ * @param fromRatesTotal チャートのバー総数。
+ * @param fromTime チャートバー時刻配列。
+ */
+void drawLatestRankLabels(
+    const int fromRatesTotal,
+    const datetime &fromTime[]
+) {
+    if (gLatestRankLabelsDraw == NULL || fromRatesTotal <= 0) {
+        return;
+    }
+
+    int subWindow = ChartWindowFind();
+
+    if (subWindow <= 0) {
+        return;
+    }
+
+    if (ArraySize(gRankPoints) == 0) {
+        gLatestRankLabelsDraw.clear();
+        drawRankSignalLabel(subWindow, 0, 0);
+
+        return;
+    }
+
+    int latestBufferIndex = -1;
+
+    for (int i = 0; i < fromRatesTotal; i++) {
+        if (isActualRankBufferValue(gBaseActualRankBuffer[i])
+                && isActualRankBufferValue(gQuoteActualRankBuffer[i])) {
+            latestBufferIndex = i;
+
+            break;
+        }
+    }
+
+    if (latestBufferIndex < 0) {
+        gLatestRankLabelsDraw.clear();
+        drawRankSignalLabel(subWindow, 0, 0);
+
+        return;
+    }
+
+    int baseRank = (int)MathRound(
+        gBaseActualRankBuffer[latestBufferIndex]
+    );
+    int quoteRank = (int)MathRound(
+        gQuoteActualRankBuffer[latestBufferIndex]
+    );
+    drawRankSignalLabel(subWindow, baseRank, quoteRank);
+    datetime latestBarTime = fromTime[latestBufferIndex];
+    int basePixelOffset = 18;
+    int quotePixelOffset = 18;
+
+    if (baseRank == quoteRank) {
+        quotePixelOffset = 66;
+    }
+
+    datetime baseLabelTime = getLatestRankLabelTime(
+        subWindow,
+        latestBarTime,
+        (double)(0 - baseRank),
+        basePixelOffset
+    );
+    datetime quoteLabelTime = getLatestRankLabelTime(
+        subWindow,
+        latestBarTime,
+        (double)(0 - quoteRank),
+        quotePixelOffset
+    );
+
+    if (!gLatestRankLabelsDraw.draw(
+        subWindow,
+        baseLabelTime,
+        gBaseCurrency,
+        baseRank,
+        ConstantCurrency::getColor(gBaseCurrency),
+        quoteLabelTime,
+        gQuoteCurrency,
+        quoteRank,
+        ConstantCurrency::getColor(gQuoteCurrency)
+    )) {
+        gLogger.error(__FUNCTION__, "latest rank label draw failed");
+    }
+}
+
+/**
+ * 基軸通貨と決済通貨の順位差から売買方向を描画する。
+ *
+ * 基軸通貨の順位が上の場合はBUY、決済通貨の順位が上の場合はSELLとする。
+ *
+ * @param fromSubWindow 描画対象サブウィンドウ番号。
+ * @param fromBaseRank 基軸通貨の順位。
+ * @param fromQuoteRank 決済通貨の順位。
+ */
+void drawRankSignalLabel(
+    const int fromSubWindow,
+    const int fromBaseRank,
+    const int fromQuoteRank
+) {
+    if (gRankSignalLabelDraw == NULL) {
+        return;
+    }
+
+    string signalText = "-";
+    color signalColor = clrSilver;
+
+    if (fromBaseRank >= 1
+            && fromBaseRank <= 8
+            && fromQuoteRank >= 1
+            && fromQuoteRank <= 8) {
+        if (fromBaseRank < fromQuoteRank) {
+            signalText = "BUY";
+            signalColor = clrAqua;
+        } else if (fromBaseRank > fromQuoteRank) {
+            signalText = "SELL";
+            signalColor = clrHotPink;
+        }
+    }
+
+    if (!gRankSignalLabelDraw.draw(
+        fromSubWindow,
+        signalText,
+        signalColor
+    )) {
+        gLogger.error(__FUNCTION__, "rank signal label draw failed");
+    }
+}
+
+/**
+ * 最新足から指定ピクセル数だけ右側となる時刻を取得する。
+ *
+ * @param fromSubWindow 描画対象サブウィンドウ番号。
+ * @param fromBarTime 最新順位を持つバー時刻。
+ * @param fromDisplayPosition 順位線の表示位置。
+ * @param fromPixelOffset 最新足から右へ離すピクセル数。
+ * @return ラベル配置時刻。
+ */
+datetime getLatestRankLabelTime(
+    const int fromSubWindow,
+    const datetime fromBarTime,
+    const double fromDisplayPosition,
+    const int fromPixelOffset
+) {
+    int barX = 0;
+    int barY = 0;
+
+    if (ChartTimePriceToXY(
+        ChartID(),
+        fromSubWindow,
+        fromBarTime,
+        fromDisplayPosition,
+        barX,
+        barY
+    )) {
+        int resolvedSubWindow = -1;
+        datetime resolvedTime = 0;
+        double resolvedPosition = 0.0;
+
+        if (ChartXYToTimePrice(
+            ChartID(),
+            barX + fromPixelOffset,
+            barY,
+            resolvedSubWindow,
+            resolvedTime,
+            resolvedPosition
+        ) && resolvedSubWindow == fromSubWindow
+                && resolvedTime > fromBarTime) {
+            return resolvedTime;
+        }
+    }
+
+    int periodSeconds = PeriodSeconds(_Period);
+
+    if (periodSeconds <= 0) {
+        periodSeconds = 60;
+    }
+
+    return fromBarTime + periodSeconds;
+}
+
+/**
+ * データウィンドウ用順位バッファの値が有効か判定する。
+ *
+ * @param fromValue 判定対象値。
+ * @return 1～8の順位の場合true。
+ */
+bool isActualRankBufferValue(const double fromValue) {
+    return fromValue != EMPTY_VALUE
+        && fromValue >= 1.0
+        && fromValue <= 8.0;
 }
 
 /**
@@ -436,6 +764,16 @@ bool usesTesterDatabaseProfile(const bool fromRuntimeTester) {
     }
 
     return fromRuntimeTester;
+}
+
+/**
+ * LIVE優先・TESTER補完プロファイルが選択されているか判定する。
+ *
+ * @return LIVE優先・TESTER補完の場合true。
+ */
+bool usesLiveThenTesterDatabaseProfile() {
+    return databaseProfile
+        == CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;
 }
 
 /**
@@ -553,7 +891,22 @@ bool refreshRankPoints(
     int maximumPointCount = (historyDays * 288) + 2;
 
     ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS queryStatus =
-        gRankQueryService.findPairRankPointsInRange(
+        CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+
+    if (usesLiveThenTesterDatabaseProfile()) {
+        queryStatus = gRankQueryService.findPairRankPointsInRangePreferLive(
+            queryStartM5BarTime,
+            fromTargetM5BarTime,
+            gCalculationVersion,
+            AccountInfoString(ACCOUNT_SERVER),
+            AccountInfoInteger(ACCOUNT_LOGIN),
+            gBaseCurrency,
+            gQuoteCurrency,
+            maximumPointCount,
+            queriedPoints
+        );
+    } else {
+        queryStatus = gRankQueryService.findPairRankPointsInRange(
             queryStartM5BarTime,
             fromTargetM5BarTime,
             gCalculationVersion,
@@ -565,6 +918,7 @@ bool refreshRankPoints(
             maximumPointCount,
             queriedPoints
         );
+    }
 
     if (queryStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
         gLogger.error(

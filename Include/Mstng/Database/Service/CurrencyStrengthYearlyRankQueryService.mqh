@@ -13,6 +13,7 @@
 #include <Mstng\Database\Dao\CurrencyStrengthResultDao.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
 
@@ -142,6 +143,91 @@ public:
         }
 
         return CURRENCY_STRENGTH_PAIR_RANK_QUERY_DATABASE_NOT_FOUND;
+    }
+
+    /**
+     * 指定時刻以前の最新順位をLIVE優先で取得する。
+     *
+     * LIVEとTESTERのうちM5バー時刻が新しい結果を採用し、
+     * 同じM5バー時刻に両方ある場合はLIVEを採用する。
+     *
+     * @param fromTargetM5BarTime 検索上限となるM5バー時刻。
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceServer 集計元の取引サーバー名。
+     * @param fromSourceLogin 集計元の口座ログイン番号。
+     * @param fromBaseCurrency 基軸通貨。
+     * @param fromQuoteCurrency 決済通貨。
+     * @param fromInfo 取得結果の格納先。
+     * @return 通貨ペア順位検索の結果状態。
+     */
+    ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS findLatestPairRanksAtOrBeforePreferLive(
+        const datetime fromTargetM5BarTime,
+        const string fromCalculationVersion,
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const string fromBaseCurrency,
+        const string fromQuoteCurrency,
+        CurrencyStrengthPairRankInfo &fromInfo
+    ) {
+        fromInfo.reset();
+        CurrencyStrengthPairRankInfo liveInfo;
+        ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS liveStatus =
+            this.findLatestPairRanksAtOrBefore(
+                fromTargetM5BarTime,
+                fromCalculationVersion,
+                CurrencyStrengthCalculationProfile::getSourceMode(false),
+                fromSourceServer,
+                fromSourceLogin,
+                fromBaseCurrency,
+                fromQuoteCurrency,
+                liveInfo
+            );
+
+        if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
+            return liveStatus;
+        }
+
+        CurrencyStrengthPairRankInfo testerInfo;
+        ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS testerStatus =
+            this.findLatestPairRanksAtOrBefore(
+                fromTargetM5BarTime,
+                fromCalculationVersion,
+                CurrencyStrengthCalculationProfile::getSourceMode(true),
+                fromSourceServer,
+                fromSourceLogin,
+                fromBaseCurrency,
+                fromQuoteCurrency,
+                testerInfo
+            );
+
+        if (testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
+            return testerStatus;
+        }
+
+        if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
+                && testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
+            if (testerInfo.m5BarTime > liveInfo.m5BarTime) {
+                fromInfo = testerInfo;
+            } else {
+                fromInfo = liveInfo;
+            }
+
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND;
+        }
+
+        if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
+            fromInfo = liveInfo;
+
+            return liveStatus;
+        }
+
+        if (testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
+            fromInfo = testerInfo;
+
+            return testerStatus;
+        }
+
+        return this.combineNotFoundStatuses(liveStatus, testerStatus);
     }
 
     /**
@@ -314,6 +400,93 @@ public:
     }
 
     /**
+     * 指定期間の順位をLIVE優先で時刻昇順に取得する。
+     *
+     * 同じM5バー時刻にLIVEとTESTERの両方がある場合はLIVEを採用し、
+     * LIVEがないM5バー時刻はTESTERで補完する。
+     *
+     * @param fromStartM5BarTime 検索開始となるM5バー時刻。
+     * @param fromEndM5BarTime 検索終了となるM5バー時刻。
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceServer 集計元の取引サーバー名。
+     * @param fromSourceLogin 集計元の口座ログイン番号。
+     * @param fromBaseCurrency 基軸通貨。
+     * @param fromQuoteCurrency 決済通貨。
+     * @param fromMaximumPointCount 取得を許可する最大件数。
+     * @param fromPoints 取得結果の格納先。
+     * @return 通貨ペア順位検索の結果状態。
+     */
+    ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS findPairRankPointsInRangePreferLive(
+        const datetime fromStartM5BarTime,
+        const datetime fromEndM5BarTime,
+        const string fromCalculationVersion,
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const string fromBaseCurrency,
+        const string fromQuoteCurrency,
+        const int fromMaximumPointCount,
+        CurrencyStrengthPairRankPoint &fromPoints[]
+    ) {
+        ArrayResize(fromPoints, 0);
+        CurrencyStrengthPairRankPoint livePoints[];
+        ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS liveStatus =
+            this.findPairRankPointsInRange(
+                fromStartM5BarTime,
+                fromEndM5BarTime,
+                fromCalculationVersion,
+                CurrencyStrengthCalculationProfile::getSourceMode(false),
+                fromSourceServer,
+                fromSourceLogin,
+                fromBaseCurrency,
+                fromQuoteCurrency,
+                fromMaximumPointCount,
+                livePoints
+            );
+
+        if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
+            return liveStatus;
+        }
+
+        CurrencyStrengthPairRankPoint testerPoints[];
+        ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS testerStatus =
+            this.findPairRankPointsInRange(
+                fromStartM5BarTime,
+                fromEndM5BarTime,
+                fromCalculationVersion,
+                CurrencyStrengthCalculationProfile::getSourceMode(true),
+                fromSourceServer,
+                fromSourceLogin,
+                fromBaseCurrency,
+                fromQuoteCurrency,
+                fromMaximumPointCount,
+                testerPoints
+            );
+
+        if (testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
+            return testerStatus;
+        }
+
+        if (!this.mergePairRankPointsPreferLive(
+            livePoints,
+            testerPoints,
+            fromStartM5BarTime,
+            fromEndM5BarTime,
+            fromMaximumPointCount,
+            fromPoints
+        )) {
+            ArrayResize(fromPoints, 0);
+
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+        }
+
+        if (ArraySize(fromPoints) > 0) {
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND;
+        }
+
+        return this.combineNotFoundStatuses(liveStatus, testerStatus);
+    }
+
+    /**
      * データベース関連リソースを解放する。
      */
     void close() {
@@ -365,6 +538,119 @@ private:
 
     /** ロガー。 */
     Logger logger;
+
+    /**
+     * LIVEとTESTERの未取得状態を1つの検索結果へまとめる。
+     *
+     * @param fromLiveStatus LIVE検索結果。
+     * @param fromTesterStatus TESTER検索結果。
+     * @return 統合後の未取得状態。
+     */
+    ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS combineNotFoundStatuses(
+        const ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS fromLiveStatus,
+        const ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS fromTesterStatus
+    ) {
+        if (fromLiveStatus
+                == CURRENCY_STRENGTH_PAIR_RANK_QUERY_DATABASE_NOT_FOUND
+                && fromTesterStatus
+                    == CURRENCY_STRENGTH_PAIR_RANK_QUERY_DATABASE_NOT_FOUND) {
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_DATABASE_NOT_FOUND;
+        }
+
+        return CURRENCY_STRENGTH_PAIR_RANK_QUERY_RECORD_NOT_FOUND;
+    }
+
+    /**
+     * LIVEとTESTERの時系列順位をM5バー時刻単位で統合する。
+     *
+     * @param fromLivePoints LIVE順位配列。
+     * @param fromTesterPoints TESTER順位配列。
+     * @param fromStartM5BarTime 検索開始となるM5バー時刻。
+     * @param fromEndM5BarTime 検索終了となるM5バー時刻。
+     * @param fromMaximumPointCount 取得を許可する最大件数。
+     * @param fromDestination 統合結果の格納先。
+     * @return 統合に成功した場合true。
+     */
+    bool mergePairRankPointsPreferLive(
+        CurrencyStrengthPairRankPoint &fromLivePoints[],
+        CurrencyStrengthPairRankPoint &fromTesterPoints[],
+        const datetime fromStartM5BarTime,
+        const datetime fromEndM5BarTime,
+        const int fromMaximumPointCount,
+        CurrencyStrengthPairRankPoint &fromDestination[]
+    ) {
+        ArrayResize(fromDestination, 0);
+        int liveCount = ArraySize(fromLivePoints);
+        int testerCount = ArraySize(fromTesterPoints);
+        int maximumMergedCount = liveCount + testerCount;
+
+        if (maximumMergedCount == 0) {
+            return true;
+        }
+
+        if (ArrayResize(fromDestination, maximumMergedCount)
+                != maximumMergedCount) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "ArrayResize failed. requested=%d",
+                    maximumMergedCount
+                )
+            );
+
+            return false;
+        }
+
+        int liveIndex = 0;
+        int testerIndex = 0;
+        int mergedCount = 0;
+
+        while (liveIndex < liveCount || testerIndex < testerCount) {
+            if (mergedCount >= fromMaximumPointCount) {
+                this.logPointLimitExceeded(
+                    fromStartM5BarTime,
+                    fromEndM5BarTime,
+                    fromMaximumPointCount
+                );
+
+                return false;
+            }
+
+            if (liveIndex >= liveCount) {
+                fromDestination[mergedCount] = fromTesterPoints[testerIndex];
+                testerIndex++;
+            } else if (testerIndex >= testerCount) {
+                fromDestination[mergedCount] = fromLivePoints[liveIndex];
+                liveIndex++;
+            } else if (fromLivePoints[liveIndex].m5BarTime
+                    <= fromTesterPoints[testerIndex].m5BarTime) {
+                fromDestination[mergedCount] = fromLivePoints[liveIndex];
+
+                if (fromLivePoints[liveIndex].m5BarTime
+                        == fromTesterPoints[testerIndex].m5BarTime) {
+                    testerIndex++;
+                }
+
+                liveIndex++;
+            } else {
+                fromDestination[mergedCount] = fromTesterPoints[testerIndex];
+                testerIndex++;
+            }
+
+            mergedCount++;
+        }
+
+        if (ArrayResize(fromDestination, mergedCount) != mergedCount) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("ArrayResize failed. requested=%d", mergedCount)
+            );
+
+            return false;
+        }
+
+        return true;
+    }
 
     /**
      * 現在開いているDBから指定期間の順位を時刻昇順で取得する。
