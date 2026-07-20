@@ -11,6 +11,8 @@
 #define MSTNG_DRAW_CURRENCY_STRENGTH_PAIR_RANK_MQH
 
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Constant\ConstantCurrency.mqh>
+#include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
 
 /**
@@ -24,26 +26,30 @@ public:
      * @param fromChartId 描画対象チャートID。0の場合はカレント。
      * @param fromXDistance チャート右端からの距離。
      */
-    DrawCurrencyStrengthPairRank(long fromChartId = 0, int fromXDistance = 12) {
+    DrawCurrencyStrengthPairRank(long fromChartId = 0, int fromXDistance = 48) {
         this.chartId = fromChartId;
         this.objectPrefix = Constant::PREFIX_FIXED + "CurrencyStrengthPairRank_";
         this.created = false;
+        this.hasRankData = false;
+        this.lastExecutionInfo.reset();
+        this.lastBaseCurrency = "";
+        this.lastQuoteCurrency = "";
+        this.lastDisplayAvailable = false;
+        this.lastDisplayError = false;
         this.corner = CORNER_RIGHT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = 0;
-        this.panelWidth = 254;
-        this.panelHeight = 124;
+        this.panelWidth = 244;
+        this.panelHeight = 126;
         this.fontName = "MS Gothic";
-        this.titleFontSize = 10;
-        this.bodyFontSize = 9;
-        this.panelBackgroundColor = C'18,18,18';
-        this.headerBackgroundColor = C'56,74,104';
-        this.borderColor = clrDimGray;
-        this.titleColor = clrWhite;
+        this.titleFontSize = 15;
+        this.bodyFontSize = 15;
         this.headerColor = C'180,180,180';
-        this.normalColor = clrWhiteSmoke;
-        this.rankColor = clrGold;
         this.mutedColor = C'130,130,130';
+        this.buyColor = clrDeepSkyBlue;
+        this.sellColor = clrHotPink;
+        this.warningColor = clrGold;
+        this.errorColor = clrTomato;
         this.calculateYDistance();
     }
 
@@ -57,54 +63,91 @@ public:
     /**
      * 表示中の通貨ペアに対応する順位を描画する。
      *
-     * @param fromInfo 順位表示情報。
+     * @param fromInfo 実行時通貨強弱情報。
      * @return 描画に成功した場合true。
      */
-    bool draw(CurrencyStrengthPairRankInfo &fromInfo) {
+    bool draw(CurrencyStrengthExecutionInfo &fromInfo) {
+        if (!fromInfo.isAvailable()) {
+            return this.drawUnavailable(
+                fromInfo.pairRankInfo.baseCurrency,
+                fromInfo.pairRankInfo.quoteCurrency
+            );
+        }
+
         if (!this.ensureCreated()) {
             return false;
         }
 
-        this.setLabelText("BaseCurrency", fromInfo.baseCurrency, this.normalColor);
+        CurrencyStrengthPairRankInfo pairRankInfo = fromInfo.pairRankInfo;
+        int longMediumDifference = fromInfo.getLongMediumRankDifference();
+        int mediumShortDifference = fromInfo.getMediumShortRankDifference();
+
+        this.updateSourceBadge(fromInfo.sourceMode);
+        this.updateDecision(longMediumDifference, mediumShortDifference);
         this.setLabelText(
+            "LongMediumSignal",
+            this.formatSignal(longMediumDifference),
+            this.getSignalColor(longMediumDifference)
+        );
+        this.setLabelText(
+            "MediumShortSignal",
+            this.formatSignal(mediumShortDifference),
+            this.getSignalColor(mediumShortDifference)
+        );
+        this.updateRankColumn(
             "BaseLongMediumRank",
-            this.formatRank(fromInfo.baseLongMediumTermAverageRank),
-            this.getRankColor(fromInfo.baseLongMediumTermAverageRank)
-        );
-        this.setLabelText(
-            "BaseMediumShortRank",
-            this.formatRank(fromInfo.baseMediumShortTermAverageRank),
-            this.getRankColor(fromInfo.baseMediumShortTermAverageRank)
-        );
-        this.setLabelText("QuoteCurrency", fromInfo.quoteCurrency, this.normalColor);
-        this.setLabelText(
             "QuoteLongMediumRank",
-            this.formatRank(fromInfo.quoteLongMediumTermAverageRank),
-            this.getRankColor(fromInfo.quoteLongMediumTermAverageRank)
+            pairRankInfo.baseCurrency,
+            pairRankInfo.baseLongMediumTermAverageRank,
+            pairRankInfo.quoteCurrency,
+            pairRankInfo.quoteLongMediumTermAverageRank
         );
-        this.setLabelText(
+        this.updateRankColumn(
+            "BaseMediumShortRank",
             "QuoteMediumShortRank",
-            this.formatRank(fromInfo.quoteMediumShortTermAverageRank),
-            this.getRankColor(fromInfo.quoteMediumShortTermAverageRank)
+            pairRankInfo.baseCurrency,
+            pairRankInfo.baseMediumShortTermAverageRank,
+            pairRankInfo.quoteCurrency,
+            pairRankInfo.quoteMediumShortTermAverageRank
         );
 
-        string m5BarTimeText = fromInfo.m5BarTimeText;
-
-        if (m5BarTimeText == "" && fromInfo.m5BarTime > 0) {
-            m5BarTimeText = TimeToString(
-                fromInfo.m5BarTime,
-                TIME_DATE | TIME_MINUTES
-            );
-        }
-
-        if (m5BarTimeText == "") {
-            m5BarTimeText = "-";
-        }
+        string m5BarTimeText = this.formatM5BarTime(pairRankInfo);
 
         this.setLabelText("M5BarTime", "M5 " + m5BarTimeText, this.mutedColor);
+
+        if (fromInfo.targetM5BarTime > 0
+                && pairRankInfo.m5BarTime != fromInfo.targetM5BarTime) {
+            this.setLabelText("StateBadge", "STALE", this.warningColor);
+        } else {
+            this.setLabelText("StateBadge", " ", this.mutedColor);
+        }
+
+        this.hasRankData = true;
+        this.lastExecutionInfo = fromInfo;
+        this.lastBaseCurrency = pairRankInfo.baseCurrency;
+        this.lastQuoteCurrency = pairRankInfo.quoteCurrency;
+        this.lastDisplayAvailable = true;
+        this.lastDisplayError = false;
         ChartRedraw(this.chartId);
 
         return true;
+    }
+
+    /**
+     * 従来形式の順位情報を描画する。
+     *
+     * @param fromInfo 通貨ペア順位情報。
+     * @return 描画に成功した場合true。
+     */
+    bool draw(CurrencyStrengthPairRankInfo &fromInfo) {
+        CurrencyStrengthExecutionInfo executionInfo;
+        executionInfo.reset();
+        executionInfo.status = CURRENCY_STRENGTH_EXECUTION_STATUS_FOUND;
+        executionInfo.targetM5BarTime = fromInfo.m5BarTime;
+        executionInfo.sourceMode = "-";
+        executionInfo.pairRankInfo = fromInfo;
+
+        return this.draw(executionInfo);
     }
 
     /**
@@ -119,14 +162,92 @@ public:
             return false;
         }
 
-        this.setLabelText("BaseCurrency", fromBaseCurrency, this.normalColor);
-        this.setLabelText("BaseLongMediumRank", "-", this.mutedColor);
-        this.setLabelText("BaseMediumShortRank", "-", this.mutedColor);
-        this.setLabelText("QuoteCurrency", fromQuoteCurrency, this.normalColor);
-        this.setLabelText("QuoteLongMediumRank", "-", this.mutedColor);
-        this.setLabelText("QuoteMediumShortRank", "-", this.mutedColor);
+        this.setLabelText("SourceBadge", "-", this.mutedColor);
+        this.setLabelText("Decision", "NO DATA", this.mutedColor);
+        this.setLabelText("StateBadge", " ", this.mutedColor);
+        this.setLabelText("LongMediumSignal", "-", this.mutedColor);
+        this.setLabelText("MediumShortSignal", "-", this.mutedColor);
+        this.updateRankColumn(
+            "BaseLongMediumRank",
+            "QuoteLongMediumRank",
+            fromBaseCurrency,
+            0,
+            fromQuoteCurrency,
+            0
+        );
+        this.updateRankColumn(
+            "BaseMediumShortRank",
+            "QuoteMediumShortRank",
+            fromBaseCurrency,
+            0,
+            fromQuoteCurrency,
+            0
+        );
         this.setLabelText("M5BarTime", "M5 -", this.mutedColor);
+        this.hasRankData = false;
+        this.lastExecutionInfo.reset();
+        this.lastBaseCurrency = fromBaseCurrency;
+        this.lastQuoteCurrency = fromQuoteCurrency;
+        this.lastDisplayAvailable = false;
+        this.lastDisplayError = false;
         ChartRedraw(this.chartId);
+
+        return true;
+    }
+
+    /**
+     * 取得エラーを表示し、直前の順位表示を維持する。
+     *
+     * @return 描画に成功した場合true。
+     */
+    bool drawError() {
+        if (!this.ensureCreated()) {
+            return false;
+        }
+
+        string errorText = "ERROR";
+
+        if (this.hasRankData) {
+            errorText = "ERR 前回値";
+        }
+
+        this.setLabelText("StateBadge", errorText, this.errorColor);
+        this.lastDisplayError = true;
+        ChartRedraw(this.chartId);
+
+        return true;
+    }
+
+    /**
+     * 最終表示内容を再生成し、他のチャート描画より前面へ戻す。
+     *
+     * @return 再描画に成功した場合true。
+     */
+    bool redrawOnTop() {
+        CurrencyStrengthExecutionInfo executionInfo;
+        executionInfo = this.lastExecutionInfo;
+        string baseCurrency = this.lastBaseCurrency;
+        string quoteCurrency = this.lastQuoteCurrency;
+        bool displayAvailable = this.lastDisplayAvailable;
+        bool displayError = this.lastDisplayError;
+
+        this.destroyObjects();
+
+        bool isSuccess = false;
+
+        if (displayAvailable) {
+            isSuccess = this.draw(executionInfo);
+        } else {
+            isSuccess = this.drawUnavailable(baseCurrency, quoteCurrency);
+        }
+
+        if (!isSuccess) {
+            return false;
+        }
+
+        if (displayError) {
+            return this.drawError();
+        }
 
         return true;
     }
@@ -141,20 +262,18 @@ public:
             return;
         }
 
-        this.setRectanglePosition("Panel", 0, 0);
-        this.setRectanglePosition("TitleBackground", 1, 1);
-        this.setRectanglePosition("HeaderSeparator", 12, 53);
-        this.setRectanglePosition("FooterSeparator", 12, 99);
-        this.setLabelPosition("Title", 14, 5);
-        this.setLabelPosition("LongMediumHeader", 91, 34);
-        this.setLabelPosition("MediumShortHeader", 171, 34);
-        this.setLabelPosition("BaseCurrency", 14, 59);
-        this.setLabelPosition("BaseLongMediumRank", 109, 59);
-        this.setLabelPosition("BaseMediumShortRank", 189, 59);
-        this.setLabelPosition("QuoteCurrency", 14, 78);
-        this.setLabelPosition("QuoteLongMediumRank", 109, 78);
-        this.setLabelPosition("QuoteMediumShortRank", 189, 78);
-        this.setLabelPosition("M5BarTime", 14, 104);
+        this.setLabelPosition("Decision", 70, 5);
+        this.setLabelPosition("StateBadge", 132, 6);
+        this.setLabelPosition("SourceBadge", 192, 6);
+        this.setLabelPosition("LongMediumHeader", 47, 28);
+        this.setLabelPosition("MediumShortHeader", 168, 28);
+        this.setLabelPosition("LongMediumSignal", 45, 47);
+        this.setLabelPosition("MediumShortSignal", 166, 47);
+        this.setLabelPosition("BaseLongMediumRank", 42, 69);
+        this.setLabelPosition("BaseMediumShortRank", 164, 69);
+        this.setLabelPosition("QuoteLongMediumRank", 42, 88);
+        this.setLabelPosition("QuoteMediumShortRank", 164, 88);
+        this.setLabelPosition("M5BarTime", 40, 110);
         ChartRedraw(this.chartId);
     }
 
@@ -163,6 +282,11 @@ public:
      */
     void clear() {
         this.destroyObjects();
+        this.lastExecutionInfo.reset();
+        this.lastBaseCurrency = "";
+        this.lastQuoteCurrency = "";
+        this.lastDisplayAvailable = false;
+        this.lastDisplayError = false;
         ChartRedraw(this.chartId);
     }
 
@@ -175,6 +299,24 @@ private:
 
     /** パネル生成済みの場合true。 */
     bool created;
+
+    /** 直前の有効な順位を表示中の場合true。 */
+    bool hasRankData;
+
+    /** 最後に表示した実行時通貨強弱情報。 */
+    CurrencyStrengthExecutionInfo lastExecutionInfo;
+
+    /** 最後に表示した基軸通貨コード。 */
+    string lastBaseCurrency;
+
+    /** 最後に表示した決済通貨コード。 */
+    string lastQuoteCurrency;
+
+    /** 最後の表示が有効な順位の場合true。 */
+    bool lastDisplayAvailable;
+
+    /** 最後の表示に取得エラーを重ねている場合true。 */
+    bool lastDisplayError;
 
     /** パネル配置基準の角。 */
     ENUM_BASE_CORNER corner;
@@ -200,29 +342,23 @@ private:
     /** 本文文字サイズ。 */
     int bodyFontSize;
 
-    /** パネル背景色。 */
-    color panelBackgroundColor;
-
-    /** タイトル背景色。 */
-    color headerBackgroundColor;
-
-    /** 枠線色。 */
-    color borderColor;
-
-    /** タイトル文字色。 */
-    color titleColor;
-
     /** 列ヘッダー文字色。 */
     color headerColor;
 
-    /** 通常文字色。 */
-    color normalColor;
-
-    /** 順位文字色。 */
-    color rankColor;
-
     /** 補助文字色。 */
     color mutedColor;
+
+    /** 買い方向文字色。 */
+    color buyColor;
+
+    /** 売り方向文字色。 */
+    color sellColor;
+
+    /** 警告文字色。 */
+    color warningColor;
+
+    /** エラー文字色。 */
+    color errorColor;
 
     /**
      * 必要に応じて順位パネルを生成する。
@@ -246,30 +382,13 @@ private:
         this.destroyObjects();
         this.calculateYDistance();
 
-        if (!this.createRectangle(
-            "Panel",
-            0,
-            0,
-            this.panelWidth,
-            this.panelHeight,
-            this.panelBackgroundColor,
-            this.borderColor,
-            0
-        )) {
-            this.destroyObjects();
-
-            return false;
-        }
-
-        if (!this.createRectangle(
-            "TitleBackground",
-            1,
-            1,
-            this.panelWidth - 2,
-            25,
-            this.headerBackgroundColor,
-            this.headerBackgroundColor,
-            1
+        if (!this.createLabel(
+            "SourceBadge",
+            192,
+            6,
+            this.bodyFontSize,
+            this.mutedColor,
+            "-"
         )) {
             this.destroyObjects();
 
@@ -277,12 +396,25 @@ private:
         }
 
         if (!this.createLabel(
-            "Title",
-            14,
+            "Decision",
+            70,
             5,
             this.titleFontSize,
-            this.titleColor,
-            "通貨強弱 Rank"
+            this.mutedColor,
+            "NO DATA"
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            "StateBadge",
+            132,
+            6,
+            this.bodyFontSize,
+            this.mutedColor,
+            " "
         )) {
             this.destroyObjects();
 
@@ -291,8 +423,8 @@ private:
 
         if (!this.createLabel(
             "LongMediumHeader",
-            91,
-            34,
+            47,
+            28,
             this.bodyFontSize,
             this.headerColor,
             "長中期"
@@ -304,8 +436,8 @@ private:
 
         if (!this.createLabel(
             "MediumShortHeader",
-            171,
-            34,
+            168,
+            28,
             this.bodyFontSize,
             this.headerColor,
             "中短期"
@@ -315,36 +447,78 @@ private:
             return false;
         }
 
-        if (!this.createRectangle(
-            "HeaderSeparator",
-            12,
-            53,
-            this.panelWidth - 24,
-            1,
-            this.borderColor,
-            this.borderColor,
-            1
+        if (!this.createLabel(
+            "LongMediumSignal",
+            45,
+            47,
+            this.bodyFontSize,
+            this.mutedColor,
+            "-"
         )) {
             this.destroyObjects();
 
             return false;
         }
 
-        if (!this.createDataLabels()) {
+        if (!this.createLabel(
+            "MediumShortSignal",
+            166,
+            47,
+            this.bodyFontSize,
+            this.mutedColor,
+            "-"
+        )) {
             this.destroyObjects();
 
             return false;
         }
 
-        if (!this.createRectangle(
-            "FooterSeparator",
-            12,
-            99,
-            this.panelWidth - 24,
-            1,
-            this.borderColor,
-            this.borderColor,
-            1
+        if (!this.createLabel(
+            "BaseLongMediumRank",
+            42,
+            69,
+            this.bodyFontSize,
+            this.mutedColor,
+            "-"
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            "BaseMediumShortRank",
+            164,
+            69,
+            this.bodyFontSize,
+            this.mutedColor,
+            "-"
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            "QuoteLongMediumRank",
+            42,
+            88,
+            this.bodyFontSize,
+            this.mutedColor,
+            "-"
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            "QuoteMediumShortRank",
+            164,
+            88,
+            this.bodyFontSize,
+            this.mutedColor,
+            "-"
         )) {
             this.destroyObjects();
 
@@ -353,8 +527,8 @@ private:
 
         if (!this.createLabel(
             "M5BarTime",
-            14,
-            104,
+            8,
+            110,
             this.bodyFontSize,
             this.mutedColor,
             "M5 -"
@@ -370,119 +544,215 @@ private:
     }
 
     /**
-     * 通貨別順位の表示ラベルを生成する。
+     * 実際に採用されたDB取得元を表示する。
      *
-     * @return 生成に成功した場合true。
+     * @param fromSourceMode LIVEまたはTESTER。
      */
-    bool createDataLabels() {
-        if (!this.createLabel(
-            "BaseCurrency",
-            14,
-            59,
-            this.bodyFontSize,
-            this.normalColor,
-            "-"
-        )) {
-            return false;
+    void updateSourceBadge(const string fromSourceMode) {
+        string sourceMode = fromSourceMode;
+        StringToUpper(sourceMode);
+
+        if (sourceMode == "LIVE") {
+            this.setLabelText("SourceBadge", "LIVE", clrLime);
+
+            return;
         }
 
-        if (!this.createLabel(
-            "BaseLongMediumRank",
-            109,
-            59,
-            this.bodyFontSize,
-            this.mutedColor,
-            "-"
-        )) {
-            return false;
+        if (sourceMode == "TESTER") {
+            this.setLabelText("SourceBadge", "TESTER", this.warningColor);
+
+            return;
         }
 
-        if (!this.createLabel(
-            "BaseMediumShortRank",
-            189,
-            59,
-            this.bodyFontSize,
-            this.mutedColor,
-            "-"
-        )) {
-            return false;
+        if (sourceMode == "") {
+            sourceMode = "-";
         }
 
-        if (!this.createLabel(
-            "QuoteCurrency",
-            14,
-            78,
-            this.bodyFontSize,
-            this.normalColor,
-            "-"
-        )) {
-            return false;
+        this.setLabelText("SourceBadge", sourceMode, this.mutedColor);
+    }
+
+    /**
+     * 長中期と中短期の方向一致状態を表示する。
+     *
+     * @param fromLongMediumDifference 長中期順位差。
+     * @param fromMediumShortDifference 中短期順位差。
+     */
+    void updateDecision(
+        const int fromLongMediumDifference,
+        const int fromMediumShortDifference
+    ) {
+        if (fromLongMediumDifference > 0 && fromMediumShortDifference > 0) {
+            this.setLabelText("Decision", "BUY一致", this.buyColor);
+
+            return;
         }
 
-        if (!this.createLabel(
-            "QuoteLongMediumRank",
-            109,
-            78,
-            this.bodyFontSize,
-            this.mutedColor,
-            "-"
-        )) {
-            return false;
+        if (fromLongMediumDifference < 0 && fromMediumShortDifference < 0) {
+            this.setLabelText("Decision", "SELL一致", this.sellColor);
+
+            return;
         }
 
-        return this.createLabel(
-            "QuoteMediumShortRank",
-            189,
-            78,
-            this.bodyFontSize,
-            this.mutedColor,
-            "-"
+        this.setLabelText("Decision", "MIXED", this.warningColor);
+    }
+
+    /**
+     * 順位差を売買方向表示へ変換する。
+     *
+     * @param fromDifference 決済通貨順位から基軸通貨順位を引いた値。
+     * @return BUY、SELLまたはFLATと順位差。
+     */
+    string formatSignal(const int fromDifference) {
+        if (fromDifference > 0) {
+            return StringFormat("BUY +%d", fromDifference);
+        }
+
+        if (fromDifference < 0) {
+            return StringFormat("SELL %d", fromDifference);
+        }
+
+        return "FLAT 0";
+    }
+
+    /**
+     * 順位差に対応する文字色を取得する。
+     *
+     * @param fromDifference 順位差。
+     * @return 売買方向に対応する文字色。
+     */
+    color getSignalColor(const int fromDifference) {
+        if (fromDifference > 0) {
+            return this.buyColor;
+        }
+
+        if (fromDifference < 0) {
+            return this.sellColor;
+        }
+
+        return this.mutedColor;
+    }
+
+    /**
+     * 期間列内の2通貨を順位の昇順で表示する。
+     *
+     * @param fromTopLabelName 上段ラベル名。
+     * @param fromBottomLabelName 下段ラベル名。
+     * @param fromBaseCurrency 基軸通貨コード。
+     * @param fromBaseRank 基軸通貨順位。
+     * @param fromQuoteCurrency 決済通貨コード。
+     * @param fromQuoteRank 決済通貨順位。
+     */
+    void updateRankColumn(
+        const string fromTopLabelName,
+        const string fromBottomLabelName,
+        const string fromBaseCurrency,
+        const int fromBaseRank,
+        const string fromQuoteCurrency,
+        const int fromQuoteRank
+    ) {
+        string topCurrency = fromBaseCurrency;
+        int topRank = fromBaseRank;
+        string bottomCurrency = fromQuoteCurrency;
+        int bottomRank = fromQuoteRank;
+
+        if (this.shouldDisplayQuoteFirst(fromBaseRank, fromQuoteRank)) {
+            topCurrency = fromQuoteCurrency;
+            topRank = fromQuoteRank;
+            bottomCurrency = fromBaseCurrency;
+            bottomRank = fromBaseRank;
+        }
+
+        this.setLabelText(
+            fromTopLabelName,
+            this.formatRankEntry(topCurrency, topRank),
+            ConstantCurrency::getColor(topCurrency)
+        );
+        this.setLabelText(
+            fromBottomLabelName,
+            this.formatRankEntry(bottomCurrency, bottomRank),
+            ConstantCurrency::getColor(bottomCurrency)
         );
     }
 
     /**
-     * 矩形ラベルを生成する。
+     * 決済通貨を上段へ表示するか判定する。
      *
-     * @param fromNameSuffix オブジェクト名の末尾。
-     * @param fromLeftOffset パネル左端からの位置。
-     * @param fromTopOffset パネル上端からの位置。
-     * @param fromWidth 横幅。
-     * @param fromHeight 高さ。
-     * @param fromBackgroundColor 背景色。
-     * @param fromBorderColor 枠線色。
-     * @param fromZOrder Zオーダー。
-     * @return 生成に成功した場合true。
+     * @param fromBaseRank 基軸通貨順位。
+     * @param fromQuoteRank 決済通貨順位。
+     * @return 決済通貨を先に表示する場合true。
      */
-    bool createRectangle(
-        string fromNameSuffix,
-        int fromLeftOffset,
-        int fromTopOffset,
-        int fromWidth,
-        int fromHeight,
-        color fromBackgroundColor,
-        color fromBorderColor,
-        int fromZOrder
+    bool shouldDisplayQuoteFirst(
+        const int fromBaseRank,
+        const int fromQuoteRank
     ) {
-        string objectName = this.objectPrefix + fromNameSuffix;
+        bool baseRankValid = this.isValidRank(fromBaseRank);
+        bool quoteRankValid = this.isValidRank(fromQuoteRank);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_RECTANGLE_LABEL, 0, 0, 0)) {
-            return false;
+        if (!baseRankValid && quoteRankValid) {
+            return true;
         }
 
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner);
-        this.setRectanglePosition(fromNameSuffix, fromLeftOffset, fromTopOffset);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, fromWidth);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, fromHeight);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, fromBackgroundColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromBorderColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, fromZOrder);
+        if (baseRankValid
+                && quoteRankValid
+                && fromQuoteRank < fromBaseRank) {
+            return true;
+        }
 
-        return true;
+        return false;
+    }
+
+    /**
+     * 表示可能な通貨順位か判定する。
+     *
+     * @param fromRank 通貨順位。
+     * @return 1位から8位の場合true。
+     */
+    bool isValidRank(const int fromRank) {
+        return fromRank >= 1 && fromRank <= 8;
+    }
+
+    /**
+     * 通貨コードと順位をコンパクトな表示文字列へ変換する。
+     *
+     * @param fromCurrency 通貨コード。
+     * @param fromRank 順位。
+     * @return 通貨コードと順位。未取得順位の場合はハイフン。
+     */
+    string formatRankEntry(const string fromCurrency, const int fromRank) {
+        string currency = fromCurrency;
+
+        if (currency == "") {
+            currency = "-";
+        }
+
+        if (!this.isValidRank(fromRank)) {
+            return currency + " -";
+        }
+
+        return currency + " " + IntegerToString(fromRank) + "位";
+    }
+
+    /**
+     * M5バー時刻を短い表示文字列へ変換する。
+     *
+     * @param fromInfo 通貨ペア順位情報。
+     * @return 月日と時分。未取得の場合はハイフン。
+     */
+    string formatM5BarTime(CurrencyStrengthPairRankInfo &fromInfo) {
+        if (fromInfo.m5BarTime <= 0) {
+            return "-";
+        }
+
+        MqlDateTime barDateTime;
+        TimeToStruct(fromInfo.m5BarTime, barDateTime);
+
+        return StringFormat(
+            "%02d.%02d %02d:%02d",
+            barDateTime.mon,
+            barDateTime.day,
+            barDateTime.hour,
+            barDateTime.min
+        );
     }
 
     /**
@@ -526,7 +796,7 @@ private:
     }
 
     /**
-     * チャート高さから右中央のY位置を計算する。
+     * チャート高さから右中央より少し下のY位置を計算する。
      */
     void calculateYDistance() {
         int chartHeight = (int)ChartGetInteger(
@@ -534,35 +804,13 @@ private:
             CHART_HEIGHT_IN_PIXELS,
             0
         );
-        this.yDistance = (chartHeight - this.panelHeight) / 2;
+        int verticalOffset = 20;
+        this.yDistance = (chartHeight - this.panelHeight) / 2
+            + verticalOffset;
 
         if (this.yDistance < 0) {
             this.yDistance = 0;
         }
-    }
-
-    /**
-     * 矩形ラベルをパネル基準位置へ配置する。
-     *
-     * @param fromNameSuffix オブジェクト名の末尾。
-     * @param fromLeftOffset パネル左端からの位置。
-     * @param fromTopOffset パネル上端からの位置。
-     */
-    void setRectanglePosition(
-        string fromNameSuffix,
-        int fromLeftOffset,
-        int fromTopOffset
-    ) {
-        string objectName = this.objectPrefix + fromNameSuffix;
-        int rectangleXDistance = this.xDistance + fromLeftOffset;
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE, rectangleXDistance);
-        ObjectSetInteger(
-            this.chartId,
-            objectName,
-            OBJPROP_YDISTANCE,
-            this.yDistance + fromTopOffset
-        );
     }
 
     /**
@@ -608,39 +856,12 @@ private:
     }
 
     /**
-     * 順位を表示文字列へ変換する。
-     *
-     * @param fromRank 順位。
-     * @return 正の順位、または未取得を表すハイフン。
-     */
-    string formatRank(int fromRank) {
-        if (fromRank <= 0) {
-            return "-";
-        }
-
-        return IntegerToString(fromRank);
-    }
-
-    /**
-     * 順位状態に対応する文字色を取得する。
-     *
-     * @param fromRank 順位。
-     * @return 取得済み順位色、または未取得色。
-     */
-    color getRankColor(int fromRank) {
-        if (fromRank <= 0) {
-            return this.mutedColor;
-        }
-
-        return this.rankColor;
-    }
-
-    /**
      * 順位パネル専用オブジェクトを削除する。
      */
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
+        this.hasRankData = false;
     }
 };
 
