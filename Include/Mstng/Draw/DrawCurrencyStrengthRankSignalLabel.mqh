@@ -172,10 +172,6 @@ public:
      * 売買方向ラベルを削除する。
      */
     void clear() {
-        if (!this.created) {
-            return;
-        }
-
         ObjectDelete(this.chartId, this.objectName);
         this.created = false;
         this.lastSubWindow = -1;

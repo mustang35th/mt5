@@ -172,10 +172,6 @@ public:
      * 方向一致状態ラベルを削除する。
      */
     void clear() {
-        if (!this.created) {
-            return;
-        }
-
         ObjectDelete(this.chartId, this.objectName);
         this.created = false;
         this.lastSubWindow = -1;

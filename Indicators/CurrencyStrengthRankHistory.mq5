@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                          CurrencyStrengthRankHistory.mq5 |
+//|                                  CurrencyStrengthRankHistory.mq5 |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
@@ -41,6 +41,7 @@
 #property indicator_label4  "Quote Actual Rank"
 #property indicator_type4   DRAW_NONE
 
+#include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthLatestRankLabels.mqh>
@@ -113,6 +114,7 @@ datetime gLastDisplayStartM5BarTime = 0;
 ulong gLastQueryTickCount = 0;
 bool gRankPointCacheReady = false;
 bool gRankPeriodLabelReady = false;
+bool gRankLabelObjectsPrepared = false;
 
 /**
  * インジケータを初期化する。
@@ -295,6 +297,7 @@ int OnInit() {
     gLastQueryTickCount = 0;
     gRankPointCacheReady = false;
     gRankPeriodLabelReady = false;
+    gRankLabelObjectsPrepared = false;
 
     return INIT_SUCCEEDED;
 }
@@ -341,6 +344,7 @@ void OnDeinit(const int reason) {
     gSourceMode = "";
     gRankPointCacheReady = false;
     gRankPeriodLabelReady = false;
+    gRankLabelObjectsPrepared = false;
 }
 
 /**
@@ -360,6 +364,14 @@ int OnCalculate(
     const long &volume[],
     const int &spread[]
 ) {
+    if (!gRankLabelObjectsPrepared) {
+        gRankLabelObjectsPrepared = clearStaleRankLabelObjects();
+    }
+
+    if (!gRankLabelObjectsPrepared) {
+        return previousCalculated;
+    }
+
     if (!gRankPeriodLabelReady) {
         gRankPeriodLabelReady = drawRankPeriodLabel();
     }
@@ -451,6 +463,14 @@ void OnChartEvent(
     const string &fromStringParameter
 ) {
     if (fromEventId != CHARTEVENT_CHART_CHANGE) {
+        return;
+    }
+
+    if (!gRankLabelObjectsPrepared) {
+        gRankLabelObjectsPrepared = clearStaleRankLabelObjects();
+    }
+
+    if (!gRankLabelObjectsPrepared) {
         return;
     }
 
@@ -582,6 +602,80 @@ string getRankPeriodDisplayLabel() {
     }
 
     return "長中期";
+}
+
+/**
+ * 現在のサブパネルに残っている旧順位ラベルを削除する。
+ *
+ * @return サブウィンドウを特定して削除処理を実行した場合true。
+ */
+bool clearStaleRankLabelObjects() {
+    int subWindow = ChartWindowFind();
+
+    if (subWindow <= 0) {
+        return false;
+    }
+
+    bool isDeleted = true;
+
+    if (ObjectsDeleteAll(
+        ChartID(),
+        Constant::PREFIX_FIXED + "CurrencyStrengthLatestBase_",
+        subWindow,
+        OBJ_TEXT
+    ) < 0) {
+        isDeleted = false;
+    }
+    if (ObjectsDeleteAll(
+        ChartID(),
+        Constant::PREFIX_FIXED + "CurrencyStrengthLatestQuote_",
+        subWindow,
+        OBJ_TEXT
+    ) < 0) {
+        isDeleted = false;
+    }
+    if (ObjectsDeleteAll(
+        ChartID(),
+        Constant::PREFIX_FIXED + "CurrencyStrengthRankAlignment_",
+        subWindow,
+        OBJ_LABEL
+    ) < 0) {
+        isDeleted = false;
+    }
+    if (ObjectsDeleteAll(
+        ChartID(),
+        Constant::PREFIX_FIXED + "CurrencyStrengthRankPeriod_",
+        subWindow,
+        OBJ_LABEL
+    ) < 0) {
+        isDeleted = false;
+    }
+    if (ObjectsDeleteAll(
+        ChartID(),
+        Constant::PREFIX_FIXED + "CurrencyStrengthRankSignal_",
+        subWindow,
+        OBJ_LABEL
+    ) < 0) {
+        isDeleted = false;
+    }
+    if (ObjectsDeleteAll(
+        ChartID(),
+        Constant::PREFIX_FIXED + "CurrencyStrengthRankSource_",
+        subWindow,
+        OBJ_LABEL
+    ) < 0) {
+        isDeleted = false;
+    }
+
+    if (!isDeleted) {
+        gLogger.error(__FUNCTION__, "stale rank label cleanup failed");
+
+        return false;
+    }
+
+    ChartRedraw(ChartID());
+
+    return true;
 }
 
 /**

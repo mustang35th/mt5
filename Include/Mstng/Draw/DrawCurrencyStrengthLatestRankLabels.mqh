@@ -46,7 +46,7 @@ public:
      * デストラクタ。
      */
     ~DrawCurrencyStrengthLatestRankLabels() {
-        this.clear();
+        this.deleteObjects();
     }
 
     /**
