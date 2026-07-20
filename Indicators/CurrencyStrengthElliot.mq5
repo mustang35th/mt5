@@ -54,15 +54,17 @@ OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
 CurrencyStrengthYearlyPersistenceService *gCurrencyStrengthPersistenceService;
 datetime gFirstTargetM5BarTime;
+datetime gLastLiveAttemptM5BarTime;
 datetime gLastTesterAttemptM5BarTime;
 datetime gLastProcessedM5BarTime;
+datetime gPendingTesterM5BarTime;
 datetime gTesterWarmUpPreparedAt;
 datetime gLastSavedM5BarTime;
 datetime gLastDatabaseCleanupTime;
 int gTesterWarmUpAttemptCount;
-int gTesterSkippedSnapshotCount;
+int gTesterRetryWaitCount;
 int gTesterPersistedSnapshotCount;
-string gLastSkippedPreparationFailureReason;
+string gLastRetryPreparationFailureReason;
 
 /**
  * インジケーターを初期化する。
@@ -126,15 +128,17 @@ int OnInit() {
     }
 
     gFirstTargetM5BarTime = 0;
+    gLastLiveAttemptM5BarTime = 0;
     gLastTesterAttemptM5BarTime = 0;
     gLastProcessedM5BarTime = 0;
+    gPendingTesterM5BarTime = 0;
     gTesterWarmUpPreparedAt = 0;
     gLastSavedM5BarTime = 0;
     gLastDatabaseCleanupTime = 0;
     gTesterWarmUpAttemptCount = 0;
-    gTesterSkippedSnapshotCount = 0;
+    gTesterRetryWaitCount = 0;
     gTesterPersistedSnapshotCount = 0;
-    gLastSkippedPreparationFailureReason = "";
+    gLastRetryPreparationFailureReason = "";
 
     if (isTester) {
         gLogger.info(
@@ -165,7 +169,7 @@ int OnInit() {
             return INIT_FAILED;
         }
 
-        execute(0);
+        processLiveSnapshot(true);
     }
 
     return INIT_SUCCEEDED;
@@ -194,7 +198,7 @@ void OnTimer() {
         return;
     }
 
-    execute(0);
+    processLiveSnapshot(true);
 }
 
 /**
@@ -215,12 +219,42 @@ int OnCalculate(
     const int &spread[]
 ) {
     if (!MQLInfoInteger(MQL_TESTER)) {
+        processLiveSnapshot(false);
+
         return ratesTotal;
     }
 
     processTesterSnapshots();
 
     return ratesTotal;
+}
+
+/**
+ * LIVEの現在M5足を集計する。
+ *
+ * 新規M5足は最初のティックで実行する。
+ * タイマーからの呼び出しでは、同じM5足でも定期更新と失敗再試行を行う。
+ *
+ * @param fromForceRefresh 同じM5足でも定期更新する場合true。
+ */
+void processLiveSnapshot(const bool fromForceRefresh) {
+    if (MQLInfoInteger(MQL_TESTER)) {
+        return;
+    }
+
+    datetime currentM5BarTime = iTime(_Symbol, PERIOD_M5, 0);
+
+    if (currentM5BarTime <= 0) {
+        return;
+    }
+
+    if (!fromForceRefresh
+            && currentM5BarTime == gLastLiveAttemptM5BarTime) {
+        return;
+    }
+
+    gLastLiveAttemptM5BarTime = currentM5BarTime;
+    execute(currentM5BarTime);
 }
 
 /**
@@ -296,15 +330,18 @@ void processTesterSnapshots() {
         );
 
         if (executionStatus != currencyStrengthExecutionSucceeded) {
-            if (executionStatus != currencyStrengthExecutionNotReady
-                    || i <= 0) {
-                break;
+            gPendingTesterM5BarTime = targetM5BarTime;
+
+            if (executionStatus == currencyStrengthExecutionNotReady
+                    && i > 0) {
+                logTesterSnapshotRetryWait(targetM5BarTime);
             }
 
-            logSkippedTesterSnapshot(targetM5BarTime);
-            gLastProcessedM5BarTime = targetM5BarTime;
+            break;
+        }
 
-            continue;
+        if (gPendingTesterM5BarTime == targetM5BarTime) {
+            gPendingTesterM5BarTime = 0;
         }
 
         gLastProcessedM5BarTime = targetM5BarTime;
@@ -361,19 +398,19 @@ void prepareTesterWarmUp(const datetime fromM5BarTime) {
 }
 
 /**
- * 再確認後も未準備だったM5スナップショットを記録する。
+ * 再確認後も未準備だったM5スナップショットの再試行待ちを記録する。
  *
- * @param fromM5BarTime スキップ対象のM5足開始時刻。
+ * @param fromM5BarTime 再試行対象のM5足開始時刻。
  */
-void logSkippedTesterSnapshot(const datetime fromM5BarTime) {
-    gTesterSkippedSnapshotCount++;
+void logTesterSnapshotRetryWait(const datetime fromM5BarTime) {
+    gTesterRetryWaitCount++;
     string reason = getPreparationFailureReason();
     bool shouldLog = (
-        gTesterSkippedSnapshotCount == 1
-            || gTesterSkippedSnapshotCount
+        gTesterRetryWaitCount == 1
+            || gTesterRetryWaitCount
                 % testerDiagnosticLogIntervalBars == 0
     );
-    gLastSkippedPreparationFailureReason = reason;
+    gLastRetryPreparationFailureReason = reason;
 
     if (!shouldLog) {
         return;
@@ -382,9 +419,9 @@ void logSkippedTesterSnapshot(const datetime fromM5BarTime) {
     gLogger.error(
         __FUNCTION__,
         StringFormat(
-            "tester snapshot skipped after retry. m5=%s skipped=%d pairs=%d/%d votes=%d reason=%s",
+            "tester snapshot waiting for next M5 retry. m5=%s retryWaits=%d pairs=%d/%d votes=%d reason=%s",
             TimeToString(fromM5BarTime, TIME_DATE | TIME_MINUTES),
-            gTesterSkippedSnapshotCount,
+            gTesterRetryWaitCount,
             gCurrencyStrengthCalculator.validPairCount,
             gCurrencyStrengthCalculator.getExpectedPairCount(),
             gCurrencyStrengthCalculator.getPairVoteCount(),
@@ -416,21 +453,22 @@ string getPreparationFailureReason() {
  * テスター集計の終了サマリーを出力する。
  */
 void logTesterSnapshotSummary() {
-    string skippedReason = gLastSkippedPreparationFailureReason;
+    string retryReason = gLastRetryPreparationFailureReason;
 
-    if (skippedReason == "") {
-        skippedReason = "NONE";
+    if (retryReason == "") {
+        retryReason = "NONE";
     }
 
     gLogger.info(
         __FUNCTION__,
         StringFormat(
-            "tester snapshot summary. persisted=%d skipped=%d lastProcessedM5=%s warmUpPreparedAt=%s lastSkippedReason=%s",
+            "tester snapshot summary. persisted=%d retryWaits=%d lastProcessedM5=%s pendingM5=%s warmUpPreparedAt=%s lastRetryReason=%s",
             gTesterPersistedSnapshotCount,
-            gTesterSkippedSnapshotCount,
+            gTesterRetryWaitCount,
             getOptionalTimeText(gLastProcessedM5BarTime, "NONE"),
+            getOptionalTimeText(gPendingTesterM5BarTime, "NONE"),
             getOptionalTimeText(gTesterWarmUpPreparedAt, "NONE"),
-            skippedReason
+            retryReason
         )
     );
 }
@@ -685,13 +723,15 @@ void releaseResources() {
     releaseDatabaseResources();
 
     gFirstTargetM5BarTime = 0;
+    gLastLiveAttemptM5BarTime = 0;
     gLastTesterAttemptM5BarTime = 0;
     gLastProcessedM5BarTime = 0;
+    gPendingTesterM5BarTime = 0;
     gTesterWarmUpPreparedAt = 0;
     gTesterWarmUpAttemptCount = 0;
-    gTesterSkippedSnapshotCount = 0;
+    gTesterRetryWaitCount = 0;
     gTesterPersistedSnapshotCount = 0;
-    gLastSkippedPreparationFailureReason = "";
+    gLastRetryPreparationFailureReason = "";
 
     if (gDrawCurrencyStrengthList != NULL) {
         gDrawCurrencyStrengthList.clear();
