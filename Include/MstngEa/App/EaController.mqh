@@ -28,6 +28,16 @@ public:
     EaController(EaContext *eaContextValue) {
         // 依存を保持
         this.eaContext = eaContextValue;
+        this.pendingCurrencyStrengthElliotAll = NULL;
+        this.pendingCurrencyStrengthEntryChartBarTime = 0;
+        this.pendingCurrencyStrengthM5BarTime = 0;
+    }
+
+    /**
+     * デストラクタ
+     */
+    ~EaController() {
+        this.clearCurrencyStrengthEntryRetry();
     }
 
     /**
@@ -41,6 +51,11 @@ public:
 
         this.eaContext.positionService.refresh();
 
+        if (this.pendingCurrencyStrengthElliotAll != NULL
+                && this.eaContext.positionService.hasPosition()) {
+            this.clearCurrencyStrengthEntryRetry();
+        }
+
         // 建値移動前の初期リスク幅を保持
         this.refreshProfitRetracementState();
 
@@ -53,6 +68,7 @@ public:
         }
 
         if (!this.eaContext.newBarDetector.isNewBar()) {
+            this.retryPendingCurrencyStrengthEntry();
             return;
         }
 
@@ -82,6 +98,8 @@ public:
      * 新規バー処理
      */
     void onNewBar() {
+        this.clearCurrencyStrengthEntryRetry();
+
         ElliotAll *elliotAll = new ElliotAll(
             this.eaContext.marketContext.symbolName,
             this.eaContext.marketContext.timeFrame
@@ -99,6 +117,9 @@ public:
         // 外部分析を実行
         elliotAll.analyze();
 
+        // 実行時点の通貨強弱を保持
+        this.loadCurrencyStrengthExecutionInfo(elliotAll);
+
         // 決済判定を実行
         this.tryExit(elliotAll);
 
@@ -108,11 +129,17 @@ public:
         // エントリー判定を実行
         this.tryEntry(elliotAll);
 
+        // DB保存待ちの場合は同一M5内の再試行対象とする
+        bool isCurrencyStrengthRetryScheduled =
+            this.scheduleCurrencyStrengthEntryRetry(elliotAll);
+
         // 稼働状況を反映
         this.renderStatus();
         this.renderElliottInfo();
 
-        delete elliotAll;
+        if (!isCurrencyStrengthRetryScheduled) {
+            delete elliotAll;
+        }
     }
 
     /**
@@ -158,6 +185,15 @@ public:
     }
 
 private:
+    /** DB保存待ちの新規バー時Elliott分析結果。 */
+    ElliotAll *pendingCurrencyStrengthElliotAll;
+
+    /** DB保存待ちとなっているエントリー判定のチャートバー開始時刻。 */
+    datetime pendingCurrencyStrengthEntryChartBarTime;
+
+    /** DB保存待ちとなっている通貨強弱のM5バー開始時刻。 */
+    datetime pendingCurrencyStrengthM5BarTime;
+
     /**
      * 必須依存確認
      *
@@ -213,6 +249,203 @@ private:
 
         // オシレータハンドルプールを設定
         elliotAllValue.setOscillatorHandlePool(this.eaContext.oscillatorHandlePool);
+
+        if (this.eaContext.eaConfig != NULL) {
+            elliotAllValue.isCurrencyStrengthEntryFilterEnabled =
+                this.eaContext.eaConfig.useCurrencyStrength;
+        }
+    }
+
+    /**
+     * 実行時点の通貨強弱情報を設定する。
+     *
+     * @param elliotAllValue Elliott分析オブジェクト
+     */
+    void loadCurrencyStrengthExecutionInfo(ElliotAll *elliotAllValue) {
+        CurrencyStrengthExecutionInfo executionInfo;
+        executionInfo.reset();
+
+        if (this.eaContext.eaConfig == NULL) {
+            elliotAllValue.setCurrencyStrengthExecutionInfo(executionInfo);
+            return;
+        }
+
+        if (!this.eaContext.eaConfig.useCurrencyStrength) {
+            elliotAllValue.setCurrencyStrengthExecutionInfo(executionInfo);
+            return;
+        }
+
+        if (this.eaContext.currencyStrengthExecutionInfoProvider == NULL) {
+            elliotAllValue.setCurrencyStrengthExecutionInfo(executionInfo);
+            return;
+        }
+
+        datetime executionTime = elliotAllValue.tradeTimeInfo.serverTime;
+
+        if (executionTime <= 0) {
+            executionTime = TimeCurrent();
+        }
+
+        this.eaContext.currencyStrengthExecutionInfoProvider.load(
+            elliotAllValue.marketContext,
+            executionTime,
+            executionInfo
+        );
+        elliotAllValue.setCurrencyStrengthExecutionInfo(executionInfo);
+    }
+
+    /**
+     * 通貨強弱レコードが未保存の場合に同一M5内の再試行を予約する。
+     *
+     * @param elliotAllValue Elliott分析オブジェクト
+     * @return 再試行を予約し、分析結果の所有権を保持した場合true
+     */
+    bool scheduleCurrencyStrengthEntryRetry(ElliotAll *elliotAllValue) {
+        if ((bool)MQLInfoInteger(MQL_TESTER)) {
+            return false;
+        }
+
+        if (this.eaContext.eaConfig == NULL
+                || !this.eaContext.eaConfig.useCurrencyStrength
+                || this.eaContext.currencyStrengthExecutionInfoProvider == NULL) {
+            return false;
+        }
+
+        this.eaContext.positionService.refresh();
+
+        if (this.eaContext.positionService.hasPosition()) {
+            return false;
+        }
+
+        if (!elliotAllValue.isAnalysisSucceeded) {
+            return false;
+        }
+
+        CurrencyStrengthExecutionInfo executionInfo =
+            elliotAllValue.currencyStrengthExecutionInfo;
+
+        if (executionInfo.isExactM5Bar()) {
+            return false;
+        }
+
+        datetime chartBarTime = this.eaContext.newBarDetector.getLastBarTime();
+
+        if (chartBarTime <= 0 || executionInfo.targetM5BarTime <= 0) {
+            return false;
+        }
+
+        this.pendingCurrencyStrengthElliotAll = elliotAllValue;
+        this.pendingCurrencyStrengthEntryChartBarTime = chartBarTime;
+        this.pendingCurrencyStrengthM5BarTime = executionInfo.targetM5BarTime;
+
+        return true;
+    }
+
+    /**
+     * DB保存待ちの通貨強弱を再取得し、取得できた場合のみエントリーを再判定する。
+     */
+    void retryPendingCurrencyStrengthEntry() {
+        if (this.pendingCurrencyStrengthM5BarTime <= 0) {
+            return;
+        }
+
+        if ((bool)MQLInfoInteger(MQL_TESTER)
+                || this.eaContext.eaConfig == NULL
+                || !this.eaContext.eaConfig.useCurrencyStrength
+                || this.eaContext.currencyStrengthExecutionInfoProvider == NULL) {
+            this.clearCurrencyStrengthEntryRetry();
+            return;
+        }
+
+        this.eaContext.positionService.refresh();
+
+        if (this.eaContext.positionService.hasPosition()) {
+            this.clearCurrencyStrengthEntryRetry();
+            return;
+        }
+
+        if (this.eaContext.newBarDetector.getLastBarTime()
+                != this.pendingCurrencyStrengthEntryChartBarTime) {
+            this.clearCurrencyStrengthEntryRetry();
+            return;
+        }
+
+        datetime currentM5BarTime = this.getM5BarTime(TimeCurrent());
+
+        if (currentM5BarTime <= 0) {
+            return;
+        }
+
+        if (currentM5BarTime != this.pendingCurrencyStrengthM5BarTime) {
+            this.clearCurrencyStrengthEntryRetry();
+            return;
+        }
+
+        CurrencyStrengthExecutionInfo executionInfo;
+        executionInfo.reset();
+        this.eaContext.currencyStrengthExecutionInfoProvider.load(
+            this.eaContext.marketContext,
+            this.pendingCurrencyStrengthM5BarTime,
+            executionInfo
+        );
+
+        if (!executionInfo.isExactM5Bar()) {
+            return;
+        }
+
+        if (this.pendingCurrencyStrengthElliotAll == NULL) {
+            this.clearCurrencyStrengthEntryRetry();
+            return;
+        }
+
+        ElliotAll *elliotAll = this.pendingCurrencyStrengthElliotAll;
+        elliotAll.setCurrencyStrengthExecutionInfo(executionInfo);
+
+        if (this.getM5BarTime(TimeCurrent())
+                != this.pendingCurrencyStrengthM5BarTime) {
+            this.clearCurrencyStrengthEntryRetry();
+            return;
+        }
+
+        this.pendingCurrencyStrengthElliotAll = NULL;
+        this.pendingCurrencyStrengthEntryChartBarTime = 0;
+        this.pendingCurrencyStrengthM5BarTime = 0;
+        this.tryEntry(elliotAll);
+        this.renderStatus();
+        this.renderElliottInfo();
+
+        delete elliotAll;
+    }
+
+    /**
+     * 通貨強弱レコード待ちのエントリー再試行を解除する。
+     */
+    void clearCurrencyStrengthEntryRetry() {
+        if (this.pendingCurrencyStrengthElliotAll != NULL) {
+            delete this.pendingCurrencyStrengthElliotAll;
+            this.pendingCurrencyStrengthElliotAll = NULL;
+        }
+
+        this.pendingCurrencyStrengthEntryChartBarTime = 0;
+        this.pendingCurrencyStrengthM5BarTime = 0;
+    }
+
+    /**
+     * 指定時刻をM5バー開始時刻へ切り下げる。
+     *
+     * @param fromTime 対象時刻
+     * @return M5バー開始時刻。変換できない場合0
+     */
+    datetime getM5BarTime(const datetime fromTime) {
+        int m5Seconds = PeriodSeconds(PERIOD_M5);
+
+        if (fromTime <= 0 || m5Seconds <= 0) {
+            return 0;
+        }
+
+        long timeSeconds = (long)fromTime;
+
+        return (datetime)(timeSeconds - (timeSeconds % m5Seconds));
     }
 
 
@@ -711,7 +944,6 @@ private:
             this.eaContext.operationLogger.info("EaController", "Position opened");
         }
     }
-
 
     /**
      * シグナル表示描画

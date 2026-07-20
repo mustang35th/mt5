@@ -18,6 +18,7 @@
 #include <Mstng\Elliot\LossCut.mqh>
 #include <Mstng\Elliot\TradeTimeInfo.mqh>
 #include <Mstng\Elliot\TrendAlignDecision.mqh>
+#include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
 #include <Mstng\Util\TodayRate.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
@@ -33,6 +34,12 @@ public:
 
     /** 分析対象の市場コンテキスト。 */
     MarketContext marketContext;
+
+    /** 実行時に取得した通貨強弱情報。 */
+    CurrencyStrengthExecutionInfo currencyStrengthExecutionInfo;
+
+    /** 通貨強弱をエントリー条件として使用する場合true。 */
+    bool isCurrencyStrengthEntryFilterEnabled;
     
     /** 通貨ペア名を分割した左側の通貨コード。 */
     string symbolNameLeft;
@@ -140,6 +147,8 @@ public:
         this.isAnalysisSucceeded = false;
         this.execTime = 0;
         this.oscillatorHandlePool = NULL;
+        this.currencyStrengthExecutionInfo.reset();
+        this.isCurrencyStrengthEntryFilterEnabled = false;
 
         if (this.timeFrameInfoAll != NULL) {
             delete this.timeFrameInfoAll;
@@ -366,6 +375,17 @@ public:
     void setOscillatorHandlePool(OscillatorHandlePool *fromOscillatorHandlePool) {
         this.oscillatorHandlePool = fromOscillatorHandlePool;
     }
+
+    /**
+     * 実行時の通貨強弱情報を設定する。
+     *
+     * @param fromCurrencyStrengthExecutionInfo DB取得済みの通貨強弱情報
+     */
+    void setCurrencyStrengthExecutionInfo(
+        CurrencyStrengthExecutionInfo &fromCurrencyStrengthExecutionInfo
+    ) {
+        this.currencyStrengthExecutionInfo = fromCurrencyStrengthExecutionInfo;
+    }
     
     
 private:
@@ -401,6 +421,8 @@ private:
         this.elliotCurrent = NULL;
         this.oscillatorHandlePool = NULL;
         this.timeFrameInfoAll = NULL;
+        this.currencyStrengthExecutionInfo.reset();
+        this.isCurrencyStrengthEntryFilterEnabled = false;
     }
 
     /**

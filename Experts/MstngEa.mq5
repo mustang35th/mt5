@@ -10,6 +10,7 @@
 #property strict
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Database\Service\CurrencyStrengthExecutionInfoProvider.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\App\EaContext.mqh>
@@ -45,6 +46,25 @@ input double InpBreakEvenTriggerR = 1.0;
 /** 建値移動加算pips */
 input double InpBreakEvenPlusPips = 1.0;
 
+/** 通貨強弱利用 */
+input bool InpUseCurrencyStrength = false;
+
+/** 通貨強弱DB参照プロファイル */
+input CurrencyStrengthRankDatabaseProfile InpCurrencyStrengthDatabaseProfile =
+    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_AUTO;
+
+/** 通貨強弱DBファイル名 */
+input string InpCurrencyStrengthDatabaseFileName = "mstng-currency-strength.sqlite";
+
+/** 通貨強弱DB年単位分割 */
+input bool InpCurrencyStrengthDatabaseSplitByYear = true;
+
+/** 通貨強弱DB共通フォルダ使用 */
+input bool InpCurrencyStrengthDatabaseUseCommonFolder = true;
+
+/** 通貨強弱DB再取得間隔秒 */
+input int InpCurrencyStrengthRefreshSeconds = 15;
+
 /** シンボル名 */
 string g_symbolName;
 
@@ -66,6 +86,9 @@ EaConfig *g_eaConfig;
 /** EAコンテキスト */
 EaContext *g_eaContext;
 
+/** 通貨強弱実行情報取得 */
+CurrencyStrengthExecutionInfoProvider *g_currencyStrengthExecutionInfoProvider;
+
 /** EA制御 */
 EaController *g_eaController;
 
@@ -75,6 +98,27 @@ EaController *g_eaController;
  * @return 初期化結果
  */
 int OnInit() {
+    if (InpUseCurrencyStrength
+            && InpCurrencyStrengthDatabaseFileName == "") {
+        Print("MstngEa requires currency strength database file name");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if (InpUseCurrencyStrength && InpCurrencyStrengthRefreshSeconds < 0) {
+        Print("MstngEa currency strength refresh seconds must be zero or greater");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if (InpUseCurrencyStrength
+            && MQLInfoInteger(MQL_TESTER)
+            && !InpCurrencyStrengthDatabaseUseCommonFolder) {
+        Print("MstngEa requires Common database folder in Strategy Tester");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
     // 基本情報を初期化
     g_symbolName = _Symbol;
     g_timeFrame = _Period;
@@ -94,6 +138,7 @@ int OnInit() {
     g_eaConfig.useBreakEven = InpUseBreakEven;
     g_eaConfig.breakEvenTriggerR = InpBreakEvenTriggerR;
     g_eaConfig.breakEvenPlusPips = InpBreakEvenPlusPips;
+    g_eaConfig.useCurrencyStrength = InpUseCurrencyStrength;
     g_eaContext = new EaContext();
 
     // コンテキストへ依存を設定
@@ -110,6 +155,30 @@ int OnInit() {
         g_eaConfig.strategyType
     );
     g_eaContext.operationLogger = new OperationLogger(g_marketContext);
+
+    if (g_eaConfig.useCurrencyStrength) {
+        g_currencyStrengthExecutionInfoProvider =
+            new CurrencyStrengthExecutionInfoProvider(
+                InpCurrencyStrengthDatabaseFileName,
+                InpCurrencyStrengthDatabaseSplitByYear,
+                InpCurrencyStrengthDatabaseUseCommonFolder,
+                InpCurrencyStrengthDatabaseProfile,
+                CURRENCY_STRENGTH_RANK_QUERY_MODE_EXACT,
+                InpCurrencyStrengthRefreshSeconds
+            );
+
+        if (g_currencyStrengthExecutionInfoProvider == NULL) {
+            g_eaContext.operationLogger.error(
+                "MstngEa",
+                "CurrencyStrengthExecutionInfoProvider create failed"
+            );
+            return INIT_FAILED;
+        }
+
+        g_eaContext.currencyStrengthExecutionInfoProvider =
+            g_currencyStrengthExecutionInfoProvider;
+    }
+
     g_eaContext.tradeCsvLogger = new TradeCsvLogger(
         g_marketContext,
         g_eaContext.magicNumber
@@ -236,6 +305,12 @@ void OnDeinit(const int reason) {
 
     // 生成順の逆順で解放
     delete g_eaController;
+
+    if (g_eaContext != NULL) {
+        g_eaContext.currencyStrengthExecutionInfoProvider = NULL;
+    }
+
+    delete g_currencyStrengthExecutionInfoProvider;
 
     if (g_eaContext != NULL) {
         delete g_eaContext.strategyAdapter;

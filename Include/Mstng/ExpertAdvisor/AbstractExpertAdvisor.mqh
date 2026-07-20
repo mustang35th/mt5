@@ -147,6 +147,11 @@ public:
      */
     void analyze(ElliotAll *fromElliotAll, SignalCount *signalCount, int entryCount = 1) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        this.isAlert = false;
+        this.isEntry = false;
+        this.isSendMail = false;
+        this.alertText = "";
         
         if (!this.setElliotAll(fromElliotAll)) {
             this.logger.error(__FUNCTION__, StringFormat("%s setElliotAll returned false", this.name));
@@ -154,7 +159,11 @@ public:
             return;
         }
         
-        bool isJudge = this.isJudge();
+        bool isJudge = false;
+
+        if (this.isCurrencyStrengthEntryAllowed()) {
+            isJudge = this.isJudge();
+        }
         
         if (isJudge) {
             this.isAlert = true;
@@ -464,6 +473,32 @@ protected:
     
 private:
     /**
+     * 実行時の通貨強弱がElliott方向と一致するか判定する。
+     *
+     * 通貨強弱フィルタが無効な場合は、既存の判定を維持するためtrueを返す。
+     *
+     * @return 通貨強弱条件を使用してエントリー判定を継続する場合true。
+     */
+    bool isCurrencyStrengthEntryAllowed() {
+        if (!this.elliotAll.isCurrencyStrengthEntryFilterEnabled) {
+            return true;
+        }
+
+        CurrencyStrengthExecutionInfo executionInfo =
+            this.elliotAll.currencyStrengthExecutionInfo;
+
+        if (!executionInfo.isAvailable()) {
+            return false;
+        }
+
+        if (!executionInfo.isExactM5Bar()) {
+            return false;
+        }
+
+        return executionInfo.isDirectionAligned(this.isBuy);
+    }
+
+    /**
      * コンストラクタ共通の初期値を設定する。
      */
     void initializeMembers() {
@@ -554,12 +589,6 @@ private:
             return false;
         }
         
-        this.isAlert = false;
-        this.isEntry = false;
-        this.isSendMail = false;
-        
-        this.alertText = "";
-                    
         //this.elliotMN1 = this.elliotAll.elliotMN1;
         //this.elliotW1 = this.elliotAll.elliotW1;
         this.elliotD1 = this.elliotAll.getElliot(PERIOD_D1);

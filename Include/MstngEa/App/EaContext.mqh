@@ -7,6 +7,7 @@
 #define MSTNGEA_APP_EACONTEXT_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Database\Service\CurrencyStrengthExecutionInfoProvider.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Config\EaConfig.mqh>
@@ -48,6 +49,9 @@ public:
 
     /** 新規バー判定 */
     NewBarDetector *newBarDetector;
+
+    /** 通貨強弱実行情報取得 */
+    CurrencyStrengthExecutionInfoProvider *currencyStrengthExecutionInfoProvider;
 
     /** 戦略 */
     IStrategyAdapter *strategyAdapter;
@@ -103,6 +107,7 @@ public:
         this.signalCount = NULL;
         this.eaConfig = NULL;
         this.newBarDetector = NULL;
+        this.currencyStrengthExecutionInfoProvider = NULL;
         this.strategyAdapter = NULL;
         this.positionService = NULL;
         this.tradeExecutor = NULL;

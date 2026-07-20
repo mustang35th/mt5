@@ -43,6 +43,9 @@ public:
     /** 建値移動加算pips */
     double breakEvenPlusPips;
 
+    /** 通貨強弱利用 */
+    bool useCurrencyStrength;
+
     /**
      * コンストラクタ
      */
@@ -58,6 +61,7 @@ public:
         this.useBreakEven = true;
         this.breakEvenTriggerR = 1.0;
         this.breakEvenPlusPips = 1.0;
+        this.useCurrencyStrength = false;
     }
 };
 

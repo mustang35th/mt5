@@ -52,23 +52,7 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
-
-/**
- * 通貨強弱順位の参照元DBプロファイル。
- */
-enum CurrencyStrengthRankDatabaseProfile {
-    /** テスターで保存した過去集計を参照する。 */
-    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_TESTER = 0,
-
-    /** ライブ実行で保存した集計を参照する。 */
-    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE = 1,
-
-    /** インジケータの実行環境に合わせて自動選択する。 */
-    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_AUTO = 2,
-
-    /** 同じM5時刻はLIVEを優先し、LIVEがない時刻をTESTERで補完する。 */
-    CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER = 3
-};
+#include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
 
 /**
  * サブパネルへ表示する通貨強弱順位の期間。
