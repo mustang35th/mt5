@@ -40,7 +40,9 @@ public:
         this.xDistance = fromXDistance;
         this.yDistance = 0;
         this.panelWidth = 244;
-        this.panelHeight = 126;
+        this.panelHeight = 246;
+        this.rankTopOffset = 69;
+        this.rankRowHeight = 19;
         this.fontName = "MS Gothic";
         this.titleFontSize = 15;
         this.bodyFontSize = 15;
@@ -97,6 +99,7 @@ public:
         this.updateRankColumn(
             "BaseLongMediumRank",
             "QuoteLongMediumRank",
+            42,
             pairRankInfo.baseCurrency,
             pairRankInfo.baseLongMediumTermAverageRank,
             pairRankInfo.quoteCurrency,
@@ -105,6 +108,7 @@ public:
         this.updateRankColumn(
             "BaseMediumShortRank",
             "QuoteMediumShortRank",
+            164,
             pairRankInfo.baseCurrency,
             pairRankInfo.baseMediumShortTermAverageRank,
             pairRankInfo.quoteCurrency,
@@ -170,6 +174,7 @@ public:
         this.updateRankColumn(
             "BaseLongMediumRank",
             "QuoteLongMediumRank",
+            42,
             fromBaseCurrency,
             0,
             fromQuoteCurrency,
@@ -178,6 +183,7 @@ public:
         this.updateRankColumn(
             "BaseMediumShortRank",
             "QuoteMediumShortRank",
+            164,
             fromBaseCurrency,
             0,
             fromQuoteCurrency,
@@ -269,11 +275,12 @@ public:
         this.setLabelPosition("MediumShortHeader", 168, 28);
         this.setLabelPosition("LongMediumSignal", 45, 47);
         this.setLabelPosition("MediumShortSignal", 166, 47);
-        this.setLabelPosition("BaseLongMediumRank", 42, 69);
-        this.setLabelPosition("BaseMediumShortRank", 164, 69);
-        this.setLabelPosition("QuoteLongMediumRank", 42, 88);
-        this.setLabelPosition("QuoteMediumShortRank", 164, 88);
-        this.setLabelPosition("M5BarTime", 40, 110);
+        this.repositionRankColumns();
+        this.setLabelPosition(
+            "M5BarTime",
+            this.getM5BarTimeLeftOffset(),
+            this.getM5BarTimeTopOffset()
+        );
         ChartRedraw(this.chartId);
     }
 
@@ -332,6 +339,12 @@ private:
 
     /** パネル高さ。 */
     int panelHeight;
+
+    /** 1位を表示するパネル上端からの位置。 */
+    int rankTopOffset;
+
+    /** 順位1段分の高さ。 */
+    int rankRowHeight;
 
     /** 表示フォント名。 */
     string fontName;
@@ -476,7 +489,7 @@ private:
         if (!this.createLabel(
             "BaseLongMediumRank",
             42,
-            69,
+            this.rankTopOffset,
             this.bodyFontSize,
             this.mutedColor,
             "-"
@@ -489,7 +502,7 @@ private:
         if (!this.createLabel(
             "BaseMediumShortRank",
             164,
-            69,
+            this.rankTopOffset,
             this.bodyFontSize,
             this.mutedColor,
             "-"
@@ -502,7 +515,7 @@ private:
         if (!this.createLabel(
             "QuoteLongMediumRank",
             42,
-            88,
+            this.rankTopOffset + this.rankRowHeight,
             this.bodyFontSize,
             this.mutedColor,
             "-"
@@ -515,7 +528,7 @@ private:
         if (!this.createLabel(
             "QuoteMediumShortRank",
             164,
-            88,
+            this.rankTopOffset + this.rankRowHeight,
             this.bodyFontSize,
             this.mutedColor,
             "-"
@@ -527,8 +540,8 @@ private:
 
         if (!this.createLabel(
             "M5BarTime",
-            8,
-            110,
+            this.getM5BarTimeLeftOffset(),
+            this.getM5BarTimeTopOffset(),
             this.bodyFontSize,
             this.mutedColor,
             "M5 -"
@@ -633,72 +646,171 @@ private:
     }
 
     /**
-     * 期間列内の2通貨を順位の昇順で表示する。
+     * 期間列内の2通貨を実際の順位位置へ表示する。
      *
-     * @param fromTopLabelName 上段ラベル名。
-     * @param fromBottomLabelName 下段ラベル名。
+     * @param fromBaseLabelName 基軸通貨ラベル名。
+     * @param fromQuoteLabelName 決済通貨ラベル名。
+     * @param fromColumnLeftOffset 通常時の列内X位置。
      * @param fromBaseCurrency 基軸通貨コード。
      * @param fromBaseRank 基軸通貨順位。
      * @param fromQuoteCurrency 決済通貨コード。
      * @param fromQuoteRank 決済通貨順位。
      */
     void updateRankColumn(
-        const string fromTopLabelName,
-        const string fromBottomLabelName,
+        const string fromBaseLabelName,
+        const string fromQuoteLabelName,
+        const int fromColumnLeftOffset,
         const string fromBaseCurrency,
         const int fromBaseRank,
         const string fromQuoteCurrency,
         const int fromQuoteRank
     ) {
-        string topCurrency = fromBaseCurrency;
-        int topRank = fromBaseRank;
-        string bottomCurrency = fromQuoteCurrency;
-        int bottomRank = fromQuoteRank;
-
-        if (this.shouldDisplayQuoteFirst(fromBaseRank, fromQuoteRank)) {
-            topCurrency = fromQuoteCurrency;
-            topRank = fromQuoteRank;
-            bottomCurrency = fromBaseCurrency;
-            bottomRank = fromBaseRank;
-        }
-
         this.setLabelText(
-            fromTopLabelName,
-            this.formatRankEntry(topCurrency, topRank),
-            ConstantCurrency::getColor(topCurrency)
+            fromBaseLabelName,
+            this.formatRankEntry(fromBaseCurrency, fromBaseRank),
+            ConstantCurrency::getColor(fromBaseCurrency)
         );
         this.setLabelText(
-            fromBottomLabelName,
-            this.formatRankEntry(bottomCurrency, bottomRank),
-            ConstantCurrency::getColor(bottomCurrency)
+            fromQuoteLabelName,
+            this.formatRankEntry(fromQuoteCurrency, fromQuoteRank),
+            ConstantCurrency::getColor(fromQuoteCurrency)
+        );
+
+        this.positionRankColumn(
+            fromBaseLabelName,
+            fromQuoteLabelName,
+            fromColumnLeftOffset,
+            fromBaseRank,
+            fromQuoteRank
         );
     }
 
     /**
-     * 決済通貨を上段へ表示するか判定する。
+     * 期間列内の2通貨を順位に対応する座標へ配置する。
      *
+     * @param fromBaseLabelName 基軸通貨ラベル名。
+     * @param fromQuoteLabelName 決済通貨ラベル名。
+     * @param fromColumnLeftOffset 通常時の列内X位置。
      * @param fromBaseRank 基軸通貨順位。
      * @param fromQuoteRank 決済通貨順位。
-     * @return 決済通貨を先に表示する場合true。
      */
-    bool shouldDisplayQuoteFirst(
+    void positionRankColumn(
+        const string fromBaseLabelName,
+        const string fromQuoteLabelName,
+        const int fromColumnLeftOffset,
         const int fromBaseRank,
         const int fromQuoteRank
     ) {
         bool baseRankValid = this.isValidRank(fromBaseRank);
         bool quoteRankValid = this.isValidRank(fromQuoteRank);
+        int baseLeftOffset = fromColumnLeftOffset;
+        int quoteLeftOffset = fromColumnLeftOffset;
+        int baseTopOffset = this.rankTopOffset;
+        int quoteTopOffset = this.rankTopOffset + this.rankRowHeight;
 
-        if (!baseRankValid && quoteRankValid) {
-            return true;
+        if (baseRankValid) {
+            baseTopOffset = this.getRankTopOffset(fromBaseRank);
+        }
+
+        if (quoteRankValid) {
+            quoteTopOffset = this.getRankTopOffset(fromQuoteRank);
         }
 
         if (baseRankValid
                 && quoteRankValid
-                && fromQuoteRank < fromBaseRank) {
-            return true;
+                && fromBaseRank == fromQuoteRank) {
+            baseLeftOffset = fromColumnLeftOffset - 34;
+            quoteLeftOffset = fromColumnLeftOffset + 26;
         }
 
-        return false;
+        this.setLabelPosition(
+            fromBaseLabelName,
+            baseLeftOffset,
+            baseTopOffset
+        );
+        this.setLabelPosition(
+            fromQuoteLabelName,
+            quoteLeftOffset,
+            quoteTopOffset
+        );
+    }
+
+    /**
+     * 保存済み順位を使用して2期間の順位列を再配置する。
+     */
+    void repositionRankColumns() {
+        if (this.lastDisplayAvailable) {
+            CurrencyStrengthPairRankInfo pairRankInfo =
+                this.lastExecutionInfo.pairRankInfo;
+
+            this.updateRankColumn(
+                "BaseLongMediumRank",
+                "QuoteLongMediumRank",
+                42,
+                pairRankInfo.baseCurrency,
+                pairRankInfo.baseLongMediumTermAverageRank,
+                pairRankInfo.quoteCurrency,
+                pairRankInfo.quoteLongMediumTermAverageRank
+            );
+            this.updateRankColumn(
+                "BaseMediumShortRank",
+                "QuoteMediumShortRank",
+                164,
+                pairRankInfo.baseCurrency,
+                pairRankInfo.baseMediumShortTermAverageRank,
+                pairRankInfo.quoteCurrency,
+                pairRankInfo.quoteMediumShortTermAverageRank
+            );
+
+            return;
+        }
+
+        this.updateRankColumn(
+            "BaseLongMediumRank",
+            "QuoteLongMediumRank",
+            42,
+            this.lastBaseCurrency,
+            0,
+            this.lastQuoteCurrency,
+            0
+        );
+        this.updateRankColumn(
+            "BaseMediumShortRank",
+            "QuoteMediumShortRank",
+            164,
+            this.lastBaseCurrency,
+            0,
+            this.lastQuoteCurrency,
+            0
+        );
+    }
+
+    /**
+     * 指定順位のパネル上端からの位置を取得する。
+     *
+     * @param fromRank 1位から8位。
+     * @return 順位に対応するY位置。
+     */
+    int getRankTopOffset(const int fromRank) {
+        return this.rankTopOffset + (fromRank - 1) * this.rankRowHeight;
+    }
+
+    /**
+     * M5時刻のパネル上端からの位置を取得する。
+     *
+     * @return M5時刻のY位置。
+     */
+    int getM5BarTimeTopOffset() {
+        return this.rankTopOffset + 8 * this.rankRowHeight + 3;
+    }
+
+    /**
+     * M5時刻のパネル左端からの位置を取得する。
+     *
+     * @return M5時刻のX位置。
+     */
+    int getM5BarTimeLeftOffset() {
+        return 8 + this.bodyFontSize * 2;
     }
 
     /**
@@ -804,7 +916,7 @@ private:
             CHART_HEIGHT_IN_PIXELS,
             0
         );
-        int verticalOffset = 20;
+        int verticalOffset = 20 + this.rankRowHeight * 3;
         this.yDistance = (chartHeight - this.panelHeight) / 2
             + verticalOffset;
 
