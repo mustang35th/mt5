@@ -372,6 +372,13 @@ void execute() {
     
     setElliotAll();
 
+    if (g_elliotAll == NULL || !g_elliotAll.isAnalysisSucceeded) {
+        g_logger.info(__FUNCTION__, "Elliott analysis is not ready. retry on next execution.");
+        LogUtil::printMethodEnd(g_logger, __FUNCTION__, false);
+
+        return;
+    }
+
     updateElliotVerticalFit(true);
 
     applyInitialElliotVerticalFit();

@@ -786,11 +786,19 @@ private:
     /**
      * EMA200設定
      *
+     * MN1はEMA200を算出せず、未判定値のまま成功とする。
+     *
      * @param oscillatorHandlePool オシレーターハンドルプール。
      * @return 設定できた場合は true。
      */
     bool setEma200(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
+
+        if (this.marketContext.timeFrame == PERIOD_MN1) {
+            this.logger.debug(__FUNCTION__, "EMA200 skipped for MN1.");
+
+            return true;
+        }
 
         if (oscillatorHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "oscillatorHandlePool is NULL.");

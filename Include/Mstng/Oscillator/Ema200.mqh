@@ -951,11 +951,26 @@ private:
             return false;
         }
 
+        int copyCount = maxShift + 1;
+        int calculatedCount = BarsCalculated(this.ema200Handle);
+
+        if (calculatedCount < copyCount) {
+            this.logger.info(
+                __FUNCTION__,
+                StringFormat(
+                    "EMA200 is not ready. calculatedCount=%d copyCount=%d",
+                    calculatedCount,
+                    copyCount
+                )
+            );
+
+            return false;
+        }
+
         ArraySetAsSeries(emaBuffer, true);
 
         ResetLastError();
 
-        int copyCount = maxShift + 1;
         int copied = CopyBuffer(this.ema200Handle, 0, 0, copyCount, emaBuffer);
 
         if (copied < copyCount) {
