@@ -475,11 +475,25 @@ private:
     /**
      * 実行時の通貨強弱がElliott方向と一致するか判定する。
      *
-     * 通貨強弱フィルタが無効な場合は、既存の判定を維持するためtrueを返す。
+     * 通貨強弱フィルタが無効な場合は、既存のElliott判定を維持するため
+     * trueを返す。有効な場合は、DBから取得した通貨ペア順位が利用可能で、
+     * 取得レコードのM5時刻が今回の判定対象M5時刻と一致することを確認する。
+     * DBレコードがない場合、取得エラー、順位不正、またはM5時刻不一致の
+     * 場合はfalseを返し、古いデータや不完全なデータでの判定を防止する。
+     *
+     * 順位差は「決済通貨順位 - 基軸通貨順位」で算出する。順位は1位が
+     * 最も強いため、順位差が正の場合は基軸通貨が強いBUY方向、負の場合は
+     * 決済通貨が強いSELL方向となる。BUYでは長中期と中短期の順位差が
+     * 両方とも正、SELLでは両方とも負の場合に限りtrueを返す。期間ごとの
+     * 方向が異なるMIXED状態や、同順位による順位差0は許可しない。
+     *
+     * trueは通貨強弱フィルタの通過を表すだけであり、エントリー確定では
+     * ない。呼び出し元で後続のElliott条件isJudge()を判定する。
      *
      * @return 通貨強弱条件を使用してエントリー判定を継続する場合true。
      */
     bool isCurrencyStrengthEntryAllowed() {
+        // フィルタ無効時は通貨強弱で制限せず、既存のElliott判定へ進む。
         if (!this.elliotAll.isCurrencyStrengthEntryFilterEnabled) {
             return true;
         }
@@ -487,14 +501,18 @@ private:
         CurrencyStrengthExecutionInfo executionInfo =
             this.elliotAll.currencyStrengthExecutionInfo;
 
+        // DB取得済みで、基軸通貨・決済通貨と両期間の順位が有効か確認する。
         if (!executionInfo.isAvailable()) {
             return false;
         }
 
+        // 古い順位を使用しないように、DBと今回の判定対象M5時刻を照合する。
         if (!executionInfo.isExactM5Bar()) {
             return false;
         }
 
+        // 順位差は「決済通貨順位 - 基軸通貨順位」。BUYは両期間とも正、
+        // SELLは両期間とも負の場合だけ許可し、MIXEDと順位差0は拒否する。
         return executionInfo.isDirectionAligned(this.isBuy);
     }
 
