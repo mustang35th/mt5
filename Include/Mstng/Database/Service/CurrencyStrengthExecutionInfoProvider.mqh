@@ -297,6 +297,13 @@ private:
         this.applyQueryResult(queryStatus, pairRankInfo, fromInfo);
 
         if (fromInfo.status == CURRENCY_STRENGTH_EXECUTION_STATUS_FOUND) {
+            CurrencyStrengthRankInfo currencyRanks[];
+
+            if (!this.loadCurrencyRanks(pairRankInfo.runId, currencyRanks)) {
+                ArrayResize(currencyRanks, 0);
+            }
+
+            this.copyCurrencyRanks(currencyRanks, fromInfo);
             fromInfo.sourceFileName = sourceFileName;
         }
     }
@@ -338,6 +345,14 @@ private:
                 liveInfo
             );
         string liveFileName = this.queryService.getActiveFileName();
+        liveStatus = this.applyExactMode(liveStatus, liveInfo, fromInfo);
+        CurrencyStrengthRankInfo liveRanks[];
+
+        if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
+            if (!this.loadCurrencyRanks(liveInfo.runId, liveRanks)) {
+                ArrayResize(liveRanks, 0);
+            }
+        }
 
         string testerSourceMode =
             CurrencyStrengthCalculationProfile::getSourceMode(true);
@@ -354,6 +369,14 @@ private:
                 testerInfo
             );
         string testerFileName = this.queryService.getActiveFileName();
+        testerStatus = this.applyExactMode(testerStatus, testerInfo, fromInfo);
+        CurrencyStrengthRankInfo testerRanks[];
+
+        if (testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
+            if (!this.loadCurrencyRanks(testerInfo.runId, testerRanks)) {
+                ArrayResize(testerRanks, 0);
+            }
+        }
 
         if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR
                 || testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
@@ -363,9 +386,6 @@ private:
             return;
         }
 
-        liveStatus = this.applyExactMode(liveStatus, liveInfo, fromInfo);
-        testerStatus = this.applyExactMode(testerStatus, testerInfo, fromInfo);
-
         if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
                 && testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
             if (testerInfo.m5BarTime > liveInfo.m5BarTime) {
@@ -373,11 +393,13 @@ private:
                 fromInfo.sourceMode = testerSourceMode;
                 fromInfo.sourceFileName = testerFileName;
                 fromInfo.pairRankInfo = testerInfo;
+                this.copyCurrencyRanks(testerRanks, fromInfo);
             } else {
                 fromInfo.status = CURRENCY_STRENGTH_EXECUTION_STATUS_FOUND;
                 fromInfo.sourceMode = liveSourceMode;
                 fromInfo.sourceFileName = liveFileName;
                 fromInfo.pairRankInfo = liveInfo;
+                this.copyCurrencyRanks(liveRanks, fromInfo);
             }
 
             return;
@@ -388,6 +410,7 @@ private:
             fromInfo.sourceMode = liveSourceMode;
             fromInfo.sourceFileName = liveFileName;
             fromInfo.pairRankInfo = liveInfo;
+            this.copyCurrencyRanks(liveRanks, fromInfo);
 
             return;
         }
@@ -397,6 +420,7 @@ private:
             fromInfo.sourceMode = testerSourceMode;
             fromInfo.sourceFileName = testerFileName;
             fromInfo.pairRankInfo = testerInfo;
+            this.copyCurrencyRanks(testerRanks, fromInfo);
 
             return;
         }
@@ -414,6 +438,116 @@ private:
         }
 
         fromInfo.status = CURRENCY_STRENGTH_EXECUTION_STATUS_RECORD_NOT_FOUND;
+    }
+
+    /**
+     * 現在開いているDBから指定集計の全通貨順位を取得する。
+     *
+     * 順位が8件に満たない場合は通貨ペア順位を有効なままとし、
+     * メール側で不完全データとして表示する。
+     *
+     * @param fromRunId 取得対象の集計ID。
+     * @param fromRanks 取得結果の格納先。
+     * @return DB検索に成功した場合true。
+     */
+    bool loadCurrencyRanks(
+        const long fromRunId,
+        CurrencyStrengthRankInfo &fromRanks[]
+    ) {
+        ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS queryStatus =
+            this.queryService.findRanksByRunId(fromRunId, fromRanks);
+
+        if (queryStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "currency rank query failed. runId=%I64d",
+                    fromRunId
+                )
+            );
+
+            return false;
+        }
+
+        if (queryStatus != CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
+            ArrayResize(fromRanks, 0);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "currency ranks were not found. runId=%I64d",
+                    fromRunId
+                )
+            );
+
+            return true;
+        }
+
+        int rankCount = ArraySize(fromRanks);
+
+        if (rankCount != 8) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "currency rank count is invalid. runId=%I64d count=%d",
+                    fromRunId,
+                    rankCount
+                )
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * 動的配列の全通貨順位を実行時情報へコピーする。
+     *
+     * @param fromRanks コピー元の全通貨順位。
+     * @param fromInfo コピー先の実行時情報。
+     */
+    void copyCurrencyRanks(
+        CurrencyStrengthRankInfo &fromRanks[],
+        CurrencyStrengthExecutionInfo &fromInfo
+    ) {
+        fromInfo.currencyRankCount = 0;
+
+        for (int i = 0; i < 8; i++) {
+            fromInfo.currencyRankInfos[i].reset();
+        }
+
+        int rankCount = ArraySize(fromRanks);
+
+        if (rankCount > 8) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "currency rank count exceeded. count=%d",
+                    rankCount
+                )
+            );
+
+            return;
+        }
+
+        for (int i = 0; i < rankCount; i++) {
+            fromInfo.currencyRankInfos[i] = fromRanks[i];
+        }
+
+        fromInfo.currencyRankCount = rankCount;
+
+        if (rankCount == 8 && !fromInfo.hasAllCurrencyRanks()) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "currency ranks do not match pair ranks. runId=%I64d",
+                    fromInfo.pairRankInfo.runId
+                )
+            );
+            fromInfo.currencyRankCount = 0;
+
+            for (int i = 0; i < 8; i++) {
+                fromInfo.currencyRankInfos[i].reset();
+            }
+        }
     }
 
     /**

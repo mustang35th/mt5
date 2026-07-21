@@ -16,6 +16,7 @@
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankInfo.mqh>
 
 /**
  * M5バー時刻の年に応じて通貨強弱順位の参照元DBを切り替えるサービス。
@@ -228,6 +229,41 @@ public:
         }
 
         return this.combineNotFoundStatuses(liveStatus, testerStatus);
+    }
+
+    /**
+     * 現在開いているDBから指定した集計IDの全通貨順位を取得する。
+     *
+     * @param fromRunId 取得対象の集計ID。
+     * @param fromRanks 取得結果の格納先。
+     * @return 通貨順位検索の結果状態。
+     */
+    ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS findRanksByRunId(
+        const long fromRunId,
+        CurrencyStrengthRankInfo &fromRanks[]
+    ) {
+        ArrayResize(fromRanks, 0);
+
+        if (this.database == NULL || !this.database.isOpen()) {
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+        }
+
+        CurrencyStrengthResultDao resultDao(this.database.getHandle());
+        bool isFound = false;
+
+        if (!resultDao.findRanksByRunId(
+            fromRunId,
+            fromRanks,
+            isFound
+        )) {
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+        }
+
+        if (!isFound) {
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_RECORD_NOT_FOUND;
+        }
+
+        return CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND;
     }
 
     /**

@@ -13,6 +13,7 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankInfo.mqh>
 
 /**
  * 通貨単位の通貨強弱集計結果をSQLiteへ保存・参照するDAO。
@@ -409,6 +410,115 @@ public:
         fromIsFound = true;
 
         return true;
+    }
+
+    /**
+     * 指定した集計IDの全通貨順位を取得する。
+     *
+     * 検索処理に成功して対象レコードが存在しない場合もtrueを返し、
+     * fromIsFoundへfalseを設定する。
+     *
+     * @param fromRunId 取得対象の集計ID。
+     * @param fromRanks 取得結果の格納先。
+     * @param fromIsFound 対象レコードを取得した場合true。
+     * @return 検索処理に成功した場合true。
+     */
+    bool findRanksByRunId(
+        const long fromRunId,
+        CurrencyStrengthRankInfo &fromRanks[],
+        bool &fromIsFound
+    ) {
+        ArrayResize(fromRanks, 0);
+        fromIsFound = false;
+
+        if (!this.isDatabaseReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (fromRunId <= 0) {
+            this.logger.error(__FUNCTION__, "search condition is invalid.");
+
+            return false;
+        }
+
+        string sql = "SELECT currency_name,";
+        sql += " long_medium_term_average_rank,";
+        sql += " medium_short_term_average_rank ";
+        sql += "FROM currency_strength_results ";
+        sql += "WHERE run_id = ?1 ";
+        sql += "ORDER BY currency_name ASC";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseBind(requestHandle, 0, fromRunId)) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        while (true) {
+            CurrencyStrengthRankInfo rankInfo;
+            rankInfo.reset();
+            ResetLastError();
+            bool isRead = DatabaseReadBind(requestHandle, rankInfo);
+            int readErrorCode = GetLastError();
+
+            if (!isRead) {
+                DatabaseFinalize(requestHandle);
+
+                if (readErrorCode == ERR_DATABASE_NO_MORE_DATA) {
+                    fromIsFound = ArraySize(fromRanks) > 0;
+
+                    return true;
+                }
+
+                ArrayResize(fromRanks, 0);
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "DatabaseReadBind failed. error=%d",
+                        readErrorCode
+                    )
+                );
+
+                return false;
+            }
+
+            int rankIndex = ArraySize(fromRanks);
+
+            if (ArrayResize(fromRanks, rankIndex + 1, 8) != rankIndex + 1) {
+                DatabaseFinalize(requestHandle);
+                ArrayResize(fromRanks, 0);
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "ArrayResize failed. requested=%d",
+                        rankIndex + 1
+                    )
+                );
+
+                return false;
+            }
+
+            fromRanks[rankIndex] = rankInfo;
+        }
     }
 
     /**

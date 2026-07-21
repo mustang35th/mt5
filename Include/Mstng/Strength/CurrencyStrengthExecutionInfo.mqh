@@ -11,6 +11,7 @@
 #define MSTNG_CURRENCY_STRENGTH_EXECUTION_INFO_MQH
 
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankInfo.mqh>
 
 /**
  * 実行時通貨強弱情報の取得状態。
@@ -57,6 +58,12 @@ struct CurrencyStrengthExecutionInfo {
     /** 通貨ペア順位検索結果。 */
     CurrencyStrengthPairRankInfo pairRankInfo;
 
+    /** 同一集計に含まれる全通貨の順位。 */
+    CurrencyStrengthRankInfo currencyRankInfos[8];
+
+    /** 全通貨順位の格納件数。 */
+    int currencyRankCount;
+
     /**
      * 全フィールドを未取得状態へ初期化する。
      */
@@ -68,6 +75,70 @@ struct CurrencyStrengthExecutionInfo {
         this.sourceMode = "";
         this.sourceFileName = "";
         this.pairRankInfo.reset();
+        this.currencyRankCount = 0;
+
+        for (int i = 0; i < 8; i++) {
+            this.currencyRankInfos[i].reset();
+        }
+    }
+
+    /**
+     * 同一集計の全8通貨順位を保持しているか判定する。
+     *
+     * @return 8通貨すべての順位が有効な場合true。
+     */
+    bool hasAllCurrencyRanks() const {
+        if (this.currencyRankCount != 8) {
+            return false;
+        }
+
+        bool isBaseCurrencyFound = false;
+        bool isQuoteCurrencyFound = false;
+
+        for (int i = 0; i < this.currencyRankCount; i++) {
+            if (!this.currencyRankInfos[i].isValid()) {
+                return false;
+            }
+
+            if (this.currencyRankInfos[i].currencyName
+                    == this.pairRankInfo.baseCurrency) {
+                if (this.currencyRankInfos[i].longMediumTermAverageRank
+                            != this.pairRankInfo
+                                .baseLongMediumTermAverageRank
+                        || this.currencyRankInfos[i]
+                                .mediumShortTermAverageRank
+                            != this.pairRankInfo
+                                .baseMediumShortTermAverageRank) {
+                    return false;
+                }
+
+                isBaseCurrencyFound = true;
+            }
+
+            if (this.currencyRankInfos[i].currencyName
+                    == this.pairRankInfo.quoteCurrency) {
+                if (this.currencyRankInfos[i].longMediumTermAverageRank
+                            != this.pairRankInfo
+                                .quoteLongMediumTermAverageRank
+                        || this.currencyRankInfos[i]
+                                .mediumShortTermAverageRank
+                            != this.pairRankInfo
+                                .quoteMediumShortTermAverageRank) {
+                    return false;
+                }
+
+                isQuoteCurrencyFound = true;
+            }
+
+            for (int j = i + 1; j < this.currencyRankCount; j++) {
+                if (this.currencyRankInfos[i].currencyName
+                        == this.currencyRankInfos[j].currencyName) {
+                    return false;
+                }
+            }
+        }
+
+        return isBaseCurrencyFound && isQuoteCurrencyFound;
     }
 
     /**

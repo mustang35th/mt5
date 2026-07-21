@@ -17,6 +17,7 @@
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankInfo.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
 /** 動作確認用データベースのベースファイル名。 */
@@ -231,9 +232,15 @@ void initializeChildEntities(
         usdScore = 1;
     }
 
-    ArrayResize(fromResultEntities, 2);
+    ArrayResize(fromResultEntities, 8);
     initializeResultEntity("USD", usdScore, fromResultEntities[0]);
     initializeResultEntity("JPY", 0 - usdScore, fromResultEntities[1]);
+    initializeResultEntity("AUD", 0, fromResultEntities[2]);
+    initializeResultEntity("CAD", 0, fromResultEntities[3]);
+    initializeResultEntity("CHF", 0, fromResultEntities[4]);
+    initializeResultEntity("EUR", 0, fromResultEntities[5]);
+    initializeResultEntity("GBP", 0, fromResultEntities[6]);
+    initializeResultEntity("NZD", 0, fromResultEntities[7]);
 }
 
 /**
@@ -596,6 +603,25 @@ void OnStart() {
         && pairRankInfo.runId == year2025RunId
         && verifyPairRankInfo(pairRankInfo, year2025M5BarTime, 8, 7, 1, 2);
 
+    CurrencyStrengthRankInfo currencyRanks[];
+
+    if (isRankVerified) {
+        rankQueryStatus = rankQueryService.findRanksByRunId(
+            pairRankInfo.runId,
+            currencyRanks
+        );
+        isRankVerified = rankQueryStatus
+                == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND
+            && ArraySize(currencyRanks) == 8;
+
+        for (int i = 0; i < ArraySize(currencyRanks); i++) {
+            if (!currencyRanks[i].isValid()) {
+                isRankVerified = false;
+                break;
+            }
+        }
+    }
+
     if (isRankVerified) {
         rankQueryStatus = rankQueryService.findLatestPairRanksAtOrBefore(
             year2026M5BarTime,
@@ -837,7 +863,7 @@ void OnStart() {
     isVerified = isVerified
         && year2025RunCount == 2
         && year2025VoteCount == 14
-        && year2025ResultCount == 4
+        && year2025ResultCount == 16
         && year2025ContributionCount == 28
         && year2025SourceChartId == 202502
         && actualYear2025CalculatedAt == (long)year2025CalculatedAt
@@ -845,7 +871,7 @@ void OnStart() {
         && year2025UsdMn1Score == -1
         && year2026RunCount == 1
         && year2026VoteCount == 7
-        && year2026ResultCount == 2
+        && year2026ResultCount == 8
         && year2026ContributionCount == 14
         && year2026SourceChartId == 202601
         && actualYear2026CalculatedAt == (long)D'2026.01.01 00:00'
