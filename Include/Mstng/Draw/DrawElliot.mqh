@@ -36,8 +36,10 @@ class DrawElliot {
 public:
     /**
      * 描画列幅の初期値を設定して初期化する。
+     *
+     * @param fromSimpleDisplay 簡易表示の場合true
      */
-    DrawElliot() {
+    DrawElliot(bool fromSimpleDisplay = false) {
         this.logger.setLevel(LOG_INFO);
         this.clampVertical = false;
         
@@ -45,11 +47,11 @@ public:
         this.addDrawPropertiesElliotList(true, 110);    // COLMUN_BUYSELL
         this.addDrawPropertiesElliotList(true, 110);    // COLMUN_EMA200_BUYSELL
         this.addDrawPropertiesElliotList(false, 70);     // COLMUN_STOCHASTIC_MAIN_ORDER
-        this.addDrawPropertiesElliotList(true, 50);    // COLMUN_STOCHASTIC_SHORT
-        this.addDrawPropertiesElliotList(true, 50);    // COLMUN_STOCHASTIC_MIDDLE
-        this.addDrawPropertiesElliotList(true, 50);    // COLMUN_HEIKEN_ASHI_SMOOTHED
-        this.addDrawPropertiesElliotList(true, 90);    // COLMUN_GMMA_TREND
-        this.addDrawPropertiesElliotList(true, 90);    // COLMUN_GMMA_CROSS
+        this.addDrawPropertiesElliotList(!fromSimpleDisplay, 50);    // COLMUN_STOCHASTIC_SHORT
+        this.addDrawPropertiesElliotList(!fromSimpleDisplay, 50);    // COLMUN_STOCHASTIC_MIDDLE
+        this.addDrawPropertiesElliotList(!fromSimpleDisplay, 50);    // COLMUN_STOCHASTIC_LONG
+        this.addDrawPropertiesElliotList(!fromSimpleDisplay, 90);    // COLMUN_GMMA_TREND
+        this.addDrawPropertiesElliotList(!fromSimpleDisplay, 90);    // COLMUN_GMMA_CROSS
         this.addDrawPropertiesElliotList(false, 90);    // COLMUN_IMPULSE
         this.addDrawPropertiesElliotList(false, 90);    // COLMUN_FRACTAL
         this.addDrawPropertiesElliotList(true, 120);    // COLMUN_ELLIOT

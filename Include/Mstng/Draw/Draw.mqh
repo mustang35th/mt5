@@ -52,11 +52,13 @@ public:
      * @param fromElliotAll Elliot解析結果
      * @param fromIsElliotInfoVisible エリオット情報表示有無
      * @param fromClampElliotVertical Elliottラベルを上下端へ収める場合true
+     * @param fromSimpleElliotInfo Elliott情報を簡易表示する場合true
      */
     void drawAll(
         ElliotAll *fromElliotAll,
         bool fromIsElliotInfoVisible = true,
-        bool fromClampElliotVertical = false
+        bool fromClampElliotVertical = false,
+        bool fromSimpleElliotInfo = false
     ) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -77,7 +79,7 @@ public:
         drawZigZag.draw(this.elliotAll);
         
         
-        DrawElliot drawElliot;
+        DrawElliot drawElliot(fromSimpleElliotInfo);
         
         drawElliot.draw(
             this.elliotAll,

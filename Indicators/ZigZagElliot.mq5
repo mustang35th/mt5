@@ -58,6 +58,8 @@ int g_timerSeconds = 30;
 
 bool g_isInitialized = false;
 bool g_isElliotInfoVisible = true;
+/** Elliott情報を簡易表示する場合true。 */
+bool elliotInfoSimple = true;
 /** Elliott上下FITの初回適用待ちの場合true。 */
 bool initialElliotVerticalFitPending = true;
 
@@ -135,6 +137,7 @@ int OnInit() {
     setJapanTimeAxisView();
     setElliotVerticalFit();
     setElliotInfoButton();
+    setElliotInfoModeButton();
     setElliotVerticalFitButton();
     setCurrencyStrengthPairRank();
     
@@ -178,6 +181,7 @@ void OnDeinit(const int reason) {
     deleteJapanTimeAxisView();
     deleteElliotVerticalFit();
     deleteElliotInfoButton();
+    deleteElliotInfoModeButton();
     deleteElliotVerticalFitButton();
     deleteCurrencyStrengthPairRank();
     
@@ -233,11 +237,21 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
         return;
     }
 
+    if (sparam == getElliotInfoModeButtonName()) {
+        elliotInfoSimple = !elliotInfoSimple;
+        updateElliotInfoModeButton();
+        redrawElliotInfo();
+
+        return;
+    }
+
     if (sparam == getElliotInfoButtonName()) {
-        // 大きいエリオット情報のみ表示切替し、波動ラベルやライン描画は残す。
+        // エリオット情報表のみ表示切替し、波動ラベルやライン描画は残す。
         g_isElliotInfoVisible = !g_isElliotInfoVisible;
         updateElliotInfoButton();
         redrawElliotInfo();
+
+        return;
     }
 }
 
@@ -386,7 +400,8 @@ void execute() {
     gDraw.drawAll(
         g_elliotAll,
         g_isElliotInfoVisible,
-        isElliotVerticalFitLabelClampEnabled()
+        isElliotVerticalFitLabelClampEnabled(),
+        elliotInfoSimple
     );
     redrawCurrencyStrengthPairRankOnTop();
 
@@ -723,6 +738,7 @@ void setElliotAll() {
     g_elliotAll = new ElliotAll(g_marketContext);
     
     g_elliotAll.isTimer = g_isTimer;
+    g_elliotAll.isCurrencyStrengthEntryFilterEnabled = true;
     g_elliotAll.setOscillatorHandlePool(g_oscillatorHandlePool);
     g_elliotAll.setCurrencyStrengthExecutionInfo(
         gCurrencyStrengthExecutionInfo
@@ -769,7 +785,7 @@ string getElliotInfoButtonName() {
 }
 
 /**
- * 大きいエリオット情報の表示切替ボタンを作成する。
+ * エリオット情報表の表示切替ボタンを作成する。
  */
 void setElliotInfoButton() {
     string objectName = getElliotInfoButtonName();
@@ -798,7 +814,7 @@ void setElliotInfoButton() {
 }
 
 /**
- * 大きいエリオット情報の表示状態に合わせてボタン表示を更新する。
+ * エリオット情報表の表示状態に合わせてボタン表示を更新する。
  */
 void updateElliotInfoButton() {
     string objectName = getElliotInfoButtonName();
@@ -823,7 +839,7 @@ void updateElliotInfoButton() {
 }
 
 /**
- * 大きいエリオット情報の表示状態を反映してチャートを再描画する。
+ * エリオット情報表の表示状態を反映してチャートを再描画する。
  */
 void redrawElliotInfo() {
     if (g_elliotAll == NULL) {
@@ -834,17 +850,87 @@ void redrawElliotInfo() {
     gDraw.drawAll(
         g_elliotAll,
         g_isElliotInfoVisible,
-        isElliotVerticalFitLabelClampEnabled()
+        isElliotVerticalFitLabelClampEnabled(),
+        elliotInfoSimple
     );
     redrawCurrencyStrengthPairRankOnTop();
     ChartRedraw(0);
 }
 
 /**
- * 大きいエリオット情報の表示切替ボタンを削除する。
+ * エリオット情報表の表示切替ボタンを削除する。
  */
 void deleteElliotInfoButton() {
     ObjectDelete(0, getElliotInfoButtonName());
+}
+
+/**
+ * Elliott情報表示モード切替ボタンのオブジェクト名を取得する。
+ *
+ * @return ボタン名
+ */
+string getElliotInfoModeButtonName() {
+    return Constant::PREFIX_FIXED + "ElliotInfoModeButton";
+}
+
+/**
+ * Elliott情報の詳細・簡易表示切替ボタンを作成する。
+ */
+void setElliotInfoModeButton() {
+    string objectName = getElliotInfoModeButtonName();
+
+    ObjectDelete(0, objectName);
+
+    if (!ObjectCreate(0, objectName, OBJ_BUTTON, 0, 0, 0)) {
+        return;
+    }
+
+    // 波動情報表示ボタンの真上へ固定する。
+    ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_RIGHT_LOWER);
+    ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 140);
+    ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 75);
+    ObjectSetInteger(0, objectName, OBJPROP_XSIZE, 130);
+    ObjectSetInteger(0, objectName, OBJPROP_YSIZE, 24);
+    ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 9);
+    ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, objectName, OBJPROP_HIDDEN, true);
+    ObjectSetInteger(0, objectName, OBJPROP_BACK, false);
+    ObjectSetInteger(0, objectName, OBJPROP_ZORDER, 1000);
+    ObjectSetInteger(0, objectName, OBJPROP_BORDER_COLOR, clrWhite);
+    ObjectSetString(0, objectName, OBJPROP_FONT, "Meiryo UI");
+
+    updateElliotInfoModeButton();
+}
+
+/**
+ * Elliott情報表示モードに合わせてボタン表示を更新する。
+ */
+void updateElliotInfoModeButton() {
+    string objectName = getElliotInfoModeButtonName();
+
+    if (ObjectFind(0, objectName) < 0) {
+        return;
+    }
+
+    string text = "表示: 詳細";
+    color backgroundColor = clrNavy;
+
+    if (elliotInfoSimple) {
+        text = "表示: 簡易";
+        backgroundColor = clrDarkGreen;
+    }
+
+    ObjectSetInteger(0, objectName, OBJPROP_STATE, elliotInfoSimple);
+    ObjectSetInteger(0, objectName, OBJPROP_COLOR, clrWhite);
+    ObjectSetInteger(0, objectName, OBJPROP_BGCOLOR, backgroundColor);
+    ObjectSetString(0, objectName, OBJPROP_TEXT, text);
+}
+
+/**
+ * Elliott情報表示モード切替ボタンを削除する。
+ */
+void deleteElliotInfoModeButton() {
+    ObjectDelete(0, getElliotInfoModeButtonName());
 }
 
 /**
