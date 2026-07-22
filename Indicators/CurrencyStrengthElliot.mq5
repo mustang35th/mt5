@@ -14,11 +14,13 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyPersistenceService.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthList.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
+#include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 
 /**
@@ -33,6 +35,9 @@ enum CurrencyStrengthExecutionStatus {
 input int refreshSeconds = 60;
 input int panelXDistance = 12;
 input int panelYDistance = 12;
+input bool showEntryCandidates = true;
+input int entryCandidateMaxCount = 10;
+input int entryCandidateMinRankDifference = 2;
 input CurrencyStrengthSortType sortType = CURRENCY_STRENGTH_SORT_TOTAL;
 input bool databaseEnabled = true;
 input string databaseFileName = "mstng-currency-strength.sqlite";
@@ -45,13 +50,17 @@ input int databaseRetentionDays = 30;
 
 /** テスター診断ログを約1日ごとに出力するM5足数。 */
 const int testerDiagnosticLogIntervalBars = 288;
+/** 通貨ランキングパネル左端から候補一覧左端までの距離。 */
+const int entryCandidatePanelXOffset = 1012;
 
 double gHiddenBuffer[];
 
 Logger gLogger;
+DrawCurrencyStrengthEntryCandidateList *gDrawCurrencyStrengthEntryCandidateList = NULL;
 DrawCurrencyStrengthList *gDrawCurrencyStrengthList;
 OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
+CurrencyStrengthEntryCandidateList *gCurrencyStrengthEntryCandidateList = NULL;
 CurrencyStrengthYearlyPersistenceService *gCurrencyStrengthPersistenceService;
 datetime gFirstTargetM5BarTime;
 datetime gLastLiveAttemptM5BarTime;
@@ -86,7 +95,13 @@ int OnInit() {
         return INIT_PARAMETERS_INCORRECT;
     }
 
-    if (refreshSeconds < 1 || databaseRetentionDays < 0) {
+    if (refreshSeconds < 1
+            || databaseRetentionDays < 0
+            || (showEntryCandidates
+                && (entryCandidateMaxCount < 1
+                    || entryCandidateMaxCount > 28
+                    || entryCandidateMinRankDifference < 1
+                    || entryCandidateMinRankDifference > 7))) {
         return INIT_PARAMETERS_INCORRECT;
     }
 
@@ -119,9 +134,24 @@ int OnInit() {
     gOscillatorHandleManager = new OscillatorHandleManager(PERIOD_M15);
     gCurrencyStrengthCalculator = new CurrencyStrengthCalculator();
 
+    if (showEntryCandidates) {
+        gDrawCurrencyStrengthEntryCandidateList =
+            new DrawCurrencyStrengthEntryCandidateList(
+                0,
+                panelXDistance + entryCandidatePanelXOffset,
+                panelYDistance,
+                entryCandidateMaxCount
+            );
+        gCurrencyStrengthEntryCandidateList =
+            new CurrencyStrengthEntryCandidateList();
+    }
+
     if (gDrawCurrencyStrengthList == NULL
             || gOscillatorHandleManager == NULL
-            || gCurrencyStrengthCalculator == NULL) {
+            || gCurrencyStrengthCalculator == NULL
+            || (showEntryCandidates
+                && (gDrawCurrencyStrengthEntryCandidateList == NULL
+                    || gCurrencyStrengthEntryCandidateList == NULL))) {
         releaseResources();
 
         return INIT_FAILED;
@@ -531,9 +561,32 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         return currencyStrengthExecutionNotReady;
     }
 
-    if ((!isTester || MQLInfoInteger(MQL_VISUAL_MODE))
-            && !gDrawCurrencyStrengthList.draw(gCurrencyStrengthCalculator)) {
-        gLogger.error(__FUNCTION__, "currency strength draw failed");
+    if (!isTester || MQLInfoInteger(MQL_VISUAL_MODE)) {
+        if (!gDrawCurrencyStrengthList.draw(gCurrencyStrengthCalculator)) {
+            gLogger.error(__FUNCTION__, "currency strength draw failed");
+        }
+
+        if (showEntryCandidates
+                && gCurrencyStrengthEntryCandidateList != NULL
+                && gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            if (!gCurrencyStrengthEntryCandidateList.build(
+                gCurrencyStrengthCalculator,
+                entryCandidateMinRankDifference
+            )) {
+                gLogger.error(
+                    __FUNCTION__,
+                    "currency strength entry candidate build failed"
+                );
+                gDrawCurrencyStrengthEntryCandidateList.clear();
+            } else if (!gDrawCurrencyStrengthEntryCandidateList.draw(
+                gCurrencyStrengthEntryCandidateList
+            )) {
+                gLogger.error(
+                    __FUNCTION__,
+                    "currency strength entry candidate draw failed"
+                );
+            }
+        }
     }
 
     datetime calculatedAt = TimeCurrent();
@@ -733,10 +786,21 @@ void releaseResources() {
     gTesterPersistedSnapshotCount = 0;
     gLastRetryPreparationFailureReason = "";
 
+    if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+        gDrawCurrencyStrengthEntryCandidateList.clear();
+        delete gDrawCurrencyStrengthEntryCandidateList;
+        gDrawCurrencyStrengthEntryCandidateList = NULL;
+    }
+
     if (gDrawCurrencyStrengthList != NULL) {
         gDrawCurrencyStrengthList.clear();
         delete gDrawCurrencyStrengthList;
         gDrawCurrencyStrengthList = NULL;
+    }
+
+    if (gCurrencyStrengthEntryCandidateList != NULL) {
+        delete gCurrencyStrengthEntryCandidateList;
+        gCurrencyStrengthEntryCandidateList = NULL;
     }
 
     if (gCurrencyStrengthCalculator != NULL) {

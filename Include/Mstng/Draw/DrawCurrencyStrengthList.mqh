@@ -903,14 +903,15 @@ private:
      * タイトル表示用の日時文字列へ変換する。
      *
      * @param fromDatetime 変換対象日時。
-     * @return 月日と時分を表す文字列。
+     * @return 年月日と時分を表す文字列。
      */
     string formatTitleTime(datetime fromDatetime) {
         MqlDateTime dateTime;
         TimeToStruct(fromDatetime, dateTime);
 
         return StringFormat(
-            "%02d/%02d %02d:%02d",
+            "%04d/%02d/%02d %02d:%02d",
+            dateTime.year,
             dateTime.mon,
             dateTime.day,
             dateTime.hour,
