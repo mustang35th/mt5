@@ -52,6 +52,8 @@ public:
         this.sellColor = clrHotPink;
         this.warningColor = clrGold;
         this.errorColor = clrTomato;
+        this.rankGridColor = C'45,45,45';
+        this.rankGridBoundaryColor = C'90,90,90';
         this.calculateYDistance();
     }
 
@@ -268,6 +270,7 @@ public:
             return;
         }
 
+        this.repositionRankGrid();
         this.setLabelPosition("Decision", 70, 5);
         this.setLabelPosition("StateBadge", 132, 6);
         this.setLabelPosition("SourceBadge", 192, 6);
@@ -373,6 +376,12 @@ private:
     /** エラー文字色。 */
     color errorColor;
 
+    /** 順位行の罫線色。 */
+    color rankGridColor;
+
+    /** 順位領域境界と中央線の色。 */
+    color rankGridBoundaryColor;
+
     /**
      * 必要に応じて順位パネルを生成する。
      *
@@ -394,6 +403,12 @@ private:
     bool create() {
         this.destroyObjects();
         this.calculateYDistance();
+
+        if (!this.createRankGrid()) {
+            this.destroyObjects();
+
+            return false;
+        }
 
         if (!this.createLabel(
             "SourceBadge",
@@ -554,6 +569,167 @@ private:
         this.created = true;
 
         return true;
+    }
+
+    /**
+     * 8順位の横罫線と期間列の中央縦線を生成する。
+     *
+     * 外枠は生成せず、罫線をパネル左右端より内側へ収める。
+     *
+     * @return 生成に成功した場合true。
+     */
+    bool createRankGrid() {
+        int gridTopOffset = this.getRankGridTopOffset();
+        int horizontalRightOffset = 10;
+        int horizontalWidth = this.panelWidth - 20;
+
+        for (int i = 0; i <= 8; i++) {
+            color lineColor = this.rankGridColor;
+
+            if (i == 0 || i == 8) {
+                lineColor = this.rankGridBoundaryColor;
+            }
+
+            if (!this.createRankGridLine(
+                "RankGridHorizontal" + IntegerToString(i),
+                horizontalRightOffset,
+                gridTopOffset + i * this.rankRowHeight,
+                horizontalWidth,
+                1,
+                lineColor
+            )) {
+                return false;
+            }
+        }
+
+        int centerTopOffset = 27;
+        int gridBottomOffset = gridTopOffset + 8 * this.rankRowHeight;
+
+        return this.createRankGridLine(
+            "RankGridCenter",
+            this.panelWidth / 2,
+            centerTopOffset,
+            1,
+            gridBottomOffset - centerTopOffset + 1,
+            this.rankGridBoundaryColor
+        );
+    }
+
+    /**
+     * 順位罫線用の矩形ラベルを生成する。
+     *
+     * @param fromNameSuffix オブジェクト名の末尾。
+     * @param fromRightOffset パネル右端からの位置。
+     * @param fromTopOffset パネル上端からの位置。
+     * @param fromWidth 横幅。
+     * @param fromHeight 高さ。
+     * @param fromColor 罫線色。
+     * @return 生成に成功した場合true。
+     */
+    bool createRankGridLine(
+        string fromNameSuffix,
+        int fromRightOffset,
+        int fromTopOffset,
+        int fromWidth,
+        int fromHeight,
+        color fromColor
+    ) {
+        string objectName = this.objectPrefix + fromNameSuffix;
+
+        if (!ObjectCreate(
+            this.chartId,
+            objectName,
+            OBJ_RECTANGLE_LABEL,
+            0,
+            0,
+            0
+        )) {
+            return false;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner);
+        this.setRankGridLinePosition(
+            fromNameSuffix,
+            fromRightOffset,
+            fromTopOffset,
+            fromWidth
+        );
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, fromWidth);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, fromHeight);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, fromColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STYLE, STYLE_SOLID);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_WIDTH, 1);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, 1);
+
+        return true;
+    }
+
+    /**
+     * 保存済みの罫線を現在のパネル位置へ再配置する。
+     */
+    void repositionRankGrid() {
+        int gridTopOffset = this.getRankGridTopOffset();
+
+        for (int i = 0; i <= 8; i++) {
+            this.setRankGridLinePosition(
+                "RankGridHorizontal" + IntegerToString(i),
+                10,
+                gridTopOffset + i * this.rankRowHeight,
+                this.panelWidth - 20
+            );
+        }
+
+        this.setRankGridLinePosition(
+            "RankGridCenter",
+            this.panelWidth / 2,
+            27,
+            1
+        );
+    }
+
+    /**
+     * 順位領域の上端位置を取得する。
+     *
+     * @return パネル上端からのY位置。
+     */
+    int getRankGridTopOffset() {
+        return this.rankTopOffset - 3;
+    }
+
+    /**
+     * 罫線を右上基準の固定座標へ配置する。
+     *
+     * @param fromNameSuffix オブジェクト名の末尾。
+     * @param fromRightOffset パネル右端からの位置。
+     * @param fromTopOffset パネル上端からの位置。
+     * @param fromWidth 罫線の横幅。
+     */
+    void setRankGridLinePosition(
+        string fromNameSuffix,
+        int fromRightOffset,
+        int fromTopOffset,
+        int fromWidth
+    ) {
+        string objectName = this.objectPrefix + fromNameSuffix;
+
+        ObjectSetInteger(
+            this.chartId,
+            objectName,
+            OBJPROP_XDISTANCE,
+            this.xDistance + fromRightOffset + fromWidth
+        );
+        ObjectSetInteger(
+            this.chartId,
+            objectName,
+            OBJPROP_YDISTANCE,
+            this.yDistance + fromTopOffset
+        );
     }
 
     /**
