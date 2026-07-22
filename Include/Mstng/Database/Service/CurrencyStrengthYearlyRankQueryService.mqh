@@ -13,6 +13,7 @@
 #include <Mstng\Database\Dao\CurrencyStrengthResultDao.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Strength\CurrencyStrengthAllRankPoint.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
@@ -264,6 +265,244 @@ public:
         }
 
         return CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND;
+    }
+
+    /**
+     * 指定期間の完全集計から全8通貨の順位を時刻昇順で取得する。
+     *
+     * 年別分割を使用している場合は、開始年から終了年までのDBを
+     * 読み取り専用で順番に参照する。存在しない年のDBはスキップする。
+     *
+     * @param fromStartM5BarTime 検索開始となるM5バー時刻。
+     * @param fromEndM5BarTime 検索終了となるM5バー時刻。
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceMode 集計実行モード。
+     * @param fromSourceServer 集計元の取引サーバー名。
+     * @param fromSourceLogin 集計元の口座ログイン番号。
+     * @param fromMaximumPointCount 取得を許可する最大件数。
+     * @param fromPoints 取得結果の格納先。
+     * @return 順位検索の結果状態。
+     */
+    ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS findAllRankPointsInRange(
+        const datetime fromStartM5BarTime,
+        const datetime fromEndM5BarTime,
+        const string fromCalculationVersion,
+        const string fromSourceMode,
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const int fromMaximumPointCount,
+        CurrencyStrengthAllRankPoint &fromPoints[]
+    ) {
+        ArrayResize(fromPoints, 0);
+
+        if (fromStartM5BarTime <= 0
+                || fromEndM5BarTime < fromStartM5BarTime
+                || fromCalculationVersion == ""
+                || fromSourceMode == ""
+                || fromMaximumPointCount <= 0) {
+            this.logger.error(__FUNCTION__, "search condition is invalid.");
+
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+        }
+
+        int startYear = CurrencyStrengthDatabaseFileResolver::getYear(
+            fromStartM5BarTime
+        );
+        int endYear = CurrencyStrengthDatabaseFileResolver::getYear(
+            fromEndM5BarTime
+        );
+
+        if (startYear <= 0 || endYear < startYear) {
+            this.logger.error(__FUNCTION__, "search year is invalid.");
+
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+        }
+
+        bool databaseExists = false;
+
+        if (!this.splitByYear) {
+            if (!this.openFor(fromEndM5BarTime, databaseExists)) {
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+            }
+
+            if (!databaseExists) {
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_DATABASE_NOT_FOUND;
+            }
+
+            if (!this.findAllRankPointsInActiveDatabase(
+                fromStartM5BarTime,
+                fromEndM5BarTime,
+                fromCalculationVersion,
+                fromSourceMode,
+                fromSourceServer,
+                fromSourceLogin,
+                fromMaximumPointCount,
+                fromPoints
+            )) {
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+            }
+
+            if (ArraySize(fromPoints) > fromMaximumPointCount) {
+                this.logPointLimitExceeded(
+                    fromStartM5BarTime,
+                    fromEndM5BarTime,
+                    fromMaximumPointCount
+                );
+                ArrayResize(fromPoints, 0);
+
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+            }
+
+            if (ArraySize(fromPoints) == 0) {
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_RECORD_NOT_FOUND;
+            }
+
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND;
+        }
+
+        bool anyDatabaseExists = false;
+
+        for (int year = startYear; year <= endYear; year++) {
+            databaseExists = false;
+
+            if (!this.openForYear(year, databaseExists)) {
+                ArrayResize(fromPoints, 0);
+
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+            }
+
+            if (!databaseExists) {
+                continue;
+            }
+
+            anyDatabaseExists = true;
+            int currentPointCount = ArraySize(fromPoints);
+            int remainingPointCount = (
+                fromMaximumPointCount - currentPointCount
+            );
+            CurrencyStrengthAllRankPoint yearPoints[];
+
+            if (!this.findAllRankPointsInActiveDatabase(
+                fromStartM5BarTime,
+                fromEndM5BarTime,
+                fromCalculationVersion,
+                fromSourceMode,
+                fromSourceServer,
+                fromSourceLogin,
+                remainingPointCount,
+                yearPoints
+            )) {
+                ArrayResize(fromPoints, 0);
+
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+            }
+
+            if (ArraySize(yearPoints) > remainingPointCount) {
+                this.logPointLimitExceeded(
+                    fromStartM5BarTime,
+                    fromEndM5BarTime,
+                    fromMaximumPointCount
+                );
+                ArrayResize(fromPoints, 0);
+
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+            }
+
+            if (!this.appendAllRankPoints(fromPoints, yearPoints)) {
+                ArrayResize(fromPoints, 0);
+
+                return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+            }
+        }
+
+        if (ArraySize(fromPoints) > 0) {
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND;
+        }
+
+        if (anyDatabaseExists) {
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_RECORD_NOT_FOUND;
+        }
+
+        return CURRENCY_STRENGTH_PAIR_RANK_QUERY_DATABASE_NOT_FOUND;
+    }
+
+    /**
+     * 指定期間の全8通貨順位をLIVE優先で時刻昇順に取得する。
+     *
+     * 同じM5バー時刻にLIVEとTESTERの両方がある場合はLIVEの
+     * スナップショット全体を採用し、LIVEがない時刻だけTESTERで補完する。
+     *
+     * @param fromStartM5BarTime 検索開始となるM5バー時刻。
+     * @param fromEndM5BarTime 検索終了となるM5バー時刻。
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceServer 集計元の取引サーバー名。
+     * @param fromSourceLogin 集計元の口座ログイン番号。
+     * @param fromMaximumPointCount 取得を許可する最大件数。
+     * @param fromPoints 取得結果の格納先。
+     * @return 順位検索の結果状態。
+     */
+    ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS findAllRankPointsInRangePreferLive(
+        const datetime fromStartM5BarTime,
+        const datetime fromEndM5BarTime,
+        const string fromCalculationVersion,
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const int fromMaximumPointCount,
+        CurrencyStrengthAllRankPoint &fromPoints[]
+    ) {
+        ArrayResize(fromPoints, 0);
+        CurrencyStrengthAllRankPoint livePoints[];
+        ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS liveStatus =
+            this.findAllRankPointsInRange(
+                fromStartM5BarTime,
+                fromEndM5BarTime,
+                fromCalculationVersion,
+                CurrencyStrengthCalculationProfile::getSourceMode(false),
+                fromSourceServer,
+                fromSourceLogin,
+                fromMaximumPointCount,
+                livePoints
+            );
+
+        if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
+            return liveStatus;
+        }
+
+        CurrencyStrengthAllRankPoint testerPoints[];
+        ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS testerStatus =
+            this.findAllRankPointsInRange(
+                fromStartM5BarTime,
+                fromEndM5BarTime,
+                fromCalculationVersion,
+                CurrencyStrengthCalculationProfile::getSourceMode(true),
+                fromSourceServer,
+                fromSourceLogin,
+                fromMaximumPointCount,
+                testerPoints
+            );
+
+        if (testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR) {
+            return testerStatus;
+        }
+
+        if (!this.mergeAllRankPointsPreferLive(
+            livePoints,
+            testerPoints,
+            fromStartM5BarTime,
+            fromEndM5BarTime,
+            fromMaximumPointCount,
+            fromPoints
+        )) {
+            ArrayResize(fromPoints, 0);
+
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
+        }
+
+        if (ArraySize(fromPoints) > 0) {
+            return CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND;
+        }
+
+        return this.combineNotFoundStatuses(liveStatus, testerStatus);
     }
 
     /**
@@ -597,6 +836,100 @@ private:
     }
 
     /**
+     * LIVEとTESTERの全通貨時系列順位をM5バー時刻単位で統合する。
+     *
+     * 同一時刻ではLIVEのスナップショット全体を採用する。
+     *
+     * @param fromLivePoints LIVE順位配列。
+     * @param fromTesterPoints TESTER順位配列。
+     * @param fromStartM5BarTime 検索開始となるM5バー時刻。
+     * @param fromEndM5BarTime 検索終了となるM5バー時刻。
+     * @param fromMaximumPointCount 取得を許可する最大件数。
+     * @param fromDestination 統合結果の格納先。
+     * @return 統合に成功した場合true。
+     */
+    bool mergeAllRankPointsPreferLive(
+        CurrencyStrengthAllRankPoint &fromLivePoints[],
+        CurrencyStrengthAllRankPoint &fromTesterPoints[],
+        const datetime fromStartM5BarTime,
+        const datetime fromEndM5BarTime,
+        const int fromMaximumPointCount,
+        CurrencyStrengthAllRankPoint &fromDestination[]
+    ) {
+        ArrayResize(fromDestination, 0);
+        int liveCount = ArraySize(fromLivePoints);
+        int testerCount = ArraySize(fromTesterPoints);
+        int maximumMergedCount = liveCount + testerCount;
+
+        if (maximumMergedCount == 0) {
+            return true;
+        }
+
+        if (ArrayResize(fromDestination, maximumMergedCount)
+                != maximumMergedCount) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "ArrayResize failed. requested=%d",
+                    maximumMergedCount
+                )
+            );
+
+            return false;
+        }
+
+        int liveIndex = 0;
+        int testerIndex = 0;
+        int mergedCount = 0;
+
+        while (liveIndex < liveCount || testerIndex < testerCount) {
+            if (mergedCount >= fromMaximumPointCount) {
+                this.logPointLimitExceeded(
+                    fromStartM5BarTime,
+                    fromEndM5BarTime,
+                    fromMaximumPointCount
+                );
+
+                return false;
+            }
+
+            if (liveIndex >= liveCount) {
+                fromDestination[mergedCount] = fromTesterPoints[testerIndex];
+                testerIndex++;
+            } else if (testerIndex >= testerCount) {
+                fromDestination[mergedCount] = fromLivePoints[liveIndex];
+                liveIndex++;
+            } else if (fromLivePoints[liveIndex].m5BarTime
+                    <= fromTesterPoints[testerIndex].m5BarTime) {
+                fromDestination[mergedCount] = fromLivePoints[liveIndex];
+
+                if (fromLivePoints[liveIndex].m5BarTime
+                        == fromTesterPoints[testerIndex].m5BarTime) {
+                    testerIndex++;
+                }
+
+                liveIndex++;
+            } else {
+                fromDestination[mergedCount] = fromTesterPoints[testerIndex];
+                testerIndex++;
+            }
+
+            mergedCount++;
+        }
+
+        if (ArrayResize(fromDestination, mergedCount) != mergedCount) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("ArrayResize failed. requested=%d", mergedCount)
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * LIVEとTESTERの時系列順位をM5バー時刻単位で統合する。
      *
      * @param fromLivePoints LIVE順位配列。
@@ -689,6 +1022,49 @@ private:
     }
 
     /**
+     * 現在開いているDBから指定期間の全8通貨順位を時刻昇順で取得する。
+     *
+     * @param fromStartM5BarTime 検索開始となるM5バー時刻。
+     * @param fromEndM5BarTime 検索終了となるM5バー時刻。
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceMode 集計実行モード。
+     * @param fromSourceServer 集計元の取引サーバー名。
+     * @param fromSourceLogin 集計元の口座ログイン番号。
+     * @param fromMaximumPointCount 呼び出し元が受け入れる最大件数。
+     * @param fromPoints 取得結果の格納先。
+     * @return 検索処理に成功した場合true。
+     */
+    bool findAllRankPointsInActiveDatabase(
+        const datetime fromStartM5BarTime,
+        const datetime fromEndM5BarTime,
+        const string fromCalculationVersion,
+        const string fromSourceMode,
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const int fromMaximumPointCount,
+        CurrencyStrengthAllRankPoint &fromPoints[]
+    ) {
+        ArrayResize(fromPoints, 0);
+
+        if (this.database == NULL || !this.database.isOpen()) {
+            return false;
+        }
+
+        CurrencyStrengthResultDao resultDao(this.database.getHandle());
+
+        return resultDao.findAllRankPointsInRange(
+            fromStartM5BarTime,
+            fromEndM5BarTime,
+            fromCalculationVersion,
+            fromSourceMode,
+            fromSourceServer,
+            fromSourceLogin,
+            fromMaximumPointCount,
+            fromPoints
+        );
+    }
+
+    /**
      * 現在開いているDBから指定期間の順位を時刻昇順で取得する。
      *
      * @param fromStartM5BarTime 検索開始となるM5バー時刻。
@@ -735,6 +1111,42 @@ private:
             fromMaximumPointCount,
             fromPoints
         );
+    }
+
+    /**
+     * 年別DBから取得した全通貨順位配列を結果配列の末尾へ追加する。
+     *
+     * @param fromDestination 追加先配列。
+     * @param fromSource 追加元配列。
+     * @return 追加に成功した場合true。
+     */
+    bool appendAllRankPoints(
+        CurrencyStrengthAllRankPoint &fromDestination[],
+        CurrencyStrengthAllRankPoint &fromSource[]
+    ) {
+        int destinationCount = ArraySize(fromDestination);
+        int sourceCount = ArraySize(fromSource);
+
+        if (sourceCount == 0) {
+            return true;
+        }
+
+        int totalCount = destinationCount + sourceCount;
+
+        if (ArrayResize(fromDestination, totalCount) != totalCount) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("ArrayResize failed. requested=%d", totalCount)
+            );
+
+            return false;
+        }
+
+        for (int i = 0; i < sourceCount; i++) {
+            fromDestination[destinationCount + i] = fromSource[i];
+        }
+
+        return true;
     }
 
     /**

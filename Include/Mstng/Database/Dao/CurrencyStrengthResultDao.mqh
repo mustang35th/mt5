@@ -11,6 +11,7 @@
 
 #include <Mstng\Database\Entity\CurrencyStrengthResultEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Strength\CurrencyStrengthAllRankPoint.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankInfo.mqh>
@@ -518,6 +519,224 @@ public:
             }
 
             fromRanks[rankIndex] = rankInfo;
+        }
+    }
+
+    /**
+     * 指定期間の完全集計から全8通貨の順位を時刻昇順で取得する。
+     *
+     * 1集計を1つのスナップショットへ集約し、8通貨すべてが存在する
+     * 完全集計だけを取得する。上限超過を呼び出し元で検知できるように、
+     * 対象スナップショットが多い場合はfromMaximumPointCountより1件多く取得する。
+     *
+     * @param fromStartM5BarTime 検索開始となるM5バー時刻。
+     * @param fromEndM5BarTime 検索終了となるM5バー時刻。
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @param fromSourceMode 集計実行モード。
+     * @param fromSourceServer 集計元の取引サーバー名。
+     * @param fromSourceLogin 集計元の口座ログイン番号。
+     * @param fromMaximumPointCount 呼び出し元が受け入れる最大件数。
+     * @param fromPoints 取得結果の格納先。
+     * @return 検索処理に成功した場合true。
+     */
+    bool findAllRankPointsInRange(
+        const datetime fromStartM5BarTime,
+        const datetime fromEndM5BarTime,
+        const string fromCalculationVersion,
+        const string fromSourceMode,
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const int fromMaximumPointCount,
+        CurrencyStrengthAllRankPoint &fromPoints[]
+    ) {
+        ArrayResize(fromPoints, 0);
+
+        if (!this.isDatabaseReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (fromStartM5BarTime <= 0
+                || fromEndM5BarTime < fromStartM5BarTime
+                || fromCalculationVersion == ""
+                || fromSourceMode == ""
+                || fromMaximumPointCount < 0) {
+            this.logger.error(__FUNCTION__, "search condition is invalid.");
+
+            return false;
+        }
+
+        string sql = "SELECT ";
+        sql += "runs.id, runs.m5_bar_time, runs.updated_at,";
+        sql += " runs.source_mode,";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'USD'";
+        sql += " THEN rank_result.long_medium_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'USD'";
+        sql += " THEN rank_result.medium_short_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'JPY'";
+        sql += " THEN rank_result.long_medium_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'JPY'";
+        sql += " THEN rank_result.medium_short_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'EUR'";
+        sql += " THEN rank_result.long_medium_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'EUR'";
+        sql += " THEN rank_result.medium_short_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'GBP'";
+        sql += " THEN rank_result.long_medium_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'GBP'";
+        sql += " THEN rank_result.medium_short_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'AUD'";
+        sql += " THEN rank_result.long_medium_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'AUD'";
+        sql += " THEN rank_result.medium_short_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'NZD'";
+        sql += " THEN rank_result.long_medium_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'NZD'";
+        sql += " THEN rank_result.medium_short_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'CAD'";
+        sql += " THEN rank_result.long_medium_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'CAD'";
+        sql += " THEN rank_result.medium_short_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'CHF'";
+        sql += " THEN rank_result.long_medium_term_average_rank ELSE 0 END),";
+        sql += " MAX(CASE WHEN rank_result.currency_name = 'CHF'";
+        sql += " THEN rank_result.medium_short_term_average_rank ELSE 0 END) ";
+        sql += "FROM currency_strength_runs runs ";
+        sql += "INNER JOIN currency_strength_results rank_result ";
+        sql += "ON rank_result.run_id = runs.id ";
+        sql += "AND rank_result.currency_name IN ";
+        sql += "('USD', 'JPY', 'EUR', 'GBP', 'AUD', 'NZD', 'CAD', 'CHF') ";
+        sql += "WHERE runs.m5_bar_time >= ?1 ";
+        sql += "AND runs.m5_bar_time <= ?2 ";
+        sql += "AND runs.m5_bar_time > 0 ";
+        sql += "AND runs.calculation_version = ?3 ";
+        sql += "AND runs.source_mode = ?4 ";
+        sql += "AND runs.source_server = ?5 ";
+        sql += "AND runs.source_login = ?6 ";
+        sql += "AND runs.is_complete = 1 ";
+        sql += "GROUP BY runs.id, runs.m5_bar_time,";
+        sql += " runs.updated_at, runs.source_mode ";
+        sql += "HAVING COUNT(DISTINCT rank_result.currency_name) = 8 ";
+        sql += "ORDER BY runs.m5_bar_time ASC LIMIT ?7";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        int readLimit = fromMaximumPointCount + 1;
+        ResetLastError();
+        bool isBound = DatabaseBind(
+            requestHandle,
+            0,
+            fromStartM5BarTime
+        );
+
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 1, fromEndM5BarTime);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                2,
+                fromCalculationVersion
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 3, fromSourceMode);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 4, fromSourceServer);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 5, fromSourceLogin);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 6, readLimit);
+        }
+
+        if (!isBound) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        while (true) {
+            CurrencyStrengthAllRankPoint point;
+            point.reset();
+            ResetLastError();
+            bool isRead = DatabaseReadBind(requestHandle, point);
+            int readErrorCode = GetLastError();
+
+            if (!isRead) {
+                DatabaseFinalize(requestHandle);
+
+                if (readErrorCode == ERR_DATABASE_NO_MORE_DATA) {
+                    return true;
+                }
+
+                ArrayResize(fromPoints, 0);
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "DatabaseReadBind failed. error=%d",
+                        readErrorCode
+                    )
+                );
+
+                return false;
+            }
+
+            if (!point.isValid()) {
+                DatabaseFinalize(requestHandle);
+                ArrayResize(fromPoints, 0);
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "currency rank point is invalid. runId=%I64d m5=%s",
+                        point.runId,
+                        TimeToString(
+                            point.m5BarTime,
+                            TIME_DATE | TIME_MINUTES
+                        )
+                    )
+                );
+
+                return false;
+            }
+
+            int pointIndex = ArraySize(fromPoints);
+
+            if (ArrayResize(
+                fromPoints,
+                pointIndex + 1,
+                readLimit
+            ) != pointIndex + 1) {
+                DatabaseFinalize(requestHandle);
+                ArrayResize(fromPoints, 0);
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "ArrayResize failed. requested=%d",
+                        pointIndex + 1
+                    )
+                );
+
+                return false;
+            }
+
+            fromPoints[pointIndex] = point;
         }
     }
 
