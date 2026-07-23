@@ -130,8 +130,8 @@ protected:
         ) {
             this.isEntry = true;
 
-            if (this.elliotCurrent.marketContext.timeFrame == PERIOD_M5
-                    || this.elliotCurrent.marketContext.timeFrame == PERIOD_M1) {
+            if (/*this.elliotCurrent.marketContext.timeFrame == PERIOD_M5
+                    ||*/ this.elliotCurrent.marketContext.timeFrame == PERIOD_M1) {
                 this.isSendMail = true;
             }
         }
