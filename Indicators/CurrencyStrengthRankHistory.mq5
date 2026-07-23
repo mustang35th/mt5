@@ -7,9 +7,9 @@
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property indicator_separate_window
-#property indicator_buffers 4
-#property indicator_plots   4
-#property indicator_minimum -8.5
+#property indicator_buffers 6
+#property indicator_plots   5
+#property indicator_minimum -9.5
 #property indicator_maximum -0.5
 #property indicator_level1  -1.0
 #property indicator_level2  -2.0
@@ -41,11 +41,16 @@
 #property indicator_label4  "Quote Actual Rank"
 #property indicator_type4   DRAW_NONE
 
+#property indicator_label5  "Rank Signal"
+#property indicator_type5   DRAW_COLOR_LINE
+#property indicator_color5  clrAqua, clrHotPink, clrDimGray
+#property indicator_style5  STYLE_SOLID
+#property indicator_width5  5
+
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthLatestRankLabels.mqh>
-#include <Mstng\Draw\DrawCurrencyStrengthRankAlignmentLabel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankPeriodLabel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankSignalLabel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankSourceLabel.mqh>
@@ -65,6 +70,22 @@ enum CurrencyStrengthRankPeriod {
     CURRENCY_STRENGTH_RANK_PERIOD_MEDIUM_SHORT = 1
 };
 
+/**
+ * 選択期間の通貨強弱順位による売買方向。
+ *
+ * 値は履歴リボンの色番号として使用する。
+ */
+enum CurrencyStrengthRankSignal {
+    /** 基軸通貨の順位が上の場合。 */
+    CURRENCY_STRENGTH_RANK_SIGNAL_BUY = 0,
+
+    /** 決済通貨の順位が上の場合。 */
+    CURRENCY_STRENGTH_RANK_SIGNAL_SELL = 1,
+
+    /** 基軸通貨と決済通貨が同順位の場合。 */
+    CURRENCY_STRENGTH_RANK_SIGNAL_NON = 2
+};
+
 input CurrencyStrengthRankPeriod rankPeriod =
     CURRENCY_STRENGTH_RANK_PERIOD_LONG_MEDIUM;
 input int historyDays = 30;
@@ -80,11 +101,12 @@ double gBaseDisplayRankBuffer[];
 double gQuoteDisplayRankBuffer[];
 double gBaseActualRankBuffer[];
 double gQuoteActualRankBuffer[];
+double gRankSignalDisplayBuffer[];
+double gRankSignalColorBuffer[];
 
 Logger gLogger;
 CurrencyStrengthYearlyRankQueryService *gRankQueryService = NULL;
 DrawCurrencyStrengthLatestRankLabels *gLatestRankLabelsDraw = NULL;
-DrawCurrencyStrengthRankAlignmentLabel *gRankAlignmentLabelDraw = NULL;
 DrawCurrencyStrengthRankPeriodLabel *gRankPeriodLabelDraw = NULL;
 DrawCurrencyStrengthRankSignalLabel *gRankSignalLabelDraw = NULL;
 DrawCurrencyStrengthRankSourceLabel *gRankSourceLabelDraw = NULL;
@@ -99,6 +121,7 @@ ulong gLastQueryTickCount = 0;
 bool gRankPointCacheReady = false;
 bool gRankPeriodLabelReady = false;
 bool gRankLabelObjectsPrepared = false;
+const double rankSignalDisplayPosition = -9.0;
 
 /**
  * インジケータを初期化する。
@@ -218,31 +241,12 @@ int OnInit() {
         return INIT_FAILED;
     }
 
-    gRankAlignmentLabelDraw = new DrawCurrencyStrengthRankAlignmentLabel(
-        ChartID(),
-        drawObjectSuffix
-    );
-
-    if (gRankAlignmentLabelDraw == NULL) {
-        delete gLatestRankLabelsDraw;
-        gLatestRankLabelsDraw = NULL;
-        delete gRankPeriodLabelDraw;
-        gRankPeriodLabelDraw = NULL;
-        gRankQueryService.close();
-        delete gRankQueryService;
-        gRankQueryService = NULL;
-
-        return INIT_FAILED;
-    }
-
     gRankSignalLabelDraw = new DrawCurrencyStrengthRankSignalLabel(
         ChartID(),
         drawObjectSuffix
     );
 
     if (gRankSignalLabelDraw == NULL) {
-        delete gRankAlignmentLabelDraw;
-        gRankAlignmentLabelDraw = NULL;
         delete gLatestRankLabelsDraw;
         gLatestRankLabelsDraw = NULL;
         delete gRankPeriodLabelDraw;
@@ -262,8 +266,6 @@ int OnInit() {
     if (gRankSourceLabelDraw == NULL) {
         delete gRankSignalLabelDraw;
         gRankSignalLabelDraw = NULL;
-        delete gRankAlignmentLabelDraw;
-        gRankAlignmentLabelDraw = NULL;
         delete gLatestRankLabelsDraw;
         gLatestRankLabelsDraw = NULL;
         delete gRankPeriodLabelDraw;
@@ -305,11 +307,6 @@ void OnDeinit(const int reason) {
     if (gLatestRankLabelsDraw != NULL) {
         delete gLatestRankLabelsDraw;
         gLatestRankLabelsDraw = NULL;
-    }
-
-    if (gRankAlignmentLabelDraw != NULL) {
-        delete gRankAlignmentLabelDraw;
-        gRankAlignmentLabelDraw = NULL;
     }
 
     if (gRankPeriodLabelDraw != NULL) {
@@ -462,7 +459,8 @@ void OnChartEvent(
 }
 
 /**
- * 2本の表示バッファと2本の実順位バッファを初期化する。
+ * 2本の表示バッファ、2本の実順位バッファおよび
+ * 選択期間の履歴シグナルバッファを初期化する。
  *
  * @return 初期化に成功した場合true。
  */
@@ -499,12 +497,30 @@ bool initializeBuffers() {
         return false;
     }
 
+    if (!SetIndexBuffer(
+        4,
+        gRankSignalDisplayBuffer,
+        INDICATOR_DATA
+    )) {
+        return false;
+    }
+
+    if (!SetIndexBuffer(
+        5,
+        gRankSignalColorBuffer,
+        INDICATOR_COLOR_INDEX
+    )) {
+        return false;
+    }
+
     ArraySetAsSeries(gBaseDisplayRankBuffer, true);
     ArraySetAsSeries(gQuoteDisplayRankBuffer, true);
     ArraySetAsSeries(gBaseActualRankBuffer, true);
     ArraySetAsSeries(gQuoteActualRankBuffer, true);
+    ArraySetAsSeries(gRankSignalDisplayBuffer, true);
+    ArraySetAsSeries(gRankSignalColorBuffer, true);
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         PlotIndexSetDouble(i, PLOT_EMPTY_VALUE, EMPTY_VALUE);
     }
 
@@ -512,6 +528,7 @@ bool initializeBuffers() {
     PlotIndexSetInteger(1, PLOT_SHOW_DATA, false);
     PlotIndexSetInteger(2, PLOT_SHOW_DATA, true);
     PlotIndexSetInteger(3, PLOT_SHOW_DATA, true);
+    PlotIndexSetInteger(4, PLOT_SHOW_DATA, false);
 
     return true;
 }
@@ -543,6 +560,11 @@ void configurePlots() {
         3,
         PLOT_LABEL,
         gQuoteCurrency + " " + rankPeriodLabel + " Rank"
+    );
+    PlotIndexSetString(
+        4,
+        PLOT_LABEL,
+        rankPeriodLabel + " Signal"
     );
 
     PlotIndexSetInteger(0, PLOT_LINE_COLOR, baseColor);
@@ -707,7 +729,6 @@ void drawLatestRankLabels(
     if (ArraySize(gRankPoints) == 0) {
         gLatestRankLabelsDraw.clear();
         drawRankSignalLabel(subWindow, 0, 0);
-        drawRankAlignmentLabel(subWindow, 0, 0, 0, 0);
         drawRankSourceLabel(subWindow, "");
 
         return;
@@ -727,7 +748,6 @@ void drawLatestRankLabels(
     if (latestBufferIndex < 0) {
         gLatestRankLabelsDraw.clear();
         drawRankSignalLabel(subWindow, 0, 0);
-        drawRankAlignmentLabel(subWindow, 0, 0, 0, 0);
         drawRankSourceLabel(subWindow, "");
 
         return;
@@ -745,16 +765,8 @@ void drawLatestRankLabels(
 
     if (pointIndex >= 0) {
         CurrencyStrengthPairRankPoint point = gRankPoints[pointIndex];
-        drawRankAlignmentLabel(
-            subWindow,
-            point.baseLongMediumTermAverageRank,
-            point.quoteLongMediumTermAverageRank,
-            point.baseMediumShortTermAverageRank,
-            point.quoteMediumShortTermAverageRank
-        );
         drawRankSourceLabel(subWindow, point.sourceMode);
     } else {
-        drawRankAlignmentLabel(subWindow, 0, 0, 0, 0);
         drawRankSourceLabel(subWindow, "");
     }
 
@@ -819,11 +831,17 @@ void drawRankSignalLabel(
             && fromQuoteRank >= 1
             && fromQuoteRank <= 8) {
         int rankDifference = fromQuoteRank - fromBaseRank;
+        CurrencyStrengthRankSignal rankSignal = getRankSignal(
+            fromBaseRank,
+            fromQuoteRank
+        );
+        signalText = "NON";
+        signalColor = clrDimGray;
 
-        if (rankDifference > 0) {
+        if (rankSignal == CURRENCY_STRENGTH_RANK_SIGNAL_BUY) {
             signalText = StringFormat("BUY +%d", rankDifference);
             signalColor = clrAqua;
-        } else if (rankDifference < 0) {
+        } else if (rankSignal == CURRENCY_STRENGTH_RANK_SIGNAL_SELL) {
             signalText = StringFormat("SELL %d", rankDifference);
             signalColor = clrHotPink;
         }
@@ -835,64 +853,6 @@ void drawRankSignalLabel(
         signalColor
     )) {
         gLogger.error(__FUNCTION__, "rank signal label draw failed");
-    }
-}
-
-/**
- * 長中期と中短期の順位方向一致状態を描画する。
- *
- * @param fromSubWindow 描画対象サブウィンドウ番号。
- * @param fromBaseLongMediumRank 基軸通貨の長中期順位。
- * @param fromQuoteLongMediumRank 決済通貨の長中期順位。
- * @param fromBaseMediumShortRank 基軸通貨の中短期順位。
- * @param fromQuoteMediumShortRank 決済通貨の中短期順位。
- */
-void drawRankAlignmentLabel(
-    const int fromSubWindow,
-    const int fromBaseLongMediumRank,
-    const int fromQuoteLongMediumRank,
-    const int fromBaseMediumShortRank,
-    const int fromQuoteMediumShortRank
-) {
-    if (gRankAlignmentLabelDraw == NULL) {
-        return;
-    }
-
-    string alignmentText = "-";
-    color alignmentColor = clrSilver;
-
-    if (fromBaseLongMediumRank >= 1
-            && fromBaseLongMediumRank <= 8
-            && fromQuoteLongMediumRank >= 1
-            && fromQuoteLongMediumRank <= 8
-            && fromBaseMediumShortRank >= 1
-            && fromBaseMediumShortRank <= 8
-            && fromQuoteMediumShortRank >= 1
-            && fromQuoteMediumShortRank <= 8) {
-        int longMediumDifference =
-            fromQuoteLongMediumRank - fromBaseLongMediumRank;
-        int mediumShortDifference =
-            fromQuoteMediumShortRank - fromBaseMediumShortRank;
-
-        if (longMediumDifference > 0 && mediumShortDifference > 0) {
-            alignmentText = "STRONG BUY";
-            alignmentColor = clrAqua;
-        } else if (longMediumDifference < 0
-                && mediumShortDifference < 0) {
-            alignmentText = "STRONG SELL";
-            alignmentColor = clrHotPink;
-        } else {
-            alignmentText = "MIXED";
-            alignmentColor = clrGold;
-        }
-    }
-
-    if (!gRankAlignmentLabelDraw.draw(
-        fromSubWindow,
-        alignmentText,
-        alignmentColor
-    )) {
-        gLogger.error(__FUNCTION__, "rank alignment label draw failed");
     }
 }
 
@@ -1380,6 +1340,8 @@ void fillAllBuffers(
     ArrayInitialize(gQuoteDisplayRankBuffer, EMPTY_VALUE);
     ArrayInitialize(gBaseActualRankBuffer, EMPTY_VALUE);
     ArrayInitialize(gQuoteActualRankBuffer, EMPTY_VALUE);
+    ArrayInitialize(gRankSignalDisplayBuffer, EMPTY_VALUE);
+    ArrayInitialize(gRankSignalColorBuffer, EMPTY_VALUE);
 
     for (int i = 0; i < fromRatesTotal; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
@@ -1516,10 +1478,24 @@ void setBufferValues(
         quoteRank = point.quoteMediumShortTermAverageRank;
     }
 
+    if (baseRank < 1
+            || baseRank > 8
+            || quoteRank < 1
+            || quoteRank > 8) {
+        clearBufferValues(fromBufferIndex);
+
+        return;
+    }
+
     gBaseDisplayRankBuffer[fromBufferIndex] = getDisplayRankValue(baseRank);
     gQuoteDisplayRankBuffer[fromBufferIndex] = getDisplayRankValue(quoteRank);
     gBaseActualRankBuffer[fromBufferIndex] = getActualRankValue(baseRank);
     gQuoteActualRankBuffer[fromBufferIndex] = getActualRankValue(quoteRank);
+    gRankSignalDisplayBuffer[fromBufferIndex] = rankSignalDisplayPosition;
+    gRankSignalColorBuffer[fromBufferIndex] = (double)getRankSignal(
+        baseRank,
+        quoteRank
+    );
 }
 
 /**
@@ -1530,6 +1506,8 @@ void clearBufferValues(const int fromBufferIndex) {
     gQuoteDisplayRankBuffer[fromBufferIndex] = EMPTY_VALUE;
     gBaseActualRankBuffer[fromBufferIndex] = EMPTY_VALUE;
     gQuoteActualRankBuffer[fromBufferIndex] = EMPTY_VALUE;
+    gRankSignalDisplayBuffer[fromBufferIndex] = EMPTY_VALUE;
+    gRankSignalColorBuffer[fromBufferIndex] = EMPTY_VALUE;
 }
 
 /**
@@ -1558,6 +1536,30 @@ int findRankPointIndex(const datetime fromM5BarTime) {
     }
 
     return -1;
+}
+
+/**
+ * 選択期間の基軸通貨と決済通貨の順位から売買方向を取得する。
+ *
+ * @param fromBaseRank 基軸通貨の順位。
+ * @param fromQuoteRank 決済通貨の順位。
+ * @return BUY、SELLまたはNON。
+ */
+CurrencyStrengthRankSignal getRankSignal(
+    const int fromBaseRank,
+    const int fromQuoteRank
+) {
+    int rankDifference = fromQuoteRank - fromBaseRank;
+
+    if (rankDifference > 0) {
+        return CURRENCY_STRENGTH_RANK_SIGNAL_BUY;
+    }
+
+    if (rankDifference < 0) {
+        return CURRENCY_STRENGTH_RANK_SIGNAL_SELL;
+    }
+
+    return CURRENCY_STRENGTH_RANK_SIGNAL_NON;
 }
 
 /**
