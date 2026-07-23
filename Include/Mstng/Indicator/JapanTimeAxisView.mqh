@@ -23,7 +23,10 @@ public:
      */
     JapanTimeAxisView() {
         MarketContext context(_Symbol, (ENUM_TIMEFRAMES)_Period);
-        this.initialize(context);
+        this.initialize(
+            context,
+            Constant::PREFIX_FIXED + "JapanTimeAxis"
+        );
     }
 
     /**
@@ -32,7 +35,23 @@ public:
      * @param fromMarketContext 表示対象の市場コンテキスト
      */
     JapanTimeAxisView(MarketContext &fromMarketContext) {
-        this.initialize(fromMarketContext);
+        this.initialize(
+            fromMarketContext,
+            Constant::PREFIX_FIXED + "JapanTimeAxis"
+        );
+    }
+
+    /**
+     * 市場コンテキストとオブジェクト接頭辞を指定して初期化する。
+     *
+     * @param fromMarketContext 表示対象の市場コンテキスト
+     * @param fromObjectPrefix オブジェクト名を分離する接頭辞
+     */
+    JapanTimeAxisView(
+        MarketContext &fromMarketContext,
+        const string fromObjectPrefix
+    ) {
+        this.initialize(fromMarketContext, fromObjectPrefix);
     }
 
     /**
@@ -55,7 +74,21 @@ public:
      * 表示を更新する。
      */
     void update() {
+        this.updateTimeAxis();
+        this.updateRemainingTime();
+    }
+
+    /**
+     * 日本時間の目安と縦線を更新する。
+     */
+    void updateTimeAxis() {
         this.drawTimeLabels();
+    }
+
+    /**
+     * 現在足の残り時間を更新する。
+     */
+    void updateRemainingTime() {
         this.updateRemainingTimeLabel();
     }
 
@@ -169,13 +202,25 @@ private:
      * 初期化する。
      *
      * @param fromMarketContext 表示対象の市場コンテキスト
+     * @param fromObjectPrefix オブジェクト名を分離する接頭辞
      */
-    void initialize(MarketContext &fromMarketContext) {
+    void initialize(
+        MarketContext &fromMarketContext,
+        const string fromObjectPrefix
+    ) {
         this.marketContext = fromMarketContext;
         this.chartId = 0;
-        this.timeLabelPrefix = Constant::PREFIX_FIXED + "JapanTimeAxisTime";
-        this.verticalLinePrefix = Constant::PREFIX_FIXED + "JapanTimeAxisLine";
-        this.remainingObjectName = Constant::PREFIX_FIXED + "JapanTimeAxisRemaining";
+        string objectPrefix = fromObjectPrefix;
+        StringTrimLeft(objectPrefix);
+        StringTrimRight(objectPrefix);
+
+        if (objectPrefix == "") {
+            objectPrefix = Constant::PREFIX_FIXED + "JapanTimeAxis";
+        }
+
+        this.timeLabelPrefix = objectPrefix + "Time";
+        this.verticalLinePrefix = objectPrefix + "Line";
+        this.remainingObjectName = objectPrefix + "Remaining";
         this.fontFace = "Meiryo UI";
         this.timeLabelFontSize = 8;
         this.remainingFontSize = 9;
