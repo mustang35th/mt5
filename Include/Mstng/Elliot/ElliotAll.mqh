@@ -315,6 +315,41 @@ public:
         
         return true;
     }
+
+    /**
+     * H4またはH1と現在足の売買方向が一致し、現在足からM15まで一致するか判定する。
+     *
+     * @return H4またはH1が現在足と一致し、現在足からM15まで一致する場合true
+     */
+    bool isBuySellH4OrH1AndM15() {
+        if (this.elliotCurrent == NULL) {
+            return false;
+        }
+
+        ENUM_TIMEFRAMES currentTimeFrame = this.elliotCurrent.marketContext.timeFrame;
+
+        if (currentTimeFrame != PERIOD_M1
+                && currentTimeFrame != PERIOD_M5
+                && currentTimeFrame != PERIOD_M15) {
+            return false;
+        }
+
+        Elliot *elliotH4 = this.getElliot(PERIOD_H4);
+        Elliot *elliotH1 = this.getElliot(PERIOD_H1);
+
+        if (elliotH4 == NULL || elliotH1 == NULL) {
+            return false;
+        }
+
+        bool isHigherAligned = this.elliotCurrent.isBuy == elliotH4.isBuy
+            || this.elliotCurrent.isBuy == elliotH1.isBuy;
+
+        if (!isHigherAligned) {
+            return false;
+        }
+
+        return this.isBuySell(PERIOD_M15);
+    }
     
     /**
      * 現在時間足から指定上位足までOscillator値が±3で一致するか判定する。
