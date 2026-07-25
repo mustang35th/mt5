@@ -8,6 +8,7 @@
 
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
+#include <Mstng\Mail\MailValidationFileWriter.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 
 /**
@@ -32,6 +33,19 @@ public:
             Print(__FUNCTION__, " title = ", title);
             Print(__FUNCTION__, " body = ", body);
         //}
+
+        if (fromElliotAll.isMailValidationFileEnabled) {
+            MailValidationFileWriter::write(
+                fromElliotAll.tradeTimeInfo.jstTime,
+                fromElliotAll.tradeTimeInfo.serverTime,
+                fromElliotAll.marketContext.symbolName,
+                fromElliotAll.marketContext.timeFrame,
+                fromElliotAll.isTimer,
+                isSendMail,
+                title,
+                body
+            );
+        }
         
         if (isSendMail) {
             if (fromElliotAll.isTimer) {

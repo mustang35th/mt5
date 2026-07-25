@@ -78,6 +78,9 @@ public:
     /** 分析結果メールを送信する場合true。 */
     bool isSendMail;
 
+    /** Mail内容を検証用ファイルへ出力する場合true。 */
+    bool isMailValidationFileEnabled;
+
     /** 分析結果メールの件名。 */
     string mailTitile;
     
@@ -453,6 +456,7 @@ private:
         this.isTimer = false;
         this.isAnalysisSucceeded = false;
         this.isSendMail = false;
+        this.isMailValidationFileEnabled = false;
         this.elliotCurrent = NULL;
         this.oscillatorHandlePool = NULL;
         this.timeFrameInfoAll = NULL;

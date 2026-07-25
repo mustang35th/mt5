@@ -30,6 +30,9 @@
 #include <Mstng\Util\UtilAll.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
+/** Mail内容を検証用ファイルへ出力する場合true。 */
+input bool mailValidationFileEnabled = true;
+
 input bool currencyStrengthEnabled = true;
 input bool currencyStrengthRankVisible = true;
 input int currencyStrengthRankPanelXDistance = 48;
@@ -753,6 +756,7 @@ void setElliotAll() {
     g_elliotAll = new ElliotAll(g_marketContext);
     
     g_elliotAll.isTimer = g_isTimer;
+    g_elliotAll.isMailValidationFileEnabled = mailValidationFileEnabled;
     g_elliotAll.isCurrencyStrengthEntryFilterEnabled =
         currencyStrengthEnabled;
     g_elliotAll.setOscillatorHandlePool(g_oscillatorHandlePool);
