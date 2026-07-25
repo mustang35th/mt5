@@ -119,6 +119,8 @@ input int subPanelHeight = 180;
 input bool highlightChartCurrencies = true;
 input CurrencyStrengthRankDatabaseProfile databaseProfile =
     CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;
+input CurrencyStrengthVoteWeightMode voteWeightMode =
+    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
 input string databaseFileName = "mstng-currency-strength.sqlite";
 input bool databaseSplitByYear = true;
 input bool databaseUseCommonFolder = true;
@@ -175,7 +177,10 @@ int OnInit() {
     if (historyDays < 1
             || historyDays > 366
             || refreshSeconds < 1
-            || subPanelHeight < 0) {
+            || subPanelHeight < 0
+            || !CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
+                voteWeightMode
+            )) {
         return INIT_PARAMETERS_INCORRECT;
     }
 
@@ -210,7 +215,8 @@ int OnInit() {
     bool useTesterProfile = usesTesterDatabaseProfile(isTester);
     gCalculationVersion =
         CurrencyStrengthCalculationProfile::getCalculationVersion(
-            useTesterProfile
+            useTesterProfile,
+            voteWeightMode
         );
 
     if (usesLiveThenTesterDatabaseProfile()) {
@@ -543,8 +549,11 @@ void configurePlots() {
     IndicatorSetString(
         INDICATOR_SHORTNAME,
         StringFormat(
-            "Currency Strength All Rank %s %s -1=Top (%d days)",
+            "Currency Strength All Rank %s %s %s -1=Top (%d days)",
             gSourceMode,
+            CurrencyStrengthCalculationProfile::getVoteWeightModeText(
+                voteWeightMode
+            ),
             rankPeriodLabel,
             historyDays
         )
@@ -683,9 +692,15 @@ bool drawRankPeriodLabel() {
         return false;
     }
 
+    string labelText = getRankPeriodDisplayLabel()
+        + " / "
+        + CurrencyStrengthCalculationProfile::getVoteWeightModeText(
+            voteWeightMode
+        );
+
     return gRankPeriodLabelDraw.draw(
         subWindow,
-        getRankPeriodDisplayLabel()
+        labelText
     );
 }
 

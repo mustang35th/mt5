@@ -44,7 +44,10 @@ struct CurrencyStrengthPairVote {
     /** 判定元のオシレーター値。 */
     int oscillatorCount;
 
-    /** 基軸通貨へ加算した票。 */
+    /** 票ウェイト。 */
+    int voteWeight;
+
+    /** 基軸通貨へ加算した加重票。 */
     int baseScore;
 
     /** 票反映後の基軸通貨時間足別スコア。 */

@@ -132,6 +132,7 @@ void initializePairVoteEntity(
     fromEntity.isBuy = 0;
     fromEntity.oscillatorCount = -2;
     fromEntity.baseScore = -1;
+    fromEntity.voteWeight = 1;
 
     if (fromIsBuy) {
         fromEntity.isBuy = 1;
@@ -287,6 +288,112 @@ bool readRecordCount(
                 fromTableName,
                 columnErrorCode
             )
+        );
+
+        return false;
+    }
+
+    DatabaseFinalize(requestHandle);
+
+    return true;
+}
+
+/**
+ * 加重Runの先頭票に対応するContribution件数を取得する。
+ *
+ * USDJPYのBUY票について、BASE=+2、QUOTE=-2、ウェイト2の一致件数と
+ * 先頭票のContribution全件数を取得する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromRunId 集計ID。
+ * @param fromBaseMatchCount BASE行の一致件数格納先。
+ * @param fromQuoteMatchCount QUOTE行の一致件数格納先。
+ * @param fromRecordCount 先頭票のContribution件数格納先。
+ * @param fromLogger ロガー。
+ * @return 件数を取得できた場合true。
+ */
+bool readWeightedContributionCounts(
+    const int fromDatabaseHandle,
+    const long fromRunId,
+    long &fromBaseMatchCount,
+    long &fromQuoteMatchCount,
+    long &fromRecordCount,
+    Logger &fromLogger
+) {
+    string sql = "SELECT COUNT(*),";
+    sql += "SUM(CASE WHEN currency_side = 'BASE' ";
+    sql += "AND score = 2 AND vote_weight = 2 THEN 1 ELSE 0 END),";
+    sql += "SUM(CASE WHEN currency_side = 'QUOTE' ";
+    sql += "AND score = -2 AND vote_weight = 2 THEN 1 ELSE 0 END) ";
+    sql += "FROM currency_strength_contributions ";
+    sql += "WHERE run_id = ?1 AND pair_order = 0 AND time_frame_order = 0";
+
+    ResetLastError();
+    int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
+
+    if (requestHandle == INVALID_HANDLE) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseBind(requestHandle, 0, fromRunId)) {
+        int bindErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseRead(requestHandle)) {
+        int readErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+    bool isRead = DatabaseColumnLong(
+        requestHandle,
+        0,
+        fromRecordCount
+    );
+
+    if (isRead) {
+        isRead = DatabaseColumnLong(
+            requestHandle,
+            1,
+            fromBaseMatchCount
+        );
+    }
+    if (isRead) {
+        isRead = DatabaseColumnLong(
+            requestHandle,
+            2,
+            fromQuoteMatchCount
+        );
+    }
+
+    if (!isRead) {
+        int columnErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseColumnLong failed. error=%d", columnErrorCode)
         );
 
         return false;
@@ -960,7 +1067,7 @@ bool verifyNewDatabaseColumnOrders(
         return false;
     }
 
-    string voteColumnNames[19];
+    string voteColumnNames[20];
     voteColumnNames[0] = "id";
     voteColumnNames[1] = "run_id";
     voteColumnNames[2] = "canonical_symbol_name";
@@ -975,11 +1082,12 @@ bool verifyNewDatabaseColumnOrders(
     voteColumnNames[11] = "oscillator_count";
     voteColumnNames[12] = "base_currency";
     voteColumnNames[13] = "base_score";
-    voteColumnNames[14] = "base_score_after";
-    voteColumnNames[15] = "quote_currency";
-    voteColumnNames[16] = "quote_score_after";
-    voteColumnNames[17] = "updated_at";
-    voteColumnNames[18] = "updated_at_text";
+    voteColumnNames[14] = "vote_weight";
+    voteColumnNames[15] = "base_score_after";
+    voteColumnNames[16] = "quote_currency";
+    voteColumnNames[17] = "quote_score_after";
+    voteColumnNames[18] = "updated_at";
+    voteColumnNames[19] = "updated_at_text";
 
     if (!verifyColumnOrder(
         fromDatabaseHandle,
@@ -1032,7 +1140,7 @@ bool verifyNewDatabaseColumnOrders(
         return false;
     }
 
-    string contributionColumnNames[22];
+    string contributionColumnNames[23];
     contributionColumnNames[0] = "run_id";
     contributionColumnNames[1] = "m5_bar_time";
     contributionColumnNames[2] = "m5_bar_time_text";
@@ -1040,21 +1148,22 @@ bool verifyNewDatabaseColumnOrders(
     contributionColumnNames[4] = "currency_name";
     contributionColumnNames[5] = "currency_side";
     contributionColumnNames[6] = "score";
-    contributionColumnNames[7] = "score_after";
-    contributionColumnNames[8] = "canonical_symbol_name";
-    contributionColumnNames[9] = "resolved_symbol_name";
-    contributionColumnNames[10] = "time_frame";
-    contributionColumnNames[11] = "time_frame_text";
-    contributionColumnNames[12] = "bar_time";
-    contributionColumnNames[13] = "bar_time_text";
-    contributionColumnNames[14] = "is_buy";
-    contributionColumnNames[15] = "oscillator_count";
-    contributionColumnNames[16] = "pair_order";
-    contributionColumnNames[17] = "time_frame_order";
-    contributionColumnNames[18] = "vote_id";
-    contributionColumnNames[19] = "calculated_at";
-    contributionColumnNames[20] = "updated_at";
-    contributionColumnNames[21] = "updated_at_text";
+    contributionColumnNames[7] = "vote_weight";
+    contributionColumnNames[8] = "score_after";
+    contributionColumnNames[9] = "canonical_symbol_name";
+    contributionColumnNames[10] = "resolved_symbol_name";
+    contributionColumnNames[11] = "time_frame";
+    contributionColumnNames[12] = "time_frame_text";
+    contributionColumnNames[13] = "bar_time";
+    contributionColumnNames[14] = "bar_time_text";
+    contributionColumnNames[15] = "is_buy";
+    contributionColumnNames[16] = "oscillator_count";
+    contributionColumnNames[17] = "pair_order";
+    contributionColumnNames[18] = "time_frame_order";
+    contributionColumnNames[19] = "vote_id";
+    contributionColumnNames[20] = "calculated_at";
+    contributionColumnNames[21] = "updated_at";
+    contributionColumnNames[22] = "updated_at_text";
 
     return verifyColumnOrder(
         fromDatabaseHandle,
@@ -1729,17 +1838,194 @@ void OnStart() {
         return;
     }
 
+    CurrencyStrengthRunEntity weightedRunEntity;
+    initializeRunEntity(
+        secondCalculatedAt + 1,
+        m5BarTime,
+        weightedRunEntity
+    );
+    weightedRunEntity.calculationVersion =
+        "pair-direction-weighted-closed-v1-smoke-test";
+    CurrencyStrengthPairVoteEntity weightedVoteEntities[];
+    ArrayResize(weightedVoteEntities, 7);
+    initializePairVoteEntity(
+        0,
+        PERIOD_MN1,
+        true,
+        m5BarTime,
+        weightedVoteEntities[0]
+    );
+    initializePairVoteEntity(
+        1,
+        PERIOD_W1,
+        true,
+        m5BarTime,
+        weightedVoteEntities[1]
+    );
+    initializePairVoteEntity(
+        2,
+        PERIOD_D1,
+        true,
+        m5BarTime,
+        weightedVoteEntities[2]
+    );
+    initializePairVoteEntity(
+        3,
+        PERIOD_H4,
+        true,
+        m5BarTime,
+        weightedVoteEntities[3]
+    );
+    initializePairVoteEntity(
+        4,
+        PERIOD_H1,
+        false,
+        m5BarTime,
+        weightedVoteEntities[4]
+    );
+    initializePairVoteEntity(
+        5,
+        PERIOD_M15,
+        true,
+        m5BarTime,
+        weightedVoteEntities[5]
+    );
+    initializePairVoteEntity(
+        6,
+        PERIOD_M5,
+        false,
+        m5BarTime,
+        weightedVoteEntities[6]
+    );
+
+    for (int i = 0; i < ArraySize(weightedVoteEntities); i++) {
+        weightedVoteEntities[i].voteWeight = 2;
+        weightedVoteEntities[i].oscillatorCount = -3;
+
+        if (weightedVoteEntities[i].isBuy == 1) {
+            weightedVoteEntities[i].oscillatorCount = 3;
+        }
+
+        weightedVoteEntities[i].baseScoreAfter =
+            weightedVoteEntities[i].baseScore * 2;
+        weightedVoteEntities[i].quoteScoreAfter =
+            0 - weightedVoteEntities[i].baseScoreAfter;
+    }
+
+    CurrencyStrengthResultEntity weightedResultEntities[];
+    ArrayResize(weightedResultEntities, 2);
+    initializeResultEntity("USD", 2, weightedResultEntities[0]);
+    initializeResultEntity("JPY", -2, weightedResultEntities[1]);
+
+    if (!persistenceService.saveSnapshot(
+        weightedRunEntity,
+        weightedVoteEntities,
+        weightedResultEntities
+    )) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength database smoke test failed at weighted save."
+        );
+        database.close();
+
+        return;
+    }
+
+    long uniformCoexistenceRunCount = 0;
+    long weightedCoexistenceRunCount = 0;
+    long weightedContributionCount = 0;
+    long weightedBaseMatchCount = 0;
+    long weightedQuoteMatchCount = 0;
+    bool isWeightedVerified = readSnapshotRunCount(
+        database.getHandle(),
+        m5BarTime,
+        runEntity.calculationVersion,
+        runEntity.sourceMode,
+        runEntity.sourceServer,
+        runEntity.sourceLogin,
+        uniformCoexistenceRunCount,
+        logger
+    );
+
+    if (isWeightedVerified) {
+        isWeightedVerified = readSnapshotRunCount(
+            database.getHandle(),
+            weightedRunEntity.m5BarTime,
+            weightedRunEntity.calculationVersion,
+            weightedRunEntity.sourceMode,
+            weightedRunEntity.sourceServer,
+            weightedRunEntity.sourceLogin,
+            weightedCoexistenceRunCount,
+            logger
+        );
+    }
+
+    if (isWeightedVerified) {
+        isWeightedVerified = readWeightedContributionCounts(
+            database.getHandle(),
+            weightedRunEntity.id,
+            weightedBaseMatchCount,
+            weightedQuoteMatchCount,
+            weightedContributionCount,
+            logger
+        );
+    }
+
+    if (isWeightedVerified) {
+        isWeightedVerified = readRecordCount(
+            database.getHandle(),
+            "currency_strength_runs",
+            "",
+            0,
+            finalTotalRunCount,
+            logger
+        );
+    }
+
+    if (!isWeightedVerified
+            || weightedRunEntity.id <= 0
+            || weightedRunEntity.id == sameM5RunId
+            || weightedRunEntity.id == runEntity.id
+            || weightedRunEntity.m5BarTime != m5BarTime
+            || uniformCoexistenceRunCount != 1
+            || weightedCoexistenceRunCount != 1
+            || weightedContributionCount != 2
+            || weightedBaseMatchCount != 1
+            || weightedQuoteMatchCount != 1
+            || (recreateDatabaseObjects && finalTotalRunCount != 3)) {
+        logger.error(
+            __FUNCTION__,
+            StringFormat(
+                "Currency strength weighted verification failed. uniformRunId=%I64d weightedRunId=%I64d nextM5RunId=%I64d uniformRuns=%I64d weightedRuns=%I64d contributions=%I64d baseMatches=%I64d quoteMatches=%I64d totalRuns=%I64d",
+                sameM5RunId,
+                weightedRunEntity.id,
+                runEntity.id,
+                uniformCoexistenceRunCount,
+                weightedCoexistenceRunCount,
+                weightedContributionCount,
+                weightedBaseMatchCount,
+                weightedQuoteMatchCount,
+                finalTotalRunCount
+            )
+        );
+        database.close();
+
+        return;
+    }
+
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Currency strength database smoke test passed. fileName=%s runId=%I64d saves=3 totalRuns=%I64d nextM5SnapshotRuns=%I64d votes=%I64d results=%I64d contributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s averages=5 ranks=5",
+            "Currency strength database smoke test passed. fileName=%s runId=%I64d weightedRunId=%I64d saves=4 totalRuns=%I64d nextM5SnapshotRuns=%I64d votes=%I64d results=%I64d contributions=%I64d weightedContributions=%I64d timeFrameText=%s barTimeText=%s updatedAtText=%s averages=5 ranks=5",
             database.getFileName(),
             runEntity.id,
+            weightedRunEntity.id,
             finalTotalRunCount,
             nextM5SnapshotRunCount,
             voteCount,
             resultCount,
             contributionCount,
+            weightedContributionCount,
             timeFrameText,
             barTimeText,
             runEntity.updatedAtText

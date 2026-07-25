@@ -39,6 +39,8 @@ input bool showEntryCandidates = true;
 input int entryCandidateMaxCount = 10;
 input int entryCandidateMinRankDifference = 2;
 input CurrencyStrengthSortType sortType = CURRENCY_STRENGTH_SORT_TOTAL;
+input CurrencyStrengthVoteWeightMode voteWeightMode =
+    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
 input bool databaseEnabled = true;
 input string databaseFileName = "mstng-currency-strength.sqlite";
 input bool databaseSplitByYear = true;
@@ -46,7 +48,7 @@ input bool databaseUseCommonFolder = true;
 input bool databaseSaveEveryRefresh = false;
 input bool databaseSavePartialRuns = false;
 input datetime databaseSaveStartTime = D'2026.07.16 00:00';
-input int databaseRetentionDays = 30;
+input int databaseRetentionDays = 0;
 
 /** テスター診断ログを約1日ごとに出力するM5足数。 */
 const int testerDiagnosticLogIntervalBars = 288;
@@ -97,6 +99,9 @@ int OnInit() {
 
     if (refreshSeconds < 1
             || databaseRetentionDays < 0
+            || !CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
+                voteWeightMode
+            )
             || (showEntryCandidates
                 && (entryCandidateMaxCount < 1
                     || entryCandidateMaxCount > 28
@@ -119,7 +124,14 @@ int OnInit() {
         return INIT_FAILED;
     }
 
-    IndicatorSetString(INDICATOR_SHORTNAME, "Elliot Currency Strength");
+    string voteWeightModeText =
+        CurrencyStrengthCalculationProfile::getVoteWeightModeText(
+            voteWeightMode
+        );
+    IndicatorSetString(
+        INDICATOR_SHORTNAME,
+        "Elliot Currency Strength " + voteWeightModeText
+    );
 
     MarketContext context(_Symbol, PERIOD_M15);
     gLogger.setLevel(LOG_INFO);
@@ -129,10 +141,13 @@ int OnInit() {
         0,
         panelXDistance,
         panelYDistance,
-        sortType
+        sortType,
+        voteWeightModeText
     );
     gOscillatorHandleManager = new OscillatorHandleManager(PERIOD_M15);
-    gCurrencyStrengthCalculator = new CurrencyStrengthCalculator();
+    gCurrencyStrengthCalculator = new CurrencyStrengthCalculator(
+        voteWeightMode
+    );
 
     if (showEntryCandidates) {
         gDrawCurrencyStrengthEntryCandidateList =
@@ -140,7 +155,8 @@ int OnInit() {
                 0,
                 panelXDistance + entryCandidatePanelXOffset,
                 panelYDistance,
-                entryCandidateMaxCount
+                entryCandidateMaxCount,
+                voteWeightModeText
             );
         gCurrencyStrengthEntryCandidateList =
             new CurrencyStrengthEntryCandidateList();
@@ -627,7 +643,8 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     if (saveDatabase) {
         string activeCalculationVersion =
             CurrencyStrengthCalculationProfile::getCalculationVersion(
-                isTester
+                isTester,
+                voteWeightMode
             );
         string sourceMode = CurrencyStrengthCalculationProfile::getSourceMode(
             isTester

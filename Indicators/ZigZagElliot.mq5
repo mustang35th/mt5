@@ -23,6 +23,7 @@
 #include <Mstng\Indicator\GmmaIndicator.mqh>
 #include <Mstng\Indicator\JapanTimeAxisView.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankQueryMode.mqh>
@@ -35,6 +36,8 @@ input int currencyStrengthRankPanelXDistance = 48;
 input int currencyStrengthRefreshSeconds = 15;
 input CurrencyStrengthRankDatabaseProfile currencyStrengthDatabaseProfile =
     CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;
+input CurrencyStrengthVoteWeightMode currencyStrengthVoteWeightMode =
+    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
 input string currencyStrengthDatabaseFileName = "mstng-currency-strength.sqlite";
 input bool currencyStrengthDatabaseSplitByYear = true;
 input bool currencyStrengthDatabaseUseCommonFolder = true;
@@ -116,6 +119,18 @@ int OnInit() {
     
     LogUtil::printMethodStart(g_logger, __FUNCTION__);
     g_logger.debug(__FUNCTION__, StringFormat("g_isTimer = %s", (string)g_isTimer));
+
+    if (currencyStrengthEnabled
+            && !CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
+                currencyStrengthVoteWeightMode
+            )) {
+        g_logger.error(
+            __FUNCTION__,
+            "currency strength vote weight mode is invalid."
+        );
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
 
     SymbolSelect(g_marketContext.symbolName, true);    // シンボル未選択（MarketWatch未登録）対策
 
@@ -535,7 +550,8 @@ void setCurrencyStrengthPairRank() {
             currencyStrengthDatabaseUseCommonFolder,
             currencyStrengthDatabaseProfile,
             CURRENCY_STRENGTH_RANK_QUERY_MODE_LATEST_AT_OR_BEFORE,
-            currencyStrengthRefreshSeconds
+            currencyStrengthRefreshSeconds,
+            currencyStrengthVoteWeightMode
         );
 
     if (gCurrencyStrengthExecutionInfoProvider == NULL) {

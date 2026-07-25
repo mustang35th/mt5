@@ -28,15 +28,22 @@ public:
      * @param fromXDistance チャート左端からの距離。
      * @param fromYDistance チャート上端からの距離。
      * @param fromSortType 並び替え基準。
+     * @param fromInstanceKey 同一チャート内のインスタンス識別子。
      */
     DrawCurrencyStrengthList(
         long fromChartId = 0,
         int fromXDistance = 12,
         int fromYDistance = 12,
-        CurrencyStrengthSortType fromSortType = CURRENCY_STRENGTH_SORT_TOTAL
+        CurrencyStrengthSortType fromSortType = CURRENCY_STRENGTH_SORT_TOTAL,
+        string fromInstanceKey = ""
     ) {
         this.chartId = fromChartId;
         string baseObjectPrefix = Constant::PREFIX_FIXED + "CurrencyStrengthList_";
+
+        if (fromInstanceKey != "") {
+            baseObjectPrefix += fromInstanceKey + "_";
+        }
+
         int instanceIndex = 0;
         this.objectPrefix = baseObjectPrefix + IntegerToString(instanceIndex) + "_";
 
@@ -772,7 +779,8 @@ private:
     void updateTitle(CurrencyStrengthCalculator *fromCalculator) {
         datetime japanTime = TimeJapanUtil::getJapanTime(TimeCurrent());
         string titleText = StringFormat(
-            "Elliot Currency Strength  JST %s  %d/%d  %s",
+            "Elliot Currency Strength  %s  JST %s  %d/%d  %s",
+            fromCalculator.getVoteWeightModeText(),
             this.formatTitleTime(japanTime),
             fromCalculator.validPairCount,
             fromCalculator.getExpectedPairCount(),

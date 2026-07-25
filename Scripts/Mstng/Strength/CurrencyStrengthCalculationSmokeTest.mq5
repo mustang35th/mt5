@@ -32,6 +32,10 @@ input int retryIntervalMilliseconds = 1000;
 /** 1票ごとの詳細を出力する場合true。 */
 input bool printVoteDetails = false;
 
+/** 検証する票重み付け方式。 */
+input CurrencyStrengthVoteWeightMode voteWeightMode =
+    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
+
 /** 実判定結果をデータベースへ保存する場合true。 */
 input bool databaseEnabled = true;
 
@@ -68,6 +72,73 @@ string getDirectionText(const bool fromIsBuy) {
     }
 
     return "SELL";
+}
+
+/**
+ * 現行方式と加重方式の票ウェイト定義を検証する。
+ *
+ * @param fromLogger ロガー。
+ * @return 全定義が期待値どおりの場合true。
+ */
+bool validateVoteWeightProfiles(Logger &fromLogger) {
+    int oscillatorCounts[4];
+    oscillatorCounts[0] = 3;
+    oscillatorCounts[1] = 2;
+    oscillatorCounts[2] = -2;
+    oscillatorCounts[3] = -3;
+    int expectedUniformWeights[4];
+    expectedUniformWeights[0] = 1;
+    expectedUniformWeights[1] = 1;
+    expectedUniformWeights[2] = 1;
+    expectedUniformWeights[3] = 1;
+    int expectedWeightedWeights[4];
+    expectedWeightedWeights[0] = 2;
+    expectedWeightedWeights[1] = 1;
+    expectedWeightedWeights[2] = 1;
+    expectedWeightedWeights[3] = 2;
+
+    for (int i = 0; i < 4; i++) {
+        int uniformWeight = CurrencyStrengthCalculationProfile::getVoteWeight(
+            CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM,
+            oscillatorCounts[i]
+        );
+        int weightedWeight = CurrencyStrengthCalculationProfile::getVoteWeight(
+            CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED,
+            oscillatorCounts[i]
+        );
+
+        if (uniformWeight != expectedUniformWeights[i]
+                || weightedWeight != expectedWeightedWeights[i]) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "vote weight mismatch. oscillatorCount=%d uniform=%d/%d weighted=%d/%d",
+                    oscillatorCounts[i],
+                    uniformWeight,
+                    expectedUniformWeights[i],
+                    weightedWeight,
+                    expectedWeightedWeights[i]
+                )
+            );
+
+            return false;
+        }
+    }
+
+    if (CurrencyStrengthCalculationProfile::getCalculationVersion(
+            false,
+            CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
+        ) != "pair-direction-closed-v1"
+            || CurrencyStrengthCalculationProfile::getCalculationVersion(
+                false,
+                CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED
+            ) != "pair-direction-weighted-closed-v1") {
+        fromLogger.error(__FUNCTION__, "calculation version mismatch.");
+
+        return false;
+    }
+
+    return true;
 }
 
 /**
@@ -581,20 +652,29 @@ bool validatePairVotes(
             }
         }
 
-        int expectedBaseScore = -1;
+        int expectedVoteWeight =
+            CurrencyStrengthCalculationProfile::getVoteWeight(
+                fromCalculator.getVoteWeightMode(),
+                pairVote.oscillatorCount
+            );
+        int expectedBaseScore = 0 - expectedVoteWeight;
 
         if (pairVote.isBuy) {
-            expectedBaseScore = 1;
+            expectedBaseScore = expectedVoteWeight;
         }
 
-        if (pairVote.baseScore != expectedBaseScore) {
+        if (pairVote.voteWeight != expectedVoteWeight
+                || pairVote.baseScore != expectedBaseScore) {
             fromLogger.error(
                 __FUNCTION__,
                 StringFormat(
-                    "base score mismatch. voteIndex=%d isBuy=%s baseScore=%d",
+                    "base score mismatch. voteIndex=%d isBuy=%s weight=%d/%d baseScore=%d/%d",
                     i,
                     getBooleanText(pairVote.isBuy),
-                    pairVote.baseScore
+                    pairVote.voteWeight,
+                    expectedVoteWeight,
+                    pairVote.baseScore,
+                    expectedBaseScore
                 )
             );
             isValid = false;
@@ -1102,7 +1182,10 @@ bool saveDatabaseSnapshot(
     bool isSaved = persistenceService.save(
         calculatedAt,
         fromM5BarTime,
-        CurrencyStrengthCalculationProfile::getCalculationVersion(false),
+        CurrencyStrengthCalculationProfile::getCalculationVersion(
+            false,
+            fromCalculator.getVoteWeightMode()
+        ),
         "LIVE",
         AccountInfoString(ACCOUNT_SERVER),
         AccountInfoInteger(ACCOUNT_LOGIN),
@@ -1145,7 +1228,11 @@ void OnStart() {
         return;
     }
 
-    if (timeoutSeconds <= 0 || retryIntervalMilliseconds <= 0) {
+    if (timeoutSeconds <= 0
+            || retryIntervalMilliseconds <= 0
+            || !CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
+                voteWeightMode
+            )) {
         logger.error(
             __FUNCTION__,
             StringFormat(
@@ -1153,6 +1240,15 @@ void OnStart() {
                 timeoutSeconds,
                 retryIntervalMilliseconds
             )
+        );
+
+        return;
+    }
+
+    if (!validateVoteWeightProfiles(logger)) {
+        logger.error(
+            __FUNCTION__,
+            "Currency strength calculation smoke test FAILED: vote profiles."
         );
 
         return;
@@ -1184,13 +1280,16 @@ void OnStart() {
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Currency strength calculation smoke test started. closed bars before m5BarTime=%s.",
+            "Currency strength calculation smoke test started. mode=%s closed bars before m5BarTime=%s.",
+            CurrencyStrengthCalculationProfile::getVoteWeightModeText(
+                voteWeightMode
+            ),
             TimeToString(m5BarTime, TIME_DATE | TIME_SECONDS)
         )
     );
 
     OscillatorHandleManager oscillatorHandleManager(PERIOD_M15);
-    CurrencyStrengthCalculator calculator;
+    CurrencyStrengthCalculator calculator(voteWeightMode);
 
     if (calculator.getLongTermAverageRank(0) != 0
             || calculator.getMediumTermAverageRank(0) != 0

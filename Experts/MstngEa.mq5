@@ -13,6 +13,7 @@
 #include <Mstng\Database\Service\CurrencyStrengthExecutionInfoProvider.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <MstngEa\App\EaContext.mqh>
 #include <MstngEa\App\EaController.mqh>
 #include <MstngEa\App\StrategyFactory.mqh>
@@ -65,6 +66,10 @@ input bool InpCurrencyStrengthDatabaseUseCommonFolder = true;
 /** 通貨強弱DB再取得間隔秒 */
 input int InpCurrencyStrengthRefreshSeconds = 15;
 
+/** 通貨強弱票重み付け方式 */
+input CurrencyStrengthVoteWeightMode InpCurrencyStrengthVoteWeightMode =
+    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
+
 /** シンボル名 */
 string g_symbolName;
 
@@ -107,6 +112,15 @@ int OnInit() {
 
     if (InpUseCurrencyStrength && InpCurrencyStrengthRefreshSeconds < 0) {
         Print("MstngEa currency strength refresh seconds must be zero or greater");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if (InpUseCurrencyStrength
+            && !CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
+                InpCurrencyStrengthVoteWeightMode
+            )) {
+        Print("MstngEa currency strength vote weight mode is invalid");
 
         return INIT_PARAMETERS_INCORRECT;
     }
@@ -164,7 +178,8 @@ int OnInit() {
                 InpCurrencyStrengthDatabaseUseCommonFolder,
                 InpCurrencyStrengthDatabaseProfile,
                 CURRENCY_STRENGTH_RANK_QUERY_MODE_EXACT,
-                InpCurrencyStrengthRefreshSeconds
+                InpCurrencyStrengthRefreshSeconds,
+                InpCurrencyStrengthVoteWeightMode
             );
 
         if (g_currencyStrengthExecutionInfoProvider == NULL) {

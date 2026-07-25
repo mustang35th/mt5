@@ -18,6 +18,7 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\Oscillator.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairVote.mqh>
 #include <Mstng\Util\StringUtil.mqh>
@@ -33,12 +34,25 @@ public:
 
     /**
      * 主要8通貨を登録して初期化する。
+     *
+     * @param fromVoteWeightMode 票の重み付け方式。
      */
-    CurrencyStrengthCalculator() {
+    CurrencyStrengthCalculator(
+        const CurrencyStrengthVoteWeightMode fromVoteWeightMode =
+            CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
+    ) {
         this.logger.setLevel(LOG_INFO);
         this.validPairCount = 0;
         this.lastCalculationFatalError = false;
         this.lastPreparationFailureReason = "";
+        this.voteWeightMode = fromVoteWeightMode;
+
+        if (!CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
+            this.voteWeightMode
+        )) {
+            this.voteWeightMode = CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
+        }
+
         int symbolCount = this.symbolNameInfoAll.size();
         ArrayResize(
             this.resolvedSymbolNames,
@@ -67,7 +81,7 @@ public:
     }
 
     /**
-     * MN1、W1、D1、H4、H1、M15、M5の売買方向を各1票として通貨強弱を集計する。
+     * MN1、W1、D1、H4、H1、M15、M5の売買方向を選択方式の票で集計する。
      *
      * 1通貨ペア内の全時間足を取得できた場合だけ票へ反映する。
      *
@@ -221,6 +235,7 @@ public:
             }
 
             int pairScores[7];
+            int pairVoteWeights[7];
             bool pairIsBuyList[7];
             int pairOscillatorCounts[7];
             bool isPairValid = true;
@@ -248,12 +263,18 @@ public:
                     break;
                 }
 
-                pairScores[j] = -1;
+                int voteWeight =
+                    CurrencyStrengthCalculationProfile::getVoteWeight(
+                        this.voteWeightMode,
+                        oscillator.oscillatorCount
+                    );
+                pairScores[j] = 0 - voteWeight;
 
                 if (oscillator.isBuy) {
-                    pairScores[j] = 1;
+                    pairScores[j] = voteWeight;
                 }
 
+                pairVoteWeights[j] = voteWeight;
                 pairIsBuyList[j] = oscillator.isBuy;
                 pairOscillatorCounts[j] = oscillator.oscillatorCount;
             }
@@ -290,6 +311,7 @@ public:
                 pairVote.quoteCurrency = profitCurrency;
                 pairVote.isBuy = pairIsBuyList[j];
                 pairVote.oscillatorCount = pairOscillatorCounts[j];
+                pairVote.voteWeight = pairVoteWeights[j];
                 pairVote.baseScore = pairScores[j];
                 pairVote.baseScoreAfter = (int)baseInfo.getScore(j);
                 pairVote.quoteScoreAfter = (int)profitInfo.getScore(j);
@@ -493,6 +515,26 @@ public:
     }
 
     /**
+     * 使用中の票重み付け方式を取得する。
+     *
+     * @return 票重み付け方式。
+     */
+    CurrencyStrengthVoteWeightMode getVoteWeightMode() {
+        return this.voteWeightMode;
+    }
+
+    /**
+     * 使用中の票重み付け方式を表示文字列で取得する。
+     *
+     * @return UNIFORMまたはWEIGHTED。
+     */
+    string getVoteWeightModeText() {
+        return CurrencyStrengthCalculationProfile::getVoteWeightModeText(
+            this.voteWeightMode
+        );
+    }
+
+    /**
      * 最も強い通貨を取得する。
      *
      * @return 最強通貨。取得できない場合NULL。
@@ -601,6 +643,9 @@ private:
 
     /** 今回の集計へ反映した通貨強弱票一覧。 */
     CurrencyStrengthPairVote pairVotes[];
+
+    /** 票の重み付け方式。 */
+    CurrencyStrengthVoteWeightMode voteWeightMode;
 
     /**
      * 指定通貨の期間別平均スコア順位を取得する。

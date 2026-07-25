@@ -26,16 +26,26 @@ public:
      * @param fromXDistance チャート左端からの距離。
      * @param fromYDistance チャート上端からの距離。
      * @param fromMaximumCount 最大表示件数。
+     * @param fromInstanceKey 同一チャート内のインスタンス識別子。
      */
     DrawCurrencyStrengthEntryCandidateList(
         const long fromChartId,
         const int fromXDistance,
         const int fromYDistance,
-        const int fromMaximumCount
+        const int fromMaximumCount,
+        const string fromInstanceKey = ""
     ) {
         this.chartId = fromChartId;
         string baseObjectPrefix = Constant::PREFIX_FIXED
             + "CurrencyStrengthEntryCandidateList_";
+
+        if (fromInstanceKey != "") {
+            baseObjectPrefix = Constant::PREFIX_FIXED
+                + "CurrencyStrengthEntry_"
+                + fromInstanceKey
+                + "_";
+        }
+
         int instanceIndex = 0;
         this.objectPrefix = baseObjectPrefix + IntegerToString(instanceIndex) + "_";
 

@@ -34,6 +34,7 @@ public:
      * @param fromDatabaseProfile 参照元DBプロファイル。
      * @param fromQueryMode 順位の検索方法。
      * @param fromRefreshSeconds ライブ実行中の同一M5バー再検索間隔秒。
+     * @param fromVoteWeightMode 参照する票重み付け方式。
      */
     CurrencyStrengthExecutionInfoProvider(
         const string fromBaseFileName,
@@ -41,14 +42,23 @@ public:
         const bool fromUseCommonFolder,
         const CurrencyStrengthRankDatabaseProfile fromDatabaseProfile,
         const CurrencyStrengthRankQueryMode fromQueryMode,
-        const int fromRefreshSeconds = 15
+        const int fromRefreshSeconds = 15,
+        const CurrencyStrengthVoteWeightMode fromVoteWeightMode =
+            CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
     ) {
         this.databaseProfile = fromDatabaseProfile;
         this.queryMode = fromQueryMode;
         this.refreshSeconds = fromRefreshSeconds;
+        this.voteWeightMode = fromVoteWeightMode;
 
         if (this.refreshSeconds < 0) {
             this.refreshSeconds = 0;
+        }
+
+        if (!CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
+            this.voteWeightMode
+        )) {
+            this.voteWeightMode = CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
         }
 
         this.queryService = new CurrencyStrengthYearlyRankQueryService(
@@ -100,7 +110,8 @@ public:
         bool runtimeTester = (bool)MQLInfoInteger(MQL_TESTER);
         fromInfo.calculationVersion =
             CurrencyStrengthCalculationProfile::getCalculationVersion(
-                runtimeTester
+                runtimeTester,
+                this.voteWeightMode
             );
 
         if (this.queryService == NULL
@@ -234,6 +245,9 @@ private:
 
     /** 順位の検索方法。 */
     CurrencyStrengthRankQueryMode queryMode;
+
+    /** 参照する票の重み付け方式。 */
+    CurrencyStrengthVoteWeightMode voteWeightMode;
 
     /** ライブ実行中の同一M5バー再検索間隔秒。 */
     int refreshSeconds;

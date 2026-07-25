@@ -52,6 +52,8 @@ public:
         sql += "oscillator_count INTEGER NOT NULL,";
         sql += "base_currency TEXT NOT NULL,";
         sql += "base_score INTEGER NOT NULL CHECK(base_score IN (-1, 1)),";
+        sql += "vote_weight INTEGER NOT NULL DEFAULT 1 ";
+        sql += "CHECK(vote_weight IN (1, 2)),";
         sql += "base_score_after INTEGER NOT NULL,";
         sql += "quote_currency TEXT NOT NULL,";
         sql += "quote_score_after INTEGER NOT NULL,";
@@ -75,6 +77,10 @@ public:
         }
 
         if (!this.migrateUpdatedAtColumns()) {
+            return false;
+        }
+
+        if (!this.migrateVoteWeight()) {
             return false;
         }
 
@@ -117,11 +123,11 @@ public:
         sql += "run_id, canonical_symbol_name, resolved_symbol_name, pair_order,";
         sql += " time_frame, time_frame_text, time_frame_order, bar_time,";
         sql += " bar_time_text, is_buy, oscillator_count, base_currency,";
-        sql += " base_score, base_score_after, quote_currency,";
+        sql += " base_score, vote_weight, base_score_after, quote_currency,";
         sql += " quote_score_after, updated_at, updated_at_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,";
-        sql += " ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18";
+        sql += " ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19";
         sql += ")";
 
         ResetLastError();
@@ -255,7 +261,8 @@ public:
         sql += "r.source_mode AS source_mode,";
         sql += "v.base_currency AS currency_name,";
         sql += "'BASE' AS currency_side,";
-        sql += "v.base_score AS score,";
+        sql += "(v.base_score * v.vote_weight) AS score,";
+        sql += "v.vote_weight AS vote_weight,";
         sql += "v.base_score_after AS score_after,";
         sql += "v.canonical_symbol_name AS canonical_symbol_name,";
         sql += "v.resolved_symbol_name AS resolved_symbol_name,";
@@ -280,7 +287,8 @@ public:
         sql += "r.source_mode AS source_mode,";
         sql += "v.quote_currency AS currency_name,";
         sql += "'QUOTE' AS currency_side,";
-        sql += "(0 - v.base_score) AS score,";
+        sql += "(0 - (v.base_score * v.vote_weight)) AS score,";
+        sql += "v.vote_weight AS vote_weight,";
         sql += "v.quote_score_after AS score_after,";
         sql += "v.canonical_symbol_name AS canonical_symbol_name,";
         sql += "v.resolved_symbol_name AS resolved_symbol_name,";
@@ -663,6 +671,32 @@ private:
     }
 
     /**
+     * 既存票へ既定ウェイト1を設定する列を追加する。
+     *
+     * @return 列の存在確認または追加に成功した場合true。
+     */
+    bool migrateVoteWeight() {
+        bool hasVoteWeight = false;
+
+        if (!this.hasColumn("vote_weight", hasVoteWeight)) {
+            return false;
+        }
+
+        if (hasVoteWeight) {
+            return true;
+        }
+
+        string sql = "ALTER TABLE currency_strength_pair_votes ";
+        sql += "ADD COLUMN vote_weight INTEGER NOT NULL DEFAULT 1 ";
+        sql += "CHECK(vote_weight IN (1, 2))";
+
+        return this.executeSql(
+            sql,
+            "currency strength pair vote weight column"
+        );
+    }
+
+    /**
      * 票内訳テーブルに指定列が存在するか確認する。
      *
      * @param fromColumnName 確認する列名。
@@ -815,33 +849,36 @@ private:
             isBound = DatabaseBind(fromRequestHandle, 12, fromEntity.baseScore);
         }
         if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, 13, fromEntity.voteWeight);
+        }
+        if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                13,
+                14,
                 fromEntity.baseScoreAfter
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                14,
+                15,
                 fromEntity.quoteCurrency
             );
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                15,
+                16,
                 fromEntity.quoteScoreAfter
             );
         }
         if (isBound) {
-            isBound = DatabaseBind(fromRequestHandle, 16, fromEntity.updatedAt);
+            isBound = DatabaseBind(fromRequestHandle, 17, fromEntity.updatedAt);
         }
         if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
-                17,
+                18,
                 fromEntity.updatedAtText
             );
         }

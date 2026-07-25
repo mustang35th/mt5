@@ -97,6 +97,7 @@ void initializePairVoteEntity(
     fromEntity.isBuy = 0;
     fromEntity.oscillatorCount = -2;
     fromEntity.baseScore = -1;
+    fromEntity.voteWeight = 1;
 
     if (fromIsBuy) {
         fromEntity.isBuy = 1;

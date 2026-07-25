@@ -54,10 +54,13 @@ struct CurrencyStrengthPairVoteEntity {
     /** 基軸通貨名。 */
     string baseCurrency;
 
-    /** 基軸通貨へ加算した票。 */
+    /** 基軸通貨の売買方向票。 */
     int baseScore;
 
-    /** 票反映後の基軸通貨累積値。 */
+    /** 売買方向票へ適用するウェイト。 */
+    int voteWeight;
+
+    /** 加重票反映後の基軸通貨累積値。 */
     int baseScoreAfter;
 
     /** 決済通貨名。 */

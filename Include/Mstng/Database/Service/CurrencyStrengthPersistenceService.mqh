@@ -16,6 +16,7 @@
 #include <Mstng\Database\Entity\CurrencyStrengthResultEntity.mqh>
 #include <Mstng\Database\Entity\CurrencyStrengthRunEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairVote.mqh>
@@ -117,6 +118,25 @@ public:
 
         if (fromCalculator == NULL) {
             this.logger.error(__FUNCTION__, "fromCalculator is NULL.");
+
+            return false;
+        }
+
+        string expectedCalculationVersion =
+            CurrencyStrengthCalculationProfile::getCalculationVersion(
+                false,
+                fromCalculator.getVoteWeightMode()
+            );
+
+        if (fromCalculationVersion != expectedCalculationVersion) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "calculation version mismatch. expected=%s actual=%s",
+                    expectedCalculationVersion,
+                    fromCalculationVersion
+                )
+            );
 
             return false;
         }
@@ -449,7 +469,30 @@ private:
             }
 
             fromEntities[i].oscillatorCount = pairVote.oscillatorCount;
-            fromEntities[i].baseScore = pairVote.baseScore;
+            fromEntities[i].voteWeight = pairVote.voteWeight;
+            fromEntities[i].baseScore = -1;
+
+            if (pairVote.isBuy) {
+                fromEntities[i].baseScore = 1;
+            }
+
+            if (pairVote.voteWeight < 1
+                    || pairVote.voteWeight > 2
+                    || pairVote.baseScore
+                        != fromEntities[i].baseScore * pairVote.voteWeight) {
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "invalid weighted pair vote. index=%d score=%d weight=%d",
+                        i,
+                        pairVote.baseScore,
+                        pairVote.voteWeight
+                    )
+                );
+
+                return false;
+            }
+
             fromEntities[i].baseScoreAfter = pairVote.baseScoreAfter;
             fromEntities[i].quoteScoreAfter = pairVote.quoteScoreAfter;
             fromEntities[i].updatedAt = 0;
