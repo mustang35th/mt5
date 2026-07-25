@@ -12,6 +12,7 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
 
@@ -25,10 +26,36 @@ public:
      *
      * @param fromChartId 描画対象チャートID。0の場合はカレント。
      * @param fromXDistance チャート右端からの距離。
+     * @param fromVoteWeightMode 通貨強弱の投票ウェイト方式。
      */
-    DrawCurrencyStrengthPairRank(long fromChartId = 0, int fromXDistance = 48) {
+    DrawCurrencyStrengthPairRank(
+        long fromChartId = 0,
+        int fromXDistance = 48,
+        CurrencyStrengthVoteWeightMode fromVoteWeightMode =
+            CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
+    ) {
         this.chartId = fromChartId;
-        this.objectPrefix = Constant::PREFIX_FIXED + "CurrencyStrengthPairRank_";
+        this.destroyLegacyObjects();
+
+        string baseObjectPrefix =
+            Constant::PREFIX_FIXED + "CurrencyStrengthPairRank";
+        int instanceIndex = 0;
+        this.objectPrefix =
+            baseObjectPrefix + IntegerToString(instanceIndex) + "_";
+
+        while (ObjectFind(
+                this.chartId,
+                this.objectPrefix + "SourceBadge"
+            ) >= 0) {
+            instanceIndex++;
+            this.objectPrefix =
+                baseObjectPrefix + IntegerToString(instanceIndex) + "_";
+        }
+
+        this.calculationModeText =
+            CurrencyStrengthCalculationProfile::getVoteWeightModeText(
+                fromVoteWeightMode
+            );
         this.created = false;
         this.hasRankData = false;
         this.lastExecutionInfo.reset();
@@ -87,6 +114,11 @@ public:
         int mediumShortDifference = fromInfo.getMediumShortRankDifference();
 
         this.updateSourceBadge(fromInfo.sourceMode);
+        this.setLabelText(
+            "ModeBadge",
+            this.calculationModeText,
+            this.headerColor
+        );
         this.updateDecision(longMediumDifference, mediumShortDifference);
         this.setLabelText(
             "LongMediumSignal",
@@ -169,6 +201,11 @@ public:
         }
 
         this.setLabelText("SourceBadge", "-", this.mutedColor);
+        this.setLabelText(
+            "ModeBadge",
+            this.calculationModeText,
+            this.headerColor
+        );
         this.setLabelText("Decision", "NO DATA", this.mutedColor);
         this.setLabelText("StateBadge", " ", this.mutedColor);
         this.setLabelText("LongMediumSignal", "-", this.mutedColor);
@@ -284,6 +321,11 @@ public:
             this.getM5BarTimeLeftOffset(),
             this.getM5BarTimeTopOffset()
         );
+        this.setLabelPosition(
+            "ModeBadge",
+            this.getModeBadgeLeftOffset(),
+            this.getM5BarTimeTopOffset()
+        );
         ChartRedraw(this.chartId);
     }
 
@@ -306,6 +348,9 @@ private:
 
     /** 順位パネル専用オブジェクト名プレフィックス。 */
     string objectPrefix;
+
+    /** 投票ウェイト方式の表示文字列。 */
+    string calculationModeText;
 
     /** パネル生成済みの場合true。 */
     bool created;
@@ -560,6 +605,19 @@ private:
             this.bodyFontSize,
             this.mutedColor,
             "M5 -"
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            "ModeBadge",
+            this.getModeBadgeLeftOffset(),
+            this.getM5BarTimeTopOffset(),
+            this.bodyFontSize - 3,
+            this.headerColor,
+            this.calculationModeText
         )) {
             this.destroyObjects();
 
@@ -990,6 +1048,15 @@ private:
     }
 
     /**
+     * 投票ウェイト方式のパネル左端からの位置を取得する。
+     *
+     * @return 投票ウェイト方式のX位置。
+     */
+    int getModeBadgeLeftOffset() {
+        return 174;
+    }
+
+    /**
      * 表示可能な通貨順位か判定する。
      *
      * @param fromRank 通貨順位。
@@ -1150,6 +1217,18 @@ private:
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
         this.hasRankData = false;
+    }
+
+    /**
+     * 旧版の共通プレフィックスで保存された順位パネルを削除する。
+     */
+    void destroyLegacyObjects() {
+        ObjectsDeleteAll(
+            this.chartId,
+            Constant::PREFIX_FIXED + "CurrencyStrengthPairRank_",
+            0,
+            -1
+        );
     }
 };
 

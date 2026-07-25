@@ -334,7 +334,7 @@ ON currency_strength_results(run_id, currency_name);
 | `databaseSavePartialRuns` | false | 28ペアすべて有効な場合だけ保存 |
 | `databaseSaveStartTime` | `2026.07.16 00:00` | TESTERのDB保存開始時刻。0はテスト開始時刻から保存 |
 | `databaseRetentionDays` | 0 | 自動削除を無効化 |
-| `voteWeightMode` | `UNIFORM` | 現行方式または加重方式の選択 |
+| `voteWeightMode` | `WEIGHTED` | 現行方式または加重方式の選択 |
 
 - 通常チャートでは`OnCalculate()`でM5バー時刻の変化を検出し、新規M5足の最初のティックで集計・保存を開始します。同じM5足の後続ティックでは再集計しません。タイマーは同じM5足の定期表示更新と、系列準備またはDB保存失敗時の再試行に使用します。
 - ストラテジーテスターではタイマーを使用せず、`OnCalculate()`で新しいM5足を検出して集計・保存します。未処理のM5足が複数ある場合は古い時刻から順に追いつき処理を行います。
@@ -810,7 +810,7 @@ DBは対象M5時刻の年別ファイルをREADONLYで開き、ファイル作�
 |---|---:|---|
 | `currencyStrengthRankVisible` | `true` | 順位パネルの表示有無 |
 | `currencyStrengthRankPanelXDistance` | `48` | チャート右端からの距離 |
-| `currencyStrengthVoteWeightMode` | `UNIFORM` | 参照する現行方式または加重方式 |
+| `currencyStrengthVoteWeightMode` | `WEIGHTED` | 参照する現行方式または加重方式 |
 | `currencyStrengthDatabaseFileName` | `mstng-currency-strength.sqlite` | 年付与前のDBファイル名 |
 | `currencyStrengthDatabaseSplitByYear` | `true` | 年別DBを使用する場合true |
 | `currencyStrengthDatabaseUseCommonFolder` | `true` | Commonフォルダを使用する場合true |
@@ -838,7 +838,7 @@ DBは対象M5時刻の年別ファイルをREADONLYで開き、ファイル作�
 | `refreshSeconds` | `15` | LIVEで同じM5足を再照会する間隔（秒） |
 | `subPanelHeight` | `120` | サブパネルの固定高さ（px）。0の場合は固定しない |
 | `databaseProfile` | `LIVE_THEN_TESTER` | LIVE優先・TESTER補完、または単一参照元の選択 |
-| `voteWeightMode` | `UNIFORM` | 参照する現行方式または加重方式 |
+| `voteWeightMode` | `WEIGHTED` | 参照する現行方式または加重方式 |
 | `databaseFileName` | `mstng-currency-strength.sqlite` | 年付与前のDBファイル名 |
 | `databaseSplitByYear` | `true` | 年別DBを使用する場合true |
 | `databaseUseCommonFolder` | `true` | Commonフォルダを使用する場合true |
@@ -847,4 +847,6 @@ DBは対象M5時刻の年別ファイルをREADONLYで開き、ファイル作�
 
 ## 17. EAの通貨強弱参照
 
-`MstngEa`の`InpCurrencyStrengthVoteWeightMode`は既定で`UNIFORM`です。`UNIFORM`では`pair-direction-closed-v1`、`WEIGHTED`では`pair-direction-weighted-closed-v1`を完全一致検索します。保存側`CurrencyStrengthElliot`とEAで同じ方式を選択する必要があり、選択方式の同一M5 Runがない場合は別方式へフォールバックせず通貨強弱フィルタを不通過とします。
+`MstngEa`の`InpUseCurrencyStrength`は既定で`true`、`InpCurrencyStrengthVoteWeightMode`は既定で`WEIGHTED`です。`UNIFORM`では`pair-direction-closed-v1`、`WEIGHTED`では`pair-direction-weighted-closed-v1`を完全一致検索します。保存側`CurrencyStrengthElliot`とEAで同じ方式を選択する必要があり、選択方式の同一M5 Runがない場合は別方式へフォールバックせず通貨強弱フィルタを不通過とします。
+
+分析結果メールの通貨強弱ヘッダーには、参照した`calculation_version`に対応する票ウェイト方式を`MODE:WEIGHTED`または`MODE:UNIFORM`として表示します。DBなし、データなし、取得エラーの場合も、検索を試みた方式を同じ形式で表示します。

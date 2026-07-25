@@ -94,7 +94,7 @@ input int subPanelHeight = 120;
 input CurrencyStrengthRankDatabaseProfile databaseProfile =
     CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;
 input CurrencyStrengthVoteWeightMode voteWeightMode =
-    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
+    CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
 input string databaseFileName = "mstng-currency-strength.sqlite";
 input bool databaseSplitByYear = true;
 input bool databaseUseCommonFolder = true;

@@ -8,6 +8,7 @@
 
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
+#include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 
 /**
  * Elliott分析結果を元にメールタイトルと本文を生成して送信するクラス。
@@ -125,10 +126,16 @@ private:
             StringToUpper(sourceMode);
         }
 
+        string voteWeightMode =
+            formatCurrencyStrengthVoteWeightMode(
+                executionInfo.calculationVersion
+            );
+
         if (executionInfo.status
                 != CURRENCY_STRENGTH_EXECUTION_STATUS_FOUND) {
             return StringFormat(
-                "通貨強弱 SOURCE:%s\n状態:%s\n\n",
+                "通貨強弱 MODE:%s SOURCE:%s\n状態:%s\n\n",
+                voteWeightMode,
                 sourceMode,
                 formatCurrencyStrengthStatus(executionInfo.status)
             );
@@ -145,8 +152,9 @@ private:
 
         if (!executionInfo.isAvailable()) {
             return StringFormat(
-                "通貨強弱 SOURCE:%s%s\n状態:通貨ペア順位不正\n"
+                "通貨強弱 MODE:%s SOURCE:%s%s\n状態:通貨ペア順位不正\n"
                     + "DB M5:%s\n\n",
+                voteWeightMode,
                 sourceMode,
                 stateSuffix,
                 formatCurrencyStrengthM5BarTime(executionInfo)
@@ -155,8 +163,10 @@ private:
 
         if (!executionInfo.hasAllCurrencyRanks()) {
             return StringFormat(
-                "通貨強弱 SOURCE:%s%s\n状態:順位データ不完全 %d/8\n"
+                "通貨強弱 MODE:%s SOURCE:%s%s\n"
+                    + "状態:順位データ不完全 %d/8\n"
                     + "DB M5:%s\n\n",
+                voteWeightMode,
                 sourceMode,
                 stateSuffix,
                 executionInfo.currencyRankCount,
@@ -169,7 +179,8 @@ private:
         int mediumShortDifference =
             executionInfo.getMediumShortRankDifference();
         string text = StringFormat(
-            "通貨強弱 %s SOURCE:%s%s\n\n",
+            "通貨強弱 MODE:%s %s SOURCE:%s%s\n\n",
+            voteWeightMode,
             formatCurrencyStrengthDecision(
                 longMediumDifference,
                 mediumShortDifference
@@ -195,6 +206,42 @@ private:
         );
 
         return text;
+    }
+
+    /**
+     * 集計ルール識別子を票ウェイト方式の表示文字列へ変換する。
+     *
+     * @param fromCalculationVersion 集計ルール識別子。
+     * @return WEIGHTED、UNIFORMまたはハイフン。
+     */
+    static string formatCurrencyStrengthVoteWeightMode(
+        const string fromCalculationVersion
+    ) {
+        string weightedCalculationVersion =
+            CurrencyStrengthCalculationProfile::getCalculationVersion(
+                false,
+                CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED
+            );
+
+        if (fromCalculationVersion == weightedCalculationVersion) {
+            return CurrencyStrengthCalculationProfile::getVoteWeightModeText(
+                CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED
+            );
+        }
+
+        string uniformCalculationVersion =
+            CurrencyStrengthCalculationProfile::getCalculationVersion(
+                false,
+                CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
+            );
+
+        if (fromCalculationVersion == uniformCalculationVersion) {
+            return CurrencyStrengthCalculationProfile::getVoteWeightModeText(
+                CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
+            );
+        }
+
+        return "-";
     }
 
     /**

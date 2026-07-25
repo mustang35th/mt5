@@ -40,7 +40,7 @@ input int entryCandidateMaxCount = 10;
 input int entryCandidateMinRankDifference = 2;
 input CurrencyStrengthSortType sortType = CURRENCY_STRENGTH_SORT_TOTAL;
 input CurrencyStrengthVoteWeightMode voteWeightMode =
-    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
+    CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
 input bool databaseEnabled = true;
 input string databaseFileName = "mstng-currency-strength.sqlite";
 input bool databaseSplitByYear = true;

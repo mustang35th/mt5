@@ -34,7 +34,7 @@ input bool printVoteDetails = false;
 
 /** 検証する票重み付け方式。 */
 input CurrencyStrengthVoteWeightMode voteWeightMode =
-    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
+    CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
 
 /** 実判定結果をデータベースへ保存する場合true。 */
 input bool databaseEnabled = true;

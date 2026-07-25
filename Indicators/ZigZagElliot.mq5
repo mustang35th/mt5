@@ -37,7 +37,7 @@ input int currencyStrengthRefreshSeconds = 15;
 input CurrencyStrengthRankDatabaseProfile currencyStrengthDatabaseProfile =
     CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;
 input CurrencyStrengthVoteWeightMode currencyStrengthVoteWeightMode =
-    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
+    CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
 input string currencyStrengthDatabaseFileName = "mstng-currency-strength.sqlite";
 input bool currencyStrengthDatabaseSplitByYear = true;
 input bool currencyStrengthDatabaseUseCommonFolder = true;
@@ -213,10 +213,8 @@ void OnDeinit(const int reason) {
     // タイマー停止
     EventKillTimer();
 
-    // 表示オブジェクト削除
-    //ObjectsDeleteAll(0, 0, -1);
+    // Elliott/ZigZag動的描画オブジェクトのみ削除する。
     ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
-    ObjectsDeleteAll(0, Constant::PREFIX_FIXED, 0, -1);
     
     LogUtil::printMethodEnd(g_logger, __FUNCTION__, true);
 }
@@ -507,7 +505,8 @@ void setCurrencyStrengthPairRank() {
 
         gCurrencyStrengthPairRankDraw = new DrawCurrencyStrengthPairRank(
             0,
-            panelXDistance
+            panelXDistance,
+            currencyStrengthVoteWeightMode
         );
 
         if (gCurrencyStrengthPairRankDraw == NULL) {
@@ -754,7 +753,8 @@ void setElliotAll() {
     g_elliotAll = new ElliotAll(g_marketContext);
     
     g_elliotAll.isTimer = g_isTimer;
-    g_elliotAll.isCurrencyStrengthEntryFilterEnabled = true;
+    g_elliotAll.isCurrencyStrengthEntryFilterEnabled =
+        currencyStrengthEnabled;
     g_elliotAll.setOscillatorHandlePool(g_oscillatorHandlePool);
     g_elliotAll.setCurrencyStrengthExecutionInfo(
         gCurrencyStrengthExecutionInfo

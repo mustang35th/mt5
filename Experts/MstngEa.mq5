@@ -48,7 +48,7 @@ input double InpBreakEvenTriggerR = 1.0;
 input double InpBreakEvenPlusPips = 1.0;
 
 /** 通貨強弱利用 */
-input bool InpUseCurrencyStrength = false;
+input bool InpUseCurrencyStrength = true;
 
 /** 通貨強弱DB参照プロファイル */
 input CurrencyStrengthRankDatabaseProfile InpCurrencyStrengthDatabaseProfile =
@@ -68,7 +68,7 @@ input int InpCurrencyStrengthRefreshSeconds = 15;
 
 /** 通貨強弱票重み付け方式 */
 input CurrencyStrengthVoteWeightMode InpCurrencyStrengthVoteWeightMode =
-    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM;
+    CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
 
 /** シンボル名 */
 string g_symbolName;
