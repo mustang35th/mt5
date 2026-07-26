@@ -158,11 +158,7 @@ public:
         this.appendCsvField(line, DoubleToString(profitValue, 2));
         this.appendCsvField(line, reasonValue);
 
-        if (csvTextValue == "") {
-            this.appendCsvField(line, "");
-        } else {
-            line += "," + csvTextValue;
-        }
+        this.appendCsvField(line, csvTextValue);
 
         this.writeLine(fileHandle, line);
         FileClose(fileHandle);
