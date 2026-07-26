@@ -83,7 +83,7 @@ protected:
                 
                 //&& this.isElliot1or3(this.elliotCurrent)
                 
-                //&& this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher2)
+                && this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher2)
                 && this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher1)
                 && this.expertAdvisorEma200.isEma200BuySell(this.elliotCurrent)
                 
