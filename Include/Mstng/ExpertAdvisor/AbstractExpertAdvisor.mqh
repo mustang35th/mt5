@@ -148,10 +148,7 @@ public:
     void analyze(ElliotAll *fromElliotAll, SignalCount *signalCount, int entryCount = 1) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
-        this.isAlert = false;
-        this.isEntry = false;
-        this.isSendMail = false;
-        this.alertText = "";
+        this.resetAnalysisOutcome(entryCount);
         
         if (!this.setElliotAll(fromElliotAll)) {
             this.logger.error(__FUNCTION__, StringFormat("%s setElliotAll returned false", this.name));
@@ -159,18 +156,18 @@ public:
             return;
         }
         
-        bool isJudge = false;
-
         if (this.isCurrencyStrengthEntryAllowed()) {
-            isJudge = this.isJudge();
+            this.isJudgeMatched = this.isJudge();
         }
         
-        if (isJudge) {
+        if (this.isJudgeMatched) {
             this.isAlert = true;
             
             int count = signalCount.addCount(this.pointElliotCurrent_2.barTime, this.isBuy);
+            this.signalCountResult = count;
             
             if (count == entryCount) {
+                this.isEntryEvaluated = true;
                 this.elliotAll.mailTitile = StringFormat("【%s】", this.name);
                 
                 this.setEntry();
@@ -254,6 +251,18 @@ protected:
 
     /** オシレーター条件の判定補助クラス。 */
     ExpertAdvisorOscillator *expertAdvisorOscillator;
+
+    /** 派生EA固有のisJudge()がtrueの場合true。 */
+    bool isJudgeMatched;
+
+    /** 同一シグナルの発生回数。 */
+    int signalCountResult;
+
+    /** エントリー対象とする発生回数。 */
+    int entryCountResult;
+
+    /** 派生EA固有のsetEntry()を実行した場合true。 */
+    bool isEntryEvaluated;
 
     /** 全時間足のElliott分析結果への非所有参照。 */
     ElliotAll *elliotAll;
@@ -562,6 +571,15 @@ private:
         this.elliotCurrent = NULL;
         this.pointElliotCurrent_2 = NULL;
         this.pointElliotCurrent_1 = NULL;
+        this.resetAnalysisOutcome(1);
+    }
+
+    /**
+     * 1回の分析で設定する判定結果を初期化する。
+     *
+     * @param fromEntryCount エントリー対象とする発生回数。
+     */
+    void resetAnalysisOutcome(const int fromEntryCount) {
         this.isBuy = false;
         this.buySellLabel = "";
         this.buySellSymbol = "";
@@ -572,6 +590,10 @@ private:
         this.alertText = "";
         this.stopLoss = 0.0;
         this.csvText = "";
+        this.isJudgeMatched = false;
+        this.signalCountResult = 0;
+        this.entryCountResult = fromEntryCount;
+        this.isEntryEvaluated = false;
     }
 
     /**

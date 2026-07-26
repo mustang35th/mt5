@@ -69,6 +69,7 @@ public:
         signalDecision.stopLoss = 0.0;
         signalDecision.csvText = "";
         signalDecision.alertText = "";
+        signalDecision.mtf3In3AlertResult.reset();
 
         // 外部戦略で判定
         this.expertAdvisorMtf3In3.analyze(elliotAllValue, this.signalCount);
@@ -79,6 +80,8 @@ public:
         signalDecision.stopLoss = this.expertAdvisorMtf3In3.stopLoss;
         signalDecision.csvText = this.expertAdvisorMtf3In3.csvText;
         signalDecision.alertText = this.expertAdvisorMtf3In3.alertText;
+        signalDecision.mtf3In3AlertResult =
+            this.expertAdvisorMtf3In3.getAlertResult();
 
         return signalDecision;
     }

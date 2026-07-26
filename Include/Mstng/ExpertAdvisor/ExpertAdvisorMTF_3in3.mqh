@@ -7,6 +7,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
 
 /**
  * 複数時間足のElliott波動、GMMAおよびEMA200を使用してエントリーを判定する。
@@ -40,6 +41,44 @@ public:
      * デストラクタ。
      */
     ~ExpertAdvisorMTF_3in3() {
+    }
+
+    /**
+     * 直近のMTF_3in3アラート判定結果を取得する。
+     *
+     * @return analyze()で確定したアラートおよびエントリー判定結果。
+     */
+    Mtf3In3AlertResult getAlertResult() {
+        Mtf3In3AlertResult result;
+        result.reset();
+
+        result.isJudge = this.isJudgeMatched;
+        result.signalCount = this.signalCountResult;
+        result.entryCount = this.entryCountResult;
+
+        if (this.isJudgeMatched
+                && this.signalCountResult == this.entryCountResult) {
+            result.isEntryCountMatch = true;
+        }
+
+        result.isEntryEvaluated = this.isEntryEvaluated;
+        result.isAlert = this.isAlert;
+        result.isEntry = this.isEntry;
+        result.isSendMail = this.isSendMail;
+        result.isBuy = this.isBuy;
+
+        if (!this.isEntryEvaluated) {
+            return result;
+        }
+
+        result.entryResult = this.entryResult;
+        result.currentElliotLabel = this.currentElliotLabel;
+        result.isEntryWave = this.isEntryWaveResult;
+        result.closeEma200DiffPips = this.closeEma200DiffPipsResult;
+        result.maxCloseEma200DiffPips = this.maxCloseEma200DiffPipsResult;
+        result.isEma200DistanceWithin = this.isEma200DistanceWithinResult;
+
+        return result;
     }
         
 protected:
@@ -105,6 +144,7 @@ protected:
     void setEntry() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
+        this.resetEntryValidation();
         this.alertText = this.getAlertText();
         
         this.elliotAll.mailTitile += this.marketContext.timeFrameLabel;
@@ -113,22 +153,26 @@ protected:
             this.elliotAll.mailTitile = "*" + this.elliotAll.mailTitile;
         }*/
         
-        if (1 == 1
-                //&& this.isLossCut(30)
-                
-                //&& this.isFibonacciExpansionPercent(this.elliotHigher1, 127.2)
-                //&& this.isFibonacciExpansionPercent(this.elliotCurrent, 127.2)
-                
-                //&& this.isEma200BuySellHigher1()
-                
-                && this.isElliot1or3(this.elliotCurrent)
-                && this.expertAdvisorEma200.isCloseEma200DiffPipsWithin(
-                    this.elliotCurrent,
-                    this.getMaxCloseEma200DiffPips()
-                )
-                
-        ) {
+        ZigZagPoint *latestPoint = this.elliotCurrent.getLatestPoint();
+        this.currentElliotLabel = latestPoint.elliotLabel;
+        this.isEntryWaveResult = this.isElliot1or3(this.elliotCurrent);
+        this.closeEma200DiffPipsResult = MathAbs(
+            this.elliotCurrent.oscillator.ema200.closeEma200DiffPips
+        );
+        this.maxCloseEma200DiffPipsResult = this.getMaxCloseEma200DiffPips();
+        this.isEma200DistanceWithinResult =
+            this.expertAdvisorEma200.isCloseEma200DiffPipsWithin(
+                this.elliotCurrent,
+                this.maxCloseEma200DiffPipsResult
+            );
+
+        if (!this.isEntryWaveResult) {
+            this.entryResult = "ELLIOT_LABEL_REJECTED";
+        } else if (!this.isEma200DistanceWithinResult) {
+            this.entryResult = "EMA200_DISTANCE_REJECTED";
+        } else {
             this.isEntry = true;
+            this.entryResult = "ENTRY";
 
             if (/*this.elliotCurrent.marketContext.timeFrame == PERIOD_M5
                     ||*/ this.elliotCurrent.marketContext.timeFrame == PERIOD_M1) {
@@ -150,6 +194,24 @@ private:
     /** JPYペアのClose1とEMA200[1]のエントリー許容距離pips。 */
     static const double maxCloseEma200DiffPipsJpy;
 
+    /** 直近のエントリー判定結果コード。 */
+    string entryResult;
+
+    /** 直近の現在時間足Elliottラベル。 */
+    string currentElliotLabel;
+
+    /** 直近の現在時間足がエントリー対象波動の場合true。 */
+    bool isEntryWaveResult;
+
+    /** 直近のClose1とEMA200[1]の距離pips。 */
+    double closeEma200DiffPipsResult;
+
+    /** 直近のClose1とEMA200[1]の許容距離pips。 */
+    double maxCloseEma200DiffPipsResult;
+
+    /** 直近のClose1とEMA200[1]の距離が許容範囲内の場合true。 */
+    bool isEma200DistanceWithinResult;
+
     /**
      * 市場コンテキストを使用して共通設定とEA固有設定を初期化する。
      *
@@ -164,6 +226,19 @@ private:
         this.isDarwText = true;
         this.name = "MTF_3in3";
         this.fontSize = 20;
+        this.resetEntryValidation();
+    }
+
+    /**
+     * エントリー条件の検証結果を初期化する。
+     */
+    void resetEntryValidation() {
+        this.entryResult = "NOT_EVALUATED";
+        this.currentElliotLabel = "";
+        this.isEntryWaveResult = false;
+        this.closeEma200DiffPipsResult = 0.0;
+        this.maxCloseEma200DiffPipsResult = 0.0;
+        this.isEma200DistanceWithinResult = false;
     }
 
     /**

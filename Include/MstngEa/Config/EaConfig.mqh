@@ -46,6 +46,9 @@ public:
     /** 通貨強弱利用 */
     bool useCurrencyStrength;
 
+    /** MTF_3in3アラート検証CSV出力 */
+    bool mtf3In3AlertCsvEnabled;
+
     /**
      * コンストラクタ
      */
@@ -62,6 +65,7 @@ public:
         this.breakEvenTriggerR = 1.0;
         this.breakEvenPlusPips = 1.0;
         this.useCurrencyStrength = false;
+        this.mtf3In3AlertCsvEnabled = false;
     }
 };
 

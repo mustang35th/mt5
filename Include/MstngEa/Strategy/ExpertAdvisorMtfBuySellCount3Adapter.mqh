@@ -68,6 +68,7 @@ public:
         signalDecision.stopLoss = 0.0;
         signalDecision.csvText = "";
         signalDecision.alertText = "";
+        signalDecision.mtf3In3AlertResult.reset();
 
         this.expertAdvisorMtfBuySellCount3.analyze(elliotAllValue, this.signalCount);
         this.updateElliottInfoText();

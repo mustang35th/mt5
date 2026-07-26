@@ -7,6 +7,7 @@
 #define MSTNGEA_APP_EACONTROLLER_MQH
 
 #include <Mstng\Elliot\ElliotAll.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <MstngEa\App\EaContext.mqh>
 #include <MstngEa\Domain\ExitDecision.mqh>
 #include <MstngEa\Domain\PositionSnapshot.mqh>
@@ -900,6 +901,8 @@ private:
 
         SignalDecision signalDecision = this.eaContext.strategyAdapter.analyzeEntry(elliotAllValue);
 
+        this.writeMtf3In3AlertCsv(elliotAllValue, signalDecision);
+
         if (!signalDecision.isEntry) {
             return;
         }
@@ -942,6 +945,48 @@ private:
 
         if (this.eaContext.operationLogger != NULL) {
             this.eaContext.operationLogger.info("EaController", "Position opened");
+        }
+    }
+
+    /**
+     * MTF_3in3のアラート候補を検証用CSVへ保存する。
+     *
+     * @param fromElliotAll 判定に使用したElliott分析結果。
+     * @param fromSignalDecision エントリー判定結果。
+     */
+    void writeMtf3In3AlertCsv(
+        ElliotAll *fromElliotAll,
+        SignalDecision &fromSignalDecision
+    ) {
+        if (this.eaContext == NULL || this.eaContext.eaConfig == NULL) {
+            return;
+        }
+
+        if (!this.eaContext.eaConfig.mtf3In3AlertCsvEnabled) {
+            return;
+        }
+
+        if (this.eaContext.eaConfig.strategyType
+                != STRATEGY_TYPE_MTF_3IN3) {
+            return;
+        }
+
+        if (!fromSignalDecision.mtf3In3AlertResult.isAlert) {
+            return;
+        }
+
+        bool isWritten = Mtf3In3AlertCsvWriter::write(
+            fromElliotAll,
+            fromSignalDecision.mtf3In3AlertResult,
+            "MSTNGEA",
+            this.eaContext.magicNumber
+        );
+
+        if (!isWritten && this.eaContext.operationLogger != NULL) {
+            this.eaContext.operationLogger.error(
+                "EaController",
+                "MTF_3in3 alert validation CSV write failed"
+            );
         }
     }
 

@@ -70,6 +70,9 @@ input int InpCurrencyStrengthRefreshSeconds = 15;
 input CurrencyStrengthVoteWeightMode InpCurrencyStrengthVoteWeightMode =
     CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
 
+/** MTF_3in3アラート検証CSV出力 */
+input bool InpMtf3In3AlertCsvEnabled = false;
+
 /** シンボル名 */
 string g_symbolName;
 
@@ -153,6 +156,7 @@ int OnInit() {
     g_eaConfig.breakEvenTriggerR = InpBreakEvenTriggerR;
     g_eaConfig.breakEvenPlusPips = InpBreakEvenPlusPips;
     g_eaConfig.useCurrencyStrength = InpUseCurrencyStrength;
+    g_eaConfig.mtf3In3AlertCsvEnabled = InpMtf3In3AlertCsvEnabled;
     g_eaContext = new EaContext();
 
     // コンテキストへ依存を設定

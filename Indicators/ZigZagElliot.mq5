@@ -19,6 +19,7 @@
 #include <Mstng\Draw\DrawElliotVerticalFit.mqh>
 #include <Mstng\Elliot\ElliotAllFile.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <Mstng\Indicator\Ema200Indicator.mqh>
 #include <Mstng\Indicator\GmmaIndicator.mqh>
 #include <Mstng\Indicator\JapanTimeAxisView.mqh>
@@ -31,7 +32,10 @@
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /** Mail内容を検証用ファイルへ出力する場合true。 */
-input bool mailValidationFileEnabled = true;
+input bool mailValidationFileEnabled = false;
+
+/** MTF_3in3アラート検証CSVを出力する場合true。 */
+input bool mtf3In3AlertCsvEnabled = true;
 
 input bool currencyStrengthEnabled = true;
 input bool currencyStrengthRankVisible = true;
@@ -476,6 +480,22 @@ void execute() {
         ExpertAdvisorMTF_3in3 ea(g_elliotAll.marketContext);
         
         ea.analyze(g_elliotAll, g_signalCount);
+
+        if (mtf3In3AlertCsvEnabled && ea.isAlert) {
+            Mtf3In3AlertResult alertResult = ea.getAlertResult();
+            bool isWritten = Mtf3In3AlertCsvWriter::write(
+                g_elliotAll,
+                alertResult,
+                "ZIGZAG_ELLIOT"
+            );
+
+            if (!isWritten) {
+                g_logger.error(
+                    __FUNCTION__,
+                    "MTF_3in3 alert validation CSV write failed"
+                );
+            }
+        }
     }
     
     g_staticLasttime = temptime;
