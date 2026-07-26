@@ -308,7 +308,7 @@ private:
     /**
      * 市場状況に応じた背景色を設定する。
      *
-     * 上位足とEMA200条件が揃った場合に背景色を売買方向へ合わせる。
+     * 上位足、通貨強弱、EMA200条件が揃った場合に背景色を売買方向へ合わせる。
      * 条件を満たさない場合は黒背景を設定する。
      */
     void drawBgColor() {
@@ -343,13 +343,16 @@ private:
         bool isBuy = this.elliotAll.elliotCurrent.isBuy;
         ExpertAdvisorEma200 expertAdvisorEma200(isBuy);
 
+        Elliot *elliotHigher2 = this.elliotAll.getElliot(this.elliotAll.marketContext.timeFrame, 2);
         Elliot *elliotHigher1 = this.elliotAll.getElliot(this.elliotAll.marketContext.timeFrame, 1);
         Elliot *elliotCurrent = this.elliotAll.elliotCurrent;
 
         if (this.elliotAll.isBuySell(PERIOD_H4)
+                && this.isCurrencyStrengthEntryAllowed(isBuy)
+                && expertAdvisorEma200.isEma200BuySell(elliotHigher2)
                 && expertAdvisorEma200.isEma200BuySell(elliotHigher1)
                 && expertAdvisorEma200.isEma200BuySell(elliotCurrent)
-                && expertAdvisorEma200.isEma200CurrentAndHigher(elliotHigher1, elliotCurrent)) {
+        ) {
             if (isBuy) {
                 bgColor = upColor;
             } else {
@@ -360,6 +363,35 @@ private:
         DrawUtil::setBgColor(bgColor);
         
         //delete expertAdvisorOscillator;
+    }
+
+    /**
+     * 実行時の通貨強弱が売買方向と一致するか判定する。
+     *
+     * フィルター無効時は従来の背景色判定を維持する。フィルター有効時は、
+     * 順位を取得済みで対象M5足が一致し、長中期と中短期の両方が
+     * 売買方向と一致する場合だけtrueを返す。
+     *
+     * @param fromIsBuy 買い方向の場合true
+     * @return 通貨強弱条件を使用して背景色判定を継続する場合true
+     */
+    bool isCurrencyStrengthEntryAllowed(bool fromIsBuy) {
+        if (!this.elliotAll.isCurrencyStrengthEntryFilterEnabled) {
+            return true;
+        }
+
+        CurrencyStrengthExecutionInfo executionInfo =
+            this.elliotAll.currencyStrengthExecutionInfo;
+
+        if (!executionInfo.isAvailable()) {
+            return false;
+        }
+
+        if (!executionInfo.isExactM5Bar()) {
+            return false;
+        }
+
+        return executionInfo.isDirectionAligned(fromIsBuy);
     }
     
     /*void drawMarketActivityAnalyzer() {
