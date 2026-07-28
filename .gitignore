@@ -21,6 +21,19 @@ Files/*.txt
 *.tpl
 *.wnd
 
+# MetaTrader standard examples and libraries
+/Experts/Examples/
+/Indicators/Examples/
+/Indicators/Free Indicators/
+/Scripts/Examples/
+/Profiles/Agents/
+/Include/Canvas/
+/Include/Controls/
+/Include/Expert/
+/Include/Generic/
+/Include/Graphics/
+/Include/Math/
+
 # keep folder
 !Files/.gitkeep
 
