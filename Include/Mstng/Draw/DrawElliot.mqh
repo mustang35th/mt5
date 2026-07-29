@@ -385,9 +385,12 @@ public:
             if (zigZagPoint.isAddedPoint) {
                 fontColor = clrWhite;
             }
+
+            string elliotText =
+                latestWave.getConfirmedLabel() + zigZagPoint.getTextIndexInfo();
             
             DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, 
-                                drawProperties.elliotAlertSize, zigZagPoint.getTextIndexInfo(), objX, objY);
+                                drawProperties.elliotAlertSize, elliotText, objX, objY);
         }
         
         // エリオット
@@ -632,6 +635,11 @@ protected:
                 }
                 
                 string text = timeFrameLabel + zigZagPoint.getTextIndexInfo();
+
+                if (wave.index == 0 && i == total - 1) {
+                    text = wave.getConfirmedLabel() + text;
+                }
+
                 double level = 0;
                 color fontColor = White;
                 

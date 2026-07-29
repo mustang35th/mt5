@@ -271,6 +271,21 @@ public:
             this.isConfirmed = true;
         }
     }
+
+    /**
+     * Wave確定状態の表示ラベルを取得する。
+     *
+     * @return 確定の場合は【確】、未確定の場合は【未】
+     */
+    string getConfirmedLabel() {
+        string label = "【未】";
+
+        if (this.isConfirmed) {
+            label = "【確】";
+        }
+
+        return label;
+    }
     
     /**
      * zigZagPointList内の全ZigZagPointへ親Wave参照を設定する。

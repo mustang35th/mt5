@@ -342,7 +342,13 @@ public:
         Wave *wave = this.getLatestWave();
         ZigZagPoint *zigZagPoint = this.getLatestPoint();
         
-        text += StringFormat("%s/%s/%s\n", this.marketContext.timeFrameLabel, this.buySellLabel, zigZagPoint.getTextIndexInfo());
+        text += StringFormat(
+            "%s/%s/%s%s\n",
+            this.marketContext.timeFrameLabel,
+            this.buySellLabel,
+            wave.getConfirmedLabel(),
+            zigZagPoint.getTextIndexInfo()
+        );
         
         text += StringFormat("EMA200/%s/\n", this.oscillator.ema200.getText());
         
