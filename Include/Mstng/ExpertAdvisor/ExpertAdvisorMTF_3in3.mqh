@@ -107,7 +107,9 @@ protected:
                 //&& this.expertAdvisorElliot.isBuySellFromH1(this.elliotAll, this.isBuy)
 
                 && this.elliotAll.isBuySell(PERIOD_H4)
-                
+
+                && this.expertAdvisorElliot.isWaveUnconfirmed(this.elliotH1)
+
                 && this.expertAdvisorElliot.isZigZagConfirmed(this.elliotCurrent)
                 
                 //&& this.expertAdvisorElliot.isMotiveWave(this.elliotHigher1)

@@ -76,8 +76,49 @@ public:
         this.logger.debug(__FUNCTION__, StringFormat("latestPoint = %s", latestPoint.toString()));
         this.logger.debug(__FUNCTION__, StringFormat("isZigZagConfirmed = %s", (string)isZigZagConfirmed));
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
-                    
+
         return isZigZagConfirmed;
+    }
+
+    /**
+     * 最新Waveが未確定か判定する。
+     *
+     * @param fromElliot 判定対象のElliot。
+     * @return 最新Waveが存在して未確定の場合true。
+     */
+    bool isWaveUnconfirmed(Elliot *fromElliot) {
+        LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        if (fromElliot == NULL) {
+            this.logger.error(__FUNCTION__, "fromElliot is NULL");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        Wave *latestWave = fromElliot.getLatestWave();
+
+        if (latestWave == NULL) {
+            this.logger.error(__FUNCTION__, "latestWave is NULL");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        bool isWaveUnconfirmed = !latestWave.isConfirmed;
+
+        this.logger.debug(
+            __FUNCTION__,
+            StringFormat(
+                "timeFrameLabel = %s, isConfirmed = %s, isWaveUnconfirmed = %s",
+                fromElliot.marketContext.timeFrameLabel,
+                (string)latestWave.isConfirmed,
+                (string)isWaveUnconfirmed
+            )
+        );
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return isWaveUnconfirmed;
     }
     
     /**
