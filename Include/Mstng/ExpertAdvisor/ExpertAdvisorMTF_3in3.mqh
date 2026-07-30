@@ -149,7 +149,9 @@ protected:
         this.resetEntryValidation();
         this.alertText = this.getAlertText();
         
-        this.elliotAll.mailTitile += this.marketContext.timeFrameLabel;
+        this.elliotAll.mailTitile = StringFormat("【%s】", this.alertText);
+
+        //this.elliotAll.mailTitile += this.marketContext.timeFrameLabel;
         
         /*if (this.marketContext.timeFrame == PERIOD_M1) {
             this.elliotAll.mailTitile = "*" + this.elliotAll.mailTitile;
@@ -176,8 +178,7 @@ protected:
             this.isEntry = true;
             this.entryResult = "ENTRY";
 
-            if (/*this.elliotCurrent.marketContext.timeFrame == PERIOD_M5
-                    ||*/ this.elliotCurrent.marketContext.timeFrame == PERIOD_M1) {
+            if (this.elliotCurrent.marketContext.timeFrame == PERIOD_M5) {
                 this.isSendMail = true;
             }
         }
