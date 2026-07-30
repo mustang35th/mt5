@@ -386,8 +386,11 @@ public:
                 fontColor = clrWhite;
             }
 
-            string elliotText =
-                latestWave.getConfirmedLabel() + zigZagPoint.getTextIndexInfo();
+            string elliotText = zigZagPoint.getTextIndexInfo();
+
+            if (!latestWave.isConfirmed) {
+                elliotText = latestWave.getConfirmedLabel() + elliotText;
+            }
             
             DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, 
                                 drawProperties.elliotAlertSize, elliotText, objX, objY);
@@ -636,7 +639,7 @@ protected:
                 
                 string text = timeFrameLabel + zigZagPoint.getTextIndexInfo();
 
-                if (wave.index == 0 && i == total - 1) {
+                if (wave.index == 0 && i == total - 1 && !wave.isConfirmed) {
                     text = wave.getConfirmedLabel() + text;
                 }
 
