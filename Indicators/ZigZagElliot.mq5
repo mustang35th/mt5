@@ -8,8 +8,8 @@
 #property version   "1.21"
 #property indicator_chart_window
 
-#property indicator_buffers 6
-#property indicator_plots   6
+#property indicator_buffers 7
+#property indicator_plots   7
 
 
 #include <Mstng\Common\MarketContext.mqh>
@@ -55,6 +55,7 @@ input bool currencyStrengthDatabaseUseCommonFolder = true;
 #property indicator_type4   DRAW_LINE
 #property indicator_type5   DRAW_LINE
 #property indicator_type6   DRAW_LINE
+#property indicator_type7   DRAW_LINE
 
 GmmaIndicator *g_gmmaIndicator = NULL;
 Ema200Indicator *g_ema200Indicator = NULL;

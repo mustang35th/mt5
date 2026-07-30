@@ -65,11 +65,13 @@ public:
         SetIndexBuffer(this.startPlotIndex + 1, this.buffer1, INDICATOR_DATA);
         SetIndexBuffer(this.startPlotIndex + 2, this.buffer2, INDICATOR_DATA);
         SetIndexBuffer(this.startPlotIndex + 3, this.buffer3, INDICATOR_DATA);
+        SetIndexBuffer(this.startPlotIndex + 4, this.buffer4, INDICATOR_DATA);
 
         ArraySetAsSeries(this.buffer0, true);
         ArraySetAsSeries(this.buffer1, true);
         ArraySetAsSeries(this.buffer2, true);
         ArraySetAsSeries(this.buffer3, true);
+        ArraySetAsSeries(this.buffer4, true);
 
         this.initializePlotSettings();
         this.setHandles(oscillatorHandlePool);
@@ -79,7 +81,7 @@ public:
      * 終了処理
      */
     void deinit() {
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             this.handles[i] = INVALID_HANDLE;
         }
 
@@ -143,9 +145,9 @@ private:
     /** 表示対象の時間足数。 */
     int displayCount;
     /** 表示対象の時間足配列。 */
-    ENUM_TIMEFRAMES timeFrames[4];
+    ENUM_TIMEFRAMES timeFrames[5];
     /** 時間足ごとのEMAハンドル配列。 */
-    int handles[4];
+    int handles[5];
     /** EMAの主軸データバッファ。 */
     double buffer0[];
     /** EMAの短期データバッファ。 */
@@ -154,6 +156,8 @@ private:
     double buffer2[];
     /** EMAの最上位データバッファ。 */
     double buffer3[];
+    /** EMAの追加上位足データバッファ。 */
+    double buffer4[];
     /** 最終更新したM1バー時刻。 */
     datetime lastUpdateM1BarTime;
     /** ラベル表示のシフト数。 */
@@ -180,7 +184,7 @@ private:
         this.labelFontSize = 10;
         this.labelFontFace = "Arial";
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             this.timeFrames[i] = PERIOD_CURRENT;
             this.handles[i] = INVALID_HANDLE;
         }
@@ -196,29 +200,35 @@ private:
 
         switch (this.marketContext.timeFrame) {
             case PERIOD_D1:
+                this.addTimeFrame(PERIOD_W1);
                 this.addTimeFrame(PERIOD_D1);
                 break;
             case PERIOD_H4:
+                this.addTimeFrame(PERIOD_W1);
                 this.addTimeFrame(PERIOD_D1);
                 this.addTimeFrame(PERIOD_H4);
                 break;
             case PERIOD_H1:
+                this.addTimeFrame(PERIOD_W1);
                 this.addTimeFrame(PERIOD_D1);
                 this.addTimeFrame(PERIOD_H4);
                 this.addTimeFrame(PERIOD_H1);
                 break;
             case PERIOD_M15:
+                this.addTimeFrame(PERIOD_D1);
                 this.addTimeFrame(PERIOD_H4);
                 this.addTimeFrame(PERIOD_H1);
                 this.addTimeFrame(PERIOD_M15);
                 break;
             case PERIOD_M5:
+                this.addTimeFrame(PERIOD_D1);
                 this.addTimeFrame(PERIOD_H4);
                 this.addTimeFrame(PERIOD_H1);
                 this.addTimeFrame(PERIOD_M15);
                 this.addTimeFrame(PERIOD_M5);
                 break;
             case PERIOD_M1:
+                this.addTimeFrame(PERIOD_H1);
                 this.addTimeFrame(PERIOD_M15);
                 this.addTimeFrame(PERIOD_M5);
                 this.addTimeFrame(PERIOD_M1);
@@ -234,7 +244,7 @@ private:
      * @param timeFrameValue 時間足
      */
     void addTimeFrame(ENUM_TIMEFRAMES timeFrameValue) {
-        if (this.displayCount >= 4) {
+        if (this.displayCount >= 5) {
             return;
         }
 
@@ -280,7 +290,7 @@ private:
      * Plot設定クリア
      */
     void clearPlotSettings() {
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             int plotIndex = this.startPlotIndex + i;
 
             PlotIndexSetInteger(plotIndex, PLOT_DRAW_TYPE, DRAW_NONE);
@@ -320,6 +330,7 @@ private:
         ArrayInitialize(this.buffer1, EMPTY_VALUE);
         ArrayInitialize(this.buffer2, EMPTY_VALUE);
         ArrayInitialize(this.buffer3, EMPTY_VALUE);
+        ArrayInitialize(this.buffer4, EMPTY_VALUE);
     }
 
     /**
@@ -424,6 +435,9 @@ private:
             case 3:
                 this.buffer3[barIndex] = value;
                 break;
+            case 4:
+                this.buffer4[barIndex] = value;
+                break;
         }
     }
 
@@ -459,7 +473,7 @@ private:
      * EMA200ラベルを削除します。
      */
     void deleteLabels() {
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             this.deleteLabel(i);
         }
     }
@@ -470,7 +484,7 @@ private:
      * @param lineIndex ライン番号
      */
     void deleteLabel(int lineIndex) {
-        if (lineIndex < 0 || lineIndex >= 4) {
+        if (lineIndex < 0 || lineIndex >= 5) {
             return;
         }
 
@@ -518,6 +532,8 @@ private:
                 return this.buffer2[barIndex];
             case 3:
                 return this.buffer3[barIndex];
+            case 4:
+                return this.buffer4[barIndex];
         }
 
         return EMPTY_VALUE;
@@ -541,6 +557,8 @@ private:
      */
     color getLineColor(ENUM_TIMEFRAMES timeFrameValue) {
         switch (timeFrameValue) {
+            case PERIOD_W1:
+                return clrSilver;
             case PERIOD_D1:
                 return clrRed;
             case PERIOD_H4:
@@ -566,6 +584,8 @@ private:
      */
     int getLineWidth(ENUM_TIMEFRAMES timeFrameValue) {
         switch (timeFrameValue) {
+            case PERIOD_W1:
+                return 7;
             case PERIOD_D1:
                 return 6;
             case PERIOD_H4:
@@ -591,6 +611,8 @@ private:
      */
     string getTimeFrameLabel(ENUM_TIMEFRAMES timeFrameValue) {
         switch (timeFrameValue) {
+            case PERIOD_W1:
+                return "W1";
             case PERIOD_D1:
                 return "D1";
             case PERIOD_H4:
