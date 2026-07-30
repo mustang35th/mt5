@@ -381,14 +381,23 @@ private:
     string getAlertText() {
         string text = "";
         
-        Wave *latestWaveHigher1 = this.elliotHigher1.getLatestWave();
-        
-        text += latestWaveHigher1.trendLabel;
-        text += elliotHigher1.getLatestPointElliotLabel();
+        if (this.marketContext.timeFrame == PERIOD_M5) {
+            Wave *latestWaveHigher2 = this.elliotHigher2.getLatestWave();
+
+            text += latestWaveHigher2.trendLabel;
+            text += this.elliotHigher2.getLatestPointElliotLabel();
+            text += "-";
+        } else {
+            Wave *latestWaveHigher1 = this.elliotHigher1.getLatestWave();
+
+            text += latestWaveHigher1.trendLabel;
+        }
+
+        text += this.elliotHigher1.getLatestPointElliotLabel();
         
         text += "-";
         
-        text += elliotCurrent.getLatestPointElliotLabel();
+        text += this.elliotCurrent.getLatestPointElliotLabel();
         
         return text;
     }

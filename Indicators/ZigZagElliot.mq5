@@ -221,8 +221,11 @@ void OnDeinit(const int reason) {
     // タイマー停止
     EventKillTimer();
 
-    // Elliott/ZigZag動的描画オブジェクトのみ削除する。
+    // ZigZagElliotが作成した動的描画と固定描画オブジェクトを削除する。
     ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
+    ObjectsDeleteAll(0, Constant::PREFIX_FIXED + "ArrowMTF_3in3", 0, -1);
+    ObjectsDeleteAll(0, Constant::PREFIX_FIXED + "TextMTF_3in3", 0, -1);
+    ObjectsDeleteAll(0, Constant::PREFIX_FIXED + "CurrencyStrengthPairRank", 0, -1);
     
     LogUtil::printMethodEnd(g_logger, __FUNCTION__, true);
 }
