@@ -341,12 +341,17 @@ public:
         
         Wave *wave = this.getLatestWave();
         ZigZagPoint *zigZagPoint = this.getLatestPoint();
+        string confirmedLabel = "";
+
+        if (!wave.isConfirmed) {
+            confirmedLabel = wave.getConfirmedLabel();
+        }
         
         text += StringFormat(
             "%s/%s/%s%s\n",
             this.marketContext.timeFrameLabel,
             this.buySellLabel,
-            wave.getConfirmedLabel(),
+            confirmedLabel,
             zigZagPoint.getTextIndexInfo()
         );
         
