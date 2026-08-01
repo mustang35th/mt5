@@ -30,6 +30,7 @@ public:
         this.elliotAll = NULL;
         this.timerMode = true;
         this.mailValidationFileEnabled = false;
+        this.h1DisplayWaveEntryLimitEnabled = false;
         this.currencyStrengthEntryFilterEnabled = false;
         this.fileInitialized = false;
         this.logStartTimeFrame = PERIOD_D1;
@@ -61,6 +62,8 @@ public:
         this.timerMode = fromTimerMode;
         this.mailValidationFileEnabled =
             fromConfig.mailValidationFileEnabled;
+        this.h1DisplayWaveEntryLimitEnabled =
+            fromConfig.h1DisplayWaveEntryLimitEnabled;
         this.currencyStrengthEntryFilterEnabled =
             fromConfig.currencyStrengthEnabled
                 && fromConfig.currencyStrengthEntryFilterEnabled;
@@ -117,6 +120,8 @@ public:
         this.elliotAll.isTimer = this.timerMode;
         this.elliotAll.isMailValidationFileEnabled =
             this.mailValidationFileEnabled;
+        this.elliotAll.isH1DisplayWaveEntryLimitEnabled =
+            this.h1DisplayWaveEntryLimitEnabled;
         this.elliotAll.isCurrencyStrengthEntryFilterEnabled =
             this.currencyStrengthEntryFilterEnabled;
         this.elliotAll.setOscillatorHandlePool(
@@ -233,6 +238,8 @@ private:
     bool timerMode;
     /** Mail内容を検証用ファイルへ出力する場合true。 */
     bool mailValidationFileEnabled;
+    /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
+    bool h1DisplayWaveEntryLimitEnabled;
     /** 通貨強弱をエントリー条件として使用する場合true。 */
     bool currencyStrengthEntryFilterEnabled;
     /** CSV初期化済みの場合true。 */

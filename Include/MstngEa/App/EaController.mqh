@@ -254,6 +254,8 @@ private:
         if (this.eaContext.eaConfig != NULL) {
             elliotAllValue.isCurrencyStrengthEntryFilterEnabled =
                 this.eaContext.eaConfig.useCurrencyStrength;
+            elliotAllValue.isH1DisplayWaveEntryLimitEnabled =
+                this.eaContext.eaConfig.h1DisplayWaveEntryLimitEnabled;
         }
     }
 

@@ -73,6 +73,9 @@ input CurrencyStrengthVoteWeightMode InpCurrencyStrengthVoteWeightMode =
 /** MTF_3in3アラート検証CSV出力 */
 input bool InpMtf3In3AlertCsvEnabled = false;
 
+/** H1表示波ごとのエントリー回数制限を使用する場合true。 */
+input bool InpH1DisplayWaveEntryLimitEnabled = false;
+
 /** シンボル名 */
 string g_symbolName;
 
@@ -157,6 +160,8 @@ int OnInit() {
     g_eaConfig.breakEvenPlusPips = InpBreakEvenPlusPips;
     g_eaConfig.useCurrencyStrength = InpUseCurrencyStrength;
     g_eaConfig.mtf3In3AlertCsvEnabled = InpMtf3In3AlertCsvEnabled;
+    g_eaConfig.h1DisplayWaveEntryLimitEnabled =
+        InpH1DisplayWaveEntryLimitEnabled;
     g_eaContext = new EaContext();
 
     // コンテキストへ依存を設定

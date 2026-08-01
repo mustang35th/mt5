@@ -142,13 +142,14 @@ public:
      * Elliott分析結果からアラートおよびエントリーを判定する。
      *
      * @param fromElliotAll 全時間足のElliott分析結果。
-     * @param signalCount 同一シグナルの発生回数管理。
+     * @param fromSignalCount 同一シグナルの発生回数管理。
      * @param entryCount エントリー対象とする発生回数。
      */
-    void analyze(ElliotAll *fromElliotAll, SignalCount *signalCount, int entryCount = 1) {
+    void analyze(ElliotAll *fromElliotAll, SignalCount *fromSignalCount, int entryCount = 1) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         this.resetAnalysisOutcome(entryCount);
+        this.analysisSignalCount = fromSignalCount;
         
         if (!this.setElliotAll(fromElliotAll)) {
             this.logger.error(__FUNCTION__, StringFormat("%s setElliotAll returned false", this.name));
@@ -163,7 +164,7 @@ public:
         if (this.isJudgeMatched) {
             this.isAlert = true;
             
-            int count = signalCount.addCount(this.pointElliotCurrent_2.barTime, this.isBuy);
+            int count = fromSignalCount.addCount(this.pointElliotCurrent_2.barTime, this.isBuy);
             this.signalCountResult = count;
             
             if (count == entryCount) {
@@ -257,6 +258,9 @@ protected:
 
     /** 同一シグナルの発生回数。 */
     int signalCountResult;
+
+    /** 分析中のシグナル状態管理への非所有参照。 */
+    SignalCount *analysisSignalCount;
 
     /** エントリー対象とする発生回数。 */
     int entryCountResult;
@@ -571,6 +575,7 @@ private:
         this.elliotCurrent = NULL;
         this.pointElliotCurrent_2 = NULL;
         this.pointElliotCurrent_1 = NULL;
+        this.analysisSignalCount = NULL;
         this.resetAnalysisOutcome(1);
     }
 

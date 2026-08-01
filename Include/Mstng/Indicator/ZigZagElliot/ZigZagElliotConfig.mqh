@@ -21,6 +21,8 @@ public:
     bool mailValidationFileEnabled;
     /** MTF_3in3アラート検証CSVを出力する場合true。 */
     bool mtf3In3AlertCsvEnabled;
+    /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
+    bool h1DisplayWaveEntryLimitEnabled;
     /** 通貨強弱を利用する場合true。 */
     bool currencyStrengthEnabled;
     /** 通貨強弱をエントリー条件として使用する場合true。 */
@@ -48,6 +50,7 @@ public:
     ZigZagElliotConfig() {
         this.mailValidationFileEnabled = false;
         this.mtf3In3AlertCsvEnabled = true;
+        this.h1DisplayWaveEntryLimitEnabled = false;
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;
         this.currencyStrengthRankVisible = true;

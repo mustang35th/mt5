@@ -40,6 +40,9 @@ public:
 
     /** 通貨強弱をエントリー条件として使用する場合true。 */
     bool isCurrencyStrengthEntryFilterEnabled;
+
+    /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
+    bool isH1DisplayWaveEntryLimitEnabled;
     
     /** 通貨ペア名を分割した左側の通貨コード。 */
     string symbolNameLeft;
@@ -152,6 +155,7 @@ public:
         this.oscillatorHandlePool = NULL;
         this.currencyStrengthExecutionInfo.reset();
         this.isCurrencyStrengthEntryFilterEnabled = false;
+        this.isH1DisplayWaveEntryLimitEnabled = false;
 
         if (this.timeFrameInfoAll != NULL) {
             delete this.timeFrameInfoAll;
@@ -462,6 +466,7 @@ private:
         this.timeFrameInfoAll = NULL;
         this.currencyStrengthExecutionInfo.reset();
         this.isCurrencyStrengthEntryFilterEnabled = false;
+        this.isH1DisplayWaveEntryLimitEnabled = false;
     }
 
     /**

@@ -112,17 +112,14 @@ protected:
 
                 && this.expertAdvisorElliot.isZigZagConfirmed(this.elliotCurrent)
                 
-                //&& this.expertAdvisorElliot.isMotiveWave(this.elliotHigher1)
-                && this.expertAdvisorElliot.isMotiveWave(this.elliotCurrent)
+                && this.isElliot1or3(this.elliotHigher2)
+                && this.isElliot1or3(this.elliotHigher1)
+                && this.isElliot1or3(this.elliotCurrent)
                 
                 //&& this.expertAdvisorOscillator.isGmmaTrend_1(this.elliotHigher1, this.isBuy)
                 
                 && this.expertAdvisorOscillator.isGmmaTrend_2(this.elliotCurrent, this.isBuy)
                 && this.expertAdvisorOscillator.isGmmaCross_2(this.elliotCurrent, this.isBuy)
-                
-                //&& this.isElliot3in3()
-                
-                //&& this.isElliot1or3(this.elliotCurrent)
                 
                 && this.expertAdvisorEma200.isEma200BuySellOrNone(this.elliotHigher2)
                 && this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher1)
@@ -160,6 +157,8 @@ protected:
         ZigZagPoint *latestPoint = this.elliotCurrent.getLatestPoint();
         this.currentElliotLabel = latestPoint.elliotLabel;
         this.isEntryWaveResult = this.isElliot1or3(this.elliotCurrent);
+        bool isM5Elliot3FibonacciExpansionWithinResult =
+            this.isM5Elliot3FibonacciExpansionWithin();
         this.closeEma200DiffPipsResult = MathAbs(
             this.elliotCurrent.oscillator.ema200.closeEma200DiffPips
         );
@@ -172,14 +171,21 @@ protected:
 
         if (!this.isEntryWaveResult) {
             this.entryResult = "ELLIOT_LABEL_REJECTED";
+        } else if (!isM5Elliot3FibonacciExpansionWithinResult) {
+            this.entryResult = "M5_ELLIOT3_FE_REJECTED";
         } else if (!this.isEma200DistanceWithinResult) {
             this.entryResult = "EMA200_DISTANCE_REJECTED";
         } else {
-            this.isEntry = true;
-            this.entryResult = "ENTRY";
+            bool isH1DisplayWaveEntryRegistered =
+                this.tryRegisterH1DisplayWaveEntry();
 
-            if (this.elliotCurrent.marketContext.timeFrame == PERIOD_M5) {
-                this.isSendMail = true;
+            if (isH1DisplayWaveEntryRegistered) {
+                this.isEntry = true;
+                this.entryResult = "ENTRY";
+
+                if (this.elliotCurrent.marketContext.timeFrame == PERIOD_M5) {
+                    this.isSendMail = true;
+                }
             }
         }
         
@@ -191,6 +197,9 @@ protected:
     
     
 private:
+    /** M5第3波のフィボナッチエクスパンション許容上限%。 */
+    static const double maxM5Elliot3FibonacciExpansionPercent;
+
     /** Close1とEMA200[1]のエントリー許容距離pips。 */
     static const double maxCloseEma200DiffPips;
 
@@ -257,8 +266,111 @@ private:
         return ExpertAdvisorMTF_3in3::maxCloseEma200DiffPips;
     }
 
-    // 旧バージョンの上位時間足判定実装（未使用）。必要時は再有効化して利用。
-    
+    /**
+     * M5エントリー対象のH1表示波を使用済みとして登録する。
+     *
+     * H1の波開始時刻、上位波・下位波の複合ラベルおよび方向で識別し、
+     * 同一表示波への2回目以降のエントリーを拒否する。
+     *
+     * @return M5以外、またはH1表示波を新規登録できた場合true。
+     */
+    bool tryRegisterH1DisplayWaveEntry() {
+        if (!this.elliotAll.isH1DisplayWaveEntryLimitEnabled) {
+            return true;
+        }
+
+        if (this.marketContext.timeFrame != PERIOD_M5) {
+            return true;
+        }
+
+        if (this.analysisSignalCount == NULL) {
+            this.entryResult = "H1_DISPLAY_WAVE_TRACKER_UNAVAILABLE";
+            this.logger.error(__FUNCTION__, "analysisSignalCount is NULL");
+
+            return false;
+        }
+
+        if (this.elliotHigher2 == NULL) {
+            this.entryResult = "H1_DISPLAY_WAVE_INVALID";
+            this.logger.error(__FUNCTION__, "elliotHigher2 is NULL");
+
+            return false;
+        }
+
+        Wave *latestWaveHigher2 = this.elliotHigher2.getLatestWave();
+        ZigZagPoint *latestPointHigher2 = this.elliotHigher2.getLatestPoint();
+        ZigZagPoint *waveStartPointHigher2 = this.elliotHigher2.getLatestPoint2();
+
+        if (latestWaveHigher2 == NULL
+                || latestPointHigher2 == NULL
+                || waveStartPointHigher2 == NULL) {
+            this.entryResult = "H1_DISPLAY_WAVE_INVALID";
+            this.logger.error(__FUNCTION__, "H1 display wave point is NULL");
+
+            return false;
+        }
+
+        datetime waveStartTime = waveStartPointHigher2.barTime;
+        string waveLabel = latestPointHigher2.getElliotLabel();
+        bool isH1Uptrend = latestWaveHigher2.isUptrend;
+
+        if (waveStartTime <= 0 || StringUtil::isEmpty(waveLabel)) {
+            this.entryResult = "H1_DISPLAY_WAVE_INVALID";
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "H1 display wave key is invalid. start=%s label=%s",
+                    TimeToString(waveStartTime, TIME_DATE | TIME_MINUTES),
+                    waveLabel
+                )
+            );
+
+            return false;
+        }
+
+        if (this.analysisSignalCount.isEntryWaveUsed(
+                waveStartTime,
+                waveLabel,
+                isH1Uptrend
+        )) {
+            this.entryResult = "H1_DISPLAY_WAVE_ENTRY_ALREADY_USED";
+            this.logger.info(
+                __FUNCTION__,
+                StringFormat(
+                    "H1 display wave entry already used. start=%s label=%s isUptrend=%s",
+                    TimeToString(waveStartTime, TIME_DATE | TIME_MINUTES),
+                    waveLabel,
+                    (string)isH1Uptrend
+                )
+            );
+
+            return false;
+        }
+
+        bool isMarked = this.analysisSignalCount.markEntryWaveUsed(
+            waveStartTime,
+            waveLabel,
+            isH1Uptrend
+        );
+
+        if (!isMarked) {
+            this.entryResult = "H1_DISPLAY_WAVE_REGISTER_FAILED";
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "H1 display wave registration failed. start=%s label=%s isUptrend=%s",
+                    TimeToString(waveStartTime, TIME_DATE | TIME_MINUTES),
+                    waveLabel,
+                    (string)isH1Uptrend
+                )
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
     /**
      * 指定したElliotの最新ポイントが第1波または第3波か判定する。
      *
@@ -279,16 +391,60 @@ private:
             isElliot1or3 = true;
         }
         
-        if (elliot.marketContext.timeFrame == PERIOD_M1) {
-            if (elliotLabel == "5") {
-                isElliot1or3 = true;
-            }
-        }
-        
         this.logger.debug(__FUNCTION__, StringFormat("isElliot1or3 = %s", (string)isElliot1or3));
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isElliot1or3;
+    }
+
+    /**
+     * 現在足がM5第3波の場合にフィボナッチエクスパンション上限を確認する。
+     *
+     * @return M5第3波以外、またはFEが許容上限以下の場合true。
+     */
+    bool isM5Elliot3FibonacciExpansionWithin() {
+        if (this.elliotCurrent.marketContext.timeFrame != PERIOD_M5) {
+            return true;
+        }
+
+        ZigZagPoint *latestPoint = this.elliotCurrent.getLatestPoint();
+
+        if (latestPoint == NULL) {
+            return false;
+        }
+
+        if (latestPoint.elliotLabel != "3") {
+            return true;
+        }
+
+        double fibonacciExpansionPercent =
+            latestPoint.fibonacciExpansionPercent;
+
+        if (!MathIsValidNumber(fibonacciExpansionPercent)
+                || fibonacciExpansionPercent == EMPTY_VALUE
+                || fibonacciExpansionPercent <= 0.0) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "invalid M5 Elliott wave 3 FE. value=%f",
+                    fibonacciExpansionPercent
+                )
+            );
+
+            return false;
+        }
+
+        fibonacciExpansionPercent = NormalizeDouble(
+            fibonacciExpansionPercent,
+            1
+        );
+
+        if (fibonacciExpansionPercent
+                <= ExpertAdvisorMTF_3in3::maxM5Elliot3FibonacciExpansionPercent) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -405,5 +561,6 @@ private:
     
 };
 
-const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPips = 20.0;
+const double ExpertAdvisorMTF_3in3::maxM5Elliot3FibonacciExpansionPercent = 161.8;
+const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPips = 25.0;
 const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPipsJpy = 25.0;

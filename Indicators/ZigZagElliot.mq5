@@ -21,6 +21,9 @@ input bool mailValidationFileEnabled = false;
 /** MTF_3in3アラート検証CSVを出力する場合true。 */
 input bool mtf3In3AlertCsvEnabled = true;
 
+/** H1表示波ごとのエントリー回数制限を使用する場合true。 */
+input bool h1DisplayWaveEntryLimitEnabled = false;
+
 /** 通貨強弱を利用する場合true。 */
 input bool currencyStrengthEnabled = true;
 
@@ -74,6 +77,8 @@ int OnInit() {
     ZigZagElliotConfig config;
     config.mailValidationFileEnabled = mailValidationFileEnabled;
     config.mtf3In3AlertCsvEnabled = mtf3In3AlertCsvEnabled;
+    config.h1DisplayWaveEntryLimitEnabled =
+        h1DisplayWaveEntryLimitEnabled;
     config.currencyStrengthEnabled = currencyStrengthEnabled;
     config.currencyStrengthEntryFilterEnabled =
         currencyStrengthEntryFilterEnabled;

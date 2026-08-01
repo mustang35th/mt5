@@ -6,15 +6,17 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Arrays\ArrayString.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Signal\SignalInfo.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
- * シンボル単位でシグナル発生回数を管理するクラス。
+ * シンボル単位でシグナル発生回数とエントリー済み波動を管理するクラス。
  *
  * 基準時刻と売買方向の組み合わせごとにSignalInfoを保持し、
- * 同じシグナルが検出された回数を加算する。
+ * 同じシグナルが検出された回数を加算する。また、同一Elliott表示波への
+ * 重複エントリーを防ぐため、エントリー済み波動の識別情報を保持する。
  */
 class SignalCount : public CObject {
 public:
@@ -56,6 +58,7 @@ public:
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.signalInfoList.Clear();
+        this.usedEntryWaveKeyList.Clear();
         this.initializeMarketContext(fromMarketContext);
     }
 
@@ -95,6 +98,58 @@ public:
         return count;
     }
 
+    /**
+     * 指定したElliott表示波がエントリー済みか判定する。
+     *
+     * @param fromWaveStartTime 波の開始時刻。
+     * @param fromWaveLabel 上位波と下位波を結合した表示ラベル。
+     * @param fromIsUptrend 上昇波の場合true。
+     * @return エントリー済みの場合true。
+     */
+    bool isEntryWaveUsed(
+        datetime fromWaveStartTime,
+        string fromWaveLabel,
+        bool fromIsUptrend
+    ) {
+        string entryWaveKey = this.getEntryWaveKey(
+            fromWaveStartTime,
+            fromWaveLabel,
+            fromIsUptrend
+        );
+
+        return this.usedEntryWaveKeyList.SearchLinear(entryWaveKey) >= 0;
+    }
+
+    /**
+     * 指定したElliott表示波をエントリー済みとして登録する。
+     *
+     * @param fromWaveStartTime 波の開始時刻。
+     * @param fromWaveLabel 上位波と下位波を結合した表示ラベル。
+     * @param fromIsUptrend 上昇波の場合true。
+     * @return 新規登録に成功した場合true。登録済みまたは登録失敗時はfalse。
+     */
+    bool markEntryWaveUsed(
+        datetime fromWaveStartTime,
+        string fromWaveLabel,
+        bool fromIsUptrend
+    ) {
+        if (this.isEntryWaveUsed(
+                fromWaveStartTime,
+                fromWaveLabel,
+                fromIsUptrend
+        )) {
+            return false;
+        }
+
+        string entryWaveKey = this.getEntryWaveKey(
+            fromWaveStartTime,
+            fromWaveLabel,
+            fromIsUptrend
+        );
+
+        return this.usedEntryWaveKeyList.Add(entryWaveKey);
+    }
+
 
 private:
     /** 処理経過およびエラー出力用ロガー。 */
@@ -102,6 +157,10 @@ private:
     
     /** 時刻・売買方向別のSignalInfo一覧。 */
     CArrayObj signalInfoList;
+
+    /** エントリー済みElliott表示波の識別キー一覧。 */
+    CArrayString usedEntryWaveKeyList;
+
 
     /**
      * 市場コンテキストとロガーを初期化する。
@@ -134,7 +193,28 @@ private:
         
         return NULL;
     }
-};        
+
+    /**
+     * Elliott表示波の識別キーを生成する。
+     *
+     * @param fromWaveStartTime 波の開始時刻。
+     * @param fromWaveLabel 上位波と下位波を結合した表示ラベル。
+     * @param fromIsUptrend 上昇波の場合true。
+     * @return 波の開始時刻、表示ラベルおよび方向を結合した識別キー。
+     */
+    string getEntryWaveKey(
+        datetime fromWaveStartTime,
+        string fromWaveLabel,
+        bool fromIsUptrend
+    ) {
+        return StringFormat(
+            "%I64d|%s|%d",
+            (long)fromWaveStartTime,
+            fromWaveLabel,
+            (int)fromIsUptrend
+        );
+    }
+};
 
 
 

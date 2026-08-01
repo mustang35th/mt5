@@ -120,6 +120,20 @@ public:
         int orgTotal = orgZigZagPointList.Total();
         
         logger.debug(__FUNCTION__, StringFormat("orgTotal = %d", orgTotal));
+
+        if (start < 0 || start >= orgTotal) {
+            logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "start is out of range. start=%d orgTotal=%d",
+                    start,
+                    orgTotal
+                )
+            );
+            LogUtil::printMethodEnd(logger, __FUNCTION__, false);
+
+            return false;
+        }
         
         for (int i = start; i < orgTotal; i++) {
             logger.debug(__FUNCTION__, StringFormat("for i = %d", i));
@@ -138,14 +152,13 @@ public:
             }
             
             // 上位足左ポイントより過去側へ抜けた場合は終了する。
-            if (zigZagPoint.barTimeNext < datetimeStart) {
+            if (zigZagPoint.barTimeNext <= datetimeStart) {
                 endIndex = i - 1;
-                
-                break;
-            }
-            
-            if (zigZagPoint.barTimeNext == datetimeStart) {
-                endIndex = i - 1;
+
+                // 次回の抽出開始位置が配列境界を下回らないようにする。
+                if (endIndex < 0) {
+                    endIndex = 0;
+                }
                 
                 break;
             }

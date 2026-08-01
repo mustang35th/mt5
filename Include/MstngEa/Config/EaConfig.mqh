@@ -49,6 +49,9 @@ public:
     /** MTF_3in3アラート検証CSV出力 */
     bool mtf3In3AlertCsvEnabled;
 
+    /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
+    bool h1DisplayWaveEntryLimitEnabled;
+
     /**
      * コンストラクタ
      */
@@ -66,6 +69,7 @@ public:
         this.breakEvenPlusPips = 1.0;
         this.useCurrencyStrength = false;
         this.mtf3In3AlertCsvEnabled = false;
+        this.h1DisplayWaveEntryLimitEnabled = false;
     }
 };
 
