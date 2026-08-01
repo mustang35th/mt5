@@ -23,6 +23,8 @@ public:
     bool mtf3In3AlertCsvEnabled;
     /** 通貨強弱を利用する場合true。 */
     bool currencyStrengthEnabled;
+    /** 通貨強弱をエントリー条件として使用する場合true。 */
+    bool currencyStrengthEntryFilterEnabled;
     /** 通貨強弱順位パネルを表示する場合true。 */
     bool currencyStrengthRankVisible;
     /** 通貨強弱順位パネルの右端からの距離。 */
@@ -47,6 +49,7 @@ public:
         this.mailValidationFileEnabled = false;
         this.mtf3In3AlertCsvEnabled = true;
         this.currencyStrengthEnabled = true;
+        this.currencyStrengthEntryFilterEnabled = false;
         this.currencyStrengthRankVisible = true;
         this.currencyStrengthRankPanelXDistance = 48;
         this.currencyStrengthRefreshSeconds = 15;

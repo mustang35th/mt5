@@ -48,7 +48,7 @@ input double InpBreakEvenTriggerR = 1.0;
 input double InpBreakEvenPlusPips = 1.0;
 
 /** 通貨強弱利用 */
-input bool InpUseCurrencyStrength = true;
+input bool InpUseCurrencyStrength = false;
 
 /** 通貨強弱DB参照プロファイル */
 input CurrencyStrengthRankDatabaseProfile InpCurrencyStrengthDatabaseProfile =

@@ -151,6 +151,26 @@ public:
     }
 
     /**
+     * 指定したElliotのEMA200判定が現在の売買方向と一致するか、未判定か確認する。
+     *
+     * @param fromElliot 判定対象。
+     * @return EMA200判定が現在の売買方向と一致するかNONEの場合true。
+     */
+    bool isEma200BuySellOrNone(Elliot *fromElliot) {
+        if (fromElliot == NULL) {
+            return false;
+        }
+
+        string buySellLabel = fromElliot.oscillator.ema200.getBuySellLabel();
+
+        if (buySellLabel == "NONE") {
+            return true;
+        }
+
+        return this.isEma200BuySell(fromElliot);
+    }
+
+    /**
      * Close1とEMA200[1]の距離が上限以内か判定する。
      *
      * @param elliot 判定対象。

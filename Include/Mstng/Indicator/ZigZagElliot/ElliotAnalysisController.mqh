@@ -30,7 +30,7 @@ public:
         this.elliotAll = NULL;
         this.timerMode = true;
         this.mailValidationFileEnabled = false;
-        this.currencyStrengthEnabled = true;
+        this.currencyStrengthEntryFilterEnabled = false;
         this.fileInitialized = false;
         this.logStartTimeFrame = PERIOD_D1;
     }
@@ -61,8 +61,9 @@ public:
         this.timerMode = fromTimerMode;
         this.mailValidationFileEnabled =
             fromConfig.mailValidationFileEnabled;
-        this.currencyStrengthEnabled =
-            fromConfig.currencyStrengthEnabled;
+        this.currencyStrengthEntryFilterEnabled =
+            fromConfig.currencyStrengthEnabled
+                && fromConfig.currencyStrengthEntryFilterEnabled;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
         this.oscillatorHandlePool =
@@ -117,7 +118,7 @@ public:
         this.elliotAll.isMailValidationFileEnabled =
             this.mailValidationFileEnabled;
         this.elliotAll.isCurrencyStrengthEntryFilterEnabled =
-            this.currencyStrengthEnabled;
+            this.currencyStrengthEntryFilterEnabled;
         this.elliotAll.setOscillatorHandlePool(
             this.oscillatorHandlePool
         );
@@ -232,8 +233,8 @@ private:
     bool timerMode;
     /** Mail内容を検証用ファイルへ出力する場合true。 */
     bool mailValidationFileEnabled;
-    /** 通貨強弱を利用する場合true。 */
-    bool currencyStrengthEnabled;
+    /** 通貨強弱をエントリー条件として使用する場合true。 */
+    bool currencyStrengthEntryFilterEnabled;
     /** CSV初期化済みの場合true。 */
     bool fileInitialized;
     /** CSV出力開始時間足。 */

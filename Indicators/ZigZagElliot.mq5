@@ -24,6 +24,9 @@ input bool mtf3In3AlertCsvEnabled = true;
 /** 通貨強弱を利用する場合true。 */
 input bool currencyStrengthEnabled = true;
 
+/** 通貨強弱をエントリー条件として使用する場合true。 */
+input bool currencyStrengthEntryFilterEnabled = false;
+
 /** 通貨強弱順位パネルを表示する場合true。 */
 input bool currencyStrengthRankVisible = true;
 
@@ -72,6 +75,8 @@ int OnInit() {
     config.mailValidationFileEnabled = mailValidationFileEnabled;
     config.mtf3In3AlertCsvEnabled = mtf3In3AlertCsvEnabled;
     config.currencyStrengthEnabled = currencyStrengthEnabled;
+    config.currencyStrengthEntryFilterEnabled =
+        currencyStrengthEntryFilterEnabled;
     config.currencyStrengthRankVisible = currencyStrengthRankVisible;
     config.currencyStrengthRankPanelXDistance =
         currencyStrengthRankPanelXDistance;

@@ -106,9 +106,9 @@ protected:
                 //&& this.expertAdvisorElliot.isBuySellFromH4(this.elliotAll, this.isBuy)
                 //&& this.expertAdvisorElliot.isBuySellFromH1(this.elliotAll, this.isBuy)
 
-                && this.elliotAll.isBuySell(PERIOD_H4)
+                && this.elliotAll.isBuySell(PERIOD_D1)
 
-                && this.expertAdvisorElliot.isWaveUnconfirmed(this.elliotH1)
+                //&& this.expertAdvisorElliot.isWaveUnconfirmed(this.elliotH1)
 
                 && this.expertAdvisorElliot.isZigZagConfirmed(this.elliotCurrent)
                 
@@ -124,7 +124,7 @@ protected:
                 
                 //&& this.isElliot1or3(this.elliotCurrent)
                 
-                && this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher2)
+                && this.expertAdvisorEma200.isEma200BuySellOrNone(this.elliotHigher2)
                 && this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher1)
                 && this.expertAdvisorEma200.isEma200BuySell(this.elliotCurrent)
                 
