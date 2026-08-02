@@ -1,280 +1,112 @@
 ﻿//+------------------------------------------------------------------+
 //|                                             ZigZagElliotList.mq5 |
-//|                                  Copyright 2025, MetaQuotes Ltd. |
+//|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2025, MetaQuotes Ltd."
+#property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.01"
+#property version   "1.10"
 #property indicator_chart_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  "ZigZagElliotListHidden"
+#property indicator_type1   DRAW_NONE
 
 #include <Mstng\Common\MarketContext.mqh>
-#include <Mstng\Draw\DrawElliotAllList.mqh>
-#include <Mstng\Elliot\ElliotAllList.mqh>
-#include <Mstng\ExpertAdvisor\ExpertAdvisorEma200.mqh>
-#include <Mstng\ExpertAdvisor\ExpertAdvisorOscillator.mqh>
-#include <Mstng\Oscillator\OscillatorHandleManager.mqh>
+#include <Mstng\Indicator\ZigZagElliot\ZigZagElliotListController.mqh>
 
-Logger gLogger;
+/** 描画専用インジケーターの非表示バッファ。 */
+double gHiddenBuffer[];
 
-bool gIsTimer = true;
+/** 複数通貨Elliott一覧コントローラー。 */
+ZigZagElliotListController *gZigZagElliotListController = NULL;
 
-string gSymbolName;
-ENUM_TIMEFRAMES gTimeFrame;
-
-DrawElliotAllList *gDrawElliotAllList;
-OscillatorHandleManager *gOscillatorHandleManager;
-
-static datetime gStaticLasttime;
-
+/**
+ * インジケーターを初期化する。
+ *
+ * @return 初期化結果
+ */
 int OnInit() {
-    //if (Util::isStrategyTester()) {
-        gIsTimer = false;
-    //}
-    
-    gSymbolName = _Symbol;
-    gTimeFrame = _Period;
-    
-    gLogger.setLevel(LOG_INFO);
-    MarketContext context(gSymbolName, gTimeFrame);
-    gLogger.setMarketContext(context);
-    
-    LogUtil::printMethodStart(gLogger, __FUNCTION__);
-    
-    gDrawElliotAllList = new DrawElliotAllList(0);
-    setOscillatorHandleManager();
-    
-    LogUtil::printMethodEnd(gLogger, __FUNCTION__, true);
-    
-    return(INIT_SUCCEEDED);
-}
-
-void OnDeinit(const int reason) {
-    LogUtil::printMethodStart(gLogger, __FUNCTION__);
-    
-    if (gDrawElliotAllList != NULL) {
-        gDrawElliotAllList.clear();
-        delete gDrawElliotAllList;
-        gDrawElliotAllList = NULL;
+    if (!SetIndexBuffer(0, gHiddenBuffer, INDICATOR_DATA)) {
+        return INIT_FAILED;
     }
 
-    delete gOscillatorHandleManager;
-    
-    LogUtil::printMethodEnd(gLogger, __FUNCTION__, true);
-}
+    MarketContext context(_Symbol, _Period);
+    gZigZagElliotListController = new ZigZagElliotListController();
 
-int OnCalculate(const int32_t rates_total,
-                const int32_t prev_calculated,
-                const datetime &time[],
-                const double &open[],
-                const double &high[],
-                const double &low[],
-                const double &close[],
-                const long &tick_volume[],
-                const long &volume[],
-                const int32_t &spread[]) {
-    
-    datetime temptime = iTime(gSymbolName, gTimeFrame, 0);
-
-    if (gStaticLasttime == temptime) {
-        return(rates_total);
+    if (gZigZagElliotListController == NULL) {
+        return INIT_FAILED;
     }
-    
-    exec();
-    
-    gStaticLasttime = temptime;
-    
-    return(rates_total);
-}
 
-void exec() {
-    LogUtil::printMethodStart(gLogger, __FUNCTION__);
-    
-    // ⏰ 処理開始時刻を記録 (ミリ秒)
-    long startTime = GetTickCount();    
-    gLogger.debug(__FUNCTION__, StringFormat("▼▼▼▼▼　Start Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), startTime));
-    
-    
-    ElliotAllList *elliotAllList = new ElliotAllList(gTimeFrame, gIsTimer);
-    
-    elliotAllList.setList(gOscillatorHandleManager);
-    
-    elliotAllList.print();
-    
-    //printStochasticOrder(elliotAllList);
-    printEma200(elliotAllList);
-    //printD1BuySell(elliotAllList);
-    
-    //printH4M15BuySell(elliotAllList);
+    int initializeResult =
+        gZigZagElliotListController.initialize(context);
 
-    if (gDrawElliotAllList != NULL) {
-        if (!gDrawElliotAllList.draw(elliotAllList)) {
-            gLogger.error(__FUNCTION__, "failed to draw ElliotAll list panel");
-        }
+    if (initializeResult != INIT_SUCCEEDED) {
+        delete gZigZagElliotListController;
+        gZigZagElliotListController = NULL;
+
+        return initializeResult;
     }
-    
-    delete elliotAllList;
-    
-    
-    // ⏳ 処理終了時刻を記録し、実行時間を計算
-    long endTime = GetTickCount();
-    long elapsedTime = endTime - startTime;
-    
-    //gLogger.debug(__FUNCTION__, StringFormat("　　　　　　　End Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), endTime));
-    //gLogger.debug(__FUNCTION__, StringFormat("▲▲▲▲▲　Total Elapsed Time: %d ms (%.3f seconds)", elapsedTime, (double)elapsedTime / 1000.0));
+
+    IndicatorSetString(
+        INDICATOR_SHORTNAME,
+        "ZigZag Elliott List GMO " + context.timeFrameLabel
+    );
+
+    return INIT_SUCCEEDED;
 }
 
-void setOscillatorHandleManager() {
-    gOscillatorHandleManager = new OscillatorHandleManager(gTimeFrame);
-    
-    if (gIsTimer) {
-        gOscillatorHandleManager.setTimeframesFromMn1ToAll();
-    } else {
-        gOscillatorHandleManager.setTimeframesFromD1ToAll();
+/**
+ * インジケーター終了時に保持リソースを解放する。
+ *
+ * @param fromReason 終了理由
+ */
+void OnDeinit(const int fromReason) {
+    if (gZigZagElliotListController != NULL) {
+        delete gZigZagElliotListController;
+        gZigZagElliotListController = NULL;
     }
 }
 
-void printEma200(ElliotAllList *elliotAllList) {
-    Print("");
-    Print("▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼　Ema200　▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼");
-
-    printElliotAllByEma200(elliotAllList, true);
-    printElliotAllByEma200(elliotAllList, false);
-
-    Print("▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲　Ema200　▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲");
-}
-
-void printElliotAllByEma200(ElliotAllList *elliotAllList, bool isBuy) {
-    Print(StringFormat("Ema200 isBuy = %s", (string)isBuy));
-
-    int total = elliotAllList.elliotAllList.Total();
-    ExpertAdvisorEma200 expertAdvisorEma200(isBuy);
-
-    for (int i = 0; i < total; i++) {
-        ElliotAll *elliotAll = elliotAllList.elliotAllList.At(i);
-
-        if (elliotAll == NULL) {
-            continue;
-        }
-
-        if (expertAdvisorEma200.isEma200Candidate(elliotAll)) {
-            Print("  " + elliotAll.getCsv());
-
-            /*ExpertAdvisorOscillator *expertAdvisorOscillator = new ExpertAdvisorOscillator(elliotAll.marketContext);
-
-            if (expertAdvisorOscillator.isStochasticMainOrder(elliotAll)) {
-                if (elliotAll.elliotCurrent.isBuy == isBuy
-                        && elliotAll.isBuySell(PERIOD_H4)
-                        && expertAdvisorOscillator.isGmmaCross_2(elliotAll.elliotCurrent, isBuy)
-                ) {
-                    Print("  " + elliotAll.getCsv());
-                }
-            }
-
-            delete expertAdvisorOscillator;*/
-        }
-
+/**
+ * 表示チャートの更新をコントローラーへ通知する。
+ *
+ * @param fromRatesTotal 全バー数
+ * @param fromPrevCalculated 前回計算済みバー数
+ * @param fromTime 時刻配列
+ * @param fromOpen 始値配列
+ * @param fromHigh 高値配列
+ * @param fromLow 安値配列
+ * @param fromClose 終値配列
+ * @param fromTickVolume ティック出来高配列
+ * @param fromVolume 出来高配列
+ * @param fromSpread スプレッド配列
+ * @return 次回計算用の処理済みバー数
+ */
+int OnCalculate(
+    const int fromRatesTotal,
+    const int fromPrevCalculated,
+    const datetime &fromTime[],
+    const double &fromOpen[],
+    const double &fromHigh[],
+    const double &fromLow[],
+    const double &fromClose[],
+    const long &fromTickVolume[],
+    const long &fromVolume[],
+    const int &fromSpread[]
+) {
+    if (gZigZagElliotListController == NULL) {
+        return fromRatesTotal;
     }
 
+    return gZigZagElliotListController.onCalculate(fromRatesTotal);
 }
 
-void printStochasticOrder(ElliotAllList *elliotAllList) {
-    Print("");
-    Print("▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼　StochasticOrder　▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼");
-    
-    printElliotAllByStochasticOrder(elliotAllList, true);
-    printElliotAllByStochasticOrder(elliotAllList, false);
-    
-    Print("▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲　StochasticOrder　▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲");
-}
-
-void printElliotAllByStochasticOrder(ElliotAllList *elliotAllList, bool isBuy) {
-    Print(StringFormat("StochasticOrder isBuy = %s", (string)isBuy));
-    
-    int total = elliotAllList.elliotAllList.Total();
-
-    for (int i = 0; i < total; i++) {
-        ElliotAll *elliotAll = elliotAllList.elliotAllList.At(i);
-        
-        if (elliotAll != NULL) {
-            ExpertAdvisorOscillator *expertAdvisorOscillator = new ExpertAdvisorOscillator(elliotAll.marketContext);
-        
-            if (expertAdvisorOscillator.isStochasticMainOrder(elliotAll)) {
-                if (elliotAll.elliotCurrent.isBuy == isBuy
-                        && elliotAll.isBuySell(PERIOD_H4)
-                        && expertAdvisorOscillator.isGmmaCross_2(elliotAll.elliotCurrent, isBuy)
-                ) {
-                    Print("  " + elliotAll.getCsv());
-                }
-            }
-            
-            delete expertAdvisorOscillator;
-        }
-        
+/**
+ * 新規バー確認と分析未完了時の再試行をコントローラーへ通知する。
+ */
+void OnTimer() {
+    if (gZigZagElliotListController != NULL) {
+        gZigZagElliotListController.onTimer();
     }
-    
-}
-
-void printD1BuySell(ElliotAllList *elliotAllList) {
-    Print("");
-    Print("▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼　D1 BuySell　▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼");
-    
-    printElliotAllByCount(elliotAllList, 3);
-    printElliotAllByCount(elliotAllList, -3);
-    printElliotAllByCount(elliotAllList, 2);
-    printElliotAllByCount(elliotAllList, -2);
-    
-    Print("▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲　D1 BuySell　▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲");
-    //Print("");
-}
-
-void printElliotAllByCount(ElliotAllList *elliotAllList, int count) {
-    Print(StringFormat("D1 BuySell = %d", count));
-    
-    int total = elliotAllList.elliotAllList.Total();
-
-    for (int i = 0; i < total; i++) {
-        ElliotAll *elliotAll = elliotAllList.elliotAllList.At(i);
-        
-        if (elliotAll != NULL) {
-            Elliot *elliot = elliotAll.getElliot(PERIOD_D1);
-            
-            if (elliot != NULL
-                    && elliot.oscillator.oscillatorCount == count
-                    && elliotAll.isBuySell(PERIOD_D1)) {
-                Print("  " + elliotAll.getCsv());
-            }
-        }
-        
-    }
-    
-}
-
-void printH4M15BuySell(ElliotAllList *elliotAllList) {
-    Print("");
-    Print("▽▽▽▽▽▽▽▽▽▽ H4M15　BuySell ▽▽▽▽▽▽▽▽▽▽");
-    
-    printElliotAllByCount(elliotAllList, true);
-    printElliotAllByCount(elliotAllList, false);
-    
-    Print("△△△△△△△△△△　H4M15　BuySell　△△△△△△△△△△");
-    Print("");
-}
-
-void printElliotAllByCount(ElliotAllList *elliotAllList, bool isBuy) {
-    Print(StringFormat("H4M15 BuySell isBuy = %s", (string)isBuy));
-    
-    int total = elliotAllList.elliotAllList.Total();
-
-    for (int i = 0; i < total; i++) {
-        ElliotAll *elliotAll = elliotAllList.elliotAllList.At(i);
-        
-        if (elliotAll != NULL) {
-            if (elliotAll.isBuySellCount3(PERIOD_H4, isBuy)) {
-                Print("  " + elliotAll.getCsv());
-            }
-        }
-        
-    }
-    
 }

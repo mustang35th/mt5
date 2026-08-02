@@ -7,13 +7,14 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 
 /**
  * 複数シンボルのElliotAllをまとめて管理するクラス。
  *
- * Market Watchの対象シンボルを分析し、一覧の生成とログ出力を行う。
+ * 指定された対象シンボルを分析し、一覧の生成とログ出力を行う。
  */
 class ElliotAllList {
 public:
@@ -25,6 +26,9 @@ public:
     
     /** シンボル別ElliotAll一覧 */
     CArrayObj elliotAllList;
+
+    /** 今回指定された分析対象シンボル数。 */
+    int targetCount;
     
     /**
      * 複数シンボル分析用コンテキストで初期化する。
@@ -69,6 +73,7 @@ public:
     void setMarketContext(MarketContext &fromMarketContext) {
         this.clearElliotAllList();
         this.marketContext = fromMarketContext;
+        this.targetCount = 0;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
     }
@@ -79,24 +84,48 @@ public:
      * @param fromOscillatorHandleManager シンボル別ハンドル管理クラス
      */
     void setList(OscillatorHandleManager *fromOscillatorHandleManager) {
+        SymbolNameInfoAll symbolNameInfoAll;
+
+        this.setList(
+            fromOscillatorHandleManager,
+            symbolNameInfoAll
+        );
+    }
+
+    /**
+     * 指定された対象シンボルごとのElliotAllを生成して分析する。
+     *
+     * @param fromOscillatorHandleManager シンボル別ハンドル管理クラス
+     * @param fromSymbolNameInfoAll 分析対象シンボル一覧
+     */
+    void setList(
+        OscillatorHandleManager *fromOscillatorHandleManager,
+        SymbolNameInfoAll &fromSymbolNameInfoAll
+    ) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        
+
+        this.clearElliotAllList();
         this.oscillatorHandleManager = fromOscillatorHandleManager;
+        this.targetCount = 0;
+
+        if (this.oscillatorHandleManager == NULL) {
+            this.logger.error(
+                __FUNCTION__,
+                "oscillatorHandleManager is NULL"
+            );
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return;
+        }
         
         // 処理開始時刻を記録（ミリ秒）
         long startTime = GetTickCount();
         
         this.logger.debug(__FUNCTION__, StringFormat("setList:Start Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), startTime));
-    
-    
-        SymbolNameInfoAll symbolNameInfoAll;
-        
-        const int total = symbolNameInfoAll.size();
+        const int total = fromSymbolNameInfoAll.size();
 
-        int count = 0;
-        
         for (int i = 0; i < total; i++) {
-            SymbolNameInfo *info = symbolNameInfoAll.getSymbolNameInfo(i);
+            SymbolNameInfo *info = fromSymbolNameInfoAll.getSymbolNameInfo(i);
             
             if (info == NULL) {
                 continue;
@@ -105,13 +134,25 @@ public:
             const string symbol = info.symbolName;
             
             if (info.isTarget) {
+                this.targetCount++;
+
+                if (!SymbolSelect(symbol, true)) {
+                    this.logger.error(
+                        __FUNCTION__,
+                        StringFormat(
+                            "SymbolSelect failed symbol=%s error=%d",
+                            symbol,
+                            GetLastError()
+                        )
+                    );
+                }
+
                 this.addElliotAll(symbol);
-                count++;
             }
             
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("symbolNameInfoAll isTarget = %d", count));
+        this.logger.debug(__FUNCTION__, StringFormat("fromSymbolNameInfoAll isTarget = %d", this.targetCount));
         this.logger.debug(__FUNCTION__, StringFormat("elliotAllList = %d", this.elliotAllList.Total()));
         
         // 処理終了時刻を記録し、実行時間を計算する
@@ -168,20 +209,43 @@ private:
      * 指定シンボルのElliotAllを生成して一覧へ追加する。
      *
      * @param fromSymbolName 追加対象シンボル
+     * @return 一覧へ追加できた場合true
      */
-    void addElliotAll(string fromSymbolName) {
+    bool addElliotAll(string fromSymbolName) {
         MarketContext context = this.marketContext;
         context.setSymbolName(fromSymbolName);
         ElliotAll *elliotAll = new ElliotAll(context);
+
+        if (elliotAll == NULL) {
+            this.logger.error(
+                __FUNCTION__,
+                "failed to create ElliotAll symbol=" + fromSymbolName
+            );
+
+            return false;
+        }
         
         elliotAll.isTimer = this.isTimer;
-        elliotAll.setOscillatorHandlePool(oscillatorHandleManager.getPoolByMarketContext(context));
+        elliotAll.setOscillatorHandlePool(
+            this.oscillatorHandleManager.getPoolByMarketContext(context)
+        );
         
         elliotAll.analyze();
-        
-        this.elliotAllList.Add(elliotAll);
+
+        if (!this.elliotAllList.Add(elliotAll)) {
+            delete elliotAll;
+
+            this.logger.error(
+                __FUNCTION__,
+                "failed to add ElliotAll symbol=" + fromSymbolName
+            );
+
+            return false;
+        }
         
         this.logger.debug(__FUNCTION__, StringFormat("symbol = %s execTime = %dms", elliotAll.marketContext.symbolName, elliotAll.execTime));
+
+        return true;
     }
 
     /**

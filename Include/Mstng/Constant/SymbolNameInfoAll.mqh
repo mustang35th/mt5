@@ -38,6 +38,8 @@ public:
      * 全対象を登録する。
      */
     void setAll() {
+        this.clearSymbolNameInfoList();
+
         // JPY 7。
         this.add(ConstantCurrency::USDJPY, 101, true);
         this.add(ConstantCurrency::EURJPY, 102, true);
@@ -85,6 +87,8 @@ public:
      * GMO取引用に対象を登録する。
      */
     void setGmo() {
+        this.clearSymbolNameInfoList();
+
         // JPY 7。
         this.add(ConstantCurrency::USDJPY, 101, true);
         this.add(ConstantCurrency::EURJPY, 102, true);
@@ -132,6 +136,8 @@ public:
      * ディスクリショナリー向けの対象を登録する。
      */
     void setDiscretionary() {
+        this.clearSymbolNameInfoList();
+
         // JPY 7。
         this.add(ConstantCurrency::USDJPY, 101, true);
         this.add(ConstantCurrency::EURJPY, 102, true);
@@ -181,17 +187,7 @@ public:
      * 内部で保持しているSymbolNameInfoインスタンスを解放する。
      */
     ~SymbolNameInfoAll() {
-        int total = this.symbolNameInfoList.Total();
-
-        for (int i = 0; i < total; i++) {
-            CObject *obj = this.symbolNameInfoList.At(i);
-
-            if (obj != NULL) {
-                delete obj;
-            }
-        }
-
-        this.symbolNameInfoList.Clear();
+        this.clearSymbolNameInfoList();
     }
 
     
@@ -314,6 +310,23 @@ private:
     ConstantCurrency constantCurrency;
     /** ロガー。 */
     Logger logger;
+
+    /**
+     * 保持しているシンボル情報を解放し、一覧を空にする。
+     */
+    void clearSymbolNameInfoList() {
+        int total = this.symbolNameInfoList.Total();
+
+        for (int i = 0; i < total; i++) {
+            CObject *obj = this.symbolNameInfoList.At(i);
+
+            if (obj != NULL) {
+                delete obj;
+            }
+        }
+
+        this.symbolNameInfoList.Clear();
+    }
     
     /**
      * シンボル情報を追加する。

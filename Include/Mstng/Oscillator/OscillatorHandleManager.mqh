@@ -72,6 +72,26 @@ public:
     }
 
     /**
+     * 指定された一覧の対象シンボルだけでハンドルプールを再構築する。
+     *
+     * isTargetがtrueのシンボルだけを生成対象とする。
+     *
+     * @param fromSymbolNameInfoAll ハンドルプール生成対象のシンボル一覧。
+     * @return 全対象シンボルのハンドルプールを生成できた場合true。
+     */
+    bool setSymbolNameInfoAll(SymbolNameInfoAll &fromSymbolNameInfoAll) {
+        this.clear();
+
+        if (!this.buildPools(fromSymbolNameInfoAll, true)) {
+            this.clear();
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * 管理しているハンドルプール数を取得する。
      *
      * @return ハンドルプール数。
@@ -248,12 +268,30 @@ private:
      * 登録されている全シンボルのハンドルプールを生成する。
      */
     void buildPools() {
-        const int total = this.symbolNameInfoAll.size();
+        this.buildPools(this.symbolNameInfoAll, false);
+    }
+
+    /**
+     * 指定された一覧のシンボル別ハンドルプールを生成する。
+     *
+     * @param fromSymbolNameInfoAll ハンドルプール生成対象のシンボル一覧。
+     * @param fromTargetOnly isTargetがtrueのシンボルだけを対象とする場合true。
+     * @return 全対象シンボルのハンドルプールを生成できた場合true。
+     */
+    bool buildPools(
+        SymbolNameInfoAll &fromSymbolNameInfoAll,
+        const bool fromTargetOnly
+    ) {
+        const int total = fromSymbolNameInfoAll.size();
 
         for (int i = 0; i < total; i++) {
-            SymbolNameInfo *info = this.symbolNameInfoAll.getSymbolNameInfo(i);
+            SymbolNameInfo *info = fromSymbolNameInfoAll.getSymbolNameInfo(i);
             
             if (info == NULL) {
+                continue;
+            }
+
+            if (fromTargetOnly && !info.isTarget) {
                 continue;
             }
 
@@ -261,8 +299,19 @@ private:
             context.setSymbolName(info.symbolName);
 
             OscillatorHandlePool *pool = new OscillatorHandlePool(context);
-            this.poolList.Add(pool);
+
+            if (pool == NULL) {
+                return false;
+            }
+
+            if (!this.poolList.Add(pool)) {
+                delete pool;
+
+                return false;
+            }
         }
+
+        return true;
     }
 };
 
