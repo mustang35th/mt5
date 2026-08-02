@@ -13,12 +13,14 @@
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3EntryPriorityDecision.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
 enum DrawAlignedElliotAllListColumn {
     drawAlignedElliotAllListColumnSymbol = 0,
-    drawAlignedElliotAllListColumnTimeFrameStart = 1
+    drawAlignedElliotAllListColumnEntryPriority = 1,
+    drawAlignedElliotAllListColumnTimeFrameStart = 2
 };
 
 /**
@@ -69,6 +71,7 @@ public:
         this.emaRowOffset = 16;
         this.sectionGap = 4;
         this.bottomPadding = 10;
+        this.entryPriorityColumnWidth = 86;
         this.timeFrameColumnWidth = 108;
 
         this.fontName = "MS Gothic";
@@ -84,6 +87,10 @@ public:
         this.mutedColor = C'130,130,130';
         this.buyColor = clrAqua;
         this.sellColor = clrHotPink;
+        this.entryReadyColor = clrLime;
+        this.entryNearColor = clrGold;
+        this.entrySetupColor = clrOrange;
+        this.entryErrorColor = clrRed;
     }
 
     /**
@@ -259,6 +266,9 @@ private:
     /** パネル下余白。 */
     int bottomPadding;
 
+    /** エントリー優先度列の横幅。 */
+    int entryPriorityColumnWidth;
+
     /** 時間足列の横幅。 */
     int timeFrameColumnWidth;
 
@@ -297,6 +307,18 @@ private:
 
     /** SELL文字色。 */
     color sellColor;
+
+    /** エントリーREADY文字色。 */
+    color entryReadyColor;
+
+    /** エントリーNEAR文字色。 */
+    color entryNearColor;
+
+    /** エントリーSETUP文字色。 */
+    color entrySetupColor;
+
+    /** エントリーERROR文字色。 */
+    color entryErrorColor;
 
     /**
      * 表示対象件数と分析エラー件数を集計する。
@@ -368,7 +390,8 @@ private:
         this.destroyObjects();
 
         int timeFrameCount = ArraySize(fromDisplayTimeFrames);
-        int columnCount = timeFrameCount + 1;
+        int columnCount = timeFrameCount
+            + drawAlignedElliotAllListColumnTimeFrameStart;
         int rowCount = fromBuyCount + fromSellCount;
 
         this.panelWidth = this.calculatePanelWidth(timeFrameCount);
@@ -558,7 +581,7 @@ private:
     }
 
     /**
-     * 指定方向の一致結果を入力順で描画する。
+     * 指定方向の一致結果をエントリー優先順で描画する。
      *
      * @param fromElliotAllList 分析結果一覧。
      * @param fromDecision 完全一致判定クラス。
@@ -575,8 +598,68 @@ private:
         TrendAlignType fromAlignType,
         int fromStartRowIndex
     ) {
+        int displayIndexes[];
+        Mtf3In3EntryPriorityResult priorityResults[];
+        int displayCount = this.buildDisplayOrder(
+            fromElliotAllList,
+            fromDecision,
+            fromCurrentTimeFrame,
+            fromAlignType,
+            displayIndexes,
+            priorityResults
+        );
+
+        for (int i = 0; i < displayCount; i++) {
+            ElliotAll *elliotAll =
+                fromElliotAllList.elliotAllList.At(displayIndexes[i]);
+
+            this.drawRow(
+                fromStartRowIndex + i,
+                elliotAll,
+                fromDisplayTimeFrames,
+                fromAlignType,
+                priorityResults[i]
+            );
+        }
+    }
+
+    /**
+     * 指定方向の表示対象を抽出してエントリー優先順へ並べる。
+     *
+     * 元のElliotAllListは変更せず、表示用インデックスと優先度結果だけを
+     * 安定ソートする。
+     *
+     * @param fromElliotAllList 分析結果一覧。
+     * @param fromDecision 完全一致判定クラス。
+     * @param fromCurrentTimeFrame 表示時間足。
+     * @param fromAlignType 抽出する方向。
+     * @param fromDisplayIndexes 表示用インデックスの格納先。
+     * @param fromPriorityResults 優先度判定結果の格納先。
+     * @return 表示対象件数。
+     */
+    int buildDisplayOrder(
+        ElliotAllList *fromElliotAllList,
+        ElliotDirectionAlignmentDecision *fromDecision,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
+        TrendAlignType fromAlignType,
+        int &fromDisplayIndexes[],
+        Mtf3In3EntryPriorityResult &fromPriorityResults[]
+    ) {
+        ArrayResize(fromDisplayIndexes, 0);
+        ArrayResize(fromPriorityResults, 0);
+
         int total = fromElliotAllList.elliotAllList.Total();
-        int rowIndex = fromStartRowIndex;
+
+        if (ArrayResize(fromDisplayIndexes, total) != total
+                || ArrayResize(fromPriorityResults, total) != total) {
+            ArrayResize(fromDisplayIndexes, 0);
+            ArrayResize(fromPriorityResults, 0);
+
+            return 0;
+        }
+
+        Mtf3In3EntryPriorityDecision priorityDecision;
+        int displayCount = 0;
 
         for (int i = 0; i < total; i++) {
             ElliotAll *elliotAll = fromElliotAllList.elliotAllList.At(i);
@@ -594,14 +677,93 @@ private:
                 continue;
             }
 
-            this.drawRow(
-                rowIndex,
+            Mtf3In3EntryPriorityResult priorityResult;
+            priorityResult.reset();
+            priorityDecision.evaluate(
                 elliotAll,
-                fromDisplayTimeFrames,
-                fromAlignType
+                fromCurrentTimeFrame,
+                priorityResult
             );
-            rowIndex++;
+
+            fromDisplayIndexes[displayCount] = i;
+            fromPriorityResults[displayCount] = priorityResult;
+            displayCount++;
         }
+
+        ArrayResize(fromDisplayIndexes, displayCount);
+        ArrayResize(fromPriorityResults, displayCount);
+        this.sortDisplayOrder(fromDisplayIndexes, fromPriorityResults);
+
+        return displayCount;
+    }
+
+    /**
+     * 表示用インデックスを優先度順に安定ソートする。
+     *
+     * rank昇順、波動一致数降順、条件一致数降順で並べ、すべて同値の場合は
+     * 元の登録順を維持する。
+     *
+     * @param fromDisplayIndexes 表示用インデックス。
+     * @param fromPriorityResults インデックスと対応する優先度判定結果。
+     */
+    void sortDisplayOrder(
+        int &fromDisplayIndexes[],
+        Mtf3In3EntryPriorityResult &fromPriorityResults[]
+    ) {
+        int displayCount = ArraySize(fromDisplayIndexes);
+
+        if (displayCount != ArraySize(fromPriorityResults)) {
+            return;
+        }
+
+        for (int i = 1; i < displayCount; i++) {
+            int currentIndex = fromDisplayIndexes[i];
+            Mtf3In3EntryPriorityResult currentResult = fromPriorityResults[i];
+            int j = i - 1;
+
+            while (j >= 0
+                    && this.shouldShiftPriorityResult(
+                        currentResult,
+                        fromPriorityResults[j]
+                    )) {
+                fromDisplayIndexes[j + 1] = fromDisplayIndexes[j];
+                fromPriorityResults[j + 1] = fromPriorityResults[j];
+                j--;
+            }
+
+            fromDisplayIndexes[j + 1] = currentIndex;
+            fromPriorityResults[j + 1] = currentResult;
+        }
+    }
+
+    /**
+     * 現在の優先度結果を比較対象より前へ移動するか判定する。
+     *
+     * @param fromCurrentResult 現在の優先度判定結果。
+     * @param fromPreviousResult 比較対象の優先度判定結果。
+     * @return 現在結果を前へ移動する場合true。
+     */
+    bool shouldShiftPriorityResult(
+        Mtf3In3EntryPriorityResult &fromCurrentResult,
+        Mtf3In3EntryPriorityResult &fromPreviousResult
+    ) {
+        if (fromCurrentResult.rank != fromPreviousResult.rank) {
+            return fromCurrentResult.rank < fromPreviousResult.rank;
+        }
+
+        if (fromCurrentResult.waveMatchCount
+                != fromPreviousResult.waveMatchCount) {
+            return fromCurrentResult.waveMatchCount
+                > fromPreviousResult.waveMatchCount;
+        }
+
+        if (fromCurrentResult.conditionMatchCount
+                != fromPreviousResult.conditionMatchCount) {
+            return fromCurrentResult.conditionMatchCount
+                > fromPreviousResult.conditionMatchCount;
+        }
+
+        return false;
     }
 
     /**
@@ -611,12 +773,14 @@ private:
      * @param fromElliotAll 分析結果。
      * @param fromDisplayTimeFrames 表示対象時間足一覧。
      * @param fromAlignType 一致方向。
+     * @param fromPriorityResult エントリー優先度判定結果。
      */
     void drawRow(
         int fromRowIndex,
         ElliotAll *fromElliotAll,
         const ENUM_TIMEFRAMES &fromDisplayTimeFrames[],
-        TrendAlignType fromAlignType
+        TrendAlignType fromAlignType,
+        Mtf3In3EntryPriorityResult &fromPriorityResult
     ) {
         if (fromElliotAll == NULL) {
             return;
@@ -635,6 +799,18 @@ private:
             drawAlignedElliotAllListColumnSymbol,
             "EMA200",
             this.headerColor
+        );
+        this.setCell(
+            fromRowIndex,
+            drawAlignedElliotAllListColumnEntryPriority,
+            this.getEntryPriorityText(fromPriorityResult.rank),
+            this.getEntryPriorityColor(fromPriorityResult.rank)
+        );
+        this.setEmaCell(
+            fromRowIndex,
+            drawAlignedElliotAllListColumnEntryPriority,
+            " ",
+            this.mutedColor
         );
 
         int timeFrameCount = ArraySize(fromDisplayTimeFrames);
@@ -808,6 +984,58 @@ private:
         }
 
         return this.mutedColor;
+    }
+
+    /**
+     * エントリー優先度の表示文字列を取得する。
+     *
+     * @param fromRank エントリー優先度。
+     * @return READY / NEAR / SETUP / ALIGN / ERROR。
+     */
+    string getEntryPriorityText(Mtf3In3EntryPriorityRank fromRank) {
+        if (fromRank == mtf3In3EntryPriorityReady) {
+            return "READY";
+        }
+
+        if (fromRank == mtf3In3EntryPriorityNear) {
+            return "NEAR";
+        }
+
+        if (fromRank == mtf3In3EntryPrioritySetup) {
+            return "SETUP";
+        }
+
+        if (fromRank == mtf3In3EntryPriorityAlign) {
+            return "ALIGN";
+        }
+
+        return "ERROR";
+    }
+
+    /**
+     * エントリー優先度の表示色を取得する。
+     *
+     * @param fromRank エントリー優先度。
+     * @return 優先度に対応する表示色。
+     */
+    color getEntryPriorityColor(Mtf3In3EntryPriorityRank fromRank) {
+        if (fromRank == mtf3In3EntryPriorityReady) {
+            return this.entryReadyColor;
+        }
+
+        if (fromRank == mtf3In3EntryPriorityNear) {
+            return this.entryNearColor;
+        }
+
+        if (fromRank == mtf3In3EntryPrioritySetup) {
+            return this.entrySetupColor;
+        }
+
+        if (fromRank == mtf3In3EntryPriorityAlign) {
+            return this.mutedColor;
+        }
+
+        return this.entryErrorColor;
     }
 
     /**
@@ -987,7 +1215,9 @@ private:
      * @return パネル横幅。
      */
     int calculatePanelWidth(int fromTimeFrameCount) {
-        int width = 170 + (fromTimeFrameCount * this.timeFrameColumnWidth);
+        int width = 170
+            + this.entryPriorityColumnWidth
+            + (fromTimeFrameCount * this.timeFrameColumnWidth);
 
         if (width < 800) {
             width = 800;
@@ -1007,7 +1237,12 @@ private:
             return 14;
         }
 
+        if (fromColumnIndex == drawAlignedElliotAllListColumnEntryPriority) {
+            return 106;
+        }
+
         return 106
+            + this.entryPriorityColumnWidth
             + ((fromColumnIndex - drawAlignedElliotAllListColumnTimeFrameStart)
                 * this.timeFrameColumnWidth);
     }
@@ -1025,6 +1260,10 @@ private:
     ) {
         if (fromColumnIndex == drawAlignedElliotAllListColumnSymbol) {
             return "SYMBOL";
+        }
+
+        if (fromColumnIndex == drawAlignedElliotAllListColumnEntryPriority) {
+            return "ENTRY";
         }
 
         int timeFrameIndex = fromColumnIndex
