@@ -50,7 +50,7 @@ int OnInit() {
 
     IndicatorSetString(
         INDICATOR_SHORTNAME,
-        "ZigZag Elliott List GMO " + context.timeFrameLabel
+        "ZigZag Elliott List ALL " + context.timeFrameLabel
     );
 
     return INIT_SUCCEEDED;

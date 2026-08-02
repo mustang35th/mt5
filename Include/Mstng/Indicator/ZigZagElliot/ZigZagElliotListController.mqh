@@ -23,7 +23,7 @@
 /**
  * 複数通貨Elliott一覧のライフサイクルと実行順序を管理するクラス。
  *
- * GMO対象通貨を表示チャートの新規バーでMN1から分析し、D1から
+ * 全対象通貨を表示チャートの新規バーでMN1から分析し、D1から
  * 表示足まで売買方向が一致した通貨をBUY、SELL別に描画する。
  */
 class ZigZagElliotListController {
@@ -123,10 +123,10 @@ public:
             return INIT_FAILED;
         }
 
-        this.symbolNameInfoAll.setGmo();
+        this.symbolNameInfoAll.setAll();
 
         if (this.getTargetSymbolCount() == 0) {
-            this.logger.error(__FUNCTION__, "GMO target symbol list is empty");
+            this.logger.error(__FUNCTION__, "target symbol list is empty");
             this.destroy();
 
             return INIT_FAILED;
@@ -147,7 +147,7 @@ public:
         if (!this.oscillatorHandleManager.setSymbolNameInfoAll(
             this.symbolNameInfoAll
         )) {
-            this.logger.error(__FUNCTION__, "failed to configure GMO handle pools");
+            this.logger.error(__FUNCTION__, "failed to configure handle pools");
             this.destroy();
 
             return INIT_FAILED;
@@ -215,7 +215,7 @@ private:
     /** 表示チャートの市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** GMO対象シンボル一覧。 */
+    /** 全対象シンボル一覧。 */
     SymbolNameInfoAll *symbolNameInfoAll;
 
     /** 対象シンボル別オシレーターハンドル管理。 */
@@ -326,7 +326,7 @@ private:
     }
 
     /**
-     * GMO対象シンボル数を取得する。
+     * 対象シンボル数を取得する。
      *
      * @return isTargetがtrueのシンボル数
      */

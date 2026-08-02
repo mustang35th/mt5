@@ -66,13 +66,7 @@ private:
         string buySellLabel = fromElliotAll.elliotCurrent.buySellLabel;
         string mailTitile = fromElliotAll.mailTitile;
         
-        string mark = "";
-        
-        if (fromElliotAll.marketContext.timeFrame == PERIOD_M5) {
-            mark = "*";
-        }
-        
-        return StringFormat("%s%s:%s:%s", mark, symbolName, buySellLabel, mailTitile);
+        return StringFormat("%s:%s:%s", symbolName, buySellLabel, mailTitile);
     }
     
     /**

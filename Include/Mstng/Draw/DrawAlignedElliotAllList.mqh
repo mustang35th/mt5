@@ -10,6 +10,7 @@
 #define MSTNG_DRAW_DRAW_ALIGNED_ELLIOT_ALL_LIST_MQH
 
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
@@ -57,6 +58,7 @@ public:
         this.createdBuyCount = 0;
         this.createdSellCount = 0;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
+        this.gmoSymbolNameInfoAll.setGmo();
 
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = 12;
@@ -71,8 +73,9 @@ public:
         this.emaRowOffset = 16;
         this.sectionGap = 4;
         this.bottomPadding = 10;
-        this.entryPriorityColumnWidth = 86;
-        this.timeFrameColumnWidth = 108;
+        this.tableLeftOffset = 12;
+        this.cellLeftPadding = 12;
+        this.columnWidth = 108;
         this.fibonacciRightPadding = 18;
 
         this.fontName = "MS Gothic";
@@ -228,6 +231,9 @@ private:
     /** 生成済み列の基準時間足。 */
     ENUM_TIMEFRAMES createdCurrentTimeFrame;
 
+    /** GMO取引対象の判別用シンボル一覧。 */
+    SymbolNameInfoAll gmoSymbolNameInfoAll;
+
     /** パネル配置基準の角。 */
     ENUM_BASE_CORNER corner;
 
@@ -267,11 +273,14 @@ private:
     /** パネル下余白。 */
     int bottomPadding;
 
-    /** エントリー優先度列の横幅。 */
-    int entryPriorityColumnWidth;
+    /** 表のパネル左端からの位置。 */
+    int tableLeftOffset;
 
-    /** 時間足列の横幅。 */
-    int timeFrameColumnWidth;
+    /** セル左端から文字列までの余白。 */
+    int cellLeftPadding;
+
+    /** 一覧の共通列幅。 */
+    int columnWidth;
 
     /** Fibonacci表示の時間足列右端からの余白。 */
     int fibonacciRightPadding;
@@ -440,7 +449,7 @@ private:
             5,
             this.titleFontSize,
             this.titleColor,
-            "ZigZag Elliott List GMO"
+            "ZigZag Elliott List ALL"
         )) {
             this.destroyObjects();
             return false;
@@ -462,9 +471,9 @@ private:
 
         if (!this.createRectangle(
             this.objectPrefix + "Separator",
-            this.xDistance + 12,
+            this.xDistance + this.tableLeftOffset,
             this.yDistance + this.separatorYDistance,
-            this.panelWidth - 24,
+            this.panelWidth - (this.tableLeftOffset * 2),
             1,
             this.borderColor,
             this.borderColor,
@@ -482,7 +491,7 @@ private:
         for (int i = 1; i < columnCount; i++) {
             int verticalXDistance = this.xDistance
                 + this.getColumnLeftOffset(i)
-                - 12;
+                - this.cellLeftPadding;
 
             if (!this.createRectangle(
                 this.objectPrefix + "ColumnSeparator_" + IntegerToString(i),
@@ -555,7 +564,7 @@ private:
                         && !this.createLabel(
                             this.getFibonacciCellObjectName(i, j),
                             this.getColumnLeftOffset(j)
-                                + this.timeFrameColumnWidth
+                                + this.columnWidth
                                 - this.fibonacciRightPadding,
                             rowYDistance + this.emaRowOffset,
                             this.bodyFontSize - 1,
@@ -578,9 +587,9 @@ private:
 
             if (drawSeparator && !this.createRectangle(
                 this.objectPrefix + "RowSeparator_" + IntegerToString(i),
-                this.xDistance + 12,
+                this.xDistance + this.tableLeftOffset,
                 this.yDistance + rowYDistance + this.rowHeight - 3,
-                this.panelWidth - 24,
+                this.panelWidth - (this.tableLeftOffset * 2),
                 1,
                 this.borderColor,
                 this.borderColor,
@@ -811,7 +820,7 @@ private:
         this.setCell(
             fromRowIndex,
             drawAlignedElliotAllListColumnSymbol,
-            fromElliotAll.marketContext.symbolName,
+            this.getSymbolText(fromElliotAll.marketContext.symbolName),
             directionColor
         );
         this.setEmaCell(
@@ -888,7 +897,7 @@ private:
         datetime japanTime = TimeJapanUtil::getJapanTime(serverTime);
 
         string titleText = StringFormat(
-            "ZigZag Elliott List GMO %s ANALYZE MN1 / ALIGN D1 BUY %d / SELL %d / TARGET %d / ERROR %d JST %s SV %s",
+            "ZigZag Elliott List ALL %s ANALYZE MN1 / ALIGN D1 BUY %d / SELL %d / TARGET %d / ERROR %d JST %s SV %s",
             fromTimeFrameText,
             fromBuyCount,
             fromSellCount,
@@ -1255,6 +1264,20 @@ private:
     }
 
     /**
+     * GMO取引対象を付記したシンボル表示文字列を取得する。
+     *
+     * @param fromSymbolName 対象シンボル名。
+     * @return GMO対象の場合は末尾へGMOを付けた文字列。
+     */
+    string getSymbolText(string fromSymbolName) {
+        if (this.gmoSymbolNameInfoAll.isTarget(fromSymbolName)) {
+            return fromSymbolName + " GMO";
+        }
+
+        return fromSymbolName;
+    }
+
+    /**
      * タイトル表示用の日時文字列へ変換する。
      *
      * @param fromDatetime 変換対象日時。
@@ -1476,9 +1499,10 @@ private:
      * @return パネル横幅。
      */
     int calculatePanelWidth(int fromTimeFrameCount) {
-        int width = 170
-            + this.entryPriorityColumnWidth
-            + (fromTimeFrameCount * this.timeFrameColumnWidth);
+        int columnCount = fromTimeFrameCount
+            + drawAlignedElliotAllListColumnTimeFrameStart;
+        int width = (this.tableLeftOffset * 2)
+            + (columnCount * this.columnWidth);
 
         if (width < 800) {
             width = 800;
@@ -1494,18 +1518,9 @@ private:
      * @return パネル左端からの位置。
      */
     int getColumnLeftOffset(int fromColumnIndex) {
-        if (fromColumnIndex == drawAlignedElliotAllListColumnSymbol) {
-            return 14;
-        }
-
-        if (fromColumnIndex == drawAlignedElliotAllListColumnEntryPriority) {
-            return 106;
-        }
-
-        return 106
-            + this.entryPriorityColumnWidth
-            + ((fromColumnIndex - drawAlignedElliotAllListColumnTimeFrameStart)
-                * this.timeFrameColumnWidth);
+        return this.tableLeftOffset
+            + this.cellLeftPadding
+            + (fromColumnIndex * this.columnWidth);
     }
 
     /**
