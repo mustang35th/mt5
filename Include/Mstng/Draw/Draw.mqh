@@ -347,8 +347,8 @@ private:
         Elliot *elliotHigher1 = this.elliotAll.getElliot(this.elliotAll.marketContext.timeFrame, 1);
         Elliot *elliotCurrent = this.elliotAll.elliotCurrent;
 
-        if (this.elliotAll.isBuySell(PERIOD_H4)
-                && this.isCurrencyStrengthEntryAllowed(isBuy)
+        if (this.elliotAll.isBuySell(PERIOD_D1)
+                //&& this.isCurrencyStrengthEntryAllowed(isBuy)
                 && expertAdvisorEma200.isEma200BuySell(elliotHigher2)
                 && expertAdvisorEma200.isEma200BuySell(elliotHigher1)
                 && expertAdvisorEma200.isEma200BuySell(elliotCurrent)
