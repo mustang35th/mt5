@@ -10,6 +10,7 @@
 #define ELLIOT_DIRECTION_ALIGNMENT_DECISION_MQH
 
 #include <Mstng\Elliot\ElliotAll.mqh>
+#include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\TrendAlignDecision.mqh>
 
 /**
@@ -29,38 +30,11 @@ public:
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
         ENUM_TIMEFRAMES &fromTimeFrames[]
     ) {
-        int targetCount = this.getTargetCount(fromCurrentTimeFrame);
-
-        ArrayResize(fromTimeFrames, 0);
-
-        if (targetCount == 0) {
-            return false;
-        }
-
-        ArrayResize(fromTimeFrames, targetCount);
-        fromTimeFrames[0] = PERIOD_D1;
-
-        if (targetCount >= 2) {
-            fromTimeFrames[1] = PERIOD_H4;
-        }
-
-        if (targetCount >= 3) {
-            fromTimeFrames[2] = PERIOD_H1;
-        }
-
-        if (targetCount >= 4) {
-            fromTimeFrames[3] = PERIOD_M15;
-        }
-
-        if (targetCount >= 5) {
-            fromTimeFrames[4] = PERIOD_M5;
-        }
-
-        if (targetCount >= 6) {
-            fromTimeFrames[5] = PERIOD_M1;
-        }
-
-        return true;
+        return ElliotTimeFrameRange::build(
+            PERIOD_D1,
+            fromCurrentTimeFrame,
+            fromTimeFrames
+        );
     }
 
     /**
@@ -131,40 +105,6 @@ public:
     }
 
 private:
-    /**
-     * 現在時間足に応じた対象時間足数を取得する。
-     *
-     * @param fromCurrentTimeFrame 現在時間足
-     * @return 対象時間足数。未対応の場合0
-     */
-    int getTargetCount(ENUM_TIMEFRAMES fromCurrentTimeFrame) {
-        if (fromCurrentTimeFrame == PERIOD_D1) {
-            return 1;
-        }
-
-        if (fromCurrentTimeFrame == PERIOD_H4) {
-            return 2;
-        }
-
-        if (fromCurrentTimeFrame == PERIOD_H1) {
-            return 3;
-        }
-
-        if (fromCurrentTimeFrame == PERIOD_M15) {
-            return 4;
-        }
-
-        if (fromCurrentTimeFrame == PERIOD_M5) {
-            return 5;
-        }
-
-        if (fromCurrentTimeFrame == PERIOD_M1) {
-            return 6;
-        }
-
-        return 0;
-    }
-
     /**
      * 指定時間足一覧の分析結果が一致判定に利用可能か判定する。
      *

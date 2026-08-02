@@ -12,6 +12,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
+#include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
@@ -23,7 +24,7 @@ enum DrawAlignedElliotAllListColumn {
 /**
  * D1から表示時間足まで売買方向が一致した複数シンボルを描画するクラス。
  *
- * BUYとSELLを別セクションに分け、各時間足の最新Elliott波動を
+ * BUYとSELLを別セクションに分け、MN1から各時間足の最新Elliott波動を
  * 固定一覧パネルへ表示する。分析結果と判定クラスへの参照は保持しない。
  */
 class DrawAlignedElliotAllList {
@@ -108,7 +109,11 @@ public:
         ENUM_TIMEFRAMES currentTimeFrame = fromElliotAllList.marketContext.timeFrame;
         ENUM_TIMEFRAMES displayTimeFrames[];
 
-        if (!fromDecision.buildTargetTimeFrames(currentTimeFrame, displayTimeFrames)) {
+        if (!ElliotTimeFrameRange::build(
+            PERIOD_MN1,
+            currentTimeFrame,
+            displayTimeFrames
+        )) {
             return false;
         }
 
@@ -596,7 +601,7 @@ private:
         datetime japanTime = TimeJapanUtil::getJapanTime(serverTime);
 
         string titleText = StringFormat(
-            "ZigZag Elliott List GMO %s BUY %d / SELL %d / TARGET %d / ERROR %d JST %s SV %s",
+            "ZigZag Elliott List GMO %s ANALYZE MN1 / ALIGN D1 BUY %d / SELL %d / TARGET %d / ERROR %d JST %s SV %s",
             fromTimeFrameText,
             fromBuyCount,
             fromSellCount,

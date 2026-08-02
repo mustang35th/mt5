@@ -419,6 +419,18 @@ public:
     }
 
     /**
+     * Elliott分析を開始する最上位時間足を設定する。
+     *
+     * PERIOD_CURRENTを指定した場合は、既存互換としてタイマー実行時はMN1、
+     * その他通常時はD1から分析する。
+     *
+     * @param fromTimeFrame 分析開始時間足。自動選択する場合PERIOD_CURRENT
+     */
+    void setAnalysisStartTimeFrame(ENUM_TIMEFRAMES fromTimeFrame) {
+        this.analysisStartTimeFrame = fromTimeFrame;
+    }
+
+    /**
      * 実行時の通貨強弱情報を設定する。
      *
      * @param fromCurrencyStrengthExecutionInfo DB取得済みの通貨強弱情報
@@ -444,6 +456,9 @@ private:
     /** Elliott分析を開始する最上位時間足。 */
     ENUM_TIMEFRAMES startTimeFrame;
 
+    /** 明示指定されたElliott分析開始時間足。PERIOD_CURRENTの場合は自動選択。 */
+    ENUM_TIMEFRAMES analysisStartTimeFrame;
+
     /**
      * 時間足構成および分析対象フラグの管理クラス。
      *
@@ -464,6 +479,7 @@ private:
         this.elliotCurrent = NULL;
         this.oscillatorHandlePool = NULL;
         this.timeFrameInfoAll = NULL;
+        this.analysisStartTimeFrame = PERIOD_CURRENT;
         this.currencyStrengthExecutionInfo.reset();
         this.isCurrencyStrengthEntryFilterEnabled = false;
         this.isH1DisplayWaveEntryLimitEnabled = false;
@@ -607,17 +623,19 @@ private:
     }
     
     /**
-     * 実行環境に応じてElliott分析対象の時間足範囲を設定する。
+     * Elliott分析対象の時間足範囲を設定する。
      *
-     * タイマー実行時はMN1、その他通常時はD1を開始時間足とし、現在時間足までを
-     * TimeFrameInfoAllの分析対象に設定する。
+     * 明示された分析開始足を優先する。未指定の場合は、タイマー実行時はMN1、
+     * その他通常時はD1を開始時間足として現在時間足までを対象にする。
      *
      * @param fromTimeFrame 呼び出し元時間足。現在は保持済みtimeFrameを終了足に使用する
      */
     void setTimeFrame(ENUM_TIMEFRAMES fromTimeFrame) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        if (this.isTimer) {
+        if (this.analysisStartTimeFrame != PERIOD_CURRENT) {
+            this.startTimeFrame = this.analysisStartTimeFrame;
+        } else if (this.isTimer) {
             this.startTimeFrame = PERIOD_MN1;
         } else {
             this.startTimeFrame = PERIOD_D1;

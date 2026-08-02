@@ -14,6 +14,7 @@
 #include <Mstng\Draw\DrawAlignedElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
+#include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Log\LogUtil.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
@@ -22,8 +23,8 @@
 /**
  * 複数通貨Elliott一覧のライフサイクルと実行順序を管理するクラス。
  *
- * GMO対象通貨を表示チャートの新規バーで分析し、D1から表示足まで
- * 売買方向が一致した通貨をBUY、SELL別に描画する。
+ * GMO対象通貨を表示チャートの新規バーでMN1から分析し、D1から
+ * 表示足まで売買方向が一致した通貨をBUY、SELL別に描画する。
  */
 class ZigZagElliotListController {
 public:
@@ -81,16 +82,32 @@ public:
             return INIT_FAILED;
         }
 
-        ENUM_TIMEFRAMES targetTimeFrames[];
+        ENUM_TIMEFRAMES alignmentTimeFrames[];
 
         if (!this.alignmentDecision.buildTargetTimeFrames(
             this.marketContext.timeFrame,
-            targetTimeFrames
+            alignmentTimeFrames
         )) {
             this.logger.error(
                 __FUNCTION__,
                 "unsupported chart timeframe: "
                     + this.marketContext.timeFrameLabel
+            );
+            this.destroy();
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
+        ENUM_TIMEFRAMES analysisTimeFrames[];
+
+        if (!ElliotTimeFrameRange::build(
+            PERIOD_MN1,
+            this.marketContext.timeFrame,
+            analysisTimeFrames
+        )) {
+            this.logger.error(
+                __FUNCTION__,
+                "failed to build MN1 analysis timeframe range"
             );
             this.destroy();
 
@@ -115,7 +132,7 @@ public:
             return INIT_FAILED;
         }
 
-        this.warmUpTargetSymbols(targetTimeFrames);
+        this.warmUpTargetSymbols(analysisTimeFrames);
 
         this.oscillatorHandleManager =
             new OscillatorHandleManager(this.marketContext.timeFrame);
@@ -136,7 +153,7 @@ public:
             return INIT_FAILED;
         }
 
-        this.oscillatorHandleManager.setTimeframesFromD1ToAll();
+        this.oscillatorHandleManager.setTimeframesFromMn1ToAll();
         this.drawer = new DrawAlignedElliotAllList(0);
 
         if (this.drawer == NULL) {
@@ -288,6 +305,8 @@ private:
             return;
         }
 
+        elliotAllList.setAnalysisStartTimeFrame(PERIOD_MN1);
+
         elliotAllList.setList(
             this.oscillatorHandleManager,
             this.symbolNameInfoAll
@@ -333,7 +352,7 @@ private:
     /**
      * 対象シンボルの価格系列を非同期取得対象へ登録する。
      *
-     * @param fromTimeFrames D1から表示足までの対象時間足一覧
+     * @param fromTimeFrames MN1から表示足までの対象時間足一覧
      */
     void warmUpTargetSymbols(const ENUM_TIMEFRAMES &fromTimeFrames[]) {
         int total = this.symbolNameInfoAll.size();

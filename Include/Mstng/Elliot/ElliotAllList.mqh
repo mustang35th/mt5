@@ -77,6 +77,17 @@ public:
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
     }
+
+    /**
+     * シンボル別Elliott分析を開始する最上位時間足を設定する。
+     *
+     * PERIOD_CURRENTを指定した場合は、ElliotAllの既存互換設定を使用する。
+     *
+     * @param fromTimeFrame 分析開始時間足。自動選択する場合PERIOD_CURRENT
+     */
+    void setAnalysisStartTimeFrame(ENUM_TIMEFRAMES fromTimeFrame) {
+        this.analysisStartTimeFrame = fromTimeFrame;
+    }
     
     /**
      * 対象シンボルごとのElliotAllを生成して分析する。
@@ -194,6 +205,9 @@ private:
     /** true: タイマー実行 */
     bool isTimer;
 
+    /** 明示指定されたElliott分析開始時間足。PERIOD_CURRENTの場合は自動選択。 */
+    ENUM_TIMEFRAMES analysisStartTimeFrame;
+
     /**
      * 市場コンテキストとタイマー実行状態を初期化する。
      *
@@ -201,6 +215,7 @@ private:
      * @param fromIsTimer true: タイマー実行
      */
     void initialize(MarketContext &fromMarketContext, bool fromIsTimer) {
+        this.analysisStartTimeFrame = PERIOD_CURRENT;
         this.setMarketContext(fromMarketContext);
         this.isTimer = fromIsTimer;
     }
@@ -226,6 +241,7 @@ private:
         }
         
         elliotAll.isTimer = this.isTimer;
+        elliotAll.setAnalysisStartTimeFrame(this.analysisStartTimeFrame);
         elliotAll.setOscillatorHandlePool(
             this.oscillatorHandleManager.getPoolByMarketContext(context)
         );
