@@ -24,8 +24,9 @@ enum DrawAlignedElliotAllListColumn {
 /**
  * D1から表示時間足まで売買方向が一致した複数シンボルを描画するクラス。
  *
- * BUYとSELLを別セクションに分け、MN1から各時間足の最新Elliott波動を
- * 固定一覧パネルへ表示する。分析結果と判定クラスへの参照は保持しない。
+ * BUYとSELLを別セクションに分け、MN1から各時間足の最新Elliott波動と
+ * EMA200方向を2段の固定一覧パネルへ表示する。
+ * 分析結果と判定クラスへの参照は保持しない。
  */
 class DrawAlignedElliotAllList {
 public:
@@ -64,7 +65,8 @@ public:
         this.separatorYDistance = 58;
         this.firstGroupYDistance = 66;
         this.groupHeight = 20;
-        this.rowHeight = 20;
+        this.rowHeight = 36;
+        this.emaRowOffset = 16;
         this.sectionGap = 4;
         this.bottomPadding = 10;
         this.timeFrameColumnWidth = 108;
@@ -247,6 +249,9 @@ private:
 
     /** データ行の高さ。 */
     int rowHeight;
+
+    /** EMA200表示段の上段からの位置。 */
+    int emaRowOffset;
 
     /** BUYとSELLセクション間の余白。 */
     int sectionGap;
@@ -442,6 +447,31 @@ private:
             return false;
         }
 
+        int verticalStartOffset = this.columnHeaderYDistance - 4;
+        int verticalHeight = panelHeight
+            - verticalStartOffset
+            - this.bottomPadding;
+
+        for (int i = 1; i < columnCount; i++) {
+            int verticalXDistance = this.xDistance
+                + this.getColumnLeftOffset(i)
+                - 12;
+
+            if (!this.createRectangle(
+                this.objectPrefix + "ColumnSeparator_" + IntegerToString(i),
+                verticalXDistance,
+                this.yDistance + verticalStartOffset,
+                1,
+                verticalHeight,
+                this.borderColor,
+                this.borderColor,
+                1
+            )) {
+                this.destroyObjects();
+                return false;
+            }
+        }
+
         if (!this.createLabel(
             this.objectPrefix + "GroupBuy",
             14,
@@ -481,6 +511,40 @@ private:
                     this.destroyObjects();
                     return false;
                 }
+
+                if (!this.createLabel(
+                    this.getEmaCellObjectName(i, j),
+                    this.getColumnLeftOffset(j),
+                    rowYDistance + this.emaRowOffset,
+                    this.bodyFontSize,
+                    this.mutedColor,
+                    "-"
+                )) {
+                    this.destroyObjects();
+                    return false;
+                }
+            }
+
+            bool drawSeparator = false;
+
+            if (i < fromBuyCount - 1) {
+                drawSeparator = true;
+            } else if (i >= fromBuyCount && i < rowCount - 1) {
+                drawSeparator = true;
+            }
+
+            if (drawSeparator && !this.createRectangle(
+                this.objectPrefix + "RowSeparator_" + IntegerToString(i),
+                this.xDistance + 12,
+                this.yDistance + rowYDistance + this.rowHeight - 3,
+                this.panelWidth - 24,
+                1,
+                this.borderColor,
+                this.borderColor,
+                1
+            )) {
+                this.destroyObjects();
+                return false;
             }
         }
 
@@ -566,6 +630,12 @@ private:
             fromElliotAll.marketContext.symbolName,
             directionColor
         );
+        this.setEmaCell(
+            fromRowIndex,
+            drawAlignedElliotAllListColumnSymbol,
+            "EMA200",
+            this.headerColor
+        );
 
         int timeFrameCount = ArraySize(fromDisplayTimeFrames);
 
@@ -577,6 +647,15 @@ private:
                 drawAlignedElliotAllListColumnTimeFrameStart + i,
                 this.getWaveText(elliot),
                 this.getWaveColor(elliot)
+            );
+
+            string emaText = this.getEmaText(elliot);
+
+            this.setEmaCell(
+                fromRowIndex,
+                drawAlignedElliotAllListColumnTimeFrameStart + i,
+                emaText,
+                this.getEmaColor(emaText)
             );
         }
     }
@@ -694,6 +773,44 @@ private:
     }
 
     /**
+     * EMA200の売買方向文字列を取得する。
+     *
+     * @param fromElliot 対象時間足のElliot。
+     * @return BUY / SELL / -。
+     */
+    string getEmaText(Elliot *fromElliot) {
+        if (fromElliot == NULL) {
+            return "-";
+        }
+
+        string emaText = fromElliot.oscillator.ema200.getBuySellLabel();
+
+        if (emaText == "BUY" || emaText == "SELL") {
+            return emaText;
+        }
+
+        return "-";
+    }
+
+    /**
+     * EMA200の売買方向色を取得する。
+     *
+     * @param fromText EMA200の売買方向文字列。
+     * @return BUYはBUY色、SELLはSELL色、それ以外は抑制色。
+     */
+    color getEmaColor(string fromText) {
+        if (fromText == "BUY") {
+            return this.buyColor;
+        }
+
+        if (fromText == "SELL") {
+            return this.sellColor;
+        }
+
+        return this.mutedColor;
+    }
+
+    /**
      * 一致方向の表示色を取得する。
      *
      * @param fromAlignType 一致方向。
@@ -745,6 +862,26 @@ private:
         color fromColor
     ) {
         string objectName = this.getCellObjectName(fromRowIndex, fromColumnIndex);
+
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+    }
+
+    /**
+     * EMA200セルの文字列と色を更新する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromColumnIndex 列番号。
+     * @param fromText 表示文字列。
+     * @param fromColor 文字色。
+     */
+    void setEmaCell(
+        int fromRowIndex,
+        int fromColumnIndex,
+        string fromText,
+        color fromColor
+    ) {
+        string objectName = this.getEmaCellObjectName(fromRowIndex, fromColumnIndex);
 
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
@@ -955,6 +1092,19 @@ private:
         return this.objectPrefix
             + "Row_" + IntegerToString(fromRowIndex)
             + "_Column_" + IntegerToString(fromColumnIndex);
+    }
+
+    /**
+     * EMA200セルのオブジェクト名を取得する。
+     *
+     * @param fromRowIndex 行番号。
+     * @param fromColumnIndex 列番号。
+     * @return オブジェクト名。
+     */
+    string getEmaCellObjectName(int fromRowIndex, int fromColumnIndex) {
+        return this.objectPrefix
+            + "Row_" + IntegerToString(fromRowIndex)
+            + "_EmaColumn_" + IntegerToString(fromColumnIndex);
     }
 
     /**
