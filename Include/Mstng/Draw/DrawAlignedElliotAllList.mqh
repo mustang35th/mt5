@@ -26,8 +26,8 @@ enum DrawAlignedElliotAllListColumn {
 /**
  * D1から表示時間足まで売買方向が一致した複数シンボルを描画するクラス。
  *
- * BUYとSELLを別セクションに分け、MN1から各時間足の最新Elliott波動と
- * EMA200方向を2段の固定一覧パネルへ表示する。
+ * BUYとSELLを別セクションに分け、MN1から各時間足の最新Elliott波動、
+ * Fibonacci比率およびEMA200方向を2段の固定一覧パネルへ表示する。
  * 分析結果と判定クラスへの参照は保持しない。
  */
 class DrawAlignedElliotAllList {
@@ -73,6 +73,7 @@ public:
         this.bottomPadding = 10;
         this.entryPriorityColumnWidth = 86;
         this.timeFrameColumnWidth = 108;
+        this.fibonacciRightPadding = 18;
 
         this.fontName = "MS Gothic";
         this.titleFontSize = 11;
@@ -271,6 +272,9 @@ private:
 
     /** 時間足列の横幅。 */
     int timeFrameColumnWidth;
+
+    /** Fibonacci表示の時間足列右端からの余白。 */
+    int fibonacciRightPadding;
 
     /** 表示フォント名。 */
     string fontName;
@@ -546,6 +550,22 @@ private:
                     this.destroyObjects();
                     return false;
                 }
+
+                if (j >= drawAlignedElliotAllListColumnTimeFrameStart
+                        && !this.createLabel(
+                            this.getFibonacciCellObjectName(i, j),
+                            this.getColumnLeftOffset(j)
+                                + this.timeFrameColumnWidth
+                                - this.fibonacciRightPadding,
+                            rowYDistance + this.emaRowOffset,
+                            this.bodyFontSize - 1,
+                            this.headerColor,
+                            " ",
+                            ANCHOR_RIGHT_UPPER
+                        )) {
+                    this.destroyObjects();
+                    return false;
+                }
             }
 
             bool drawSeparator = false;
@@ -817,10 +837,11 @@ private:
 
         for (int i = 0; i < timeFrameCount; i++) {
             Elliot *elliot = fromElliotAll.getElliot(fromDisplayTimeFrames[i]);
+            int columnIndex = drawAlignedElliotAllListColumnTimeFrameStart + i;
 
             this.setCell(
                 fromRowIndex,
-                drawAlignedElliotAllListColumnTimeFrameStart + i,
+                columnIndex,
                 this.getWaveText(elliot),
                 this.getWaveColor(elliot)
             );
@@ -829,9 +850,20 @@ private:
 
             this.setEmaCell(
                 fromRowIndex,
-                drawAlignedElliotAllListColumnTimeFrameStart + i,
+                columnIndex,
                 emaText,
                 this.getEmaColor(emaText)
+            );
+            this.setFibonacciCell(
+                fromRowIndex,
+                columnIndex,
+                this.getFibonacciText(elliot),
+                this.headerColor
+            );
+            this.setTimeFrameCellTooltip(
+                fromRowIndex,
+                columnIndex,
+                this.getWaveTooltip(elliot)
             );
         }
     }
@@ -899,7 +931,7 @@ private:
      * 最新Waveの表示文字列を取得する。
      *
      * @param fromElliot 対象時間足のElliot。
-     * @return 未確定表示、方向、Elliottラベルを連結した文字列。
+     * @return 未確定表示、方向、Elliottラベル、補完表示を連結した文字列。
      */
     string getWaveText(Elliot *fromElliot) {
         if (fromElliot == NULL) {
@@ -927,6 +959,12 @@ private:
         text += latestWave.trendLabel;
         text += elliotLabel;
 
+        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
+
+        if (latestPoint != NULL && latestPoint.isAddedPoint) {
+            text += "★";
+        }
+
         return text;
     }
 
@@ -946,6 +984,166 @@ private:
         }
 
         return this.sellColor;
+    }
+
+    /**
+     * 最新ポイントのFibonacci表示文字列を取得する。
+     *
+     * @param fromElliot 対象時間足のElliot。
+     * @return 修正波はF、推進波はFEを付けた比率。取得不能時は空文字列。
+     */
+    string getFibonacciText(Elliot *fromElliot) {
+        if (fromElliot == NULL) {
+            return "";
+        }
+
+        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
+
+        if (latestPoint == NULL || latestPoint.orgElliotIndex <= 1) {
+            return "";
+        }
+
+        double fibonacciPercent = latestPoint.fibonacciExpansionPercent;
+        string prefix = "FE";
+
+        if (latestPoint.orgElliotIndex % 2 == 0) {
+            fibonacciPercent = latestPoint.fibonacciPercent;
+            prefix = "F";
+        }
+
+        if (!this.isValidFibonacciPercent(fibonacciPercent)) {
+            return "";
+        }
+
+        return prefix + DoubleToString(fibonacciPercent, 1);
+    }
+
+    /**
+     * 最新波動の詳細ツールチップを取得する。
+     *
+     * @param fromElliot 対象時間足のElliot。
+     * @return 波動種別、Fibonacci、値幅、経過本数などの詳細文字列。
+     */
+    string getWaveTooltip(Elliot *fromElliot) {
+        if (fromElliot == NULL) {
+            return "\n";
+        }
+
+        Wave *latestWave = fromElliot.getLatestWave();
+        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
+
+        if (latestWave == NULL || latestPoint == NULL) {
+            return "\n";
+        }
+
+        string timeFrameText = fromElliot.marketContext.timeFrameLabel;
+
+        if (timeFrameText == "") {
+            timeFrameText = TimeUtil::convertTimeFrameToString(
+                fromElliot.marketContext.timeFrame
+            );
+        }
+
+        string waveTypeText = "CORRECTIVE";
+
+        if (latestWave.isMotive) {
+            waveTypeText = "MOTIVE";
+        }
+
+        string confirmedText = "UNCONFIRMED";
+
+        if (latestWave.isConfirmed) {
+            confirmedText = "CONFIRMED";
+        }
+
+        string elliotLabel = latestPoint.getElliotLabel();
+
+        if (elliotLabel == "") {
+            elliotLabel = "-";
+        }
+
+        string orgElliotLabel = latestPoint.orgElliotLabel;
+
+        if (orgElliotLabel == "") {
+            orgElliotLabel = "-";
+        }
+
+        string addedText = "NO";
+
+        if (latestPoint.isAddedPoint) {
+            addedText = "YES";
+        }
+
+        string correctedText = "NO";
+
+        if (latestPoint.isCorrect) {
+            correctedText = "YES";
+        }
+
+        string text = fromElliot.marketContext.symbolName + " " + timeFrameText;
+        text += "\nWave: " + waveTypeText + " / " + confirmedText;
+        text += "\nLabel: " + elliotLabel;
+        text += "\nOriginal: " + orgElliotLabel;
+
+        string fibonacciText = this.getFibonacciText(fromElliot);
+
+        if (fibonacciText != "") {
+            text += "\nFibonacci: " + fibonacciText + "%";
+
+            if (latestPoint.orgElliotIndex % 2 == 0
+                    && latestPoint.fiboDepthZoneLabel != "") {
+                text += " / " + latestPoint.fiboDepthZoneLabel;
+            }
+        }
+
+        if (MathIsValidNumber(latestPoint.pipsDiff)
+                && latestPoint.pipsDiff != EMPTY_VALUE
+                && latestPoint.pipsDiff > 0.0) {
+            text += "\nMove: " + DoubleToString(latestPoint.pipsDiff, 1) + " pips";
+
+            if (latestPoint.waveBarsFromStart > 0) {
+                text += " / " + IntegerToString(latestPoint.waveBarsFromStart) + " bars";
+            }
+        } else if (latestPoint.waveBarsFromStart > 0) {
+            text += "\nMove: "
+                + IntegerToString(latestPoint.waveBarsFromStart)
+                + " bars";
+        }
+
+        if (latestPoint.barTime > 0) {
+            text += "\nTime: "
+                + TimeToString(latestPoint.barTime, TIME_DATE | TIME_MINUTES);
+        }
+
+        if (MathIsValidNumber(latestPoint.rate)
+                && latestPoint.rate != EMPTY_VALUE
+                && latestPoint.rate > 0.0) {
+            text += "\nPrice: " + latestPoint.getTextRate();
+        }
+
+        text += "\nAdded: " + addedText + " / Corrected: " + correctedText;
+
+        if (latestWave.previousLastElliotLabel != "") {
+            text += "\nPrevious: " + latestWave.previousLastElliotLabel;
+        }
+
+        return text;
+    }
+
+    /**
+     * Fibonacci比率が表示可能か判定する。
+     *
+     * @param fromFibonacciPercent 判定対象の比率。
+     * @return 有効な正数の場合true。
+     */
+    bool isValidFibonacciPercent(double fromFibonacciPercent) {
+        if (!MathIsValidNumber(fromFibonacciPercent)
+                || fromFibonacciPercent == EMPTY_VALUE
+                || fromFibonacciPercent <= 0.0) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -1116,6 +1314,67 @@ private:
     }
 
     /**
+     * Fibonacciセルの文字列と色を更新する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromColumnIndex 列番号。
+     * @param fromText 表示文字列。
+     * @param fromColor 文字色。
+     */
+    void setFibonacciCell(
+        int fromRowIndex,
+        int fromColumnIndex,
+        string fromText,
+        color fromColor
+    ) {
+        string objectName = this.getFibonacciCellObjectName(
+            fromRowIndex,
+            fromColumnIndex
+        );
+
+        string displayText = fromText;
+
+        if (displayText == "") {
+            displayText = " ";
+        }
+
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, displayText);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+    }
+
+    /**
+     * 時間足セルの上段、EMA200およびFibonacciへツールチップを設定する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromColumnIndex 列番号。
+     * @param fromTooltip ツールチップ文字列。
+     */
+    void setTimeFrameCellTooltip(
+        int fromRowIndex,
+        int fromColumnIndex,
+        string fromTooltip
+    ) {
+        ObjectSetString(
+            this.chartId,
+            this.getCellObjectName(fromRowIndex, fromColumnIndex),
+            OBJPROP_TOOLTIP,
+            fromTooltip
+        );
+        ObjectSetString(
+            this.chartId,
+            this.getEmaCellObjectName(fromRowIndex, fromColumnIndex),
+            OBJPROP_TOOLTIP,
+            fromTooltip
+        );
+        ObjectSetString(
+            this.chartId,
+            this.getFibonacciCellObjectName(fromRowIndex, fromColumnIndex),
+            OBJPROP_TOOLTIP,
+            fromTooltip
+        );
+    }
+
+    /**
      * 矩形ラベルを生成する。
      *
      * @param fromObjectName オブジェクト名。
@@ -1168,6 +1427,7 @@ private:
      * @param fromFontSize フォントサイズ。
      * @param fromColor 文字色。
      * @param fromText 表示文字列。
+     * @param fromAnchor ラベルのアンカー位置。
      * @return 生成に成功した場合true。
      */
     bool createLabel(
@@ -1176,14 +1436,15 @@ private:
         int fromTopOffset,
         int fromFontSize,
         color fromColor,
-        string fromText
+        string fromText,
+        ENUM_ANCHOR_POINT fromAnchor = ANCHOR_LEFT_UPPER
     ) {
         if (!ObjectCreate(this.chartId, fromObjectName, OBJ_LABEL, 0, 0, 0)) {
             return false;
         }
 
         ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_CORNER, this.corner);
-        ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+        ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_ANCHOR, fromAnchor);
         ObjectSetInteger(
             this.chartId,
             fromObjectName,
@@ -1344,6 +1605,19 @@ private:
         return this.objectPrefix
             + "Row_" + IntegerToString(fromRowIndex)
             + "_EmaColumn_" + IntegerToString(fromColumnIndex);
+    }
+
+    /**
+     * Fibonacciセルのオブジェクト名を取得する。
+     *
+     * @param fromRowIndex 行番号。
+     * @param fromColumnIndex 列番号。
+     * @return オブジェクト名。
+     */
+    string getFibonacciCellObjectName(int fromRowIndex, int fromColumnIndex) {
+        return this.objectPrefix
+            + "Row_" + IntegerToString(fromRowIndex)
+            + "_FibonacciColumn_" + IntegerToString(fromColumnIndex);
     }
 
     /**
