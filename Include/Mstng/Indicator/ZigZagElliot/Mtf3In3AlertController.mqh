@@ -12,7 +12,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
-#include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
@@ -26,6 +26,7 @@ public:
      * 保持リソースを初期化する。
      */
     Mtf3In3AlertController() {
+        this.expertAdvisorMtf3In3 = NULL;
         this.signalCount = NULL;
         this.alertCsvEnabled = true;
     }
@@ -65,6 +66,21 @@ public:
             return false;
         }
 
+        this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
+            this.marketContext
+        );
+
+        if (this.expertAdvisorMtf3In3 == NULL) {
+            this.logger.error(
+                __FUNCTION__,
+                "MTF_3in3 expert advisor allocation failed"
+            );
+            delete this.signalCount;
+            this.signalCount = NULL;
+
+            return false;
+        }
+
         return true;
     }
 
@@ -74,7 +90,11 @@ public:
      * @param fromElliotAll Elliott分析結果
      */
     void execute(ElliotAll *fromElliotAll) {
-        if (fromElliotAll == NULL || this.signalCount == NULL) {
+        if (
+            fromElliotAll == NULL
+            || this.expertAdvisorMtf3In3 == NULL
+            || this.signalCount == NULL
+        ) {
             return;
         }
 
@@ -82,17 +102,14 @@ public:
             return;
         }
 
-        ExpertAdvisorMTF_3in3 expertAdvisor(
-            fromElliotAll.marketContext
-        );
-        expertAdvisor.analyze(fromElliotAll, this.signalCount);
+        this.expertAdvisorMtf3In3.analyze(fromElliotAll, this.signalCount);
 
-        if (!this.alertCsvEnabled || !expertAdvisor.isAlert) {
+        if (!this.alertCsvEnabled || !this.expertAdvisorMtf3In3.isAlert) {
             return;
         }
 
         Mtf3In3AlertResult alertResult =
-            expertAdvisor.getAlertResult();
+            this.expertAdvisorMtf3In3.getAlertResult();
         bool isWritten = Mtf3In3AlertCsvWriter::write(
             fromElliotAll,
             alertResult,
@@ -111,6 +128,11 @@ public:
      * シグナル回数とMTF_3in3固定描画オブジェクトを解放する。
      */
     void destroy() {
+        if (this.expertAdvisorMtf3In3 != NULL) {
+            delete this.expertAdvisorMtf3In3;
+            this.expertAdvisorMtf3In3 = NULL;
+        }
+
         if (this.signalCount != NULL) {
             delete this.signalCount;
             this.signalCount = NULL;
@@ -133,6 +155,8 @@ public:
 private:
     /** 市場コンテキスト。 */
     MarketContext marketContext;
+    /** MTF_3in3外部戦略。 */
+    ExpertAdvisorMTF_3in3 *expertAdvisorMtf3In3;
     /** ロガー。 */
     Logger logger;
     /** シグナル回数。 */

@@ -25,7 +25,7 @@ enum Mtf3In3EntryPriorityRank {
     /** 対象波動は揃うが副条件が2つ以上未達。 */
     mtf3In3EntryPrioritySetup = 2,
 
-    /** 3時間足の対象波動が未完成。 */
+    /** 対象時間足の対象波動が未完成。 */
     mtf3In3EntryPriorityAlign = 3,
 
     /** 判定に必要な分析結果が不足。 */
@@ -113,13 +113,22 @@ public:
         ZigZagPoint *latestPointHigher2 = elliotHigher2.getLatestPoint();
 
         if (latestPointCurrent == NULL
-                || latestPointHigher1 == NULL
-                || latestPointHigher2 == NULL) {
+                || latestPointHigher1 == NULL) {
             return;
         }
 
-        if (this.isEntryWave(latestPointHigher2)) {
-            fromResult.waveMatchCount++;
+        int requiredWaveMatchCount = 3;
+
+        if (fromCurrentTimeFrame == PERIOD_H1) {
+            requiredWaveMatchCount = 2;
+        } else {
+            if (latestPointHigher2 == NULL) {
+                return;
+            }
+
+            if (this.isEntryWave(latestPointHigher2)) {
+                fromResult.waveMatchCount++;
+            }
         }
 
         if (this.isEntryWave(latestPointHigher1)) {
@@ -130,7 +139,7 @@ public:
             fromResult.waveMatchCount++;
         }
 
-        if (fromResult.waveMatchCount < 3) {
+        if (fromResult.waveMatchCount < requiredWaveMatchCount) {
             fromResult.rank = mtf3In3EntryPriorityAlign;
             return;
         }

@@ -6,6 +6,9 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#ifndef MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF_3IN3_MQH
+#define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF_3IN3_MQH
+
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
 
@@ -112,9 +115,7 @@ protected:
 
                 && this.expertAdvisorElliot.isZigZagConfirmed(this.elliotCurrent)
                 
-                && this.isElliot1or3(this.elliotHigher2)
-                && this.isElliot1or3(this.elliotHigher1)
-                && this.isElliot1or3(this.elliotCurrent)
+                && this.isTimeFrameWaveConditionMatched()
                 
                 //&& this.expertAdvisorOscillator.isGmmaTrend_1(this.elliotHigher1, this.isBuy)
                 
@@ -144,7 +145,7 @@ protected:
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         this.resetEntryValidation();
-        this.alertText = this.getAlertText();
+        this.alertText = this.buildAlertText();
         
         this.elliotAll.mailTitile = StringFormat("【%s】", this.alertText);
 
@@ -157,8 +158,9 @@ protected:
         ZigZagPoint *latestPoint = this.elliotCurrent.getLatestPoint();
         this.currentElliotLabel = latestPoint.elliotLabel;
         this.isEntryWaveResult = this.isElliot1or3(this.elliotCurrent);
-        bool isM5Elliot3FibonacciExpansionWithinResult =
-            this.isM5Elliot3FibonacciExpansionWithin();
+        string timeFrameRejectReason = "";
+        bool isTimeFrameEntryAllowed =
+            this.isTimeFrameEntryConditionMatched(timeFrameRejectReason);
         this.closeEma200DiffPipsResult = MathAbs(
             this.elliotCurrent.oscillator.ema200.closeEma200DiffPips
         );
@@ -171,19 +173,22 @@ protected:
 
         if (!this.isEntryWaveResult) {
             this.entryResult = "ELLIOT_LABEL_REJECTED";
-        } else if (!isM5Elliot3FibonacciExpansionWithinResult) {
-            this.entryResult = "M5_ELLIOT3_FE_REJECTED";
+        } else if (!isTimeFrameEntryAllowed) {
+            if (StringUtil::isEmpty(timeFrameRejectReason)) {
+                this.entryResult = "TIME_FRAME_ENTRY_REJECTED";
+            } else {
+                this.entryResult = timeFrameRejectReason;
+            }
         } else if (!this.isEma200DistanceWithinResult) {
             this.entryResult = "EMA200_DISTANCE_REJECTED";
         } else {
-            bool isH1DisplayWaveEntryRegistered =
-                this.tryRegisterH1DisplayWaveEntry();
+            bool isEntryScopeRegistered = this.tryRegisterEntryScope();
 
-            if (isH1DisplayWaveEntryRegistered) {
+            if (isEntryScopeRegistered) {
                 this.isEntry = true;
                 this.entryResult = "ENTRY";
 
-                if (this.elliotCurrent.marketContext.timeFrame == PERIOD_M5) {
+                if (this.shouldSendMail()) {
                     this.isSendMail = true;
                 }
             }
@@ -193,6 +198,122 @@ protected:
         this.logger.debug(__FUNCTION__, StringFormat("isSendMail = %s", (string)this.isSendMail));
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+    }
+
+    /**
+     * 時間足固有の波動条件を判定する。
+     *
+     * @return 時間足固有の波動条件を満たす場合true。
+     */
+    virtual bool isTimeFrameWaveConditionMatched() {
+        return this.isEntryWave(this.elliotHigher2)
+            && this.isEntryWave(this.elliotHigher1)
+            && this.isEntryWave(this.elliotCurrent);
+    }
+
+    /**
+     * 時間足固有の追加エントリー条件を判定する。
+     *
+     * @param fromRejectReason 条件未達時の結果コード。
+     * @return 時間足固有の追加条件を満たす場合true。
+     */
+    virtual bool isTimeFrameEntryConditionMatched(
+        string &fromRejectReason
+    ) {
+        fromRejectReason = "";
+
+        return true;
+    }
+
+    /**
+     * 時間足固有のエントリー範囲を登録する。
+     *
+     * @return 登録不要、または新規登録できた場合true。
+     */
+    virtual bool tryRegisterEntryScope() {
+        return true;
+    }
+
+    /**
+     * エントリー成立時にメールを送信するか判定する。
+     *
+     * @return メールを送信する場合true。
+     */
+    virtual bool shouldSendMail() {
+        return false;
+    }
+
+    /**
+     * 上位足と現在足の波動情報からアラート表示文字列を生成する。
+     *
+     * @return アラート表示文字列。
+     */
+    virtual string buildAlertText() {
+        return this.getTwoTimeFrameAlertText();
+    }
+
+    /**
+     * 指定したElliotの最新ポイントが第1波または第3波か判定する。
+     *
+     * @param fromElliot 判定対象。
+     * @return 最新ポイントが第1波または第3波の場合true。
+     */
+    bool isEntryWave(Elliot *fromElliot) {
+        return this.isElliot1or3(fromElliot);
+    }
+
+    /**
+     * M5第3波のフィボナッチエクスパンション上限を確認する。
+     *
+     * @return M5第3波以外、またはFEが許容上限以下の場合true。
+     */
+    bool isM5EntryFibonacciExpansionWithin() {
+        return this.isM5Elliot3FibonacciExpansionWithin();
+    }
+
+    /**
+     * M5エントリー対象のH1表示波を使用済みとして登録する。
+     *
+     * @return H1表示波を新規登録できた場合true。
+     */
+    bool tryRegisterH1EntryScope() {
+        return this.tryRegisterH1DisplayWaveEntry();
+    }
+
+    /**
+     * 上位1足と現在足の波動情報からアラート表示文字列を生成する。
+     *
+     * @return アラート表示文字列。
+     */
+    string getTwoTimeFrameAlertText() {
+        string text = "";
+        Wave *latestWaveHigher1 = this.elliotHigher1.getLatestWave();
+
+        text += latestWaveHigher1.trendLabel;
+        text += this.elliotHigher1.getLatestPointElliotLabel();
+        text += "-";
+        text += this.elliotCurrent.getLatestPointElliotLabel();
+
+        return text;
+    }
+
+    /**
+     * 上位2足と現在足の波動情報からアラート表示文字列を生成する。
+     *
+     * @return アラート表示文字列。
+     */
+    string getThreeTimeFrameAlertText() {
+        string text = "";
+        Wave *latestWaveHigher2 = this.elliotHigher2.getLatestWave();
+
+        text += latestWaveHigher2.trendLabel;
+        text += this.elliotHigher2.getLatestPointElliotLabel();
+        text += "-";
+        text += this.elliotHigher1.getLatestPointElliotLabel();
+        text += "-";
+        text += this.elliotCurrent.getLatestPointElliotLabel();
+
+        return text;
     }
     
     
@@ -530,37 +651,10 @@ private:
         return isElliot;
     }
     
-    /**
-     * 上位足と現在足の波動情報からアラート表示文字列を生成する。
-     *
-     * @return アラート表示文字列。
-     */
-    string getAlertText() {
-        string text = "";
-        
-        if (this.marketContext.timeFrame == PERIOD_M5) {
-            Wave *latestWaveHigher2 = this.elliotHigher2.getLatestWave();
-
-            text += latestWaveHigher2.trendLabel;
-            text += this.elliotHigher2.getLatestPointElliotLabel();
-            text += "-";
-        } else {
-            Wave *latestWaveHigher1 = this.elliotHigher1.getLatestWave();
-
-            text += latestWaveHigher1.trendLabel;
-        }
-
-        text += this.elliotHigher1.getLatestPointElliotLabel();
-        
-        text += "-";
-        
-        text += this.elliotCurrent.getLatestPointElliotLabel();
-        
-        return text;
-    }
-    
 };
 
 const double ExpertAdvisorMTF_3in3::maxM5Elliot3FibonacciExpansionPercent = 161.8;
 const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPips = 25.0;
 const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPipsJpy = 25.0;
+
+#endif // MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF_3IN3_MQH

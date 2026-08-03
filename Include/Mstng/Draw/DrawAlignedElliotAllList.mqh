@@ -77,6 +77,10 @@ public:
         this.cellLeftPadding = 12;
         this.columnWidth = 108;
         this.fibonacciRightPadding = 18;
+        this.entryLegendGap = 8;
+        this.entryLegendWidth = 270;
+        this.entryLegendHeight = 130;
+        this.entryLegendRowHeight = 18;
 
         this.fontName = "MS Gothic";
         this.titleFontSize = 11;
@@ -285,6 +289,18 @@ private:
     /** Fibonacci表示の時間足列右端からの余白。 */
     int fibonacciRightPadding;
 
+    /** 一覧とENTRY凡例の間隔。 */
+    int entryLegendGap;
+
+    /** ENTRY凡例の横幅。 */
+    int entryLegendWidth;
+
+    /** ENTRY凡例の高さ。 */
+    int entryLegendHeight;
+
+    /** ENTRY凡例1行の高さ。 */
+    int entryLegendRowHeight;
+
     /** 表示フォント名。 */
     string fontName;
 
@@ -455,6 +471,11 @@ private:
             return false;
         }
 
+        if (!this.createEntryLegend()) {
+            this.destroyObjects();
+            return false;
+        }
+
         for (int i = 0; i < columnCount; i++) {
             if (!this.createLabel(
                 this.getHeaderObjectName(i),
@@ -605,6 +626,83 @@ private:
         this.createdSellCount = fromSellCount;
         this.createdCurrentTimeFrame = fromCurrentTimeFrame;
         this.created = true;
+
+        return true;
+    }
+
+    /**
+     * 一覧右側へENTRY優先度の凡例を生成する。
+     *
+     * @return 生成に成功した場合true。
+     */
+    bool createEntryLegend() {
+        int legendLeftOffset = this.panelWidth + this.entryLegendGap;
+
+        if (!this.createRectangle(
+            this.objectPrefix + "EntryLegendPanel",
+            this.xDistance + legendLeftOffset,
+            this.yDistance,
+            this.entryLegendWidth,
+            this.entryLegendHeight,
+            this.panelBackgroundColor,
+            this.borderColor,
+            0
+        )) {
+            return false;
+        }
+
+        if (!this.createRectangle(
+            this.objectPrefix + "EntryLegendTitleBackground",
+            this.xDistance + legendLeftOffset + 1,
+            this.yDistance + 1,
+            this.entryLegendWidth - 2,
+            this.headerHeight,
+            this.headerBackgroundColor,
+            this.headerBackgroundColor,
+            1
+        )) {
+            return false;
+        }
+
+        if (!this.createLabel(
+            this.objectPrefix + "EntryLegendTitle",
+            legendLeftOffset + 12,
+            5,
+            this.titleFontSize,
+            this.titleColor,
+            "ENTRY 判定"
+        )) {
+            return false;
+        }
+
+        string legendTexts[] = {
+            "READY  主要条件成立・最終判定前",
+            "NEAR   あと1条件でREADY",
+            "SETUP  対象波成立・複数条件待ち",
+            "ALIGN  対象時間足の1/3波待ち",
+            "ERROR  判定データ不足"
+        };
+        color legendColors[] = {
+            this.entryReadyColor,
+            this.entryNearColor,
+            this.entrySetupColor,
+            this.mutedColor,
+            this.entryErrorColor
+        };
+        int legendCount = ArraySize(legendTexts);
+
+        for (int i = 0; i < legendCount; i++) {
+            if (!this.createLabel(
+                this.objectPrefix + "EntryLegend_" + IntegerToString(i),
+                legendLeftOffset + 12,
+                this.headerHeight + 8 + (i * this.entryLegendRowHeight),
+                this.bodyFontSize,
+                legendColors[i],
+                legendTexts[i]
+            )) {
+                return false;
+            }
+        }
 
         return true;
     }

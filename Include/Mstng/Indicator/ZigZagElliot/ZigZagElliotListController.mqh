@@ -23,7 +23,7 @@
 /**
  * 複数通貨Elliott一覧のライフサイクルと実行順序を管理するクラス。
  *
- * 全対象通貨を表示チャートの新規バーでMN1から分析し、D1から
+ * 全対象通貨をM5の新規バーでMN1から分析し、D1から
  * 表示足まで売買方向が一致した通貨をBUY、SELL別に描画する。
  */
 class ZigZagElliotListController {
@@ -41,6 +41,7 @@ public:
         this.timerEnabled = false;
         this.isTester = false;
         this.hasPendingAnalysis = false;
+        this.updateTimeFrame = PERIOD_M5;
         this.lastProcessedBarTime = 0;
         this.pendingRetryCount = 0;
         this.maxPendingRetryCount = 3;
@@ -65,6 +66,14 @@ public:
 
         this.marketContext = fromMarketContext;
         this.isTester = (bool)MQLInfoInteger(MQL_TESTER);
+        this.updateTimeFrame = PERIOD_M5;
+
+        if (this.isTester
+                && PeriodSeconds(this.marketContext.timeFrame)
+                    > PeriodSeconds(PERIOD_M5)) {
+            this.updateTimeFrame = this.marketContext.timeFrame;
+        }
+
         this.lastProcessedBarTime = 0;
         this.pendingRetryCount = 0;
         this.hasPendingAnalysis = false;
@@ -201,7 +210,7 @@ public:
     }
 
     /**
-     * OnTimerイベントで新規バー確認と分析失敗時の再試行を行う。
+     * OnTimerイベントでM5新規バー確認と分析失敗時の再試行を行う。
      */
     void onTimer() {
         if (!this.initialized || this.isTester) {
@@ -245,7 +254,10 @@ private:
     /** 分析未完了の対象が存在する場合true。 */
     bool hasPendingAnalysis;
 
-    /** 最後に分析した表示チャートのバー時刻。 */
+    /** 分析更新の基準時間足。ライブではM5。 */
+    ENUM_TIMEFRAMES updateTimeFrame;
+
+    /** 最後に分析した更新基準足のバー時刻。 */
     datetime lastProcessedBarTime;
 
     /** 現在バーで実行した分析再試行回数。 */
@@ -258,9 +270,9 @@ private:
     int retrySeconds;
 
     /**
-     * 新規バーまたは未完了分析の再試行時に全対象通貨を分析する。
+     * M5新規バーまたは未完了分析の再試行時に全対象通貨を分析する。
      *
-     * @param fromAllowPendingRetry 同一バーの未完了分析を再試行する場合true
+     * @param fromAllowPendingRetry 同一更新基準足の未完了分析を再試行する場合true
      */
     void execute(bool fromAllowPendingRetry) {
         if (!this.initialized || this.executing) {
@@ -269,7 +281,7 @@ private:
 
         datetime currentBarTime = iTime(
             this.marketContext.symbolName,
-            this.marketContext.timeFrame,
+            this.updateTimeFrame,
             0
         );
 
@@ -451,6 +463,7 @@ private:
         this.initialized = false;
         this.executing = false;
         this.hasPendingAnalysis = false;
+        this.updateTimeFrame = PERIOD_M5;
         this.lastProcessedBarTime = 0;
         this.pendingRetryCount = 0;
     }

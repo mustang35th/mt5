@@ -8,7 +8,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\ExpertAdvisor\ElliottWaveInfo.mqh>
-#include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Strategy\IStrategyAdapter.mqh>
 
@@ -29,6 +29,8 @@ public:
         ENUM_TIMEFRAMES timeFrameValue,
         SignalCount *signalCountValue
     ) {
+        this.expertAdvisorMtf3In3 = NULL;
+        this.signalCount = NULL;
         MarketContext context(symbolNameValue, timeFrameValue);
         this.initialize(context, signalCountValue);
     }
@@ -43,6 +45,8 @@ public:
         MarketContext &fromMarketContext,
         SignalCount *fromSignalCount
     ) {
+        this.expertAdvisorMtf3In3 = NULL;
+        this.signalCount = NULL;
         this.initialize(fromMarketContext, fromSignalCount);
     }
 
@@ -50,8 +54,12 @@ public:
      * デストラクタ
      */
     ~ExpertAdvisorMtf3In3Adapter() {
-        // 保有インスタンスを解放
-        delete this.expertAdvisorMtf3In3;
+        if (this.expertAdvisorMtf3In3 != NULL) {
+            delete this.expertAdvisorMtf3In3;
+            this.expertAdvisorMtf3In3 = NULL;
+        }
+
+        this.signalCount = NULL;
     }
 
     /**
@@ -70,6 +78,10 @@ public:
         signalDecision.csvText = "";
         signalDecision.alertText = "";
         signalDecision.mtf3In3AlertResult.reset();
+
+        if (this.expertAdvisorMtf3In3 == NULL) {
+            return signalDecision;
+        }
 
         // 外部戦略で判定
         this.expertAdvisorMtf3In3.analyze(elliotAllValue, this.signalCount);
@@ -98,6 +110,10 @@ public:
 
         exitDecision.isExit = false;
         exitDecision.reason = "";
+
+        if (this.expertAdvisorMtf3In3 == NULL) {
+            return exitDecision;
+        }
 
         // 外部戦略で判定
         exitDecision.isExit = this.expertAdvisorMtf3In3.isExit(
@@ -146,7 +162,7 @@ private:
      */
     void initialize(MarketContext &fromMarketContext, SignalCount *fromSignalCount) {
         // 外部戦略を生成
-        this.expertAdvisorMtf3In3 = new ExpertAdvisorMTF_3in3(
+        this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
             fromMarketContext,
             false
         );
@@ -158,6 +174,11 @@ private:
      * エリオット情報文字列更新
      */
     void updateElliottInfoText() {
+        if (this.expertAdvisorMtf3In3 == NULL) {
+            this.elliottInfoText = "-";
+            return;
+        }
+
         int totalCount = this.expertAdvisorMtf3In3.elliottWaveInfoList.Total();
         string text = "";
         int i;
