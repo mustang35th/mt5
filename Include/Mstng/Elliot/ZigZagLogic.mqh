@@ -103,13 +103,26 @@ public:
      */
     int calculate(int fromRatesTotal) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        if (fromRatesTotal <= 0
+                || this.depth <= 0
+                || this.backstep < 0
+                || this.backstep >= this.depth) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "Invalid calculation parameters. ratesTotal=%d depth=%d backstep=%d",
+                    fromRatesTotal,
+                    this.depth,
+                    this.backstep
+                )
+            );
+
+            return 0;
+        }
         
         int ratesTotal = fromRatesTotal;
-        
-        ArrayResize(this.zigZagBuffer, ratesTotal);
-        ArrayResize(this.searchModeBuffer, ratesTotal);
-        
-        
+
         // データの取得
         double high[];
         double low[];
@@ -128,11 +141,47 @@ public:
         ratesTotal = MathMin(copiedHigh, copiedLow);
         
         this.logger.debug(__FUNCTION__, StringFormat("ratesTotal = %d", ratesTotal));
-        
-        // バッファのリサイズ
-        if (ArraySize(this.highMapBuffer) != ratesTotal) {
-            ArrayResize(this.highMapBuffer, ratesTotal);
-            ArrayResize(this.lowMapBuffer, ratesTotal);
+
+        if (ratesTotal <= this.depth) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "Insufficient bars. ratesTotal=%d depth=%d",
+                    ratesTotal,
+                    this.depth
+                )
+            );
+
+            return 0;
+        }
+
+        // 実コピー本数に合わせて各バッファを確保する。
+        int zigZagResizeResult = ArrayResize(this.zigZagBuffer, ratesTotal);
+        int searchModeResizeResult = ArrayResize(this.searchModeBuffer, ratesTotal);
+        int highMapResizeResult = ArrayResize(this.highMapBuffer, ratesTotal);
+        int lowMapResizeResult = ArrayResize(this.lowMapBuffer, ratesTotal);
+
+        if (zigZagResizeResult != ratesTotal
+                || searchModeResizeResult != ratesTotal
+                || highMapResizeResult != ratesTotal
+                || lowMapResizeResult != ratesTotal) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "Failed to resize buffers. requested=%d results=%d/%d/%d/%d sizes=%d/%d/%d/%d",
+                    ratesTotal,
+                    zigZagResizeResult,
+                    searchModeResizeResult,
+                    highMapResizeResult,
+                    lowMapResizeResult,
+                    ArraySize(this.zigZagBuffer),
+                    ArraySize(this.searchModeBuffer),
+                    ArraySize(this.highMapBuffer),
+                    ArraySize(this.lowMapBuffer)
+                )
+            );
+
+            return 0;
         }
 
         int start = 0;
@@ -165,7 +214,7 @@ public:
                 if ((low[shift] - val) > this.deviation * this.pointSize) {
                     val = 0.0;
                 } else {
-                    for (int j = 1; j <= this.backstep; j++) {
+                    for (int j = 1; j <= this.backstep && j <= shift; j++) {
                         res = this.lowMapBuffer[shift - j];
                         
                         if ((res != 0) && (res > val)) {
@@ -192,7 +241,7 @@ public:
                 if ((val - high[shift]) > this.deviation * this.pointSize) {
                     val = 0.0;
                 } else {
-                    for (int j = 1; j <= this.backstep; j++) {
+                    for (int j = 1; j <= this.backstep && j <= shift; j++) {
                         res = this.highMapBuffer[shift - j];
                         
                         if ((res != 0) && (res < val)) {
