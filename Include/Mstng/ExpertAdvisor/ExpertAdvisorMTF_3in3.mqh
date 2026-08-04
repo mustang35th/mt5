@@ -113,7 +113,7 @@ protected:
 
                 //&& this.expertAdvisorElliot.isWaveUnconfirmed(this.elliotH1)
 
-                && this.expertAdvisorElliot.isZigZagConfirmed(this.elliotCurrent)
+                && this.isTimeFrameZigZagConfirmedConditionMatched()
                 
                 && this.isTimeFrameWaveConditionMatched()
                 
@@ -122,9 +122,7 @@ protected:
                 && this.expertAdvisorOscillator.isGmmaTrend_2(this.elliotCurrent, this.isBuy)
                 && this.expertAdvisorOscillator.isGmmaCross_2(this.elliotCurrent, this.isBuy)
                 
-                && this.expertAdvisorEma200.isEma200BuySellOrNone(this.elliotHigher2)
-                && this.expertAdvisorEma200.isEma200BuySell(this.elliotHigher1)
-                && this.expertAdvisorEma200.isEma200BuySell(this.elliotCurrent)
+                && this.isTimeFrameEma200ConditionMatched()
                 
                 //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher2, this.elliotHigher1)
                 //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher1, this.elliotCurrent)
@@ -179,7 +177,8 @@ protected:
             } else {
                 this.entryResult = timeFrameRejectReason;
             }
-        } else if (!this.isEma200DistanceWithinResult) {
+        } else if (this.isTimeFrameEma200DistanceRequired()
+                && !this.isEma200DistanceWithinResult) {
             this.entryResult = "EMA200_DISTANCE_REJECTED";
         } else {
             bool isEntryScopeRegistered = this.tryRegisterEntryScope();
@@ -212,6 +211,34 @@ protected:
     }
 
     /**
+     * 時間足固有のZigZag確定条件を判定する。
+     *
+     * @return 現在足の最新ZigZagポイントが確定している場合true。
+     */
+    virtual bool isTimeFrameZigZagConfirmedConditionMatched() {
+        return this.expertAdvisorElliot.isZigZagConfirmed(
+            this.elliotCurrent
+        );
+    }
+
+    /**
+     * 時間足固有のEMA200方向条件を判定する。
+     *
+     * @return 時間足固有のEMA200方向条件を満たす場合true。
+     */
+    virtual bool isTimeFrameEma200ConditionMatched() {
+        return this.expertAdvisorEma200.isEma200BuySellOrNone(
+            this.elliotHigher2
+        )
+            && this.expertAdvisorEma200.isEma200BuySell(
+                this.elliotHigher1
+            )
+            && this.expertAdvisorEma200.isEma200BuySell(
+                this.elliotCurrent
+            );
+    }
+
+    /**
      * 時間足固有の追加エントリー条件を判定する。
      *
      * @param fromRejectReason 条件未達時の結果コード。
@@ -222,6 +249,15 @@ protected:
     ) {
         fromRejectReason = "";
 
+        return true;
+    }
+
+    /**
+     * 現在足とEMA200の距離制限を使用するか判定する。
+     *
+     * @return 距離制限を使用する場合true。
+     */
+    virtual bool isTimeFrameEma200DistanceRequired() {
         return true;
     }
 

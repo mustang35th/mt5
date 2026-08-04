@@ -46,6 +46,15 @@ protected:
             && this.isEntryWave(this.elliotHigher1)
             && this.isEntryWave(this.elliotCurrent);
     }
+
+    /**
+     * H4、H1およびM15の波動情報からアラート表示文字列を生成する。
+     *
+     * @return アラート表示文字列。
+     */
+    virtual string buildAlertText() override {
+        return this.getThreeTimeFrameAlertText();
+    }
 };
 
 #endif // MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_M15_MQH

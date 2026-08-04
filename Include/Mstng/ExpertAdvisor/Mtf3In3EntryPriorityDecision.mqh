@@ -111,16 +111,17 @@ public:
         ZigZagPoint *latestPointCurrent = elliotCurrent.getLatestPoint();
         ZigZagPoint *latestPointHigher1 = elliotHigher1.getLatestPoint();
         ZigZagPoint *latestPointHigher2 = elliotHigher2.getLatestPoint();
+        bool isH1 = fromCurrentTimeFrame == PERIOD_H1;
 
         if (latestPointCurrent == NULL
-                || latestPointHigher1 == NULL) {
+                || (!isH1 && latestPointHigher1 == NULL)) {
             return;
         }
 
         int requiredWaveMatchCount = 3;
 
-        if (fromCurrentTimeFrame == PERIOD_H1) {
-            requiredWaveMatchCount = 2;
+        if (isH1) {
+            requiredWaveMatchCount = 1;
         } else {
             if (latestPointHigher2 == NULL) {
                 return;
@@ -131,7 +132,7 @@ public:
             }
         }
 
-        if (this.isEntryWave(latestPointHigher1)) {
+        if (!isH1 && this.isEntryWave(latestPointHigher1)) {
             fromResult.waveMatchCount++;
         }
 
@@ -151,7 +152,7 @@ public:
             fromResult.conditionMatchCount++;
         }
 
-        if (!latestPointCurrent.isAddedPoint) {
+        if (isH1 || !latestPointCurrent.isAddedPoint) {
             fromResult.conditionMatchCount++;
         }
 
@@ -169,15 +170,21 @@ public:
             fromResult.conditionMatchCount++;
         }
 
-        if (expertAdvisorEma200.isEma200BuySellOrNone(elliotHigher2)) {
-            fromResult.conditionMatchCount++;
-        }
-
-        if (expertAdvisorEma200.isEma200BuySell(elliotHigher1)) {
-            fromResult.conditionMatchCount++;
-        }
-
         if (expertAdvisorEma200.isEma200BuySell(elliotCurrent)) {
+            fromResult.conditionMatchCount++;
+        }
+
+        if (isH1
+                || expertAdvisorEma200.isEma200BuySellOrNone(
+                    elliotHigher2
+                )) {
+            fromResult.conditionMatchCount++;
+        }
+
+        if (isH1
+                || expertAdvisorEma200.isEma200BuySell(
+                    elliotHigher1
+                )) {
             fromResult.conditionMatchCount++;
         }
 
@@ -188,7 +195,7 @@ public:
             fromResult.conditionMatchCount++;
         }
 
-        if (this.isEma200DistanceWithin(elliotCurrent)) {
+        if (isH1 || this.isEma200DistanceWithin(elliotCurrent)) {
             fromResult.conditionMatchCount++;
         }
 
