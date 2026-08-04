@@ -98,7 +98,7 @@ public:
             return;
         }
 
-        if (this.marketContext.timeFrame >= PERIOD_H1) {
+        if (this.marketContext.timeFrame > PERIOD_H1) {
             return;
         }
 
