@@ -217,6 +217,12 @@ public:
      * @return 全体を再描画した場合true
      */
     bool updateIdle(ElliotAll *fromElliotAll) {
+        if (this.applyInitialVerticalFit(fromElliotAll)) {
+            this.redraw(fromElliotAll);
+
+            return true;
+        }
+
         if (!this.updateVerticalFit(fromElliotAll, false)) {
             return false;
         }
@@ -635,28 +641,31 @@ private:
      * 初回のElliott分析成功後に上下FITを有効化する。
      *
      * @param fromElliotAll Elliott分析結果
+     * @return 初回上下FITを適用した場合true
      */
-    void applyInitialVerticalFit(ElliotAll *fromElliotAll) {
+    bool applyInitialVerticalFit(ElliotAll *fromElliotAll) {
         if (!this.initialVerticalFitPending
                 || this.drawElliotVerticalFit == NULL
                 || fromElliotAll == NULL
                 || !fromElliotAll.isAnalysisSucceeded) {
-            return;
+            return false;
         }
 
         if (!this.drawElliotVerticalFit.isEnabled()) {
             if (!this.drawElliotVerticalFit.enable(fromElliotAll)) {
-                this.logger.error(
+                this.logger.debug(
                     __FUNCTION__,
-                    "initial Elliott vertical fit enable failed"
+                    "initial Elliott vertical fit is not ready. retry on next timer."
                 );
 
-                return;
+                return false;
             }
         }
 
         this.initialVerticalFitPending = false;
         this.updateElliotVerticalFitButton();
+
+        return true;
     }
 
     /**

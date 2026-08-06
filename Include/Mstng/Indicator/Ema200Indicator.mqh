@@ -129,7 +129,10 @@ public:
 
         this.updateLabels();
 
-        this.lastUpdateM1BarTime = currentM1BarTime;
+        if (isSucceeded) {
+            this.lastUpdateM1BarTime = currentM1BarTime;
+        }
+
         ChartRedraw(0);
 
         return isSucceeded;
