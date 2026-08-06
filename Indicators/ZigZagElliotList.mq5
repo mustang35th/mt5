@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.10"
+#property version   "1.11"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -13,7 +13,11 @@
 #property indicator_type1   DRAW_NONE
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ElliotListSortType.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotListController.mqh>
+
+/** 一覧の並び替え基準。 */
+input ElliotListSortType sortType = ELLIOT_LIST_SORT_M15_ELLIOT_EMA;
 
 /** 描画専用インジケーターの非表示バッファ。 */
 double gHiddenBuffer[];
@@ -38,8 +42,10 @@ int OnInit() {
         return INIT_FAILED;
     }
 
-    int initializeResult =
-        gZigZagElliotListController.initialize(context);
+    int initializeResult = gZigZagElliotListController.initialize(
+        context,
+        sortType
+    );
 
     if (initializeResult != INIT_SUCCEEDED) {
         delete gZigZagElliotListController;

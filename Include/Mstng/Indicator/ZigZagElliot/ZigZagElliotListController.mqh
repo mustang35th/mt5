@@ -14,6 +14,7 @@
 #include <Mstng\Draw\DrawAlignedElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
+#include <Mstng\Elliot\ElliotListSortType.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Log\LogUtil.mqh>
 #include <Mstng\Log\Logger.mqh>
@@ -59,9 +60,13 @@ public:
      * 表示チャートの市場情報で複数通貨一覧を初期化する。
      *
      * @param fromMarketContext 表示チャートの市場コンテキスト
+     * @param fromSortType 一覧の並び替え基準
      * @return 初期化結果
      */
-    int initialize(MarketContext &fromMarketContext) {
+    int initialize(
+        MarketContext &fromMarketContext,
+        ElliotListSortType fromSortType = ELLIOT_LIST_SORT_ENTRY_PRIORITY
+    ) {
         this.destroy();
 
         this.marketContext = fromMarketContext;
@@ -163,7 +168,7 @@ public:
         }
 
         this.oscillatorHandleManager.setTimeframesFromMn1ToAll();
-        this.drawer = new DrawAlignedElliotAllList(0);
+        this.drawer = new DrawAlignedElliotAllList(0, 0, fromSortType);
 
         if (this.drawer == NULL) {
             this.logger.error(__FUNCTION__, "failed to create list drawer");

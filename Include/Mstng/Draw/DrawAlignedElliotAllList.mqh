@@ -13,7 +13,9 @@
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
+#include <Mstng\Elliot\ElliotListSortType.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
+#include <Mstng\Elliot\M15ElliotEmaSortDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3EntryPriorityDecision.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
@@ -38,8 +40,13 @@ public:
      *
      * @param fromChartId 描画対象チャートID。0の場合はカレントチャート。
      * @param fromInstanceIndex 同一チャート内でオブジェクト名を分離する番号。
+     * @param fromSortType 一覧の並び替え基準。
      */
-    DrawAlignedElliotAllList(long fromChartId = 0, int fromInstanceIndex = 0) {
+    DrawAlignedElliotAllList(
+        long fromChartId = 0,
+        int fromInstanceIndex = 0,
+        ElliotListSortType fromSortType = ELLIOT_LIST_SORT_ENTRY_PRIORITY
+    ) {
         this.chartId = fromChartId;
 
         if (this.chartId == 0) {
@@ -58,6 +65,7 @@ public:
         this.createdBuyCount = 0;
         this.createdSellCount = 0;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
+        this.sortType = fromSortType;
         this.gmoSymbolNameInfoAll.setGmo();
 
         this.corner = CORNER_LEFT_UPPER;
@@ -234,6 +242,9 @@ private:
 
     /** 生成済み列の基準時間足。 */
     ENUM_TIMEFRAMES createdCurrentTimeFrame;
+
+    /** 一覧の並び替え基準。 */
+    ElliotListSortType sortType;
 
     /** GMO取引対象の判別用シンボル一覧。 */
     SymbolNameInfoAll gmoSymbolNameInfoAll;
@@ -727,13 +738,15 @@ private:
     ) {
         int displayIndexes[];
         Mtf3In3EntryPriorityResult priorityResults[];
+        M15ElliotEmaSortResult m15SortResults[];
         int displayCount = this.buildDisplayOrder(
             fromElliotAllList,
             fromDecision,
             fromCurrentTimeFrame,
             fromAlignType,
             displayIndexes,
-            priorityResults
+            priorityResults,
+            m15SortResults
         );
 
         for (int i = 0; i < displayCount; i++) {
@@ -762,6 +775,7 @@ private:
      * @param fromAlignType 抽出する方向。
      * @param fromDisplayIndexes 表示用インデックスの格納先。
      * @param fromPriorityResults 優先度判定結果の格納先。
+     * @param fromM15SortResults M15 Elliott・EMA200ソート結果の格納先。
      * @return 表示対象件数。
      */
     int buildDisplayOrder(
@@ -770,22 +784,27 @@ private:
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
         TrendAlignType fromAlignType,
         int &fromDisplayIndexes[],
-        Mtf3In3EntryPriorityResult &fromPriorityResults[]
+        Mtf3In3EntryPriorityResult &fromPriorityResults[],
+        M15ElliotEmaSortResult &fromM15SortResults[]
     ) {
         ArrayResize(fromDisplayIndexes, 0);
         ArrayResize(fromPriorityResults, 0);
+        ArrayResize(fromM15SortResults, 0);
 
         int total = fromElliotAllList.elliotAllList.Total();
 
         if (ArrayResize(fromDisplayIndexes, total) != total
-                || ArrayResize(fromPriorityResults, total) != total) {
+                || ArrayResize(fromPriorityResults, total) != total
+                || ArrayResize(fromM15SortResults, total) != total) {
             ArrayResize(fromDisplayIndexes, 0);
             ArrayResize(fromPriorityResults, 0);
+            ArrayResize(fromM15SortResults, 0);
 
             return 0;
         }
 
         Mtf3In3EntryPriorityDecision priorityDecision;
+        M15ElliotEmaSortDecision m15SortDecision;
         int displayCount = 0;
 
         for (int i = 0; i < total; i++) {
@@ -811,15 +830,29 @@ private:
                 fromCurrentTimeFrame,
                 priorityResult
             );
+            M15ElliotEmaSortResult m15SortResult;
+            m15SortResult.reset();
+
+            if (this.sortType == ELLIOT_LIST_SORT_M15_ELLIOT_EMA
+                    && fromCurrentTimeFrame == PERIOD_M15) {
+                m15SortDecision.evaluate(elliotAll, m15SortResult);
+            }
 
             fromDisplayIndexes[displayCount] = i;
             fromPriorityResults[displayCount] = priorityResult;
+            fromM15SortResults[displayCount] = m15SortResult;
             displayCount++;
         }
 
         ArrayResize(fromDisplayIndexes, displayCount);
         ArrayResize(fromPriorityResults, displayCount);
-        this.sortDisplayOrder(fromDisplayIndexes, fromPriorityResults);
+        ArrayResize(fromM15SortResults, displayCount);
+        this.sortDisplayOrder(
+            fromCurrentTimeFrame,
+            fromDisplayIndexes,
+            fromPriorityResults,
+            fromM15SortResults
+        );
 
         return displayCount;
     }
@@ -827,40 +860,92 @@ private:
     /**
      * 表示用インデックスを優先度順に安定ソートする。
      *
-     * rank昇順、波動一致数降順、条件一致数降順で並べ、すべて同値の場合は
-     * 元の登録順を維持する。
+     * M15 Elliott・EMA200ソート選択時は方向を主キーとし、現在の
+     * エントリー優先度を副キーにする。他の場合は現在の優先度順にする。
      *
+     * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayIndexes 表示用インデックス。
      * @param fromPriorityResults インデックスと対応する優先度判定結果。
+     * @param fromM15SortResults インデックスと対応するM15ソート結果。
      */
     void sortDisplayOrder(
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
         int &fromDisplayIndexes[],
-        Mtf3In3EntryPriorityResult &fromPriorityResults[]
+        Mtf3In3EntryPriorityResult &fromPriorityResults[],
+        M15ElliotEmaSortResult &fromM15SortResults[]
     ) {
         int displayCount = ArraySize(fromDisplayIndexes);
 
-        if (displayCount != ArraySize(fromPriorityResults)) {
+        if (displayCount != ArraySize(fromPriorityResults)
+                || displayCount != ArraySize(fromM15SortResults)) {
             return;
         }
 
         for (int i = 1; i < displayCount; i++) {
             int currentIndex = fromDisplayIndexes[i];
             Mtf3In3EntryPriorityResult currentResult = fromPriorityResults[i];
+            M15ElliotEmaSortResult currentM15SortResult =
+                fromM15SortResults[i];
             int j = i - 1;
 
             while (j >= 0
-                    && this.shouldShiftPriorityResult(
+                    && this.shouldShiftDisplayResult(
+                        fromCurrentTimeFrame,
+                        currentM15SortResult,
+                        fromM15SortResults[j],
                         currentResult,
                         fromPriorityResults[j]
                     )) {
                 fromDisplayIndexes[j + 1] = fromDisplayIndexes[j];
                 fromPriorityResults[j + 1] = fromPriorityResults[j];
+                fromM15SortResults[j + 1] = fromM15SortResults[j];
                 j--;
             }
 
             fromDisplayIndexes[j + 1] = currentIndex;
             fromPriorityResults[j + 1] = currentResult;
+            fromM15SortResults[j + 1] = currentM15SortResult;
         }
+    }
+
+    /**
+     * 現在の表示結果を比較対象より前へ移動するか判定する。
+     *
+     * @param fromCurrentTimeFrame 表示時間足。
+     * @param fromCurrentM15SortResult 現在のM15ソート結果。
+     * @param fromPreviousM15SortResult 比較対象のM15ソート結果。
+     * @param fromCurrentPriorityResult 現在のエントリー優先度判定結果。
+     * @param fromPreviousPriorityResult 比較対象のエントリー優先度判定結果。
+     * @return 現在結果を前へ移動する場合true。
+     */
+    bool shouldShiftDisplayResult(
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
+        M15ElliotEmaSortResult &fromCurrentM15SortResult,
+        M15ElliotEmaSortResult &fromPreviousM15SortResult,
+        Mtf3In3EntryPriorityResult &fromCurrentPriorityResult,
+        Mtf3In3EntryPriorityResult &fromPreviousPriorityResult
+    ) {
+        if (this.sortType == ELLIOT_LIST_SORT_M15_ELLIOT_EMA
+                && fromCurrentTimeFrame == PERIOD_M15) {
+            M15ElliotEmaSortDecision m15SortDecision;
+            int compareResult = m15SortDecision.compare(
+                fromCurrentM15SortResult,
+                fromPreviousM15SortResult
+            );
+
+            if (compareResult < 0) {
+                return true;
+            }
+
+            if (compareResult > 0) {
+                return false;
+            }
+        }
+
+        return this.shouldShiftPriorityResult(
+            fromCurrentPriorityResult,
+            fromPreviousPriorityResult
+        );
     }
 
     /**
