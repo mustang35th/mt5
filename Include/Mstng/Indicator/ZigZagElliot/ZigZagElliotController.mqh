@@ -11,6 +11,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Indicator\ZigZagElliot\CurrencyStrengthPairRankController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotAnalysisController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotChartController.mqh>
@@ -41,6 +42,7 @@ public:
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
         this.lastProcessedBarTime = 0;
+        ArrayResize(this.analysisTimeFrames, 0);
     }
 
     /**
@@ -95,6 +97,19 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
+        if (!ElliotTimeFrameRange::build(
+                PERIOD_MN1,
+                this.marketContext.timeFrame,
+                this.analysisTimeFrames
+            )) {
+            this.logger.error(
+                __FUNCTION__,
+                "failed to build MN1 analysis timeframe range"
+            );
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
         SymbolSelect(this.marketContext.symbolName, true);
 
         if (this.timerMode) {
@@ -102,11 +117,11 @@ public:
             EventSetTimer(this.timerSeconds);
         }
 
-        MarketContext warmUpContext(
-            this.marketContext.symbolName,
-            PERIOD_MN1
+        WarmUpSeriesUtil::warmUp(
+            this.marketContext,
+            this.analysisTimeFrames,
+            500
         );
-        WarmUpSeriesUtil::warmUpFromMn1To(warmUpContext, 500);
 
         if (!this.createControllers()) {
             this.logger.error(
@@ -261,6 +276,7 @@ public:
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
         this.lastProcessedBarTime = 0;
+        ArrayResize(this.analysisTimeFrames, 0);
     }
 
 private:
@@ -286,8 +302,10 @@ private:
     bool timerInitialized;
     /** 前回分析実行時のTickCount。 */
     long lastExecuteTickCount;
-    /** アラート処理済みの最新バー時刻。 */
+    /** テスター分析およびアラート処理済みの最新バー時刻。 */
     datetime lastProcessedBarTime;
+    /** MN1から表示足までの分析対象時間足。 */
+    ENUM_TIMEFRAMES analysisTimeFrames[];
 
     /**
      * 各責務のControllerを作成する。
@@ -339,6 +357,44 @@ private:
         );
 
         return this.analysisController.initializeOutput();
+    }
+
+    /**
+     * 分析対象の価格系列が準備済みか判定する。
+     *
+     * 準備不足の場合は価格系列の取得を再要求し、次回実行へ持ち越す。
+     *
+     * @return 分析データが準備済みの場合true
+     */
+    bool isAnalysisDataReady() {
+        int total = ArraySize(this.analysisTimeFrames);
+
+        for (int i = 0; i < total; i++) {
+            ENUM_TIMEFRAMES timeFrame = this.analysisTimeFrames[i];
+
+            if (!WarmUpSeriesUtil::isSeriesSynchronized(
+                    this.marketContext.symbolName,
+                    timeFrame
+                )) {
+                WarmUpSeriesUtil::warmUp(
+                    this.marketContext,
+                    this.analysisTimeFrames,
+                    500
+                );
+                this.logger.info(
+                    __FUNCTION__,
+                    StringFormat(
+                        "price series is not ready. symbol=%s timeframe=%s",
+                        this.marketContext.symbolName,
+                        EnumToString(timeFrame)
+                    )
+                );
+
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -444,8 +500,26 @@ private:
 
     /**
      * 通貨強弱更新、Elliott分析、描画および新規バー処理を実行する。
+     *
+     * テスターでは表示足の処理済みバーをスキップする。データ準備または
+     * 分析に失敗した場合は処理済み時刻を更新せず、同一バーで再試行する。
      */
     void execute() {
+        datetime currentBarTime = 0;
+
+        if (!this.timerMode) {
+            currentBarTime = iTime(
+                this.marketContext.symbolName,
+                this.marketContext.timeFrame,
+                0
+            );
+
+            if (currentBarTime == 0
+                    || this.lastProcessedBarTime == currentBarTime) {
+                return;
+            }
+        }
+
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         if (this.currencyStrengthController != NULL) {
@@ -462,24 +536,12 @@ private:
             )
         );
 
-        MarketContext seriesContext(
-            this.marketContext.symbolName,
-            PERIOD_MN1
-        );
-
-        if (!WarmUpSeriesUtil::isSeriesSynchronized(seriesContext)) {
-            WarmUpSeriesUtil::warmUpFromMn1To(seriesContext, 500);
-            PrintFormat(
-                "MN1 series not synchronized yet. skip. symbol=%s tf=%d",
-                this.marketContext.symbolName,
-                (int)PERIOD_MN1
-            );
-
+        if (this.analysisController == NULL
+                || this.currencyStrengthController == NULL) {
             return;
         }
 
-        if (this.analysisController == NULL
-                || this.currencyStrengthController == NULL) {
+        if (!this.isAnalysisDataReady()) {
             return;
         }
 
@@ -530,11 +592,13 @@ private:
             )
         );
 
-        datetime currentBarTime = iTime(
-            this.marketContext.symbolName,
-            this.marketContext.timeFrame,
-            0
-        );
+        if (this.timerMode) {
+            currentBarTime = iTime(
+                this.marketContext.symbolName,
+                this.marketContext.timeFrame,
+                0
+            );
+        }
 
         if (this.lastProcessedBarTime == currentBarTime) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);

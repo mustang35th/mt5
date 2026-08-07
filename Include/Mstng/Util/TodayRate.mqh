@@ -109,7 +109,8 @@ public:
     /**
      * 市場コンテキストを使用して最新値を取得する。
      *
-     * 日足高値・安値は、コンテキストの時間足にかかわらずPERIOD_D1から取得する。
+     * 日足高値・安値はPERIOD_D1から取得する。
+     * W1/MN1のテスターでは下位足参照を避けるため未取得状態とする。
      *
      * @param fromMarketContext 取得対象の市場コンテキスト。
      */
@@ -185,6 +186,43 @@ private:
     }
 
     /**
+     * 日足高値・安値を取得可能か判定する。
+     *
+     * W1/MN1のテスターでは下位足となるD1を参照しない。
+     *
+     * @return 日足高値・安値を取得可能な場合true。
+     */
+    bool canReadDailyRange() {
+        bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+
+        if (!isTester) {
+            return true;
+        }
+
+        if (this.marketContext.timeFrame == PERIOD_W1
+                || this.marketContext.timeFrame == PERIOD_MN1) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 日足高値・安値と値幅を未取得状態へ戻す。
+     */
+    void clearDailyRange() {
+        this.high = 0.0;
+        this.low = 0.0;
+        this.diff = 0;
+        this.diffJpy = 0;
+
+        this.highLabel = "";
+        this.lowLabel = "";
+        this.diffLabel = "";
+        this.diffJpyLabel = "";
+    }
+
+    /**
      * 保持している市場コンテキストを使用して最新値とラベルを更新する。
      */
     void updateValues() {
@@ -208,33 +246,39 @@ private:
         // Spread（pips）
         this.spread = RateUtil::getDiffPips(this.bid, this.ask, this.marketContext);
 
-        // D1 高値/安値（当日バー：shift=0）
-        this.high = iHigh(this.marketContext.symbolName, PERIOD_D1, 0);
-        this.low  = iLow(this.marketContext.symbolName, PERIOD_D1, 0);
+        bool isDailyRangeAvailable = this.canReadDailyRange();
 
-        // Diff（pips、int）
-        double diffPips = RateUtil::getDiffPips(this.low, this.high, this.marketContext);
-        this.diff = (int)MathRound(diffPips);
-        
-        
-        if (!this.marketContext.isJpy()) {
-            double jpyAmount = 0.0;
-    
-            if (PipConverter::tryConvertPipsToJpy(this.marketContext, this.diff, 100, jpyAmount)) {
-                this.diffJpy = (int)MathRound(jpyAmount);
+        if (isDailyRangeAvailable) {
+            // D1 高値/安値（当日バー：shift=0）
+            this.high = iHigh(this.marketContext.symbolName, PERIOD_D1, 0);
+            this.low  = iLow(this.marketContext.symbolName, PERIOD_D1, 0);
+
+            // Diff（pips、int）
+            double diffPips = RateUtil::getDiffPips(this.low, this.high, this.marketContext);
+            this.diff = (int)MathRound(diffPips);
+
+            if (!this.marketContext.isJpy()) {
+                double jpyAmount = 0.0;
+
+                if (PipConverter::tryConvertPipsToJpy(this.marketContext, this.diff, 100, jpyAmount)) {
+                    this.diffJpy = (int)MathRound(jpyAmount);
+                }
             }
+        } else {
+            this.clearDailyRange();
         }
-        
 
         // ラベル作成
         this.askLabel = DoubleToString(this.ask, digits);
         this.bidLabel = DoubleToString(this.bid, digits);
         this.spreadLabel = DoubleToString(this.spread, 1);
 
-        this.highLabel = DoubleToString(this.high, digits);
-        this.lowLabel = DoubleToString(this.low, digits);
-        this.diffLabel = IntegerToString(this.diff);
-        this.diffJpyLabel = IntegerToString(this.diffJpy);
+        if (isDailyRangeAvailable) {
+            this.highLabel = DoubleToString(this.high, digits);
+            this.lowLabel = DoubleToString(this.low, digits);
+            this.diffLabel = IntegerToString(this.diff);
+            this.diffJpyLabel = IntegerToString(this.diffJpy);
+        }
     }
 
 };

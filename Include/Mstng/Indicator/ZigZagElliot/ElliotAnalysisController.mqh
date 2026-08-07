@@ -29,6 +29,7 @@ public:
         this.oscillatorHandlePool = NULL;
         this.elliotAll = NULL;
         this.timerMode = true;
+        this.analysisStartTimeFrame = PERIOD_MN1;
         this.mailValidationFileEnabled = false;
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.currencyStrengthEntryFilterEnabled = false;
@@ -60,6 +61,15 @@ public:
 
         this.marketContext = fromMarketContext;
         this.timerMode = fromTimerMode;
+        this.analysisStartTimeFrame = PERIOD_MN1;
+        this.logStartTimeFrame = PERIOD_D1;
+
+        if (!this.timerMode
+                && (this.marketContext.timeFrame == PERIOD_W1
+                    || this.marketContext.timeFrame == PERIOD_MN1)) {
+            this.logStartTimeFrame = PERIOD_MN1;
+        }
+
         this.mailValidationFileEnabled =
             fromConfig.mailValidationFileEnabled;
         this.h1DisplayWaveEntryLimitEnabled =
@@ -81,7 +91,7 @@ public:
             return false;
         }
 
-        if (this.timerMode) {
+        if (this.analysisStartTimeFrame == PERIOD_MN1) {
             this.oscillatorHandlePool.setTimeframesFromMn1To();
         } else {
             this.oscillatorHandlePool.setTimeframesFromD1To();
@@ -118,6 +128,9 @@ public:
         }
 
         this.elliotAll.isTimer = this.timerMode;
+        this.elliotAll.setAnalysisStartTimeFrame(
+            this.analysisStartTimeFrame
+        );
         this.elliotAll.isMailValidationFileEnabled =
             this.mailValidationFileEnabled;
         this.elliotAll.isH1DisplayWaveEntryLimitEnabled =
@@ -187,9 +200,15 @@ public:
             return false;
         }
 
-        string csvText = this.elliotAll.getCsv(true);
+        string csvText = this.elliotAll.getCsv(
+            true,
+            this.logStartTimeFrame
+        );
 
-        if (!this.elliotAllFile.writeCsvTextValue(csvText)) {
+        if (!this.elliotAllFile.writeCsvTextValue(
+                csvText,
+                this.logStartTimeFrame,
+                this.marketContext.timeFrame)) {
             this.logger.error(
                 __FUNCTION__,
                 "ElliotAll CSV write failed"
@@ -236,6 +255,8 @@ private:
     ElliotAllFile elliotAllFile;
     /** タイマー実行の場合true。 */
     bool timerMode;
+    /** Elliott分析開始時間足。 */
+    ENUM_TIMEFRAMES analysisStartTimeFrame;
     /** Mail内容を検証用ファイルへ出力する場合true。 */
     bool mailValidationFileEnabled;
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */

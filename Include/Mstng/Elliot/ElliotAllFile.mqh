@@ -672,6 +672,49 @@ public:
     }
 
     /**
+     * 時間足範囲と列数が一致するCSV文字列を1行として出力する。
+     *
+     * @param csvTextValue 共通情報を含むCSV文字列
+     * @param startTimeFrameValue 開始時間足
+     * @param endTimeFrameValue 終了時間足
+     * @return 成功時true
+     */
+    bool writeCsvTextValue(
+        const string csvTextValue,
+        const ENUM_TIMEFRAMES startTimeFrameValue,
+        const ENUM_TIMEFRAMES endTimeFrameValue
+    ) {
+        string rowValues[];
+
+        if (!this.createRowValuesFromCsvTextValue(csvTextValue, rowValues)) {
+            return false;
+        }
+
+        int expectedFieldCount = this.getMultiTimeFrameFieldCountWithCommon(
+            startTimeFrameValue,
+            endTimeFrameValue
+        );
+
+        if (expectedFieldCount <= 0) {
+            return false;
+        }
+
+        int fieldCount = ArraySize(rowValues);
+
+        if (fieldCount != expectedFieldCount) {
+            Print(
+                "ElliotAllFile.writeCsvTextValue invalid multi timeframe field count="
+                + IntegerToString(fieldCount)
+                + " expected=" + IntegerToString(expectedFieldCount)
+            );
+
+            return false;
+        }
+
+        return this.csvFileWriter.writeRow(rowValues);
+    }
+
+    /**
      * 複数時間足CSV文字列から1行データを作成する。
      *
      * 作成されるrowValuesは共通情報を含まない。
@@ -2112,13 +2155,15 @@ private:
      * @param supportedTimeFrames 対象時間足
      */
     void createSupportedTimeFrames(ENUM_TIMEFRAMES &supportedTimeFrames[]) const {
-        ArrayResize(supportedTimeFrames, 6);
-        supportedTimeFrames[0] = PERIOD_D1;
-        supportedTimeFrames[1] = PERIOD_H4;
-        supportedTimeFrames[2] = PERIOD_H1;
-        supportedTimeFrames[3] = PERIOD_M15;
-        supportedTimeFrames[4] = PERIOD_M5;
-        supportedTimeFrames[5] = PERIOD_M1;
+        ArrayResize(supportedTimeFrames, 8);
+        supportedTimeFrames[0] = PERIOD_MN1;
+        supportedTimeFrames[1] = PERIOD_W1;
+        supportedTimeFrames[2] = PERIOD_D1;
+        supportedTimeFrames[3] = PERIOD_H4;
+        supportedTimeFrames[4] = PERIOD_H1;
+        supportedTimeFrames[5] = PERIOD_M15;
+        supportedTimeFrames[6] = PERIOD_M5;
+        supportedTimeFrames[7] = PERIOD_M1;
     }
 
     /**

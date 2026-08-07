@@ -210,6 +210,22 @@ public:
      * @return 共通情報と各時間足情報を連結したCSV文字列
      */
     string getCsv(bool isDetail = false) {
+        return this.getCsv(isDetail, PERIOD_CURRENT);
+    }
+
+    /**
+     * 指定した開始時間足以降の分析結果をCSV文字列として取得する。
+     *
+     * PERIOD_CURRENTを指定した場合は、全分析時間足を出力する。
+     *
+     * @param isDetail trueの場合、レート、複合判定、時間足別詳細を含める
+     * @param fromStartTimeFrame CSV出力開始時間足
+     * @return 共通情報と対象時間足情報を連結したCSV文字列
+     */
+    string getCsv(
+        bool isDetail,
+        ENUM_TIMEFRAMES fromStartTimeFrame
+    ) {
         string csv = "";
         
         csv = StringFormat("%s,%s,", this.marketContext.symbolName, this.tradeTimeInfo.getCsvData());
@@ -224,6 +240,12 @@ public:
         
         for (int i = this.elliotList.Total() - 1; i >= 0; i--) {
             Elliot *elliot = this.elliotList.At(i);
+
+            if (fromStartTimeFrame != PERIOD_CURRENT
+                    && PeriodSeconds(elliot.marketContext.timeFrame)
+                        > PeriodSeconds(fromStartTimeFrame)) {
+                continue;
+            }
             
             csv += elliot.getCsv(isDetail);
         }
