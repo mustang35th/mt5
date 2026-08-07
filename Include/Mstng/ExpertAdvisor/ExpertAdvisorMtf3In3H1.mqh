@@ -10,6 +10,7 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_H1_MQH
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
 
 /**
  * H1を現在足としてMTF_3in3エントリーを判定する。
@@ -95,7 +96,12 @@ protected:
      * @return アラート表示文字列。
      */
     virtual string buildAlertText() override {
-        return this.getThreeTimeFrameAlertText();
+        Mtf3In3H1ElliotStructureDecision structureDecision;
+        Mtf3In3H1ElliotStructureResult structureResult;
+        structureDecision.evaluate(this.elliotAll, structureResult);
+
+        return "H1[" + structureResult.getDisplayLabel()
+            + "] " + this.getThreeTimeFrameAlertText();
     }
 };
 

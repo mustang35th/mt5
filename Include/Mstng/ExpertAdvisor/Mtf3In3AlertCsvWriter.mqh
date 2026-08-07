@@ -12,8 +12,9 @@
 #include <Mstng\Common\File\CsvFileWriter.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
 
-#define MTF3_IN3_ALERT_CSV_FIELD_COUNT 55
+#define MTF3_IN3_ALERT_CSV_FIELD_COUNT 64
 
 /**
  * MTF_3in3のアラート候補を検証用CSVへ追記する。
@@ -75,7 +76,7 @@ public:
             ",",
             true,
             true,
-            "Logs\\Mtf3In3AlertValidation\\MTF3IN3_ALERT_V1",
+            "Logs\\Mtf3In3AlertValidation\\MTF3IN3_ALERT_V2",
             CSV_FILE_WRITE_MODE_APPEND
         );
 
@@ -174,6 +175,15 @@ private:
         fromValues[index++] = "medium_short_rank_difference";
         fromValues[index++] = "reference_price";
         fromValues[index++] = "stop_loss";
+        fromValues[index++] = "h1_structure_rank";
+        fromValues[index++] = "h1_structure_valid";
+        fromValues[index++] = "h1_structure_late";
+        fromValues[index++] = "h1_direction_exception";
+        fromValues[index++] = "d1_wave_type";
+        fromValues[index++] = "d1_elliot_label";
+        fromValues[index++] = "h4_wave_type";
+        fromValues[index++] = "h4_elliot_label";
+        fromValues[index++] = "h1_elliot_label";
         fromValues[index++] = "elliot_csv_text";
 
         return validateFieldCount(index, "header");
@@ -222,6 +232,9 @@ private:
         CurrencyStrengthExecutionInfo executionInfo =
             fromElliotAll.currencyStrengthExecutionInfo;
         CurrencyStrengthPairRankInfo pairRankInfo = executionInfo.pairRankInfo;
+        Mtf3In3H1ElliotStructureDecision structureDecision;
+        Mtf3In3H1ElliotStructureResult structureResult;
+        structureDecision.evaluate(fromElliotAll, structureResult);
         string side = getSide(fromResult.isBuy);
         double referencePrice = fromElliotAll.todayRate.bid;
 
@@ -245,7 +258,7 @@ private:
         ArrayResize(fromValues, MTF3_IN3_ALERT_CSV_FIELD_COUNT);
         int index = 0;
 
-        fromValues[index++] = "MTF3IN3_ALERT_V1";
+        fromValues[index++] = "MTF3IN3_ALERT_V2";
         fromValues[index++] = fromValidationRunId;
         fromValues[index++] = eventId;
         fromValues[index++] = fromSource;
@@ -335,6 +348,19 @@ private:
             fromElliotAll.lossCut.lc5,
             digits
         );
+        fromValues[index++] = structureResult.getRankLabel();
+        fromValues[index++] = formatBool(
+            structureResult.isStructureValid
+        );
+        fromValues[index++] = formatBool(structureResult.isLate);
+        fromValues[index++] = formatBool(
+            structureResult.isDirectionException
+        );
+        fromValues[index++] = structureResult.d1WaveType;
+        fromValues[index++] = structureResult.d1ElliotLabel;
+        fromValues[index++] = structureResult.h4WaveType;
+        fromValues[index++] = structureResult.h4ElliotLabel;
+        fromValues[index++] = structureResult.h1ElliotLabel;
         fromValues[index++] = fromElliotAll.getCsv(true);
 
         return validateFieldCount(index, "data");
