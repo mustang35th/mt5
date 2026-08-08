@@ -21,6 +21,16 @@ input bool mailValidationFileEnabled = false;
 /** MTF_3in3アラート検証CSVを出力する場合true。 */
 input bool mtf3In3AlertCsvEnabled = true;
 
+/** MTF_3in3アラートをデータベースへ保存する場合true。 */
+input bool mtf3In3AlertDatabaseEnabled = false;
+
+/** MTF_3in3アラートデータベースファイル名。 */
+input string mtf3In3AlertDatabaseFileName =
+    "mstng-zigzag-elliot-alert.sqlite";
+
+/** MTF_3in3アラートデータベースで共通フォルダを使用する場合true。 */
+input bool mtf3In3AlertDatabaseUseCommonFolder = true;
+
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
 input bool h1DisplayWaveEntryLimitEnabled = false;
 
@@ -77,6 +87,10 @@ int OnInit() {
     ZigZagElliotConfig config;
     config.mailValidationFileEnabled = mailValidationFileEnabled;
     config.mtf3In3AlertCsvEnabled = mtf3In3AlertCsvEnabled;
+    config.mtf3In3AlertDatabaseEnabled = mtf3In3AlertDatabaseEnabled;
+    config.mtf3In3AlertDatabaseFileName = mtf3In3AlertDatabaseFileName;
+    config.mtf3In3AlertDatabaseUseCommonFolder =
+        mtf3In3AlertDatabaseUseCommonFolder;
     config.h1DisplayWaveEntryLimitEnabled =
         h1DisplayWaveEntryLimitEnabled;
     config.currencyStrengthEnabled = currencyStrengthEnabled;

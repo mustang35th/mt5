@@ -100,6 +100,28 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
+        if (this.config.mtf3In3AlertDatabaseEnabled
+                && this.config.mtf3In3AlertDatabaseFileName == "") {
+            this.logger.error(
+                __FUNCTION__,
+                "MTF_3in3 alert database file name is empty."
+            );
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
+        if (!this.timerMode
+                && this.config.mtf3In3AlertDatabaseEnabled
+                && !MQLInfoInteger(MQL_OPTIMIZATION)
+                && !this.config.mtf3In3AlertDatabaseUseCommonFolder) {
+            this.logger.error(
+                __FUNCTION__,
+                "MTF_3in3 alert database requires Common folder in Strategy Tester."
+            );
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
         if (!ElliotTimeFrameRange::build(
                 PERIOD_MN1,
                 this.marketContext.timeFrame,
@@ -342,7 +364,7 @@ private:
         if (this.alertController == NULL
                 || !this.alertController.initialize(
                     this.marketContext,
-                    this.config.mtf3In3AlertCsvEnabled
+                    this.config
                 )) {
             return false;
         }

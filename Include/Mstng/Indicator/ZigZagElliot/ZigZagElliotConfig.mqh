@@ -21,6 +21,12 @@ public:
     bool mailValidationFileEnabled;
     /** MTF_3in3アラート検証CSVを出力する場合true。 */
     bool mtf3In3AlertCsvEnabled;
+    /** MTF_3in3アラートをデータベースへ保存する場合true。 */
+    bool mtf3In3AlertDatabaseEnabled;
+    /** MTF_3in3アラートデータベースファイル名。 */
+    string mtf3In3AlertDatabaseFileName;
+    /** MTF_3in3アラートデータベースで共通フォルダを使用する場合true。 */
+    bool mtf3In3AlertDatabaseUseCommonFolder;
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
     /** 通貨強弱を利用する場合true。 */
@@ -50,6 +56,10 @@ public:
     ZigZagElliotConfig() {
         this.mailValidationFileEnabled = false;
         this.mtf3In3AlertCsvEnabled = true;
+        this.mtf3In3AlertDatabaseEnabled = false;
+        this.mtf3In3AlertDatabaseFileName =
+            "mstng-zigzag-elliot-alert.sqlite";
+        this.mtf3In3AlertDatabaseUseCommonFolder = true;
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;
