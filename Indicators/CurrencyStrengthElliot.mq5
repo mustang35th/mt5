@@ -22,6 +22,8 @@
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
+#include <Mstng\Util\TimeUtil.mqh>
+#include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
  * 通貨強弱集計の実行結果。
@@ -52,6 +54,10 @@ input int databaseRetentionDays = 0;
 
 /** テスター診断ログを約1日ごとに出力するM5足数。 */
 const int testerDiagnosticLogIntervalBars = 288;
+/** ZigZagElliotと揃えるMN1履歴のウォームアップ必要本数。 */
+const int testerMonthlyHistoryWarmUpBars = 61;
+/** ZigZagElliotと揃えるW1以下履歴のウォームアップ必要本数。 */
+const int testerStandardHistoryWarmUpBars = 206;
 /** 通貨ランキングパネル左端から候補一覧左端までの距離。 */
 const int entryCandidatePanelXOffset = 1012;
 
@@ -73,6 +79,7 @@ datetime gTesterWarmUpPreparedAt;
 datetime gLastSavedM5BarTime;
 datetime gLastDatabaseCleanupTime;
 int gTesterWarmUpAttemptCount;
+int gLastTesterHistoryWarmUpProgress;
 int gTesterRetryWaitCount;
 int gTesterPersistedSnapshotCount;
 string gLastRetryPreparationFailureReason;
@@ -182,6 +189,7 @@ int OnInit() {
     gLastSavedM5BarTime = 0;
     gLastDatabaseCleanupTime = 0;
     gTesterWarmUpAttemptCount = 0;
+    gLastTesterHistoryWarmUpProgress = -1;
     gTesterRetryWaitCount = 0;
     gTesterPersistedSnapshotCount = 0;
     gLastRetryPreparationFailureReason = "";
@@ -319,6 +327,10 @@ void processTesterSnapshots() {
 
     gLastTesterAttemptM5BarTime = currentM5BarTime;
 
+    if (!isTesterHistoryWarmUpReady(currentM5BarTime)) {
+        return;
+    }
+
     if (databaseEnabled
             && databaseSaveStartTime > 0
             && currentM5BarTime < databaseSaveStartTime) {
@@ -395,6 +407,210 @@ void processTesterSnapshots() {
 }
 
 /**
+ * 時間足ごとのテスター履歴ウォームアップ必要本数を取得する。
+ *
+ * @param fromTimeFrame 判定対象の時間足。
+ * @return ウォームアップに必要な価格バー数。
+ */
+int getRequiredTesterHistoryWarmUpBars(
+    const ENUM_TIMEFRAMES fromTimeFrame
+) {
+    if (fromTimeFrame == PERIOD_MN1) {
+        return testerMonthlyHistoryWarmUpBars;
+    }
+
+    return testerStandardHistoryWarmUpBars;
+}
+
+/**
+ * テスター基準シンボルの集計対象系列をM5から上位足の順に同期する。
+ *
+ * @return 全集計対象系列が同期済みの場合true。
+ */
+bool isTesterHistorySeriesSynchronized() {
+    if (gCurrencyStrengthCalculator == NULL) {
+        return false;
+    }
+
+    ENUM_TIMEFRAMES unsynchronizedTimeFrames[];
+    int timeFrameCount = gCurrencyStrengthCalculator.getTimeFrameCount();
+    int unsynchronizedCount = 0;
+
+    ArrayResize(unsynchronizedTimeFrames, 0);
+
+    // Open Pricesでは基準シンボルもM5から上位足の順に参照する。
+    for (int i = timeFrameCount - 1; i >= 0; i--) {
+        ENUM_TIMEFRAMES timeFrame =
+            gCurrencyStrengthCalculator.getTimeFrame(i);
+
+        if (WarmUpSeriesUtil::isSeriesSynchronized(
+                _Symbol,
+                timeFrame
+            )) {
+            continue;
+        }
+
+        if (ArrayResize(
+            unsynchronizedTimeFrames,
+            unsynchronizedCount + 1
+        ) != unsynchronizedCount + 1) {
+            return false;
+        }
+
+        unsynchronizedTimeFrames[unsynchronizedCount] = timeFrame;
+        unsynchronizedCount++;
+    }
+
+    if (unsynchronizedCount <= 0) {
+        return true;
+    }
+
+    WarmUpSeriesUtil::warmUp(
+        _Symbol,
+        unsynchronizedTimeFrames,
+        testerStandardHistoryWarmUpBars
+    );
+
+    return false;
+}
+
+/**
+ * テスター基準シンボルの全集計対象時間足に必要な価格バー数があるか判定する。
+ *
+ * 全時間足で最も低い達成率を進捗率とし、変化した場合だけINFOへ
+ * 出力する。全28ペアの系列とストキャスハンドルの準備完了は、
+ * 履歴到達後の既存リソースウォームアップと再試行へ委ねる。
+ *
+ * @param fromM5BarTime 現在のテスターM5足開始時刻。
+ * @return 基準シンボルの価格バー数が十分な場合true。
+ */
+bool isTesterHistoryWarmUpReady(const datetime fromM5BarTime) {
+    if (!MQLInfoInteger(MQL_TESTER)) {
+        return true;
+    }
+
+    if (gCurrencyStrengthCalculator == NULL
+            || !isTesterHistorySeriesSynchronized()) {
+        return false;
+    }
+
+    int timeFrameCount = gCurrencyStrengthCalculator.getTimeFrameCount();
+
+    if (timeFrameCount <= 0) {
+        return false;
+    }
+
+    bool isReady = true;
+    int overallProgress = 100;
+    ENUM_TIMEFRAMES bottleneckTimeFrame = PERIOD_CURRENT;
+    int bottleneckProgressBars = 0;
+    int bottleneckAvailableBars = 0;
+    int bottleneckRequiredBars = 0;
+    string insufficientDetails = "";
+    string allBarDetails = "";
+
+    // Open Pricesの初回参照制約に合わせ、M5から上位足の順に判定する。
+    for (int i = timeFrameCount - 1; i >= 0; i--) {
+        ENUM_TIMEFRAMES timeFrame =
+            gCurrencyStrengthCalculator.getTimeFrame(i);
+        int requiredBars = getRequiredTesterHistoryWarmUpBars(timeFrame);
+        int availableBars = Bars(_Symbol, timeFrame);
+        int progressBars = availableBars;
+
+        if (progressBars < 0) {
+            progressBars = 0;
+        }
+
+        if (progressBars > requiredBars) {
+            progressBars = requiredBars;
+        }
+
+        int timeFrameProgress = progressBars * 100 / requiredBars;
+
+        if (bottleneckTimeFrame == PERIOD_CURRENT
+                || (long)progressBars * bottleneckRequiredBars
+                    < (long)bottleneckProgressBars * requiredBars) {
+            bottleneckTimeFrame = timeFrame;
+            bottleneckProgressBars = progressBars;
+            bottleneckAvailableBars = availableBars;
+            bottleneckRequiredBars = requiredBars;
+        }
+
+        if (timeFrameProgress < overallProgress) {
+            overallProgress = timeFrameProgress;
+        }
+
+        if (allBarDetails != "") {
+            allBarDetails += ", ";
+        }
+
+        allBarDetails += StringFormat(
+            "%s:%d/%d",
+            TimeUtil::convertTimeFrameToString(timeFrame),
+            availableBars,
+            requiredBars
+        );
+
+        if (availableBars >= requiredBars) {
+            continue;
+        }
+
+        isReady = false;
+
+        if (insufficientDetails != "") {
+            insufficientDetails += ", ";
+        }
+
+        insufficientDetails += StringFormat(
+            "%s:%d/%d",
+            TimeUtil::convertTimeFrameToString(timeFrame),
+            availableBars,
+            requiredBars
+        );
+    }
+
+    if (overallProgress != gLastTesterHistoryWarmUpProgress) {
+        if (isReady) {
+            gLogger.info(
+                __FUNCTION__,
+                StringFormat(
+                    "tester currency strength history warm-up completed. simulatedTime=%s referenceSymbol=%s progress=100%% bars=%s",
+                    TimeToString(
+                        fromM5BarTime,
+                        TIME_DATE | TIME_MINUTES
+                    ),
+                    _Symbol,
+                    allBarDetails
+                )
+            );
+        } else {
+            gLogger.info(
+                __FUNCTION__,
+                StringFormat(
+                    "tester currency strength history warm-up progress. simulatedTime=%s referenceSymbol=%s progress=%d%% bottleneck=%s bars=%d/%d insufficient=%s",
+                    TimeToString(
+                        fromM5BarTime,
+                        TIME_DATE | TIME_MINUTES
+                    ),
+                    _Symbol,
+                    overallProgress,
+                    TimeUtil::convertTimeFrameToString(
+                        bottleneckTimeFrame
+                    ),
+                    bottleneckAvailableBars,
+                    bottleneckRequiredBars,
+                    insufficientDetails
+                )
+            );
+        }
+
+        gLastTesterHistoryWarmUpProgress = overallProgress;
+    }
+
+    return isReady;
+}
+
+/**
  * DB保存開始前に系列とストキャスハンドルを一度準備する。
  *
  * @param fromM5BarTime ウォームアップ中のM5足開始時刻。
@@ -408,11 +624,18 @@ void prepareTesterWarmUp(const datetime fromM5BarTime) {
 
     gTesterWarmUpAttemptCount++;
 
-    if (!gCurrencyStrengthCalculator.calculateAt(
+    bool isCalculated = gCurrencyStrengthCalculator.calculateAt(
         gOscillatorHandleManager,
         _Symbol,
         fromM5BarTime
-    )) {
+    );
+    bool isComplete = (
+        gCurrencyStrengthCalculator.validPairCount
+            == gCurrencyStrengthCalculator.getExpectedPairCount()
+    );
+    bool isPrepared = isCalculated && isComplete;
+
+    if (!isPrepared) {
         if (gTesterWarmUpAttemptCount == 1
                 || gTesterWarmUpAttemptCount
                     % testerDiagnosticLogIntervalBars == 0) {
@@ -799,6 +1022,7 @@ void releaseResources() {
     gPendingTesterM5BarTime = 0;
     gTesterWarmUpPreparedAt = 0;
     gTesterWarmUpAttemptCount = 0;
+    gLastTesterHistoryWarmUpProgress = -1;
     gTesterRetryWaitCount = 0;
     gTesterPersistedSnapshotCount = 0;
     gLastRetryPreparationFailureReason = "";

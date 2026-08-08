@@ -21,6 +21,7 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
+#include <Mstng\Util\TimeUtil.mqh>
 #include <Mstng\Util\Util.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
@@ -42,6 +43,7 @@ public:
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
         this.lastProcessedBarTime = 0;
+        this.lastAnalysisWarmUpProgress = -1;
         ArrayResize(this.analysisTimeFrames, 0);
     }
 
@@ -72,6 +74,7 @@ public:
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
         this.lastProcessedBarTime = 0;
+        this.lastAnalysisWarmUpProgress = -1;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
 
@@ -276,10 +279,18 @@ public:
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
         this.lastProcessedBarTime = 0;
+        this.lastAnalysisWarmUpProgress = -1;
         ArrayResize(this.analysisTimeFrames, 0);
     }
 
 private:
+    enum AnalysisWarmUpBarCount {
+        /** MN1のEMA60現在値と前値を取得するための必要本数。 */
+        monthlyAnalysisWarmUpBars = 61,
+        /** W1以下のEMA200最大shiftに安全余裕を加えた必要本数。 */
+        standardAnalysisWarmUpBars = 206
+    };
+
     /** 市場コンテキスト。 */
     MarketContext marketContext;
     /** インジケータ設定。 */
@@ -304,6 +315,8 @@ private:
     long lastExecuteTickCount;
     /** テスター分析およびアラート処理済みの最新バー時刻。 */
     datetime lastProcessedBarTime;
+    /** 最後に通知したテスター分析履歴の進捗率。 */
+    int lastAnalysisWarmUpProgress;
     /** MN1から表示足までの分析対象時間足。 */
     ENUM_TIMEFRAMES analysisTimeFrames[];
 
@@ -360,6 +373,144 @@ private:
     }
 
     /**
+     * 時間足ごとのテスター分析開始に必要な価格バー数を取得する。
+     *
+     * @param fromTimeFrame 判定対象の時間足
+     * @return 分析開始に必要な価格バー数
+     */
+    int getRequiredAnalysisBars(ENUM_TIMEFRAMES fromTimeFrame) {
+        if (fromTimeFrame == PERIOD_MN1) {
+            return monthlyAnalysisWarmUpBars;
+        }
+
+        return standardAnalysisWarmUpBars;
+    }
+
+    /**
+     * テスターの全分析対象時間足に必要な価格バー数があるか判定する。
+     *
+     * 全時間足で最も低い達成率を進捗率とし、変化した場合だけINFOへ
+     * 出力する。インジケーターハンドルの計算完了は判定せず、必要本数
+     * 到達後のCopyBufferと既存再試行へ委ねる。
+     *
+     * @return 全分析対象時間足の価格バー数が十分な場合true
+     */
+    bool isTesterAnalysisHistoryReady() {
+        if (this.timerMode) {
+            return true;
+        }
+
+        int total = ArraySize(this.analysisTimeFrames);
+        bool isReady = true;
+        int overallProgress = 100;
+        ENUM_TIMEFRAMES bottleneckTimeFrame = PERIOD_CURRENT;
+        int bottleneckProgressBars = 0;
+        int bottleneckAvailableBars = 0;
+        int bottleneckRequiredBars = 0;
+        string insufficientDetails = "";
+        string allBarDetails = "";
+
+        for (int i = 0; i < total; i++) {
+            ENUM_TIMEFRAMES timeFrame = this.analysisTimeFrames[i];
+            int requiredBars = this.getRequiredAnalysisBars(timeFrame);
+            int availableBars = Bars(
+                this.marketContext.symbolName,
+                timeFrame
+            );
+            int progressBars = availableBars;
+
+            if (progressBars < 0) {
+                progressBars = 0;
+            }
+
+            if (progressBars > requiredBars) {
+                progressBars = requiredBars;
+            }
+
+            int timeFrameProgress = progressBars * 100 / requiredBars;
+
+            if (bottleneckTimeFrame == PERIOD_CURRENT
+                    || (long)progressBars * bottleneckRequiredBars
+                        < (long)bottleneckProgressBars * requiredBars) {
+                bottleneckTimeFrame = timeFrame;
+                bottleneckProgressBars = progressBars;
+                bottleneckAvailableBars = availableBars;
+                bottleneckRequiredBars = requiredBars;
+            }
+
+            if (timeFrameProgress < overallProgress) {
+                overallProgress = timeFrameProgress;
+            }
+
+            if (allBarDetails != "") {
+                allBarDetails += ", ";
+            }
+
+            allBarDetails += StringFormat(
+                "%s:%d/%d",
+                TimeUtil::convertTimeFrameToString(timeFrame),
+                availableBars,
+                requiredBars
+            );
+
+            if (availableBars >= requiredBars) {
+                continue;
+            }
+
+            isReady = false;
+
+            if (insufficientDetails != "") {
+                insufficientDetails += ", ";
+            }
+
+            insufficientDetails += StringFormat(
+                "%s:%d/%d",
+                TimeUtil::convertTimeFrameToString(timeFrame),
+                availableBars,
+                requiredBars
+            );
+        }
+
+        if (overallProgress != this.lastAnalysisWarmUpProgress) {
+            if (isReady) {
+                this.logger.info(
+                    __FUNCTION__,
+                    StringFormat(
+                        "tester analysis history warm-up completed. simulatedTime=%s progress=100%% bars=%s",
+                        TimeToString(
+                            TimeCurrent(),
+                            TIME_DATE | TIME_MINUTES
+                        ),
+                        allBarDetails
+                    )
+                );
+            } else {
+                this.logger.info(
+                    __FUNCTION__,
+                    StringFormat(
+                        "tester analysis history warm-up progress. simulatedTime=%s progress=%d%% bottleneck=%s bars=%d/%d insufficient=%s",
+                        TimeToString(
+                            TimeCurrent(),
+                            TIME_DATE | TIME_MINUTES
+                        ),
+                        overallProgress,
+                        TimeUtil::convertTimeFrameToString(
+                            bottleneckTimeFrame
+                        ),
+                        bottleneckAvailableBars,
+                        bottleneckRequiredBars,
+                        insufficientDetails
+                    )
+                );
+            }
+
+            this.lastAnalysisWarmUpProgress = overallProgress;
+        }
+
+        return isReady;
+    }
+
+    /**
      * 分析対象の価格系列が準備済みか判定する。
      *
      * 準備不足の場合は価格系列の取得を再要求し、次回実行へ持ち越す。
@@ -392,6 +543,10 @@ private:
 
                 return false;
             }
+        }
+
+        if (!this.isTesterAnalysisHistoryReady()) {
+            return false;
         }
 
         return true;
