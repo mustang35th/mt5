@@ -14,13 +14,33 @@
 #include <Mstng\Elliot\TrendAlignDecision.mqh>
 
 /**
- * D1から現在時間足までのElliott売買方向一致を判定するクラス。
+ * 指定開始足から現在時間足までのElliott売買方向一致を判定するクラス。
  * 一覧表示と複数通貨スキャンで共通の対象時間足構成を提供する。
  */
 class ElliotDirectionAlignmentDecision {
 public:
     /**
-     * D1から現在時間足までの対象時間足一覧を生成する。
+     * 一致判定の開始時間足を指定して初期化する。
+     *
+     * @param fromAlignmentStartTimeFrame 一致判定の開始時間足
+     */
+    ElliotDirectionAlignmentDecision(
+        ENUM_TIMEFRAMES fromAlignmentStartTimeFrame = PERIOD_D1
+    ) {
+        this.alignmentStartTimeFrame = fromAlignmentStartTimeFrame;
+    }
+
+    /**
+     * 一致判定の開始時間足を取得する。
+     *
+     * @return 一致判定の開始時間足
+     */
+    ENUM_TIMEFRAMES getAlignmentStartTimeFrame() {
+        return this.alignmentStartTimeFrame;
+    }
+
+    /**
+     * 指定開始足から現在時間足までの対象時間足一覧を生成する。
      *
      * @param fromCurrentTimeFrame 現在時間足
      * @param fromTimeFrames 対象時間足一覧の格納先
@@ -31,7 +51,7 @@ public:
         ENUM_TIMEFRAMES &fromTimeFrames[]
     ) {
         return ElliotTimeFrameRange::build(
-            PERIOD_D1,
+            this.alignmentStartTimeFrame,
             fromCurrentTimeFrame,
             fromTimeFrames
         );
@@ -62,7 +82,7 @@ public:
     }
 
     /**
-     * D1から現在時間足までのElliott売買方向一致種別を取得する。
+     * 指定開始足から現在時間足までのElliott売買方向一致種別を取得する。
      *
      * @param fromElliotAll 複数時間足Elliott分析結果
      * @param fromCurrentTimeFrame 現在時間足
@@ -105,6 +125,9 @@ public:
     }
 
 private:
+    /** 一致判定の開始時間足。 */
+    ENUM_TIMEFRAMES alignmentStartTimeFrame;
+
     /**
      * 指定時間足一覧の分析結果が一致判定に利用可能か判定する。
      *

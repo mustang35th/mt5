@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.11"
+#property version   "1.14"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -16,8 +16,19 @@
 #include <Mstng\Elliot\ElliotListSortType.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotListController.mqh>
 
-/** 一覧の並び替え基準。 */
+/**
+ * ZigZag Elliott一覧の基準時間足モード。
+ */
+enum ZigZagElliotListMode {
+    ZIGZAG_ELLIOT_LIST_MODE_CHART = 0, // CHART
+    ZIGZAG_ELLIOT_LIST_MODE_D1 = 1     // D1 / ALIGN W1 / D1 SORT
+};
+
+/** CHARTモードの並び替え基準。D1モードではD1専用ソートを使用する。 */
 input ElliotListSortType sortType = ELLIOT_LIST_SORT_M15_ELLIOT_EMA;
+
+/** 一覧の基準時間足モード。 */
+input ZigZagElliotListMode listMode = ZIGZAG_ELLIOT_LIST_MODE_CHART;
 
 /** 描画専用インジケーターの非表示バッファ。 */
 double gHiddenBuffer[];
@@ -35,7 +46,25 @@ int OnInit() {
         return INIT_FAILED;
     }
 
-    MarketContext context(_Symbol, _Period);
+    if ((bool)MQLInfoInteger(MQL_TESTER)
+            && listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
+            && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_D1)) {
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    ENUM_TIMEFRAMES listTimeFrame = _Period;
+    ENUM_TIMEFRAMES alignmentStartTimeFrame = PERIOD_D1;
+    ElliotListSortType effectiveSortType = sortType;
+    bool testerHistoryWarmUpEnabled = false;
+
+    if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1) {
+        listTimeFrame = PERIOD_D1;
+        alignmentStartTimeFrame = PERIOD_W1;
+        effectiveSortType = ELLIOT_LIST_SORT_D1_ELLIOT_EMA;
+        testerHistoryWarmUpEnabled = true;
+    }
+
+    MarketContext context(_Symbol, listTimeFrame);
     gZigZagElliotListController = new ZigZagElliotListController();
 
     if (gZigZagElliotListController == NULL) {
@@ -44,7 +73,9 @@ int OnInit() {
 
     int initializeResult = gZigZagElliotListController.initialize(
         context,
-        sortType
+        effectiveSortType,
+        alignmentStartTimeFrame,
+        testerHistoryWarmUpEnabled
     );
 
     if (initializeResult != INIT_SUCCEEDED) {
@@ -54,10 +85,13 @@ int OnInit() {
         return initializeResult;
     }
 
-    IndicatorSetString(
-        INDICATOR_SHORTNAME,
-        "ZigZag Elliott List ALL " + context.timeFrameLabel
-    );
+    string shortName = "ZigZag Elliott List ALL " + context.timeFrameLabel;
+
+    if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1) {
+        shortName += " ALIGN W1";
+    }
+
+    IndicatorSetString(INDICATOR_SHORTNAME, shortName);
 
     return INIT_SUCCEEDED;
 }

@@ -11,6 +11,7 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Elliot\D1ElliotEmaSortDecision.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
 #include <Mstng\Elliot\ElliotListSortType.mqh>
@@ -183,8 +184,18 @@ public:
             currentTimeFrameText = "CUR";
         }
 
+        string alignmentStartTimeFrameText =
+            TimeUtil::convertTimeFrameToString(
+                fromDecision.getAlignmentStartTimeFrame()
+            );
+
+        if (alignmentStartTimeFrameText == "") {
+            alignmentStartTimeFrameText = "CUR";
+        }
+
         this.updateTitle(
             currentTimeFrameText,
+            alignmentStartTimeFrameText,
             buyCount,
             sellCount,
             targetCount,
@@ -434,7 +445,10 @@ private:
             + drawAlignedElliotAllListColumnTimeFrameStart;
         int rowCount = fromBuyCount + fromSellCount;
 
-        this.panelWidth = this.calculatePanelWidth(timeFrameCount);
+        this.panelWidth = this.calculatePanelWidth(
+            fromCurrentTimeFrame,
+            timeFrameCount
+        );
 
         int sellGroupYDistance = this.getSellGroupYDistance(fromBuyCount);
         int panelHeight = sellGroupYDistance
@@ -719,7 +733,7 @@ private:
     }
 
     /**
-     * 指定方向の一致結果をエントリー優先順で描画する。
+     * 指定方向の一致結果を選択された優先順で描画する。
      *
      * @param fromElliotAllList 分析結果一覧。
      * @param fromDecision 完全一致判定クラス。
@@ -738,6 +752,7 @@ private:
     ) {
         int displayIndexes[];
         Mtf3In3EntryPriorityResult priorityResults[];
+        D1ElliotEmaSortResult d1SortResults[];
         M15ElliotEmaSortResult m15SortResults[];
         int displayCount = this.buildDisplayOrder(
             fromElliotAllList,
@@ -746,6 +761,7 @@ private:
             fromAlignType,
             displayIndexes,
             priorityResults,
+            d1SortResults,
             m15SortResults
         );
 
@@ -764,7 +780,7 @@ private:
     }
 
     /**
-     * 指定方向の表示対象を抽出してエントリー優先順へ並べる。
+     * 指定方向の表示対象を抽出して選択された優先順へ並べる。
      *
      * 元のElliotAllListは変更せず、表示用インデックスと優先度結果だけを
      * 安定ソートする。
@@ -775,6 +791,7 @@ private:
      * @param fromAlignType 抽出する方向。
      * @param fromDisplayIndexes 表示用インデックスの格納先。
      * @param fromPriorityResults 優先度判定結果の格納先。
+     * @param fromD1SortResults D1 Elliott・EMA200ソート結果の格納先。
      * @param fromM15SortResults M15 Elliott・EMA200ソート結果の格納先。
      * @return 表示対象件数。
      */
@@ -785,25 +802,30 @@ private:
         TrendAlignType fromAlignType,
         int &fromDisplayIndexes[],
         Mtf3In3EntryPriorityResult &fromPriorityResults[],
+        D1ElliotEmaSortResult &fromD1SortResults[],
         M15ElliotEmaSortResult &fromM15SortResults[]
     ) {
         ArrayResize(fromDisplayIndexes, 0);
         ArrayResize(fromPriorityResults, 0);
+        ArrayResize(fromD1SortResults, 0);
         ArrayResize(fromM15SortResults, 0);
 
         int total = fromElliotAllList.elliotAllList.Total();
 
         if (ArrayResize(fromDisplayIndexes, total) != total
                 || ArrayResize(fromPriorityResults, total) != total
+                || ArrayResize(fromD1SortResults, total) != total
                 || ArrayResize(fromM15SortResults, total) != total) {
             ArrayResize(fromDisplayIndexes, 0);
             ArrayResize(fromPriorityResults, 0);
+            ArrayResize(fromD1SortResults, 0);
             ArrayResize(fromM15SortResults, 0);
 
             return 0;
         }
 
         Mtf3In3EntryPriorityDecision priorityDecision;
+        D1ElliotEmaSortDecision d1SortDecision;
         M15ElliotEmaSortDecision m15SortDecision;
         int displayCount = 0;
 
@@ -830,8 +852,15 @@ private:
                 fromCurrentTimeFrame,
                 priorityResult
             );
+            D1ElliotEmaSortResult d1SortResult;
+            d1SortResult.reset();
             M15ElliotEmaSortResult m15SortResult;
             m15SortResult.reset();
+
+            if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
+                    && fromCurrentTimeFrame == PERIOD_D1) {
+                d1SortDecision.evaluate(elliotAll, d1SortResult);
+            }
 
             if (this.sortType == ELLIOT_LIST_SORT_M15_ELLIOT_EMA
                     && fromCurrentTimeFrame == PERIOD_M15) {
@@ -840,17 +869,20 @@ private:
 
             fromDisplayIndexes[displayCount] = i;
             fromPriorityResults[displayCount] = priorityResult;
+            fromD1SortResults[displayCount] = d1SortResult;
             fromM15SortResults[displayCount] = m15SortResult;
             displayCount++;
         }
 
         ArrayResize(fromDisplayIndexes, displayCount);
         ArrayResize(fromPriorityResults, displayCount);
+        ArrayResize(fromD1SortResults, displayCount);
         ArrayResize(fromM15SortResults, displayCount);
         this.sortDisplayOrder(
             fromCurrentTimeFrame,
             fromDisplayIndexes,
             fromPriorityResults,
+            fromD1SortResults,
             fromM15SortResults
         );
 
@@ -860,23 +892,26 @@ private:
     /**
      * 表示用インデックスを優先度順に安定ソートする。
      *
-     * M15 Elliott・EMA200ソート選択時は方向を主キーとし、現在の
-     * エントリー優先度を副キーにする。他の場合は現在の優先度順にする。
+     * D1またはM15 Elliott・EMA200ソート選択時は方向を主キーとし、
+     * 現在のエントリー優先度を副キーにする。他の場合は優先度順にする。
      *
      * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayIndexes 表示用インデックス。
      * @param fromPriorityResults インデックスと対応する優先度判定結果。
+     * @param fromD1SortResults インデックスと対応するD1ソート結果。
      * @param fromM15SortResults インデックスと対応するM15ソート結果。
      */
     void sortDisplayOrder(
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
         int &fromDisplayIndexes[],
         Mtf3In3EntryPriorityResult &fromPriorityResults[],
+        D1ElliotEmaSortResult &fromD1SortResults[],
         M15ElliotEmaSortResult &fromM15SortResults[]
     ) {
         int displayCount = ArraySize(fromDisplayIndexes);
 
         if (displayCount != ArraySize(fromPriorityResults)
+                || displayCount != ArraySize(fromD1SortResults)
                 || displayCount != ArraySize(fromM15SortResults)) {
             return;
         }
@@ -884,6 +919,8 @@ private:
         for (int i = 1; i < displayCount; i++) {
             int currentIndex = fromDisplayIndexes[i];
             Mtf3In3EntryPriorityResult currentResult = fromPriorityResults[i];
+            D1ElliotEmaSortResult currentD1SortResult =
+                fromD1SortResults[i];
             M15ElliotEmaSortResult currentM15SortResult =
                 fromM15SortResults[i];
             int j = i - 1;
@@ -891,6 +928,8 @@ private:
             while (j >= 0
                     && this.shouldShiftDisplayResult(
                         fromCurrentTimeFrame,
+                        currentD1SortResult,
+                        fromD1SortResults[j],
                         currentM15SortResult,
                         fromM15SortResults[j],
                         currentResult,
@@ -898,12 +937,14 @@ private:
                     )) {
                 fromDisplayIndexes[j + 1] = fromDisplayIndexes[j];
                 fromPriorityResults[j + 1] = fromPriorityResults[j];
+                fromD1SortResults[j + 1] = fromD1SortResults[j];
                 fromM15SortResults[j + 1] = fromM15SortResults[j];
                 j--;
             }
 
             fromDisplayIndexes[j + 1] = currentIndex;
             fromPriorityResults[j + 1] = currentResult;
+            fromD1SortResults[j + 1] = currentD1SortResult;
             fromM15SortResults[j + 1] = currentM15SortResult;
         }
     }
@@ -912,6 +953,8 @@ private:
      * 現在の表示結果を比較対象より前へ移動するか判定する。
      *
      * @param fromCurrentTimeFrame 表示時間足。
+     * @param fromCurrentD1SortResult 現在のD1ソート結果。
+     * @param fromPreviousD1SortResult 比較対象のD1ソート結果。
      * @param fromCurrentM15SortResult 現在のM15ソート結果。
      * @param fromPreviousM15SortResult 比較対象のM15ソート結果。
      * @param fromCurrentPriorityResult 現在のエントリー優先度判定結果。
@@ -920,11 +963,30 @@ private:
      */
     bool shouldShiftDisplayResult(
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
+        D1ElliotEmaSortResult &fromCurrentD1SortResult,
+        D1ElliotEmaSortResult &fromPreviousD1SortResult,
         M15ElliotEmaSortResult &fromCurrentM15SortResult,
         M15ElliotEmaSortResult &fromPreviousM15SortResult,
         Mtf3In3EntryPriorityResult &fromCurrentPriorityResult,
         Mtf3In3EntryPriorityResult &fromPreviousPriorityResult
     ) {
+        if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
+                && fromCurrentTimeFrame == PERIOD_D1) {
+            D1ElliotEmaSortDecision d1SortDecision;
+            int compareResult = d1SortDecision.compare(
+                fromCurrentD1SortResult,
+                fromPreviousD1SortResult
+            );
+
+            if (compareResult < 0) {
+                return true;
+            }
+
+            if (compareResult > 0) {
+                return false;
+            }
+        }
+
         if (this.sortType == ELLIOT_LIST_SORT_M15_ELLIOT_EMA
                 && fromCurrentTimeFrame == PERIOD_M15) {
             M15ElliotEmaSortDecision m15SortDecision;
@@ -1064,6 +1126,7 @@ private:
      * タイトルを更新する。
      *
      * @param fromTimeFrameText 表示時間足。
+     * @param fromAlignmentStartTimeFrameText 一致判定の開始時間足。
      * @param fromBuyCount BUY件数。
      * @param fromSellCount SELL件数。
      * @param fromTargetCount 対象通貨件数。
@@ -1071,6 +1134,7 @@ private:
      */
     void updateTitle(
         string fromTimeFrameText,
+        string fromAlignmentStartTimeFrameText,
         int fromBuyCount,
         int fromSellCount,
         int fromTargetCount,
@@ -1079,9 +1143,10 @@ private:
         datetime serverTime = TimeCurrent();
         datetime japanTime = TimeJapanUtil::getJapanTime(serverTime);
 
-        string titleText = StringFormat(
-            "ZigZag Elliott List ALL %s ANALYZE MN1 / ALIGN D1 BUY %d / SELL %d / TARGET %d / ERROR %d JST %s SV %s",
+        string fullTitleText = StringFormat(
+            "ZigZag Elliott List ALL %s ANALYZE MN1 / ALIGN %s BUY %d / SELL %d / TARGET %d / ERROR %d JST %s SV %s",
             fromTimeFrameText,
+            fromAlignmentStartTimeFrameText,
             fromBuyCount,
             fromSellCount,
             fromTargetCount,
@@ -1089,13 +1154,36 @@ private:
             this.formatTitleTime(japanTime),
             this.formatTitleTime(serverTime)
         );
+        string displayTitleText = fullTitleText;
+
+        if (fromTimeFrameText == "D1") {
+            displayTitleText = StringFormat(
+                "ZZ Elliott %s/%s B%d S%d T%d E%d JST %s",
+                fromTimeFrameText,
+                fromAlignmentStartTimeFrameText,
+                fromBuyCount,
+                fromSellCount,
+                fromTargetCount,
+                fromErrorCount,
+                this.formatTitleTime(japanTime)
+            );
+        }
 
         ObjectSetString(
             this.chartId,
             this.objectPrefix + "Title",
             OBJPROP_TEXT,
-            titleText
+            displayTitleText
         );
+
+        if (fromTimeFrameText == "D1") {
+            ObjectSetString(
+                this.chartId,
+                this.objectPrefix + "Title",
+                OBJPROP_TOOLTIP,
+                fullTitleText
+            );
+        }
     }
 
     /**
@@ -1678,14 +1766,22 @@ private:
     /**
      * 時間足列数に応じたパネル横幅を取得する。
      *
+     * @param fromCurrentTimeFrame 一覧基準の時間足。
      * @param fromTimeFrameCount 時間足列数。
      * @return パネル横幅。
      */
-    int calculatePanelWidth(int fromTimeFrameCount) {
+    int calculatePanelWidth(
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
+        int fromTimeFrameCount
+    ) {
         int columnCount = fromTimeFrameCount
             + drawAlignedElliotAllListColumnTimeFrameStart;
         int width = (this.tableLeftOffset * 2)
             + (columnCount * this.columnWidth);
+
+        if (fromCurrentTimeFrame == PERIOD_D1) {
+            return width;
+        }
 
         if (width < 800) {
             width = 800;
