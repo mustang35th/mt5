@@ -12,7 +12,7 @@ function jsonResponse(payload: unknown): Response {
 
 describe("App", () => {
   beforeEach(() => {
-    window.history.replaceState(null, "", "/react/");
+    window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path === "/api/health") {
@@ -129,6 +129,7 @@ describe("App", () => {
   it("selects the latest run with alerts and renders the first result", async () => {
     render(<App />);
     expect(await screen.findByText("接続済み・1件")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "従来画面" })).toHaveAttribute("href", "/legacy/");
     expect((await screen.findAllByText("AUDUSD")).length).toBeGreaterThan(0);
     expect(await screen.findByText("一致")).toBeInTheDocument();
     await waitFor(() => {

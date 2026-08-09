@@ -281,6 +281,7 @@ export function AlertDetailDrawer({ alertId, onClose }: AlertDetailDrawerProps) 
   }, [alertId]);
 
   function handleBackdropClick(event: MouseEvent<HTMLDialogElement>) {
+    if (event.target !== event.currentTarget || event.detail === 0) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const isOutside = event.clientX < bounds.left
       || event.clientX > bounds.right

@@ -136,7 +136,8 @@ describe("AlertDetailDrawer", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+    const onClose = vi.fn();
+    render(<AlertDetailDrawer alertId={74} onClose={onClose} />);
 
     expect(await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -150,6 +151,8 @@ describe("AlertDetailDrawer", () => {
     expect(within(cards[1]).getByText("H1")).toBeInTheDocument();
     expect(screen.getByText("最新・基準").closest("tr")).toHaveClass("point-latest", "point-reference");
     expect(screen.getByText("<script>alert('x')</script>")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("アラート本文を表示"), { detail: 1 });
+    expect(onClose).not.toHaveBeenCalled();
     expect(document.querySelector("img")).toBeNull();
     expect(document.querySelector("script:not([type='module'])")).toBeNull();
     expect(screen.getByRole("button", { name: "詳細を閉じる" })).toHaveFocus();
@@ -201,7 +204,9 @@ describe("AlertDetailDrawer", () => {
       y: 0,
       toJSON: () => ({}),
     });
-    fireEvent.click(dialog, { clientX: 10, clientY: 100 });
+    fireEvent.click(dialog, { clientX: 10, clientY: 100, detail: 0 });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(dialog, { clientX: 10, clientY: 100, detail: 1 });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 

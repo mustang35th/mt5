@@ -155,12 +155,12 @@ export default function App() {
     <>
       <header className="app-header">
         <div>
-          <p className="eyebrow">ELLIOTT SIGNAL ARCHIVE / REACT</p>
+          <p className="eyebrow">ELLIOTT SIGNAL ARCHIVE</p>
           <h1>ZigZagElliot Alert Viewer</h1>
           <p className="subtitle">アラート時点の波動構造を、Run単位で検索・比較します。</p>
         </div>
         <div className="header-actions">
-          <a className="secondary-button app-link" href="/">従来画面</a>
+          <a className="secondary-button app-link" href="/legacy/">従来画面</a>
           <div className={`connection${fatalError ? " error" : health ? " ready" : ""}`} role="status" aria-live="polite">
             <span className="status-dot" />
             <span>{fatalError ? "DB接続エラー" : health ? `接続済み・${formatInteger(health.alert_count)}件` : "DB確認中"}</span>
@@ -169,9 +169,6 @@ export default function App() {
       </header>
 
       <main>
-        <aside className="preview-note">
-          React版 第2段階：検索・一覧に加えて、時間足別ElliottとWaveポイントの詳細表示に対応しました。
-        </aside>
         <FilterPanel
           value={draft}
           runs={runs.items}

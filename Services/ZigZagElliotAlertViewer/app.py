@@ -43,10 +43,19 @@ MAX_SEARCH_LENGTH = 200
 W1_TIME_FRAME = 32769
 
 STATIC_CONTENT_TYPES = {
-    "/": ("index.html", "text/html; charset=utf-8"),
-    "/index.html": ("index.html", "text/html; charset=utf-8"),
+    "/legacy": ("index.html", "text/html; charset=utf-8"),
+    "/legacy/": ("index.html", "text/html; charset=utf-8"),
+    "/legacy/index.html": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+}
+
+REACT_INDEX_PATHS = {
+    "/",
+    "/index.html",
+    "/react",
+    "/react/",
+    "/react/index.html",
 }
 
 REACT_ASSET_CONTENT_TYPES = {
@@ -888,11 +897,11 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                 raise RequestError("invalid Host header", HTTPStatus.BAD_REQUEST)
             parsed = urlparse(self.path)
             query = parse_qs(parsed.query, keep_blank_values=False)
+            if parsed.path in REACT_INDEX_PATHS:
+                self.send_react_static("index.html")
+                return
             if parsed.path in STATIC_CONTENT_TYPES:
                 self.send_static(parsed.path)
-                return
-            if parsed.path in {"/react", "/react/", "/react/index.html"}:
-                self.send_react_static("index.html")
                 return
             if parsed.path.startswith("/react/assets/"):
                 relative_path = unquote(parsed.path[len("/react/") :])
