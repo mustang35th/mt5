@@ -361,7 +361,7 @@ export function AlertTable({
           sortable: false,
           suppressHeaderMenuButton: true,
         }}
-        domLayout="autoHeight"
+        domLayout="normal"
         ensureDomOrder
         getRowId={({ data }) => String(data.id)}
         modules={GRID_MODULES}

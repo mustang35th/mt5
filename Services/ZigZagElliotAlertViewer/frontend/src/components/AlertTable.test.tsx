@@ -71,6 +71,8 @@ describe("AlertTable", () => {
     );
 
     const dateHeader = await screen.findByRole("columnheader", { name: /JST日時/ });
+    expect(view.container.querySelector(".ag-layout-normal")).toBeInTheDocument();
+    expect(view.container.querySelector(".ag-layout-auto-height")).toBeNull();
     expect(dateHeader).toHaveAttribute("aria-sort", "descending");
     const symbolHeader = screen.getByRole("columnheader", { name: "通貨" });
     fireEvent.click(within(symbolHeader).getByRole("button", { name: "通貨" }));
