@@ -95,6 +95,80 @@ SORT_COLUMNS = {
     "created_at": "created_at",
 }
 
+OBSERVATION_SORT_COLUMNS = {
+    "id": "id",
+    "run_id": "run_id",
+    "source_mode": "source_mode COLLATE NOCASE",
+    "source_server": "source_server COLLATE NOCASE",
+    "symbol_name": "symbol_name COLLATE NOCASE",
+    "anchor_bar_time": "anchor_bar_time",
+    "server_time": "anchor_bar_time",
+    "anchor_time_frame": "anchor_time_frame",
+    "capture_phase": "capture_phase COLLATE NOCASE",
+    "analysis_version": "analysis_version COLLATE NOCASE",
+    "created_at": "created_at",
+}
+
+OBSERVATION_REQUIRED_COLUMNS = {
+    "zigzag_elliot_observations": {
+        "id",
+        "run_id",
+        "source_mode",
+        "source_server",
+        "symbol_name",
+        "anchor_time_frame",
+        "anchor_time_frame_text",
+        "anchor_bar_time",
+        "anchor_bar_time_text",
+        "capture_phase",
+        "analysis_version",
+        "analysis_input_hash",
+        "snapshot_hash",
+        "time_frame_count",
+        "created_at",
+        "created_at_text",
+    },
+    "zigzag_elliot_observation_timeframes": {
+        "id",
+        "observation_id",
+        "time_frame",
+        "time_frame_text",
+        "time_frame_order",
+        "is_anchor_time_frame",
+        "is_buy",
+        "buy_sell_label",
+        "wave_count",
+        "latest_wave_index",
+        "is_wave_confirmed",
+        "is_wave_motive",
+        "is_wave_uptrend",
+        "wave_trend_label",
+        "previous_last_elliot_label",
+        "point_count",
+        "latest_elliot_index",
+        "latest_elliot_label",
+        "latest_sub_elliot_index",
+        "latest_sub_elliot_label",
+        "latest_point_time",
+        "latest_point_time_text",
+        "latest_point_rate",
+        "current_close",
+        "stochastic_main_order_text",
+        "stochastic_main_direction_text",
+        "gmma_trend_count",
+        "gmma_cross_count",
+        "ema30_ema60_diff_pips",
+        "atr14_pips",
+        "ema200_slope_pips",
+        "ema200_close_diff_pips",
+        "ema200_trend_count",
+        "is_ema200_buy",
+        "is_ema200_sell",
+        "created_at",
+        "created_at_text",
+    },
+}
+
 BOOLEAN_COLUMNS = {
     "is_judge",
     "is_entry_count_match",
@@ -124,6 +198,7 @@ BOOLEAN_COLUMNS = {
     "is_bar_time_next_available",
     "is_peak",
     "is_added_point",
+    "is_anchor_time_frame",
     "is_fibonacci_available",
     "is_fibonacci_expansion_available",
     "is_elliot_alphabet",
@@ -153,6 +228,18 @@ class AlertFilters:
     where_sql: str
     parameters: dict[str, Any]
     derived_where_sql: str
+    sort_sql: str
+    order_sql: str
+    page: int
+    page_size: int
+
+
+@dataclass(frozen=True)
+class ObservationFilters:
+    """Validated filters for H1 observation list and summary endpoints."""
+
+    where_sql: str
+    parameters: dict[str, Any]
     sort_sql: str
     order_sql: str
     page: int
@@ -322,6 +409,34 @@ class AlertDatabase:
                 for table_name in table_names
             }
 
+    @staticmethod
+    def observation_schema_status(connection: Connection) -> dict[str, Any]:
+        """Return optional observation-table availability without changing schema."""
+
+        rows = connection.execute(
+            text("SELECT name FROM sqlite_schema WHERE type='table'")
+        ).mappings()
+        actual_tables = {str(row["name"]) for row in rows}
+        missing_tables = sorted(set(OBSERVATION_REQUIRED_COLUMNS) - actual_tables)
+        if missing_tables:
+            return {
+                "available": False,
+                "reason": "observation tables are not available",
+            }
+        for table_name, expected_columns in OBSERVATION_REQUIRED_COLUMNS.items():
+            actual_columns = {
+                str(row["name"])
+                for row in connection.exec_driver_sql(
+                    f"PRAGMA table_info({table_name})"
+                ).mappings()
+            }
+            if expected_columns - actual_columns:
+                return {
+                    "available": False,
+                    "reason": "observation table schema is not supported",
+                }
+        return {"available": True, "reason": None}
+
     def validate(self) -> dict[str, Any]:
         """Validate the required schema without modifying the database."""
 
@@ -376,16 +491,24 @@ class AlertDatabase:
             alert_count = connection.execute(
                 text("SELECT COUNT(*) FROM zigzag_elliot_alerts")
             ).scalar_one()
+            observation_status = self.observation_schema_status(connection)
+            observation_count = 0
+            if observation_status["available"]:
+                observation_count = connection.execute(
+                    text("SELECT COUNT(*) FROM zigzag_elliot_observations")
+                ).scalar_one()
         return {
             "database": str(self.database_path),
             "journal_mode": journal_mode,
             "alert_count": alert_count,
+            "observation_available": observation_status["available"],
+            "observation_count": observation_count,
         }
 
     def runs(self) -> dict[str, Any]:
         """Return all runs with alert range summaries."""
 
-        sql = """
+        base_select = """
             SELECT r.id, r.run_uid, r.schema_version, r.source_mode, r.source,
                    r.program_name, r.program_version, r.strategy,
                    r.strategy_version, r.analysis_version, r.source_server,
@@ -398,13 +521,76 @@ class AlertDatabase:
                    MIN(a.current_bar_time_text) AS first_alert_time_text,
                    MAX(a.current_bar_time) AS last_alert_time,
                    MAX(a.current_bar_time_text) AS last_alert_time_text,
-                   GROUP_CONCAT(DISTINCT a.symbol_name) AS symbols
+                   GROUP_CONCAT(DISTINCT a.symbol_name) AS symbols,
+                   {observation_columns}
             FROM zigzag_elliot_alert_runs AS r
             LEFT JOIN zigzag_elliot_alerts AS a ON a.run_id = r.id
+            {observation_join}
             GROUP BY r.id
             ORDER BY r.id DESC
         """
         with self.connect() as connection:
+            observation_status = self.observation_schema_status(connection)
+            if observation_status["available"]:
+                observation_columns = """
+                    COALESCE(MAX(observation_stats.observation_count), 0)
+                        AS observation_count,
+                    MAX(observation_stats.first_observation_time)
+                        AS first_observation_time,
+                    MAX(observation_stats.first_observation_time_text)
+                        AS first_observation_time_text,
+                    MAX(observation_stats.last_observation_time)
+                        AS last_observation_time,
+                    MAX(observation_stats.last_observation_time_text)
+                        AS last_observation_time_text,
+                    MAX(observation_stats.observation_symbols)
+                        AS observation_symbols
+                """
+                observation_join = """
+                    LEFT JOIN (
+                        SELECT observation_counts.run_id,
+                               observation_counts.observation_count,
+                               observation_counts.first_observation_time,
+                               first_observation.anchor_bar_time_text
+                                   AS first_observation_time_text,
+                               observation_counts.last_observation_time,
+                               last_observation.anchor_bar_time_text
+                                   AS last_observation_time_text,
+                               observation_counts.observation_symbols
+                        FROM (
+                            SELECT run_id, COUNT(*) AS observation_count,
+                                   MIN(anchor_bar_time) AS first_observation_time,
+                                   MAX(anchor_bar_time) AS last_observation_time,
+                                   GROUP_CONCAT(DISTINCT symbol_name)
+                                       AS observation_symbols
+                            FROM zigzag_elliot_observations
+                            GROUP BY run_id
+                        ) AS observation_counts
+                        LEFT JOIN zigzag_elliot_observations AS first_observation
+                               ON first_observation.run_id = observation_counts.run_id
+                              AND first_observation.anchor_bar_time =
+                                  observation_counts.first_observation_time
+                        LEFT JOIN zigzag_elliot_observations AS last_observation
+                               ON last_observation.run_id = observation_counts.run_id
+                              AND last_observation.anchor_bar_time =
+                                  observation_counts.last_observation_time
+                        GROUP BY observation_counts.run_id
+                    ) AS observation_stats ON observation_stats.run_id = r.id
+                """
+            else:
+                observation_columns = """
+                    0 AS observation_count,
+                    NULL AS first_observation_time,
+                    NULL AS first_observation_time_text,
+                    NULL AS last_observation_time,
+                    NULL AS last_observation_time_text,
+                    NULL AS observation_symbols
+                """
+                observation_join = ""
+            sql = base_select.format(
+                observation_columns=observation_columns,
+                observation_join=observation_join,
+            )
             rows = connection.execute(text(sql)).mappings()
             items = [row_to_dict(row) for row in rows]
         return {"items": items, "count": len(items)}
@@ -430,6 +616,354 @@ class AlertDatabase:
                 rows = connection.execute(text(sql)).mappings()
                 result[output_name] = [row["value"] for row in rows]
         return result
+
+    def observation_options(self) -> dict[str, Any]:
+        """Return filter values from the optional H1 observation tables."""
+
+        with self.connect() as connection:
+            status = self.observation_schema_status(connection)
+            if not status["available"]:
+                return {
+                    "available": False,
+                    "symbols": [],
+                    "source_modes": [],
+                    "analysis_versions": [],
+                }
+            fields = {
+                "symbols": "symbol_name",
+                "source_modes": "source_mode",
+                "analysis_versions": "analysis_version",
+            }
+            result: dict[str, Any] = {"available": True}
+            for output_name, column_name in fields.items():
+                sql = (
+                    f"SELECT DISTINCT {column_name} AS value "
+                    "FROM zigzag_elliot_observations "
+                    f"WHERE {column_name} <> '' "
+                    f"ORDER BY {column_name} COLLATE NOCASE"
+                )
+                rows = connection.execute(text(sql)).mappings()
+                result[output_name] = [row["value"] for row in rows]
+        return result
+
+    @staticmethod
+    def parse_observation_filters(
+        query: dict[str, list[str]],
+    ) -> ObservationFilters:
+        """Validate H1 observation filters and fixed server-sort identifiers."""
+
+        def first(name: str) -> str | None:
+            values = query.get(name)
+            if not values:
+                return None
+            return values[0].strip()
+
+        clauses: list[str] = []
+        parameters: dict[str, Any] = {}
+
+        source_mode = (first("sourceMode") or "all").upper()
+        if source_mode not in {"ALL", "LIVE", "TESTER"}:
+            raise RequestError("sourceMode must be LIVE, TESTER or all")
+        if source_mode != "ALL":
+            clauses.append("o.source_mode = :source_mode")
+            parameters["source_mode"] = source_mode
+
+        run_id_text = first("runId")
+        if run_id_text:
+            run_id = positive_int(run_id_text, "runId", 1)
+            clauses.append("o.run_id = :run_id")
+            parameters["run_id"] = run_id
+
+        symbol = first("symbol")
+        if symbol:
+            clauses.append("o.symbol_name = :symbol_name")
+            parameters["symbol_name"] = symbol
+
+        analysis_version = first("analysisVersion")
+        if analysis_version:
+            clauses.append("o.analysis_version = :analysis_version")
+            parameters["analysis_version"] = analysis_version
+
+        side = first("side")
+        if side:
+            side = side.upper()
+            if side not in {"BUY", "SELL"}:
+                raise RequestError("side must be BUY or SELL")
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM zigzag_elliot_observation_timeframes AS side_tf
+                    WHERE side_tf.observation_id = o.id
+                      AND side_tf.time_frame_order = 4
+                      AND side_tf.buy_sell_label = :h1_side
+                )
+                """
+            )
+            parameters["h1_side"] = side
+
+        from_date = first("from")
+        if from_date:
+            clauses.append("o.anchor_bar_time >= :from_time")
+            parameters["from_time"] = parse_date_boundary(from_date, False)
+
+        to_date = first("to")
+        if to_date:
+            clauses.append("o.anchor_bar_time < :to_time")
+            parameters["to_time"] = parse_date_boundary(to_date, True)
+
+        search_text = first("q")
+        if search_text:
+            if len(search_text) > MAX_SEARCH_LENGTH:
+                raise RequestError(f"q must be at most {MAX_SEARCH_LENGTH} characters")
+            parameters["search_text"] = f"%{escape_like(search_text)}%"
+            clauses.append(
+                """
+                (
+                    COALESCE(o.symbol_name, '') LIKE :search_text ESCAPE '\\'
+                    OR COALESCE(o.source_server, '')
+                        LIKE :search_text ESCAPE '\\'
+                    OR EXISTS (
+                        SELECT 1
+                        FROM zigzag_elliot_observation_timeframes AS search_tf
+                        WHERE search_tf.observation_id = o.id
+                          AND (
+                              COALESCE(search_tf.latest_elliot_label, '')
+                                  LIKE :search_text ESCAPE '\\'
+                              OR COALESCE(search_tf.latest_sub_elliot_label, '')
+                                  LIKE :search_text ESCAPE '\\'
+                              OR COALESCE(search_tf.previous_last_elliot_label, '')
+                                  LIKE :search_text ESCAPE '\\'
+                          )
+                    )
+                )
+                """
+            )
+
+        sort_key = first("sort") or "anchor_bar_time"
+        if sort_key not in OBSERVATION_SORT_COLUMNS:
+            raise RequestError("unsupported observation sort column")
+        order = (first("order") or "desc").lower()
+        if order not in {"asc", "desc"}:
+            raise RequestError("order must be asc or desc")
+
+        page = positive_int(first("page"), "page", 1)
+        page_size = min(
+            positive_int(first("pageSize"), "pageSize", 50),
+            MAX_PAGE_SIZE,
+        )
+        where_sql = ""
+        if clauses:
+            where_sql = " AND " + " AND ".join(clauses)
+        return ObservationFilters(
+            where_sql=where_sql,
+            parameters=parameters,
+            sort_sql=OBSERVATION_SORT_COLUMNS[sort_key],
+            order_sql=order.upper(),
+            page=page,
+            page_size=page_size,
+        )
+
+    @staticmethod
+    def observation_rows_cte(filters: ObservationFilters) -> str:
+        """Return filtered parents; child rows are loaded only after paging."""
+
+        return f"""
+            WITH observation_rows AS (
+                SELECT
+                    o.id, o.run_id, r.run_uid, o.source_mode, o.source_server,
+                    r.program_name, r.program_version, r.strategy,
+                    r.strategy_version,
+                    o.symbol_name, o.anchor_time_frame,
+                    o.anchor_time_frame_text, o.anchor_bar_time,
+                    o.anchor_bar_time_text, o.capture_phase,
+                    o.analysis_version, o.analysis_input_hash,
+                    o.snapshot_hash, o.time_frame_count,
+                    o.created_at, o.created_at_text
+                FROM zigzag_elliot_observations AS o
+                INNER JOIN zigzag_elliot_alert_runs AS r ON r.id = o.run_id
+                WHERE 1 = 1 {filters.where_sql}
+            )
+        """
+
+    @staticmethod
+    def unavailable_observation_list(filters: ObservationFilters) -> dict[str, Any]:
+        """Return a predictable empty page while optional tables are absent."""
+
+        return {
+            "available": False,
+            "items": [],
+            "total": 0,
+            "page": 1,
+            "page_size": filters.page_size,
+            "page_count": 0,
+        }
+
+    @staticmethod
+    def observation_timeframes(
+        connection: Connection,
+        observation_ids: list[int],
+    ) -> dict[int, list[dict[str, Any]]]:
+        """Load compact timeframe snapshots for one page using bound IDs."""
+
+        result = {observation_id: [] for observation_id in observation_ids}
+        if not observation_ids:
+            return result
+        parameters: dict[str, Any] = {}
+        placeholders: list[str] = []
+        for index, observation_id in enumerate(observation_ids):
+            name = f"observation_id_{index}"
+            placeholders.append(f":{name}")
+            parameters[name] = observation_id
+        sql = f"""
+            SELECT id, observation_id, time_frame, time_frame_text,
+                   time_frame_order, is_anchor_time_frame,
+                   is_buy, buy_sell_label, wave_count, latest_wave_index,
+                   is_wave_confirmed, is_wave_motive, is_wave_uptrend,
+                   wave_trend_label, previous_last_elliot_label,
+                   point_count, latest_elliot_index, latest_elliot_label,
+                   latest_sub_elliot_index, latest_sub_elliot_label,
+                   latest_point_time, latest_point_time_text,
+                   latest_point_rate, current_close,
+                   stochastic_main_order_text,
+                   stochastic_main_direction_text,
+                   gmma_trend_count, gmma_cross_count,
+                   ema30_ema60_diff_pips, atr14_pips,
+                   ema200_slope_pips, ema200_close_diff_pips,
+                   ema200_trend_count,
+                   is_ema200_buy, is_ema200_sell,
+                   created_at, created_at_text
+            FROM zigzag_elliot_observation_timeframes
+            WHERE observation_id IN ({", ".join(placeholders)})
+            ORDER BY observation_id, time_frame_order, id
+        """
+        rows = connection.execute(text(sql), parameters).mappings()
+        for row in rows:
+            item = row_to_dict(row)
+            if item is not None:
+                result[int(item["observation_id"])].append(item)
+        return result
+
+    def observations(self, query: dict[str, list[str]]) -> dict[str, Any]:
+        """Return a filtered H1 observation page with nested timeframe rows."""
+
+        filters = self.parse_observation_filters(query)
+        with self.connect() as connection:
+            if not self.observation_schema_status(connection)["available"]:
+                return self.unavailable_observation_list(filters)
+            cte = self.observation_rows_cte(filters)
+            count_sql = cte + " SELECT COUNT(*) FROM observation_rows"
+            list_sql = (
+                cte
+                + " SELECT * FROM observation_rows"
+                + f" ORDER BY {filters.sort_sql} {filters.order_sql}, id DESC"
+                + " LIMIT :limit OFFSET :offset"
+            )
+            parameters = dict(filters.parameters)
+            parameters["limit"] = filters.page_size
+            connection.exec_driver_sql("BEGIN")
+            try:
+                total = connection.execute(
+                    text(count_sql), filters.parameters
+                ).scalar_one()
+                page_count = (total + filters.page_size - 1) // filters.page_size
+                effective_page = 1 if page_count == 0 else min(filters.page, page_count)
+                parameters["offset"] = (effective_page - 1) * filters.page_size
+                rows = connection.execute(text(list_sql), parameters).mappings()
+                items = [row_to_dict(row) for row in rows]
+                observation_ids = [
+                    int(item["id"]) for item in items if item is not None
+                ]
+                time_frames = self.observation_timeframes(
+                    connection,
+                    observation_ids,
+                )
+                for item in items:
+                    if item is not None:
+                        item["time_frames"] = time_frames[int(item["id"])]
+            finally:
+                connection.rollback()
+        return {
+            "available": True,
+            "items": items,
+            "total": total,
+            "page": effective_page,
+            "page_size": filters.page_size,
+            "page_count": page_count,
+        }
+
+    def observation_summary(self, query: dict[str, list[str]]) -> dict[str, Any]:
+        """Return compact counts for the current H1 observation filters."""
+
+        filters = self.parse_observation_filters(query)
+        unavailable = {
+            "available": False,
+            "total_count": 0,
+            "live_count": 0,
+            "tester_count": 0,
+            "run_count": 0,
+            "symbol_count": 0,
+            "first_anchor_bar_time": None,
+            "first_anchor_bar_time_text": None,
+            "last_anchor_bar_time": None,
+            "last_anchor_bar_time_text": None,
+        }
+        with self.connect() as connection:
+            if not self.observation_schema_status(connection)["available"]:
+                return unavailable
+            sql = self.observation_rows_cte(filters) + """
+                SELECT COUNT(*) AS total_count,
+                       COALESCE(SUM(CASE WHEN source_mode = 'LIVE'
+                                         THEN 1 ELSE 0 END), 0) AS live_count,
+                       COALESCE(SUM(CASE WHEN source_mode = 'TESTER'
+                                         THEN 1 ELSE 0 END), 0) AS tester_count,
+                       COUNT(DISTINCT run_id) AS run_count,
+                       COUNT(DISTINCT symbol_name) AS symbol_count,
+                       MIN(anchor_bar_time) AS first_anchor_bar_time,
+                       MIN(anchor_bar_time_text) AS first_anchor_bar_time_text,
+                       MAX(anchor_bar_time) AS last_anchor_bar_time,
+                       MAX(anchor_bar_time_text) AS last_anchor_bar_time_text
+                FROM observation_rows
+            """
+            row = connection.execute(text(sql), filters.parameters).mappings().one()
+        result = row_to_dict(row) or {}
+        result["available"] = True
+        return result
+
+    def observation_detail(self, observation_id: int) -> dict[str, Any]:
+        """Return one full parent and all scalar timeframe snapshots."""
+
+        parent_sql = """
+            SELECT o.*, r.run_uid, r.source, r.program_name, r.program_version,
+                   r.strategy, r.strategy_version, r.tester_from, r.tester_to,
+                   r.tester_model, r.started_at, r.started_at_text
+            FROM zigzag_elliot_observations AS o
+            INNER JOIN zigzag_elliot_alert_runs AS r ON r.id = o.run_id
+            WHERE o.id = :observation_id
+        """
+        time_frame_sql = """
+            SELECT * FROM zigzag_elliot_observation_timeframes
+            WHERE observation_id = :observation_id
+            ORDER BY time_frame_order, id
+        """
+        parameters = {"observation_id": observation_id}
+        with self.connect() as connection:
+            if not self.observation_schema_status(connection)["available"]:
+                return {
+                    "available": False,
+                    "observation": None,
+                    "time_frames": [],
+                }
+            parent = connection.execute(text(parent_sql), parameters).mappings().one_or_none()
+            if parent is None:
+                raise RequestError("observation was not found", HTTPStatus.NOT_FOUND)
+            rows = connection.execute(text(time_frame_sql), parameters).mappings()
+            time_frames = [row_to_dict(row) for row in rows]
+        return {
+            "available": True,
+            "observation": row_to_dict(parent),
+            "time_frames": time_frames,
+        }
 
     @staticmethod
     def parse_filters(query: dict[str, list[str]]) -> AlertFilters:
@@ -931,17 +1465,37 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/options":
                 self.send_json(self.viewer_server.database.options())
                 return
+            if parsed.path == "/api/observation-options":
+                self.send_json(self.viewer_server.database.observation_options())
+                return
             if parsed.path == "/api/alerts":
                 self.send_json(self.viewer_server.database.alerts(query))
                 return
+            if parsed.path == "/api/observations":
+                self.send_json(self.viewer_server.database.observations(query))
+                return
             if parsed.path == "/api/summary":
                 self.send_json(self.viewer_server.database.summary(query))
+                return
+            if parsed.path == "/api/observation-summary":
+                self.send_json(self.viewer_server.database.observation_summary(query))
                 return
             if parsed.path == "/api/export.csv":
                 self.send_csv(self.viewer_server.database.export_csv(query))
                 return
 
             path_parts = [part for part in parsed.path.split("/") if part]
+            if len(path_parts) == 3 and path_parts[:2] == ["api", "observations"]:
+                try:
+                    observation_id = int(path_parts[2])
+                except ValueError as error:
+                    raise RequestError("observation id must be an integer") from error
+                if observation_id <= 0:
+                    raise RequestError("observation id must be greater than zero")
+                self.send_json(
+                    self.viewer_server.database.observation_detail(observation_id)
+                )
+                return
             if len(path_parts) >= 3 and path_parts[:2] == ["api", "alerts"]:
                 try:
                     alert_id = int(path_parts[2])

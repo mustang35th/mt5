@@ -1,5 +1,6 @@
 export type AlertSide = "BUY" | "SELL";
 export type SourceMode = "LIVE" | "TESTER" | "all";
+export type ViewerTab = "alerts" | "h1";
 export type W1Alignment = "all" | "aligned" | "mismatched" | "unknown";
 export type SortOrder = "asc" | "desc";
 export type AlertSort =
@@ -32,6 +33,8 @@ export interface HealthResponse {
   database: string;
   journal_mode: string;
   alert_count: number;
+  observation_available?: boolean;
+  observation_count?: number;
 }
 
 export interface RunItem {
@@ -48,6 +51,10 @@ export interface RunItem {
   first_alert_time_text: string | null;
   last_alert_time_text: string | null;
   symbols: string | null;
+  observation_count?: number;
+  first_observation_time_text?: string | null;
+  last_observation_time_text?: string | null;
+  observation_symbols?: string | null;
 }
 
 export interface RunsResponse {
@@ -228,6 +235,104 @@ export interface AlertPoint {
 export interface PointsResponse {
   items: AlertPoint[];
   count: number;
+}
+
+export type ObservationSort = "anchor_bar_time" | "symbol_name";
+
+export interface ObservationSearchState {
+  sourceMode: SourceMode;
+  runId: number | null;
+  symbol: string;
+  from: string;
+  to: string;
+  pageSize: number;
+  page: number;
+  sort: ObservationSort;
+  order: SortOrder;
+}
+
+export interface ObservationTimeFrame {
+  id: number;
+  observation_id: number;
+  time_frame: number;
+  time_frame_text: string;
+  time_frame_order: number;
+  is_anchor_time_frame: boolean;
+  is_buy: boolean;
+  buy_sell_label: string;
+  wave_count: number;
+  latest_wave_index: number;
+  is_wave_confirmed: boolean;
+  is_wave_motive: boolean;
+  is_wave_uptrend: boolean;
+  wave_trend_label: string;
+  previous_last_elliot_label: string;
+  point_count: number;
+  latest_elliot_index: number;
+  latest_elliot_label: string;
+  latest_sub_elliot_index: number;
+  latest_sub_elliot_label: string;
+  latest_point_time: number;
+  latest_point_time_text: string;
+  latest_point_rate: number;
+  current_close: number;
+  stochastic_main_order_text: string;
+  stochastic_main_direction_text: string;
+  gmma_trend_count: number;
+  gmma_cross_count: number;
+  atr14_pips: number;
+  is_ema200_buy: boolean;
+  is_ema200_sell: boolean;
+}
+
+export interface ObservationListItem {
+  id: number;
+  run_id: number;
+  run_uid: string;
+  source_mode: string;
+  source_server: string;
+  symbol_name: string;
+  anchor_bar_time: number;
+  anchor_bar_time_text: string;
+  anchor_time_frame: number;
+  anchor_time_frame_text: string;
+  capture_phase: string;
+  analysis_version: string;
+  analysis_input_hash: string;
+  snapshot_hash: string;
+  time_frame_count: number;
+  created_at: number;
+  created_at_text: string;
+  time_frames: ObservationTimeFrame[];
+}
+
+export interface ObservationsResponse {
+  available: boolean;
+  items: ObservationListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  page_count: number;
+}
+
+export interface ObservationOptionsResponse {
+  available: boolean;
+  symbols: string[];
+  source_modes: string[];
+  analysis_versions: string[];
+}
+
+export interface ObservationSummaryResponse {
+  available: boolean;
+  total_count: number;
+  live_count: number;
+  tester_count: number;
+  run_count: number;
+  symbol_count: number;
+  first_anchor_bar_time: number | null;
+  first_anchor_bar_time_text: string | null;
+  last_anchor_bar_time: number | null;
+  last_anchor_bar_time_text: string | null;
 }
 
 export interface ApiErrorResponse {

@@ -124,7 +124,8 @@ public:
         Mtf3In3AlertResult alertResult =
             this.expertAdvisorMtf3In3.getAlertResult();
 
-        if (this.databaseReady) {
+        if (this.config.mtf3In3AlertDatabaseEnabled
+                && this.databaseReady) {
             Mtf3In3AlertSnapshot snapshot;
             bool isBuilt = Mtf3In3AlertSnapshotBuilder::build(
                 fromElliotAll,
@@ -178,6 +179,39 @@ public:
     }
 
     /**
+     * Elliott観測永続化サービスを取得する。
+     *
+     * 返却ポインタは非所有参照であり、呼び出し側では解放しない。
+     *
+     * @return 永続化サービス。未準備の場合NULL
+     */
+    ZigZagElliotObservationPersistenceService *getObservationPersistenceService() {
+        if (!this.databaseReady || this.databaseContext == NULL) {
+            return NULL;
+        }
+
+        return this.databaseContext.getObservationPersistenceService();
+    }
+
+    /**
+     * データベースへ保存済みの実行情報を取得する。
+     *
+     * @param fromRunEntity 実行情報の格納先
+     * @return 保存済みの実行情報を取得できた場合true
+     */
+    bool getDatabaseRun(ZigZagElliotAlertRunEntity &fromRunEntity) {
+        ZeroMemory(fromRunEntity);
+
+        if (!this.databaseReady || this.databaseRun.id <= 0) {
+            return false;
+        }
+
+        fromRunEntity = this.databaseRun;
+
+        return true;
+    }
+
+    /**
      * シグナル回数とMTF_3in3固定描画オブジェクトを解放する。
      */
     void destroy() {
@@ -220,7 +254,7 @@ private:
     bool alertCsvEnabled;
     /** ZigZagElliot設定。 */
     ZigZagElliotConfig config;
-    /** アラートデータベース接続。 */
+    /** ZigZagElliotデータベース接続。 */
     ZigZagElliotAlertDatabaseContext *databaseContext;
     /** データベースへ保存済みの実行情報。 */
     ZigZagElliotAlertRunEntity databaseRun;
@@ -228,7 +262,7 @@ private:
     bool databaseReady;
 
     /**
-     * アラートデータベースを開き、実行情報を保存する。
+     * ZigZagElliotデータベースを開き、実行情報を保存する。
      *
      * 初期化に失敗した場合も既存アラート処理を継続できるよう、
      * データベースだけを無効化する。
@@ -236,14 +270,19 @@ private:
      * @return 保存可能になった場合true
      */
     bool initializeDatabase() {
-        if (!this.config.mtf3In3AlertDatabaseEnabled) {
+        bool observationEnabled =
+            this.config.h1ElliotObservationDatabaseEnabled
+            && this.marketContext.timeFrame == PERIOD_H1;
+
+        if (!this.config.mtf3In3AlertDatabaseEnabled
+                && !observationEnabled) {
             return false;
         }
 
         if (MQLInfoInteger(MQL_OPTIMIZATION)) {
             this.logger.info(
                 __FUNCTION__,
-                "MTF_3in3 alert database is disabled during optimization."
+                "ZigZagElliot database is disabled during optimization."
             );
 
             return false;
@@ -251,13 +290,14 @@ private:
 
         this.databaseContext = new ZigZagElliotAlertDatabaseContext(
             this.config.mtf3In3AlertDatabaseFileName,
-            this.config.mtf3In3AlertDatabaseUseCommonFolder
+            this.config.mtf3In3AlertDatabaseUseCommonFolder,
+            observationEnabled
         );
 
         if (this.databaseContext == NULL || !this.databaseContext.open()) {
             this.logger.error(
                 __FUNCTION__,
-                "MTF_3in3 alert database initialization failed"
+                "ZigZagElliot database initialization failed"
             );
             this.releaseDatabase();
 
@@ -272,7 +312,7 @@ private:
                 || !persistenceService.saveRun(this.databaseRun)) {
             this.logger.error(
                 __FUNCTION__,
-                "MTF_3in3 alert database run save failed"
+                "ZigZagElliot database run save failed"
             );
             this.releaseDatabase();
 
@@ -283,7 +323,7 @@ private:
         this.logger.info(
             __FUNCTION__,
             StringFormat(
-                "MTF_3in3 alert database is ready. runId=%I64d runUid=%s",
+                "ZigZagElliot database is ready. runId=%I64d runUid=%s",
                 this.databaseRun.id,
                 this.databaseRun.runUid
             )
@@ -316,7 +356,7 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.21";
+        this.databaseRun.programVersion = "1.23";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V1";
         this.databaseRun.analysisVersion = "ELLIOT_MN1_V1";
@@ -384,7 +424,7 @@ private:
     }
 
     /**
-     * アラートデータベース関連リソースを解放する。
+     * ZigZagElliotデータベース関連リソースを解放する。
      */
     void releaseDatabase() {
         this.databaseReady = false;

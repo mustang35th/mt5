@@ -1,4 +1,4 @@
-import type { AlertSort, SearchState, SourceMode } from "../api/types";
+import type { AlertSort, SearchState, SourceMode, ViewerTab } from "../api/types";
 
 export const DEFAULT_SEARCH_STATE: SearchState = {
   sourceMode: "LIVE",
@@ -78,6 +78,10 @@ export function readSearchState(search: string): SearchState {
   };
 }
 
+export function readViewerTab(search: string): ViewerTab {
+  return new URLSearchParams(search).get("tab") === "h1" ? "h1" : "alerts";
+}
+
 export function buildSearchParams(
   state: SearchState,
   includePaging = true,
@@ -104,7 +108,8 @@ export function buildSearchParams(
   return params;
 }
 
-export function replaceSearchUrl(state: SearchState): void {
+export function replaceSearchUrl(state: SearchState, tab: ViewerTab = "alerts"): void {
   const params = buildSearchParams(state);
+  if (tab === "h1") params.set("tab", "h1");
   window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
 }

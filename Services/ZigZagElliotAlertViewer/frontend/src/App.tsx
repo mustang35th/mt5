@@ -1,3 +1,6 @@
+import Box from "@mui/material/Box";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
 import type {
@@ -10,10 +13,12 @@ import type {
   SearchState,
   SourceMode,
   SummaryResponse,
+  ViewerTab,
 } from "./api/types";
 import { AlertDetailDrawer } from "./components/AlertDetailDrawer";
 import { AlertTable } from "./components/AlertTable";
 import { FilterPanel } from "./components/FilterPanel";
+import { H1ObservationView } from "./components/H1ObservationView";
 import { Pagination } from "./components/Pagination";
 import { RefreshControls } from "./components/RefreshControls";
 import { SummaryCards } from "./components/SummaryCards";
@@ -24,7 +29,13 @@ import {
   type RefreshIntervalSeconds,
   writeRefreshInterval,
 } from "./lib/refreshSettings";
-import { buildSearchParams, DEFAULT_SEARCH_STATE, readSearchState, replaceSearchUrl } from "./lib/searchState";
+import {
+  buildSearchParams,
+  DEFAULT_SEARCH_STATE,
+  readSearchState,
+  readViewerTab,
+  replaceSearchUrl,
+} from "./lib/searchState";
 
 const EMPTY_OPTIONS: OptionsResponse = {
   symbols: [],
@@ -71,6 +82,7 @@ function runSourceMode(run: RunItem | undefined): Exclude<SourceMode, "all"> | n
 
 export default function App({ styleNonce }: AppProps) {
   const initialSearch = useMemo(() => readSearchState(window.location.search), []);
+  const initialTab = useMemo(() => readViewerTab(window.location.search), []);
   const hasInitialRunParameter = useMemo(
     () => new URLSearchParams(window.location.search).has("runId"),
     [],
@@ -81,6 +93,7 @@ export default function App({ styleNonce }: AppProps) {
   );
   const [draft, setDraft] = useState<SearchState>(initialSearch);
   const [applied, setApplied] = useState<SearchState>(initialSearch);
+  const [activeTab, setActiveTab] = useState<ViewerTab>(initialTab);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [runs, setRuns] = useState<RunsResponse>({ items: [], count: 0 });
   const [options, setOptions] = useState<OptionsResponse>(EMPTY_OPTIONS);
@@ -139,7 +152,7 @@ export default function App({ styleNonce }: AppProps) {
         setOptions(optionsValue);
         setDraft(resolvedSearch);
         setApplied(resolvedSearch);
-        replaceSearchUrl(resolvedSearch);
+        if (initialTab === "alerts") replaceSearchUrl(resolvedSearch);
         setReady(true);
       })
       .catch((error: unknown) => {
@@ -151,10 +164,10 @@ export default function App({ styleNonce }: AppProps) {
       disposed = true;
       controller.abort();
     };
-  }, [hasInitialRunParameter, hasInitialSourceModeParameter, initialSearch]);
+  }, [hasInitialRunParameter, hasInitialSourceModeParameter, initialSearch, initialTab]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || activeTab !== "alerts") return;
     refreshQueuedRef.current = false;
     activeResultControllerRef.current?.abort();
     const controller = new AbortController();
@@ -244,10 +257,15 @@ export default function App({ styleNonce }: AppProps) {
         activeResultControllerRef.current = null;
       }
     };
-  }, [applied, ready, resultRequest]);
+  }, [activeTab, applied, ready, resultRequest]);
 
   const requestRefresh = useCallback((mode: Exclude<ResultRequestMode, "foreground">) => {
-    if (!ready || activeResultControllerRef.current !== null || refreshQueuedRef.current) {
+    if (
+      activeTab !== "alerts"
+      || !ready
+      || activeResultControllerRef.current !== null
+      || refreshQueuedRef.current
+    ) {
       return false;
     }
     refreshQueuedRef.current = true;
@@ -256,12 +274,13 @@ export default function App({ styleNonce }: AppProps) {
       mode,
     }));
     return true;
-  }, [ready]);
+  }, [activeTab, ready]);
 
   useEffect(() => {
     let timerId: number | null = null;
     let disposed = false;
     const autoRefreshEnabled = ready
+      && activeTab === "alerts"
       && applied.sourceMode === "LIVE"
       && refreshIntervalSeconds > 0;
 
@@ -306,7 +325,7 @@ export default function App({ styleNonce }: AppProps) {
       clearTimer();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [applied, ready, refreshIntervalSeconds, requestRefresh]);
+  }, [activeTab, applied, ready, refreshIntervalSeconds, requestRefresh]);
 
   useEffect(() => () => {
     activeResultControllerRef.current?.abort();
@@ -376,6 +395,19 @@ export default function App({ styleNonce }: AppProps) {
     });
   }, []);
 
+  const changeViewerTab = useCallback((nextTab: ViewerTab) => {
+    if (nextTab === activeTab) return;
+    setSelectedAlertId(null);
+    if (nextTab === "alerts") {
+      replaceSearchUrl(applied);
+    } else {
+      const params = new URLSearchParams(window.location.search);
+      params.set("tab", "h1");
+      window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
+    }
+    setActiveTab(nextTab);
+  }, [activeTab, applied]);
+
   const total = alerts?.total || 0;
   const page = alerts?.page || applied.page;
   const pageSize = alerts?.page_size || applied.pageSize;
@@ -395,6 +427,7 @@ export default function App({ styleNonce }: AppProps) {
   const sourceModeLabel = applied.sourceMode === "all" ? "全モード" : applied.sourceMode;
   let connectionText = "DB確認中";
   if (fatalError) connectionText = "DB接続エラー";
+  else if (health && activeTab === "h1") connectionText = "接続済み・H1推移";
   else if (health && summary) {
     connectionText = `接続済み・${sourceModeLabel} ${formatInteger(summary.total_count)}件`;
   } else if (health) connectionText = `接続済み・${sourceModeLabel}確認中`;
@@ -405,7 +438,7 @@ export default function App({ styleNonce }: AppProps) {
         <div className="app-brand">
           <p className="eyebrow">ELLIOTT SIGNAL ARCHIVE</p>
           <h1>ZigZagElliot Alert Viewer</h1>
-          <p className="subtitle">アラート時点の波動構造を、Run単位で検索・比較します。</p>
+          <p className="subtitle">アラートとH1新規足の波動構造を、Run単位で検索・比較します。</p>
         </div>
         <div className="header-actions">
           <a className="secondary-button app-link" href="/legacy/">従来画面</a>
@@ -417,19 +450,54 @@ export default function App({ styleNonce }: AppProps) {
       </header>
 
       <main>
-        <FilterPanel
-          value={draft}
-          appliedValue={applied}
-          runs={runs.items}
-          options={options}
-          busy={loading}
-          onChange={setDraft}
-          onSubmit={submitSearch}
-          onReset={resetSearch}
-          onExport={exportCsv}
-        />
-        <SummaryCards summary={summary} />
-        <section className="results-panel" aria-labelledby="reactResultsTitle">
+        <Box
+          component="nav"
+          aria-label="Viewer表示切替"
+          sx={{
+            mb: 1.25,
+            borderBottom: 1,
+            borderColor: "divider",
+            bgcolor: "rgba(15, 26, 34, 0.72)",
+            borderRadius: "12px 12px 0 0",
+          }}
+        >
+          <Tabs
+            aria-label="Viewer表示切替"
+            value={activeTab}
+            variant="scrollable"
+            scrollButtons="auto"
+            onChange={(_, nextTab: ViewerTab) => changeViewerTab(nextTab)}
+          >
+            <Tab
+              id="viewer-tab-alerts"
+              aria-controls="viewer-tabpanel-alerts"
+              label="アラート一覧"
+              value="alerts"
+            />
+            <Tab
+              id="viewer-tab-h1"
+              aria-controls="viewer-tabpanel-h1"
+              label="H1推移"
+              value="h1"
+            />
+          </Tabs>
+        </Box>
+
+        {activeTab === "alerts" && (
+          <Box component="div" role="tabpanel" id="viewer-tabpanel-alerts" aria-labelledby="viewer-tab-alerts">
+            <FilterPanel
+              value={draft}
+              appliedValue={applied}
+              runs={runs.items}
+              options={options}
+              busy={loading}
+              onChange={setDraft}
+              onSubmit={submitSearch}
+              onReset={resetSearch}
+              onExport={exportCsv}
+            />
+            <SummaryCards summary={summary} />
+            <section className="results-panel" aria-labelledby="reactResultsTitle">
           <div className="section-heading results-heading">
             <div className="results-title-line">
               <p className="eyebrow">SNAPSHOTS</p>
@@ -472,10 +540,21 @@ export default function App({ styleNonce }: AppProps) {
           ) : (
             <p className="loading-message">{fatalError || loadError || "一覧を読み込んでいます…"}</p>
           )}
-        </section>
+            </section>
+          </Box>
+        )}
+
+        <H1ObservationView
+          active={activeTab === "h1"}
+          ready={ready}
+          runs={runs.items}
+          refreshIntervalSeconds={refreshIntervalSeconds}
+          styleNonce={styleNonce}
+          onRefreshIntervalChange={changeRefreshInterval}
+        />
       </main>
 
-      {(fatalError || loadError) && (
+      {(fatalError || (activeTab === "alerts" && loadError)) && (
         <div className="toast" role="alert" aria-live="assertive">
           {fatalError || loadError}
         </div>

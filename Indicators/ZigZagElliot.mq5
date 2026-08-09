@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.22"
+#property version   "1.23"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -67,6 +67,9 @@ input bool currencyStrengthDatabaseSplitByYear = true;
 /** 通貨強弱DBで共通フォルダを使用する場合true。 */
 input bool currencyStrengthDatabaseUseCommonFolder = true;
 
+/** H1新規足のElliott観測情報をデータベースへ保存する場合true。 */
+input bool h1ElliotObservationDatabaseEnabled = true;
+
 #property indicator_type1   DRAW_LINE
 #property indicator_type2   DRAW_LINE
 #property indicator_type3   DRAW_LINE
@@ -111,6 +114,8 @@ int OnInit() {
         currencyStrengthDatabaseSplitByYear;
     config.currencyStrengthDatabaseUseCommonFolder =
         currencyStrengthDatabaseUseCommonFolder;
+    config.h1ElliotObservationDatabaseEnabled =
+        h1ElliotObservationDatabaseEnabled;
 
     MarketContext marketContext(_Symbol, _Period);
     gController = new ZigZagElliotController();

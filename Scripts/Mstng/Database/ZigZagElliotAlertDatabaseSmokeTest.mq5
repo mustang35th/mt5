@@ -153,11 +153,14 @@ bool dropDatabaseObjects(
     const int fromDatabaseHandle,
     Logger &fromLogger
 ) {
-    string sqlList[4];
-    sqlList[0] = "DROP TABLE IF EXISTS zigzag_elliot_alert_points";
-    sqlList[1] = "DROP TABLE IF EXISTS zigzag_elliot_alert_timeframes";
-    sqlList[2] = "DROP TABLE IF EXISTS zigzag_elliot_alerts";
-    sqlList[3] = "DROP TABLE IF EXISTS zigzag_elliot_alert_runs";
+    string sqlList[6];
+    sqlList[0] =
+        "DROP TABLE IF EXISTS zigzag_elliot_observation_timeframes";
+    sqlList[1] = "DROP TABLE IF EXISTS zigzag_elliot_observations";
+    sqlList[2] = "DROP TABLE IF EXISTS zigzag_elliot_alert_points";
+    sqlList[3] = "DROP TABLE IF EXISTS zigzag_elliot_alert_timeframes";
+    sqlList[4] = "DROP TABLE IF EXISTS zigzag_elliot_alerts";
+    sqlList[5] = "DROP TABLE IF EXISTS zigzag_elliot_alert_runs";
 
     for (int i = 0; i < ArraySize(sqlList); i++) {
         ResetLastError();

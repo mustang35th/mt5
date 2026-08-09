@@ -11,8 +11,77 @@ function jsonResponse(payload: unknown): Response {
   } as Response;
 }
 
+let observationAvailable = true;
+
+function observationTimeFrame(timeFrame: string, index: number) {
+  return {
+    id: 100 + index,
+    observation_id: 9,
+    time_frame: index + 1,
+    time_frame_text: timeFrame,
+    time_frame_order: index,
+    is_anchor_time_frame: timeFrame === "H1",
+    is_buy: index % 2 === 0,
+    buy_sell_label: index % 2 === 0 ? "BUY" : "SELL",
+    wave_count: 2,
+    latest_wave_index: 1,
+    is_wave_confirmed: true,
+    is_wave_motive: true,
+    is_wave_uptrend: index % 2 === 0,
+    wave_trend_label: "Бе",
+    previous_last_elliot_label: "2",
+    point_count: 4,
+    latest_elliot_index: 3,
+    latest_elliot_label: "3",
+    latest_sub_elliot_index: 1,
+    latest_sub_elliot_label: "3-1",
+    latest_point_time: 1786309200,
+    latest_point_time_text: "2026.08.10 01:00:00",
+    latest_point_rate: 1.23456,
+    current_close: 1.235,
+    stochastic_main_order_text: "SHORT>MIDDLE>LONG",
+    stochastic_main_direction_text: "BUY",
+    gmma_trend_count: 3,
+    gmma_cross_count: 0,
+    atr14_pips: 12.3,
+    is_ema200_buy: true,
+    is_ema200_sell: false,
+  };
+}
+
+function observationsResponse() {
+  return {
+    available: observationAvailable,
+    total: observationAvailable ? 1 : 0,
+    page: 1,
+    page_size: 50,
+    page_count: observationAvailable ? 1 : 0,
+    items: observationAvailable ? [{
+      id: 9,
+      run_id: 3,
+      run_uid: "run-3",
+      source_mode: "TESTER",
+      source_server: "Test-Server",
+      symbol_name: "AUDUSD",
+      anchor_bar_time: 1786309200,
+      anchor_bar_time_text: "2026.08.10 01:00:00",
+      anchor_time_frame: 16385,
+      anchor_time_frame_text: "H1",
+      capture_phase: "BAR_OPEN_FIRST_SUCCESS",
+      analysis_version: "1",
+      analysis_input_hash: "input-hash",
+      snapshot_hash: "snapshot-hash",
+      time_frame_count: 5,
+      created_at: 1786309201,
+      created_at_text: "2026.08.10 01:00:01",
+      time_frames: ["MN1", "W1", "D1", "H4", "H1"].map(observationTimeFrame),
+    }] : [],
+  };
+}
+
 describe("App", () => {
   beforeEach(() => {
+    observationAvailable = true;
     window.history.replaceState(null, "", "/");
     window.localStorage.clear();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -74,6 +143,31 @@ describe("App", () => {
       }
       if (path === "/api/options") {
         return jsonResponse({ symbols: ["AUDUSD"], time_frames: ["H1"], strategies: ["MTF_3in3"], ranks: ["S"], entry_results: ["ENTRY"] });
+      }
+      if (path === "/api/observation-options") {
+        return jsonResponse({
+          available: observationAvailable,
+          symbols: observationAvailable ? ["AUDUSD"] : [],
+          source_modes: observationAvailable ? ["TESTER"] : [],
+          analysis_versions: observationAvailable ? ["1"] : [],
+        });
+      }
+      if (path.startsWith("/api/observations?")) {
+        return jsonResponse(observationsResponse());
+      }
+      if (path.startsWith("/api/observation-summary?")) {
+        return jsonResponse({
+          available: observationAvailable,
+          total_count: observationAvailable ? 1 : 0,
+          live_count: 0,
+          tester_count: observationAvailable ? 1 : 0,
+          run_count: observationAvailable ? 1 : 0,
+          symbol_count: observationAvailable ? 1 : 0,
+          first_anchor_bar_time: observationAvailable ? 1786309200 : null,
+          first_anchor_bar_time_text: observationAvailable ? "2026.08.10 01:00:00" : null,
+          last_anchor_bar_time: observationAvailable ? 1786309200 : null,
+          last_anchor_bar_time_text: observationAvailable ? "2026.08.10 01:00:00" : null,
+        });
       }
       if (path === "/api/alerts/74") {
         return jsonResponse({
@@ -162,6 +256,64 @@ describe("App", () => {
     const parameters = new URLSearchParams(window.location.search);
     expect(parameters.get("sourceMode")).toBe("LIVE");
     expect(parameters.has("runId")).toBe(false);
+  });
+
+  it("opens the H1 view directly with Server time and five timeframe comparisons", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10",
+    );
+    render(<App />);
+
+    expect(await screen.findByRole("tab", { name: "H1推移", selected: true })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: /Server日時/ })).toBeInTheDocument();
+    for (const timeFrame of ["MN1", "W1", "D1", "H4", "H1"]) {
+      expect(screen.getByRole("columnheader", { name: timeFrame })).toBeInTheDocument();
+    }
+    expect(screen.getAllByText(/上昇|下降/).length).toBeGreaterThanOrEqual(5);
+    expect(screen.queryByText("Бе")).not.toBeInTheDocument();
+    expect(screen.getByText(/最新点 2026\.08\.10 01:00:00/)).toBeInTheDocument();
+    expect(screen.getByLabelText("開始日（Server）")).toHaveValue("2026-08-01");
+    expect(screen.getByLabelText("終了日（Server）")).toHaveValue("2026-08-10");
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("h1");
+
+    const calls = vi.mocked(fetch).mock.calls.map(([path]) => String(path));
+    expect(calls.some((path) => path.startsWith("/api/observations?sourceMode=TESTER"))).toBe(true);
+    expect(calls.some((path) => path.startsWith("/api/alerts?"))).toBe(false);
+
+    fireEvent.click(within(screen.getByRole("columnheader", { name: /Server日時/ }))
+      .getByRole("button", { name: /Server日時/ }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("tab")).toBe("h1");
+      expect(parameters.get("sort")).toBe("anchor_bar_time");
+      expect(parameters.get("order")).toBe("asc");
+    });
+  });
+
+  it("shows an unused state when the observation tables do not exist", async () => {
+    observationAvailable = false;
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=LIVE");
+    render(<App />);
+    expect(await screen.findByText("H1観測はまだ利用されていません")).toBeInTheDocument();
+    expect(screen.getByText("H1観測DB 未利用")).toBeInTheDocument();
+  });
+
+  it("drops an observation Run that does not match the explicit source mode", async () => {
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=LIVE&runId=3");
+    render(<App />);
+    expect(await screen.findByRole("tab", { name: "H1推移", selected: true })).toBeInTheDocument();
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("sourceMode")).toBe("LIVE");
+      expect(parameters.has("runId")).toBe(false);
+    });
+    const observationCalls = vi.mocked(fetch).mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith("/api/observations?"));
+    expect(observationCalls.length).toBeGreaterThan(0);
+    expect(observationCalls.every((path) => !path.includes("runId="))).toBe(true);
   });
 
   it("infers TESTER for a legacy URL containing only runId", async () => {

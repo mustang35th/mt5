@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildSearchParams, DEFAULT_SEARCH_STATE, readSearchState } from "./searchState";
+import {
+  buildSearchParams,
+  DEFAULT_SEARCH_STATE,
+  readSearchState,
+  readViewerTab,
+  replaceSearchUrl,
+} from "./searchState";
 
 describe("searchState", () => {
   it("restores valid URL values and rejects unsupported sorting", () => {
@@ -39,5 +45,13 @@ describe("searchState", () => {
     const state = readSearchState("?from=2026-02-30&to=2026-08-09T12%3A00");
     expect(state.from).toBe("");
     expect(state.to).toBe("");
+  });
+
+  it("uses the alert tab by default and preserves an explicit H1 tab", () => {
+    expect(readViewerTab("?sourceMode=LIVE")).toBe("alerts");
+    expect(readViewerTab("?tab=h1&sourceMode=LIVE")).toBe("h1");
+    window.history.replaceState(null, "", "/?tab=h1");
+    replaceSearchUrl(DEFAULT_SEARCH_STATE, "h1");
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("h1");
   });
 });

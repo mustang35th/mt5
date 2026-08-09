@@ -3,6 +3,10 @@ import type {
   AlertsResponse,
   ApiErrorResponse,
   HealthResponse,
+  ObservationOptionsResponse,
+  ObservationsResponse,
+  ObservationSearchState,
+  ObservationSummaryResponse,
   OptionsResponse,
   PointsResponse,
   RunsResponse,
@@ -10,6 +14,7 @@ import type {
   SummaryResponse,
   TimeFramesResponse,
 } from "./types";
+import { buildObservationSearchParams } from "../lib/observationSearchState";
 import { buildSearchParams } from "../lib/searchState";
 
 export class ApiError extends Error {}
@@ -56,5 +61,26 @@ export const api = {
   },
   alertPoints(alertId: number, signal?: AbortSignal): Promise<PointsResponse> {
     return fetchJson<PointsResponse>(`/api/alerts/${alertId}/points`, signal);
+  },
+  observations(
+    search: ObservationSearchState,
+    signal?: AbortSignal,
+  ): Promise<ObservationsResponse> {
+    return fetchJson<ObservationsResponse>(
+      `/api/observations?${buildObservationSearchParams(search)}`,
+      signal,
+    );
+  },
+  observationOptions(signal?: AbortSignal): Promise<ObservationOptionsResponse> {
+    return fetchJson<ObservationOptionsResponse>("/api/observation-options", signal);
+  },
+  observationSummary(
+    search: ObservationSearchState,
+    signal?: AbortSignal,
+  ): Promise<ObservationSummaryResponse> {
+    return fetchJson<ObservationSummaryResponse>(
+      `/api/observation-summary?${buildObservationSearchParams(search, false)}`,
+      signal,
+    );
   },
 };
