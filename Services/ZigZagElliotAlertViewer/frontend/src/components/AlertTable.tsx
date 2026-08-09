@@ -1,17 +1,33 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ClientSideRowModelModule,
   colorSchemeDarkBlue,
+  ColumnApiModule,
   ColumnAutoSizeModule,
   RowStyleModule,
   themeQuartz,
   type ColDef,
+  type ColumnMovedEvent,
+  type ColumnResizedEvent,
+  type ColumnVisibleEvent,
+  type GridApi,
+  type GridReadyEvent,
   type ICellRendererParams,
   type RowClassParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomHeaderProps } from "ag-grid-react";
+import { useMediaQuery } from "@mui/material";
 import type { AlertListItem, AlertSort, SortOrder } from "../api/types";
 import { displayValue, formatNumber, sideClass } from "../lib/format";
+import {
+  clearGridColumnLayout,
+  type GridDensity,
+  readGridColumnLayout,
+  readGridDensity,
+  writeGridColumnLayout,
+  writeGridDensity,
+} from "../lib/gridPreferences";
+import { GridControls, type GridColumnOption } from "./GridControls";
 
 interface AlertTableProps {
   items: AlertListItem[];
@@ -35,8 +51,45 @@ type ServerSortHeaderProps = CustomHeaderProps<AlertListItem> & ServerSortHeader
 
 const GRID_MODULES = [
   ClientSideRowModelModule,
+  ColumnApiModule,
   ColumnAutoSizeModule,
   RowStyleModule,
+];
+
+const GRID_COLUMN_IDS = [
+  "jst_time",
+  "symbol_name",
+  "side",
+  "source_mode",
+  "judgement",
+  "h1_structure_rank",
+  "time_frame_sides",
+  "is_w1_aligned",
+  "risk_pips",
+  "entry_result",
+  "detail",
+] as const;
+
+const GRID_COLUMN_ID_SET: ReadonlySet<string> = new Set(GRID_COLUMN_IDS);
+export const GRID_PINNED_LEFT_COLUMN_IDS = [
+  "jst_time",
+  "symbol_name",
+  "side",
+] as const;
+export const GRID_PINNED_RIGHT_COLUMN_IDS = ["detail"] as const;
+const FIXED_COLUMN_IDS: ReadonlySet<string> = new Set([
+  ...GRID_PINNED_LEFT_COLUMN_IDS,
+  ...GRID_PINNED_RIGHT_COLUMN_IDS,
+]);
+
+const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
+  { colId: "source_mode", label: "実行モード" },
+  { colId: "judgement", label: "判定" },
+  { colId: "h1_structure_rank", label: "構造・波動" },
+  { colId: "time_frame_sides", label: "MN1 → H1 分析方向" },
+  { colId: "is_w1_aligned", label: "W1一致" },
+  { colId: "risk_pips", label: "Risk / Spread" },
+  { colId: "entry_result", label: "ENTRY" },
 ];
 
 const alertGridTheme = themeQuartz
@@ -256,6 +309,139 @@ export function AlertTable({
   onSort,
   onOpenDetail,
 }: AlertTableProps) {
+  const gridApiRef = useRef<GridApi<AlertListItem> | null>(null);
+  const columnLayoutReadyRef = useRef(false);
+  const columnLayoutSaveTimerRef = useRef<number | null>(null);
+  const wideGridLayout = useMediaQuery("(min-width: 761px)");
+  const [density, setDensity] = useState<GridDensity>(() => readGridDensity(window.localStorage));
+  const [gridReady, setGridReady] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => (
+    Object.fromEntries(GRID_COLUMN_IDS.map((colId) => [colId, true]))
+  ));
+
+  const syncColumnVisibility = useCallback((api: GridApi<AlertListItem>) => {
+    const nextVisibility: Record<string, boolean> = {};
+    for (const column of api.getColumnState()) {
+      nextVisibility[column.colId] = column.hide !== true;
+    }
+    setVisibleColumns(nextVisibility);
+  }, []);
+
+  const applyFixedColumnPinning = useCallback((api: GridApi<AlertListItem>) => {
+    api.setColumnsPinned(
+      [...GRID_PINNED_LEFT_COLUMN_IDS],
+      wideGridLayout ? "left" : null,
+    );
+    api.setColumnsPinned(
+      [...GRID_PINNED_RIGHT_COLUMN_IDS],
+      wideGridLayout ? "right" : null,
+    );
+  }, [wideGridLayout]);
+
+  const scheduleColumnLayoutSave = useCallback((api: GridApi<AlertListItem>) => {
+    if (!columnLayoutReadyRef.current) return;
+    if (columnLayoutSaveTimerRef.current !== null) {
+      window.clearTimeout(columnLayoutSaveTimerRef.current);
+    }
+    columnLayoutSaveTimerRef.current = window.setTimeout(() => {
+      columnLayoutSaveTimerRef.current = null;
+      if (!columnLayoutReadyRef.current || gridApiRef.current !== api) return;
+      writeGridColumnLayout(
+        window.localStorage,
+        api.getColumnState().flatMap((column) => {
+          if (typeof column.width !== "number" || !Number.isFinite(column.width)) return [];
+          return [{
+            colId: column.colId,
+            width: column.width,
+            hide: FIXED_COLUMN_IDS.has(column.colId) ? false : column.hide === true,
+          }];
+        }),
+      );
+      syncColumnVisibility(api);
+    }, 0);
+  }, [syncColumnVisibility]);
+
+  const handleGridReady = useCallback((event: GridReadyEvent<AlertListItem>) => {
+    gridApiRef.current = event.api;
+    columnLayoutReadyRef.current = false;
+    const storedLayout = readGridColumnLayout(window.localStorage, GRID_COLUMN_ID_SET);
+    if (storedLayout !== null) {
+      event.api.applyColumnState({
+        state: storedLayout.map((column) => ({
+          ...column,
+          hide: FIXED_COLUMN_IDS.has(column.colId) ? false : column.hide,
+        })),
+        applyOrder: true,
+      });
+    }
+    event.api.setColumnsVisible([...FIXED_COLUMN_IDS], true);
+    applyFixedColumnPinning(event.api);
+    columnLayoutReadyRef.current = true;
+    syncColumnVisibility(event.api);
+    setGridReady(true);
+  }, [applyFixedColumnPinning, syncColumnVisibility]);
+
+  const handleColumnMoved = useCallback((event: ColumnMovedEvent<AlertListItem>) => {
+    if (event.finished && event.source === "uiColumnMoved") scheduleColumnLayoutSave(event.api);
+  }, [scheduleColumnLayoutSave]);
+
+  const handleColumnResized = useCallback((event: ColumnResizedEvent<AlertListItem>) => {
+    if (
+      event.finished
+      && (event.source === "uiColumnResized" || event.source === "autosizeColumns")
+    ) {
+      scheduleColumnLayoutSave(event.api);
+    }
+  }, [scheduleColumnLayoutSave]);
+
+  const handleColumnVisible = useCallback((event: ColumnVisibleEvent<AlertListItem>) => {
+    scheduleColumnLayoutSave(event.api);
+  }, [scheduleColumnLayoutSave]);
+
+  const changeDensity = useCallback((fromDensity: GridDensity) => {
+    setDensity(fromDensity);
+    writeGridDensity(window.localStorage, fromDensity);
+  }, []);
+
+  const toggleColumn = useCallback((fromColId: string, fromVisible: boolean) => {
+    if (FIXED_COLUMN_IDS.has(fromColId)) return;
+    gridApiRef.current?.setColumnsVisible([fromColId], fromVisible);
+  }, []);
+
+  const resetColumnLayout = useCallback(() => {
+    const api = gridApiRef.current;
+    if (api === null) return;
+    if (columnLayoutSaveTimerRef.current !== null) {
+      window.clearTimeout(columnLayoutSaveTimerRef.current);
+      columnLayoutSaveTimerRef.current = null;
+    }
+    columnLayoutReadyRef.current = false;
+    clearGridColumnLayout(window.localStorage);
+    api.resetColumnState();
+    api.setColumnsVisible([...GRID_COLUMN_IDS], true);
+    applyFixedColumnPinning(api);
+    columnLayoutReadyRef.current = true;
+    syncColumnVisibility(api);
+  }, [applyFixedColumnPinning, syncColumnVisibility]);
+
+  useEffect(() => () => {
+    if (columnLayoutSaveTimerRef.current !== null) {
+      window.clearTimeout(columnLayoutSaveTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    const api = gridApiRef.current;
+    if (api !== null) applyFixedColumnPinning(api);
+  }, [applyFixedColumnPinning]);
+
+  const columnOptions = useMemo<GridColumnOption[]>(() => (
+    CONFIGURABLE_COLUMNS.map((column) => ({
+      ...column,
+      visible: visibleColumns[column.colId] !== false,
+    }))
+  ), [visibleColumns]);
+
   const getRowClass = useCallback((params: RowClassParams<AlertListItem>) => {
     if (params.data && highlightedIds?.has(params.data.id)) return "alert-row-new";
     return undefined;
@@ -281,7 +467,11 @@ export function AlertTable({
       colId: "jst_time",
       field: "jst_time_text",
       headerName: "JST日時",
-      width: 180,
+      initialPinned: "left",
+      initialWidth: 180,
+      lockPinned: true,
+      lockPosition: "left",
+      suppressMovable: true,
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("jst_time", sort, order, onSort),
       cellRenderer: DateCell,
@@ -290,7 +480,11 @@ export function AlertTable({
       colId: "symbol_name",
       field: "symbol_name",
       headerName: "通貨",
-      width: 135,
+      initialPinned: "left",
+      initialWidth: 135,
+      lockPinned: true,
+      lockPosition: "left",
+      suppressMovable: true,
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("symbol_name", sort, order, onSort),
       cellRenderer: SymbolCell,
@@ -299,7 +493,11 @@ export function AlertTable({
       colId: "side",
       field: "side",
       headerName: "方向",
-      width: 90,
+      initialPinned: "left",
+      initialWidth: 90,
+      lockPinned: true,
+      lockPosition: "left",
+      suppressMovable: true,
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("side", sort, order, onSort),
       cellRenderer: SideCell,
@@ -308,21 +506,21 @@ export function AlertTable({
       colId: "source_mode",
       field: "source_mode",
       headerName: "実行モード",
-      width: 110,
+      initialWidth: 110,
       cellRenderer: SourceModeCell,
     },
     {
       colId: "judgement",
       headerName: "判定",
+      initialWidth: 300,
       minWidth: 220,
-      flex: 1,
       cellRenderer: JudgementCell,
     },
     {
       colId: "h1_structure_rank",
       field: "h1_structure_rank",
       headerName: "構造・波動",
-      width: 145,
+      initialWidth: 145,
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("h1_structure_rank", sort, order, onSort),
       cellRenderer: StructureCell,
@@ -330,14 +528,14 @@ export function AlertTable({
     {
       colId: "time_frame_sides",
       headerName: "MN1 → H1 分析方向",
-      width: 270,
+      initialWidth: 270,
       cellRenderer: TimeFramesCell,
     },
     {
       colId: "is_w1_aligned",
       field: "is_w1_aligned",
       headerName: "W1一致",
-      width: 115,
+      initialWidth: 115,
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("is_w1_aligned", sort, order, onSort),
       cellRenderer: AlignmentCell,
@@ -346,7 +544,7 @@ export function AlertTable({
       colId: "risk_pips",
       field: "risk_pips",
       headerName: "Risk / Spread",
-      width: 135,
+      initialWidth: 135,
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("risk_pips", sort, order, onSort),
       cellRenderer: RiskCell,
@@ -355,7 +553,7 @@ export function AlertTable({
       colId: "entry_result",
       field: "entry_result",
       headerName: "ENTRY",
-      width: 105,
+      initialWidth: 105,
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("entry_result", sort, order, onSort),
       cellRenderer: EntryCell,
@@ -363,40 +561,69 @@ export function AlertTable({
     {
       colId: "detail",
       headerName: "詳細",
-      width: 90,
+      initialPinned: "right",
+      initialWidth: 90,
+      lockPinned: true,
+      lockPosition: "right",
+      suppressMovable: true,
       cellRenderer: DetailCell,
     },
   ], [DetailCell, onSort, order, sort]);
 
   return (
     <div
-      className="alert-grid"
+      className="grid-view"
       role="region"
       aria-label="ZigZagElliotアラート検索結果"
       aria-busy={loading}
     >
-      <AgGridReact<AlertListItem>
-        animateRows={false}
-        columnDefs={columnDefs}
-        defaultColDef={{
-          filter: false,
-          resizable: true,
-          sortable: false,
-          suppressHeaderMenuButton: true,
-        }}
-        domLayout="normal"
-        ensureDomOrder
-        getRowId={({ data }) => String(data.id)}
-        getRowClass={getRowClass}
-        modules={GRID_MODULES}
-        noRowsOverlayComponent={NoAlertsOverlay}
-        pagination={false}
-        rowData={items}
-        rowHeight={72}
-        styleNonce={styleNonce}
-        suppressColumnVirtualisation
-        theme={alertGridTheme}
+      <GridControls
+        columns={columnOptions}
+        density={density}
+        layoutReady={gridReady}
+        onDensityChange={changeDensity}
+        onResetLayout={resetColumnLayout}
+        onToggleColumn={toggleColumn}
       />
+      <div className={`alert-grid density-${density}`}>
+        <AgGridReact<AlertListItem>
+          animateRows={false}
+          columnDefs={columnDefs}
+          defaultColDef={{
+            filter: false,
+            resizable: true,
+            sortable: false,
+            suppressHeaderMenuButton: true,
+          }}
+          domLayout="normal"
+          ensureDomOrder
+          getRowId={({ data }) => String(data.id)}
+          getRowClass={getRowClass}
+          headerHeight={density === "compact" ? 42 : 48}
+          maintainColumnOrder
+          modules={GRID_MODULES}
+          noRowsOverlayComponent={NoAlertsOverlay}
+          onColumnMoved={handleColumnMoved}
+          onColumnResized={handleColumnResized}
+          onColumnVisible={handleColumnVisible}
+          onGridPreDestroyed={() => {
+            if (columnLayoutSaveTimerRef.current !== null) {
+              window.clearTimeout(columnLayoutSaveTimerRef.current);
+              columnLayoutSaveTimerRef.current = null;
+            }
+            columnLayoutReadyRef.current = false;
+            gridApiRef.current = null;
+            setGridReady(false);
+          }}
+          onGridReady={handleGridReady}
+          pagination={false}
+          rowData={items}
+          rowHeight={density === "compact" ? 56 : 72}
+          styleNonce={styleNonce}
+          suppressColumnVirtualisation
+          theme={alertGridTheme}
+        />
+      </div>
     </div>
   );
 }

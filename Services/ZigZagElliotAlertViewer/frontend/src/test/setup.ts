@@ -1,5 +1,21 @@
 import "@testing-library/jest-dom/vitest";
 
+if (!window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: (query: string): MediaQueryList => ({
+      matches: query === "(min-width: 761px)",
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => true,
+    }),
+  });
+}
+
 Object.defineProperty(Element.prototype, "innerText", {
   configurable: true,
   get() {
