@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -58,6 +58,29 @@ describe("App", () => {
       if (path === "/api/options") {
         return jsonResponse({ symbols: ["AUDUSD"], time_frames: ["H1"], strategies: ["MTF_3in3"], ranks: ["S"], entry_results: ["ENTRY"] });
       }
+      if (path === "/api/alerts/74") {
+        return jsonResponse({
+          alert: {
+            id: 74, run_id: 3, symbol_name: "AUDUSD", side: "BUY",
+            current_bar_time_text: "2026.07.30 19:00:00", alert_title: "AUDUSD alert",
+            jst_time_text: "2026.07.31 01:00:00", server_time_text: "2026.07.30 19:00:00",
+            reference_price: 1.2, is_stop_loss_available: true, stop_loss: 1.1, risk_pips: 50,
+            h1_structure_rank: "S", is_h1_structure_late: false, strategy: "MTF_3in3",
+            signal_count: 1, entry_count: 1, is_judge: true, is_entry_count_match: true,
+            is_entry_evaluated: true, is_entry_wave: true, is_ema200_distance_within: true,
+            is_alert: true, is_entry: true, entry_result: "ENTRY", current_elliot_label: "3-3-1",
+            close_ema200_diff_pips: 10, max_close_ema200_diff_pips: 25, spread_pips: 1.2,
+            currency_strength_status: 0, is_currency_strength_available: false,
+            long_medium_rank_difference: 0, medium_short_rank_difference: 0,
+            market_signal_key: "market-74", alert_text: "", is_w1_aligned: true,
+          },
+          run: { id: 3, source_mode: "TESTER", program_version: "1.21", tester_model: "" },
+          w1: null,
+        });
+      }
+      if (path === "/api/alerts/74/timeframes" || path === "/api/alerts/74/points") {
+        return jsonResponse({ items: [], count: 0 });
+      }
       if (path.startsWith("/api/alerts?")) {
         return jsonResponse({
           total: 1,
@@ -113,5 +136,16 @@ describe("App", () => {
       expect(fetchMock.mock.calls.some(([path]) => String(path).includes("/api/alerts?runId=3"))).toBe(true);
     });
     expect(new URLSearchParams(window.location.search).get("runId")).toBe("3");
+  });
+
+  it("opens an alert detail and restores focus to its trigger after closing", async () => {
+    render(<App />);
+    const detailButton = await screen.findByRole("button", { name: "AUDUSD BUY 2026.07.31 01:00:00 の詳細を表示" });
+    detailButton.focus();
+    fireEvent.click(detailButton);
+    expect(await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    fireEvent(dialog, new Event("cancel", { bubbles: false, cancelable: true }));
+    await waitFor(() => expect(detailButton).toHaveFocus());
   });
 });

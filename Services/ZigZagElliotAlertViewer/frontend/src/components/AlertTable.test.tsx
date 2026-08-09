@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AlertListItem } from "../api/types";
 import { AlertTable } from "./AlertTable";
@@ -34,12 +34,14 @@ function alertWithAlignment(id: number, aligned: boolean | null): AlertListItem 
 
 describe("AlertTable", () => {
   it("renders W1 alignment as a three-state value and escapes DB text", () => {
+    const onOpenDetail = vi.fn();
     render(
       <AlertTable
         items={[alertWithAlignment(1, true), alertWithAlignment(2, false), alertWithAlignment(3, null)]}
         sort="jst_time"
         order="desc"
         onSort={vi.fn()}
+        onOpenDetail={onOpenDetail}
       />,
     );
     expect(screen.getByText("一致")).toBeInTheDocument();
@@ -47,5 +49,8 @@ describe("AlertTable", () => {
     expect(screen.getByText("不明")).toBeInTheDocument();
     expect(screen.getAllByText("test <img onerror=alert(1)>")).toHaveLength(3);
     expect(document.querySelector("img")).toBeNull();
+    const detailButton = screen.getAllByRole("button", { name: "AUDUSD BUY 2026.07.31 01:00:00 の詳細を表示" })[0];
+    fireEvent.click(detailButton);
+    expect(onOpenDetail).toHaveBeenCalledWith(1, detailButton);
   });
 });

@@ -6,6 +6,7 @@ interface AlertTableProps {
   sort: AlertSort;
   order: SortOrder;
   onSort: (sort: AlertSort) => void;
+  onOpenDetail: (alertId: number, fromTrigger: HTMLButtonElement) => void;
 }
 
 interface SortHeaderProps {
@@ -60,7 +61,7 @@ function AlignmentBadge({ alert }: { alert: AlertListItem }) {
   return <Badge text="不明" />;
 }
 
-export function AlertTable({ items, sort, order, onSort }: AlertTableProps) {
+export function AlertTable({ items, sort, order, onSort, onOpenDetail }: AlertTableProps) {
   return (
     <div className="table-wrap">
       <table>
@@ -76,6 +77,7 @@ export function AlertTable({ items, sort, order, onSort }: AlertTableProps) {
             <SortHeader label="W1一致" value="is_w1_aligned" activeSort={sort} order={order} onSort={onSort} />
             <SortHeader label="Risk / Spread" value="risk_pips" activeSort={sort} order={order} onSort={onSort} />
             <SortHeader label="ENTRY" value="entry_result" activeSort={sort} order={order} onSort={onSort} />
+            <th scope="col">詳細</th>
           </tr>
         </thead>
         <tbody>
@@ -108,6 +110,16 @@ export function AlertTable({ items, sort, order, onSort }: AlertTableProps) {
                 <span className="subtext">spread {formatNumber(alert.spread_pips)} pips</span>
               </td>
               <td><Badge text={displayValue(alert.entry_result)} variant={alert.is_entry ? "good" : "neutral"} /></td>
+              <td>
+                <button
+                  aria-label={`${alert.symbol_name} ${alert.side} ${alert.jst_time_text} の詳細を表示`}
+                  className="secondary-button detail-open-button"
+                  onClick={(event) => onOpenDetail(alert.id, event.currentTarget)}
+                  type="button"
+                >
+                  詳細
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -1,11 +1,14 @@
 import type {
+  AlertDetailResponse,
   AlertsResponse,
   ApiErrorResponse,
   HealthResponse,
   OptionsResponse,
+  PointsResponse,
   RunsResponse,
   SearchState,
   SummaryResponse,
+  TimeFramesResponse,
 } from "./types";
 import { buildSearchParams } from "../lib/searchState";
 
@@ -44,5 +47,14 @@ export const api = {
   },
   summary(search: SearchState, signal?: AbortSignal): Promise<SummaryResponse> {
     return fetchJson<SummaryResponse>(`/api/summary?${buildSearchParams(search)}`, signal);
+  },
+  alertDetail(alertId: number, signal?: AbortSignal): Promise<AlertDetailResponse> {
+    return fetchJson<AlertDetailResponse>(`/api/alerts/${alertId}`, signal);
+  },
+  alertTimeFrames(alertId: number, signal?: AbortSignal): Promise<TimeFramesResponse> {
+    return fetchJson<TimeFramesResponse>(`/api/alerts/${alertId}/timeframes`, signal);
+  },
+  alertPoints(alertId: number, signal?: AbortSignal): Promise<PointsResponse> {
+    return fetchJson<PointsResponse>(`/api/alerts/${alertId}/points`, signal);
   },
 };

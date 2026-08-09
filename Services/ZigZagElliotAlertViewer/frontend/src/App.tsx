@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
 import type {
   AlertsResponse,
@@ -9,6 +9,7 @@ import type {
   SearchState,
   SummaryResponse,
 } from "./api/types";
+import { AlertDetailDrawer } from "./components/AlertDetailDrawer";
 import { AlertTable } from "./components/AlertTable";
 import { FilterPanel } from "./components/FilterPanel";
 import { Pagination } from "./components/Pagination";
@@ -41,6 +42,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [fatalError, setFatalError] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [selectedAlertId, setSelectedAlertId] = useState<number | null>(null);
+  const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -125,6 +128,19 @@ export default function App() {
     window.location.assign(`/api/export.csv?${params}`);
   }
 
+  function openDetail(alertId: number, fromTrigger: HTMLButtonElement) {
+    detailTriggerRef.current = fromTrigger;
+    setSelectedAlertId(alertId);
+  }
+
+  function closeDetail() {
+    const trigger = detailTriggerRef.current;
+    setSelectedAlertId(null);
+    window.requestAnimationFrame(() => {
+      if (trigger?.isConnected && !trigger.disabled) trigger.focus();
+    });
+  }
+
   const total = alerts?.total || 0;
   const page = alerts?.page || applied.page;
   const pageSize = alerts?.page_size || applied.pageSize;
@@ -144,7 +160,7 @@ export default function App() {
           <p className="subtitle">アラート時点の波動構造を、Run単位で検索・比較します。</p>
         </div>
         <div className="header-actions">
-          <a className="secondary-button app-link" href="/">詳細対応の従来画面</a>
+          <a className="secondary-button app-link" href="/">従来画面</a>
           <div className={`connection${fatalError ? " error" : health ? " ready" : ""}`} role="status" aria-live="polite">
             <span className="status-dot" />
             <span>{fatalError ? "DB接続エラー" : health ? `接続済み・${formatInteger(health.alert_count)}件` : "DB確認中"}</span>
@@ -154,7 +170,7 @@ export default function App() {
 
       <main>
         <aside className="preview-note">
-          React版 第1段階：検索・集計・一覧・ページングに対応しました。アラート詳細は次段階で移行します。
+          React版 第2段階：検索・一覧に加えて、時間足別ElliottとWaveポイントの詳細表示に対応しました。
         </aside>
         <FilterPanel
           value={draft}
@@ -177,7 +193,13 @@ export default function App() {
           </div>
           {alerts ? (
             <>
-              <AlertTable items={alerts.items} sort={applied.sort} order={applied.order} onSort={changeSort} />
+              <AlertTable
+                items={alerts.items}
+                sort={applied.sort}
+                order={applied.order}
+                onSort={changeSort}
+                onOpenDetail={openDetail}
+              />
               <Pagination page={page} pageCount={alerts.page_count} onPage={changePage} />
             </>
           ) : (
@@ -191,6 +213,7 @@ export default function App() {
           {fatalError || loadError}
         </div>
       )}
+      <AlertDetailDrawer alertId={selectedAlertId} onClose={closeDetail} />
     </>
   );
 }
