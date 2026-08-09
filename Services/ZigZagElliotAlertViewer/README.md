@@ -2,7 +2,17 @@
 
 `ZigZagElliot`が保存したElliottアラートDBを、ローカルブラウザで検索・閲覧する読み取り専用ビューアです。
 
-Python 3.14を使用し、追加パッケージは必要ありません。通信先は`127.0.0.1`だけで、インターネットや外部PCへ公開しません。
+Python 3.14とSQLAlchemy 2.0を使用します。通信先は`127.0.0.1`だけで、インターネットや外部PCへ公開しません。
+
+## 初回セットアップ
+
+PowerShellでこのフォルダーを開き、依存パッケージをインストールします。
+
+```powershell
+& "$env:LOCALAPPDATA\Python\bin\python.exe" -m pip install -r requirements.txt
+```
+
+SQLAlchemyは既存DBのReflectionと読み取り専用クエリに使用します。
 
 ## 起動
 
@@ -39,7 +49,7 @@ DBは読み取り専用で開きます。MT5が使用中のWALを含む最新状
 ## 詳細な起動方法
 
 ```powershell
-python app.py --database "C:\path\to\database.sqlite" --port 5187 --open-browser
+& "$env:LOCALAPPDATA\Python\bin\python.exe" app.py --database "C:\path\to\database.sqlite" --port 5187 --open-browser
 ```
 
 オプションを省略した場合、待受先は`127.0.0.1`、ポートは`5187`です。外部ネットワークへは公開しません。

@@ -8,11 +8,10 @@ import csv
 import io
 import json
 import os
-import sqlite3
 import sys
 import threading
 import webbrowser
-from contextlib import closing
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
@@ -20,6 +19,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
+
+try:
+    from sqlalchemy import MetaData, create_engine, event, select, text
+    from sqlalchemy.engine import Connection, Row, RowMapping
+    from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.ext.automap import automap_base
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import NullPool
+except ModuleNotFoundError as error:
+    print(
+        "SQLAlchemy is required. Run: python -m pip install -r requirements.txt",
+        file=sys.stderr,
+    )
+    raise SystemExit(2) from error
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -140,26 +153,46 @@ def default_database_path() -> Path:
 
 
 def database_uri(database_path: Path) -> str:
-    """Build a SQLite read-only URI while preserving Windows drive syntax."""
+    """Build a SQLAlchemy SQLite read-only URI with Windows drive syntax."""
 
     resolved = database_path.resolve()
     path_text = resolved.as_posix()
-    return f"file:{quote(path_text, safe='/:')}?mode=ro"
+    return f"sqlite+pysqlite:///file:{quote(path_text, safe='/:')}?mode=ro&uri=true"
 
 
-def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
-    """Convert a SQLite row to JSON-ready values."""
+def values_to_dict(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert mapped database values to JSON-ready values."""
 
-    if row is None:
-        return None
     result: dict[str, Any] = {}
-    for key in row.keys():
-        value = row[key]
+    for key, value in values.items():
         if key in BOOLEAN_COLUMNS and value is not None:
             result[key] = bool(value)
         else:
             result[key] = value
     return result
+
+
+def row_to_dict(
+    row: Row[Any] | RowMapping | Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Convert a SQLAlchemy row to JSON-ready values."""
+
+    if row is None:
+        return None
+    if isinstance(row, Row):
+        return values_to_dict(row._mapping)
+    return values_to_dict(row)
+
+
+def model_to_dict(entity: Any | None) -> dict[str, Any] | None:
+    """Convert one reflected ORM entity to JSON-ready values."""
+
+    if entity is None:
+        return None
+    values = {
+        column.key: getattr(entity, column.key) for column in entity.__table__.columns
+    }
+    return values_to_dict(values)
 
 
 def positive_int(value: str | None, name: str, default: int) -> int:
@@ -207,17 +240,64 @@ class AlertDatabase:
 
     def __init__(self, database_path: Path):
         self.database_path = database_path.resolve()
-
-    def connect(self) -> sqlite3.Connection:
-        """Open a short-lived read-only connection."""
-
-        connection = sqlite3.connect(
-            database_uri(self.database_path), uri=True, timeout=5.0
+        self.engine = create_engine(
+            database_uri(self.database_path),
+            poolclass=NullPool,
+            connect_args={"timeout": 5.0},
         )
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA query_only=ON")
-        connection.execute("PRAGMA busy_timeout=5000")
-        return connection
+        event.listen(self.engine, "connect", self.configure_connection)
+        self.metadata = MetaData()
+        self.orm_base: Any | None = None
+        self.models: dict[str, Any] = {}
+        self.schema_lock = threading.Lock()
+
+    @staticmethod
+    def configure_connection(dbapi_connection: Any, connection_record: Any) -> None:
+        """Apply defensive read-only pragmas to every DBAPI connection."""
+
+        del connection_record
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA query_only=ON")
+            cursor.execute("PRAGMA busy_timeout=5000")
+        finally:
+            cursor.close()
+
+    def connect(self) -> Connection:
+        """Open a short-lived SQLAlchemy connection."""
+
+        return self.engine.connect()
+
+    def close(self) -> None:
+        """Dispose the SQLAlchemy engine and its connection resources."""
+
+        self.engine.dispose()
+
+    def model(self, table_name: str) -> Any:
+        """Return a reflected ORM class after schema validation."""
+
+        model = self.models.get(table_name)
+        if model is None:
+            raise RuntimeError("database schema has not been prepared")
+        return model
+
+    def prepare_models(
+        self, connection: Connection, table_names: list[str]
+    ) -> None:
+        """Reflect the existing schema and prepare read-only ORM classes once."""
+
+        if self.models:
+            return
+        with self.schema_lock:
+            if self.models:
+                return
+            self.metadata.reflect(bind=connection, only=table_names)
+            self.orm_base = automap_base(metadata=self.metadata)
+            self.orm_base.prepare()
+            self.models = {
+                table_name: self.orm_base.classes[table_name]
+                for table_name in table_names
+            }
 
     def validate(self) -> dict[str, Any]:
         """Validate the required schema without modifying the database."""
@@ -247,10 +327,10 @@ class AlertDatabase:
                 "point_order",
             },
         }
-        with closing(self.connect()) as connection:
+        with self.connect() as connection:
             rows = connection.execute(
-                "SELECT name FROM sqlite_schema WHERE type='table'"
-            ).fetchall()
+                text("SELECT name FROM sqlite_schema WHERE type='table'")
+            ).mappings()
             actual_tables = {str(row["name"]) for row in rows}
             missing = sorted(set(required_columns) - actual_tables)
             if missing:
@@ -258,7 +338,9 @@ class AlertDatabase:
             for table_name, expected_columns in required_columns.items():
                 actual_columns = {
                     str(row["name"])
-                    for row in connection.execute(f"PRAGMA table_info({table_name})")
+                    for row in connection.exec_driver_sql(
+                        f"PRAGMA table_info({table_name})"
+                    ).mappings()
                 }
                 missing_columns = sorted(expected_columns - actual_columns)
                 if missing_columns:
@@ -266,10 +348,11 @@ class AlertDatabase:
                         f"required columns are missing from {table_name}: "
                         + ", ".join(missing_columns)
                     )
-            journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
+            self.prepare_models(connection, list(required_columns))
+            journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar_one()
             alert_count = connection.execute(
-                "SELECT COUNT(*) FROM zigzag_elliot_alerts"
-            ).fetchone()[0]
+                text("SELECT COUNT(*) FROM zigzag_elliot_alerts")
+            ).scalar_one()
         return {
             "database": str(self.database_path),
             "journal_mode": journal_mode,
@@ -298,8 +381,9 @@ class AlertDatabase:
             GROUP BY r.id
             ORDER BY r.id DESC
         """
-        with closing(self.connect()) as connection:
-            items = [row_to_dict(row) for row in connection.execute(sql)]
+        with self.connect() as connection:
+            rows = connection.execute(text(sql)).mappings()
+            items = [row_to_dict(row) for row in rows]
         return {"items": items, "count": len(items)}
 
     def options(self) -> dict[str, Any]:
@@ -313,14 +397,15 @@ class AlertDatabase:
             "entry_results": "entry_result",
         }
         result: dict[str, Any] = {}
-        with closing(self.connect()) as connection:
+        with self.connect() as connection:
             for output_name, column_name in fields.items():
                 sql = (
                     f"SELECT DISTINCT {column_name} AS value "
                     "FROM zigzag_elliot_alerts "
                     f"WHERE {column_name} <> '' ORDER BY {column_name} COLLATE NOCASE"
                 )
-                result[output_name] = [row["value"] for row in connection.execute(sql)]
+                rows = connection.execute(text(sql)).mappings()
+                result[output_name] = [row["value"] for row in rows]
         return result
 
     @staticmethod
@@ -565,18 +650,22 @@ class AlertDatabase:
         )
         parameters = dict(filters.parameters)
         parameters["limit"] = filters.page_size
-        with closing(self.connect()) as connection:
-            connection.execute("BEGIN")
-            total = connection.execute(count_sql, filters.parameters).fetchone()["total"]
-            page_count = (total + filters.page_size - 1) // filters.page_size
-            if page_count == 0:
-                effective_page = 1
-            else:
-                effective_page = min(filters.page, page_count)
-            parameters["offset"] = (effective_page - 1) * filters.page_size
-            items = [
-                row_to_dict(row) for row in connection.execute(list_sql, parameters)
-            ]
+        with self.connect() as connection:
+            connection.exec_driver_sql("BEGIN")
+            try:
+                total = connection.execute(
+                    text(count_sql), filters.parameters
+                ).scalar_one()
+                page_count = (total + filters.page_size - 1) // filters.page_size
+                if page_count == 0:
+                    effective_page = 1
+                else:
+                    effective_page = min(filters.page, page_count)
+                parameters["offset"] = (effective_page - 1) * filters.page_size
+                rows = connection.execute(text(list_sql), parameters).mappings()
+                items = [row_to_dict(row) for row in rows]
+            finally:
+                connection.rollback()
         return {
             "items": items,
             "total": total,
@@ -606,63 +695,66 @@ class AlertDatabase:
                 COUNT(DISTINCT symbol_name) AS symbol_count
             FROM alert_rows {self.outer_where(filters)}
         """
-        with closing(self.connect()) as connection:
-            row = connection.execute(sql, filters.parameters).fetchone()
+        with self.connect() as connection:
+            row = connection.execute(text(sql), filters.parameters).mappings().one()
         return row_to_dict(row) or {}
 
     def alert_detail(self, alert_id: int) -> dict[str, Any]:
         """Return an alert, its run and W1 summary."""
 
-        with closing(self.connect()) as connection:
-            alert_row = connection.execute(
-                "SELECT * FROM zigzag_elliot_alerts WHERE id = ?", (alert_id,)
-            ).fetchone()
-            if alert_row is None:
+        alert_model = self.model("zigzag_elliot_alerts")
+        run_model = self.model("zigzag_elliot_alert_runs")
+        time_frame_model = self.model("zigzag_elliot_alert_timeframes")
+        with Session(self.engine) as session:
+            alert_entity = session.get(alert_model, alert_id)
+            if alert_entity is None:
                 raise RequestError("alert was not found", HTTPStatus.NOT_FOUND)
-            run_row = connection.execute(
-                "SELECT * FROM zigzag_elliot_alert_runs WHERE id = ?",
-                (alert_row["run_id"],),
-            ).fetchone()
-            w1_row = connection.execute(
-                """
-                SELECT id AS w1_timeframe_id, is_buy AS w1_is_buy,
-                       buy_sell_label AS w1_side,
-                       latest_elliot_label AS w1_elliot_label,
-                       latest_sub_elliot_label AS w1_sub_elliot_label,
-                       is_wave_confirmed AS w1_is_wave_confirmed,
-                       is_wave_motive AS w1_is_wave_motive,
-                       is_wave_uptrend AS w1_is_wave_uptrend,
-                       wave_trend_label AS w1_wave_trend
-                FROM zigzag_elliot_alert_timeframes
-                WHERE alert_id = ? AND time_frame = ?
-                """,
-                (alert_id, W1_TIME_FRAME),
-            ).fetchone()
-        alert = row_to_dict(alert_row) or {}
-        w1 = row_to_dict(w1_row)
+            run_entity = session.get(run_model, alert_entity.run_id)
+            w1_entity = session.scalars(
+                select(time_frame_model).where(
+                    time_frame_model.alert_id == alert_id,
+                    time_frame_model.time_frame == W1_TIME_FRAME,
+                )
+            ).one_or_none()
+            alert = model_to_dict(alert_entity) or {}
+            run = model_to_dict(run_entity)
+            w1: dict[str, Any] | None = None
+            if w1_entity is not None:
+                w1 = values_to_dict(
+                    {
+                        "w1_timeframe_id": w1_entity.id,
+                        "w1_is_buy": w1_entity.is_buy,
+                        "w1_side": w1_entity.buy_sell_label,
+                        "w1_elliot_label": w1_entity.latest_elliot_label,
+                        "w1_sub_elliot_label": w1_entity.latest_sub_elliot_label,
+                        "w1_is_wave_confirmed": w1_entity.is_wave_confirmed,
+                        "w1_is_wave_motive": w1_entity.is_wave_motive,
+                        "w1_is_wave_uptrend": w1_entity.is_wave_uptrend,
+                        "w1_wave_trend": w1_entity.wave_trend_label,
+                    }
+                )
         is_w1_aligned: bool | None = None
         if w1 is not None:
             is_w1_aligned = (alert["side"] == "BUY" and w1["w1_is_buy"]) or (
                 alert["side"] == "SELL" and not w1["w1_is_buy"]
             )
         alert["is_w1_aligned"] = is_w1_aligned
-        return {"alert": alert, "run": row_to_dict(run_row), "w1": w1}
+        return {"alert": alert, "run": run, "w1": w1}
 
     def timeframes(self, alert_id: int) -> dict[str, Any]:
         """Return all timeframe snapshots for an alert."""
 
-        sql = """
-            SELECT * FROM zigzag_elliot_alert_timeframes
-            WHERE alert_id = ?
-            ORDER BY time_frame_order, id
-        """
-        with closing(self.connect()) as connection:
-            exists = connection.execute(
-                "SELECT 1 FROM zigzag_elliot_alerts WHERE id = ?", (alert_id,)
-            ).fetchone()
-            if exists is None:
+        alert_model = self.model("zigzag_elliot_alerts")
+        time_frame_model = self.model("zigzag_elliot_alert_timeframes")
+        with Session(self.engine) as session:
+            if session.get(alert_model, alert_id) is None:
                 raise RequestError("alert was not found", HTTPStatus.NOT_FOUND)
-            items = [row_to_dict(row) for row in connection.execute(sql, (alert_id,))]
+            entities = session.scalars(
+                select(time_frame_model)
+                .where(time_frame_model.alert_id == alert_id)
+                .order_by(time_frame_model.time_frame_order, time_frame_model.id)
+            )
+            items = [model_to_dict(entity) for entity in entities]
         return {"items": items, "count": len(items)}
 
     def points(self, alert_id: int, time_frame: str | None) -> dict[str, Any]:
@@ -682,13 +774,15 @@ class AlertDatabase:
             WHERE {where}
             ORDER BY tf.time_frame_order, p.point_order, p.id
         """
-        with closing(self.connect()) as connection:
+        with self.connect() as connection:
             exists = connection.execute(
-                "SELECT 1 FROM zigzag_elliot_alerts WHERE id = ?", (alert_id,)
-            ).fetchone()
+                text("SELECT 1 FROM zigzag_elliot_alerts WHERE id = :alert_id"),
+                {"alert_id": alert_id},
+            ).first()
             if exists is None:
                 raise RequestError("alert was not found", HTTPStatus.NOT_FOUND)
-            items = [row_to_dict(row) for row in connection.execute(sql, parameters)]
+            rows = connection.execute(text(sql), parameters).mappings()
+            items = [row_to_dict(row) for row in rows]
         return {"items": items, "count": len(items)}
 
     def export_csv(self, query: dict[str, list[str]]) -> bytes:
@@ -709,8 +803,8 @@ class AlertDatabase:
             FROM alert_rows {self.outer_where(filters)}
             ORDER BY {filters.sort_sql} {filters.order_sql}, id DESC
         """
-        with closing(self.connect()) as connection:
-            rows = connection.execute(sql, filters.parameters).fetchall()
+        with self.connect() as connection:
+            rows = connection.execute(text(sql), filters.parameters).mappings().all()
         output = io.StringIO(newline="")
         writer = csv.writer(output, lineterminator="\r\n")
         headers = list(rows[0].keys()) if rows else [
@@ -831,7 +925,7 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             raise RequestError("resource was not found", HTTPStatus.NOT_FOUND)
         except RequestError as error:
             self.send_json({"error": str(error)}, error.status)
-        except sqlite3.Error as error:
+        except SQLAlchemyError as error:
             print(f"Database error: {error}", file=sys.stderr)
             self.send_json(
                 {"error": "database is temporarily unavailable"},
@@ -957,12 +1051,16 @@ def main() -> int:
         print(f"Database was not found: {database_path}", file=sys.stderr)
         return 2
 
-    database = AlertDatabase(database_path)
+    database: AlertDatabase | None = None
     try:
+        database = AlertDatabase(database_path)
         health = database.validate()
-    except (RuntimeError, sqlite3.Error) as error:
+    except (RuntimeError, SQLAlchemyError) as error:
         print(f"Database could not be opened: {error}", file=sys.stderr)
+        if database is not None:
+            database.close()
         return 2
+    assert database is not None
 
     static_path = Path(__file__).resolve().parent / "static"
     try:
@@ -972,6 +1070,7 @@ def main() -> int:
             f"Viewer could not listen on {arguments.host}:{arguments.port}: {error}",
             file=sys.stderr,
         )
+        database.close()
         return 2
     url = f"http://{DEFAULT_HOST}:{arguments.port}"
     print("ZigZagElliot Alert Viewer")
@@ -987,6 +1086,7 @@ def main() -> int:
         print("\nStopping viewer...")
     finally:
         server.server_close()
+        database.close()
     return 0
 
 
