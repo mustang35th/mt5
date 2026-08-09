@@ -17,7 +17,8 @@
  *
  * D1とH4は売買方向の一致確認に使用し、H1の第1波または第3波を
  * エントリー対象波動とする。EMA200はH1の方向だけを確認し、
- * H1の最新ZigZagポイントは確定・未確定を問わない。
+ * H1の最新ZigZagポイントは確定・未確定を問わず、
+ * エントリー成立時はメール送信対象とする。
  */
 class ExpertAdvisorMtf3In3H1 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -88,6 +89,15 @@ protected:
         }
 
         return false;
+    }
+
+    /**
+     * H1エントリー成立時にメールを送信するか判定する。
+     *
+     * @return 常にtrue。
+     */
+    virtual bool shouldSendMail() override {
+        return true;
     }
 
     /**
