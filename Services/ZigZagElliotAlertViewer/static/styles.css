@@ -112,6 +112,34 @@ main { max-width: 1920px; margin: 0 auto; padding: 0 28px 48px; }
 .filter-panel { padding: 20px; }
 .results-panel { overflow: hidden; }
 
+.react-filter-panel.collapsed { padding-top: 12px; padding-bottom: 12px; }
+.react-filter-panel.collapsed .filter-panel-heading { margin-bottom: 0; }
+.filter-heading-content { min-width: 0; }
+.filter-heading-actions { display: flex; align-items: center; gap: 9px; }
+.filter-toggle-button {
+  display: inline-flex;
+  min-width: 148px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.filter-collapsed-summary {
+  display: flex;
+  margin: 5px 0 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 10px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.filter-collapsed-summary strong {
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 199, 95, 0.42);
+  border-radius: 999px;
+  color: var(--warn);
+  font-size: 0.66rem;
+}
+
 .section-heading {
   display: flex;
   justify-content: space-between;
@@ -237,6 +265,40 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .summary-card.mismatch { border-left-color: var(--warn); }
 .summary-card span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 0.72rem; }
 .summary-card strong { font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+
+.react-summary-strip {
+  margin: 10px 0;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(15, 26, 34, 0.92);
+}
+.react-summary-strip dl {
+  display: grid;
+  min-width: 600px;
+  margin: 0;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+}
+.react-summary-item {
+  display: flex;
+  min-width: 0;
+  padding: 8px 13px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-left: 3px solid var(--accent);
+}
+.react-summary-item.buy { border-left-color: var(--buy); }
+.react-summary-item.sell { border-left-color: var(--sell); }
+.react-summary-item.align { border-left-color: var(--good); }
+.react-summary-item.mismatch { border-left-color: var(--warn); }
+.react-summary-item dt { color: var(--muted); font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+.react-summary-item dd {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
 
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
@@ -459,6 +521,17 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .field-wide, .field-search { grid-column: span 2; }
   .filter-actions { grid-column: span 2; }
   .filter-actions button { flex: 1; }
+  .filter-panel-heading { align-items: flex-start; flex-wrap: wrap; }
+  .filter-heading-actions { width: 100%; flex-wrap: wrap; }
+  .filter-heading-actions button { flex: 1 1 130px; }
+  .filter-toggle-button { min-width: 0; }
+  .react-summary-strip { overflow-x: visible; }
+  .react-summary-strip dl {
+    min-width: 0;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .react-summary-item { grid-column: span 2; padding: 7px 9px; }
+  .react-summary-item:nth-child(n + 4) { grid-column: span 3; }
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .summary-card:first-child { grid-column: span 2; }
   .results-heading { align-items: stretch; flex-direction: column; }

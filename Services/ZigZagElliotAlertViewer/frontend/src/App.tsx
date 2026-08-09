@@ -419,6 +419,7 @@ export default function App({ styleNonce }: AppProps) {
       <main>
         <FilterPanel
           value={draft}
+          appliedValue={applied}
           runs={runs.items}
           options={options}
           busy={loading}

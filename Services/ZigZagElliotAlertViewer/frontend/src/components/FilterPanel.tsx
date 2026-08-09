@@ -1,8 +1,9 @@
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import type { OptionsResponse, RunItem, SearchState, SourceMode } from "../api/types";
 
 interface FilterPanelProps {
   value: SearchState;
+  appliedValue: SearchState;
   runs: RunItem[];
   options: OptionsResponse;
   busy: boolean;
@@ -16,8 +17,43 @@ function isRunVisible(run: RunItem, sourceMode: SourceMode): boolean {
   return sourceMode === "all" || run.source_mode.toUpperCase() === sourceMode;
 }
 
+const SEARCH_VALUE_KEYS: ReadonlyArray<keyof SearchState> = [
+  "sourceMode",
+  "runId",
+  "q",
+  "symbol",
+  "side",
+  "rank",
+  "w1Aligned",
+  "from",
+  "to",
+  "pageSize",
+];
+
+function hasUnappliedChanges(value: SearchState, appliedValue: SearchState): boolean {
+  return SEARCH_VALUE_KEYS.some((key) => value[key] !== appliedValue[key]);
+}
+
+function appliedFilterSummary(value: SearchState): string {
+  const sourceMode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
+  const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
+  const symbol = value.symbol || "全通貨";
+  const side = value.side || "BUY＋SELL";
+  const additionalFilterCount = [
+    value.q.trim() !== "",
+    value.rank !== "",
+    value.w1Aligned !== "all",
+    value.from !== "" || value.to !== "",
+  ].filter(Boolean).length;
+  const additionalFilters = additionalFilterCount > 0
+    ? ` / 絞り込み ${additionalFilterCount}項目`
+    : "";
+  return `${sourceMode} / ${run} / ${symbol} / ${side}${additionalFilters}`;
+}
+
 export function FilterPanel({
   value,
+  appliedValue,
   runs,
   options,
   busy,
@@ -26,6 +62,7 @@ export function FilterPanel({
   onReset,
   onExport,
 }: FilterPanelProps) {
+  const [expanded, setExpanded] = useState(true);
   const visibleRuns = runs.filter((run) => isRunVisible(run, value.sourceMode));
   const allRunsLabel = value.sourceMode === "all"
     ? "すべてのRun（重複を含む）"
@@ -37,18 +74,41 @@ export function FilterPanel({
   }
 
   return (
-    <section className="filter-panel" aria-labelledby="reactFilterTitle">
-      <div className="section-heading">
-        <div>
+    <section
+      className={`filter-panel react-filter-panel${expanded ? "" : " collapsed"}`}
+      aria-busy={busy}
+      aria-labelledby="reactFilterTitle"
+    >
+      <div className="section-heading filter-panel-heading">
+        <div className="filter-heading-content">
           <p className="eyebrow">SEARCH</p>
           <h2 id="reactFilterTitle">アラート検索</h2>
+          {!expanded && (
+            <p className="filter-collapsed-summary">
+              <span>{appliedFilterSummary(appliedValue)}</span>
+              {hasUnappliedChanges(value, appliedValue) && <strong>未検索の変更あり</strong>}
+            </p>
+          )}
         </div>
-        <button className="ghost-button" type="button" onClick={onReset}>
-          条件をリセット
-        </button>
+        <div className="filter-heading-actions">
+          <button className="ghost-button" type="button" onClick={onReset}>
+            条件をリセット
+          </button>
+          <button
+            className="secondary-button filter-toggle-button"
+            type="button"
+            aria-controls="reactFilterFields"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            <span>{expanded ? "検索条件を閉じる" : "検索条件を開く"}</span>
+            <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
+          </button>
+        </div>
       </div>
 
-      <form className="filter-grid" aria-busy={busy} onSubmit={submit}>
+      <div id="reactFilterFields" hidden={!expanded}>
+        <form className="filter-grid" aria-busy={busy} onSubmit={submit}>
         <label className="field">
           <span>実行モード</span>
           <select
@@ -162,7 +222,8 @@ export function FilterPanel({
           <button className="primary-button" type="submit">検索する</button>
           <button className="secondary-button" type="button" onClick={onExport}>CSV出力</button>
         </div>
-      </form>
+        </form>
+      </div>
     </section>
   );
 }
