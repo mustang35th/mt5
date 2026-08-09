@@ -18,7 +18,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 try:
     from sqlalchemy import MetaData, create_engine, event, select, text
@@ -47,6 +47,17 @@ STATIC_CONTENT_TYPES = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+}
+
+REACT_ASSET_CONTENT_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".ico": "image/x-icon",
+    ".js": "text/javascript; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
 }
 
 SORT_COLUMNS = {
@@ -880,6 +891,13 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             if parsed.path in STATIC_CONTENT_TYPES:
                 self.send_static(parsed.path)
                 return
+            if parsed.path in {"/react", "/react/", "/react/index.html"}:
+                self.send_react_static("index.html")
+                return
+            if parsed.path.startswith("/react/assets/"):
+                relative_path = unquote(parsed.path[len("/react/") :])
+                self.send_react_static(relative_path)
+                return
             if parsed.path == "/favicon.ico":
                 self.send_response(HTTPStatus.NO_CONTENT)
                 self.end_headers()
@@ -952,6 +970,33 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
         file_path = self.viewer_server.static_path / file_name
         if not file_path.is_file():
             raise RequestError("static file was not found", HTTPStatus.NOT_FOUND)
+        payload = file_path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_common_headers(content_type, len(payload))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def send_react_static(self, relative_path: str) -> None:
+        """Send a generated React asset from the isolated build directory."""
+
+        if "\x00" in relative_path or "\\" in relative_path:
+            raise RequestError("static file was not found", HTTPStatus.NOT_FOUND)
+        react_root = (self.viewer_server.static_path / "react").resolve()
+        file_path = (react_root / relative_path).resolve()
+        try:
+            file_path.relative_to(react_root)
+        except ValueError as error:
+            raise RequestError("static file was not found", HTTPStatus.NOT_FOUND) from error
+        if not file_path.is_file():
+            raise RequestError("static file was not found", HTTPStatus.NOT_FOUND)
+        if relative_path == "index.html":
+            content_type = "text/html; charset=utf-8"
+        else:
+            if not relative_path.startswith("assets/"):
+                raise RequestError("static file was not found", HTTPStatus.NOT_FOUND)
+            content_type = REACT_ASSET_CONTENT_TYPES.get(file_path.suffix.lower())
+            if content_type is None:
+                raise RequestError("static file was not found", HTTPStatus.NOT_FOUND)
         payload = file_path.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_common_headers(content_type, len(payload))
