@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import type { OptionsResponse, RunItem, SearchState } from "../api/types";
+import type { OptionsResponse, RunItem, SearchState, SourceMode } from "../api/types";
 
 interface FilterPanelProps {
   value: SearchState;
@@ -12,6 +12,10 @@ interface FilterPanelProps {
   onExport: () => void;
 }
 
+function isRunVisible(run: RunItem, sourceMode: SourceMode): boolean {
+  return sourceMode === "all" || run.source_mode.toUpperCase() === sourceMode;
+}
+
 export function FilterPanel({
   value,
   runs,
@@ -22,6 +26,11 @@ export function FilterPanel({
   onReset,
   onExport,
 }: FilterPanelProps) {
+  const visibleRuns = runs.filter((run) => isRunVisible(run, value.sourceMode));
+  const allRunsLabel = value.sourceMode === "all"
+    ? "すべてのRun（重複を含む）"
+    : `すべての${value.sourceMode} Run（重複を含む）`;
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
@@ -40,6 +49,23 @@ export function FilterPanel({
       </div>
 
       <form className="filter-grid" aria-busy={busy} onSubmit={submit}>
+        <label className="field">
+          <span>実行モード</span>
+          <select
+            aria-label="実行モード"
+            value={value.sourceMode}
+            onChange={(event) => {
+              const sourceMode = event.target.value;
+              if (sourceMode === "LIVE" || sourceMode === "TESTER" || sourceMode === "all") {
+                onChange({ ...value, sourceMode, runId: null });
+              }
+            }}
+          >
+            <option value="LIVE">LIVE</option>
+            <option value="TESTER">TESTER</option>
+            <option value="all">LIVE＋TESTER</option>
+          </select>
+        </label>
         <label className="field field-wide">
           <span>Run</span>
           <select
@@ -47,15 +73,15 @@ export function FilterPanel({
             value={value.runId === null ? "" : value.runId}
             onChange={(event) => onChange({ ...value, runId: event.target.value ? Number(event.target.value) : null })}
           >
-            <option value="">すべてのRun（重複を含む）</option>
-            {runs.map((run) => {
+            <option value="">{allRunsLabel}</option>
+            {visibleRuns.map((run) => {
               const symbolText = run.symbols || "アラートなし";
               const range = run.last_alert_time_text
                 ? `${run.first_alert_time_text || "?"} – ${run.last_alert_time_text}`
                 : "記録なし";
               return (
                 <option key={run.id} value={run.id}>
-                  {`Run ${run.id}｜${symbolText}｜${run.alert_count}件｜${range}`}
+                  {`${run.source_mode}｜Run ${run.id}｜${symbolText}｜${run.alert_count}件｜${range}`}
                 </option>
               );
             })}

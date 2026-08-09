@@ -1,6 +1,7 @@
-import type { AlertSort, SearchState } from "../api/types";
+import type { AlertSort, SearchState, SourceMode } from "../api/types";
 
 export const DEFAULT_SEARCH_STATE: SearchState = {
+  sourceMode: "LIVE",
   runId: null,
   q: "",
   symbol: "",
@@ -46,6 +47,10 @@ function dateInputValue(value: string | null): string {
 
 export function readSearchState(search: string): SearchState {
   const params = new URLSearchParams(search);
+  const requestedSourceMode = params.get("sourceMode");
+  const sourceMode: SourceMode = requestedSourceMode === "TESTER" || requestedSourceMode === "all"
+    ? requestedSourceMode
+    : "LIVE";
   const side = params.get("side");
   const alignment = params.get("w1Aligned");
   const sort = params.get("sort") as AlertSort | null;
@@ -54,6 +59,7 @@ export function readSearchState(search: string): SearchState {
     ? requestedPageSize
     : DEFAULT_SEARCH_STATE.pageSize;
   return {
+    sourceMode,
     runId: params.has("runId") ? positiveInteger(params.get("runId"), 0) || null : null,
     q: params.get("q") || "",
     symbol: params.get("symbol") || "",
@@ -78,6 +84,7 @@ export function buildSearchParams(
   includeSorting = true,
 ): URLSearchParams {
   const params = new URLSearchParams();
+  params.set("sourceMode", state.sourceMode);
   if (state.runId !== null) params.set("runId", String(state.runId));
   if (state.q.trim()) params.set("q", state.q.trim());
   if (state.symbol) params.set("symbol", state.symbol);

@@ -10,7 +10,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from app import DEFAULT_HOST, ViewerServer
+from app import AlertDatabase, DEFAULT_HOST, RequestError, ViewerServer
 
 
 class StubDatabase:
@@ -210,6 +210,48 @@ class ViewerRouteTest(unittest.TestCase):
             health_headers.get("content-type", "").startswith("application/json")
         )
         self.assertEqual("ok", json.loads(health_payload)["status"])
+
+
+class AlertFilterTest(unittest.TestCase):
+    """Verify filters shared by alert lists, summaries and CSV export."""
+
+    def test_source_mode_is_bound_as_a_run_filter(self) -> None:
+        """Filter LIVE and TESTER data through the parent run source mode."""
+
+        live_filters = AlertDatabase.parse_filters({"sourceMode": ["LIVE"]})
+        self.assertIn("r.source_mode = :source_mode", live_filters.where_sql)
+        self.assertEqual("LIVE", live_filters.parameters["source_mode"])
+
+        tester_filters = AlertDatabase.parse_filters({"sourceMode": ["tester"]})
+        self.assertIn("r.source_mode = :source_mode", tester_filters.where_sql)
+        self.assertEqual("TESTER", tester_filters.parameters["source_mode"])
+
+        run_filters = AlertDatabase.parse_filters(
+            {"sourceMode": ["LIVE"], "runId": ["7"]}
+        )
+        self.assertIn("r.source_mode = :source_mode", run_filters.where_sql)
+        self.assertIn("a.run_id = :run_id", run_filters.where_sql)
+        self.assertEqual({"source_mode": "LIVE", "run_id": 7}, run_filters.parameters)
+
+    def test_all_source_modes_do_not_add_a_clause(self) -> None:
+        """Keep the existing all-run query when the mode is omitted or all."""
+
+        for query in ({}, {"sourceMode": ["all"]}):
+            with self.subTest(query=query):
+                filters = AlertDatabase.parse_filters(query)
+                self.assertNotIn("r.source_mode", filters.where_sql)
+                self.assertNotIn("source_mode", filters.parameters)
+
+    def test_unsupported_source_mode_is_rejected(self) -> None:
+        """Reject unrecognized modes instead of silently widening results."""
+
+        with self.assertRaisesRegex(
+            RequestError,
+            "sourceMode must be LIVE, TESTER or all",
+        ):
+            AlertDatabase.parse_filters(
+                {"sourceMode": ["LIVE' OR 1=1 --"]}
+            )
 
 
 if __name__ == "__main__":

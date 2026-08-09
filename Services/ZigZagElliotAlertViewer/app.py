@@ -444,6 +444,13 @@ class AlertDatabase:
         clauses: list[str] = []
         parameters: dict[str, Any] = {}
 
+        source_mode = (first("sourceMode") or "all").upper()
+        if source_mode not in {"ALL", "LIVE", "TESTER"}:
+            raise RequestError("sourceMode must be LIVE, TESTER or all")
+        if source_mode != "ALL":
+            clauses.append("r.source_mode = :source_mode")
+            parameters["source_mode"] = source_mode
+
         run_id_text = first("runId")
         if run_id_text:
             run_id = positive_int(run_id_text, "runId", 1)
@@ -813,7 +820,7 @@ class AlertDatabase:
 
         filters = self.parse_filters(query)
         sql = self.alert_rows_cte(filters) + f"""
-            SELECT id AS alert_id, run_id, current_bar_time_text,
+            SELECT id AS alert_id, run_id, source_mode, current_bar_time_text,
                    server_time_text, jst_time_text, symbol_name,
                    time_frame_text, strategy, side, signal_count, entry_count,
                    entry_result, current_elliot_label, h1_structure_rank,
@@ -833,6 +840,7 @@ class AlertDatabase:
         headers = list(rows[0].keys()) if rows else [
             "alert_id",
             "run_id",
+            "source_mode",
             "current_bar_time_text",
             "server_time_text",
             "jst_time_text",

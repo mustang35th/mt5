@@ -3,9 +3,11 @@ import {
   ClientSideRowModelModule,
   colorSchemeDarkBlue,
   ColumnAutoSizeModule,
+  RowStyleModule,
   themeQuartz,
   type ColDef,
   type ICellRendererParams,
+  type RowClassParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomHeaderProps } from "ag-grid-react";
 import type { AlertListItem, AlertSort, SortOrder } from "../api/types";
@@ -14,6 +16,7 @@ import { displayValue, formatNumber, sideClass } from "../lib/format";
 interface AlertTableProps {
   items: AlertListItem[];
   loading: boolean;
+  highlightedIds?: ReadonlySet<number>;
   sort: AlertSort;
   order: SortOrder;
   styleNonce?: string;
@@ -33,6 +36,7 @@ type ServerSortHeaderProps = CustomHeaderProps<AlertListItem> & ServerSortHeader
 const GRID_MODULES = [
   ClientSideRowModelModule,
   ColumnAutoSizeModule,
+  RowStyleModule,
 ];
 
 const alertGridTheme = themeQuartz
@@ -156,6 +160,12 @@ function SymbolCell(params: ICellRendererParams<AlertListItem>) {
   );
 }
 
+function SourceModeCell(params: ICellRendererParams<AlertListItem>) {
+  const alert = dataFrom(params);
+  if (!alert) return null;
+  return <Badge text={displayValue(alert.source_mode)} />;
+}
+
 function SideCell(params: ICellRendererParams<AlertListItem>) {
   const alert = dataFrom(params);
   if (!alert) return null;
@@ -239,12 +249,18 @@ function sortHeaderParameters(
 export function AlertTable({
   items,
   loading,
+  highlightedIds,
   sort,
   order,
   styleNonce,
   onSort,
   onOpenDetail,
 }: AlertTableProps) {
+  const getRowClass = useCallback((params: RowClassParams<AlertListItem>) => {
+    if (params.data && highlightedIds?.has(params.data.id)) return "alert-row-new";
+    return undefined;
+  }, [highlightedIds]);
+
   const DetailCell = useCallback((params: ICellRendererParams<AlertListItem>) => {
     const alert = dataFrom(params);
     if (!alert) return null;
@@ -287,6 +303,13 @@ export function AlertTable({
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("side", sort, order, onSort),
       cellRenderer: SideCell,
+    },
+    {
+      colId: "source_mode",
+      field: "source_mode",
+      headerName: "実行モード",
+      width: 110,
+      cellRenderer: SourceModeCell,
     },
     {
       colId: "judgement",
@@ -364,6 +387,7 @@ export function AlertTable({
         domLayout="normal"
         ensureDomOrder
         getRowId={({ data }) => String(data.id)}
+        getRowClass={getRowClass}
         modules={GRID_MODULES}
         noRowsOverlayComponent={NoAlertsOverlay}
         pagination={false}

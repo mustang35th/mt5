@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { REFRESH_INTERVAL_STORAGE_KEY } from "./lib/refreshSettings";
 
 function jsonResponse(payload: unknown): Response {
   return {
@@ -13,6 +14,7 @@ function jsonResponse(payload: unknown): Response {
 describe("App", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/");
+    window.localStorage.clear();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path === "/api/health") {
@@ -20,8 +22,23 @@ describe("App", () => {
       }
       if (path === "/api/runs") {
         return jsonResponse({
-          count: 2,
+          count: 3,
           items: [
+            {
+              id: 4,
+              run_uid: "run-4",
+              source_mode: "LIVE",
+              program_name: "ZigZagElliot",
+              program_version: "1.21",
+              strategy: "MTF_3in3",
+              strategy_version: "1",
+              analysis_version: "1",
+              started_at_text: "2026.08.01 00:00:00",
+              alert_count: 0,
+              first_alert_time_text: null,
+              last_alert_time_text: null,
+              symbols: null,
+            },
             {
               id: 3,
               run_uid: "run-3",
@@ -61,7 +78,7 @@ describe("App", () => {
       if (path === "/api/alerts/74") {
         return jsonResponse({
           alert: {
-            id: 74, run_id: 3, symbol_name: "AUDUSD", side: "BUY",
+            id: 74, run_id: 4, symbol_name: "AUDUSD", side: "BUY",
             current_bar_time_text: "2026.07.30 19:00:00", alert_title: "AUDUSD alert",
             jst_time_text: "2026.07.31 01:00:00", server_time_text: "2026.07.30 19:00:00",
             reference_price: 1.2, is_stop_loss_available: true, stop_loss: 1.1, risk_pips: 50,
@@ -74,7 +91,7 @@ describe("App", () => {
             long_medium_rank_difference: 0, medium_short_rank_difference: 0,
             market_signal_key: "market-74", alert_text: "", is_w1_aligned: true,
           },
-          run: { id: 3, source_mode: "TESTER", program_version: "1.21", tester_model: "" },
+          run: { id: 4, source_mode: "LIVE", program_version: "1.21", tester_model: "" },
           w1: null,
         });
       }
@@ -89,7 +106,8 @@ describe("App", () => {
           page_count: 1,
           items: [{
             id: 74,
-            run_id: 3,
+            run_id: 4,
+            source_mode: "LIVE",
             jst_time_text: "2026.07.31 01:00:00",
             server_time_text: "2026.07.30 19:00:00",
             symbol_name: "AUDUSD",
@@ -123,20 +141,66 @@ describe("App", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
-  it("selects the latest run with alerts and renders the first result", async () => {
+  it("defaults to all LIVE runs without falling back to a TESTER run", async () => {
     render(<App />);
-    expect(await screen.findByText("接続済み・1件")).toBeInTheDocument();
+    expect(await screen.findByText("接続済み・LIVE 1件")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "従来画面" })).toHaveAttribute("href", "/legacy/");
     expect((await screen.findAllByText("AUDUSD")).length).toBeGreaterThan(0);
     expect(await screen.findByText("一致")).toBeInTheDocument();
     await waitFor(() => {
       const fetchMock = vi.mocked(fetch);
-      expect(fetchMock.mock.calls.some(([path]) => String(path).includes("/api/alerts?runId=3"))).toBe(true);
+      expect(fetchMock.mock.calls.some(([path]) => {
+        const requestedPath = String(path);
+        return requestedPath.startsWith("/api/alerts?sourceMode=LIVE")
+          && !requestedPath.includes("runId=");
+      })).toBe(true);
     });
-    expect(new URLSearchParams(window.location.search).get("runId")).toBe("3");
+    const parameters = new URLSearchParams(window.location.search);
+    expect(parameters.get("sourceMode")).toBe("LIVE");
+    expect(parameters.has("runId")).toBe(false);
+  });
+
+  it("infers TESTER for a legacy URL containing only runId", async () => {
+    window.history.replaceState(null, "", "/?runId=3");
+    render(<App />);
+
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("sourceMode")).toBe("TESTER");
+      expect(parameters.get("runId")).toBe("3");
+    });
+    await waitFor(() => {
+      const fetchMock = vi.mocked(fetch);
+      expect(fetchMock.mock.calls.some(([path]) => {
+        const requestedPath = String(path);
+        return requestedPath.startsWith("/api/alerts?sourceMode=TESTER&runId=3");
+      })).toBe(true);
+    });
+  });
+
+  it("filters Run choices by mode and clears runId when the mode changes", async () => {
+    window.history.replaceState(null, "", "/?sourceMode=TESTER&runId=3");
+    render(<App />);
+
+    const modeSelect = await screen.findByLabelText("実行モード");
+    const runSelect = screen.getByLabelText("実行Run") as HTMLSelectElement;
+    await waitFor(() => expect(runSelect.value).toBe("3"));
+    expect(within(runSelect).getByRole("option", { name: /TESTER｜Run 3/ })).toBeInTheDocument();
+    expect(within(runSelect).queryByRole("option", { name: /LIVE｜Run 4/ })).not.toBeInTheDocument();
+
+    fireEvent.change(modeSelect, { target: { value: "LIVE" } });
+    expect(runSelect.value).toBe("");
+    expect(within(runSelect).getByRole("option", { name: /LIVE｜Run 4/ })).toBeInTheDocument();
+    expect(within(runSelect).queryByRole("option", { name: /TESTER｜Run 3/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
+    const parameters = new URLSearchParams(window.location.search);
+    expect(parameters.get("sourceMode")).toBe("LIVE");
+    expect(parameters.has("runId")).toBe(false);
   });
 
   it("opens an alert detail and restores focus to its trigger after closing", async () => {
@@ -168,5 +232,108 @@ describe("App", () => {
       expect(parameters.get("sort")).toBe("symbol_name");
       expect(parameters.get("order")).toBe("asc");
     });
+  });
+
+  it("persists the selected interval and supports a manual refresh", async () => {
+    render(<App />);
+    expect(await screen.findByText("接続済み・LIVE 1件")).toBeInTheDocument();
+
+    const intervalSelect = screen.getByLabelText("自動更新間隔");
+    fireEvent.change(intervalSelect, { target: { value: "30" } });
+    expect(window.localStorage.getItem(REFRESH_INTERVAL_STORAGE_KEY)).toBe("30");
+    expect(screen.getByText("30秒ごとに自動更新")).toBeInTheDocument();
+
+    const alertCallsBefore = vi.mocked(fetch).mock.calls.filter(
+      ([path]) => String(path).startsWith("/api/alerts?"),
+    ).length;
+    const summaryCallsBefore = vi.mocked(fetch).mock.calls.filter(
+      ([path]) => String(path).startsWith("/api/summary?"),
+    ).length;
+    fireEvent.click(screen.getByRole("button", { name: "今すぐ更新" }));
+    await waitFor(() => {
+      expect(vi.mocked(fetch).mock.calls.filter(
+        ([path]) => String(path).startsWith("/api/alerts?"),
+      )).toHaveLength(alertCallsBefore + 1);
+      expect(vi.mocked(fetch).mock.calls.filter(
+        ([path]) => String(path).startsWith("/api/summary?"),
+      )).toHaveLength(summaryCallsBefore + 1);
+    });
+    expect(screen.queryByText("一覧最終確認 —")).not.toBeInTheDocument();
+  });
+
+  it("refreshes LIVE results on the stored interval without polling TESTER results", async () => {
+    window.localStorage.setItem(REFRESH_INTERVAL_STORAGE_KEY, "5");
+    const scheduledRefreshes: Array<() => void> = [];
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    const timerSpy = vi.spyOn(window, "setTimeout");
+    timerSpy.mockImplementation(((handler: (...args: any[]) => void, timeout?: number) => {
+      if (timeout === 5000 && typeof handler === "function") {
+        scheduledRefreshes.push(handler as () => void);
+        return 9001;
+      }
+      return nativeSetTimeout(handler, timeout);
+    }) as unknown as Parameters<typeof timerSpy.mockImplementation>[0]);
+
+    const liveView = render(<App />);
+    expect(await screen.findByText("接続済み・LIVE 1件")).toBeInTheDocument();
+    await waitFor(() => expect(scheduledRefreshes.length).toBeGreaterThan(0));
+    const alertCallsBefore = vi.mocked(fetch).mock.calls.filter(
+      ([path]) => String(path).startsWith("/api/alerts?"),
+    ).length;
+    await act(async () => {
+      scheduledRefreshes[0]();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(
+      ([path]) => String(path).startsWith("/api/alerts?"),
+    )).toHaveLength(alertCallsBefore + 1));
+
+    liveView.unmount();
+    timerSpy.mockRestore();
+    window.history.replaceState(null, "", "/?sourceMode=TESTER&runId=3");
+    const testerTimers: Array<() => void> = [];
+    const testerTimerSpy = vi.spyOn(window, "setTimeout");
+    testerTimerSpy.mockImplementation(((handler: (...args: any[]) => void, timeout?: number) => {
+      if (timeout === 5000 && typeof handler === "function") {
+        testerTimers.push(handler as () => void);
+        return 9002;
+      }
+      return nativeSetTimeout(handler, timeout);
+    }) as unknown as Parameters<typeof testerTimerSpy.mockImplementation>[0]);
+    render(<App />);
+    expect(await screen.findByText("接続済み・TESTER 1件")).toBeInTheDocument();
+    expect(screen.getByText("LIVE表示中のみ自動更新")).toBeInTheDocument();
+    expect(testerTimers).toHaveLength(0);
+  });
+
+  it("pauses while hidden and refreshes immediately when the tab becomes visible", async () => {
+    window.localStorage.setItem(REFRESH_INTERVAL_STORAGE_KEY, "5");
+    let visibilityState: DocumentVisibilityState = "hidden";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibilityState);
+    const scheduledRefreshes: Array<() => void> = [];
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    const timerSpy = vi.spyOn(window, "setTimeout");
+    timerSpy.mockImplementation(((handler: (...args: any[]) => void, timeout?: number) => {
+      if (timeout === 5000 && typeof handler === "function") {
+        scheduledRefreshes.push(handler as () => void);
+        return 9003;
+      }
+      return nativeSetTimeout(handler, timeout);
+    }) as unknown as Parameters<typeof timerSpy.mockImplementation>[0]);
+
+    render(<App />);
+    expect(await screen.findByText("接続済み・LIVE 1件")).toBeInTheDocument();
+    expect(screen.getByText("タブ非表示中は停止")).toBeInTheDocument();
+    expect(scheduledRefreshes).toHaveLength(0);
+    const alertCallsBefore = vi.mocked(fetch).mock.calls.filter(
+      ([path]) => String(path).startsWith("/api/alerts?"),
+    ).length;
+
+    visibilityState = "visible";
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(
+      ([path]) => String(path).startsWith("/api/alerts?"),
+    )).toHaveLength(alertCallsBefore + 1));
+    expect(scheduledRefreshes.length).toBeGreaterThan(0);
   });
 });

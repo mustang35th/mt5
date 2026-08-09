@@ -7,6 +7,7 @@ function alertWithAlignment(id: number, aligned: boolean | null): AlertListItem 
   return {
     id,
     run_id: 3,
+    source_mode: "LIVE",
     jst_time_text: "2026.07.31 01:00:00",
     server_time_text: "2026.07.30 19:00:00",
     symbol_name: "AUDUSD",
@@ -39,6 +40,7 @@ describe("AlertTable", () => {
       <AlertTable
         items={[alertWithAlignment(1, true), alertWithAlignment(2, false), alertWithAlignment(3, null)]}
         loading={false}
+        highlightedIds={new Set([2])}
         sort="jst_time"
         order="desc"
         onSort={vi.fn()}
@@ -48,8 +50,10 @@ describe("AlertTable", () => {
     expect(await screen.findByText("一致")).toBeInTheDocument();
     expect(screen.getByText("不一致")).toBeInTheDocument();
     expect(screen.getByText("不明")).toBeInTheDocument();
+    expect(screen.getAllByText("LIVE")).toHaveLength(3);
     expect(screen.getAllByText("test <img onerror=alert(1)>")).toHaveLength(3);
     expect(document.querySelector("img")).toBeNull();
+    await waitFor(() => expect(document.querySelector('.ag-row[row-id="2"]')).toHaveClass("alert-row-new"));
     const detailButton = screen.getAllByRole("button", { name: "AUDUSD BUY 2026.07.31 01:00:00 の詳細を表示" })[0];
     fireEvent.click(detailButton);
     expect(onOpenDetail).toHaveBeenCalledWith(1, detailButton);

@@ -1,4 +1,5 @@
 export type AlertSide = "BUY" | "SELL";
+export type SourceMode = "LIVE" | "TESTER" | "all";
 export type W1Alignment = "all" | "aligned" | "mismatched" | "unknown";
 export type SortOrder = "asc" | "desc";
 export type AlertSort =
@@ -11,6 +12,7 @@ export type AlertSort =
   | "entry_result";
 
 export interface SearchState {
+  sourceMode: SourceMode;
   runId: number | null;
   q: string;
   symbol: string;
@@ -64,6 +66,7 @@ export interface OptionsResponse {
 export interface AlertListItem {
   id: number;
   run_id: number;
+  source_mode: string;
   jst_time_text: string;
   server_time_text: string;
   symbol_name: string;
