@@ -25,7 +25,11 @@ const EMPTY_OPTIONS: OptionsResponse = {
   entry_results: [],
 };
 
-export default function App() {
+interface AppProps {
+  styleNonce?: string;
+}
+
+export default function App({ styleNonce }: AppProps) {
   const initialSearch = useMemo(() => readSearchState(window.location.search), []);
   const hasInitialRunParameter = useMemo(
     () => new URLSearchParams(window.location.search).has("runId"),
@@ -114,10 +118,10 @@ export default function App() {
     commitSearch({ ...DEFAULT_SEARCH_STATE, runId: latestWithAlerts?.id ?? null });
   }
 
-  function changeSort(sort: AlertSort) {
+  const changeSort = useCallback((sort: AlertSort) => {
     const order = draft.sort === sort && draft.order === "desc" ? "asc" : "desc";
     commitSearch({ ...draft, sort, order, page: 1 });
-  }
+  }, [commitSearch, draft]);
 
   function changePage(page: number) {
     commitSearch({ ...draft, page });
@@ -128,18 +132,18 @@ export default function App() {
     window.location.assign(`/api/export.csv?${params}`);
   }
 
-  function openDetail(alertId: number, fromTrigger: HTMLButtonElement) {
+  const openDetail = useCallback((alertId: number, fromTrigger: HTMLButtonElement) => {
     detailTriggerRef.current = fromTrigger;
     setSelectedAlertId(alertId);
-  }
+  }, []);
 
-  function closeDetail() {
+  const closeDetail = useCallback(() => {
     const trigger = detailTriggerRef.current;
     setSelectedAlertId(null);
     window.requestAnimationFrame(() => {
       if (trigger?.isConnected && !trigger.disabled) trigger.focus();
     });
-  }
+  }, []);
 
   const total = alerts?.total || 0;
   const page = alerts?.page || applied.page;
@@ -192,8 +196,10 @@ export default function App() {
             <>
               <AlertTable
                 items={alerts.items}
+                loading={loading}
                 sort={applied.sort}
                 order={applied.order}
+                styleNonce={styleNonce}
                 onSort={changeSort}
                 onOpenDetail={openDetail}
               />

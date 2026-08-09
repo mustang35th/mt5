@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import io
 import json
 import os
+import secrets
 import sys
 import threading
 import webbrowser
@@ -41,6 +43,7 @@ DEFAULT_DATABASE_NAME = "mstng-zigzag-elliot-alert.sqlite"
 MAX_PAGE_SIZE = 200
 MAX_SEARCH_LENGTH = 200
 W1_TIME_FRAME = 32769
+REACT_CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
 
 STATIC_CONTENT_TYPES = {
     "/legacy": ("index.html", "text/html; charset=utf-8"),
@@ -998,6 +1001,7 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             raise RequestError("static file was not found", HTTPStatus.NOT_FOUND) from error
         if not file_path.is_file():
             raise RequestError("static file was not found", HTTPStatus.NOT_FOUND)
+        style_nonce: str | None = None
         if relative_path == "index.html":
             content_type = "text/html; charset=utf-8"
         else:
@@ -1007,8 +1011,19 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             if content_type is None:
                 raise RequestError("static file was not found", HTTPStatus.NOT_FOUND)
         payload = file_path.read_bytes()
+        if relative_path == "index.html":
+            html = payload.decode("utf-8")
+            if REACT_CSP_NONCE_PLACEHOLDER not in html:
+                raise RequestError(
+                    "generated React index does not contain the CSP nonce placeholder",
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            style_nonce = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
+            payload = html.replace(REACT_CSP_NONCE_PLACEHOLDER, style_nonce).encode(
+                "utf-8"
+            )
         self.send_response(HTTPStatus.OK)
-        self.send_common_headers(content_type, len(payload))
+        self.send_common_headers(content_type, len(payload), style_nonce)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -1037,7 +1052,12 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def send_common_headers(self, content_type: str, length: int) -> None:
+    def send_common_headers(
+        self,
+        content_type: str,
+        length: int,
+        style_nonce: str | None = None,
+    ) -> None:
         """Send local-viewer security and cache headers."""
 
         self.send_header("Content-Type", content_type)
@@ -1046,11 +1066,18 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header(
-            "Content-Security-Policy",
+        content_security_policy = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
         )
+        if style_nonce is not None:
+            content_security_policy = (
+                "default-src 'self'; script-src 'self'; style-src 'self'; "
+                f"style-src-elem 'self' 'nonce-{style_nonce}'; "
+                "style-src-attr 'unsafe-inline'; img-src 'self' data:; "
+                "connect-src 'self'; frame-ancestors 'none'"
+            )
+        self.send_header("Content-Security-Policy", content_security_policy)
 
     def log_message(self, message_format: str, *args: Any) -> None:
         """Write compact local access logs."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import http.client
 import json
 import re
@@ -78,6 +79,33 @@ class ViewerRouteTest(unittest.TestCase):
         self.assertEqual("nosniff", headers.get("x-content-type-options"))
         self.assertIn("default-src 'self'", headers.get("content-security-policy", ""))
 
+    def assert_react_nonce(
+        self,
+        headers: dict[str, str],
+        payload: bytes,
+    ) -> str:
+        """Verify one request-scoped nonce across HTML and its CSP header."""
+
+        html = payload.decode("utf-8")
+        self.assertNotIn("__CSP_NONCE__", html)
+        nonce_match = re.search(
+            r'<meta property="csp-nonce" nonce="([A-Za-z0-9+/=]+)">',
+            html,
+        )
+        self.assertIsNotNone(nonce_match)
+        assert nonce_match is not None
+        nonce = nonce_match.group(1)
+        self.assertEqual(16, len(base64.b64decode(nonce, validate=True)))
+        nonce_values = re.findall(r' nonce="([A-Za-z0-9+/=]+)"', html)
+        self.assertGreaterEqual(len(nonce_values), 3)
+        self.assertTrue(all(value == nonce for value in nonce_values))
+        content_security_policy = headers.get("content-security-policy", "")
+        self.assertIn(f"style-src-elem 'self' 'nonce-{nonce}'", content_security_policy)
+        self.assertIn("style-src-attr 'unsafe-inline'", content_security_policy)
+        self.assertNotIn("script-src 'unsafe-inline'", content_security_policy)
+        self.assertNotIn("script-src 'unsafe-eval'", content_security_policy)
+        return nonce
+
     def test_react_is_standard_and_compatibility_view(self) -> None:
         """Serve the same React build from root and the existing React aliases."""
 
@@ -97,6 +125,16 @@ class ViewerRouteTest(unittest.TestCase):
                 self.assertIn('<div id="root"></div>', html)
                 self.assertNotIn('id="filterForm"', html)
                 self.assert_security_headers(headers)
+                self.assert_react_nonce(headers, payload)
+
+        first_status, first_headers, first_payload = self.get("/")
+        second_status, second_headers, second_payload = self.get("/")
+        self.assertEqual(200, first_status)
+        self.assertEqual(200, second_status)
+        self.assertNotEqual(
+            self.assert_react_nonce(first_headers, first_payload),
+            self.assert_react_nonce(second_headers, second_payload),
+        )
 
     def test_legacy_view_remains_available(self) -> None:
         """Keep the previous interface as an immediate operational fallback."""
@@ -116,6 +154,11 @@ class ViewerRouteTest(unittest.TestCase):
                 self.assertIn('<script src="/app.js" defer></script>', html)
                 self.assertIn('href="/">React版へ戻る</a>', html)
                 self.assert_security_headers(headers)
+                self.assertNotIn('property="csp-nonce"', html)
+                self.assertNotIn(
+                    "style-src-attr 'unsafe-inline'",
+                    headers.get("content-security-policy", ""),
+                )
 
     def test_generated_asset_and_shared_legacy_assets_are_served(self) -> None:
         """Resolve the hashed React asset while preserving shared legacy files."""

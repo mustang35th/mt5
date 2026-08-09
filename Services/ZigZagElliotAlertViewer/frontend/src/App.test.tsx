@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -148,5 +148,25 @@ describe("App", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent(dialog, new Event("cancel", { bubbles: false, cancelable: true }));
     await waitFor(() => expect(detailButton).toHaveFocus());
+  });
+
+  it("uses a grid header to request whole-result server sorting", async () => {
+    render(<App />);
+    const firstHeader = await screen.findByRole("columnheader", { name: "通貨" });
+    fireEvent.click(within(firstHeader).getByRole("button", { name: "通貨" }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("sort")).toBe("symbol_name");
+      expect(parameters.get("order")).toBe("desc");
+      expect(parameters.get("page")).toBe("1");
+    });
+
+    const secondHeader = screen.getByRole("columnheader", { name: /通貨/ });
+    fireEvent.click(within(secondHeader).getByRole("button", { name: /通貨/ }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("sort")).toBe("symbol_name");
+      expect(parameters.get("order")).toBe("asc");
+    });
   });
 });

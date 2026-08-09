@@ -3,6 +3,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   base: "/react/",
+  html: {
+    cspNonce: "__CSP_NONCE__",
+  },
   plugins: [react()],
   build: {
     emptyOutDir: true,
