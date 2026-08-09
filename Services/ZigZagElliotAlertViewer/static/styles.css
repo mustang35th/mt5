@@ -40,10 +40,13 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
   margin: 0 auto;
   padding: 34px 28px 24px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 24px;
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: clamp(18px, 2.5vw, 40px);
 }
+
+.app-brand { min-width: 0; flex: 0 1 auto; }
 
 h1, h2, h3, p { margin-top: 0; }
 h1 { margin-bottom: 8px; font-size: clamp(1.65rem, 3vw, 2.7rem); letter-spacing: -0.04em; }
@@ -148,14 +151,22 @@ main { max-width: 1920px; margin: 0 auto; padding: 0 28px 48px; }
   margin-bottom: 18px;
 }
 
-.results-heading { align-items: flex-start; padding: 20px 20px 0; }
+.results-heading { align-items: center; margin-bottom: 0; padding: 10px 12px 4px; }
+
+.results-title-line {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.results-title-line .eyebrow { margin-bottom: 0; }
+.results-title-line .result-status { font-size: 0.72rem; white-space: nowrap; }
 
 .results-tools {
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  align-items: center;
 }
 
 .refresh-controls {
@@ -316,16 +327,23 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .grid-view { min-width: 0; }
 .grid-controls {
   display: flex;
-  min-height: 42px;
-  padding: 0 16px 10px;
+  min-height: 30px;
+  padding: 0 10px 2px;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 .grid-controls-label {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 700;
+}
+.grid-controls .MuiButton-root,
+.grid-controls .MuiToggleButton-root {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  line-height: 1.2;
 }
 
 .alert-grid {
@@ -342,6 +360,17 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 }
 .alert-grid .ag-header-cell,
 .alert-grid .ag-cell { border-color: var(--line-soft); }
+.alert-grid .ag-header-cell {
+  padding-right: 4px;
+  padding-left: 4px;
+  line-height: 1.1;
+}
+.alert-grid .ag-header-cell-label { gap: 2px; }
+.alert-grid .ag-header-cell-text { white-space: nowrap; }
+.alert-grid.density-compact .ag-header-cell {
+  padding-right: 3px;
+  padding-left: 3px;
+}
 .alert-grid .ag-cell {
   display: flex;
   align-items: center;
@@ -382,14 +411,16 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
   width: 100%;
   height: 100%;
   align-items: center;
-  gap: 5px;
+  gap: 2px;
   border: 0;
   padding: 0;
   color: inherit;
   background: transparent;
   font: inherit;
   font-weight: 700;
+  line-height: 1.1;
   text-align: left;
+  white-space: nowrap;
 }
 .server-sort-header.active { color: var(--accent); }
 .grid-empty-state { padding: 36px 20px; }
@@ -514,7 +545,7 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
 @media (max-width: 760px) {
-  .app-header { padding: 24px 16px 18px; align-items: flex-start; flex-direction: column; }
+  .app-header { padding: 24px 16px 18px; align-items: flex-start; flex-direction: column; gap: 10px; }
   .header-actions { width: 100%; flex-wrap: wrap; }
   main { padding: 0 12px 32px; }
   .filter-grid { grid-template-columns: 1fr 1fr; }

@@ -402,7 +402,7 @@ export default function App({ styleNonce }: AppProps) {
   return (
     <>
       <header className="app-header">
-        <div>
+        <div className="app-brand">
           <p className="eyebrow">ELLIOTT SIGNAL ARCHIVE</p>
           <h1>ZigZagElliot Alert Viewer</h1>
           <p className="subtitle">アラート時点の波動構造を、Run単位で検索・比較します。</p>
@@ -431,9 +431,10 @@ export default function App({ styleNonce }: AppProps) {
         <SummaryCards summary={summary} />
         <section className="results-panel" aria-labelledby="reactResultsTitle">
           <div className="section-heading results-heading">
-            <div>
+            <div className="results-title-line">
               <p className="eyebrow">SNAPSHOTS</p>
               <h2 id="reactResultsTitle">アラート一覧</h2>
+              <p className="result-status" role="status" aria-live="polite">{resultStatus}</p>
             </div>
             <div className="results-tools">
               <RefreshControls
@@ -444,7 +445,6 @@ export default function App({ styleNonce }: AppProps) {
                 onIntervalChange={changeRefreshInterval}
                 onRefresh={() => requestRefresh("manual")}
               />
-              <p className="result-status" role="status" aria-live="polite">{resultStatus}</p>
             </div>
           </div>
           {alerts ? (

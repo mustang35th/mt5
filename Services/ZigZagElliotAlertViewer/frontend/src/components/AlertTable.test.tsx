@@ -90,6 +90,7 @@ describe("AlertTable", () => {
     const dateHeader = await screen.findByRole("columnheader", { name: /JST日時/ });
     expect(view.container.querySelector(".ag-layout-normal")).toBeInTheDocument();
     expect(view.container.querySelector(".ag-layout-auto-height")).toBeNull();
+    expect(view.container.querySelector(".ag-header")).toHaveStyle({ height: "33px" });
     expect(dateHeader).toHaveAttribute("aria-sort", "descending");
     const symbolHeader = screen.getByRole("columnheader", { name: "通貨" });
     fireEvent.click(within(symbolHeader).getByRole("button", { name: "通貨" }));
@@ -127,6 +128,7 @@ describe("AlertTable", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "コンパクト表示" }));
     expect(firstView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
+    expect(firstView.container.querySelector(".ag-header")).toHaveStyle({ height: "29px" });
     expect(localStorage.getItem(GRID_DENSITY_STORAGE_KEY)).toBe("compact");
 
     fireEvent.click(screen.getByRole("button", { name: "表示列" }));

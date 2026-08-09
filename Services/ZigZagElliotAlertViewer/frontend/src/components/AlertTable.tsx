@@ -442,6 +442,9 @@ export function AlertTable({
     }))
   ), [visibleColumns]);
 
+  let gridHeaderHeight = density === "compact" ? 28 : 32;
+  if (!wideGridLayout) gridHeaderHeight += 8;
+
   const getRowClass = useCallback((params: RowClassParams<AlertListItem>) => {
     if (params.data && highlightedIds?.has(params.data.id)) return "alert-row-new";
     return undefined;
@@ -599,7 +602,7 @@ export function AlertTable({
           ensureDomOrder
           getRowId={({ data }) => String(data.id)}
           getRowClass={getRowClass}
-          headerHeight={density === "compact" ? 42 : 48}
+          headerHeight={gridHeaderHeight}
           maintainColumnOrder
           modules={GRID_MODULES}
           noRowsOverlayComponent={NoAlertsOverlay}
