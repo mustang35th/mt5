@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.21"
+#property version   "1.22"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -22,7 +22,7 @@ input bool mailValidationFileEnabled = false;
 input bool mtf3In3AlertCsvEnabled = true;
 
 /** MTF_3in3アラートをデータベースへ保存する場合true。 */
-input bool mtf3In3AlertDatabaseEnabled = false;
+input bool mtf3In3AlertDatabaseEnabled = true;
 
 /** MTF_3in3アラートデータベースファイル名。 */
 input string mtf3In3AlertDatabaseFileName =
