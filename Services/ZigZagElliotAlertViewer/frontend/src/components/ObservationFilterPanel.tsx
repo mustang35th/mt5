@@ -9,6 +9,7 @@ import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMemo, type FormEvent } from "react";
 import type {
   ObservationOptionsResponse,
@@ -24,6 +25,8 @@ interface ObservationFilterPanelProps {
   options: ObservationOptionsResponse;
   busy: boolean;
   expanded: boolean;
+  sidebar?: boolean;
+  showCollapsedSummary?: boolean;
   onChange: (value: ObservationSearchState) => void;
   onExpandedChange: (expanded: boolean) => void;
   onSubmit: () => void;
@@ -42,7 +45,7 @@ function runLabel(run: RunItem): string {
   return `${run.source_mode}｜Run ${run.id}｜${symbols}｜${run.observation_count || 0}件｜${range}`;
 }
 
-function summary(value: ObservationSearchState): string {
+export function observationFilterSummary(value: ObservationSearchState): string {
   const mode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
   const symbol = value.symbol || "全通貨";
@@ -52,6 +55,18 @@ function summary(value: ObservationSearchState): string {
   return `${mode} / ${run} / ${symbol} / ${period}`;
 }
 
+export function hasObservationUnappliedChanges(
+  value: ObservationSearchState,
+  appliedValue: ObservationSearchState,
+): boolean {
+  return value.sourceMode !== appliedValue.sourceMode
+    || value.runId !== appliedValue.runId
+    || value.symbol !== appliedValue.symbol
+    || value.from !== appliedValue.from
+    || value.to !== appliedValue.to
+    || value.pageSize !== appliedValue.pageSize;
+}
+
 export function ObservationFilterPanel({
   value,
   appliedValue,
@@ -59,21 +74,20 @@ export function ObservationFilterPanel({
   options,
   busy,
   expanded,
+  sidebar = false,
+  showCollapsedSummary = true,
   onChange,
   onExpandedChange,
   onSubmit,
   onReset,
 }: ObservationFilterPanelProps) {
+  const desktopSidebar = useMediaQuery("(min-width: 1280px)");
+  const sidebarLayout = sidebar && desktopSidebar;
   const visibleRuns = useMemo(
     () => runs.filter((run) => isRunVisible(run, value.sourceMode)),
     [runs, value.sourceMode],
   );
-  const changed = value.sourceMode !== appliedValue.sourceMode
-    || value.runId !== appliedValue.runId
-    || value.symbol !== appliedValue.symbol
-    || value.from !== appliedValue.from
-    || value.to !== appliedValue.to
-    || value.pageSize !== appliedValue.pageSize;
+  const changed = hasObservationUnappliedChanges(value, appliedValue);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -82,12 +96,13 @@ export function ObservationFilterPanel({
 
   return (
     <Paper
+      className={`observation-filter-panel${sidebarLayout ? " sidebar-layout" : ""}${expanded ? "" : " collapsed"}`}
       component="section"
       aria-labelledby="observationFilterTitle"
       aria-busy={busy}
       elevation={0}
       sx={{
-        mb: 1.25,
+        mb: sidebarLayout ? 0 : 1.25,
         p: expanded ? 2 : 1.5,
         border: 1,
         borderColor: "divider",
@@ -95,35 +110,41 @@ export function ObservationFilterPanel({
         bgcolor: "rgba(15, 26, 34, 0.92)",
       }}
     >
-      <Stack direction={{ xs: "column", sm: "row" }} sx={{ justifyContent: "space-between", gap: 1.5 }}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ color: "primary.main", fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.2em" }}>
+      <Stack
+        className="observation-filter-heading"
+        direction={sidebarLayout ? "column" : { xs: "column", sm: "row" }}
+        sx={{ justifyContent: "space-between", gap: 1.5 }}
+      >
+        <Box className="observation-filter-heading-content" sx={{ minWidth: 0 }}>
+          <Typography className="observation-filter-eyebrow" sx={{ color: "primary.main", fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.2em" }}>
             H1 OBSERVATION SEARCH
           </Typography>
           <Typography id="observationFilterTitle" variant="h6" sx={{ fontSize: "1.15rem", fontWeight: 700 }}>
             H1推移検索
           </Typography>
-          {!expanded && (
-            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1, mt: 0.5, alignItems: "center" }}>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{summary(appliedValue)}</Typography>
+          {!expanded && showCollapsedSummary && (
+            <Stack className="filter-collapsed-summary observation-filter-collapsed-summary" direction="row" sx={{ flexWrap: "wrap", gap: 1, mt: 0.5, alignItems: "center" }}>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{observationFilterSummary(appliedValue)}</Typography>
               {changed && <Typography sx={{ color: "warning.main", fontSize: "0.68rem" }}>未検索の変更あり</Typography>}
             </Stack>
           )}
         </Box>
-        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1, alignItems: "center" }}>
-          <Button color="inherit" size="small" variant="outlined" onClick={onReset}>
+        <Stack className="observation-filter-heading-actions" direction="row" sx={{ flexWrap: "wrap", gap: 1, alignItems: "center" }}>
+          <Button className="observation-filter-reset" color="inherit" size="small" variant="outlined" hidden={!expanded} onClick={onReset}>
             条件をリセット
           </Button>
           <Button
+            className="observation-filter-toggle"
             aria-controls="observationFilterFields"
             aria-expanded={expanded}
+            aria-label={expanded ? "検索条件を閉じる" : "検索条件を開く"}
             color="inherit"
             endIcon={<span aria-hidden style={{ fontSize: "0.7rem" }}>{expanded ? "▴" : "▾"}</span>}
             size="small"
             variant="outlined"
             onClick={() => onExpandedChange(!expanded)}
           >
-            {expanded ? "検索条件を閉じる" : "検索条件を開く"}
+            {expanded ? "閉じる" : "開く"}
           </Button>
         </Stack>
       </Stack>
@@ -133,14 +154,16 @@ export function ObservationFilterPanel({
           <Box sx={{
             mt: 2,
             display: "grid",
-            gridTemplateColumns: {
-              xs: "repeat(2, minmax(0, 1fr))",
-              md: "repeat(4, minmax(130px, 1fr))",
-              xl: "1fr 2fr repeat(5, minmax(130px, 1fr)) auto",
-            },
+            gridTemplateColumns: sidebarLayout
+              ? "repeat(2, minmax(0, 1fr))"
+              : {
+                xs: "repeat(2, minmax(0, 1fr))",
+                md: "repeat(4, minmax(130px, 1fr))",
+                xl: "1fr 2fr repeat(5, minmax(130px, 1fr)) auto",
+              },
             gap: 1.5,
             alignItems: "end",
-          }}>
+          }} className="observation-filter-grid">
           <FormControl size="small">
             <InputLabel id="observationSourceModeLabel">実行モード</InputLabel>
             <Select
@@ -159,7 +182,15 @@ export function ObservationFilterPanel({
               <MenuItem value="all">LIVE＋TESTER</MenuItem>
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ gridColumn: { xs: "span 2", md: "span 2", xl: "auto" } }}>
+          <FormControl
+            className="observation-filter-run-field"
+            size="small"
+            sx={{
+              gridColumn: sidebarLayout
+                ? "1 / -1"
+                : { xs: "span 2", md: "span 2", xl: "auto" },
+            }}
+          >
             <InputLabel id="observationRunLabel">Run</InputLabel>
             <Select
               labelId="observationRunLabel"
@@ -217,8 +248,21 @@ export function ObservationFilterPanel({
               <MenuItem value="100">100件</MenuItem>
             </Select>
           </FormControl>
-          <Button disabled={busy} type="submit" variant="contained" sx={{ minHeight: 40 }}>
-            検索する
+          <Button
+            disabled={busy}
+            type="submit"
+            variant="contained"
+            sx={{
+              minHeight: 40,
+              ...(sidebarLayout ? {
+                position: "sticky",
+                bottom: 0,
+                zIndex: 1,
+                gridColumn: "1 / -1",
+              } : {}),
+            }}
+          >
+            検索
           </Button>
           </Box>
         </form>

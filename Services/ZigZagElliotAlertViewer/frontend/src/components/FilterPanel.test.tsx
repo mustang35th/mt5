@@ -62,20 +62,24 @@ describe("FilterPanel", () => {
     fireEvent.mouseDown(timeFrameSelect);
     fireEvent.click(screen.getByRole("option", { name: "M5" }));
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    closeButton.focus();
     fireEvent.click(closeButton);
 
     const openButton = screen.getByRole("button", { name: "検索条件を開く" });
+    expect(openButton).toHaveFocus();
     expect(openButton).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "条件をリセット" })).not.toBeInTheDocument();
     expect(fields).toHaveAttribute("hidden");
     expect(fields).not.toBeVisible();
     expect(screen.getByText("LIVE / 全Run / 全通貨 / 全時間足 / BUY＋SELL")).toBeInTheDocument();
     expect(screen.getByText("未検索の変更あり")).toBeInTheDocument();
 
     fireEvent.click(openButton);
+    expect(screen.getByRole("button", { name: "条件をリセット" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("波動ラベル、タイトル、シグナルキー"))
       .toHaveValue("wave 3");
     expect(timeFrameSelect).toHaveTextContent("H1・M5");
-    fireEvent.click(screen.getByRole("button", { name: "検索する" }));
+    fireEvent.click(screen.getByRole("button", { name: "検索" }));
     fireEvent.click(screen.getByRole("button", { name: "検索条件を閉じる" }));
     expect(screen.queryByText("未検索の変更あり")).not.toBeInTheDocument();
     expect(screen.getByText("LIVE / 全Run / 全通貨 / H1・M5 / BUY＋SELL / 絞り込み 1項目"))

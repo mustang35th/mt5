@@ -4,6 +4,7 @@ import { formatInteger } from "../lib/format";
 interface SummaryCardsProps {
   summary: SummaryResponse | null;
   staleReason?: "loading" | "error" | null;
+  compact?: boolean;
 }
 
 const PERCENT_FORMATTER = new Intl.NumberFormat("ja-JP", {
@@ -32,13 +33,13 @@ function Metric({
   );
 }
 
-export function SummaryCards({ summary, staleReason = null }: SummaryCardsProps) {
+export function SummaryCards({ summary, staleReason = null, compact = false }: SummaryCardsProps) {
   const knownW1Count = summary
     ? summary.w1_aligned_count + summary.w1_mismatched_count
     : 0;
   return (
     <section
-      className="react-summary-strip"
+      className={`react-summary-strip${compact ? " compact" : ""}`}
       aria-busy={staleReason === "loading" || undefined}
       aria-label="検索結果集計"
     >

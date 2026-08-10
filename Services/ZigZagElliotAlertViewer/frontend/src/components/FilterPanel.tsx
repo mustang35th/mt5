@@ -13,6 +13,7 @@ interface FilterPanelProps {
   options: OptionsResponse;
   busy: boolean;
   expanded: boolean;
+  showCollapsedSummary?: boolean;
   onChange: (value: SearchState) => void;
   onExpandedChange: (expanded: boolean) => void;
   onSubmit: () => void;
@@ -37,7 +38,7 @@ const SEARCH_VALUE_KEYS: ReadonlyArray<keyof SearchState> = [
   "pageSize",
 ];
 
-function hasUnappliedChanges(value: SearchState, appliedValue: SearchState): boolean {
+export function hasAlertUnappliedChanges(value: SearchState, appliedValue: SearchState): boolean {
   const valueTimeFrames = new Set(value.timeFrames);
   const appliedTimeFrames = new Set(appliedValue.timeFrames);
   return SEARCH_VALUE_KEYS.some((key) => value[key] !== appliedValue[key])
@@ -51,7 +52,7 @@ function timeFrameSummary(timeFrames: string[], emptyLabel: string): string {
   return `${timeFrames.slice(0, 2).join("・")}＋${timeFrames.length - 2}`;
 }
 
-function appliedFilterSummary(value: SearchState): string {
+export function alertFilterSummary(value: SearchState): string {
   const sourceMode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
   const symbol = value.symbol || "全通貨";
@@ -78,6 +79,7 @@ export function FilterPanel({
   options,
   busy,
   expanded,
+  showCollapsedSummary = true,
   onChange,
   onExpandedChange,
   onSubmit,
@@ -129,15 +131,15 @@ export function FilterPanel({
         <div className="filter-heading-content">
           <p className="eyebrow">SEARCH</p>
           <h2 id="reactFilterTitle">アラート検索</h2>
-          {!expanded && (
+          {!expanded && showCollapsedSummary && (
             <p className="filter-collapsed-summary">
-              <span>{appliedFilterSummary(appliedValue)}</span>
-              {hasUnappliedChanges(value, appliedValue) && <strong>未検索の変更あり</strong>}
+              <span>{alertFilterSummary(appliedValue)}</span>
+              {hasAlertUnappliedChanges(value, appliedValue) && <strong>未検索の変更あり</strong>}
             </p>
           )}
         </div>
         <div className="filter-heading-actions">
-          <button className="ghost-button" type="button" onClick={onReset}>
+          <button className="ghost-button" type="button" hidden={!expanded} onClick={onReset}>
             条件をリセット
           </button>
           <button
@@ -145,9 +147,10 @@ export function FilterPanel({
             type="button"
             aria-controls="reactFilterFields"
             aria-expanded={expanded}
+            aria-label={expanded ? "検索条件を閉じる" : "検索条件を開く"}
             onClick={() => onExpandedChange(!expanded)}
           >
-            <span>{expanded ? "検索条件を閉じる" : "検索条件を開く"}</span>
+            <span>{expanded ? "閉じる" : "開く"}</span>
             <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
           </button>
         </div>
@@ -316,7 +319,7 @@ export function FilterPanel({
           </select>
         </label>
         <div className="filter-actions">
-          <button className="primary-button" type="submit">検索する</button>
+          <button className="primary-button" type="submit">検索</button>
           <button className="secondary-button" type="button" onClick={onExport}>CSV出力</button>
         </div>
         </form>

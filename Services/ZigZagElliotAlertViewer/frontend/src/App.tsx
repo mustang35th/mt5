@@ -17,7 +17,12 @@ import type {
 } from "./api/types";
 import { AlertDetailDrawer } from "./components/AlertDetailDrawer";
 import { AlertTable } from "./components/AlertTable";
-import { FilterPanel } from "./components/FilterPanel";
+import { AppliedConditionSummary } from "./components/AppliedConditionSummary";
+import {
+  alertFilterSummary,
+  FilterPanel,
+  hasAlertUnappliedChanges,
+} from "./components/FilterPanel";
 import { H1ObservationView } from "./components/H1ObservationView";
 import { Pagination } from "./components/Pagination";
 import { RefreshControls } from "./components/RefreshControls";
@@ -493,67 +498,83 @@ export default function App({ styleNonce }: AppProps) {
             id="viewer-tabpanel-alerts"
             aria-labelledby="viewer-tab-alerts"
           >
-            <FilterPanel
-              value={draft}
-              appliedValue={applied}
-              runs={runs.items}
-              options={options}
-              busy={loading}
-              expanded={alertFilterExpanded}
-              onChange={setDraft}
-              onExpandedChange={setAlertFilterExpanded}
-              onSubmit={submitSearch}
-              onReset={resetSearch}
-              onExport={exportCsv}
-            />
-            <SummaryCards
-              summary={summary}
-              staleReason={loading ? "loading" : loadError ? "error" : null}
-            />
-            <section className="results-panel" aria-labelledby="reactResultsTitle">
-          <div className="section-heading results-heading">
-            <div className="results-title-line">
-              <p className="eyebrow">SNAPSHOTS</p>
-              <h2 id="reactResultsTitle">アラート一覧</h2>
-              <p className="result-status" role="status" aria-live="polite">{resultStatus}</p>
-            </div>
-            <div className="results-tools">
-              <RefreshControls
-                intervalSeconds={refreshIntervalSeconds}
-                statusText={refreshStatus}
-                lastCheckedText={formatCheckedTime(lastCheckedAt)}
-                busy={loading || refreshing}
-                onIntervalChange={changeRefreshInterval}
-                onRefresh={() => requestRefresh("manual")}
-              />
-            </div>
-          </div>
-          {alerts ? (
-            <>
-              {pendingNewAlertCount > 0 && (
-                <div className="new-alert-banner" role="status" aria-live="polite">
-                  <span>新しいアラートが{formatInteger(pendingNewAlertCount)}件あります。</span>
-                  <button className="secondary-button" type="button" onClick={showLatestAlerts}>
-                    最新を表示
-                  </button>
+            <div className={`viewer-workspace${alertFilterExpanded ? "" : " filter-sidebar-collapsed"}`}>
+              <aside className="viewer-filter-sidebar" aria-label="アラート検索条件">
+                <FilterPanel
+                  value={draft}
+                  appliedValue={applied}
+                  runs={runs.items}
+                  options={options}
+                  busy={loading}
+                  expanded={alertFilterExpanded}
+                  showCollapsedSummary={false}
+                  onChange={setDraft}
+                  onExpandedChange={setAlertFilterExpanded}
+                  onSubmit={submitSearch}
+                  onReset={resetSearch}
+                  onExport={exportCsv}
+                />
+              </aside>
+              <div className="viewer-results-column">
+                <div className={`viewer-summary-bar${alertFilterExpanded ? "" : " collapsed"}`}>
+                  {!alertFilterExpanded && (
+                    <AppliedConditionSummary
+                      summary={alertFilterSummary(applied)}
+                      hasUnappliedChanges={hasAlertUnappliedChanges(draft, applied)}
+                    />
+                  )}
+                  <SummaryCards
+                    summary={summary}
+                    staleReason={loading ? "loading" : loadError ? "error" : null}
+                    compact={!alertFilterExpanded}
+                  />
                 </div>
-              )}
-              <AlertTable
-                items={alerts.items}
-                loading={loading || refreshing}
-                highlightedIds={highlightedAlertIds}
-                sort={applied.sort}
-                order={applied.order}
-                styleNonce={styleNonce}
-                onSort={changeSort}
-                onOpenDetail={openDetail}
-              />
-              <Pagination page={page} pageCount={alerts.page_count} onPage={changePage} />
-            </>
-          ) : (
-            <p className="loading-message">{fatalError || loadError || "一覧を読み込んでいます…"}</p>
-          )}
-            </section>
+                <section className="results-panel" aria-labelledby="reactResultsTitle">
+                  <div className="section-heading results-heading">
+                    <div className="results-title-line">
+                      <p className="eyebrow">SNAPSHOTS</p>
+                      <h2 id="reactResultsTitle">アラート一覧</h2>
+                      <p className="result-status" role="status" aria-live="polite">{resultStatus}</p>
+                    </div>
+                    <div className="results-tools">
+                      <RefreshControls
+                        intervalSeconds={refreshIntervalSeconds}
+                        statusText={refreshStatus}
+                        lastCheckedText={formatCheckedTime(lastCheckedAt)}
+                        busy={loading || refreshing}
+                        onIntervalChange={changeRefreshInterval}
+                        onRefresh={() => requestRefresh("manual")}
+                      />
+                    </div>
+                  </div>
+                  {alerts ? (
+                    <>
+                      {pendingNewAlertCount > 0 && (
+                        <div className="new-alert-banner" role="status" aria-live="polite">
+                          <span>新しいアラートが{formatInteger(pendingNewAlertCount)}件あります。</span>
+                          <button className="secondary-button" type="button" onClick={showLatestAlerts}>
+                            最新を表示
+                          </button>
+                        </div>
+                      )}
+                      <AlertTable
+                        items={alerts.items}
+                        loading={loading || refreshing}
+                        highlightedIds={highlightedAlertIds}
+                        sort={applied.sort}
+                        order={applied.order}
+                        styleNonce={styleNonce}
+                        onSort={changeSort}
+                        onOpenDetail={openDetail}
+                      />
+                      <Pagination page={page} pageCount={alerts.page_count} onPage={changePage} />
+                    </>
+                  ) : (
+                    <p className="loading-message">{fatalError || loadError || "一覧を読み込んでいます…"}</p>
+                  )}
+                </section>
+              </div>
+            </div>
           </Box>
         )}
 

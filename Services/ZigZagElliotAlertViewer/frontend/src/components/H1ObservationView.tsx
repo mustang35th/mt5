@@ -19,7 +19,12 @@ import {
   replaceObservationSearchUrl,
 } from "../lib/observationSearchState";
 import type { RefreshIntervalSeconds } from "../lib/refreshSettings";
-import { ObservationFilterPanel } from "./ObservationFilterPanel";
+import { AppliedConditionSummary } from "./AppliedConditionSummary";
+import {
+  hasObservationUnappliedChanges,
+  ObservationFilterPanel,
+  observationFilterSummary,
+} from "./ObservationFilterPanel";
 import { ObservationTable } from "./ObservationTable";
 import { Pagination } from "./Pagination";
 import { RefreshControls } from "./RefreshControls";
@@ -50,21 +55,31 @@ function checkedTime(fromDate: Date | null): string {
   })}`;
 }
 
-function SummaryStrip({ summary }: { summary: ObservationSummaryResponse | null }) {
+function SummaryStrip({
+  summary,
+  compact = false,
+}: {
+  summary: ObservationSummaryResponse | null;
+  compact?: boolean;
+}) {
   const values = [
     ["観測数", summary?.total_count],
     ["Run数", summary?.run_count],
     ["通貨数", summary?.symbol_count],
   ] as const;
   return (
-    <Box sx={{
+    <Box className={`observation-summary-strip${compact ? " compact" : ""}`} sx={{
       display: "grid",
       gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
       gap: 1,
       m: "10px 0",
+      "@media (min-width: 1280px)": {
+        mt: 0,
+      },
     }}>
       {values.map(([label, value]) => (
         <Paper
+          className="observation-summary-metric"
           component="div"
           elevation={0}
           key={label}
@@ -83,10 +98,10 @@ function SummaryStrip({ summary }: { summary: ObservationSummaryResponse | null 
             bgcolor: "background.paper",
           }}
         >
-          <Typography sx={{ color: "text.secondary", fontSize: "0.7rem", fontWeight: 700 }}>
+          <Typography className="observation-summary-label" sx={{ color: "text.secondary", fontSize: "0.7rem", fontWeight: 700 }}>
             {label}
           </Typography>
-          <Typography sx={{ m: 0, fontSize: "1rem", fontWeight: 800 }}>
+          <Typography className="observation-summary-value" sx={{ m: 0, fontSize: "1rem", fontWeight: 800 }}>
             {formatInteger(value)}
           </Typography>
         </Paper>
@@ -305,58 +320,76 @@ export function H1ObservationView({
       id="viewer-tabpanel-h1"
       aria-labelledby="viewer-tab-h1"
     >
-      <ObservationFilterPanel
-        value={draft}
-        appliedValue={applied}
-        runs={runs}
-        options={options}
-        busy={loading}
-        expanded={filterExpanded}
-        onChange={setDraft}
-        onExpandedChange={setFilterExpanded}
-        onSubmit={() => commitSearch({ ...draft, page: 1 })}
-        onReset={() => commitSearch(DEFAULT_OBSERVATION_SEARCH_STATE)}
-      />
-      <SummaryStrip summary={summary} />
-      <section className="results-panel" aria-labelledby="observationResultsTitle">
-        <div className="section-heading results-heading">
-          <div className="results-title-line">
-            <p className="eyebrow">H1 OBSERVATIONS</p>
-            <h2 id="observationResultsTitle">H1推移</h2>
-            <p className="result-status" role="status" aria-live="polite">{resultStatus}</p>
+      <div className={`viewer-workspace${filterExpanded ? "" : " filter-sidebar-collapsed"}`}>
+        <aside className="viewer-filter-sidebar" aria-label="H1推移検索条件">
+          <ObservationFilterPanel
+            value={draft}
+            appliedValue={applied}
+            runs={runs}
+            options={options}
+            busy={loading}
+            expanded={filterExpanded}
+            sidebar
+            showCollapsedSummary={false}
+            onChange={setDraft}
+            onExpandedChange={setFilterExpanded}
+            onSubmit={() => commitSearch({ ...draft, page: 1 })}
+            onReset={() => commitSearch(DEFAULT_OBSERVATION_SEARCH_STATE)}
+          />
+        </aside>
+        <div className="viewer-results-column">
+          <div className={`viewer-summary-bar${filterExpanded ? "" : " collapsed"}`}>
+            {!filterExpanded && (
+              <AppliedConditionSummary
+                summary={observationFilterSummary(applied)}
+                hasUnappliedChanges={hasObservationUnappliedChanges(draft, applied)}
+              />
+            )}
+            <SummaryStrip summary={summary} compact={!filterExpanded} />
           </div>
-          <div className="results-tools">
-            <RefreshControls
-              intervalSeconds={refreshIntervalSeconds}
-              statusText={refreshStatus}
-              lastCheckedText={checkedTime(lastCheckedAt)}
-              busy={loading || refreshing}
-              onIntervalChange={onRefreshIntervalChange}
-              onRefresh={() => requestRefresh("manual")}
-            />
-          </div>
+          <section className="results-panel" aria-labelledby="observationResultsTitle">
+            <div className="section-heading results-heading">
+              <div className="results-title-line">
+                <p className="eyebrow">H1 OBSERVATIONS</p>
+                <h2 id="observationResultsTitle">H1推移</h2>
+                <p className="result-status" role="status" aria-live="polite">{resultStatus}</p>
+              </div>
+              <div className="results-tools">
+                <RefreshControls
+                  intervalSeconds={refreshIntervalSeconds}
+                  statusText={refreshStatus}
+                  lastCheckedText={checkedTime(lastCheckedAt)}
+                  busy={loading || refreshing}
+                  onIntervalChange={onRefreshIntervalChange}
+                  onRefresh={() => requestRefresh("manual")}
+                />
+              </div>
+            </div>
+            {observations ? (
+              <>
+                <ObservationTable
+                  items={observations.items}
+                  available={observations.available}
+                  loading={loading || refreshing}
+                  sort={applied.sort}
+                  order={applied.order}
+                  styleNonce={styleNonce}
+                  onSort={changeSort}
+                />
+                <Pagination
+                  page={page}
+                  pageCount={observations.page_count}
+                  onPage={(nextPage) => commitSearch({ ...applied, page: nextPage })}
+                />
+              </>
+            ) : (
+              <Typography className="loading-message">
+                {loadError || "H1推移を読み込んでいます…"}
+              </Typography>
+            )}
+          </section>
         </div>
-        {observations ? (
-          <>
-            <ObservationTable
-              items={observations.items}
-              available={observations.available}
-              loading={loading || refreshing}
-              sort={applied.sort}
-              order={applied.order}
-              styleNonce={styleNonce}
-              onSort={changeSort}
-            />
-            <Pagination
-              page={page}
-              pageCount={observations.page_count}
-              onPage={(nextPage) => commitSearch({ ...applied, page: nextPage })}
-            />
-          </>
-        ) : (
-          <Typography className="loading-message">{loadError || "H1推移を読み込んでいます…"}</Typography>
-        )}
-      </section>
+      </div>
       {loadError && (
         <div className="toast" role="alert" aria-live="assertive">{loadError}</div>
       )}
