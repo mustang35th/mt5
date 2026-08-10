@@ -228,7 +228,7 @@ describe("App", () => {
         });
       }
       if (path.startsWith("/api/summary?")) {
-        return jsonResponse({ total_count: 1, buy_count: 1, sell_count: 0, w1_aligned_count: 1, w1_mismatched_count: 0, w1_unknown_count: 0, run_count: 1, symbol_count: 1 });
+        return jsonResponse({ total_count: 1, database_total_count: 451, buy_count: 1, sell_count: 0, w1_aligned_count: 1, w1_mismatched_count: 0, w1_unknown_count: 0, run_count: 1, symbol_count: 1 });
       }
       return jsonResponse({ error: `unexpected path: ${path}` });
     }));
@@ -246,6 +246,9 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "従来画面" })).toHaveAttribute("href", "/legacy/");
     expect((await screen.findAllByText("AUDUSD")).length).toBeGreaterThan(0);
     expect(await screen.findByText("一致")).toBeInTheDocument();
+    const resultSummary = screen.getByRole("region", { name: "検索結果集計" });
+    expect(within(resultSummary).getByText("検索該当 / DB全体").nextElementSibling)
+      .toHaveTextContent("1/451");
     await waitFor(() => {
       const fetchMock = vi.mocked(fetch);
       expect(fetchMock.mock.calls.some(([path]) => {

@@ -1270,6 +1270,8 @@ class AlertDatabase:
         sql = self.alert_rows_cte(filters) + f"""
             SELECT
                 COUNT(*) AS total_count,
+                (SELECT COUNT(*) FROM zigzag_elliot_alerts)
+                    AS database_total_count,
                 COALESCE(SUM(CASE WHEN side = 'BUY' THEN 1 ELSE 0 END), 0)
                     AS buy_count,
                 COALESCE(SUM(CASE WHEN side = 'SELL' THEN 1 ELSE 0 END), 0)

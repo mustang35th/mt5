@@ -18,6 +18,7 @@ from app import (
     MAX_TIME_FRAME_FILTERS,
     RequestError,
     ViewerServer,
+    W1_TIME_FRAME,
 )
 
 
@@ -31,6 +32,22 @@ class StubDatabase:
             "database": "stub.sqlite",
             "journal_mode": "wal",
             "alert_count": 0,
+        }
+
+    def summary(self, query: dict[str, list[str]]) -> dict[str, object]:
+        """Return the alert-summary response contract used by the route."""
+
+        del query
+        return {
+            "total_count": 2,
+            "database_total_count": 3,
+            "buy_count": 1,
+            "sell_count": 1,
+            "w1_aligned_count": 1,
+            "w1_mismatched_count": 1,
+            "w1_unknown_count": 0,
+            "run_count": 1,
+            "symbol_count": 2,
         }
 
     def observation_options(self) -> dict[str, object]:
@@ -282,6 +299,19 @@ class ViewerRouteTest(unittest.TestCase):
                     headers.get("content-type", "").startswith("application/json")
                 )
 
+    def test_alert_summary_exposes_filtered_and_database_totals(self) -> None:
+        """Expose the filtered count together with the unfiltered DB count."""
+
+        status, headers, payload = self.get("/api/summary?sourceMode=LIVE")
+        result = json.loads(payload)
+
+        self.assertEqual(200, status)
+        self.assertTrue(
+            headers.get("content-type", "").startswith("application/json")
+        )
+        self.assertEqual(2, result["total_count"])
+        self.assertEqual(3, result["database_total_count"])
+
 
 class AlertFilterTest(unittest.TestCase):
     """Verify filters shared by alert lists, summaries and CSV export."""
@@ -389,6 +419,188 @@ class AlertFilterTest(unittest.TestCase):
             AlertDatabase.parse_filters(
                 {"sourceMode": ["LIVE' OR 1=1 --"]}
             )
+
+
+def create_alert_summary_database(database_path: Path) -> None:
+    """Create the columns read by the production alert-summary CTE."""
+
+    run_columns = [
+        "id INTEGER PRIMARY KEY",
+        "run_uid TEXT",
+        "source_mode TEXT",
+        "program_name TEXT",
+        "program_version TEXT",
+        "strategy_version TEXT",
+        "analysis_version TEXT",
+        "tester_model TEXT",
+    ]
+    alert_column_names = [
+        "event_uid",
+        "market_signal_key",
+        "server_time",
+        "server_time_text",
+        "jst_time",
+        "jst_time_text",
+        "current_bar_time",
+        "current_bar_time_text",
+        "signal_reference_point_time",
+        "signal_reference_point_time_text",
+        "symbol_name",
+        "time_frame",
+        "time_frame_text",
+        "magic_number",
+        "strategy",
+        "side",
+        "is_judge",
+        "signal_count",
+        "entry_count",
+        "is_entry_count_match",
+        "is_entry_evaluated",
+        "is_alert",
+        "is_entry",
+        "entry_result",
+        "is_send_mail",
+        "current_elliot_label",
+        "is_entry_wave",
+        "close_ema200_diff_pips",
+        "max_close_ema200_diff_pips",
+        "is_ema200_distance_within",
+        "spread_pips",
+        "is_currency_strength_enabled",
+        "currency_strength_status",
+        "is_currency_strength_available",
+        "base_currency",
+        "base_long_medium_rank",
+        "base_medium_short_rank",
+        "quote_currency",
+        "quote_long_medium_rank",
+        "quote_medium_short_rank",
+        "long_medium_rank_difference",
+        "medium_short_rank_difference",
+        "reference_price",
+        "is_stop_loss_available",
+        "stop_loss",
+        "risk_pips",
+        "h1_structure_rank",
+        "is_h1_structure_valid",
+        "is_h1_structure_late",
+        "is_h1_direction_exception",
+        "alert_title",
+        "wave_summary_text",
+        "created_at",
+        "created_at_text",
+    ]
+    alert_columns = [
+        "id INTEGER PRIMARY KEY",
+        "run_id INTEGER",
+        *(f"{column_name} TEXT" for column_name in alert_column_names),
+    ]
+    time_frame_columns = [
+        "id INTEGER PRIMARY KEY",
+        "alert_id INTEGER",
+        "time_frame INTEGER",
+        "time_frame_text TEXT",
+        "is_buy INTEGER",
+        "buy_sell_label TEXT",
+        "latest_elliot_label TEXT",
+        "latest_sub_elliot_label TEXT",
+        "is_wave_confirmed INTEGER",
+        "is_wave_motive INTEGER",
+        "is_wave_uptrend INTEGER",
+        "wave_trend_label TEXT",
+    ]
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "CREATE TABLE zigzag_elliot_alert_runs ("
+            + ",".join(run_columns)
+            + ")"
+        )
+        connection.execute(
+            "CREATE TABLE zigzag_elliot_alerts ("
+            + ",".join(alert_columns)
+            + ")"
+        )
+        connection.execute(
+            "CREATE TABLE zigzag_elliot_alert_timeframes ("
+            + ",".join(time_frame_columns)
+            + ")"
+        )
+        connection.executemany(
+            """
+            INSERT INTO zigzag_elliot_alert_runs (
+                id, run_uid, source_mode, program_name, program_version,
+                strategy_version, analysis_version, tester_model
+            ) VALUES (?, ?, ?, 'ZigZagElliot', '1.23', '1', '1', '')
+            """,
+            [(1, "run-live", "LIVE"), (2, "run-tester", "TESTER")],
+        )
+        connection.executemany(
+            """
+            INSERT INTO zigzag_elliot_alerts (
+                id, run_id, symbol_name, side, time_frame_text,
+                strategy, h1_structure_rank
+            ) VALUES (?, ?, ?, ?, 'H1', 'MTF_3in3', 'A')
+            """,
+            [
+                (1, 1, "EURUSD", "BUY"),
+                (2, 1, "GBPUSD", "SELL"),
+                (3, 2, "USDJPY", "SELL"),
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT INTO zigzag_elliot_alert_timeframes (
+                id, alert_id, time_frame, time_frame_text, is_buy,
+                buy_sell_label
+            ) VALUES (?, ?, ?, 'W1', ?, ?)
+            """,
+            [
+                (1, 1, W1_TIME_FRAME, 1, "BUY"),
+                (2, 2, W1_TIME_FRAME, 1, "BUY"),
+            ],
+        )
+    connection.close()
+
+
+class AlertSummaryTest(unittest.TestCase):
+    """Verify filtered metrics and the unfiltered database total contract."""
+
+    def test_database_total_is_unfiltered_even_for_zero_matches(self) -> None:
+        """Keep the global total independent from every search predicate."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_alert_summary_database(database_path)
+            database = AlertDatabase(database_path)
+            try:
+                all_summary = database.summary({})
+                filtered_summary = database.summary(
+                    {
+                        "sourceMode": ["LIVE"],
+                        "symbol": ["EURUSD"],
+                        "side": ["BUY"],
+                    }
+                )
+                zero_summary = database.summary(
+                    {"sourceMode": ["TESTER"], "symbol": ["EURUSD"]}
+                )
+                unknown_summary = database.summary(
+                    {"sourceMode": ["TESTER"]}
+                )
+            finally:
+                database.close()
+
+        self.assertEqual(3, all_summary["total_count"])
+        self.assertEqual(3, all_summary["database_total_count"])
+        self.assertEqual(1, filtered_summary["total_count"])
+        self.assertEqual(3, filtered_summary["database_total_count"])
+        self.assertEqual(1, filtered_summary["w1_aligned_count"])
+        self.assertEqual(0, zero_summary["total_count"])
+        self.assertEqual(3, zero_summary["database_total_count"])
+        self.assertEqual(1, unknown_summary["total_count"])
+        self.assertEqual(1, unknown_summary["w1_unknown_count"])
+        self.assertEqual(3, unknown_summary["database_total_count"])
 
 
 def create_observation_database(database_path: Path) -> None:

@@ -110,6 +110,7 @@ export interface AlertsResponse {
 
 export interface SummaryResponse {
   total_count: number;
+  database_total_count: number;
   buy_count: number;
   sell_count: number;
   w1_aligned_count: number;

@@ -362,9 +362,9 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 }
 .react-summary-strip dl {
   display: grid;
-  min-width: 600px;
+  min-width: 900px;
   margin: 0;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: minmax(230px, 1.4fr) repeat(4, minmax(165px, 1fr));
 }
 .react-summary-item {
   display: flex;
@@ -379,13 +379,32 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .react-summary-item.sell { border-left-color: var(--sell); }
 .react-summary-item.align { border-left-color: var(--good); }
 .react-summary-item.mismatch { border-left-color: var(--warn); }
+.react-summary-item.total { background: rgba(89, 216, 194, 0.035); }
 .react-summary-item dt { color: var(--muted); font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
 .react-summary-item dd {
+  display: flex;
   margin: 0;
+  align-items: baseline;
+  gap: 6px;
   font-size: 1.05rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
+.react-summary-item dd strong { font-size: inherit; }
+.react-summary-item.total dd strong { color: var(--accent); font-size: 1.22rem; }
+.react-summary-rate { color: var(--muted); font-size: 0.68rem; font-weight: 750; }
+.react-summary-scope { display: block; margin-top: 1px; font-size: 0.59rem; font-weight: 600; }
+.react-summary-total-separator { color: var(--muted); font-weight: 500; }
+.react-summary-note {
+  margin: 0;
+  padding: 4px 12px 5px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 0.66rem;
+  text-align: right;
+}
+.react-summary-note + .react-summary-note { padding-top: 0; border-top: 0; }
 
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
@@ -621,6 +640,26 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .field-search { grid-column: span 2; }
 }
 
+@media (max-width: 1100px) {
+  .react-summary-strip { overflow-x: visible; }
+  .react-summary-strip dl {
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .react-summary-item {
+    padding: 7px 9px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .react-summary-item.total {
+    grid-column: 1 / -1;
+    align-items: baseline;
+    flex-direction: row;
+  }
+  .react-summary-note { text-align: left; }
+}
+
 @media (max-width: 760px) {
   .app-header { padding: 24px 16px 18px; align-items: flex-start; flex-direction: column; gap: 10px; }
   .app-brand { width: 100%; gap: 3px 10px; }
@@ -635,13 +674,6 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .filter-heading-actions { width: 100%; flex-wrap: wrap; }
   .filter-heading-actions button { flex: 1 1 130px; }
   .filter-toggle-button { min-width: 0; }
-  .react-summary-strip { overflow-x: visible; }
-  .react-summary-strip dl {
-    min-width: 0;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-  .react-summary-item { grid-column: span 2; padding: 7px 9px; }
-  .react-summary-item:nth-child(n + 4) { grid-column: span 3; }
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .summary-card:first-child { grid-column: span 2; }
   .results-heading { align-items: stretch; flex-direction: column; }

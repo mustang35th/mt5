@@ -506,7 +506,10 @@ export default function App({ styleNonce }: AppProps) {
               onReset={resetSearch}
               onExport={exportCsv}
             />
-            <SummaryCards summary={summary} />
+            <SummaryCards
+              summary={summary}
+              staleReason={loading ? "loading" : loadError ? "error" : null}
+            />
             <section className="results-panel" aria-labelledby="reactResultsTitle">
           <div className="section-heading results-heading">
             <div className="results-title-line">
