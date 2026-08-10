@@ -127,12 +127,40 @@ public:
         double high[];
         double low[];
         
+        ResetLastError();
         int copiedHigh = CopyHigh(this.marketContext.symbolName, this.marketContext.timeFrame, 0, ratesTotal, high);
-        int copiedLow  = CopyLow(this.marketContext.symbolName, this.marketContext.timeFrame, 0, ratesTotal, low);
+        int highError = GetLastError();
+
+        ResetLastError();
+        int copiedLow = CopyLow(this.marketContext.symbolName, this.marketContext.timeFrame, 0, ratesTotal, low);
+        int lowError = GetLastError();
 
         if (copiedHigh <= 0 || copiedLow <= 0) {
-            // データ取得失敗時はエラーメッセージを出す
-            this.logger.error(__FUNCTION__, "Failed to copy high/low data.");
+            long synchronized = 0;
+            SeriesInfoInteger(
+                this.marketContext.symbolName,
+                this.marketContext.timeFrame,
+                SERIES_SYNCHRONIZED,
+                synchronized
+            );
+            int availableBars = Bars(
+                this.marketContext.symbolName,
+                this.marketContext.timeFrame
+            );
+
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "Failed to copy high/low data. requested=%d copiedHigh=%d highError=%d copiedLow=%d lowError=%d bars=%d synchronized=%d",
+                    ratesTotal,
+                    copiedHigh,
+                    highError,
+                    copiedLow,
+                    lowError,
+                    availableBars,
+                    (int)synchronized
+                )
+            );
             
             return 0;
         }
