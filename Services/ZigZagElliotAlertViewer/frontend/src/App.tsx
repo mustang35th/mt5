@@ -23,6 +23,7 @@ import {
   FilterPanel,
   hasAlertUnappliedChanges,
 } from "./components/FilterPanel";
+import { FilterVisibilityToggle } from "./components/FilterVisibilityToggle";
 import { H1ObservationView } from "./components/H1ObservationView";
 import { Pagination } from "./components/Pagination";
 import { RefreshControls } from "./components/RefreshControls";
@@ -498,37 +499,41 @@ export default function App({ styleNonce }: AppProps) {
             id="viewer-tabpanel-alerts"
             aria-labelledby="viewer-tab-alerts"
           >
+            <div className="viewer-summary-bar">
+              <FilterVisibilityToggle
+                controls="alertFilterSidebar"
+                expanded={alertFilterExpanded}
+                onExpandedChange={setAlertFilterExpanded}
+              />
+              <AppliedConditionSummary
+                summary={alertFilterSummary(applied)}
+                hasUnappliedChanges={hasAlertUnappliedChanges(draft, applied)}
+              />
+              <SummaryCards
+                summary={summary}
+                staleReason={loading ? "loading" : loadError ? "error" : null}
+                compact
+              />
+            </div>
             <div className={`viewer-workspace${alertFilterExpanded ? "" : " filter-sidebar-collapsed"}`}>
-              <aside className="viewer-filter-sidebar" aria-label="アラート検索条件">
+              <aside
+                id="alertFilterSidebar"
+                className="viewer-filter-sidebar"
+                aria-label="アラート検索条件"
+                hidden={!alertFilterExpanded}
+              >
                 <FilterPanel
                   value={draft}
-                  appliedValue={applied}
                   runs={runs.items}
                   options={options}
                   busy={loading}
-                  expanded={alertFilterExpanded}
-                  showCollapsedSummary={false}
                   onChange={setDraft}
-                  onExpandedChange={setAlertFilterExpanded}
                   onSubmit={submitSearch}
                   onReset={resetSearch}
                   onExport={exportCsv}
                 />
               </aside>
               <div className="viewer-results-column">
-                <div className={`viewer-summary-bar${alertFilterExpanded ? "" : " collapsed"}`}>
-                  {!alertFilterExpanded && (
-                    <AppliedConditionSummary
-                      summary={alertFilterSummary(applied)}
-                      hasUnappliedChanges={hasAlertUnappliedChanges(draft, applied)}
-                    />
-                  )}
-                  <SummaryCards
-                    summary={summary}
-                    staleReason={loading ? "loading" : loadError ? "error" : null}
-                    compact={!alertFilterExpanded}
-                  />
-                </div>
                 <section className="results-panel" aria-labelledby="reactResultsTitle">
                   <div className="section-heading results-heading">
                     <div className="results-title-line">

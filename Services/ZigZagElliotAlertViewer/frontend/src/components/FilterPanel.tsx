@@ -8,14 +8,10 @@ import type { OptionsResponse, RunItem, SearchState, SourceMode } from "../api/t
 
 interface FilterPanelProps {
   value: SearchState;
-  appliedValue: SearchState;
   runs: RunItem[];
   options: OptionsResponse;
   busy: boolean;
-  expanded: boolean;
-  showCollapsedSummary?: boolean;
   onChange: (value: SearchState) => void;
-  onExpandedChange: (expanded: boolean) => void;
   onSubmit: () => void;
   onReset: () => void;
   onExport: () => void;
@@ -74,14 +70,10 @@ const ALL_TIME_FRAMES_VALUE = "__all_time_frames__";
 
 export function FilterPanel({
   value,
-  appliedValue,
   runs,
   options,
   busy,
-  expanded,
-  showCollapsedSummary = true,
   onChange,
-  onExpandedChange,
   onSubmit,
   onReset,
   onExport,
@@ -122,41 +114,20 @@ export function FilterPanel({
   }
 
   return (
-    <section
-      className={`filter-panel react-filter-panel${expanded ? "" : " collapsed"}`}
-      aria-busy={busy}
-      aria-labelledby="reactFilterTitle"
-    >
+    <section className="filter-panel react-filter-panel" aria-busy={busy} aria-labelledby="reactFilterTitle">
       <div className="section-heading filter-panel-heading">
         <div className="filter-heading-content">
           <p className="eyebrow">SEARCH</p>
           <h2 id="reactFilterTitle">アラート検索</h2>
-          {!expanded && showCollapsedSummary && (
-            <p className="filter-collapsed-summary">
-              <span>{alertFilterSummary(appliedValue)}</span>
-              {hasAlertUnappliedChanges(value, appliedValue) && <strong>未検索の変更あり</strong>}
-            </p>
-          )}
         </div>
         <div className="filter-heading-actions">
-          <button className="ghost-button" type="button" hidden={!expanded} onClick={onReset}>
+          <button className="ghost-button" type="button" onClick={onReset}>
             条件をリセット
-          </button>
-          <button
-            className="secondary-button filter-toggle-button"
-            type="button"
-            aria-controls="reactFilterFields"
-            aria-expanded={expanded}
-            aria-label={expanded ? "検索条件を閉じる" : "検索条件を開く"}
-            onClick={() => onExpandedChange(!expanded)}
-          >
-            <span>{expanded ? "閉じる" : "開く"}</span>
-            <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
           </button>
         </div>
       </div>
 
-      <div id="reactFilterFields" hidden={!expanded}>
+      <div id="reactFilterFields">
         <form className="filter-grid" aria-busy={busy} onSubmit={submit}>
         <label className="field">
           <span>実行モード</span>

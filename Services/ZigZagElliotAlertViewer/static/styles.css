@@ -112,6 +112,7 @@ body.react-viewer #root {
 
 body.react-viewer #root > .app-header,
 body.react-viewer .viewer-tabs,
+body.react-viewer .viewer-summary-bar,
 body.react-viewer .viewer-filter-sidebar,
 body.react-viewer .viewer-results-column > :not(.results-panel),
 body.react-viewer .results-heading,
@@ -199,50 +200,32 @@ body.react-viewer .alert-grid {
 .filter-panel { padding: 20px; }
 .results-panel { overflow: hidden; }
 
-.react-filter-panel.collapsed { padding-top: 12px; padding-bottom: 12px; }
-.react-filter-panel.collapsed .filter-panel-heading { margin-bottom: 0; }
 .filter-heading-content { min-width: 0; }
-.filter-heading-actions { display: flex; align-items: center; gap: 9px; }
+.filter-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
 .filter-heading-actions [hidden],
 .observation-filter-heading-actions [hidden] { display: none !important; }
-.filter-toggle-button {
-  display: inline-flex;
-  min-width: 148px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.filter-collapsed-summary {
-  display: flex;
-  margin: 5px 0 0;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 7px 10px;
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-.filter-collapsed-summary strong {
-  padding: 2px 7px;
-  border: 1px solid rgba(255, 199, 95, 0.42);
-  border-radius: 999px;
-  color: var(--warn);
-  font-size: 0.66rem;
-}
-
-.viewer-summary-bar { min-width: 0; }
-.viewer-summary-bar > .react-summary-strip,
-.viewer-summary-bar > .observation-summary-strip { width: 100%; }
-.viewer-summary-bar.collapsed {
+.viewer-filter-sidebar[hidden] { display: none !important; }
+.viewer-summary-bar {
   display: flex;
   min-width: 0;
   align-items: stretch;
   flex-wrap: wrap;
   gap: 8px;
 }
+.viewer-filter-summary-toggle {
+  min-width: 64px;
+  margin: 0 0 10px;
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+.viewer-summary-bar > .react-summary-strip,
+.viewer-summary-bar > .observation-summary-strip { width: auto; margin: 0 0 10px; }
+.viewer-summary-bar > .react-summary-strip { flex: 0 1 680px; }
+.viewer-summary-bar > .observation-summary-strip { flex: 0 1 360px; }
 .viewer-applied-filter-summary {
   display: flex;
   min-width: 0;
-  margin: 10px 0;
+  margin: 0 0 10px;
   padding: 6px 10px;
   align-items: center;
   gap: 7px;
@@ -710,10 +693,10 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
     grid-template-columns: clamp(292px, 18vw, 336px) minmax(0, 1fr);
     gap: 14px;
     overflow: hidden;
-    transition: grid-template-columns 160ms ease-out;
   }
   body.react-viewer .viewer-workspace.filter-sidebar-collapsed {
-    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
   body.react-viewer .viewer-filter-sidebar {
     min-width: 0;
@@ -722,24 +705,7 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
     overflow-y: auto;
     scrollbar-gutter: stable;
   }
-  body.react-viewer .viewer-workspace.filter-sidebar-collapsed .viewer-filter-sidebar {
-    scrollbar-gutter: auto;
-  }
   body.react-viewer .viewer-results-column { overflow: hidden; }
-  body.react-viewer .viewer-summary-bar > .react-summary-strip { margin-top: 0; }
-  body.react-viewer .viewer-summary-bar.collapsed > .viewer-applied-filter-summary {
-    margin: 0 0 10px;
-  }
-  body.react-viewer .viewer-summary-bar.collapsed > .react-summary-strip {
-    width: auto;
-    margin-bottom: 10px;
-    flex: 0 1 680px;
-  }
-  body.react-viewer .viewer-summary-bar.collapsed > .observation-summary-strip {
-    width: auto;
-    margin-bottom: 10px;
-    flex: 0 1 360px;
-  }
 
   .viewer-filter-sidebar .filter-panel {
     width: 100%;
@@ -780,39 +746,6 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
     padding-right: 10px;
     padding-left: 10px;
     flex: 1;
-  }
-  .filter-sidebar-collapsed .viewer-filter-sidebar .filter-panel,
-  .filter-sidebar-collapsed .viewer-filter-sidebar .observation-filter-panel {
-    padding: 8px;
-  }
-  .filter-sidebar-collapsed .viewer-filter-sidebar .filter-panel-heading,
-  .filter-sidebar-collapsed .viewer-filter-sidebar .observation-filter-heading {
-    margin-bottom: 0;
-    align-items: stretch;
-    gap: 8px;
-  }
-  .filter-sidebar-collapsed .viewer-filter-sidebar .filter-heading-content .eyebrow,
-  .filter-sidebar-collapsed .viewer-filter-sidebar .observation-filter-eyebrow,
-  .filter-sidebar-collapsed .viewer-filter-sidebar .filter-collapsed-summary {
-    display: none;
-  }
-  .filter-sidebar-collapsed .viewer-filter-sidebar h2,
-  .filter-sidebar-collapsed .viewer-filter-sidebar #observationFilterTitle {
-    font-size: 0.82rem;
-    line-height: 1.25;
-    text-align: center;
-  }
-  .filter-sidebar-collapsed .viewer-filter-sidebar .filter-heading-actions,
-  .filter-sidebar-collapsed .viewer-filter-sidebar .observation-filter-heading-actions {
-    width: 100%;
-    justify-content: center;
-  }
-  .filter-sidebar-collapsed .viewer-filter-sidebar .filter-toggle-button,
-  .filter-sidebar-collapsed .viewer-filter-sidebar .observation-filter-toggle {
-    width: 100%;
-    min-width: 0;
-    padding-right: 5px;
-    padding-left: 5px;
   }
 }
 
@@ -856,7 +789,6 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .filter-panel-heading { align-items: flex-start; flex-wrap: wrap; }
   .filter-heading-actions { width: 100%; flex-wrap: wrap; }
   .filter-heading-actions button { flex: 1 1 130px; }
-  .filter-toggle-button { min-width: 0; }
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .summary-card:first-child { grid-column: span 2; }
   .results-heading { align-items: stretch; flex-direction: column; }
@@ -868,9 +800,8 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .detail-grid { grid-template-columns: 1fr 1fr; }
   .detail-hero { flex-direction: column; }
   .detail-price { text-align: left; }
-  .viewer-summary-bar.collapsed > .viewer-applied-filter-summary,
-  .viewer-summary-bar.collapsed > .react-summary-strip,
-  .viewer-summary-bar.collapsed > .observation-summary-strip {
+  .viewer-summary-bar > .react-summary-strip,
+  .viewer-summary-bar > .observation-summary-strip {
     flex-basis: 100%;
   }
   .react-summary-strip.compact dl {

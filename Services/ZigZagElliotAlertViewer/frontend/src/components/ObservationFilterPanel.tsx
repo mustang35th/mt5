@@ -1,6 +1,5 @@
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Collapse from "@mui/material/Collapse";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -20,15 +19,11 @@ import type {
 
 interface ObservationFilterPanelProps {
   value: ObservationSearchState;
-  appliedValue: ObservationSearchState;
   runs: RunItem[];
   options: ObservationOptionsResponse;
   busy: boolean;
-  expanded: boolean;
   sidebar?: boolean;
-  showCollapsedSummary?: boolean;
   onChange: (value: ObservationSearchState) => void;
-  onExpandedChange: (expanded: boolean) => void;
   onSubmit: () => void;
   onReset: () => void;
 }
@@ -69,15 +64,11 @@ export function hasObservationUnappliedChanges(
 
 export function ObservationFilterPanel({
   value,
-  appliedValue,
   runs,
   options,
   busy,
-  expanded,
   sidebar = false,
-  showCollapsedSummary = true,
   onChange,
-  onExpandedChange,
   onSubmit,
   onReset,
 }: ObservationFilterPanelProps) {
@@ -87,8 +78,6 @@ export function ObservationFilterPanel({
     () => runs.filter((run) => isRunVisible(run, value.sourceMode)),
     [runs, value.sourceMode],
   );
-  const changed = hasObservationUnappliedChanges(value, appliedValue);
-
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
@@ -96,14 +85,14 @@ export function ObservationFilterPanel({
 
   return (
     <Paper
-      className={`observation-filter-panel${sidebarLayout ? " sidebar-layout" : ""}${expanded ? "" : " collapsed"}`}
+      className={`observation-filter-panel${sidebarLayout ? " sidebar-layout" : ""}`}
       component="section"
       aria-labelledby="observationFilterTitle"
       aria-busy={busy}
       elevation={0}
       sx={{
         mb: sidebarLayout ? 0 : 1.25,
-        p: expanded ? 2 : 1.5,
+        p: 2,
         border: 1,
         borderColor: "divider",
         borderRadius: 2,
@@ -122,34 +111,15 @@ export function ObservationFilterPanel({
           <Typography id="observationFilterTitle" variant="h6" sx={{ fontSize: "1.15rem", fontWeight: 700 }}>
             H1推移検索
           </Typography>
-          {!expanded && showCollapsedSummary && (
-            <Stack className="filter-collapsed-summary observation-filter-collapsed-summary" direction="row" sx={{ flexWrap: "wrap", gap: 1, mt: 0.5, alignItems: "center" }}>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{observationFilterSummary(appliedValue)}</Typography>
-              {changed && <Typography sx={{ color: "warning.main", fontSize: "0.68rem" }}>未検索の変更あり</Typography>}
-            </Stack>
-          )}
         </Box>
         <Stack className="observation-filter-heading-actions" direction="row" sx={{ flexWrap: "wrap", gap: 1, alignItems: "center" }}>
-          <Button className="observation-filter-reset" color="inherit" size="small" variant="outlined" hidden={!expanded} onClick={onReset}>
+          <Button className="observation-filter-reset" color="inherit" size="small" variant="outlined" onClick={onReset}>
             条件をリセット
-          </Button>
-          <Button
-            className="observation-filter-toggle"
-            aria-controls="observationFilterFields"
-            aria-expanded={expanded}
-            aria-label={expanded ? "検索条件を閉じる" : "検索条件を開く"}
-            color="inherit"
-            endIcon={<span aria-hidden style={{ fontSize: "0.7rem" }}>{expanded ? "▴" : "▾"}</span>}
-            size="small"
-            variant="outlined"
-            onClick={() => onExpandedChange(!expanded)}
-          >
-            {expanded ? "閉じる" : "開く"}
           </Button>
         </Stack>
       </Stack>
 
-      <Collapse id="observationFilterFields" in={expanded}>
+      <div id="observationFilterFields">
         <form onSubmit={submit}>
           <Box sx={{
             mt: 2,
@@ -266,7 +236,7 @@ export function ObservationFilterPanel({
           </Button>
           </Box>
         </form>
-      </Collapse>
+      </div>
     </Paper>
   );
 }

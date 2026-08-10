@@ -245,13 +245,18 @@ describe("App", () => {
     expect(screen.getByRole("tabpanel")).toHaveClass("viewer-tab-panel");
     expect(screen.getByRole("link", { name: "従来画面" })).toHaveAttribute("href", "/legacy/");
     const searchSidebar = screen.getByRole("complementary", { name: "アラート検索条件" });
-    expect(searchSidebar).toContainElement(screen.getByRole("heading", { name: "アラート検索" }));
+    const searchHeading = screen.getByRole("heading", { name: "アラート検索" });
+    const searchToggle = screen.getByRole("button", { name: "検索条件を閉じる" });
+    expect(searchSidebar).toContainElement(searchHeading);
     expect(searchSidebar.parentElement).toHaveClass("viewer-workspace");
     expect((await screen.findAllByText("AUDUSD")).length).toBeGreaterThan(0);
     expect(await screen.findByText("一致")).toBeInTheDocument();
     const resultSummary = screen.getByRole("region", { name: "検索結果集計" });
+    const conditionSummary = screen.getByRole("region", { name: "適用中の検索条件" });
     expect(resultSummary.parentElement).toHaveClass("viewer-summary-bar");
-    expect(resultSummary.parentElement?.parentElement).toHaveClass("viewer-results-column");
+    expect(searchToggle).toHaveAttribute("aria-controls", "alertFilterSidebar");
+    expect(searchToggle.compareDocumentPosition(conditionSummary) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
     expect(within(resultSummary).getByText("検索該当 / DB全体").nextElementSibling)
       .toHaveTextContent("1/451");
     await waitFor(() => {
@@ -283,7 +288,13 @@ describe("App", () => {
     const resultsColumn = tabPanel.querySelector(".viewer-results-column");
     expect(workspace).toContainElement(sidebar);
     expect(sidebar.querySelector(".observation-filter-panel.sidebar-layout")).toBeInTheDocument();
-    expect(resultsColumn).toContainElement(tabPanel.querySelector(".observation-summary-strip"));
+    const observationToggle = within(tabPanel).getByRole("button", { name: "検索条件を閉じる" });
+    const observationConditionSummary = within(tabPanel).getByRole("region", { name: "適用中の検索条件" });
+    expect(observationToggle).toHaveAttribute("aria-controls", "observationFilterSidebar");
+    expect(observationToggle.compareDocumentPosition(observationConditionSummary) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+    expect(tabPanel.querySelector(".viewer-summary-bar"))
+      .toContainElement(tabPanel.querySelector(".observation-summary-strip"));
     expect(resultsColumn).toContainElement(tabPanel.querySelector(".results-panel"));
     expect(await screen.findByRole("columnheader", { name: /Server日時/ })).toBeInTheDocument();
     for (const timeFrame of ["MN1", "W1", "D1", "H4", "H1"]) {
@@ -316,8 +327,10 @@ describe("App", () => {
     expect(await screen.findByRole("complementary", { name: "アラート検索条件" })).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "H1推移検索条件" })).not.toBeInTheDocument();
     const alertCloseButton = await screen.findByRole("button", { name: "検索条件を閉じる" });
-    const alertWorkspace = alertCloseButton.closest(".viewer-workspace");
+    const alertWorkspace = document.querySelector("#viewer-tabpanel-alerts .viewer-workspace");
+    const alertSidebar = document.getElementById("alertFilterSidebar");
     expect(alertWorkspace).not.toHaveClass("filter-sidebar-collapsed");
+    expect(alertSidebar).not.toHaveAttribute("hidden");
     alertCloseButton.focus();
     fireEvent.click(alertCloseButton);
     const alertOpenButton = screen.getByRole("button", { name: "検索条件を開く" });
@@ -325,19 +338,23 @@ describe("App", () => {
     expect(alertOpenButton).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: "条件をリセット" })).not.toBeInTheDocument();
     expect(alertWorkspace).toHaveClass("filter-sidebar-collapsed");
+    expect(alertSidebar).toHaveAttribute("hidden");
+    expect(alertSidebar).not.toBeVisible();
     const alertConditionSummary = screen.getByRole("region", { name: "適用中の検索条件" });
     const alertCountSummary = screen.getByRole("region", { name: "検索結果集計" });
     expect(alertConditionSummary).toHaveTextContent("LIVE / 全Run / 全通貨 / 全時間足 / BUY＋SELL");
     expect(alertConditionSummary.parentElement).toBe(alertCountSummary.parentElement);
-    expect(alertConditionSummary.parentElement).toHaveClass("viewer-summary-bar", "collapsed");
+    expect(alertConditionSummary.parentElement).toHaveClass("viewer-summary-bar");
     expect(alertCountSummary).toHaveClass("compact");
 
     fireEvent.click(screen.getByRole("tab", { name: "H1推移" }));
     expect(await screen.findByRole("complementary", { name: "H1推移検索条件" })).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "アラート検索条件" })).not.toBeInTheDocument();
     const observationCloseButton = await screen.findByRole("button", { name: "検索条件を閉じる" });
-    const observationWorkspace = observationCloseButton.closest(".viewer-workspace");
+    const observationWorkspace = document.querySelector("#viewer-tabpanel-h1 .viewer-workspace");
+    const observationSidebar = document.getElementById("observationFilterSidebar");
     expect(observationWorkspace).not.toHaveClass("filter-sidebar-collapsed");
+    expect(observationSidebar).not.toHaveAttribute("hidden");
     expect(observationCloseButton).toHaveAttribute("aria-expanded", "true");
     observationCloseButton.focus();
     fireEvent.click(observationCloseButton);
@@ -346,20 +363,24 @@ describe("App", () => {
     expect(observationOpenButton).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: "条件をリセット" })).not.toBeInTheDocument();
     expect(observationWorkspace).toHaveClass("filter-sidebar-collapsed");
+    expect(observationSidebar).toHaveAttribute("hidden");
+    expect(observationSidebar).not.toBeVisible();
     const observationConditionSummary = screen.getByRole("region", { name: "適用中の検索条件" });
-    expect(observationConditionSummary.parentElement).toHaveClass("viewer-summary-bar", "collapsed");
+    expect(observationConditionSummary.parentElement).toHaveClass("viewer-summary-bar");
     expect(observationConditionSummary.parentElement?.querySelector(".observation-summary-strip"))
       .toHaveClass("compact");
 
     fireEvent.click(screen.getByRole("tab", { name: "アラート一覧" }));
     const restoredAlertOpenButton = await screen.findByRole("button", { name: "検索条件を開く" });
     expect(restoredAlertOpenButton).toHaveAttribute("aria-expanded", "false");
-    expect(restoredAlertOpenButton.closest(".viewer-workspace")).toHaveClass("filter-sidebar-collapsed");
+    expect(document.querySelector("#viewer-tabpanel-alerts .viewer-workspace"))
+      .toHaveClass("filter-sidebar-collapsed");
 
     fireEvent.click(screen.getByRole("tab", { name: "H1推移" }));
     const restoredObservationOpenButton = await screen.findByRole("button", { name: "検索条件を開く" });
     expect(restoredObservationOpenButton).toHaveAttribute("aria-expanded", "false");
-    expect(restoredObservationOpenButton.closest(".viewer-workspace")).toHaveClass("filter-sidebar-collapsed");
+    expect(document.querySelector("#viewer-tabpanel-h1 .viewer-workspace"))
+      .toHaveClass("filter-sidebar-collapsed");
   });
 
   it("shows an unused state when the observation tables do not exist", async () => {

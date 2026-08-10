@@ -20,6 +20,7 @@ import {
 } from "../lib/observationSearchState";
 import type { RefreshIntervalSeconds } from "../lib/refreshSettings";
 import { AppliedConditionSummary } from "./AppliedConditionSummary";
+import { FilterVisibilityToggle } from "./FilterVisibilityToggle";
 import {
   hasObservationUnappliedChanges,
   ObservationFilterPanel,
@@ -320,33 +321,37 @@ export function H1ObservationView({
       id="viewer-tabpanel-h1"
       aria-labelledby="viewer-tab-h1"
     >
+      <div className="viewer-summary-bar">
+        <FilterVisibilityToggle
+          controls="observationFilterSidebar"
+          expanded={filterExpanded}
+          onExpandedChange={setFilterExpanded}
+        />
+        <AppliedConditionSummary
+          summary={observationFilterSummary(applied)}
+          hasUnappliedChanges={hasObservationUnappliedChanges(draft, applied)}
+        />
+        <SummaryStrip summary={summary} compact />
+      </div>
       <div className={`viewer-workspace${filterExpanded ? "" : " filter-sidebar-collapsed"}`}>
-        <aside className="viewer-filter-sidebar" aria-label="H1推移検索条件">
+        <aside
+          id="observationFilterSidebar"
+          className="viewer-filter-sidebar"
+          aria-label="H1推移検索条件"
+          hidden={!filterExpanded}
+        >
           <ObservationFilterPanel
             value={draft}
-            appliedValue={applied}
             runs={runs}
             options={options}
             busy={loading}
-            expanded={filterExpanded}
             sidebar
-            showCollapsedSummary={false}
             onChange={setDraft}
-            onExpandedChange={setFilterExpanded}
             onSubmit={() => commitSearch({ ...draft, page: 1 })}
             onReset={() => commitSearch(DEFAULT_OBSERVATION_SEARCH_STATE)}
           />
         </aside>
         <div className="viewer-results-column">
-          <div className={`viewer-summary-bar${filterExpanded ? "" : " collapsed"}`}>
-            {!filterExpanded && (
-              <AppliedConditionSummary
-                summary={observationFilterSummary(applied)}
-                hasUnappliedChanges={hasObservationUnappliedChanges(draft, applied)}
-              />
-            )}
-            <SummaryStrip summary={summary} compact={!filterExpanded} />
-          </div>
           <section className="results-panel" aria-labelledby="observationResultsTitle">
             <div className="section-heading results-heading">
               <div className="results-title-line">
