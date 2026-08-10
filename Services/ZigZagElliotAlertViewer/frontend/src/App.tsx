@@ -94,6 +94,7 @@ export default function App({ styleNonce }: AppProps) {
   const [draft, setDraft] = useState<SearchState>(initialSearch);
   const [applied, setApplied] = useState<SearchState>(initialSearch);
   const [activeTab, setActiveTab] = useState<ViewerTab>(initialTab);
+  const [alertFilterExpanded, setAlertFilterExpanded] = useState(true);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [runs, setRuns] = useState<RunsResponse>({ items: [], count: 0 });
   const [options, setOptions] = useState<OptionsResponse>(EMPTY_OPTIONS);
@@ -452,6 +453,7 @@ export default function App({ styleNonce }: AppProps) {
       <main>
         <Box
           component="nav"
+          className="viewer-tabs"
           aria-label="Viewer表示切替"
           sx={{
             mb: 1.25,
@@ -484,14 +486,22 @@ export default function App({ styleNonce }: AppProps) {
         </Box>
 
         {activeTab === "alerts" && (
-          <Box component="div" role="tabpanel" id="viewer-tabpanel-alerts" aria-labelledby="viewer-tab-alerts">
+          <Box
+            component="div"
+            className="viewer-tab-panel"
+            role="tabpanel"
+            id="viewer-tabpanel-alerts"
+            aria-labelledby="viewer-tab-alerts"
+          >
             <FilterPanel
               value={draft}
               appliedValue={applied}
               runs={runs.items}
               options={options}
               busy={loading}
+              expanded={alertFilterExpanded}
               onChange={setDraft}
+              onExpandedChange={setAlertFilterExpanded}
               onSubmit={submitSearch}
               onReset={resetSearch}
               onExport={exportCsv}

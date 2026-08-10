@@ -6,6 +6,7 @@ export type SortOrder = "asc" | "desc";
 export type AlertSort =
   | "jst_time"
   | "symbol_name"
+  | "time_frame"
   | "side"
   | "h1_structure_rank"
   | "is_w1_aligned"
@@ -17,6 +18,7 @@ export interface SearchState {
   runId: number | null;
   q: string;
   symbol: string;
+  timeFrames: string[];
   side: "" | AlertSide;
   rank: string;
   w1Aligned: W1Alignment;

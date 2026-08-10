@@ -1,3 +1,8 @@
+import Checkbox from "@mui/material/Checkbox";
+import FormControl from "@mui/material/FormControl";
+import ListItemText from "@mui/material/ListItemText";
+import MenuItem from "@mui/material/MenuItem";
+import Select, { type SelectChangeEvent } from "@mui/material/Select";
 import { useState, type FormEvent } from "react";
 import type { OptionsResponse, RunItem, SearchState, SourceMode } from "../api/types";
 
@@ -7,7 +12,9 @@ interface FilterPanelProps {
   runs: RunItem[];
   options: OptionsResponse;
   busy: boolean;
+  expanded: boolean;
   onChange: (value: SearchState) => void;
+  onExpandedChange: (expanded: boolean) => void;
   onSubmit: () => void;
   onReset: () => void;
   onExport: () => void;
@@ -31,13 +38,24 @@ const SEARCH_VALUE_KEYS: ReadonlyArray<keyof SearchState> = [
 ];
 
 function hasUnappliedChanges(value: SearchState, appliedValue: SearchState): boolean {
-  return SEARCH_VALUE_KEYS.some((key) => value[key] !== appliedValue[key]);
+  const valueTimeFrames = new Set(value.timeFrames);
+  const appliedTimeFrames = new Set(appliedValue.timeFrames);
+  return SEARCH_VALUE_KEYS.some((key) => value[key] !== appliedValue[key])
+    || valueTimeFrames.size !== appliedTimeFrames.size
+    || [...valueTimeFrames].some((timeFrame) => !appliedTimeFrames.has(timeFrame));
+}
+
+function timeFrameSummary(timeFrames: string[], emptyLabel: string): string {
+  if (timeFrames.length === 0) return emptyLabel;
+  if (timeFrames.length <= 2) return timeFrames.join("・");
+  return `${timeFrames.slice(0, 2).join("・")}＋${timeFrames.length - 2}`;
 }
 
 function appliedFilterSummary(value: SearchState): string {
   const sourceMode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
   const symbol = value.symbol || "全通貨";
+  const timeFrames = timeFrameSummary(value.timeFrames, "全時間足");
   const side = value.side || "BUY＋SELL";
   const additionalFilterCount = [
     value.q.trim() !== "",
@@ -48,8 +66,10 @@ function appliedFilterSummary(value: SearchState): string {
   const additionalFilters = additionalFilterCount > 0
     ? ` / 絞り込み ${additionalFilterCount}項目`
     : "";
-  return `${sourceMode} / ${run} / ${symbol} / ${side}${additionalFilters}`;
+  return `${sourceMode} / ${run} / ${symbol} / ${timeFrames} / ${side}${additionalFilters}`;
 }
+
+const ALL_TIME_FRAMES_VALUE = "__all_time_frames__";
 
 export function FilterPanel({
   value,
@@ -57,20 +77,46 @@ export function FilterPanel({
   runs,
   options,
   busy,
+  expanded,
   onChange,
+  onExpandedChange,
   onSubmit,
   onReset,
   onExport,
 }: FilterPanelProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [timeFrameMenuOpen, setTimeFrameMenuOpen] = useState(false);
   const visibleRuns = runs.filter((run) => isRunVisible(run, value.sourceMode));
   const allRunsLabel = value.sourceMode === "all"
     ? "すべてのRun（重複を含む）"
     : `すべての${value.sourceMode} Run（重複を含む）`;
+  const menuTimeFrames = [...new Set([...options.time_frames, ...value.timeFrames])];
+  const selectedTimeFrames = value.timeFrames.length === 0
+    ? [ALL_TIME_FRAMES_VALUE]
+    : value.timeFrames;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
+  }
+
+  function changeTimeFrames(event: SelectChangeEvent<string[]>) {
+    const rawValue = event.target.value;
+    const requestedValues = typeof rawValue === "string" ? rawValue.split(",") : rawValue;
+    setTimeFrameMenuOpen(false);
+    if (value.timeFrames.length > 0 && requestedValues.includes(ALL_TIME_FRAMES_VALUE)) {
+      onChange({ ...value, timeFrames: [] });
+      return;
+    }
+    const timeFrames = [...new Set(
+      requestedValues
+        .filter((timeFrame) => timeFrame !== ALL_TIME_FRAMES_VALUE)
+        .map((timeFrame) => timeFrame.trim())
+        .filter(Boolean),
+    )];
+    onChange({
+      ...value,
+      timeFrames,
+    });
   }
 
   return (
@@ -99,7 +145,7 @@ export function FilterPanel({
             type="button"
             aria-controls="reactFilterFields"
             aria-expanded={expanded}
-            onClick={() => setExpanded((current) => !current)}
+            onClick={() => onExpandedChange(!expanded)}
           >
             <span>{expanded ? "検索条件を閉じる" : "検索条件を開く"}</span>
             <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
@@ -164,6 +210,57 @@ export function FilterPanel({
             {options.symbols.map((symbol) => <option key={symbol}>{symbol}</option>)}
           </select>
         </label>
+        <div className="field">
+          <span id="alertTimeFramesLabel">時間足</span>
+          <FormControl fullWidth size="small">
+            <Select<string[]>
+              displayEmpty
+              labelId="alertTimeFramesLabel"
+              multiple
+              open={timeFrameMenuOpen}
+              value={selectedTimeFrames}
+              renderValue={(selected) => timeFrameSummary(
+                selected.filter((timeFrame) => timeFrame !== ALL_TIME_FRAMES_VALUE),
+                "すべて",
+              )}
+              onChange={changeTimeFrames}
+              onClose={() => setTimeFrameMenuOpen(false)}
+              onOpen={() => setTimeFrameMenuOpen(true)}
+              MenuProps={{ slotProps: { paper: { sx: { maxHeight: 320 } } } }}
+              sx={{
+                height: 40,
+                bgcolor: "#0a141b",
+                fontSize: "0.78rem",
+                "& .MuiSelect-select": { px: 1.4, py: 1 },
+                "& .MuiOutlinedInput-notchedOutline": { borderColor: "divider" },
+              }}
+            >
+              <MenuItem value={ALL_TIME_FRAMES_VALUE}>
+                <Checkbox
+                  aria-hidden="true"
+                  checked={value.timeFrames.length === 0}
+                  disableRipple
+                  indeterminate={value.timeFrames.length > 0}
+                  size="small"
+                  tabIndex={-1}
+                />
+                <ListItemText primary="すべて" />
+              </MenuItem>
+              {menuTimeFrames.map((timeFrame) => (
+                <MenuItem key={timeFrame} value={timeFrame}>
+                  <Checkbox
+                    aria-hidden="true"
+                    checked={value.timeFrames.includes(timeFrame)}
+                    disableRipple
+                    size="small"
+                    tabIndex={-1}
+                  />
+                  <ListItemText primary={timeFrame} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </div>
         <label className="field">
           <span>方向</span>
           <select

@@ -9,7 +9,7 @@ import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, type FormEvent } from "react";
 import type {
   ObservationOptionsResponse,
   ObservationSearchState,
@@ -23,7 +23,9 @@ interface ObservationFilterPanelProps {
   runs: RunItem[];
   options: ObservationOptionsResponse;
   busy: boolean;
+  expanded: boolean;
   onChange: (value: ObservationSearchState) => void;
+  onExpandedChange: (expanded: boolean) => void;
   onSubmit: () => void;
   onReset: () => void;
 }
@@ -56,11 +58,12 @@ export function ObservationFilterPanel({
   runs,
   options,
   busy,
+  expanded,
   onChange,
+  onExpandedChange,
   onSubmit,
   onReset,
 }: ObservationFilterPanelProps) {
-  const [expanded, setExpanded] = useState(true);
   const visibleRuns = useMemo(
     () => runs.filter((run) => isRunVisible(run, value.sourceMode)),
     [runs, value.sourceMode],
@@ -118,7 +121,7 @@ export function ObservationFilterPanel({
             endIcon={<span aria-hidden style={{ fontSize: "0.7rem" }}>{expanded ? "▴" : "▾"}</span>}
             size="small"
             variant="outlined"
-            onClick={() => setExpanded((current) => !current)}
+            onClick={() => onExpandedChange(!expanded)}
           >
             {expanded ? "検索条件を閉じる" : "検索条件を開く"}
           </Button>

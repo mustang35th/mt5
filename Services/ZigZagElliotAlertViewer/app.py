@@ -42,6 +42,7 @@ DEFAULT_PORT = 5187
 DEFAULT_DATABASE_NAME = "mstng-zigzag-elliot-alert.sqlite"
 MAX_PAGE_SIZE = 200
 MAX_SEARCH_LENGTH = 200
+MAX_TIME_FRAME_FILTERS = 32
 W1_TIME_FRAME = 32769
 REACT_CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
 
@@ -993,7 +994,6 @@ class AlertDatabase:
 
         simple_filters = {
             "symbol": ("a.symbol_name", "symbol_name"),
-            "timeFrame": ("a.time_frame_text", "time_frame_text"),
             "strategy": ("a.strategy", "strategy"),
             "rank": ("a.h1_structure_rank", "h1_structure_rank"),
             "entryResult": ("a.entry_result", "entry_result"),
@@ -1003,6 +1003,31 @@ class AlertDatabase:
             if value:
                 clauses.append(f"{column_name} = :{parameter_name}")
                 parameters[parameter_name] = value
+
+        time_frames: list[str] = []
+        seen_time_frames: set[str] = set()
+        for raw_time_frame in query.get("timeFrame", []):
+            time_frame = raw_time_frame.strip()
+            if not time_frame or time_frame in seen_time_frames:
+                continue
+            seen_time_frames.add(time_frame)
+            time_frames.append(time_frame)
+        if len(time_frames) > MAX_TIME_FRAME_FILTERS:
+            raise RequestError(
+                f"timeFrame must have at most {MAX_TIME_FRAME_FILTERS} values"
+            )
+        if len(time_frames) == 1:
+            clauses.append("a.time_frame_text = :time_frame_text")
+            parameters["time_frame_text"] = time_frames[0]
+        elif time_frames:
+            placeholders: list[str] = []
+            for index, time_frame in enumerate(time_frames):
+                parameter_name = f"time_frame_text_{index}"
+                placeholders.append(f":{parameter_name}")
+                parameters[parameter_name] = time_frame
+            clauses.append(
+                "a.time_frame_text IN (" + ", ".join(placeholders) + ")"
+            )
 
         side = first("side")
         if side:

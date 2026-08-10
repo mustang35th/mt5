@@ -9,10 +9,11 @@ import {
 
 describe("searchState", () => {
   it("restores valid URL values and rejects unsupported sorting", () => {
-    const state = readSearchState("?sourceMode=TESTER&runId=3&side=BUY&w1Aligned=unknown&page=2&pageSize=25&sort=bad&order=asc");
+    const state = readSearchState("?sourceMode=TESTER&runId=3&timeFrame=H1&side=BUY&w1Aligned=unknown&page=2&pageSize=25&sort=bad&order=asc");
     expect(state).toMatchObject({
       sourceMode: "TESTER",
       runId: 3,
+      timeFrames: ["H1"],
       side: "BUY",
       w1Aligned: "unknown",
       page: 2,
@@ -26,9 +27,32 @@ describe("searchState", () => {
     const params = buildSearchParams(DEFAULT_SEARCH_STATE);
     expect(params.get("sourceMode")).toBe("LIVE");
     expect(params.has("runId")).toBe(false);
+    expect(params.has("timeFrame")).toBe(false);
     expect(params.has("w1Aligned")).toBe(false);
     expect(params.get("page")).toBe("1");
     expect(params.get("sort")).toBe("jst_time");
+  });
+
+  it("restores legacy and repeated alert time frame filters", () => {
+    expect(readSearchState("?timeFrame=H1").timeFrames).toEqual(["H1"]);
+
+    const state = readSearchState("?timeFrame=M5&timeFrame=H1&timeFrame=M5");
+    expect(state.timeFrames).toEqual(["M5", "H1"]);
+    const params = buildSearchParams(state);
+    expect(params.getAll("timeFrame")).toEqual(["M5", "H1"]);
+    const exportParams = buildSearchParams(state, false, true);
+    expect(exportParams.getAll("timeFrame")).toEqual(["M5", "H1"]);
+    expect(exportParams.has("page")).toBe(false);
+    expect(exportParams.has("pageSize")).toBe(false);
+  });
+
+  it("restores and serializes time frame sorting", () => {
+    const state = readSearchState("?sort=time_frame&order=asc");
+    expect(state.sort).toBe("time_frame");
+    expect(state.order).toBe("asc");
+    const params = buildSearchParams(state);
+    expect(params.get("sort")).toBe("time_frame");
+    expect(params.get("order")).toBe("asc");
   });
 
   it("falls back when the requested page size is not offered by the UI", () => {

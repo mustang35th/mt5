@@ -113,6 +113,7 @@ export function H1ObservationView({
   }, []);
   const [draft, setDraft] = useState<ObservationSearchState>(initialSearch);
   const [applied, setApplied] = useState<ObservationSearchState>(initialSearch);
+  const [filterExpanded, setFilterExpanded] = useState(true);
   const [options, setOptions] = useState<ObservationOptionsResponse>(EMPTY_OPTIONS);
   const [observations, setObservations] = useState<ObservationsResponse | null>(null);
   const [summary, setSummary] = useState<ObservationSummaryResponse | null>(null);
@@ -297,14 +298,22 @@ export function H1ObservationView({
   else if (refreshing) refreshStatus = "H1推移を更新中…";
 
   return (
-    <Box component="div" role="tabpanel" id="viewer-tabpanel-h1" aria-labelledby="viewer-tab-h1">
+    <Box
+      component="div"
+      className="viewer-tab-panel"
+      role="tabpanel"
+      id="viewer-tabpanel-h1"
+      aria-labelledby="viewer-tab-h1"
+    >
       <ObservationFilterPanel
         value={draft}
         appliedValue={applied}
         runs={runs}
         options={options}
         busy={loading}
+        expanded={filterExpanded}
         onChange={setDraft}
+        onExpandedChange={setFilterExpanded}
         onSubmit={() => commitSearch({ ...draft, page: 1 })}
         onReset={() => commitSearch(DEFAULT_OBSERVATION_SEARCH_STATE)}
       />

@@ -5,6 +5,7 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
   runId: null,
   q: "",
   symbol: "",
+  timeFrames: [],
   side: "",
   rank: "",
   w1Aligned: "all",
@@ -19,6 +20,7 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
 const SORT_KEYS = new Set<AlertSort>([
   "jst_time",
   "symbol_name",
+  "time_frame",
   "side",
   "h1_structure_rank",
   "is_w1_aligned",
@@ -58,11 +60,15 @@ export function readSearchState(search: string): SearchState {
   const pageSize = [25, 50, 100].includes(requestedPageSize)
     ? requestedPageSize
     : DEFAULT_SEARCH_STATE.pageSize;
+  const timeFrames = [...new Set(
+    params.getAll("timeFrame").map((timeFrame) => timeFrame.trim()).filter(Boolean),
+  )];
   return {
     sourceMode,
     runId: params.has("runId") ? positiveInteger(params.get("runId"), 0) || null : null,
     q: params.get("q") || "",
     symbol: params.get("symbol") || "",
+    timeFrames,
     side: side === "BUY" || side === "SELL" ? side : "",
     rank: params.get("rank") || "",
     w1Aligned:
@@ -92,6 +98,9 @@ export function buildSearchParams(
   if (state.runId !== null) params.set("runId", String(state.runId));
   if (state.q.trim()) params.set("q", state.q.trim());
   if (state.symbol) params.set("symbol", state.symbol);
+  for (const timeFrame of new Set(state.timeFrames.map((value) => value.trim()).filter(Boolean))) {
+    params.append("timeFrame", timeFrame);
+  }
   if (state.side) params.set("side", state.side);
   if (state.rank) params.set("rank", state.rank);
   if (state.w1Aligned !== "all") params.set("w1Aligned", state.w1Aligned);

@@ -21,6 +21,7 @@ import type { AlertListItem, AlertSort, SortOrder } from "../api/types";
 import { displayValue, formatNumber, sideClass } from "../lib/format";
 import {
   clearGridColumnLayout,
+  type GridColumnLayoutItem,
   type GridDensity,
   readGridColumnLayout,
   readGridDensity,
@@ -59,6 +60,7 @@ const GRID_MODULES = [
 const GRID_COLUMN_IDS = [
   "jst_time",
   "symbol_name",
+  "time_frame",
   "side",
   "source_mode",
   "judgement",
@@ -74,6 +76,7 @@ const GRID_COLUMN_ID_SET: ReadonlySet<string> = new Set(GRID_COLUMN_IDS);
 export const GRID_PINNED_LEFT_COLUMN_IDS = [
   "jst_time",
   "symbol_name",
+  "time_frame",
   "side",
 ] as const;
 export const GRID_PINNED_RIGHT_COLUMN_IDS = ["detail"] as const;
@@ -81,6 +84,7 @@ const FIXED_COLUMN_IDS: ReadonlySet<string> = new Set([
   ...GRID_PINNED_LEFT_COLUMN_IDS,
   ...GRID_PINNED_RIGHT_COLUMN_IDS,
 ]);
+const TIME_FRAME_COLUMN_WIDTH = 80;
 
 const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
   { colId: "source_mode", label: "実行モード" },
@@ -91,6 +95,24 @@ const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
   { colId: "risk_pips", label: "Risk / Spread" },
   { colId: "entry_result", label: "ENTRY" },
 ];
+
+function includeTimeFrameColumn(
+  fromLayout: GridColumnLayoutItem[],
+): GridColumnLayoutItem[] {
+  if (fromLayout.some((column) => column.colId === "time_frame")) return fromLayout;
+  const symbolIndex = fromLayout.findIndex((column) => column.colId === "symbol_name");
+  const insertIndex = symbolIndex < 0 ? fromLayout.length : symbolIndex + 1;
+  const timeFrameColumn = {
+    colId: "time_frame",
+    width: TIME_FRAME_COLUMN_WIDTH,
+    hide: false,
+  };
+  return [
+    ...fromLayout.slice(0, insertIndex),
+    timeFrameColumn,
+    ...fromLayout.slice(insertIndex),
+  ];
+}
 
 const alertGridTheme = themeQuartz
   .withPart(colorSchemeDarkBlue)
@@ -208,9 +230,15 @@ function SymbolCell(params: ICellRendererParams<AlertListItem>) {
   return (
     <div className="grid-cell-stack">
       <span className="symbol">{alert.symbol_name}</span>
-      <span className="subtext">Run {alert.run_id} / {alert.time_frame_text}</span>
+      <span className="subtext">Run {alert.run_id}</span>
     </div>
   );
+}
+
+function TimeFrameCell(params: ICellRendererParams<AlertListItem>) {
+  const alert = dataFrom(params);
+  if (!alert) return null;
+  return <Badge text={displayValue(alert.time_frame_text)} />;
 }
 
 function SourceModeCell(params: ICellRendererParams<AlertListItem>) {
@@ -366,8 +394,9 @@ export function AlertTable({
     columnLayoutReadyRef.current = false;
     const storedLayout = readGridColumnLayout(window.localStorage, GRID_COLUMN_ID_SET);
     if (storedLayout !== null) {
+      const restoredLayout = includeTimeFrameColumn(storedLayout);
       event.api.applyColumnState({
-        state: storedLayout.map((column) => ({
+        state: restoredLayout.map((column) => ({
           ...column,
           hide: FIXED_COLUMN_IDS.has(column.colId) ? false : column.hide,
         })),
@@ -491,6 +520,20 @@ export function AlertTable({
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("symbol_name", sort, order, onSort),
       cellRenderer: SymbolCell,
+    },
+    {
+      colId: "time_frame",
+      field: "time_frame_text",
+      headerName: "時間足",
+      initialPinned: "left",
+      initialWidth: TIME_FRAME_COLUMN_WIDTH,
+      minWidth: 72,
+      lockPinned: true,
+      lockPosition: "left",
+      suppressMovable: true,
+      headerComponent: ServerSortHeader,
+      headerComponentParams: sortHeaderParameters("time_frame", sort, order, onSort),
+      cellRenderer: TimeFrameCell,
     },
     {
       colId: "side",

@@ -142,7 +142,7 @@ describe("App", () => {
         });
       }
       if (path === "/api/options") {
-        return jsonResponse({ symbols: ["AUDUSD"], time_frames: ["H1"], strategies: ["MTF_3in3"], ranks: ["S"], entry_results: ["ENTRY"] });
+        return jsonResponse({ symbols: ["AUDUSD"], time_frames: ["H1", "M5", "D1"], strategies: ["MTF_3in3"], ranks: ["S"], entry_results: ["ENTRY"] });
       }
       if (path === "/api/observation-options") {
         return jsonResponse({
@@ -242,6 +242,7 @@ describe("App", () => {
   it("defaults to all LIVE runs without falling back to a TESTER run", async () => {
     render(<App />);
     expect(await screen.findByText("接続済み・LIVE 1件")).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel")).toHaveClass("viewer-tab-panel");
     expect(screen.getByRole("link", { name: "従来画面" })).toHaveAttribute("href", "/legacy/");
     expect((await screen.findAllByText("AUDUSD")).length).toBeGreaterThan(0);
     expect(await screen.findByText("一致")).toBeInTheDocument();
@@ -267,6 +268,7 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("tab", { name: "H1推移", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel")).toHaveClass("viewer-tab-panel");
     expect(await screen.findByRole("columnheader", { name: /Server日時/ })).toBeInTheDocument();
     for (const timeFrame of ["MN1", "W1", "D1", "H4", "H1"]) {
       expect(screen.getByRole("columnheader", { name: timeFrame })).toBeInTheDocument();
@@ -290,6 +292,26 @@ describe("App", () => {
       expect(parameters.get("sort")).toBe("anchor_bar_time");
       expect(parameters.get("order")).toBe("asc");
     });
+  });
+
+  it("keeps each filter panel collapsed independently when switching tabs", async () => {
+    render(<App />);
+
+    const alertCloseButton = await screen.findByRole("button", { name: "検索条件を閉じる" });
+    fireEvent.click(alertCloseButton);
+    expect(screen.getByRole("button", { name: "検索条件を開く" })).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(screen.getByRole("tab", { name: "H1推移" }));
+    const observationCloseButton = await screen.findByRole("button", { name: "検索条件を閉じる" });
+    expect(observationCloseButton).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(observationCloseButton);
+    expect(screen.getByRole("button", { name: "検索条件を開く" })).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(screen.getByRole("tab", { name: "アラート一覧" }));
+    expect(await screen.findByRole("button", { name: "検索条件を開く" })).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(screen.getByRole("tab", { name: "H1推移" }));
+    expect(await screen.findByRole("button", { name: "検索条件を開く" })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows an unused state when the observation tables do not exist", async () => {
@@ -353,6 +375,38 @@ describe("App", () => {
     const parameters = new URLSearchParams(window.location.search);
     expect(parameters.get("sourceMode")).toBe("LIVE");
     expect(parameters.has("runId")).toBe(false);
+  });
+
+  it("applies and resets multiple alert time frame filters", async () => {
+    render(<App />);
+
+    const timeFrameSelect = await screen.findByRole("combobox", { name: "時間足" });
+    fireEvent.mouseDown(timeFrameSelect);
+    fireEvent.click(screen.getByRole("option", { name: "H1" }));
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    fireEvent.mouseDown(timeFrameSelect);
+    fireEvent.click(screen.getByRole("option", { name: "M5" }));
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(timeFrameSelect).toHaveTextContent("H1・M5");
+    expect(new URLSearchParams(window.location.search).has("timeFrame")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "検索する" }));
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).getAll("timeFrame")).toEqual(["H1", "M5"]);
+      const requestedPaths = vi.mocked(fetch).mock.calls.map(([path]) => String(path));
+      for (const prefix of ["/api/alerts?", "/api/summary?"]) {
+        expect(requestedPaths.some((path) => (
+          path.startsWith(prefix)
+          && new URL(path, "http://localhost").searchParams.getAll("timeFrame").join(",") === "H1,M5"
+        ))).toBe(true);
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
+    await waitFor(() => {
+      expect(timeFrameSelect).toHaveTextContent("すべて");
+      expect(new URLSearchParams(window.location.search).has("timeFrame")).toBe(false);
+    });
   });
 
   it("opens an alert detail and restores focus to its trigger after closing", async () => {

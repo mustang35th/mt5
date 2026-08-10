@@ -12,7 +12,13 @@ import threading
 import unittest
 from pathlib import Path
 
-from app import AlertDatabase, DEFAULT_HOST, RequestError, ViewerServer
+from app import (
+    AlertDatabase,
+    DEFAULT_HOST,
+    MAX_TIME_FRAME_FILTERS,
+    RequestError,
+    ViewerServer,
+)
 
 
 class StubDatabase:
@@ -166,6 +172,8 @@ class ViewerRouteTest(unittest.TestCase):
                 status, headers, payload = self.get(path)
                 html = payload.decode("utf-8")
                 self.assertEqual(200, status)
+                self.assertIn('<html lang="ja" class="react-viewer-page">', html)
+                self.assertIn('<body class="react-viewer">', html)
                 self.assertIn('<div id="root"></div>', html)
                 self.assertNotIn('id="filterForm"', html)
                 self.assert_security_headers(headers)
@@ -277,6 +285,72 @@ class ViewerRouteTest(unittest.TestCase):
 
 class AlertFilterTest(unittest.TestCase):
     """Verify filters shared by alert lists, summaries and CSV export."""
+
+    def test_single_time_frame_keeps_the_existing_bound_filter(self) -> None:
+        """Keep one timeFrame query compatible with the original contract."""
+
+        filters = AlertDatabase.parse_filters({"timeFrame": [" H1 "]})
+
+        self.assertIn(
+            "a.time_frame_text = :time_frame_text",
+            filters.where_sql,
+        )
+        self.assertEqual({"time_frame_text": "H1"}, filters.parameters)
+
+    def test_multiple_time_frames_are_deduplicated_and_bound(self) -> None:
+        """Build an IN predicate using only internal parameter identifiers."""
+
+        unsafe_value = "M5') OR 1=1 --"
+        filters = AlertDatabase.parse_filters(
+            {
+                "timeFrame": [
+                    " H1 ",
+                    "",
+                    "H1",
+                    unsafe_value,
+                    " M5 ",
+                    "   ",
+                ]
+            }
+        )
+
+        self.assertIn(
+            "a.time_frame_text IN ("
+            ":time_frame_text_0, :time_frame_text_1, :time_frame_text_2)",
+            filters.where_sql,
+        )
+        self.assertNotIn(unsafe_value, filters.where_sql)
+        self.assertEqual(
+            {
+                "time_frame_text_0": "H1",
+                "time_frame_text_1": unsafe_value,
+                "time_frame_text_2": "M5",
+            },
+            filters.parameters,
+        )
+
+    def test_empty_time_frames_do_not_add_a_filter(self) -> None:
+        """Treat repeated empty values as no time-frame selection."""
+
+        filters = AlertDatabase.parse_filters(
+            {"timeFrame": ["", " ", "\t"]}
+        )
+
+        self.assertNotIn("time_frame_text", filters.where_sql)
+        self.assertEqual({}, filters.parameters)
+
+    def test_excessive_unique_time_frames_are_rejected(self) -> None:
+        """Bound the number of generated SQL parameters."""
+
+        time_frames = [
+            f"TF{index}" for index in range(MAX_TIME_FRAME_FILTERS + 1)
+        ]
+
+        with self.assertRaisesRegex(
+            RequestError,
+            f"timeFrame must have at most {MAX_TIME_FRAME_FILTERS} values",
+        ):
+            AlertDatabase.parse_filters({"timeFrame": time_frames})
 
     def test_source_mode_is_bound_as_a_run_filter(self) -> None:
         """Filter LIVE and TESTER data through the parent run source mode."""

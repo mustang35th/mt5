@@ -49,7 +49,7 @@ describe("AlertTable", () => {
 
   it("renders W1 alignment as a three-state value and escapes DB text", async () => {
     const onOpenDetail = vi.fn();
-    render(
+    const view = render(
       <AlertTable
         items={[alertWithAlignment(1, true), alertWithAlignment(2, false), alertWithAlignment(3, null)]}
         loading={false}
@@ -66,6 +66,17 @@ describe("AlertTable", () => {
     expect(screen.getAllByText("LIVE")).toHaveLength(3);
     expect(screen.getAllByText("test <img onerror=alert(1)>")).toHaveLength(3);
     expect(document.querySelector("img")).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "時間足" })).toBeInTheDocument();
+    await waitFor(() => {
+      const timeFrameCells = view.container.querySelectorAll('.ag-cell[col-id="time_frame"]');
+      expect(timeFrameCells).toHaveLength(3);
+      for (const cell of timeFrameCells) expect(cell).toHaveTextContent("H1");
+      const symbolCells = view.container.querySelectorAll('.ag-cell[col-id="symbol_name"]');
+      for (const cell of symbolCells) {
+        expect(cell).toHaveTextContent("Run 3");
+        expect(cell).not.toHaveTextContent("H1");
+      }
+    });
     await waitFor(() => expect(document.querySelector('.ag-row[row-id="2"]')).toHaveClass("alert-row-new"));
     const detailButton = screen.getAllByRole("button", { name: "AUDUSD BUY 2026.07.31 01:00:00 の詳細を表示" })[0];
     fireEvent.click(detailButton);
@@ -92,13 +103,16 @@ describe("AlertTable", () => {
     expect(view.container.querySelector(".ag-layout-auto-height")).toBeNull();
     expect(view.container.querySelector(".ag-header")).toHaveStyle({ height: "33px" });
     expect(dateHeader).toHaveAttribute("aria-sort", "descending");
+    const timeFrameHeader = screen.getByRole("columnheader", { name: "時間足" });
+    fireEvent.click(within(timeFrameHeader).getByRole("button", { name: "時間足" }));
+    expect(onSort).toHaveBeenCalledWith("time_frame");
     const symbolHeader = screen.getByRole("columnheader", { name: "通貨" });
     fireEvent.click(within(symbolHeader).getByRole("button", { name: "通貨" }));
     expect(onSort).toHaveBeenCalledWith("symbol_name");
 
     fireEvent.focus(symbolHeader);
     fireEvent.keyDown(symbolHeader, { key: "Enter" });
-    expect(onSort).toHaveBeenCalledTimes(2);
+    expect(onSort).toHaveBeenCalledTimes(3);
     await waitFor(() => {
       const rows = Array.from(view.container.querySelectorAll<HTMLElement>(".ag-row[row-id]"));
       expect(rows).toHaveLength(2);
@@ -123,7 +137,7 @@ describe("AlertTable", () => {
       expect(firstView.container.querySelector('.ag-header-cell[col-id="jst_time"]'))
         .toBeInTheDocument();
     });
-    expect(GRID_PINNED_LEFT_COLUMN_IDS).toEqual(["jst_time", "symbol_name", "side"]);
+    expect(GRID_PINNED_LEFT_COLUMN_IDS).toEqual(["jst_time", "symbol_name", "time_frame", "side"]);
     expect(GRID_PINNED_RIGHT_COLUMN_IDS).toEqual(["detail"]);
 
     fireEvent.click(screen.getByRole("button", { name: "コンパクト表示" }));
@@ -201,6 +215,7 @@ describe("AlertTable", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "列を初期化" })).toBeEnabled();
       expect(screen.getByRole("columnheader", { name: /JST日時/ })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "時間足" })).toBeInTheDocument();
       expect(view.container.querySelector<HTMLElement>('[col-id="entry_result"]'))
         .toHaveStyle({ width: "165px" });
     });
@@ -210,6 +225,10 @@ describe("AlertTable", () => {
     );
     expect(initialColumnIds.indexOf("entry_result"))
       .toBeLessThan(initialColumnIds.indexOf("source_mode"));
+    expect(initialColumnIds.indexOf("symbol_name"))
+      .toBeLessThan(initialColumnIds.indexOf("time_frame"));
+    expect(initialColumnIds.indexOf("time_frame"))
+      .toBeLessThan(initialColumnIds.indexOf("side"));
 
     view.rerender(
       <AlertTable
