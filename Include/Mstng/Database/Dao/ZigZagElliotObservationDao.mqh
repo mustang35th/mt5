@@ -9,6 +9,7 @@
 #ifndef MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_OBSERVATION_DAO_MQH
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_OBSERVATION_DAO_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotObservationJstMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -49,6 +50,8 @@ public:
         sql += "anchor_time_frame_text TEXT NOT NULL,";
         sql += "anchor_bar_time INTEGER NOT NULL CHECK(anchor_bar_time > 0),";
         sql += "anchor_bar_time_text TEXT NOT NULL,";
+        sql += "anchor_jst_time INTEGER NOT NULL CHECK(anchor_jst_time > 0),";
+        sql += "anchor_jst_time_text TEXT NOT NULL,";
         sql += "capture_phase TEXT NOT NULL ";
         sql += "CHECK(capture_phase = 'BAR_OPEN_FIRST_SUCCESS'),";
         sql += "analysis_version TEXT NOT NULL,";
@@ -65,6 +68,16 @@ public:
         sql += ")";
 
         if (!this.executeSql(sql, "zigzag_elliot_observations table")) {
+            return false;
+        }
+
+        if (!ZigZagElliotObservationJstMigration::execute(
+                this.databaseHandle,
+                "zigzag_elliot_observations",
+                "anchor_bar_time",
+                "anchor_jst_time",
+                "anchor_jst_time_text"
+            )) {
             return false;
         }
 
@@ -85,11 +98,39 @@ public:
         }
 
         sql = "CREATE INDEX IF NOT EXISTS ";
+        sql += "idx_zigzag_elliot_observations_mode_jst ";
+        sql += "ON zigzag_elliot_observations(source_mode, anchor_jst_time)";
+
+        if (!this.executeSql(sql, "zigzag elliot observation mode JST index")) {
+            return false;
+        }
+
+        sql = "CREATE INDEX IF NOT EXISTS ";
+        sql += "idx_zigzag_elliot_observations_jst_id ";
+        sql += "ON zigzag_elliot_observations(anchor_jst_time, id)";
+
+        if (!this.executeSql(sql, "zigzag elliot observation JST ID index")) {
+            return false;
+        }
+
+        sql = "CREATE INDEX IF NOT EXISTS ";
         sql += "idx_zigzag_elliot_observations_mode_symbol_bar ";
         sql += "ON zigzag_elliot_observations(";
         sql += "source_mode, symbol_name, anchor_time_frame, anchor_bar_time)";
 
         if (!this.executeSql(sql, "zigzag elliot observation symbol index")) {
+            return false;
+        }
+
+        sql = "CREATE INDEX IF NOT EXISTS ";
+        sql += "idx_zigzag_elliot_observations_mode_symbol_jst ";
+        sql += "ON zigzag_elliot_observations(";
+        sql += "source_mode, symbol_name, anchor_time_frame, anchor_jst_time)";
+
+        if (!this.executeSql(
+                sql,
+                "zigzag elliot observation symbol JST index"
+            )) {
             return false;
         }
 
@@ -271,12 +312,13 @@ private:
         string sql = "INSERT INTO zigzag_elliot_observations (";
         sql += "run_id, source_mode, source_server, symbol_name,";
         sql += " anchor_time_frame, anchor_time_frame_text,";
-        sql += " anchor_bar_time, anchor_bar_time_text, capture_phase,";
+        sql += " anchor_bar_time, anchor_bar_time_text,";
+        sql += " anchor_jst_time, anchor_jst_time_text, capture_phase,";
         sql += " analysis_version, analysis_input_hash, snapshot_hash,";
         sql += " time_frame_count, created_at, created_at_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,";
-        sql += " ?11, ?12, ?13, ?14, ?15";
+        sql += " ?11, ?12, ?13, ?14, ?15, ?16, ?17";
         sql += ") ON CONFLICT(";
         sql += "source_mode, source_server, symbol_name,";
         sql += " anchor_time_frame, anchor_bar_time, capture_phase,";
@@ -338,6 +380,20 @@ private:
             );
         }
         if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.anchorJstTime
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.anchorJstTimeText
+            );
+        }
+        if (isBound) {
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.capturePhase);
         }
         if (isBound) {
@@ -375,7 +431,7 @@ private:
             );
         }
 
-        return isBound && index == 15;
+        return isBound && index == 17;
     }
 
     /**

@@ -42,6 +42,12 @@ struct ZigZagElliotObservationEntity {
     /** 観測基準バー開始時刻表示文字列。 */
     string anchorBarTimeText;
 
+    /** 観測基準バー開始日本時刻。 */
+    datetime anchorJstTime;
+
+    /** 観測基準バー開始日本時刻表示文字列。 */
+    string anchorJstTimeText;
+
     /** 観測タイミング種別。 */
     string capturePhase;
 

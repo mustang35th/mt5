@@ -56,6 +56,10 @@ export interface RunItem {
   observation_count?: number;
   first_observation_time_text?: string | null;
   last_observation_time_text?: string | null;
+  first_observation_jst_time?: number | null;
+  first_observation_jst_time_text?: string | null;
+  last_observation_jst_time?: number | null;
+  last_observation_jst_time_text?: string | null;
   observation_symbols?: string | null;
 }
 
@@ -240,7 +244,7 @@ export interface PointsResponse {
   count: number;
 }
 
-export type ObservationSort = "anchor_bar_time" | "symbol_name";
+export type ObservationSort = "anchor_jst_time" | "symbol_name";
 
 export interface ObservationSearchState {
   sourceMode: SourceMode;
@@ -277,6 +281,8 @@ export interface ObservationTimeFrame {
   latest_sub_elliot_label: string;
   latest_point_time: number;
   latest_point_time_text: string;
+  latest_point_jst_time: number;
+  latest_point_jst_time_text: string;
   latest_point_rate: number;
   current_close: number;
   stochastic_main_order_text: string;
@@ -297,6 +303,8 @@ export interface ObservationListItem {
   symbol_name: string;
   anchor_bar_time: number;
   anchor_bar_time_text: string;
+  anchor_jst_time: number;
+  anchor_jst_time_text: string;
   anchor_time_frame: number;
   anchor_time_frame_text: string;
   capture_phase: string;
@@ -336,6 +344,10 @@ export interface ObservationSummaryResponse {
   first_anchor_bar_time_text: string | null;
   last_anchor_bar_time: number | null;
   last_anchor_bar_time_text: string | null;
+  first_anchor_jst_time: number | null;
+  first_anchor_jst_time_text: string | null;
+  last_anchor_jst_time: number | null;
+  last_anchor_jst_time_text: string | null;
 }
 
 export interface ApiErrorResponse {

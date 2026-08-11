@@ -12,11 +12,19 @@ export const DEFAULT_OBSERVATION_SEARCH_STATE: ObservationSearchState = {
   to: "",
   pageSize: 50,
   page: 1,
-  sort: "anchor_bar_time",
+  sort: "anchor_jst_time",
   order: "desc",
 };
 
-const SORT_KEYS = new Set<ObservationSort>(["anchor_bar_time", "symbol_name"]);
+const SORT_KEYS = new Set<ObservationSort>(["anchor_jst_time", "symbol_name"]);
+
+function observationSort(value: string | null): ObservationSort {
+  if (value === "anchor_bar_time") return "anchor_jst_time";
+  if (value !== null && SORT_KEYS.has(value as ObservationSort)) {
+    return value as ObservationSort;
+  }
+  return DEFAULT_OBSERVATION_SEARCH_STATE.sort;
+}
 
 function positiveInteger(value: string | null, fallback: number): number {
   const parsed = Number(value);
@@ -40,7 +48,6 @@ export function readObservationSearchState(search: string): ObservationSearchSta
     params.get("pageSize"),
     DEFAULT_OBSERVATION_SEARCH_STATE.pageSize,
   );
-  const sort = params.get("sort") as ObservationSort | null;
   return {
     sourceMode,
     runId: params.has("runId") ? positiveInteger(params.get("runId"), 0) || null : null,
@@ -51,7 +58,7 @@ export function readObservationSearchState(search: string): ObservationSearchSta
       ? requestedPageSize
       : DEFAULT_OBSERVATION_SEARCH_STATE.pageSize,
     page: positiveInteger(params.get("page"), DEFAULT_OBSERVATION_SEARCH_STATE.page),
-    sort: sort && SORT_KEYS.has(sort) ? sort : DEFAULT_OBSERVATION_SEARCH_STATE.sort,
+    sort: observationSort(params.get("sort")),
     order: params.get("order") === "asc" ? "asc" : "desc",
   };
 }

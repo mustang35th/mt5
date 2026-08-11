@@ -14,6 +14,7 @@
 #include <Mstng\Database\Entity\ZigZagElliotObservationEntity.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Util\TimeJapanUtil.mqh>
 
 /**
  * ZigZagElliot観測本体と時間足別分析を一括保存するサービス。
@@ -48,15 +49,20 @@ public:
             return false;
         }
 
-        if (!this.enableForeignKeys()) {
+        if (!this.setBusyTimeout(60000)) {
+            this.setBusyTimeout(5000);
+
             return false;
         }
 
-        if (!this.observationDao.createTable()) {
+        bool isSucceeded = this.createTablesWithExtendedTimeout();
+        bool isTimeoutRestored = this.setBusyTimeout(5000);
+
+        if (!isTimeoutRestored) {
             return false;
         }
 
-        return this.timeFrameDao.createTable();
+        return isSucceeded;
     }
 
     /**
@@ -229,6 +235,130 @@ private:
     Logger logger;
 
     /**
+     * 延長済みbusy_timeoutの範囲で親子テーブルと全インデックスを準備する。
+     *
+     * @return 準備に成功した場合true。
+     */
+    bool createTablesWithExtendedTimeout() {
+        if (!this.enableForeignKeys()) {
+            return false;
+        }
+
+        if (!this.observationDao.createTable()) {
+            return false;
+        }
+
+        return this.timeFrameDao.createTable();
+    }
+
+    /**
+     * SQLite接続のbusy_timeoutを設定して値を確認する。
+     *
+     * @param fromTimeoutMilliseconds タイムアウト時間（ミリ秒）。
+     * @return 設定値が一致した場合true。
+     */
+    bool setBusyTimeout(const int fromTimeoutMilliseconds) {
+        string sql = "PRAGMA busy_timeout = ";
+        sql += IntegerToString(fromTimeoutMilliseconds);
+        ResetLastError();
+
+        if (!DatabaseExecute(this.databaseHandle, sql)) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseExecute failed. timeout=%d error=%d",
+                    fromTimeoutMilliseconds,
+                    GetLastError()
+                )
+            );
+
+            return false;
+        }
+
+        long actualTimeout = 0;
+
+        if (!this.readBusyTimeout(actualTimeout)) {
+            return false;
+        }
+
+        if (actualTimeout == fromTimeoutMilliseconds) {
+            return true;
+        }
+
+        this.logger.error(
+            __FUNCTION__,
+            StringFormat(
+                "busy_timeout verification failed. actual=%I64d expected=%d",
+                actualTimeout,
+                fromTimeoutMilliseconds
+            )
+        );
+
+        return false;
+    }
+
+    /**
+     * SQLite接続のbusy_timeoutを取得する。
+     *
+     * @param fromTimeoutMilliseconds 取得値の格納先。
+     * @return 取得に成功した場合true。
+     */
+    bool readBusyTimeout(long &fromTimeoutMilliseconds) {
+        fromTimeoutMilliseconds = 0;
+        ResetLastError();
+        int requestHandle = DatabasePrepare(
+            this.databaseHandle,
+            "PRAGMA busy_timeout"
+        );
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseRead(requestHandle)) {
+            int readErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseColumnLong(
+                requestHandle,
+                0,
+                fromTimeoutMilliseconds
+            )) {
+            int columnErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseColumnLong failed. error=%d",
+                    columnErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        DatabaseFinalize(requestHandle);
+
+        return true;
+    }
+
+    /**
      * 観測スナップショットのNULL文字列を空文字列へ変換する。
      *
      * @param fromObservationEntity 観測本体。
@@ -261,6 +391,9 @@ private:
         );
         fromEntity.anchorBarTimeText = this.normalizeText(
             fromEntity.anchorBarTimeText
+        );
+        fromEntity.anchorJstTimeText = this.normalizeText(
+            fromEntity.anchorJstTimeText
         );
         fromEntity.capturePhase = this.normalizeText(fromEntity.capturePhase);
         fromEntity.analysisVersion = this.normalizeText(
@@ -302,6 +435,9 @@ private:
         fromEntity.latestPointTimeText = this.normalizeText(
             fromEntity.latestPointTimeText
         );
+        fromEntity.latestPointJstTimeText = this.normalizeText(
+            fromEntity.latestPointJstTimeText
+        );
         fromEntity.stochasticMainOrderText = this.normalizeText(
             fromEntity.stochasticMainOrderText
         );
@@ -333,6 +469,11 @@ private:
                 || fromObservationEntity.anchorTimeFrameText == ""
                 || fromObservationEntity.anchorBarTime <= 0
                 || fromObservationEntity.anchorBarTimeText == ""
+                || !this.isJapanTimeValid(
+                    fromObservationEntity.anchorBarTime,
+                    fromObservationEntity.anchorJstTime,
+                    fromObservationEntity.anchorJstTimeText
+                )
                 || fromObservationEntity.capturePhase
                     != "BAR_OPEN_FIRST_SUCCESS"
                 || fromObservationEntity.analysisVersion == ""
@@ -387,6 +528,11 @@ private:
                     || entity.pointCount <= 0
                     || entity.latestPointTime <= 0
                     || entity.latestPointTimeText == ""
+                    || !this.isJapanTimeValid(
+                        entity.latestPointTime,
+                        entity.latestPointJstTime,
+                        entity.latestPointJstTimeText
+                    )
                     || entity.latestPointRate <= 0.0
                     || entity.createdAt <= 0
                     || entity.createdAtText == ""
@@ -422,6 +568,35 @@ private:
      */
     bool isBooleanValue(const int fromValue) {
         return fromValue == 0 || fromValue == 1;
+    }
+
+    /**
+     * サーバー時刻から生成した日本時刻と表示文字列か確認する。
+     *
+     * @param fromServerTime 変換元サーバー時刻。
+     * @param fromJstTime 日本時刻。
+     * @param fromJstTimeText 日本時刻表示文字列。
+     * @return TimeJapanUtilの変換結果と一致する場合true。
+     */
+    bool isJapanTimeValid(
+        const datetime fromServerTime,
+        const datetime fromJstTime,
+        const string fromJstTimeText
+    ) {
+        if (fromServerTime <= 0 || fromJstTime <= 0 || fromJstTimeText == "") {
+            return false;
+        }
+
+        datetime expectedJstTime = TimeJapanUtil::getJapanTime(
+            fromServerTime
+        );
+        string expectedJstTimeText = TimeToString(
+            expectedJstTime,
+            TIME_DATE | TIME_SECONDS
+        );
+
+        return fromJstTime == expectedJstTime
+            && fromJstTimeText == expectedJstTimeText;
     }
 
     /**

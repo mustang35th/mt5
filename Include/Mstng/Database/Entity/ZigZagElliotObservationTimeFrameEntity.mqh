@@ -81,6 +81,12 @@ struct ZigZagElliotObservationTimeFrameEntity {
     /** 最新ポイントのバー時刻表示文字列。 */
     string latestPointTimeText;
 
+    /** 最新ポイントのバー日本時刻。 */
+    datetime latestPointJstTime;
+
+    /** 最新ポイントのバー日本時刻表示文字列。 */
+    string latestPointJstTimeText;
+
     /** 最新ポイントの価格。 */
     double latestPointRate;
 

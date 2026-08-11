@@ -37,6 +37,8 @@ function observationTimeFrame(timeFrame: string, index: number) {
     latest_sub_elliot_label: "3-1",
     latest_point_time: 1786309200,
     latest_point_time_text: "2026.08.10 01:00:00",
+    latest_point_jst_time: 1786330800,
+    latest_point_jst_time_text: "2026.08.10 07:00:00",
     latest_point_rate: 1.23456,
     current_close: 1.235,
     stochastic_main_order_text: "SHORT>MIDDLE>LONG",
@@ -65,6 +67,8 @@ function observationsResponse() {
       symbol_name: "AUDUSD",
       anchor_bar_time: 1786309200,
       anchor_bar_time_text: "2026.08.10 01:00:00",
+      anchor_jst_time: 1786330800,
+      anchor_jst_time_text: "2026.08.10 07:00:00",
       anchor_time_frame: 16385,
       anchor_time_frame_text: "H1",
       capture_phase: "BAR_OPEN_FIRST_SUCCESS",
@@ -122,6 +126,14 @@ describe("App", () => {
               first_alert_time_text: "2026.07.30 19:00:00",
               last_alert_time_text: "2026.07.30 19:00:00",
               symbols: "AUDUSD",
+              observation_count: 1,
+              first_observation_time_text: "2026.08.10 01:00:00",
+              last_observation_time_text: "2026.08.10 01:00:00",
+              first_observation_jst_time: 1786330800,
+              first_observation_jst_time_text: "2026.08.10 07:00:00",
+              last_observation_jst_time: 1786330800,
+              last_observation_jst_time_text: "2026.08.10 07:00:00",
+              observation_symbols: "AUDUSD",
             },
             {
               id: 2,
@@ -167,6 +179,10 @@ describe("App", () => {
           first_anchor_bar_time_text: observationAvailable ? "2026.08.10 01:00:00" : null,
           last_anchor_bar_time: observationAvailable ? 1786309200 : null,
           last_anchor_bar_time_text: observationAvailable ? "2026.08.10 01:00:00" : null,
+          first_anchor_jst_time: observationAvailable ? 1786330800 : null,
+          first_anchor_jst_time_text: observationAvailable ? "2026.08.10 07:00:00" : null,
+          last_anchor_jst_time: observationAvailable ? 1786330800 : null,
+          last_anchor_jst_time_text: observationAvailable ? "2026.08.10 07:00:00" : null,
         });
       }
       if (path === "/api/alerts/74") {
@@ -288,11 +304,11 @@ describe("App", () => {
     expect(parameters.has("runId")).toBe(false);
   });
 
-  it("opens the H1 view directly with Server time and five timeframe comparisons", async () => {
+  it("opens the H1 view directly with JST time and five timeframe comparisons", async () => {
     window.history.replaceState(
       null,
       "",
-      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10",
+      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&sort=anchor_bar_time",
     );
     render(<App />);
 
@@ -309,30 +325,42 @@ describe("App", () => {
     expect(observationToggle).toHaveAttribute("aria-controls", "observationFilterSidebar");
     expect(observationToggle.compareDocumentPosition(observationConditionSummary) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeTruthy();
+    expect(observationConditionSummary).toHaveTextContent("JST期間 2026-08-01 – 2026-08-10");
+    expect(screen.getByLabelText("Run")).toHaveTextContent(
+      "JST 2026.08.10 07:00:00 – 2026.08.10 07:00:00",
+    );
     expect(tabPanel.querySelector(".viewer-summary-bar"))
       .toContainElement(tabPanel.querySelector(".observation-summary-strip"));
     expect(resultsColumn).toContainElement(tabPanel.querySelector(".results-panel"));
-    expect(await screen.findByRole("columnheader", { name: /Server日時/ })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: /JST日時/ })).toBeInTheDocument();
+    expect(screen.getByText("2026.08.10 07:00:00")).toBeInTheDocument();
+    expect(screen.getByText("Server 2026.08.10 01:00:00 / H1新規足")).toBeInTheDocument();
     for (const timeFrame of ["MN1", "W1", "D1", "H4", "H1"]) {
       expect(screen.getByRole("columnheader", { name: timeFrame })).toBeInTheDocument();
     }
     expect(screen.getAllByText(/上昇|下降/).length).toBeGreaterThanOrEqual(5);
     expect(screen.queryByText("Бе")).not.toBeInTheDocument();
-    expect(screen.getByText(/最新点 2026\.08\.10 01:00:00/)).toBeInTheDocument();
-    expect(screen.getByLabelText("開始日（Server）")).toHaveValue("2026-08-01");
-    expect(screen.getByLabelText("終了日（Server）")).toHaveValue("2026-08-10");
+    const latestPoint = screen.getByText(/最新点 JST 2026\.08\.10 07:00:00/);
+    expect(latestPoint).toHaveAttribute("title", "Server 2026.08.10 01:00:00");
+    expect(latestPoint).toHaveAccessibleName(/JST 2026\.08\.10 07:00:00、Server 2026\.08\.10 01:00:00/);
+    expect(screen.getByLabelText("開始日（JST）")).toHaveValue("2026-08-01");
+    expect(screen.getByLabelText("終了日（JST）")).toHaveValue("2026-08-10");
     expect(new URLSearchParams(window.location.search).get("tab")).toBe("h1");
 
     const calls = vi.mocked(fetch).mock.calls.map(([path]) => String(path));
-    expect(calls.some((path) => path.startsWith("/api/observations?sourceMode=TESTER"))).toBe(true);
+    expect(calls.some((path) => path.startsWith("/api/observations?sourceMode=TESTER")
+      && path.includes("sort=anchor_jst_time"))).toBe(true);
+    expect(calls.some((path) => path.startsWith("/api/observation-summary?sourceMode=TESTER")
+      && path.includes("sort=anchor_jst_time"))).toBe(true);
     expect(calls.some((path) => path.startsWith("/api/alerts?"))).toBe(false);
+    expect(new URLSearchParams(window.location.search).get("sort")).toBe("anchor_jst_time");
 
-    fireEvent.click(within(screen.getByRole("columnheader", { name: /Server日時/ }))
-      .getByRole("button", { name: /Server日時/ }));
+    fireEvent.click(within(screen.getByRole("columnheader", { name: /JST日時/ }))
+      .getByRole("button", { name: /JST日時/ }));
     await waitFor(() => {
       const parameters = new URLSearchParams(window.location.search);
       expect(parameters.get("tab")).toBe("h1");
-      expect(parameters.get("sort")).toBe("anchor_bar_time");
+      expect(parameters.get("sort")).toBe("anchor_jst_time");
       expect(parameters.get("order")).toBe("asc");
     });
   });

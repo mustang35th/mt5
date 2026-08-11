@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
 import csv
 import io
 import json
@@ -102,6 +103,7 @@ OBSERVATION_SORT_COLUMNS = {
     "source_mode": "source_mode COLLATE NOCASE",
     "source_server": "source_server COLLATE NOCASE",
     "symbol_name": "symbol_name COLLATE NOCASE",
+    "anchor_jst_time": "anchor_jst_time",
     "anchor_bar_time": "anchor_bar_time",
     "server_time": "anchor_bar_time",
     "anchor_time_frame": "anchor_time_frame",
@@ -121,6 +123,8 @@ OBSERVATION_REQUIRED_COLUMNS = {
         "anchor_time_frame_text",
         "anchor_bar_time",
         "anchor_bar_time_text",
+        "anchor_jst_time",
+        "anchor_jst_time_text",
         "capture_phase",
         "analysis_version",
         "analysis_input_hash",
@@ -152,6 +156,8 @@ OBSERVATION_REQUIRED_COLUMNS = {
         "latest_sub_elliot_label",
         "latest_point_time",
         "latest_point_time_text",
+        "latest_point_jst_time",
+        "latest_point_jst_time_text",
         "latest_point_rate",
         "current_close",
         "stochastic_main_order_text",
@@ -436,6 +442,26 @@ class AlertDatabase:
                     "available": False,
                     "reason": "observation table schema is not supported",
                 }
+        jst_columns = {
+            "zigzag_elliot_observations": (
+                "anchor_jst_time",
+                "anchor_jst_time_text",
+            ),
+            "zigzag_elliot_observation_timeframes": (
+                "latest_point_jst_time",
+                "latest_point_jst_time_text",
+            ),
+        }
+        for table_name, (time_column, text_column) in jst_columns.items():
+            sql = (
+                f"SELECT 1 FROM {table_name} "
+                f"WHERE {time_column} <= 0 OR {text_column} = '' LIMIT 1"
+            )
+            if connection.exec_driver_sql(sql).first() is not None:
+                return {
+                    "available": False,
+                    "reason": "observation JST migration is incomplete",
+                }
         return {"available": True, "reason": None}
 
     def validate(self) -> dict[str, Any]:
@@ -544,38 +570,38 @@ class AlertDatabase:
                         AS last_observation_time,
                     MAX(observation_stats.last_observation_time_text)
                         AS last_observation_time_text,
+                    MAX(observation_stats.first_observation_jst_time)
+                        AS first_observation_jst_time,
+                    MAX(observation_stats.first_observation_jst_time_text)
+                        AS first_observation_jst_time_text,
+                    MAX(observation_stats.last_observation_jst_time)
+                        AS last_observation_jst_time,
+                    MAX(observation_stats.last_observation_jst_time_text)
+                        AS last_observation_jst_time_text,
                     MAX(observation_stats.observation_symbols)
                         AS observation_symbols
                 """
                 observation_join = """
                     LEFT JOIN (
-                        SELECT observation_counts.run_id,
-                               observation_counts.observation_count,
-                               observation_counts.first_observation_time,
-                               first_observation.anchor_bar_time_text
+                        SELECT run_id, COUNT(*) AS observation_count,
+                               MIN(anchor_bar_time) AS first_observation_time,
+                               MIN(anchor_bar_time_text)
                                    AS first_observation_time_text,
-                               observation_counts.last_observation_time,
-                               last_observation.anchor_bar_time_text
+                               MAX(anchor_bar_time) AS last_observation_time,
+                               MAX(anchor_bar_time_text)
                                    AS last_observation_time_text,
-                               observation_counts.observation_symbols
-                        FROM (
-                            SELECT run_id, COUNT(*) AS observation_count,
-                                   MIN(anchor_bar_time) AS first_observation_time,
-                                   MAX(anchor_bar_time) AS last_observation_time,
-                                   GROUP_CONCAT(DISTINCT symbol_name)
-                                       AS observation_symbols
-                            FROM zigzag_elliot_observations
-                            GROUP BY run_id
-                        ) AS observation_counts
-                        LEFT JOIN zigzag_elliot_observations AS first_observation
-                               ON first_observation.run_id = observation_counts.run_id
-                              AND first_observation.anchor_bar_time =
-                                  observation_counts.first_observation_time
-                        LEFT JOIN zigzag_elliot_observations AS last_observation
-                               ON last_observation.run_id = observation_counts.run_id
-                              AND last_observation.anchor_bar_time =
-                                  observation_counts.last_observation_time
-                        GROUP BY observation_counts.run_id
+                               MIN(anchor_jst_time)
+                                   AS first_observation_jst_time,
+                               MIN(anchor_jst_time_text)
+                                   AS first_observation_jst_time_text,
+                               MAX(anchor_jst_time)
+                                   AS last_observation_jst_time,
+                               MAX(anchor_jst_time_text)
+                                   AS last_observation_jst_time_text,
+                               GROUP_CONCAT(DISTINCT symbol_name)
+                                   AS observation_symbols
+                        FROM zigzag_elliot_observations
+                        GROUP BY run_id
                     ) AS observation_stats ON observation_stats.run_id = r.id
                 """
             else:
@@ -585,6 +611,10 @@ class AlertDatabase:
                     NULL AS first_observation_time_text,
                     NULL AS last_observation_time,
                     NULL AS last_observation_time_text,
+                    NULL AS first_observation_jst_time,
+                    NULL AS first_observation_jst_time_text,
+                    NULL AS last_observation_jst_time,
+                    NULL AS last_observation_jst_time_text,
                     NULL AS observation_symbols
                 """
                 observation_join = ""
@@ -651,7 +681,7 @@ class AlertDatabase:
     def parse_observation_filters(
         query: dict[str, list[str]],
     ) -> ObservationFilters:
-        """Validate H1 observation filters and fixed server-sort identifiers."""
+        """Validate H1 observation filters and fixed sort identifiers."""
 
         def first(name: str) -> str | None:
             values = query.get(name)
@@ -705,12 +735,12 @@ class AlertDatabase:
 
         from_date = first("from")
         if from_date:
-            clauses.append("o.anchor_bar_time >= :from_time")
+            clauses.append("o.anchor_jst_time >= :from_time")
             parameters["from_time"] = parse_date_boundary(from_date, False)
 
         to_date = first("to")
         if to_date:
-            clauses.append("o.anchor_bar_time < :to_time")
+            clauses.append("o.anchor_jst_time < :to_time")
             parameters["to_time"] = parse_date_boundary(to_date, True)
 
         search_text = first("q")
@@ -741,7 +771,7 @@ class AlertDatabase:
                 """
             )
 
-        sort_key = first("sort") or "anchor_bar_time"
+        sort_key = first("sort") or "anchor_jst_time"
         if sort_key not in OBSERVATION_SORT_COLUMNS:
             raise RequestError("unsupported observation sort column")
         order = (first("order") or "desc").lower()
@@ -777,7 +807,8 @@ class AlertDatabase:
                     r.strategy_version,
                     o.symbol_name, o.anchor_time_frame,
                     o.anchor_time_frame_text, o.anchor_bar_time,
-                    o.anchor_bar_time_text, o.capture_phase,
+                    o.anchor_bar_time_text, o.anchor_jst_time,
+                    o.anchor_jst_time_text, o.capture_phase,
                     o.analysis_version, o.analysis_input_hash,
                     o.snapshot_hash, o.time_frame_count,
                     o.created_at, o.created_at_text
@@ -825,6 +856,7 @@ class AlertDatabase:
                    point_count, latest_elliot_index, latest_elliot_label,
                    latest_sub_elliot_index, latest_sub_elliot_label,
                    latest_point_time, latest_point_time_text,
+                   latest_point_jst_time, latest_point_jst_time_text,
                    latest_point_rate, current_close,
                    stochastic_main_order_text,
                    stochastic_main_direction_text,
@@ -908,6 +940,10 @@ class AlertDatabase:
             "first_anchor_bar_time_text": None,
             "last_anchor_bar_time": None,
             "last_anchor_bar_time_text": None,
+            "first_anchor_jst_time": None,
+            "first_anchor_jst_time_text": None,
+            "last_anchor_jst_time": None,
+            "last_anchor_jst_time_text": None,
         }
         with self.connect() as connection:
             if not self.observation_schema_status(connection)["available"]:
@@ -923,7 +959,11 @@ class AlertDatabase:
                        MIN(anchor_bar_time) AS first_anchor_bar_time,
                        MIN(anchor_bar_time_text) AS first_anchor_bar_time_text,
                        MAX(anchor_bar_time) AS last_anchor_bar_time,
-                       MAX(anchor_bar_time_text) AS last_anchor_bar_time_text
+                       MAX(anchor_bar_time_text) AS last_anchor_bar_time_text,
+                       MIN(anchor_jst_time) AS first_anchor_jst_time,
+                       MIN(anchor_jst_time_text) AS first_anchor_jst_time_text,
+                       MAX(anchor_jst_time) AS last_anchor_jst_time,
+                       MAX(anchor_jst_time_text) AS last_anchor_jst_time_text
                 FROM observation_rows
             """
             row = connection.execute(text(sql), filters.parameters).mappings().one()
@@ -1677,6 +1717,8 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
 class ViewerServer(ThreadingHTTPServer):
     """Threaded localhost server holding immutable app dependencies."""
 
+    allow_reuse_address = os.name != "nt"
+    allow_reuse_port = False
     daemon_threads = True
 
     def __init__(
@@ -1685,9 +1727,63 @@ class ViewerServer(ThreadingHTTPServer):
         database: AlertDatabase,
         static_path: Path,
     ):
-        super().__init__(address, ViewerRequestHandler)
+        self.instance_mutex_handle: int | None = None
+        if address[1] != 0:
+            self.acquire_instance_mutex(address)
+        try:
+            super().__init__(address, ViewerRequestHandler)
+            if address[1] == 0:
+                bound_address = (str(self.server_address[0]), int(self.server_address[1]))
+                self.acquire_instance_mutex(bound_address)
+        except BaseException:
+            self.release_instance_mutex()
+            raise
         self.database = database
         self.static_path = static_path
+
+    def server_close(self) -> None:
+        """Close the listener and release the Windows single-instance guard."""
+
+        try:
+            super().server_close()
+        finally:
+            self.release_instance_mutex()
+
+    def acquire_instance_mutex(self, address: tuple[str, int]) -> None:
+        """Prevent two Windows Viewer processes from sharing one port."""
+
+        if os.name != "nt":
+            return
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_mutex = kernel32.CreateMutexW
+        create_mutex.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
+        create_mutex.restype = ctypes.c_void_p
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = [ctypes.c_void_p]
+        close_handle.restype = ctypes.c_bool
+        host = address[0].replace(":", "_").replace("\\", "_")
+        mutex_name = f"Local\\MstngZigZagElliotViewer-{host}-{address[1]}"
+        ctypes.set_last_error(0)
+        handle = create_mutex(None, False, mutex_name)
+        error_code = ctypes.get_last_error()
+        if not handle:
+            raise ctypes.WinError(error_code)
+        if error_code == 183:
+            close_handle(handle)
+            raise OSError(10048, f"Viewer is already using {address[0]}:{address[1]}")
+        self.instance_mutex_handle = int(handle)
+
+    def release_instance_mutex(self) -> None:
+        """Release the Windows single-instance guard when held."""
+
+        if self.instance_mutex_handle is None or os.name != "nt":
+            return
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = [ctypes.c_void_p]
+        close_handle.restype = ctypes.c_bool
+        close_handle(self.instance_mutex_handle)
+        self.instance_mutex_handle = None
 
 
 def parse_arguments() -> argparse.Namespace:

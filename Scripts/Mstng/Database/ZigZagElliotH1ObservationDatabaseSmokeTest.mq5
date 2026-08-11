@@ -17,6 +17,7 @@
 #include <Mstng\Database\Service\ZigZagElliotObservationPersistenceService.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Util\TimeJapanUtil.mqh>
 
 /** 動作確認専用データベースファイル名。 */
 input string databaseFileName =
@@ -134,13 +135,15 @@ bool readLong(
  * @param fromSql 実行するSQL。
  * @param fromValue 取得値の格納先。
  * @param fromLogger ロガー。
+ * @param fromColumnIndex 取得する列番号。
  * @return 取得に成功した場合true。
  */
 bool readText(
     const int fromDatabaseHandle,
     const string fromSql,
     string &fromValue,
-    Logger &fromLogger
+    Logger &fromLogger,
+    const int fromColumnIndex = 0
 ) {
     ResetLastError();
     int requestHandle = DatabasePrepare(fromDatabaseHandle, fromSql);
@@ -169,7 +172,11 @@ bool readText(
 
     ResetLastError();
 
-    if (!DatabaseColumnText(requestHandle, 0, fromValue)) {
+    if (!DatabaseColumnText(
+            requestHandle,
+            fromColumnIndex,
+            fromValue
+        )) {
         int errorCode = GetLastError();
         DatabaseFinalize(requestHandle);
         fromLogger.error(
@@ -385,6 +392,13 @@ void initializeObservationEntity(
         fromAnchorBarTime,
         TIME_DATE | TIME_SECONDS
     );
+    fromEntity.anchorJstTime = TimeJapanUtil::getJapanTime(
+        fromAnchorBarTime
+    );
+    fromEntity.anchorJstTimeText = TimeToString(
+        fromEntity.anchorJstTime,
+        TIME_DATE | TIME_SECONDS
+    );
     fromEntity.capturePhase = "BAR_OPEN_FIRST_SUCCESS";
     fromEntity.analysisVersion = "ELLIOT_MN1_V1";
     fromEntity.analysisInputHash = "elliot-analysis-input-smoke-v1";
@@ -416,7 +430,6 @@ void initializeTimeFrameEntity(
     ZeroMemory(fromEntity);
     double priceBase = 1.80000
         + (double)fromTimeFrameOrder * 0.01000;
-    int periodSeconds = PeriodSeconds(fromTimeFrame);
 
     fromEntity.id = 0;
     fromEntity.observationId = 0;
@@ -445,10 +458,28 @@ void initializeTimeFrameEntity(
     fromEntity.latestSubElliotIndex = fromPointCount - 1;
     fromEntity.latestSubElliotLabel =
         "S" + IntegerToString(fromPointCount - 1);
-    fromEntity.latestPointTime = D'2026.07.20 00:00:00'
-        - periodSeconds;
+    // 通常冬時間、開始前後、終了日、終了翌日の境界を固定する。
+    if (fromTimeFrame == PERIOD_MN1) {
+        fromEntity.latestPointTime = D'2026.01.20 12:00:00';
+    } else if (fromTimeFrame == PERIOD_W1) {
+        fromEntity.latestPointTime = D'2026.03.07 23:59:59';
+    } else if (fromTimeFrame == PERIOD_D1) {
+        fromEntity.latestPointTime = D'2026.03.08 00:00:00';
+    } else if (fromTimeFrame == PERIOD_H4) {
+        fromEntity.latestPointTime = D'2026.11.01 23:59:59';
+    } else {
+        fromEntity.latestPointTime = D'2026.11.02 00:00:00';
+    }
+
     fromEntity.latestPointTimeText = TimeToString(
         fromEntity.latestPointTime,
+        TIME_DATE | TIME_SECONDS
+    );
+    fromEntity.latestPointJstTime = TimeJapanUtil::getJapanTime(
+        fromEntity.latestPointTime
+    );
+    fromEntity.latestPointJstTimeText = TimeToString(
+        fromEntity.latestPointJstTime,
         TIME_DATE | TIME_SECONDS
     );
     fromEntity.latestPointRate = priceBase + 0.00100;
@@ -524,6 +555,249 @@ void initializeTimeFrameEntities(
     // NULL文字列をServiceが空文字列へ正規化することも確認する。
     fromEntities[0].previousLastElliotLabel = NULL;
     fromEntities[0].latestSubElliotLabel = NULL;
+}
+
+/**
+ * 旧スキーマを再現するため、日本時刻列と専用インデックスを削除する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 全対象を削除できた場合true。
+ */
+bool removeJstSchemaForMigrationTest(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    string sqlList[9];
+    sqlList[0] = "DROP INDEX IF EXISTS ";
+    sqlList[0] += "idx_zigzag_elliot_observations_mode_symbol_jst";
+    sqlList[1] = "DROP INDEX IF EXISTS ";
+    sqlList[1] += "idx_zigzag_elliot_observations_mode_jst";
+    sqlList[2] = "DROP INDEX IF EXISTS ";
+    sqlList[2] += "idx_zigzag_elliot_observations_jst_id";
+    sqlList[3] = "DROP INDEX IF EXISTS ";
+    sqlList[3] += "idx_zigzag_elliot_observations_jst_missing";
+    sqlList[4] = "DROP INDEX IF EXISTS ";
+    sqlList[4] += "idx_zigzag_elliot_observation_timeframes_jst_missing";
+    sqlList[5] = "ALTER TABLE zigzag_elliot_observation_timeframes ";
+    sqlList[5] += "DROP COLUMN latest_point_jst_time_text";
+    sqlList[6] = "ALTER TABLE zigzag_elliot_observation_timeframes ";
+    sqlList[6] += "DROP COLUMN latest_point_jst_time";
+    sqlList[7] = "ALTER TABLE zigzag_elliot_observations ";
+    sqlList[7] += "DROP COLUMN anchor_jst_time_text";
+    sqlList[8] = "ALTER TABLE zigzag_elliot_observations ";
+    sqlList[8] += "DROP COLUMN anchor_jst_time";
+
+    for (int i = 0; i < ArraySize(sqlList); i++) {
+        if (!executeSql(
+                fromDatabaseHandle,
+                sqlList[i],
+                "remove JST schema for migration test",
+                fromLogger
+            )) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * 旧スキーマから追加・補完した日本時刻列と検索インデックスを確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromObservationId 観測ID。
+ * @param fromObservationEntity 変換元親Entity。
+ * @param fromTimeFrameEntities 変換元子Entity一覧。
+ * @param fromLogger ロガー。
+ * @return 日本時刻列、補完値、インデックスが正しい場合true。
+ */
+bool verifyJstMigration(
+    const int fromDatabaseHandle,
+    const long fromObservationId,
+    ZigZagElliotObservationEntity &fromObservationEntity,
+    ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[],
+    Logger &fromLogger
+) {
+    datetime expectedAnchorJstTime = TimeJapanUtil::getJapanTime(
+        fromObservationEntity.anchorBarTime
+    );
+    string expectedAnchorJstTimeText = TimeToString(
+        expectedAnchorJstTime,
+        TIME_DATE | TIME_SECONDS
+    );
+
+    if ((long)(expectedAnchorJstTime - fromObservationEntity.anchorBarTime)
+            != 21600) {
+        fromLogger.error(__FUNCTION__, "Summer fixture offset is invalid.");
+
+        return false;
+    }
+
+    string observationIdText = StringFormat("%I64d", fromObservationId);
+    string parentSql =
+        "SELECT COUNT(*) FROM zigzag_elliot_observations WHERE id = ";
+    parentSql += observationIdText;
+    parentSql += " AND anchor_jst_time = ";
+    parentSql += StringFormat("%I64d", (long)expectedAnchorJstTime);
+    parentSql += " AND anchor_jst_time_text = '";
+    parentSql += expectedAnchorJstTimeText + "'";
+
+    string childSql = "SELECT COUNT(*) FROM ";
+    childSql += "zigzag_elliot_observation_timeframes WHERE observation_id = ";
+    childSql += observationIdText + " AND (";
+
+    int expectedOffsetSeconds[5];
+    expectedOffsetSeconds[0] = 25200;
+    expectedOffsetSeconds[1] = 25200;
+    expectedOffsetSeconds[2] = 21600;
+    expectedOffsetSeconds[3] = 21600;
+    expectedOffsetSeconds[4] = 25200;
+
+    if (ArraySize(fromTimeFrameEntities) != ArraySize(expectedOffsetSeconds)) {
+        fromLogger.error(__FUNCTION__, "DST fixture count is invalid.");
+
+        return false;
+    }
+
+    for (int i = 0; i < ArraySize(fromTimeFrameEntities); i++) {
+        datetime expectedPointJstTime = TimeJapanUtil::getJapanTime(
+            fromTimeFrameEntities[i].latestPointTime
+        );
+        string expectedPointJstTimeText = TimeToString(
+            expectedPointJstTime,
+            TIME_DATE | TIME_SECONDS
+        );
+
+        if ((long)(
+                expectedPointJstTime
+                - fromTimeFrameEntities[i].latestPointTime
+            ) != expectedOffsetSeconds[i]) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat("DST boundary fixture is invalid. index=%d", i)
+            );
+
+            return false;
+        }
+
+        if (i > 0) {
+            childSql += " OR ";
+        }
+
+        childSql += "(time_frame = ";
+        childSql += IntegerToString(fromTimeFrameEntities[i].timeFrame);
+        childSql += " AND latest_point_jst_time = ";
+        childSql += StringFormat("%I64d", (long)expectedPointJstTime);
+        childSql += " AND latest_point_jst_time_text = '";
+        childSql += expectedPointJstTimeText + "')";
+    }
+
+    childSql += ")";
+    long parentCount = 0;
+    long childCount = 0;
+    long indexCount = 0;
+    long partialIndexCount = 0;
+    long busyTimeout = 0;
+    string parentQueryPlan = "";
+    string childQueryPlan = "";
+
+    if (!readLong(
+            fromDatabaseHandle,
+            parentSql,
+            parentCount,
+            fromLogger
+        )
+            || !readLong(
+                fromDatabaseHandle,
+                childSql,
+                childCount,
+                fromLogger
+            )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' "
+                    + "AND name IN ("
+                    + "'idx_zigzag_elliot_observations_mode_jst',"
+                    + "'idx_zigzag_elliot_observations_mode_symbol_jst',"
+                    + "'idx_zigzag_elliot_observations_jst_id',"
+                    + "'idx_zigzag_elliot_observations_jst_missing',"
+                    + "'idx_zigzag_elliot_observation_timeframes_jst_missing')",
+                indexCount,
+                fromLogger
+            )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' "
+                    + "AND name IN ("
+                    + "'idx_zigzag_elliot_observations_jst_missing',"
+                    + "'idx_zigzag_elliot_observation_timeframes_jst_missing') "
+                    + "AND LOWER(sql) LIKE '% where %'",
+                partialIndexCount,
+                fromLogger
+            )
+            || !readLong(
+                fromDatabaseHandle,
+                "PRAGMA busy_timeout",
+                busyTimeout,
+                fromLogger
+            )
+            || !readText(
+                fromDatabaseHandle,
+                "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM "
+                    + "zigzag_elliot_observations "
+                    + "WHERE anchor_jst_time <= 0 "
+                    + "OR anchor_jst_time_text = ''",
+                parentQueryPlan,
+                fromLogger,
+                3
+            )
+            || !readText(
+                fromDatabaseHandle,
+                "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM "
+                    + "zigzag_elliot_observation_timeframes "
+                    + "WHERE latest_point_jst_time <= 0 "
+                    + "OR latest_point_jst_time_text = ''",
+                childQueryPlan,
+                fromLogger,
+                3
+            )) {
+        return false;
+    }
+
+    if (parentCount == 1
+            && childCount == ArraySize(fromTimeFrameEntities)
+            && indexCount == 5
+            && partialIndexCount == 2
+            && busyTimeout == 5000
+            && StringFind(
+                parentQueryPlan,
+                "idx_zigzag_elliot_observations_jst_missing"
+            ) >= 0
+            && StringFind(
+                childQueryPlan,
+                "idx_zigzag_elliot_observation_timeframes_jst_missing"
+            ) >= 0) {
+        return true;
+    }
+
+    fromLogger.error(
+        __FUNCTION__,
+        StringFormat(
+            "JST migration mismatch. parent=%I64d child=%I64d indexes=%I64d "
+                + "partialIndexes=%I64d busyTimeout=%I64d "
+                + "parentPlan=%s childPlan=%s",
+            parentCount,
+            childCount,
+            indexCount,
+            partialIndexCount,
+            busyTimeout,
+            parentQueryPlan,
+            childQueryPlan
+        )
+    );
+
+    return false;
 }
 
 /**
@@ -964,6 +1238,23 @@ void OnStart() {
     }
 
     long firstObservationId = observationEntity.id;
+
+    if (!removeJstSchemaForMigrationTest(databaseHandle, logger)
+            || !persistenceService.createTables()
+            || !verifyJstMigration(
+                databaseHandle,
+                firstObservationId,
+                observationEntity,
+                timeFrameEntities,
+                logger
+            )) {
+        logger.error(__FUNCTION__, "JST schema migration verification failed.");
+
+        return;
+    }
+
+    logger.info(__FUNCTION__, "JST schema migration was verified.");
+
     ZigZagElliotObservationEntity duplicateObservationEntity;
     ZigZagElliotObservationTimeFrameEntity duplicateTimeFrameEntities[];
     initializeObservationEntity(
@@ -1016,10 +1307,10 @@ void OnStart() {
         invalidObservationEntity
     );
     initializeTimeFrameEntities(invalidTimeFrameEntities);
-    invalidTimeFrameEntities[4].isAnchorTimeFrame = 0;
+    invalidObservationEntity.anchorJstTime = 0;
     logger.info(
         __FUNCTION__,
-        "Starting expected validation failure verification."
+        "Starting expected parent JST validation failure verification."
     );
 
     if (persistenceService.saveSnapshot(
@@ -1031,12 +1322,43 @@ void OnStart() {
                 invalidTimeFrameEntities
             )
             || !verifyTotalCounts(databaseHandle, 1, 5, logger)) {
-        logger.error(__FUNCTION__, "Validation failure verification failed.");
+        logger.error(__FUNCTION__, "Parent JST validation failure verification failed.");
 
         return;
     }
 
-    logger.info(__FUNCTION__, "Expected validation failure was verified.");
+    logger.info(__FUNCTION__, "Expected parent JST validation failure was verified.");
+
+    ZigZagElliotObservationEntity invalidChildObservationEntity;
+    ZigZagElliotObservationTimeFrameEntity invalidChildTimeFrameEntities[];
+    initializeObservationEntity(
+        runEntity.id,
+        D'2026.07.20 01:00:00',
+        "observation-snapshot-invalid-child-jst",
+        invalidChildObservationEntity
+    );
+    initializeTimeFrameEntities(invalidChildTimeFrameEntities);
+    invalidChildTimeFrameEntities[4].latestPointJstTime = 0;
+    logger.info(
+        __FUNCTION__,
+        "Starting expected child JST validation failure verification."
+    );
+
+    if (persistenceService.saveSnapshot(
+            invalidChildObservationEntity,
+            invalidChildTimeFrameEntities
+        )
+            || !areSnapshotIdsCleared(
+                invalidChildObservationEntity,
+                invalidChildTimeFrameEntities
+            )
+            || !verifyTotalCounts(databaseHandle, 1, 5, logger)) {
+        logger.error(__FUNCTION__, "Child JST validation failure verification failed.");
+
+        return;
+    }
+
+    logger.info(__FUNCTION__, "Expected child JST validation failure was verified.");
 
     if (!createRollbackTrigger(databaseHandle, logger)) {
         return;

@@ -9,6 +9,7 @@
 #ifndef MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_OBSERVATION_TF_DAO_MQH
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_OBSERVATION_TF_DAO_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotObservationJstMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -65,6 +66,9 @@ public:
         sql += "latest_sub_elliot_label TEXT NOT NULL,";
         sql += "latest_point_time INTEGER NOT NULL CHECK(latest_point_time > 0),";
         sql += "latest_point_time_text TEXT NOT NULL,";
+        sql += "latest_point_jst_time INTEGER NOT NULL ";
+        sql += "CHECK(latest_point_jst_time > 0),";
+        sql += "latest_point_jst_time_text TEXT NOT NULL,";
         sql += "latest_point_rate REAL NOT NULL,";
         sql += "previous_open REAL NOT NULL,";
         sql += "previous_high REAL NOT NULL,";
@@ -126,6 +130,16 @@ public:
         if (!this.executeSql(
                 sql,
                 "zigzag_elliot_observation_timeframes table"
+            )) {
+            return false;
+        }
+
+        if (!ZigZagElliotObservationJstMigration::execute(
+                this.databaseHandle,
+                "zigzag_elliot_observation_timeframes",
+                "latest_point_time",
+                "latest_point_jst_time",
+                "latest_point_jst_time_text"
             )) {
             return false;
         }
@@ -229,7 +243,9 @@ private:
         sql += " is_wave_uptrend, wave_trend_label, previous_last_elliot_label,";
         sql += " point_count, latest_elliot_index, latest_elliot_label,";
         sql += " latest_sub_elliot_index, latest_sub_elliot_label,";
-        sql += " latest_point_time, latest_point_time_text, latest_point_rate,";
+        sql += " latest_point_time, latest_point_time_text,";
+        sql += " latest_point_jst_time, latest_point_jst_time_text,";
+        sql += " latest_point_rate,";
         sql += " previous_open, previous_high, previous_low, previous_close,";
         sql += " current_open, current_high, current_low, current_close,";
         sql += " is_fibo_expansion_available, fe618_price, fe1000_price,";
@@ -250,7 +266,7 @@ private:
         sql += " created_at, created_at_text";
         sql += ") VALUES (";
 
-        for (int i = 1; i <= 71; i++) {
+        for (int i = 1; i <= 73; i++) {
             if (i > 1) {
                 sql += ", ";
             }
@@ -375,6 +391,20 @@ private:
                 fromRequestHandle,
                 index++,
                 fromEntity.latestPointTimeText
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointJstTime
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointJstTimeText
             );
         }
         if (isBound) {
@@ -612,7 +642,7 @@ private:
             );
         }
 
-        return isBound && index == 71;
+        return isBound && index == 73;
     }
 
     /**

@@ -427,16 +427,31 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 
 .react-summary-strip {
   margin: 10px 0;
-  overflow-x: auto;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 11px;
   background: rgba(15, 26, 34, 0.92);
 }
-.react-summary-strip dl {
+.react-summary-content {
   display: grid;
-  min-width: 900px;
+  min-width: 0;
+  grid-template-columns: minmax(230px, 1.4fr) minmax(0, 4fr);
+}
+.react-summary-strip dl {
   margin: 0;
-  grid-template-columns: minmax(230px, 1.4fr) repeat(4, minmax(165px, 1fr));
+}
+.react-summary-total-list {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.react-summary-metrics {
+  min-width: 0;
+}
+.react-summary-metrics-list {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .react-summary-item {
   display: flex;
@@ -463,9 +478,9 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.react-summary-item dd strong { font-size: inherit; }
+.react-summary-item dd strong { font-size: inherit; white-space: nowrap; }
 .react-summary-item.total dd strong { color: var(--accent); font-size: 1.22rem; }
-.react-summary-rate { color: var(--muted); font-size: 0.68rem; font-weight: 750; }
+.react-summary-rate { color: var(--muted); font-size: 0.68rem; font-weight: 750; white-space: nowrap; }
 .react-summary-scope { display: block; margin-top: 1px; font-size: 0.59rem; font-weight: 600; }
 .react-summary-total-separator { color: var(--muted); font-weight: 500; }
 .react-summary-note {
@@ -478,11 +493,31 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 }
 .react-summary-note + .react-summary-note { padding-top: 0; border-top: 0; }
 .react-summary-strip.compact { min-width: 0; }
-.react-summary-strip.compact dl {
-  min-width: 650px;
-  grid-template-columns: minmax(170px, 1.3fr) repeat(4, minmax(120px, 1fr));
+.react-summary-strip.compact .react-summary-content {
+  grid-template-columns: minmax(170px, 1.3fr) minmax(0, 4fr);
+}
+.react-summary-strip.compact .react-summary-metrics-list {
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .react-summary-strip.compact .react-summary-item { padding: 5px 8px; gap: 6px; }
+.react-summary-strip.compact .react-summary-item.total {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+.react-summary-strip.compact .react-summary-metrics-list .react-summary-item {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+.react-summary-strip.compact .react-summary-metrics-list .react-summary-item dt {
+  white-space: normal;
+}
+.react-summary-strip.compact .react-summary-metrics-list .react-summary-item dd {
+  flex-wrap: wrap;
+  white-space: normal;
+}
 .react-summary-strip.compact .react-summary-item dt { font-size: 0.62rem; }
 .react-summary-strip.compact .react-summary-item dd { gap: 4px; font-size: 0.88rem; }
 .react-summary-strip.compact .react-summary-item.total dd strong { font-size: 1rem; }
@@ -796,8 +831,10 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
 @media (max-width: 1100px) {
-  .react-summary-strip { overflow-x: visible; }
-  .react-summary-strip dl {
+  .react-summary-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .react-summary-metrics-list {
     min-width: 0;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -865,8 +902,7 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .viewer-summary-bar > .observation-summary-strip {
     flex-basis: 100%;
   }
-  .react-summary-strip.compact dl {
-    min-width: 0;
+  .react-summary-strip.compact .react-summary-metrics-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -43,7 +43,7 @@ type SortHeaderProps = CustomHeaderProps<ObservationListItem> & SortHeaderParame
 
 const GRID_MODULES = [ClientSideRowModelModule, ColumnApiModule];
 const TIME_FRAMES = ["MN1", "W1", "D1", "H4", "H1"] as const;
-const PINNED_COLUMN_IDS = ["anchor_bar_time", "symbol_name"] as const;
+const PINNED_COLUMN_IDS = ["anchor_jst_time", "symbol_name"] as const;
 
 const observationGridTheme = themeQuartz
   .withPart(colorSchemeDarkBlue)
@@ -115,13 +115,15 @@ function dataFrom(params: ICellRendererParams<ObservationListItem>) {
   return params.data;
 }
 
-function ServerTimeCell(params: ICellRendererParams<ObservationListItem>) {
+function ObservationTimeCell(params: ICellRendererParams<ObservationListItem>) {
   const observation = dataFrom(params);
   if (!observation) return null;
   return (
     <div className="grid-cell-stack">
-      <span className="date-main">{displayValue(observation.anchor_bar_time_text)}</span>
-      <span className="date-sub">Server / H1新規足</span>
+      <span className="date-main">{displayValue(observation.anchor_jst_time_text)}</span>
+      <span className="date-sub">
+        Server {displayValue(observation.anchor_bar_time_text)} / H1新規足
+      </span>
     </div>
   );
 }
@@ -193,6 +195,9 @@ function TimeFrameSnapshot({
   const side = displayValue(timeFrame.buy_sell_label).toUpperCase();
   const waveState = `${timeFrame.is_wave_confirmed ? "確定" : "未確定"}・${timeFrame.is_wave_motive ? "推進" : "修正"}`;
   const waveDirection = timeFrame.is_wave_uptrend ? "上昇" : "下降";
+  const latestPointJst = displayValue(timeFrame.latest_point_jst_time_text);
+  const latestPointServer = displayValue(timeFrame.latest_point_time_text);
+  const latestPointRate = formatNumber(timeFrame.latest_point_rate, 5);
   return (
     <Box sx={{ minWidth: 0, py: 0.25 }}>
       <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", minWidth: 0 }}>
@@ -211,8 +216,13 @@ function TimeFrameSnapshot({
         Stoch {displayValue(timeFrame.stochastic_main_direction_text)}・ATR {formatNumber(timeFrame.atr14_pips)}p
       </Typography>
       {showLatestPoint && (
-        <Typography noWrap sx={{ color: "text.secondary", fontSize: "0.64rem" }}>
-          最新点 {displayValue(timeFrame.latest_point_time_text)} @ {formatNumber(timeFrame.latest_point_rate, 5)}
+        <Typography
+          noWrap
+          aria-label={`最新点 JST ${latestPointJst}、Server ${latestPointServer}、レート ${latestPointRate}`}
+          title={`Server ${latestPointServer}`}
+          sx={{ color: "text.secondary", fontSize: "0.64rem" }}
+        >
+          最新点 JST {latestPointJst} @ {latestPointRate}
         </Typography>
       )}
     </Box>
@@ -262,7 +272,7 @@ export function ObservationTable({
       <strong>{available ? "該当するH1観測はありません" : "H1観測はまだ利用されていません"}</strong>
       <span>
         {available
-          ? "Server期間や通貨などの検索条件を変更してください。"
+          ? "JST期間や通貨などの検索条件を変更してください。"
           : "観測DB機能を有効にすると、次のH1新規足から記録されます。"}
       </span>
     </div>
@@ -270,16 +280,16 @@ export function ObservationTable({
 
   const columnDefs = useMemo<ColDef<ObservationListItem>[]>(() => [
     {
-      colId: "anchor_bar_time",
-      field: "anchor_bar_time_text",
-      headerName: "Server日時",
+      colId: "anchor_jst_time",
+      field: "anchor_jst_time_text",
+      headerName: "JST日時",
       initialPinned: "left",
       initialWidth: 180,
       lockPinned: true,
       suppressMovable: true,
       headerComponent: SortHeader,
-      headerComponentParams: sortHeaderParameters("anchor_bar_time", sort, order, onSort),
-      cellRenderer: ServerTimeCell,
+      headerComponentParams: sortHeaderParameters("anchor_jst_time", sort, order, onSort),
+      cellRenderer: ObservationTimeCell,
     },
     {
       colId: "symbol_name",

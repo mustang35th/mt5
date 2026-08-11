@@ -17,6 +17,13 @@ describe("SummaryCards", () => {
     }} />);
 
     const summary = screen.getByRole("region", { name: "検索結果集計" });
+    const metrics = summary.querySelector<HTMLElement>(".react-summary-metrics");
+    const total = within(summary).getByText("検索該当 / DB全体")
+      .closest<HTMLElement>(".react-summary-item");
+    expect(metrics).toBeInTheDocument();
+    expect(metrics).not.toHaveAttribute("tabindex");
+    expect(metrics).not.toContainElement(total);
+    expect(within(metrics as HTMLElement).getAllByRole("term")).toHaveLength(4);
     expect(within(summary).getByText("DB全体: LIVE＋TESTER")).toBeInTheDocument();
     expect(within(summary).getByText("検索該当 / DB全体").nextElementSibling)
       .toHaveTextContent("157/451");

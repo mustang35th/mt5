@@ -10,6 +10,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from app import (
@@ -279,6 +280,38 @@ class ViewerRouteTest(unittest.TestCase):
             health_headers.get("content-type", "").startswith("application/json")
         )
         self.assertEqual("ok", json.loads(health_payload)["status"])
+
+    def test_second_viewer_cannot_share_the_listening_port(self) -> None:
+        """Reject a stale Viewer process attempting to share the same port."""
+
+        static_path = Path(__file__).resolve().parent / "static"
+        with self.assertRaises(OSError):
+            duplicate_server = ViewerServer(
+                (DEFAULT_HOST, self.port),
+                StubDatabase(),  # type: ignore[arg-type]
+                static_path,
+            )
+            duplicate_server.server_close()
+
+    def test_viewer_cannot_share_a_legacy_server_port(self) -> None:
+        """Reject an older server that does not hold the instance mutex."""
+
+        static_path = Path(__file__).resolve().parent / "static"
+        legacy_server = ThreadingHTTPServer(
+            (DEFAULT_HOST, 0),
+            BaseHTTPRequestHandler,
+        )
+        legacy_port = int(legacy_server.server_address[1])
+        try:
+            with self.assertRaises(OSError):
+                duplicate_server = ViewerServer(
+                    (DEFAULT_HOST, legacy_port),
+                    StubDatabase(),  # type: ignore[arg-type]
+                    static_path,
+                )
+                duplicate_server.server_close()
+        finally:
+            legacy_server.server_close()
 
     def test_observation_routes_expose_the_optional_table_contract(self) -> None:
         """Route all H1 APIs even before the optional tables have been created."""
@@ -642,6 +675,8 @@ def create_observation_database(database_path: Path) -> None:
         "anchor_time_frame_text TEXT",
         "anchor_bar_time INTEGER",
         "anchor_bar_time_text TEXT",
+        "anchor_jst_time INTEGER",
+        "anchor_jst_time_text TEXT",
         "capture_phase TEXT",
         "analysis_version TEXT",
         "analysis_input_hash TEXT",
@@ -673,6 +708,8 @@ def create_observation_database(database_path: Path) -> None:
         "latest_sub_elliot_label",
         "latest_point_time",
         "latest_point_time_text",
+        "latest_point_jst_time",
+        "latest_point_jst_time_text",
         "latest_point_rate",
         "current_close",
         "stochastic_main_order_text",
@@ -697,6 +734,7 @@ def create_observation_database(database_path: Path) -> None:
         "latest_elliot_label",
         "latest_sub_elliot_label",
         "latest_point_time_text",
+        "latest_point_jst_time_text",
         "stochastic_main_order_text",
         "stochastic_main_direction_text",
         "created_at_text",
@@ -770,6 +808,21 @@ def create_observation_database(database_path: Path) -> None:
             + ",".join(time_frame_columns)
             + ")"
         )
+        connection.execute(
+            """
+            CREATE INDEX idx_zigzag_elliot_observations_jst_missing
+            ON zigzag_elliot_observations(id)
+            WHERE anchor_jst_time <= 0 OR anchor_jst_time_text = ''
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX idx_zigzag_elliot_observation_timeframes_jst_missing
+            ON zigzag_elliot_observation_timeframes(id)
+            WHERE latest_point_jst_time <= 0
+               OR latest_point_jst_time_text = ''
+            """
+        )
         for run_id, source_mode in [(1, "LIVE"), (2, "TESTER")]:
             connection.execute(
                 """
@@ -809,22 +862,44 @@ def create_observation_database(database_path: Path) -> None:
             ],
         )
         parent_rows = [
-            (1, 1, "LIVE", "EURUSD", 1704067200, "2024.01.01 00:00:00"),
-            (2, 1, "LIVE", "GBPUSD", 1704153600, "2024.01.02 00:00:00"),
-            (3, 2, "TESTER", "USDJPY", 1704240000, "2024.01.03 00:00:00"),
+            (
+                1, 1, "LIVE", "EURUSD",
+                1704067200, "2024.01.01 00:00:00",
+                1704099600, "2024.01.01 09:00:00",
+            ),
+            (
+                2, 1, "LIVE", "GBPUSD",
+                1704153600, "2024.01.02 00:00:00",
+                1704186000, "2024.01.02 09:00:00",
+            ),
+            (
+                3, 2, "TESTER", "USDJPY",
+                1704240000, "2024.01.03 00:00:00",
+                1704272400, "2024.01.03 09:00:00",
+            ),
         ]
-        for observation_id, run_id, source_mode, symbol, bar_time, bar_text in parent_rows:
+        for (
+            observation_id,
+            run_id,
+            source_mode,
+            symbol,
+            bar_time,
+            bar_text,
+            jst_time,
+            jst_text,
+        ) in parent_rows:
             connection.execute(
                 """
                 INSERT INTO zigzag_elliot_observations (
                     id, run_id, source_mode, source_server, symbol_name,
                     anchor_time_frame, anchor_time_frame_text,
-                    anchor_bar_time, anchor_bar_time_text, capture_phase,
+                    anchor_bar_time, anchor_bar_time_text,
+                    anchor_jst_time, anchor_jst_time_text, capture_phase,
                     analysis_version, analysis_input_hash, snapshot_hash,
                     time_frame_count, created_at, created_at_text
                 ) VALUES (
                     :id, :run_id, :source_mode, 'OANDA-Demo', :symbol_name,
-                    16385, 'H1', :bar_time, :bar_text,
+                    16385, 'H1', :bar_time, :bar_text, :jst_time, :jst_text,
                     'BAR_OPEN_FIRST_SUCCESS', '1', 'input-hash',
                     :snapshot_hash, 5, :bar_time, :bar_text
                 )
@@ -836,6 +911,8 @@ def create_observation_database(database_path: Path) -> None:
                     "symbol_name": symbol,
                     "bar_time": bar_time,
                     "bar_text": bar_text,
+                    "jst_time": jst_time,
+                    "jst_text": jst_text,
                     "snapshot_hash": f"snapshot-{observation_id}",
                 },
             )
@@ -845,7 +922,16 @@ def create_observation_database(database_path: Path) -> None:
         )
         time_frames = ["MN1", "W1", "D1", "H4", "H1"]
         row_id = 0
-        for observation_id, _, _, _, bar_time, bar_text in parent_rows:
+        for (
+            observation_id,
+            _,
+            _,
+            _,
+            bar_time,
+            bar_text,
+            jst_time,
+            jst_text,
+        ) in parent_rows:
             for time_frame_order, time_frame_text in enumerate(time_frames):
                 row_id += 1
                 values: dict[str, object] = {
@@ -879,6 +965,8 @@ def create_observation_database(database_path: Path) -> None:
                         "latest_sub_elliot_label": "i",
                         "latest_point_time": bar_time,
                         "latest_point_time_text": bar_text,
+                        "latest_point_jst_time": jst_time,
+                        "latest_point_jst_time_text": jst_text,
                         "latest_point_rate": 1.25,
                         "current_close": 1.24,
                         "stochastic_main_order_text": "S>M>L",
@@ -951,6 +1039,60 @@ class ObservationDatabaseTest(unittest.TestCase):
                           "analysis_versions": []}, options)
         self.assertFalse(detail["available"])
 
+    def test_incomplete_jst_backfill_returns_available_false(self) -> None:
+        """Do not expose default JST values inserted by a legacy writer."""
+
+        updates = [
+            (
+                "zigzag_elliot_observations",
+                "anchor_jst_time = 0, anchor_jst_time_text = ''",
+                "anchor_jst_time <= 0 OR anchor_jst_time_text = ''",
+            ),
+            (
+                "zigzag_elliot_observation_timeframes",
+                "latest_point_jst_time = 0, latest_point_jst_time_text = ''",
+                "latest_point_jst_time <= 0 OR latest_point_jst_time_text = ''",
+            ),
+        ]
+        for table_name, assignments, missing_predicate in updates:
+            with self.subTest(table_name=table_name):
+                with tempfile.TemporaryDirectory() as directory:
+                    database_path = Path(directory) / "alerts.sqlite"
+                    create_observation_database(database_path)
+                    with sqlite3.connect(database_path) as connection:
+                        query_plan = connection.execute(
+                            "EXPLAIN QUERY PLAN SELECT 1 FROM "
+                            + table_name
+                            + f" WHERE {missing_predicate} LIMIT 1"
+                        ).fetchall()
+                        connection.execute(
+                            f"UPDATE {table_name} SET {assignments} WHERE id = 1"
+                        )
+                    connection.close()
+                    database = AlertDatabase(database_path)
+                    try:
+                        health = database.validate()
+                        page = database.observations({})
+                        summary = database.observation_summary({})
+                        options = database.observation_options()
+                        detail = database.observation_detail(1)
+                        runs = database.runs()
+                    finally:
+                        database.close()
+
+                self.assertTrue(
+                    any("jst_missing" in str(row) for row in query_plan),
+                    query_plan,
+                )
+                self.assertFalse(health["observation_available"])
+                self.assertFalse(page["available"])
+                self.assertFalse(summary["available"])
+                self.assertFalse(options["available"])
+                self.assertFalse(detail["available"])
+                self.assertTrue(
+                    all(item["observation_count"] == 0 for item in runs["items"])
+                )
+
     def test_list_summary_options_detail_and_run_counts(self) -> None:
         """Return one parent per observation and exactly five ordered TF rows."""
 
@@ -978,7 +1120,10 @@ class ObservationDatabaseTest(unittest.TestCase):
                     }
                 )
                 date_page = database.observations(
-                    {"from": ["2024-01-02"], "to": ["2024-01-02"]}
+                    {
+                        "from": ["2024-01-01T08:00"],
+                        "to": ["2024-01-01T10:00"],
+                    }
                 )
                 summary = database.observation_summary({})
                 options = database.observation_options()
@@ -995,6 +1140,14 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual(2, page["total"])
         self.assertEqual(2, page["page_count"])
         self.assertEqual("EURUSD", page["items"][0]["symbol_name"])
+        self.assertEqual(
+            "2024.01.01 00:00:00",
+            page["items"][0]["anchor_bar_time_text"],
+        )
+        self.assertEqual(
+            "2024.01.01 09:00:00",
+            page["items"][0]["anchor_jst_time_text"],
+        )
         self.assertEqual(2, clamped_page["page"])
         self.assertEqual("GBPUSD", clamped_page["items"][0]["symbol_name"])
         self.assertEqual(5, len(page["items"][0]["time_frames"]))
@@ -1003,21 +1156,53 @@ class ObservationDatabaseTest(unittest.TestCase):
             [item["time_frame_text"] for item in page["items"][0]["time_frames"]],
         )
         self.assertTrue(page["items"][0]["time_frames"][4]["is_anchor_time_frame"])
+        self.assertEqual(
+            "2024.01.01 00:00:00",
+            page["items"][0]["time_frames"][4]["latest_point_time_text"],
+        )
+        self.assertEqual(
+            "2024.01.01 09:00:00",
+            page["items"][0]["time_frames"][4]["latest_point_jst_time_text"],
+        )
         self.assertEqual(1, date_page["total"])
-        self.assertEqual("GBPUSD", date_page["items"][0]["symbol_name"])
+        self.assertEqual("EURUSD", date_page["items"][0]["symbol_name"])
         self.assertEqual(3, summary["total_count"])
         self.assertEqual(2, summary["live_count"])
         self.assertEqual(1, summary["tester_count"])
         self.assertEqual(2, summary["run_count"])
+        self.assertEqual(
+            "2024.01.01 09:00:00",
+            summary["first_anchor_jst_time_text"],
+        )
+        self.assertEqual(
+            "2024.01.03 09:00:00",
+            summary["last_anchor_jst_time_text"],
+        )
         self.assertEqual(["EURUSD", "GBPUSD", "USDJPY"], options["symbols"])
         self.assertTrue(detail["available"])
+        self.assertEqual(
+            "2024.01.01 09:00:00",
+            detail["observation"]["anchor_jst_time_text"],
+        )
+        self.assertEqual(
+            "2024.01.01 09:00:00",
+            detail["time_frames"][4]["latest_point_jst_time_text"],
+        )
         self.assertEqual(5, len(detail["time_frames"]))
         run_one = next(item for item in runs["items"] if item["id"] == 1)
         self.assertEqual(2, run_one["alert_count"])
         self.assertEqual(2, run_one["observation_count"])
+        self.assertEqual(
+            "2024.01.01 00:00:00",
+            run_one["first_observation_time_text"],
+        )
+        self.assertEqual(
+            "2024.01.01 09:00:00",
+            run_one["first_observation_jst_time_text"],
+        )
 
     def test_filters_are_bound_and_sort_identifiers_are_whitelisted(self) -> None:
-        """Use Server-time dates and reject arbitrary SQL sort expressions."""
+        """Use JST dates and reject arbitrary SQL sort expressions."""
 
         filters = AlertDatabase.parse_observation_filters(
             {
@@ -1031,9 +1216,31 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIn("o.source_mode = :source_mode", filters.where_sql)
         self.assertIn("o.run_id = :run_id", filters.where_sql)
         self.assertIn("o.symbol_name = :symbol_name", filters.where_sql)
-        self.assertIn("o.anchor_bar_time >= :from_time", filters.where_sql)
-        self.assertIn("o.anchor_bar_time < :to_time", filters.where_sql)
+        self.assertIn("o.anchor_jst_time >= :from_time", filters.where_sql)
+        self.assertIn("o.anchor_jst_time < :to_time", filters.where_sql)
         self.assertEqual("TESTER", filters.parameters["source_mode"])
+        self.assertEqual(
+            "anchor_jst_time",
+            AlertDatabase.parse_observation_filters({}).sort_sql,
+        )
+        self.assertEqual(
+            "anchor_jst_time",
+            AlertDatabase.parse_observation_filters(
+                {"sort": ["anchor_jst_time"]}
+            ).sort_sql,
+        )
+        self.assertEqual(
+            "anchor_bar_time",
+            AlertDatabase.parse_observation_filters(
+                {"sort": ["anchor_bar_time"]}
+            ).sort_sql,
+        )
+        self.assertEqual(
+            "anchor_bar_time",
+            AlertDatabase.parse_observation_filters(
+                {"sort": ["server_time"]}
+            ).sort_sql,
+        )
         with self.assertRaisesRegex(
             RequestError,
             "unsupported observation sort column",
@@ -1048,6 +1255,112 @@ class ObservationDatabaseTest(unittest.TestCase):
             AlertDatabase.parse_observation_filters(
                 {"sourceMode": ["LIVE' OR 1=1 --"]}
             )
+
+    def test_run_ranges_aggregate_shared_symbol_boundaries_once(self) -> None:
+        """Keep one run row when 28 symbols share its first and last times."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO zigzag_elliot_alert_runs (
+                        id, run_uid, schema_version, source_mode, source,
+                        program_name, program_version, strategy,
+                        strategy_version, analysis_version, source_server,
+                        started_at, started_at_text, created_at, created_at_text
+                    ) VALUES (
+                        3, 'run-3', 1, 'LIVE', 'ZigZagElliot',
+                        'ZigZagElliot', '1.23', 'MTF 3in3',
+                        '1', '1', 'OANDA-Demo',
+                        1704067200, '2024.01.01 00:00:00',
+                        1704067200, '2024.01.01 00:00:00'
+                    )
+                    """
+                )
+                boundaries = [
+                    (
+                        1704067200,
+                        "2024.01.01 00:00:00",
+                        1704099600,
+                        "2024.01.01 09:00:00",
+                    ),
+                    (
+                        1704153600,
+                        "2024.01.02 00:00:00",
+                        1704186000,
+                        "2024.01.02 09:00:00",
+                    ),
+                ]
+                observation_rows = []
+                for boundary_index, boundary in enumerate(boundaries):
+                    bar_time, bar_text, jst_time, jst_text = boundary
+                    for symbol_index in range(28):
+                        observation_id = 100 + boundary_index * 28 + symbol_index
+                        observation_rows.append(
+                            {
+                                "id": observation_id,
+                                "symbol_name": f"PAIR{symbol_index:02d}",
+                                "bar_time": bar_time,
+                                "bar_text": bar_text,
+                                "jst_time": jst_time,
+                                "jst_text": jst_text,
+                                "snapshot_hash": f"boundary-{observation_id}",
+                            }
+                        )
+                connection.executemany(
+                    """
+                    INSERT INTO zigzag_elliot_observations (
+                        id, run_id, source_mode, source_server, symbol_name,
+                        anchor_time_frame, anchor_time_frame_text,
+                        anchor_bar_time, anchor_bar_time_text,
+                        anchor_jst_time, anchor_jst_time_text, capture_phase,
+                        analysis_version, analysis_input_hash, snapshot_hash,
+                        time_frame_count, created_at, created_at_text
+                    ) VALUES (
+                        :id, 3, 'LIVE', 'OANDA-Demo', :symbol_name,
+                        16385, 'H1', :bar_time, :bar_text,
+                        :jst_time, :jst_text, 'BAR_OPEN_FIRST_SUCCESS',
+                        '1', 'input-hash', :snapshot_hash,
+                        5, :bar_time, :bar_text
+                    )
+                    """,
+                    observation_rows,
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                runs = database.runs()
+            finally:
+                database.close()
+
+        self.assertEqual(3, runs["count"])
+        run_three_items = [item for item in runs["items"] if item["id"] == 3]
+        self.assertEqual(1, len(run_three_items))
+        run_three = run_three_items[0]
+        self.assertEqual(0, run_three["alert_count"])
+        self.assertEqual(56, run_three["observation_count"])
+        self.assertEqual(1704067200, run_three["first_observation_time"])
+        self.assertEqual(
+            "2024.01.01 00:00:00",
+            run_three["first_observation_time_text"],
+        )
+        self.assertEqual(1704153600, run_three["last_observation_time"])
+        self.assertEqual(
+            "2024.01.02 00:00:00",
+            run_three["last_observation_time_text"],
+        )
+        self.assertEqual(1704099600, run_three["first_observation_jst_time"])
+        self.assertEqual(
+            "2024.01.01 09:00:00",
+            run_three["first_observation_jst_time_text"],
+        )
+        self.assertEqual(1704186000, run_three["last_observation_jst_time"])
+        self.assertEqual(
+            "2024.01.02 09:00:00",
+            run_three["last_observation_jst_time_text"],
+        )
 
 
 if __name__ == "__main__":

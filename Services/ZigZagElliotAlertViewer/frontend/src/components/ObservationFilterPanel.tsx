@@ -34,9 +34,12 @@ function isRunVisible(run: RunItem, sourceMode: SourceMode): boolean {
 
 function runLabel(run: RunItem): string {
   const symbols = run.observation_symbols || "観測なし";
-  const range = run.last_observation_time_text
-    ? `${run.first_observation_time_text || "?"} – ${run.last_observation_time_text}`
-    : "記録なし";
+  let range = "記録なし";
+  if (run.last_observation_jst_time_text) {
+    range = `JST ${run.first_observation_jst_time_text || "?"} – ${run.last_observation_jst_time_text}`;
+  } else if (run.last_observation_time_text) {
+    range = `Server ${run.first_observation_time_text || "?"} – ${run.last_observation_time_text}`;
+  }
   return `${run.source_mode}｜Run ${run.id}｜${symbols}｜${run.observation_count || 0}件｜${range}`;
 }
 
@@ -45,8 +48,8 @@ export function observationFilterSummary(value: ObservationSearchState): string 
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
   const symbol = value.symbol || "全通貨";
   const period = value.from || value.to
-    ? `Server期間 ${value.from || "先頭"} – ${value.to || "末尾"}`
-    : "Server全期間";
+    ? `JST期間 ${value.from || "先頭"} – ${value.to || "末尾"}`
+    : "JST全期間";
   return `${mode} / ${run} / ${symbol} / ${period}`;
 }
 
@@ -190,7 +193,7 @@ export function ObservationFilterPanel({
             </Select>
           </FormControl>
           <TextField
-            label="開始日（Server）"
+            label="開始日（JST）"
             size="small"
             type="date"
             value={value.from}
@@ -198,7 +201,7 @@ export function ObservationFilterPanel({
             onChange={(event) => onChange({ ...value, from: event.target.value })}
           />
           <TextField
-            label="終了日（Server）"
+            label="終了日（JST）"
             size="small"
             type="date"
             value={value.to}

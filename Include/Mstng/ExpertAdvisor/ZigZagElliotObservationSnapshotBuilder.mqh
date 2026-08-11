@@ -12,6 +12,7 @@
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshot.mqh>
+#include <Mstng\Util\TimeJapanUtil.mqh>
 
 /**
  * H1新規足時点のElliott分析結果をDB保存用へ変換するクラス。
@@ -152,6 +153,12 @@ private:
         );
         fromEntity.anchorBarTime = fromAnchorBarTime;
         fromEntity.anchorBarTimeText = formatDateTime(fromAnchorBarTime);
+        fromEntity.anchorJstTime = TimeJapanUtil::getJapanTime(
+            fromAnchorBarTime
+        );
+        fromEntity.anchorJstTimeText = formatDateTime(
+            fromEntity.anchorJstTime
+        );
         fromEntity.capturePhase = "BAR_OPEN_FIRST_SUCCESS";
         fromEntity.analysisVersion = normalizeText(
             fromRunEntity.analysisVersion
@@ -291,6 +298,12 @@ private:
         fromEntity.latestPointTime = fromLatestPoint.barTime;
         fromEntity.latestPointTimeText = formatDateTime(
             fromLatestPoint.barTime
+        );
+        fromEntity.latestPointJstTime = TimeJapanUtil::getJapanTime(
+            fromLatestPoint.barTime
+        );
+        fromEntity.latestPointJstTimeText = formatDateTime(
+            fromEntity.latestPointJstTime
         );
         fromEntity.latestPointRate = fromLatestPoint.rate;
         fromEntity.previousOpen = fromElliot.previousOhlcInfo.open;
