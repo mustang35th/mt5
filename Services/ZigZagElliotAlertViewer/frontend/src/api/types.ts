@@ -1,5 +1,6 @@
 export type AlertSide = "BUY" | "SELL";
 export type SourceMode = "LIVE" | "TESTER" | "all";
+export type AnalysisProfileKind = "profile" | "legacy";
 export type ViewerTab = "alerts" | "h1";
 export type W1Alignment = "all" | "aligned" | "mismatched" | "unknown";
 export type SortOrder = "asc" | "desc";
@@ -37,6 +38,8 @@ export interface HealthResponse {
   alert_count: number;
   observation_available?: boolean;
   observation_count?: number;
+  analysis_profile_available?: boolean;
+  analysis_profile_reason?: string | null;
 }
 
 export interface RunItem {
@@ -61,11 +64,16 @@ export interface RunItem {
   last_observation_jst_time?: number | null;
   last_observation_jst_time_text?: string | null;
   observation_symbols?: string | null;
+  analysis_input_text?: string | null;
+  analysis_input_hash?: string | null;
+  analysis_profile_is_legacy?: boolean;
 }
 
 export interface RunsResponse {
   items: RunItem[];
   count: number;
+  analysis_profile_available?: boolean;
+  analysis_profile_reason?: string | null;
 }
 
 export interface OptionsResponse {
@@ -249,6 +257,9 @@ export type ObservationSort = "anchor_jst_time" | "symbol_name";
 export interface ObservationSearchState {
   sourceMode: SourceMode;
   runId: number | null;
+  analysisVersion: string;
+  analysisInputHash: string;
+  analysisProfileKind: "" | AnalysisProfileKind;
   symbol: string;
   from: string;
   to: string;
@@ -310,6 +321,8 @@ export interface ObservationListItem {
   capture_phase: string;
   analysis_version: string;
   analysis_input_hash: string;
+  analysis_input_text?: string | null;
+  analysis_profile_is_legacy?: boolean;
   snapshot_hash: string;
   time_frame_count: number;
   created_at: number;
@@ -394,6 +407,38 @@ export interface ObservationOptionsResponse {
   symbols: string[];
   source_modes: string[];
   analysis_versions: string[];
+  analysis_profile_available?: boolean;
+  analysis_profile_reason?: string | null;
+  analysis_profiles?: ObservationAnalysisProfile[];
+  default_analysis_input_hash?: string | null;
+  default_analysis_input_hashes?: ObservationAnalysisProfileDefaults;
+  default_analysis_profile_keys?: ObservationAnalysisProfileDefaults;
+  default_analysis_profiles?: ObservationAnalysisProfileItemDefaults;
+}
+
+export interface ObservationAnalysisProfile {
+  profile_key: string;
+  analysis_profile_kind: AnalysisProfileKind;
+  analysis_input_hash: string;
+  analysis_input_text: string | null;
+  analysis_version: string;
+  observation_count: number;
+  last_anchor_jst_time: number | null;
+  last_anchor_jst_time_text: string | null;
+  source_modes: string[];
+  is_legacy: boolean;
+}
+
+export interface ObservationAnalysisProfileDefaults {
+  all: string | null;
+  LIVE: string | null;
+  TESTER: string | null;
+}
+
+export interface ObservationAnalysisProfileItemDefaults {
+  all: ObservationAnalysisProfile | null;
+  LIVE: ObservationAnalysisProfile | null;
+  TESTER: ObservationAnalysisProfile | null;
 }
 
 export interface ObservationSummaryResponse {
@@ -411,6 +456,8 @@ export interface ObservationSummaryResponse {
   first_anchor_jst_time_text: string | null;
   last_anchor_jst_time: number | null;
   last_anchor_jst_time_text: string | null;
+  analysis_profile_count?: number;
+  legacy_profile_observation_count?: number;
 }
 
 export interface ApiErrorResponse {

@@ -6,25 +6,14 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
-#include <Mstng\Elliot\Elliot.mqh>
 #include <Mstng\Elliot\Analysis\ElliotBase.mqh>
 #include <Mstng\Elliot\Analysis\ElliotRecount.mqh>
 #include <Mstng\Elliot\Analysis\ElliotSubwaves.mqh>
 #include <Mstng\Elliot\Analysis\ElliotWithHigher.mqh>
 #include <Mstng\Elliot\Analysis\ElliotWithHigherUtil.mqh>
 #include <Mstng\Elliot\Analysis\ZigZagCorrector.mqh>
-
-/** 上位足から参照する最大Wave数。 */
-#define ELLIOT_HIGHER_WAVES 5
-
-/**
- * 上位足同期後の再分析を繰り返す最大ラウンド数。
- *
- * 1ラウンドで同方向Wave統合、3分割継続波統合、左側の狭いWave統合、
- * 右側の狭いWave統合を順に試す。
- * 過剰な統合で下位足の細部を潰しすぎないよう、再分析は最大3ラウンドに制限する。
- */
-#define ELLIOT_REANALYZE_MAX_ROUNDS 3
+#include <Mstng\Elliot\Elliot.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 
 /**
  * 上位足と同期して下位足のElliott波動を総合分析するクラス。
@@ -185,7 +174,10 @@ private:
         double rate = this.getBeforeRate(fromZigZagPointList, isUptrend);
         
         if (rate != zigZagPoint.rate) {
-            double shiftRate = RateUtil::pipsToPrice(10, this.marketContext);  // 10pipsずらす
+            double shiftRate = RateUtil::pipsToPrice(
+                ZigZagElliotAnalysisProfile::getLatestPointCorrectionPips(),
+                this.marketContext
+            );
         
             if (isUptrend) {
                 rate += shiftRate;
@@ -224,7 +216,10 @@ private:
         
         this.logger.debug(__FUNCTION__, StringFormat("waveListHigher.Total = %d", waveHigherTotal));
         
-        int waveTotal = (int)MathMin(ELLIOT_HIGHER_WAVES, waveHigherTotal);
+        int waveTotal = (int)MathMin(
+            ZigZagElliotAnalysisProfile::getHigherTimeFrameWaveLimit(),
+            waveHigherTotal
+        );
         
         int zigZagIndex = 0;    // 処理中のindex
         
@@ -398,7 +393,10 @@ private:
             this.logger.debug(__FUNCTION__, StringFormat("elliotWithHigher.waveList.Total = %d", totalHigher));
             
             if (this.isReanalyze && totalHigher > 1) {
-                for (int i = 0; i < ELLIOT_REANALYZE_MAX_ROUNDS; i++) {   // 再分析
+                int maxRounds = ZigZagElliotAnalysisProfile
+                    ::getHigherReanalyzeMaxRounds();
+
+                for (int i = 0; i < maxRounds; i++) {   // 再分析
                     // 同じ方向
                     if (!elliotWithHigher.reanalyzeSameTrend()) {
                         delete elliotWithHigher;
@@ -511,7 +509,10 @@ private:
         ZigZagPointUtil::copyZigZagPointList(wave0.zigZagPointList, fromZigZagPointList);
         
         double rate = this.getBeforeRate(fromZigZagPointList, wave0.isUptrend);
-        double shiftRate = RateUtil::pipsToPrice(10, this.marketContext);  // 10pipsずらす
+        double shiftRate = RateUtil::pipsToPrice(
+            ZigZagElliotAnalysisProfile::getLatestPointCorrectionPips(),
+            this.marketContext
+        );
         
         if (wave0.isUptrend) {
             rate += shiftRate;

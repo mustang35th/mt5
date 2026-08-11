@@ -211,6 +211,11 @@ OBSERVATION_REQUIRED_COLUMNS = {
     },
 }
 
+ANALYSIS_PROFILE_RUN_COLUMNS = {
+    "analysis_input_text",
+    "analysis_input_hash",
+}
+
 BOOLEAN_COLUMNS = {
     "is_judge",
     "is_entry_count_match",
@@ -252,6 +257,8 @@ BOOLEAN_COLUMNS = {
     "w1_is_wave_confirmed",
     "w1_is_wave_motive",
     "w1_is_wave_uptrend",
+    "analysis_profile_is_legacy",
+    "is_legacy",
 }
 
 
@@ -282,6 +289,7 @@ class ObservationFilters:
 
     where_sql: str
     parameters: dict[str, Any]
+    analysis_profile_kind: str | None
     sort_sql: str
     order_sql: str
     page: int
@@ -387,6 +395,22 @@ def escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def analysis_profile_key(
+    analysis_version: str,
+    analysis_input_hash: str,
+    analysis_profile_kind: str,
+) -> str:
+    """Return a stable opaque key for one exact analysis-profile cohort."""
+
+    payload = json.dumps(
+        [analysis_version, analysis_input_hash, analysis_profile_kind],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    encoded = base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+    return "ap1_" + encoded
+
+
 class AlertDatabase:
     """Read-only access layer for the ZigZagElliot alert database."""
 
@@ -452,6 +476,40 @@ class AlertDatabase:
             }
 
     @staticmethod
+    def table_columns(connection: Connection, table_name: str) -> set[str]:
+        """Return reflected SQLite column names without changing the schema."""
+
+        return {
+            str(row["name"])
+            for row in connection.exec_driver_sql(
+                f"PRAGMA table_info({table_name})"
+            ).mappings()
+        }
+
+    @staticmethod
+    def analysis_profile_schema_status(
+        connection: Connection,
+    ) -> dict[str, Any]:
+        """Return availability of the optional run-level analysis profile."""
+
+        actual_columns = AlertDatabase.table_columns(
+            connection,
+            "zigzag_elliot_alert_runs",
+        )
+        missing_columns = sorted(ANALYSIS_PROFILE_RUN_COLUMNS - actual_columns)
+        if missing_columns:
+            return {
+                "available": False,
+                "reason": "analysis profile columns are not available",
+                "missing_columns": missing_columns,
+            }
+        return {
+            "available": True,
+            "reason": None,
+            "missing_columns": [],
+        }
+
+    @staticmethod
     def observation_schema_status(connection: Connection) -> dict[str, Any]:
         """Return optional observation-table availability without changing schema."""
 
@@ -466,12 +524,7 @@ class AlertDatabase:
                 "reason": "observation tables are not available",
             }
         for table_name, expected_columns in OBSERVATION_REQUIRED_COLUMNS.items():
-            actual_columns = {
-                str(row["name"])
-                for row in connection.exec_driver_sql(
-                    f"PRAGMA table_info({table_name})"
-                ).mappings()
-            }
+            actual_columns = AlertDatabase.table_columns(connection, table_name)
             if expected_columns - actual_columns:
                 return {
                     "available": False,
@@ -536,12 +589,7 @@ class AlertDatabase:
             if missing:
                 raise RuntimeError("required tables are missing: " + ", ".join(missing))
             for table_name, expected_columns in required_columns.items():
-                actual_columns = {
-                    str(row["name"])
-                    for row in connection.exec_driver_sql(
-                        f"PRAGMA table_info({table_name})"
-                    ).mappings()
-                }
+                actual_columns = self.table_columns(connection, table_name)
                 missing_columns = sorted(expected_columns - actual_columns)
                 if missing_columns:
                     raise RuntimeError(
@@ -554,6 +602,7 @@ class AlertDatabase:
                 text("SELECT COUNT(*) FROM zigzag_elliot_alerts")
             ).scalar_one()
             observation_status = self.observation_schema_status(connection)
+            analysis_profile_status = self.analysis_profile_schema_status(connection)
             observation_count = 0
             if observation_status["available"]:
                 observation_count = connection.execute(
@@ -565,6 +614,8 @@ class AlertDatabase:
             "alert_count": alert_count,
             "observation_available": observation_status["available"],
             "observation_count": observation_count,
+            "analysis_profile_available": analysis_profile_status["available"],
+            "analysis_profile_reason": analysis_profile_status["reason"],
         }
 
     def runs(self) -> dict[str, Any]:
@@ -578,6 +629,7 @@ class AlertDatabase:
                    r.tester_from, r.tester_to, r.tester_model, r.input_hash,
                    r.started_at, r.started_at_text, r.market_started_at,
                    r.market_started_at_text, r.created_at, r.created_at_text,
+                   {analysis_profile_columns},
                    COUNT(a.id) AS alert_count,
                    MIN(a.current_bar_time) AS first_alert_time,
                    MIN(a.current_bar_time_text) AS first_alert_time_text,
@@ -593,6 +645,51 @@ class AlertDatabase:
         """
         with self.connect() as connection:
             observation_status = self.observation_schema_status(connection)
+            analysis_profile_status = self.analysis_profile_schema_status(connection)
+            legacy_hash_expression = "NULL"
+            if observation_status["available"]:
+                legacy_hash_expression = """
+                    (
+                        SELECT legacy_profile.analysis_input_hash
+                        FROM zigzag_elliot_observations AS legacy_profile
+                        WHERE legacy_profile.run_id = r.id
+                        ORDER BY legacy_profile.anchor_jst_time DESC,
+                                 legacy_profile.id DESC
+                        LIMIT 1
+                    )
+                """
+            if analysis_profile_status["available"]:
+                analysis_profile_columns = f"""
+                    CASE
+                        WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                         AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                        THEN r.analysis_input_text
+                        ELSE NULL
+                    END AS analysis_input_text,
+                    COALESCE(
+                        NULLIF(r.analysis_input_hash, ''),
+                        {legacy_hash_expression}
+                    ) AS analysis_input_hash,
+                    CASE
+                        WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                         AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                        THEN 0
+                        ELSE 1
+                    END AS analysis_profile_is_legacy,
+                    CASE
+                        WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                         AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                        THEN 'profile'
+                        ELSE 'legacy'
+                    END AS analysis_profile_kind
+                """
+            else:
+                analysis_profile_columns = f"""
+                    NULL AS analysis_input_text,
+                    {legacy_hash_expression} AS analysis_input_hash,
+                    1 AS analysis_profile_is_legacy,
+                    'legacy' AS analysis_profile_kind
+                """
             if observation_status["available"]:
                 observation_columns = """
                     COALESCE(MAX(observation_stats.observation_count), 0)
@@ -654,12 +751,18 @@ class AlertDatabase:
                 """
                 observation_join = ""
             sql = base_select.format(
+                analysis_profile_columns=analysis_profile_columns,
                 observation_columns=observation_columns,
                 observation_join=observation_join,
             )
             rows = connection.execute(text(sql)).mappings()
             items = [row_to_dict(row) for row in rows]
-        return {"items": items, "count": len(items)}
+        return {
+            "items": items,
+            "count": len(items),
+            "analysis_profile_available": analysis_profile_status["available"],
+            "analysis_profile_reason": analysis_profile_status["reason"],
+        }
 
     def options(self) -> dict[str, Any]:
         """Return distinct values used by filter controls."""
@@ -694,6 +797,25 @@ class AlertDatabase:
                     "symbols": [],
                     "source_modes": [],
                     "analysis_versions": [],
+                    "analysis_profile_available": False,
+                    "analysis_profile_reason": status["reason"],
+                    "analysis_profiles": [],
+                    "default_analysis_input_hash": None,
+                    "default_analysis_input_hashes": {
+                        "all": None,
+                        "LIVE": None,
+                        "TESTER": None,
+                    },
+                    "default_analysis_profile_keys": {
+                        "all": None,
+                        "LIVE": None,
+                        "TESTER": None,
+                    },
+                    "default_analysis_profiles": {
+                        "all": None,
+                        "LIVE": None,
+                        "TESTER": None,
+                    },
                 }
             fields = {
                 "symbols": "symbol_name",
@@ -710,6 +832,156 @@ class AlertDatabase:
                 )
                 rows = connection.execute(text(sql)).mappings()
                 result[output_name] = [row["value"] for row in rows]
+            analysis_profile_status = self.analysis_profile_schema_status(connection)
+            profile_classification_sql = """
+                NULL AS analysis_input_text,
+                'legacy' AS analysis_profile_kind
+            """
+            if analysis_profile_status["available"]:
+                profile_classification_sql = """
+                    CASE
+                        WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                         AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                         AND r.analysis_version = o.analysis_version
+                         AND r.analysis_input_hash = o.analysis_input_hash
+                        THEN r.analysis_input_text
+                        ELSE NULL
+                    END AS analysis_input_text,
+                    CASE
+                        WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                         AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                         AND r.analysis_version = o.analysis_version
+                         AND r.analysis_input_hash = o.analysis_input_hash
+                        THEN 'profile'
+                        ELSE 'legacy'
+                    END AS analysis_profile_kind
+                """
+            profile_sql = f"""
+                WITH profile_observation_rows AS (
+                    SELECT o.id, o.analysis_version, o.analysis_input_hash,
+                           o.source_mode, o.anchor_jst_time,
+                           o.anchor_jst_time_text,
+                           {profile_classification_sql}
+                    FROM zigzag_elliot_observations AS o
+                    INNER JOIN zigzag_elliot_alert_runs AS r
+                            ON r.id = o.run_id
+                    WHERE o.analysis_input_hash <> ''
+                )
+                SELECT analysis_input_hash,
+                       MAX(analysis_input_text) AS analysis_input_text,
+                       analysis_version,
+                       analysis_profile_kind,
+                       COUNT(*) AS observation_count,
+                       MAX(anchor_jst_time) AS last_anchor_jst_time,
+                       MAX(anchor_jst_time_text) AS last_anchor_jst_time_text,
+                       GROUP_CONCAT(DISTINCT source_mode) AS source_modes_text,
+                       MAX(id) AS last_observation_id,
+                       MAX(CASE WHEN source_mode = 'LIVE'
+                                THEN id END) AS last_live_id,
+                       MAX(CASE WHEN source_mode = 'TESTER'
+                                THEN id END) AS last_tester_id
+                FROM profile_observation_rows
+                GROUP BY analysis_version, analysis_input_hash,
+                         analysis_profile_kind
+                ORDER BY last_observation_id DESC
+            """
+            profile_rows = connection.execute(text(profile_sql)).mappings()
+            profile_items: list[dict[str, Any]] = []
+            selection_items: list[dict[str, Any]] = []
+            profile_items_by_key: dict[str, dict[str, Any]] = {}
+            for row in profile_rows:
+                selection_item = dict(row)
+                source_modes_text = str(selection_item.pop("source_modes_text") or "")
+                source_modes = sorted(
+                    mode for mode in source_modes_text.split(",") if mode
+                )
+                analysis_input_text = selection_item["analysis_input_text"]
+                analysis_version = str(selection_item["analysis_version"])
+                analysis_input_hash = str(selection_item["analysis_input_hash"])
+                analysis_profile_kind = str(
+                    selection_item["analysis_profile_kind"]
+                )
+                profile_key = analysis_profile_key(
+                    analysis_version,
+                    analysis_input_hash,
+                    analysis_profile_kind,
+                )
+                selection_item["source_modes"] = source_modes
+                selection_item["profile_key"] = profile_key
+                selection_item["is_legacy"] = analysis_profile_kind == "legacy"
+                selection_items.append(selection_item)
+                profile_item = {
+                    "profile_key": profile_key,
+                    "analysis_profile_kind": analysis_profile_kind,
+                    "analysis_input_hash": analysis_input_hash,
+                    "analysis_input_text": analysis_input_text,
+                    "analysis_version": analysis_version,
+                    "observation_count": selection_item["observation_count"],
+                    "last_anchor_jst_time": selection_item[
+                        "last_anchor_jst_time"
+                    ],
+                    "last_anchor_jst_time_text": selection_item[
+                        "last_anchor_jst_time_text"
+                    ],
+                    "source_modes": source_modes,
+                    "is_legacy": analysis_profile_kind == "legacy",
+                }
+                profile_items.append(profile_item)
+                profile_items_by_key[profile_key] = profile_item
+
+            def default_profile(
+                source_mode: str | None,
+            ) -> dict[str, Any] | None:
+                candidates = selection_items
+                id_key = "last_observation_id"
+                if source_mode == "LIVE":
+                    candidates = [
+                        item for item in selection_items
+                        if "LIVE" in item["source_modes"]
+                    ]
+                    id_key = "last_live_id"
+                elif source_mode == "TESTER":
+                    candidates = [
+                        item for item in selection_items
+                        if "TESTER" in item["source_modes"]
+                    ]
+                    id_key = "last_tester_id"
+                profiled = [
+                    item for item in candidates
+                    if item["analysis_profile_kind"] == "profile"
+                ]
+                if profiled:
+                    candidates = profiled
+                if not candidates:
+                    return None
+                latest = max(
+                    candidates,
+                    key=lambda item: int(item[id_key] or 0),
+                )
+                return profile_items_by_key[str(latest["profile_key"])]
+
+            default_profiles = {
+                "all": default_profile(None),
+                "LIVE": default_profile("LIVE"),
+                "TESTER": default_profile("TESTER"),
+            }
+            default_profile_keys = {
+                mode: item["profile_key"] if item is not None else None
+                for mode, item in default_profiles.items()
+            }
+            default_hashes = {
+                mode: item["analysis_input_hash"] if item is not None else None
+                for mode, item in default_profiles.items()
+            }
+            result["analysis_profile_available"] = analysis_profile_status[
+                "available"
+            ]
+            result["analysis_profile_reason"] = analysis_profile_status["reason"]
+            result["analysis_profiles"] = profile_items
+            result["default_analysis_input_hash"] = default_hashes["all"]
+            result["default_analysis_input_hashes"] = default_hashes
+            result["default_analysis_profile_keys"] = default_profile_keys
+            result["default_analysis_profiles"] = default_profiles
         return result
 
     @staticmethod
@@ -749,6 +1021,27 @@ class AlertDatabase:
         if analysis_version:
             clauses.append("o.analysis_version = :analysis_version")
             parameters["analysis_version"] = analysis_version
+
+        analysis_input_hash = first("analysisInputHash")
+        if analysis_input_hash:
+            if len(analysis_input_hash) > MAX_SEARCH_LENGTH:
+                raise RequestError(
+                    f"analysisInputHash must be at most {MAX_SEARCH_LENGTH} characters"
+                )
+            clauses.append(
+                "o.analysis_input_hash <> '' "
+                "AND o.analysis_input_hash = :analysis_input_hash"
+            )
+            parameters["analysis_input_hash"] = analysis_input_hash
+
+        analysis_profile_kind = first("analysisProfileKind")
+        if analysis_profile_kind:
+            analysis_profile_kind = analysis_profile_kind.lower()
+            if analysis_profile_kind not in {"profile", "legacy"}:
+                raise RequestError(
+                    "analysisProfileKind must be profile or legacy"
+                )
+            parameters["analysis_profile_kind"] = analysis_profile_kind
 
         side = first("side")
         if side:
@@ -824,6 +1117,7 @@ class AlertDatabase:
         return ObservationFilters(
             where_sql=where_sql,
             parameters=parameters,
+            analysis_profile_kind=analysis_profile_kind,
             sort_sql=OBSERVATION_SORT_COLUMNS[sort_key],
             order_sql=order.upper(),
             page=page,
@@ -831,9 +1125,60 @@ class AlertDatabase:
         )
 
     @staticmethod
-    def observation_rows_cte(filters: ObservationFilters) -> str:
+    def observation_rows_cte(
+        filters: ObservationFilters,
+        analysis_profile_available: bool = False,
+    ) -> str:
         """Return filtered parents; child rows are loaded only after paging."""
 
+        profile_kind_expression = "'legacy'"
+        analysis_profile_columns = """
+            NULL AS analysis_input_text,
+            1 AS analysis_profile_is_legacy,
+            'legacy' AS analysis_profile_kind,
+        """
+        if analysis_profile_available:
+            profile_match = """
+                NULLIF(r.analysis_input_text, '') IS NOT NULL
+                AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                AND r.analysis_version = o.analysis_version
+                AND r.analysis_input_hash = o.analysis_input_hash
+            """
+            profile_kind_expression = f"""
+                CASE WHEN {profile_match}
+                     THEN 'profile' ELSE 'legacy' END
+            """
+            analysis_profile_columns = """
+                CASE
+                    WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                     AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                     AND r.analysis_version = o.analysis_version
+                     AND r.analysis_input_hash = o.analysis_input_hash
+                    THEN r.analysis_input_text
+                    ELSE NULL
+                END AS analysis_input_text,
+                CASE
+                    WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                     AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                     AND r.analysis_version = o.analysis_version
+                     AND r.analysis_input_hash = o.analysis_input_hash
+                    THEN 0
+                    ELSE 1
+                END AS analysis_profile_is_legacy,
+                CASE
+                    WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                     AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                     AND r.analysis_version = o.analysis_version
+                     AND r.analysis_input_hash = o.analysis_input_hash
+                    THEN 'profile'
+                    ELSE 'legacy'
+                END AS analysis_profile_kind,
+            """
+        analysis_profile_filter_sql = ""
+        if filters.analysis_profile_kind is not None:
+            analysis_profile_filter_sql = (
+                f" AND ({profile_kind_expression}) = :analysis_profile_kind"
+            )
         return f"""
             WITH observation_rows AS (
                 SELECT
@@ -845,11 +1190,13 @@ class AlertDatabase:
                     o.anchor_bar_time_text, o.anchor_jst_time,
                     o.anchor_jst_time_text, o.capture_phase,
                     o.analysis_version, o.analysis_input_hash,
+                    {analysis_profile_columns}
                     o.snapshot_hash, o.time_frame_count,
                     o.created_at, o.created_at_text
                 FROM zigzag_elliot_observations AS o
                 INNER JOIN zigzag_elliot_alert_runs AS r ON r.id = o.run_id
                 WHERE 1 = 1 {filters.where_sql}
+                      {analysis_profile_filter_sql}
             )
         """
 
@@ -919,7 +1266,11 @@ class AlertDatabase:
         with self.connect() as connection:
             if not self.observation_schema_status(connection)["available"]:
                 return self.unavailable_observation_list(filters)
-            cte = self.observation_rows_cte(filters)
+            analysis_profile_status = self.analysis_profile_schema_status(connection)
+            cte = self.observation_rows_cte(
+                filters,
+                analysis_profile_status["available"],
+            )
             count_sql = cte + " SELECT COUNT(*) FROM observation_rows"
             list_sql = (
                 cte
@@ -979,11 +1330,17 @@ class AlertDatabase:
             "first_anchor_jst_time_text": None,
             "last_anchor_jst_time": None,
             "last_anchor_jst_time_text": None,
+            "analysis_profile_count": 0,
+            "legacy_profile_observation_count": 0,
         }
         with self.connect() as connection:
             if not self.observation_schema_status(connection)["available"]:
                 return unavailable
-            sql = self.observation_rows_cte(filters) + """
+            analysis_profile_status = self.analysis_profile_schema_status(connection)
+            sql = self.observation_rows_cte(
+                filters,
+                analysis_profile_status["available"],
+            ) + """
                 SELECT COUNT(*) AS total_count,
                        COALESCE(SUM(CASE WHEN source_mode = 'LIVE'
                                          THEN 1 ELSE 0 END), 0) AS live_count,
@@ -991,6 +1348,17 @@ class AlertDatabase:
                                          THEN 1 ELSE 0 END), 0) AS tester_count,
                        COUNT(DISTINCT run_id) AS run_count,
                        COUNT(DISTINCT symbol_name) AS symbol_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM (
+                               SELECT DISTINCT analysis_version,
+                                               analysis_input_hash,
+                                               analysis_profile_kind
+                               FROM observation_rows
+                           ) AS exact_profiles
+                       ) AS analysis_profile_count,
+                       COALESCE(SUM(analysis_profile_is_legacy), 0)
+                           AS legacy_profile_observation_count,
                        MIN(anchor_bar_time) AS first_anchor_bar_time,
                        MIN(anchor_bar_time_text) AS first_anchor_bar_time_text,
                        MAX(anchor_bar_time) AS last_anchor_bar_time,
@@ -1009,10 +1377,11 @@ class AlertDatabase:
     def observation_detail(self, observation_id: int) -> dict[str, Any]:
         """Return one full parent and all scalar timeframe snapshots."""
 
-        parent_sql = """
+        parent_sql_template = """
             SELECT o.*, r.run_uid, r.source, r.program_name, r.program_version,
                    r.strategy, r.strategy_version, r.tester_from, r.tester_to,
-                   r.tester_model, r.started_at, r.started_at_text
+                   r.tester_model, r.started_at, r.started_at_text,
+                   {analysis_profile_columns}
             FROM zigzag_elliot_observations AS o
             INNER JOIN zigzag_elliot_alert_runs AS r ON r.id = o.run_id
             WHERE o.id = :observation_id
@@ -1030,6 +1399,42 @@ class AlertDatabase:
                     "observation": None,
                     "time_frames": [],
                 }
+            analysis_profile_status = self.analysis_profile_schema_status(connection)
+            analysis_profile_columns = """
+                NULL AS analysis_input_text,
+                1 AS analysis_profile_is_legacy,
+                'legacy' AS analysis_profile_kind
+            """
+            if analysis_profile_status["available"]:
+                analysis_profile_columns = """
+                    CASE
+                        WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                         AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                         AND r.analysis_version = o.analysis_version
+                         AND r.analysis_input_hash = o.analysis_input_hash
+                        THEN r.analysis_input_text
+                        ELSE NULL
+                    END AS analysis_input_text,
+                    CASE
+                        WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                         AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                         AND r.analysis_version = o.analysis_version
+                         AND r.analysis_input_hash = o.analysis_input_hash
+                        THEN 0
+                        ELSE 1
+                    END AS analysis_profile_is_legacy,
+                    CASE
+                        WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                         AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                         AND r.analysis_version = o.analysis_version
+                         AND r.analysis_input_hash = o.analysis_input_hash
+                        THEN 'profile'
+                        ELSE 'legacy'
+                    END AS analysis_profile_kind
+                """
+            parent_sql = parent_sql_template.format(
+                analysis_profile_columns=analysis_profile_columns,
+            )
             parent = connection.execute(text(parent_sql), parameters).mappings().one_or_none()
             if parent is None:
                 raise RequestError("observation was not found", HTTPStatus.NOT_FOUND)

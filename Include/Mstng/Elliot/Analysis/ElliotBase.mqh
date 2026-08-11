@@ -9,6 +9,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\Wave.mqh>
 #include <Mstng\Elliot\WaveUtil.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Elliot\ZigZagPointUtil.mqh>
 #include <Mstng\Log\LogUtil.mqh>
 #include <Mstng\Oscillator\Oscillator.mqh>
@@ -397,7 +398,8 @@ protected:
         this.logger.debug(__FUNCTION__, zigZagPoint0.toString());
         this.logger.debug(__FUNCTION__, zigZagPointLast.toString());
         
-        const int MAX_LOOP = 30;
+        int maxLoop =
+            ZigZagElliotAnalysisProfile::getWaveSplitMaxLoopCount();
         
         while (position < total) {
             int previousPosition = position;
@@ -428,8 +430,11 @@ protected:
                 return false;
             }
                         
-            if (++count > MAX_LOOP) {
-                this.logger.error(__FUNCTION__, StringFormat("ループ終了 = %d回", MAX_LOOP));
+            if (++count > maxLoop) {
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat("ループ終了 = %d回", maxLoop)
+                );
                 
                 LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
                 
@@ -613,7 +618,12 @@ protected:
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
-        ZigZag zigZag(this.marketContext);
+        ZigZag zigZag(
+            this.marketContext,
+            ZigZagElliotAnalysisProfile::getZigZagDepth(),
+            ZigZagElliotAnalysisProfile::getZigZagDeviation(),
+            ZigZagElliotAnalysisProfile::getZigZagBackstep()
+        );
                 
         // ZigZagを更新する。
         bool updateResult = zigZag.update(fromMaxBars);

@@ -9,6 +9,7 @@
 #define MSTNG_EMA200_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\Ema200HandlePool.mqh>
 #include <Mstng\Util\StringUtil.mqh>
@@ -200,6 +201,7 @@ public:
      * @param fromCompareBarIndex 傾き比較足。標準は4でEMA200[1]とEMA200[4]を比較する。
      * @param fromCountBars 上昇/下降を数える本数。標準は4でEMA200[1]からEMA200[5]までを比較する。
      * @param fromMinSlopePips 最低傾きpips。この値未満は横ばい扱い。
+     * @param fromCloseShift 終値およびEMAの基準shift。
      * @return 更新できた場合は true。
      */
     bool update(
@@ -207,7 +209,8 @@ public:
         ENUM_TIMEFRAMES fromTimeFrame,
         int fromCompareBarIndex = 4,
         int fromCountBars = 4,
-        double fromMinSlopePips = 0.0
+        double fromMinSlopePips = 0.0,
+        int fromCloseShift = 1
     ) {
         MarketContext context(fromSymbolName, fromTimeFrame);
 
@@ -215,7 +218,8 @@ public:
             context,
             fromCompareBarIndex,
             fromCountBars,
-            fromMinSlopePips
+            fromMinSlopePips,
+            fromCloseShift
         );
     }
 
@@ -226,18 +230,21 @@ public:
      * @param fromCompareBarIndex 傾き比較足。標準は4でEMA200[1]とEMA200[4]を比較する。
      * @param fromCountBars 上昇/下降を数える本数。標準は4でEMA200[1]からEMA200[5]までを比較する。
      * @param fromMinSlopePips 最低傾きpips。この値未満は横ばい扱い。
+     * @param fromCloseShift 終値およびEMAの基準shift。
      * @return 更新できた場合は true。
      */
     bool update(
         MarketContext &fromMarketContext,
         int fromCompareBarIndex = 4,
         int fromCountBars = 4,
-        double fromMinSlopePips = 0.0
+        double fromMinSlopePips = 0.0,
+        int fromCloseShift = 1
     ) {
         this.resetValues();
         this.initializeMarketContext(fromMarketContext);
 
-        if (fromCompareBarIndex <= 1) {
+        if (fromCloseShift < 0
+                || fromCompareBarIndex <= fromCloseShift) {
             this.logger.error(__FUNCTION__, StringFormat("invalid compareBarIndex=%d", fromCompareBarIndex));
 
             return false;
@@ -256,7 +263,7 @@ public:
         }
 
         int maxShift = fromCompareBarIndex;
-        int countMaxShift = 1 + fromCountBars;
+        int countMaxShift = fromCloseShift + fromCountBars;
 
         if (countMaxShift > maxShift) {
             maxShift = countMaxShift;
@@ -272,14 +279,18 @@ public:
 
         double closeValue = 0.0;
 
-        if (!this.getCloseValue(this.marketContext, 1, closeValue)) {
+        if (!this.getCloseValue(
+                this.marketContext,
+                fromCloseShift,
+                closeValue
+            )) {
             this.logger.error(__FUNCTION__, "getCloseValue failed.");
 
             return false;
         }
 
         this.close1 = closeValue;
-        this.ema200Shift1 = emaBuffer[1];
+        this.ema200Shift1 = emaBuffer[fromCloseShift];
         this.ema200Compare = emaBuffer[fromCompareBarIndex];
         this.slopePips = this.convertPriceDifferenceToPips(
             this.marketContext,
@@ -292,7 +303,13 @@ public:
         this.closePosition = this.determineClosePosition(this.close1, this.ema200Shift1);
         this.slopeDirection = this.determineSlopeDirection(this.slopePips, fromMinSlopePips);
 
-        this.setUpDownCount(emaBuffer, 1, fromCountBars, this.upCount, this.downCount);
+        this.setUpDownCount(
+            emaBuffer,
+            fromCloseShift,
+            fromCountBars,
+            this.upCount,
+            this.downCount
+        );
         this.trendCount = this.determineTrendCount(this.upCount, this.downCount);
         this.setBuySell();
         this.setTextLabels();
@@ -852,7 +869,12 @@ private:
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.ema200HandlePool != NULL) {
-            this.ema200HandlePool.setParameters(200, MODE_EMA, PRICE_CLOSE);
+            this.ema200HandlePool.setParameters(
+                ZigZagElliotAnalysisProfile::getEma200Period(),
+                ZigZagElliotAnalysisProfile::getEma200MaMethod(),
+                ZigZagElliotAnalysisProfile::getEma200AppliedPrice(),
+                ZigZagElliotAnalysisProfile::getEma200MaShift()
+            );
             this.ema200HandlePool.setTimeframesFromMn1To(fromMarketContext);
 
             int poolHandle = this.ema200HandlePool.getEma200Handle(fromMarketContext.timeFrame);
@@ -894,7 +916,14 @@ private:
         }
 
         this.releaseHandle();
-        this.ema200Handle = iMA(fromMarketContext.symbolName, fromMarketContext.timeFrame, 200, 0, MODE_EMA, PRICE_CLOSE);
+        this.ema200Handle = iMA(
+            fromMarketContext.symbolName,
+            fromMarketContext.timeFrame,
+            ZigZagElliotAnalysisProfile::getEma200Period(),
+            ZigZagElliotAnalysisProfile::getEma200MaShift(),
+            ZigZagElliotAnalysisProfile::getEma200MaMethod(),
+            ZigZagElliotAnalysisProfile::getEma200AppliedPrice()
+        );
 
         if (this.ema200Handle == INVALID_HANDLE) {
             this.logger.error(__FUNCTION__, StringFormat("iMA handle error. ema200Handle=%d code=%d", this.ema200Handle, GetLastError()));
@@ -1242,11 +1271,9 @@ private:
     double getPointPerPip(MarketContext &fromMarketContext) {
         double point = fromMarketContext.getPoint();
 
-        if (fromMarketContext.digits == 3 || fromMarketContext.digits == 5) {
-            return point * 10.0;
-        }
-
-        return point;
+        return point * ZigZagElliotAnalysisProfile::getPipInPoints(
+            fromMarketContext.digits
+        );
     }
 
     /**

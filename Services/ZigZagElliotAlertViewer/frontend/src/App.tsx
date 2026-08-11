@@ -443,27 +443,11 @@ export default function App({ styleNonce }: AppProps) {
   return (
     <>
       <header className="app-header">
-        <div className="app-brand">
-          <p className="eyebrow">ELLIOTT SIGNAL ARCHIVE</p>
-          <h1>ZigZagElliot Alert Viewer</h1>
-          <p className="subtitle">アラートとH1新規足の波動構造を、Run単位で検索・比較します。</p>
-        </div>
-        <div className="header-actions">
-          <a className="secondary-button app-link" href="/legacy/">従来画面</a>
-          <div className={`connection${fatalError ? " error" : health ? " ready" : ""}`} role="status" aria-live="polite">
-            <span className="status-dot" />
-            <span>{connectionText}</span>
-          </div>
-        </div>
-      </header>
-
-      <main>
         <Box
           component="nav"
           className="viewer-tabs"
           aria-label="Viewer表示切替"
           sx={{
-            mb: 1.25,
             borderBottom: 1,
             borderColor: "divider",
             bgcolor: "rgba(15, 26, 34, 0.72)",
@@ -491,7 +475,20 @@ export default function App({ styleNonce }: AppProps) {
             />
           </Tabs>
         </Box>
+        <div className="app-brand">
+          <p className="eyebrow">ELLIOTT SIGNAL ARCHIVE</p>
+          <h1>ZigZagElliot Alert Viewer</h1>
+          <p className="subtitle">アラートとH1新規足の波動構造を、Run単位で検索・比較します。</p>
+        </div>
+        <div className="header-actions">
+          <div className={`connection${fatalError ? " error" : health ? " ready" : ""}`} role="status" aria-live="polite">
+            <span className="status-dot" />
+            <span>{connectionText}</span>
+          </div>
+        </div>
+      </header>
 
+      <main>
         {activeTab === "alerts" && (
           <Box
             component="div"

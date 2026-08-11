@@ -134,6 +134,32 @@ public:
             return false;
         }
 
+        sql = "CREATE INDEX IF NOT EXISTS ";
+        sql += "idx_zigzag_elliot_observations_mode_profile_jst ";
+        sql += "ON zigzag_elliot_observations(";
+        sql += "source_mode, analysis_input_hash, anchor_jst_time, id)";
+        sql += " WHERE analysis_input_hash <> ''";
+
+        if (!this.executeSql(
+                sql,
+                "zigzag elliot observation analysis profile JST index"
+            )) {
+            return false;
+        }
+
+        sql = "CREATE INDEX IF NOT EXISTS ";
+        sql += "idx_zigzag_elliot_observations_profile_jst ";
+        sql += "ON zigzag_elliot_observations(";
+        sql += "analysis_input_hash, anchor_jst_time, id)";
+        sql += " WHERE analysis_input_hash <> ''";
+
+        if (!this.executeSql(
+                sql,
+                "zigzag elliot observation global profile JST index"
+            )) {
+            return false;
+        }
+
         this.logger.info(
             __FUNCTION__,
             "zigzag_elliot_observations table and indexes are ready."

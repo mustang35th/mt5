@@ -8,6 +8,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\Elliot.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 
 /** 下位足バー数算出で参照する上位足Wave数。 */
 #define ELLIOT_UPPER_WAVES 5
@@ -53,7 +54,8 @@ public:
             logger.error(__FUNCTION__, elliotHigher.toString());
             logger.error(__FUNCTION__, StringFormat("elliotHigher.waveList.Total = %d", elliotHigher.waveList.Total()));
             
-            return 300;
+            return ZigZagElliotAnalysisProfile
+                ::getHigherBarsFallbackCount();
         }
         
         ZigZagPoint *zigZagPointHigher = oldestWaveHigher.zigZagPointList.At(0);
@@ -66,10 +68,13 @@ public:
         logger.debug(__FUNCTION__, StringFormat("bars = %d", bars));
         
         
-        double multi = 1.1; // 余裕を持たせる
-        
-        if (bars < 100) {
-            multi = 3;
+        double multi = ZigZagElliotAnalysisProfile
+            ::getHigherBarsNormalMultiplier(); // 余裕を持たせる
+
+        if (bars < ZigZagElliotAnalysisProfile
+                ::getHigherBarsSmallHistoryThreshold()) {
+            multi = ZigZagElliotAnalysisProfile
+                ::getHigherBarsSmallHistoryMultiplier();
         }
         
         bars = (int)(bars * multi);

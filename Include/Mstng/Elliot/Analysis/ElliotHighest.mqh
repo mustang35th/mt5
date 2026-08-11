@@ -58,7 +58,9 @@ public:
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
 
-        if (!this.setZigZagPointList()) {
+        if (!this.setZigZagPointList(
+                ZigZagElliotAnalysisProfile::getZigZagHighestMaxBars()
+            )) {
             this.logger.error(__FUNCTION__, "setZigZagPointList false");
 
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);

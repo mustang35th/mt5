@@ -28,7 +28,7 @@ public:
      * コンストラクタ
      */
     Ema200HandlePool() {
-        this.initialize(Symbol(), 200, MODE_EMA, PRICE_CLOSE);
+        this.initialize(Symbol(), 200, MODE_EMA, PRICE_CLOSE, 0);
     }
 
     /**
@@ -38,12 +38,20 @@ public:
      * @param fromEmaPeriod EMA期間。
      * @param fromMaMethod MA種別。
      * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift 移動平均の表示shift。
      */
     Ema200HandlePool(string fromSymbolName,
                      int fromEmaPeriod,
                      ENUM_MA_METHOD fromMaMethod,
-                     ENUM_APPLIED_PRICE fromAppliedPrice) {
-        this.initialize(fromSymbolName, fromEmaPeriod, fromMaMethod, fromAppliedPrice);
+                     ENUM_APPLIED_PRICE fromAppliedPrice,
+                     int fromMaShift = 0) {
+        this.initialize(
+            fromSymbolName,
+            fromEmaPeriod,
+            fromMaMethod,
+            fromAppliedPrice,
+            fromMaShift
+        );
     }
 
     /**
@@ -53,14 +61,22 @@ public:
      * @param fromEmaPeriod EMA期間。
      * @param fromMaMethod MA種別。
      * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift 移動平均の表示shift。
      */
     Ema200HandlePool(
         MarketContext &fromMarketContext,
         int fromEmaPeriod,
         ENUM_MA_METHOD fromMaMethod,
-        ENUM_APPLIED_PRICE fromAppliedPrice
+        ENUM_APPLIED_PRICE fromAppliedPrice,
+        int fromMaShift = 0
     ) {
-        this.initialize(fromMarketContext, fromEmaPeriod, fromMaMethod, fromAppliedPrice);
+        this.initialize(
+            fromMarketContext,
+            fromEmaPeriod,
+            fromMaMethod,
+            fromAppliedPrice,
+            fromMaShift
+        );
     }
 
     /**
@@ -129,10 +145,14 @@ public:
      * @param fromEmaPeriod EMA期間。
      * @param fromMaMethod MA種別。
      * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift 移動平均の表示shift。
      */
-    void setParameters(int fromEmaPeriod,
-                       ENUM_MA_METHOD fromMaMethod,
-                       ENUM_APPLIED_PRICE fromAppliedPrice) {
+    void setParameters(
+        int fromEmaPeriod,
+        ENUM_MA_METHOD fromMaMethod,
+        ENUM_APPLIED_PRICE fromAppliedPrice,
+        int fromMaShift = 0
+    ) {
         bool needReset = false;
 
         if (this.emaPeriod != fromEmaPeriod) {
@@ -147,6 +167,10 @@ public:
             needReset = true;
         }
 
+        if (this.maShift != fromMaShift) {
+            needReset = true;
+        }
+
         if (!needReset) {
 
             return;
@@ -157,6 +181,7 @@ public:
         this.emaPeriod = fromEmaPeriod;
         this.maMethod = fromMaMethod;
         this.appliedPrice = fromAppliedPrice;
+        this.maShift = fromMaShift;
     }
 
     /**
@@ -209,7 +234,14 @@ protected:
 
         ENUM_TIMEFRAMES timeFrame = this.timeframes[index];
 
-        int createdHandle = iMA(this.marketContext.symbolName, timeFrame, this.emaPeriod, 0, this.maMethod, this.appliedPrice);
+        int createdHandle = iMA(
+            this.marketContext.symbolName,
+            timeFrame,
+            this.emaPeriod,
+            this.maShift,
+            this.maMethod,
+            this.appliedPrice
+        );
 
         if (createdHandle == INVALID_HANDLE) {
             Print("iMA EMA200 failed. timeframe=", EnumToString(timeFrame), " err=", GetLastError());
@@ -241,6 +273,8 @@ private:
     ENUM_MA_METHOD maMethod;
     /** 価格種別。 */
     ENUM_APPLIED_PRICE appliedPrice;
+    /** 移動平均の表示shift。 */
+    int maShift;
     /** 時間足ごとのEMA200ハンドル。 */
     int ema200Handles[TIMEFRAME_SIZE];
 
@@ -251,14 +285,22 @@ private:
      * @param fromEmaPeriod EMA期間。
      * @param fromMaMethod MA種別。
      * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift 移動平均の表示shift。
      */
     void initialize(string fromSymbolName,
                     int fromEmaPeriod,
                     ENUM_MA_METHOD fromMaMethod,
-                    ENUM_APPLIED_PRICE fromAppliedPrice) {
+                    ENUM_APPLIED_PRICE fromAppliedPrice,
+                    int fromMaShift) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
 
-        this.initialize(context, fromEmaPeriod, fromMaMethod, fromAppliedPrice);
+        this.initialize(
+            context,
+            fromEmaPeriod,
+            fromMaMethod,
+            fromAppliedPrice,
+            fromMaShift
+        );
     }
 
     /**
@@ -268,18 +310,21 @@ private:
      * @param fromEmaPeriod EMA期間。
      * @param fromMaMethod MA種別。
      * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift 移動平均の表示shift。
      */
     void initialize(
         MarketContext &fromMarketContext,
         int fromEmaPeriod,
         ENUM_MA_METHOD fromMaMethod,
-        ENUM_APPLIED_PRICE fromAppliedPrice
+        ENUM_APPLIED_PRICE fromAppliedPrice,
+        int fromMaShift
     ) {
         this.initializeBase(fromMarketContext);
 
         this.emaPeriod = fromEmaPeriod;
         this.maMethod = fromMaMethod;
         this.appliedPrice = fromAppliedPrice;
+        this.maShift = fromMaShift;
 
         this.timeframes[0] = PERIOD_MN1;
         this.timeframes[1] = PERIOD_W1;

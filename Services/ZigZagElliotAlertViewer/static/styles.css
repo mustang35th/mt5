@@ -46,13 +46,23 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
   gap: clamp(14px, 2vw, 28px);
 }
 
+body.react-viewer .app-header {
+  width: 100%;
+  padding-left: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+body.react-viewer .app-header .viewer-tabs { justify-self: start; }
+
 .app-brand {
   display: flex;
   min-width: 0;
-  flex: 0 1 auto;
   align-items: baseline;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 4px 14px;
-  white-space: nowrap;
+  text-align: right;
 }
 
 .app-brand .eyebrow { margin-bottom: 0; flex: 0 0 auto; font-size: 0.62rem; }
@@ -87,6 +97,7 @@ h3 { margin-bottom: 12px; font-size: 1rem; }
 }
 
 .header-actions { display: flex; align-items: center; gap: 10px; }
+body.react-viewer .header-actions { justify-self: end; }
 .app-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 12px currentColor; }
@@ -774,6 +785,9 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .detail-field { padding: 11px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel); }
 .detail-field span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 0.66rem; }
 .detail-field strong { font-size: 0.82rem; overflow-wrap: anywhere; }
+.analysis-profile-details { margin-top: 12px; }
+.analysis-profile-details > summary { color: var(--muted); cursor: pointer; font-size: 0.74rem; }
+.analysis-profile-text { display: block; margin-top: 9px; padding: 11px; border: 1px solid var(--line-soft); border-radius: 9px; color: var(--text); background: var(--panel); font-size: 0.72rem; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
 
 .timeframe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .timeframe-card { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
@@ -900,7 +914,6 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
 @media (max-width: 1250px) {
-  .app-brand { flex-wrap: wrap; white-space: normal; }
   .app-brand .subtitle { flex-basis: 100%; }
   .filter-grid { grid-template-columns: repeat(4, minmax(130px, 1fr)); }
   .field-search { grid-column: span 2; }
@@ -939,9 +952,18 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 760px) {
   .app-header { padding: 24px 16px 18px; align-items: flex-start; flex-direction: column; gap: 10px; }
+  body.react-viewer .app-header {
+    padding: 18px 16px 14px 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+  }
+  body.react-viewer .app-header .viewer-tabs { width: 100%; }
   .app-brand { width: 100%; gap: 3px 10px; }
+  body.react-viewer .app-brand { justify-content: flex-end; }
   .app-brand .subtitle { min-width: 0; }
   .header-actions { width: 100%; flex-wrap: wrap; }
+  body.react-viewer .header-actions { justify-content: flex-end; }
   main { padding: 0 12px 32px; }
   .filter-grid { grid-template-columns: 1fr 1fr; }
   .field-wide, .field-search { grid-column: span 2; }

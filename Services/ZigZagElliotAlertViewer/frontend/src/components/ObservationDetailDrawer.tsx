@@ -256,6 +256,12 @@ function AuditDetails({
             />
           ))}
         </div>
+        <details className="analysis-profile-details">
+          <summary>分析Profile設定を表示</summary>
+          <code className="analysis-profile-text">
+            {observation.analysis_input_text || "Legacy（設定詳細なし）"}
+          </code>
+        </details>
       </details>
     </section>
   );
@@ -292,6 +298,10 @@ function DetailContent({ response }: { response: ObservationDetailResponse }) {
           <DetailField label="Program" value={`${displayValue(observation.program_name)} ${displayValue(observation.program_version)}`} />
           <DetailField label="Strategy" value={`${displayValue(observation.strategy)} ${displayValue(observation.strategy_version)}`} />
           <DetailField label="Analysis version" value={observation.analysis_version} />
+          <DetailField
+            label="Analysis Profile"
+            value={`${observation.analysis_profile_is_legacy ? "Legacy" : "Profile"} / ${displayValue(observation.analysis_input_hash)}`}
+          />
           <DetailField label="Anchor time frame" value={observation.anchor_time_frame_text} />
           <DetailField label="Capture phase" value={observation.capture_phase} />
           <DetailField label="Source mode / server" value={`${observation.source_mode} / ${displayValue(observation.source_server)}`} />

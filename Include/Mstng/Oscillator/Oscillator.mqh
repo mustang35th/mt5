@@ -5,6 +5,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Oscillator\AverageTrueRange.mqh>
 #include <Mstng\Oscillator\Ema200.mqh>
 #include <Mstng\Oscillator\Gmma.mqh>
@@ -160,7 +161,8 @@ public:
             plusCount));
 
         // 3 本中 2 本以上がプラスのとき BUY、それ以外は SELL
-        if (plusCount >= 2) {
+        if (plusCount
+                >= ZigZagElliotAnalysisProfile::getStochasticBuyMajorityCount()) {
             this.isBuy = true;
         } else {
             this.isBuy = false;
@@ -170,7 +172,8 @@ public:
         if (this.isBuy) {
             this.oscillatorCount = plusCount;
         } else {
-            this.oscillatorCount = plusCount - 3;
+            this.oscillatorCount = plusCount
+                - ZigZagElliotAnalysisProfile::getStochasticVoteMemberCount();
         }
 
         this.setStochasticMainOrderFlag(this.isBuy);
@@ -188,7 +191,8 @@ public:
         this.stochasticMainOrder = this.determineStochasticMainOrder(
             this.stochasticShort.main0,
             this.stochasticMiddle.main0,
-            this.stochasticLong.main0
+            this.stochasticLong.main0,
+            ZigZagElliotAnalysisProfile::getStochasticMainOrderEpsilon()
         );
 
         this.logger.debug(__FUNCTION__, StringFormat(
@@ -750,7 +754,12 @@ private:
         double ema30Value = 0.0;
         double ema60Value = 0.0;
 
-        if (!gmma.getEmaValues(this.marketContext, 0, ema30Value, ema60Value)) {
+        if (!gmma.getEmaValues(
+                this.marketContext,
+                ZigZagElliotAnalysisProfile::getGmmaShift(),
+                ema30Value,
+                ema60Value
+            )) {
             this.logger.error(__FUNCTION__, "gmma.getEmaValues failed.");
             return false;
         }
@@ -794,7 +803,8 @@ private:
     bool setEma200(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
 
-        if (this.marketContext.timeFrame == PERIOD_MN1) {
+        if (ZigZagElliotAnalysisProfile::isEma200SkippedForMn1()
+                && this.marketContext.timeFrame == PERIOD_MN1) {
             this.logger.debug(__FUNCTION__, "EMA200 skipped for MN1.");
 
             return true;
@@ -816,7 +826,13 @@ private:
 
         this.ema200.setEma200HandlePool(ema200HandlePool);
 
-        if (!this.ema200.update(this.marketContext, 4, 4, 0.0)) {
+        if (!this.ema200.update(
+                this.marketContext,
+                ZigZagElliotAnalysisProfile::getEma200CompareBarIndex(),
+                ZigZagElliotAnalysisProfile::getEma200CountBars(),
+                ZigZagElliotAnalysisProfile::getEma200MinSlopePips(),
+                ZigZagElliotAnalysisProfile::getEma200CloseShift()
+            )) {
             this.logger.error(__FUNCTION__, "ema200.update failed.");
 
             return false;
@@ -873,11 +889,9 @@ private:
     double getPointPerPip(MarketContext &fromMarketContext) {
         double point = fromMarketContext.getPoint();
 
-        if (fromMarketContext.digits == 3 || fromMarketContext.digits == 5) {
-            return point * 10.0;
-        }
-
-        return point;
+        return point * ZigZagElliotAnalysisProfile::getPipInPoints(
+            fromMarketContext.digits
+        );
     }
 
 
@@ -907,7 +921,11 @@ private:
         AverageTrueRange averageTrueRange(this.marketContext, averageTrueRangeHandlePool);
         double atr14Pips = 0.0;
 
-        if (!averageTrueRange.getAtrPips(this.marketContext, 0, atr14Pips)) {
+        if (!averageTrueRange.getAtrPips(
+                this.marketContext,
+                ZigZagElliotAnalysisProfile::getAtrShift(),
+                atr14Pips
+            )) {
             this.logger.error(__FUNCTION__, "averageTrueRange.getAtrPips failed.");
 
             return false;
@@ -1036,7 +1054,11 @@ private:
         }
         Stochastic stochastic(this.marketContext, stochasticHandlePool);
         int count = 0;
-        if (!stochastic.getCrossCount(this.marketContext, 0, count)) {
+        if (!stochastic.getCrossCount(
+                this.marketContext,
+                ZigZagElliotAnalysisProfile::getStochasticShift(),
+                count
+            )) {
             this.logger.error(__FUNCTION__, StringFormat("stochastic.getCrossCount failed. label=%s", label));
             return false;
         }

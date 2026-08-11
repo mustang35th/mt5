@@ -12,6 +12,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ElliotAllFile.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
@@ -29,7 +30,8 @@ public:
         this.oscillatorHandlePool = NULL;
         this.elliotAll = NULL;
         this.timerMode = true;
-        this.analysisStartTimeFrame = PERIOD_MN1;
+        this.analysisStartTimeFrame =
+            ZigZagElliotAnalysisProfile::getAnalysisStartTimeFrame();
         this.mailValidationFileEnabled = false;
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.currencyStrengthEntryFilterEnabled = false;
@@ -61,7 +63,8 @@ public:
 
         this.marketContext = fromMarketContext;
         this.timerMode = fromTimerMode;
-        this.analysisStartTimeFrame = PERIOD_MN1;
+        this.analysisStartTimeFrame =
+            ZigZagElliotAnalysisProfile::getAnalysisStartTimeFrame();
         this.logStartTimeFrame = PERIOD_D1;
 
         if (!this.timerMode

@@ -9,6 +9,7 @@
 #ifndef MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_RUN_DAO_MQH
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_RUN_DAO_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotAlertRunAnalysisProfileMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -48,6 +49,8 @@ public:
         sql += "strategy TEXT NOT NULL,";
         sql += "strategy_version TEXT NOT NULL,";
         sql += "analysis_version TEXT NOT NULL,";
+        sql += "analysis_input_text TEXT NOT NULL DEFAULT '',";
+        sql += "analysis_input_hash TEXT NOT NULL DEFAULT '',";
         sql += "source_server TEXT NOT NULL,";
         sql += "source_login INTEGER NOT NULL,";
         sql += "source_chart_id INTEGER NOT NULL,";
@@ -66,6 +69,12 @@ public:
         sql += ")";
 
         if (!this.executeSql(sql, "zigzag_elliot_alert_runs table")) {
+            return false;
+        }
+
+        if (!ZigZagElliotAlertRunAnalysisProfileMigration::execute(
+                this.databaseHandle
+            )) {
             return false;
         }
 
@@ -110,14 +119,15 @@ public:
         string sql = "INSERT INTO zigzag_elliot_alert_runs (";
         sql += "run_uid, schema_version, source_mode, source, program_name,";
         sql += " program_version, strategy, strategy_version, analysis_version,";
-        sql += " source_server, source_login, source_chart_id, terminal_build,";
+        sql += " analysis_input_text, analysis_input_hash, source_server,";
+        sql += " source_login, source_chart_id, terminal_build,";
         sql += " tester_from, tester_to, tester_model, input_text, input_hash,";
         sql += " started_at, started_at_text, market_started_at,";
         sql += " market_started_at_text, created_at, created_at_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,";
         sql += " ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23,";
-        sql += " ?24";
+        sql += " ?24, ?25, ?26";
         sql += ")";
 
         ResetLastError();
@@ -159,49 +169,55 @@ public:
             isBound = DatabaseBind(requestHandle, 8, fromEntity.analysisVersion);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 9, fromEntity.sourceServer);
+            isBound = DatabaseBind(requestHandle, 9, fromEntity.analysisInputText);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 10, fromEntity.sourceLogin);
+            isBound = DatabaseBind(requestHandle, 10, fromEntity.analysisInputHash);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 11, fromEntity.sourceChartId);
+            isBound = DatabaseBind(requestHandle, 11, fromEntity.sourceServer);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 12, fromEntity.terminalBuild);
+            isBound = DatabaseBind(requestHandle, 12, fromEntity.sourceLogin);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 13, fromEntity.testerFrom);
+            isBound = DatabaseBind(requestHandle, 13, fromEntity.sourceChartId);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 14, fromEntity.testerTo);
+            isBound = DatabaseBind(requestHandle, 14, fromEntity.terminalBuild);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 15, fromEntity.testerModel);
+            isBound = DatabaseBind(requestHandle, 15, fromEntity.testerFrom);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 16, fromEntity.inputText);
+            isBound = DatabaseBind(requestHandle, 16, fromEntity.testerTo);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 17, fromEntity.inputHash);
+            isBound = DatabaseBind(requestHandle, 17, fromEntity.testerModel);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 18, fromEntity.startedAt);
+            isBound = DatabaseBind(requestHandle, 18, fromEntity.inputText);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 19, fromEntity.startedAtText);
+            isBound = DatabaseBind(requestHandle, 19, fromEntity.inputHash);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 20, fromEntity.marketStartedAt);
+            isBound = DatabaseBind(requestHandle, 20, fromEntity.startedAt);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 21, fromEntity.marketStartedAtText);
+            isBound = DatabaseBind(requestHandle, 21, fromEntity.startedAtText);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 22, fromEntity.createdAt);
+            isBound = DatabaseBind(requestHandle, 22, fromEntity.marketStartedAt);
         }
         if (isBound) {
-            isBound = DatabaseBind(requestHandle, 23, fromEntity.createdAtText);
+            isBound = DatabaseBind(requestHandle, 23, fromEntity.marketStartedAtText);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 24, fromEntity.createdAt);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 25, fromEntity.createdAtText);
         }
 
         if (!isBound) {

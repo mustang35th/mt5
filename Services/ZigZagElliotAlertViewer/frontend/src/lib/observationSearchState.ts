@@ -1,4 +1,5 @@
 import type {
+  AnalysisProfileKind,
   ObservationSearchState,
   ObservationSort,
   SourceMode,
@@ -7,6 +8,9 @@ import type {
 export const DEFAULT_OBSERVATION_SEARCH_STATE: ObservationSearchState = {
   sourceMode: "LIVE",
   runId: null,
+  analysisVersion: "",
+  analysisInputHash: "",
+  analysisProfileKind: "",
   symbol: "",
   from: "",
   to: "",
@@ -48,9 +52,19 @@ export function readObservationSearchState(search: string): ObservationSearchSta
     params.get("pageSize"),
     DEFAULT_OBSERVATION_SEARCH_STATE.pageSize,
   );
+  const requestedProfileKind = params.get("analysisProfileKind");
+  const analysisProfileKind: "" | AnalysisProfileKind = requestedProfileKind === "profile"
+    || requestedProfileKind === "legacy"
+    ? requestedProfileKind
+    : "";
   return {
     sourceMode,
     runId: params.has("runId") ? positiveInteger(params.get("runId"), 0) || null : null,
+    analysisVersion: params.get("analysisVersion") || "",
+    analysisInputHash: params.get("analysisInputHash") === "all"
+      ? ""
+      : params.get("analysisInputHash") || "",
+    analysisProfileKind,
     symbol: params.get("symbol") || "",
     from: dateInputValue(params.get("from")),
     to: dateInputValue(params.get("to")),
@@ -70,6 +84,13 @@ export function buildObservationSearchParams(
   const params = new URLSearchParams();
   params.set("sourceMode", state.sourceMode);
   if (state.runId !== null) params.set("runId", String(state.runId));
+  if (state.analysisInputHash) {
+    if (state.analysisVersion) params.set("analysisVersion", state.analysisVersion);
+    params.set("analysisInputHash", state.analysisInputHash);
+    if (state.analysisProfileKind) {
+      params.set("analysisProfileKind", state.analysisProfileKind);
+    }
+  }
   if (state.symbol) params.set("symbol", state.symbol);
   if (state.from) params.set("from", state.from);
   if (state.to) params.set("to", state.to);
@@ -84,6 +105,7 @@ export function buildObservationSearchParams(
 
 export function replaceObservationSearchUrl(state: ObservationSearchState): void {
   const params = buildObservationSearchParams(state);
+  if (!state.analysisInputHash) params.set("analysisInputHash", "all");
   params.set("tab", "h1");
   window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
 }

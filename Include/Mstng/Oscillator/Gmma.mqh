@@ -9,6 +9,7 @@
 #define __GMMA_MQH__
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\GmmaHandlePool.mqh>
 #include <Mstng\Oscillator\GmmaUtil.mqh>
@@ -211,19 +212,21 @@ public:
             return false;
         }
 
-        int len = 1000;
+        int len = ZigZagElliotAnalysisProfile::getGmmaTrendLookback();
+        int shift = ZigZagElliotAnalysisProfile::getGmmaShift();
         int bars = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
 
-        if (bars <= 2) {
+        if (bars <= shift + 2) {
             this.logger.error(__FUNCTION__, StringFormat("not enough bars. bars=%d", bars));
 
             return false;
         }
 
         int barsToCopy = len + 1;
+        int availableBars = bars - shift;
 
-        if (barsToCopy > bars) {
-            barsToCopy = bars;
+        if (barsToCopy > availableBars) {
+            barsToCopy = availableBars;
         }
 
         double ema30Buffer[];
@@ -233,8 +236,20 @@ public:
 
         ResetLastError();
 
-        int copied30 = CopyBuffer(this.ema30Handle, 0, 0, barsToCopy, ema30Buffer);
-        int copied60 = CopyBuffer(this.ema60Handle, 0, 0, barsToCopy, ema60Buffer);
+        int copied30 = CopyBuffer(
+            this.ema30Handle,
+            0,
+            shift,
+            barsToCopy,
+            ema30Buffer
+        );
+        int copied60 = CopyBuffer(
+            this.ema60Handle,
+            0,
+            shift,
+            barsToCopy,
+            ema60Buffer
+        );
 
         if (copied30 <= 1 || copied60 <= 1) {
             this.logger.error(__FUNCTION__, StringFormat("fromSymbolName = %s fromTimeFrame = %s", this.marketContext.symbolName, EnumToString(this.marketContext.timeFrame)));
@@ -344,15 +359,19 @@ public:
             return false;
         }
 
-        int len = 1000;
+        int len = ZigZagElliotAnalysisProfile::getGmmaCrossLookback();
+        int shift = ZigZagElliotAnalysisProfile::getGmmaShift();
         int bars = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
-        if (bars <= 1) {
+        if (bars <= shift + 1) {
             this.logger.error(__FUNCTION__, StringFormat("not enough bars. bars=%d", bars));
             return false;
         }
 
         int barsToCopy = len + 1;
-        if (barsToCopy > bars) barsToCopy = bars;
+        int availableBars = bars - shift;
+        if (barsToCopy > availableBars) {
+            barsToCopy = availableBars;
+        }
 
         double ema30Buffer[];
         double ema60Buffer[];
@@ -360,8 +379,20 @@ public:
         ArraySetAsSeries(ema60Buffer, true);
 
         ResetLastError();
-        int copied30 = CopyBuffer(this.ema30Handle, 0, 0, barsToCopy, ema30Buffer);
-        int copied60 = CopyBuffer(this.ema60Handle, 0, 0, barsToCopy, ema60Buffer);
+        int copied30 = CopyBuffer(
+            this.ema30Handle,
+            0,
+            shift,
+            barsToCopy,
+            ema30Buffer
+        );
+        int copied60 = CopyBuffer(
+            this.ema60Handle,
+            0,
+            shift,
+            barsToCopy,
+            ema60Buffer
+        );
         if (copied30 <= 0 || copied60 <= 0) {
             this.logger.error(__FUNCTION__, StringFormat("fromSymbolName = %s fromTimeFrame = %s", this.marketContext.symbolName, EnumToString(this.marketContext.timeFrame)));
             this.logger.error(__FUNCTION__, StringFormat("CopyBuffer error. copied30=%d copied60=%d code=%d", copied30, copied60, GetLastError()));
@@ -538,7 +569,13 @@ private:
      */
     bool ensureInitialized(MarketContext &fromMarketContext) {
         if (this.gmmaHandlePool != NULL) {
-            this.gmmaHandlePool.setParameters(30, 60, MODE_EMA, PRICE_CLOSE);
+            this.gmmaHandlePool.setParameters(
+                ZigZagElliotAnalysisProfile::getGmmaShortPeriod(),
+                ZigZagElliotAnalysisProfile::getGmmaLongPeriod(),
+                ZigZagElliotAnalysisProfile::getGmmaMaMethod(),
+                ZigZagElliotAnalysisProfile::getGmmaAppliedPrice(),
+                ZigZagElliotAnalysisProfile::getGmmaMaShift()
+            );
             this.gmmaHandlePool.setTimeframesFromMn1To(fromMarketContext);
 
             int poolEma30Handle = this.gmmaHandlePool.getEma30Handle(fromMarketContext.timeFrame);
@@ -567,8 +604,22 @@ private:
 
         this.logger.debug(__FUNCTION__, StringFormat("recreate. symbol=%s timeFrame=%d", fromMarketContext.symbolName, fromMarketContext.timeFrame));
         this.releaseHandles();
-        this.ema30Handle = iMA(fromMarketContext.symbolName, fromMarketContext.timeFrame, 30, 0, MODE_EMA, PRICE_CLOSE);
-        this.ema60Handle = iMA(fromMarketContext.symbolName, fromMarketContext.timeFrame, 60, 0, MODE_EMA, PRICE_CLOSE);
+        this.ema30Handle = iMA(
+            fromMarketContext.symbolName,
+            fromMarketContext.timeFrame,
+            ZigZagElliotAnalysisProfile::getGmmaShortPeriod(),
+            ZigZagElliotAnalysisProfile::getGmmaMaShift(),
+            ZigZagElliotAnalysisProfile::getGmmaMaMethod(),
+            ZigZagElliotAnalysisProfile::getGmmaAppliedPrice()
+        );
+        this.ema60Handle = iMA(
+            fromMarketContext.symbolName,
+            fromMarketContext.timeFrame,
+            ZigZagElliotAnalysisProfile::getGmmaLongPeriod(),
+            ZigZagElliotAnalysisProfile::getGmmaMaShift(),
+            ZigZagElliotAnalysisProfile::getGmmaMaMethod(),
+            ZigZagElliotAnalysisProfile::getGmmaAppliedPrice()
+        );
         if (this.ema30Handle == INVALID_HANDLE || this.ema60Handle == INVALID_HANDLE) {
             this.logger.error(__FUNCTION__, StringFormat("iMA handle error. ema30Handle=%d ema60Handle=%d code=%d", this.ema30Handle, this.ema60Handle, GetLastError()));
             this.releaseHandles();

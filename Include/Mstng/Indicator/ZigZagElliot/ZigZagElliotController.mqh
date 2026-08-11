@@ -12,6 +12,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Indicator\ZigZagElliot\CurrencyStrengthPairRankController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotAnalysisController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotChartController.mqh>
@@ -104,7 +105,9 @@ public:
 
         if ((this.config.mtf3In3AlertDatabaseEnabled
                     || (this.config.h1ElliotObservationDatabaseEnabled
-                        && this.marketContext.timeFrame == PERIOD_H1))
+                        && this.marketContext.timeFrame
+                            == ZigZagElliotAnalysisProfile
+                                ::getAnchorTimeFrame()))
                 && this.config.mtf3In3AlertDatabaseFileName == "") {
             this.logger.error(
                 __FUNCTION__,
@@ -117,7 +120,9 @@ public:
         if (!this.timerMode
                 && (this.config.mtf3In3AlertDatabaseEnabled
                     || (this.config.h1ElliotObservationDatabaseEnabled
-                        && this.marketContext.timeFrame == PERIOD_H1))
+                        && this.marketContext.timeFrame
+                            == ZigZagElliotAnalysisProfile
+                                ::getAnchorTimeFrame()))
                 && !MQLInfoInteger(MQL_OPTIMIZATION)
                 && !this.config.mtf3In3AlertDatabaseUseCommonFolder) {
             this.logger.error(
@@ -129,13 +134,13 @@ public:
         }
 
         if (!ElliotTimeFrameRange::build(
-                PERIOD_MN1,
+                ZigZagElliotAnalysisProfile::getAnalysisStartTimeFrame(),
                 this.marketContext.timeFrame,
                 this.analysisTimeFrames
             )) {
             this.logger.error(
                 __FUNCTION__,
-                "failed to build MN1 analysis timeframe range"
+                "failed to build analysis timeframe range"
             );
 
             return INIT_PARAMETERS_INCORRECT;
@@ -420,7 +425,8 @@ private:
             return;
         }
 
-        if (this.marketContext.timeFrame != PERIOD_H1) {
+        if (this.marketContext.timeFrame
+                != ZigZagElliotAnalysisProfile::getAnchorTimeFrame()) {
             this.logger.info(
                 __FUNCTION__,
                 "H1 Elliott observation is disabled outside PERIOD_H1."

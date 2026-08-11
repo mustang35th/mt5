@@ -9,10 +9,13 @@ import {
 describe("observationSearchState", () => {
   it("restores the H1 observation filters and rejects unsupported values", () => {
     expect(readObservationSearchState(
-      "?tab=h1&sourceMode=TESTER&runId=4&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&page=2&pageSize=25&sort=bad&order=asc",
+      "?tab=h1&sourceMode=TESTER&runId=4&analysisVersion=ELLIOT_MN1_V2&analysisInputHash=profile-hash&analysisProfileKind=profile&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&page=2&pageSize=25&sort=bad&order=asc",
     )).toEqual({
       sourceMode: "TESTER",
       runId: 4,
+      analysisVersion: "ELLIOT_MN1_V2",
+      analysisInputHash: "profile-hash",
+      analysisProfileKind: "profile",
       symbol: "AUDUSD",
       from: "2026-08-01",
       to: "2026-08-10",
@@ -32,10 +35,22 @@ describe("observationSearchState", () => {
   it("builds API parameters without the UI tab and keeps the tab in the browser URL", () => {
     const params = buildObservationSearchParams(DEFAULT_OBSERVATION_SEARCH_STATE);
     expect(params.has("tab")).toBe(false);
+    expect(params.has("analysisInputHash")).toBe(false);
+    expect(params.has("analysisVersion")).toBe(false);
+    expect(params.has("analysisProfileKind")).toBe(false);
     expect(params.get("sort")).toBe("anchor_jst_time");
     replaceObservationSearchUrl(DEFAULT_OBSERVATION_SEARCH_STATE);
     const browserParams = new URLSearchParams(window.location.search);
     expect(browserParams.get("tab")).toBe("h1");
     expect(browserParams.get("sourceMode")).toBe("LIVE");
+    expect(browserParams.get("analysisInputHash")).toBe("all");
+  });
+
+  it("keeps an explicit all-profile selection only in the browser URL", () => {
+    const state = readObservationSearchState("?tab=h1&analysisInputHash=all");
+    expect(state.analysisInputHash).toBe("");
+    expect(state.analysisVersion).toBe("");
+    expect(state.analysisProfileKind).toBe("");
+    expect(buildObservationSearchParams(state).has("analysisInputHash")).toBe(false);
   });
 });

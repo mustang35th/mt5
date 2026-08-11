@@ -11,6 +11,7 @@
 
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshot.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
@@ -83,11 +84,6 @@ public:
     }
 
 private:
-    enum ObservationTimeFrameCount {
-        /** H1観測に保存するMN1からH1までの時間足数。 */
-        observationTimeFrameCount = 5
-    };
-
     /**
      * Builder入力がH1観測に利用できるか判定する。
      *
@@ -106,15 +102,17 @@ private:
                 || fromElliotAll.elliotCurrent == NULL
                 || fromAnchorBarTime <= 0
                 || fromRunEntity.id <= 0
+                || normalizeText(fromRunEntity.analysisInputHash) == ""
                 || normalizeText(fromRunEntity.sourceMode) == "") {
             return false;
         }
 
-        if (fromElliotAll.marketContext.timeFrame != PERIOD_H1
+        if (fromElliotAll.marketContext.timeFrame
+                != ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
                 || fromElliotAll.elliotCurrent.marketContext.timeFrame
-                    != PERIOD_H1
+                    != ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
                 || fromElliotAll.elliotList.Total()
-                    != observationTimeFrameCount) {
+                    != ZigZagElliotAnalysisProfile::getObservationTimeFrameCount()) {
             return false;
         }
 
@@ -147,7 +145,8 @@ private:
         fromEntity.symbolName = normalizeText(
             fromElliotAll.marketContext.symbolName
         );
-        fromEntity.anchorTimeFrame = (int)PERIOD_H1;
+        fromEntity.anchorTimeFrame = (int)
+            ZigZagElliotAnalysisProfile::getAnchorTimeFrame();
         fromEntity.anchorTimeFrameText = normalizeText(
             fromElliotAll.marketContext.timeFrameLabel
         );
@@ -163,8 +162,8 @@ private:
         fromEntity.analysisVersion = normalizeText(
             fromRunEntity.analysisVersion
         );
-        fromEntity.analysisInputHash = createTextHash(
-            "ANALYSIS_VERSION|" + fromEntity.analysisVersion
+        fromEntity.analysisInputHash = normalizeText(
+            fromRunEntity.analysisInputHash
         );
         fromEntity.snapshotHash = "";
         fromEntity.timeFrameCount = ArraySize(fromTimeFrameEntities);
@@ -188,16 +187,10 @@ private:
         const datetime fromCreatedAt,
         ZigZagElliotObservationTimeFrameEntity &fromEntities[]
     ) {
-        ENUM_TIMEFRAMES expectedTimeFrames[] = {
-            PERIOD_MN1,
-            PERIOD_W1,
-            PERIOD_D1,
-            PERIOD_H4,
-            PERIOD_H1
-        };
         int total = fromElliotAll.elliotList.Total();
 
-        if (total != observationTimeFrameCount
+        if (total
+                != ZigZagElliotAnalysisProfile::getObservationTimeFrameCount()
                 || ArrayResize(fromEntities, total) != total) {
             return false;
         }
@@ -208,7 +201,7 @@ private:
 
             if (elliot == NULL
                     || elliot.marketContext.timeFrame
-                        != expectedTimeFrames[i]) {
+                        != ZigZagElliotAnalysisProfile::getObservationTimeFrame(i)) {
                 return false;
             }
 
@@ -271,7 +264,8 @@ private:
         );
         fromEntity.timeFrameOrder = fromTimeFrameOrder;
         fromEntity.isAnchorTimeFrame = boolToInteger(
-            fromElliot.marketContext.timeFrame == PERIOD_H1
+            fromElliot.marketContext.timeFrame
+                == ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
         );
         fromEntity.isBuy = boolToInteger(fromElliot.isBuy);
         fromEntity.buySellLabel = normalizeText(fromElliot.buySellLabel);

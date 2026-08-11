@@ -11,6 +11,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ZigZag.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
@@ -445,7 +446,10 @@ private:
                 percent = zigZagPointNext.pipsDiff / zigZagPoint.pipsDiff;
             }
             
-            zigZagPointNext.fibonacciPercent = NormalizeDouble(percent * 100, 1);
+            zigZagPointNext.fibonacciPercent = NormalizeDouble(
+                percent * 100,
+                ZigZagElliotAnalysisProfile::getFiboDepthPercentDigits()
+            );
             
             zigZagPointNext.fiboDepthZone = FiboDepthZone::getZone(zigZagPointNext.fibonacciPercent);
             zigZagPointNext.fiboDepthZoneLabel = FiboDepthZone::toString(zigZagPointNext.fiboDepthZone);

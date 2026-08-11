@@ -16,6 +16,7 @@
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
 #include <Mstng\Database\Service\ZigZagElliotObservationPersistenceService.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
@@ -36,6 +37,10 @@ const string dedicatedDatabaseFileName =
 /** ロールバック検証用トリガー名。 */
 const string rollbackTriggerName =
     "smoke_fail_zigzag_elliot_observation_child";
+
+/** 分析Profile Canonical Textの固定SHA-256期待値。 */
+const string expectedAnalysisProfileHash =
+    "db5bcd91bed580bd3ca6e98cc74608726e3ec48fbe8432e2c2df4af0e9a43352";
 
 /**
  * 指定SQLを実行する。
@@ -273,6 +278,167 @@ bool dropDatabaseObjects(
 }
 
 /**
+ * 分析Profile列追加前のRunテーブルとLegacy行を準備する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 準備に成功した場合true。
+ */
+bool createLegacyRunTable(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    if (!recreateDatabaseObjects) {
+        return true;
+    }
+
+    string sql = "CREATE TABLE zigzag_elliot_alert_runs (";
+    sql += "id INTEGER PRIMARY KEY AUTOINCREMENT,";
+    sql += "run_uid TEXT NOT NULL,";
+    sql += "schema_version INTEGER NOT NULL CHECK(schema_version > 0),";
+    sql += "source_mode TEXT NOT NULL,source TEXT NOT NULL,";
+    sql += "program_name TEXT NOT NULL,program_version TEXT NOT NULL,";
+    sql += "strategy TEXT NOT NULL,strategy_version TEXT NOT NULL,";
+    sql += "analysis_version TEXT NOT NULL,source_server TEXT NOT NULL,";
+    sql += "source_login INTEGER NOT NULL,source_chart_id INTEGER NOT NULL,";
+    sql += "terminal_build INTEGER NOT NULL,tester_from INTEGER NOT NULL,";
+    sql += "tester_to INTEGER NOT NULL,tester_model TEXT NOT NULL,";
+    sql += "input_text TEXT NOT NULL,input_hash TEXT NOT NULL,";
+    sql += "started_at INTEGER NOT NULL,started_at_text TEXT NOT NULL,";
+    sql += "market_started_at INTEGER NOT NULL,";
+    sql += "market_started_at_text TEXT NOT NULL,";
+    sql += "created_at INTEGER NOT NULL,created_at_text TEXT NOT NULL)";
+
+    if (!executeSql(
+            fromDatabaseHandle,
+            sql,
+            "create legacy alert run table",
+            fromLogger
+        )) {
+        return false;
+    }
+
+    sql = "INSERT INTO zigzag_elliot_alert_runs (";
+    sql += "run_uid,schema_version,source_mode,source,program_name,";
+    sql += "program_version,strategy,strategy_version,analysis_version,";
+    sql += "source_server,source_login,source_chart_id,terminal_build,";
+    sql += "tester_from,tester_to,tester_model,input_text,input_hash,";
+    sql += "started_at,started_at_text,market_started_at,";
+    sql += "market_started_at_text,created_at,created_at_text) VALUES (";
+    sql += "'legacy-run-v1',1,'TESTER','ZIGZAG_ELLIOT','Legacy',";
+    sql += "'1.00','H1_ELLIOT_OBSERVATION','V1','ELLIOT_MN1_V1',";
+    sql += "'legacy-server',0,0,0,0,0,'','','',0,'',0,'',0,'')";
+
+    return executeSql(
+        fromDatabaseHandle,
+        sql,
+        "insert legacy alert run",
+        fromLogger
+    );
+}
+
+/**
+ * Legacy行保持と新規Runの分析Profile保存値を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromRunEntity 新規保存したRun。
+ * @param fromLogger ロガー。
+ * @return 期待値と一致する場合true。
+ */
+bool verifyRunAnalysisProfile(
+    const int fromDatabaseHandle,
+    ZigZagElliotAlertRunEntity &fromRunEntity,
+    Logger &fromLogger
+) {
+    long legacyCount = 0;
+    long modeProfileIndexCount = 0;
+    long globalProfileIndexCount = 0;
+
+    if (recreateDatabaseObjects
+            && (!readLong(
+                    fromDatabaseHandle,
+                    "SELECT COUNT(*) FROM zigzag_elliot_alert_runs "
+                        + "WHERE run_uid = 'legacy-run-v1' "
+                        + "AND analysis_input_text = '' "
+                        + "AND analysis_input_hash = ''",
+                    legacyCount,
+                    fromLogger
+                ) || legacyCount != 1)) {
+        return false;
+    }
+
+    if (!readLong(
+            fromDatabaseHandle,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' "
+                + "AND name = "
+                + "'idx_zigzag_elliot_observations_mode_profile_jst'",
+            modeProfileIndexCount,
+            fromLogger
+        ) || modeProfileIndexCount != 1) {
+        return false;
+    }
+
+    if (!readLong(
+            fromDatabaseHandle,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' "
+                + "AND name = "
+                + "'idx_zigzag_elliot_observations_profile_jst'",
+            globalProfileIndexCount,
+            fromLogger
+        ) || globalProfileIndexCount != 1) {
+        return false;
+    }
+
+    string sql = "SELECT analysis_version,analysis_input_text,";
+    sql += "analysis_input_hash FROM zigzag_elliot_alert_runs WHERE id = ?1";
+    ResetLastError();
+    int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
+
+    if (requestHandle == INVALID_HANDLE
+            || !DatabaseBind(requestHandle, 0, fromRunEntity.id)) {
+        if (requestHandle != INVALID_HANDLE) {
+            DatabaseFinalize(requestHandle);
+        }
+
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabasePrepare/Bind failed. error=%d", GetLastError())
+        );
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseRead(requestHandle)) {
+        int readErrorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat("DatabaseRead failed. error=%d", readErrorCode)
+        );
+
+        return false;
+    }
+
+    string analysisVersion = "";
+    string analysisInputText = "";
+    string analysisInputHash = "";
+    bool isRead = DatabaseColumnText(requestHandle, 0, analysisVersion)
+        && DatabaseColumnText(requestHandle, 1, analysisInputText)
+        && DatabaseColumnText(requestHandle, 2, analysisInputHash);
+    DatabaseFinalize(requestHandle);
+
+    return isRead
+        && analysisVersion == ZigZagElliotAnalysisProfile::getAnalysisVersion()
+        && analysisInputText
+            == ZigZagElliotAnalysisProfile::createCanonicalText()
+        && analysisInputHash == ZigZagElliotAnalysisProfile::createHash()
+        && analysisInputHash == expectedAnalysisProfileHash
+        && StringLen(analysisInputHash) == 64;
+}
+
+/**
  * 入力ファイル名が専用SmokeTest DBか判定する。
  *
  * @return 専用ファイルの場合true。
@@ -331,14 +497,19 @@ void initializeRunEntity(ZigZagElliotAlertRunEntity &fromEntity) {
     ZeroMemory(fromEntity);
     fromEntity.id = 0;
     fromEntity.runUid = "zigzag-elliot-h1-observation-smoke-run-v1";
-    fromEntity.schemaVersion = 1;
+    fromEntity.schemaVersion = 2;
     fromEntity.sourceMode = "TESTER";
     fromEntity.source = "ZIGZAG_ELLIOT";
     fromEntity.programName = "ZigZagElliot";
     fromEntity.programVersion = "1.23-smoke";
     fromEntity.strategy = "H1_ELLIOT_OBSERVATION";
     fromEntity.strategyVersion = "h1-observation-smoke-v1";
-    fromEntity.analysisVersion = "ELLIOT_MN1_V1";
+    fromEntity.analysisVersion =
+        ZigZagElliotAnalysisProfile::getAnalysisVersion();
+    fromEntity.analysisInputText =
+        ZigZagElliotAnalysisProfile::createCanonicalText();
+    fromEntity.analysisInputHash =
+        ZigZagElliotAnalysisProfile::createHash();
     fromEntity.sourceServer = "zigzag-elliot-observation-smoke";
     fromEntity.sourceLogin = 100001;
     fromEntity.sourceChartId = 200001;
@@ -400,8 +571,10 @@ void initializeObservationEntity(
         TIME_DATE | TIME_SECONDS
     );
     fromEntity.capturePhase = "BAR_OPEN_FIRST_SUCCESS";
-    fromEntity.analysisVersion = "ELLIOT_MN1_V1";
-    fromEntity.analysisInputHash = "elliot-analysis-input-smoke-v1";
+    fromEntity.analysisVersion =
+        ZigZagElliotAnalysisProfile::getAnalysisVersion();
+    fromEntity.analysisInputHash =
+        ZigZagElliotAnalysisProfile::createHash();
     fromEntity.snapshotHash = fromSnapshotHash;
     fromEntity.timeFrameCount = 5;
     fromEntity.createdAt = D'2026.08.08 12:00:01';
@@ -568,25 +741,29 @@ bool removeJstSchemaForMigrationTest(
     const int fromDatabaseHandle,
     Logger &fromLogger
 ) {
-    string sqlList[9];
+    string sqlList[11];
     sqlList[0] = "DROP INDEX IF EXISTS ";
-    sqlList[0] += "idx_zigzag_elliot_observations_mode_symbol_jst";
+    sqlList[0] += "idx_zigzag_elliot_observations_profile_jst";
     sqlList[1] = "DROP INDEX IF EXISTS ";
-    sqlList[1] += "idx_zigzag_elliot_observations_mode_jst";
+    sqlList[1] += "idx_zigzag_elliot_observations_mode_profile_jst";
     sqlList[2] = "DROP INDEX IF EXISTS ";
-    sqlList[2] += "idx_zigzag_elliot_observations_jst_id";
+    sqlList[2] += "idx_zigzag_elliot_observations_mode_symbol_jst";
     sqlList[3] = "DROP INDEX IF EXISTS ";
-    sqlList[3] += "idx_zigzag_elliot_observations_jst_missing";
+    sqlList[3] += "idx_zigzag_elliot_observations_mode_jst";
     sqlList[4] = "DROP INDEX IF EXISTS ";
-    sqlList[4] += "idx_zigzag_elliot_observation_timeframes_jst_missing";
-    sqlList[5] = "ALTER TABLE zigzag_elliot_observation_timeframes ";
-    sqlList[5] += "DROP COLUMN latest_point_jst_time_text";
-    sqlList[6] = "ALTER TABLE zigzag_elliot_observation_timeframes ";
-    sqlList[6] += "DROP COLUMN latest_point_jst_time";
-    sqlList[7] = "ALTER TABLE zigzag_elliot_observations ";
-    sqlList[7] += "DROP COLUMN anchor_jst_time_text";
-    sqlList[8] = "ALTER TABLE zigzag_elliot_observations ";
-    sqlList[8] += "DROP COLUMN anchor_jst_time";
+    sqlList[4] += "idx_zigzag_elliot_observations_jst_id";
+    sqlList[5] = "DROP INDEX IF EXISTS ";
+    sqlList[5] += "idx_zigzag_elliot_observations_jst_missing";
+    sqlList[6] = "DROP INDEX IF EXISTS ";
+    sqlList[6] += "idx_zigzag_elliot_observation_timeframes_jst_missing";
+    sqlList[7] = "ALTER TABLE zigzag_elliot_observation_timeframes ";
+    sqlList[7] += "DROP COLUMN latest_point_jst_time_text";
+    sqlList[8] = "ALTER TABLE zigzag_elliot_observation_timeframes ";
+    sqlList[8] += "DROP COLUMN latest_point_jst_time";
+    sqlList[9] = "ALTER TABLE zigzag_elliot_observations ";
+    sqlList[9] += "DROP COLUMN anchor_jst_time_text";
+    sqlList[10] = "ALTER TABLE zigzag_elliot_observations ";
+    sqlList[10] += "DROP COLUMN anchor_jst_time";
 
     for (int i = 0; i < ArraySize(sqlList); i++) {
         if (!executeSql(
@@ -1190,6 +1367,13 @@ void OnStart() {
     }
 
     int databaseHandle = database.getHandle();
+
+    if (!createLegacyRunTable(databaseHandle, logger)) {
+        logger.error(__FUNCTION__, "Legacy Run table preparation failed.");
+
+        return;
+    }
+
     ZigZagElliotAlertRunDao runDao(databaseHandle);
     ZigZagElliotObservationDao observationDao(databaseHandle);
     ZigZagElliotObservationTimeFrameDao timeFrameDao(databaseHandle);
@@ -1208,7 +1392,13 @@ void OnStart() {
     ZigZagElliotAlertRunEntity runEntity;
     initializeRunEntity(runEntity);
 
-    if (!runDao.insert(runEntity) || runEntity.id <= 0) {
+    if (!runDao.insert(runEntity)
+            || runEntity.id <= 0
+            || !verifyRunAnalysisProfile(
+                databaseHandle,
+                runEntity,
+                logger
+            )) {
         logger.error(__FUNCTION__, "Run save failed.");
 
         return;

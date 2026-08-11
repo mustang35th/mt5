@@ -67,8 +67,11 @@ input bool currencyStrengthDatabaseSplitByYear = true;
 /** 通貨強弱DBで共通フォルダを使用する場合true。 */
 input bool currencyStrengthDatabaseUseCommonFolder = true;
 
-/** H1新規足のElliott観測情報をデータベースへ保存する場合true。 */
-input bool h1ElliotObservationDatabaseEnabled = true;
+/**
+ * H1新規足のElliott観測情報をデータベースへ保存する場合true。
+ * 全通貨専用コレクターとの同時利用は不可。
+ */
+input bool h1ElliotObservationDatabaseEnabled = false;
 
 #property indicator_type1   DRAW_LINE
 #property indicator_type2   DRAW_LINE

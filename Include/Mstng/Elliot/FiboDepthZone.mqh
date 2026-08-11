@@ -6,6 +6,8 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+
 /**
  * フィボナッチ深さゾーン。
  */
@@ -33,37 +35,49 @@ public:
     static ENUM_FIBO_DEPTH_ZONE getZone(const double fiboDepthValue) {
         // 未判定
 
-        if (fiboDepthValue < 0.0) {
+        if (fiboDepthValue
+                < ZigZagElliotAnalysisProfile
+                    ::getFiboDepthMinimumPercent()) {
             return FIBO_DEPTH_UNKNOWN;
         }
 
         // 23.6未満
 
-        if (fiboDepthValue < 23.6) {
+        if (fiboDepthValue
+                < ZigZagElliotAnalysisProfile
+                    ::getFiboDepthShallowUpperPercent()) {
             return FIBO_DEPTH_SHALLOW;
         }
 
         // 23.6以上 38.2未満
 
-        if (fiboDepthValue < 38.2) {
+        if (fiboDepthValue
+                < ZigZagElliotAnalysisProfile
+                    ::getFiboDepthLightUpperPercent()) {
             return FIBO_DEPTH_LIGHT;
         }
 
         // 38.2以上 61.8未満
 
-        if (fiboDepthValue < 61.8) {
+        if (fiboDepthValue
+                < ZigZagElliotAnalysisProfile
+                    ::getFiboDepthNormalUpperPercent()) {
             return FIBO_DEPTH_NORMAL;
         }
 
         // 61.8以上 78.6未満
 
-        if (fiboDepthValue < 78.6) {
+        if (fiboDepthValue
+                < ZigZagElliotAnalysisProfile
+                    ::getFiboDepthDeepUpperPercent()) {
             return FIBO_DEPTH_DEEP;
         }
 
         // 78.6以上 100.0以下
 
-        if (fiboDepthValue <= 100.0) {
+        if (fiboDepthValue
+                <= ZigZagElliotAnalysisProfile
+                    ::getFiboDepthValidMaximumPercent()) {
             return FIBO_DEPTH_VERY_DEEP;
         }
 

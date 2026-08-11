@@ -139,6 +139,9 @@ function ObservationTimeCell(params: ICellRendererParams<ObservationListItem>) {
 function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
   const observation = dataFrom(params);
   if (!observation) return null;
+  const profileKind = observation.analysis_profile_is_legacy ? "Legacy" : "Profile";
+  const profileHash = observation.analysis_input_hash.slice(0, 8) || "—";
+  const shortVersion = observation.analysis_version.replace(/^ELLIOT_MN1_/, "");
   return (
     <div className="grid-cell-stack">
       <Stack
@@ -163,9 +166,9 @@ function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
         className="subtext"
         component="span"
         noWrap
-        title={`Run ${observation.run_id} / ${displayValue(observation.source_server)}`}
+        title={`Run ${observation.run_id} / ${observation.analysis_version} / ${profileKind} ${profileHash} / ${displayValue(observation.source_server)}`}
       >
-        Run {observation.run_id} / {displayValue(observation.source_server)}
+        Run {observation.run_id} / {shortVersion} {profileKind} {profileHash}
       </Typography>
     </div>
   );

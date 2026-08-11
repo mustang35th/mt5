@@ -14,6 +14,7 @@
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Database\ZigZagElliotAlertDatabaseContext.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertSnapshot.mqh>
@@ -272,7 +273,8 @@ private:
     bool initializeDatabase() {
         bool observationEnabled =
             this.config.h1ElliotObservationDatabaseEnabled
-            && this.marketContext.timeFrame == PERIOD_H1;
+            && this.marketContext.timeFrame
+                == ZigZagElliotAnalysisProfile::getAnchorTimeFrame();
 
         if (!this.config.mtf3In3AlertDatabaseEnabled
                 && !observationEnabled) {
@@ -347,7 +349,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 1;
+        this.databaseRun.schemaVersion = 2;
         this.databaseRun.sourceMode = "LIVE";
 
         if (Util::isStrategyTester()) {
@@ -359,7 +361,12 @@ private:
         this.databaseRun.programVersion = "1.23";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V1";
-        this.databaseRun.analysisVersion = "ELLIOT_MN1_V1";
+        this.databaseRun.analysisVersion =
+            ZigZagElliotAnalysisProfile::getAnalysisVersion();
+        this.databaseRun.analysisInputText =
+            ZigZagElliotAnalysisProfile::createCanonicalText();
+        this.databaseRun.analysisInputHash =
+            ZigZagElliotAnalysisProfile::createHash();
         this.databaseRun.sourceServer = AccountInfoString(ACCOUNT_SERVER);
         this.databaseRun.sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
         this.databaseRun.sourceChartId = ChartID();

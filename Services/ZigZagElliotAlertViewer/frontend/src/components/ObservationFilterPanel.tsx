@@ -11,6 +11,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMemo, type FormEvent } from "react";
 import type {
+  ObservationAnalysisProfile,
   ObservationOptionsResponse,
   ObservationSearchState,
   RunItem,
@@ -43,14 +44,76 @@ function runLabel(run: RunItem): string {
   return `${run.source_mode}｜Run ${run.id}｜${symbols}｜${run.observation_count || 0}件｜${range}`;
 }
 
+export function observationProfilesForMode(
+  options: ObservationOptionsResponse,
+  sourceMode: SourceMode,
+): ObservationAnalysisProfile[] {
+  return (options.analysis_profiles || []).filter((profile) => sourceMode === "all"
+    || profile.source_modes.some((mode) => mode.toUpperCase() === sourceMode));
+}
+
+export function defaultObservationAnalysisInputHash(
+  options: ObservationOptionsResponse,
+  sourceMode: SourceMode,
+): string {
+  const defaults = options.default_analysis_input_hashes;
+  if (defaults) {
+    return defaults[sourceMode] || "";
+  }
+  return options.default_analysis_input_hash || "";
+}
+
+export function defaultObservationAnalysisProfile(
+  options: ObservationOptionsResponse,
+  sourceMode: SourceMode,
+): ObservationAnalysisProfile | null {
+  const completeDefaults = options.default_analysis_profiles;
+  if (completeDefaults) return completeDefaults[sourceMode];
+  const defaultHash = defaultObservationAnalysisInputHash(options, sourceMode);
+  if (!defaultHash) return null;
+  return observationProfilesForMode(options, sourceMode).find(
+    (profile) => profile.analysis_input_hash === defaultHash,
+  ) || null;
+}
+
+export function observationProfileMatchesSearch(
+  profile: ObservationAnalysisProfile,
+  value: ObservationSearchState,
+): boolean {
+  return profile.analysis_version === value.analysisVersion
+    && profile.analysis_input_hash === value.analysisInputHash
+    && profile.analysis_profile_kind === value.analysisProfileKind;
+}
+
+export function observationProfileSearchFields(profile: ObservationAnalysisProfile | null) {
+  return {
+    analysisVersion: profile?.analysis_version || "",
+    analysisInputHash: profile?.analysis_input_hash || "",
+    analysisProfileKind: profile?.analysis_profile_kind || "" as const,
+  };
+}
+
+function profileLabel(profile: ObservationAnalysisProfile): string {
+  const kind = profile.is_legacy ? "Legacy" : "Profile";
+  const shortHash = profile.analysis_input_hash.slice(0, 12) || "hashなし";
+  const last = profile.last_anchor_jst_time_text
+    ? `最終JST ${profile.last_anchor_jst_time_text}`
+    : "記録なし";
+  return `${profile.analysis_version}｜${kind}｜${shortHash}｜${profile.observation_count}件｜${last}`;
+}
+
 export function observationFilterSummary(value: ObservationSearchState): string {
   const mode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
   const symbol = value.symbol || "全通貨";
+  const profile = value.analysisInputHash
+    ? `${value.analysisProfileKind === "legacy" ? "Legacy" : "Profile"} `
+      + `${value.analysisVersion}/${value.analysisInputHash.slice(0, 12)}`
+    : "全Profile";
   const period = value.from || value.to
     ? `JST期間 ${value.from || "先頭"} – ${value.to || "末尾"}`
     : "JST全期間";
-  return `${mode} / ${run} / ${symbol} / ${period}`;
+  return `${mode} / ${run} / ${profile} / ${symbol} / ${period}`;
 }
 
 export function hasObservationUnappliedChanges(
@@ -59,6 +122,9 @@ export function hasObservationUnappliedChanges(
 ): boolean {
   return value.sourceMode !== appliedValue.sourceMode
     || value.runId !== appliedValue.runId
+    || value.analysisVersion !== appliedValue.analysisVersion
+    || value.analysisInputHash !== appliedValue.analysisInputHash
+    || value.analysisProfileKind !== appliedValue.analysisProfileKind
     || value.symbol !== appliedValue.symbol
     || value.from !== appliedValue.from
     || value.to !== appliedValue.to
@@ -80,6 +146,14 @@ export function ObservationFilterPanel({
   const visibleRuns = useMemo(
     () => runs.filter((run) => isRunVisible(run, value.sourceMode)),
     [runs, value.sourceMode],
+  );
+  const visibleProfiles = useMemo(
+    () => observationProfilesForMode(options, value.sourceMode),
+    [options, value.sourceMode],
+  );
+  const selectedProfile = useMemo(
+    () => visibleProfiles.find((profile) => observationProfileMatchesSearch(profile, value)),
+    [value, visibleProfiles],
   );
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -146,7 +220,14 @@ export function ObservationFilterPanel({
               onChange={(event) => {
                 const sourceMode = event.target.value;
                 if (sourceMode === "LIVE" || sourceMode === "TESTER" || sourceMode === "all") {
-                  onChange({ ...value, sourceMode, runId: null });
+                  onChange({
+                    ...value,
+                    sourceMode,
+                    runId: null,
+                    ...observationProfileSearchFields(
+                      defaultObservationAnalysisProfile(options, sourceMode),
+                    ),
+                  });
                 }
               }}
             >
@@ -169,14 +250,70 @@ export function ObservationFilterPanel({
               labelId="observationRunLabel"
               label="Run"
               value={value.runId === null ? "" : String(value.runId)}
-              onChange={(event) => onChange({
-                ...value,
-                runId: event.target.value ? Number(event.target.value) : null,
-              })}
+              onChange={(event) => {
+                const runId = event.target.value ? Number(event.target.value) : null;
+                const run = runId === null ? undefined : runs.find((item) => item.id === runId);
+                onChange({
+                  ...value,
+                  runId,
+                  ...(runId === null ? {} : {
+                    analysisVersion: run?.analysis_version || "",
+                    analysisInputHash: run?.analysis_input_hash || "",
+                    analysisProfileKind: run?.analysis_profile_is_legacy
+                      ? "legacy" as const
+                      : "profile" as const,
+                  }),
+                });
+              }}
             >
               <MenuItem value="">すべての観測Run</MenuItem>
               {visibleRuns.map((run) => (
                 <MenuItem key={run.id} value={String(run.id)}>{runLabel(run)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl
+            className="observation-filter-profile-field"
+            size="small"
+            sx={{
+              gridColumn: sidebarLayout
+                ? "1 / -1"
+                : { xs: "span 2", md: "span 2", xl: "auto" },
+            }}
+          >
+            <InputLabel id="observationAnalysisProfileLabel" shrink>分析Profile</InputLabel>
+            <Select
+              displayEmpty
+              labelId="observationAnalysisProfileLabel"
+              label="分析Profile"
+              value={selectedProfile?.profile_key || ""}
+              renderValue={(selected) => {
+                if (!selected) return "すべてのProfile";
+                const profile = visibleProfiles.find(
+                  (item) => item.profile_key === selected,
+                );
+                return profile ? profileLabel(profile) : "未確認のProfile";
+              }}
+              onChange={(event) => {
+                const profile = visibleProfiles.find(
+                  (item) => item.profile_key === event.target.value,
+                ) || null;
+                onChange({
+                  ...value,
+                  runId: null,
+                  ...observationProfileSearchFields(profile),
+                });
+              }}
+            >
+              <MenuItem value="">すべてのProfile</MenuItem>
+              {visibleProfiles.map((profile) => (
+                <MenuItem
+                  key={profile.profile_key}
+                  title={profile.analysis_input_text || "Legacy（設定詳細なし）"}
+                  value={profile.profile_key}
+                >
+                  {profileLabel(profile)}
+                </MenuItem>
               ))}
             </Select>
           </FormControl>

@@ -14,6 +14,7 @@
 #include <Mstng\Database\Entity\ZigZagElliotAlertTimeFrameEntity.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Database\ZigZagElliotAlertDatabaseContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Log\Logger.mqh>
 
 /** 動作確認用データベースファイル名。 */
@@ -190,14 +191,19 @@ bool dropDatabaseObjects(
 void initializeRunEntity(ZigZagElliotAlertRunEntity &fromEntity) {
     fromEntity.id = 0;
     fromEntity.runUid = "zigzag-elliot-alert-smoke-run-v1";
-    fromEntity.schemaVersion = 1;
+    fromEntity.schemaVersion = 2;
     fromEntity.sourceMode = "TESTER";
     fromEntity.source = "ZigZagElliot";
     fromEntity.programName = "ZigZagElliot";
     fromEntity.programVersion = "1.00-smoke";
     fromEntity.strategy = "MTF_3in3";
     fromEntity.strategyVersion = "mtf-3in3-smoke-v1";
-    fromEntity.analysisVersion = "elliot-smoke-v1";
+    fromEntity.analysisVersion =
+        ZigZagElliotAnalysisProfile::getAnalysisVersion();
+    fromEntity.analysisInputText =
+        ZigZagElliotAnalysisProfile::createCanonicalText();
+    fromEntity.analysisInputHash =
+        ZigZagElliotAnalysisProfile::createHash();
     fromEntity.sourceServer = "zigzag-elliot-alert-smoke";
     fromEntity.sourceLogin = 100001;
     fromEntity.sourceChartId = 200001;
@@ -945,6 +951,35 @@ void OnStart() {
 
     if (persistenceService == NULL || !persistenceService.createTables()) {
         logger.error(__FUNCTION__, "Persistence service is not ready.");
+
+        return;
+    }
+
+    ZigZagElliotAlertRunEntity invalidV2RunEntity;
+    initializeRunEntity(invalidV2RunEntity);
+    invalidV2RunEntity.runUid =
+        "zigzag-elliot-alert-smoke-run-invalid-v2";
+    invalidV2RunEntity.analysisInputHash = "INVALID";
+
+    if (persistenceService.saveRun(invalidV2RunEntity)
+            || invalidV2RunEntity.id != 0) {
+        logger.error(__FUNCTION__, "Invalid V2 Run was not rejected.");
+
+        return;
+    }
+
+    ZigZagElliotAlertRunEntity legacyV1RunEntity;
+    initializeRunEntity(legacyV1RunEntity);
+    legacyV1RunEntity.runUid =
+        "zigzag-elliot-alert-smoke-run-legacy-v1";
+    legacyV1RunEntity.schemaVersion = 1;
+    legacyV1RunEntity.analysisVersion = "";
+    legacyV1RunEntity.analysisInputText = "";
+    legacyV1RunEntity.analysisInputHash = "";
+
+    if (!persistenceService.saveRun(legacyV1RunEntity)
+            || legacyV1RunEntity.id <= 0) {
+        logger.error(__FUNCTION__, "Legacy V1 Run compatibility failed.");
 
         return;
     }

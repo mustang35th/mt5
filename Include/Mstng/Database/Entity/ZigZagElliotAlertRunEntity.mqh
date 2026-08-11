@@ -45,6 +45,12 @@ struct ZigZagElliotAlertRunEntity {
     /** Elliott分析バージョン。 */
     string analysisVersion;
 
+    /** 分析結果へ影響する設定のCanonical Text。Legacy行は空文字。 */
+    string analysisInputText;
+
+    /** 分析設定Canonical TextのSHA-256。Legacy行は空文字。 */
+    string analysisInputHash;
+
     /** 取引サーバー名。 */
     string sourceServer;
 

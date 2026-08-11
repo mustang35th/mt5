@@ -1095,8 +1095,34 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual(200, page["page_size"])
         self.assertFalse(summary["available"])
         self.assertEqual(0, summary["total_count"])
-        self.assertEqual({"available": False, "symbols": [], "source_modes": [],
-                          "analysis_versions": []}, options)
+        self.assertEqual(
+            {
+                "available": False,
+                "symbols": [],
+                "source_modes": [],
+                "analysis_versions": [],
+                "analysis_profile_available": False,
+                "analysis_profile_reason": "observation tables are not available",
+                "analysis_profiles": [],
+                "default_analysis_input_hash": None,
+                "default_analysis_input_hashes": {
+                    "all": None,
+                    "LIVE": None,
+                    "TESTER": None,
+                },
+                "default_analysis_profile_keys": {
+                    "all": None,
+                    "LIVE": None,
+                    "TESTER": None,
+                },
+                "default_analysis_profiles": {
+                    "all": None,
+                    "LIVE": None,
+                    "TESTER": None,
+                },
+            },
+            options,
+        )
         self.assertFalse(detail["available"])
 
     def test_missing_detail_column_returns_available_false(self) -> None:
@@ -1254,6 +1280,8 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual(2, summary["live_count"])
         self.assertEqual(1, summary["tester_count"])
         self.assertEqual(2, summary["run_count"])
+        self.assertEqual(1, summary["analysis_profile_count"])
+        self.assertEqual(3, summary["legacy_profile_observation_count"])
         self.assertEqual(
             "2024.01.01 09:00:00",
             summary["first_anchor_jst_time_text"],
@@ -1263,7 +1291,27 @@ class ObservationDatabaseTest(unittest.TestCase):
             summary["last_anchor_jst_time_text"],
         )
         self.assertEqual(["EURUSD", "GBPUSD", "USDJPY"], options["symbols"])
+        self.assertFalse(options["analysis_profile_available"])
+        self.assertEqual("input-hash", options["default_analysis_input_hash"])
+        self.assertEqual(
+            {
+                "all": "input-hash",
+                "LIVE": "input-hash",
+                "TESTER": "input-hash",
+            },
+            options["default_analysis_input_hashes"],
+        )
+        self.assertEqual(1, len(options["analysis_profiles"]))
+        self.assertTrue(options["analysis_profiles"][0]["is_legacy"])
+        self.assertEqual(
+            ["LIVE", "TESTER"],
+            options["analysis_profiles"][0]["source_modes"],
+        )
+        self.assertIsNone(page["items"][0]["analysis_input_text"])
+        self.assertTrue(page["items"][0]["analysis_profile_is_legacy"])
         self.assertTrue(detail["available"])
+        self.assertIsNone(detail["observation"]["analysis_input_text"])
+        self.assertTrue(detail["observation"]["analysis_profile_is_legacy"])
         self.assertEqual(
             "2024.01.01 09:00:00",
             detail["observation"]["anchor_jst_time_text"],
@@ -1287,6 +1335,9 @@ class ObservationDatabaseTest(unittest.TestCase):
                 "tester_model",
                 "started_at",
                 "started_at_text",
+                "analysis_input_text",
+                "analysis_profile_is_legacy",
+                "analysis_profile_kind",
             }
         )
         self.assertEqual(expected_parent_columns, set(detail["observation"]))
@@ -1303,6 +1354,10 @@ class ObservationDatabaseTest(unittest.TestCase):
         )
         self.assertIs(detail["time_frames"][0]["is_oscillator_buy"], False)
         run_one = next(item for item in runs["items"] if item["id"] == 1)
+        self.assertFalse(runs["analysis_profile_available"])
+        self.assertEqual("input-hash", run_one["analysis_input_hash"])
+        self.assertIsNone(run_one["analysis_input_text"])
+        self.assertTrue(run_one["analysis_profile_is_legacy"])
         self.assertEqual(2, run_one["alert_count"])
         self.assertEqual(2, run_one["observation_count"])
         self.assertEqual(
@@ -1314,6 +1369,358 @@ class ObservationDatabaseTest(unittest.TestCase):
             run_one["first_observation_jst_time_text"],
         )
 
+    def test_analysis_profile_contract_and_legacy_fallback(self) -> None:
+        """Prefer the latest stored profile while retaining legacy observations."""
+
+        profile_hash = "a" * 64
+        profile_text = (
+            "OSCILLATOR_PROFILE_V1|STO_SHORT=5,3,3|GMMA=30,60|ATR=14"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_alert_runs "
+                    "ADD COLUMN analysis_input_text TEXT NOT NULL DEFAULT ''"
+                )
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_alert_runs "
+                    "ADD COLUMN analysis_input_hash TEXT NOT NULL DEFAULT ''"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_alert_runs "
+                    "SET analysis_version = 'ELLIOT_MN1_V2', "
+                    "analysis_input_text = ?, analysis_input_hash = ? "
+                    "WHERE id = 1",
+                    (profile_text, profile_hash),
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observations "
+                    "SET analysis_version = 'ELLIOT_MN1_V2', "
+                    "analysis_input_hash = ? WHERE run_id = 1",
+                    (profile_hash,),
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                health = database.validate()
+                options = database.observation_options()
+                runs = database.runs()
+                profile_page = database.observations(
+                    {
+                        "analysisVersion": ["ELLIOT_MN1_V2"],
+                        "analysisInputHash": [profile_hash],
+                        "analysisProfileKind": ["profile"],
+                    }
+                )
+                legacy_page = database.observations(
+                    {
+                        "analysisVersion": ["1"],
+                        "analysisInputHash": ["input-hash"],
+                        "analysisProfileKind": ["legacy"],
+                    }
+                )
+                profile_summary = database.observation_summary(
+                    {
+                        "analysisVersion": ["ELLIOT_MN1_V2"],
+                        "analysisInputHash": [profile_hash],
+                        "analysisProfileKind": ["profile"],
+                    }
+                )
+                legacy_summary = database.observation_summary(
+                    {
+                        "analysisVersion": ["1"],
+                        "analysisInputHash": ["input-hash"],
+                        "analysisProfileKind": ["legacy"],
+                    }
+                )
+                profile_detail = database.observation_detail(1)
+                legacy_detail = database.observation_detail(3)
+            finally:
+                database.close()
+
+        self.assertTrue(health["analysis_profile_available"])
+        self.assertIsNone(health["analysis_profile_reason"])
+        self.assertTrue(options["analysis_profile_available"])
+        self.assertEqual(profile_hash, options["default_analysis_input_hash"])
+        self.assertEqual(
+            {
+                "all": profile_hash,
+                "LIVE": profile_hash,
+                "TESTER": "input-hash",
+            },
+            options["default_analysis_input_hashes"],
+        )
+        self.assertEqual(2, len(options["analysis_profiles"]))
+        profiles = {
+            item["analysis_input_hash"]: item
+            for item in options["analysis_profiles"]
+        }
+        self.assertEqual(profile_text, profiles[profile_hash]["analysis_input_text"])
+        self.assertEqual(["LIVE"], profiles[profile_hash]["source_modes"])
+        self.assertEqual(2, profiles[profile_hash]["observation_count"])
+        self.assertFalse(profiles[profile_hash]["is_legacy"])
+        self.assertEqual(
+            "profile",
+            profiles[profile_hash]["analysis_profile_kind"],
+        )
+        self.assertTrue(profiles[profile_hash]["profile_key"].startswith("ap1_"))
+        self.assertIsNone(profiles["input-hash"]["analysis_input_text"])
+        self.assertEqual(["TESTER"], profiles["input-hash"]["source_modes"])
+        self.assertTrue(profiles["input-hash"]["is_legacy"])
+        self.assertEqual(
+            "legacy",
+            profiles["input-hash"]["analysis_profile_kind"],
+        )
+        self.assertEqual(
+            profiles[profile_hash]["profile_key"],
+            options["default_analysis_profile_keys"]["all"],
+        )
+        self.assertEqual(
+            profiles[profile_hash],
+            options["default_analysis_profiles"]["LIVE"],
+        )
+        self.assertEqual(
+            profiles["input-hash"],
+            options["default_analysis_profiles"]["TESTER"],
+        )
+
+        run_items = {item["id"]: item for item in runs["items"]}
+        self.assertTrue(runs["analysis_profile_available"])
+        self.assertEqual(profile_hash, run_items[1]["analysis_input_hash"])
+        self.assertEqual(profile_text, run_items[1]["analysis_input_text"])
+        self.assertFalse(run_items[1]["analysis_profile_is_legacy"])
+        self.assertEqual("profile", run_items[1]["analysis_profile_kind"])
+        self.assertEqual("input-hash", run_items[2]["analysis_input_hash"])
+        self.assertIsNone(run_items[2]["analysis_input_text"])
+        self.assertTrue(run_items[2]["analysis_profile_is_legacy"])
+        self.assertEqual("legacy", run_items[2]["analysis_profile_kind"])
+
+        self.assertEqual(2, profile_page["total"])
+        self.assertTrue(
+            all(
+                item["analysis_input_text"] == profile_text
+                and not item["analysis_profile_is_legacy"]
+                and item["analysis_profile_kind"] == "profile"
+                for item in profile_page["items"]
+            )
+        )
+        self.assertEqual(1, legacy_page["total"])
+        self.assertTrue(legacy_page["items"][0]["analysis_profile_is_legacy"])
+        self.assertEqual(
+            "legacy",
+            legacy_page["items"][0]["analysis_profile_kind"],
+        )
+        self.assertEqual(1, profile_summary["analysis_profile_count"])
+        self.assertEqual(0, profile_summary["legacy_profile_observation_count"])
+        self.assertEqual(1, legacy_summary["analysis_profile_count"])
+        self.assertEqual(1, legacy_summary["legacy_profile_observation_count"])
+        self.assertEqual(
+            profile_text,
+            profile_detail["observation"]["analysis_input_text"],
+        )
+        self.assertFalse(
+            profile_detail["observation"]["analysis_profile_is_legacy"]
+        )
+        self.assertEqual(
+            "profile",
+            profile_detail["observation"]["analysis_profile_kind"],
+        )
+        self.assertIsNone(legacy_detail["observation"]["analysis_input_text"])
+        self.assertTrue(
+            legacy_detail["observation"]["analysis_profile_is_legacy"]
+        )
+        self.assertEqual(
+            "legacy",
+            legacy_detail["observation"]["analysis_profile_kind"],
+        )
+
+    def test_analysis_profile_cohorts_and_defaults_use_exact_identity(self) -> None:
+        """Separate version/kind cohorts and choose defaults by observation id."""
+
+        shared_hash = "shared-hash"
+        newer_hash = "newer-hash"
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_alert_runs "
+                    "ADD COLUMN analysis_input_text TEXT NOT NULL DEFAULT ''"
+                )
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_alert_runs "
+                    "ADD COLUMN analysis_input_hash TEXT NOT NULL DEFAULT ''"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_alert_runs "
+                    "SET analysis_version = 'V1', analysis_input_text = 'v1', "
+                    "analysis_input_hash = ? WHERE id = 1",
+                    (shared_hash,),
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_alert_runs "
+                    "SET analysis_version = 'V1' WHERE id = 2"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observations "
+                    "SET analysis_version = 'V1', analysis_input_hash = ?",
+                    (shared_hash,),
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO zigzag_elliot_alert_runs (
+                        id, run_uid, schema_version, source_mode, source,
+                        program_name, program_version, strategy,
+                        strategy_version, analysis_version, source_server,
+                        started_at, started_at_text, created_at,
+                        created_at_text, analysis_input_text,
+                        analysis_input_hash
+                    ) VALUES (
+                        ?, ?, 1, 'TESTER', 'ZigZagElliot', 'ZigZagElliot',
+                        '1.23', 'MTF 3in3', '1', 'V2', 'OANDA-Demo',
+                        ?, ?, ?, ?, ?, ?
+                    )
+                    """,
+                    [
+                        (
+                            3,
+                            "run-3",
+                            1893452400,
+                            "2030.01.01 00:00:00",
+                            1893452400,
+                            "2030.01.01 00:00:00",
+                            "v2-shared",
+                            shared_hash,
+                        ),
+                        (
+                            4,
+                            "run-4",
+                            1577804400,
+                            "2020.01.01 00:00:00",
+                            1577804400,
+                            "2020.01.01 00:00:00",
+                            "v2-newer",
+                            newer_hash,
+                        ),
+                    ],
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO zigzag_elliot_observations (
+                        id, run_id, source_mode, source_server, symbol_name,
+                        anchor_time_frame, anchor_time_frame_text,
+                        anchor_bar_time, anchor_bar_time_text,
+                        anchor_jst_time, anchor_jst_time_text, capture_phase,
+                        analysis_version, analysis_input_hash, snapshot_hash,
+                        time_frame_count, created_at, created_at_text
+                    ) VALUES (
+                        ?, ?, 'TESTER', 'OANDA-Demo', ?, 16385, 'H1',
+                        ?, ?, ?, ?, 'BAR_OPEN_FIRST_SUCCESS', 'V2', ?, ?,
+                        5, ?, ?
+                    )
+                    """,
+                    [
+                        (
+                            4,
+                            3,
+                            "AUDUSD",
+                            1893452400,
+                            "2030.01.01 00:00:00",
+                            1893484800,
+                            "2030.01.01 09:00:00",
+                            shared_hash,
+                            "snapshot-4",
+                            1893452400,
+                            "2030.01.01 00:00:00",
+                        ),
+                        (
+                            5,
+                            4,
+                            "NZDUSD",
+                            1577804400,
+                            "2020.01.01 00:00:00",
+                            1577836800,
+                            "2020.01.01 09:00:00",
+                            newer_hash,
+                            "snapshot-5",
+                            1577804400,
+                            "2020.01.01 00:00:00",
+                        ),
+                    ],
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                options = database.observation_options()
+                summary = database.observation_summary({})
+
+                def exact_summary(
+                    version: str,
+                    input_hash: str,
+                    kind: str,
+                ) -> dict[str, object]:
+                    return database.observation_summary(
+                        {
+                            "analysisVersion": [version],
+                            "analysisInputHash": [input_hash],
+                            "analysisProfileKind": [kind],
+                        }
+                    )
+
+                v1_profile = exact_summary("V1", shared_hash, "profile")
+                v1_legacy = exact_summary("V1", shared_hash, "legacy")
+                v2_shared = exact_summary("V2", shared_hash, "profile")
+                v2_newer = exact_summary("V2", newer_hash, "profile")
+                combined = database.observations(
+                    {
+                        "analysisVersion": ["V1"],
+                        "analysisInputHash": [shared_hash],
+                    }
+                )
+            finally:
+                database.close()
+
+        self.assertEqual(4, len(options["analysis_profiles"]))
+        profiles = {
+            (
+                item["analysis_version"],
+                item["analysis_input_hash"],
+                item["analysis_profile_kind"],
+            ): item
+            for item in options["analysis_profiles"]
+        }
+        self.assertEqual(4, len(profiles))
+        self.assertEqual(4, len({item["profile_key"] for item in profiles.values()}))
+        self.assertEqual(2, profiles[("V1", shared_hash, "profile")]["observation_count"])
+        self.assertEqual(1, profiles[("V1", shared_hash, "legacy")]["observation_count"])
+        self.assertIsNone(profiles[("V1", shared_hash, "legacy")]["analysis_input_text"])
+        self.assertEqual(4, summary["analysis_profile_count"])
+        self.assertEqual(1, summary["legacy_profile_observation_count"])
+        self.assertEqual(2, v1_profile["total_count"])
+        self.assertEqual(1, v1_legacy["total_count"])
+        self.assertEqual(1, v2_shared["total_count"])
+        self.assertEqual(1, v2_newer["total_count"])
+        self.assertEqual(3, combined["total"])
+
+        tester_default = options["default_analysis_profiles"]["TESTER"]
+        self.assertEqual("V2", tester_default["analysis_version"])
+        self.assertEqual(newer_hash, tester_default["analysis_input_hash"])
+        self.assertEqual("profile", tester_default["analysis_profile_kind"])
+        self.assertEqual(
+            tester_default["profile_key"],
+            options["default_analysis_profile_keys"]["TESTER"],
+        )
+        self.assertEqual(
+            newer_hash,
+            options["default_analysis_input_hashes"]["TESTER"],
+        )
+        self.assertEqual(
+            newer_hash,
+            options["default_analysis_input_hash"],
+        )
+
     def test_filters_are_bound_and_sort_identifiers_are_whitelisted(self) -> None:
         """Use JST dates and reject arbitrary SQL sort expressions."""
 
@@ -1322,6 +1729,9 @@ class ObservationDatabaseTest(unittest.TestCase):
                 "sourceMode": ["tester"],
                 "runId": ["2"],
                 "symbol": ["USDJPY"],
+                "analysisVersion": ["V2"],
+                "analysisInputHash": ["profile-hash"],
+                "analysisProfileKind": ["PROFILE"],
                 "from": ["2024-01-01"],
                 "to": ["2024-01-04"],
             }
@@ -1329,9 +1739,18 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIn("o.source_mode = :source_mode", filters.where_sql)
         self.assertIn("o.run_id = :run_id", filters.where_sql)
         self.assertIn("o.symbol_name = :symbol_name", filters.where_sql)
+        self.assertIn(
+            "o.analysis_input_hash = :analysis_input_hash",
+            filters.where_sql,
+        )
+        self.assertIn("o.analysis_version = :analysis_version", filters.where_sql)
         self.assertIn("o.anchor_jst_time >= :from_time", filters.where_sql)
         self.assertIn("o.anchor_jst_time < :to_time", filters.where_sql)
         self.assertEqual("TESTER", filters.parameters["source_mode"])
+        self.assertEqual("profile-hash", filters.parameters["analysis_input_hash"])
+        self.assertEqual("V2", filters.parameters["analysis_version"])
+        self.assertEqual("profile", filters.parameters["analysis_profile_kind"])
+        self.assertEqual("profile", filters.analysis_profile_kind)
         self.assertEqual(
             "anchor_jst_time",
             AlertDatabase.parse_observation_filters({}).sort_sql,
@@ -1367,6 +1786,13 @@ class ObservationDatabaseTest(unittest.TestCase):
         ):
             AlertDatabase.parse_observation_filters(
                 {"sourceMode": ["LIVE' OR 1=1 --"]}
+            )
+        with self.assertRaisesRegex(
+            RequestError,
+            "analysisProfileKind must be profile or legacy",
+        ):
+            AlertDatabase.parse_observation_filters(
+                {"analysisProfileKind": ["mixed"]}
             )
 
     def test_run_ranges_aggregate_shared_symbol_boundaries_once(self) -> None:

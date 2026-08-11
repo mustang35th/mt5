@@ -22,8 +22,11 @@ import type { RefreshIntervalSeconds } from "../lib/refreshSettings";
 import { AppliedConditionSummary } from "./AppliedConditionSummary";
 import { FilterVisibilityToggle } from "./FilterVisibilityToggle";
 import {
+  defaultObservationAnalysisProfile,
   hasObservationUnappliedChanges,
   ObservationFilterPanel,
+  observationProfileSearchFields,
+  observationProfilesForMode,
   observationFilterSummary,
 } from "./ObservationFilterPanel";
 import { ObservationDetailDrawer } from "./ObservationDetailDrawer";
@@ -128,6 +131,10 @@ export function H1ObservationView({
     const params = new URLSearchParams(window.location.search);
     return params.has("sourceMode");
   }, []);
+  const initialHasAnalysisInputHash = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("analysisInputHash");
+  }, []);
   const [draft, setDraft] = useState<ObservationSearchState>(initialSearch);
   const [applied, setApplied] = useState<ObservationSearchState>(initialSearch);
   const [filterExpanded, setFilterExpanded] = useState(true);
@@ -146,15 +153,17 @@ export function H1ObservationView({
   const [initialRunValidated, setInitialRunValidated] = useState(
     initialSearch.runId === null,
   );
+  const [optionsResolved, setOptionsResolved] = useState(false);
+  const [initialProfileValidated, setInitialProfileValidated] = useState(false);
   const activeControllerRef = useRef<AbortController | null>(null);
   const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
   const requestModeRef = useRef<"foreground" | "background" | "manual">("foreground");
   const optionsLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (!active || !initialRunValidated) return;
+    if (!active || !initialRunValidated || !initialProfileValidated) return;
     replaceObservationSearchUrl(applied);
-  }, [active, applied, initialRunValidated]);
+  }, [active, applied, initialProfileValidated, initialRunValidated]);
 
   useEffect(() => {
     if (!active || !ready || initialRunValidated) return;
@@ -179,8 +188,9 @@ export function H1ObservationView({
     api.observationOptions(controller.signal)
       .then((value) => {
         if (controller.signal.aborted) return;
-        optionsLoadedRef.current = value.available;
+        optionsLoadedRef.current = true;
         setOptions(value);
+        setOptionsResolved(true);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -192,7 +202,71 @@ export function H1ObservationView({
   }, [active, ready, requestGeneration]);
 
   useEffect(() => {
-    if (!active || !ready || !initialRunValidated) return;
+    if (!active || !ready || !initialRunValidated || !optionsResolved || initialProfileValidated) {
+      return;
+    }
+    const selectedRun = applied.runId === null
+      ? undefined
+      : runs.find((run) => run.id === applied.runId);
+    const profiles = observationProfilesForMode(options, applied.sourceMode);
+    let selectedProfile = null;
+    if (selectedRun?.analysis_input_hash) {
+      selectedProfile = profiles.find((profile) => (
+        profile.analysis_version === selectedRun.analysis_version
+          && profile.analysis_input_hash === selectedRun.analysis_input_hash
+          && profile.analysis_profile_kind === (
+            selectedRun.analysis_profile_is_legacy ? "legacy" : "profile"
+          )
+      )) || null;
+    } else if (initialHasAnalysisInputHash) {
+      const requestedHash = initialSearch.analysisInputHash;
+      const requestedProfiles = profiles.filter((profile) => (
+        profile.analysis_input_hash === requestedHash
+          && (!initialSearch.analysisVersion
+            || profile.analysis_version === initialSearch.analysisVersion)
+          && (!initialSearch.analysisProfileKind
+            || profile.analysis_profile_kind === initialSearch.analysisProfileKind)
+      ));
+      if (!requestedHash) {
+        selectedProfile = null;
+      } else if (requestedProfiles.length === 1) {
+        selectedProfile = requestedProfiles[0];
+      } else {
+        selectedProfile = defaultObservationAnalysisProfile(options, applied.sourceMode);
+      }
+    } else {
+      selectedProfile = defaultObservationAnalysisProfile(options, applied.sourceMode);
+    }
+    const profileFields = selectedRun?.analysis_input_hash && selectedProfile === null
+      ? {
+        analysisVersion: selectedRun.analysis_version,
+        analysisInputHash: selectedRun.analysis_input_hash,
+        analysisProfileKind: selectedRun.analysis_profile_is_legacy
+          ? "legacy" as const
+          : "profile" as const,
+      }
+      : observationProfileSearchFields(selectedProfile);
+    setDraft((current) => ({ ...current, ...profileFields }));
+    setApplied((current) => ({ ...current, ...profileFields }));
+    setInitialProfileValidated(true);
+  }, [
+    active,
+    applied.runId,
+    applied.sourceMode,
+    initialHasAnalysisInputHash,
+    initialProfileValidated,
+    initialRunValidated,
+    initialSearch.analysisInputHash,
+    initialSearch.analysisProfileKind,
+    initialSearch.analysisVersion,
+    options,
+    optionsResolved,
+    ready,
+    runs,
+  ]);
+
+  useEffect(() => {
+    if (!active || !ready || !initialRunValidated || !initialProfileValidated) return;
     activeControllerRef.current?.abort();
     const controller = new AbortController();
     const requestMode = requestModeRef.current;
@@ -233,7 +307,7 @@ export function H1ObservationView({
       controller.abort();
       if (activeControllerRef.current === controller) activeControllerRef.current = null;
     };
-  }, [active, applied, initialRunValidated, ready, requestGeneration]);
+  }, [active, applied, initialProfileValidated, initialRunValidated, ready, requestGeneration]);
 
   const requestRefresh = useCallback((mode: "background" | "manual") => {
     if (!active || !ready || activeControllerRef.current !== null) return false;
@@ -370,7 +444,12 @@ export function H1ObservationView({
             sidebar
             onChange={setDraft}
             onSubmit={() => commitSearch({ ...draft, page: 1 })}
-            onReset={() => commitSearch(DEFAULT_OBSERVATION_SEARCH_STATE)}
+            onReset={() => commitSearch({
+              ...DEFAULT_OBSERVATION_SEARCH_STATE,
+              ...observationProfileSearchFields(
+                defaultObservationAnalysisProfile(options, "LIVE"),
+              ),
+            })}
           />
         </aside>
         <div className="viewer-results-column">

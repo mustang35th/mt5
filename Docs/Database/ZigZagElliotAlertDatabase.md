@@ -6,10 +6,10 @@
 |---|---|
 | 対象機能 | `ZigZagElliot`の`MTF_3in3`アラート履歴 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| スキーマバージョン | 1 |
+| スキーマバージョン | 2 |
 | 保存単位 | 実行、アラート、時間足別分析、最新Waveポイント |
 | 重複時の動作 | 最初に保存したスナップショットを維持 |
-| 最終更新日 | 2026-08-08 |
+| 最終更新日 | 2026-08-12 |
 
 本書は、ZigZagElliotがアラートを出した時点の判定情報とElliott波動を、後からSQLで検索および再構成できる形式で保存する第1段階の仕様を定義します。
 
@@ -78,6 +78,21 @@ zigzag_elliot_alert_runs (1)
 
 第1段階では暗黙のSQL NULLを使用しません。任意情報は利用可能フラグと0または空文字で表現します。これにより、未取得と有効な0をフラグで区別します。
 
+### 5.1 分析ProfileとHash
+
+| 項目 | 役割 |
+|---|---|
+| `analysis_version` | 計算式・判定ロジックの世代を識別する値 |
+| `analysis_input_text` | 分析結果へ影響する設定一式を固定順序で表したCanonical Text。Runに保存 |
+| `analysis_input_hash` | `analysis_input_text`のSHA-256（64桁の小文字16進数） |
+| `snapshot_hash` | AlertまたはObservationへ保存した分析結果の完全性を確認するHash |
+
+分析Profileは`analysis_version`、`analysis_input_hash`および`analysis_profile_kind`の組み合わせで識別します。`analysis_profile_kind`は、RunのCanonical TextとHashが空でなく、RunとObservationの分析バージョンおよびHashが一致する行を`profile`、それ以外を`legacy`として区別するViewer上の分類です。同じHashでも分析バージョンまたは分類が異なる行は別Profileとして検索します。
+
+H1 Observationの`analysis_version`と`analysis_input_hash`には、保存元Runの値をそのまま複製します。Canonical TextはRunを正本とし、Observationへ重複保存しません。
+
+既存Runへ追加された`analysis_input_text`と`analysis_input_hash`は空文字のまま保持し、推測によるバックフィルは行いません。これらのRunとObservationはLegacyとして参照できます。
+
 ## 6. `zigzag_elliot_alert_runs`
 
 インジケーター起動またはテスター実行1回を表します。同じ`run_uid`を再保存した場合は既存IDを返し、行を追加しません。
@@ -89,6 +104,7 @@ zigzag_elliot_alert_runs (1)
 | 識別 | `id`, `run_uid`, `schema_version` |
 | 実行元 | `source_mode`, `source`, `program_name`, `program_version` |
 | ロジック | `strategy`, `strategy_version`, `analysis_version` |
+| 分析Profile | `analysis_input_text`, `analysis_input_hash` |
 | 環境 | `source_server`, `source_login`, `source_chart_id`, `terminal_build` |
 | テスター | `tester_from`, `tester_to`, `tester_model` |
 | 入力値 | `input_text`, `input_hash` |
@@ -158,7 +174,7 @@ UNIQUE(
 3. hashが異なる場合も既存行と子行を更新しません。
 4. hash差異をINFOへ記録し、最初のスナップショットを維持します。
 
-`snapshot_hash`はアラート判定、時間足別分析および保存対象となる最新Wave全ポイントから生成します。
+Alertの`snapshot_hash`はアラート判定、時間足別分析および保存対象となる最新Wave全ポイントから生成します。H1 Observationの`snapshot_hash`も、保存した観測結果から生成します。いずれも分析設定を識別する`analysis_input_hash`とは用途が異なります。
 
 同一シグナルの再カウント推移が必要になった場合は、第2段階以降でRevisionテーブルを追加します。
 

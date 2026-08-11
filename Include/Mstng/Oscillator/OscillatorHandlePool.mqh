@@ -11,6 +11,7 @@
 #define MSTNG_OSCILLATOR_HANDLE_POOL_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Oscillator\AverageTrueRangeHandlePool.mqh>
 #include <Mstng\Oscillator\Ema200HandlePool.mqh>
 #include <Mstng\Oscillator\GmmaHandlePool.mqh>
@@ -203,12 +204,49 @@ private:
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
 
-        this.stochasticShortHandlePool = StochasticHandlePool(this.marketContext, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-        this.stochasticMiddleHandlePool = StochasticHandlePool(this.marketContext, 14, 3, 3, MODE_SMA, STO_LOWHIGH);
-        this.stochasticLongHandlePool = StochasticHandlePool(this.marketContext, 21, 5, 5, MODE_SMA, STO_LOWHIGH);
-        this.gmmaHandlePool = GmmaHandlePool(this.marketContext, 30, 60, MODE_EMA, PRICE_CLOSE);
-        this.averageTrueRangeHandlePool = AverageTrueRangeHandlePool(this.marketContext, 14);
-        this.ema200HandlePool = Ema200HandlePool(this.marketContext, 200, MODE_EMA, PRICE_CLOSE);
+        this.stochasticShortHandlePool = StochasticHandlePool(
+            this.marketContext,
+            ZigZagElliotAnalysisProfile::getStochasticShortKPeriod(),
+            ZigZagElliotAnalysisProfile::getStochasticShortDPeriod(),
+            ZigZagElliotAnalysisProfile::getStochasticShortSlowing(),
+            ZigZagElliotAnalysisProfile::getStochasticMaMethod(),
+            ZigZagElliotAnalysisProfile::getStochasticPriceField()
+        );
+        this.stochasticMiddleHandlePool = StochasticHandlePool(
+            this.marketContext,
+            ZigZagElliotAnalysisProfile::getStochasticMiddleKPeriod(),
+            ZigZagElliotAnalysisProfile::getStochasticMiddleDPeriod(),
+            ZigZagElliotAnalysisProfile::getStochasticMiddleSlowing(),
+            ZigZagElliotAnalysisProfile::getStochasticMaMethod(),
+            ZigZagElliotAnalysisProfile::getStochasticPriceField()
+        );
+        this.stochasticLongHandlePool = StochasticHandlePool(
+            this.marketContext,
+            ZigZagElliotAnalysisProfile::getStochasticLongKPeriod(),
+            ZigZagElliotAnalysisProfile::getStochasticLongDPeriod(),
+            ZigZagElliotAnalysisProfile::getStochasticLongSlowing(),
+            ZigZagElliotAnalysisProfile::getStochasticMaMethod(),
+            ZigZagElliotAnalysisProfile::getStochasticPriceField()
+        );
+        this.gmmaHandlePool = GmmaHandlePool(
+            this.marketContext,
+            ZigZagElliotAnalysisProfile::getGmmaShortPeriod(),
+            ZigZagElliotAnalysisProfile::getGmmaLongPeriod(),
+            ZigZagElliotAnalysisProfile::getGmmaMaMethod(),
+            ZigZagElliotAnalysisProfile::getGmmaAppliedPrice(),
+            ZigZagElliotAnalysisProfile::getGmmaMaShift()
+        );
+        this.averageTrueRangeHandlePool = AverageTrueRangeHandlePool(
+            this.marketContext,
+            ZigZagElliotAnalysisProfile::getAtrPeriod()
+        );
+        this.ema200HandlePool = Ema200HandlePool(
+            this.marketContext,
+            ZigZagElliotAnalysisProfile::getEma200Period(),
+            ZigZagElliotAnalysisProfile::getEma200MaMethod(),
+            ZigZagElliotAnalysisProfile::getEma200AppliedPrice(),
+            ZigZagElliotAnalysisProfile::getEma200MaShift()
+        );
     }
 };
 

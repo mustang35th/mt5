@@ -1,6 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import {
+  defaultObservationAnalysisInputHash,
+  observationProfileMatchesSearch,
+} from "./components/ObservationFilterPanel";
+import { DEFAULT_OBSERVATION_SEARCH_STATE } from "./lib/observationSearchState";
 import { REFRESH_INTERVAL_STORAGE_KEY } from "./lib/refreshSettings";
 
 function jsonResponse(payload: unknown): Response {
@@ -12,6 +17,33 @@ function jsonResponse(payload: unknown): Response {
 }
 
 let observationAvailable = true;
+let observationOptionsFailures = 0;
+const LIVE_ANALYSIS_PROFILE_HASH = "live-profile-hash";
+const TESTER_ANALYSIS_PROFILE_HASH = "input-hash";
+const ANALYSIS_PROFILE_TEXT = "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V1|STOCH_SHORT=5,3,3";
+const ANALYSIS_VERSION = "ELLIOT_MN1_V2";
+
+function analysisProfile(
+  hash: string,
+  mode: "LIVE" | "TESTER",
+  observationCount: number,
+  lastTime: number,
+) {
+  return {
+    profile_key: `profile-${mode.toLowerCase()}`,
+    analysis_profile_kind: "profile" as const,
+    analysis_input_hash: hash,
+    analysis_input_text: ANALYSIS_PROFILE_TEXT,
+    analysis_version: ANALYSIS_VERSION,
+    observation_count: observationCount,
+    last_anchor_jst_time: lastTime,
+    last_anchor_jst_time_text: mode === "LIVE"
+      ? "2026.08.10 07:00:01"
+      : "2026.08.10 07:00:00",
+    source_modes: [mode],
+    is_legacy: false,
+  };
+}
 
 function observationTimeFrame(timeFrame: string, index: number) {
   return {
@@ -72,8 +104,10 @@ function observationsResponse() {
       anchor_time_frame: 16385,
       anchor_time_frame_text: "H1",
       capture_phase: "BAR_OPEN_FIRST_SUCCESS",
-      analysis_version: "1",
-      analysis_input_hash: "input-hash",
+      analysis_version: ANALYSIS_VERSION,
+      analysis_input_hash: TESTER_ANALYSIS_PROFILE_HASH,
+      analysis_input_text: ANALYSIS_PROFILE_TEXT,
+      analysis_profile_is_legacy: false,
       snapshot_hash: "snapshot-hash",
       time_frame_count: 5,
       created_at: 1786309201,
@@ -86,6 +120,7 @@ function observationsResponse() {
 describe("App", () => {
   beforeEach(() => {
     observationAvailable = true;
+    observationOptionsFailures = 0;
     window.history.replaceState(null, "", "/");
     window.localStorage.clear();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -105,7 +140,7 @@ describe("App", () => {
               program_version: "1.21",
               strategy: "MTF_3in3",
               strategy_version: "1",
-              analysis_version: "1",
+              analysis_version: ANALYSIS_VERSION,
               started_at_text: "2026.08.01 00:00:00",
               alert_count: 0,
               first_alert_time_text: null,
@@ -120,7 +155,7 @@ describe("App", () => {
               program_version: "1.21",
               strategy: "MTF_3in3",
               strategy_version: "1",
-              analysis_version: "1",
+              analysis_version: ANALYSIS_VERSION,
               started_at_text: "2022.01.01 00:00:00",
               alert_count: 1,
               first_alert_time_text: "2026.07.30 19:00:00",
@@ -134,6 +169,9 @@ describe("App", () => {
               last_observation_jst_time: 1786330800,
               last_observation_jst_time_text: "2026.08.10 07:00:00",
               observation_symbols: "AUDUSD",
+              analysis_input_text: ANALYSIS_PROFILE_TEXT,
+              analysis_input_hash: TESTER_ANALYSIS_PROFILE_HASH,
+              analysis_profile_is_legacy: false,
             },
             {
               id: 2,
@@ -157,11 +195,43 @@ describe("App", () => {
         return jsonResponse({ symbols: ["AUDUSD"], time_frames: ["H1", "M5", "D1"], strategies: ["MTF_3in3"], ranks: ["S"], entry_results: ["ENTRY"] });
       }
       if (path === "/api/observation-options") {
+        if (observationOptionsFailures > 0) {
+          observationOptionsFailures -= 1;
+          throw new Error("Profile条件を読み込めませんでした");
+        }
         return jsonResponse({
           available: observationAvailable,
           symbols: observationAvailable ? ["AUDUSD"] : [],
           source_modes: observationAvailable ? ["TESTER"] : [],
           analysis_versions: observationAvailable ? ["1"] : [],
+          analysis_profile_available: observationAvailable,
+          analysis_profile_reason: observationAvailable ? "" : "observation table schema is not supported",
+          analysis_profiles: observationAvailable ? [
+            analysisProfile(LIVE_ANALYSIS_PROFILE_HASH, "LIVE", 2, 1786330801),
+            analysisProfile(TESTER_ANALYSIS_PROFILE_HASH, "TESTER", 1, 1786330800),
+          ] : [],
+          default_analysis_input_hash: observationAvailable ? LIVE_ANALYSIS_PROFILE_HASH : null,
+          default_analysis_input_hashes: {
+            all: observationAvailable ? LIVE_ANALYSIS_PROFILE_HASH : null,
+            LIVE: observationAvailable ? LIVE_ANALYSIS_PROFILE_HASH : null,
+            TESTER: observationAvailable ? TESTER_ANALYSIS_PROFILE_HASH : null,
+          },
+          default_analysis_profile_keys: {
+            all: observationAvailable ? "profile-live" : null,
+            LIVE: observationAvailable ? "profile-live" : null,
+            TESTER: observationAvailable ? "profile-tester" : null,
+          },
+          default_analysis_profiles: {
+            all: observationAvailable
+              ? analysisProfile(LIVE_ANALYSIS_PROFILE_HASH, "LIVE", 2, 1786330801)
+              : null,
+            LIVE: observationAvailable
+              ? analysisProfile(LIVE_ANALYSIS_PROFILE_HASH, "LIVE", 2, 1786330801)
+              : null,
+            TESTER: observationAvailable
+              ? analysisProfile(TESTER_ANALYSIS_PROFILE_HASH, "TESTER", 1, 1786330800)
+              : null,
+          },
         });
       }
       if (path.startsWith("/api/observations?")) {
@@ -258,6 +328,46 @@ describe("App", () => {
     }));
   });
 
+  it("does not borrow another mode's analysis profile default", () => {
+    expect(defaultObservationAnalysisInputHash({
+      available: true,
+      symbols: [],
+      source_modes: ["TESTER"],
+      analysis_versions: ["ELLIOT_MN1_V2"],
+      default_analysis_input_hash: TESTER_ANALYSIS_PROFILE_HASH,
+      default_analysis_input_hashes: {
+        all: TESTER_ANALYSIS_PROFILE_HASH,
+        LIVE: null,
+        TESTER: TESTER_ANALYSIS_PROFILE_HASH,
+      },
+    }, "LIVE")).toBe("");
+  });
+
+  it("keeps analysis versions and Legacy cohorts separate when hashes match", () => {
+    const profile = analysisProfile(TESTER_ANALYSIS_PROFILE_HASH, "TESTER", 1, 1);
+    expect(observationProfileMatchesSearch(profile, {
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      sourceMode: "TESTER",
+      analysisVersion: ANALYSIS_VERSION,
+      analysisInputHash: TESTER_ANALYSIS_PROFILE_HASH,
+      analysisProfileKind: "profile",
+    })).toBe(true);
+    expect(observationProfileMatchesSearch(profile, {
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      sourceMode: "TESTER",
+      analysisVersion: "ELLIOT_MN1_V3",
+      analysisInputHash: TESTER_ANALYSIS_PROFILE_HASH,
+      analysisProfileKind: "profile",
+    })).toBe(false);
+    expect(observationProfileMatchesSearch(profile, {
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      sourceMode: "TESTER",
+      analysisVersion: ANALYSIS_VERSION,
+      analysisInputHash: TESTER_ANALYSIS_PROFILE_HASH,
+      analysisProfileKind: "legacy",
+    })).toBe(false);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -267,7 +377,12 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByText("接続済み・LIVE 1件")).toBeInTheDocument();
     expect(screen.getByRole("tabpanel")).toHaveClass("viewer-tab-panel");
-    expect(screen.getByRole("link", { name: "従来画面" })).toHaveAttribute("href", "/legacy/");
+    expect(screen.queryByRole("link", { name: "従来画面" })).not.toBeInTheDocument();
+    const header = screen.getByRole("banner");
+    const viewerNavigation = within(header).getByRole("navigation", { name: "Viewer表示切替" });
+    expect(viewerNavigation).toContainElement(screen.getByRole("tab", { name: "アラート一覧" }));
+    expect(viewerNavigation.compareDocumentPosition(screen.getByRole("heading", { level: 1 })) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
     const searchSidebar = screen.getByRole("complementary", { name: "アラート検索条件" });
     const searchHeading = screen.getByRole("heading", { name: "アラート検索" });
     const searchToggle = screen.getByRole("button", { name: "検索条件を閉じる" });
@@ -334,8 +449,16 @@ describe("App", () => {
     expect(observationToggle.compareDocumentPosition(observationConditionSummary) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeTruthy();
     expect(observationConditionSummary).toHaveTextContent("JST期間 2026-08-01 – 2026-08-10");
+    await waitFor(() => {
+      expect(observationConditionSummary).toHaveTextContent(
+        `Profile ${ANALYSIS_VERSION}/${TESTER_ANALYSIS_PROFILE_HASH}`,
+      );
+    });
     expect(screen.getByLabelText("Run")).toHaveTextContent(
       "JST 2026.08.10 07:00:00 – 2026.08.10 07:00:00",
+    );
+    expect(screen.getByLabelText("分析Profile")).toHaveTextContent(
+      `${ANALYSIS_VERSION}｜Profile｜${TESTER_ANALYSIS_PROFILE_HASH}`,
     );
     expect(tabPanel.querySelector(".viewer-summary-bar"))
       .toContainElement(tabPanel.querySelector(".observation-summary-strip"));
@@ -358,6 +481,8 @@ describe("App", () => {
       name: "AUDUSD / 2026.08.10 07:00:00",
     })).toBeInTheDocument();
     expect(within(detailDialog).getAllByText("最新点 JST")).toHaveLength(5);
+    expect(within(detailDialog).getByText(`Profile / ${TESTER_ANALYSIS_PROFILE_HASH}`)).toBeInTheDocument();
+    expect(within(detailDialog).getByText(ANALYSIS_PROFILE_TEXT)).toBeInTheDocument();
     expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/observations/9")).toBe(true);
     fireEvent.click(within(detailDialog).getByRole("button", { name: "H1観測詳細を閉じる" }));
     await waitFor(() => expect(detailButton).toHaveFocus());
@@ -367,11 +492,23 @@ describe("App", () => {
 
     const calls = vi.mocked(fetch).mock.calls.map(([path]) => String(path));
     expect(calls.some((path) => path.startsWith("/api/observations?sourceMode=TESTER")
+      && path.includes(`analysisVersion=${ANALYSIS_VERSION}`)
+      && path.includes(`analysisInputHash=${TESTER_ANALYSIS_PROFILE_HASH}`)
+      && path.includes("analysisProfileKind=profile")
       && path.includes("sort=anchor_jst_time"))).toBe(true);
     expect(calls.some((path) => path.startsWith("/api/observation-summary?sourceMode=TESTER")
+      && path.includes(`analysisVersion=${ANALYSIS_VERSION}`)
+      && path.includes(`analysisInputHash=${TESTER_ANALYSIS_PROFILE_HASH}`)
+      && path.includes("analysisProfileKind=profile")
       && path.includes("sort=anchor_jst_time"))).toBe(true);
     expect(calls.some((path) => path.startsWith("/api/alerts?"))).toBe(false);
     expect(new URLSearchParams(window.location.search).get("sort")).toBe("anchor_jst_time");
+    expect(new URLSearchParams(window.location.search).get("analysisInputHash"))
+      .toBe(TESTER_ANALYSIS_PROFILE_HASH);
+    expect(new URLSearchParams(window.location.search).get("analysisVersion"))
+      .toBe(ANALYSIS_VERSION);
+    expect(new URLSearchParams(window.location.search).get("analysisProfileKind"))
+      .toBe("profile");
 
     fireEvent.click(within(screen.getByRole("columnheader", { name: /JST日時/ }))
       .getByRole("button", { name: /JST日時/ }));
@@ -380,6 +517,81 @@ describe("App", () => {
       expect(parameters.get("tab")).toBe("h1");
       expect(parameters.get("sort")).toBe("anchor_jst_time");
       expect(parameters.get("order")).toBe("asc");
+    });
+  });
+
+  it("selects the latest analysis profile for an H1 mode before loading observations", async () => {
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=LIVE");
+    render(<App />);
+
+    expect(await screen.findByRole("tab", { name: "H1推移", selected: true })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get("analysisInputHash"))
+        .toBe(LIVE_ANALYSIS_PROFILE_HASH);
+    });
+    const observationCalls = vi.mocked(fetch).mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith("/api/observations?"));
+    expect(observationCalls.length).toBeGreaterThan(0);
+    expect(observationCalls.every((path) => path.includes(
+      `analysisInputHash=${LIVE_ANALYSIS_PROFILE_HASH}`,
+    ))).toBe(true);
+    expect(observationCalls.every((path) => path.includes(
+      `analysisVersion=${ANALYSIS_VERSION}`,
+    ))).toBe(true);
+    expect(observationCalls.every((path) => path.includes(
+      "analysisProfileKind=profile",
+    ))).toBe(true);
+    expect(screen.getByLabelText("分析Profile")).toHaveTextContent(
+      `${ANALYSIS_VERSION}｜Profile｜${LIVE_ANALYSIS_PROFILE_HASH.slice(0, 12)}`,
+    );
+  });
+
+  it("preserves an explicit all-profile H1 search", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?tab=h1&sourceMode=TESTER&analysisInputHash=all",
+    );
+    render(<App />);
+
+    expect(await screen.findByRole("tab", { name: "H1推移", selected: true })).toBeInTheDocument();
+    await waitFor(() => {
+      const observationCalls = vi.mocked(fetch).mock.calls
+        .map(([path]) => String(path))
+        .filter((path) => path.startsWith("/api/observations?"));
+      expect(observationCalls.length).toBeGreaterThan(0);
+      expect(observationCalls.every((path) => !path.includes("analysisInputHash="))).toBe(true);
+      expect(observationCalls.every((path) => !path.includes("analysisVersion="))).toBe(true);
+      expect(observationCalls.every((path) => !path.includes("analysisProfileKind="))).toBe(true);
+    });
+    expect(new URLSearchParams(window.location.search).get("analysisInputHash")).toBe("all");
+    expect(new URLSearchParams(window.location.search).has("analysisVersion")).toBe(false);
+    expect(new URLSearchParams(window.location.search).has("analysisProfileKind")).toBe(false);
+    expect(screen.getByLabelText("分析Profile")).toHaveTextContent("すべてのProfile");
+  });
+
+  it("waits for analysis profiles and retries before the first H1 data request", async () => {
+    observationOptionsFailures = 1;
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=LIVE");
+    render(<App />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Profile条件を読み込めませんでした",
+    );
+    expect(vi.mocked(fetch).mock.calls.some(([path]) => (
+      String(path).startsWith("/api/observations?")
+    ))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "今すぐ更新" }));
+    await waitFor(() => {
+      const observationCalls = vi.mocked(fetch).mock.calls
+        .map(([path]) => String(path))
+        .filter((path) => path.startsWith("/api/observations?"));
+      expect(observationCalls.length).toBeGreaterThan(0);
+      expect(observationCalls.every((path) => path.includes(
+        `analysisInputHash=${LIVE_ANALYSIS_PROFILE_HASH}`,
+      ))).toBe(true);
     });
   });
 

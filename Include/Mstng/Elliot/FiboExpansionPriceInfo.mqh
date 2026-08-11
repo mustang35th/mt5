@@ -5,6 +5,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Util\RateUtil.mqh>
 
 /**
@@ -110,11 +111,31 @@ public:
 
         double waveRate = endRate - startRate;
 
-        this.FE618Price = this.normalizePrice(baseRate + waveRate * 0.618, fromMarketContext.digits);
-        this.FE1000Price = this.normalizePrice(baseRate + waveRate * 1.000, fromMarketContext.digits);
-        this.FE1272Price = this.normalizePrice(baseRate + waveRate * 1.272, fromMarketContext.digits);
-        this.FE1618Price = this.normalizePrice(baseRate + waveRate * 1.618, fromMarketContext.digits);
-        this.FE2000Price = this.normalizePrice(baseRate + waveRate * 2.000, fromMarketContext.digits);
+        this.FE618Price = this.normalizePrice(
+            baseRate + waveRate
+                * ZigZagElliotAnalysisProfile::getFibonacciExpansion618(),
+            fromMarketContext.digits
+        );
+        this.FE1000Price = this.normalizePrice(
+            baseRate + waveRate
+                * ZigZagElliotAnalysisProfile::getFibonacciExpansion1000(),
+            fromMarketContext.digits
+        );
+        this.FE1272Price = this.normalizePrice(
+            baseRate + waveRate
+                * ZigZagElliotAnalysisProfile::getFibonacciExpansion1272(),
+            fromMarketContext.digits
+        );
+        this.FE1618Price = this.normalizePrice(
+            baseRate + waveRate
+                * ZigZagElliotAnalysisProfile::getFibonacciExpansion1618(),
+            fromMarketContext.digits
+        );
+        this.FE2000Price = this.normalizePrice(
+            baseRate + waveRate
+                * ZigZagElliotAnalysisProfile::getFibonacciExpansion2000(),
+            fromMarketContext.digits
+        );
 
         this.DistanceToFE2000Pips = RateUtil::getDiffPips(
             currentRate,

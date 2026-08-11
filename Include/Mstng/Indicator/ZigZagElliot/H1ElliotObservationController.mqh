@@ -13,6 +13,7 @@
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Database\Service\ZigZagElliotObservationPersistenceService.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshot.mqh>
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshotBuilder.mqh>
 #include <Mstng\Log\Logger.mqh>
@@ -70,7 +71,8 @@ public:
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(fromMarketContext);
 
-        if (fromMarketContext.timeFrame != PERIOD_H1) {
+        if (fromMarketContext.timeFrame
+                != ZigZagElliotAnalysisProfile::getAnchorTimeFrame()) {
             this.logger.error(
                 __FUNCTION__,
                 "H1 Elliott observation is available only on PERIOD_H1."
@@ -84,7 +86,8 @@ public:
                 || (fromRunEntity.sourceMode != "LIVE"
                     && fromRunEntity.sourceMode != "TESTER")
                 || fromRunEntity.sourceServer == ""
-                || fromRunEntity.analysisVersion == "") {
+                || fromRunEntity.analysisVersion == ""
+                || fromRunEntity.analysisInputHash == "") {
             this.logger.error(
                 __FUNCTION__,
                 "persistence service or saved database run is invalid."
@@ -429,7 +432,8 @@ private:
         if (fromElliotAll == NULL
                 || !fromElliotAll.isAnalysisSucceeded
                 || fromElliotAll.elliotCurrent == NULL
-                || fromElliotAll.marketContext.timeFrame != PERIOD_H1
+                || fromElliotAll.marketContext.timeFrame
+                    != ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
                 || fromElliotAll.marketContext.symbolName
                     != this.marketContext.symbolName) {
             return false;

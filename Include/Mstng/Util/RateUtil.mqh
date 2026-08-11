@@ -7,6 +7,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 
 /**
  * レート・ポイント・pips の変換など、
@@ -65,13 +66,9 @@ public:
      * @return 1pipあたりのポイント数（3桁/5桁は10、その他は1）。
      */
     static double getPipInPoints(MarketContext &fromMarketContext) {
-        int digits = RateUtil::getDigits(fromMarketContext);
-
-        if (digits == 5 || digits == 3) {
-            return 10.0;
-        }
-
-        return 1.0;
+        return ZigZagElliotAnalysisProfile::getPipInPoints(
+            RateUtil::getDigits(fromMarketContext)
+        );
     }
 
     /**
@@ -132,7 +129,10 @@ public:
         }
 
         double pips = fromPriceDiff / (RateUtil::getPipInPoints(fromMarketContext) * point);
-        return NormalizeDouble(pips, 1);
+        return NormalizeDouble(
+            pips,
+            ZigZagElliotAnalysisProfile::getPipsResultDigits()
+        );
     }
 
     /**

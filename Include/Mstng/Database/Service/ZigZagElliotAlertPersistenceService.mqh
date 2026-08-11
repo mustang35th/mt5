@@ -97,6 +97,20 @@ public:
             return false;
         }
 
+        if (fromRunEntity.schemaVersion >= 2
+                && (fromRunEntity.analysisVersion == ""
+                    || fromRunEntity.analysisInputText == ""
+                    || !this.isLowerHexSha256(
+                        fromRunEntity.analysisInputHash
+                    ))) {
+            this.logger.error(
+                __FUNCTION__,
+                "schemaVersion 2 or later requires a valid analysis profile."
+            );
+
+            return false;
+        }
+
         long existingRunId = 0;
 
         if (!this.runDao.findIdByRunUid(
@@ -305,6 +319,31 @@ private:
     Logger logger;
 
     /**
+     * 文字列が64桁の小文字16進SHA-256か判定する。
+     *
+     * @param fromHash 判定対象Hash
+     * @return SHA-256形式の場合true
+     */
+    bool isLowerHexSha256(const string fromHash) {
+        if (StringLen(fromHash) != 64) {
+            return false;
+        }
+
+        for (int i = 0; i < StringLen(fromHash); i++) {
+            ushort characterCode = StringGetCharacter(fromHash, i);
+            bool isDigit = characterCode >= '0' && characterCode <= '9';
+            bool isLowerHexLetter =
+                characterCode >= 'a' && characterCode <= 'f';
+
+            if (!isDigit && !isLowerHexLetter) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * 実行情報のNULL文字列をDB保存用の空文字列へ変換する。
      *
      * @param fromRunEntity 実行情報
@@ -329,6 +368,12 @@ private:
         );
         fromRunEntity.analysisVersion = this.normalizeText(
             fromRunEntity.analysisVersion
+        );
+        fromRunEntity.analysisInputText = this.normalizeText(
+            fromRunEntity.analysisInputText
+        );
+        fromRunEntity.analysisInputHash = this.normalizeText(
+            fromRunEntity.analysisInputHash
         );
         fromRunEntity.sourceServer = this.normalizeText(
             fromRunEntity.sourceServer

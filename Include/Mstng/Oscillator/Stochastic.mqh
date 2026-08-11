@@ -8,6 +8,7 @@
 #define __STOCHASTIC_MQH__
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Oscillator\StochasticHandlePool.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
@@ -162,7 +163,7 @@ public:
 
         uint startCount = GetTickCount();
         count = 0;
-        int len = 100;
+        int len = ZigZagElliotAnalysisProfile::getStochasticLookback();
 
         if (!this.ensureInitialized(this.marketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize stochastic handle");
@@ -413,11 +414,11 @@ private:
      * @return main - signal >= 0 の場合 true。
      */
     bool isPlus(double main, double signal) {
-        bool plus = false;
         this.logger.debug(__FUNCTION__, StringFormat("main=%.5f signal=%.5f", main, signal));
-        if (main - signal >= 0.0) {
-            plus = true;
-        }
+        bool plus = ZigZagElliotAnalysisProfile::isStochasticBuyDirection(
+            main,
+            signal
+        );
         this.logger.debug(__FUNCTION__, StringFormat("plus=%s", plus ? "true" : "false"));
         return plus;
     }

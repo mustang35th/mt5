@@ -44,7 +44,7 @@ public:
      * symbolName はカレントシンボル（Symbol()）を設定する。
      */
     GmmaHandlePool() {
-        this.initialize(Symbol(), 30, 60, MODE_EMA, PRICE_CLOSE);
+        this.initialize(Symbol(), 30, 60, MODE_EMA, PRICE_CLOSE, 0);
     }
 
     /**
@@ -55,13 +55,22 @@ public:
      * @param fromEma60Period  EMA60 の期間。
      * @param fromMaMethod     MA種別（通常 MODE_EMA）。
      * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift      移動平均の表示shift。
      */
     GmmaHandlePool(string fromSymbolName,
                    int fromEma30Period,
                    int fromEma60Period,
                    ENUM_MA_METHOD fromMaMethod,
-                   ENUM_APPLIED_PRICE fromAppliedPrice) {
-        this.initialize(fromSymbolName, fromEma30Period, fromEma60Period, fromMaMethod, fromAppliedPrice);
+                   ENUM_APPLIED_PRICE fromAppliedPrice,
+                   int fromMaShift = 0) {
+        this.initialize(
+            fromSymbolName,
+            fromEma30Period,
+            fromEma60Period,
+            fromMaMethod,
+            fromAppliedPrice,
+            fromMaShift
+        );
     }
 
     /**
@@ -72,15 +81,24 @@ public:
      * @param fromEma60Period EMA60の期間。
      * @param fromMaMethod MA種別。
      * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift 移動平均の表示shift。
      */
     GmmaHandlePool(
         MarketContext &fromMarketContext,
         int fromEma30Period,
         int fromEma60Period,
         ENUM_MA_METHOD fromMaMethod,
-        ENUM_APPLIED_PRICE fromAppliedPrice
+        ENUM_APPLIED_PRICE fromAppliedPrice,
+        int fromMaShift = 0
     ) {
-        this.initialize(fromMarketContext, fromEma30Period, fromEma60Period, fromMaMethod, fromAppliedPrice);
+        this.initialize(
+            fromMarketContext,
+            fromEma30Period,
+            fromEma60Period,
+            fromMaMethod,
+            fromAppliedPrice,
+            fromMaShift
+        );
     }
 
     /**
@@ -149,11 +167,20 @@ public:
      * パラメータを設定する。
      *
      * 既存ハンドルは「パラメータが変わった場合のみ」全解放する。
+     *
+     * @param fromEma30Period EMA30の期間。
+     * @param fromEma60Period EMA60の期間。
+     * @param fromMaMethod MA種別。
+     * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift 移動平均の表示shift。
      */
-    void setParameters(int fromEma30Period,
-                       int fromEma60Period,
-                       ENUM_MA_METHOD fromMaMethod,
-                       ENUM_APPLIED_PRICE fromAppliedPrice) {
+    void setParameters(
+        int fromEma30Period,
+        int fromEma60Period,
+        ENUM_MA_METHOD fromMaMethod,
+        ENUM_APPLIED_PRICE fromAppliedPrice,
+        int fromMaShift = 0
+    ) {
         bool needReset = false;
 
         if (this.ema30Period != fromEma30Period) {
@@ -172,6 +199,10 @@ public:
             needReset = true;
         }
 
+        if (this.maShift != fromMaShift) {
+            needReset = true;
+        }
+
         if (!needReset) {
 
             return;
@@ -183,6 +214,7 @@ public:
         this.ema60Period = fromEma60Period;
         this.maMethod = fromMaMethod;
         this.appliedPrice = fromAppliedPrice;
+        this.maShift = fromMaShift;
     }
 
     /**
@@ -248,8 +280,22 @@ protected:
 
         ENUM_TIMEFRAMES timeFrame = this.timeframes[index];
 
-        int createdEma30Handle = iMA(this.marketContext.symbolName, timeFrame, this.ema30Period, 0, this.maMethod, this.appliedPrice);
-        int createdEma60Handle = iMA(this.marketContext.symbolName, timeFrame, this.ema60Period, 0, this.maMethod, this.appliedPrice);
+        int createdEma30Handle = iMA(
+            this.marketContext.symbolName,
+            timeFrame,
+            this.ema30Period,
+            this.maShift,
+            this.maMethod,
+            this.appliedPrice
+        );
+        int createdEma60Handle = iMA(
+            this.marketContext.symbolName,
+            timeFrame,
+            this.ema60Period,
+            this.maShift,
+            this.maMethod,
+            this.appliedPrice
+        );
 
         if (createdEma30Handle == INVALID_HANDLE || createdEma60Handle == INVALID_HANDLE) {
             this.releaseHandle(createdEma30Handle);
@@ -288,6 +334,8 @@ private:
     ENUM_MA_METHOD maMethod;
     /** 価格種別。 */
     ENUM_APPLIED_PRICE appliedPrice;
+    /** 移動平均の表示shift。 */
+    int maShift;
     /** 低速EMAの時間足別ハンドル配列。 */
     int ema30Handles[TIMEFRAME_SIZE];
     /** 高速EMAの時間足別ハンドル配列。 */
@@ -301,15 +349,24 @@ private:
      * @param fromEma60Period 60期間EMA。
      * @param fromMaMethod MA計算方法。
      * @param fromAppliedPrice 価格種別。
+     * @param fromMaShift 移動平均の表示shift。
      */
     void initialize(string fromSymbolName,
                     int fromEma30Period,
                     int fromEma60Period,
                     ENUM_MA_METHOD fromMaMethod,
-                    ENUM_APPLIED_PRICE fromAppliedPrice) {
+                    ENUM_APPLIED_PRICE fromAppliedPrice,
+                    int fromMaShift) {
         MarketContext context(fromSymbolName, PERIOD_CURRENT);
 
-        this.initialize(context, fromEma30Period, fromEma60Period, fromMaMethod, fromAppliedPrice);
+        this.initialize(
+            context,
+            fromEma30Period,
+            fromEma60Period,
+            fromMaMethod,
+            fromAppliedPrice,
+            fromMaShift
+        );
     }
 
     /**
@@ -320,13 +377,15 @@ private:
      * @param fromEma60Period EMA60の期間。
      * @param fromMaMethod MA種別。
      * @param fromAppliedPrice 適用価格。
+     * @param fromMaShift 移動平均の表示shift。
      */
     void initialize(
         MarketContext &fromMarketContext,
         int fromEma30Period,
         int fromEma60Period,
         ENUM_MA_METHOD fromMaMethod,
-        ENUM_APPLIED_PRICE fromAppliedPrice
+        ENUM_APPLIED_PRICE fromAppliedPrice,
+        int fromMaShift
     ) {
         this.initializeBase(fromMarketContext);
 
@@ -334,6 +393,7 @@ private:
         this.ema60Period = fromEma60Period;
         this.maMethod = fromMaMethod;
         this.appliedPrice = fromAppliedPrice;
+        this.maShift = fromMaShift;
 
         this.timeframes[0] = PERIOD_MN1;
         this.timeframes[1] = PERIOD_W1;
