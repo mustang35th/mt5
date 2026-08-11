@@ -601,7 +601,7 @@ export default function App({ styleNonce }: AppProps) {
           {fatalError || loadError}
         </div>
       )}
-      <AlertDetailDrawer alertId={selectedAlertId} onClose={closeDetail} />
+      <AlertDetailDrawer alertId={selectedAlertId} onClose={closeDetail} styleNonce={styleNonce} />
     </>
   );
 }

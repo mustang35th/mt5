@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AlertDetailDrawer } from "./AlertDetailDrawer";
 
@@ -132,7 +132,7 @@ describe("AlertDetailDrawer", () => {
       timeFrame(4, "H4", 3),
       timeFrame(5, "H1", 4),
     ];
-    const points = [point(1, "MN1", 0, 0), point(2, "H1", 1, 0)];
+    const points = [point(1, "MN1", 0, 0), point(2, "H1", 4, 0)];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path === "/api/alerts/74") return jsonResponse(detailPayload());
@@ -152,6 +152,65 @@ describe("AlertDetailDrawer", () => {
     expect(screen.getByText("0.00000")).toBeInTheDocument();
     expect(screen.getByText(/SL — \/ Risk 50.0 pips/)).toBeInTheDocument();
     expect(screen.getAllByText("未取得").length).toBeGreaterThan(0);
+    const wavePointContainer = screen.getByRole("group", { name: "時間足別最新Waveポイント" });
+    const pointGroups = Array.from(wavePointContainer.querySelectorAll(".wave-point-timeframe-group"));
+    expect(pointGroups.map((group) => group.querySelector("h4 > span")?.textContent)).toEqual(["MN1", "W1", "D1", "H4", "H1"]);
+    expect(pointGroups.map((group) => group.querySelector(".wave-point-timeframe-count")?.textContent)).toEqual([
+      "1件",
+      "0件",
+      "0件",
+      "0件",
+      "1件",
+    ]);
+    expect(within(wavePointContainer).getAllByRole("group").map((group) => group.getAttribute("aria-label"))).toEqual([
+      "MN1 最新Waveポイント（1件）",
+      "W1 最新Waveポイント（0件）",
+      "D1 最新Waveポイント（0件）",
+      "H4 最新Waveポイント（0件）",
+      "H1 最新Waveポイント（1件）",
+    ]);
+    expect(pointGroups.slice(0, 4).every((group) => !group.hasAttribute("open"))).toBe(true);
+    expect(pointGroups[4]).toHaveAttribute("open");
+    expect(within(wavePointContainer).queryByRole("region", { name: "MN1 最新Waveポイントグリッド" })).not.toBeInTheDocument();
+    const h1PointGrid = await within(wavePointContainer).findByRole("region", { name: "H1 最新Waveポイントグリッド" });
+    const disclosureCases = [
+      { label: "判定情報", content: screen.getByText("Strategy") },
+      { label: "時間足別 Elliott スナップショット", content: screen.getAllByRole("article")[0] },
+      { label: "最新Waveポイント（2件）", content: wavePointContainer },
+    ];
+    const alertText = screen.getByText("<script>alert('x')</script>");
+    const alertTextSummary = screen.getByText("アラート本文").closest("summary");
+    const alertTextDisclosure = alertTextSummary?.closest("details");
+    expect(alertTextDisclosure).not.toHaveAttribute("open");
+    expect(alertText).not.toBeVisible();
+    const openAllButton = screen.getByRole("button", { name: "すべて開く" });
+    expect(openAllButton).toHaveAttribute(
+      "aria-controls",
+      "alertDetail74Judgement alertDetail74TimeFrames alertDetail74WavePoints alertDetail74Text alertDetail74WavePoints0MN1 alertDetail74WavePoints1W1 alertDetail74WavePoints2D1 alertDetail74WavePoints3H4 alertDetail74WavePoints4H1",
+    );
+    expect(openAllButton).not.toHaveAttribute("aria-expanded");
+    fireEvent.click(openAllButton);
+    await waitFor(() => {
+      expect(alertTextDisclosure).toHaveAttribute("open");
+      expect(alertText).toBeVisible();
+      expect(pointGroups.every((group) => group.hasAttribute("open"))).toBe(true);
+    });
+    expect(screen.getByRole("button", { name: "すべて閉じる" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "詳細を閉じる" })).toHaveFocus();
+    disclosureCases.forEach(({ label, content }) => {
+      const summary = screen.getByText(label).closest("summary");
+      const disclosure = summary?.closest("details");
+      expect(disclosure).toHaveAttribute("open");
+      expect(content).toBeVisible();
+      summary?.focus();
+      fireEvent.click(summary as HTMLElement);
+      expect(disclosure).not.toHaveAttribute("open");
+      expect(content).not.toBeVisible();
+      expect(summary).toHaveFocus();
+      fireEvent.click(summary as HTMLElement);
+      expect(disclosure).toHaveAttribute("open");
+      expect(content).toBeVisible();
+    });
     const cards = screen.getAllByRole("article");
     expect(cards).toHaveLength(5);
     expect(cards.map((card) => card.querySelector(".timeframe-header > strong")?.textContent)).toEqual([
@@ -161,13 +220,139 @@ describe("AlertDetailDrawer", () => {
       "H4",
       "H1",
     ]);
-    expect(screen.getByText("最新・基準").closest("tr")).toHaveClass("point-latest", "point-reference");
-    expect(screen.getByText("<script>alert('x')</script>")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("アラート本文を表示"), { detail: 1 });
+    expect(h1PointGrid.querySelector("table")).toBeNull();
+    expect(h1PointGrid.querySelector(".ag-layout-auto-height")).toBeInTheDocument();
+    expect(h1PointGrid.querySelector('[aria-label="H1 最新Waveポイント"]')).toBeInTheDocument();
+    expect(within(h1PointGrid).getAllByRole("columnheader")).toHaveLength(10);
+    expect(within(h1PointGrid).queryByRole("columnheader", { name: "TF" })).not.toBeInTheDocument();
+    expect(within(h1PointGrid).getByRole("columnheader", { name: "Server時刻" })).toBeInTheDocument();
+    expect(within(h1PointGrid).getByText("2026.01.02 00:00:00")).toBeInTheDocument();
+    expect(within(h1PointGrid).queryByText("2026.01.01 00:00:00")).not.toBeInTheDocument();
+
+    const mn1Summary = pointGroups[0].querySelector("summary");
+    const mn1PointGrid = await within(wavePointContainer).findByRole("region", { name: "MN1 最新Waveポイントグリッド" });
+    expect(await within(mn1PointGrid).findByText("2026.01.01 00:00:00")).toBeInTheDocument();
+    expect(within(mn1PointGrid).queryByText("2026.01.02 00:00:00")).not.toBeInTheDocument();
+    expect(within(mn1PointGrid).getByText("最新・基準").closest(".ag-row")).toHaveClass(
+      "point-latest",
+      "point-reference",
+    );
+    expect(within(h1PointGrid).getByText("2026.01.02 00:00:00").closest(".ag-row")).not.toHaveClass(
+      "point-latest",
+      "point-reference",
+    );
+
+    expect(within(pointGroups[1] as HTMLElement).getByText("保存されたポイントはありません。")).toBeVisible();
+    expect(within(pointGroups[1] as HTMLElement).queryByRole("region")).not.toBeInTheDocument();
+    mn1Summary?.focus();
+    fireEvent.click(mn1Summary as HTMLElement);
+    await waitFor(() => {
+      expect(pointGroups[0]).not.toHaveAttribute("open");
+      expect(mn1PointGrid).not.toBeVisible();
+    });
+    expect(screen.getByRole("button", { name: "すべて開く" })).toBeInTheDocument();
+    expect(mn1Summary).toHaveFocus();
+    fireEvent.click(mn1Summary as HTMLElement);
+    await waitFor(() => {
+      expect(pointGroups[0]).toHaveAttribute("open");
+      expect(mn1PointGrid).toBeVisible();
+    });
+    expect(screen.getByRole("button", { name: "すべて閉じる" })).toBeInTheDocument();
+    const pointGrid = h1PointGrid;
+    const closeAllButton = await screen.findByRole("button", { name: "すべて閉じる" });
+    closeAllButton.focus();
+    fireEvent.click(closeAllButton);
+    await waitFor(() => {
+      disclosureCases.forEach(({ label, content }) => {
+        expect(screen.getByText(label).closest("details")).not.toHaveAttribute("open");
+        expect(content).not.toBeVisible();
+      });
+      expect(alertTextDisclosure).not.toHaveAttribute("open");
+      expect(alertText).not.toBeVisible();
+      expect(pointGroups.every((group) => !group.hasAttribute("open"))).toBe(true);
+    });
+    const reopenAllButton = screen.getByRole("button", { name: "すべて開く" });
+    expect(reopenAllButton).toHaveFocus();
+    expect(pointGrid).toBeInTheDocument();
+    fireEvent.click(reopenAllButton);
+    await waitFor(() => {
+      disclosureCases.forEach(({ label, content }) => {
+        expect(screen.getByText(label).closest("details")).toHaveAttribute("open");
+        expect(content).toBeVisible();
+      });
+      expect(alertTextDisclosure).toHaveAttribute("open");
+      expect(alertText).toBeVisible();
+      expect(pointGroups.every((group) => group.hasAttribute("open"))).toBe(true);
+    });
+    expect(screen.getByRole("button", { name: "すべて閉じる" })).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(onClose).not.toHaveBeenCalled();
     expect(document.querySelector("img")).toBeNull();
     expect(document.querySelector("script:not([type='module'])")).toBeNull();
-    expect(screen.getByRole("button", { name: "詳細を閉じる" })).toHaveFocus();
+  });
+
+  it("keeps point-only timeframes and sorts their points by point order", async () => {
+    const timeFrames = [timeFrame(5, "H1", 4)];
+    const points = [point(3, "M5", 5, 1), point(4, "M5", 5, 0)];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/alerts/77") return jsonResponse(detailPayload(77));
+      if (path.endsWith("/timeframes")) return jsonResponse({ items: timeFrames, count: timeFrames.length });
+      if (path.endsWith("/points")) return jsonResponse({ items: points, count: points.length });
+      throw new Error(`unexpected path: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AlertDetailDrawer alertId={77} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "USDJPY BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    const wavePointContainer = screen.getByRole("group", { name: "時間足別最新Waveポイント" });
+    const pointGroups = within(wavePointContainer).getAllByRole("group");
+    expect(pointGroups.map((group) => group.getAttribute("aria-label"))).toEqual([
+      "H1 最新Waveポイント（0件）",
+      "M5 最新Waveポイント（2件）",
+    ]);
+    expect(pointGroups[0]).toHaveAttribute("open");
+    expect(pointGroups[1]).not.toHaveAttribute("open");
+
+    fireEvent.click(pointGroups[1].querySelector("summary") as HTMLElement);
+    const m5PointGrid = await within(wavePointContainer).findByRole("region", { name: "M5 最新Waveポイントグリッド" });
+    const earlierOrderPoint = await within(m5PointGrid).findByText("2026.01.04 00:00:00");
+    const laterOrderPoint = within(m5PointGrid).getByText("2026.01.03 00:00:00");
+    expect(Number(earlierOrderPoint.compareDocumentPosition(laterOrderPoint))
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("toggles only the available sections when the alert text is empty", async () => {
+    const payload = detailPayload(76);
+    payload.alert.alert_text = "";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/alerts/76") return jsonResponse(payload);
+      if (path.endsWith("/timeframes")) return jsonResponse({ items: [], count: 0 });
+      if (path.endsWith("/points")) return jsonResponse({ items: [], count: 0 });
+      throw new Error(`unexpected path: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AlertDetailDrawer alertId={76} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "USDJPY BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    const closeAllButton = screen.getByRole("button", { name: "すべて閉じる" });
+    expect(closeAllButton).toHaveAttribute(
+      "aria-controls",
+      "alertDetail76Judgement alertDetail76TimeFrames alertDetail76WavePoints",
+    );
+    expect(screen.queryByText("アラート本文")).not.toBeInTheDocument();
+    fireEvent.click(closeAllButton);
+    await waitFor(() => {
+      expect(screen.getByText("判定情報").closest("details")).not.toHaveAttribute("open");
+      expect(screen.getByText("時間足別 Elliott スナップショット").closest("details")).not.toHaveAttribute("open");
+      expect(screen.getByText("最新Waveポイント（0件）").closest("details")).not.toHaveAttribute("open");
+    });
+    expect(screen.getByRole("button", { name: "すべて開く" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("aborts stale requests and keeps the newest alert detail", async () => {
@@ -193,6 +378,7 @@ describe("AlertDetailDrawer", () => {
     view.rerender(<AlertDetailDrawer alertId={75} onClose={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "USDJPY BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    expect(await screen.findByText("保存されたポイントはありません。")).toBeInTheDocument();
     expect(oldSignals).toHaveLength(3);
     oldSignals.forEach((signal) => expect(signal.aborted).toBe(true));
     resolveOld(jsonResponse(detailPayload(74)));

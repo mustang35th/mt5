@@ -1,3 +1,15 @@
+import {
+  ClientSideRowModelModule,
+  CellStyleModule,
+  colorSchemeDarkBlue,
+  ColumnApiModule,
+  RenderApiModule,
+  RowStyleModule,
+  themeQuartz,
+  type ColDef,
+  type RowClassParams,
+} from "ag-grid-community";
+import { AgGridReact } from "ag-grid-react";
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type {
@@ -12,6 +24,7 @@ import { displayValue, formatNumber, sideClass } from "../lib/format";
 interface AlertDetailDrawerProps {
   alertId: number | null;
   onClose: () => void;
+  styleNonce?: string;
 }
 
 interface DetailBundle {
@@ -19,6 +32,44 @@ interface DetailBundle {
   timeFrames: TimeFramesResponse;
   points: PointsResponse;
 }
+
+interface DetailSectionState {
+  judgement: boolean;
+  timeFrames: boolean;
+  wavePoints: boolean;
+  alertText: boolean;
+}
+
+interface WavePointGroup {
+  key: string;
+  timeFrameText: string;
+  timeFrameOrder: number;
+  points: AlertPoint[];
+}
+
+const WAVE_POINT_GRID_MODULES = [
+  ClientSideRowModelModule,
+  CellStyleModule,
+  ColumnApiModule,
+  RenderApiModule,
+  RowStyleModule,
+];
+
+const wavePointGridTheme = themeQuartz
+  .withPart(colorSchemeDarkBlue)
+  .withParams({
+    accentColor: "#59d8c2",
+    backgroundColor: "#0b151c",
+    borderColor: "#263946",
+    dataBackgroundColor: "#0f1a22",
+    fontFamily: "Segoe UI, Yu Gothic UI, Meiryo, sans-serif",
+    fontSize: 11,
+    foregroundColor: "#edf5f5",
+    headerBackgroundColor: "#0b151c",
+    headerTextColor: "#8ba0aa",
+    rowHoverColor: "rgba(89, 216, 194, 0.055)",
+    spacing: 5,
+  });
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -99,49 +150,264 @@ function pointStatus(point: AlertPoint): string {
   return values.join("・") || "—";
 }
 
-function WavePointTable({ points }: { points: AlertPoint[] }) {
+const wavePointColumns: ColDef<AlertPoint>[] = [
+  {
+    field: "point_order",
+    headerName: "順",
+    lockPinned: true,
+    pinned: "left",
+    width: 48,
+  },
+  { field: "bar_time_text", headerName: "Server時刻", width: 150 },
+  {
+    cellClass: "numeric-cell",
+    field: "rate",
+    headerName: "価格",
+    valueFormatter: ({ value }) => formatNumber(value, 5),
+    width: 90,
+  },
+  {
+    headerName: "山/谷",
+    valueGetter: ({ data }) => data ? (data.is_peak ? "山" : "谷") : "—",
+    width: 64,
+  },
+  {
+    field: "elliot_label",
+    headerName: "Elliott",
+    valueFormatter: ({ value }) => displayValue(value),
+    width: 80,
+  },
+  {
+    field: "sub_elliot_label",
+    headerName: "Sub",
+    valueFormatter: ({ value }) => displayValue(value),
+    width: 62,
+  },
+  {
+    cellClass: "numeric-cell",
+    field: "pips_diff",
+    headerName: "pips",
+    valueFormatter: ({ value }) => formatNumber(value),
+    width: 70,
+  },
+  {
+    headerName: "Fibo",
+    valueGetter: ({ data }) => data?.is_fibonacci_available
+      ? `${formatNumber(data.fibonacci_percent)}%`
+      : "—",
+    width: 70,
+  },
+  {
+    headerName: "FE",
+    valueGetter: ({ data }) => data?.is_fibonacci_expansion_available
+      ? `${formatNumber(data.fibonacci_expansion_percent)}%`
+      : "—",
+    width: 70,
+  },
+  {
+    flex: 1,
+    headerName: "状態",
+    minWidth: 94,
+    valueGetter: ({ data }) => data ? pointStatus(data) : "—",
+  },
+];
+
+function wavePointRowClass(params: RowClassParams<AlertPoint>): string {
+  const classNames = [
+    params.data?.is_latest ? "point-latest" : "",
+    params.data?.is_signal_reference ? "point-reference" : "",
+  ];
+  return classNames.filter(Boolean).join(" ");
+}
+
+function wavePointGroupKey(timeFrameOrder: number, timeFrameText: string): string {
+  return `${timeFrameOrder}\u0000${timeFrameText}`;
+}
+
+function wavePointGroupId(alertId: number, group: WavePointGroup): string {
+  const timeFrameId = group.timeFrameText.replace(/[^A-Za-z0-9_-]/g, "-");
+  return `alertDetail${alertId}WavePoints${group.timeFrameOrder}${timeFrameId}`;
+}
+
+function buildWavePointGroups(timeFrames: AlertTimeFrame[], points: AlertPoint[]): WavePointGroup[] {
+  const groupsByKey = new Map<string, WavePointGroup>();
+  timeFrames.forEach((timeFrame) => {
+    const key = wavePointGroupKey(timeFrame.time_frame_order, timeFrame.time_frame_text);
+    if (groupsByKey.has(key)) return;
+    groupsByKey.set(key, {
+      key,
+      timeFrameText: timeFrame.time_frame_text,
+      timeFrameOrder: timeFrame.time_frame_order,
+      points: [],
+    });
+  });
+  points.forEach((point) => {
+    const key = wavePointGroupKey(point.time_frame_order, point.time_frame_text);
+    let group = groupsByKey.get(key);
+    if (!group) {
+      group = {
+        key,
+        timeFrameText: point.time_frame_text,
+        timeFrameOrder: point.time_frame_order,
+        points: [],
+      };
+      groupsByKey.set(key, group);
+    }
+    group.points.push(point);
+  });
+  const groups = Array.from(groupsByKey.values());
+  groups.forEach((group) => {
+    group.points.sort((firstPoint, secondPoint) => {
+      if (firstPoint.point_order !== secondPoint.point_order) {
+        return firstPoint.point_order - secondPoint.point_order;
+      }
+      return firstPoint.id - secondPoint.id;
+    });
+  });
+  return groups.sort((firstGroup, secondGroup) => {
+    if (firstGroup.timeFrameOrder !== secondGroup.timeFrameOrder) {
+      return firstGroup.timeFrameOrder - secondGroup.timeFrameOrder;
+    }
+    return firstGroup.timeFrameText.localeCompare(secondGroup.timeFrameText);
+  });
+}
+
+function WavePointGrid({ points, styleNonce, timeFrameText }: {
+  points: AlertPoint[];
+  styleNonce?: string;
+  timeFrameText: string;
+}) {
   return (
-    <div className="points-wrap">
-      <table>
-        <thead>
-          <tr>
-            {['TF', '順', '時刻', '価格', '山/谷', 'Elliott', 'Sub', 'pips', 'Fibo', 'FE', '状態'].map((label) => (
-              <th scope="col" key={label}>{label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {points.map((point) => {
-            const classNames = [
-              point.is_latest ? "point-latest" : "",
-              point.is_signal_reference ? "point-reference" : "",
-            ].filter(Boolean).join(" ");
-            return (
-              <tr className={classNames} key={point.id}>
-                <td>{point.time_frame_text}</td>
-                <td>{point.point_order}</td>
-                <td>{displayValue(point.bar_time_text)}</td>
-                <td>{formatNumber(point.rate, 5)}</td>
-                <td>{point.is_peak ? "山" : "谷"}</td>
-                <td>{displayValue(point.elliot_label)}</td>
-                <td>{displayValue(point.sub_elliot_label)}</td>
-                <td>{formatNumber(point.pips_diff)}</td>
-                <td>{point.is_fibonacci_available ? `${formatNumber(point.fibonacci_percent)}%` : "—"}</td>
-                <td>{point.is_fibonacci_expansion_available ? `${formatNumber(point.fibonacci_expansion_percent)}%` : "—"}</td>
-                <td>{pointStatus(point)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="wave-point-grid" role="region" aria-label={`${timeFrameText} 最新Waveポイントグリッド`}>
+      <AgGridReact<AlertPoint>
+        animateRows={false}
+        columnDefs={wavePointColumns}
+        defaultColDef={{
+          filter: false,
+          resizable: true,
+          sortable: false,
+          suppressHeaderMenuButton: true,
+        }}
+        domLayout="autoHeight"
+        ensureDomOrder
+        getRowClass={wavePointRowClass}
+        getRowId={({ data }) => String(data.id)}
+        headerHeight={32}
+        modules={WAVE_POINT_GRID_MODULES}
+        onGridReady={({ api: gridApi }) => gridApi.setGridAriaProperty("label", `${timeFrameText} 最新Waveポイント`)}
+        rowData={points}
+        rowHeight={36}
+        styleNonce={styleNonce}
+        suppressColumnVirtualisation
+        theme={wavePointGridTheme}
+      />
     </div>
   );
 }
 
-function DetailContent({ bundle }: { bundle: DetailBundle }) {
+function WavePointTimeFrameGroup({ alertId, group, isOpen, onOpenChange, styleNonce }: {
+  alertId: number;
+  group: WavePointGroup;
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  styleNonce?: string;
+}) {
+  const [hasOpened, setHasOpened] = useState(isOpen);
+  const groupId = wavePointGroupId(alertId, group);
+
+  function handleToggle(fromOpen: boolean) {
+    if (fromOpen) setHasOpened(true);
+    onOpenChange(fromOpen);
+  }
+
+  return (
+    <details
+      aria-label={`${group.timeFrameText} 最新Waveポイント（${group.points.length}件）`}
+      className="wave-point-timeframe-group"
+      id={groupId}
+      onToggle={(event) => handleToggle(event.currentTarget.open)}
+      open={isOpen}
+    >
+      <summary>
+        <h4>
+          <span>{group.timeFrameText}</span>
+          <span className="wave-point-timeframe-count">{group.points.length}件</span>
+        </h4>
+      </summary>
+      {group.points.length === 0 && <p className="grid-empty-state">保存されたポイントはありません。</p>}
+      {group.points.length > 0 && (hasOpened || isOpen) && (
+        <WavePointGrid points={group.points} styleNonce={styleNonce} timeFrameText={group.timeFrameText} />
+      )}
+    </details>
+  );
+}
+
+function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonce?: string }) {
   const alert = bundle.detail.alert;
   const run = bundle.detail.run;
   const w1 = bundle.detail.w1;
+  const wavePointGroups = buildWavePointGroups(bundle.timeFrames.items, bundle.points.items);
+  const [sectionState, setSectionState] = useState<DetailSectionState>({
+    judgement: true,
+    timeFrames: true,
+    wavePoints: true,
+    alertText: false,
+  });
+  const [wavePointGroupState, setWavePointGroupState] = useState<Record<string, boolean>>(() => {
+    const initialState: Record<string, boolean> = {};
+    wavePointGroups.forEach((group) => {
+      initialState[group.key] = group.timeFrameText === "H1";
+    });
+    return initialState;
+  });
+  const allSectionsOpen = sectionState.judgement
+    && sectionState.timeFrames
+    && sectionState.wavePoints
+    && (!alert.alert_text || sectionState.alertText)
+    && wavePointGroups.every((group) => wavePointGroupState[group.key] === true);
+  const sectionIds = {
+    judgement: `alertDetail${alert.id}Judgement`,
+    timeFrames: `alertDetail${alert.id}TimeFrames`,
+    wavePoints: `alertDetail${alert.id}WavePoints`,
+    alertText: `alertDetail${alert.id}Text`,
+  };
+  const controlledSectionIds = [
+    sectionIds.judgement,
+    sectionIds.timeFrames,
+    sectionIds.wavePoints,
+  ];
+  if (alert.alert_text) controlledSectionIds.push(sectionIds.alertText);
+  wavePointGroups.forEach((group) => controlledSectionIds.push(wavePointGroupId(alert.id, group)));
+
+  function updateSectionState(fromSection: keyof DetailSectionState, fromOpen: boolean) {
+    setSectionState((currentState) => {
+      if (currentState[fromSection] === fromOpen) return currentState;
+      return { ...currentState, [fromSection]: fromOpen };
+    });
+  }
+
+  function toggleAllSections() {
+    const nextOpen = !allSectionsOpen;
+    setSectionState({
+      judgement: nextOpen,
+      timeFrames: nextOpen,
+      wavePoints: nextOpen,
+      alertText: nextOpen,
+    });
+    const nextWavePointGroupState: Record<string, boolean> = {};
+    wavePointGroups.forEach((group) => {
+      nextWavePointGroupState[group.key] = nextOpen;
+    });
+    setWavePointGroupState(nextWavePointGroupState);
+  }
+
+  function updateWavePointGroupState(fromGroupKey: string, fromOpen: boolean) {
+    setWavePointGroupState((currentState) => {
+      if (currentState[fromGroupKey] === fromOpen) return currentState;
+      return { ...currentState, [fromGroupKey]: fromOpen };
+    });
+  }
+
   let alignmentText = "W1不明";
   let alignmentVariant = "neutral";
   if (alert.is_w1_aligned === true) {
@@ -175,46 +441,97 @@ function DetailContent({ bundle }: { bundle: DetailBundle }) {
         </div>
       </section>
 
+      <div className="detail-disclosure-toolbar">
+        <button
+          aria-controls={controlledSectionIds.join(" ")}
+          className="secondary-button"
+          onClick={toggleAllSections}
+          type="button"
+        >
+          {allSectionsOpen ? "すべて閉じる" : "すべて開く"}
+        </button>
+      </div>
+
       <section className="detail-section">
-        <h3>判定情報</h3>
-        <div className="detail-grid">
-          <DetailField label="Strategy" value={alert.strategy} />
-          <DetailField label="Signal / Entry count" value={`${alert.signal_count} / ${alert.entry_count}`} />
-          <DetailField label="Judge" value={yesNo(alert.is_judge)} />
-          <DetailField label="Count一致" value={yesNo(alert.is_entry_count_match)} />
-          <DetailField label="Entry評価済み" value={yesNo(alert.is_entry_evaluated)} />
-          <DetailField label="Entry波動" value={yesNo(alert.is_entry_wave)} />
-          <DetailField label="EMA200距離条件" value={yesNo(alert.is_ema200_distance_within)} />
-          <DetailField label="Alert / Entry" value={`${yesNo(alert.is_alert)} / ${yesNo(alert.is_entry)}`} />
-          <DetailField label="Entry result" value={alert.entry_result} />
-          <DetailField label="現在Elliott" value={`wave ${displayValue(alert.current_elliot_label)}`} />
-          <DetailField label="EMA200距離" value={`${formatNumber(alert.close_ema200_diff_pips)} / max ${formatNumber(alert.max_close_ema200_diff_pips)} pips`} />
-          <DetailField label="Spread" value={`${formatNumber(alert.spread_pips)} pips`} />
-          <DetailField label="通貨強弱" value={`${displayValue(alert.currency_strength_status)} / ${alert.is_currency_strength_available ? "取得済" : "未取得"}`} />
-          <DetailField label="順位差 長中期 / 中短期" value={`${formatNumber(alert.long_medium_rank_difference, 0)} / ${formatNumber(alert.medium_short_rank_difference, 0)}`} />
-          <DetailField label="W1分析方向" value={w1?.w1_side || "不明"} />
-          <DetailField label="Run" value={run ? `${run.id} / ${displayValue(run.program_version)}` : "不明"} />
-          <DetailField label="Signal key" value={alert.market_signal_key} />
-          <DetailField label="Snapshot" value="アラート記録時点" />
-        </div>
+        <details
+          className="detail-disclosure"
+          id={sectionIds.judgement}
+          onToggle={(event) => updateSectionState("judgement", event.currentTarget.open)}
+          open={sectionState.judgement}
+        >
+          <summary><h3>判定情報</h3></summary>
+          <div className="detail-grid">
+            <DetailField label="Strategy" value={alert.strategy} />
+            <DetailField label="Signal / Entry count" value={`${alert.signal_count} / ${alert.entry_count}`} />
+            <DetailField label="Judge" value={yesNo(alert.is_judge)} />
+            <DetailField label="Count一致" value={yesNo(alert.is_entry_count_match)} />
+            <DetailField label="Entry評価済み" value={yesNo(alert.is_entry_evaluated)} />
+            <DetailField label="Entry波動" value={yesNo(alert.is_entry_wave)} />
+            <DetailField label="EMA200距離条件" value={yesNo(alert.is_ema200_distance_within)} />
+            <DetailField label="Alert / Entry" value={`${yesNo(alert.is_alert)} / ${yesNo(alert.is_entry)}`} />
+            <DetailField label="Entry result" value={alert.entry_result} />
+            <DetailField label="現在Elliott" value={`wave ${displayValue(alert.current_elliot_label)}`} />
+            <DetailField label="EMA200距離" value={`${formatNumber(alert.close_ema200_diff_pips)} / max ${formatNumber(alert.max_close_ema200_diff_pips)} pips`} />
+            <DetailField label="Spread" value={`${formatNumber(alert.spread_pips)} pips`} />
+            <DetailField label="通貨強弱" value={`${displayValue(alert.currency_strength_status)} / ${alert.is_currency_strength_available ? "取得済" : "未取得"}`} />
+            <DetailField label="順位差 長中期 / 中短期" value={`${formatNumber(alert.long_medium_rank_difference, 0)} / ${formatNumber(alert.medium_short_rank_difference, 0)}`} />
+            <DetailField label="W1分析方向" value={w1?.w1_side || "不明"} />
+            <DetailField label="Run" value={run ? `${run.id} / ${displayValue(run.program_version)}` : "不明"} />
+            <DetailField label="Signal key" value={alert.market_signal_key} />
+            <DetailField label="Snapshot" value="アラート記録時点" />
+          </div>
+        </details>
       </section>
 
       <section className="detail-section">
-        <h3>時間足別 Elliott スナップショット</h3>
-        <div className="timeframe-grid">
-          {bundle.timeFrames.items.map((timeFrame) => <TimeFrameCard timeFrame={timeFrame} key={timeFrame.id} />)}
-        </div>
+        <details
+          className="detail-disclosure"
+          id={sectionIds.timeFrames}
+          onToggle={(event) => updateSectionState("timeFrames", event.currentTarget.open)}
+          open={sectionState.timeFrames}
+        >
+          <summary><h3>時間足別 Elliott スナップショット</h3></summary>
+          <div className="timeframe-grid">
+            {bundle.timeFrames.items.map((timeFrame) => <TimeFrameCard timeFrame={timeFrame} key={timeFrame.id} />)}
+          </div>
+        </details>
       </section>
 
       <section className="detail-section">
-        <h3>最新Waveポイント（{bundle.points.count}件）</h3>
-        <WavePointTable points={bundle.points.items} />
+        <details
+          className="detail-disclosure"
+          id={sectionIds.wavePoints}
+          onToggle={(event) => updateSectionState("wavePoints", event.currentTarget.open)}
+          open={sectionState.wavePoints}
+        >
+          <summary><h3>最新Waveポイント（{bundle.points.count}件）</h3></summary>
+          {wavePointGroups.length === 0 && <p className="grid-empty-state">保存されたポイントはありません。</p>}
+          {wavePointGroups.length > 0 && (
+            <div className="wave-point-timeframe-list" role="group" aria-label="時間足別最新Waveポイント">
+              {wavePointGroups.map((group) => (
+                <WavePointTimeFrameGroup
+                  alertId={alert.id}
+                  group={group}
+                  key={group.key}
+                  isOpen={wavePointGroupState[group.key] === true}
+                  onOpenChange={(isOpen) => updateWavePointGroupState(group.key, isOpen)}
+                  styleNonce={styleNonce}
+                />
+              ))}
+            </div>
+          )}
+        </details>
       </section>
 
       {alert.alert_text && (
         <section className="detail-section">
-          <details>
-            <summary>アラート本文を表示</summary>
+          <details
+            className="detail-disclosure"
+            id={sectionIds.alertText}
+            onToggle={(event) => updateSectionState("alertText", event.currentTarget.open)}
+            open={sectionState.alertText}
+          >
+            <summary><h3>アラート本文</h3></summary>
             <pre className="detail-field">{alert.alert_text}</pre>
           </details>
         </section>
@@ -223,7 +540,7 @@ function DetailContent({ bundle }: { bundle: DetailBundle }) {
   );
 }
 
-export function AlertDetailDrawer({ alertId, onClose }: AlertDetailDrawerProps) {
+export function AlertDetailDrawer({ alertId, onClose, styleNonce }: AlertDetailDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [bundle, setBundle] = useState<DetailBundle | null>(null);
@@ -315,7 +632,7 @@ export function AlertDetailDrawer({ alertId, onClose }: AlertDetailDrawerProps) 
       <div aria-busy={loading} className="drawer-body">
         {loading && <p className="loading-message" role="status" aria-live="polite">詳細を読み込んでいます…</p>}
         {error && <p className="loading-message" role="alert">{error}</p>}
-        {!loading && !error && bundle && <DetailContent bundle={bundle} />}
+        {!loading && !error && bundle && <DetailContent bundle={bundle} styleNonce={styleNonce} />}
       </div>
     </dialog>
   );

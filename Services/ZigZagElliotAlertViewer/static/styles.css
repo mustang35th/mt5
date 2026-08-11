@@ -737,6 +737,39 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .detail-price span { color: var(--muted); font-size: 0.72rem; }
 
 .detail-section { margin-top: 24px; }
+.detail-disclosure-toolbar { display: flex; justify-content: flex-end; margin-top: 12px; }
+.detail-disclosure-toolbar .secondary-button { min-height: 34px; padding-right: 12px; padding-left: 12px; font-size: 0.72rem; }
+.detail-disclosure > summary {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 2px;
+  cursor: pointer;
+  list-style: none;
+}
+.detail-disclosure > summary::-webkit-details-marker { display: none; }
+.detail-disclosure > summary::before {
+  content: "›";
+  color: var(--accent);
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 140ms ease-out;
+}
+.detail-disclosure[open] > summary::before { transform: rotate(90deg); }
+.detail-disclosure > summary::after {
+  margin-left: auto;
+  color: var(--muted);
+  content: "開く";
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.detail-disclosure[open] > summary::after { content: "閉じる"; }
+.detail-disclosure > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.detail-disclosure > summary h3 { margin-bottom: 0; }
+.detail-disclosure[open] > summary { margin-bottom: 12px; }
 .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
 .detail-field { padding: 11px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel); }
 .detail-field span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 0.66rem; }
@@ -755,6 +788,45 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .points-wrap table { min-width: 780px; }
 .point-latest td { background: rgba(89, 216, 194, 0.06); }
 .point-reference td { box-shadow: inset 3px 0 0 var(--warn); }
+
+.wave-point-grid { width: 100%; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; }
+.wave-point-grid .ag-root-wrapper { width: 100%; border: 0; border-radius: 0; }
+.wave-point-grid .ag-header-cell,
+.wave-point-grid .ag-cell { border-color: var(--line-soft); }
+.wave-point-grid .ag-header-cell { padding-right: 5px; padding-left: 5px; line-height: 1.1; }
+.wave-point-grid .ag-header-cell-text { white-space: nowrap; }
+.wave-point-grid .ag-cell { display: flex; align-items: center; line-height: 1.25; }
+.wave-point-grid .ag-cell-value { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wave-point-grid .numeric-cell { font-variant-numeric: tabular-nums; }
+.wave-point-grid .ag-row.point-latest .ag-cell { background: rgba(89, 216, 194, 0.06); }
+.wave-point-grid .ag-row.point-reference .ag-cell[col-id="point_order"] { box-shadow: inset 3px 0 0 var(--warn); }
+.wave-point-timeframe-list { display: grid; gap: 10px; }
+.wave-point-timeframe-group { min-width: 0; border: 1px solid var(--line-soft); border-radius: 11px; background: var(--panel); }
+.wave-point-timeframe-group > summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  cursor: pointer;
+  list-style: none;
+}
+.wave-point-timeframe-group > summary::-webkit-details-marker { display: none; }
+.wave-point-timeframe-group > summary::before {
+  color: var(--accent);
+  content: "›";
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 140ms ease-out;
+}
+.wave-point-timeframe-group[open] > summary::before { transform: rotate(90deg); }
+.wave-point-timeframe-group > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wave-point-timeframe-group > summary h4 { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; margin: 0; font-size: 0.82rem; }
+.wave-point-timeframe-count { margin-left: auto; color: var(--muted); font-size: 0.68rem; font-weight: 700; }
+.wave-point-timeframe-group > .wave-point-grid { border-width: 1px 0 0; border-radius: 0 0 10px 10px; }
+.wave-point-timeframe-group > .grid-empty-state { margin: 0; padding: 13px 15px; border-top: 1px solid var(--line-soft); }
 
 .loading-message { padding: 50px 0; color: var(--muted); text-align: center; }
 pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
