@@ -101,6 +101,7 @@ export default function App({ styleNonce }: AppProps) {
   const [applied, setApplied] = useState<SearchState>(initialSearch);
   const [activeTab, setActiveTab] = useState<ViewerTab>(initialTab);
   const [alertFilterExpanded, setAlertFilterExpanded] = useState(true);
+  const [gridControlsTarget, setGridControlsTarget] = useState<HTMLDivElement | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [runs, setRuns] = useState<RunsResponse>({ items: [], count: 0 });
   const [options, setOptions] = useState<OptionsResponse>(EMPTY_OPTIONS);
@@ -534,7 +535,7 @@ export default function App({ styleNonce }: AppProps) {
                 />
               </aside>
               <div className="viewer-results-column">
-                <section className="results-panel" aria-labelledby="reactResultsTitle">
+                <section className="results-panel alert-results-panel" aria-labelledby="reactResultsTitle">
                   <div className="section-heading results-heading">
                     <div className="results-title-line">
                       <p className="eyebrow">SNAPSHOTS</p>
@@ -550,6 +551,7 @@ export default function App({ styleNonce }: AppProps) {
                         onIntervalChange={changeRefreshInterval}
                         onRefresh={() => requestRefresh("manual")}
                       />
+                      <div className="grid-controls-slot" ref={setGridControlsTarget} />
                     </div>
                   </div>
                   {alerts ? (
@@ -569,6 +571,7 @@ export default function App({ styleNonce }: AppProps) {
                         sort={applied.sort}
                         order={applied.order}
                         styleNonce={styleNonce}
+                        gridControlsTarget={gridControlsTarget}
                         onSort={changeSort}
                         onOpenDetail={openDetail}
                       />

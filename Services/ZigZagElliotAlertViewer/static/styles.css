@@ -265,23 +265,47 @@ body.react-viewer .alert-grid {
   margin-bottom: 18px;
 }
 
-.results-heading { align-items: center; margin-bottom: 0; padding: 10px 12px 4px; }
+.results-heading { align-items: center; margin-bottom: 0; padding: 10px 12px 4px; flex-wrap: nowrap; }
 
 .results-title-line {
   display: flex;
   min-width: 0;
+  max-width: 100%;
+  flex: 0 0 auto;
   align-items: baseline;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px 12px;
+  white-space: nowrap;
 }
-.results-title-line .eyebrow { margin-bottom: 0; }
-.results-title-line .result-status { font-size: 0.72rem; white-space: nowrap; }
+.results-title-line .eyebrow,
+.results-title-line h2 { margin-bottom: 0; flex: 0 0 auto; }
+.results-title-line .result-status {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
 
 .results-tools {
   display: flex;
   min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.alert-results-panel .results-heading { flex-wrap: wrap; }
+.alert-results-panel .results-tools {
+  margin-left: auto;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.grid-controls-slot {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
   align-items: center;
 }
+.grid-controls-slot:empty { display: none; }
 
 .refresh-controls {
   display: flex;
@@ -310,14 +334,24 @@ body.react-viewer .alert-grid {
 .refresh-button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .refresh-state {
-  display: grid;
-  min-width: 138px;
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 6px;
   color: var(--muted);
   font-size: 0.68rem;
   line-height: 1.35;
+  white-space: nowrap;
 }
 
-.refresh-state small { color: #647b86; font-size: 0.64rem; }
+.refresh-state small {
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+  color: #647b86;
+  font-size: 0.64rem;
+  white-space: nowrap;
+}
 
 .new-alert-banner {
   display: flex;
@@ -492,6 +526,11 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
   padding: 3px 8px;
   font-size: 0.7rem;
   line-height: 1.2;
+}
+.grid-controls-slot .grid-controls {
+  min-height: 34px;
+  padding: 0;
+  flex-wrap: nowrap;
 }
 
 .alert-grid {
@@ -776,6 +815,15 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .react-summary-note { text-align: left; }
 }
 
+@media (max-width: 900px) {
+  .results-heading { gap: 8px; padding-right: 8px; padding-left: 8px; }
+  .results-title-line { gap: 6px; }
+  .results-title-line .eyebrow { display: none; }
+  .refresh-controls { gap: 6px; }
+  .refresh-state { gap: 4px; }
+  .refresh-state small { padding-left: 4px; }
+}
+
 @media (max-width: 760px) {
   .app-header { padding: 24px 16px 18px; align-items: flex-start; flex-direction: column; gap: 10px; }
   .app-brand { width: 100%; gap: 3px 10px; }
@@ -793,10 +841,23 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .summary-card:first-child { grid-column: span 2; }
   .results-heading { align-items: stretch; flex-direction: column; }
   .results-tools { align-items: stretch; }
+  .alert-results-panel .results-tools {
+    width: 100%;
+    margin-left: 0;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .grid-controls-slot { width: 100%; max-width: 100%; }
   .refresh-controls { flex-wrap: wrap; justify-content: flex-start; }
   .refresh-state { flex: 1 1 150px; }
   .new-alert-banner { align-items: flex-start; flex-direction: column; }
   .grid-controls { padding-right: 12px; padding-left: 12px; justify-content: flex-start; flex-wrap: wrap; }
+  .grid-controls-slot .grid-controls {
+    width: 100%;
+    padding-right: 0;
+    padding-left: 0;
+    flex-wrap: wrap;
+  }
   .detail-grid { grid-template-columns: 1fr 1fr; }
   .detail-hero { flex-direction: column; }
   .detail-price { text-align: left; }
@@ -808,6 +869,11 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
     min-width: 0;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+@media (max-width: 480px) {
+  .results-title-line { flex-wrap: wrap; white-space: normal; }
+  .results-title-line .eyebrow { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   ClientSideRowModelModule,
   colorSchemeDarkBlue,
@@ -37,6 +38,7 @@ interface AlertTableProps {
   sort: AlertSort;
   order: SortOrder;
   styleNonce?: string;
+  gridControlsTarget?: HTMLElement | null;
   onSort: (sort: AlertSort) => void;
   onOpenDetail: (alertId: number, fromTrigger: HTMLButtonElement) => void;
 }
@@ -334,6 +336,7 @@ export function AlertTable({
   sort,
   order,
   styleNonce,
+  gridControlsTarget,
   onSort,
   onOpenDetail,
 }: AlertTableProps) {
@@ -616,6 +619,22 @@ export function AlertTable({
     },
   ], [DetailCell, onSort, order, sort]);
 
+  const gridControls = (
+    <GridControls
+      columns={columnOptions}
+      density={density}
+      layoutReady={gridReady}
+      onDensityChange={changeDensity}
+      onResetLayout={resetColumnLayout}
+      onToggleColumn={toggleColumn}
+    />
+  );
+  let renderedGridControls: ReactNode = gridControls;
+  if (gridControlsTarget === null) renderedGridControls = null;
+  else if (gridControlsTarget !== undefined) {
+    renderedGridControls = createPortal(gridControls, gridControlsTarget);
+  }
+
   return (
     <div
       className="grid-view"
@@ -623,14 +642,7 @@ export function AlertTable({
       aria-label="ZigZagElliotアラート検索結果"
       aria-busy={loading}
     >
-      <GridControls
-        columns={columnOptions}
-        density={density}
-        layoutReady={gridReady}
-        onDensityChange={changeDensity}
-        onResetLayout={resetColumnLayout}
-        onToggleColumn={toggleColumn}
-      />
+      {renderedGridControls}
       <div className={`alert-grid density-${density}`}>
         <AgGridReact<AlertListItem>
           animateRows={false}

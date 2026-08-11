@@ -251,6 +251,22 @@ describe("App", () => {
     expect(searchSidebar.parentElement).toHaveClass("viewer-workspace");
     expect((await screen.findAllByText("AUDUSD")).length).toBeGreaterThan(0);
     expect(await screen.findByText("一致")).toBeInTheDocument();
+    const snapshotsLabel = screen.getByText("SNAPSHOTS");
+    const resultsTitleLine = snapshotsLabel.closest(".results-title-line");
+    expect(resultsTitleLine).toContainElement(screen.getByRole("heading", { name: "アラート一覧" }));
+    expect(resultsTitleLine).toContainElement(screen.getByText("1件中 1–1件"));
+    const refreshState = resultsTitleLine?.parentElement?.querySelector(".refresh-state");
+    expect(refreshState?.children).toHaveLength(2);
+    expect(refreshState?.firstElementChild?.tagName).toBe("SPAN");
+    expect(refreshState?.lastElementChild?.tagName).toBe("SMALL");
+    const gridToolbar = screen.getByRole("toolbar", { name: "グリッド表示設定" });
+    const refreshControls = screen.getByLabelText("自動更新間隔").closest(".refresh-controls");
+    expect(resultsTitleLine?.parentElement).toContainElement(gridToolbar);
+    expect(refreshControls).not.toBeNull();
+    expect((refreshControls as HTMLElement).compareDocumentPosition(gridToolbar) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+    expect(screen.getByRole("region", { name: "ZigZagElliotアラート検索結果" }))
+      .not.toContainElement(gridToolbar);
     const resultSummary = screen.getByRole("region", { name: "検索結果集計" });
     const conditionSummary = screen.getByRole("region", { name: "適用中の検索条件" });
     expect(resultSummary.parentElement).toHaveClass("viewer-summary-bar");
