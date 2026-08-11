@@ -167,6 +167,14 @@ describe("App", () => {
       if (path.startsWith("/api/observations?")) {
         return jsonResponse(observationsResponse());
       }
+      if (path === "/api/observations/9") {
+        const observation = observationsResponse().items[0];
+        return jsonResponse({
+          available: observationAvailable,
+          observation: observationAvailable ? observation : null,
+          time_frames: observationAvailable ? observation.time_frames : [],
+        });
+      }
       if (path.startsWith("/api/observation-summary?")) {
         return jsonResponse({
           available: observationAvailable,
@@ -338,11 +346,21 @@ describe("App", () => {
     for (const timeFrame of ["MN1", "W1", "D1", "H4", "H1"]) {
       expect(screen.getByRole("columnheader", { name: timeFrame })).toBeInTheDocument();
     }
-    expect(screen.getAllByText(/上昇|下降/).length).toBeGreaterThanOrEqual(5);
+    expect(screen.getAllByLabelText(/^(上昇|下降)、/)).toHaveLength(5);
     expect(screen.queryByText("Бе")).not.toBeInTheDocument();
-    const latestPoint = screen.getByText(/最新点 JST 2026\.08\.10 07:00:00/);
-    expect(latestPoint).toHaveAttribute("title", "Server 2026.08.10 01:00:00");
-    expect(latestPoint).toHaveAccessibleName(/JST 2026\.08\.10 07:00:00、Server 2026\.08\.10 01:00:00/);
+    expect(screen.queryByText(/最新点 JST 2026\.08\.10 07:00:00/)).not.toBeInTheDocument();
+    const detailButton = screen.getByRole("button", {
+      name: "AUDUSD JST 2026.08.10 07:00:00 のH1推移詳細を表示",
+    });
+    fireEvent.click(detailButton);
+    const detailDialog = await screen.findByRole("dialog");
+    expect(within(detailDialog).getByRole("heading", {
+      name: "AUDUSD / 2026.08.10 07:00:00",
+    })).toBeInTheDocument();
+    expect(within(detailDialog).getAllByText("最新点 JST")).toHaveLength(5);
+    expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/observations/9")).toBe(true);
+    fireEvent.click(within(detailDialog).getByRole("button", { name: "H1観測詳細を閉じる" }));
+    await waitFor(() => expect(detailButton).toHaveFocus());
     expect(screen.getByLabelText("開始日（JST）")).toHaveValue("2026-08-01");
     expect(screen.getByLabelText("終了日（JST）")).toHaveValue("2026-08-10");
     expect(new URLSearchParams(window.location.search).get("tab")).toBe("h1");

@@ -20,7 +20,7 @@ import type {
   ObservationTimeFrame,
   SortOrder,
 } from "../api/types";
-import { displayValue, formatNumber, sideClass } from "../lib/format";
+import { displayValue, sideClass } from "../lib/format";
 
 interface ObservationTableProps {
   items: ObservationListItem[];
@@ -30,6 +30,7 @@ interface ObservationTableProps {
   order: SortOrder;
   styleNonce?: string;
   onSort: (sort: ObservationSort) => void;
+  onOpenDetail: (observationId: number, trigger: HTMLButtonElement) => void;
 }
 
 interface SortHeaderParameters {
@@ -44,6 +45,7 @@ type SortHeaderProps = CustomHeaderProps<ObservationListItem> & SortHeaderParame
 const GRID_MODULES = [ClientSideRowModelModule, ColumnApiModule];
 const TIME_FRAMES = ["MN1", "W1", "D1", "H4", "H1"] as const;
 const PINNED_COLUMN_IDS = ["anchor_jst_time", "symbol_name"] as const;
+const DETAIL_COLUMN_ID = "detail";
 
 const observationGridTheme = themeQuartz
   .withPart(colorSchemeDarkBlue)
@@ -121,9 +123,15 @@ function ObservationTimeCell(params: ICellRendererParams<ObservationListItem>) {
   return (
     <div className="grid-cell-stack">
       <span className="date-main">{displayValue(observation.anchor_jst_time_text)}</span>
-      <span className="date-sub">
+      <Typography
+        className="date-sub"
+        component="span"
+        noWrap
+        title={`Server ${displayValue(observation.anchor_bar_time_text)} / H1新規足`}
+        sx={{ maxWidth: "100%" }}
+      >
         Server {displayValue(observation.anchor_bar_time_text)} / H1新規足
-      </span>
+      </Typography>
     </div>
   );
 }
@@ -133,30 +141,32 @@ function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
   if (!observation) return null;
   return (
     <div className="grid-cell-stack">
-      <span className="symbol">{observation.symbol_name}</span>
-      <span className="subtext">Run {observation.run_id} / {observation.anchor_time_frame_text}</span>
-    </div>
-  );
-}
-
-function SourceCell(params: ICellRendererParams<ObservationListItem>) {
-  const observation = dataFrom(params);
-  if (!observation) return null;
-  return (
-    <div className="grid-cell-stack">
-      <span className="badge neutral">{displayValue(observation.source_mode)}</span>
-      <span className="subtext">{displayValue(observation.source_server)}</span>
-    </div>
-  );
-}
-
-function VersionCell(params: ICellRendererParams<ObservationListItem>) {
-  const observation = dataFrom(params);
-  if (!observation) return null;
-  return (
-    <div className="grid-cell-stack">
-      <span>分析 {displayValue(observation.analysis_version)}</span>
-      <span className="subtext">{displayValue(observation.capture_phase)}</span>
+      <Stack
+        direction="row"
+        spacing={0.5}
+        sx={{ alignItems: "center", flexWrap: "nowrap", minWidth: 0, overflow: "hidden" }}
+      >
+        <Typography
+          className="symbol"
+          component="span"
+          noWrap
+          title={observation.symbol_name}
+          sx={{ minWidth: 0 }}
+        >
+          {observation.symbol_name}
+        </Typography>
+        <Box component="span" className="badge neutral" sx={{ flex: "0 0 auto" }}>
+          {displayValue(observation.source_mode)}
+        </Box>
+      </Stack>
+      <Typography
+        className="subtext"
+        component="span"
+        noWrap
+        title={`Run ${observation.run_id} / ${displayValue(observation.source_server)}`}
+      >
+        Run {observation.run_id} / {displayValue(observation.source_server)}
+      </Typography>
     </div>
   );
 }
@@ -182,49 +192,48 @@ function waveLabel(timeFrame: ObservationTimeFrame): string {
   return sub ? `${elliot} / ${sub}` : elliot;
 }
 
-function TimeFrameSnapshot({
-  timeFrame,
-  showLatestPoint,
-}: {
-  timeFrame: ObservationTimeFrame | undefined;
-  showLatestPoint: boolean;
-}) {
+function TimeFrameSnapshot({ timeFrame }: { timeFrame: ObservationTimeFrame | undefined }) {
   if (!timeFrame) {
-    return <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>記録なし</Typography>;
+    return (
+      <Box sx={{ minWidth: 0, overflow: "hidden", py: 0.25 }}>
+        <Typography noWrap sx={{ color: "text.secondary", fontSize: "0.72rem" }}>
+          記録なし
+        </Typography>
+        <Typography noWrap sx={{ color: "text.secondary", fontSize: "0.66rem" }}>
+          —
+        </Typography>
+      </Box>
+    );
   }
   const side = displayValue(timeFrame.buy_sell_label).toUpperCase();
-  const waveState = `${timeFrame.is_wave_confirmed ? "確定" : "未確定"}・${timeFrame.is_wave_motive ? "推進" : "修正"}`;
-  const waveDirection = timeFrame.is_wave_uptrend ? "上昇" : "下降";
-  const latestPointJst = displayValue(timeFrame.latest_point_jst_time_text);
-  const latestPointServer = displayValue(timeFrame.latest_point_time_text);
-  const latestPointRate = formatNumber(timeFrame.latest_point_rate, 5);
+  const waveState = `${timeFrame.is_wave_confirmed ? "確" : "未"}・${timeFrame.is_wave_motive ? "推" : "修"}`;
+  const waveDirection = timeFrame.is_wave_uptrend ? "↑" : "↓";
+  const waveSummary = `${timeFrame.is_wave_uptrend ? "上昇" : "下降"}、${timeFrame.is_wave_confirmed ? "確定" : "未確定"}、${timeFrame.is_wave_motive ? "推進波" : "修正波"}、EMA200 ${emaDirection(timeFrame)}、GMMA trend ${timeFrame.gmma_trend_count}、cross ${timeFrame.gmma_cross_count}`;
   return (
-    <Box sx={{ minWidth: 0, py: 0.25 }}>
-      <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", minWidth: 0 }}>
+    <Box sx={{ minWidth: 0, overflow: "hidden", py: 0.25 }}>
+      <Stack
+        direction="row"
+        spacing={0.5}
+        sx={{ alignItems: "center", flexWrap: "nowrap", minWidth: 0, overflow: "hidden" }}
+      >
         <span className={`badge ${sideClass(side)}`}>{side}</span>
-        <Typography noWrap title={waveLabel(timeFrame)} sx={{ fontSize: "0.74rem", fontWeight: 800 }}>
+        <Typography
+          noWrap
+          title={`Elliott ${waveLabel(timeFrame)}`}
+          sx={{ fontSize: "0.72rem", fontWeight: 800, minWidth: 0 }}
+        >
           Elliott {waveLabel(timeFrame)}
         </Typography>
       </Stack>
-      <Typography noWrap sx={{ color: "text.secondary", fontSize: "0.66rem", mt: 0.35 }}>
-        {waveState}・{waveDirection}
+      <Typography
+        noWrap
+        aria-label={waveSummary}
+        title={waveSummary}
+        sx={{ color: "text.secondary", fontSize: "0.64rem", mt: 0.25 }}
+      >
+        {waveDirection}・{waveState}・EMA {emaDirection(timeFrame)}・GMMA T
+        {timeFrame.gmma_trend_count}/C{timeFrame.gmma_cross_count}
       </Typography>
-      <Typography noWrap sx={{ color: "text.secondary", fontSize: "0.66rem" }}>
-        EMA200 {emaDirection(timeFrame)}・GMMA T{timeFrame.gmma_trend_count} / C{timeFrame.gmma_cross_count}
-      </Typography>
-      <Typography noWrap sx={{ color: "text.secondary", fontSize: "0.66rem" }}>
-        Stoch {displayValue(timeFrame.stochastic_main_direction_text)}・ATR {formatNumber(timeFrame.atr14_pips)}p
-      </Typography>
-      {showLatestPoint && (
-        <Typography
-          noWrap
-          aria-label={`最新点 JST ${latestPointJst}、Server ${latestPointServer}、レート ${latestPointRate}`}
-          title={`Server ${latestPointServer}`}
-          sx={{ color: "text.secondary", fontSize: "0.64rem" }}
-        >
-          最新点 JST {latestPointJst} @ {latestPointRate}
-        </Typography>
-      )}
     </Box>
   );
 }
@@ -233,11 +242,23 @@ function timeFrameCell(timeFrame: string) {
   return function TimeFrameCell(params: ICellRendererParams<ObservationListItem>) {
     const observation = dataFrom(params);
     if (!observation) return null;
+    return <TimeFrameSnapshot timeFrame={timeFrameFrom(observation, timeFrame)} />;
+  };
+}
+
+function detailCell(onOpenDetail: ObservationTableProps["onOpenDetail"]) {
+  return function DetailCell(params: ICellRendererParams<ObservationListItem>) {
+    const observation = dataFrom(params);
+    if (!observation) return null;
     return (
-      <TimeFrameSnapshot
-        timeFrame={timeFrameFrom(observation, timeFrame)}
-        showLatestPoint={timeFrame === "H1"}
-      />
+      <button
+        aria-label={`${observation.symbol_name} JST ${displayValue(observation.anchor_jst_time_text)} のH1推移詳細を表示`}
+        className="secondary-button detail-open-button"
+        type="button"
+        onClick={(event) => onOpenDetail(observation.id, event.currentTarget)}
+      >
+        詳細
+      </button>
     );
   };
 }
@@ -250,12 +271,14 @@ export function ObservationTable({
   order,
   styleNonce,
   onSort,
+  onOpenDetail,
 }: ObservationTableProps) {
   const gridApiRef = useRef<GridApi<ObservationListItem> | null>(null);
   const wideLayout = useMediaQuery("(min-width: 761px)");
 
   const applyPinning = useCallback((api: GridApi<ObservationListItem>) => {
     api.setColumnsPinned([...PINNED_COLUMN_IDS], wideLayout ? "left" : null);
+    api.setColumnsPinned([DETAIL_COLUMN_ID], wideLayout ? "right" : null);
   }, [wideLayout]);
 
   const gridReady = useCallback((event: GridReadyEvent<ObservationListItem>) => {
@@ -296,40 +319,39 @@ export function ObservationTable({
       field: "symbol_name",
       headerName: "通貨",
       initialPinned: "left",
-      initialWidth: 135,
+      initialWidth: 185,
+      minWidth: 170,
       lockPinned: true,
       suppressMovable: true,
       headerComponent: SortHeader,
       headerComponentParams: sortHeaderParameters("symbol_name", sort, order, onSort),
       cellRenderer: SymbolCell,
     },
-    {
-      colId: "source_mode",
-      field: "source_mode",
-      headerName: "実行元",
-      initialWidth: 125,
-      cellRenderer: SourceCell,
-    },
     ...TIME_FRAMES.map((timeFrame): ColDef<ObservationListItem> => ({
       colId: `time_frame_${timeFrame.toLowerCase()}`,
       headerName: timeFrame,
-      initialWidth: 215,
-      minWidth: 190,
+      initialWidth: 180,
+      minWidth: 170,
       cellRenderer: timeFrameCell(timeFrame),
     })),
     {
-      colId: "analysis_version",
-      field: "analysis_version",
-      headerName: "観測情報",
-      initialWidth: 190,
-      cellRenderer: VersionCell,
+      colId: DETAIL_COLUMN_ID,
+      headerName: "詳細",
+      initialPinned: "right",
+      initialWidth: 80,
+      minWidth: 80,
+      maxWidth: 80,
+      lockPinned: true,
+      resizable: false,
+      suppressMovable: true,
+      cellRenderer: detailCell(onOpenDetail),
     },
-  ], [onSort, order, sort]);
+  ], [onOpenDetail, onSort, order, sort]);
 
   return (
     <div className="grid-view" role="region" aria-label="H1 Elliott推移検索結果" aria-busy={loading}>
       <Box sx={{ px: 1.5, pb: 0.75, color: "text.secondary", fontSize: "0.68rem" }}>
-        各時間足：方向 / Elliott（主波・下位波） / 波動状態 / EMA200 / GMMA（Trend・Cross） / Stochastic / ATR
+        各時間足：BUY/SELL / Elliott（主波・下位波） / 波方向・状態 / EMA200 / GMMA（Trend・Cross）
       </Box>
       <div className="alert-grid density-compact">
         <AgGridReact<ObservationListItem>
@@ -354,7 +376,7 @@ export function ObservationTable({
           onGridReady={gridReady}
           pagination={false}
           rowData={items}
-          rowHeight={108}
+          rowHeight={64}
           styleNonce={styleNonce}
           theme={observationGridTheme}
         />

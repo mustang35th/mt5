@@ -26,6 +26,7 @@ import {
   ObservationFilterPanel,
   observationFilterSummary,
 } from "./ObservationFilterPanel";
+import { ObservationDetailDrawer } from "./ObservationDetailDrawer";
 import { ObservationTable } from "./ObservationTable";
 import { Pagination } from "./Pagination";
 import { RefreshControls } from "./RefreshControls";
@@ -141,10 +142,12 @@ export function H1ObservationView({
   const [pageVisible, setPageVisible] = useState(
     () => document.visibilityState !== "hidden",
   );
+  const [selectedObservationId, setSelectedObservationId] = useState<number | null>(null);
   const [initialRunValidated, setInitialRunValidated] = useState(
     initialSearch.runId === null,
   );
   const activeControllerRef = useRef<AbortController | null>(null);
+  const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
   const requestModeRef = useRef<"foreground" | "background" | "manual">("foreground");
   const optionsLoadedRef = useRef(false);
 
@@ -295,6 +298,25 @@ export function H1ObservationView({
     commitSearch({ ...applied, sort, order, page: 1 });
   }, [applied, commitSearch]);
 
+  const openDetail = useCallback((observationId: number, fromTrigger: HTMLButtonElement) => {
+    detailTriggerRef.current = fromTrigger;
+    setSelectedObservationId(observationId);
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    const trigger = detailTriggerRef.current;
+    setSelectedObservationId(null);
+    window.requestAnimationFrame(() => {
+      if (trigger?.isConnected && !trigger.disabled) trigger.focus();
+    });
+  }, []);
+
+  useEffect(() => {
+    if (active) return;
+    detailTriggerRef.current = null;
+    setSelectedObservationId(null);
+  }, [active]);
+
   if (!active) return null;
 
   const total = observations?.total || 0;
@@ -380,6 +402,7 @@ export function H1ObservationView({
                   order={applied.order}
                   styleNonce={styleNonce}
                   onSort={changeSort}
+                  onOpenDetail={openDetail}
                 />
                 <Pagination
                   page={page}
@@ -398,6 +421,7 @@ export function H1ObservationView({
       {loadError && (
         <div className="toast" role="alert" aria-live="assertive">{loadError}</div>
       )}
+      <ObservationDetailDrawer observationId={selectedObservationId} onClose={closeDetail} />
     </Box>
   );
 }

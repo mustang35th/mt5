@@ -3,6 +3,7 @@ import type {
   AlertsResponse,
   ApiErrorResponse,
   HealthResponse,
+  ObservationDetailResponse,
   ObservationOptionsResponse,
   ObservationsResponse,
   ObservationSearchState,
@@ -70,6 +71,12 @@ export const api = {
       `/api/observations?${buildObservationSearchParams(search)}`,
       signal,
     );
+  },
+  observationDetail(
+    observationId: number,
+    signal?: AbortSignal,
+  ): Promise<ObservationDetailResponse> {
+    return fetchJson<ObservationDetailResponse>(`/api/observations/${observationId}`, signal);
   },
   observationOptions(signal?: AbortSignal): Promise<ObservationOptionsResponse> {
     return fetchJson<ObservationOptionsResponse>("/api/observation-options", signal);

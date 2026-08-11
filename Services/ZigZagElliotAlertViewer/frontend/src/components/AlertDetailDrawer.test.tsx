@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AlertDetailDrawer } from "./AlertDetailDrawer";
 
@@ -125,7 +125,13 @@ afterEach(() => {
 
 describe("AlertDetailDrawer", () => {
   it("loads the three detail APIs and renders analysis and wave data without treating zero as missing", async () => {
-    const timeFrames = [timeFrame(1, "MN1", 0), timeFrame(2, "H1", 1)];
+    const timeFrames = [
+      timeFrame(1, "MN1", 0),
+      timeFrame(2, "W1", 1),
+      timeFrame(3, "D1", 2),
+      timeFrame(4, "H4", 3),
+      timeFrame(5, "H1", 4),
+    ];
     const points = [point(1, "MN1", 0, 0), point(2, "H1", 1, 0)];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
@@ -142,13 +148,19 @@ describe("AlertDetailDrawer", () => {
     expect(await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(screen.getByText("W1不明")).toBeInTheDocument();
-    expect(screen.getAllByText("DOWN / 下降 (DOWN)")).toHaveLength(2);
+    expect(screen.getAllByText("DOWN / 下降 (DOWN)")).toHaveLength(5);
     expect(screen.getByText("0.00000")).toBeInTheDocument();
     expect(screen.getByText(/SL — \/ Risk 50.0 pips/)).toBeInTheDocument();
     expect(screen.getAllByText("未取得").length).toBeGreaterThan(0);
     const cards = screen.getAllByRole("article");
-    expect(within(cards[0]).getByText("MN1")).toBeInTheDocument();
-    expect(within(cards[1]).getByText("H1")).toBeInTheDocument();
+    expect(cards).toHaveLength(5);
+    expect(cards.map((card) => card.querySelector(".timeframe-header > strong")?.textContent)).toEqual([
+      "MN1",
+      "W1",
+      "D1",
+      "H4",
+      "H1",
+    ]);
     expect(screen.getByText("最新・基準").closest("tr")).toHaveClass("point-latest", "point-reference");
     expect(screen.getByText("<script>alert('x')</script>")).toBeInTheDocument();
     fireEvent.click(screen.getByText("アラート本文を表示"), { detail: 1 });

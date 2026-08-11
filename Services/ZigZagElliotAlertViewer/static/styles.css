@@ -761,6 +761,10 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
 .toast { position: fixed; right: 22px; bottom: 22px; z-index: 40; max-width: 420px; padding: 13px 16px; border: 1px solid rgba(255, 127, 134, 0.55); border-radius: 10px; color: var(--text); background: #321a1e; box-shadow: var(--shadow); }
 
 @media (min-width: 1280px) {
+  .react-detail-dialog { width: min(1240px, 96vw); }
+  .react-detail-dialog .timeframe-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .react-detail-dialog .timeframe-card { min-width: 0; }
+
   body.react-viewer .viewer-tab-panel { overflow: hidden; }
   body.react-viewer .viewer-workspace {
     display: grid;

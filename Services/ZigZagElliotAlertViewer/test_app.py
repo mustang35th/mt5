@@ -17,6 +17,7 @@ from app import (
     AlertDatabase,
     DEFAULT_HOST,
     MAX_TIME_FRAME_FILTERS,
+    OBSERVATION_REQUIRED_COLUMNS,
     RequestError,
     ViewerServer,
     W1_TIME_FRAME,
@@ -637,7 +638,7 @@ class AlertSummaryTest(unittest.TestCase):
 
 
 def create_observation_database(database_path: Path) -> None:
-    """Create a compact SQLite fixture matching the H1 read contract."""
+    """Create a SQLite fixture matching the H1 list and detail contracts."""
 
     run_columns = [
         "id INTEGER PRIMARY KEY",
@@ -711,15 +712,50 @@ def create_observation_database(database_path: Path) -> None:
         "latest_point_jst_time",
         "latest_point_jst_time_text",
         "latest_point_rate",
+        "previous_open",
+        "previous_high",
+        "previous_low",
+        "previous_close",
+        "current_open",
+        "current_high",
+        "current_low",
         "current_close",
+        "is_fibo_expansion_available",
+        "fe618_price",
+        "fe1000_price",
+        "fe1272_price",
+        "fe1618_price",
+        "fe2000_price",
+        "distance_to_fe2000_pips",
+        "oscillator_count",
+        "is_oscillator_buy",
+        "stochastic_main_order",
         "stochastic_main_order_text",
         "stochastic_main_direction_text",
+        "stochastic_short_count",
+        "stochastic_short_main",
+        "stochastic_short_signal",
+        "stochastic_middle_count",
+        "stochastic_middle_main",
+        "stochastic_middle_signal",
+        "stochastic_long_count",
+        "stochastic_long_main",
+        "stochastic_long_signal",
         "gmma_trend_count",
         "gmma_cross_count",
+        "ema30",
+        "ema60",
         "ema30_ema60_diff_pips",
         "atr14_pips",
+        "ema200_close1",
+        "ema200_shift1",
+        "ema200_compare",
         "ema200_slope_pips",
         "ema200_close_diff_pips",
+        "ema200_close_position",
+        "ema200_slope_direction",
+        "ema200_up_count",
+        "ema200_down_count",
         "ema200_trend_count",
         "is_ema200_buy",
         "is_ema200_sell",
@@ -741,9 +777,33 @@ def create_observation_database(database_path: Path) -> None:
     }
     real_columns = {
         "latest_point_rate",
+        "previous_open",
+        "previous_high",
+        "previous_low",
+        "previous_close",
+        "current_open",
+        "current_high",
+        "current_low",
         "current_close",
+        "fe618_price",
+        "fe1000_price",
+        "fe1272_price",
+        "fe1618_price",
+        "fe2000_price",
+        "distance_to_fe2000_pips",
+        "stochastic_short_main",
+        "stochastic_short_signal",
+        "stochastic_middle_main",
+        "stochastic_middle_signal",
+        "stochastic_long_main",
+        "stochastic_long_signal",
+        "ema30",
+        "ema60",
         "ema30_ema60_diff_pips",
         "atr14_pips",
+        "ema200_close1",
+        "ema200_shift1",
+        "ema200_compare",
         "ema200_slope_pips",
         "ema200_close_diff_pips",
     }
@@ -1039,6 +1099,30 @@ class ObservationDatabaseTest(unittest.TestCase):
                           "analysis_versions": []}, options)
         self.assertFalse(detail["available"])
 
+    def test_missing_detail_column_returns_available_false(self) -> None:
+        """Do not advertise a partial row as the full observation detail contract."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_observation_timeframes "
+                    "DROP COLUMN previous_open"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                health = database.validate()
+                page = database.observations({})
+                detail = database.observation_detail(1)
+            finally:
+                database.close()
+
+        self.assertFalse(health["observation_available"])
+        self.assertFalse(page["available"])
+        self.assertFalse(detail["available"])
+
     def test_incomplete_jst_backfill_returns_available_false(self) -> None:
         """Do not expose default JST values inserted by a legacy writer."""
 
@@ -1189,6 +1273,35 @@ class ObservationDatabaseTest(unittest.TestCase):
             detail["time_frames"][4]["latest_point_jst_time_text"],
         )
         self.assertEqual(5, len(detail["time_frames"]))
+        expected_parent_columns = (
+            OBSERVATION_REQUIRED_COLUMNS["zigzag_elliot_observations"]
+            | {
+                "run_uid",
+                "source",
+                "program_name",
+                "program_version",
+                "strategy",
+                "strategy_version",
+                "tester_from",
+                "tester_to",
+                "tester_model",
+                "started_at",
+                "started_at_text",
+            }
+        )
+        self.assertEqual(expected_parent_columns, set(detail["observation"]))
+        self.assertEqual(
+            OBSERVATION_REQUIRED_COLUMNS[
+                "zigzag_elliot_observation_timeframes"
+            ],
+            set(detail["time_frames"][0]),
+        )
+        self.assertEqual(0.0, detail["time_frames"][0]["previous_open"])
+        self.assertIs(
+            detail["time_frames"][0]["is_fibo_expansion_available"],
+            False,
+        )
+        self.assertIs(detail["time_frames"][0]["is_oscillator_buy"], False)
         run_one = next(item for item in runs["items"] if item["id"] == 1)
         self.assertEqual(2, run_one["alert_count"])
         self.assertEqual(2, run_one["observation_count"])

@@ -317,6 +317,69 @@ export interface ObservationListItem {
   time_frames: ObservationTimeFrame[];
 }
 
+export interface ObservationDetailParent extends Omit<ObservationListItem, "time_frames"> {
+  source: string;
+  program_name: string;
+  program_version: string;
+  strategy: string;
+  strategy_version: string;
+  tester_from: number | null;
+  tester_to: number | null;
+  tester_model: string | null;
+  started_at: number;
+  started_at_text: string;
+}
+
+export interface ObservationDetailTimeFrame extends ObservationTimeFrame {
+  previous_open: number;
+  previous_high: number;
+  previous_low: number;
+  previous_close: number;
+  current_open: number;
+  current_high: number;
+  current_low: number;
+  is_fibo_expansion_available: boolean;
+  fe618_price: number;
+  fe1000_price: number;
+  fe1272_price: number;
+  fe1618_price: number;
+  fe2000_price: number;
+  distance_to_fe2000_pips: number;
+  oscillator_count: number;
+  is_oscillator_buy: boolean;
+  stochastic_main_order: number;
+  stochastic_short_count: number;
+  stochastic_short_main: number;
+  stochastic_short_signal: number;
+  stochastic_middle_count: number;
+  stochastic_middle_main: number;
+  stochastic_middle_signal: number;
+  stochastic_long_count: number;
+  stochastic_long_main: number;
+  stochastic_long_signal: number;
+  ema30: number;
+  ema60: number;
+  ema30_ema60_diff_pips: number;
+  ema200_close1: number;
+  ema200_shift1: number;
+  ema200_compare: number;
+  ema200_slope_pips: number;
+  ema200_close_diff_pips: number;
+  ema200_close_position: number;
+  ema200_slope_direction: number;
+  ema200_up_count: number;
+  ema200_down_count: number;
+  ema200_trend_count: number;
+  created_at: number;
+  created_at_text: string;
+}
+
+export interface ObservationDetailResponse {
+  available: boolean;
+  observation: ObservationDetailParent | null;
+  time_frames: ObservationDetailTimeFrame[];
+}
+
 export interface ObservationsResponse {
   available: boolean;
   items: ObservationListItem[];
