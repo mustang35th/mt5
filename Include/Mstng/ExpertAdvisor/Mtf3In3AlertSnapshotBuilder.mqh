@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                        Mtf3In3AlertSnapshotBuilder.mqh |
+//|                                  Mtf3In3AlertSnapshotBuilder.mqh |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+

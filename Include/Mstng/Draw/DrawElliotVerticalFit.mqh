@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                                      DrawElliotVerticalFit.mqh |
+//|                                        DrawElliotVerticalFit.mqh |
 //|                                  Copyright 2025, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+

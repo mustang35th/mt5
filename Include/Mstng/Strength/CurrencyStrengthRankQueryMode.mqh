@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                      CurrencyStrengthRankQueryMode.mqh |
+//|                                CurrencyStrengthRankQueryMode.mqh |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+

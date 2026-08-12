@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                    H1ElliotObservationController.mqh |
+//|                                H1ElliotObservationController.mqh |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+

@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                         ZigZagElliotAnalysisProfile.mqh |
+//|                                  ZigZagElliotAnalysisProfile.mqh |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+

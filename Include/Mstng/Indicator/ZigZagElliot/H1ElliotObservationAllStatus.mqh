@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                         H1ElliotObservationAllStatus.mqh |
+//|                                 H1ElliotObservationAllStatus.mqh |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+

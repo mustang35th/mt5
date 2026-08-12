@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                                               Ema200Indicator.mqh |
+//|                                              Ema200Indicator.mqh |
 //+------------------------------------------------------------------+
 #ifndef MSTNG_EMA200_INDICATOR_MQH
 #define MSTNG_EMA200_INDICATOR_MQH

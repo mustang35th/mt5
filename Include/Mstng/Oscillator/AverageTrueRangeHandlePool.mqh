@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                                    AverageTrueRangeHandlePool.mqh |
+//|                                   AverageTrueRangeHandlePool.mqh |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"

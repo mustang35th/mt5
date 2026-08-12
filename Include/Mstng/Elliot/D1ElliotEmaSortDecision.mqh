@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                               D1ElliotEmaSortDecision.mqh |
+//|                                      D1ElliotEmaSortDecision.mqh |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+

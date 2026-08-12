@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//|                  ZigZagElliotAlertDatabaseSmokeTest.mq5 |
+//|                           ZigZagElliotAlertDatabaseSmokeTest.mq5 |
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
