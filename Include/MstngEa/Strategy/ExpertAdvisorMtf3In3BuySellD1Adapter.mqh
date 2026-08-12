@@ -1,3 +1,8 @@
+//+------------------------------------------------------------------+
+//|                         ExpertAdvisorMtf3In3BuySellD1Adapter.mqh |
+//|                                  Copyright 2025, MetaQuotes Ltd. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
 /**
  * Package: MstngEa.Strategy
  * File: ExpertAdvisorMtf3In3BuySellD1Adapter.mqh

@@ -1,3 +1,8 @@
+//+------------------------------------------------------------------+
+//|                                         CompileTestIndicator.mq5 |
+//|                                  Copyright 2026, MetaQuotes Ltd. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
 #property copyright "Compile test"
 #property version   "1.01"
 #property description "A simple moving-average indicator for compile testing."

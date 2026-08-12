@@ -1,4 +1,9 @@
-﻿#ifndef __MARKET_ACTIVITY_ANALYZER_MQH__
+﻿//+------------------------------------------------------------------+
+//|                                       MarketActivityAnalyzer.mqh |
+//|                                  Copyright 2026, MetaQuotes Ltd. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+#ifndef __MARKET_ACTIVITY_ANALYZER_MQH__
 #define __MARKET_ACTIVITY_ANALYZER_MQH__
 
 /** JSTオフセット秒。 */
