@@ -9,7 +9,7 @@ import {
 describe("observationSearchState", () => {
   it("restores the H1 observation filters and rejects unsupported values", () => {
     expect(readObservationSearchState(
-      "?tab=h1&sourceMode=TESTER&runId=4&analysisVersion=ELLIOT_MN1_V2&analysisInputHash=profile-hash&analysisProfileKind=profile&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&page=2&pageSize=25&sort=bad&order=asc",
+      "?tab=h1&sourceMode=TESTER&runId=4&analysisVersion=ELLIOT_MN1_V2&analysisInputHash=profile-hash&analysisProfileKind=profile&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=D1&syncTimeFrame=MN1&syncTimeFrame=MN1&page=2&pageSize=25&sort=bad&order=asc",
     )).toEqual({
       sourceMode: "TESTER",
       runId: 4,
@@ -19,6 +19,8 @@ describe("observationSearchState", () => {
       symbol: "AUDUSD",
       from: "2026-08-01",
       to: "2026-08-10",
+      jstTime: "07:00",
+      syncTimeFrames: ["MN1", "D1"],
       page: 2,
       pageSize: 25,
       sort: "anchor_jst_time",
@@ -38,6 +40,8 @@ describe("observationSearchState", () => {
     expect(params.has("analysisInputHash")).toBe(false);
     expect(params.has("analysisVersion")).toBe(false);
     expect(params.has("analysisProfileKind")).toBe(false);
+    expect(params.has("jstTime")).toBe(false);
+    expect(params.has("syncTimeFrame")).toBe(false);
     expect(params.get("sort")).toBe("anchor_jst_time");
     replaceObservationSearchUrl(DEFAULT_OBSERVATION_SEARCH_STATE);
     const browserParams = new URLSearchParams(window.location.search);
@@ -52,5 +56,21 @@ describe("observationSearchState", () => {
     expect(state.analysisVersion).toBe("");
     expect(state.analysisProfileKind).toBe("");
     expect(buildObservationSearchParams(state).has("analysisInputHash")).toBe(false);
+  });
+
+  it("normalizes the fixed JST hour and higher-timeframe synchronization filters", () => {
+    const state = readObservationSearchState(
+      "?jstTime=23%3A30&syncTimeFrame=h4&syncTimeFrame=bad&syncTimeFrame=w1&syncTimeFrame=H4",
+    );
+    expect(state.jstTime).toBe("");
+    expect(state.syncTimeFrames).toEqual(["W1", "H4"]);
+
+    const params = buildObservationSearchParams({
+      ...state,
+      jstTime: "23:00",
+      syncTimeFrames: ["H4", "MN1", "H4"],
+    });
+    expect(params.get("jstTime")).toBe("23:00");
+    expect(params.getAll("syncTimeFrame")).toEqual(["MN1", "H4"]);
   });
 });

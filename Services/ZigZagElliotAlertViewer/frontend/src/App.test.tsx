@@ -431,7 +431,7 @@ describe("App", () => {
     window.history.replaceState(
       null,
       "",
-      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&sort=anchor_bar_time",
+      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=D1&syncTimeFrame=MN1&sort=anchor_bar_time",
     );
     render(<App />);
 
@@ -449,6 +449,8 @@ describe("App", () => {
     expect(observationToggle.compareDocumentPosition(observationConditionSummary) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeTruthy();
     expect(observationConditionSummary).toHaveTextContent("JST期間 2026-08-01 – 2026-08-10");
+    expect(observationConditionSummary).toHaveTextContent("JST時刻 07:00");
+    expect(observationConditionSummary).toHaveTextContent("上位足同期 MN1・D1");
     await waitFor(() => {
       expect(observationConditionSummary).toHaveTextContent(
         `Profile ${ANALYSIS_VERSION}/${TESTER_ANALYSIS_PROFILE_HASH}`,
@@ -460,6 +462,9 @@ describe("App", () => {
     expect(screen.getByLabelText("分析Profile")).toHaveTextContent(
       `${ANALYSIS_VERSION}｜Profile｜${TESTER_ANALYSIS_PROFILE_HASH}`,
     );
+    expect(screen.getByRole("combobox", { name: "時刻（JST）" })).toHaveTextContent("07:00");
+    expect(screen.getByRole("combobox", { name: "上位足同期（H1方向）" }))
+      .toHaveTextContent("MN1・D1");
     expect(tabPanel.querySelector(".viewer-summary-bar"))
       .toContainElement(tabPanel.querySelector(".observation-summary-strip"));
     expect(resultsColumn).toContainElement(tabPanel.querySelector(".results-panel"));
@@ -495,11 +500,15 @@ describe("App", () => {
       && path.includes(`analysisVersion=${ANALYSIS_VERSION}`)
       && path.includes(`analysisInputHash=${TESTER_ANALYSIS_PROFILE_HASH}`)
       && path.includes("analysisProfileKind=profile")
+      && path.includes("jstTime=07%3A00")
+      && path.includes("syncTimeFrame=MN1&syncTimeFrame=D1")
       && path.includes("sort=anchor_jst_time"))).toBe(true);
     expect(calls.some((path) => path.startsWith("/api/observation-summary?sourceMode=TESTER")
       && path.includes(`analysisVersion=${ANALYSIS_VERSION}`)
       && path.includes(`analysisInputHash=${TESTER_ANALYSIS_PROFILE_HASH}`)
       && path.includes("analysisProfileKind=profile")
+      && path.includes("jstTime=07%3A00")
+      && path.includes("syncTimeFrame=MN1&syncTimeFrame=D1")
       && path.includes("sort=anchor_jst_time"))).toBe(true);
     expect(calls.some((path) => path.startsWith("/api/alerts?"))).toBe(false);
     expect(new URLSearchParams(window.location.search).get("sort")).toBe("anchor_jst_time");
@@ -509,6 +518,9 @@ describe("App", () => {
       .toBe(ANALYSIS_VERSION);
     expect(new URLSearchParams(window.location.search).get("analysisProfileKind"))
       .toBe("profile");
+    expect(new URLSearchParams(window.location.search).get("jstTime")).toBe("07:00");
+    expect(new URLSearchParams(window.location.search).getAll("syncTimeFrame"))
+      .toEqual(["MN1", "D1"]);
 
     fireEvent.click(within(screen.getByRole("columnheader", { name: /JST日時/ }))
       .getByRole("button", { name: /JST日時/ }));
@@ -592,6 +604,59 @@ describe("App", () => {
       expect(observationCalls.every((path) => path.includes(
         `analysisInputHash=${LIVE_ANALYSIS_PROFILE_HASH}`,
       ))).toBe(true);
+    });
+  });
+
+  it("applies and resets the H1 JST hour and multiple higher-timeframe synchronizations", async () => {
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=LIVE");
+    render(<App />);
+
+    const jstTimeSelect = await screen.findByRole("combobox", { name: "時刻（JST）" });
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get("analysisInputHash"))
+        .toBe(LIVE_ANALYSIS_PROFILE_HASH);
+    });
+    fireEvent.mouseDown(jstTimeSelect);
+    fireEvent.click(screen.getByRole("option", { name: "07:00" }));
+
+    const synchronizationSelect = screen.getByRole("combobox", {
+      name: "上位足同期（H1方向）",
+    });
+    fireEvent.mouseDown(synchronizationSelect);
+    fireEvent.click(screen.getByRole("option", { name: "MN1" }));
+    fireEvent.click(screen.getByRole("option", { name: "D1" }));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+
+    expect(jstTimeSelect).toHaveTextContent("07:00");
+    expect(synchronizationSelect).toHaveTextContent("MN1・D1");
+    expect(new URLSearchParams(window.location.search).has("jstTime")).toBe(false);
+    expect(screen.getByRole("region", { name: "適用中の検索条件" }))
+      .toHaveTextContent("未検索の変更あり");
+
+    fireEvent.click(screen.getByRole("button", { name: "検索" }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("jstTime")).toBe("07:00");
+      expect(parameters.getAll("syncTimeFrame")).toEqual(["MN1", "D1"]);
+      const requestedPaths = vi.mocked(fetch).mock.calls.map(([path]) => String(path));
+      for (const prefix of ["/api/observations?", "/api/observation-summary?"]) {
+        expect(requestedPaths.some((path) => {
+          if (!path.startsWith(prefix)) return false;
+          const searchParams = new URL(path, "http://localhost").searchParams;
+          return searchParams.get("jstTime") === "07:00"
+            && searchParams.getAll("syncTimeFrame").join(",") === "MN1,D1";
+        })).toBe(true);
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.has("jstTime")).toBe(false);
+      expect(parameters.has("syncTimeFrame")).toBe(false);
+      expect(jstTimeSelect).toHaveTextContent("すべて");
+      expect(synchronizationSelect).toHaveTextContent("指定なし");
     });
   });
 

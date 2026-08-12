@@ -2,8 +2,21 @@ import type {
   AnalysisProfileKind,
   ObservationSearchState,
   ObservationSort,
+  ObservationSyncTimeFrame,
   SourceMode,
 } from "../api/types";
+
+export const OBSERVATION_SYNC_TIME_FRAMES: readonly ObservationSyncTimeFrame[] = [
+  "MN1",
+  "W1",
+  "D1",
+  "H4",
+];
+
+export const OBSERVATION_JST_TIMES: readonly string[] = Array.from(
+  { length: 24 },
+  (_, hour) => `${String(hour).padStart(2, "0")}:00`,
+);
 
 export const DEFAULT_OBSERVATION_SEARCH_STATE: ObservationSearchState = {
   sourceMode: "LIVE",
@@ -14,6 +27,8 @@ export const DEFAULT_OBSERVATION_SEARCH_STATE: ObservationSearchState = {
   symbol: "",
   from: "",
   to: "",
+  jstTime: "",
+  syncTimeFrames: [],
   pageSize: 50,
   page: 1,
   sort: "anchor_jst_time",
@@ -42,6 +57,16 @@ function dateInputValue(value: string | null): string {
   return value;
 }
 
+function timeInputValue(value: string | null): string {
+  if (!value || !OBSERVATION_JST_TIMES.includes(value)) return "";
+  return value;
+}
+
+function observationSyncTimeFrames(values: string[]): ObservationSyncTimeFrame[] {
+  const requestedValues = new Set(values.map((value) => value.trim().toUpperCase()));
+  return OBSERVATION_SYNC_TIME_FRAMES.filter((timeFrame) => requestedValues.has(timeFrame));
+}
+
 export function readObservationSearchState(search: string): ObservationSearchState {
   const params = new URLSearchParams(search);
   const requestedSourceMode = params.get("sourceMode");
@@ -68,6 +93,8 @@ export function readObservationSearchState(search: string): ObservationSearchSta
     symbol: params.get("symbol") || "",
     from: dateInputValue(params.get("from")),
     to: dateInputValue(params.get("to")),
+    jstTime: timeInputValue(params.get("jstTime")),
+    syncTimeFrames: observationSyncTimeFrames(params.getAll("syncTimeFrame")),
     pageSize: [25, 50, 100].includes(requestedPageSize)
       ? requestedPageSize
       : DEFAULT_OBSERVATION_SEARCH_STATE.pageSize,
@@ -94,6 +121,11 @@ export function buildObservationSearchParams(
   if (state.symbol) params.set("symbol", state.symbol);
   if (state.from) params.set("from", state.from);
   if (state.to) params.set("to", state.to);
+  const jstTime = timeInputValue(state.jstTime);
+  if (jstTime) params.set("jstTime", jstTime);
+  for (const timeFrame of observationSyncTimeFrames(state.syncTimeFrames)) {
+    params.append("syncTimeFrame", timeFrame);
+  }
   if (includePaging) {
     params.set("page", String(state.page));
     params.set("pageSize", String(state.pageSize));

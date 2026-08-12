@@ -1369,6 +1369,67 @@ class ObservationDatabaseTest(unittest.TestCase):
             run_one["first_observation_jst_time_text"],
         )
 
+    def test_jst_time_and_higher_time_frame_sync_filters(self) -> None:
+        """Filter one JST hour and require every selected upper TF to match H1."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "UPDATE zigzag_elliot_observations "
+                    "SET anchor_jst_time = anchor_jst_time + 3600, "
+                    "anchor_jst_time_text = '2024.01.02 10:00:00' "
+                    "WHERE id = 2"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET is_buy = 0, buy_sell_label = 'SELL' "
+                    "WHERE observation_id = 2 AND time_frame_text = 'H4'"
+                )
+                connection.execute(
+                    "DELETE FROM zigzag_elliot_observation_timeframes "
+                    "WHERE observation_id = 3 AND time_frame_text = 'D1'"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                nine_page = database.observations({"jstTime": ["09:00"]})
+                ten_page = database.observations({"jstTime": ["10:00"]})
+                h4_page = database.observations(
+                    {"syncTimeFrame": ["H4"]}
+                )
+                d1_page = database.observations(
+                    {"syncTimeFrame": ["D1"]}
+                )
+                all_sync_page = database.observations(
+                    {"syncTimeFrame": ["D1", "H4"]}
+                )
+                combined_page = database.observations(
+                    {
+                        "jstTime": ["09:00"],
+                        "syncTimeFrame": ["D1", "H4"],
+                    }
+                )
+                combined_summary = database.observation_summary(
+                    {
+                        "jstTime": ["09:00"],
+                        "syncTimeFrame": ["D1", "H4"],
+                    }
+                )
+            finally:
+                database.close()
+
+        self.assertEqual([1, 3], sorted(item["id"] for item in nine_page["items"]))
+        self.assertEqual([2], [item["id"] for item in ten_page["items"]])
+        self.assertEqual([1, 3], sorted(item["id"] for item in h4_page["items"]))
+        self.assertEqual([1, 2], sorted(item["id"] for item in d1_page["items"]))
+        self.assertEqual([1], [item["id"] for item in all_sync_page["items"]])
+        self.assertEqual([1], [item["id"] for item in combined_page["items"]])
+        self.assertEqual(1, combined_summary["total_count"])
+        self.assertEqual(1, combined_summary["live_count"])
+        self.assertEqual(0, combined_summary["tester_count"])
+
     def test_analysis_profile_contract_and_legacy_fallback(self) -> None:
         """Prefer the latest stored profile while retaining legacy observations."""
 
@@ -1734,6 +1795,8 @@ class ObservationDatabaseTest(unittest.TestCase):
                 "analysisProfileKind": ["PROFILE"],
                 "from": ["2024-01-01"],
                 "to": ["2024-01-04"],
+                "jstTime": ["09:00"],
+                "syncTimeFrame": [" h4 ", "D1", "H4", "d1", " "],
             }
         )
         self.assertIn("o.source_mode = :source_mode", filters.where_sql)
@@ -1746,10 +1809,20 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIn("o.analysis_version = :analysis_version", filters.where_sql)
         self.assertIn("o.anchor_jst_time >= :from_time", filters.where_sql)
         self.assertIn("o.anchor_jst_time < :to_time", filters.where_sql)
+        self.assertIn("strftime('%H:%M'", filters.where_sql)
+        self.assertIn("sync_tf.is_buy = h1_tf.is_buy", filters.where_sql)
+        self.assertIn(
+            "COUNT(DISTINCT sync_tf.time_frame_text)",
+            filters.where_sql,
+        )
         self.assertEqual("TESTER", filters.parameters["source_mode"])
         self.assertEqual("profile-hash", filters.parameters["analysis_input_hash"])
         self.assertEqual("V2", filters.parameters["analysis_version"])
         self.assertEqual("profile", filters.parameters["analysis_profile_kind"])
+        self.assertEqual("09:00", filters.parameters["jst_time"])
+        self.assertEqual("H4", filters.parameters["sync_time_frame_0"])
+        self.assertEqual("D1", filters.parameters["sync_time_frame_1"])
+        self.assertEqual(2, filters.parameters["sync_time_frame_count"])
         self.assertEqual("profile", filters.analysis_profile_kind)
         self.assertEqual(
             "anchor_jst_time",
@@ -1794,6 +1867,31 @@ class ObservationDatabaseTest(unittest.TestCase):
             AlertDatabase.parse_observation_filters(
                 {"analysisProfileKind": ["mixed"]}
             )
+        for invalid_time in [
+            "9:00",
+            "09:30",
+            "24:00",
+            "00:000",
+            "-1:00",
+            "invalid",
+        ]:
+            with self.subTest(jst_time=invalid_time):
+                with self.assertRaisesRegex(
+                    RequestError,
+                    "jstTime must use HH:00",
+                ):
+                    AlertDatabase.parse_observation_filters(
+                        {"jstTime": [invalid_time]}
+                    )
+        for invalid_time_frame in ["H1", "M5", "H4' OR 1=1 --"]:
+            with self.subTest(sync_time_frame=invalid_time_frame):
+                with self.assertRaisesRegex(
+                    RequestError,
+                    "syncTimeFrame must be MN1, W1, D1 or H4",
+                ):
+                    AlertDatabase.parse_observation_filters(
+                        {"syncTimeFrame": [invalid_time_frame]}
+                    )
 
     def test_run_ranges_aggregate_shared_symbol_boundaries_once(self) -> None:
         """Keep one run row when 28 symbols share its first and last times."""

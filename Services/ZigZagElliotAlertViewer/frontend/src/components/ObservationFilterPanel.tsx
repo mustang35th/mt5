@@ -1,10 +1,12 @@
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import ListItemText from "@mui/material/ListItemText";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
-import Select from "@mui/material/Select";
+import Select, { type SelectChangeEvent } from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -14,9 +16,14 @@ import type {
   ObservationAnalysisProfile,
   ObservationOptionsResponse,
   ObservationSearchState,
+  ObservationSyncTimeFrame,
   RunItem,
   SourceMode,
 } from "../api/types";
+import {
+  OBSERVATION_JST_TIMES,
+  OBSERVATION_SYNC_TIME_FRAMES,
+} from "../lib/observationSearchState";
 
 interface ObservationFilterPanelProps {
   value: ObservationSearchState;
@@ -102,6 +109,25 @@ function profileLabel(profile: ObservationAnalysisProfile): string {
   return `${profile.analysis_version}｜${kind}｜${shortHash}｜${profile.observation_count}件｜${last}`;
 }
 
+function syncTimeFrameSummary(
+  timeFrames: readonly ObservationSyncTimeFrame[],
+  emptyLabel: string,
+): string {
+  if (timeFrames.length === 0) return emptyLabel;
+  if (timeFrames.length <= 2) return timeFrames.join("・");
+  return `${timeFrames.slice(0, 2).join("・")}＋${timeFrames.length - 2}`;
+}
+
+function sameSyncTimeFrames(
+  first: readonly ObservationSyncTimeFrame[],
+  second: readonly ObservationSyncTimeFrame[],
+): boolean {
+  const firstValues = new Set(first);
+  const secondValues = new Set(second);
+  return firstValues.size === secondValues.size
+    && [...firstValues].every((timeFrame) => secondValues.has(timeFrame));
+}
+
 export function observationFilterSummary(value: ObservationSearchState): string {
   const mode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
@@ -113,7 +139,11 @@ export function observationFilterSummary(value: ObservationSearchState): string 
   const period = value.from || value.to
     ? `JST期間 ${value.from || "先頭"} – ${value.to || "末尾"}`
     : "JST全期間";
-  return `${mode} / ${run} / ${profile} / ${symbol} / ${period}`;
+  const jstTime = value.jstTime ? `JST時刻 ${value.jstTime}` : "JST全時刻";
+  const synchronization = value.syncTimeFrames.length > 0
+    ? `上位足同期 ${value.syncTimeFrames.join("・")}`
+    : "上位足同期なし";
+  return `${mode} / ${run} / ${profile} / ${symbol} / ${period} / ${jstTime} / ${synchronization}`;
 }
 
 export function hasObservationUnappliedChanges(
@@ -128,8 +158,12 @@ export function hasObservationUnappliedChanges(
     || value.symbol !== appliedValue.symbol
     || value.from !== appliedValue.from
     || value.to !== appliedValue.to
+    || value.jstTime !== appliedValue.jstTime
+    || !sameSyncTimeFrames(value.syncTimeFrames, appliedValue.syncTimeFrames)
     || value.pageSize !== appliedValue.pageSize;
 }
+
+const NO_SYNC_TIME_FRAMES_VALUE = "__no_sync_time_frames__";
 
 export function ObservationFilterPanel({
   value,
@@ -155,9 +189,27 @@ export function ObservationFilterPanel({
     () => visibleProfiles.find((profile) => observationProfileMatchesSearch(profile, value)),
     [value, visibleProfiles],
   );
+  const selectedSyncTimeFrames: string[] = value.syncTimeFrames.length === 0
+    ? [NO_SYNC_TIME_FRAMES_VALUE]
+    : value.syncTimeFrames;
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
+  }
+
+  function changeSyncTimeFrames(event: SelectChangeEvent<string[]>) {
+    const rawValue = event.target.value;
+    const requestedValues = typeof rawValue === "string" ? rawValue.split(",") : rawValue;
+    if (value.syncTimeFrames.length > 0
+        && requestedValues.includes(NO_SYNC_TIME_FRAMES_VALUE)) {
+      onChange({ ...value, syncTimeFrames: [] });
+      return;
+    }
+    const requestedTimeFrames = new Set(requestedValues);
+    const syncTimeFrames = OBSERVATION_SYNC_TIME_FRAMES.filter(
+      (timeFrame) => requestedTimeFrames.has(timeFrame),
+    );
+    onChange({ ...value, syncTimeFrames });
   }
 
   return (
@@ -345,6 +397,74 @@ export function ObservationFilterPanel({
             slotProps={{ inputLabel: { shrink: true } }}
             onChange={(event) => onChange({ ...value, to: event.target.value })}
           />
+          <FormControl size="small">
+            <InputLabel id="observationJstTimeLabel" shrink>時刻（JST）</InputLabel>
+            <Select
+              displayEmpty
+              labelId="observationJstTimeLabel"
+              label="時刻（JST）"
+              value={value.jstTime}
+              renderValue={(selected) => selected || "すべて"}
+              onChange={(event) => onChange({ ...value, jstTime: event.target.value })}
+            >
+              <MenuItem value="">すべて</MenuItem>
+              {OBSERVATION_JST_TIMES.map((jstTime) => (
+                <MenuItem key={jstTime} value={jstTime}>{jstTime}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl
+            className="observation-filter-sync-field"
+            size="small"
+            sx={{
+              gridColumn: sidebarLayout
+                ? "1 / -1"
+                : { xs: "span 2", md: "span 2", xl: "auto" },
+            }}
+          >
+            <InputLabel id="observationSyncTimeFramesLabel" shrink>
+              上位足同期（H1方向）
+            </InputLabel>
+            <Select<string[]>
+              displayEmpty
+              labelId="observationSyncTimeFramesLabel"
+              label="上位足同期（H1方向）"
+              multiple
+              value={selectedSyncTimeFrames}
+              renderValue={(selected) => syncTimeFrameSummary(
+                selected.filter(
+                  (timeFrame) => timeFrame !== NO_SYNC_TIME_FRAMES_VALUE,
+                ) as ObservationSyncTimeFrame[],
+                "指定なし",
+              )}
+              onChange={changeSyncTimeFrames}
+              MenuProps={{ slotProps: { paper: { sx: { maxHeight: 320 } } } }}
+            >
+              <MenuItem value={NO_SYNC_TIME_FRAMES_VALUE}>
+                <Checkbox
+                  aria-hidden="true"
+                  checked={value.syncTimeFrames.length === 0}
+                  disableRipple
+                  indeterminate={value.syncTimeFrames.length > 0}
+                  size="small"
+                  tabIndex={-1}
+                />
+                <ListItemText primary="指定なし" />
+              </MenuItem>
+              {OBSERVATION_SYNC_TIME_FRAMES.map((timeFrame) => (
+                <MenuItem key={timeFrame} value={timeFrame}>
+                  <Checkbox
+                    aria-hidden="true"
+                    checked={value.syncTimeFrames.includes(timeFrame)}
+                    disableRipple
+                    size="small"
+                    tabIndex={-1}
+                  />
+                  <ListItemText primary={timeFrame} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl size="small">
             <InputLabel id="observationPageSizeLabel">表示件数</InputLabel>
             <Select

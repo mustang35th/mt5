@@ -254,6 +254,8 @@ export interface PointsResponse {
 
 export type ObservationSort = "anchor_jst_time" | "symbol_name";
 
+export type ObservationSyncTimeFrame = "MN1" | "W1" | "D1" | "H4";
+
 export interface ObservationSearchState {
   sourceMode: SourceMode;
   runId: number | null;
@@ -263,6 +265,8 @@ export interface ObservationSearchState {
   symbol: string;
   from: string;
   to: string;
+  jstTime: string;
+  syncTimeFrames: ObservationSyncTimeFrame[];
   pageSize: number;
   page: number;
   sort: ObservationSort;

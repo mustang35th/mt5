@@ -44,6 +44,7 @@ DEFAULT_DATABASE_NAME = "mstng-zigzag-elliot-alert.sqlite"
 MAX_PAGE_SIZE = 200
 MAX_SEARCH_LENGTH = 200
 MAX_TIME_FRAME_FILTERS = 32
+OBSERVATION_SYNC_TIME_FRAMES = {"MN1", "W1", "D1", "H4"}
 W1_TIME_FRAME = 32769
 REACT_CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
 
@@ -387,6 +388,18 @@ def parse_date_boundary(value: str, is_end: bool) -> int:
     if is_end and used_date_only:
         parsed += timedelta(days=1)
     return int(parsed.timestamp())
+
+
+def parse_jst_time(value: str) -> str:
+    """Validate one exact H1 JST clock value in HH:00 format."""
+
+    try:
+        parsed = datetime.strptime(value, "%H:%M")
+    except ValueError as error:
+        raise RequestError("jstTime must use HH:00") from error
+    if parsed.strftime("%H:%M") != value or parsed.minute != 0:
+        raise RequestError("jstTime must use HH:00")
+    return value
 
 
 def escape_like(value: str) -> str:
@@ -1070,6 +1083,54 @@ class AlertDatabase:
         if to_date:
             clauses.append("o.anchor_jst_time < :to_time")
             parameters["to_time"] = parse_date_boundary(to_date, True)
+
+        jst_time = first("jstTime")
+        if jst_time:
+            clauses.append(
+                "strftime('%H:%M', o.anchor_jst_time, 'unixepoch') = :jst_time"
+            )
+            parameters["jst_time"] = parse_jst_time(jst_time)
+
+        sync_time_frames: list[str] = []
+        seen_sync_time_frames: set[str] = set()
+        for raw_time_frame in query.get("syncTimeFrame", []):
+            time_frame = raw_time_frame.strip().upper()
+            if not time_frame or time_frame in seen_sync_time_frames:
+                continue
+            if time_frame not in OBSERVATION_SYNC_TIME_FRAMES:
+                raise RequestError(
+                    "syncTimeFrame must be MN1, W1, D1 or H4"
+                )
+            seen_sync_time_frames.add(time_frame)
+            sync_time_frames.append(time_frame)
+        if sync_time_frames:
+            placeholders: list[str] = []
+            for index, time_frame in enumerate(sync_time_frames):
+                parameter_name = f"sync_time_frame_{index}"
+                placeholders.append(f":{parameter_name}")
+                parameters[parameter_name] = time_frame
+            parameters["sync_time_frame_count"] = len(sync_time_frames)
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM zigzag_elliot_observation_timeframes AS sync_tf
+                    INNER JOIN zigzag_elliot_observation_timeframes AS h1_tf
+                            ON h1_tf.observation_id = sync_tf.observation_id
+                           AND h1_tf.time_frame_order = 4
+                    WHERE sync_tf.observation_id = o.id
+                      AND sync_tf.time_frame_text IN (
+                """
+                + ", ".join(placeholders)
+                + """
+                      )
+                      AND sync_tf.is_buy = h1_tf.is_buy
+                    GROUP BY sync_tf.observation_id
+                    HAVING COUNT(DISTINCT sync_tf.time_frame_text)
+                           = :sync_time_frame_count
+                )
+                """
+            )
 
         search_text = first("q")
         if search_text:
