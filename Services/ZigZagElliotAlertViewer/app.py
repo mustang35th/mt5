@@ -48,6 +48,38 @@ OBSERVATION_SYNC_TIME_FRAMES = {"MN1", "W1", "D1", "H4"}
 W1_TIME_FRAME = 32769
 REACT_CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
 
+# Keep this classification aligned with SymbolNameInfoAll.setGmo().
+GMO_SYMBOL_TARGETS = {
+    "USDJPY": True,
+    "EURJPY": True,
+    "GBPJPY": True,
+    "AUDJPY": True,
+    "NZDJPY": True,
+    "CADJPY": True,
+    "CHFJPY": True,
+    "EURUSD": True,
+    "GBPUSD": True,
+    "AUDUSD": True,
+    "NZDUSD": True,
+    "USDCAD": False,
+    "USDCHF": True,
+    "EURGBP": True,
+    "GBPAUD": True,
+    "GBPNZD": False,
+    "GBPCAD": False,
+    "GBPCHF": True,
+    "EURAUD": True,
+    "EURNZD": False,
+    "EURCAD": False,
+    "EURCHF": True,
+    "AUDNZD": True,
+    "AUDCAD": False,
+    "AUDCHF": False,
+    "NZDCAD": False,
+    "NZDCHF": False,
+    "CADCHF": False,
+}
+
 STATIC_CONTENT_TYPES = {
     "/legacy": ("index.html", "text/html; charset=utf-8"),
     "/legacy/": ("index.html", "text/html; charset=utf-8"),
@@ -260,6 +292,7 @@ BOOLEAN_COLUMNS = {
     "w1_is_wave_uptrend",
     "analysis_profile_is_legacy",
     "is_legacy",
+    "is_gmo_target",
 }
 
 
@@ -408,6 +441,52 @@ def escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def canonical_symbol_name(symbol_name: str | None) -> str | None:
+    """Resolve a canonical FX pair from a broker prefix/suffix symbol."""
+
+    if not isinstance(symbol_name, str):
+        return None
+    normalized = symbol_name.strip().upper()
+    if not normalized:
+        return None
+    matches = [symbol for symbol in GMO_SYMBOL_TARGETS if symbol in normalized]
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def is_gmo_target(symbol_name: str | None) -> bool:
+    """Return whether a canonical or decorated symbol is a GMO target."""
+
+    canonical = canonical_symbol_name(symbol_name)
+    if canonical is None:
+        return False
+    return GMO_SYMBOL_TARGETS[canonical]
+
+
+def sqlite_is_gmo_target(symbol_name: Any) -> int:
+    """Expose the GMO classification to SQLite filtering and projections."""
+
+    return int(is_gmo_target(symbol_name))
+
+
+def add_gmo_target_filter(
+    value: str | None,
+    symbol_column: str,
+    clauses: list[str],
+    parameters: dict[str, Any],
+) -> None:
+    """Add one validated GMO target predicate using a bound boolean value."""
+
+    mode = (value or "all").lower()
+    if mode not in {"all", "target", "excluded"}:
+        raise RequestError("gmoTarget must be target, excluded or all")
+    if mode == "all":
+        return
+    clauses.append(f"is_gmo_target({symbol_column}) = :is_gmo_target")
+    parameters["is_gmo_target"] = int(mode == "target")
+
+
 def analysis_profile_key(
     analysis_version: str,
     analysis_input_hash: str,
@@ -445,6 +524,12 @@ class AlertDatabase:
         """Apply defensive read-only pragmas to every DBAPI connection."""
 
         del connection_record
+        dbapi_connection.create_function(
+            "is_gmo_target",
+            1,
+            sqlite_is_gmo_target,
+            deterministic=True,
+        )
         cursor = dbapi_connection.cursor()
         try:
             cursor.execute("PRAGMA query_only=ON")
@@ -1030,6 +1115,13 @@ class AlertDatabase:
             clauses.append("o.symbol_name = :symbol_name")
             parameters["symbol_name"] = symbol
 
+        add_gmo_target_filter(
+            first("gmoTarget"),
+            "o.symbol_name",
+            clauses,
+            parameters,
+        )
+
         analysis_version = first("analysisVersion")
         if analysis_version:
             clauses.append("o.analysis_version = :analysis_version")
@@ -1246,7 +1338,9 @@ class AlertDatabase:
                     o.id, o.run_id, r.run_uid, o.source_mode, o.source_server,
                     r.program_name, r.program_version, r.strategy,
                     r.strategy_version,
-                    o.symbol_name, o.anchor_time_frame,
+                    o.symbol_name,
+                    is_gmo_target(o.symbol_name) AS is_gmo_target,
+                    o.anchor_time_frame,
                     o.anchor_time_frame_text, o.anchor_bar_time,
                     o.anchor_bar_time_text, o.anchor_jst_time,
                     o.anchor_jst_time_text, o.capture_phase,
@@ -1439,7 +1533,9 @@ class AlertDatabase:
         """Return one full parent and all scalar timeframe snapshots."""
 
         parent_sql_template = """
-            SELECT o.*, r.run_uid, r.source, r.program_name, r.program_version,
+            SELECT o.*,
+                   is_gmo_target(o.symbol_name) AS is_gmo_target,
+                   r.run_uid, r.source, r.program_name, r.program_version,
                    r.strategy, r.strategy_version, r.tester_from, r.tester_to,
                    r.tester_model, r.started_at, r.started_at_text,
                    {analysis_profile_columns}
@@ -1544,6 +1640,13 @@ class AlertDatabase:
             if value:
                 clauses.append(f"{column_name} = :{parameter_name}")
                 parameters[parameter_name] = value
+
+        add_gmo_target_filter(
+            first("gmoTarget"),
+            "a.symbol_name",
+            clauses,
+            parameters,
+        )
 
         time_frames: list[str] = []
         seen_time_frames: set[str] = set()
@@ -1699,7 +1802,9 @@ class AlertDatabase:
                     a.current_bar_time, a.current_bar_time_text,
                     a.signal_reference_point_time,
                     a.signal_reference_point_time_text,
-                    a.symbol_name, a.time_frame, a.time_frame_text,
+                    a.symbol_name,
+                    is_gmo_target(a.symbol_name) AS is_gmo_target,
+                    a.time_frame, a.time_frame_text,
                     a.magic_number, a.strategy, a.side,
                     a.is_judge, a.signal_count, a.entry_count,
                     a.is_entry_count_match, a.is_entry_evaluated,
@@ -1849,6 +1954,7 @@ class AlertDatabase:
                 )
             ).one_or_none()
             alert = model_to_dict(alert_entity) or {}
+            alert["is_gmo_target"] = is_gmo_target(alert.get("symbol_name"))
             run = model_to_dict(run_entity)
             w1: dict[str, Any] | None = None
             if w1_entity is not None:

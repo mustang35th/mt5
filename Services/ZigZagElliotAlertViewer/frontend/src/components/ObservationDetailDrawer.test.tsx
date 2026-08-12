@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ObservationDetailParent,
@@ -31,6 +31,7 @@ function observation(id = 41): ObservationDetailParent {
     source: "ZigZagElliot",
     source_server: "MetaQuotes-Demo",
     symbol_name: id === 41 ? "CADJPY" : "EURUSD",
+    is_gmo_target: id === 41,
     anchor_bar_time: 1_786_384_800,
     anchor_bar_time_text: "2026.08.10 05:00:00",
     anchor_jst_time: 1_786_406_400,
@@ -149,7 +150,41 @@ function detailPayload(id = 41) {
   };
 }
 
+function detailPayloadWithM5() {
+  const payload = detailPayload();
+  return {
+    ...payload,
+    observation: {
+      ...payload.observation,
+      time_frame_count: 6,
+    },
+    time_frames: [
+      timeFrame(6, "M5", 5),
+      ...payload.time_frames,
+    ],
+  };
+}
+
+function provideGridLayoutSize() {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_440);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(1_440);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(800);
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+    bottom: 800,
+    height: 800,
+    left: 0,
+    right: 1_440,
+    top: 0,
+    width: 1_440,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
+}
+
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.classList.remove("drawer-open");
 });
@@ -169,12 +204,21 @@ describe("ObservationDetailDrawer", () => {
     );
     expect(screen.getByText("JST 2026.08.10 11:00:00 / Server 2026.08.10 05:00:00")).toBeInTheDocument();
     expect(screen.getByText("Run 7")).toBeInTheDocument();
-    expect(screen.getAllByText("上昇")).toHaveLength(1);
-    expect(screen.getAllByText("下降")).toHaveLength(4);
+    expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
+    expect(screen.getAllByText("▲ 上昇")).toHaveLength(1);
+    expect(screen.getAllByText("▼ 下降")).toHaveLength(4);
+    expect(screen.getAllByText("▲3 [3] / i [1]")).toHaveLength(1);
+    expect(screen.getAllByText("▼3 [3] / i [1]")).toHaveLength(4);
     expect(screen.queryByText("Бе")).not.toBeInTheDocument();
     expect(screen.getAllByText(/O 105\.10000 \/ H 105\.30000/)).toHaveLength(5);
     expect(screen.getAllByText("105.50000 / 105.70000")).toHaveLength(5);
-    expect(screen.getAllByText("count 3 / Main 75.12 / Signal 70.34")).toHaveLength(5);
+    expect(screen.getAllByText("count +3 / Main 75.12 / Signal 70.34")).toHaveLength(5);
+    expect(screen.getAllByText("BUY / count +2")).toHaveLength(5);
+    expect(screen.getAllByText("+4 / +1")).toHaveLength(5);
+    expect(screen.getAllByText("+10.0 pips")).toHaveLength(5);
+    expect(screen.getAllByText("+2.5 / +30.0 pips")).toHaveLength(5);
+    expect(screen.getAllByText("+1 / +1")).toHaveLength(5);
+    expect(screen.getAllByText("5 / 0 / +5")).toHaveLength(5);
     expect(screen.getAllByText("105.25000 / 105.15000")).toHaveLength(5);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
@@ -190,6 +234,115 @@ describe("ObservationDetailDrawer", () => {
     fireEvent.click(screen.getByText("監査情報を表示"), { detail: 1 });
     expect(screen.getByText("analysis-hash")).toBeVisible();
     expect(screen.getByRole("button", { name: "H1観測詳細を閉じる" })).toHaveFocus();
+  });
+
+  it("switches between cards and the full-screen grid without refetching", async () => {
+    provideGridLayoutSize();
+    const fetchMock = vi.fn(async () => jsonResponse(detailPayload()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    const cardButton = screen.getByRole("button", { name: "カード表示" });
+    const gridButton = screen.getByRole("button", { name: "全画面グリッド" });
+
+    expect(cardButton).toHaveAttribute("aria-pressed", "true");
+    expect(gridButton).toHaveAttribute("aria-pressed", "false");
+    expect(dialog).not.toHaveClass("observation-grid-mode");
+    expect(screen.getAllByRole("article")).toHaveLength(5);
+    expect(screen.queryByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).not.toBeInTheDocument();
+
+    fireEvent.click(gridButton);
+
+    expect(cardButton).toHaveAttribute("aria-pressed", "false");
+    expect(gridButton).toHaveAttribute("aria-pressed", "true");
+    expect(dialog).toHaveClass("observation-grid-mode");
+    expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    await waitFor(() => {
+      const hasValue = (columnId: string, expected: string) => Array.from(
+        grid.querySelectorAll<HTMLElement>(`.ag-cell[col-id="${columnId}"]`),
+      ).some((cell) => cell.textContent?.includes(expected));
+      expect(hasValue("oscillator", "BUY / count +2")).toBe(true);
+      expect(hasValue("elliott_sub", "▲3 [3] / i [1]")).toBe(true);
+      expect(hasValue("elliott_sub", "▼3 [3] / i [1]")).toBe(true);
+      expect(hasValue("wave_direction", "▲ 上昇")).toBe(true);
+      expect(hasValue("wave_direction", "▼ 下降")).toBe(true);
+      expect(hasValue("stochastic_short", "count +3 / Main 75.12 / Signal 70.34")).toBe(true);
+      expect(hasValue("gmma_trend_cross", "+4 / +1")).toBe(true);
+      expect(hasValue("ema30_ema60_diff_pips", "+10.0 pips")).toBe(true);
+      expect(hasValue("ema200_slope_distance", "+2.5 / +30.0 pips")).toBe(true);
+      expect(hasValue("ema200_position_slope_code", "+1 / +1")).toBe(true);
+      expect(hasValue("ema200_counts", "5 / 0 / +5")).toBe(true);
+    });
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(cardButton);
+
+    expect(cardButton).toHaveAttribute("aria-pressed", "true");
+    expect(gridButton).toHaveAttribute("aria-pressed", "false");
+    expect(dialog).not.toHaveClass("observation-grid-mode");
+    expect(screen.queryByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(5);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders future timeframe rows dynamically in stored order", async () => {
+    provideGridLayoutSize();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayloadWithM5())));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    expect((await within(grid).findAllByRole("rowheader")).map((cell) => cell.textContent)).toEqual([
+      "MN1",
+      "W1",
+      "D1",
+      "H4",
+      "H1基準足",
+      "M5",
+    ]);
+  });
+
+  it("keeps only the timeframe column pinned on narrow screens", async () => {
+    provideGridLayoutSize();
+    vi.spyOn(window, "matchMedia").mockImplementation((query: string): MediaQueryList => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => true,
+    }));
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayload())));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+
+    await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    const region = screen.getByRole("region", { name: "時間足別 H1新規足スナップショットグリッド" });
+    await waitFor(() => {
+      const pinnedAreas = region.querySelectorAll<HTMLElement>(".ag-grid-pinned-left-cells");
+      const timeFrameCells = region.querySelectorAll<HTMLElement>('.ag-cell[col-id="time_frame_text"]');
+      const directionCells = region.querySelectorAll<HTMLElement>('.ag-cell[col-id="buy_sell_label"]');
+      const elliottCells = region.querySelectorAll<HTMLElement>('.ag-cell[col-id="elliott_sub"]');
+      expect(pinnedAreas.length).toBeGreaterThan(0);
+      expect(Array.from(pinnedAreas).every((area) => area.style.width === "132px")).toBe(true);
+      expect(timeFrameCells.length).toBeGreaterThan(0);
+      expect(Array.from(timeFrameCells).every((cell) => cell.classList.contains("ag-cell-last-left-pinned"))).toBe(true);
+      expect(Array.from(directionCells).some((cell) => cell.classList.contains("ag-cell-last-left-pinned"))).toBe(false);
+      expect(Array.from(elliottCells).some((cell) => cell.classList.contains("ag-cell-last-left-pinned"))).toBe(false);
+    });
   });
 
   it("shows the optional-table unavailable state", async () => {

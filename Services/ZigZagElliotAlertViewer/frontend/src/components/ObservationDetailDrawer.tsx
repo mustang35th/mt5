@@ -5,14 +5,24 @@ import type {
   ObservationDetailResponse,
   ObservationDetailTimeFrame,
 } from "../api/types";
-import { displayValue, formatNumber, sideClass } from "../lib/format";
+import {
+  displayValue,
+  elliottDirectionSymbol,
+  formatElliottDirection,
+  formatNumber,
+  formatSignedNumber,
+  sideClass,
+} from "../lib/format";
+import { GmoTargetBadge } from "./GmoTargetBadge";
+import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 
 interface ObservationDetailDrawerProps {
   observationId: number | null;
   onClose: () => void;
+  styleNonce?: string;
 }
 
-const TIME_FRAME_ORDER = ["MN1", "W1", "D1", "H4", "H1"] as const;
+type ObservationDetailView = "cards" | "grid";
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -43,7 +53,7 @@ function TimeFrameValue({ label, value }: { label: string; value: unknown }) {
 function waveLabel(timeFrame: ObservationDetailTimeFrame): string {
   const main = displayValue(timeFrame.latest_elliot_label);
   const sub = displayValue(timeFrame.latest_sub_elliot_label);
-  return `${main} [${timeFrame.latest_elliot_index}] / ${sub} [${timeFrame.latest_sub_elliot_index}]`;
+  return `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)}${main} [${timeFrame.latest_elliot_index}] / ${sub} [${timeFrame.latest_sub_elliot_index}]`;
 }
 
 function ohlcLabel(
@@ -56,7 +66,7 @@ function ohlcLabel(
 }
 
 function stochasticLabel(count: number, main: number, signal: number): string {
-  return `count ${formatNumber(count, 0)} / Main ${formatNumber(main, 2)} / Signal ${formatNumber(signal, 2)}`;
+  return `count ${formatSignedNumber(count, 0)} / Main ${formatNumber(main, 2)} / Signal ${formatNumber(signal, 2)}`;
 }
 
 function ema200Direction(timeFrame: ObservationDetailTimeFrame): string {
@@ -72,7 +82,7 @@ function fePrice(timeFrame: ObservationDetailTimeFrame, value: number): string {
 }
 
 function TimeFrameCard({ timeFrame }: { timeFrame: ObservationDetailTimeFrame }) {
-  const waveDirection = timeFrame.is_wave_uptrend ? "上昇" : "下降";
+  const waveDirection = formatElliottDirection(timeFrame.is_wave_uptrend);
   const feDistance = timeFrame.is_fibo_expansion_available
     ? `${formatNumber(timeFrame.distance_to_fe2000_pips)} pips`
     : "—";
@@ -142,7 +152,7 @@ function TimeFrameCard({ timeFrame }: { timeFrame: ObservationDetailTimeFrame })
         <TimeFrameValue label="FE200距離" value={feDistance} />
         <TimeFrameValue
           label="Oscillator"
-          value={`${timeFrame.is_oscillator_buy ? "BUY" : "SELL"} / count ${formatNumber(timeFrame.oscillator_count, 0)}`}
+          value={`${timeFrame.is_oscillator_buy ? "BUY" : "SELL"} / count ${formatSignedNumber(timeFrame.oscillator_count, 0)}`}
         />
         <TimeFrameValue
           label="Stochastic"
@@ -174,7 +184,7 @@ function TimeFrameCard({ timeFrame }: { timeFrame: ObservationDetailTimeFrame })
         />
         <TimeFrameValue
           label="GMMA trend / cross"
-          value={`${formatNumber(timeFrame.gmma_trend_count, 0)} / ${formatNumber(timeFrame.gmma_cross_count, 0)}`}
+          value={`${formatSignedNumber(timeFrame.gmma_trend_count, 0)} / ${formatSignedNumber(timeFrame.gmma_cross_count, 0)}`}
         />
         <TimeFrameValue
           label="EMA30 / EMA60"
@@ -182,7 +192,7 @@ function TimeFrameCard({ timeFrame }: { timeFrame: ObservationDetailTimeFrame })
         />
         <TimeFrameValue
           label="EMA30-60距離"
-          value={`${formatNumber(timeFrame.ema30_ema60_diff_pips)} pips`}
+          value={`${formatSignedNumber(timeFrame.ema30_ema60_diff_pips)} pips`}
         />
         <TimeFrameValue label="ATR14" value={`${formatNumber(timeFrame.atr14_pips)} pips`} />
         <TimeFrameValue label="EMA200判定" value={ema200Direction(timeFrame)} />
@@ -193,34 +203,25 @@ function TimeFrameCard({ timeFrame }: { timeFrame: ObservationDetailTimeFrame })
         <TimeFrameValue label="EMA200比較値" value={formatNumber(timeFrame.ema200_compare, 5)} />
         <TimeFrameValue
           label="EMA200傾き / 距離"
-          value={`${formatNumber(timeFrame.ema200_slope_pips)} / ${formatNumber(timeFrame.ema200_close_diff_pips)} pips`}
+          value={`${formatSignedNumber(timeFrame.ema200_slope_pips)} / ${formatSignedNumber(timeFrame.ema200_close_diff_pips)} pips`}
         />
         <TimeFrameValue
           label="EMA200位置 / 傾きcode"
-          value={`${formatNumber(timeFrame.ema200_close_position, 0)} / ${formatNumber(timeFrame.ema200_slope_direction, 0)}`}
+          value={`${formatSignedNumber(timeFrame.ema200_close_position, 0)} / ${formatSignedNumber(timeFrame.ema200_slope_direction, 0)}`}
         />
         <TimeFrameValue
           label="EMA200 上昇 / 下降 / trend"
-          value={`${formatNumber(timeFrame.ema200_up_count, 0)} / ${formatNumber(timeFrame.ema200_down_count, 0)} / ${formatNumber(timeFrame.ema200_trend_count, 0)}`}
+          value={`${formatNumber(timeFrame.ema200_up_count, 0)} / ${formatNumber(timeFrame.ema200_down_count, 0)} / ${formatSignedNumber(timeFrame.ema200_trend_count, 0)}`}
         />
       </div>
     </article>
   );
 }
 
-function timeFrameIndex(timeFrame: ObservationDetailTimeFrame): number {
-  const index = TIME_FRAME_ORDER.indexOf(
-    timeFrame.time_frame_text as (typeof TIME_FRAME_ORDER)[number],
-  );
-  return index < 0 ? TIME_FRAME_ORDER.length : index;
-}
-
 function orderedTimeFrames(
   timeFrames: ObservationDetailTimeFrame[],
 ): ObservationDetailTimeFrame[] {
   return [...timeFrames].sort((left, right) => {
-    const orderDifference = timeFrameIndex(left) - timeFrameIndex(right);
-    if (orderDifference !== 0) return orderDifference;
     const storedOrderDifference = left.time_frame_order - right.time_frame_order;
     if (storedOrderDifference !== 0) return storedOrderDifference;
     return left.id - right.id;
@@ -267,10 +268,43 @@ function AuditDetails({
   );
 }
 
-function DetailContent({ response }: { response: ObservationDetailResponse }) {
+function DetailContent({
+  response,
+  styleNonce,
+  view,
+}: {
+  response: ObservationDetailResponse;
+  styleNonce?: string;
+  view: ObservationDetailView;
+}) {
   const observation = response.observation;
   if (!observation) return null;
   const timeFrames = orderedTimeFrames(response.time_frames);
+
+  if (view === "grid") {
+    return (
+      <section className="observation-snapshot-grid-content">
+        <div className="observation-snapshot-grid-context">
+          <div>
+            <p className="eyebrow">TIMEFRAME COMPARISON</p>
+            <div className="observation-snapshot-grid-symbol">
+              <strong>{observation.symbol_name}</strong>
+              <GmoTargetBadge isTarget={observation.is_gmo_target} />
+            </div>
+          </div>
+          <div className="observation-snapshot-grid-context-values">
+            <span>JST {displayValue(observation.anchor_jst_time_text)}</span>
+            <span>Server {displayValue(observation.anchor_bar_time_text)}</span>
+            <span>Run {observation.run_id}</span>
+          </div>
+        </div>
+        <ObservationTimeFrameSnapshotGrid
+          styleNonce={styleNonce}
+          timeFrames={timeFrames}
+        />
+      </section>
+    );
+  }
 
   return (
     <>
@@ -281,7 +315,10 @@ function DetailContent({ response }: { response: ObservationDetailResponse }) {
             <Badge text={observation.anchor_time_frame_text} />
             <Badge text={observation.capture_phase} />
           </div>
-          <h3 className="detail-title">{observation.symbol_name}</h3>
+          <div className="detail-title-line">
+            <h3 className="detail-title">{observation.symbol_name}</h3>
+            <GmoTargetBadge isTarget={observation.is_gmo_target} />
+          </div>
           <p className="subtitle">
             JST {displayValue(observation.anchor_jst_time_text)} / Server {displayValue(observation.anchor_bar_time_text)}
           </p>
@@ -329,12 +366,14 @@ function DetailContent({ response }: { response: ObservationDetailResponse }) {
 export function ObservationDetailDrawer({
   observationId,
   onClose,
+  styleNonce,
 }: ObservationDetailDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [response, setResponse] = useState<ObservationDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [view, setView] = useState<ObservationDetailView>("cards");
   const isOpen = observationId !== null;
 
   useEffect(() => {
@@ -405,7 +444,7 @@ export function ObservationDetailDrawer({
   return (
     <dialog
       aria-labelledby="observationDetailTitle"
-      className="react-detail-dialog"
+      className={`react-detail-dialog observation-detail-dialog${view === "grid" ? " observation-grid-mode" : ""}`}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -418,15 +457,41 @@ export function ObservationDetailDrawer({
           <p className="eyebrow">H1 OBSERVATION SNAPSHOT</p>
           <h2 id="observationDetailTitle">{title}</h2>
         </div>
-        <button
-          aria-label="H1観測詳細を閉じる"
-          className="close-button"
-          onClick={onClose}
-          ref={closeButtonRef}
-          type="button"
-        >
-          ×
-        </button>
+        <div className="observation-detail-header-actions">
+          {response?.available && response.observation && (
+            <div
+              aria-label="時間足スナップショット表示"
+              className="observation-detail-view-toggle"
+              role="group"
+            >
+              <button
+                aria-pressed={view === "cards"}
+                className="secondary-button"
+                onClick={() => setView("cards")}
+                type="button"
+              >
+                カード表示
+              </button>
+              <button
+                aria-pressed={view === "grid"}
+                className="secondary-button"
+                onClick={() => setView("grid")}
+                type="button"
+              >
+                全画面グリッド
+              </button>
+            </div>
+          )}
+          <button
+            aria-label="H1観測詳細を閉じる"
+            className="close-button"
+            onClick={onClose}
+            ref={closeButtonRef}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
       </div>
       <div aria-busy={loading} className="drawer-body">
         {loading && (
@@ -441,7 +506,7 @@ export function ObservationDetailDrawer({
           </p>
         )}
         {!loading && !error && response?.available && response.observation && (
-          <DetailContent response={response} />
+          <DetailContent response={response} styleNonce={styleNonce} view={view} />
         )}
       </div>
     </dialog>

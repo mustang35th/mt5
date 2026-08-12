@@ -56,6 +56,7 @@ describe("FilterPanel", () => {
     expect(timeFrameSelect).toHaveTextContent("H1・M5");
     fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
     expect(timeFrameSelect).toHaveTextContent("すべて");
+    expect(screen.getByRole("combobox", { name: "GMO取引" })).toHaveValue("all");
   });
 
   it("marks all as selected and preserves an unknown URL value while editing", () => {
@@ -86,5 +87,17 @@ describe("FilterPanel", () => {
       { ...DEFAULT_SEARCH_STATE, timeFrames: ["M5", "H1"] },
       { ...DEFAULT_SEARCH_STATE, timeFrames: ["H1", "M5"] },
     )).toBe(false);
+  });
+
+  it("edits and compares the GMO target filter", () => {
+    render(<FilterPanelHarness />);
+
+    const gmoTarget = screen.getByRole("combobox", { name: "GMO取引" });
+    fireEvent.change(gmoTarget, { target: { value: "target" } });
+    expect(gmoTarget).toHaveValue("target");
+    expect(hasAlertUnappliedChanges(
+      { ...DEFAULT_SEARCH_STATE, gmoTarget: "target" },
+      DEFAULT_SEARCH_STATE,
+    )).toBe(true);
   });
 });

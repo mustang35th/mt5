@@ -500,7 +500,11 @@ export function H1ObservationView({
       {loadError && (
         <div className="toast" role="alert" aria-live="assertive">{loadError}</div>
       )}
-      <ObservationDetailDrawer observationId={selectedObservationId} onClose={closeDetail} />
+      <ObservationDetailDrawer
+        observationId={selectedObservationId}
+        onClose={closeDetail}
+        styleNonce={styleNonce}
+      />
     </Box>
   );
 }

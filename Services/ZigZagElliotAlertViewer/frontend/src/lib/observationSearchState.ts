@@ -25,6 +25,7 @@ export const DEFAULT_OBSERVATION_SEARCH_STATE: ObservationSearchState = {
   analysisInputHash: "",
   analysisProfileKind: "",
   symbol: "",
+  gmoTarget: "all",
   from: "",
   to: "",
   jstTime: "",
@@ -78,6 +79,7 @@ export function readObservationSearchState(search: string): ObservationSearchSta
     DEFAULT_OBSERVATION_SEARCH_STATE.pageSize,
   );
   const requestedProfileKind = params.get("analysisProfileKind");
+  const requestedGmoTarget = params.get("gmoTarget");
   const analysisProfileKind: "" | AnalysisProfileKind = requestedProfileKind === "profile"
     || requestedProfileKind === "legacy"
     ? requestedProfileKind
@@ -91,6 +93,9 @@ export function readObservationSearchState(search: string): ObservationSearchSta
       : params.get("analysisInputHash") || "",
     analysisProfileKind,
     symbol: params.get("symbol") || "",
+    gmoTarget: requestedGmoTarget === "target" || requestedGmoTarget === "excluded"
+      ? requestedGmoTarget
+      : "all",
     from: dateInputValue(params.get("from")),
     to: dateInputValue(params.get("to")),
     jstTime: timeInputValue(params.get("jstTime")),
@@ -119,6 +124,7 @@ export function buildObservationSearchParams(
     }
   }
   if (state.symbol) params.set("symbol", state.symbol);
+  if (state.gmoTarget !== "all") params.set("gmoTarget", state.gmoTarget);
   if (state.from) params.set("from", state.from);
   if (state.to) params.set("to", state.to);
   const jstTime = timeInputValue(state.jstTime);

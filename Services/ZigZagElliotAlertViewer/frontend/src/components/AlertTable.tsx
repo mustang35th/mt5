@@ -29,6 +29,7 @@ import {
   writeGridColumnLayout,
   writeGridDensity,
 } from "../lib/gridPreferences";
+import { GmoTargetBadge } from "./GmoTargetBadge";
 import { GridControls, type GridColumnOption } from "./GridControls";
 
 interface AlertTableProps {
@@ -231,7 +232,10 @@ function SymbolCell(params: ICellRendererParams<AlertListItem>) {
   if (!alert) return null;
   return (
     <div className="grid-cell-stack">
-      <span className="symbol">{alert.symbol_name}</span>
+      <span className="symbol-gmo-line">
+        <span className="symbol">{alert.symbol_name}</span>
+        <GmoTargetBadge compact isTarget={alert.is_gmo_target} />
+      </span>
       <span className="subtext">Run {alert.run_id}</span>
     </div>
   );

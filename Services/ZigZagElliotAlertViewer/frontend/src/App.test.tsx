@@ -474,7 +474,11 @@ describe("App", () => {
     for (const timeFrame of ["MN1", "W1", "D1", "H4", "H1"]) {
       expect(screen.getByRole("columnheader", { name: timeFrame })).toBeInTheDocument();
     }
-    expect(screen.getAllByLabelText(/^(上昇|下降)、/)).toHaveLength(5);
+    expect(screen.getAllByLabelText(/^(▲ 上昇|▼ 下降)、/)).toHaveLength(5);
+    expect(screen.getAllByText(/^[▲▼]・/)).toHaveLength(5);
+    expect(screen.getAllByText(/Elliott ▲3 \/ 3-1/)).toHaveLength(3);
+    expect(screen.getAllByText(/Elliott ▼3 \/ 3-1/)).toHaveLength(2);
+    expect(screen.getAllByText(/GMMA T\+3\/C0/)).toHaveLength(5);
     expect(screen.queryByText("Бе")).not.toBeInTheDocument();
     expect(screen.queryByText(/最新点 JST 2026\.08\.10 07:00:00/)).not.toBeInTheDocument();
     const detailButton = screen.getByRole("button", {

@@ -13,6 +13,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMemo, type FormEvent } from "react";
 import type {
+  GmoTargetFilter,
   ObservationAnalysisProfile,
   ObservationOptionsResponse,
   ObservationSearchState,
@@ -128,6 +129,12 @@ function sameSyncTimeFrames(
     && [...firstValues].every((timeFrame) => secondValues.has(timeFrame));
 }
 
+function gmoTargetSummary(gmoTarget: GmoTargetFilter): string {
+  if (gmoTarget === "target") return "対象";
+  if (gmoTarget === "excluded") return "対象外";
+  return "すべて";
+}
+
 export function observationFilterSummary(value: ObservationSearchState): string {
   const mode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
@@ -143,7 +150,8 @@ export function observationFilterSummary(value: ObservationSearchState): string 
   const synchronization = value.syncTimeFrames.length > 0
     ? `上位足同期 ${value.syncTimeFrames.join("・")}`
     : "上位足同期なし";
-  return `${mode} / ${run} / ${profile} / ${symbol} / ${period} / ${jstTime} / ${synchronization}`;
+  return `${mode} / ${run} / ${profile} / ${symbol} / ${period} / ${jstTime} / ${synchronization}`
+    + ` / GMO取引 ${gmoTargetSummary(value.gmoTarget)}`;
 }
 
 export function hasObservationUnappliedChanges(
@@ -156,6 +164,7 @@ export function hasObservationUnappliedChanges(
     || value.analysisInputHash !== appliedValue.analysisInputHash
     || value.analysisProfileKind !== appliedValue.analysisProfileKind
     || value.symbol !== appliedValue.symbol
+    || value.gmoTarget !== appliedValue.gmoTarget
     || value.from !== appliedValue.from
     || value.to !== appliedValue.to
     || value.jstTime !== appliedValue.jstTime
@@ -379,6 +388,24 @@ export function ObservationFilterPanel({
             >
               <MenuItem value="">すべて</MenuItem>
               {options.symbols.map((symbol) => <MenuItem key={symbol} value={symbol}>{symbol}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small">
+            <InputLabel id="observationGmoTargetLabel">GMO取引</InputLabel>
+            <Select
+              labelId="observationGmoTargetLabel"
+              label="GMO取引"
+              value={value.gmoTarget}
+              onChange={(event) => {
+                const gmoTarget = event.target.value;
+                if (gmoTarget === "all" || gmoTarget === "target" || gmoTarget === "excluded") {
+                  onChange({ ...value, gmoTarget });
+                }
+              }}
+            >
+              <MenuItem value="all">すべて</MenuItem>
+              <MenuItem value="target">対象</MenuItem>
+              <MenuItem value="excluded">対象外</MenuItem>
             </Select>
           </FormControl>
           <TextField

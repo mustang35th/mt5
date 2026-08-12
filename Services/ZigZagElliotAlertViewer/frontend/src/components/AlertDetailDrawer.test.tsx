@@ -24,6 +24,7 @@ function detailPayload(alertId = 74) {
       id: alertId,
       run_id: 3,
       symbol_name: alertId === 74 ? "AUDUSD" : "USDJPY",
+      is_gmo_target: alertId === 74,
       side: "BUY",
       current_bar_time_text: "2026.07.30 19:00:00",
       alert_title: "test <img onerror=alert(1)>",
@@ -52,8 +53,8 @@ function detailPayload(alertId = 74) {
       spread_pips: 1.2,
       currency_strength_status: 0,
       is_currency_strength_available: false,
-      long_medium_rank_difference: 0,
-      medium_short_rank_difference: 0,
+      long_medium_rank_difference: 5,
+      medium_short_rank_difference: -3,
       market_signal_key: `market-${alertId}`,
       alert_text: "<script>alert('x')</script>",
       is_w1_aligned: null,
@@ -77,15 +78,15 @@ function timeFrame(id: number, label: string, order: number) {
     is_wave_confirmed: label === "MN1",
     is_wave_motive: true,
     is_wave_uptrend: false,
-    wave_trend_label: "DOWN",
+    wave_trend_label: "▼",
     latest_wave_index: 3,
     point_count: 2,
     latest_elliot_label: "3",
     latest_sub_elliot_label: "iii",
     stochastic_main_order_text: "BUY",
     stochastic_main_direction_text: "BUY",
-    gmma_trend_count: 0,
-    gmma_cross_count: 0,
+    gmma_trend_count: 3,
+    gmma_cross_count: -2,
     is_ema200_buy: false,
     is_ema200_sell: false,
     atr14_pips: 10,
@@ -148,9 +149,13 @@ describe("AlertDetailDrawer", () => {
     expect(await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(screen.getByText("W1不明")).toBeInTheDocument();
-    expect(screen.getAllByText("DOWN / 下降 (DOWN)")).toHaveLength(5);
+    expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
+    expect(screen.getAllByText("▼ DOWN / 下降")).toHaveLength(5);
+    expect(screen.getAllByText("▼3.iii")).toHaveLength(5);
     expect(screen.getByText("0.00000")).toBeInTheDocument();
     expect(screen.getByText(/SL — \/ Risk 50.0 pips/)).toBeInTheDocument();
+    expect(screen.getAllByText("trend +3 / cross -2")).toHaveLength(5);
+    expect(screen.getByText("+5 / -3")).toBeInTheDocument();
     expect(screen.getAllByText("未取得").length).toBeGreaterThan(0);
     const wavePointContainer = screen.getByRole("group", { name: "時間足別最新Waveポイント" });
     const pointGroups = Array.from(wavePointContainer.querySelectorAll(".wave-point-timeframe-group"));

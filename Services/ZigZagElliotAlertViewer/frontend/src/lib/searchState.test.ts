@@ -9,10 +9,11 @@ import {
 
 describe("searchState", () => {
   it("restores valid URL values and rejects unsupported sorting", () => {
-    const state = readSearchState("?sourceMode=TESTER&runId=3&timeFrame=H1&side=BUY&w1Aligned=unknown&page=2&pageSize=25&sort=bad&order=asc");
+    const state = readSearchState("?sourceMode=TESTER&runId=3&gmoTarget=target&timeFrame=H1&side=BUY&w1Aligned=unknown&page=2&pageSize=25&sort=bad&order=asc");
     expect(state).toMatchObject({
       sourceMode: "TESTER",
       runId: 3,
+      gmoTarget: "target",
       timeFrames: ["H1"],
       side: "BUY",
       w1Aligned: "unknown",
@@ -28,9 +29,21 @@ describe("searchState", () => {
     expect(params.get("sourceMode")).toBe("LIVE");
     expect(params.has("runId")).toBe(false);
     expect(params.has("timeFrame")).toBe(false);
+    expect(params.has("gmoTarget")).toBe(false);
     expect(params.has("w1Aligned")).toBe(false);
     expect(params.get("page")).toBe("1");
     expect(params.get("sort")).toBe("jst_time");
+  });
+
+  it("restores and serializes only supported GMO target filters", () => {
+    expect(readSearchState("?gmoTarget=target").gmoTarget).toBe("target");
+    expect(readSearchState("?gmoTarget=excluded").gmoTarget).toBe("excluded");
+    expect(readSearchState("?gmoTarget=TARGET").gmoTarget).toBe("all");
+    expect(readSearchState("?gmoTarget=all").gmoTarget).toBe("all");
+    expect(buildSearchParams({ ...DEFAULT_SEARCH_STATE, gmoTarget: "target" }).get("gmoTarget"))
+      .toBe("target");
+    expect(buildSearchParams({ ...DEFAULT_SEARCH_STATE, gmoTarget: "excluded" }).get("gmoTarget"))
+      .toBe("excluded");
   });
 
   it("restores legacy and repeated alert time frame filters", () => {

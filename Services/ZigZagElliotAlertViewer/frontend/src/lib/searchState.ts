@@ -5,6 +5,7 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
   runId: null,
   q: "",
   symbol: "",
+  gmoTarget: "all",
   timeFrames: [],
   side: "",
   rank: "",
@@ -55,6 +56,7 @@ export function readSearchState(search: string): SearchState {
     : "LIVE";
   const side = params.get("side");
   const alignment = params.get("w1Aligned");
+  const requestedGmoTarget = params.get("gmoTarget");
   const sort = params.get("sort") as AlertSort | null;
   const requestedPageSize = positiveInteger(params.get("pageSize"), DEFAULT_SEARCH_STATE.pageSize);
   const pageSize = [25, 50, 100].includes(requestedPageSize)
@@ -68,6 +70,9 @@ export function readSearchState(search: string): SearchState {
     runId: params.has("runId") ? positiveInteger(params.get("runId"), 0) || null : null,
     q: params.get("q") || "",
     symbol: params.get("symbol") || "",
+    gmoTarget: requestedGmoTarget === "target" || requestedGmoTarget === "excluded"
+      ? requestedGmoTarget
+      : "all",
     timeFrames,
     side: side === "BUY" || side === "SELL" ? side : "",
     rank: params.get("rank") || "",
@@ -98,6 +103,7 @@ export function buildSearchParams(
   if (state.runId !== null) params.set("runId", String(state.runId));
   if (state.q.trim()) params.set("q", state.q.trim());
   if (state.symbol) params.set("symbol", state.symbol);
+  if (state.gmoTarget !== "all") params.set("gmoTarget", state.gmoTarget);
   for (const timeFrame of new Set(state.timeFrames.map((value) => value.trim()).filter(Boolean))) {
     params.append("timeFrame", timeFrame);
   }

@@ -3,6 +3,7 @@ export type SourceMode = "LIVE" | "TESTER" | "all";
 export type AnalysisProfileKind = "profile" | "legacy";
 export type ViewerTab = "alerts" | "h1";
 export type W1Alignment = "all" | "aligned" | "mismatched" | "unknown";
+export type GmoTargetFilter = "all" | "target" | "excluded";
 export type SortOrder = "asc" | "desc";
 export type AlertSort =
   | "jst_time"
@@ -19,6 +20,7 @@ export interface SearchState {
   runId: number | null;
   q: string;
   symbol: string;
+  gmoTarget: GmoTargetFilter;
   timeFrames: string[];
   side: "" | AlertSide;
   rank: string;
@@ -91,6 +93,7 @@ export interface AlertListItem {
   jst_time_text: string;
   server_time_text: string;
   symbol_name: string;
+  is_gmo_target?: boolean;
   time_frame_text: string;
   strategy: string;
   side: AlertSide;
@@ -136,6 +139,7 @@ export interface AlertDetail {
   id: number;
   run_id: number;
   symbol_name: string;
+  is_gmo_target?: boolean;
   side: AlertSide;
   current_bar_time_text: string;
   alert_title: string;
@@ -263,6 +267,7 @@ export interface ObservationSearchState {
   analysisInputHash: string;
   analysisProfileKind: "" | AnalysisProfileKind;
   symbol: string;
+  gmoTarget: GmoTargetFilter;
   from: string;
   to: string;
   jstTime: string;
@@ -316,6 +321,7 @@ export interface ObservationListItem {
   source_mode: string;
   source_server: string;
   symbol_name: string;
+  is_gmo_target?: boolean;
   anchor_bar_time: number;
   anchor_bar_time_text: string;
   anchor_jst_time: number;

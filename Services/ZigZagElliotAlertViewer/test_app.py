@@ -16,11 +16,14 @@ from pathlib import Path
 from app import (
     AlertDatabase,
     DEFAULT_HOST,
+    GMO_SYMBOL_TARGETS,
     MAX_TIME_FRAME_FILTERS,
     OBSERVATION_REQUIRED_COLUMNS,
     RequestError,
     ViewerServer,
     W1_TIME_FRAME,
+    canonical_symbol_name,
+    is_gmo_target,
 )
 
 
@@ -1338,6 +1341,7 @@ class ObservationDatabaseTest(unittest.TestCase):
                 "analysis_input_text",
                 "analysis_profile_is_legacy",
                 "analysis_profile_kind",
+                "is_gmo_target",
             }
         )
         self.assertEqual(expected_parent_columns, set(detail["observation"]))
@@ -1998,6 +2002,149 @@ class ObservationDatabaseTest(unittest.TestCase):
             "2024.01.02 09:00:00",
             run_three["last_observation_jst_time_text"],
         )
+
+
+class GmoTargetTest(unittest.TestCase):
+    """Verify derived GMO classification across both API data sets."""
+
+    def test_canonical_prefix_and_suffix_symbols_use_the_28_pair_profile(
+        self,
+    ) -> None:
+        """Resolve broker decorations without changing the persisted symbol."""
+
+        self.assertEqual(28, len(GMO_SYMBOL_TARGETS))
+        self.assertEqual(18, sum(GMO_SYMBOL_TARGETS.values()))
+        self.assertEqual("EURUSD", canonical_symbol_name("eurusd"))
+        self.assertEqual("EURUSD", canonical_symbol_name("gmo.EURUSD.a"))
+        self.assertEqual("USDCAD", canonical_symbol_name("USDCAD.pro"))
+        self.assertTrue(is_gmo_target("gmo.EURUSD.a"))
+        self.assertFalse(is_gmo_target("USDCAD.pro"))
+        self.assertFalse(is_gmo_target("UNKNOWN"))
+
+    def test_alert_list_summary_and_detail_expose_the_same_classification(
+        self,
+    ) -> None:
+        """Keep alert filtering, totals and detail fields consistent."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_alert_summary_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "UPDATE zigzag_elliot_alerts "
+                    "SET symbol_name = 'gmo.EURUSD.a' WHERE id = 1"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_alerts "
+                    "SET symbol_name = 'USDCAD.pro' WHERE id = 2"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                target_page = database.alerts({"gmoTarget": ["target"]})
+                target_summary = database.summary({"gmoTarget": ["target"]})
+                excluded_page = database.alerts({"gmoTarget": ["excluded"]})
+                excluded_summary = database.summary(
+                    {"gmoTarget": ["excluded"]}
+                )
+            finally:
+                database.close()
+
+        self.assertEqual(target_page["total"], target_summary["total_count"])
+        self.assertEqual(2, target_page["total"])
+        self.assertTrue(
+            all(item["is_gmo_target"] for item in target_page["items"])
+        )
+        self.assertEqual(
+            excluded_page["total"], excluded_summary["total_count"]
+        )
+        self.assertEqual(1, excluded_page["total"])
+        self.assertFalse(excluded_page["items"][0]["is_gmo_target"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "detail.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "UPDATE zigzag_elliot_alerts "
+                    "SET symbol_name = 'broker.EURUSD.a' WHERE id = 1"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                database.validate()
+                detail = database.alert_detail(1)
+            finally:
+                database.close()
+
+        self.assertTrue(detail["alert"]["is_gmo_target"])
+
+    def test_observation_list_summary_and_detail_share_gmo_filter(self) -> None:
+        """Classify observation parents in page, summary and detail APIs."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "observations.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "UPDATE zigzag_elliot_observations "
+                    "SET symbol_name = 'broker.EURUSD.a' WHERE id = 1"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observations "
+                    "SET symbol_name = 'USDCAD.pro' WHERE id = 2"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                target_page = database.observations(
+                    {"gmoTarget": ["target"]}
+                )
+                target_summary = database.observation_summary(
+                    {"gmoTarget": ["target"]}
+                )
+                excluded_page = database.observations(
+                    {"gmoTarget": ["excluded"]}
+                )
+                excluded_summary = database.observation_summary(
+                    {"gmoTarget": ["excluded"]}
+                )
+                target_detail = database.observation_detail(1)
+                excluded_detail = database.observation_detail(2)
+            finally:
+                database.close()
+
+        self.assertEqual(target_page["total"], target_summary["total_count"])
+        self.assertEqual(2, target_page["total"])
+        self.assertTrue(
+            all(item["is_gmo_target"] for item in target_page["items"])
+        )
+        self.assertEqual(
+            excluded_page["total"], excluded_summary["total_count"]
+        )
+        self.assertEqual(1, excluded_page["total"])
+        self.assertFalse(excluded_page["items"][0]["is_gmo_target"])
+        self.assertTrue(target_detail["observation"]["is_gmo_target"])
+        self.assertFalse(excluded_detail["observation"]["is_gmo_target"])
+
+    def test_invalid_gmo_filter_is_rejected_for_both_data_sets(self) -> None:
+        """Return the standard bad-request error for unsupported values."""
+
+        for parser in (
+            AlertDatabase.parse_filters,
+            AlertDatabase.parse_observation_filters,
+        ):
+            with self.subTest(parser=parser.__name__):
+                with self.assertRaisesRegex(
+                    RequestError,
+                    "gmoTarget must be target, excluded or all",
+                ) as raised:
+                    parser({"gmoTarget": ["maybe"]})
+                self.assertEqual(400, raised.exception.status)
+                self.assertNotIn(
+                    "is_gmo_target",
+                    parser({"gmoTarget": ["all"]}).where_sql,
+                )
 
 
 if __name__ == "__main__":

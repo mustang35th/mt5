@@ -4,7 +4,13 @@ import ListItemText from "@mui/material/ListItemText";
 import MenuItem from "@mui/material/MenuItem";
 import Select, { type SelectChangeEvent } from "@mui/material/Select";
 import { useState, type FormEvent } from "react";
-import type { OptionsResponse, RunItem, SearchState, SourceMode } from "../api/types";
+import type {
+  GmoTargetFilter,
+  OptionsResponse,
+  RunItem,
+  SearchState,
+  SourceMode,
+} from "../api/types";
 
 interface FilterPanelProps {
   value: SearchState;
@@ -26,6 +32,7 @@ const SEARCH_VALUE_KEYS: ReadonlyArray<keyof SearchState> = [
   "runId",
   "q",
   "symbol",
+  "gmoTarget",
   "side",
   "rank",
   "w1Aligned",
@@ -48,6 +55,12 @@ function timeFrameSummary(timeFrames: string[], emptyLabel: string): string {
   return `${timeFrames.slice(0, 2).join("・")}＋${timeFrames.length - 2}`;
 }
 
+function gmoTargetSummary(gmoTarget: GmoTargetFilter): string {
+  if (gmoTarget === "target") return "対象";
+  if (gmoTarget === "excluded") return "対象外";
+  return "すべて";
+}
+
 export function alertFilterSummary(value: SearchState): string {
   const sourceMode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
@@ -63,7 +76,8 @@ export function alertFilterSummary(value: SearchState): string {
   const additionalFilters = additionalFilterCount > 0
     ? ` / 絞り込み ${additionalFilterCount}項目`
     : "";
-  return `${sourceMode} / ${run} / ${symbol} / ${timeFrames} / ${side}${additionalFilters}`;
+  return `${sourceMode} / ${run} / ${symbol} / ${timeFrames} / ${side}${additionalFilters}`
+    + ` / GMO取引 ${gmoTargetSummary(value.gmoTarget)}`;
 }
 
 const ALL_TIME_FRAMES_VALUE = "__all_time_frames__";
@@ -182,6 +196,23 @@ export function FilterPanel({
           <select value={value.symbol} onChange={(event) => onChange({ ...value, symbol: event.target.value })}>
             <option value="">すべて</option>
             {options.symbols.map((symbol) => <option key={symbol}>{symbol}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>GMO取引</span>
+          <select
+            aria-label="GMO取引"
+            value={value.gmoTarget}
+            onChange={(event) => {
+              const gmoTarget = event.target.value;
+              if (gmoTarget === "all" || gmoTarget === "target" || gmoTarget === "excluded") {
+                onChange({ ...value, gmoTarget });
+              }
+            }}
+          >
+            <option value="all">すべて</option>
+            <option value="target">対象</option>
+            <option value="excluded">対象外</option>
           </select>
         </label>
         <div className="field">

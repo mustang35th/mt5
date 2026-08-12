@@ -20,7 +20,14 @@ import type {
   ObservationTimeFrame,
   SortOrder,
 } from "../api/types";
-import { displayValue, sideClass } from "../lib/format";
+import {
+  displayValue,
+  elliottDirectionSymbol,
+  formatElliottDirection,
+  formatSignedNumber,
+  sideClass,
+} from "../lib/format";
+import { GmoTargetBadge } from "./GmoTargetBadge";
 
 interface ObservationTableProps {
   items: ObservationListItem[];
@@ -158,6 +165,7 @@ function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
         >
           {observation.symbol_name}
         </Typography>
+        <GmoTargetBadge compact isTarget={observation.is_gmo_target} />
         <Box component="span" className="badge neutral" sx={{ flex: "0 0 auto" }}>
           {displayValue(observation.source_mode)}
         </Box>
@@ -192,7 +200,8 @@ function emaDirection(timeFrame: ObservationTimeFrame): string {
 function waveLabel(timeFrame: ObservationTimeFrame): string {
   const elliot = displayValue(timeFrame.latest_elliot_label);
   const sub = displayValue(timeFrame.latest_sub_elliot_label, "");
-  return sub ? `${elliot} / ${sub}` : elliot;
+  const direction = elliottDirectionSymbol(timeFrame.is_wave_uptrend);
+  return sub ? `${direction}${elliot} / ${sub}` : `${direction}${elliot}`;
 }
 
 function TimeFrameSnapshot({ timeFrame }: { timeFrame: ObservationTimeFrame | undefined }) {
@@ -210,8 +219,8 @@ function TimeFrameSnapshot({ timeFrame }: { timeFrame: ObservationTimeFrame | un
   }
   const side = displayValue(timeFrame.buy_sell_label).toUpperCase();
   const waveState = `${timeFrame.is_wave_confirmed ? "確" : "未"}・${timeFrame.is_wave_motive ? "推" : "修"}`;
-  const waveDirection = timeFrame.is_wave_uptrend ? "↑" : "↓";
-  const waveSummary = `${timeFrame.is_wave_uptrend ? "上昇" : "下降"}、${timeFrame.is_wave_confirmed ? "確定" : "未確定"}、${timeFrame.is_wave_motive ? "推進波" : "修正波"}、EMA200 ${emaDirection(timeFrame)}、GMMA trend ${timeFrame.gmma_trend_count}、cross ${timeFrame.gmma_cross_count}`;
+  const waveDirection = elliottDirectionSymbol(timeFrame.is_wave_uptrend);
+  const waveSummary = `${formatElliottDirection(timeFrame.is_wave_uptrend)}、${timeFrame.is_wave_confirmed ? "確定" : "未確定"}、${timeFrame.is_wave_motive ? "推進波" : "修正波"}、EMA200 ${emaDirection(timeFrame)}、GMMA trend ${formatSignedNumber(timeFrame.gmma_trend_count, 0)}、cross ${formatSignedNumber(timeFrame.gmma_cross_count, 0)}`;
   return (
     <Box sx={{ minWidth: 0, overflow: "hidden", py: 0.25 }}>
       <Stack
@@ -235,7 +244,8 @@ function TimeFrameSnapshot({ timeFrame }: { timeFrame: ObservationTimeFrame | un
         sx={{ color: "text.secondary", fontSize: "0.64rem", mt: 0.25 }}
       >
         {waveDirection}・{waveState}・EMA {emaDirection(timeFrame)}・GMMA T
-        {timeFrame.gmma_trend_count}/C{timeFrame.gmma_cross_count}
+        {formatSignedNumber(timeFrame.gmma_trend_count, 0)}/C
+        {formatSignedNumber(timeFrame.gmma_cross_count, 0)}
       </Typography>
     </Box>
   );
@@ -354,7 +364,7 @@ export function ObservationTable({
   return (
     <div className="grid-view" role="region" aria-label="H1 Elliott推移検索結果" aria-busy={loading}>
       <Box sx={{ px: 1.5, pb: 0.75, color: "text.secondary", fontSize: "0.68rem" }}>
-        各時間足：BUY/SELL / Elliott（主波・下位波） / 波方向・状態 / EMA200 / GMMA（Trend・Cross）
+        各時間足：BUY/SELL / Elliott（主波・下位波） / 波方向（▲上昇・▼下降）・状態 / EMA200 / GMMA（Trend・Cross）
       </Box>
       <div className="alert-grid density-compact">
         <AgGridReact<ObservationListItem>

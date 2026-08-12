@@ -20,6 +20,7 @@ function alertWithAlignment(id: number, aligned: boolean | null): AlertListItem 
     jst_time_text: "2026.07.31 01:00:00",
     server_time_text: "2026.07.30 19:00:00",
     symbol_name: "AUDUSD",
+    is_gmo_target: id !== 2,
     time_frame_text: "H1",
     strategy: "MTF_3in3",
     side: "BUY",
@@ -64,6 +65,8 @@ describe("AlertTable", () => {
     expect(screen.getByText("不一致")).toBeInTheDocument();
     expect(screen.getByText("不明")).toBeInTheDocument();
     expect(screen.getAllByText("LIVE")).toHaveLength(3);
+    expect(screen.getAllByLabelText("GMO取引 対象")).toHaveLength(2);
+    expect(screen.queryByLabelText("GMO取引 対象外")).not.toBeInTheDocument();
     expect(screen.getAllByText("test <img onerror=alert(1)>")).toHaveLength(3);
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByRole("columnheader", { name: "時間足" })).toBeInTheDocument();

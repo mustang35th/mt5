@@ -19,7 +19,14 @@ import type {
   PointsResponse,
   TimeFramesResponse,
 } from "../api/types";
-import { displayValue, formatNumber, sideClass } from "../lib/format";
+import {
+  displayValue,
+  elliottDirectionSymbol,
+  formatNumber,
+  formatSignedNumber,
+  sideClass,
+} from "../lib/format";
+import { GmoTargetBadge } from "./GmoTargetBadge";
 
 interface AlertDetailDrawerProps {
   alertId: number | null;
@@ -103,7 +110,7 @@ function DetailField({ label, value }: { label: string; value: unknown }) {
 }
 
 function TimeFrameCard({ timeFrame }: { timeFrame: AlertTimeFrame }) {
-  const waveDirection = timeFrame.is_wave_uptrend ? "UP / 上昇" : "DOWN / 下降";
+  const waveDirection = `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)} ${timeFrame.is_wave_uptrend ? "UP / 上昇" : "DOWN / 下降"}`;
   let ema200Direction = "NONE";
   if (timeFrame.is_ema200_buy) ema200Direction = "BUY";
   if (timeFrame.is_ema200_sell) ema200Direction = "SELL";
@@ -122,13 +129,13 @@ function TimeFrameCard({ timeFrame }: { timeFrame: AlertTimeFrame }) {
       </div>
       <div className="timeframe-values">
         <div><span>分析方向</span><b>{timeFrame.buy_sell_label}</b></div>
-        <div><span>最新Wave方向</span><b>{waveDirection} ({displayValue(timeFrame.wave_trend_label)})</b></div>
-        <div><span>波動</span><b>{waveLabel(timeFrame.latest_elliot_label, timeFrame.latest_sub_elliot_label)}</b></div>
+        <div><span>最新Wave方向</span><b>{waveDirection}</b></div>
+        <div><span>波動</span><b>{elliottDirectionSymbol(timeFrame.is_wave_uptrend)}{waveLabel(timeFrame.latest_elliot_label, timeFrame.latest_sub_elliot_label)}</b></div>
         <div><span>状態</span><b>{timeFrame.is_wave_confirmed ? "確定" : "形成中"}</b></div>
         <div><span>Wave種別</span><b>{timeFrame.is_wave_motive ? "推進波" : "修正波"}</b></div>
         <div><span>ポイント</span><b>{timeFrame.point_count} / wave {timeFrame.latest_wave_index}</b></div>
         <div><span>Stochastic</span><b>{displayValue(timeFrame.stochastic_main_order_text)} / {displayValue(timeFrame.stochastic_main_direction_text)}</b></div>
-        <div><span>GMMA</span><b>trend {formatNumber(timeFrame.gmma_trend_count, 0)} / cross {formatNumber(timeFrame.gmma_cross_count, 0)}</b></div>
+        <div><span>GMMA</span><b>trend {formatSignedNumber(timeFrame.gmma_trend_count, 0)} / cross {formatSignedNumber(timeFrame.gmma_cross_count, 0)}</b></div>
         <div><span>EMA200方向</span><b>{ema200Direction}</b></div>
         <div><span>ATR14</span><b>{formatNumber(timeFrame.atr14_pips)} pips</b></div>
         <div>
@@ -429,7 +436,10 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
             <Badge text={run?.source_mode || "UNKNOWN"} />
             {String(run?.tester_model || "").toLowerCase().includes("open") && <Badge text="Open Prices" variant="warn" />}
           </div>
-          <h3 className="detail-title">{displayValue(alert.alert_title)}</h3>
+          <div className="detail-title-line">
+            <h3 className="detail-title">{displayValue(alert.alert_title)}</h3>
+            <GmoTargetBadge isTarget={alert.is_gmo_target} />
+          </div>
           <p className="subtitle">JST {displayValue(alert.jst_time_text)} / Server {displayValue(alert.server_time_text)}</p>
         </div>
         <div className="detail-price">
@@ -474,7 +484,7 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
             <DetailField label="EMA200距離" value={`${formatNumber(alert.close_ema200_diff_pips)} / max ${formatNumber(alert.max_close_ema200_diff_pips)} pips`} />
             <DetailField label="Spread" value={`${formatNumber(alert.spread_pips)} pips`} />
             <DetailField label="通貨強弱" value={`${displayValue(alert.currency_strength_status)} / ${alert.is_currency_strength_available ? "取得済" : "未取得"}`} />
-            <DetailField label="順位差 長中期 / 中短期" value={`${formatNumber(alert.long_medium_rank_difference, 0)} / ${formatNumber(alert.medium_short_rank_difference, 0)}`} />
+            <DetailField label="順位差 長中期 / 中短期" value={`${formatSignedNumber(alert.long_medium_rank_difference, 0)} / ${formatSignedNumber(alert.medium_short_rank_difference, 0)}`} />
             <DetailField label="W1分析方向" value={w1?.w1_side || "不明"} />
             <DetailField label="Run" value={run ? `${run.id} / ${displayValue(run.program_version)}` : "不明"} />
             <DetailField label="Signal key" value={alert.market_signal_key} />

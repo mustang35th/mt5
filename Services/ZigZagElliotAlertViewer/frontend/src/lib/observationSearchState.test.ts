@@ -9,7 +9,7 @@ import {
 describe("observationSearchState", () => {
   it("restores the H1 observation filters and rejects unsupported values", () => {
     expect(readObservationSearchState(
-      "?tab=h1&sourceMode=TESTER&runId=4&analysisVersion=ELLIOT_MN1_V2&analysisInputHash=profile-hash&analysisProfileKind=profile&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=D1&syncTimeFrame=MN1&syncTimeFrame=MN1&page=2&pageSize=25&sort=bad&order=asc",
+      "?tab=h1&sourceMode=TESTER&runId=4&analysisVersion=ELLIOT_MN1_V2&analysisInputHash=profile-hash&analysisProfileKind=profile&symbol=AUDUSD&gmoTarget=excluded&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=D1&syncTimeFrame=MN1&syncTimeFrame=MN1&page=2&pageSize=25&sort=bad&order=asc",
     )).toEqual({
       sourceMode: "TESTER",
       runId: 4,
@@ -17,6 +17,7 @@ describe("observationSearchState", () => {
       analysisInputHash: "profile-hash",
       analysisProfileKind: "profile",
       symbol: "AUDUSD",
+      gmoTarget: "excluded",
       from: "2026-08-01",
       to: "2026-08-10",
       jstTime: "07:00",
@@ -40,6 +41,7 @@ describe("observationSearchState", () => {
     expect(params.has("analysisInputHash")).toBe(false);
     expect(params.has("analysisVersion")).toBe(false);
     expect(params.has("analysisProfileKind")).toBe(false);
+    expect(params.has("gmoTarget")).toBe(false);
     expect(params.has("jstTime")).toBe(false);
     expect(params.has("syncTimeFrame")).toBe(false);
     expect(params.get("sort")).toBe("anchor_jst_time");
@@ -48,6 +50,18 @@ describe("observationSearchState", () => {
     expect(browserParams.get("tab")).toBe("h1");
     expect(browserParams.get("sourceMode")).toBe("LIVE");
     expect(browserParams.get("analysisInputHash")).toBe("all");
+  });
+
+  it("restores and serializes only supported GMO target filters", () => {
+    expect(readObservationSearchState("?gmoTarget=target").gmoTarget).toBe("target");
+    expect(readObservationSearchState("?gmoTarget=excluded").gmoTarget).toBe("excluded");
+    expect(readObservationSearchState("?gmoTarget=TARGET").gmoTarget).toBe("all");
+    expect(readObservationSearchState("?gmoTarget=all").gmoTarget).toBe("all");
+    const params = buildObservationSearchParams({
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      gmoTarget: "excluded",
+    });
+    expect(params.get("gmoTarget")).toBe("excluded");
   });
 
   it("keeps an explicit all-profile selection only in the browser URL", () => {
