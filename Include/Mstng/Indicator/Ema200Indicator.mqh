@@ -206,6 +206,10 @@ private:
                 this.addTimeFrame(PERIOD_W1);
                 this.addTimeFrame(PERIOD_D1);
                 break;
+            case PERIOD_W1:
+                this.addTimeFrame(PERIOD_W1);
+                this.addTimeFrame(PERIOD_D1);
+                break;
             case PERIOD_H4:
                 this.addTimeFrame(PERIOD_W1);
                 this.addTimeFrame(PERIOD_D1);
