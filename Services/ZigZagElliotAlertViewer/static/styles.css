@@ -780,7 +780,14 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .observation-snapshot-grid-context strong { font-size: 1rem; }
 .observation-snapshot-grid-symbol { margin-top: 2px; }
 .observation-snapshot-grid-context-values { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: 6px 16px; color: var(--muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
-.observation-timeframe-snapshot-grid { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; }
+.observation-timeframe-snapshot-grid { display: flex; flex: 1 1 auto; width: 100%; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; flex-direction: column; }
+.observation-timeframe-column-toolbar { display: flex; flex: 0 0 auto; min-width: 0; min-height: 41px; padding: 5px 8px; align-items: center; gap: 6px; border-bottom: 1px solid var(--line-soft); background: #0b151c; }
+.observation-timeframe-column-toolbar-label { flex: 0 0 auto; color: var(--muted); font-size: 0.7rem; font-weight: 750; }
+.observation-timeframe-column-presets { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.observation-timeframe-column-toolbar .secondary-button,
+.observation-timeframe-column-toolbar .ghost-button { min-height: 29px; padding: 3px 9px; border-radius: 7px; font-size: 0.68rem; line-height: 1.2; white-space: nowrap; }
+.observation-timeframe-column-toolbar .secondary-button[aria-pressed="true"] { border-color: rgba(89, 216, 194, 0.55); color: #bdf7ed; background: rgba(89, 216, 194, 0.13); }
+.observation-timeframe-column-reset { margin-left: auto; }
 .observation-timeframe-snapshot-grid .ag-root-wrapper { width: 100%; height: 100%; border: 0; border-radius: 0; }
 .observation-timeframe-snapshot-grid .ag-header-cell,
 .observation-timeframe-snapshot-grid .ag-header-group-cell,
@@ -1066,6 +1073,10 @@ pre.detail-field { white-space: pre-wrap; overflow-wrap: anywhere; }
   .observation-grid-mode .drawer-body { padding: 9px; }
   .observation-snapshot-grid-context { align-items: flex-start; flex-direction: column; gap: 5px; }
   .observation-snapshot-grid-context-values { justify-content: flex-start; }
+  .observation-timeframe-column-toolbar { min-height: 43px; padding: 5px 6px; }
+  .observation-timeframe-column-toolbar-label { display: none; }
+  .observation-timeframe-column-toolbar select { flex: 1 1 auto; min-width: 0; min-height: 31px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 7px; color: var(--text); background: var(--panel-2); font-size: 0.72rem; }
+  .observation-timeframe-column-toolbar .observation-timeframe-column-reset { flex: 0 0 auto; margin-left: 0; padding-right: 7px; padding-left: 7px; }
   .viewer-summary-bar > .react-summary-strip,
   .viewer-summary-bar > .observation-summary-strip {
     flex-basis: 100%;

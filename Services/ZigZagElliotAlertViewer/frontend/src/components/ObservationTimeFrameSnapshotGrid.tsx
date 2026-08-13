@@ -2,10 +2,12 @@ import {
   ClientSideRowModelModule,
   colorSchemeDarkBlue,
   ColumnApiModule,
+  type ColumnGroupOpenedEvent,
   type GridApi,
   type GridReadyEvent,
   RenderApiModule,
   RowStyleModule,
+  ScrollApiModule,
   themeQuartz,
   type ColDef,
   type ColGroupDef,
@@ -15,7 +17,7 @@ import {
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ObservationDetailTimeFrame } from "../api/types";
 import {
   displayValue,
@@ -25,6 +27,15 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import {
+  clearTimeFrameComparisonColumnGroupState,
+  defaultTimeFrameComparisonColumnGroupState,
+  readTimeFrameComparisonColumnGroupState,
+  TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS,
+  type TimeFrameComparisonColumnGroupId,
+  type TimeFrameComparisonColumnGroupState,
+  writeTimeFrameComparisonColumnGroupState,
+} from "../lib/timeFrameComparisonPreferences";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 
 export interface ObservationTimeFrameSnapshotGridProps {
@@ -40,10 +51,17 @@ const GRID_MODULES = [
   ColumnApiModule,
   RenderApiModule,
   RowStyleModule,
+  ScrollApiModule,
 ];
 
 const TIME_FRAME_COLUMN_ID = "time_frame_text";
 const EMA200_DIRECTION_COLUMN_ID = "ema200_direction";
+const WAVE_DIRECTION_COLUMN_ID = "wave_direction";
+const LATEST_POINT_RATE_COLUMN_ID = "latest_point_rate";
+const FIBO_EXPANSION_STATUS_COLUMN_ID = "fibo_expansion_status";
+const OSCILLATOR_COLUMN_ID = "oscillator";
+const GMMA_TREND_CROSS_COLUMN_ID = "gmma_trend_cross";
+const EMA200_CLOSE_SHIFT_COLUMN_ID = "ema200_close1_shift1";
 const DESKTOP_PINNED_COLUMN_IDS = [
   TIME_FRAME_COLUMN_ID,
   "buy_sell_label",
@@ -68,6 +86,143 @@ const snapshotGridTheme = themeQuartz
   });
 
 type SnapshotFormatter = (timeFrame: ObservationDetailTimeFrame) => string;
+
+type ColumnGroupPresetId =
+  | "essentials"
+  | "wave"
+  | "price_fibo"
+  | "oscillator"
+  | "ema200"
+  | "all";
+
+interface ColumnGroupPreset {
+  id: ColumnGroupPresetId;
+  label: string;
+  groups: TimeFrameComparisonColumnGroupState;
+  focusColumnId: string;
+}
+
+const COLUMN_GROUP_PRESETS: readonly ColumnGroupPreset[] = [
+  {
+    id: "essentials",
+    label: "要点のみ",
+    groups: columnGroupState(),
+    focusColumnId: WAVE_DIRECTION_COLUMN_ID,
+  },
+  {
+    id: "wave",
+    label: "波動",
+    groups: columnGroupState("wave"),
+    focusColumnId: WAVE_DIRECTION_COLUMN_ID,
+  },
+  {
+    id: "price_fibo",
+    label: "価格・Fibo",
+    groups: columnGroupState("price", "fibo_expansion"),
+    focusColumnId: LATEST_POINT_RATE_COLUMN_ID,
+  },
+  {
+    id: "oscillator",
+    label: "オシレーター",
+    groups: columnGroupState("oscillator_stochastic"),
+    focusColumnId: OSCILLATOR_COLUMN_ID,
+  },
+  {
+    id: "ema200",
+    label: "EMA200検証",
+    groups: columnGroupState("trend_ema"),
+    focusColumnId: EMA200_CLOSE_SHIFT_COLUMN_ID,
+  },
+  {
+    id: "all",
+    label: "すべて展開",
+    groups: columnGroupState(...TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS),
+    focusColumnId: WAVE_DIRECTION_COLUMN_ID,
+  },
+];
+
+/**
+ * 指定したグループだけを開いた状態を生成します。
+ *
+ * @param fromOpenGroupIds 開くグループID
+ * @return 列グループ開閉状態
+ */
+function columnGroupState(
+  ...fromOpenGroupIds: TimeFrameComparisonColumnGroupId[]
+): TimeFrameComparisonColumnGroupState {
+  const state = defaultTimeFrameComparisonColumnGroupState();
+  for (const groupId of fromOpenGroupIds) {
+    state[groupId] = true;
+  }
+  return state;
+}
+
+/**
+ * 開閉状態に一致するプリセットを返します。
+ *
+ * @param fromState 現在の開閉状態
+ * @return 一致するプリセットID
+ */
+function matchingColumnGroupPreset(
+  fromState: TimeFrameComparisonColumnGroupState,
+): ColumnGroupPresetId | null {
+  for (const preset of COLUMN_GROUP_PRESETS) {
+    const matches = TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS.every(
+      (groupId) => preset.groups[groupId] === fromState[groupId],
+    );
+    if (matches) return preset.id;
+  }
+  return null;
+}
+
+/**
+ * Grid APIの列グループ状態から許可グループだけを取得します。
+ *
+ * @param fromApi Grid API
+ * @return 列グループ開閉状態
+ */
+function columnGroupStateFromApi(
+  fromApi: GridApi<ObservationDetailTimeFrame>,
+): TimeFrameComparisonColumnGroupState {
+  const state = defaultTimeFrameComparisonColumnGroupState();
+  for (const item of fromApi.getColumnGroupState()) {
+    if (isCollapsibleColumnGroupId(item.groupId)) {
+      state[item.groupId] = item.open;
+    }
+  }
+  return state;
+}
+
+/**
+ * 列グループ開閉状態を保存します。
+ *
+ * @param fromState 保存する開閉状態
+ */
+function persistColumnGroupState(
+  fromState: TimeFrameComparisonColumnGroupState,
+): void {
+  const hasOpenGroup = TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS.some(
+    (groupId) => fromState[groupId],
+  );
+  if (hasOpenGroup) {
+    writeTimeFrameComparisonColumnGroupState(fromState);
+  } else {
+    clearTimeFrameComparisonColumnGroupState();
+  }
+}
+
+/**
+ * 折りたたみ可能な列グループIDかを判定します。
+ *
+ * @param fromGroupId 判定対象ID
+ * @return 許可グループの場合true
+ */
+function isCollapsibleColumnGroupId(
+  fromGroupId: string,
+): fromGroupId is TimeFrameComparisonColumnGroupId {
+  return (TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS as readonly string[])
+    .includes(fromGroupId);
+}
 
 function waveLabel(timeFrame: ObservationDetailTimeFrame): string {
   const main = displayValue(timeFrame.latest_elliot_label);
@@ -112,6 +267,27 @@ function snapshotColumn(
     initialWidth,
     minWidth: Math.min(initialWidth, 100),
     valueGetter: ({ data }) => data ? formatter(data) : "—",
+  };
+}
+
+/**
+ * グループ展開時だけ表示する詳細列を生成します。
+ *
+ * @param colId 列ID
+ * @param headerName 見出し
+ * @param initialWidth 初期幅
+ * @param formatter 表示値生成処理
+ * @return 詳細列定義
+ */
+function detailSnapshotColumn(
+  colId: string,
+  headerName: string,
+  initialWidth: number,
+  formatter: SnapshotFormatter,
+): ColDef<ObservationDetailTimeFrame, string> {
+  return {
+    ...snapshotColumn(colId, headerName, initialWidth, formatter),
+    columnGroupShow: "open",
   };
 }
 
@@ -209,38 +385,40 @@ const COLUMN_DEFS: Array<
   {
     groupId: "wave",
     headerName: "波動",
+    marryChildren: true,
+    openByDefault: false,
     children: [
       snapshotColumn(
-        "wave_direction",
+        WAVE_DIRECTION_COLUMN_ID,
         "Wave方向",
         96,
         (timeFrame) => formatElliottDirection(timeFrame.is_wave_uptrend),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "wave_state",
         "Wave状態",
         96,
         (timeFrame) => timeFrame.is_wave_confirmed ? "確定" : "形成中",
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "wave_type",
         "Wave種別",
         96,
         (timeFrame) => timeFrame.is_wave_motive ? "推進波" : "修正波",
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "wave_count_latest_index",
         "Wave数 / 最新index",
         152,
         (timeFrame) => `${formatNumber(timeFrame.wave_count, 0)} / ${formatNumber(timeFrame.latest_wave_index, 0)}`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "previous_last_elliot_label",
         "前回Wave最終",
         132,
         (timeFrame) => displayValue(timeFrame.previous_last_elliot_label),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "point_count",
         "保存ポイント数",
         122,
@@ -251,26 +429,28 @@ const COLUMN_DEFS: Array<
   {
     groupId: "price",
     headerName: "最新ポイント・価格",
+    marryChildren: true,
+    openByDefault: false,
     children: [
-      snapshotColumn(
+      detailSnapshotColumn(
         "latest_point_jst_time_text",
         "最新点 JST",
         172,
         (timeFrame) => displayValue(timeFrame.latest_point_jst_time_text),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "latest_point_time_text",
         "最新点 Server",
         172,
         (timeFrame) => displayValue(timeFrame.latest_point_time_text),
       ),
       snapshotColumn(
-        "latest_point_rate",
+        LATEST_POINT_RATE_COLUMN_ID,
         "最新点価格",
         118,
         (timeFrame) => formatNumber(timeFrame.latest_point_rate, 5),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "previous_ohlc",
         "前足 OHLC",
         390,
@@ -281,7 +461,7 @@ const COLUMN_DEFS: Array<
           timeFrame.previous_close,
         ),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "current_ohlc",
         "現在足 OHLC",
         390,
@@ -297,32 +477,34 @@ const COLUMN_DEFS: Array<
   {
     groupId: "fibo_expansion",
     headerName: "Fibo / FE",
+    marryChildren: true,
+    openByDefault: false,
     children: [
       snapshotColumn(
-        "fibo_expansion_status",
+        FIBO_EXPANSION_STATUS_COLUMN_ID,
         "Fibo / FE",
         104,
         (timeFrame) => timeFrame.is_fibo_expansion_available ? "取得済" : "未取得",
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "fe618_fe1000",
         "FE 61.8 / 100.0",
         228,
         (timeFrame) => `${fePrice(timeFrame, timeFrame.fe618_price)} / ${fePrice(timeFrame, timeFrame.fe1000_price)}`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "fe1272_fe1618",
         "FE 127.2 / 161.8",
         228,
         (timeFrame) => `${fePrice(timeFrame, timeFrame.fe1272_price)} / ${fePrice(timeFrame, timeFrame.fe1618_price)}`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "fe2000_price",
         "FE 200.0",
         122,
         (timeFrame) => fePrice(timeFrame, timeFrame.fe2000_price),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "distance_to_fe2000_pips",
         "FE200距離",
         126,
@@ -335,20 +517,22 @@ const COLUMN_DEFS: Array<
   {
     groupId: "oscillator_stochastic",
     headerName: "Oscillator / Stochastic",
+    marryChildren: true,
+    openByDefault: false,
     children: [
       snapshotColumn(
-        "oscillator",
+        OSCILLATOR_COLUMN_ID,
         "Oscillator",
         164,
         (timeFrame) => `${timeFrame.is_oscillator_buy ? "BUY" : "SELL"} / count ${formatSignedNumber(timeFrame.oscillator_count, 0)}`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "stochastic",
         "Stochastic",
         232,
         (timeFrame) => `${displayValue(timeFrame.stochastic_main_order_text)} / ${displayValue(timeFrame.stochastic_main_direction_text)} [${formatNumber(timeFrame.stochastic_main_order, 0)}]`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "stochastic_short",
         "Stoch 短期",
         252,
@@ -358,7 +542,7 @@ const COLUMN_DEFS: Array<
           timeFrame.stochastic_short_signal,
         ),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "stochastic_middle",
         "Stoch 中期",
         252,
@@ -368,7 +552,7 @@ const COLUMN_DEFS: Array<
           timeFrame.stochastic_middle_signal,
         ),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "stochastic_long",
         "Stoch 長期",
         252,
@@ -383,56 +567,58 @@ const COLUMN_DEFS: Array<
   {
     groupId: "trend_ema",
     headerName: "Trend / EMA",
+    marryChildren: true,
+    openByDefault: false,
     children: [
       snapshotColumn(
-        "gmma_trend_cross",
+        GMMA_TREND_CROSS_COLUMN_ID,
         "GMMA trend / cross",
         164,
         (timeFrame) => `${formatSignedNumber(timeFrame.gmma_trend_count, 0)} / ${formatSignedNumber(timeFrame.gmma_cross_count, 0)}`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "ema30_ema60",
         "EMA30 / EMA60",
         212,
         (timeFrame) => `${formatNumber(timeFrame.ema30, 5)} / ${formatNumber(timeFrame.ema60, 5)}`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "ema30_ema60_diff_pips",
         "EMA30-60距離",
         142,
         (timeFrame) => `${formatSignedNumber(timeFrame.ema30_ema60_diff_pips)} pips`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "atr14_pips",
         "ATR14",
         112,
         (timeFrame) => `${formatNumber(timeFrame.atr14_pips)} pips`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "ema200_close1_shift1",
         "EMA200 Close1 / Shift1",
         226,
         (timeFrame) => `${formatNumber(timeFrame.ema200_close1, 5)} / ${formatNumber(timeFrame.ema200_shift1, 5)}`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "ema200_compare",
         "EMA200比較値",
         142,
         (timeFrame) => formatNumber(timeFrame.ema200_compare, 5),
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "ema200_slope_distance",
         "EMA200傾き / 距離",
         178,
         (timeFrame) => `${formatSignedNumber(timeFrame.ema200_slope_pips)} / ${formatSignedNumber(timeFrame.ema200_close_diff_pips)} pips`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "ema200_position_slope_code",
         "EMA200位置 / 傾きcode",
         192,
         (timeFrame) => `${formatSignedNumber(timeFrame.ema200_close_position, 0)} / ${formatSignedNumber(timeFrame.ema200_slope_direction, 0)}`,
       ),
-      snapshotColumn(
+      detailSnapshotColumn(
         "ema200_counts",
         "EMA200 上昇 / 下降 / trend",
         218,
@@ -484,7 +670,15 @@ export function ObservationTimeFrameSnapshotGrid({
 }: ObservationTimeFrameSnapshotGridProps) {
   const gridApiRef = useRef<GridApi<ObservationDetailTimeFrame> | null>(null);
   const wideLayout = useMediaQuery("(min-width: 761px)");
+  const [gridReady, setGridReady] = useState(false);
+  const [columnGroupStateValue, setColumnGroupStateValue] = useState(
+    readTimeFrameComparisonColumnGroupState,
+  );
   const rowData = useMemo(() => orderedTimeFrames(timeFrames), [timeFrames]);
+  const activePresetId = useMemo(
+    () => matchingColumnGroupPreset(columnGroupStateValue),
+    [columnGroupStateValue],
+  );
 
   const applyPinning = useCallback((api: GridApi<ObservationDetailTimeFrame>) => {
     api.setColumnsPinned([...DESKTOP_PINNED_COLUMN_IDS], null);
@@ -497,11 +691,54 @@ export function ObservationTimeFrameSnapshotGrid({
   const handleGridReady = useCallback((event: GridReadyEvent<ObservationDetailTimeFrame>) => {
     gridApiRef.current = event.api;
     applyPinning(event.api);
+    event.api.setColumnGroupState(
+      TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS.map((groupId) => ({
+        groupId,
+        open: columnGroupStateValue[groupId],
+      })),
+    );
     event.api.setGridAriaProperty(
       "label",
       "時間足別 H1新規足スナップショットグリッド",
     );
-  }, [applyPinning]);
+    setGridReady(true);
+  }, [applyPinning, columnGroupStateValue]);
+
+  const handleColumnGroupOpened = useCallback((
+    event: ColumnGroupOpenedEvent<ObservationDetailTimeFrame>,
+  ) => {
+    const nextState = columnGroupStateFromApi(event.api);
+    setColumnGroupStateValue(nextState);
+    persistColumnGroupState(nextState);
+  }, []);
+
+  const applyColumnGroupPreset = useCallback((fromPresetId: ColumnGroupPresetId) => {
+    const api = gridApiRef.current;
+    const preset = COLUMN_GROUP_PRESETS.find((item) => item.id === fromPresetId);
+    if (!api || !preset) return;
+
+    const nextState = { ...preset.groups };
+    api.setColumnGroupState(
+      TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS.map((groupId) => ({
+        groupId,
+        open: nextState[groupId],
+      })),
+    );
+    setColumnGroupStateValue(nextState);
+    persistColumnGroupState(nextState);
+    api.ensureColumnVisible(preset.focusColumnId, "start");
+  }, []);
+
+  const resetColumnGroupState = useCallback(() => {
+    const api = gridApiRef.current;
+    if (!api) return;
+
+    const nextState = defaultTimeFrameComparisonColumnGroupState();
+    api.resetColumnGroupState();
+    setColumnGroupStateValue(nextState);
+    clearTimeFrameComparisonColumnGroupState();
+    api.ensureColumnVisible(WAVE_DIRECTION_COLUMN_ID, "start");
+  }, []);
 
   useEffect(() => {
     if (gridApiRef.current) applyPinning(gridApiRef.current);
@@ -514,6 +751,55 @@ export function ObservationTimeFrameSnapshotGrid({
       role="region"
       style={{ height: "100%", minHeight: 0, minWidth: 0, width: "100%" }}
     >
+      <div
+        aria-label="時間足比較の列表示"
+        className="observation-timeframe-column-toolbar"
+        role="group"
+      >
+        <span className="observation-timeframe-column-toolbar-label">列表示</span>
+        {wideLayout ? (
+          <div className="observation-timeframe-column-presets">
+            {COLUMN_GROUP_PRESETS.map((preset) => (
+              <button
+                aria-label={`列プリセット: ${preset.label}`}
+                aria-pressed={activePresetId === preset.id}
+                className="secondary-button"
+                disabled={!gridReady}
+                key={preset.id}
+                type="button"
+                onClick={() => applyColumnGroupPreset(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <select
+            aria-label="列プリセット"
+            disabled={!gridReady}
+            value={activePresetId ?? "custom"}
+            onChange={(event) => applyColumnGroupPreset(
+              event.target.value as ColumnGroupPresetId,
+            )}
+          >
+            {activePresetId === null && (
+              <option disabled value="custom">カスタム</option>
+            )}
+            {COLUMN_GROUP_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>{preset.label}</option>
+            ))}
+          </select>
+        )}
+        <button
+          aria-label="列表示をリセット"
+          className="ghost-button observation-timeframe-column-reset"
+          disabled={!gridReady}
+          type="button"
+          onClick={resetColumnGroupState}
+        >
+          列表示をリセット
+        </button>
+      </div>
       <div
         className="observation-timeframe-snapshot-grid-body"
         style={{ flex: "1 1 0", height: "100%", minHeight: 0 }}
@@ -537,6 +823,7 @@ export function ObservationTimeFrameSnapshotGrid({
           maintainColumnOrder
           modules={GRID_MODULES}
           noRowsOverlayComponent={EmptySnapshotOverlay}
+          onColumnGroupOpened={handleColumnGroupOpened}
           onGridReady={handleGridReady}
           pagination={false}
           rowData={rowData}

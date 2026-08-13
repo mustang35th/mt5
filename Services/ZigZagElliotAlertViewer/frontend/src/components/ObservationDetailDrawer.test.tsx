@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ObservationDetailParent,
   ObservationDetailTimeFrame,
 } from "../api/types";
+import { TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY } from "../lib/timeFrameComparisonPreferences";
 import { ObservationDetailDrawer } from "./ObservationDetailDrawer";
 
 function jsonResponse(payload: unknown): Response {
@@ -183,7 +184,126 @@ function provideGridLayoutSize() {
   });
 }
 
+const COMPARISON_KEY_COLUMN_IDS = [
+  "time_frame_text",
+  "buy_sell_label",
+  "ema200_direction",
+  "elliott_sub",
+] as const;
+
+const COLUMN_GROUP_IDS = {
+  wave: [
+    "wave_direction",
+    "wave_state",
+    "wave_type",
+    "wave_count_latest_index",
+    "previous_last_elliot_label",
+    "point_count",
+  ],
+  price: [
+    "latest_point_jst_time_text",
+    "latest_point_time_text",
+    "latest_point_rate",
+    "previous_ohlc",
+    "current_ohlc",
+  ],
+  fibo_expansion: [
+    "fibo_expansion_status",
+    "fe618_fe1000",
+    "fe1272_fe1618",
+    "fe2000_price",
+    "distance_to_fe2000_pips",
+  ],
+  oscillator_stochastic: [
+    "oscillator",
+    "stochastic",
+    "stochastic_short",
+    "stochastic_middle",
+    "stochastic_long",
+  ],
+  trend_ema: [
+    "gmma_trend_cross",
+    "ema30_ema60",
+    "ema30_ema60_diff_pips",
+    "atr14_pips",
+    "ema200_close1_shift1",
+    "ema200_compare",
+    "ema200_slope_distance",
+    "ema200_position_slope_code",
+    "ema200_counts",
+  ],
+} as const;
+
+type ColumnGroupId = keyof typeof COLUMN_GROUP_IDS;
+
+const COLUMN_GROUP_LABELS: Record<ColumnGroupId, string> = {
+  wave: "波動",
+  price: "最新ポイント・価格",
+  fibo_expansion: "Fibo / FE",
+  oscillator_stochastic: "Oscillator / Stochastic",
+  trend_ema: "Trend / EMA",
+};
+
+const COLUMN_GROUP_REPRESENTATIVES: Record<ColumnGroupId, string> = {
+  wave: "wave_direction",
+  price: "latest_point_rate",
+  fibo_expansion: "fibo_expansion_status",
+  oscillator_stochastic: "oscillator",
+  trend_ema: "gmma_trend_cross",
+};
+
+function displayedColumnIds(grid: HTMLElement): string[] {
+  return Array.from(
+    grid.querySelectorAll<HTMLElement>(".ag-header-cell[col-id]"),
+  ).flatMap((header) => {
+    const columnId = header.getAttribute("col-id");
+    return columnId ? [columnId] : [];
+  });
+}
+
+function expectedColumnIds(openGroups: readonly ColumnGroupId[]): string[] {
+  const openGroupSet = new Set<ColumnGroupId>(openGroups);
+  const columns: string[] = [...COMPARISON_KEY_COLUMN_IDS];
+  for (const groupId of Object.keys(COLUMN_GROUP_IDS) as ColumnGroupId[]) {
+    if (openGroupSet.has(groupId)) {
+      columns.push(...COLUMN_GROUP_IDS[groupId]);
+    } else {
+      columns.push(COLUMN_GROUP_REPRESENTATIVES[groupId]);
+    }
+  }
+  return columns;
+}
+
+function columnGroupHeader(grid: HTMLElement, groupId: ColumnGroupId): HTMLElement {
+  const header = Array.from(
+    grid.querySelectorAll<HTMLElement>(".ag-header-group-cell"),
+  ).find((item) => item.querySelector(".ag-header-group-text")?.textContent
+    === COLUMN_GROUP_LABELS[groupId]);
+  if (!header) throw new Error(`column group header not found: ${groupId}`);
+  return header;
+}
+
+async function expectColumnLayout(
+  grid: HTMLElement,
+  openGroups: readonly ColumnGroupId[],
+): Promise<void> {
+  await waitFor(() => {
+    expect(displayedColumnIds(grid)).toEqual(expectedColumnIds(openGroups));
+    for (const groupId of Object.keys(COLUMN_GROUP_IDS) as ColumnGroupId[]) {
+      expect(columnGroupHeader(grid, groupId)).toHaveAttribute(
+        "aria-expanded",
+        String(openGroups.includes(groupId)),
+      );
+    }
+  });
+}
+
+beforeEach(() => {
+  localStorage.clear();
+});
+
 afterEach(() => {
+  localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.classList.remove("drawer-open");
@@ -266,6 +386,9 @@ describe("ObservationDetailDrawer", () => {
     expect(dialog).toHaveClass("observation-grid-mode");
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
     const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    await expectColumnLayout(grid, []);
+    expect(screen.getByRole("button", { name: "列プリセット: 要点のみ" }))
+      .toHaveAttribute("aria-pressed", "true");
     await waitFor(() => {
       const hasValue = (columnId: string, expected: string) => Array.from(
         grid.querySelectorAll<HTMLElement>(`.ag-cell[col-id="${columnId}"]`),
@@ -275,12 +398,7 @@ describe("ObservationDetailDrawer", () => {
       expect(hasValue("elliott_sub", "▼3 [3] / i [1]")).toBe(true);
       expect(hasValue("wave_direction", "▲ 上昇")).toBe(true);
       expect(hasValue("wave_direction", "▼ 下降")).toBe(true);
-      expect(hasValue("stochastic_short", "count +3 / Main 75.12 / Signal 70.34")).toBe(true);
       expect(hasValue("gmma_trend_cross", "+4 / +1")).toBe(true);
-      expect(hasValue("ema30_ema60_diff_pips", "+10.0 pips")).toBe(true);
-      expect(hasValue("ema200_slope_distance", "+2.5 / +30.0 pips")).toBe(true);
-      expect(hasValue("ema200_position_slope_code", "+1 / +1")).toBe(true);
-      expect(hasValue("ema200_counts", "5 / 0 / +5")).toBe(true);
 
       const skipBadge = within(grid).getByLabelText("EMA200判定 対象外。MN1は計算を省略");
       expect(skipBadge).toHaveTextContent("EMA200 SKIP");
@@ -302,6 +420,25 @@ describe("ObservationDetailDrawer", () => {
       expect(directionIndex).toBeGreaterThanOrEqual(0);
       expect(headerColumnIds[directionIndex + 1]).toBe("ema200_direction");
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: すべて展開" }));
+    await expectColumnLayout(grid, [
+      "wave",
+      "price",
+      "fibo_expansion",
+      "oscillator_stochastic",
+      "trend_ema",
+    ]);
+    await waitFor(() => {
+      const hasValue = (columnId: string, expected: string) => Array.from(
+        grid.querySelectorAll<HTMLElement>(`.ag-cell[col-id="${columnId}"]`),
+      ).some((cell) => cell.textContent?.includes(expected));
+      expect(hasValue("stochastic_short", "count +3 / Main 75.12 / Signal 70.34")).toBe(true);
+      expect(hasValue("ema30_ema60_diff_pips", "+10.0 pips")).toBe(true);
+      expect(hasValue("ema200_slope_distance", "+2.5 / +30.0 pips")).toBe(true);
+      expect(hasValue("ema200_position_slope_code", "+1 / +1")).toBe(true);
+      expect(hasValue("ema200_counts", "5 / 0 / +5")).toBe(true);
+    });
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -313,6 +450,128 @@ describe("ObservationDetailDrawer", () => {
     expect(screen.queryByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(5);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("switches every desktop column preset while keeping four comparison columns pinned", async () => {
+    provideGridLayoutSize();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayload())));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+
+    const presetCases: Array<{ label: string; openGroups: ColumnGroupId[] }> = [
+      { label: "要点のみ", openGroups: [] },
+      { label: "波動", openGroups: ["wave"] },
+      { label: "価格・Fibo", openGroups: ["price", "fibo_expansion"] },
+      { label: "オシレーター", openGroups: ["oscillator_stochastic"] },
+      { label: "EMA200検証", openGroups: ["trend_ema"] },
+      {
+        label: "すべて展開",
+        openGroups: [
+          "wave",
+          "price",
+          "fibo_expansion",
+          "oscillator_stochastic",
+          "trend_ema",
+        ],
+      },
+    ];
+
+    for (const presetCase of presetCases) {
+      const button = screen.getByRole("button", {
+        name: `列プリセット: ${presetCase.label}`,
+      });
+      fireEvent.click(button);
+      await expectColumnLayout(grid, presetCase.openGroups);
+      expect(button).toHaveAttribute("aria-pressed", "true");
+    }
+
+    const pinnedHeaderIds = Array.from(
+      grid.querySelectorAll<HTMLElement>(
+        ".ag-header .ag-grid-pinned-left-cells .ag-header-cell[col-id]",
+      ),
+    ).flatMap((header) => {
+      const columnId = header.getAttribute("col-id");
+      return columnId ? [columnId] : [];
+    });
+    expect(pinnedHeaderIds).toEqual(COMPARISON_KEY_COLUMN_IDS);
+  });
+
+  it("opens and closes a column group manually and persists the state", async () => {
+    provideGridLayoutSize();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayload())));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    await expectColumnLayout(grid, []);
+
+    const closedIcon = columnGroupHeader(grid, "wave")
+      .querySelector<HTMLElement>(".ag-header-expand-icon-collapsed");
+    expect(closedIcon).not.toBeNull();
+    fireEvent.click(closedIcon as HTMLElement);
+
+    await expectColumnLayout(grid, ["wave"]);
+    await waitFor(() => {
+      const stored = JSON.parse(
+        localStorage.getItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY) ?? "",
+      );
+      expect(stored.groups).toEqual({
+        wave: true,
+        price: false,
+        fibo_expansion: false,
+        oscillator_stochastic: false,
+        trend_ema: false,
+      });
+    });
+
+    const openHeader = columnGroupHeader(grid, "wave");
+    openHeader.focus();
+    fireEvent.keyDown(openHeader, { code: "Enter", key: "Enter" });
+
+    await expectColumnLayout(grid, []);
+    expect(screen.getByRole("button", { name: "列プリセット: 要点のみ" }))
+      .toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("restores allowed group state and clears it when column display is reset", async () => {
+    provideGridLayoutSize();
+    localStorage.setItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      groups: {
+        wave: false,
+        price: true,
+        fibo_expansion: false,
+        oscillator_stochastic: false,
+        trend_ema: true,
+        removed_group: true,
+      },
+    }));
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayload())));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    await expectColumnLayout(grid, ["price", "trend_ema"]);
+    for (const button of screen.getAllByRole("button", { name: /列プリセット:/ })) {
+      expect(button).toHaveAttribute("aria-pressed", "false");
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "列表示をリセット" }));
+
+    await expectColumnLayout(grid, []);
+    await waitFor(() => {
+      expect(localStorage.getItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY)).toBeNull();
+    });
+    expect(screen.getByRole("button", { name: "列プリセット: 要点のみ" }))
+      .toHaveAttribute("aria-pressed", "true");
   });
 
   it("renders future timeframe rows dynamically in stored order", async () => {
@@ -333,6 +592,15 @@ describe("ObservationDetailDrawer", () => {
       "H1基準足",
       "M5",
     ]);
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: すべて展開" }));
+    await expectColumnLayout(grid, [
+      "wave",
+      "price",
+      "fibo_expansion",
+      "oscillator_stochastic",
+      "trend_ema",
+    ]);
+    expect((await within(grid).findAllByRole("rowheader")).map((cell) => cell.textContent)).toContain("M5");
   });
 
   it("keeps only the timeframe column pinned on narrow screens", async () => {
@@ -354,8 +622,14 @@ describe("ObservationDetailDrawer", () => {
     expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
 
-    await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
     const region = screen.getByRole("region", { name: "時間足別 H1新規足スナップショットグリッド" });
+    const presetSelect = screen.getByRole("combobox", { name: "列プリセット" });
+    expect(presetSelect).toHaveValue("essentials");
+    expect(screen.queryByRole("button", { name: "列プリセット: 要点のみ" })).not.toBeInTheDocument();
+    fireEvent.change(presetSelect, { target: { value: "ema200" } });
+    await expectColumnLayout(grid, ["trend_ema"]);
+    expect(presetSelect).toHaveValue("ema200");
     await waitFor(() => {
       const pinnedAreas = region.querySelectorAll<HTMLElement>(".ag-grid-pinned-left-cells");
       const timeFrameCells = region.querySelectorAll<HTMLElement>('.ag-cell[col-id="time_frame_text"]');
