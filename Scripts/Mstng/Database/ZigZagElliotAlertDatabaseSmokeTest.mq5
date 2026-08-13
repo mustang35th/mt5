@@ -191,7 +191,7 @@ bool dropDatabaseObjects(
 void initializeRunEntity(ZigZagElliotAlertRunEntity &fromEntity) {
     fromEntity.id = 0;
     fromEntity.runUid = "zigzag-elliot-alert-smoke-run-v1";
-    fromEntity.schemaVersion = 2;
+    fromEntity.schemaVersion = 3;
     fromEntity.sourceMode = "TESTER";
     fromEntity.source = "ZigZagElliot";
     fromEntity.programName = "ZigZagElliot";
@@ -287,6 +287,14 @@ void initializeAlertEntity(
     fromEntity.closeEma200DiffPips = 12.3;
     fromEntity.maxCloseEma200DiffPips = 30.0;
     fromEntity.isEma200DistanceWithin = 1;
+    fromEntity.w1ConfirmationMode = "DIRECTION_OR_EMA200";
+    fromEntity.w1ConfirmationState = "STRONG";
+    fromEntity.isW1ConfirmationAvailable = 1;
+    fromEntity.isW1ConfirmationValid = 1;
+    fromEntity.isW1DirectionMatched = 1;
+    fromEntity.w1Ema200Direction = "BUY";
+    fromEntity.isW1Ema200Matched = 1;
+    fromEntity.isW1ConfirmationPassed = 1;
     fromEntity.spreadPips = 2.1;
     fromEntity.isCurrencyStrengthEnabled = 1;
     fromEntity.currencyStrengthStatus = 1;
@@ -670,7 +678,8 @@ bool verifySavedSnapshot(
     if (!readLong(
             fromDatabaseHandle,
             "SELECT COUNT(*) FROM zigzag_elliot_alert_runs "
-                "WHERE run_uid = 'zigzag-elliot-alert-smoke-run-v1'",
+                "WHERE run_uid = 'zigzag-elliot-alert-smoke-run-v1' "
+                "AND schema_version = 3",
             runCount,
             fromLogger
         )
@@ -854,6 +863,116 @@ bool verifySavedSnapshot(
 }
 
 /**
+ * 保存したW1確認診断値を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromAlertId アラートID。
+ * @param fromLogger ロガー。
+ * @return 期待値と一致する場合true。
+ */
+bool verifyW1ConfirmationValues(
+    const int fromDatabaseHandle,
+    const long fromAlertId,
+    Logger &fromLogger
+) {
+    long matchedCount = 0;
+    string sql = "SELECT COUNT(*) FROM zigzag_elliot_alerts WHERE id = ";
+    sql += StringFormat("%I64d", fromAlertId);
+    sql += " AND w1_confirmation_mode = 'DIRECTION_OR_EMA200'";
+    sql += " AND w1_confirmation_state = 'STRONG'";
+    sql += " AND is_w1_confirmation_available = 1";
+    sql += " AND is_w1_confirmation_valid = 1";
+    sql += " AND is_w1_direction_matched = 1";
+    sql += " AND w1_ema200_direction = 'BUY'";
+    sql += " AND is_w1_ema200_matched = 1";
+    sql += " AND is_w1_confirmation_passed = 1";
+
+    return readLong(
+        fromDatabaseHandle,
+        sql,
+        matchedCount,
+        fromLogger
+    ) && matchedCount == 1;
+}
+
+/**
+ * 旧スキーマを再現するため、W1確認診断列を削除する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 全対象列を削除できた場合true。
+ */
+bool removeW1ConfirmationSchemaForMigrationTest(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    string columns[8] = {
+        "w1_confirmation_mode",
+        "w1_confirmation_state",
+        "is_w1_confirmation_available",
+        "is_w1_confirmation_valid",
+        "is_w1_direction_matched",
+        "w1_ema200_direction",
+        "is_w1_ema200_matched",
+        "is_w1_confirmation_passed"
+    };
+
+    for (int i = 0; i < ArraySize(columns); i++) {
+        string sql = "ALTER TABLE zigzag_elliot_alerts DROP COLUMN ";
+        sql += columns[i];
+        ResetLastError();
+
+        if (!DatabaseExecute(fromDatabaseHandle, sql)) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DROP COLUMN failed. column=%s error=%d",
+                    columns[i],
+                    GetLastError()
+                )
+            );
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * 旧行へ設定されたW1確認診断の移行既定値を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromAlertId アラートID。
+ * @param fromLogger ロガー。
+ * @return 既定値と一致する場合true。
+ */
+bool verifyW1ConfirmationMigrationDefaults(
+    const int fromDatabaseHandle,
+    const long fromAlertId,
+    Logger &fromLogger
+) {
+    long matchedCount = 0;
+    string sql = "SELECT COUNT(*) FROM zigzag_elliot_alerts WHERE id = ";
+    sql += StringFormat("%I64d", fromAlertId);
+    sql += " AND w1_confirmation_mode = 'OFF'";
+    sql += " AND w1_confirmation_state = 'NOT_EVALUATED'";
+    sql += " AND is_w1_confirmation_available = 0";
+    sql += " AND is_w1_confirmation_valid = 0";
+    sql += " AND is_w1_direction_matched = 0";
+    sql += " AND w1_ema200_direction = 'NONE'";
+    sql += " AND is_w1_ema200_matched = 0";
+    sql += " AND is_w1_confirmation_passed = 1";
+
+    return readLong(
+        fromDatabaseHandle,
+        sql,
+        matchedCount,
+        fromLogger
+    ) && matchedCount == 1;
+}
+
+/**
  * 必要に応じてスモークテスト用テーブルを削除する。
  *
  * @param fromLogger ロガー。
@@ -955,15 +1074,15 @@ void OnStart() {
         return;
     }
 
-    ZigZagElliotAlertRunEntity invalidV2RunEntity;
-    initializeRunEntity(invalidV2RunEntity);
-    invalidV2RunEntity.runUid =
-        "zigzag-elliot-alert-smoke-run-invalid-v2";
-    invalidV2RunEntity.analysisInputHash = "INVALID";
+    ZigZagElliotAlertRunEntity invalidV3RunEntity;
+    initializeRunEntity(invalidV3RunEntity);
+    invalidV3RunEntity.runUid =
+        "zigzag-elliot-alert-smoke-run-invalid-v3";
+    invalidV3RunEntity.analysisInputHash = "INVALID";
 
-    if (persistenceService.saveRun(invalidV2RunEntity)
-            || invalidV2RunEntity.id != 0) {
-        logger.error(__FUNCTION__, "Invalid V2 Run was not rejected.");
+    if (persistenceService.saveRun(invalidV3RunEntity)
+            || invalidV3RunEntity.id != 0) {
+        logger.error(__FUNCTION__, "Invalid V3 Run was not rejected.");
 
         return;
     }
@@ -1113,11 +1232,95 @@ void OnStart() {
         firstRunId,
         firstAlertId,
         logger
+    ) && verifyW1ConfirmationValues(
+        verificationDatabase.getHandle(),
+        firstAlertId,
+        logger
     );
     verificationDatabase.close();
 
     if (!isVerified) {
         logger.error(__FUNCTION__, "Saved snapshot verification failed.");
+
+        return;
+    }
+
+    SqliteDatabase legacySchemaDatabase(databaseFileName, useCommonFolder);
+
+    if (!legacySchemaDatabase.open()
+            || !removeW1ConfirmationSchemaForMigrationTest(
+                legacySchemaDatabase.getHandle(),
+                logger
+            )) {
+        logger.error(__FUNCTION__, "Legacy W1 schema preparation failed.");
+        legacySchemaDatabase.close();
+
+        return;
+    }
+
+    legacySchemaDatabase.close();
+    ZigZagElliotAlertDatabaseContext migrationContext(
+        databaseFileName,
+        useCommonFolder
+    );
+
+    if (!migrationContext.open() || !migrationContext.isReady()) {
+        logger.error(__FUNCTION__, "Migration database context open failed.");
+
+        return;
+    }
+
+    ZigZagElliotAlertPersistenceService *migrationPersistenceService =
+        migrationContext.getPersistenceService();
+
+    if (migrationPersistenceService == NULL
+            || !migrationPersistenceService.createTables()) {
+        logger.error(__FUNCTION__, "W1 confirmation migration failed.");
+        migrationContext.close();
+
+        return;
+    }
+
+    migrationContext.close();
+
+    if (!verificationDatabase.open()) {
+        logger.error(__FUNCTION__, "Migration verification open failed.");
+
+        return;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseExecute(
+            verificationDatabase.getHandle(),
+            "PRAGMA foreign_keys = ON"
+        )) {
+        logger.error(
+            __FUNCTION__,
+            StringFormat(
+                "Migration foreign key activation failed. error=%d",
+                GetLastError()
+            )
+        );
+        verificationDatabase.close();
+
+        return;
+    }
+
+    bool isMigrationVerified = verifySavedSnapshot(
+        verificationDatabase.getHandle(),
+        firstRunId,
+        firstAlertId,
+        logger
+    ) && verifyW1ConfirmationMigrationDefaults(
+        verificationDatabase.getHandle(),
+        firstAlertId,
+        logger
+    );
+    verificationDatabase.close();
+
+    if (!isMigrationVerified) {
+        logger.error(__FUNCTION__, "W1 confirmation migration verification failed.");
 
         return;
     }

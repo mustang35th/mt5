@@ -392,6 +392,31 @@ public:
     }
 
     /**
+     * H1エントリーのW1確認に必要な方向とEMA200だけを更新する。
+     *
+     * GMMAおよびATRを参照せず、3本のストキャス方向とEMA200方向を
+     * 同一の市場コンテキストで設定する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromOscillatorHandlePool オシレーターハンドルプール。
+     * @return 方向とEMA200を両方更新できた場合true。
+     */
+    bool updateH1W1Confirmation(
+        MarketContext &fromMarketContext,
+        OscillatorHandlePool *fromOscillatorHandlePool
+    ) {
+        if (!this.updateBuySell(
+                fromMarketContext,
+                fromOscillatorHandlePool,
+                0
+        )) {
+            return false;
+        }
+
+        return this.setEma200(fromOscillatorHandlePool);
+    }
+
+    /**
      * 解析結果を1行文字列に整形して返す。
      *
      * @return 文字列表現。

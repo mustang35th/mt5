@@ -58,6 +58,15 @@ function detailPayload(alertId = 74) {
       market_signal_key: `market-${alertId}`,
       alert_text: "<script>alert('x')</script>",
       is_w1_aligned: null,
+      w1_confirmation_mode: "OBSERVE_ONLY",
+      w1_confirmation_state: "UNAVAILABLE",
+      is_w1_confirmation_available: false,
+      is_w1_confirmation_valid: false,
+      is_w1_direction_matched: false,
+      w1_ema200_direction: "NONE",
+      is_w1_ema200_matched: false,
+      is_w1_confirmation_passed: false,
+      is_w1_confirmation_legacy: false,
     },
     run: {
       id: 3,
@@ -148,7 +157,9 @@ describe("AlertDetailDrawer", () => {
 
     expect(await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(screen.getByText("W1不明")).toBeInTheDocument();
+    expect(screen.getByText("UNAVAILABLE / 取得不可")).toBeInTheDocument();
+    expect(screen.getByText("mode: 記録のみ")).toBeInTheDocument();
+    expect(screen.getByText("不通過（記録のみ・エントリー制限なし）")).toBeInTheDocument();
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
     expect(screen.getAllByText("▼ DOWN / 下降")).toHaveLength(5);
     expect(screen.getAllByText("▼3.iii")).toHaveLength(5);

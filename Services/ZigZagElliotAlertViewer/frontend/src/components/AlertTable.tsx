@@ -31,6 +31,7 @@ import {
 } from "../lib/gridPreferences";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import { GridControls, type GridColumnOption } from "./GridControls";
+import { W1ConfirmationBadge } from "./W1ConfirmationBadge";
 
 interface AlertTableProps {
   items: AlertListItem[];
@@ -94,7 +95,7 @@ const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
   { colId: "judgement", label: "判定" },
   { colId: "h1_structure_rank", label: "構造・波動" },
   { colId: "time_frame_sides", label: "MN1 → H1 分析方向" },
-  { colId: "is_w1_aligned", label: "W1一致" },
+  { colId: "is_w1_aligned", label: "W1確認" },
   { colId: "risk_pips", label: "Risk / Spread" },
   { colId: "entry_result", label: "ENTRY" },
 ];
@@ -206,12 +207,6 @@ function TimeFrameSequence({ alert }: { alert: AlertListItem }) {
   );
 }
 
-function AlignmentBadge({ alert }: { alert: AlertListItem }) {
-  if (alert.is_w1_aligned === true) return <Badge text="一致" variant="good" />;
-  if (alert.is_w1_aligned === false) return <Badge text="不一致" variant="warn" />;
-  return <Badge text="不明" />;
-}
-
 function dataFrom(params: ICellRendererParams<AlertListItem>) {
   return params.data;
 }
@@ -287,13 +282,20 @@ function TimeFramesCell(params: ICellRendererParams<AlertListItem>) {
   return <TimeFrameSequence alert={alert} />;
 }
 
-function AlignmentCell(params: ICellRendererParams<AlertListItem>) {
+function W1ConfirmationCell(params: ICellRendererParams<AlertListItem>) {
   const alert = dataFrom(params);
   if (!alert) return null;
+  const isLegacy = alert.is_w1_confirmation_legacy
+    || alert.w1_confirmation_state === "NOT_EVALUATED";
   return (
-    <div className="grid-cell-stack">
-      <AlignmentBadge alert={alert} />
-      <span className="subtext">W1 {displayValue(alert.w1_side)}</span>
+    <div className="grid-cell-stack w1-confirmation-cell">
+      <W1ConfirmationBadge compact confirmation={alert} />
+      <span className="subtext">
+        {isLegacy
+          ? `方向 ${alert.is_w1_aligned === null ? "不明" : alert.is_w1_aligned ? "一致" : "不一致"}`
+          : alert.w1_confirmation_state}
+        {` / EMA ${displayValue(alert.w1_ema200_direction)}`}
+      </span>
     </div>
   );
 }
@@ -586,12 +588,13 @@ export function AlertTable({
     },
     {
       colId: "is_w1_aligned",
-      field: "is_w1_aligned",
-      headerName: "W1一致",
-      initialWidth: 115,
+      field: "w1_confirmation_state",
+      headerName: "W1確認",
+      initialWidth: 210,
+      minWidth: 190,
       headerComponent: ServerSortHeader,
-      headerComponentParams: sortHeaderParameters("is_w1_aligned", sort, order, onSort),
-      cellRenderer: AlignmentCell,
+      headerComponentParams: sortHeaderParameters("w1_confirmation_state", sort, order, onSort),
+      cellRenderer: W1ConfirmationCell,
     },
     {
       colId: "risk_pips",

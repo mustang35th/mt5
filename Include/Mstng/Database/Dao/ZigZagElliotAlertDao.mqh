@@ -9,6 +9,7 @@
 #ifndef MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_DAO_MQH
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_DAO_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotAlertW1ConfirmationMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -74,6 +75,26 @@ public:
         sql += "max_close_ema200_diff_pips REAL NOT NULL,";
         sql += "is_ema200_distance_within INTEGER NOT NULL ";
         sql += "CHECK(is_ema200_distance_within IN (0, 1)),";
+        sql += "w1_confirmation_mode TEXT NOT NULL DEFAULT 'OFF' ";
+        sql += "CHECK(w1_confirmation_mode IN ('OFF', 'OBSERVE_ONLY',";
+        sql += " 'DIRECTION_OR_EMA200', 'DIRECTION_AND_EMA200')),";
+        sql += "w1_confirmation_state TEXT NOT NULL DEFAULT 'NOT_EVALUATED' ";
+        sql += "CHECK(w1_confirmation_state IN ('NOT_EVALUATED',";
+        sql += " 'NOT_APPLICABLE', 'OFF', 'UNAVAILABLE', 'INVALID',";
+        sql += " 'STRONG', 'DIRECTION_ONLY', 'EMA_CONFLICT', 'EMA_ONLY',";
+        sql += " 'REJECT_NONE', 'REJECT')),";
+        sql += "is_w1_confirmation_available INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_w1_confirmation_available IN (0, 1)),";
+        sql += "is_w1_confirmation_valid INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_w1_confirmation_valid IN (0, 1)),";
+        sql += "is_w1_direction_matched INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_w1_direction_matched IN (0, 1)),";
+        sql += "w1_ema200_direction TEXT NOT NULL DEFAULT 'NONE' ";
+        sql += "CHECK(w1_ema200_direction IN ('BUY', 'SELL', 'NONE')),";
+        sql += "is_w1_ema200_matched INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_w1_ema200_matched IN (0, 1)),";
+        sql += "is_w1_confirmation_passed INTEGER NOT NULL DEFAULT 1 ";
+        sql += "CHECK(is_w1_confirmation_passed IN (0, 1)),";
         sql += "spread_pips REAL NOT NULL,";
         sql += "is_currency_strength_enabled INTEGER NOT NULL ";
         sql += "CHECK(is_currency_strength_enabled IN (0, 1)),";
@@ -119,6 +140,12 @@ public:
         sql += ")";
 
         if (!this.executeSql(sql, "zigzag_elliot_alerts table")) {
+            return false;
+        }
+
+        if (!ZigZagElliotAlertW1ConfirmationMigration::execute(
+                this.databaseHandle
+            )) {
             return false;
         }
 
@@ -356,7 +383,11 @@ private:
         sql += " is_entry_count_match, is_entry_evaluated, is_alert, is_entry,";
         sql += " entry_result, is_send_mail, current_elliot_label, is_entry_wave,";
         sql += " close_ema200_diff_pips, max_close_ema200_diff_pips,";
-        sql += " is_ema200_distance_within, spread_pips,";
+        sql += " is_ema200_distance_within, w1_confirmation_mode,";
+        sql += " w1_confirmation_state, is_w1_confirmation_available,";
+        sql += " is_w1_confirmation_valid, is_w1_direction_matched,";
+        sql += " w1_ema200_direction, is_w1_ema200_matched,";
+        sql += " is_w1_confirmation_passed, spread_pips,";
         sql += " is_currency_strength_enabled, currency_strength_status,";
         sql += " is_currency_strength_available,";
         sql += " currency_strength_calculation_version, currency_strength_run_id,";
@@ -376,7 +407,8 @@ private:
         sql += " ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34,";
         sql += " ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45,";
         sql += " ?46, ?47, ?48, ?49, ?50, ?51, ?52, ?53, ?54, ?55, ?56,";
-        sql += " ?57, ?58, ?59, ?60, ?61, ?62, ?63";
+        sql += " ?57, ?58, ?59, ?60, ?61, ?62, ?63, ?64, ?65, ?66, ?67,";
+        sql += " ?68, ?69, ?70, ?71";
         sql += ")";
 
         return sql;
@@ -503,6 +535,62 @@ private:
                 fromRequestHandle,
                 index++,
                 fromEntity.isEma200DistanceWithin
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.w1ConfirmationMode
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.w1ConfirmationState
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isW1ConfirmationAvailable
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isW1ConfirmationValid
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isW1DirectionMatched
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.w1Ema200Direction
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isW1Ema200Matched
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isW1ConfirmationPassed
             );
         }
         if (isBound) {
@@ -671,7 +759,7 @@ private:
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.createdAtText);
         }
 
-        return isBound && index == 63;
+        return isBound && index == 71;
     }
 
     /**

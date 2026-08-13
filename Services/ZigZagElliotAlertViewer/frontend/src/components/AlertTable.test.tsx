@@ -40,6 +40,15 @@ function alertWithAlignment(id: number, aligned: boolean | null): AlertListItem 
     h4_side: "BUY",
     h1_side: "BUY",
     is_w1_aligned: aligned,
+    w1_confirmation_mode: id === 3 ? "OFF" : "DIRECTION_OR_EMA200",
+    w1_confirmation_state: id === 1 ? "STRONG" : id === 2 ? "EMA_CONFLICT" : "NOT_EVALUATED",
+    is_w1_confirmation_available: id !== 3,
+    is_w1_confirmation_valid: id !== 3,
+    is_w1_direction_matched: id === 1 || id === 2,
+    w1_ema200_direction: id === 1 ? "BUY" : id === 2 ? "SELL" : "NONE",
+    is_w1_ema200_matched: id === 1,
+    is_w1_confirmation_passed: id === 1 || id === 2,
+    is_w1_confirmation_legacy: id === 3,
   };
 }
 
@@ -48,8 +57,9 @@ describe("AlertTable", () => {
     localStorage.clear();
   });
 
-  it("renders W1 alignment as a three-state value and escapes DB text", async () => {
+  it("renders compact W1 confirmation states and escapes DB text", async () => {
     const onOpenDetail = vi.fn();
+    const onSort = vi.fn();
     const view = render(
       <AlertTable
         items={[alertWithAlignment(1, true), alertWithAlignment(2, false), alertWithAlignment(3, null)]}
@@ -57,13 +67,21 @@ describe("AlertTable", () => {
         highlightedIds={new Set([2])}
         sort="jst_time"
         order="desc"
-        onSort={vi.fn()}
+        onSort={onSort}
         onOpenDetail={onOpenDetail}
       />,
     );
-    expect(await screen.findByText("一致")).toBeInTheDocument();
-    expect(screen.getByText("不一致")).toBeInTheDocument();
-    expect(screen.getByText("不明")).toBeInTheDocument();
+    expect(await screen.findByText("両方一致")).toBeInTheDocument();
+    expect(screen.getByText("方向一致・EMA逆")).toBeInTheDocument();
+    expect(screen.getByText("Legacy / 未記録")).toBeInTheDocument();
+    expect(screen.getAllByText("OR")).toHaveLength(2);
+    expect(screen.getByText("STRONG / EMA BUY")).toBeInTheDocument();
+    expect(screen.getByText("EMA_CONFLICT / EMA SELL")).toBeInTheDocument();
+    expect(screen.getByText("方向 不明 / EMA NONE")).toBeInTheDocument();
+    expect(view.container.querySelectorAll(".w1-confirmation-badges-compact")).toHaveLength(3);
+    const confirmationHeader = screen.getByRole("columnheader", { name: "W1確認" });
+    fireEvent.click(within(confirmationHeader).getByRole("button", { name: "W1確認" }));
+    expect(onSort).toHaveBeenCalledWith("w1_confirmation_state");
     expect(screen.getAllByText("LIVE")).toHaveLength(3);
     expect(screen.getAllByLabelText("GMO取引 対象")).toHaveLength(2);
     expect(screen.queryByLabelText("GMO取引 対象外")).not.toBeInTheDocument();
@@ -149,11 +167,11 @@ describe("AlertTable", () => {
     expect(localStorage.getItem(GRID_DENSITY_STORAGE_KEY)).toBe("compact");
 
     fireEvent.click(screen.getByRole("button", { name: "表示列" }));
-    const w1ColumnItem = await screen.findByRole("menuitemcheckbox", { name: /W1一致/ });
+    const w1ColumnItem = await screen.findByRole("menuitemcheckbox", { name: /W1確認/ });
     expect(w1ColumnItem).toHaveAttribute("aria-checked", "true");
     fireEvent.click(w1ColumnItem);
     await waitFor(() => {
-      expect(screen.queryByRole("columnheader", { name: "W1一致" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "W1確認" })).not.toBeInTheDocument();
       const storedText = localStorage.getItem(GRID_LAYOUT_STORAGE_KEY);
       expect(storedText).not.toBeNull();
       const stored = JSON.parse(storedText || "{}") as {
@@ -175,7 +193,7 @@ describe("AlertTable", () => {
     );
     await waitFor(() => {
       expect(restoredView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
-      expect(screen.queryByRole("columnheader", { name: "W1一致" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "W1確認" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "列を初期化" })).toBeEnabled();
     });
 
@@ -184,7 +202,7 @@ describe("AlertTable", () => {
       expect(localStorage.getItem(GRID_LAYOUT_STORAGE_KEY)).toBeNull();
     });
     fireEvent.click(screen.getByRole("button", { name: "表示列" }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: /W1一致/ }))
+    expect(await screen.findByRole("menuitemcheckbox", { name: /W1確認/ }))
       .toHaveAttribute("aria-checked", "true");
     expect(restoredView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
   });
@@ -221,6 +239,8 @@ describe("AlertTable", () => {
       expect(screen.getByRole("columnheader", { name: "時間足" })).toBeInTheDocument();
       expect(view.container.querySelector<HTMLElement>('[col-id="entry_result"]'))
         .toHaveStyle({ width: "165px" });
+      expect(view.container.querySelector<HTMLElement>('[role="columnheader"][col-id="is_w1_aligned"]'))
+        .toHaveStyle({ width: "210px" });
     });
     const initialColumnIds = Array.from(
       view.container.querySelectorAll<HTMLElement>('[role="columnheader"][col-id]'),

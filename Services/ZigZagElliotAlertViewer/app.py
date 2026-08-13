@@ -48,6 +48,36 @@ OBSERVATION_SYNC_TIME_FRAMES = {"MN1", "W1", "D1", "H4"}
 W1_TIME_FRAME = 32769
 REACT_CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
 
+W1_CONFIRMATION_ALERT_COLUMNS = {
+    "w1_confirmation_mode",
+    "w1_confirmation_state",
+    "is_w1_confirmation_available",
+    "is_w1_confirmation_valid",
+    "is_w1_direction_matched",
+    "w1_ema200_direction",
+    "is_w1_ema200_matched",
+    "is_w1_confirmation_passed",
+}
+W1_CONFIRMATION_MODES = {
+    "OFF",
+    "OBSERVE_ONLY",
+    "DIRECTION_OR_EMA200",
+    "DIRECTION_AND_EMA200",
+}
+W1_CONFIRMATION_STATES = {
+    "NOT_EVALUATED",
+    "NOT_APPLICABLE",
+    "OFF",
+    "UNAVAILABLE",
+    "INVALID",
+    "STRONG",
+    "DIRECTION_ONLY",
+    "EMA_CONFLICT",
+    "EMA_ONLY",
+    "REJECT_NONE",
+    "REJECT",
+}
+
 # Keep this classification aligned with SymbolNameInfoAll.setGmo().
 GMO_SYMBOL_TARGETS = {
     "USDJPY": True,
@@ -127,6 +157,8 @@ SORT_COLUMNS = {
     "spread_pips": "spread_pips",
     "w1_side": "w1_side",
     "is_w1_aligned": "is_w1_aligned",
+    "w1_confirmation_state": "w1_confirmation_state COLLATE NOCASE",
+    "w1_confirmation_mode": "w1_confirmation_mode COLLATE NOCASE",
     "created_at": "created_at",
 }
 
@@ -286,6 +318,12 @@ BOOLEAN_COLUMNS = {
     "is_original_elliot_available",
     "is_correct",
     "is_w1_aligned",
+    "is_w1_confirmation_available",
+    "is_w1_confirmation_valid",
+    "is_w1_direction_matched",
+    "is_w1_ema200_matched",
+    "is_w1_confirmation_passed",
+    "is_w1_confirmation_legacy",
     "w1_is_buy",
     "w1_is_wave_confirmed",
     "w1_is_wave_motive",
@@ -608,6 +646,78 @@ class AlertDatabase:
         }
 
     @staticmethod
+    def w1_confirmation_schema_status(
+        connection: Connection,
+    ) -> dict[str, Any]:
+        """Return availability of the optional alert-level W1 diagnosis."""
+
+        actual_columns = AlertDatabase.table_columns(
+            connection,
+            "zigzag_elliot_alerts",
+        )
+        missing_columns = sorted(W1_CONFIRMATION_ALERT_COLUMNS - actual_columns)
+        return {
+            "available": not missing_columns,
+            "reason": None if not missing_columns else "W1 confirmation columns are not available",
+            "missing_columns": missing_columns,
+        }
+
+    @staticmethod
+    def w1_confirmation_projection(connection: Connection) -> str:
+        """Return real W1 columns or legacy-safe projected defaults."""
+
+        if AlertDatabase.w1_confirmation_schema_status(connection)["available"]:
+            return """
+                a.w1_confirmation_mode,
+                a.w1_confirmation_state,
+                a.is_w1_confirmation_available,
+                a.is_w1_confirmation_valid,
+                a.is_w1_direction_matched,
+                a.w1_ema200_direction,
+                a.is_w1_ema200_matched,
+                a.is_w1_confirmation_passed,
+                CASE WHEN a.w1_confirmation_state = 'NOT_EVALUATED'
+                     THEN 1 ELSE 0 END AS is_w1_confirmation_legacy,
+            """
+        return """
+            'OFF' AS w1_confirmation_mode,
+            'NOT_EVALUATED' AS w1_confirmation_state,
+            0 AS is_w1_confirmation_available,
+            0 AS is_w1_confirmation_valid,
+            0 AS is_w1_direction_matched,
+            'NONE' AS w1_ema200_direction,
+            0 AS is_w1_ema200_matched,
+            1 AS is_w1_confirmation_passed,
+            1 AS is_w1_confirmation_legacy,
+        """
+
+    @staticmethod
+    def apply_w1_confirmation_defaults(
+        alert: dict[str, Any],
+    ) -> None:
+        """Normalize a reflected legacy alert to the current response contract."""
+
+        defaults: dict[str, Any] = {
+            "w1_confirmation_mode": "OFF",
+            "w1_confirmation_state": "NOT_EVALUATED",
+            "is_w1_confirmation_available": False,
+            "is_w1_confirmation_valid": False,
+            "is_w1_direction_matched": False,
+            "w1_ema200_direction": "NONE",
+            "is_w1_ema200_matched": False,
+            "is_w1_confirmation_passed": True,
+        }
+        if not W1_CONFIRMATION_ALERT_COLUMNS.issubset(alert):
+            alert.update(defaults)
+        else:
+            for key, value in defaults.items():
+                if alert[key] is None:
+                    alert[key] = value
+        alert["is_w1_confirmation_legacy"] = (
+            alert["w1_confirmation_state"] == "NOT_EVALUATED"
+        )
+
+    @staticmethod
     def observation_schema_status(connection: Connection) -> dict[str, Any]:
         """Return optional observation-table availability without changing schema."""
 
@@ -701,6 +811,7 @@ class AlertDatabase:
             ).scalar_one()
             observation_status = self.observation_schema_status(connection)
             analysis_profile_status = self.analysis_profile_schema_status(connection)
+            w1_confirmation_status = self.w1_confirmation_schema_status(connection)
             observation_count = 0
             if observation_status["available"]:
                 observation_count = connection.execute(
@@ -714,6 +825,8 @@ class AlertDatabase:
             "observation_count": observation_count,
             "analysis_profile_available": analysis_profile_status["available"],
             "analysis_profile_reason": analysis_profile_status["reason"],
+            "w1_confirmation_available": w1_confirmation_status["available"],
+            "w1_confirmation_reason": w1_confirmation_status["reason"],
         }
 
     def runs(self) -> dict[str, Any]:
@@ -882,6 +995,11 @@ class AlertDatabase:
                 )
                 rows = connection.execute(text(sql)).mappings()
                 result[output_name] = [row["value"] for row in rows]
+            result["w1_confirmation_states"] = sorted(W1_CONFIRMATION_STATES)
+            result["w1_confirmation_modes"] = sorted(W1_CONFIRMATION_MODES)
+            result["w1_confirmation_available"] = (
+                self.w1_confirmation_schema_status(connection)["available"]
+            )
         return result
 
     def observation_options(self) -> dict[str, Any]:
@@ -1761,6 +1879,38 @@ class AlertDatabase:
         if alignment not in alignment_map:
             raise RequestError("w1Aligned must be all, aligned, mismatched or unknown")
 
+        derived_clauses: list[str] = []
+        if alignment_map[alignment]:
+            derived_clauses.append(alignment_map[alignment])
+
+        confirmation_state = (first("w1ConfirmationState") or "all").upper()
+        if confirmation_state != "ALL":
+            if confirmation_state not in W1_CONFIRMATION_STATES:
+                raise RequestError(
+                    "w1ConfirmationState must be an exact persisted W1 state or all"
+                )
+            derived_clauses.append(
+                "w1_confirmation_state = :w1_confirmation_state"
+            )
+            parameters["w1_confirmation_state"] = confirmation_state
+
+        confirmation_mode = (first("w1ConfirmationMode") or "all").upper()
+        confirmation_mode_aliases = {
+            "OR": "DIRECTION_OR_EMA200",
+            "AND": "DIRECTION_AND_EMA200",
+        }
+        confirmation_mode = confirmation_mode_aliases.get(
+            confirmation_mode,
+            confirmation_mode,
+        )
+        if confirmation_mode != "ALL":
+            if confirmation_mode not in W1_CONFIRMATION_MODES:
+                raise RequestError(
+                    "w1ConfirmationMode must be OFF, OBSERVE_ONLY, OR, AND or all"
+                )
+            derived_clauses.append("w1_confirmation_mode = :w1_confirmation_mode")
+            parameters["w1_confirmation_mode"] = confirmation_mode
+
         sort_key = first("sort") or "jst_time"
         if sort_key not in SORT_COLUMNS:
             raise RequestError("unsupported sort column")
@@ -1775,7 +1925,7 @@ class AlertDatabase:
         where_sql = ""
         if clauses:
             where_sql = " AND " + " AND ".join(clauses)
-        derived_where_sql = alignment_map[alignment]
+        derived_where_sql = " AND ".join(derived_clauses)
         return AlertFilters(
             where_sql=where_sql,
             parameters=parameters,
@@ -1786,9 +1936,11 @@ class AlertDatabase:
             page_size=page_size,
         )
 
-    @staticmethod
-    def alert_rows_cte(filters: AlertFilters) -> str:
+    def alert_rows_cte(self, filters: AlertFilters) -> str:
         """Return the shared list CTE using only fixed SQL identifiers."""
+
+        with self.connect() as connection:
+            w1_confirmation_columns = self.w1_confirmation_projection(connection)
 
         return f"""
             WITH alert_rows AS (
@@ -1825,6 +1977,7 @@ class AlertDatabase:
                     a.h1_structure_rank, a.is_h1_structure_valid,
                     a.is_h1_structure_late, a.is_h1_direction_exception,
                     a.alert_title, a.wave_summary_text,
+                    {w1_confirmation_columns}
                     a.created_at, a.created_at_text,
                     mn1.buy_sell_label AS mn1_side,
                     w1.buy_sell_label AS w1_side,
@@ -1955,6 +2108,7 @@ class AlertDatabase:
             ).one_or_none()
             alert = model_to_dict(alert_entity) or {}
             alert["is_gmo_target"] = is_gmo_target(alert.get("symbol_name"))
+            self.apply_w1_confirmation_defaults(alert)
             run = model_to_dict(run_entity)
             w1: dict[str, Any] | None = None
             if w1_entity is not None:
@@ -2034,6 +2188,11 @@ class AlertDatabase:
                    entry_result, current_elliot_label, h1_structure_rank,
                    mn1_side, w1_side, d1_side, h4_side, h1_side,
                    is_w1_aligned, w1_elliot_label, w1_sub_elliot_label,
+                   w1_confirmation_mode, w1_confirmation_state,
+                   is_w1_confirmation_available, is_w1_confirmation_valid,
+                   is_w1_direction_matched, w1_ema200_direction,
+                   is_w1_ema200_matched, is_w1_confirmation_passed,
+                   is_w1_confirmation_legacy,
                    reference_price, is_stop_loss_available, stop_loss,
                    risk_pips, spread_pips, long_medium_rank_difference,
                    medium_short_rank_difference, alert_title,
@@ -2069,6 +2228,15 @@ class AlertDatabase:
             "is_w1_aligned",
             "w1_elliot_label",
             "w1_sub_elliot_label",
+            "w1_confirmation_mode",
+            "w1_confirmation_state",
+            "is_w1_confirmation_available",
+            "is_w1_confirmation_valid",
+            "is_w1_direction_matched",
+            "w1_ema200_direction",
+            "is_w1_ema200_matched",
+            "is_w1_confirmation_passed",
+            "is_w1_confirmation_legacy",
             "reference_price",
             "is_stop_loss_available",
             "stop_loss",

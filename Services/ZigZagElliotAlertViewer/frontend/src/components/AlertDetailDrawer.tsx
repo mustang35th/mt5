@@ -27,6 +27,11 @@ import {
   sideClass,
 } from "../lib/format";
 import { GmoTargetBadge } from "./GmoTargetBadge";
+import {
+  W1ConfirmationBadge,
+  w1ConfirmationModeLabel,
+  w1ConfirmationStateDescription,
+} from "./W1ConfirmationBadge";
 
 interface AlertDetailDrawerProps {
   alertId: number | null;
@@ -94,6 +99,15 @@ function waveLabel(mainLabel: string, subLabel: string): string {
 
 function structureLabel(rank: string, isLate: boolean): string {
   return `${displayValue(rank)}${isLate ? "-LATE" : ""}`;
+}
+
+function w1EvaluationLabel(alert: AlertDetailResponse["alert"]): string {
+  const result = alert.is_w1_confirmation_passed ? "通過" : "不通過";
+  if (alert.w1_confirmation_mode === "OBSERVE_ONLY") {
+    return `${result}（記録のみ・エントリー制限なし）`;
+  }
+  if (alert.is_w1_confirmation_legacy) return "未記録（Legacy）";
+  return result;
 }
 
 function Badge({ text, variant = "neutral" }: { text: string; variant?: string }) {
@@ -415,16 +429,6 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
     });
   }
 
-  let alignmentText = "W1不明";
-  let alignmentVariant = "neutral";
-  if (alert.is_w1_aligned === true) {
-    alignmentText = "W1一致";
-    alignmentVariant = "good";
-  } else if (alert.is_w1_aligned === false) {
-    alignmentText = "W1不一致";
-    alignmentVariant = "warn";
-  }
-
   return (
     <>
       <section className="detail-hero">
@@ -432,7 +436,7 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
           <div className="badge-row">
             <Badge text={alert.side} variant={sideClass(alert.side)} />
             <Badge text={`H1 ${structureLabel(alert.h1_structure_rank, alert.is_h1_structure_late)}`} />
-            <Badge text={alignmentText} variant={alignmentVariant} />
+            <W1ConfirmationBadge confirmation={alert} />
             <Badge text={run?.source_mode || "UNKNOWN"} />
             {String(run?.tester_model || "").toLowerCase().includes("open") && <Badge text="Open Prices" variant="warn" />}
           </div>
@@ -486,6 +490,22 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
             <DetailField label="通貨強弱" value={`${displayValue(alert.currency_strength_status)} / ${alert.is_currency_strength_available ? "取得済" : "未取得"}`} />
             <DetailField label="順位差 長中期 / 中短期" value={`${formatSignedNumber(alert.long_medium_rank_difference, 0)} / ${formatSignedNumber(alert.medium_short_rank_difference, 0)}`} />
             <DetailField label="W1分析方向" value={w1?.w1_side || "不明"} />
+            <DetailField
+              label="W1確認モード"
+              value={alert.is_w1_confirmation_legacy
+                ? "未記録（Legacy）"
+                : `${w1ConfirmationModeLabel(alert.w1_confirmation_mode)} / ${alert.w1_confirmation_mode}`}
+            />
+            <DetailField
+              label="W1確認状態"
+              value={`${alert.w1_confirmation_state} / ${w1ConfirmationStateDescription(alert.w1_confirmation_state)}`}
+            />
+            <DetailField label="W1データ取得" value={yesNo(alert.is_w1_confirmation_available)} />
+            <DetailField label="W1データ有効" value={yesNo(alert.is_w1_confirmation_valid)} />
+            <DetailField label="W1方向一致" value={yesNo(alert.is_w1_direction_matched)} />
+            <DetailField label="W1 EMA200方向" value={alert.w1_ema200_direction} />
+            <DetailField label="W1 EMA200一致" value={yesNo(alert.is_w1_ema200_matched)} />
+            <DetailField label="W1ルール評価" value={w1EvaluationLabel(alert)} />
             <DetailField label="Run" value={run ? `${run.id} / ${displayValue(run.program_version)}` : "不明"} />
             <DetailField label="Signal key" value={alert.market_signal_key} />
             <DetailField label="Snapshot" value="アラート記録時点" />

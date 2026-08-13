@@ -31,8 +31,24 @@ describe("searchState", () => {
     expect(params.has("timeFrame")).toBe(false);
     expect(params.has("gmoTarget")).toBe(false);
     expect(params.has("w1Aligned")).toBe(false);
+    expect(params.has("w1ConfirmationMode")).toBe(false);
+    expect(params.has("w1ConfirmationState")).toBe(false);
     expect(params.get("page")).toBe("1");
     expect(params.get("sort")).toBe("jst_time");
+  });
+
+  it("round-trips only exact W1 confirmation state and mode values", () => {
+    const state = readSearchState(
+      "?w1ConfirmationState=EMA_CONFLICT&w1ConfirmationMode=OBSERVE_ONLY&sort=w1_confirmation_state",
+    );
+    expect(state.w1ConfirmationState).toBe("EMA_CONFLICT");
+    expect(state.w1ConfirmationMode).toBe("OBSERVE_ONLY");
+    expect(state.sort).toBe("w1_confirmation_state");
+    const params = buildSearchParams(state);
+    expect(params.get("w1ConfirmationState")).toBe("EMA_CONFLICT");
+    expect(params.get("w1ConfirmationMode")).toBe("OBSERVE_ONLY");
+    expect(readSearchState("?w1ConfirmationState=CONFLICT").w1ConfirmationState).toBe("all");
+    expect(readSearchState("?w1ConfirmationMode=OR").w1ConfirmationMode).toBe("all");
   });
 
   it("restores and serializes only supported GMO target filters", () => {

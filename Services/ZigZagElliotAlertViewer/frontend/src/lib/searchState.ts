@@ -1,4 +1,11 @@
-import type { AlertSort, SearchState, SourceMode, ViewerTab } from "../api/types";
+import type {
+  AlertSort,
+  SearchState,
+  SourceMode,
+  ViewerTab,
+  W1ConfirmationMode,
+  W1ConfirmationState,
+} from "../api/types";
 
 export const DEFAULT_SEARCH_STATE: SearchState = {
   sourceMode: "LIVE",
@@ -10,6 +17,8 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
   side: "",
   rank: "",
   w1Aligned: "all",
+  w1ConfirmationMode: "all",
+  w1ConfirmationState: "all",
   from: "",
   to: "",
   pageSize: 50,
@@ -25,8 +34,30 @@ const SORT_KEYS = new Set<AlertSort>([
   "side",
   "h1_structure_rank",
   "is_w1_aligned",
+  "w1_confirmation_state",
   "risk_pips",
   "entry_result",
+]);
+
+const W1_CONFIRMATION_MODES = new Set<W1ConfirmationMode>([
+  "OFF",
+  "OBSERVE_ONLY",
+  "DIRECTION_OR_EMA200",
+  "DIRECTION_AND_EMA200",
+]);
+
+const W1_CONFIRMATION_STATES = new Set<W1ConfirmationState>([
+  "NOT_EVALUATED",
+  "NOT_APPLICABLE",
+  "OFF",
+  "UNAVAILABLE",
+  "INVALID",
+  "STRONG",
+  "DIRECTION_ONLY",
+  "EMA_CONFLICT",
+  "EMA_ONLY",
+  "REJECT_NONE",
+  "REJECT",
 ]);
 
 function positiveInteger(value: string | null, fallback: number): number {
@@ -56,6 +87,8 @@ export function readSearchState(search: string): SearchState {
     : "LIVE";
   const side = params.get("side");
   const alignment = params.get("w1Aligned");
+  const confirmationMode = params.get("w1ConfirmationMode") as W1ConfirmationMode | null;
+  const confirmationState = params.get("w1ConfirmationState") as W1ConfirmationState | null;
   const requestedGmoTarget = params.get("gmoTarget");
   const sort = params.get("sort") as AlertSort | null;
   const requestedPageSize = positiveInteger(params.get("pageSize"), DEFAULT_SEARCH_STATE.pageSize);
@@ -80,6 +113,12 @@ export function readSearchState(search: string): SearchState {
       alignment === "aligned" || alignment === "mismatched" || alignment === "unknown"
         ? alignment
         : "all",
+    w1ConfirmationMode: confirmationMode && W1_CONFIRMATION_MODES.has(confirmationMode)
+      ? confirmationMode
+      : "all",
+    w1ConfirmationState: confirmationState && W1_CONFIRMATION_STATES.has(confirmationState)
+      ? confirmationState
+      : "all",
     from: dateInputValue(params.get("from")),
     to: dateInputValue(params.get("to")),
     pageSize,
@@ -110,6 +149,12 @@ export function buildSearchParams(
   if (state.side) params.set("side", state.side);
   if (state.rank) params.set("rank", state.rank);
   if (state.w1Aligned !== "all") params.set("w1Aligned", state.w1Aligned);
+  if (state.w1ConfirmationMode !== "all") {
+    params.set("w1ConfirmationMode", state.w1ConfirmationMode);
+  }
+  if (state.w1ConfirmationState !== "all") {
+    params.set("w1ConfirmationState", state.w1ConfirmationState);
+  }
   if (state.from) params.set("from", state.from);
   if (state.to) params.set("to", state.to);
   if (includePaging) {

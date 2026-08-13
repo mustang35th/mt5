@@ -58,6 +58,30 @@ struct Mtf3In3AlertResult {
     /** Close1とEMA200[1]の距離が許容範囲内の場合true。 */
     bool isEma200DistanceWithin;
 
+    /** H1 W1確認モード。 */
+    string w1ConfirmationMode;
+
+    /** H1 W1確認の診断状態。 */
+    string w1ConfirmationState;
+
+    /** W1分析結果を取得できた場合true。 */
+    bool isW1ConfirmationAvailable;
+
+    /** W1方向とEMA200方向が判定可能な値の場合true。 */
+    bool isW1ConfirmationValid;
+
+    /** W1方向がエントリー方向と一致する場合true。 */
+    bool isW1DirectionMatched;
+
+    /** W1 EMA200方向。 */
+    string w1Ema200Direction;
+
+    /** W1 EMA200方向がエントリー方向と一致する場合true。 */
+    bool isW1Ema200Matched;
+
+    /** 選択モードのW1確認条件を満たす場合true。 */
+    bool isW1ConfirmationPassed;
+
     /**
      * 全フィールドを未判定状態へ初期化する。
      */
@@ -77,6 +101,14 @@ struct Mtf3In3AlertResult {
         this.closeEma200DiffPips = 0.0;
         this.maxCloseEma200DiffPips = 0.0;
         this.isEma200DistanceWithin = false;
+        this.w1ConfirmationMode = "OFF";
+        this.w1ConfirmationState = "NOT_APPLICABLE";
+        this.isW1ConfirmationAvailable = false;
+        this.isW1ConfirmationValid = false;
+        this.isW1DirectionMatched = false;
+        this.w1Ema200Direction = "NONE";
+        this.isW1Ema200Matched = false;
+        this.isW1ConfirmationPassed = true;
     }
 };
 

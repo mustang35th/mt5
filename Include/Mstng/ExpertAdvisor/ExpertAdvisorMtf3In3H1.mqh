@@ -10,6 +10,7 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_H1_MQH
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
+#include <Mstng\ExpertAdvisor\H1W1ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
 
 /**
@@ -27,16 +28,23 @@ public:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
      */
     ExpertAdvisorMtf3In3H1(
         MarketContext &fromMarketContext,
-        bool fromIsDrawArrow = true
-    ) : ExpertAdvisorMTF_3in3(fromMarketContext, fromIsDrawArrow) {
+        bool fromIsDrawArrow = true,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode =
+            H1_W1_CONFIRMATION_OBSERVE_ONLY
+    ) : ExpertAdvisorMTF_3in3(
+        fromMarketContext,
+        fromIsDrawArrow,
+        fromH1W1ConfirmationMode
+    ) {
     }
 
 protected:
     /**
-     * H1が第1波または第3波か判定する。
+     * H1が第1波、第3波または第5波か判定する。
      *
      * @return H1用の波動条件を満たす場合true。
      */
@@ -75,6 +83,37 @@ protected:
 
         return this.expertAdvisorEma200.isEma200BuySell(
             this.elliotCurrent
+        );
+    }
+
+    /**
+     * W1方向とW1 EMA200方向をH1エントリー方向と照合する。
+     *
+     * OBSERVE_ONLYではOR条件の診断結果を保持しつつ、エントリー判定は
+     * 制限しない。強制モードではW1取得不能または不正値を拒否する。
+     *
+     * @return 選択されたW1確認モードのゲートを通過する場合true。
+     */
+    virtual bool isTimeFrameHigherConfirmationConditionMatched() override {
+        if (this.marketContext.timeFrame != PERIOD_H1) {
+            this.w1ConfirmationResult.reset();
+
+            return false;
+        }
+
+        H1W1ConfirmationDecision decision;
+        Elliot *elliotW1 =
+            this.elliotAll.getH1W1ConfirmationElliot();
+
+        if (elliotW1 == NULL) {
+            elliotW1 = this.elliotAll.getElliot(PERIOD_W1);
+        }
+
+        return decision.evaluate(
+            this.h1W1ConfirmationMode,
+            this.isBuy,
+            elliotW1,
+            this.w1ConfirmationResult
         );
     }
 

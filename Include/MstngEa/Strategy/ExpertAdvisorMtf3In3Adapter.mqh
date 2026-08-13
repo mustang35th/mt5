@@ -14,6 +14,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\ExpertAdvisor\ElliottWaveInfo.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
+#include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Strategy\IStrategyAdapter.mqh>
 
@@ -28,16 +29,23 @@ public:
      * @param symbolNameValue シンボル名
      * @param timeFrameValue 時間足
      * @param signalCountValue シグナル回数
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
      */
     ExpertAdvisorMtf3In3Adapter(
         string symbolNameValue,
         ENUM_TIMEFRAMES timeFrameValue,
-        SignalCount *signalCountValue
+        SignalCount *signalCountValue,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode =
+            H1_W1_CONFIRMATION_OBSERVE_ONLY
     ) {
         this.expertAdvisorMtf3In3 = NULL;
         this.signalCount = NULL;
         MarketContext context(symbolNameValue, timeFrameValue);
-        this.initialize(context, signalCountValue);
+        this.initialize(
+            context,
+            signalCountValue,
+            fromH1W1ConfirmationMode
+        );
     }
 
     /**
@@ -45,14 +53,21 @@ public:
      *
      * @param fromMarketContext 市場コンテキスト
      * @param fromSignalCount シグナル回数
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
      */
     ExpertAdvisorMtf3In3Adapter(
         MarketContext &fromMarketContext,
-        SignalCount *fromSignalCount
+        SignalCount *fromSignalCount,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode =
+            H1_W1_CONFIRMATION_OBSERVE_ONLY
     ) {
         this.expertAdvisorMtf3In3 = NULL;
         this.signalCount = NULL;
-        this.initialize(fromMarketContext, fromSignalCount);
+        this.initialize(
+            fromMarketContext,
+            fromSignalCount,
+            fromH1W1ConfirmationMode
+        );
     }
 
     /**
@@ -164,12 +179,18 @@ private:
      *
      * @param fromMarketContext 市場コンテキスト
      * @param fromSignalCount シグナル回数
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
      */
-    void initialize(MarketContext &fromMarketContext, SignalCount *fromSignalCount) {
+    void initialize(
+        MarketContext &fromMarketContext,
+        SignalCount *fromSignalCount,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode
+    ) {
         // 外部戦略を生成
         this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
             fromMarketContext,
-            false
+            false,
+            fromH1W1ConfirmationMode
         );
         this.signalCount = fromSignalCount;
         this.elliottInfoText = "-";

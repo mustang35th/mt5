@@ -10,7 +10,13 @@ import type {
   RunItem,
   SearchState,
   SourceMode,
+  W1ConfirmationMode,
+  W1ConfirmationState,
 } from "../api/types";
+import {
+  w1ConfirmationModeLabel,
+  w1ConfirmationStateDescription,
+} from "./W1ConfirmationBadge";
 
 interface FilterPanelProps {
   value: SearchState;
@@ -36,6 +42,8 @@ const SEARCH_VALUE_KEYS: ReadonlyArray<keyof SearchState> = [
   "side",
   "rank",
   "w1Aligned",
+  "w1ConfirmationMode",
+  "w1ConfirmationState",
   "from",
   "to",
   "pageSize",
@@ -71,6 +79,8 @@ export function alertFilterSummary(value: SearchState): string {
     value.q.trim() !== "",
     value.rank !== "",
     value.w1Aligned !== "all",
+    value.w1ConfirmationMode !== "all",
+    value.w1ConfirmationState !== "all",
     value.from !== "" || value.to !== "",
   ].filter(Boolean).length;
   const additionalFilters = additionalFilterCount > 0
@@ -81,6 +91,25 @@ export function alertFilterSummary(value: SearchState): string {
 }
 
 const ALL_TIME_FRAMES_VALUE = "__all_time_frames__";
+const W1_CONFIRMATION_MODE_ORDER: W1ConfirmationMode[] = [
+  "OFF",
+  "OBSERVE_ONLY",
+  "DIRECTION_OR_EMA200",
+  "DIRECTION_AND_EMA200",
+];
+const W1_CONFIRMATION_STATE_ORDER: W1ConfirmationState[] = [
+  "STRONG",
+  "DIRECTION_ONLY",
+  "EMA_CONFLICT",
+  "EMA_ONLY",
+  "REJECT_NONE",
+  "REJECT",
+  "OFF",
+  "NOT_APPLICABLE",
+  "UNAVAILABLE",
+  "INVALID",
+  "NOT_EVALUATED",
+];
 
 export function FilterPanel({
   value,
@@ -302,6 +331,48 @@ export function FilterPanel({
             <option value="aligned">アラートと一致</option>
             <option value="mismatched">アラートと不一致</option>
             <option value="unknown">不明</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>W1確認</span>
+          <select
+            aria-label="W1確認"
+            value={value.w1ConfirmationState}
+            onChange={(event) => {
+              const nextValue = event.target.value as SearchState["w1ConfirmationState"];
+              if (nextValue === "all" || W1_CONFIRMATION_STATE_ORDER.includes(nextValue)) {
+                onChange({ ...value, w1ConfirmationState: nextValue });
+              }
+            }}
+          >
+            <option value="all">すべて</option>
+            {W1_CONFIRMATION_STATE_ORDER.map((state) => (
+              <option key={state} value={state}>
+                {state === "NOT_EVALUATED"
+                  ? "NOT_EVALUATED（Legacy）"
+                  : `${state}（${w1ConfirmationStateDescription(state)}）`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>W1確認モード</span>
+          <select
+            aria-label="W1確認モード"
+            value={value.w1ConfirmationMode}
+            onChange={(event) => {
+              const nextValue = event.target.value as SearchState["w1ConfirmationMode"];
+              if (nextValue === "all" || W1_CONFIRMATION_MODE_ORDER.includes(nextValue)) {
+                onChange({ ...value, w1ConfirmationMode: nextValue });
+              }
+            }}
+          >
+            <option value="all">すべて</option>
+            {W1_CONFIRMATION_MODE_ORDER.map((mode) => (
+              <option key={mode} value={mode}>
+                {mode === "OFF" ? "OFF" : `${w1ConfirmationModeLabel(mode)}（${mode}）`}
+              </option>
+            ))}
           </select>
         </label>
         <label className="field">

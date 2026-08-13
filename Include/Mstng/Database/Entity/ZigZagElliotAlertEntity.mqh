@@ -114,6 +114,30 @@ struct ZigZagElliotAlertEntity {
     /** Close1とEMA200[1]の距離が許容範囲内の場合1。 */
     int isEma200DistanceWithin;
 
+    /** W1確認モード。 */
+    string w1ConfirmationMode;
+
+    /** W1確認の診断状態。 */
+    string w1ConfirmationState;
+
+    /** W1分析を取得できた場合1。 */
+    int isW1ConfirmationAvailable;
+
+    /** W1分析方向とEMA200方向が有効な場合1。 */
+    int isW1ConfirmationValid;
+
+    /** W1分析方向がエントリー方向と一致する場合1。 */
+    int isW1DirectionMatched;
+
+    /** W1 EMA200方向。BUY、SELLまたはNONE。 */
+    string w1Ema200Direction;
+
+    /** W1 EMA200方向がエントリー方向と一致する場合1。 */
+    int isW1Ema200Matched;
+
+    /** W1確認モードの判定結果が通過の場合1。 */
+    int isW1ConfirmationPassed;
+
     /** 判定時のスプレッドpips。 */
     double spreadPips;
 

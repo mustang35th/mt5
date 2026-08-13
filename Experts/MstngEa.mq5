@@ -10,12 +10,13 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.02"
+#property version   "1.03"
 
 #property strict
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthExecutionInfoProvider.mqh>
+#include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
@@ -81,6 +82,10 @@ input bool InpMtf3In3AlertCsvEnabled = false;
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
 input bool InpH1DisplayWaveEntryLimitEnabled = false;
 
+/** H1エントリーで使用するW1確認モード。 */
+input H1W1ConfirmationMode InpH1W1ConfirmationMode =
+    H1_W1_CONFIRMATION_OBSERVE_ONLY;
+
 /** シンボル名 */
 string g_symbolName;
 
@@ -114,6 +119,12 @@ EaController *g_eaController;
  * @return 初期化結果
  */
 int OnInit() {
+    if (!isH1W1ConfirmationModeValid(InpH1W1ConfirmationMode)) {
+        Print("MstngEa H1 W1 confirmation mode is invalid");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
     if (InpUseCurrencyStrength
             && InpCurrencyStrengthDatabaseFileName == "") {
         Print("MstngEa requires currency strength database file name");
@@ -167,6 +178,7 @@ int OnInit() {
     g_eaConfig.mtf3In3AlertCsvEnabled = InpMtf3In3AlertCsvEnabled;
     g_eaConfig.h1DisplayWaveEntryLimitEnabled =
         InpH1DisplayWaveEntryLimitEnabled;
+    g_eaConfig.h1W1ConfirmationMode = InpH1W1ConfirmationMode;
     g_eaContext = new EaContext();
 
     // コンテキストへ依存を設定
@@ -243,7 +255,8 @@ int OnInit() {
     g_eaContext.strategyAdapter = StrategyFactory::create(
         g_eaConfig.strategyType,
         g_marketContext,
-        g_signalCount
+        g_signalCount,
+        g_eaConfig.h1W1ConfirmationMode
     );
 
     // 画面表示を生成

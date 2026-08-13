@@ -77,6 +77,13 @@ public:
     
     /** 現在時間足に対応するElliot。elliotList内要素への非所有参照。 */
     Elliot *elliotCurrent;
+
+    /**
+     * H1エントリーのW1確認専用Elliot。
+     *
+     * elliotListの親子解析へ参加せず、本クラスが所有する。
+     */
+    Elliot *h1W1ConfirmationElliot;
     
     /** 分析結果メールを送信する場合true。 */
     bool isSendMail;
@@ -131,6 +138,11 @@ public:
      */
     ~ElliotAll() {
         delete this.timeFrameInfoAll;
+
+        if (this.h1W1ConfirmationElliot != NULL) {
+            delete this.h1W1ConfirmationElliot;
+            this.h1W1ConfirmationElliot = NULL;
+        }
         
         for (int i = 0; i < this.elliotList.Total(); i++) {
             Elliot *elliot = this.elliotList.At(i);
@@ -150,6 +162,12 @@ public:
     void setMarketContext(MarketContext &fromMarketContext) {
         this.elliotList.Clear();
         this.elliotCurrent = NULL;
+
+        if (this.h1W1ConfirmationElliot != NULL) {
+            delete this.h1W1ConfirmationElliot;
+            this.h1W1ConfirmationElliot = NULL;
+        }
+
         this.isAnalysisSucceeded = false;
         this.execTime = 0;
         this.oscillatorHandlePool = NULL;
@@ -441,6 +459,35 @@ public:
     }
 
     /**
+     * H1エントリーのW1確認専用Elliotを設定する。
+     *
+     * 既存値を解放し、渡されたポインタの所有権を引き受ける。
+     * elliotListへは追加しないため、D1以下の親子解析へ影響しない。
+     *
+     * @param fromElliotW1 W1確認専用Elliot。未取得の場合NULL
+     */
+    void setH1W1ConfirmationElliot(Elliot *fromElliotW1) {
+        if (this.h1W1ConfirmationElliot == fromElliotW1) {
+            return;
+        }
+
+        if (this.h1W1ConfirmationElliot != NULL) {
+            delete this.h1W1ConfirmationElliot;
+        }
+
+        this.h1W1ConfirmationElliot = fromElliotW1;
+    }
+
+    /**
+     * H1エントリーのW1確認専用Elliotを取得する。
+     *
+     * @return 本クラスが所有するW1確認専用Elliot。未取得の場合NULL
+     */
+    Elliot *getH1W1ConfirmationElliot() {
+        return this.h1W1ConfirmationElliot;
+    }
+
+    /**
      * Elliott分析を開始する最上位時間足を設定する。
      *
      * PERIOD_CURRENTを指定した場合は、既存互換としてタイマー実行時はMN1、
@@ -499,6 +546,7 @@ private:
         this.isSendMail = false;
         this.isMailValidationFileEnabled = false;
         this.elliotCurrent = NULL;
+        this.h1W1ConfirmationElliot = NULL;
         this.oscillatorHandlePool = NULL;
         this.timeFrameInfoAll = NULL;
         this.analysisStartTimeFrame = PERIOD_CURRENT;

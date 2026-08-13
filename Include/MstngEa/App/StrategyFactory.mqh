@@ -12,6 +12,7 @@
 #define MSTNGEA_APP_STRATEGYFACTORY_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Config\StrategyType.mqh>
 #include <MstngEa\Strategy\ExpertAdvisorMtf3In3Adapter.mqh>
@@ -31,16 +32,24 @@ public:
      * @param symbolNameValue シンボル名
      * @param timeFrameValue 時間足
      * @param signalCountValue シグナル回数
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
      * @return 戦略
      */
     static IStrategyAdapter *create(
         StrategyType strategyTypeValue,
         string symbolNameValue,
         ENUM_TIMEFRAMES timeFrameValue,
-        SignalCount *signalCountValue
+        SignalCount *signalCountValue,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode =
+            H1_W1_CONFIRMATION_OBSERVE_ONLY
     ) {
         MarketContext context(symbolNameValue, timeFrameValue);
-        return StrategyFactory::create(strategyTypeValue, context, signalCountValue);
+        return StrategyFactory::create(
+            strategyTypeValue,
+            context,
+            signalCountValue,
+            fromH1W1ConfirmationMode
+        );
     }
 
     /**
@@ -49,18 +58,22 @@ public:
      * @param fromStrategyType Strategy type
      * @param fromMarketContext Market context
      * @param fromSignalCount Signal count
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
      * @return Strategy
      */
     static IStrategyAdapter *create(
         StrategyType fromStrategyType,
         MarketContext &fromMarketContext,
-        SignalCount *fromSignalCount
+        SignalCount *fromSignalCount,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode =
+            H1_W1_CONFIRMATION_OBSERVE_ONLY
     ) {
 
         if (fromStrategyType == STRATEGY_TYPE_MTF_3IN3) {
             return new ExpertAdvisorMtf3In3Adapter(
                 fromMarketContext,
-                fromSignalCount
+                fromSignalCount,
+                fromH1W1ConfirmationMode
             );
         }
 

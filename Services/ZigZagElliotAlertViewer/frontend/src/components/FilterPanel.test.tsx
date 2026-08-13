@@ -57,6 +57,21 @@ describe("FilterPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
     expect(timeFrameSelect).toHaveTextContent("すべて");
     expect(screen.getByRole("combobox", { name: "GMO取引" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "W1確認" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "W1確認モード" })).toHaveValue("all");
+  });
+
+  it("selects exact persisted W1 state and mode values", () => {
+    render(<FilterPanelHarness />);
+
+    const state = screen.getByRole("combobox", { name: "W1確認" });
+    const mode = screen.getByRole("combobox", { name: "W1確認モード" });
+    fireEvent.change(state, { target: { value: "EMA_CONFLICT" } });
+    fireEvent.change(mode, { target: { value: "OBSERVE_ONLY" } });
+    expect(state).toHaveValue("EMA_CONFLICT");
+    expect(mode).toHaveValue("OBSERVE_ONLY");
+    expect(screen.getByRole("option", { name: /EMA_CONFLICT/ })).toHaveValue("EMA_CONFLICT");
+    expect(screen.getByRole("option", { name: /記録のみ/ })).toHaveValue("OBSERVE_ONLY");
   });
 
   it("marks all as selected and preserves an unknown URL value while editing", () => {

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.23"
+#property version   "1.24"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -33,6 +33,10 @@ input bool mtf3In3AlertDatabaseUseCommonFolder = true;
 
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
 input bool h1DisplayWaveEntryLimitEnabled = false;
+
+/** H1エントリーで使用するW1確認モード。 */
+input H1W1ConfirmationMode h1W1ConfirmationMode =
+    H1_W1_CONFIRMATION_OBSERVE_ONLY;
 
 /** 通貨強弱を利用する場合true。 */
 input bool currencyStrengthEnabled = true;
@@ -99,6 +103,7 @@ int OnInit() {
         mtf3In3AlertDatabaseUseCommonFolder;
     config.h1DisplayWaveEntryLimitEnabled =
         h1DisplayWaveEntryLimitEnabled;
+    config.h1W1ConfirmationMode = h1W1ConfirmationMode;
     config.currencyStrengthEnabled = currencyStrengthEnabled;
     config.currencyStrengthEntryFilterEnabled =
         currencyStrengthEntryFilterEnabled;

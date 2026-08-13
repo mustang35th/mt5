@@ -6,10 +6,10 @@
 |---|---|
 | 対象機能 | `ZigZagElliot`の`MTF_3in3`アラート履歴 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| スキーマバージョン | 2 |
+| スキーマバージョン | 3 |
 | 保存単位 | 実行、アラート、時間足別分析、最新Waveポイント |
 | 重複時の動作 | 最初に保存したスナップショットを維持 |
-| 最終更新日 | 2026-08-12 |
+| 最終更新日 | 2026-08-13 |
 
 本書は、ZigZagElliotがアラートを出した時点の判定情報とElliott波動を、後からSQLで検索および再構成できる形式で保存する第1段階の仕様を定義します。
 
@@ -124,7 +124,7 @@ ON zigzag_elliot_alert_runs(started_at);
 
 ## 7. `zigzag_elliot_alerts`
 
-1回の`MTF_3in3`アラート判定を表す親テーブルです。既存64列CSVの主要値に、DB用識別子、リスク、本文および波動要約を加えます。
+1回の`MTF_3in3`アラート判定を表す親テーブルです。既存72列CSVの主要値に、DB用識別子、リスク、本文および波動要約を加えます。
 
 ### 7.1 列グループ
 
@@ -136,11 +136,16 @@ ON zigzag_elliot_alert_runs(started_at);
 | 判定 | `is_judge`, `signal_count`, `entry_count`, `is_entry_count_match`, `is_entry_evaluated`, `is_alert`, `is_entry`, `entry_result`, `is_send_mail` |
 | 現在波 | `current_elliot_label`, `is_entry_wave` |
 | EMA・Spread | `close_ema200_diff_pips`, `max_close_ema200_diff_pips`, `is_ema200_distance_within`, `spread_pips` |
+| H1 W1確認 | `w1_confirmation_mode`, `w1_confirmation_state`, W1取得・有効・方向一致、EMA200方向・一致、ルール通過フラグ |
 | 通貨強弱 | 有効・取得状態、計算バージョン、Run ID、M5時刻、基軸／決済通貨順位と順位差 |
 | 価格・リスク | `reference_price`, `is_stop_loss_available`, `stop_loss`, `risk_pips` |
 | H1構造 | `h1_structure_rank`, `is_h1_structure_valid`, `is_h1_structure_late`, `is_h1_direction_exception` |
 | 監査用テキスト | `alert_title`, `alert_text`, `wave_summary_text`, `elliot_csv_text` |
 | 保存時刻 | `created_at`, `created_at_text` |
+
+H1のW1確認は、W1の3本Stochasticによる分析方向とW1 EMA200方向を、H1のエントリー方向へ照合します。`OBSERVE_ONLY`はOR条件の結果だけを記録してエントリーを制限しません。`DIRECTION_OR_EMA200`はどちらか一方、`DIRECTION_AND_EMA200`は両方の一致を要求し、`OFF`は確認を無効にします。既定値は`OBSERVE_ONLY`です。
+
+既存行は推測で再判定せず、`OFF`、`NOT_EVALUATED`および各フラグの既定値でLegacyとして保持します。新しいRunは`strategy_version = MTF3IN3_V2`としてW1確認モードを`input_text`と`input_hash`へ含めます。
 
 `signal_reference_point_time`は現在時間足の`getLatestPoint2()`の時刻です。確定済みを保証する名称ではありません。
 

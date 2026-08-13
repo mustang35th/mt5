@@ -148,6 +148,7 @@ public:
     void analyze(ElliotAll *fromElliotAll, SignalCount *fromSignalCount, int entryCount = 1) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
+        this.resetStrategySpecificAnalysisOutcome();
         this.resetAnalysisOutcome(entryCount);
         this.analysisSignalCount = fromSignalCount;
         
@@ -326,6 +327,12 @@ protected:
      * 派生EA固有のエントリー条件を設定する。
      */
     virtual void setEntry() = 0;
+
+    /**
+     * 派生EAが保持する1回の分析固有結果を初期化する。
+     */
+    virtual void resetStrategySpecificAnalysisOutcome() {
+    }
 
     /**
      * M15の最新ポイントがエントリー対象波動か判定する。

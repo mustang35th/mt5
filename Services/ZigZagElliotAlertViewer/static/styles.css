@@ -806,6 +806,8 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .detail-title-line { flex-wrap: wrap; }
 .detail-title-line .detail-title { min-width: 0; }
 .badge-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.w1-confirmation-badges-compact { flex-wrap: nowrap; gap: 4px; }
+.w1-confirmation-cell .subtext { white-space: nowrap; }
 .detail-price { text-align: right; font-variant-numeric: tabular-nums; }
 .detail-price strong { display: block; font-size: 1.4rem; }
 .detail-price span { color: var(--muted); font-size: 0.72rem; }

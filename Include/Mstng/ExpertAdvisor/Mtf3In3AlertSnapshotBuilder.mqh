@@ -231,6 +231,30 @@ private:
         fromEntity.isEma200DistanceWithin = boolToInteger(
             fromResult.isEma200DistanceWithin
         );
+        fromEntity.w1ConfirmationMode = normalizeText(
+            fromResult.w1ConfirmationMode
+        );
+        fromEntity.w1ConfirmationState = normalizeText(
+            fromResult.w1ConfirmationState
+        );
+        fromEntity.isW1ConfirmationAvailable = boolToInteger(
+            fromResult.isW1ConfirmationAvailable
+        );
+        fromEntity.isW1ConfirmationValid = boolToInteger(
+            fromResult.isW1ConfirmationValid
+        );
+        fromEntity.isW1DirectionMatched = boolToInteger(
+            fromResult.isW1DirectionMatched
+        );
+        fromEntity.w1Ema200Direction = normalizeText(
+            fromResult.w1Ema200Direction
+        );
+        fromEntity.isW1Ema200Matched = boolToInteger(
+            fromResult.isW1Ema200Matched
+        );
+        fromEntity.isW1ConfirmationPassed = boolToInteger(
+            fromResult.isW1ConfirmationPassed
+        );
         fromEntity.spreadPips = fromElliotAll.todayRate.spread;
         fromEntity.isCurrencyStrengthEnabled = boolToInteger(
             fromElliotAll.isCurrencyStrengthEntryFilterEnabled
@@ -779,6 +803,24 @@ private:
         sourceText += "|" + DoubleToString(fromEntity.referencePrice, 8);
         sourceText += "|" + DoubleToString(fromEntity.stopLoss, 8);
         sourceText += "|" + fromEntity.h1StructureRank;
+        sourceText += "|" + fromEntity.w1ConfirmationMode;
+        sourceText += "|" + fromEntity.w1ConfirmationState;
+        sourceText += "|" + IntegerToString(
+            fromEntity.isW1ConfirmationAvailable
+        );
+        sourceText += "|" + IntegerToString(
+            fromEntity.isW1ConfirmationValid
+        );
+        sourceText += "|" + IntegerToString(
+            fromEntity.isW1DirectionMatched
+        );
+        sourceText += "|" + fromEntity.w1Ema200Direction;
+        sourceText += "|" + IntegerToString(
+            fromEntity.isW1Ema200Matched
+        );
+        sourceText += "|" + IntegerToString(
+            fromEntity.isW1ConfirmationPassed
+        );
         sourceText += "|" + fromEntity.waveSummaryText;
         sourceText += "|" + fromEntity.elliotCsvText;
         sourceText += "|" + fromEntity.alertText;

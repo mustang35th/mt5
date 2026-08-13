@@ -79,7 +79,9 @@ public:
         }
 
         this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
-            this.marketContext
+            this.marketContext,
+            true,
+            this.config.h1W1ConfirmationMode
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -349,7 +351,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 2;
+        this.databaseRun.schemaVersion = 3;
         this.databaseRun.sourceMode = "LIVE";
 
         if (Util::isStrategyTester()) {
@@ -358,9 +360,9 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.23";
+        this.databaseRun.programVersion = "1.24";
         this.databaseRun.strategy = "MTF_3in3";
-        this.databaseRun.strategyVersion = "MTF3IN3_V1";
+        this.databaseRun.strategyVersion = "MTF3IN3_V2";
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();
         this.databaseRun.analysisInputText =
@@ -397,6 +399,10 @@ private:
         string inputText = "";
         inputText += "h1DisplayWaveEntryLimitEnabled="
             + (string)this.config.h1DisplayWaveEntryLimitEnabled;
+        inputText += "|h1W1ConfirmationMode="
+            + getH1W1ConfirmationModeText(
+                this.config.h1W1ConfirmationMode
+            );
         inputText += "|currencyStrengthEnabled="
             + (string)this.config.currencyStrengthEnabled;
         inputText += "|currencyStrengthEntryFilterEnabled="

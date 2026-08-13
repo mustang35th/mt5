@@ -14,7 +14,7 @@
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
 
-#define MTF3_IN3_ALERT_CSV_FIELD_COUNT 64
+#define MTF3_IN3_ALERT_CSV_FIELD_COUNT 72
 
 /**
  * MTF_3in3のアラート候補を検証用CSVへ追記する。
@@ -76,7 +76,7 @@ public:
             ",",
             true,
             true,
-            "Logs\\Mtf3In3AlertValidation\\MTF3IN3_ALERT_V2",
+            "Logs\\Mtf3In3AlertValidation\\MTF3IN3_ALERT_V3",
             CSV_FILE_WRITE_MODE_APPEND
         );
 
@@ -157,6 +157,14 @@ private:
         fromValues[index++] = "higher1_ema200_direction";
         fromValues[index++] = "current_timeframe";
         fromValues[index++] = "current_ema200_direction";
+        fromValues[index++] = "w1_confirmation_mode";
+        fromValues[index++] = "w1_confirmation_state";
+        fromValues[index++] = "w1_confirmation_available";
+        fromValues[index++] = "w1_confirmation_valid";
+        fromValues[index++] = "w1_direction_matched";
+        fromValues[index++] = "w1_ema200_direction";
+        fromValues[index++] = "w1_ema200_matched";
+        fromValues[index++] = "w1_confirmation_passed";
         fromValues[index++] = "currency_strength_enabled";
         fromValues[index++] = "currency_strength_status";
         fromValues[index++] = "currency_strength_available";
@@ -258,7 +266,7 @@ private:
         ArrayResize(fromValues, MTF3_IN3_ALERT_CSV_FIELD_COUNT);
         int index = 0;
 
-        fromValues[index++] = "MTF3IN3_ALERT_V2";
+        fromValues[index++] = "MTF3IN3_ALERT_V3";
         fromValues[index++] = fromValidationRunId;
         fromValues[index++] = eventId;
         fromValues[index++] = fromSource;
@@ -313,6 +321,24 @@ private:
         fromValues[index++] = getEma200Direction(elliotHigher1);
         fromValues[index++] = getTimeFrameLabel(elliotCurrent);
         fromValues[index++] = getEma200Direction(elliotCurrent);
+        fromValues[index++] = fromResult.w1ConfirmationMode;
+        fromValues[index++] = fromResult.w1ConfirmationState;
+        fromValues[index++] = formatBool(
+            fromResult.isW1ConfirmationAvailable
+        );
+        fromValues[index++] = formatBool(
+            fromResult.isW1ConfirmationValid
+        );
+        fromValues[index++] = formatBool(
+            fromResult.isW1DirectionMatched
+        );
+        fromValues[index++] = fromResult.w1Ema200Direction;
+        fromValues[index++] = formatBool(
+            fromResult.isW1Ema200Matched
+        );
+        fromValues[index++] = formatBool(
+            fromResult.isW1ConfirmationPassed
+        );
         fromValues[index++] = formatBool(
             fromElliotAll.isCurrencyStrengthEntryFilterEnabled
         );

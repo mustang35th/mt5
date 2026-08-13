@@ -278,6 +278,15 @@ describe("App", () => {
             currency_strength_status: 0, is_currency_strength_available: false,
             long_medium_rank_difference: 0, medium_short_rank_difference: 0,
             market_signal_key: "market-74", alert_text: "", is_w1_aligned: true,
+            w1_confirmation_mode: "DIRECTION_OR_EMA200",
+            w1_confirmation_state: "STRONG",
+            is_w1_confirmation_available: true,
+            is_w1_confirmation_valid: true,
+            is_w1_direction_matched: true,
+            w1_ema200_direction: "BUY",
+            is_w1_ema200_matched: true,
+            is_w1_confirmation_passed: true,
+            is_w1_confirmation_legacy: false,
           },
           run: { id: 4, source_mode: "LIVE", program_version: "1.21", tester_model: "" },
           w1: null,
@@ -318,6 +327,15 @@ describe("App", () => {
             h4_side: "BUY",
             h1_side: "BUY",
             is_w1_aligned: true,
+            w1_confirmation_mode: "DIRECTION_OR_EMA200",
+            w1_confirmation_state: "STRONG",
+            is_w1_confirmation_available: true,
+            is_w1_confirmation_valid: true,
+            is_w1_direction_matched: true,
+            w1_ema200_direction: "BUY",
+            is_w1_ema200_matched: true,
+            is_w1_confirmation_passed: true,
+            is_w1_confirmation_legacy: false,
           }],
         });
       }
@@ -389,7 +407,8 @@ describe("App", () => {
     expect(searchSidebar).toContainElement(searchHeading);
     expect(searchSidebar.parentElement).toHaveClass("viewer-workspace");
     expect((await screen.findAllByText("AUDUSD")).length).toBeGreaterThan(0);
-    expect(await screen.findByText("一致")).toBeInTheDocument();
+    expect(await screen.findByText("両方一致")).toBeInTheDocument();
+    expect(screen.getByText("STRONG / EMA BUY")).toBeInTheDocument();
     const snapshotsLabel = screen.getByText("SNAPSHOTS");
     const resultsTitleLine = snapshotsLabel.closest(".results-title-line");
     expect(resultsTitleLine).toContainElement(screen.getByRole("heading", { name: "アラート一覧" }));

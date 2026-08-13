@@ -90,6 +90,17 @@ public:
             )
         );
 
+        if (!isH1W1ConfirmationModeValid(
+                this.config.h1W1ConfirmationMode
+        )) {
+            this.logger.error(
+                __FUNCTION__,
+                "H1 W1 confirmation mode is invalid."
+            );
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
         if (this.config.currencyStrengthEnabled
                 && !CurrencyStrengthCalculationProfile
                     ::isVoteWeightModeValid(

@@ -10,6 +10,8 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF_3IN3_MQH
 
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
+#include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
+#include <Mstng\ExpertAdvisor\H1W1ConfirmationResult.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
 
 /**
@@ -24,10 +26,21 @@ public:
      * @param fromSymbolName 分析対象シンボル。
      * @param fromTimeFrame 分析対象時間足。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
      */
-    ExpertAdvisorMTF_3in3(string fromSymbolName, ENUM_TIMEFRAMES fromTimeFrame, bool fromIsDrawArrow = true) {
+    ExpertAdvisorMTF_3in3(
+        string fromSymbolName,
+        ENUM_TIMEFRAMES fromTimeFrame,
+        bool fromIsDrawArrow = true,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode =
+            H1_W1_CONFIRMATION_OBSERVE_ONLY
+    ) {
         MarketContext context(fromSymbolName, fromTimeFrame);
-        this.initialize(context, fromIsDrawArrow);
+        this.initialize(
+            context,
+            fromIsDrawArrow,
+            fromH1W1ConfirmationMode
+        );
     }
 
     /**
@@ -35,9 +48,19 @@ public:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
      */
-    ExpertAdvisorMTF_3in3(MarketContext &fromMarketContext, bool fromIsDrawArrow = true) {
-        this.initialize(fromMarketContext, fromIsDrawArrow);
+    ExpertAdvisorMTF_3in3(
+        MarketContext &fromMarketContext,
+        bool fromIsDrawArrow = true,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode =
+            H1_W1_CONFIRMATION_OBSERVE_ONLY
+    ) {
+        this.initialize(
+            fromMarketContext,
+            fromIsDrawArrow,
+            fromH1W1ConfirmationMode
+        );
     }
 
     /**
@@ -69,6 +92,20 @@ public:
         result.isEntry = this.isEntry;
         result.isSendMail = this.isSendMail;
         result.isBuy = this.isBuy;
+        result.w1ConfirmationMode = this.w1ConfirmationResult.mode;
+        result.w1ConfirmationState = this.w1ConfirmationResult.state;
+        result.isW1ConfirmationAvailable =
+            this.w1ConfirmationResult.isAvailable;
+        result.isW1ConfirmationValid =
+            this.w1ConfirmationResult.isValid;
+        result.isW1DirectionMatched =
+            this.w1ConfirmationResult.isDirectionMatched;
+        result.w1Ema200Direction =
+            this.w1ConfirmationResult.ema200Direction;
+        result.isW1Ema200Matched =
+            this.w1ConfirmationResult.isEma200Matched;
+        result.isW1ConfirmationPassed =
+            this.w1ConfirmationResult.isPassed;
 
         if (!this.isEntryEvaluated) {
             return result;
@@ -85,6 +122,19 @@ public:
     }
         
 protected:
+    /** H1エントリーのW1確認モード。 */
+    H1W1ConfirmationMode h1W1ConfirmationMode;
+
+    /** 直近のW1確認診断結果。 */
+    H1W1ConfirmationResult w1ConfirmationResult;
+
+    /**
+     * W1確認診断を今回の分析用の未判定状態へ初期化する。
+     */
+    virtual void resetStrategySpecificAnalysisOutcome() override {
+        this.resetTimeFrameHigherConfirmationResult();
+    }
+
     /**
      * スプレッド、トレンド、波動および各テクニカル条件からシグナルを判定する。
      *
@@ -123,6 +173,8 @@ protected:
                 && this.expertAdvisorOscillator.isGmmaCross_2(this.elliotCurrent, this.isBuy)
                 
                 && this.isTimeFrameEma200ConditionMatched()
+
+                && this.isTimeFrameHigherConfirmationConditionMatched()
                 
                 //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher2, this.elliotHigher1)
                 //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher1, this.elliotCurrent)
@@ -236,6 +288,15 @@ protected:
             && this.expertAdvisorEma200.isEma200BuySell(
                 this.elliotCurrent
             );
+    }
+
+    /**
+     * 時間足固有の上位足確認条件を判定する。
+     *
+     * @return 時間足固有の上位足確認条件を満たす場合true。
+     */
+    virtual bool isTimeFrameHigherConfirmationConditionMatched() {
+        return true;
     }
 
     /**
@@ -386,16 +447,53 @@ private:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
+     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
      */
-    void initialize(MarketContext &fromMarketContext, bool fromIsDrawArrow) {
+    void initialize(
+        MarketContext &fromMarketContext,
+        bool fromIsDrawArrow,
+        H1W1ConfirmationMode fromH1W1ConfirmationMode
+    ) {
         this.logger.setLevel(LOG_INFO);
 
         this.init(fromMarketContext, fromIsDrawArrow);
 
+        this.h1W1ConfirmationMode = fromH1W1ConfirmationMode;
+        this.w1ConfirmationResult.reset();
         this.isDarwText = true;
         this.name = "MTF_3in3";
         this.fontSize = 20;
         this.resetEntryValidation();
+    }
+
+    /**
+     * 上位足確認診断を今回の分析用の未判定状態へ初期化する。
+     */
+    void resetTimeFrameHigherConfirmationResult() {
+        this.w1ConfirmationResult.reset();
+
+        if (this.marketContext.timeFrame != PERIOD_H1) {
+            return;
+        }
+
+        if (!isH1W1ConfirmationModeValid(this.h1W1ConfirmationMode)) {
+            this.w1ConfirmationResult.state = "INVALID";
+            this.w1ConfirmationResult.isPassed = false;
+
+            return;
+        }
+
+        this.w1ConfirmationResult.mode =
+            getH1W1ConfirmationModeText(this.h1W1ConfirmationMode);
+
+        if (this.h1W1ConfirmationMode == H1_W1_CONFIRMATION_OFF) {
+            this.w1ConfirmationResult.state = "OFF";
+
+            return;
+        }
+
+        this.w1ConfirmationResult.state = "NOT_EVALUATED";
+        this.w1ConfirmationResult.isPassed = false;
     }
 
     /**

@@ -457,6 +457,38 @@ class AlertFilterTest(unittest.TestCase):
                 {"sourceMode": ["LIVE' OR 1=1 --"]}
             )
 
+    def test_w1_confirmation_filters_use_exact_persisted_values(self) -> None:
+        """Bind exact state values and normalize the two mode aliases."""
+
+        filters = AlertDatabase.parse_filters(
+            {
+                "w1ConfirmationState": [" EMA_CONFLICT "],
+                "w1ConfirmationMode": ["OR"],
+            }
+        )
+
+        self.assertIn(
+            "w1_confirmation_state = :w1_confirmation_state",
+            filters.derived_where_sql,
+        )
+        self.assertIn(
+            "w1_confirmation_mode = :w1_confirmation_mode",
+            filters.derived_where_sql,
+        )
+        self.assertEqual("EMA_CONFLICT", filters.parameters["w1_confirmation_state"])
+        self.assertEqual(
+            "DIRECTION_OR_EMA200",
+            filters.parameters["w1_confirmation_mode"],
+        )
+
+    def test_unknown_w1_confirmation_state_is_rejected(self) -> None:
+        """Do not collapse persisted states into ambiguous UI-only groups."""
+
+        with self.assertRaisesRegex(RequestError, "exact persisted W1 state"):
+            AlertDatabase.parse_filters(
+                {"w1ConfirmationState": ["CONFLICT"]}
+            )
+
 
 def create_alert_summary_database(database_path: Path) -> None:
     """Create the columns read by the production alert-summary CTE."""
@@ -600,6 +632,64 @@ def create_alert_summary_database(database_path: Path) -> None:
     connection.close()
 
 
+def add_w1_confirmation_fixture_columns(database_path: Path) -> None:
+    """Add the current optional W1 confirmation contract to an alert fixture."""
+
+    definitions = [
+        "w1_confirmation_mode TEXT NOT NULL DEFAULT 'OFF'",
+        "w1_confirmation_state TEXT NOT NULL DEFAULT 'NOT_EVALUATED'",
+        "is_w1_confirmation_available INTEGER NOT NULL DEFAULT 0",
+        "is_w1_confirmation_valid INTEGER NOT NULL DEFAULT 0",
+        "is_w1_direction_matched INTEGER NOT NULL DEFAULT 0",
+        "w1_ema200_direction TEXT NOT NULL DEFAULT 'NONE'",
+        "is_w1_ema200_matched INTEGER NOT NULL DEFAULT 0",
+        "is_w1_confirmation_passed INTEGER NOT NULL DEFAULT 1",
+    ]
+    with sqlite3.connect(database_path) as connection:
+        for definition in definitions:
+            connection.execute(
+                f"ALTER TABLE zigzag_elliot_alerts ADD COLUMN {definition}"
+            )
+        connection.execute(
+            """
+            UPDATE zigzag_elliot_alerts
+            SET w1_confirmation_mode = 'DIRECTION_OR_EMA200',
+                w1_confirmation_state = 'STRONG',
+                is_w1_confirmation_available = 1,
+                is_w1_confirmation_valid = 1,
+                is_w1_direction_matched = 1,
+                w1_ema200_direction = 'BUY',
+                is_w1_ema200_matched = 1,
+                is_w1_confirmation_passed = 1
+            WHERE id = 1
+            """
+        )
+        connection.execute(
+            """
+            UPDATE zigzag_elliot_alerts
+            SET w1_confirmation_mode = 'OBSERVE_ONLY',
+                w1_confirmation_state = 'EMA_ONLY',
+                is_w1_confirmation_available = 1,
+                is_w1_confirmation_valid = 1,
+                is_w1_direction_matched = 0,
+                w1_ema200_direction = 'SELL',
+                is_w1_ema200_matched = 1,
+                is_w1_confirmation_passed = 1
+            WHERE id = 2
+            """
+        )
+        connection.execute(
+            """
+            UPDATE zigzag_elliot_alerts
+            SET w1_confirmation_mode = 'DIRECTION_AND_EMA200',
+                w1_confirmation_state = 'UNAVAILABLE',
+                is_w1_confirmation_passed = 0
+            WHERE id = 3
+            """
+        )
+    connection.close()
+
+
 class AlertSummaryTest(unittest.TestCase):
     """Verify filtered metrics and the unfiltered database total contract."""
 
@@ -638,6 +728,118 @@ class AlertSummaryTest(unittest.TestCase):
         self.assertEqual(1, unknown_summary["total_count"])
         self.assertEqual(1, unknown_summary["w1_unknown_count"])
         self.assertEqual(3, unknown_summary["database_total_count"])
+
+
+class W1ConfirmationApiTest(unittest.TestCase):
+    """Verify current W1 diagnostics and legacy read compatibility."""
+
+    def test_legacy_schema_projects_not_evaluated_without_breaking_queries(
+        self,
+    ) -> None:
+        """Expose old databases as Legacy and keep exact filtering available."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "legacy.sqlite"
+            create_alert_summary_database(database_path)
+            database = AlertDatabase(database_path)
+            try:
+                page = database.alerts({})
+                legacy_page = database.alerts(
+                    {"w1ConfirmationState": ["NOT_EVALUATED"]}
+                )
+                strong_page = database.alerts(
+                    {"w1ConfirmationState": ["STRONG"]}
+                )
+                options = database.options()
+                csv_text = database.export_csv({}).decode("utf-8-sig")
+            finally:
+                database.close()
+
+        self.assertEqual(3, page["total"])
+        self.assertEqual(3, legacy_page["total"])
+        self.assertEqual(0, strong_page["total"])
+        self.assertTrue(page["items"][0]["is_w1_confirmation_legacy"])
+        self.assertEqual(
+            "NOT_EVALUATED",
+            page["items"][0]["w1_confirmation_state"],
+        )
+        self.assertEqual("OFF", page["items"][0]["w1_confirmation_mode"])
+        self.assertFalse(options["w1_confirmation_available"])
+        self.assertIn("NOT_EVALUATED", options["w1_confirmation_states"])
+        self.assertIn("w1_confirmation_state", csv_text.splitlines()[0])
+
+    def test_current_schema_filters_list_summary_and_csv_by_state_and_mode(
+        self,
+    ) -> None:
+        """Keep list, summary and export on the same exact W1 cohort."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "current.sqlite"
+            create_alert_summary_database(database_path)
+            add_w1_confirmation_fixture_columns(database_path)
+            database = AlertDatabase(database_path)
+            query = {
+                "w1ConfirmationState": ["EMA_ONLY"],
+                "w1ConfirmationMode": ["OBSERVE_ONLY"],
+            }
+            try:
+                page = database.alerts(query)
+                summary = database.summary(query)
+                csv_text = database.export_csv(query).decode("utf-8-sig")
+                or_page = database.alerts(
+                    {"w1ConfirmationMode": ["OR"]}
+                )
+            finally:
+                database.close()
+
+        self.assertEqual(1, page["total"])
+        self.assertEqual(page["total"], summary["total_count"])
+        self.assertEqual(2, page["items"][0]["id"])
+        self.assertEqual("EMA_ONLY", page["items"][0]["w1_confirmation_state"])
+        self.assertEqual("OBSERVE_ONLY", page["items"][0]["w1_confirmation_mode"])
+        self.assertTrue(page["items"][0]["is_w1_confirmation_passed"])
+        self.assertIn("EMA_ONLY", csv_text)
+        self.assertEqual(1, or_page["total"])
+        self.assertEqual("STRONG", or_page["items"][0]["w1_confirmation_state"])
+
+    def test_detail_normalizes_legacy_and_exposes_current_diagnostics(self) -> None:
+        """Return one stable detail shape before and after the optional migration."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "legacy-detail.sqlite"
+            create_observation_database(legacy_path)
+            legacy_database = AlertDatabase(legacy_path)
+            try:
+                legacy_database.validate()
+                legacy_detail = legacy_database.alert_detail(1)["alert"]
+            finally:
+                legacy_database.close()
+
+            current_path = Path(directory) / "current-detail.sqlite"
+            create_observation_database(current_path)
+            add_w1_confirmation_fixture_columns(current_path)
+            current_database = AlertDatabase(current_path)
+            try:
+                current_database.validate()
+                current_detail = current_database.alert_detail(1)["alert"]
+            finally:
+                current_database.close()
+
+        self.assertTrue(legacy_detail["is_w1_confirmation_legacy"])
+        self.assertEqual("NOT_EVALUATED", legacy_detail["w1_confirmation_state"])
+        self.assertFalse(current_detail["is_w1_confirmation_legacy"])
+        self.assertEqual("STRONG", current_detail["w1_confirmation_state"])
+        self.assertEqual("BUY", current_detail["w1_ema200_direction"])
+        self.assertTrue(current_detail["is_w1_direction_matched"])
+
+    def test_invalid_state_reports_bad_request(self) -> None:
+        """Reject non-contract state names with HTTP 400 semantics."""
+
+        with self.assertRaises(RequestError) as context:
+            AlertDatabase.parse_filters(
+                {"w1ConfirmationState": ["DIRECTION_CONFLICT"]}
+            )
+        self.assertEqual(400, context.exception.status)
 
 
 def create_observation_database(database_path: Path) -> None:

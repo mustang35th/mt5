@@ -11,6 +11,7 @@
 #ifndef MSTNGEA_APP_EACONTROLLER_MQH
 #define MSTNGEA_APP_EACONTROLLER_MQH
 
+#include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <MstngEa\App\EaContext.mqh>
@@ -122,6 +123,9 @@ public:
 
         // 外部分析を実行
         elliotAll.analyze();
+
+        // W1確認はD1開始の親子解析へ混入させず、専用スナップショットで取得
+        this.setH1W1ConfirmationElliot(elliotAll);
 
         // 実行時点の通貨強弱を保持
         this.loadCurrencyStrengthExecutionInfo(elliotAll);
@@ -262,6 +266,63 @@ private:
             elliotAllValue.isH1DisplayWaveEntryLimitEnabled =
                 this.eaContext.eaConfig.h1DisplayWaveEntryLimitEnabled;
         }
+    }
+
+    /**
+     * H1エントリーのW1方向・EMA200確認用スナップショットを設定する。
+     *
+     * W1はOscillatorだけを独立更新し、既存のD1開始Elliott親子解析には
+     * 参加させない。取得失敗時は未設定とし、強制モード側で拒否する。
+     *
+     * @param fromElliotAll 設定先の全時間足分析結果
+     */
+    void setH1W1ConfirmationElliot(ElliotAll *fromElliotAll) {
+        if (fromElliotAll == NULL
+                || this.eaContext == NULL
+                || this.eaContext.eaConfig == NULL
+                || this.eaContext.oscillatorHandlePool == NULL
+                || this.eaContext.marketContext.timeFrame != PERIOD_H1
+                || this.eaContext.eaConfig.strategyType
+                    != STRATEGY_TYPE_MTF_3IN3
+                || this.eaContext.eaConfig.h1W1ConfirmationMode
+                    == H1_W1_CONFIRMATION_OFF) {
+            return;
+        }
+
+        MarketContext w1MarketContext = this.eaContext.marketContext;
+        w1MarketContext.setTimeFrame(PERIOD_W1);
+        Elliot *elliotW1 = new Elliot(w1MarketContext);
+
+        if (elliotW1 == NULL) {
+            if (this.eaContext.operationLogger != NULL) {
+                this.eaContext.operationLogger.error(
+                    "EaController",
+                    "W1 confirmation snapshot allocation failed"
+                );
+            }
+
+            return;
+        }
+
+        if (!elliotW1.oscillator.updateH1W1Confirmation(
+                w1MarketContext,
+                this.eaContext.oscillatorHandlePool
+        )) {
+            delete elliotW1;
+
+            if (this.eaContext.operationLogger != NULL) {
+                this.eaContext.operationLogger.error(
+                    "EaController",
+                    "W1 confirmation oscillator update failed"
+                );
+            }
+
+            return;
+        }
+
+        elliotW1.isBuy = elliotW1.oscillator.isBuy;
+        elliotW1.buySellLabel = Constant::getBuySell(elliotW1.isBuy);
+        fromElliotAll.setH1W1ConfirmationElliot(elliotW1);
     }
 
     /**

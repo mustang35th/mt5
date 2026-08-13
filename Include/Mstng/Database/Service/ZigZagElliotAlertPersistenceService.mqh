@@ -449,6 +449,15 @@ private:
         fromEntity.currentElliotLabel = this.normalizeText(
             fromEntity.currentElliotLabel
         );
+        fromEntity.w1ConfirmationMode = this.normalizeText(
+            fromEntity.w1ConfirmationMode
+        );
+        fromEntity.w1ConfirmationState = this.normalizeText(
+            fromEntity.w1ConfirmationState
+        );
+        fromEntity.w1Ema200Direction = this.normalizeText(
+            fromEntity.w1Ema200Direction
+        );
         fromEntity.currencyStrengthCalculationVersion = this.normalizeText(
             fromEntity.currencyStrengthCalculationVersion
         );
@@ -647,6 +656,9 @@ private:
                 || fromAlertEntity.currentBarTime <= 0
                 || fromAlertEntity.strategy == ""
                 || fromAlertEntity.side == ""
+                || fromAlertEntity.w1ConfirmationMode == ""
+                || fromAlertEntity.w1ConfirmationState == ""
+                || fromAlertEntity.w1Ema200Direction == ""
                 || fromAlertEntity.snapshotHash == "") {
             this.logger.error(__FUNCTION__, "alert required value is invalid.");
 

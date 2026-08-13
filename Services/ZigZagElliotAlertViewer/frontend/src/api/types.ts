@@ -3,6 +3,25 @@ export type SourceMode = "LIVE" | "TESTER" | "all";
 export type AnalysisProfileKind = "profile" | "legacy";
 export type ViewerTab = "alerts" | "h1";
 export type W1Alignment = "all" | "aligned" | "mismatched" | "unknown";
+export type W1ConfirmationMode =
+  | "OFF"
+  | "OBSERVE_ONLY"
+  | "DIRECTION_OR_EMA200"
+  | "DIRECTION_AND_EMA200";
+export type W1ConfirmationState =
+  | "NOT_EVALUATED"
+  | "NOT_APPLICABLE"
+  | "OFF"
+  | "UNAVAILABLE"
+  | "INVALID"
+  | "STRONG"
+  | "DIRECTION_ONLY"
+  | "EMA_CONFLICT"
+  | "EMA_ONLY"
+  | "REJECT_NONE"
+  | "REJECT";
+export type W1ConfirmationModeFilter = "all" | W1ConfirmationMode;
+export type W1ConfirmationStateFilter = "all" | W1ConfirmationState;
 export type GmoTargetFilter = "all" | "target" | "excluded";
 export type SortOrder = "asc" | "desc";
 export type AlertSort =
@@ -12,6 +31,7 @@ export type AlertSort =
   | "side"
   | "h1_structure_rank"
   | "is_w1_aligned"
+  | "w1_confirmation_state"
   | "risk_pips"
   | "entry_result";
 
@@ -25,6 +45,8 @@ export interface SearchState {
   side: "" | AlertSide;
   rank: string;
   w1Aligned: W1Alignment;
+  w1ConfirmationMode: W1ConfirmationModeFilter;
+  w1ConfirmationState: W1ConfirmationStateFilter;
   from: string;
   to: string;
   pageSize: number;
@@ -42,6 +64,8 @@ export interface HealthResponse {
   observation_count?: number;
   analysis_profile_available?: boolean;
   analysis_profile_reason?: string | null;
+  w1_confirmation_available?: boolean;
+  w1_confirmation_reason?: string | null;
 }
 
 export interface RunItem {
@@ -84,9 +108,24 @@ export interface OptionsResponse {
   strategies: string[];
   ranks: string[];
   entry_results: string[];
+  w1_confirmation_modes?: W1ConfirmationMode[];
+  w1_confirmation_states?: W1ConfirmationState[];
+  w1_confirmation_available?: boolean;
 }
 
-export interface AlertListItem {
+export interface W1ConfirmationDiagnostics {
+  w1_confirmation_mode: W1ConfirmationMode;
+  w1_confirmation_state: W1ConfirmationState;
+  is_w1_confirmation_available: boolean;
+  is_w1_confirmation_valid: boolean;
+  is_w1_direction_matched: boolean;
+  w1_ema200_direction: "BUY" | "SELL" | "NONE";
+  is_w1_ema200_matched: boolean;
+  is_w1_confirmation_passed: boolean;
+  is_w1_confirmation_legacy: boolean;
+}
+
+export interface AlertListItem extends W1ConfirmationDiagnostics {
   id: number;
   run_id: number;
   source_mode: string;
@@ -135,7 +174,7 @@ export interface SummaryResponse {
   symbol_count: number;
 }
 
-export interface AlertDetail {
+export interface AlertDetail extends W1ConfirmationDiagnostics {
   id: number;
   run_id: number;
   symbol_name: string;
