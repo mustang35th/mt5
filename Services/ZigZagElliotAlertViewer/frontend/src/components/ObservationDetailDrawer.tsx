@@ -13,6 +13,7 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 
@@ -69,11 +70,53 @@ function stochasticLabel(count: number, main: number, signal: number): string {
   return `count ${formatSignedNumber(count, 0)} / Main ${formatNumber(main, 2)} / Signal ${formatNumber(signal, 2)}`;
 }
 
-function ema200Direction(timeFrame: ObservationDetailTimeFrame): string {
-  if (timeFrame.is_ema200_buy && timeFrame.is_ema200_sell) return "BUY / SELL";
-  if (timeFrame.is_ema200_buy) return "BUY";
-  if (timeFrame.is_ema200_sell) return "SELL";
-  return "NONE";
+function isEma200Skipped(timeFrame: ObservationDetailTimeFrame): boolean {
+  return timeFrame.time_frame_text.toUpperCase() === "MN1";
+}
+
+function ema200PositionLabel(timeFrame: ObservationDetailTimeFrame): string {
+  if (isEma200Skipped(timeFrame)) return "対象外（MN1は計算省略）";
+
+  let position = `不明（code ${formatNumber(timeFrame.ema200_close_position, 0)}）`;
+  if (timeFrame.ema200_close_position === 1) {
+    position = "終値が上";
+  } else if (timeFrame.ema200_close_position === -1) {
+    position = "終値が下";
+  } else if (timeFrame.ema200_close_position === 2) {
+    position = "終値とEMA200が同値";
+  } else if (timeFrame.ema200_close_position === 0) {
+    position = "未判定";
+  }
+
+  return `${position}（距離 ${formatSignedNumber(timeFrame.ema200_close_diff_pips)} pips）`;
+}
+
+function ema200SlopeLabel(timeFrame: ObservationDetailTimeFrame): string {
+  if (isEma200Skipped(timeFrame)) return "対象外（MN1は計算省略）";
+
+  let direction = `不明（code ${formatNumber(timeFrame.ema200_slope_direction, 0)}）`;
+  if (timeFrame.ema200_slope_direction === 1) {
+    direction = "上向き";
+  } else if (timeFrame.ema200_slope_direction === -1) {
+    direction = "下向き";
+  } else if (timeFrame.ema200_slope_direction === 0) {
+    direction = "横ばい";
+  }
+
+  return `${direction}（${formatSignedNumber(timeFrame.ema200_slope_pips)} pips）`;
+}
+
+function ema200TrendLabel(timeFrame: ObservationDetailTimeFrame): string {
+  if (isEma200Skipped(timeFrame)) return "対象外（MN1は計算省略）";
+
+  let direction = "拮抗";
+  if (timeFrame.ema200_trend_count > 0) {
+    direction = "上昇優勢";
+  } else if (timeFrame.ema200_trend_count < 0) {
+    direction = "下降優勢";
+  }
+
+  return `${direction} ${formatSignedNumber(timeFrame.ema200_trend_count, 0)}（上昇 ${formatNumber(timeFrame.ema200_up_count, 0)}回 / 下降 ${formatNumber(timeFrame.ema200_down_count, 0)}回）`;
 }
 
 function fePrice(timeFrame: ObservationDetailTimeFrame, value: number): string {
@@ -96,6 +139,7 @@ function TimeFrameCard({ timeFrame }: { timeFrame: ObservationDetailTimeFrame })
         <strong>{timeFrame.time_frame_text}</strong>
         <div className="badge-row">
           <Badge text={timeFrame.buy_sell_label} variant={sideClass(timeFrame.buy_sell_label)} />
+          <Ema200SignalBadge timeFrame={timeFrame} />
           <Badge
             text={timeFrame.is_wave_confirmed ? "確定" : "形成中"}
             variant={timeFrame.is_wave_confirmed ? "good" : "warn"}
@@ -195,24 +239,14 @@ function TimeFrameCard({ timeFrame }: { timeFrame: ObservationDetailTimeFrame })
           value={`${formatSignedNumber(timeFrame.ema30_ema60_diff_pips)} pips`}
         />
         <TimeFrameValue label="ATR14" value={`${formatNumber(timeFrame.atr14_pips)} pips`} />
-        <TimeFrameValue label="EMA200判定" value={ema200Direction(timeFrame)} />
+        <TimeFrameValue label="EMA200 終値位置" value={ema200PositionLabel(timeFrame)} />
+        <TimeFrameValue label="EMA200 傾き" value={ema200SlopeLabel(timeFrame)} />
+        <TimeFrameValue label="EMA200 継続" value={ema200TrendLabel(timeFrame)} />
         <TimeFrameValue
           label="EMA200 Close1 / Shift1"
           value={`${formatNumber(timeFrame.ema200_close1, 5)} / ${formatNumber(timeFrame.ema200_shift1, 5)}`}
         />
         <TimeFrameValue label="EMA200比較値" value={formatNumber(timeFrame.ema200_compare, 5)} />
-        <TimeFrameValue
-          label="EMA200傾き / 距離"
-          value={`${formatSignedNumber(timeFrame.ema200_slope_pips)} / ${formatSignedNumber(timeFrame.ema200_close_diff_pips)} pips`}
-        />
-        <TimeFrameValue
-          label="EMA200位置 / 傾きcode"
-          value={`${formatSignedNumber(timeFrame.ema200_close_position, 0)} / ${formatSignedNumber(timeFrame.ema200_slope_direction, 0)}`}
-        />
-        <TimeFrameValue
-          label="EMA200 上昇 / 下降 / trend"
-          value={`${formatNumber(timeFrame.ema200_up_count, 0)} / ${formatNumber(timeFrame.ema200_down_count, 0)} / ${formatSignedNumber(timeFrame.ema200_trend_count, 0)}`}
-        />
       </div>
     </article>
   );

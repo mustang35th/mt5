@@ -27,6 +27,7 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 
 interface ObservationTableProps {
@@ -191,12 +192,6 @@ function timeFrameFrom(
   );
 }
 
-function emaDirection(timeFrame: ObservationTimeFrame): string {
-  if (timeFrame.is_ema200_buy) return "BUY";
-  if (timeFrame.is_ema200_sell) return "SELL";
-  return "—";
-}
-
 function waveLabel(timeFrame: ObservationTimeFrame): string {
   const elliot = displayValue(timeFrame.latest_elliot_label);
   const sub = displayValue(timeFrame.latest_sub_elliot_label, "");
@@ -220,7 +215,7 @@ function TimeFrameSnapshot({ timeFrame }: { timeFrame: ObservationTimeFrame | un
   const side = displayValue(timeFrame.buy_sell_label).toUpperCase();
   const waveState = `${timeFrame.is_wave_confirmed ? "確" : "未"}・${timeFrame.is_wave_motive ? "推" : "修"}`;
   const waveDirection = elliottDirectionSymbol(timeFrame.is_wave_uptrend);
-  const waveSummary = `${formatElliottDirection(timeFrame.is_wave_uptrend)}、${timeFrame.is_wave_confirmed ? "確定" : "未確定"}、${timeFrame.is_wave_motive ? "推進波" : "修正波"}、EMA200 ${emaDirection(timeFrame)}、GMMA trend ${formatSignedNumber(timeFrame.gmma_trend_count, 0)}、cross ${formatSignedNumber(timeFrame.gmma_cross_count, 0)}`;
+  const waveSummary = `${formatElliottDirection(timeFrame.is_wave_uptrend)}、${timeFrame.is_wave_confirmed ? "確定" : "未確定"}、${timeFrame.is_wave_motive ? "推進波" : "修正波"}、GMMA trend ${formatSignedNumber(timeFrame.gmma_trend_count, 0)}、cross ${formatSignedNumber(timeFrame.gmma_cross_count, 0)}`;
   return (
     <Box sx={{ minWidth: 0, overflow: "hidden", py: 0.25 }}>
       <Stack
@@ -237,16 +232,23 @@ function TimeFrameSnapshot({ timeFrame }: { timeFrame: ObservationTimeFrame | un
           Elliott {waveLabel(timeFrame)}
         </Typography>
       </Stack>
-      <Typography
-        noWrap
-        aria-label={waveSummary}
-        title={waveSummary}
-        sx={{ color: "text.secondary", fontSize: "0.64rem", mt: 0.25 }}
+      <Stack
+        direction="row"
+        spacing={0.5}
+        sx={{ alignItems: "center", minWidth: 0, mt: 0.25, overflow: "hidden" }}
       >
-        {waveDirection}・{waveState}・EMA {emaDirection(timeFrame)}・GMMA T
-        {formatSignedNumber(timeFrame.gmma_trend_count, 0)}/C
-        {formatSignedNumber(timeFrame.gmma_cross_count, 0)}
-      </Typography>
+        <Ema200SignalBadge timeFrame={timeFrame} />
+        <Typography
+          noWrap
+          aria-label={waveSummary}
+          title={waveSummary}
+          sx={{ color: "text.secondary", fontSize: "0.64rem", minWidth: 0 }}
+        >
+          {waveDirection}・{waveState}・GMMA T
+          {formatSignedNumber(timeFrame.gmma_trend_count, 0)}/C
+          {formatSignedNumber(timeFrame.gmma_cross_count, 0)}
+        </Typography>
+      </Stack>
     </Box>
   );
 }

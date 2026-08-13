@@ -25,6 +25,7 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { Ema200SignalBadge } from "./Ema200SignalBadge";
 
 export interface ObservationTimeFrameSnapshotGridProps {
   timeFrames: readonly ObservationDetailTimeFrame[];
@@ -42,9 +43,11 @@ const GRID_MODULES = [
 ];
 
 const TIME_FRAME_COLUMN_ID = "time_frame_text";
+const EMA200_DIRECTION_COLUMN_ID = "ema200_direction";
 const DESKTOP_PINNED_COLUMN_IDS = [
   TIME_FRAME_COLUMN_ID,
   "buy_sell_label",
+  EMA200_DIRECTION_COLUMN_ID,
   "elliott_sub",
 ] as const;
 
@@ -151,6 +154,13 @@ function DirectionCell(
   );
 }
 
+function Ema200DirectionCell(
+  params: ICellRendererParams<ObservationDetailTimeFrame, string>,
+) {
+  if (!params.data) return null;
+  return <Ema200SignalBadge timeFrame={params.data} />;
+}
+
 const timeFrameColumn: ColDef<ObservationDetailTimeFrame, string> = {
   ...pinnedSnapshotColumn(
     TIME_FRAME_COLUMN_ID,
@@ -172,6 +182,16 @@ const directionColumn: ColDef<ObservationDetailTimeFrame, string> = {
   cellRenderer: DirectionCell,
 };
 
+const ema200DirectionColumn: ColDef<ObservationDetailTimeFrame, string> = {
+  ...pinnedSnapshotColumn(
+    EMA200_DIRECTION_COLUMN_ID,
+    "EMA200判定",
+    132,
+    ema200Direction,
+  ),
+  cellRenderer: Ema200DirectionCell,
+};
+
 const COLUMN_DEFS: Array<
   ColDef<ObservationDetailTimeFrame> | ColGroupDef<ObservationDetailTimeFrame>
 > = [
@@ -182,6 +202,7 @@ const COLUMN_DEFS: Array<
     children: [
       timeFrameColumn,
       directionColumn,
+      ema200DirectionColumn,
       pinnedSnapshotColumn("elliott_sub", "Elliott / Sub", 210, waveLabel),
     ],
   },
@@ -387,7 +408,6 @@ const COLUMN_DEFS: Array<
         112,
         (timeFrame) => `${formatNumber(timeFrame.atr14_pips)} pips`,
       ),
-      snapshotColumn("ema200_direction", "EMA200判定", 132, ema200Direction),
       snapshotColumn(
         "ema200_close1_shift1",
         "EMA200 Close1 / Shift1",

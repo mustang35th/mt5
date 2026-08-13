@@ -707,6 +707,7 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .badge.good { border-color: rgba(117, 213, 155, 0.55); color: var(--good); background: rgba(117, 213, 155, 0.08); }
 .badge.warn { border-color: rgba(242, 198, 109, 0.55); color: var(--warn); background: rgba(242, 198, 109, 0.08); }
 .badge.neutral { color: var(--muted); }
+.alert-grid.density-compact .observation-ema200-badge { flex: 0 0 auto; min-height: 19px; padding: 1px 5px; font-size: 0.56rem; }
 
 .tf-sequence { display: flex; gap: 4px; min-width: 245px; }
 .tf-chip { display: grid; min-width: 43px; gap: 1px; padding: 4px 5px; border-radius: 7px; }
@@ -848,6 +849,9 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .timeframe-card { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .timeframe-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .timeframe-header strong { font-size: 1.03rem; }
+.observation-detail-dialog .timeframe-header { align-items: flex-start; gap: 8px; }
+.observation-detail-dialog .timeframe-header > strong { flex: 0 0 auto; }
+.observation-detail-dialog .timeframe-header .badge-row { min-width: 0; justify-content: flex-end; }
 .timeframe-values { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .timeframe-values div { min-width: 0; }
 .timeframe-values span { display: block; color: var(--muted); font-size: 0.62rem; }

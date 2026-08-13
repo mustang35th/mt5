@@ -479,6 +479,9 @@ describe("App", () => {
     expect(screen.getAllByText(/Elliott ▲3 \/ 3-1/)).toHaveLength(3);
     expect(screen.getAllByText(/Elliott ▼3 \/ 3-1/)).toHaveLength(2);
     expect(screen.getAllByText(/GMMA T\+3\/C0/)).toHaveLength(5);
+    expect(screen.getByLabelText("EMA200判定 対象外。MN1は計算を省略"))
+      .toHaveTextContent("EMA200 SKIP");
+    expect(screen.getAllByLabelText("EMA200判定 BUY")).toHaveLength(4);
     expect(screen.queryByText("Бе")).not.toBeInTheDocument();
     expect(screen.queryByText(/最新点 JST 2026\.08\.10 07:00:00/)).not.toBeInTheDocument();
     const detailButton = screen.getByRole("button", {

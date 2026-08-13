@@ -216,9 +216,10 @@ describe("ObservationDetailDrawer", () => {
     expect(screen.getAllByText("BUY / count +2")).toHaveLength(5);
     expect(screen.getAllByText("+4 / +1")).toHaveLength(5);
     expect(screen.getAllByText("+10.0 pips")).toHaveLength(5);
-    expect(screen.getAllByText("+2.5 / +30.0 pips")).toHaveLength(5);
-    expect(screen.getAllByText("+1 / +1")).toHaveLength(5);
-    expect(screen.getAllByText("5 / 0 / +5")).toHaveLength(5);
+    expect(screen.getAllByText("対象外（MN1は計算省略）")).toHaveLength(3);
+    expect(screen.getAllByText("終値が上（距離 +30.0 pips）")).toHaveLength(4);
+    expect(screen.getAllByText("上向き（+2.5 pips）")).toHaveLength(4);
+    expect(screen.getAllByText("上昇優勢 +5（上昇 5回 / 下降 0回）")).toHaveLength(4);
     expect(screen.getAllByText("105.25000 / 105.15000")).toHaveLength(5);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
@@ -230,6 +231,10 @@ describe("ObservationDetailDrawer", () => {
       "H4 時間足詳細",
       "H1 時間足詳細",
     ]);
+    expect(within(cards[0]).getByLabelText("EMA200判定 対象外。MN1は計算を省略"))
+      .toHaveTextContent("EMA200 SKIP");
+    expect(within(cards[4]).getByLabelText("EMA200判定 BUY"))
+      .toHaveTextContent("EMA200 ↑ BUY");
     expect(screen.getByText("analysis-hash")).not.toBeVisible();
     fireEvent.click(screen.getByText("監査情報を表示"), { detail: 1 });
     expect(screen.getByText("analysis-hash")).toBeVisible();
@@ -276,6 +281,26 @@ describe("ObservationDetailDrawer", () => {
       expect(hasValue("ema200_slope_distance", "+2.5 / +30.0 pips")).toBe(true);
       expect(hasValue("ema200_position_slope_code", "+1 / +1")).toBe(true);
       expect(hasValue("ema200_counts", "5 / 0 / +5")).toBe(true);
+
+      const skipBadge = within(grid).getByLabelText("EMA200判定 対象外。MN1は計算を省略");
+      expect(skipBadge).toHaveTextContent("EMA200 SKIP");
+      expect(skipBadge).toHaveClass("badge", "neutral", "observation-ema200-badge");
+      expect(skipBadge.closest(".ag-cell")).toHaveAttribute("col-id", "ema200_direction");
+
+      const buyBadges = within(grid).getAllByLabelText("EMA200判定 BUY");
+      expect(buyBadges).toHaveLength(4);
+      for (const buyBadge of buyBadges) {
+        expect(buyBadge).toHaveTextContent("EMA200 ↑ BUY");
+        expect(buyBadge).toHaveClass("badge", "buy", "observation-ema200-badge");
+        expect(buyBadge.closest(".ag-cell")).toHaveAttribute("col-id", "ema200_direction");
+      }
+
+      const headerColumnIds = Array.from(
+        grid.querySelectorAll<HTMLElement>(".ag-header-cell[col-id]"),
+      ).map((header) => header.getAttribute("col-id"));
+      const directionIndex = headerColumnIds.indexOf("buy_sell_label");
+      expect(directionIndex).toBeGreaterThanOrEqual(0);
+      expect(headerColumnIds[directionIndex + 1]).toBe("ema200_direction");
     });
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -335,12 +360,14 @@ describe("ObservationDetailDrawer", () => {
       const pinnedAreas = region.querySelectorAll<HTMLElement>(".ag-grid-pinned-left-cells");
       const timeFrameCells = region.querySelectorAll<HTMLElement>('.ag-cell[col-id="time_frame_text"]');
       const directionCells = region.querySelectorAll<HTMLElement>('.ag-cell[col-id="buy_sell_label"]');
+      const ema200Cells = region.querySelectorAll<HTMLElement>('.ag-cell[col-id="ema200_direction"]');
       const elliottCells = region.querySelectorAll<HTMLElement>('.ag-cell[col-id="elliott_sub"]');
       expect(pinnedAreas.length).toBeGreaterThan(0);
       expect(Array.from(pinnedAreas).every((area) => area.style.width === "132px")).toBe(true);
       expect(timeFrameCells.length).toBeGreaterThan(0);
       expect(Array.from(timeFrameCells).every((cell) => cell.classList.contains("ag-cell-last-left-pinned"))).toBe(true);
       expect(Array.from(directionCells).some((cell) => cell.classList.contains("ag-cell-last-left-pinned"))).toBe(false);
+      expect(Array.from(ema200Cells).some((cell) => cell.classList.contains("ag-cell-last-left-pinned"))).toBe(false);
       expect(Array.from(elliottCells).some((cell) => cell.classList.contains("ag-cell-last-left-pinned"))).toBe(false);
     });
   });
