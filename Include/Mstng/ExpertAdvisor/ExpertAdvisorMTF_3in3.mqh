@@ -155,7 +155,7 @@ protected:
         
         ZigZagPoint *latestPoint = this.elliotCurrent.getLatestPoint();
         this.currentElliotLabel = latestPoint.elliotLabel;
-        this.isEntryWaveResult = this.isElliot1or3(this.elliotCurrent);
+        this.isEntryWaveResult = this.isEntryWave(this.elliotCurrent);
         string timeFrameRejectReason = "";
         bool isTimeFrameEntryAllowed =
             this.isTimeFrameEntryConditionMatched(timeFrameRejectReason);
@@ -294,7 +294,7 @@ protected:
      * @param fromElliot 判定対象。
      * @return 最新ポイントが第1波または第3波の場合true。
      */
-    bool isEntryWave(Elliot *fromElliot) {
+    virtual bool isEntryWave(Elliot *fromElliot) {
         return this.isElliot1or3(fromElliot);
     }
 

@@ -15,7 +15,7 @@
 /**
  * H1を現在足としてMTF_3in3エントリーを判定する。
  *
- * D1とH4は売買方向の一致確認に使用し、H1の第1波または第3波を
+ * D1とH4は売買方向の一致確認に使用し、H1の第1波/3波/5波を
  * エントリー対象波動とする。EMA200はH1の方向だけを確認し、
  * H1の最新ZigZagポイントは確定・未確定を問わず、
  * エントリー成立時はメール送信対象とする。
@@ -89,6 +89,28 @@ protected:
         }
 
         return false;
+    }
+
+    /**
+     * H1対象波動判定を第1波/第3波/第5波に拡張する。
+     *
+     * @return H1対象波の場合true。
+     */
+    virtual bool isEntryWave(Elliot *fromElliot) override {
+        if (fromElliot == NULL) {
+            return false;
+        }
+
+        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
+        if (latestPoint == NULL) {
+            return false;
+        }
+
+        string elliotLabel = latestPoint.elliotLabel;
+
+        return elliotLabel == "1"
+            || elliotLabel == "3"
+            || elliotLabel == "5";
     }
 
     /**
