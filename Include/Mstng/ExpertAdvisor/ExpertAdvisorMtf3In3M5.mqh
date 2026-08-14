@@ -15,7 +15,7 @@
  * M5を現在足としてMTF_3in3エントリーを判定する。
  *
  * H1、M15およびM5の波動条件に加え、M5固有の
- * FE上限、H1表示波の重複制限およびメール送信を管理する。
+ * FE上限、H1表示波の重複制限およびメール送信停止を管理する。
  */
 class ExpertAdvisorMtf3In3M5 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -77,12 +77,12 @@ protected:
     }
 
     /**
-     * M5エントリー成立時にメールを送信するか判定する。
+     * M5エントリー成立時のメール送信を停止する。
      *
-     * @return 常にtrue。
+     * @return 常にfalse。
      */
     virtual bool shouldSendMail() override {
-        return true;
+        return false;
     }
 
     /**
