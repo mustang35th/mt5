@@ -10,7 +10,7 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.03"
+#property version   "1.04"
 
 #property strict
 
@@ -194,6 +194,18 @@ int OnInit() {
         g_marketContext,
         g_eaConfig.strategyType
     );
+    bool isProfitRetracementPersistenceEnabled = !MQLInfoInteger(MQL_TESTER);
+    g_eaContext.profitRetracementStateStore = new ProfitRetracementStateStore(
+        g_marketContext,
+        g_eaContext.magicNumber,
+        isProfitRetracementPersistenceEnabled
+    );
+
+    if (g_eaContext.profitRetracementStateStore == NULL) {
+        Print("MstngEa ProfitRetracementStateStore create failed");
+        return INIT_FAILED;
+    }
+
     g_eaContext.operationLogger = new OperationLogger(g_marketContext);
 
     if (g_eaConfig.useCurrencyStrength) {
@@ -364,6 +376,7 @@ void OnDeinit(const int reason) {
         delete g_eaContext.closeProfitTextView;
         delete g_eaContext.statusLabelView;
         delete g_eaContext.closeTradeCsvLogger;
+        delete g_eaContext.profitRetracementStateStore;
         delete g_eaContext.profitRetracementState;
         delete g_eaContext.tradeCsvLogger;
         delete g_eaContext.operationLogger;

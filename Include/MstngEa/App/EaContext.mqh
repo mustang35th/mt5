@@ -21,6 +21,7 @@
 #include <MstngEa\Logging\TradeCsvLogger.mqh>
 #include <MstngEa\Logging\CloseTradeCsvLogger.mqh>
 #include <MstngEa\Market\NewBarDetector.mqh>
+#include <MstngEa\Persistence\ProfitRetracementStateStore.mqh>
 #include <MstngEa\Presentation\ElliottInfoPanelView.mqh>
 #include <MstngEa\Presentation\SignalAlertTextView.mqh>
 #include <MstngEa\Presentation\CloseProfitTextView.mqh>
@@ -94,6 +95,9 @@ public:
     /** 利益戻し決済状態 */
     ProfitRetracementState *profitRetracementState;
 
+    /** Profit retracement state store */
+    ProfitRetracementStateStore *profitRetracementStateStore;
+
     /** 最終アクション */
     string lastAction;
 
@@ -125,6 +129,7 @@ public:
         this.closeTradeCsvLogger = NULL;
         this.magicNumber = 0;
         this.profitRetracementState = NULL;
+        this.profitRetracementStateStore = NULL;
         this.lastAction = "";
         this.lastError = "";
     }

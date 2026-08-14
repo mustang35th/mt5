@@ -38,12 +38,17 @@ public:
         this.pendingCurrencyStrengthElliotAll = NULL;
         this.pendingCurrencyStrengthEntryChartBarTime = 0;
         this.pendingCurrencyStrengthM5BarTime = 0;
+        this.isProfitRetracementStateSynchronized = false;
+        this.lastProfitRetracementPersistenceError = "";
+        this.profitRetracementClosePendingIdentifier = 0;
+        this.profitRetracementCloseRetryAtMilliseconds = 0;
     }
 
     /**
      * デストラクタ
      */
     ~EaController() {
+        this.persistProfitRetracementState(true);
         this.clearCurrencyStrengthEntryRetry();
     }
 
@@ -57,21 +62,24 @@ public:
         }
 
         this.eaContext.positionService.refresh();
+        this.synchronizeProfitRetracementState();
 
         if (this.pendingCurrencyStrengthElliotAll != NULL
                 && this.eaContext.positionService.hasPosition()) {
             this.clearCurrencyStrengthEntryRetry();
         }
 
-        // 建値移動前の初期リスク幅を保持
-        this.refreshProfitRetracementState();
+        if (this.isProfitRetracementStateSynchronized) {
+            // 建値移動前の初期リスク幅を保持
+            this.refreshProfitRetracementState();
 
-        this.tryBreakEven();
-        this.eaContext.positionService.refresh();
+            this.tryBreakEven();
+            this.eaContext.positionService.refresh();
 
-        if (this.tryProfitRetracementExit()) {
-            this.renderStatus();
-            return;
+            if (this.tryProfitRetracementExit()) {
+                this.renderStatus();
+                return;
+            }
         }
 
         if (!this.eaContext.newBarDetector.isNewBar()) {
@@ -139,6 +147,13 @@ public:
         // エントリー判定を実行
         this.tryEntry(elliotAll);
 
+        // 決済・新規注文直後の状態を確定ファイルへ反映
+        this.eaContext.positionService.refresh();
+
+        if (this.isProfitRetracementStateSynchronized) {
+            this.refreshProfitRetracementState();
+        }
+
         // DB保存待ちの場合は同一M5内の再試行対象とする
         bool isCurrencyStrengthRetryScheduled =
             this.scheduleCurrencyStrengthEntryRetry(elliotAll);
@@ -203,6 +218,18 @@ private:
 
     /** DB保存待ちとなっている通貨強弱のM5バー開始時刻。 */
     datetime pendingCurrencyStrengthM5BarTime;
+
+    /** true after the persisted profit retracement state was reconciled */
+    bool isProfitRetracementStateSynchronized;
+
+    /** Last reported profit retracement persistence error */
+    string lastProfitRetracementPersistenceError;
+
+    /** Position identifier with an accepted profit retracement close */
+    ulong profitRetracementClosePendingIdentifier;
+
+    /** Next tick count when an accepted close may be retried */
+    ulong profitRetracementCloseRetryAtMilliseconds;
 
     /**
      * 必須依存確認
@@ -543,6 +570,22 @@ private:
 
         double riskDistance = this.calculateBreakEvenRiskDistance(positionSnapshot);
 
+        if (this.eaContext.eaConfig.useProfitRetracementExit) {
+            if (this.eaContext.profitRetracementState == NULL) {
+                return;
+            }
+
+            if (!this.eaContext.profitRetracementState.isInitialRiskAvailable) {
+                return;
+            }
+
+            if (!this.eaContext.profitRetracementState.isInitialStatePersisted) {
+                return;
+            }
+
+            riskDistance = this.eaContext.profitRetracementState.initialRiskDistance;
+        }
+
         if (riskDistance <= 0.0) {
             return;
         }
@@ -721,6 +764,338 @@ private:
     }
 
     /**
+     * Reconciles the persisted profit retracement state once after startup.
+     */
+    void synchronizeProfitRetracementState() {
+        if (this.isProfitRetracementStateSynchronized) {
+            return;
+        }
+
+        if (this.eaContext == NULL
+                || this.eaContext.eaConfig == NULL
+                || this.eaContext.positionService == NULL
+                || this.eaContext.profitRetracementState == NULL
+                || this.eaContext.profitRetracementStateStore == NULL) {
+            return;
+        }
+
+        if (!this.eaContext.eaConfig.useProfitRetracementExit) {
+            this.isProfitRetracementStateSynchronized = true;
+            this.clearProfitRetracementState();
+            return;
+        }
+
+        if (!this.eaContext.positionService.hasPosition()) {
+            this.isProfitRetracementStateSynchronized = true;
+            this.clearProfitRetracementState();
+            return;
+        }
+
+        PositionSnapshot positionSnapshot = this.eaContext.positionService.getSnapshot();
+        ProfitRetracementState restoredState;
+        bool hasPersistedState = this.eaContext.profitRetracementStateStore.exists();
+
+        if (hasPersistedState) {
+            if (!this.eaContext.profitRetracementStateStore.load(restoredState)) {
+                this.reportProfitRetracementPersistenceError(
+                    this.eaContext.profitRetracementStateStore
+                        .getLastErrorMessage()
+                );
+                return;
+            }
+
+            if (this.isProfitRetracementStateMatched(
+                    restoredState,
+                    positionSnapshot
+                )) {
+                this.eaContext.profitRetracementState.copyFrom(restoredState);
+                this.eaContext.profitRetracementState.isInitialStatePersisted = true;
+                this.isProfitRetracementStateSynchronized = true;
+                this.reconcileRestoredProfitRetracementState(positionSnapshot);
+
+                if (this.eaContext.operationLogger != NULL) {
+                    this.eaContext.operationLogger.info(
+                        "EaController",
+                        "Profit retracement state restored. identifier="
+                            + (string)positionSnapshot.identifier
+                    );
+                }
+
+                return;
+            }
+
+            string errorMessage = this.eaContext.profitRetracementStateStore
+                .getLastErrorMessage();
+
+            if (errorMessage == "") {
+                errorMessage = "Profit retracement state does not match the position";
+            }
+
+            this.reportProfitRetracementPersistenceError(errorMessage);
+            this.eaContext.profitRetracementStateStore.clear();
+        }
+
+        this.isProfitRetracementStateSynchronized = true;
+        this.initializeProfitRetracementState(positionSnapshot);
+    }
+
+    /**
+     * Checks whether a restored state belongs to the current position.
+     *
+     * @param fromState Restored state.
+     * @param fromPositionSnapshot Current position.
+     * @return true when the state can be restored.
+     */
+    bool isProfitRetracementStateMatched(
+        ProfitRetracementState &fromState,
+        PositionSnapshot &fromPositionSnapshot
+    ) {
+        if (fromState.positionIdentifier == 0
+                || fromState.positionIdentifier != fromPositionSnapshot.identifier
+                || fromState.isBuy != fromPositionSnapshot.isBuy) {
+            return false;
+        }
+
+        double pointValue = SymbolInfoDouble(
+            this.eaContext.marketContext.symbolName,
+            SYMBOL_POINT
+        );
+        double allowedDifference = pointValue * 2.0;
+
+        if (allowedDifference <= 0.0) {
+            allowedDifference = 0.00000001;
+        }
+
+        return MathAbs(fromState.openPrice - fromPositionSnapshot.openPrice)
+            <= allowedDifference;
+    }
+
+    /**
+     * Initializes state from a newly detected position.
+     *
+     * @param fromPositionSnapshot Current position.
+     */
+    void initializeProfitRetracementState(
+        PositionSnapshot &fromPositionSnapshot
+    ) {
+        ProfitRetracementState *state = this.eaContext.profitRetracementState;
+        state.reset();
+        state.positionIdentifier = fromPositionSnapshot.identifier;
+        state.positionTicket = fromPositionSnapshot.ticket;
+        state.positionOpenTimeMilliseconds =
+            fromPositionSnapshot.openTimeMilliseconds;
+        state.isBuy = fromPositionSnapshot.isBuy;
+        state.openPrice = fromPositionSnapshot.openPrice;
+        state.initialStopLoss = fromPositionSnapshot.stopLoss;
+        state.positionVolume = fromPositionSnapshot.volume;
+        state.maxFloatingProfit = fromPositionSnapshot.floatingProfit;
+        state.configuredStartR = this.eaContext.eaConfig.profitRetracementStartR;
+        state.configuredRetracementRate =
+            this.eaContext.eaConfig.profitRetracementRate;
+
+        double currentPrice = this.getCurrentBreakEvenJudgePrice(
+            fromPositionSnapshot
+        );
+
+        if (currentPrice > 0.0) {
+            state.bestPrice = currentPrice;
+        } else {
+            state.bestPrice = fromPositionSnapshot.openPrice;
+        }
+
+        if (fromPositionSnapshot.stopLoss > 0.0) {
+            double initialRiskDistance = this.calculateBreakEvenRiskDistance(
+                fromPositionSnapshot
+            );
+
+            if (initialRiskDistance > 0.0) {
+                state.initialRiskDistance = initialRiskDistance;
+                state.isInitialRiskAvailable = true;
+            }
+        }
+
+        bool isSaved = this.persistProfitRetracementState(true);
+        state.isInitialStatePersisted = isSaved;
+
+        if (!state.isInitialRiskAvailable) {
+            this.updateLastError(
+                "Initial risk cannot be restored from the current stop loss"
+            );
+        }
+    }
+
+    /**
+     * Reconciles a restored state with current ticket, volume and settings.
+     *
+     * @param fromPositionSnapshot Current position.
+     */
+    void reconcileRestoredProfitRetracementState(
+        PositionSnapshot &fromPositionSnapshot
+    ) {
+        ProfitRetracementState *state = this.eaContext.profitRetracementState;
+        bool isForceSaveRequired = false;
+
+        if (state.positionTicket != fromPositionSnapshot.ticket) {
+            state.positionTicket = fromPositionSnapshot.ticket;
+            isForceSaveRequired = true;
+        }
+
+        if (state.positionVolume > 0.0
+                && fromPositionSnapshot.volume > 0.0
+                && fromPositionSnapshot.volume < state.positionVolume) {
+            double volumeRate = fromPositionSnapshot.volume / state.positionVolume;
+            state.maxFloatingProfit *= volumeRate;
+            isForceSaveRequired = true;
+        }
+
+        if (state.positionVolume != fromPositionSnapshot.volume) {
+            state.positionVolume = fromPositionSnapshot.volume;
+            isForceSaveRequired = true;
+        }
+
+        bool isConfigurationChanged =
+            MathAbs(
+                state.configuredStartR
+                    - this.eaContext.eaConfig.profitRetracementStartR
+            ) > 0.00000001;
+
+        if (isConfigurationChanged) {
+            state.activated = this.isProfitRetracementStartPriceReached(
+                fromPositionSnapshot,
+                state.bestPrice
+            );
+            isForceSaveRequired = true;
+        }
+
+        if (MathAbs(
+                state.configuredRetracementRate
+                    - this.eaContext.eaConfig.profitRetracementRate
+            ) > 0.00000001) {
+            isForceSaveRequired = true;
+        }
+
+        state.configuredStartR = this.eaContext.eaConfig.profitRetracementStartR;
+        state.configuredRetracementRate =
+            this.eaContext.eaConfig.profitRetracementRate;
+        this.updateProfitRetracementState(fromPositionSnapshot);
+
+        if (isForceSaveRequired) {
+            this.persistProfitRetracementState(true);
+        }
+    }
+
+    /**
+     * Clears in-memory and persisted profit retracement state.
+     */
+    void clearProfitRetracementState() {
+        if (this.eaContext == NULL) {
+            return;
+        }
+
+        if (this.eaContext.profitRetracementState != NULL) {
+            this.eaContext.profitRetracementState.reset();
+        }
+
+        this.profitRetracementClosePendingIdentifier = 0;
+        this.profitRetracementCloseRetryAtMilliseconds = 0;
+
+        if (this.eaContext.profitRetracementStateStore == NULL) {
+            return;
+        }
+
+        if (!this.eaContext.profitRetracementStateStore.clear()) {
+            this.reportProfitRetracementPersistenceError(
+                this.eaContext.profitRetracementStateStore.getLastErrorMessage()
+            );
+            return;
+        }
+
+        this.clearProfitRetracementPersistenceError();
+    }
+
+    /**
+     * Persists the current state.
+     *
+     * @param fromForce true to bypass the write interval.
+     * @return true when persisted or persistence is disabled.
+     */
+    bool persistProfitRetracementState(bool fromForce) {
+        if (this.eaContext == NULL
+                || this.eaContext.eaConfig == NULL
+                || !this.eaContext.eaConfig.useProfitRetracementExit
+                || this.eaContext.profitRetracementState == NULL) {
+            return true;
+        }
+
+        ProfitRetracementState *state = this.eaContext.profitRetracementState;
+
+        if (state.positionIdentifier == 0) {
+            return true;
+        }
+
+        if (this.eaContext.profitRetracementStateStore == NULL) {
+            this.reportProfitRetracementPersistenceError(
+                "Profit retracement state store is unavailable"
+            );
+            return false;
+        }
+
+        bool isSaved = this.eaContext.profitRetracementStateStore.save(
+            state,
+            fromForce
+        );
+
+        if (!isSaved) {
+            this.reportProfitRetracementPersistenceError(
+                this.eaContext.profitRetracementStateStore.getLastErrorMessage()
+            );
+            return false;
+        }
+
+        this.clearProfitRetracementPersistenceError();
+        return true;
+    }
+
+    /**
+     * Clears a recovered persistence error without hiding other errors.
+     */
+    void clearProfitRetracementPersistenceError() {
+        if (this.lastProfitRetracementPersistenceError != ""
+                && this.eaContext.lastError
+                    == this.lastProfitRetracementPersistenceError) {
+            this.eaContext.lastError = "";
+        }
+
+        this.lastProfitRetracementPersistenceError = "";
+    }
+
+    /**
+     * Reports a persistence error once per distinct message.
+     *
+     * @param fromErrorMessage Error message.
+     */
+    void reportProfitRetracementPersistenceError(string fromErrorMessage) {
+        if (fromErrorMessage == "") {
+            return;
+        }
+
+        this.eaContext.lastError = fromErrorMessage;
+
+        if (fromErrorMessage == this.lastProfitRetracementPersistenceError) {
+            return;
+        }
+
+        this.lastProfitRetracementPersistenceError = fromErrorMessage;
+
+        if (this.eaContext.operationLogger != NULL) {
+            this.eaContext.operationLogger.error(
+                "EaController",
+                fromErrorMessage
+            );
+        }
+    }
+
+    /**
      * 利益戻し決済状態を現在ポジションで更新する。
      *
      * 建値移動で初期ストップロスが失われる前に、初期リスク幅を保持する。
@@ -739,7 +1114,7 @@ private:
         }
 
         if (!this.eaContext.positionService.hasPosition()) {
-            this.eaContext.profitRetracementState.reset();
+            this.clearProfitRetracementState();
             return;
         }
 
@@ -767,19 +1142,34 @@ private:
         }
 
         if (!this.eaContext.positionService.hasPosition()) {
-            this.eaContext.profitRetracementState.reset();
+            this.clearProfitRetracementState();
             return false;
         }
 
         PositionSnapshot positionSnapshot = this.eaContext.positionService.getSnapshot();
         this.updateProfitRetracementState(positionSnapshot);
 
-        if (!this.eaContext.profitRetracementState.activated) {
-            return false;
+        bool isPendingClose =
+            this.profitRetracementClosePendingIdentifier
+                == positionSnapshot.identifier;
+
+        if (isPendingClose
+                && GetTickCount64()
+                    < this.profitRetracementCloseRetryAtMilliseconds) {
+            return true;
         }
 
-        if (!this.isProfitRetracementTriggered(positionSnapshot)) {
-            return false;
+        if (!isPendingClose) {
+            this.profitRetracementClosePendingIdentifier = 0;
+            this.profitRetracementCloseRetryAtMilliseconds = 0;
+
+            if (!this.eaContext.profitRetracementState.activated) {
+                return false;
+            }
+
+            if (!this.isProfitRetracementTriggered(positionSnapshot)) {
+                return false;
+            }
         }
 
         bool isClosed = this.eaContext.tradeExecutor.closePosition(
@@ -795,10 +1185,37 @@ private:
             }
 
             this.updateLastError(errorMessage);
+
+            if (isPendingClose) {
+                this.profitRetracementCloseRetryAtMilliseconds =
+                    GetTickCount64() + 1000;
+                return true;
+            }
+
             return false;
         }
 
-        this.eaContext.profitRetracementState.reset();
+        ulong closedPositionIdentifier = positionSnapshot.identifier;
+        this.eaContext.positionService.refresh();
+
+        if (this.eaContext.positionService.hasPosition()) {
+            PositionSnapshot remainingPosition =
+                this.eaContext.positionService.getSnapshot();
+
+            if (remainingPosition.identifier == closedPositionIdentifier) {
+                this.updateProfitRetracementState(remainingPosition);
+                this.profitRetracementClosePendingIdentifier =
+                    closedPositionIdentifier;
+                this.profitRetracementCloseRetryAtMilliseconds =
+                    GetTickCount64() + 1000;
+                this.eaContext.lastAction =
+                    "PROFIT RETRACEMENT EXIT PENDING";
+                this.eaContext.lastError = "";
+                return true;
+            }
+        }
+
+        this.clearProfitRetracementState();
         this.eaContext.lastAction = "PROFIT RETRACEMENT EXIT";
         this.eaContext.lastError = "";
 
@@ -818,32 +1235,70 @@ private:
      * @param positionSnapshotValue ポジション状態
      */
     void updateProfitRetracementState(PositionSnapshot &positionSnapshotValue) {
+        ProfitRetracementState *state = this.eaContext.profitRetracementState;
 
-        if (this.eaContext.profitRetracementState.positionTicket != positionSnapshotValue.ticket) {
-            this.eaContext.profitRetracementState.reset();
-            this.eaContext.profitRetracementState.positionTicket = positionSnapshotValue.ticket;
-            this.eaContext.profitRetracementState.maxFloatingProfit = positionSnapshotValue.floatingProfit;
+        if (!this.isProfitRetracementStateMatched(state, positionSnapshotValue)) {
+            this.initializeProfitRetracementState(positionSnapshotValue);
+            return;
+        }
 
-            if (positionSnapshotValue.stopLoss > 0.0) {
-                this.eaContext.profitRetracementState.initialRiskDistance =
-                    this.calculateBreakEvenRiskDistance(positionSnapshotValue);
+        if (state.positionVolume > 0.0
+                && positionSnapshotValue.volume > state.positionVolume) {
+            this.initializeProfitRetracementState(positionSnapshotValue);
+            return;
+        }
+
+        bool isForceSaveRequired = false;
+
+        if (state.positionTicket != positionSnapshotValue.ticket) {
+            state.positionTicket = positionSnapshotValue.ticket;
+            isForceSaveRequired = true;
+        }
+
+        if (state.positionVolume > 0.0
+                && positionSnapshotValue.volume > 0.0
+                && positionSnapshotValue.volume < state.positionVolume) {
+            double volumeRate = positionSnapshotValue.volume / state.positionVolume;
+            state.maxFloatingProfit *= volumeRate;
+            isForceSaveRequired = true;
+        }
+
+        if (state.positionVolume != positionSnapshotValue.volume) {
+            state.positionVolume = positionSnapshotValue.volume;
+            isForceSaveRequired = true;
+        }
+
+        double currentPrice = this.getCurrentBreakEvenJudgePrice(
+            positionSnapshotValue
+        );
+
+        if (currentPrice > 0.0) {
+            if (state.isBuy && currentPrice > state.bestPrice) {
+                state.bestPrice = currentPrice;
+            }
+
+            if (!state.isBuy && currentPrice < state.bestPrice) {
+                state.bestPrice = currentPrice;
             }
         }
 
-        if (positionSnapshotValue.floatingProfit
-            > this.eaContext.profitRetracementState.maxFloatingProfit) {
-            this.eaContext.profitRetracementState.maxFloatingProfit = positionSnapshotValue.floatingProfit;
+        if (positionSnapshotValue.floatingProfit > state.maxFloatingProfit) {
+            state.maxFloatingProfit = positionSnapshotValue.floatingProfit;
         }
 
-        if (this.eaContext.profitRetracementState.activated) {
-            return;
+        if (!state.activated
+                && this.isProfitRetracementStartTriggered(positionSnapshotValue)) {
+            state.activated = true;
+            isForceSaveRequired = true;
         }
 
-        if (!this.isProfitRetracementStartTriggered(positionSnapshotValue)) {
-            return;
-        }
+        bool isSaved = this.persistProfitRetracementState(
+            isForceSaveRequired
+        );
 
-        this.eaContext.profitRetracementState.activated = true;
+        if (isSaved) {
+            state.isInitialStatePersisted = true;
+        }
     }
 
     /**
@@ -853,33 +1308,52 @@ private:
      * @return 開始価格へ到達した場合true。
      */
     bool isProfitRetracementStartTriggered(PositionSnapshot &fromPositionSnapshot) {
-        if (this.eaContext.eaConfig.profitRetracementStartR <= 0.0) {
-            return false;
-        }
-
-        double initialRiskDistance = this.eaContext.profitRetracementState.initialRiskDistance;
-
-        if (initialRiskDistance <= 0.0) {
-            return false;
-        }
-
         double currentPrice = this.getCurrentBreakEvenJudgePrice(fromPositionSnapshot);
 
         if (currentPrice <= 0.0) {
             return false;
         }
 
-        double triggerDistance = initialRiskDistance
+        return this.isProfitRetracementStartPriceReached(
+            fromPositionSnapshot,
+            currentPrice
+        );
+    }
+
+    /**
+     * Checks a supplied price against the profit retracement start level.
+     *
+     * @param fromPositionSnapshot Position state.
+     * @param fromPrice Price to evaluate.
+     * @return true when the start level was reached.
+     */
+    bool isProfitRetracementStartPriceReached(
+        PositionSnapshot &fromPositionSnapshot,
+        double fromPrice
+    ) {
+        if (this.eaContext.eaConfig.profitRetracementStartR <= 0.0) {
+            return false;
+        }
+
+        ProfitRetracementState *state = this.eaContext.profitRetracementState;
+
+        if (!state.isInitialRiskAvailable
+                || state.initialRiskDistance <= 0.0
+                || fromPrice <= 0.0) {
+            return false;
+        }
+
+        double triggerDistance = state.initialRiskDistance
             * this.eaContext.eaConfig.profitRetracementStartR;
         double triggerPrice = fromPositionSnapshot.openPrice;
 
         if (fromPositionSnapshot.isBuy) {
             triggerPrice += triggerDistance;
-            return currentPrice >= triggerPrice;
+            return fromPrice >= triggerPrice;
         }
 
         triggerPrice -= triggerDistance;
-        return currentPrice <= triggerPrice;
+        return fromPrice <= triggerPrice;
     }
 
     /**
@@ -896,6 +1370,11 @@ private:
 
         double maxFloatingProfit = this.eaContext.profitRetracementState.maxFloatingProfit;
         double currentFloatingProfit = positionSnapshotValue.floatingProfit;
+
+        if (maxFloatingProfit <= 0.0) {
+            return false;
+        }
+
         double retracementAmount = maxFloatingProfit - currentFloatingProfit;
         double triggerAmount = maxFloatingProfit * this.eaContext.eaConfig.profitRetracementRate;
 
@@ -1481,6 +1960,18 @@ private:
 
         if (this.eaContext.profitRetracementState == NULL) {
             return "READY";
+        }
+
+        if (this.eaContext.positionService != NULL
+                && this.eaContext.positionService.hasPosition()
+                && !this.eaContext.profitRetracementState.isInitialStatePersisted) {
+            return "PERSIST ERROR";
+        }
+
+        if (this.eaContext.positionService != NULL
+                && this.eaContext.positionService.hasPosition()
+                && !this.eaContext.profitRetracementState.isInitialRiskAvailable) {
+            return "UNAVAILABLE";
         }
 
         if (this.eaContext.profitRetracementState.activated) {

@@ -84,6 +84,12 @@ public:
             // 現在ポジションを反映
             this.positionSnapshot.hasPosition = true;
             this.positionSnapshot.ticket = currentTicket;
+            this.positionSnapshot.identifier = (ulong)PositionGetInteger(
+                POSITION_IDENTIFIER
+            );
+            this.positionSnapshot.openTimeMilliseconds = PositionGetInteger(
+                POSITION_TIME_MSC
+            );
             this.positionSnapshot.volume = PositionGetDouble(POSITION_VOLUME);
             this.positionSnapshot.openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
             this.positionSnapshot.stopLoss = PositionGetDouble(POSITION_SL);

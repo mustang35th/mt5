@@ -847,6 +847,6 @@ DBは対象M5時刻の年別ファイルをREADONLYで開き、ファイル作�
 
 ## 17. EAの通貨強弱参照
 
-`MstngEa`の`InpUseCurrencyStrength`は既定で`true`、`InpCurrencyStrengthVoteWeightMode`は既定で`WEIGHTED`です。`UNIFORM`では`pair-direction-closed-v1`、`WEIGHTED`では`pair-direction-weighted-closed-v1`を完全一致検索します。保存側`CurrencyStrengthElliot`とEAで同じ方式を選択する必要があり、選択方式の同一M5 Runがない場合は別方式へフォールバックせず通貨強弱フィルタを不通過とします。
+`MstngEa`の`InpUseCurrencyStrength`は既定で`false`、`InpCurrencyStrengthVoteWeightMode`は既定で`WEIGHTED`です。`UNIFORM`では`pair-direction-closed-v1`、`WEIGHTED`では`pair-direction-weighted-closed-v1`を完全一致検索します。保存側`CurrencyStrengthElliot`とEAで同じ方式を選択する必要があり、選択方式の同一M5 Runがない場合は別方式へフォールバックせず通貨強弱フィルタを不通過とします。
 
-分析結果メールの通貨強弱ヘッダーには、参照した`calculation_version`に対応する票ウェイト方式を`MODE:WEIGHTED`または`MODE:UNIFORM`として表示します。DBなし、データなし、取得エラーの場合も、検索を試みた方式を同じ形式で表示します。
+`Mail::getCurrencyStrengthText()`を使用する分析結果メールの通貨強弱ヘッダーには、参照した`calculation_version`に対応する票ウェイト方式を`MODE:WEIGHTED`または`MODE:UNIFORM`として表示します。DBなし、データなし、取得エラーの場合も、検索を試みた方式を同じ形式で表示します。現行`MstngEa`本体には実メール送信経路がなく、この記述はメール本文フォーマットの仕様です。
