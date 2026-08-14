@@ -13,6 +13,8 @@
 
 本書は、ZigZagElliotがアラートを出した時点の判定情報とElliott波動を、後からSQLで検索および再構成できる形式で保存する第1段階の仕様を定義します。
 
+全28通貨をH1新規足ごとに記録する収集処理については、[ZigZagElliotH1ObservationAll仕様書](../Indicator/ZigZagElliotH1ObservationAll.md)を参照してください。
+
 ## 2. 第1段階の範囲
 
 第1段階では次を保存します。
