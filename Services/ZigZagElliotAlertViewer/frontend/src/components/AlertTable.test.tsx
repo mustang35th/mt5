@@ -24,6 +24,30 @@ function alertWithAlignment(id: number, aligned: boolean | null): AlertListItem 
     time_frame_text: "H1",
     strategy: "MTF_3in3",
     side: "BUY",
+    ...(id === 1 ? {
+      is_ema200_available: true,
+      is_ema200_buy: true,
+      is_ema200_sell: false,
+      mn1_is_ema200_available: true,
+      mn1_is_ema200_buy: false,
+      mn1_is_ema200_sell: false,
+      w1_is_ema200_available: true,
+      w1_is_ema200_buy: false,
+      w1_is_ema200_sell: true,
+      d1_is_ema200_available: true,
+      d1_is_ema200_buy: false,
+      d1_is_ema200_sell: true,
+      h4_is_ema200_available: true,
+      h4_is_ema200_buy: false,
+      h4_is_ema200_sell: false,
+      h1_is_ema200_available: true,
+      h1_is_ema200_buy: true,
+      h1_is_ema200_sell: false,
+    } : id === 2 ? {
+      is_ema200_available: true,
+      is_ema200_buy: false,
+      is_ema200_sell: true,
+    } : {}),
     signal_count: 1,
     entry_count: 1,
     is_entry: true,
@@ -82,7 +106,23 @@ describe("AlertTable", () => {
     const confirmationHeader = screen.getByRole("columnheader", { name: "W1確認" });
     fireEvent.click(within(confirmationHeader).getByRole("button", { name: "W1確認" }));
     expect(onSort).toHaveBeenCalledWith("w1_confirmation_state");
+    const sideHeader = screen.getByRole("columnheader", { name: "方向" });
+    fireEvent.click(within(sideHeader).getByRole("button", { name: "方向" }));
+    expect(onSort).toHaveBeenLastCalledWith("side");
     expect(screen.getAllByText("LIVE")).toHaveLength(3);
+    expect(screen.getAllByLabelText("アラート方向 BUY")).toHaveLength(3);
+    const firstRow = view.container.querySelector<HTMLElement>('.ag-row[row-id="1"]');
+    const secondRow = view.container.querySelector<HTMLElement>('.ag-row[row-id="2"]');
+    const thirdRow = view.container.querySelector<HTMLElement>('.ag-row[row-id="3"]');
+    expect(firstRow).not.toBeNull();
+    expect(secondRow).not.toBeNull();
+    expect(thirdRow).not.toBeNull();
+    expect(within(firstRow?.querySelector('.ag-cell[col-id="side"]') as HTMLElement)
+      .getByLabelText("EMA200判定 BUY")).toHaveTextContent("EMA200 ↑ BUY");
+    expect(within(secondRow?.querySelector('.ag-cell[col-id="side"]') as HTMLElement)
+      .getByLabelText("EMA200判定 SELL")).toHaveTextContent("EMA200 ↓ SELL");
+    expect(within(thirdRow?.querySelector('.ag-cell[col-id="side"]') as HTMLElement)
+      .getByLabelText("EMA200判定 記録なし")).toHaveTextContent("EMA200 記録なし");
     expect(screen.getAllByLabelText("GMO取引 対象")).toHaveLength(2);
     expect(screen.queryByLabelText("GMO取引 対象外")).not.toBeInTheDocument();
     expect(screen.getAllByText("test <img onerror=alert(1)>")).toHaveLength(3);
@@ -98,6 +138,31 @@ describe("AlertTable", () => {
         expect(cell).not.toHaveTextContent("H1");
       }
     });
+    const mn1Cell = firstRow?.querySelector<HTMLElement>('.ag-cell[col-id="tf_mn1"]');
+    const w1Cell = firstRow?.querySelector<HTMLElement>('.ag-cell[col-id="tf_w1"]');
+    const d1Cell = firstRow?.querySelector<HTMLElement>('.ag-cell[col-id="tf_d1"]');
+    const h4Cell = firstRow?.querySelector<HTMLElement>('.ag-cell[col-id="tf_h4"]');
+    const h1Cell = firstRow?.querySelector<HTMLElement>('.ag-cell[col-id="tf_h1"]');
+    expect(within(mn1Cell as HTMLElement).getByLabelText("MN1 分析方向 BUY"))
+      .toBeInTheDocument();
+    expect(within(mn1Cell as HTMLElement).getByLabelText(/EMA200判定 対象外/))
+      .toHaveTextContent("EMA200 SKIP");
+    expect(within(w1Cell as HTMLElement).getByLabelText("EMA200判定 SELL"))
+      .toHaveTextContent("EMA200 ↓ SELL");
+    expect(within(d1Cell as HTMLElement).getByLabelText("EMA200判定 SELL"))
+      .toHaveTextContent("EMA200 ↓ SELL");
+    expect(within(h4Cell as HTMLElement).getByLabelText("EMA200判定 NONE"))
+      .toHaveTextContent("EMA200 NONE");
+    const currentTimeFrameGroup = within(h1Cell as HTMLElement).getByRole("group", {
+      name: "H1 分析方向とEMA200判定（現在のアラート時間足）",
+    });
+    expect(currentTimeFrameGroup).toHaveClass("current-time-frame-analysis-cell");
+    expect(currentTimeFrameGroup).toHaveAttribute("aria-current", "true");
+    expect(within(currentTimeFrameGroup).getByText("現在足")).toBeInTheDocument();
+    expect(within(currentTimeFrameGroup).getByLabelText("H1 分析方向 BUY"))
+      .toBeInTheDocument();
+    expect(within(currentTimeFrameGroup).getByLabelText("EMA200判定 BUY"))
+      .toBeInTheDocument();
     await waitFor(() => expect(document.querySelector('.ag-row[row-id="2"]')).toHaveClass("alert-row-new"));
     const detailButton = screen.getAllByRole("button", { name: "AUDUSD BUY 2026.07.31 01:00:00 の詳細を表示" })[0];
     fireEvent.click(detailButton);
@@ -167,17 +232,24 @@ describe("AlertTable", () => {
     expect(localStorage.getItem(GRID_DENSITY_STORAGE_KEY)).toBe("compact");
 
     fireEvent.click(screen.getByRole("button", { name: "表示列" }));
-    const w1ColumnItem = await screen.findByRole("menuitemcheckbox", { name: /W1確認/ });
-    expect(w1ColumnItem).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(w1ColumnItem);
+    for (const timeFrame of ["MN1", "W1", "D1", "H4", "H1"]) {
+      expect(await screen.findByRole("menuitemcheckbox", {
+        name: new RegExp(`${timeFrame} 方向 / EMA200`),
+      })).toHaveAttribute("aria-checked", "true");
+    }
+    const w1TimeFrameColumnItem = await screen.findByRole("menuitemcheckbox", {
+      name: /W1 方向 \/ EMA200/,
+    });
+    expect(w1TimeFrameColumnItem).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(w1TimeFrameColumnItem);
     await waitFor(() => {
-      expect(screen.queryByRole("columnheader", { name: "W1確認" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "W1" })).not.toBeInTheDocument();
       const storedText = localStorage.getItem(GRID_LAYOUT_STORAGE_KEY);
       expect(storedText).not.toBeNull();
       const stored = JSON.parse(storedText || "{}") as {
         columns?: Array<{ colId: string; hide: boolean }>;
       };
-      expect(stored.columns?.find((column) => column.colId === "is_w1_aligned")?.hide).toBe(true);
+      expect(stored.columns?.find((column) => column.colId === "tf_w1")?.hide).toBe(true);
     });
 
     firstView.unmount();
@@ -193,7 +265,7 @@ describe("AlertTable", () => {
     );
     await waitFor(() => {
       expect(restoredView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
-      expect(screen.queryByRole("columnheader", { name: "W1確認" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "W1" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "列を初期化" })).toBeEnabled();
     });
 
@@ -202,7 +274,7 @@ describe("AlertTable", () => {
       expect(localStorage.getItem(GRID_LAYOUT_STORAGE_KEY)).toBeNull();
     });
     fireEvent.click(screen.getByRole("button", { name: "表示列" }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: /W1確認/ }))
+    expect(await screen.findByRole("menuitemcheckbox", { name: /W1 方向 \/ EMA200/ }))
       .toHaveAttribute("aria-checked", "true");
     expect(restoredView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
   });
@@ -213,6 +285,7 @@ describe("AlertTable", () => {
       { colId: "symbol_name", width: 140, hide: false },
       { colId: "side", width: 90, hide: false },
       { colId: "entry_result", width: 165, hide: false },
+      { colId: "tf_h1", width: 180, hide: false },
       { colId: "source_mode", width: 110, hide: false },
       { colId: "judgement", width: 300, hide: false },
       { colId: "h1_structure_rank", width: 145, hide: false },
@@ -241,6 +314,16 @@ describe("AlertTable", () => {
         .toHaveStyle({ width: "165px" });
       expect(view.container.querySelector<HTMLElement>('[role="columnheader"][col-id="is_w1_aligned"]'))
         .toHaveStyle({ width: "210px" });
+      const sideHeader = view.container.querySelector<HTMLElement>(
+        '[role="columnheader"][col-id="side"]',
+      );
+      expect(Number.parseInt(sideHeader?.style.width || "0", 10)).toBeGreaterThanOrEqual(120);
+      for (const colId of ["tf_mn1", "tf_w1", "tf_d1", "tf_h4", "tf_h1"]) {
+        expect(view.container.querySelector<HTMLElement>(
+          `[role="columnheader"][col-id="${colId}"]`,
+        )).toHaveStyle({ width: "125px" });
+      }
+      expect(view.container.querySelector('[col-id="time_frame_sides"]')).not.toBeInTheDocument();
     });
     const initialColumnIds = Array.from(
       view.container.querySelectorAll<HTMLElement>('[role="columnheader"][col-id]'),
@@ -252,6 +335,26 @@ describe("AlertTable", () => {
       .toBeLessThan(initialColumnIds.indexOf("time_frame"));
     expect(initialColumnIds.indexOf("time_frame"))
       .toBeLessThan(initialColumnIds.indexOf("side"));
+    const migratedTimeFrameColumnIds = ["tf_mn1", "tf_w1", "tf_d1", "tf_h4", "tf_h1"];
+    expect(initialColumnIds.filter((colId) => migratedTimeFrameColumnIds.includes(colId || "")))
+      .toEqual(migratedTimeFrameColumnIds);
+    expect(initialColumnIds.indexOf("h1_structure_rank"))
+      .toBeLessThan(initialColumnIds.indexOf("tf_mn1"));
+    expect(initialColumnIds.indexOf("tf_h1"))
+      .toBeLessThan(initialColumnIds.indexOf("is_w1_aligned"));
+    const migratedStoredLayout = JSON.parse(
+      localStorage.getItem(GRID_LAYOUT_STORAGE_KEY) || "{}",
+    ) as { columns?: Array<{ colId: string; width: number; hide: boolean }> };
+    expect(migratedStoredLayout.columns?.some(
+      (column) => column.colId === "time_frame_sides",
+    )).toBe(false);
+    expect(migratedStoredLayout.columns?.filter(
+      (column) => migratedTimeFrameColumnIds.includes(column.colId),
+    )).toEqual(migratedTimeFrameColumnIds.map((colId) => ({
+      colId,
+      width: 125,
+      hide: false,
+    })));
 
     view.rerender(
       <AlertTable
@@ -273,5 +376,26 @@ describe("AlertTable", () => {
       expect(updatedColumnIds.indexOf("entry_result"))
         .toBeLessThan(updatedColumnIds.indexOf("source_mode"));
     });
+  });
+
+  it("shows fixed higher-time-frame context without marking a current column for M5 alerts", async () => {
+    const alert = { ...alertWithAlignment(41, true), time_frame_text: "M5" };
+    const view = render(
+      <AlertTable
+        items={[alert]}
+        loading={false}
+        sort="jst_time"
+        order="desc"
+        onSort={vi.fn()}
+        onOpenDetail={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("columnheader", { name: "MN1" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "H1" })).toBeInTheDocument();
+    expect(view.container.querySelectorAll(".time-frame-analysis-cell")).toHaveLength(5);
+    expect(view.container.querySelector(".current-time-frame-analysis-cell")).toBeNull();
+    expect(view.container.querySelector('[aria-current="true"]')).toBeNull();
+    expect(screen.queryByText("現在足")).not.toBeInTheDocument();
   });
 });

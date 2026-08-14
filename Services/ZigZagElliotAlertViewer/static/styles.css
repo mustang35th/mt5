@@ -632,6 +632,38 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
   50% { background: rgba(89, 216, 194, 0.18); }
 }
 .grid-cell-stack { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; }
+.alert-direction-cell { gap: 4px; }
+.alert-grid.density-compact .alert-direction-cell { gap: 2px; }
+.time-frame-analysis-cell {
+  width: 100%;
+  gap: 4px;
+  border-radius: 7px;
+  padding: 2px 4px;
+}
+.time-frame-analysis-direction-line {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+}
+.current-time-frame-analysis-cell {
+  background: rgba(89, 216, 194, 0.08);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.current-time-frame-chip {
+  display: inline-flex;
+  min-height: 17px;
+  align-items: center;
+  padding: 1px 4px;
+  border: 1px solid rgba(89, 216, 194, 0.45);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.52rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.alert-grid.density-compact .time-frame-analysis-cell { gap: 2px; padding-top: 1px; padding-bottom: 1px; }
+.alert-grid.density-compact .current-time-frame-chip { min-height: 15px; font-size: 0.48rem; }
 .grid-cell-wrap .subtext {
   overflow: hidden;
   display: -webkit-box;

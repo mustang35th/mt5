@@ -29,6 +29,7 @@ import {
   writeGridColumnLayout,
   writeGridDensity,
 } from "../lib/gridPreferences";
+import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import { GridControls, type GridColumnOption } from "./GridControls";
 import { W1ConfirmationBadge } from "./W1ConfirmationBadge";
@@ -61,6 +62,16 @@ const GRID_MODULES = [
   RowStyleModule,
 ];
 
+const TIME_FRAME_ANALYSIS_COLUMN_IDS = [
+  "tf_mn1",
+  "tf_w1",
+  "tf_d1",
+  "tf_h4",
+  "tf_h1",
+] as const;
+const LEGACY_TIME_FRAME_SIDES_COLUMN_ID = "time_frame_sides";
+const TIME_FRAME_ANALYSIS_COLUMN_WIDTH = 125;
+
 const GRID_COLUMN_IDS = [
   "jst_time",
   "symbol_name",
@@ -69,14 +80,17 @@ const GRID_COLUMN_IDS = [
   "source_mode",
   "judgement",
   "h1_structure_rank",
-  "time_frame_sides",
+  ...TIME_FRAME_ANALYSIS_COLUMN_IDS,
   "is_w1_aligned",
   "risk_pips",
   "entry_result",
   "detail",
 ] as const;
 
-const GRID_COLUMN_ID_SET: ReadonlySet<string> = new Set(GRID_COLUMN_IDS);
+const GRID_LAYOUT_COLUMN_ID_SET: ReadonlySet<string> = new Set([
+  ...GRID_COLUMN_IDS,
+  LEGACY_TIME_FRAME_SIDES_COLUMN_ID,
+]);
 export const GRID_PINNED_LEFT_COLUMN_IDS = [
   "jst_time",
   "symbol_name",
@@ -94,11 +108,78 @@ const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
   { colId: "source_mode", label: "実行モード" },
   { colId: "judgement", label: "判定" },
   { colId: "h1_structure_rank", label: "構造・波動" },
-  { colId: "time_frame_sides", label: "MN1 → H1 分析方向" },
+  { colId: "tf_mn1", label: "MN1 方向 / EMA200" },
+  { colId: "tf_w1", label: "W1 方向 / EMA200" },
+  { colId: "tf_d1", label: "D1 方向 / EMA200" },
+  { colId: "tf_h4", label: "H4 方向 / EMA200" },
+  { colId: "tf_h1", label: "H1 方向 / EMA200" },
   { colId: "is_w1_aligned", label: "W1確認" },
   { colId: "risk_pips", label: "Risk / Spread" },
   { colId: "entry_result", label: "ENTRY" },
 ];
+
+const TIME_FRAME_ANALYSIS_COLUMNS = [
+  {
+    colId: "tf_mn1",
+    timeFrame: "MN1",
+    sideField: "mn1_side",
+    availableField: "mn1_is_ema200_available",
+    buyField: "mn1_is_ema200_buy",
+    sellField: "mn1_is_ema200_sell",
+  },
+  {
+    colId: "tf_w1",
+    timeFrame: "W1",
+    sideField: "w1_side",
+    availableField: "w1_is_ema200_available",
+    buyField: "w1_is_ema200_buy",
+    sellField: "w1_is_ema200_sell",
+  },
+  {
+    colId: "tf_d1",
+    timeFrame: "D1",
+    sideField: "d1_side",
+    availableField: "d1_is_ema200_available",
+    buyField: "d1_is_ema200_buy",
+    sellField: "d1_is_ema200_sell",
+  },
+  {
+    colId: "tf_h4",
+    timeFrame: "H4",
+    sideField: "h4_side",
+    availableField: "h4_is_ema200_available",
+    buyField: "h4_is_ema200_buy",
+    sellField: "h4_is_ema200_sell",
+  },
+  {
+    colId: "tf_h1",
+    timeFrame: "H1",
+    sideField: "h1_side",
+    availableField: "h1_is_ema200_available",
+    buyField: "h1_is_ema200_buy",
+    sellField: "h1_is_ema200_sell",
+  },
+] as const;
+
+type TimeFrameAnalysisColumn = (typeof TIME_FRAME_ANALYSIS_COLUMNS)[number];
+
+function migrateLegacyTimeFrameColumns(
+  fromLayout: GridColumnLayoutItem[],
+): GridColumnLayoutItem[] {
+  if (!fromLayout.some((column) => column.colId === LEGACY_TIME_FRAME_SIDES_COLUMN_ID)) {
+    return fromLayout;
+  }
+  const newColumnIds: ReadonlySet<string> = new Set(TIME_FRAME_ANALYSIS_COLUMN_IDS);
+  return fromLayout.flatMap((column) => {
+    if (newColumnIds.has(column.colId)) return [];
+    if (column.colId !== LEGACY_TIME_FRAME_SIDES_COLUMN_ID) return [column];
+    return TIME_FRAME_ANALYSIS_COLUMN_IDS.map((colId) => ({
+      colId,
+      width: TIME_FRAME_ANALYSIS_COLUMN_WIDTH,
+      hide: column.hide,
+    }));
+  });
+}
 
 function includeTimeFrameColumn(
   fromLayout: GridColumnLayoutItem[],
@@ -180,31 +261,58 @@ function ServerSortHeader({
   );
 }
 
-function Badge({ text, variant = "neutral" }: { text: string; variant?: string }) {
-  return <span className={`badge ${variant}`}>{text}</span>;
+function Badge({
+  text,
+  variant = "neutral",
+  ariaLabel,
+}: {
+  text: string;
+  variant?: string;
+  ariaLabel?: string;
+}) {
+  return <span aria-label={ariaLabel} className={`badge ${variant}`}>{text}</span>;
 }
 
-function TimeFrameSequence({ alert }: { alert: AlertListItem }) {
-  const values: Array<[string, string | null]> = [
-    ["MN1", alert.mn1_side],
-    ["W1", alert.w1_side],
-    ["D1", alert.d1_side],
-    ["H4", alert.h4_side],
-    ["H1", alert.h1_side],
-  ];
-  return (
-    <div className="tf-sequence">
-      {values.map(([timeFrame, side]) => {
-        const normalized = String(side || "NONE").toUpperCase();
-        return (
-          <span className={`tf-chip ${sideClass(normalized)}`} key={timeFrame}>
-            <small>{timeFrame}</small>
-            <strong>{normalized === "NONE" ? "—" : normalized}</strong>
-          </span>
-        );
-      })}
-    </div>
-  );
+function timeFrameAnalysisCell(column: TimeFrameAnalysisColumn) {
+  return function TimeFrameAnalysisCell(params: ICellRendererParams<AlertListItem>) {
+    const alert = dataFrom(params);
+    if (!alert) return null;
+    const normalizedSide = String(alert[column.sideField] || "NONE").toUpperCase();
+    const isCurrentTimeFrame = alert.time_frame_text.toUpperCase() === column.timeFrame;
+    const groupLabel = `${column.timeFrame} 分析方向とEMA200判定${
+      isCurrentTimeFrame ? "（現在のアラート時間足）" : ""
+    }`;
+
+    return (
+      <div
+        aria-current={isCurrentTimeFrame ? "true" : undefined}
+        aria-label={groupLabel}
+        className={`grid-cell-stack time-frame-analysis-cell${
+          isCurrentTimeFrame ? " current-time-frame-analysis-cell" : ""
+        }`}
+        role="group"
+      >
+        <span className="time-frame-analysis-direction-line">
+          <Badge
+            ariaLabel={`${column.timeFrame} 分析方向 ${normalizedSide}`}
+            text={normalizedSide === "NONE" ? "—" : normalizedSide}
+            variant={sideClass(normalizedSide)}
+          />
+          {isCurrentTimeFrame && (
+            <span aria-hidden="true" className="current-time-frame-chip">現在足</span>
+          )}
+        </span>
+        <Ema200SignalBadge
+          available={alert[column.availableField] === true}
+          timeFrame={{
+            time_frame_text: column.timeFrame,
+            is_ema200_buy: alert[column.buyField] === true,
+            is_ema200_sell: alert[column.sellField] === true,
+          }}
+        />
+      </div>
+    );
+  };
 }
 
 function dataFrom(params: ICellRendererParams<AlertListItem>) {
@@ -251,7 +359,23 @@ function SourceModeCell(params: ICellRendererParams<AlertListItem>) {
 function SideCell(params: ICellRendererParams<AlertListItem>) {
   const alert = dataFrom(params);
   if (!alert) return null;
-  return <Badge text={alert.side} variant={sideClass(alert.side)} />;
+  return (
+    <div className="grid-cell-stack alert-direction-cell">
+      <Badge
+        ariaLabel={`アラート方向 ${alert.side}`}
+        text={alert.side}
+        variant={sideClass(alert.side)}
+      />
+      <Ema200SignalBadge
+        available={alert.is_ema200_available === true}
+        timeFrame={{
+          time_frame_text: alert.time_frame_text,
+          is_ema200_buy: alert.is_ema200_buy === true,
+          is_ema200_sell: alert.is_ema200_sell === true,
+        }}
+      />
+    </div>
+  );
 }
 
 function JudgementCell(params: ICellRendererParams<AlertListItem>) {
@@ -274,12 +398,6 @@ function StructureCell(params: ICellRendererParams<AlertListItem>) {
       <span className="subtext">wave {displayValue(alert.current_elliot_label)}</span>
     </div>
   );
-}
-
-function TimeFramesCell(params: ICellRendererParams<AlertListItem>) {
-  const alert = dataFrom(params);
-  if (!alert) return null;
-  return <TimeFrameSequence alert={alert} />;
 }
 
 function W1ConfirmationCell(params: ICellRendererParams<AlertListItem>) {
@@ -401,9 +519,14 @@ export function AlertTable({
   const handleGridReady = useCallback((event: GridReadyEvent<AlertListItem>) => {
     gridApiRef.current = event.api;
     columnLayoutReadyRef.current = false;
-    const storedLayout = readGridColumnLayout(window.localStorage, GRID_COLUMN_ID_SET);
+    const storedLayout = readGridColumnLayout(window.localStorage, GRID_LAYOUT_COLUMN_ID_SET);
     if (storedLayout !== null) {
-      const restoredLayout = includeTimeFrameColumn(storedLayout);
+      const hasLegacyTimeFrameColumn = storedLayout.some(
+        (column) => column.colId === LEGACY_TIME_FRAME_SIDES_COLUMN_ID,
+      );
+      const restoredLayout = includeTimeFrameColumn(
+        migrateLegacyTimeFrameColumns(storedLayout),
+      );
       event.api.applyColumnState({
         state: restoredLayout.map((column) => ({
           ...column,
@@ -411,6 +534,15 @@ export function AlertTable({
         })),
         applyOrder: true,
       });
+      if (hasLegacyTimeFrameColumn) {
+        writeGridColumnLayout(
+          window.localStorage,
+          restoredLayout.map((column) => ({
+            ...column,
+            hide: FIXED_COLUMN_IDS.has(column.colId) ? false : column.hide,
+          })),
+        );
+      }
     }
     event.api.setColumnsVisible([...FIXED_COLUMN_IDS], true);
     applyFixedColumnPinning(event.api);
@@ -549,7 +681,8 @@ export function AlertTable({
       field: "side",
       headerName: "方向",
       initialPinned: "left",
-      initialWidth: 90,
+      initialWidth: 130,
+      minWidth: 120,
       lockPinned: true,
       lockPosition: "left",
       suppressMovable: true,
@@ -580,12 +713,13 @@ export function AlertTable({
       headerComponentParams: sortHeaderParameters("h1_structure_rank", sort, order, onSort),
       cellRenderer: StructureCell,
     },
-    {
-      colId: "time_frame_sides",
-      headerName: "MN1 → H1 分析方向",
-      initialWidth: 270,
-      cellRenderer: TimeFramesCell,
-    },
+    ...TIME_FRAME_ANALYSIS_COLUMNS.map((column): ColDef<AlertListItem> => ({
+      colId: column.colId,
+      headerName: column.timeFrame,
+      initialWidth: TIME_FRAME_ANALYSIS_COLUMN_WIDTH,
+      minWidth: 120,
+      cellRenderer: timeFrameAnalysisCell(column),
+    })),
     {
       colId: "is_w1_aligned",
       field: "w1_confirmation_state",

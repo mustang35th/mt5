@@ -10,7 +10,22 @@ interface Ema200SignalState {
   variant: "buy" | "sell" | "warn" | "neutral";
 }
 
-function ema200SignalState(timeFrame: Ema200SignalSource): Ema200SignalState {
+interface Ema200SignalBadgeProps {
+  timeFrame: Ema200SignalSource;
+  available?: boolean;
+}
+
+function ema200SignalState(
+  timeFrame: Ema200SignalSource,
+  available: boolean,
+): Ema200SignalState {
+  if (!available) {
+    return {
+      label: "EMA200 記録なし",
+      description: "EMA200判定 記録なし",
+      variant: "neutral",
+    };
+  }
   if (timeFrame.time_frame_text.toUpperCase() === "MN1") {
     return {
       label: "EMA200 SKIP",
@@ -46,8 +61,11 @@ function ema200SignalState(timeFrame: Ema200SignalSource): Ema200SignalState {
   };
 }
 
-export function Ema200SignalBadge({ timeFrame }: { timeFrame: Ema200SignalSource }) {
-  const state = ema200SignalState(timeFrame);
+export function Ema200SignalBadge({
+  timeFrame,
+  available = true,
+}: Ema200SignalBadgeProps) {
+  const state = ema200SignalState(timeFrame, available);
   return (
     <span
       aria-label={state.description}

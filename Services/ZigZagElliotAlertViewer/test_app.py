@@ -632,6 +632,57 @@ def create_alert_summary_database(database_path: Path) -> None:
     connection.close()
 
 
+def add_alert_ema200_fixture_columns(database_path: Path) -> None:
+    """Add EMA200 flags and representative alert timeframe snapshots."""
+
+    current_time_frame = 5
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "ALTER TABLE zigzag_elliot_alert_timeframes "
+            "ADD COLUMN is_ema200_buy INTEGER"
+        )
+        connection.execute(
+            "ALTER TABLE zigzag_elliot_alert_timeframes "
+            "ADD COLUMN is_ema200_sell INTEGER"
+        )
+        connection.execute(
+            """
+            UPDATE zigzag_elliot_alerts
+            SET time_frame = ?, time_frame_text = 'M5'
+            """,
+            (current_time_frame,),
+        )
+        connection.execute(
+            """
+            UPDATE zigzag_elliot_alert_timeframes
+            SET is_ema200_buy = CASE WHEN alert_id = 1 THEN 1 ELSE 0 END,
+                is_ema200_sell = CASE WHEN alert_id = 2 THEN 1 ELSE 0 END
+            WHERE time_frame = ?
+            """,
+            (W1_TIME_FRAME,),
+        )
+        connection.executemany(
+            """
+            INSERT INTO zigzag_elliot_alert_timeframes (
+                id, alert_id, time_frame, time_frame_text, is_buy,
+                buy_sell_label, is_ema200_buy, is_ema200_sell
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (10, 1, current_time_frame, "M5", 1, "BUY", 1, 0),
+                (11, 2, current_time_frame, "M5", 0, "SELL", 0, 1),
+                (20, 1, 49153, "MN1", 0, "SELL", 0, 1),
+                (21, 1, 16408, "D1", 1, "BUY", 1, 0),
+                (22, 1, 16388, "H4", 1, "BUY", 0, 0),
+                (23, 2, 16408, "D1", 1, "BUY", 1, 1),
+                (24, 2, 16388, "H4", 0, "SELL", 0, 1),
+                (25, 1, 16385, "H1", 0, "SELL", 0, 1),
+                (26, 2, 16385, "H1", 1, "BUY", 1, 0),
+            ],
+        )
+    connection.close()
+
+
 def add_w1_confirmation_fixture_columns(database_path: Path) -> None:
     """Add the current optional W1 confirmation contract to an alert fixture."""
 
@@ -728,6 +779,102 @@ class AlertSummaryTest(unittest.TestCase):
         self.assertEqual(1, unknown_summary["total_count"])
         self.assertEqual(1, unknown_summary["w1_unknown_count"])
         self.assertEqual(3, unknown_summary["database_total_count"])
+
+
+class AlertListEma200Test(unittest.TestCase):
+    """Verify current-timeframe EMA200 flags and legacy compatibility."""
+
+    def test_current_schema_projects_current_and_fixed_time_frame_flags(
+        self,
+    ) -> None:
+        """Return independent current and fixed-timeframe EMA200 states."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "current-ema200.sqlite"
+            create_alert_summary_database(database_path)
+            add_alert_ema200_fixture_columns(database_path)
+            database = AlertDatabase(database_path)
+            try:
+                page = database.alerts({})
+                summary = database.summary({})
+            finally:
+                database.close()
+
+        items = {item["id"]: item for item in page["items"]}
+        self.assertEqual(3, page["total"])
+        self.assertEqual(3, summary["total_count"])
+        self.assertIs(items[1]["is_ema200_available"], True)
+        self.assertIs(items[1]["is_ema200_buy"], True)
+        self.assertIs(items[1]["is_ema200_sell"], False)
+        self.assertIs(items[2]["is_ema200_available"], True)
+        self.assertIs(items[2]["is_ema200_buy"], False)
+        self.assertIs(items[2]["is_ema200_sell"], True)
+        self.assertIs(items[3]["is_ema200_available"], False)
+        self.assertIs(items[3]["is_ema200_buy"], False)
+        self.assertIs(items[3]["is_ema200_sell"], False)
+
+        expected_alert_one = {
+            "mn1": (True, False, True),
+            "w1": (True, True, False),
+            "d1": (True, True, False),
+            "h4": (True, False, False),
+            "h1": (True, False, True),
+        }
+        for time_frame, expected in expected_alert_one.items():
+            available, is_buy, is_sell = expected
+            self.assertIs(
+                items[1][f"{time_frame}_is_ema200_available"],
+                available,
+            )
+            self.assertIs(items[1][f"{time_frame}_is_ema200_buy"], is_buy)
+            self.assertIs(items[1][f"{time_frame}_is_ema200_sell"], is_sell)
+        self.assertEqual("SELL", items[1]["mn1_side"])
+        self.assertEqual("BUY", items[1]["w1_side"])
+        self.assertEqual("BUY", items[1]["d1_side"])
+        self.assertEqual("BUY", items[1]["h4_side"])
+        self.assertEqual("SELL", items[1]["h1_side"])
+        self.assertEqual("NONE", items[1]["w1_ema200_direction"])
+
+        self.assertIs(items[2]["mn1_is_ema200_available"], False)
+        self.assertIs(items[2]["mn1_is_ema200_buy"], False)
+        self.assertIs(items[2]["mn1_is_ema200_sell"], False)
+        self.assertIs(items[2]["d1_is_ema200_available"], True)
+        self.assertIs(items[2]["d1_is_ema200_buy"], True)
+        self.assertIs(items[2]["d1_is_ema200_sell"], True)
+        for time_frame in ("mn1", "w1", "d1", "h4", "h1"):
+            self.assertIs(
+                items[3][f"{time_frame}_is_ema200_available"],
+                False,
+            )
+            self.assertIs(items[3][f"{time_frame}_is_ema200_buy"], False)
+            self.assertIs(items[3][f"{time_frame}_is_ema200_sell"], False)
+
+    def test_legacy_schema_projects_unavailable_boolean_flags(self) -> None:
+        """Keep list and summary operational when EMA200 columns are absent."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "legacy-ema200.sqlite"
+            create_alert_summary_database(database_path)
+            database = AlertDatabase(database_path)
+            try:
+                page = database.alerts({})
+                summary = database.summary({})
+            finally:
+                database.close()
+
+        self.assertEqual(3, page["total"])
+        self.assertEqual(3, summary["total_count"])
+        for item in page["items"]:
+            self.assertIs(item["is_ema200_available"], False)
+            self.assertIs(item["is_ema200_buy"], False)
+            self.assertIs(item["is_ema200_sell"], False)
+            for time_frame in ("mn1", "w1", "d1", "h4", "h1"):
+                self.assertIs(
+                    item[f"{time_frame}_is_ema200_available"],
+                    False,
+                )
+                self.assertIs(item[f"{time_frame}_is_ema200_buy"], False)
+                self.assertIs(item[f"{time_frame}_is_ema200_sell"], False)
 
 
 class W1ConfirmationApiTest(unittest.TestCase):
@@ -1258,6 +1405,107 @@ def create_observation_database(database_path: Path) -> None:
                     values,
                 )
     connection.close()
+
+
+def add_alert_detail_time_frame_fixture(
+    database_path: Path,
+    include_ema200_columns: bool,
+) -> None:
+    """Add ordered alert timeframe rows with an optional EMA200 schema."""
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "ALTER TABLE zigzag_elliot_alert_timeframes "
+            "ADD COLUMN time_frame_order INTEGER"
+        )
+        if include_ema200_columns:
+            connection.execute(
+                "ALTER TABLE zigzag_elliot_alert_timeframes "
+                "ADD COLUMN is_ema200_buy INTEGER"
+            )
+            connection.execute(
+                "ALTER TABLE zigzag_elliot_alert_timeframes "
+                "ADD COLUMN is_ema200_sell INTEGER"
+            )
+            connection.executemany(
+                """
+                INSERT INTO zigzag_elliot_alert_timeframes (
+                    id, alert_id, time_frame, time_frame_text,
+                    time_frame_order, is_buy, buy_sell_label,
+                    is_ema200_buy, is_ema200_sell
+                ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (1, W1_TIME_FRAME, "W1", 0, 1, "BUY", 1, 0),
+                    (2, 16385, "H1", 1, 0, "SELL", 1, 1),
+                ],
+            )
+        else:
+            connection.executemany(
+                """
+                INSERT INTO zigzag_elliot_alert_timeframes (
+                    id, alert_id, time_frame, time_frame_text,
+                    time_frame_order, is_buy, buy_sell_label
+                ) VALUES (?, 1, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (1, W1_TIME_FRAME, "W1", 0, 1, "BUY"),
+                    (2, 16385, "H1", 1, 0, "SELL"),
+                ],
+            )
+    connection.close()
+
+
+class AlertTimeFrameDetailEma200Test(unittest.TestCase):
+    """Verify the stable EMA200 contract of alert timeframe details."""
+
+    def load_time_frames(self, include_ema200_columns: bool) -> dict[str, object]:
+        """Return one reflected timeframe response for the selected schema."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "detail-timeframes.sqlite"
+            create_observation_database(database_path)
+            add_alert_detail_time_frame_fixture(
+                database_path,
+                include_ema200_columns,
+            )
+            database = AlertDatabase(database_path)
+            try:
+                database.validate()
+                response = database.timeframes(1)
+            finally:
+                database.close()
+        return response
+
+    def test_current_schema_marks_each_row_available_and_keeps_raw_flags(
+        self,
+    ) -> None:
+        """Expose boolean BUY, SELL and simultaneous abnormal raw flags."""
+
+        response = self.load_time_frames(True)
+        items = response["items"]
+
+        self.assertEqual(2, response["count"])
+        self.assertEqual(["W1", "H1"], [item["time_frame_text"] for item in items])
+        self.assertIs(items[0]["is_ema200_available"], True)
+        self.assertIs(items[0]["is_ema200_buy"], True)
+        self.assertIs(items[0]["is_ema200_sell"], False)
+        self.assertIs(items[1]["is_ema200_available"], True)
+        self.assertIs(items[1]["is_ema200_buy"], True)
+        self.assertIs(items[1]["is_ema200_sell"], True)
+
+    def test_legacy_schema_adds_unavailable_false_flags_to_each_row(self) -> None:
+        """Normalize EMA200-less reflected rows without changing count or order."""
+
+        response = self.load_time_frames(False)
+        items = response["items"]
+
+        self.assertEqual(2, response["count"])
+        self.assertEqual(["W1", "H1"], [item["time_frame_text"] for item in items])
+        for item in items:
+            self.assertIs(item["is_ema200_available"], False)
+            self.assertIs(item["is_ema200_buy"], False)
+            self.assertIs(item["is_ema200_sell"], False)
 
 
 class ObservationDatabaseTest(unittest.TestCase):

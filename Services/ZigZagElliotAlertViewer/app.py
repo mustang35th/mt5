@@ -58,6 +58,10 @@ W1_CONFIRMATION_ALERT_COLUMNS = {
     "is_w1_ema200_matched",
     "is_w1_confirmation_passed",
 }
+EMA200_TIME_FRAME_COLUMNS = {
+    "is_ema200_buy",
+    "is_ema200_sell",
+}
 W1_CONFIRMATION_MODES = {
     "OFF",
     "OBSERVE_ONLY",
@@ -289,7 +293,23 @@ BOOLEAN_COLUMNS = {
     "is_entry",
     "is_send_mail",
     "is_entry_wave",
+    "is_ema200_available",
     "is_ema200_distance_within",
+    "mn1_is_ema200_available",
+    "mn1_is_ema200_buy",
+    "mn1_is_ema200_sell",
+    "w1_is_ema200_available",
+    "w1_is_ema200_buy",
+    "w1_is_ema200_sell",
+    "d1_is_ema200_available",
+    "d1_is_ema200_buy",
+    "d1_is_ema200_sell",
+    "h4_is_ema200_available",
+    "h4_is_ema200_buy",
+    "h4_is_ema200_sell",
+    "h1_is_ema200_available",
+    "h1_is_ema200_buy",
+    "h1_is_ema200_sell",
     "is_currency_strength_enabled",
     "is_currency_strength_available",
     "is_stop_loss_available",
@@ -689,6 +709,62 @@ class AlertDatabase:
             0 AS is_w1_ema200_matched,
             1 AS is_w1_confirmation_passed,
             1 AS is_w1_confirmation_legacy,
+        """
+
+    @staticmethod
+    def ema200_projection(connection: Connection) -> str:
+        """Return list EMA200 flags with legacy-safe defaults."""
+
+        actual_columns = AlertDatabase.table_columns(
+            connection,
+            "zigzag_elliot_alert_timeframes",
+        )
+        if EMA200_TIME_FRAME_COLUMNS.issubset(actual_columns):
+            return """
+                CASE WHEN current_tf.id IS NULL THEN 0 ELSE 1 END
+                    AS is_ema200_available,
+                COALESCE(current_tf.is_ema200_buy, 0) AS is_ema200_buy,
+                COALESCE(current_tf.is_ema200_sell, 0) AS is_ema200_sell,
+                CASE WHEN mn1.id IS NULL THEN 0 ELSE 1 END
+                    AS mn1_is_ema200_available,
+                COALESCE(mn1.is_ema200_buy, 0) AS mn1_is_ema200_buy,
+                COALESCE(mn1.is_ema200_sell, 0) AS mn1_is_ema200_sell,
+                CASE WHEN w1.id IS NULL THEN 0 ELSE 1 END
+                    AS w1_is_ema200_available,
+                COALESCE(w1.is_ema200_buy, 0) AS w1_is_ema200_buy,
+                COALESCE(w1.is_ema200_sell, 0) AS w1_is_ema200_sell,
+                CASE WHEN d1.id IS NULL THEN 0 ELSE 1 END
+                    AS d1_is_ema200_available,
+                COALESCE(d1.is_ema200_buy, 0) AS d1_is_ema200_buy,
+                COALESCE(d1.is_ema200_sell, 0) AS d1_is_ema200_sell,
+                CASE WHEN h4.id IS NULL THEN 0 ELSE 1 END
+                    AS h4_is_ema200_available,
+                COALESCE(h4.is_ema200_buy, 0) AS h4_is_ema200_buy,
+                COALESCE(h4.is_ema200_sell, 0) AS h4_is_ema200_sell,
+                CASE WHEN h1.id IS NULL THEN 0 ELSE 1 END
+                    AS h1_is_ema200_available,
+                COALESCE(h1.is_ema200_buy, 0) AS h1_is_ema200_buy,
+                COALESCE(h1.is_ema200_sell, 0) AS h1_is_ema200_sell,
+            """
+        return """
+            0 AS is_ema200_available,
+            0 AS is_ema200_buy,
+            0 AS is_ema200_sell,
+            0 AS mn1_is_ema200_available,
+            0 AS mn1_is_ema200_buy,
+            0 AS mn1_is_ema200_sell,
+            0 AS w1_is_ema200_available,
+            0 AS w1_is_ema200_buy,
+            0 AS w1_is_ema200_sell,
+            0 AS d1_is_ema200_available,
+            0 AS d1_is_ema200_buy,
+            0 AS d1_is_ema200_sell,
+            0 AS h4_is_ema200_available,
+            0 AS h4_is_ema200_buy,
+            0 AS h4_is_ema200_sell,
+            0 AS h1_is_ema200_available,
+            0 AS h1_is_ema200_buy,
+            0 AS h1_is_ema200_sell,
         """
 
     @staticmethod
@@ -1941,6 +2017,7 @@ class AlertDatabase:
 
         with self.connect() as connection:
             w1_confirmation_columns = self.w1_confirmation_projection(connection)
+            ema200_columns = self.ema200_projection(connection)
 
         return f"""
             WITH alert_rows AS (
@@ -1964,6 +2041,7 @@ class AlertDatabase:
                     a.current_elliot_label, a.is_entry_wave,
                     a.close_ema200_diff_pips, a.max_close_ema200_diff_pips,
                     a.is_ema200_distance_within, a.spread_pips,
+                    {ema200_columns}
                     a.is_currency_strength_enabled,
                     a.currency_strength_status,
                     a.is_currency_strength_available,
@@ -2000,6 +2078,9 @@ class AlertDatabase:
                     END AS is_w1_aligned
                 FROM zigzag_elliot_alerts AS a
                 INNER JOIN zigzag_elliot_alert_runs AS r ON r.id = a.run_id
+                LEFT JOIN zigzag_elliot_alert_timeframes AS current_tf
+                       ON current_tf.alert_id = a.id
+                      AND current_tf.time_frame = a.time_frame
                 LEFT JOIN zigzag_elliot_alert_timeframes AS mn1
                        ON mn1.alert_id = a.id AND mn1.time_frame_text = 'MN1'
                 LEFT JOIN zigzag_elliot_alert_timeframes AS w1
@@ -2138,6 +2219,12 @@ class AlertDatabase:
 
         alert_model = self.model("zigzag_elliot_alerts")
         time_frame_model = self.model("zigzag_elliot_alert_timeframes")
+        time_frame_columns = {
+            column.key for column in time_frame_model.__table__.columns
+        }
+        is_ema200_available = EMA200_TIME_FRAME_COLUMNS.issubset(
+            time_frame_columns
+        )
         with Session(self.engine) as session:
             if session.get(alert_model, alert_id) is None:
                 raise RequestError("alert was not found", HTTPStatus.NOT_FOUND)
@@ -2146,7 +2233,13 @@ class AlertDatabase:
                 .where(time_frame_model.alert_id == alert_id)
                 .order_by(time_frame_model.time_frame_order, time_frame_model.id)
             )
-            items = [model_to_dict(entity) for entity in entities]
+            items: list[dict[str, Any]] = []
+            for entity in entities:
+                item = model_to_dict(entity) or {}
+                item["is_ema200_available"] = is_ema200_available
+                item["is_ema200_buy"] = bool(item.get("is_ema200_buy", False))
+                item["is_ema200_sell"] = bool(item.get("is_ema200_sell", False))
+                items.append(item)
         return {"items": items, "count": len(items)}
 
     def points(self, alert_id: int, time_frame: str | None) -> dict[str, Any]:

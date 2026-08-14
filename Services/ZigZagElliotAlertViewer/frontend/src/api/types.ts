@@ -136,6 +136,9 @@ export interface AlertListItem extends W1ConfirmationDiagnostics {
   time_frame_text: string;
   strategy: string;
   side: AlertSide;
+  is_ema200_available?: boolean;
+  is_ema200_buy?: boolean;
+  is_ema200_sell?: boolean;
   signal_count: number;
   entry_count: number;
   is_entry: boolean;
@@ -147,10 +150,25 @@ export interface AlertListItem extends W1ConfirmationDiagnostics {
   is_h1_structure_late: boolean;
   alert_title: string;
   mn1_side: string | null;
+  mn1_is_ema200_available?: boolean;
+  mn1_is_ema200_buy?: boolean;
+  mn1_is_ema200_sell?: boolean;
   w1_side: string | null;
+  w1_is_ema200_available?: boolean;
+  w1_is_ema200_buy?: boolean;
+  w1_is_ema200_sell?: boolean;
   d1_side: string | null;
+  d1_is_ema200_available?: boolean;
+  d1_is_ema200_buy?: boolean;
+  d1_is_ema200_sell?: boolean;
   h4_side: string | null;
+  h4_is_ema200_available?: boolean;
+  h4_is_ema200_buy?: boolean;
+  h4_is_ema200_sell?: boolean;
   h1_side: string | null;
+  h1_is_ema200_available?: boolean;
+  h1_is_ema200_buy?: boolean;
+  h1_is_ema200_sell?: boolean;
   is_w1_aligned: boolean | null;
 }
 
@@ -243,6 +261,7 @@ export interface AlertTimeFrame {
   id: number;
   time_frame_text: string;
   time_frame_order: number;
+  is_current_time_frame: boolean;
   buy_sell_label: string;
   is_wave_confirmed: boolean;
   is_wave_motive: boolean;
@@ -256,6 +275,7 @@ export interface AlertTimeFrame {
   stochastic_main_direction_text: string;
   gmma_trend_count: number;
   gmma_cross_count: number;
+  is_ema200_available: boolean;
   is_ema200_buy: boolean;
   is_ema200_sell: boolean;
   atr14_pips: number;

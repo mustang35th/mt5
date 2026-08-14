@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AlertTimeFrame } from "../api/types";
 import { AlertDetailDrawer } from "./AlertDetailDrawer";
 
 function jsonResponse(payload: unknown): Response {
@@ -63,7 +64,7 @@ function detailPayload(alertId = 74) {
       is_w1_confirmation_available: false,
       is_w1_confirmation_valid: false,
       is_w1_direction_matched: false,
-      w1_ema200_direction: "NONE",
+      w1_ema200_direction: "BUY",
       is_w1_ema200_matched: false,
       is_w1_confirmation_passed: false,
       is_w1_confirmation_legacy: false,
@@ -78,11 +79,17 @@ function detailPayload(alertId = 74) {
   };
 }
 
-function timeFrame(id: number, label: string, order: number) {
+function timeFrame(
+  id: number,
+  label: string,
+  order: number,
+  overrides: Partial<AlertTimeFrame> = {},
+): AlertTimeFrame {
   return {
     id,
     time_frame_text: label,
     time_frame_order: order,
+    is_current_time_frame: label === "H1",
     buy_sell_label: "BUY",
     is_wave_confirmed: label === "MN1",
     is_wave_motive: true,
@@ -96,12 +103,14 @@ function timeFrame(id: number, label: string, order: number) {
     stochastic_main_direction_text: "BUY",
     gmma_trend_count: 3,
     gmma_cross_count: -2,
+    is_ema200_available: true,
     is_ema200_buy: false,
     is_ema200_sell: false,
     atr14_pips: 10,
     is_fibo_expansion_available: false,
     distance_to_fe2000_pips: 0,
     current_close: 1.23456,
+    ...overrides,
   };
 }
 
@@ -137,10 +146,10 @@ describe("AlertDetailDrawer", () => {
   it("loads the three detail APIs and renders analysis and wave data without treating zero as missing", async () => {
     const timeFrames = [
       timeFrame(1, "MN1", 0),
-      timeFrame(2, "W1", 1),
-      timeFrame(3, "D1", 2),
+      timeFrame(2, "W1", 1, { is_ema200_sell: true }),
+      timeFrame(3, "D1", 2, { is_ema200_buy: true, is_ema200_sell: true }),
       timeFrame(4, "H4", 3),
-      timeFrame(5, "H1", 4),
+      timeFrame(5, "H1", 4, { is_ema200_available: false }),
     ];
     const points = [point(1, "MN1", 0, 0), point(2, "H1", 4, 0)];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -229,13 +238,49 @@ describe("AlertDetailDrawer", () => {
     });
     const cards = screen.getAllByRole("article");
     expect(cards).toHaveLength(5);
-    expect(cards.map((card) => card.querySelector(".timeframe-header > strong")?.textContent)).toEqual([
+    expect(cards.map((card) => card.querySelector(".timeframe-header strong")?.textContent)).toEqual([
       "MN1",
       "W1",
       "D1",
       "H4",
       "H1",
     ]);
+    const mn1Card = screen.getByRole("article", { name: "MN1 時間足スナップショット" });
+    const w1Card = screen.getByRole("article", { name: "W1 時間足スナップショット" });
+    const d1Card = screen.getByRole("article", { name: "D1 時間足スナップショット" });
+    const h4Card = screen.getByRole("article", { name: "H4 時間足スナップショット" });
+    const h1Card = screen.getByRole("article", {
+      name: "H1 時間足スナップショット（現在足）",
+    });
+    expect(within(mn1Card).getByLabelText(/EMA200判定 対象外/))
+      .toHaveTextContent("EMA200 SKIP");
+    const w1RawEmaBadge = within(w1Card).getByLabelText("EMA200判定 SELL");
+    expect(w1RawEmaBadge).toHaveTextContent("EMA200 ↓ SELL");
+    expect(w1RawEmaBadge.closest(".timeframe-header")).toBeInTheDocument();
+    expect(within(d1Card).getByLabelText(/BUYとSELLが同時/))
+      .toHaveTextContent("EMA200 異常");
+    expect(within(h4Card).getByLabelText("EMA200判定 NONE"))
+      .toHaveTextContent("EMA200 NONE");
+    expect(within(h1Card).getByLabelText("EMA200判定 記録なし"))
+      .toHaveTextContent("EMA200 記録なし");
+    expect(h1Card).toHaveAttribute("aria-current", "true");
+    expect(within(h1Card).getByText("現在足")).toBeInTheDocument();
+    expect(cards.slice(0, 4).every((card) => !card.hasAttribute("aria-current"))).toBe(true);
+    const heroEmaGroup = screen.getByRole("group", { name: "H1 現在足 EMA200" });
+    expect(heroEmaGroup).toHaveAttribute("aria-current", "true");
+    expect(heroEmaGroup.closest(".detail-hero")).toBeInTheDocument();
+    expect(within(heroEmaGroup).getByText("H1 現在足")).toBeInTheDocument();
+    expect(within(heroEmaGroup).getByLabelText("EMA200判定 記録なし"))
+      .toHaveAttribute("title", "EMA200判定 記録なし");
+    const w1ConfirmationDirection = screen.getByText("W1確認 EMA200方向")
+      .closest(".detail-field");
+    const w1ConfirmationMatched = screen.getByText("W1確認 EMA200一致")
+      .closest(".detail-field");
+    expect(w1ConfirmationDirection).toHaveTextContent("BUY");
+    expect(w1ConfirmationMatched).toHaveTextContent("いいえ");
+    expect(screen.queryByText("W1 EMA200方向")).not.toBeInTheDocument();
+    expect(screen.queryByText("W1 EMA200一致")).not.toBeInTheDocument();
+    expect(screen.queryByText("EMA200方向")).not.toBeInTheDocument();
     expect(h1PointGrid.querySelector("table")).toBeNull();
     expect(h1PointGrid.querySelector(".ag-layout-auto-height")).toBeInTheDocument();
     expect(h1PointGrid.querySelector('[aria-label="H1 最新Waveポイント"]')).toBeInTheDocument();
@@ -337,6 +382,56 @@ describe("AlertDetailDrawer", () => {
     const laterOrderPoint = within(m5PointGrid).getByText("2026.01.03 00:00:00");
     expect(Number(earlierOrderPoint.compareDocumentPosition(laterOrderPoint))
       & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("uses the M5 current snapshot for the hero without marking H1 as current", async () => {
+    const timeFrames = [
+      timeFrame(5, "H1", 4, {
+        is_current_time_frame: false,
+        is_ema200_sell: true,
+      }),
+      timeFrame(6, "M5", 5, {
+        is_current_time_frame: true,
+        is_ema200_buy: true,
+      }),
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/alerts/78") return jsonResponse(detailPayload(78));
+      if (path.endsWith("/timeframes")) {
+        return jsonResponse({ items: timeFrames, count: timeFrames.length });
+      }
+      if (path.endsWith("/points")) return jsonResponse({ items: [], count: 0 });
+      throw new Error(`unexpected path: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const view = render(<AlertDetailDrawer alertId={78} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", {
+      name: "USDJPY BUY / 2026.07.30 19:00:00",
+    })).toBeInTheDocument();
+    const heroEmaGroup = screen.getByRole("group", { name: "M5 現在足 EMA200" });
+    expect(heroEmaGroup).toHaveAttribute("aria-current", "true");
+    expect(heroEmaGroup.closest(".detail-hero")).toBeInTheDocument();
+    expect(within(heroEmaGroup).getByText("M5 現在足")).toBeInTheDocument();
+    expect(within(heroEmaGroup).getByLabelText("EMA200判定 BUY"))
+      .toHaveTextContent("EMA200 ↑ BUY");
+    const h1Card = screen.getByRole("article", { name: "H1 時間足スナップショット" });
+    const m5Card = screen.getByRole("article", {
+      name: "M5 時間足スナップショット（現在足）",
+    });
+    expect(within(h1Card).getByLabelText("EMA200判定 SELL"))
+      .toHaveTextContent("EMA200 ↓ SELL");
+    expect(h1Card).not.toHaveAttribute("aria-current");
+    expect(within(h1Card).queryByText("現在足")).not.toBeInTheDocument();
+    expect(within(m5Card).getByLabelText("EMA200判定 BUY"))
+      .toHaveTextContent("EMA200 ↑ BUY");
+    expect(m5Card).toHaveAttribute("aria-current", "true");
+    expect(within(m5Card).getByText("現在足")).toBeInTheDocument();
+    expect(view.container.querySelectorAll(".timeframe-card[aria-current='true']"))
+      .toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 

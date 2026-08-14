@@ -26,6 +26,7 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import {
   W1ConfirmationBadge,
@@ -125,16 +126,28 @@ function DetailField({ label, value }: { label: string; value: unknown }) {
 
 function TimeFrameCard({ timeFrame }: { timeFrame: AlertTimeFrame }) {
   const waveDirection = `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)} ${timeFrame.is_wave_uptrend ? "UP / 上昇" : "DOWN / 下降"}`;
-  let ema200Direction = "NONE";
-  if (timeFrame.is_ema200_buy) ema200Direction = "BUY";
-  if (timeFrame.is_ema200_sell) ema200Direction = "SELL";
 
   return (
-    <article className="timeframe-card">
+    <article
+      aria-current={timeFrame.is_current_time_frame ? "true" : undefined}
+      aria-label={`${timeFrame.time_frame_text} 時間足スナップショット${
+        timeFrame.is_current_time_frame ? "（現在足）" : ""
+      }`}
+      className="timeframe-card"
+    >
       <div className="timeframe-header">
-        <strong>{timeFrame.time_frame_text}</strong>
+        <div className="badge-row">
+          <strong>{timeFrame.time_frame_text}</strong>
+          {timeFrame.is_current_time_frame && (
+            <span aria-hidden="true" className="current-time-frame-chip">現在足</span>
+          )}
+        </div>
         <div className="badge-row">
           <Badge text={timeFrame.buy_sell_label} variant={sideClass(timeFrame.buy_sell_label)} />
+          <Ema200SignalBadge
+            available={timeFrame.is_ema200_available}
+            timeFrame={timeFrame}
+          />
           <Badge
             text={timeFrame.is_wave_confirmed ? "確定" : "形成中"}
             variant={timeFrame.is_wave_confirmed ? "good" : "warn"}
@@ -150,7 +163,6 @@ function TimeFrameCard({ timeFrame }: { timeFrame: AlertTimeFrame }) {
         <div><span>ポイント</span><b>{timeFrame.point_count} / wave {timeFrame.latest_wave_index}</b></div>
         <div><span>Stochastic</span><b>{displayValue(timeFrame.stochastic_main_order_text)} / {displayValue(timeFrame.stochastic_main_direction_text)}</b></div>
         <div><span>GMMA</span><b>trend {formatSignedNumber(timeFrame.gmma_trend_count, 0)} / cross {formatSignedNumber(timeFrame.gmma_cross_count, 0)}</b></div>
-        <div><span>EMA200方向</span><b>{ema200Direction}</b></div>
         <div><span>ATR14</span><b>{formatNumber(timeFrame.atr14_pips)} pips</b></div>
         <div>
           <span>FE200距離</span>
@@ -367,6 +379,9 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
   const alert = bundle.detail.alert;
   const run = bundle.detail.run;
   const w1 = bundle.detail.w1;
+  const currentTimeFrame = bundle.timeFrames.items.find(
+    (timeFrame) => timeFrame.is_current_time_frame,
+  );
   const wavePointGroups = buildWavePointGroups(bundle.timeFrames.items, bundle.points.items);
   const [sectionState, setSectionState] = useState<DetailSectionState>({
     judgement: true,
@@ -435,6 +450,22 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
         <div>
           <div className="badge-row">
             <Badge text={alert.side} variant={sideClass(alert.side)} />
+            {currentTimeFrame && (
+              <span
+                aria-current="true"
+                aria-label={`${currentTimeFrame.time_frame_text} 現在足 EMA200`}
+                className="badge-row"
+                role="group"
+              >
+                <span aria-hidden="true" className="current-time-frame-chip">
+                  {currentTimeFrame.time_frame_text} 現在足
+                </span>
+                <Ema200SignalBadge
+                  available={currentTimeFrame.is_ema200_available}
+                  timeFrame={currentTimeFrame}
+                />
+              </span>
+            )}
             <Badge text={`H1 ${structureLabel(alert.h1_structure_rank, alert.is_h1_structure_late)}`} />
             <W1ConfirmationBadge confirmation={alert} />
             <Badge text={run?.source_mode || "UNKNOWN"} />
@@ -503,8 +534,8 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
             <DetailField label="W1データ取得" value={yesNo(alert.is_w1_confirmation_available)} />
             <DetailField label="W1データ有効" value={yesNo(alert.is_w1_confirmation_valid)} />
             <DetailField label="W1方向一致" value={yesNo(alert.is_w1_direction_matched)} />
-            <DetailField label="W1 EMA200方向" value={alert.w1_ema200_direction} />
-            <DetailField label="W1 EMA200一致" value={yesNo(alert.is_w1_ema200_matched)} />
+            <DetailField label="W1確認 EMA200方向" value={alert.w1_ema200_direction} />
+            <DetailField label="W1確認 EMA200一致" value={yesNo(alert.is_w1_ema200_matched)} />
             <DetailField label="W1ルール評価" value={w1EvaluationLabel(alert)} />
             <DetailField label="Run" value={run ? `${run.id} / ${displayValue(run.program_version)}` : "不明"} />
             <DetailField label="Signal key" value={alert.market_signal_key} />
