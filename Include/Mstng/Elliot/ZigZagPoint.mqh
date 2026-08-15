@@ -454,7 +454,7 @@ public:
         text += StringFormat("elliotLabel=%s\n", this.elliotLabel);
         text += StringFormat("isElliotAlphabet=%s\n", this.isElliotAlphabet ? "true" : "false");
         
-        text += StringFormat("subElliotIndex=%s\n", this.subElliotIndex);
+        text += StringFormat("subElliotIndex=%d\n", this.subElliotIndex);
         text += StringFormat("subElliotLabel=%s\n", this.subElliotLabel);
         
         text += StringFormat("orgElliotIndex=%d\n", this.orgElliotIndex);
