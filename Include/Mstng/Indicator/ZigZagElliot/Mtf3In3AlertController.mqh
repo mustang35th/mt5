@@ -182,39 +182,6 @@ public:
     }
 
     /**
-     * Elliott観測永続化サービスを取得する。
-     *
-     * 返却ポインタは非所有参照であり、呼び出し側では解放しない。
-     *
-     * @return 永続化サービス。未準備の場合NULL
-     */
-    ZigZagElliotObservationPersistenceService *getObservationPersistenceService() {
-        if (!this.databaseReady || this.databaseContext == NULL) {
-            return NULL;
-        }
-
-        return this.databaseContext.getObservationPersistenceService();
-    }
-
-    /**
-     * データベースへ保存済みの実行情報を取得する。
-     *
-     * @param fromRunEntity 実行情報の格納先
-     * @return 保存済みの実行情報を取得できた場合true
-     */
-    bool getDatabaseRun(ZigZagElliotAlertRunEntity &fromRunEntity) {
-        ZeroMemory(fromRunEntity);
-
-        if (!this.databaseReady || this.databaseRun.id <= 0) {
-            return false;
-        }
-
-        fromRunEntity = this.databaseRun;
-
-        return true;
-    }
-
-    /**
      * シグナル回数とMTF_3in3固定描画オブジェクトを解放する。
      */
     void destroy() {
@@ -273,13 +240,7 @@ private:
      * @return 保存可能になった場合true
      */
     bool initializeDatabase() {
-        bool observationEnabled =
-            this.config.h1ElliotObservationDatabaseEnabled
-            && this.marketContext.timeFrame
-                == ZigZagElliotAnalysisProfile::getAnchorTimeFrame();
-
-        if (!this.config.mtf3In3AlertDatabaseEnabled
-                && !observationEnabled) {
+        if (!this.config.mtf3In3AlertDatabaseEnabled) {
             return false;
         }
 
@@ -294,8 +255,7 @@ private:
 
         this.databaseContext = new ZigZagElliotAlertDatabaseContext(
             this.config.mtf3In3AlertDatabaseFileName,
-            this.config.mtf3In3AlertDatabaseUseCommonFolder,
-            observationEnabled
+            this.config.mtf3In3AlertDatabaseUseCommonFolder
         );
 
         if (this.databaseContext == NULL || !this.databaseContext.open()) {
@@ -360,7 +320,7 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.25";
+        this.databaseRun.programVersion = "1.26";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V2";
         this.databaseRun.analysisVersion =

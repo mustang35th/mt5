@@ -16,7 +16,6 @@
 #include <Mstng\Indicator\ZigZagElliot\CurrencyStrengthPairRankController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotAnalysisController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotChartController.mqh>
-#include <Mstng\Indicator\ZigZagElliot\H1ElliotObservationController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\Mtf3In3AlertController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Log\LogUtil.mqh>
@@ -39,7 +38,6 @@ public:
         this.currencyStrengthController = NULL;
         this.analysisController = NULL;
         this.chartController = NULL;
-        this.h1ObservationController = NULL;
         this.alertController = NULL;
         this.timerMode = true;
         this.timerSeconds = 30;
@@ -114,11 +112,7 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
-        if ((this.config.mtf3In3AlertDatabaseEnabled
-                    || (this.config.h1ElliotObservationDatabaseEnabled
-                        && this.marketContext.timeFrame
-                            == ZigZagElliotAnalysisProfile
-                                ::getAnchorTimeFrame()))
+        if (this.config.mtf3In3AlertDatabaseEnabled
                 && this.config.mtf3In3AlertDatabaseFileName == "") {
             this.logger.error(
                 __FUNCTION__,
@@ -129,11 +123,7 @@ public:
         }
 
         if (!this.timerMode
-                && (this.config.mtf3In3AlertDatabaseEnabled
-                    || (this.config.h1ElliotObservationDatabaseEnabled
-                        && this.marketContext.timeFrame
-                            == ZigZagElliotAnalysisProfile
-                                ::getAnchorTimeFrame()))
+                && this.config.mtf3In3AlertDatabaseEnabled
                 && !MQLInfoInteger(MQL_OPTIMIZATION)
                 && !this.config.mtf3In3AlertDatabaseUseCommonFolder) {
             this.logger.error(
@@ -299,11 +289,6 @@ public:
     void destroy() {
         EventKillTimer();
 
-        if (this.h1ObservationController != NULL) {
-            delete this.h1ObservationController;
-            this.h1ObservationController = NULL;
-        }
-
         if (this.alertController != NULL) {
             delete this.alertController;
             this.alertController = NULL;
@@ -352,8 +337,6 @@ private:
     ElliotAnalysisController *analysisController;
     /** チャート表示制御。 */
     ElliotChartController *chartController;
-    /** H1新規足のElliott観測保存制御。 */
-    H1ElliotObservationController *h1ObservationController;
     /** MTF_3in3アラート制御。 */
     Mtf3In3AlertController *alertController;
     /** タイマー実行の場合true。 */
@@ -398,8 +381,6 @@ private:
             return false;
         }
 
-        this.initializeH1ObservationController();
-
         this.chartController = new ElliotChartController();
 
         if (this.chartController == NULL
@@ -423,63 +404,6 @@ private:
         );
 
         return this.analysisController.initializeOutput();
-    }
-
-    /**
-     * H1新規足のElliott観測保存Controllerを初期化する。
-     *
-     * 観測データベースの初期化に失敗しても、既存の分析、描画、
-     * アラートおよびメール処理は継続する。
-     */
-    void initializeH1ObservationController() {
-        if (!this.config.h1ElliotObservationDatabaseEnabled) {
-            return;
-        }
-
-        if (this.marketContext.timeFrame
-                != ZigZagElliotAnalysisProfile::getAnchorTimeFrame()) {
-            this.logger.info(
-                __FUNCTION__,
-                "H1 Elliott observation is disabled outside PERIOD_H1."
-            );
-
-            return;
-        }
-
-        ZigZagElliotObservationPersistenceService *persistenceService =
-            this.alertController.getObservationPersistenceService();
-        ZigZagElliotAlertRunEntity databaseRun;
-        ZeroMemory(databaseRun);
-
-        if (persistenceService == NULL
-                || !this.alertController.getDatabaseRun(databaseRun)) {
-            this.logger.error(
-                __FUNCTION__,
-                "H1 Elliott observation database is not ready."
-            );
-
-            return;
-        }
-
-        this.h1ObservationController =
-            new H1ElliotObservationController();
-
-        if (this.h1ObservationController == NULL
-                || !this.h1ObservationController.initialize(
-                    this.marketContext,
-                    persistenceService,
-                    databaseRun
-                )) {
-            this.logger.error(
-                __FUNCTION__,
-                "H1 Elliott observation controller initialization failed."
-            );
-
-            if (this.h1ObservationController != NULL) {
-                delete this.h1ObservationController;
-                this.h1ObservationController = NULL;
-            }
-        }
     }
 
     /**
@@ -836,26 +760,6 @@ private:
             return;
         }
 
-        if (this.h1ObservationController != NULL
-                && analysisStartBarTime != analysisEndBarTime) {
-            this.logger.info(
-                __FUNCTION__,
-                StringFormat(
-                    "H1 boundary crossed during analysis. start=%s end=%s retry on next execution.",
-                    TimeToString(
-                        analysisStartBarTime,
-                        TIME_DATE | TIME_SECONDS
-                    ),
-                    TimeToString(
-                        analysisEndBarTime,
-                        TIME_DATE | TIME_SECONDS
-                    )
-                )
-            );
-
-            return;
-        }
-
         if (this.chartController != NULL) {
             this.chartController.drawAll(elliotAll);
         }
@@ -888,13 +792,6 @@ private:
         datetime currentBarTime = analysisEndBarTime;
 
         if (this.lastProcessedBarTime == currentBarTime) {
-            if (this.h1ObservationController != NULL) {
-                this.h1ObservationController.execute(
-                    elliotAll,
-                    analysisEndBarTime
-                );
-            }
-
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 
             return;
@@ -908,13 +805,6 @@ private:
 
         if (this.alertController != NULL) {
             this.alertController.execute(elliotAll);
-        }
-
-        if (this.h1ObservationController != NULL) {
-            this.h1ObservationController.execute(
-                elliotAll,
-                analysisEndBarTime
-            );
         }
 
         this.lastProcessedBarTime = currentBarTime;

@@ -52,9 +52,6 @@ public:
     bool currencyStrengthDatabaseSplitByYear;
     /** 通貨強弱DBで共通フォルダを使用する場合true。 */
     bool currencyStrengthDatabaseUseCommonFolder;
-    /** H1新規足のElliott観測情報をデータベースへ保存する場合true。 */
-    bool h1ElliotObservationDatabaseEnabled;
-
     /**
      * デフォルト設定で初期化する。
      */
@@ -80,7 +77,6 @@ public:
             "mstng-currency-strength.sqlite";
         this.currencyStrengthDatabaseSplitByYear = true;
         this.currencyStrengthDatabaseUseCommonFolder = true;
-        this.h1ElliotObservationDatabaseEnabled = false;
     }
 };
 

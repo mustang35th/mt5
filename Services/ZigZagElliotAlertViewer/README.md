@@ -1,6 +1,6 @@
 # ZigZagElliot Alert Viewer
 
-`ZigZagElliot`が保存したElliottアラートDBを、ローカルブラウザで検索・閲覧する読み取り専用ビューアです。
+`ZigZagElliot`が保存したElliottアラートと、`ZigZagElliotH1ObservationAll`が保存したH1 Observationを、ローカルブラウザで検索・閲覧する読み取り専用ビューアです。
 
 Python 3.14とSQLAlchemy 2.0を使用します。通信先は`127.0.0.1`だけで、インターネットや外部PCへ公開しません。
 
@@ -73,7 +73,9 @@ LIVE表示中は一覧を自動更新します。間隔は`OFF／5秒／15秒／
 
 最新順の1ページ目では新しい行を一覧へ反映して一時的に強調します。別ページまたは別の並び順を見ている場合は表示位置を勝手に動かさず、新着件数と「最新を表示」を案内します。
 
-H1推移の記録には、ZigZagElliotの入力`h1ElliotObservationDatabaseEnabled=true`が必要です。LIVEでは有効化直後の進行中H1足を基準値として扱い、次のH1新規足から保存します。
+H1推移の現行Writerは`ZigZagElliotH1ObservationAll`だけです。通常の`ZigZagElliot`はH1 Observationを保存しません。LIVEでは`ZigZagElliotH1ObservationAll`の起動直後に進行中H1足を基準値として扱い、次のH1新規足から保存します。
+
+旧版の`ZigZagElliot.ex5`を使用している場合は、削除済みの入力`h1ElliotObservationDatabaseEnabled=true`で動作しているインスタンスを停止してから`ZigZagElliotH1ObservationAll`を起動してください。旧Writerが保存した既存のObservationは削除されず、引き続きViewerで参照できます。
 
 Runを指定しない場合は、選択した実行モードに属する複数Runをまとめて表示します。同じ市場シグナルが別Runで再検出されている場合は、別レコードとして表示されます。CSV出力にも現在の実行モードとRunの条件が適用されます。
 

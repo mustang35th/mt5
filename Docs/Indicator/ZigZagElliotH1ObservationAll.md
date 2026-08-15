@@ -450,7 +450,7 @@ source_mode
 - `analysis_input_hash`: どの計算設定を使用したか
 - `snapshot_hash`: その時点でどの分析結果を保存したか
 
-## 11. 保存、重複および複数Writer
+## 11. 保存、重複および単一Writer
 
 ### 11.1 トランザクション
 
@@ -471,7 +471,7 @@ Run行の準備はこのSnapshotトランザクションより前に行うため
 - 異なるhashでも既存行と子5行を変更しない
 - hash差異はINFOログへ記録する
 
-### 11.3 別Writerの検出
+### 11.3 Writer競合の検出
 
 既存Observationの`run_id`が現在の単一Runと異なる場合、Controllerは別Writerによる競合と判定します。
 
@@ -482,7 +482,9 @@ Run行の準備はこのSnapshotトランザクションより前に行うため
 - 対象通貨を`ERR`にする
 - 「別Writerを停止して再起動してください」と表示する
 
-同じDB・Server・実行モード・分析Profileに対して、複数の`ZigZagElliotH1ObservationAll`を同時稼働させないでください。
+H1 Observationの現行Writerは`ZigZagElliotH1ObservationAll`だけです。同じDB・Server・実行モード・分析Profileに対して、本インジケーターを複数同時稼働させないでください。
+
+通常の`ZigZagElliot`からH1 Observation Writerは撤去されています。ただし、撤去前にコンパイルした`ZigZagElliot.ex5`は、削除済みの入力`h1ElliotObservationDatabaseEnabled=true`で書込みを継続する可能性があります。この旧インスタンスは、本インジケーターを起動する前に停止してください。
 
 ## 12. FIFOとDB再試行
 
@@ -574,9 +576,9 @@ Viewerは次を行います。
 
 Viewerは読取専用です。Observationの生成、再分析、欠損補完またはDB更新は行いません。
 
-Viewer READMEにある`h1ElliotObservationDatabaseEnabled`は、通常の`ZigZagElliot`内にある別の収集経路の設定です。本スタンドアロンインジケーターには有効化Toggleがなく、起動中は`observationDatabase*`入力に従って常に収集します。
+H1 Observationの生成は`ZigZagElliotH1ObservationAll`へ一本化されています。通常の`ZigZagElliot`はElliottアラートを保存しますが、H1 Observationは保存しません。本インジケーターには有効化Toggleがなく、起動中は`observationDatabase*`入力に従って収集します。
 
-通常の`ZigZagElliot`で`h1ElliotObservationDatabaseEnabled = true`にした収集経路と、本インジケーターを同じDB・Server・実行モード・分析Profileで同時稼働させないでください。同じ自然キーを別Runから保存すると、first-write後に本インジケーターが別Writer競合を検出して停止します。
+撤去前の`ZigZagElliot.ex5`を使用している場合は、削除済みの入力`h1ElliotObservationDatabaseEnabled=true`で動作している旧インスタンスを停止してください。旧Writerが保存したObservation行はそのまま維持され、Viewerから引き続き参照できます。Writer撤去に伴うDB移行や既存行の削除は不要です。
 
 ## 15. 運用手順
 
@@ -600,6 +602,7 @@ LIVEのチャート時間足にはH1制限を設けていませんが、用途�
 - Optimizationでは使用しない
 - 28通貨すべての履歴とシンボルを利用できる環境を使用する
 - 既定ではCommon DBを使用するため、既存LIVEデータとの混在に注意する
+- 同じ自然キーを含むTESTER期間を再実行する場合は、専用DBを使用するか、対象となる既存TESTERデータを事前に整理する
 - 比較時は`source_mode`、`analysis_version`、`analysis_input_hash`および`input_hash`を分ける
 
 `observationTesterSaveStartTime = 0`は従来互換設定です。追加の二段階事前分析と全通貨ゲートを使用せず、通貨ごとに初回分析へ成功したH1から保存します。28通貨の収集開始H1をそろえたい場合は、0より大きい保存開始時刻を指定してください。
@@ -624,6 +627,8 @@ MN1の最低61本には約5年1か月が必要です。休日、履歴配信範�
 | `D'2025.07.01 18:30'` | `18:00`は事前分析扱い、`19:00`のH1が最初の保存候補 |
 
 再現性を高めるため、通常はH1境界に一致する時刻を指定してください。入力値はJSTへ自動解釈されません。
+
+共有DBで同じTESTER期間・Server・分析Profileを再実行すると、前回Runが保存した自然キーと重複し、Writer競合として停止します。新しいRunを開始するだけでは重複を回避できません。過去行を維持する場合は別DBを使用し、共有DBへ書き直す場合はバックアップ後に対象TESTERデータを整理してから実行してください。
 
 ## 16. 障害対応
 
