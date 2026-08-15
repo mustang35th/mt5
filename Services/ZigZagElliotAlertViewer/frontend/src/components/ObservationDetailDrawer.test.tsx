@@ -516,6 +516,123 @@ describe("ObservationDetailDrawer", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("colors Elliott wave values independently from the analysis direction", async () => {
+    provideGridLayoutSize();
+    const payload = detailPayload();
+    const mn1TimeFrame = payload.time_frames.find(
+      (item) => item.time_frame_text === "MN1",
+    );
+    const h1TimeFrame = payload.time_frames.find(
+      (item) => item.time_frame_text === "H1",
+    );
+    if (!mn1TimeFrame || !h1TimeFrame) {
+      throw new Error("Elliott wave test fixtures not found");
+    }
+    Object.assign(mn1TimeFrame, {
+      is_buy: false,
+      buy_sell_label: "SELL",
+      is_wave_uptrend: true,
+    });
+    Object.assign(h1TimeFrame, {
+      is_buy: true,
+      buy_sell_label: "BUY",
+      is_wave_uptrend: false,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(payload)));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: すべて展開" }));
+    await expectColumnLayout(grid, [
+      "wave",
+      "price",
+      "fibo_expansion",
+      "oscillator_stochastic",
+      "trend_ema",
+    ]);
+
+    const cellAtTimeFrame = (
+      timeFrameLabel: string,
+      columnId: string,
+    ): HTMLElement => {
+      const timeFrameCell = Array.from(
+        grid.querySelectorAll<HTMLElement>('.ag-cell[col-id="time_frame_text"]'),
+      ).find((cell) => cell.textContent?.includes(timeFrameLabel));
+      const rowIndex = timeFrameCell?.closest<HTMLElement>(".ag-row")
+        ?.getAttribute("row-index");
+      if (rowIndex === null || rowIndex === undefined) {
+        throw new Error(`row not found: ${timeFrameLabel}`);
+      }
+      const cell = grid.querySelector<HTMLElement>(
+        `.ag-row[row-index="${rowIndex}"] .ag-cell[col-id="${columnId}"]`,
+      );
+      if (!cell) throw new Error(`cell not found: ${timeFrameLabel}/${columnId}`);
+      return cell;
+    };
+    const expectWaveTone = (
+      timeFrameLabel: string,
+      columnId: string,
+      expectedText: string,
+      expectedTone: "uptrend" | "downtrend",
+    ): void => {
+      const cell = cellAtTimeFrame(timeFrameLabel, columnId);
+      expect(cell).toHaveTextContent(expectedText);
+      const waveValue = cell.querySelector<HTMLElement>(
+        ".snapshot-elliott-wave-value",
+      );
+      expect(waveValue).not.toBeNull();
+      expect(waveValue).toHaveTextContent(expectedText);
+      expect(waveValue).toHaveClass(expectedTone);
+      expect(waveValue).not.toHaveClass("positive");
+      expect(waveValue).not.toHaveClass("negative");
+      expect(cell.querySelector(".snapshot-signed-value")).toBeNull();
+    };
+
+    await waitFor(() => {
+      expectWaveTone("MN1", "elliott_sub", "▲3 [3] / i [1]", "uptrend");
+      expectWaveTone("MN1", "wave_direction", "▲ 上昇", "uptrend");
+      expectWaveTone("H1", "elliott_sub", "▼3 [3] / i [1]", "downtrend");
+      expectWaveTone("H1", "wave_direction", "▼ 下降", "downtrend");
+
+      const mn1Analysis = cellAtTimeFrame("MN1", "buy_sell_label");
+      expect(mn1Analysis).toHaveTextContent("SELL");
+      expect(mn1Analysis.querySelector(".badge")).toHaveClass("sell");
+      const h1Analysis = cellAtTimeFrame("H1", "buy_sell_label");
+      expect(h1Analysis).toHaveTextContent("BUY");
+      expect(h1Analysis.querySelector(".badge")).toHaveClass("buy");
+
+      for (const columnId of [
+        "buy_sell_label",
+        "wave_state",
+        "wave_type",
+        "wave_count_latest_index",
+        "previous_last_elliot_label",
+        "point_count",
+        "latest_point_jst_time_text",
+        "latest_point_time_text",
+        "latest_point_rate",
+        "previous_ohlc",
+        "current_ohlc",
+        "fibo_expansion_status",
+        "fe618_fe1000",
+        "fe1272_fe1618",
+        "fe2000_price",
+        "distance_to_fe2000_pips",
+      ]) {
+        const cells = grid.querySelectorAll<HTMLElement>(
+          `.ag-cell[col-id="${columnId}"]`,
+        );
+        expect(cells.length).toBeGreaterThan(0);
+        for (const cell of cells) {
+          expect(cell.querySelector(".snapshot-elliott-wave-value")).toBeNull();
+        }
+      }
+    });
+  });
+
   it("colors only directional signed values in the timeframe comparison grid", async () => {
     provideGridLayoutSize();
     const payload = detailPayload();

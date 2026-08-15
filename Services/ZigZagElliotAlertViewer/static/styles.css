@@ -842,6 +842,9 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .snapshot-signed-value.positive { color: var(--buy); }
 .snapshot-signed-value.negative { color: var(--sell); }
 .snapshot-signed-value.neutral { color: var(--muted); }
+.snapshot-elliott-wave-value { font-weight: 700; }
+.snapshot-elliott-wave-value.uptrend { color: var(--buy); }
+.snapshot-elliott-wave-value.downtrend { color: var(--sell); }
 .snapshot-time-frame-cell { display: flex; width: 100%; min-width: 0; align-items: center; gap: 7px; }
 .snapshot-time-frame-cell > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .snapshot-anchor-badge { flex: 0 0 auto; padding: 2px 5px; font-size: 0.56rem; }

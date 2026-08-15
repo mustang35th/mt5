@@ -398,6 +398,19 @@ function Ema200DirectionCell(
   return <Ema200SignalBadge timeFrame={params.data} />;
 }
 
+function ElliottWaveDirectionCell(
+  params: ICellRendererParams<ObservationDetailTimeFrame, string>,
+) {
+  const timeFrame = params.data;
+  if (!timeFrame) return null;
+  const directionClass = timeFrame.is_wave_uptrend ? "uptrend" : "downtrend";
+  return (
+    <span className={`snapshot-elliott-wave-value ${directionClass}`}>
+      {displayValue(params.value)}
+    </span>
+  );
+}
+
 const timeFrameColumn: ColDef<ObservationDetailTimeFrame, string> = {
   ...pinnedSnapshotColumn(
     TIME_FRAME_COLUMN_ID,
@@ -440,7 +453,10 @@ const COLUMN_DEFS: Array<
       timeFrameColumn,
       directionColumn,
       ema200DirectionColumn,
-      pinnedSnapshotColumn("elliott_sub", "Elliott / Sub", 210, waveLabel),
+      {
+        ...pinnedSnapshotColumn("elliott_sub", "Elliott / Sub", 210, waveLabel),
+        cellRenderer: ElliottWaveDirectionCell,
+      },
     ],
   },
   {
@@ -449,12 +465,15 @@ const COLUMN_DEFS: Array<
     marryChildren: true,
     openByDefault: false,
     children: [
-      snapshotColumn(
-        WAVE_DIRECTION_COLUMN_ID,
-        "Wave方向",
-        96,
-        (timeFrame) => formatElliottDirection(timeFrame.is_wave_uptrend),
-      ),
+      {
+        ...snapshotColumn(
+          WAVE_DIRECTION_COLUMN_ID,
+          "Wave方向",
+          96,
+          (timeFrame) => formatElliottDirection(timeFrame.is_wave_uptrend),
+        ),
+        cellRenderer: ElliottWaveDirectionCell,
+      },
       detailSnapshotColumn(
         "wave_state",
         "Wave状態",
