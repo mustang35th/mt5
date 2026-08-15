@@ -352,7 +352,7 @@ public:
         if (!this.isValidStopLoss(orderType, marketPrice, normalizedStopLoss)) {
             int digits = (int)SymbolInfoInteger(this.marketContext.symbolName, SYMBOL_DIGITS);
 
-            this.lastErrorMessage = "Invalid break even stop loss. stopLoss="
+            this.lastErrorMessage = "Invalid stop loss modification. stopLoss="
                 + DoubleToString(normalizedStopLoss, digits)
                 + ", marketPrice="
                 + DoubleToString(marketPrice, digits);

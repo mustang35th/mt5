@@ -10,7 +10,7 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.04"
+#property version   "1.05"
 
 #property strict
 
@@ -24,6 +24,7 @@
 #include <MstngEa\App\EaController.mqh>
 #include <MstngEa\App\StrategyFactory.mqh>
 #include <MstngEa\Config\EaConfig.mqh>
+#include <MstngEa\Config\H1PositionManagementMode.mqh>
 #include <MstngEa\Trade\MagicNumberUtil.mqh>
 
 /** 戦略種別 */
@@ -82,6 +83,13 @@ input bool InpMtf3In3AlertCsvEnabled = false;
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
 input bool InpH1DisplayWaveEntryLimitEnabled = false;
 
+/** H1ポジションの決済管理モード。 */
+input H1PositionManagementMode InpH1PositionManagementMode =
+    H1_POSITION_MANAGEMENT_LEGACY;
+
+/** H1 ZigZagトレイルのSLバッファー（pips）。 */
+input double InpH1ZigZagTrailBufferPips = 5.0;
+
 /** H1エントリーで使用するW1確認モード。 */
 input H1W1ConfirmationMode InpH1W1ConfirmationMode =
     H1_W1_CONFIRMATION_OBSERVE_ONLY;
@@ -119,6 +127,29 @@ EaController *g_eaController;
  * @return 初期化結果
  */
 int OnInit() {
+    if (!isH1PositionManagementModeValid(InpH1PositionManagementMode)) {
+        Print("MstngEa H1 position management mode is invalid");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if (InpH1PositionManagementMode
+            == H1_POSITION_MANAGEMENT_ZIGZAG_TRAIL_ONLY
+            && (_Period != PERIOD_H1
+                || InpStrategyType != STRATEGY_TYPE_MTF_3IN3)) {
+        Print("MstngEa H1 ZigZag trail only mode requires H1 MTF_3in3");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if (InpH1PositionManagementMode
+            == H1_POSITION_MANAGEMENT_ZIGZAG_TRAIL_ONLY
+            && InpH1ZigZagTrailBufferPips < 0.0) {
+        Print("MstngEa H1 ZigZag trail buffer pips must be zero or greater");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
     if (!isH1W1ConfirmationModeValid(InpH1W1ConfirmationMode)) {
         Print("MstngEa H1 W1 confirmation mode is invalid");
 
@@ -178,7 +209,16 @@ int OnInit() {
     g_eaConfig.mtf3In3AlertCsvEnabled = InpMtf3In3AlertCsvEnabled;
     g_eaConfig.h1DisplayWaveEntryLimitEnabled =
         InpH1DisplayWaveEntryLimitEnabled;
+    g_eaConfig.h1PositionManagementMode = InpH1PositionManagementMode;
+    g_eaConfig.h1ZigZagTrailBufferPips = InpH1ZigZagTrailBufferPips;
     g_eaConfig.h1W1ConfirmationMode = InpH1W1ConfirmationMode;
+
+    if (g_eaConfig.h1PositionManagementMode
+            == H1_POSITION_MANAGEMENT_ZIGZAG_TRAIL_ONLY) {
+        g_eaConfig.useProfitRetracementExit = false;
+        g_eaConfig.useBreakEven = false;
+    }
+
     g_eaContext = new EaContext();
 
     // コンテキストへ依存を設定

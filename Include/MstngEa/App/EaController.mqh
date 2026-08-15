@@ -16,8 +16,10 @@
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <MstngEa\App\EaContext.mqh>
 #include <MstngEa\Domain\ExitDecision.mqh>
+#include <MstngEa\Domain\H1ZigZagTrailDecisionResult.mqh>
 #include <MstngEa\Domain\PositionSnapshot.mqh>
 #include <MstngEa\Domain\SignalDecision.mqh>
+#include <MstngEa\Strategy\H1ZigZagTrailDecision.mqh>
 
 /**
  * EA制御
@@ -42,6 +44,13 @@ public:
         this.lastProfitRetracementPersistenceError = "";
         this.profitRetracementClosePendingIdentifier = 0;
         this.profitRetracementCloseRetryAtMilliseconds = 0;
+        this.pendingH1ZigZagTrailPositionIdentifier = 0;
+        this.pendingH1ZigZagTrailIsBuy = true;
+        this.pendingH1ZigZagTrailStopLoss = 0.0;
+        this.pendingH1ZigZagTrailPivotTime = 0;
+        this.pendingH1ZigZagTrailPivotRate = 0.0;
+        this.pendingH1ZigZagTrailRetryAtMilliseconds = 0;
+        this.h1ZigZagTrailEntrySuppressedBarTime = 0;
     }
 
     /**
@@ -62,6 +71,12 @@ public:
         }
 
         this.eaContext.positionService.refresh();
+
+        if (this.retryPendingH1ZigZagTrail()) {
+            this.renderStatus();
+            return;
+        }
+
         this.synchronizeProfitRetracementState();
 
         if (this.pendingCurrencyStrengthElliotAll != NULL
@@ -144,8 +159,16 @@ public:
         // 決済後の状態を再取得
         this.eaContext.positionService.refresh();
 
+        // H1 ZigZagトレイル専用モードのSL候補を反映
+        bool isH1ZigZagTrailCloseStarted =
+            this.tryH1ZigZagTrail(elliotAll);
+
+        this.eaContext.positionService.refresh();
+
         // エントリー判定を実行
-        this.tryEntry(elliotAll);
+        if (!isH1ZigZagTrailCloseStarted) {
+            this.tryEntry(elliotAll);
+        }
 
         // 決済・新規注文直後の状態を確定ファイルへ反映
         this.eaContext.positionService.refresh();
@@ -230,6 +253,27 @@ private:
 
     /** Next tick count when an accepted close may be retried */
     ulong profitRetracementCloseRetryAtMilliseconds;
+
+    /** H1 ZigZagトレイル待機中のポジション識別子。 */
+    ulong pendingH1ZigZagTrailPositionIdentifier;
+
+    /** H1 ZigZagトレイル待機中のポジション方向。 */
+    bool pendingH1ZigZagTrailIsBuy;
+
+    /** H1 ZigZagトレイル待機中のSL候補。 */
+    double pendingH1ZigZagTrailStopLoss;
+
+    /** H1 ZigZagトレイル待機中の基準ポイント時刻。 */
+    datetime pendingH1ZigZagTrailPivotTime;
+
+    /** H1 ZigZagトレイル待機中の基準ポイント価格。 */
+    double pendingH1ZigZagTrailPivotRate;
+
+    /** H1 ZigZagトレイルを次回再試行できるtick count。 */
+    ulong pendingH1ZigZagTrailRetryAtMilliseconds;
+
+    /** ZigZag候補跨ぎ後にエントリーを抑止するH1バー時刻。 */
+    datetime h1ZigZagTrailEntrySuppressedBarTime;
 
     /**
      * 必須依存確認
@@ -1386,6 +1430,537 @@ private:
     }
 
     /**
+     * H1 ZigZagトレイル専用モード判定
+     *
+     * @return true: H1 MTF_3in3のZigZagトレイル専用モード
+     */
+    bool isH1ZigZagTrailOnlyMode() {
+        return this.eaContext != NULL
+            && this.eaContext.eaConfig != NULL
+            && this.eaContext.marketContext.timeFrame == PERIOD_H1
+            && this.eaContext.eaConfig.strategyType
+                == STRATEGY_TYPE_MTF_3IN3
+            && this.eaContext.eaConfig.h1PositionManagementMode
+                == H1_POSITION_MANAGEMENT_ZIGZAG_TRAIL_ONLY;
+    }
+
+    /**
+     * 新規H1バーのZigZagトレイル候補を評価する。
+     *
+     * @param fromElliotAll H1 Elliott分析結果
+     * @return true: 候補跨ぎによる成行決済を開始
+     */
+    bool tryH1ZigZagTrail(ElliotAll *fromElliotAll) {
+        if (!this.isH1ZigZagTrailOnlyMode()) {
+            this.clearPendingH1ZigZagTrail();
+
+            return false;
+        }
+
+        if (fromElliotAll == NULL
+                || !fromElliotAll.isAnalysisSucceeded
+                || fromElliotAll.elliotCurrent == NULL) {
+            return false;
+        }
+
+        this.eaContext.positionService.refresh();
+
+        if (!this.eaContext.positionService.hasPosition()) {
+            this.clearPendingH1ZigZagTrail();
+
+            return false;
+        }
+
+        Wave *latestWave = fromElliotAll.elliotCurrent.getLatestWave();
+        PositionSnapshot positionSnapshot =
+            this.eaContext.positionService.getSnapshot();
+        double tickSize = this.getTradeTickSize();
+        H1ZigZagTrailDecision decision;
+        H1ZigZagTrailDecisionResult decisionResult;
+        bool shouldModify = decision.evaluate(
+            positionSnapshot,
+            latestWave,
+            this.eaContext.eaConfig.h1ZigZagTrailBufferPips,
+            this.getPipSize(),
+            tickSize,
+            decisionResult
+        );
+
+        if (!shouldModify) {
+            return false;
+        }
+
+        this.registerPendingH1ZigZagTrail(
+            positionSnapshot,
+            decisionResult,
+            tickSize
+        );
+
+        return this.retryPendingH1ZigZagTrail();
+    }
+
+    /**
+     * H1 ZigZagトレイル候補を待機状態へ登録する。
+     *
+     * @param fromPositionSnapshot ポジション状態
+     * @param fromDecisionResult ZigZagトレイル判定結果
+     * @param fromTickSize 最小価格刻み
+     */
+    void registerPendingH1ZigZagTrail(
+        PositionSnapshot &fromPositionSnapshot,
+        H1ZigZagTrailDecisionResult &fromDecisionResult,
+        const double fromTickSize
+    ) {
+        bool shouldReplace = this.pendingH1ZigZagTrailPositionIdentifier
+            != fromPositionSnapshot.identifier;
+
+        if (this.pendingH1ZigZagTrailStopLoss <= 0.0) {
+            shouldReplace = true;
+        }
+
+        if (this.isH1ZigZagTrailMoreProtective(
+                fromPositionSnapshot.isBuy,
+                fromDecisionResult.targetStopLoss,
+                this.pendingH1ZigZagTrailStopLoss,
+                fromTickSize
+        )) {
+            shouldReplace = true;
+        }
+
+        if (!shouldReplace) {
+            return;
+        }
+
+        this.pendingH1ZigZagTrailPositionIdentifier =
+            fromPositionSnapshot.identifier;
+        this.pendingH1ZigZagTrailIsBuy = fromPositionSnapshot.isBuy;
+        this.pendingH1ZigZagTrailStopLoss =
+            fromDecisionResult.targetStopLoss;
+        this.pendingH1ZigZagTrailPivotTime =
+            fromDecisionResult.pivotBarTime;
+        this.pendingH1ZigZagTrailPivotRate =
+            fromDecisionResult.pivotRate;
+        this.pendingH1ZigZagTrailRetryAtMilliseconds = 0;
+
+        if (this.eaContext.operationLogger != NULL) {
+            int digits = (int)SymbolInfoInteger(
+                this.eaContext.marketContext.symbolName,
+                SYMBOL_DIGITS
+            );
+            string logText = "H1 ZigZag trail candidate registered. identifier=";
+            logText += (string)fromPositionSnapshot.identifier;
+            logText += ", pivotTime=";
+            logText += TimeToString(fromDecisionResult.pivotBarTime);
+            logText += ", pivotRate=";
+            logText += DoubleToString(fromDecisionResult.pivotRate, digits);
+            logText += ", oldStopLoss=";
+            logText += DoubleToString(fromPositionSnapshot.stopLoss, digits);
+            logText += ", targetStopLoss=";
+            logText += DoubleToString(fromDecisionResult.targetStopLoss, digits);
+            this.eaContext.operationLogger.info("EaController", logText);
+        }
+    }
+
+    /**
+     * 待機中のH1 ZigZagトレイルを再試行する。
+     *
+     * @return true: 候補跨ぎによる成行決済を開始
+     */
+    bool retryPendingH1ZigZagTrail() {
+        if (!this.isH1ZigZagTrailOnlyMode()) {
+            this.clearPendingH1ZigZagTrail();
+
+            return false;
+        }
+
+        if (this.pendingH1ZigZagTrailStopLoss <= 0.0) {
+            return false;
+        }
+
+        ulong currentMilliseconds = GetTickCount64();
+
+        if (this.pendingH1ZigZagTrailRetryAtMilliseconds
+                > currentMilliseconds) {
+            return false;
+        }
+
+        this.eaContext.positionService.refresh();
+
+        if (!this.eaContext.positionService.hasPosition()) {
+            this.clearPendingH1ZigZagTrail();
+
+            return false;
+        }
+
+        PositionSnapshot positionSnapshot =
+            this.eaContext.positionService.getSnapshot();
+
+        if (positionSnapshot.identifier
+                != this.pendingH1ZigZagTrailPositionIdentifier
+                || positionSnapshot.isBuy
+                    != this.pendingH1ZigZagTrailIsBuy) {
+            this.clearPendingH1ZigZagTrail();
+
+            return false;
+        }
+
+        double tickSize = this.getTradeTickSize();
+
+        if (this.isH1ZigZagTrailProtectionApplied(
+                positionSnapshot,
+                this.pendingH1ZigZagTrailStopLoss,
+                tickSize
+        )) {
+            this.clearPendingH1ZigZagTrail();
+
+            return false;
+        }
+
+        double currentPrice = this.getCurrentBreakEvenJudgePrice(
+            positionSnapshot
+        );
+
+        if (currentPrice <= 0.0) {
+            this.pendingH1ZigZagTrailRetryAtMilliseconds =
+                currentMilliseconds + 1000;
+
+            return false;
+        }
+
+        if (this.isH1ZigZagTrailTargetCrossed(
+                positionSnapshot.isBuy,
+                currentPrice,
+                this.pendingH1ZigZagTrailStopLoss
+        )) {
+            this.suppressH1ZigZagTrailEntryForCurrentBar();
+            bool isClosed = this.eaContext.tradeExecutor.closePosition(
+                this.eaContext.strategyAdapter.getStrategyName(),
+                "H1_ZIGZAG_TRAIL_CROSSED"
+            );
+
+            if (!isClosed) {
+                string errorMessage =
+                    this.eaContext.tradeExecutor.getLastErrorMessage();
+
+                if (errorMessage == "") {
+                    errorMessage = "H1 ZigZag trail close failed";
+                }
+
+                this.updateLastError(errorMessage);
+                this.pendingH1ZigZagTrailRetryAtMilliseconds =
+                    currentMilliseconds + 1000;
+
+                return true;
+            }
+
+            this.eaContext.lastAction = "H1 ZIGZAG TRAIL CLOSE";
+            this.eaContext.lastError = "";
+            this.pendingH1ZigZagTrailRetryAtMilliseconds =
+                currentMilliseconds + 1000;
+            this.eaContext.positionService.refresh();
+
+            if (!this.eaContext.positionService.hasPosition()) {
+                this.clearPendingH1ZigZagTrail();
+            }
+
+            return true;
+        }
+
+        if (!this.isH1ZigZagTrailBrokerDistanceAvailable(
+                positionSnapshot.isBuy,
+                currentPrice,
+                this.pendingH1ZigZagTrailStopLoss,
+                tickSize
+        )) {
+            this.pendingH1ZigZagTrailRetryAtMilliseconds =
+                currentMilliseconds + 1000;
+
+            return false;
+        }
+
+        bool isModified = this.eaContext.tradeExecutor.modifyPositionStopLoss(
+            this.eaContext.strategyAdapter.getStrategyName(),
+            this.pendingH1ZigZagTrailStopLoss,
+            "H1_ZIGZAG_TRAIL"
+        );
+
+        if (!isModified) {
+            string errorMessage =
+                this.eaContext.tradeExecutor.getLastErrorMessage();
+
+            if (errorMessage == "") {
+                errorMessage = "H1 ZigZag trail modify failed";
+            }
+
+            this.updateLastError(errorMessage);
+            this.pendingH1ZigZagTrailRetryAtMilliseconds =
+                currentMilliseconds + 1000;
+
+            return false;
+        }
+
+        this.eaContext.lastAction = "H1 ZIGZAG TRAIL";
+        this.eaContext.lastError = "";
+        this.eaContext.positionService.refresh();
+
+        PositionSnapshot refreshedPositionSnapshot =
+            this.eaContext.positionService.getSnapshot();
+
+        if (this.isH1ZigZagTrailProtectionApplied(
+                refreshedPositionSnapshot,
+                this.pendingH1ZigZagTrailStopLoss,
+                tickSize
+        )) {
+            if (this.eaContext.operationLogger != NULL) {
+                this.eaContext.operationLogger.info(
+                    "EaController",
+                    "H1 ZigZag trail stop loss modified"
+                );
+            }
+
+            this.clearPendingH1ZigZagTrail();
+        } else {
+            this.pendingH1ZigZagTrailRetryAtMilliseconds =
+                currentMilliseconds + 1000;
+        }
+
+        return false;
+    }
+
+    /**
+     * H1 ZigZagトレイル候補が現在SLより利益側か判定する。
+     *
+     * @param fromIsBuy BUYポジションの場合true
+     * @param fromCandidateStopLoss 新しいSL候補
+     * @param fromCurrentStopLoss 比較対象SL
+     * @param fromTickSize 最小価格刻み
+     * @return true: 1tick以上利益側
+     */
+    bool isH1ZigZagTrailMoreProtective(
+        const bool fromIsBuy,
+        const double fromCandidateStopLoss,
+        const double fromCurrentStopLoss,
+        const double fromTickSize
+    ) {
+        if (fromCurrentStopLoss <= 0.0) {
+            return true;
+        }
+
+        if (fromIsBuy) {
+            return fromCandidateStopLoss - fromCurrentStopLoss
+                >= fromTickSize;
+        }
+
+        return fromCurrentStopLoss - fromCandidateStopLoss
+            >= fromTickSize;
+    }
+
+    /**
+     * 待機中のSL候補がブローカーへ反映済みか判定する。
+     *
+     * @param fromPositionSnapshot ポジション状態
+     * @param fromTargetStopLoss SL候補
+     * @param fromTickSize 最小価格刻み
+     * @return true: 候補以上に保護済み
+     */
+    bool isH1ZigZagTrailProtectionApplied(
+        PositionSnapshot &fromPositionSnapshot,
+        const double fromTargetStopLoss,
+        const double fromTickSize
+    ) {
+        if (!fromPositionSnapshot.hasPosition
+                || fromPositionSnapshot.stopLoss <= 0.0) {
+            return false;
+        }
+
+        double tolerance = fromTickSize * 0.5;
+
+        if (fromPositionSnapshot.isBuy) {
+            return fromPositionSnapshot.stopLoss
+                >= fromTargetStopLoss - tolerance;
+        }
+
+        return fromPositionSnapshot.stopLoss
+            <= fromTargetStopLoss + tolerance;
+    }
+
+    /**
+     * 現在価格がSL候補を跨いだか判定する。
+     *
+     * @param fromIsBuy BUYポジションの場合true
+     * @param fromCurrentPrice 現在価格
+     * @param fromTargetStopLoss SL候補
+     * @return true: 候補価格へ到達済み
+     */
+    bool isH1ZigZagTrailTargetCrossed(
+        const bool fromIsBuy,
+        const double fromCurrentPrice,
+        const double fromTargetStopLoss
+    ) {
+        if (fromIsBuy) {
+            return fromCurrentPrice <= fromTargetStopLoss;
+        }
+
+        return fromCurrentPrice >= fromTargetStopLoss;
+    }
+
+    /**
+     * SL候補がブローカーのStops/Freeze距離を満たすか判定する。
+     *
+     * @param fromIsBuy BUYポジションの場合true
+     * @param fromCurrentPrice 現在価格
+     * @param fromTargetStopLoss SL候補
+     * @param fromTickSize 最小価格刻み
+     * @return true: SL変更を送信可能
+     */
+    bool isH1ZigZagTrailBrokerDistanceAvailable(
+        const bool fromIsBuy,
+        const double fromCurrentPrice,
+        const double fromTargetStopLoss,
+        const double fromTickSize
+    ) {
+        long stopsLevel = 0;
+        long freezeLevel = 0;
+        SymbolInfoInteger(
+            this.eaContext.marketContext.symbolName,
+            SYMBOL_TRADE_STOPS_LEVEL,
+            stopsLevel
+        );
+        SymbolInfoInteger(
+            this.eaContext.marketContext.symbolName,
+            SYMBOL_TRADE_FREEZE_LEVEL,
+            freezeLevel
+        );
+        long minimumLevel = stopsLevel;
+
+        if (freezeLevel > minimumLevel) {
+            minimumLevel = freezeLevel;
+        }
+
+        double pointValue = SymbolInfoDouble(
+            this.eaContext.marketContext.symbolName,
+            SYMBOL_POINT
+        );
+        double minimumDistance = minimumLevel * pointValue;
+
+        if (minimumDistance > 0.0) {
+            minimumDistance += fromTickSize;
+        }
+
+        if (fromIsBuy) {
+            return fromCurrentPrice - fromTargetStopLoss
+                >= minimumDistance;
+        }
+
+        return fromTargetStopLoss - fromCurrentPrice
+            >= minimumDistance;
+    }
+
+    /**
+     * シンボルの最小価格刻みを取得する。
+     *
+     * @return 最小価格刻み
+     */
+    double getTradeTickSize() {
+        double tickSize = SymbolInfoDouble(
+            this.eaContext.marketContext.symbolName,
+            SYMBOL_TRADE_TICK_SIZE
+        );
+
+        if (tickSize > 0.0) {
+            return tickSize;
+        }
+
+        return SymbolInfoDouble(
+            this.eaContext.marketContext.symbolName,
+            SYMBOL_POINT
+        );
+    }
+
+    /**
+     * H1 ZigZagトレイルの待機状態を解除する。
+     */
+    void clearPendingH1ZigZagTrail() {
+        this.pendingH1ZigZagTrailPositionIdentifier = 0;
+        this.pendingH1ZigZagTrailIsBuy = true;
+        this.pendingH1ZigZagTrailStopLoss = 0.0;
+        this.pendingH1ZigZagTrailPivotTime = 0;
+        this.pendingH1ZigZagTrailPivotRate = 0.0;
+        this.pendingH1ZigZagTrailRetryAtMilliseconds = 0;
+    }
+
+    /**
+     * ZigZag候補跨ぎを検出したH1バーの再エントリーを抑止する。
+     */
+    void suppressH1ZigZagTrailEntryForCurrentBar() {
+        datetime currentH1BarTime = this.getCurrentH1BarTime();
+
+        if (currentH1BarTime > 0) {
+            this.h1ZigZagTrailEntrySuppressedBarTime = currentH1BarTime;
+        }
+    }
+
+    /**
+     * 現在H1バーでZigZag候補跨ぎ後のエントリーを抑止するか判定する。
+     *
+     * @return true: エントリーを抑止
+     */
+    bool isH1ZigZagTrailEntrySuppressed() {
+        if (!this.isH1ZigZagTrailOnlyMode()) {
+            this.h1ZigZagTrailEntrySuppressedBarTime = 0;
+
+            return false;
+        }
+
+        if (this.h1ZigZagTrailEntrySuppressedBarTime <= 0) {
+            return false;
+        }
+
+        datetime currentH1BarTime = this.getCurrentH1BarTime();
+
+        if (currentH1BarTime
+                == this.h1ZigZagTrailEntrySuppressedBarTime) {
+            return true;
+        }
+
+        if (currentH1BarTime > 0) {
+            this.h1ZigZagTrailEntrySuppressedBarTime = 0;
+        }
+
+        return false;
+    }
+
+    /**
+     * 現在H1バーの開始時刻を取得する。
+     *
+     * @return H1バー開始時刻。取得できない場合0
+     */
+    datetime getCurrentH1BarTime() {
+        datetime currentH1BarTime = iTime(
+            this.eaContext.marketContext.symbolName,
+            PERIOD_H1,
+            0
+        );
+
+        if (currentH1BarTime > 0) {
+            return currentH1BarTime;
+        }
+
+        datetime serverTime = TimeCurrent();
+        int h1Seconds = PeriodSeconds(PERIOD_H1);
+
+        if (serverTime <= 0 || h1Seconds <= 0) {
+            return 0;
+        }
+
+        long serverTimeSeconds = (long)serverTime;
+
+        return (datetime)(
+            serverTimeSeconds - (serverTimeSeconds % h1Seconds)
+        );
+    }
+
+    /**
      * 決済判定
      *
      * @param elliotAllValue 分析結果
@@ -1403,6 +1978,10 @@ private:
             elliotAllValue,
             positionSnapshot.isBuy
         );
+
+        if (this.isH1ZigZagTrailOnlyMode()) {
+            return;
+        }
 
         if (!exitDecision.isExit) {
             return;
@@ -1443,6 +2022,10 @@ private:
         this.eaContext.positionService.refresh();
 
         if (this.eaContext.positionService.hasPosition()) {
+            return;
+        }
+
+        if (this.isH1ZigZagTrailEntrySuppressed()) {
             return;
         }
 
@@ -1813,6 +2396,10 @@ private:
             return "-";
         }
 
+        if (this.isH1ZigZagTrailOnlyMode()) {
+            return "OFF / H1 ZIGZAG ONLY";
+        }
+
         string enabledText = "OFF";
 
         if (this.eaContext.eaConfig.useBreakEven) {
@@ -1840,6 +2427,26 @@ private:
 
         if (this.eaContext.eaConfig == NULL) {
             return "-";
+        }
+
+        if (this.isH1ZigZagTrailOnlyMode()) {
+            string stateText = "MONITORING";
+
+            if (!this.eaContext.positionService.hasPosition()) {
+                stateText = "WAIT POSITION";
+            } else if (this.pendingH1ZigZagTrailStopLoss > 0.0) {
+                stateText = "PENDING";
+            }
+
+            string zigZagText = "ZIGZAG ONLY / ";
+            zigZagText += DoubleToString(
+                this.eaContext.eaConfig.h1ZigZagTrailBufferPips,
+                1
+            );
+            zigZagText += "p / ";
+            zigZagText += stateText;
+
+            return zigZagText;
         }
 
         string enabledText = "OFF";

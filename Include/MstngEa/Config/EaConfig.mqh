@@ -12,6 +12,7 @@
 #define MSTNGEA_CONFIG_EACONFIG_MQH
 
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
+#include <MstngEa\Config\H1PositionManagementMode.mqh>
 #include <MstngEa\Config\StrategyType.mqh>
 
 /**
@@ -58,6 +59,12 @@ public:
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
 
+    /** H1ポジションの決済管理モード。 */
+    H1PositionManagementMode h1PositionManagementMode;
+
+    /** H1 ZigZagトレイルのSLバッファー（pips）。 */
+    double h1ZigZagTrailBufferPips;
+
     /** H1エントリーで使用するW1確認モード。 */
     H1W1ConfirmationMode h1W1ConfirmationMode;
 
@@ -79,6 +86,8 @@ public:
         this.useCurrencyStrength = false;
         this.mtf3In3AlertCsvEnabled = false;
         this.h1DisplayWaveEntryLimitEnabled = false;
+        this.h1PositionManagementMode = H1_POSITION_MANAGEMENT_LEGACY;
+        this.h1ZigZagTrailBufferPips = 5.0;
         this.h1W1ConfirmationMode = H1_W1_CONFIRMATION_OBSERVE_ONLY;
     }
 };

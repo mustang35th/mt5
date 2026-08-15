@@ -5,10 +5,10 @@
 | 項目 | 内容 |
 |---|---|
 | 対象EA | `Experts/MstngEa.mq5` |
-| 対象バージョン | `1.04` |
+| 対象バージョン | `1.05` |
 | 対象プラットフォーム | MetaTrader 5 |
 | 既定戦略 | `STRATEGY_TYPE_MTF_3IN3` |
-| 最終更新日 | 2026-08-14 |
+| 最終更新日 | 2026-08-15 |
 
 本書は、現行コードを正本として、`MstngEa`の初期化、判定タイミング、エントリー、発注、決済、利益戻し状態の永続化、画面表示およびログ出力をまとめた仕様書です。
 
@@ -21,7 +21,8 @@
 主な特徴は次のとおりです。
 
 - チャートの新規バーごとに戦略の決済判定とエントリー判定を行う
-- 毎ティックで建値移動と利益戻し決済を管理する
+- 既定の`LEGACY`モードでは毎ティックで建値移動と利益戻し決済を管理する
+- H1・`MTF_3in3`では、任意で確定ZigZagポイントだけを使用するSLトレイル専用モードを選択できる
 - 固定ロットの成行注文を使用する
 - 初期ストップロスをElliottのロスカット基準から設定する
 - 同一シンボル、同一Magic Numberのポジションを1件管理する
@@ -48,22 +49,23 @@
 - 任意の通貨強弱DB Provider
 - パネル更新用ミリ秒タイマー
 
-初期化直後の最初のティックは、現在バー時刻を新規バー検出器へ記録するだけで、新規バー分析を行いません。既存ポジションの建値移動と利益戻し管理は最初のティックから開始します。
+初期化直後の最初のティックは、現在バー時刻を新規バー検出器へ記録するだけで、新規バー分析を行いません。`LEGACY`モードでは、既存ポジションの建値移動と利益戻し管理を最初のティックから開始します。
 
 ### 3.2 毎ティック処理
 
 毎ティックの処理順は次のとおりです。
 
 1. 自EAポジションを再取得する
-2. 利益戻し状態を初回同期または復元する
-3. 利益戻し状態を現在価格・損益で更新する
-4. 建値移動を判定する
-5. ポジションを再取得する
-6. 利益戻し決済を判定する
-7. 新規バーでなければ、ライブ時の通貨強弱DB待ちだけを再試行して終了する
-8. 新規バーなら新規バー処理へ進む
+2. 待機中のH1 ZigZagトレイル候補があれば再試行する
+3. 利益戻し状態を初回同期または復元する
+4. 利益戻し状態を現在価格・損益で更新する
+5. 建値移動を判定する
+6. ポジションを再取得する
+7. 利益戻し決済を判定する
+8. 新規バーでなければ、ライブ時の通貨強弱DB待ちだけを再試行して終了する
+9. 新規バーなら新規バー処理へ進む
 
-利益戻し条件が成立して決済処理へ入った場合、または決済受付後の確認待ちの場合、そのティックでは後続の新規バー処理を行いません。`ACTIVE`でも戻し条件が未成立なら、新規バー処理へ進みます。
+利益戻し条件が成立して決済処理へ入った場合、決済受付後の確認待ちの場合、またはH1 ZigZagトレイル候補跨ぎによる成行決済を開始した場合、そのティックでは後続の新規バー処理を行いません。`ACTIVE`でも戻し条件が未成立なら、新規バー処理へ進みます。`ZIGZAG_TRAIL_ONLY`では建値移動と利益戻し決済を無効化します。
 
 ### 3.3 新規バー処理
 
@@ -72,14 +74,15 @@
 1. 現在時間足までの`ElliotAll`を分析する
 2. H1・`MTF_3in3`の場合はW1確認専用スナップショットを取得する
 3. 任意の通貨強弱実行情報を読み込む
-4. 既存ポジションの戦略決済を判定する
+4. 既存ポジションの戦略決済を判定する。`ZIGZAG_TRAIL_ONLY`では判定結果を決済に使用しない
 5. 決済後のポジションを再取得する
-6. ポジションがなければエントリーを判定する
-7. 注文後のポジションと利益戻し状態を更新する
-8. 必要なら同一M5内の通貨強弱DB待ちを予約する
-9. ステータスとElliott情報を更新する
+6. `ZIGZAG_TRAIL_ONLY`では、保有中ならH1 ZigZagトレイル候補を判定する
+7. ZigZag候補跨ぎによる成行決済を開始していなければエントリーを判定する
+8. 注文後のポジションと利益戻し状態を更新する
+9. 必要なら同一M5内の通貨強弱DB待ちを予約する
+10. ステータスとElliott情報を更新する
 
-戦略決済後に完全なエントリー条件が成立していれば、同じ新規バーで反対方向を含む新規エントリーが成立する可能性があります。
+`LEGACY`では、戦略決済後に完全なエントリー条件が成立していれば、同じ新規バーで反対方向を含む新規エントリーが成立する可能性があります。`ZIGZAG_TRAIL_ONLY`で候補跨ぎによる成行決済を開始したバーはエントリー判定を行わず、同じバーでは再エントリーしません。
 
 ### 3.4 タイマーと取引イベント
 
@@ -110,9 +113,11 @@
 | `InpCurrencyStrengthVoteWeightMode` | `WEIGHTED` | 参照する票ウェイト方式 |
 | `InpMtf3In3AlertCsvEnabled` | `false` | `MTF_3in3`アラート検証CSVを出力 |
 | `InpH1DisplayWaveEntryLimitEnabled` | `false` | M5で同一H1表示波への重複エントリーを制限 |
+| `InpH1PositionManagementMode` | `H1_POSITION_MANAGEMENT_LEGACY` | H1ポジションの決済管理モード |
+| `InpH1ZigZagTrailBufferPips` | `5.0` | H1 ZigZag基準点からSLを離すpips |
 | `InpH1W1ConfirmationMode` | `OBSERVE_ONLY` | H1エントリーのW1確認モード |
 
-初期化時に明示検証するのは、W1確認モード、通貨強弱DBファイル名、通貨強弱更新秒、票ウェイト方式、およびTesterでのCommonフォルダ使用です。`InpStrategyType`の無効値は明示検証されず、戦略Factoryが`NULL`を返した後に実行時の必須依存チェックで処理を停止します。
+初期化時に明示検証するのは、H1ポジション管理モード、W1確認モード、通貨強弱DBファイル名、通貨強弱更新秒、票ウェイト方式、およびTesterでのCommonフォルダ使用です。`ZIGZAG_TRAIL_ONLY`はH1・`STRATEGY_TYPE_MTF_3IN3`だけを許可し、バッファーが0未満の場合も初期化を拒否します。`InpStrategyType`の無効値は明示検証されず、戦略Factoryが`NULL`を返した後に実行時の必須依存チェックで処理を停止します。
 
 ロット、パネル更新間隔、R倍率、戻し率には専用の入力範囲検証がありません。例えば0以下のロットは入力時に拒否されず、発注時のロット正規化で最小ロットになる可能性があります。
 
@@ -126,7 +131,7 @@
 | `STRATEGY_TYPE_MTF_3IN3_BUY_SELL_D1` | `MTF_3in3_BuySellD1` | D1までの方向一致、D1のStochastic中立、現在足GMMAを使用 |
 | `STRATEGY_TYPE_MTF_BUY_SELL_COUNT3` | `MTF_BuySellCount3` | 現在足からH4までのOscillatorがすべて`+3`または`-3`、現在足推進波、GMMAを使用 |
 
-全戦略は共通して、スプレッド上限、同一シグナル回数、初期SL、ポジション管理および反対GMMAによる戦略決済を使用します。
+既定の`LEGACY`では、全戦略が共通してスプレッド上限、同一シグナル回数、初期SL、ポジション管理および反対GMMAによる戦略決済を使用します。H1・`MTF_3in3`で`ZIGZAG_TRAIL_ONLY`を選択した場合だけ、決済管理を11.5の仕様へ切り替えます。
 
 ### 5.2 `MTF_3in3_BuySellD1`
 
@@ -300,7 +305,7 @@ Magic Numberは次を連結して生成します。
 
 ### 11.1 優先順位
 
-既定設定での優先順位は次のとおりです。
+既定の`LEGACY`設定での優先順位は次のとおりです。
 
 1. broker側の初期SLまたは移動後SL
 2. 毎ティックの建値移動
@@ -310,6 +315,8 @@ Magic Numberは次を連結して生成します。
 EAは固定TP、時間切れ、金曜クローズ、EMA200反転、Elliott完了だけを理由とする決済を行いません。
 
 ### 11.2 建値移動
+
+本項は`LEGACY`の仕様です。`ZIGZAG_TRAIL_ONLY`ではinput値にかかわらず無効化します。
 
 初期リスクを`R = |建値 - 初期SL|`として判定します。
 
@@ -322,6 +329,8 @@ EAは固定TP、時間切れ、金曜クローズ、EMA200反転、Elliott完了
 利益戻し決済を併用するライブ運用では、初期状態を永続化できるまで建値移動を保留します。先にSLを建値へ移動して初期リスクを失うことを防ぐためです。Testerでは状態Storeが無効でも保存成功相当として扱い、メモリ状態の初期化後に建値移動を管理します。
 
 ### 11.3 利益戻し決済
+
+本項は`LEGACY`の仕様です。`ZIGZAG_TRAIL_ONLY`ではinput値にかかわらず無効化します。
 
 利益戻し決済は価格幅ではなく、`POSITION_PROFIT`の最大値に対する戻し率で判定します。
 
@@ -343,7 +352,35 @@ brokerが決済を受け付けても同一`POSITION_IDENTIFIER`が残ってい�
 
 H1では、W1確認、EMA200、Elliottラベル、D1・H4方向、通貨強弱を決済時に再判定しません。決済CSVのreasonは戦略名で、既定戦略では`MTF_3in3`です。
 
+`ZIGZAG_TRAIL_ONLY`では、反対GMMAを含む戦略決済の判定結果を成行決済に使用しません。
+
+### 11.5 H1 ZigZagトレイル専用モード
+
+`InpH1PositionManagementMode=H1_POSITION_MANAGEMENT_ZIGZAG_TRAIL_ONLY`は、H1チャートかつ`STRATEGY_TYPE_MTF_3IN3`だけで使用できます。他の時間足または戦略で選択すると初期化を拒否します。既定の`H1_POSITION_MANAGEMENT_LEGACY`および他の時間足・戦略の動作は変更しません。
+
+このモードでは、エントリー時の現行初期SLを維持し、建値移動、利益戻し決済および反対GMMAによる成行決済を無効化します。その後は、新しいH1バーごとに次の条件をすべて満たす場合だけSL候補を作成します。
+
+- 最新点と1つ前の点が取得でき、価格と時刻が有効
+- 両ポイントが`isAddedPoint=false`
+- 両ポイントが確定H1上にあり、`barIndex>=1`
+- 1つ前の点が最新点より古く、ポジションのエントリー時刻より後
+- BUYは「1つ前が谷、最新が山」、SELLは「1つ前が山、最新が谷」
+- 候補SLが現在SLより最小価格刻み1tick以上利益側
+
+最新点は1つ前のポイントが確定したことの確認にだけ使い、実際のSL基準には1つ前のポイントを使用します。既定バッファーは5 pipsです。
+
+```text
+BUY  : 1つ前の谷 - 5 pips
+SELL : 1つ前の山 + 5 pips
+```
+
+候補SLはBUYでは下方向、SELLでは上方向へbrokerの最小価格刻みにそろえます。一度登録したSL候補は利益側にだけ更新し、損失側へ戻しません。
+
+候補が`SYMBOL_TRADE_STOPS_LEVEL`と`SYMBOL_TRADE_FREEZE_LEVEL`の大きい方に1tickを加えた距離を満たさない場合、候補をpendingとして保持し、毎ティック、最短1秒間隔で再試行します。SL変更要求が失敗した場合も同様に再試行します。SLをbrokerへ設定する前に現在価格が候補を跨いだ場合は、reason=`H1_ZIGZAG_TRAIL_CROSSED`で全量成行決済を要求します。この成行決済を開始したH1バーではエントリー判定をスキップするため、同じバーで再エントリーしません。
+
 ## 12. 利益戻し状態の永続化
+
+本章は`LEGACY`で利益戻し決済を有効にした場合の仕様です。`ZIGZAG_TRAIL_ONLY`では利益戻し状態を使用しません。
 
 ### 12.1 有効範囲
 
@@ -455,6 +492,8 @@ ticketだけが変わった場合は同じ状態を継続します。数量が�
 - `TrailExit`の設定、状態、最大含み益、現在含み益
 - 最終ActionとError
 
+`ZIGZAG_TRAIL_ONLY`では、`BreakEven`へ`OFF / H1 ZIGZAG ONLY`を表示します。`TrailExit`は`ZIGZAG ONLY / <buffer>p`に続けて、未保有の`WAIT POSITION`、候補待ちの`MONITORING`、SL反映待ちの`PENDING`を表示します。
+
 Elliott情報パネルには、戦略が保持する時間足別の方向、Oscillator、Stochastic、GMMAおよびElliottラベルを表示します。エントリー判定成立時は、発注前にチャートへシグナルテキストを描画します。注文が拒否された場合も描画は残ります。
 
 ### 14.2 メール
@@ -511,8 +550,10 @@ Strategy Testerの最適化中は複数Agentの同時書込を避けるため出
 - 同一シグナルは通常1回だけ評価され、注文拒否後の自動再発注はない
 - 同一シグナル回数とM5表示波の重複情報は再起動でリセットされる
 - 固定TPはないため、EA停止中に機能する利益保護は最後にbrokerへ設定済みのSLだけ
+- H1 ZigZagトレイルのpending候補はメモリ内だけに保持する。EAを再起動すると未反映候補を失い、既にbrokerへ設定済みのSLは残るが、失った候補は次の新規H1バーまで再評価されない
+- H1 ZigZagトレイルで設定したSLがbroker側で約定した場合、取引CSVと決済専用CSVのreasonは`H1_ZIGZAG_TRAIL`ではなく`STOP_LOSS`になる
 - 利益戻し決済はEA稼働中の観測値に依存する
-- GMMA戦略決済はshift 0のため、新規バーの形成中値を含む
+- `LEGACY`のGMMA戦略決済はshift 0のため、新規バーの形成中値を含む
 - 入力R倍率、戻し率、ロットには十分な範囲検証がない
 - 同一シンボル・Magic Numberの複数ポジションは管理しない
 - ネッティング口座で同一シンボルに他Magicの手動・他EAポジションがある場合、新規成行によって既存ポジションを増減・相殺・反転させる可能性がある。MstngEaは口座モードや他Magicポジションを発注前に拒否しない
@@ -537,6 +578,8 @@ Strategy Testerの最適化中は複数Agentの同時書込を避けるため出
 | D1方向一致戦略 | [ExpertAdvisorMTF_3in3_BuySellD1.mqh](../../Include/Mstng/ExpertAdvisor/ExpertAdvisorMTF_3in3_BuySellD1.mqh) |
 | Oscillator `±3`戦略 | [ExpertAdvisorMTF_BuySellCount3.mqh](../../Include/Mstng/ExpertAdvisor/ExpertAdvisorMTF_BuySellCount3.mqh) |
 | W1確認判定 | [H1W1ConfirmationDecision.mqh](../../Include/Mstng/ExpertAdvisor/H1W1ConfirmationDecision.mqh) |
+| H1ポジション管理モード | [H1PositionManagementMode.mqh](../../Include/MstngEa/Config/H1PositionManagementMode.mqh) |
+| H1 ZigZagトレイル判定 | [H1ZigZagTrailDecision.mqh](../../Include/MstngEa/Strategy/H1ZigZagTrailDecision.mqh) |
 | 共通エントリー・決済判定 | [AbstractExpertAdvisor.mqh](../../Include/Mstng/ExpertAdvisor/AbstractExpertAdvisor.mqh) |
 | 発注 | [TradeExecutor.mqh](../../Include/MstngEa/Trade/TradeExecutor.mqh) |
 | ポジション取得 | [PositionService.mqh](../../Include/MstngEa/Trade/PositionService.mqh) |
