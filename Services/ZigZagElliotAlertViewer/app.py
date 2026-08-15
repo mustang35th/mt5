@@ -1723,8 +1723,67 @@ class AlertDatabase:
         result["available"] = True
         return result
 
+    @staticmethod
+    def observation_navigation(
+        connection: Connection,
+        observation: RowMapping,
+    ) -> dict[str, dict[str, Any] | None]:
+        """Return the adjacent older and newer rows in one observation stream."""
+
+        select_sql = """
+            SELECT o.id, o.run_id, o.anchor_jst_time, o.anchor_jst_time_text,
+                   o.anchor_bar_time, o.anchor_bar_time_text
+            FROM zigzag_elliot_observations AS o
+            WHERE o.source_mode = :source_mode
+              AND o.source_server = :source_server
+              AND o.symbol_name = :symbol_name
+              AND o.anchor_time_frame = :anchor_time_frame
+              AND o.capture_phase = :capture_phase
+              AND o.analysis_version = :analysis_version
+              AND o.analysis_input_hash = :analysis_input_hash
+        """
+        older_sql = select_sql + """
+              AND (
+                  o.anchor_jst_time < :anchor_jst_time
+                  OR (
+                      o.anchor_jst_time = :anchor_jst_time
+                      AND o.id < :observation_id
+                  )
+              )
+            ORDER BY o.anchor_jst_time DESC, o.id DESC
+            LIMIT 1
+        """
+        newer_sql = select_sql + """
+              AND (
+                  o.anchor_jst_time > :anchor_jst_time
+                  OR (
+                      o.anchor_jst_time = :anchor_jst_time
+                      AND o.id > :observation_id
+                  )
+              )
+            ORDER BY o.anchor_jst_time ASC, o.id ASC
+            LIMIT 1
+        """
+        parameters = {
+            "observation_id": int(observation["id"]),
+            "source_mode": observation["source_mode"],
+            "source_server": observation["source_server"],
+            "symbol_name": observation["symbol_name"],
+            "anchor_time_frame": observation["anchor_time_frame"],
+            "capture_phase": observation["capture_phase"],
+            "analysis_version": observation["analysis_version"],
+            "analysis_input_hash": observation["analysis_input_hash"],
+            "anchor_jst_time": observation["anchor_jst_time"],
+        }
+        older = connection.execute(text(older_sql), parameters).mappings().one_or_none()
+        newer = connection.execute(text(newer_sql), parameters).mappings().one_or_none()
+        return {
+            "older": row_to_dict(older),
+            "newer": row_to_dict(newer),
+        }
+
     def observation_detail(self, observation_id: int) -> dict[str, Any]:
-        """Return one full parent and all scalar timeframe snapshots."""
+        """Return one full parent, timeframe snapshots and stream navigation."""
 
         parent_sql_template = """
             SELECT o.*,
@@ -1749,6 +1808,7 @@ class AlertDatabase:
                     "available": False,
                     "observation": None,
                     "time_frames": [],
+                    "navigation": {"older": None, "newer": None},
                 }
             analysis_profile_status = self.analysis_profile_schema_status(connection)
             analysis_profile_columns = """
@@ -1786,15 +1846,28 @@ class AlertDatabase:
             parent_sql = parent_sql_template.format(
                 analysis_profile_columns=analysis_profile_columns,
             )
-            parent = connection.execute(text(parent_sql), parameters).mappings().one_or_none()
-            if parent is None:
-                raise RequestError("observation was not found", HTTPStatus.NOT_FOUND)
-            rows = connection.execute(text(time_frame_sql), parameters).mappings()
-            time_frames = [row_to_dict(row) for row in rows]
+            connection.exec_driver_sql("BEGIN")
+            try:
+                parent = (
+                    connection.execute(text(parent_sql), parameters)
+                    .mappings()
+                    .one_or_none()
+                )
+                if parent is None:
+                    raise RequestError(
+                        "observation was not found",
+                        HTTPStatus.NOT_FOUND,
+                    )
+                rows = connection.execute(text(time_frame_sql), parameters).mappings()
+                time_frames = [row_to_dict(row) for row in rows]
+                navigation = self.observation_navigation(connection, parent)
+            finally:
+                connection.rollback()
         return {
             "available": True,
             "observation": row_to_dict(parent),
             "time_frames": time_frames,
+            "navigation": navigation,
         }
 
     @staticmethod

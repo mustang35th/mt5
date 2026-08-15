@@ -243,6 +243,10 @@ describe("App", () => {
           available: observationAvailable,
           observation: observationAvailable ? observation : null,
           time_frames: observationAvailable ? observation.time_frames : [],
+          navigation: {
+            older: null,
+            newer: null,
+          },
         });
       }
       if (path.startsWith("/api/observation-summary?")) {

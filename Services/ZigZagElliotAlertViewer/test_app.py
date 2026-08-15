@@ -95,6 +95,7 @@ class StubDatabase:
             "available": False,
             "observation": None,
             "time_frames": [],
+            "navigation": {"older": None, "newer": None},
         }
 
 
@@ -335,6 +336,11 @@ class ViewerRouteTest(unittest.TestCase):
                 self.assertTrue(
                     headers.get("content-type", "").startswith("application/json")
                 )
+                if path == "/api/observations/1":
+                    self.assertEqual(
+                        {"older": None, "newer": None},
+                        result["navigation"],
+                    )
 
     def test_alert_summary_exposes_filtered_and_database_totals(self) -> None:
         """Expose the filtered count together with the unfiltered DB count."""
@@ -1407,6 +1413,34 @@ def create_observation_database(database_path: Path) -> None:
     connection.close()
 
 
+def insert_observation_parent_rows(
+    connection: sqlite3.Connection,
+    rows: list[dict[str, object]],
+) -> None:
+    """Insert parent-only rows used by observation navigation tests."""
+
+    connection.executemany(
+        """
+        INSERT INTO zigzag_elliot_observations (
+            id, run_id, source_mode, source_server, symbol_name,
+            anchor_time_frame, anchor_time_frame_text,
+            anchor_bar_time, anchor_bar_time_text,
+            anchor_jst_time, anchor_jst_time_text, capture_phase,
+            analysis_version, analysis_input_hash, snapshot_hash,
+            time_frame_count, created_at, created_at_text
+        ) VALUES (
+            :id, :run_id, :source_mode, :source_server, :symbol_name,
+            :anchor_time_frame, 'H1', :anchor_bar_time,
+            :anchor_bar_time_text, :anchor_jst_time,
+            :anchor_jst_time_text, :capture_phase,
+            :analysis_version, :analysis_input_hash, :snapshot_hash,
+            5, :anchor_bar_time, :anchor_bar_time_text
+        )
+        """,
+        rows,
+    )
+
+
 def add_alert_detail_time_frame_fixture(
     database_path: Path,
     include_ema200_columns: bool,
@@ -1577,6 +1611,10 @@ class ObservationDatabaseTest(unittest.TestCase):
             options,
         )
         self.assertFalse(detail["available"])
+        self.assertEqual(
+            {"older": None, "newer": None},
+            detail["navigation"],
+        )
 
     def test_missing_detail_column_returns_available_false(self) -> None:
         """Do not advertise a partial row as the full observation detail contract."""
@@ -1601,6 +1639,10 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertFalse(health["observation_available"])
         self.assertFalse(page["available"])
         self.assertFalse(detail["available"])
+        self.assertEqual(
+            {"older": None, "newer": None},
+            detail["navigation"],
+        )
 
     def test_incomplete_jst_backfill_returns_available_false(self) -> None:
         """Do not expose default JST values inserted by a legacy writer."""
@@ -1763,6 +1805,10 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIsNone(page["items"][0]["analysis_input_text"])
         self.assertTrue(page["items"][0]["analysis_profile_is_legacy"])
         self.assertTrue(detail["available"])
+        self.assertEqual(
+            {"older": None, "newer": None},
+            detail["navigation"],
+        )
         self.assertIsNone(detail["observation"]["analysis_input_text"])
         self.assertTrue(detail["observation"]["analysis_profile_is_legacy"])
         self.assertEqual(
@@ -1822,6 +1868,151 @@ class ObservationDatabaseTest(unittest.TestCase):
             "2024.01.01 09:00:00",
             run_one["first_observation_jst_time_text"],
         )
+
+    def test_detail_navigation_crosses_runs_and_excludes_other_streams(
+        self,
+    ) -> None:
+        """Navigate one exact stream across Runs without accepting distractors."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            current_bar_time = 1704067200
+            current_jst_time = 1704099600
+
+            def parent_row(
+                observation_id: int,
+                time_delta: int,
+                **overrides: object,
+            ) -> dict[str, object]:
+                row: dict[str, object] = {
+                    "id": observation_id,
+                    "run_id": 1,
+                    "source_mode": "LIVE",
+                    "source_server": "OANDA-Demo",
+                    "symbol_name": "EURUSD",
+                    "anchor_time_frame": 16385,
+                    "anchor_bar_time": current_bar_time + time_delta,
+                    "anchor_bar_time_text": f"server-{observation_id}",
+                    "anchor_jst_time": current_jst_time + time_delta,
+                    "anchor_jst_time_text": f"jst-{observation_id}",
+                    "capture_phase": "BAR_OPEN_FIRST_SUCCESS",
+                    "analysis_version": "1",
+                    "analysis_input_hash": "input-hash",
+                    "snapshot_hash": f"navigation-{observation_id}",
+                }
+                row.update(overrides)
+                return row
+
+            older_row = parent_row(
+                10,
+                -3600,
+                run_id=3,
+                anchor_bar_time_text="2023.12.31 23:00:00",
+                anchor_jst_time_text="2024.01.01 08:00:00",
+            )
+            newer_row = parent_row(
+                11,
+                3600,
+                run_id=3,
+                anchor_bar_time_text="2024.01.01 01:00:00",
+                anchor_jst_time_text="2024.01.01 10:00:00",
+            )
+            distractors = [
+                parent_row(20, 60, symbol_name="GBPUSD"),
+                parent_row(21, 120, run_id=2, source_mode="TESTER"),
+                parent_row(22, 180, source_server="OTHER-Demo"),
+                parent_row(23, 240, anchor_time_frame=16388),
+                parent_row(24, 300, capture_phase="OTHER_PHASE"),
+                parent_row(25, 360, analysis_version="2"),
+                parent_row(26, 420, analysis_input_hash="other-hash"),
+            ]
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "INSERT INTO zigzag_elliot_alert_runs (id, run_uid) "
+                    "VALUES (3, 'run-3')"
+                )
+                insert_observation_parent_rows(
+                    connection,
+                    [older_row, newer_row, *distractors],
+                )
+            connection.close()
+
+            database = AlertDatabase(database_path)
+            try:
+                current_detail = database.observation_detail(1)
+                oldest_detail = database.observation_detail(10)
+                newest_detail = database.observation_detail(11)
+            finally:
+                database.close()
+
+        self.assertEqual(
+            {
+                "id": 10,
+                "run_id": 3,
+                "anchor_jst_time": current_jst_time - 3600,
+                "anchor_jst_time_text": "2024.01.01 08:00:00",
+                "anchor_bar_time": current_bar_time - 3600,
+                "anchor_bar_time_text": "2023.12.31 23:00:00",
+            },
+            current_detail["navigation"]["older"],
+        )
+        self.assertEqual(
+            {
+                "id": 11,
+                "run_id": 3,
+                "anchor_jst_time": current_jst_time + 3600,
+                "anchor_jst_time_text": "2024.01.01 10:00:00",
+                "anchor_bar_time": current_bar_time + 3600,
+                "anchor_bar_time_text": "2024.01.01 01:00:00",
+            },
+            current_detail["navigation"]["newer"],
+        )
+        self.assertIsNone(oldest_detail["navigation"]["older"])
+        self.assertEqual(1, oldest_detail["navigation"]["newer"]["id"])
+        self.assertEqual(1, newest_detail["navigation"]["older"]["id"])
+        self.assertIsNone(newest_detail["navigation"]["newer"])
+
+    def test_detail_navigation_uses_id_to_break_equal_time_ties(self) -> None:
+        """Order equal JST anchors deterministically by observation ID."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            current_bar_time = 1704067200
+            current_jst_time = 1704099600
+            tie_rows: list[dict[str, object]] = []
+            for observation_id, bar_delta in [(40, -120), (41, -60), (42, 60)]:
+                tie_rows.append(
+                    {
+                        "id": observation_id,
+                        "run_id": 1,
+                        "source_mode": "LIVE",
+                        "source_server": "OANDA-Demo",
+                        "symbol_name": "EURUSD",
+                        "anchor_time_frame": 16385,
+                        "anchor_bar_time": current_bar_time + bar_delta,
+                        "anchor_bar_time_text": f"server-{observation_id}",
+                        "anchor_jst_time": current_jst_time,
+                        "anchor_jst_time_text": "2024.01.01 09:00:00",
+                        "capture_phase": "BAR_OPEN_FIRST_SUCCESS",
+                        "analysis_version": "1",
+                        "analysis_input_hash": "input-hash",
+                        "snapshot_hash": f"tie-{observation_id}",
+                    }
+                )
+            with sqlite3.connect(database_path) as connection:
+                insert_observation_parent_rows(connection, tie_rows)
+            connection.close()
+
+            database = AlertDatabase(database_path)
+            try:
+                detail = database.observation_detail(41)
+            finally:
+                database.close()
+
+        self.assertEqual(40, detail["navigation"]["older"]["id"])
+        self.assertEqual(42, detail["navigation"]["newer"]["id"])
 
     def test_jst_time_and_higher_time_frame_sync_filters(self) -> None:
         """Filter one JST hour and require every selected upper TF to match H1."""

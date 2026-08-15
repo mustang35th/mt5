@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ObservationDetailNavigation,
   ObservationDetailParent,
   ObservationDetailTimeFrame,
+  ObservationNavigationItem,
 } from "../api/types";
 import { TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY } from "../lib/timeFrameComparisonPreferences";
 import { ObservationDetailDrawer } from "./ObservationDetailDrawer";
@@ -137,7 +140,31 @@ function timeFrame(id: number, label: string, order: number): ObservationDetailT
   };
 }
 
-function detailPayload(id = 41) {
+function navigationItem(
+  id: number,
+  jstTimeText: string,
+  serverTimeText: string,
+  runId = 7,
+): ObservationNavigationItem {
+  return {
+    id,
+    run_id: runId,
+    anchor_jst_time: 1_786_406_400 + ((id - 41) * 3_600),
+    anchor_jst_time_text: jstTimeText,
+    anchor_bar_time: 1_786_384_800 + ((id - 41) * 3_600),
+    anchor_bar_time_text: serverTimeText,
+  };
+}
+
+const DEFAULT_NAVIGATION: ObservationDetailNavigation = {
+  older: navigationItem(40, "2026.08.10 10:00:00", "2026.08.10 04:00:00", 6),
+  newer: navigationItem(42, "2026.08.10 12:00:00", "2026.08.10 06:00:00", 8),
+};
+
+function detailPayload(
+  id = 41,
+  navigation: ObservationDetailNavigation = DEFAULT_NAVIGATION,
+) {
   return {
     available: true,
     observation: observation(id),
@@ -148,6 +175,25 @@ function detailPayload(id = 41) {
       timeFrame(3, "D1", 2),
       timeFrame(2, "W1", 1),
     ],
+    navigation,
+  };
+}
+
+function detailPayloadAt(
+  id: number,
+  jstTimeText: string,
+  serverTimeText: string,
+  navigation: ObservationDetailNavigation,
+) {
+  const payload = detailPayload(id, navigation);
+  return {
+    ...payload,
+    observation: {
+      ...payload.observation,
+      symbol_name: "CADJPY",
+      anchor_jst_time_text: jstTimeText,
+      anchor_bar_time_text: serverTimeText,
+    },
   };
 }
 
@@ -164,6 +210,24 @@ function detailPayloadWithM5() {
       ...payload.time_frames,
     ],
   };
+}
+
+function NavigationHarness({
+  onNavigate,
+}: {
+  onNavigate: (observationId: number) => void;
+}) {
+  const [observationId, setObservationId] = useState(41);
+  return (
+    <ObservationDetailDrawer
+      observationId={observationId}
+      onClose={vi.fn()}
+      onNavigate={(nextObservationId) => {
+        onNavigate(nextObservationId);
+        setObservationId(nextObservationId);
+      }}
+    />
+  );
 }
 
 function provideGridLayoutSize() {
@@ -315,7 +379,7 @@ describe("ObservationDetailDrawer", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onClose = vi.fn();
 
-    render(<ObservationDetailDrawer observationId={41} onClose={onClose} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={onClose} onNavigate={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -366,7 +430,7 @@ describe("ObservationDetailDrawer", () => {
     const fetchMock = vi.fn(async () => jsonResponse(detailPayload()));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
     const dialog = screen.getByRole("dialog");
@@ -452,11 +516,272 @@ describe("ObservationDetailDrawer", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("colors only directional signed values in the timeframe comparison grid", async () => {
+    provideGridLayoutSize();
+    const payload = detailPayload();
+    const h1TimeFrame = payload.time_frames.find(
+      (item) => item.time_frame_text === "H1",
+    );
+    if (!h1TimeFrame) throw new Error("H1 test fixture not found");
+    Object.assign(h1TimeFrame, {
+      oscillator_count: -2,
+      stochastic_short_count: -3,
+      stochastic_middle_count: 0,
+      stochastic_long_count: 1,
+      gmma_trend_count: -4,
+      gmma_cross_count: 0,
+      ema30_ema60_diff_pips: -10,
+      ema200_slope_pips: -2.5,
+      ema200_close_diff_pips: 0,
+      ema200_close_position: 2,
+      ema200_slope_direction: -1,
+      ema200_up_count: 5,
+      ema200_down_count: 7,
+      ema200_trend_count: -2,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(payload)));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: すべて展開" }));
+    await expectColumnLayout(grid, [
+      "wave",
+      "price",
+      "fibo_expansion",
+      "oscillator_stochastic",
+      "trend_ema",
+    ]);
+
+    const cellWithText = (columnId: string, expected: string): HTMLElement => {
+      const cell = Array.from(
+        grid.querySelectorAll<HTMLElement>(`.ag-cell[col-id="${columnId}"]`),
+      ).find((item) => item.textContent === expected);
+      if (!cell) throw new Error(`cell not found: ${columnId}=${expected}`);
+      return cell;
+    };
+    const signedTokens = (cell: HTMLElement): HTMLElement[] => Array.from(
+      cell.querySelectorAll<HTMLElement>(".snapshot-signed-value"),
+    );
+
+    await waitFor(() => {
+      const oscillator = cellWithText("oscillator", "BUY / count -2");
+      expect(signedTokens(oscillator)).toHaveLength(1);
+      expect(signedTokens(oscillator)[0]).toHaveClass("negative");
+
+      const stochasticShort = cellWithText(
+        "stochastic_short",
+        "count -3 / Main 75.12 / Signal 70.34",
+      );
+      expect(signedTokens(stochasticShort)).toHaveLength(1);
+      expect(signedTokens(stochasticShort)[0]).toHaveTextContent("-3");
+      expect(signedTokens(stochasticShort)[0]).toHaveClass("negative");
+
+      const stochasticMiddle = cellWithText(
+        "stochastic_middle",
+        "count 0 / Main 65.12 / Signal 60.34",
+      );
+      expect(signedTokens(stochasticMiddle)).toHaveLength(1);
+      expect(signedTokens(stochasticMiddle)[0]).toHaveClass("neutral");
+
+      const stochasticLong = cellWithText(
+        "stochastic_long",
+        "count +1 / Main 55.12 / Signal 50.34",
+      );
+      expect(signedTokens(stochasticLong)).toHaveLength(1);
+      expect(signedTokens(stochasticLong)[0]).toHaveClass("positive");
+
+      const gmma = cellWithText("gmma_trend_cross", "-4 / 0");
+      expect(signedTokens(gmma).map((token) => token.classList.item(1)))
+        .toEqual(["negative", "neutral"]);
+
+      const emaDiff = cellWithText("ema30_ema60_diff_pips", "-10.0 pips");
+      expect(signedTokens(emaDiff)).toHaveLength(1);
+      expect(signedTokens(emaDiff)[0]).toHaveClass("negative");
+
+      const emaSlopeDistance = cellWithText(
+        "ema200_slope_distance",
+        "-2.5 / 0.0 pips",
+      );
+      expect(signedTokens(emaSlopeDistance).map((token) => token.classList.item(1)))
+        .toEqual(["negative", "neutral"]);
+
+      const emaCodes = cellWithText("ema200_position_slope_code", "+2 / -1");
+      expect(signedTokens(emaCodes).map((token) => token.classList.item(1)))
+        .toEqual(["neutral", "negative"]);
+
+      const emaCounts = cellWithText("ema200_counts", "5 / 7 / -2");
+      expect(signedTokens(emaCounts)).toHaveLength(1);
+      expect(signedTokens(emaCounts)[0]).toHaveTextContent("-2");
+      expect(signedTokens(emaCounts)[0]).toHaveClass("negative");
+
+      for (const columnId of [
+        "stochastic",
+        "ema30_ema60",
+        "atr14_pips",
+        "ema200_close1_shift1",
+        "ema200_compare",
+        "latest_point_rate",
+        "fe618_fe1000",
+        "distance_to_fe2000_pips",
+      ]) {
+        const cells = grid.querySelectorAll<HTMLElement>(`.ag-cell[col-id="${columnId}"]`);
+        expect(cells.length).toBeGreaterThan(0);
+        for (const cell of cells) {
+          expect(signedTokens(cell)).toHaveLength(0);
+        }
+      }
+    });
+  });
+
+  it("disables navigation when an older runtime omits navigation metadata", async () => {
+    provideGridLayoutSize();
+    const payload = detailPayload();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      available: payload.available,
+      observation: payload.observation,
+      time_frames: payload.time_frames,
+    })));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const navigation = await screen.findByRole("navigation", { name: "CADJPYの観測時刻を移動" });
+    const olderButton = within(navigation).getByRole("button", { name: "前の観測の情報はありません" });
+    const newerButton = within(navigation).getByRole("button", { name: "次の観測の情報はありません" });
+    expect(olderButton).toBeDisabled();
+    expect(olderButton).toHaveTextContent("情報なし");
+    expect(newerButton).toBeDisabled();
+    expect(newerButton).toHaveTextContent("情報なし");
+  });
+
+  it("moves between timestamped observations while preserving the comparison grid", async () => {
+    provideGridLayoutSize();
+    let resolveOlder!: (response: Response) => void;
+    const olderRequest = new Promise<Response>((resolve) => {
+      resolveOlder = resolve;
+    });
+    const olderPayload = detailPayloadAt(
+      40,
+      "2026.08.10 10:00:00",
+      "2026.08.10 04:00:00",
+      {
+        older: null,
+        newer: navigationItem(41, "2026.08.10 11:00:00", "2026.08.10 05:00:00"),
+      },
+    );
+    olderPayload.time_frames = olderPayload.time_frames.map((item) => ({
+      ...item,
+      observation_id: 40,
+      is_buy: item.time_frame_text === "H1" ? false : item.is_buy,
+      buy_sell_label: item.time_frame_text === "H1" ? "SELL" : item.buy_sell_label,
+    }));
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === "/api/observations/41") {
+        return Promise.resolve(jsonResponse(detailPayload()));
+      }
+      if (String(input) === "/api/observations/40") return olderRequest;
+      return Promise.reject(new Error(`unexpected path: ${String(input)}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onNavigate = vi.fn();
+
+    render(<NavigationHarness onNavigate={onNavigate} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    const navigation = screen.getByRole("navigation", { name: "CADJPYの観測時刻を移動" });
+    const olderButton = within(navigation).getByRole("button", {
+      name: "前の観測。JST 2026.08.10 10:00:00、Server 2026.08.10 04:00:00、Run 6",
+    });
+    const newerButton = within(navigation).getByRole("button", {
+      name: "次の観測。JST 2026.08.10 12:00:00、Server 2026.08.10 06:00:00、Run 8",
+    });
+    expect(olderButton).toHaveTextContent("JST 2026.08.10 10:00:00");
+    expect(newerButton).toHaveTextContent("JST 2026.08.10 12:00:00");
+    expect(olderButton).toBeEnabled();
+    expect(newerButton).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: EMA200検証" }));
+    await expectColumnLayout(grid, ["trend_ema"]);
+    fireEvent.click(olderButton);
+
+    expect(onNavigate).toHaveBeenCalledWith(40);
+    expect(await screen.findByText("観測を読み込んでいます…")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByText("JST 2026.08.10 10:00:00の観測を読み込んでいます"))
+      .toHaveAttribute("role", "status");
+    expect(olderButton).toBeDisabled();
+    expect(newerButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: "H1観測詳細を閉じる" })).toBeEnabled();
+    expect(screen.getByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).toBe(grid);
+    expect(screen.getByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+
+    resolveOlder(jsonResponse(olderPayload));
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 10:00:00" })).toBeInTheDocument();
+    const updatedGrid = screen.getByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    expect(updatedGrid).toBe(grid);
+    await expectColumnLayout(updatedGrid, ["trend_ema"]);
+    await waitFor(() => {
+      const directionCells = Array.from(
+        updatedGrid.querySelectorAll<HTMLElement>('.ag-cell[col-id="buy_sell_label"]'),
+      );
+      expect(directionCells.some((cell) => cell.textContent?.includes("SELL"))).toBe(true);
+    });
+    const oldestButton = screen.getByRole("button", { name: "前の観測はありません" });
+    expect(oldestButton).toBeDisabled();
+    expect(oldestButton).toHaveTextContent("最古");
+    expect(screen.getByRole("button", {
+      name: "次の観測。JST 2026.08.10 11:00:00、Server 2026.08.10 05:00:00、Run 7",
+    })).toBeEnabled();
+    expect(screen.getByText("CADJPY JST 2026.08.10 10:00:00を表示しました")).toHaveClass("visually-hidden");
+    expect(screen.getByRole("dialog")).toHaveClass("observation-grid-mode");
+  });
+
+  it("keeps the current comparison visible when observation navigation fails", async () => {
+    provideGridLayoutSize();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/observations/41") {
+        return jsonResponse(detailPayload());
+      }
+      if (String(input) === "/api/observations/40") {
+        return errorResponse("navigation failed", 500);
+      }
+      throw new Error(`unexpected path: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onNavigate = vi.fn();
+
+    render(<NavigationHarness onNavigate={onNavigate} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    fireEvent.click(screen.getByRole("button", {
+      name: "前の観測。JST 2026.08.10 10:00:00、Server 2026.08.10 04:00:00、Run 6",
+    }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "navigation failed。現在の観測を表示しています",
+    );
+    expect(screen.getByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    expect(screen.getByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).toBe(grid);
+    expect(screen.getByRole("button", {
+      name: "前の観測。JST 2026.08.10 10:00:00、Server 2026.08.10 04:00:00、Run 6",
+    })).toBeEnabled();
+    await waitFor(() => expect(onNavigate.mock.calls.map(([id]) => id)).toEqual([40, 41]));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("switches every desktop column preset while keeping four comparison columns pinned", async () => {
     provideGridLayoutSize();
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayload())));
 
-    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
@@ -504,7 +829,7 @@ describe("ObservationDetailDrawer", () => {
     provideGridLayoutSize();
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayload())));
 
-    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
@@ -535,8 +860,10 @@ describe("ObservationDetailDrawer", () => {
     fireEvent.keyDown(openHeader, { code: "Enter", key: "Enter" });
 
     await expectColumnLayout(grid, []);
-    expect(screen.getByRole("button", { name: "列プリセット: 要点のみ" }))
-      .toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "列プリセット: 要点のみ" }))
+        .toHaveAttribute("aria-pressed", "true");
+    });
   });
 
   it("restores allowed group state and clears it when column display is reset", async () => {
@@ -554,7 +881,7 @@ describe("ObservationDetailDrawer", () => {
     }));
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayload())));
 
-    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
@@ -578,7 +905,7 @@ describe("ObservationDetailDrawer", () => {
     provideGridLayoutSize();
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayloadWithM5())));
 
-    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
@@ -617,7 +944,7 @@ describe("ObservationDetailDrawer", () => {
     }));
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(detailPayload())));
 
-    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
@@ -653,7 +980,7 @@ describe("ObservationDetailDrawer", () => {
       time_frames: [],
     })));
 
-    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(await screen.findByText("H1観測DBはまだ利用されていません")).toHaveAttribute("role", "status");
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
@@ -663,7 +990,7 @@ describe("ObservationDetailDrawer", () => {
     const onClose = vi.fn();
     vi.stubGlobal("fetch", vi.fn(async () => errorResponse("observation was not found", 404)));
 
-    render(<ObservationDetailDrawer observationId={404} onClose={onClose} />);
+    render(<ObservationDetailDrawer observationId={404} onClose={onClose} onNavigate={vi.fn()} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("observation was not found");
     fireEvent.click(screen.getByRole("button", { name: "H1観測詳細を閉じる" }));
@@ -688,8 +1015,12 @@ describe("ObservationDetailDrawer", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const view = render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} />);
-    view.rerender(<ObservationDetailDrawer observationId={42} onClose={vi.fn()} />);
+    const view = render(
+      <ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />,
+    );
+    view.rerender(
+      <ObservationDetailDrawer observationId={42} onClose={vi.fn()} onNavigate={vi.fn()} />,
+    );
 
     expect(await screen.findByRole("heading", { name: "EURUSD / 2026.08.10 11:00:00" })).toBeInTheDocument();
     expect(oldSignals).toHaveLength(1);
@@ -703,7 +1034,7 @@ describe("ObservationDetailDrawer", () => {
   it("closes on cancel and only on a pointer backdrop click", () => {
     const onClose = vi.fn();
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
-    render(<ObservationDetailDrawer observationId={41} onClose={onClose} />);
+    render(<ObservationDetailDrawer observationId={41} onClose={onClose} onNavigate={vi.fn()} />);
     const dialog = screen.getByRole("dialog") as HTMLDialogElement;
 
     fireEvent(dialog, new Event("cancel", { bubbles: false, cancelable: true }));

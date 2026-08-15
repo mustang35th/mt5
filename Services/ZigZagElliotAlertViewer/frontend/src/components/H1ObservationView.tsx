@@ -377,6 +377,10 @@ export function H1ObservationView({
     setSelectedObservationId(observationId);
   }, []);
 
+  const navigateDetail = useCallback((observationId: number) => {
+    setSelectedObservationId(observationId);
+  }, []);
+
   const closeDetail = useCallback(() => {
     const trigger = detailTriggerRef.current;
     setSelectedObservationId(null);
@@ -503,6 +507,7 @@ export function H1ObservationView({
       <ObservationDetailDrawer
         observationId={selectedObservationId}
         onClose={closeDetail}
+        onNavigate={navigateDetail}
         styleNonce={styleNonce}
       />
     </Box>

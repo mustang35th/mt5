@@ -456,10 +456,25 @@ export interface ObservationDetailTimeFrame extends ObservationTimeFrame {
   created_at_text: string;
 }
 
+export interface ObservationNavigationItem {
+  id: number;
+  run_id: number;
+  anchor_jst_time: number;
+  anchor_jst_time_text: string;
+  anchor_bar_time: number;
+  anchor_bar_time_text: string;
+}
+
+export interface ObservationDetailNavigation {
+  older: ObservationNavigationItem | null;
+  newer: ObservationNavigationItem | null;
+}
+
 export interface ObservationDetailResponse {
   available: boolean;
   observation: ObservationDetailParent | null;
   time_frames: ObservationDetailTimeFrame[];
+  navigation?: ObservationDetailNavigation;
 }
 
 export interface ObservationsResponse {

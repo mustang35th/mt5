@@ -243,6 +243,67 @@ function stochasticLabel(count: number, main: number, signal: number): string {
   return `count ${formatSignedNumber(count, 0)} / Main ${formatNumber(main, 2)} / Signal ${formatNumber(signal, 2)}`;
 }
 
+type SnapshotSignedValueTone = "positive" | "negative" | "neutral";
+
+interface SnapshotSignedValuePart {
+  kind: "signed";
+  value: number | null | undefined;
+  digits: number;
+  tone: SnapshotSignedValueTone | undefined;
+}
+
+type SnapshotCellPart = string | SnapshotSignedValuePart;
+
+type SnapshotCellParts = (
+  timeFrame: ObservationDetailTimeFrame,
+) => SnapshotCellPart[];
+
+function signedValueTone(
+  value: number | null | undefined,
+): SnapshotSignedValueTone {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number === 0) return "neutral";
+  return number > 0 ? "positive" : "negative";
+}
+
+function ema200CodeTone(value: number): SnapshotSignedValueTone {
+  if (value === 1) return "positive";
+  if (value === -1) return "negative";
+  return "neutral";
+}
+
+function signedValue(
+  value: number | null | undefined,
+  digits = 1,
+  tone?: SnapshotSignedValueTone,
+): SnapshotSignedValuePart {
+  return { kind: "signed", value, digits, tone };
+}
+
+function signedSnapshotCellRenderer(fromParts: SnapshotCellParts) {
+  return function SignedSnapshotCellRenderer(
+    params: ICellRendererParams<ObservationDetailTimeFrame, string>,
+  ) {
+    const timeFrame = params.data;
+    if (!timeFrame) return null;
+    return (
+      <span className="snapshot-signed-cell">
+        {fromParts(timeFrame).map((part, index) => {
+          if (typeof part === "string") return part;
+          return (
+            <span
+              className={`snapshot-signed-value ${part.tone ?? signedValueTone(part.value)}`}
+              key={`signed-${index}`}
+            >
+              {formatSignedNumber(part.value, part.digits)}
+            </span>
+          );
+        })}
+      </span>
+    );
+  };
+}
+
 function ema200Direction(timeFrame: ObservationDetailTimeFrame): string {
   if (timeFrame.is_ema200_buy && timeFrame.is_ema200_sell) return "BUY / SELL";
   if (timeFrame.is_ema200_buy) return "BUY";
@@ -520,48 +581,75 @@ const COLUMN_DEFS: Array<
     marryChildren: true,
     openByDefault: false,
     children: [
-      snapshotColumn(
-        OSCILLATOR_COLUMN_ID,
-        "Oscillator",
-        164,
-        (timeFrame) => `${timeFrame.is_oscillator_buy ? "BUY" : "SELL"} / count ${formatSignedNumber(timeFrame.oscillator_count, 0)}`,
-      ),
+      {
+        ...snapshotColumn(
+          OSCILLATOR_COLUMN_ID,
+          "Oscillator",
+          164,
+          (timeFrame) => `${timeFrame.is_oscillator_buy ? "BUY" : "SELL"} / count ${formatSignedNumber(timeFrame.oscillator_count, 0)}`,
+        ),
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          `${timeFrame.is_oscillator_buy ? "BUY" : "SELL"} / count `,
+          signedValue(timeFrame.oscillator_count, 0),
+        ]),
+      },
       detailSnapshotColumn(
         "stochastic",
         "Stochastic",
         232,
         (timeFrame) => `${displayValue(timeFrame.stochastic_main_order_text)} / ${displayValue(timeFrame.stochastic_main_direction_text)} [${formatNumber(timeFrame.stochastic_main_order, 0)}]`,
       ),
-      detailSnapshotColumn(
-        "stochastic_short",
-        "Stoch 短期",
-        252,
-        (timeFrame) => stochasticLabel(
-          timeFrame.stochastic_short_count,
-          timeFrame.stochastic_short_main,
-          timeFrame.stochastic_short_signal,
+      {
+        ...detailSnapshotColumn(
+          "stochastic_short",
+          "Stoch 短期",
+          252,
+          (timeFrame) => stochasticLabel(
+            timeFrame.stochastic_short_count,
+            timeFrame.stochastic_short_main,
+            timeFrame.stochastic_short_signal,
+          ),
         ),
-      ),
-      detailSnapshotColumn(
-        "stochastic_middle",
-        "Stoch 中期",
-        252,
-        (timeFrame) => stochasticLabel(
-          timeFrame.stochastic_middle_count,
-          timeFrame.stochastic_middle_main,
-          timeFrame.stochastic_middle_signal,
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          "count ",
+          signedValue(timeFrame.stochastic_short_count, 0),
+          ` / Main ${formatNumber(timeFrame.stochastic_short_main, 2)} / Signal ${formatNumber(timeFrame.stochastic_short_signal, 2)}`,
+        ]),
+      },
+      {
+        ...detailSnapshotColumn(
+          "stochastic_middle",
+          "Stoch 中期",
+          252,
+          (timeFrame) => stochasticLabel(
+            timeFrame.stochastic_middle_count,
+            timeFrame.stochastic_middle_main,
+            timeFrame.stochastic_middle_signal,
+          ),
         ),
-      ),
-      detailSnapshotColumn(
-        "stochastic_long",
-        "Stoch 長期",
-        252,
-        (timeFrame) => stochasticLabel(
-          timeFrame.stochastic_long_count,
-          timeFrame.stochastic_long_main,
-          timeFrame.stochastic_long_signal,
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          "count ",
+          signedValue(timeFrame.stochastic_middle_count, 0),
+          ` / Main ${formatNumber(timeFrame.stochastic_middle_main, 2)} / Signal ${formatNumber(timeFrame.stochastic_middle_signal, 2)}`,
+        ]),
+      },
+      {
+        ...detailSnapshotColumn(
+          "stochastic_long",
+          "Stoch 長期",
+          252,
+          (timeFrame) => stochasticLabel(
+            timeFrame.stochastic_long_count,
+            timeFrame.stochastic_long_main,
+            timeFrame.stochastic_long_signal,
+          ),
         ),
-      ),
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          "count ",
+          signedValue(timeFrame.stochastic_long_count, 0),
+          ` / Main ${formatNumber(timeFrame.stochastic_long_main, 2)} / Signal ${formatNumber(timeFrame.stochastic_long_signal, 2)}`,
+        ]),
+      },
     ],
   },
   {
@@ -570,24 +658,37 @@ const COLUMN_DEFS: Array<
     marryChildren: true,
     openByDefault: false,
     children: [
-      snapshotColumn(
-        GMMA_TREND_CROSS_COLUMN_ID,
-        "GMMA trend / cross",
-        164,
-        (timeFrame) => `${formatSignedNumber(timeFrame.gmma_trend_count, 0)} / ${formatSignedNumber(timeFrame.gmma_cross_count, 0)}`,
-      ),
+      {
+        ...snapshotColumn(
+          GMMA_TREND_CROSS_COLUMN_ID,
+          "GMMA trend / cross",
+          164,
+          (timeFrame) => `${formatSignedNumber(timeFrame.gmma_trend_count, 0)} / ${formatSignedNumber(timeFrame.gmma_cross_count, 0)}`,
+        ),
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          signedValue(timeFrame.gmma_trend_count, 0),
+          " / ",
+          signedValue(timeFrame.gmma_cross_count, 0),
+        ]),
+      },
       detailSnapshotColumn(
         "ema30_ema60",
         "EMA30 / EMA60",
         212,
         (timeFrame) => `${formatNumber(timeFrame.ema30, 5)} / ${formatNumber(timeFrame.ema60, 5)}`,
       ),
-      detailSnapshotColumn(
-        "ema30_ema60_diff_pips",
-        "EMA30-60距離",
-        142,
-        (timeFrame) => `${formatSignedNumber(timeFrame.ema30_ema60_diff_pips)} pips`,
-      ),
+      {
+        ...detailSnapshotColumn(
+          "ema30_ema60_diff_pips",
+          "EMA30-60距離",
+          142,
+          (timeFrame) => `${formatSignedNumber(timeFrame.ema30_ema60_diff_pips)} pips`,
+        ),
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          signedValue(timeFrame.ema30_ema60_diff_pips),
+          " pips",
+        ]),
+      },
       detailSnapshotColumn(
         "atr14_pips",
         "ATR14",
@@ -606,24 +707,53 @@ const COLUMN_DEFS: Array<
         142,
         (timeFrame) => formatNumber(timeFrame.ema200_compare, 5),
       ),
-      detailSnapshotColumn(
-        "ema200_slope_distance",
-        "EMA200傾き / 距離",
-        178,
-        (timeFrame) => `${formatSignedNumber(timeFrame.ema200_slope_pips)} / ${formatSignedNumber(timeFrame.ema200_close_diff_pips)} pips`,
-      ),
-      detailSnapshotColumn(
-        "ema200_position_slope_code",
-        "EMA200位置 / 傾きcode",
-        192,
-        (timeFrame) => `${formatSignedNumber(timeFrame.ema200_close_position, 0)} / ${formatSignedNumber(timeFrame.ema200_slope_direction, 0)}`,
-      ),
-      detailSnapshotColumn(
-        "ema200_counts",
-        "EMA200 上昇 / 下降 / trend",
-        218,
-        (timeFrame) => `${formatNumber(timeFrame.ema200_up_count, 0)} / ${formatNumber(timeFrame.ema200_down_count, 0)} / ${formatSignedNumber(timeFrame.ema200_trend_count, 0)}`,
-      ),
+      {
+        ...detailSnapshotColumn(
+          "ema200_slope_distance",
+          "EMA200傾き / 距離",
+          178,
+          (timeFrame) => `${formatSignedNumber(timeFrame.ema200_slope_pips)} / ${formatSignedNumber(timeFrame.ema200_close_diff_pips)} pips`,
+        ),
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          signedValue(timeFrame.ema200_slope_pips),
+          " / ",
+          signedValue(timeFrame.ema200_close_diff_pips),
+          " pips",
+        ]),
+      },
+      {
+        ...detailSnapshotColumn(
+          "ema200_position_slope_code",
+          "EMA200位置 / 傾きcode",
+          192,
+          (timeFrame) => `${formatSignedNumber(timeFrame.ema200_close_position, 0)} / ${formatSignedNumber(timeFrame.ema200_slope_direction, 0)}`,
+        ),
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          signedValue(
+            timeFrame.ema200_close_position,
+            0,
+            ema200CodeTone(timeFrame.ema200_close_position),
+          ),
+          " / ",
+          signedValue(
+            timeFrame.ema200_slope_direction,
+            0,
+            ema200CodeTone(timeFrame.ema200_slope_direction),
+          ),
+        ]),
+      },
+      {
+        ...detailSnapshotColumn(
+          "ema200_counts",
+          "EMA200 上昇 / 下降 / trend",
+          218,
+          (timeFrame) => `${formatNumber(timeFrame.ema200_up_count, 0)} / ${formatNumber(timeFrame.ema200_down_count, 0)} / ${formatSignedNumber(timeFrame.ema200_trend_count, 0)}`,
+        ),
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
+          `${formatNumber(timeFrame.ema200_up_count, 0)} / ${formatNumber(timeFrame.ema200_down_count, 0)} / `,
+          signedValue(timeFrame.ema200_trend_count, 0),
+        ]),
+      },
     ],
   },
 ];

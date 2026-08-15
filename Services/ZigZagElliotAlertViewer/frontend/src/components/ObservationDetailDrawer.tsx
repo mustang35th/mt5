@@ -1,9 +1,11 @@
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type {
+  ObservationDetailNavigation,
   ObservationDetailParent,
   ObservationDetailResponse,
   ObservationDetailTimeFrame,
+  ObservationNavigationItem,
 } from "../api/types";
 import {
   displayValue,
@@ -20,10 +22,16 @@ import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshot
 interface ObservationDetailDrawerProps {
   observationId: number | null;
   onClose: () => void;
+  onNavigate: (observationId: number) => void;
   styleNonce?: string;
 }
 
 type ObservationDetailView = "cards" | "grid";
+
+const EMPTY_OBSERVATION_NAVIGATION: ObservationDetailNavigation = {
+  older: null,
+  newer: null,
+};
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -262,6 +270,110 @@ function orderedTimeFrames(
   });
 }
 
+function navigationAriaLabel(
+  label: string,
+  target: ObservationNavigationItem | null,
+  available: boolean,
+): string {
+  if (!available) return `${label}の情報はありません`;
+  if (!target) return `${label}はありません`;
+  return `${label}。JST ${target.anchor_jst_time_text}、Server ${target.anchor_bar_time_text}、Run ${target.run_id}`;
+}
+
+function ObservationNavigationButton({
+  arrow,
+  available,
+  busy,
+  emptyLabel,
+  label,
+  target,
+  onNavigate,
+}: {
+  arrow: "left" | "right";
+  available: boolean;
+  busy: boolean;
+  emptyLabel: string;
+  label: string;
+  target: ObservationNavigationItem | null;
+  onNavigate: (target: ObservationNavigationItem) => void;
+}) {
+  return (
+    <button
+      aria-label={navigationAriaLabel(label, target, available)}
+      className="secondary-button observation-snapshot-grid-navigation-button"
+      disabled={busy || target === null}
+      title={navigationAriaLabel(label, target, available)}
+      type="button"
+      onClick={() => {
+        if (target) onNavigate(target);
+      }}
+    >
+      <span className="observation-snapshot-grid-navigation-label">
+        <span aria-hidden="true">{arrow === "left" ? "←" : ""}</span>
+        {label}
+        <span aria-hidden="true">{arrow === "right" ? "→" : ""}</span>
+      </span>
+      <span className="observation-snapshot-grid-navigation-time">
+        {target ? `JST ${target.anchor_jst_time_text}` : emptyLabel}
+      </span>
+    </button>
+  );
+}
+
+function ObservationNavigation({
+  available,
+  busy,
+  error,
+  navigation,
+  symbol,
+  onNavigate,
+}: {
+  available: boolean;
+  busy: boolean;
+  error: string;
+  navigation: ObservationDetailNavigation;
+  symbol: string;
+  onNavigate: (target: ObservationNavigationItem) => void;
+}) {
+  return (
+    <div className="observation-snapshot-grid-navigation-area">
+      <nav
+        aria-label={`${symbol}の観測時刻を移動`}
+        className="observation-snapshot-grid-navigation"
+      >
+        <ObservationNavigationButton
+          arrow="left"
+          available={available}
+          busy={busy}
+          emptyLabel={available ? "最古" : "情報なし"}
+          label="前の観測"
+          target={navigation.older}
+          onNavigate={onNavigate}
+        />
+        <ObservationNavigationButton
+          arrow="right"
+          available={available}
+          busy={busy}
+          emptyLabel={available ? "最新" : "情報なし"}
+          label="次の観測"
+          target={navigation.newer}
+          onNavigate={onNavigate}
+        />
+      </nav>
+      {busy && (
+        <p aria-hidden="true" className="observation-snapshot-grid-navigation-status">
+          観測を読み込んでいます…
+        </p>
+      )}
+      {error && (
+        <p className="observation-snapshot-grid-navigation-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AuditDetails({
   observation,
   timeFrames,
@@ -303,10 +415,16 @@ function AuditDetails({
 }
 
 function DetailContent({
+  busy,
+  navigationError,
+  onNavigate,
   response,
   styleNonce,
   view,
 }: {
+  busy: boolean;
+  navigationError: string;
+  onNavigate: (target: ObservationNavigationItem) => void;
   response: ObservationDetailResponse;
   styleNonce?: string;
   view: ObservationDetailView;
@@ -326,6 +444,14 @@ function DetailContent({
               <GmoTargetBadge isTarget={observation.is_gmo_target} />
             </div>
           </div>
+          <ObservationNavigation
+            available={response.navigation !== undefined}
+            busy={busy}
+            error={navigationError}
+            navigation={response.navigation ?? EMPTY_OBSERVATION_NAVIGATION}
+            symbol={observation.symbol_name}
+            onNavigate={onNavigate}
+          />
           <div className="observation-snapshot-grid-context-values">
             <span>JST {displayValue(observation.anchor_jst_time_text)}</span>
             <span>Server {displayValue(observation.anchor_bar_time_text)}</span>
@@ -400,15 +526,23 @@ function DetailContent({
 export function ObservationDetailDrawer({
   observationId,
   onClose,
+  onNavigate,
   styleNonce,
 }: ObservationDetailDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const responseRef = useRef<ObservationDetailResponse | null>(null);
+  const onNavigateRef = useRef(onNavigate);
   const [response, setResponse] = useState<ObservationDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [navigationAnnouncement, setNavigationAnnouncement] = useState("");
   const [view, setView] = useState<ObservationDetailView>("cards");
   const isOpen = observationId !== null;
+
+  useEffect(() => {
+    onNavigateRef.current = onNavigate;
+  }, [onNavigate]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -427,14 +561,20 @@ export function ObservationDetailDrawer({
 
   useEffect(() => {
     if (observationId === null) {
+      responseRef.current = null;
       setResponse(null);
       setLoading(false);
       setError("");
+      setNavigationAnnouncement("");
+      return;
+    }
+    const displayedResponse = responseRef.current;
+    if (displayedResponse?.observation?.id === observationId) {
+      setLoading(false);
       return;
     }
     const controller = new AbortController();
     let active = true;
-    setResponse(null);
     setLoading(true);
     setError("");
 
@@ -444,11 +584,28 @@ export function ObservationDetailDrawer({
         if (value.available && !value.observation) {
           throw new Error("H1観測詳細の応答が不正です");
         }
+        responseRef.current = value;
         setResponse(value);
+        if (displayedResponse?.observation && value.observation) {
+          setNavigationAnnouncement(
+            `${value.observation.symbol_name} JST ${value.observation.anchor_jst_time_text}を表示しました`,
+          );
+        } else {
+          setNavigationAnnouncement("");
+        }
       })
       .catch((reason: unknown) => {
         if (active && !controller.signal.aborted && !isAbortError(reason)) {
-          setError(reason instanceof Error ? reason.message : "H1観測詳細の読み込みに失敗しました");
+          const message = reason instanceof Error
+            ? reason.message
+            : "H1観測詳細の読み込みに失敗しました";
+          if (displayedResponse?.observation) {
+            setError(`${message}。現在の観測を表示しています`);
+            setNavigationAnnouncement("");
+            onNavigateRef.current(displayedResponse.observation.id);
+          } else {
+            setError(message);
+          }
         }
       })
       .finally(() => {
@@ -460,6 +617,13 @@ export function ObservationDetailDrawer({
       controller.abort();
     };
   }, [observationId]);
+
+  const navigateTo = useCallback((target: ObservationNavigationItem) => {
+    if (loading) return;
+    setError("");
+    setNavigationAnnouncement(`JST ${target.anchor_jst_time_text}の観測を読み込んでいます`);
+    onNavigate(target.id);
+  }, [loading, onNavigate]);
 
   function handleBackdropClick(event: MouseEvent<HTMLDialogElement>) {
     if (event.target !== event.currentTarget || event.detail === 0) return;
@@ -474,6 +638,7 @@ export function ObservationDetailDrawer({
   const title = response?.observation
     ? `${response.observation.symbol_name} / ${response.observation.anchor_jst_time_text}`
     : "H1観測詳細";
+  const hasDisplayedObservation = Boolean(response?.available && response.observation);
 
   return (
     <dialog
@@ -528,19 +693,31 @@ export function ObservationDetailDrawer({
         </div>
       </div>
       <div aria-busy={loading} className="drawer-body">
-        {loading && (
+        <span aria-live="polite" className="visually-hidden" role="status">
+          {navigationAnnouncement}
+        </span>
+        {loading && !hasDisplayedObservation && (
           <p aria-live="polite" className="loading-message" role="status">
             H1観測詳細を読み込んでいます…
           </p>
         )}
-        {error && <p className="loading-message" role="alert">{error}</p>}
+        {error && (!hasDisplayedObservation || view === "cards") && (
+          <p className="loading-message" role="alert">{error}</p>
+        )}
         {!loading && !error && response?.available === false && (
           <p className="loading-message" role="status">
             H1観測DBはまだ利用されていません
           </p>
         )}
-        {!loading && !error && response?.available && response.observation && (
-          <DetailContent response={response} styleNonce={styleNonce} view={view} />
+        {response?.available && response.observation && (
+          <DetailContent
+            busy={loading}
+            navigationError={view === "grid" ? error : ""}
+            response={response}
+            styleNonce={styleNonce}
+            view={view}
+            onNavigate={navigateTo}
+          />
         )}
       </div>
     </dialog>
