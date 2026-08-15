@@ -11,7 +11,7 @@
 | 保存時間足 | MN1、W1、D1、H4、H1 |
 | 保存先 | MetaTrader 5組み込みSQLite |
 | 観測タイミング | `BAR_OPEN_FIRST_SUCCESS` |
-| 最終更新日 | 2026-08-14 |
+| 最終更新日 | 2026-08-15 |
 
 本書は、`ZigZagElliotH1ObservationAll`の収集対象、実行ライフサイクル、H1境界の扱い、分析内容、FIFO、DB保存、状態パネルおよび障害時の動作を定義します。
 
@@ -75,6 +75,7 @@ SQLite
 | `observationDatabaseUseCommonFolder` | `true` | `Terminal\Common\Files`を使用する場合true |
 | `observationTimerSeconds` | `2` | LIVEで28通貨のH1境界を確認する間隔秒 |
 | `observationDatabaseRetrySeconds` | `15` | DB接続または保存失敗後の再試行間隔秒 |
+| `observationTesterSaveStartTime` | `0` | TESTERでObservation保存を開始する取引サーバー時刻。`0`は従来動作 |
 | `observationQueueCapacity` | `672` | 保存待ちSnapshot FIFOの最大件数 |
 | `statusPanelVisible` | `true` | 状態パネルを表示する場合true |
 | `statusPanelDetailVisible` | `true` | 状態パネルに28通貨の詳細を表示する場合true |
@@ -91,13 +92,14 @@ SQLite
 | DBファイル名が空 | `INIT_PARAMETERS_INCORRECT` |
 | Timer秒が1未満または60超 | `INIT_PARAMETERS_INCORRECT` |
 | DB再試行秒が1未満または3600超 | `INIT_PARAMETERS_INCORRECT` |
+| TESTER保存開始時刻が0未満 | `INIT_PARAMETERS_INCORRECT` |
 | Queue容量が28未満 | `INIT_PARAMETERS_INCORRECT` |
 | `MQL_OPTIMIZATION = true` | `INIT_PARAMETERS_INCORRECT` |
 | TESTERの対象時間足がH1より上位 | `INIT_PARAMETERS_INCORRECT` |
 | 28通貨のいずれかを解決できない | `INIT_FAILED` |
 | 分析ハンドルを準備できない | `INIT_FAILED` |
 
-状態パネル関連の5入力は表示だけに影響し、DB Runの`input_text`と`input_hash`には含めません。
+`observationTesterSaveStartTime`はTESTERだけで動作へ反映します。LIVEでは有効な0以上の入力値を`0`として扱います。状態パネル関連の5入力は表示だけに影響し、DB Runの`input_text`と`input_hash`には含めません。
 
 ## 5. 対象28通貨
 
@@ -140,7 +142,9 @@ SQLite
 10. 1回目の収集処理を実行する
 11. 状態パネルを生成する
 
-DB接続やRun保存の一時的な失敗だけでは初期化を失敗させません。Controllerは稼働を継続し、設定した再試行間隔でDBを再準備します。最初のDB接続も初期化直後ではなく、`observationDatabaseRetrySeconds`経過後に試行します。それまでに生成できたSnapshotはFIFOへ保持します。
+DB接続やRun保存の一時的な失敗だけでは初期化を失敗させません。Controllerは稼働を継続し、設定した再試行間隔でDBを再準備します。LIVEおよび`observationTesterSaveStartTime = 0`のTESTERでは、最初のDB接続を初期化直後ではなく`observationDatabaseRetrySeconds`経過後に試行します。それまでに生成できたSnapshotはFIFOへ保持します。
+
+`observationTesterSaveStartTime > 0`のTESTERでは、全28通貨の保存ゲートが開くまでDB接続、Run保存およびFIFO保存を開始しません。ゲートが開いた実行でDB接続を直ちに試行します。
 
 ### 6.2 LIVEとTESTERの違い
 
@@ -149,13 +153,18 @@ DB接続やRun保存の一時的な失敗だけでは初期化を失敗させま
 | 実行イベント | `OnTimer` | `OnCalculate` |
 | 境界確認頻度 | `observationTimerSeconds` | 価格更新ごと |
 | Timer登録 | あり | なし |
-| 起動直後の現在H1 | baselineとして設定し保存しない | 履歴準備後の最初の成功時に保存する |
+| 起動直後の現在H1 | baselineとして設定し保存しない | 保存開始時刻が`0`なら従来どおり通貨別の初回成功時に保存する |
+| 保存開始時刻が0より大きい場合 | 使用しない | 保存開始前の事前分析と、全28通貨の保存ゲートを使用する |
 | `source_mode` | `LIVE` | `TESTER` |
 | 最適化 | 対象外 | 使用不可 |
 
 LIVEでは、インジケーターを有効にした時点の進行中H1をbaselineにします。最初の保存対象は、その次に検出したH1新規足です。
 
-TESTERでは、各通貨についてH1境界ごとに履歴準備を確認します。準備できたH1を分析待ちに設定し、その場で分析に成功した場合に最初のSnapshotとして保存します。初回準備中の詳しい再試行制約は[19. 既知の制約](#19-既知の制約)を参照してください。
+`observationTesterSaveStartTime = 0`のTESTERでは、各通貨についてH1境界ごとに履歴準備を確認します。準備できたH1を分析待ちに設定し、その場で分析に成功した場合に最初のSnapshotとして保存します。この設定は追加の保存ゲートを使用せず、従来のTESTER初回処理を維持します。
+
+`observationTesterSaveStartTime > 0`の場合は、入力時刻より前を事前分析期間として利用します。保存開始候補H1では全28通貨が同じH1について実分析に成功した場合だけ保存ゲートを開き、その実行内の2回目の全通貨処理で同じH1をSnapshot化します。詳しいフローと再試行制約は[7. H1観測フロー](#7-h1観測フロー)および[19. 既知の制約](#19-既知の制約)を参照してください。
+
+保存開始判定は、各通貨の`iTime(symbol, PERIOD_H1, 0)`が返すH1開始の取引サーバー時刻で行います。ローカル時刻またはJSTではありません。入力がH1境界と一致しない場合は、その時刻以上となる次のH1が最初の候補です。例えば`18:30`を指定すると`18:00`は対象外となり、`19:00`が最初の候補です。
 
 ### 6.3 終了処理
 
@@ -194,9 +203,31 @@ FIFOはメモリだけに存在します。終了時に未保存Snapshotをデ�
           FIFO先頭からSQLiteへ直列保存
 ```
 
+`observationTesterSaveStartTime > 0`のTESTERでは、通常フローへ入る前に次の二段階事前分析を行います。
+
+```text
+第1段階: 保存開始時刻より前
+  各通貨の系列準備を確認し、各H1で最大1回Elliottを実分析
+  ├─ 失敗: 結果を保存せず、次のH1で再試行
+  └─ 成功: 結果を保存せず、以後は保存開始時刻までH1時刻だけ追従
+             ↓
+第2段階: 保存開始時刻以上の候補H1
+  同じH1について全28通貨を改めて各1回実分析
+  ├─ 28通貨のいずれかが失敗: 全体ゲートを閉じたまま次のH1で再試行
+  └─ 28/28成功: 全体ゲートを開く
+                    ↓
+                 同じ実行内の第2 passで同じH1をSnapshot化
+                    ↓
+                 以後は通常フロー
+```
+
+保存開始候補では、28通貨すべての現在H1が同じであり、そのH1が保存開始時刻以上で、全通貨がそのH1の事前分析に成功する必要があります。pass途中で準備できた一部通貨だけを先に保存しません。
+
+この全体ゲートは収集開始時点をそろえるためのものです。ゲート後の28 Snapshotを単一トランザクションで一括保存する機能ではなく、Snapshot生成、FIFO追加およびDB保存は通常どおり通貨別に処理します。
+
 ### 7.2 履歴準備条件
 
-各通貨について5時間足すべての系列同期を確認します。
+各通貨について5時間足すべての系列同期を確認します。次の最低バー数は、通常分析とTESTER事前分析の両方で使用します。
 
 | 時間足 | 最低バー数 |
 |---|---:|
@@ -206,11 +237,26 @@ FIFOはメモリだけに存在します。終了時に未保存Snapshotをデ�
 | H4 | 206 |
 | H1 | 206 |
 
-初期の履歴取得要求では各時間足500本をwarm-upします。LIVEでpendingとなった観測は、履歴が不足または未同期の場合も同じH1内でTimerごとに再試行します。TESTERで初回履歴準備中の場合は挙動が異なるため、[19. 既知の制約](#19-既知の制約)を参照してください。
+最低バー数への到達は必要条件であり、それだけではTESTER事前分析成功になりません。系列同期、最低バー数および実際の`ElliotAll`分析成功をすべて確認します。`observationTesterSaveStartTime > 0`では、保存開始候補H1についてこの実分析が28通貨すべて成功した場合だけ全体ゲートを開きます。
+
+本数には次の異なる役割があります。
+
+| 本数 | 役割 |
+|---:|---|
+| 61 | MN1の分析開始に必要な最低バー数 |
+| 206 | W1、D1、H4、H1の分析開始に必要な最低バー数 |
+| 300 | 最上位足ZigZagの最大計算範囲、および上位足Waveを取得できない場合の分析範囲 |
+| 500 | 初期の履歴取得で各系列へ要求するwarm-up本数 |
+
+`300`は全時間足に一律要求する履歴ゲート本数ではありません。反対に、61本または206本を満たしても実分析が失敗した場合は準備完了になりません。`300`の分析設定は`analysis_input_hash`へ含まれますが、今回追加する保存開始時刻は運用入力の`input_hash`へ含まれます。
+
+LIVEでpendingとなった観測は、履歴が不足または未同期の場合も同じH1内でTimerごとに再試行します。TESTERの初回処理および事前分析では挙動が異なるため、[19. 既知の制約](#19-既知の制約)を参照してください。
 
 ### 7.3 Snapshotの時点
 
 1つのSnapshotは、対象H1バーの分析に最初に成功した時点を固定します。
+
+TESTERの事前分析結果は準備確認だけに使用して破棄し、Snapshot、FIFOまたはDB行を生成しません。全体ゲートが開いた後の第2 passで成功した分析が、最初のSnapshotの取得時点になります。
 
 - `anchor_bar_time`はH1バー開始のサーバー時刻
 - `anchor_jst_time`は同時刻を`TimeJapanUtil`でJSTへ変換した値
@@ -223,13 +269,15 @@ FIFOはメモリだけに存在します。終了時に未保存Snapshotをデ�
 
 ### 7.4 境界変化と欠損
 
-LIVEでpendingとなった観測、およびTESTERで最初のSnapshotへ成功した後の観測は、同じH1内で履歴準備、Elliott分析またはSnapshot生成に失敗しても再試行します。TESTERの初回Snapshotより前だけは、H1境界単位で再試行します。
+LIVEでpendingとなった観測、およびTESTERで最初のSnapshotへ成功した後の観測は、同じH1内で履歴準備、Elliott分析またはSnapshot生成に失敗しても再試行します。
 
 LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移るまでに成功しなかった前のpendingを`gapCount`へ加算し、新しいH1を分析対象にします。過去H1を現在値から再構築しません。
 
-TESTERで最初のSnapshotへ成功する前は専用の初回準備分岐を通るため、履歴待ち、またはH1境界が変わらないまま分析失敗となったH1を保存しない一方、`gapCount`にも加算しません。
+`observationTesterSaveStartTime = 0`のTESTERでは、最初のSnapshotへ成功する前だけ専用の初回準備分岐を通ります。履歴待ちまたは分析失敗となったH1を保存せず、`gapCount`にも加算しません。
 
-分析処理中にH1境界が変わった場合も、旧H1を欠損として現在H1へ進みます。
+`observationTesterSaveStartTime > 0`のTESTERでは、全体ゲートが開くまで検出時刻へ追従しますが、pending、SnapshotおよびFIFOを残さず、`gapCount`にも加算しません。保存開始時刻へ到達した後でも、同じH1の全28通貨事前分析がそろわずゲートが閉じている間は同じ扱いです。ゲートが開いた後から通常の欠損判定へ移ります。
+
+通常の分析処理中にH1境界が変わった場合は、旧H1を欠損として現在H1へ進みます。TESTER事前分析中の境界変化だけは欠損とせず、現在H1へ追従して次のH1で再試行します。
 
 中間H1の欠損数は`CopyTime`で実在バーを数えます。週末などH1バーが存在しない時間は欠損数に含めません。
 
@@ -265,7 +313,17 @@ TESTERで最初のSnapshotへ成功する前は専用の初回準備分岐を通
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
 
-インジケーター運用入力は別の`input_text`へ保存し、FNV-1aによる`input_hash`を生成します。運用入力にはDB名、Common使用有無、Timer秒、DB再試行秒、Queue容量および解決後の28実シンボル名を含めます。
+インジケーター運用入力は別の`input_text`へ保存し、FNV-1aによる`input_hash`を生成します。運用入力にはDB名、Common使用有無、Timer秒、DB再試行秒、TESTER保存開始時刻、Queue容量および解決後の28実シンボル名を含めます。
+
+TESTER保存開始時刻は、次の固定形式でMQL5の`datetime`整数値を10進表現して保存します。
+
+```text
+observationTesterSaveStartTime=<epoch秒>
+```
+
+LIVEでは有効な0以上の入力値にかかわらず`0`を保存します。TESTERでは指定値を保存するため、異なる保存開始時刻は異なる`input_hash`になります。また、新しいRunは`0`の場合もこのキーを追加するため、本対応前のRunとは`input_hash`が変わります。
+
+保存開始時刻は分析計算式を変更しないため、`analysis_input_hash`には含めません。Observationの自然キーにも運用用`input_hash`は含まれないため、保存開始時刻だけが異なるRunで同じ市場時点・同じ分析Profileを保存しても別Observationにはなりません。
 
 ### 8.3 BUY・SELLの意味
 
@@ -366,6 +424,8 @@ SQLite接続には次を設定します。
 
 `run_uid`は起動ローカル時刻、`GetTickCount64()`およびChart IDから生成します。DB再接続後も同じRun Entityを再利用します。
 
+`observationTesterSaveStartTime > 0`のTESTERでは、全体ゲートが閉じている間はDBを開かず、Run行も保存しません。全28通貨が同じ保存開始候補H1の事前分析に成功してゲートが開いた後、起動時に構築した同じRun EntityをDBへ保存します。
+
 ### 10.3 自然キー
 
 Observationの一意性は次で決まります。
@@ -401,7 +461,7 @@ source_mode
 - 親だけ、または子の一部だけを残さない
 - 成功時だけCOMMITする
 
-Run行の準備はこのSnapshotトランザクションより前に行うため、DB障害や分析待ちの状況では、Runだけが存在してObservationが0行の状態も正常に起こり得ます。
+Run行の準備はこのSnapshotトランザクションより前に行うため、DB障害や通常分析待ちの状況では、Runだけが存在してObservationが0行の状態も正常に起こり得ます。ただし、`observationTesterSaveStartTime > 0`の全体ゲートが閉じている間はRun行自体を保存しません。
 
 ### 11.2 First-write wins
 
@@ -444,6 +504,8 @@ DB接続または保存に失敗した場合は次の順で処理します。
 4. `observationDatabaseRetrySeconds`後にDBと同じRunを再準備する
 5. FIFO先頭から保存を再開する
 
+`observationTesterSaveStartTime > 0`で全体ゲートが閉じている状態はDB障害ではありません。この期間はDB接続と再試行を意図的に行わず、FIFOにもSnapshotを追加しません。
+
 LIVEおよびTESTER初回成功後の同じH1内の分析失敗は通貨単位で再試行しますが、過去H1へ移った後の分析欠損は再生成しません。
 
 DB接続・保存および通貨別分析の再試行回数に上限はありません。インジケーターが稼働し、対象H1またはQueue容量に余裕がある間は再試行を継続します。
@@ -458,7 +520,7 @@ DB接続・保存および通貨別分析の再試行回数に上限はありま
 - LIVEまたはTESTER
 - Writer ACTIVE・PASSIVE
 - DB OK・WAIT
-- Ready通貨数。LIVEでは系列準備済み、TESTERでは初回Snapshot生成済みの通貨数
+- Ready通貨数。LIVEでは系列準備済み、保存開始時刻が`0`のTESTERでは初回Snapshot生成済み、保存開始時刻が0より大きいTESTERでは事前分析成功済みの通貨数
 - 現在H1のJST
 - Detect、Analyze、Save件数
 - Queue使用数と容量
@@ -480,13 +542,17 @@ Gap 0
 
 H1境界直後は一時的に`ANALYZING`または`WAITING`になります。
 
+`observationTesterSaveStartTime > 0`で全体ゲートが閉じている間は、`Writer PASSIVE`、`DB WAIT`、`Run 0`、`Detect 0`、`Analyze 0`、`Save 0/0`、`Queue 0`および`Gap 0`が正常です。事前分析は実行しますが、`Analyze`はSnapshot生成数を表すためゲート前は0のままです。`Ready`だけが事前分析の進捗を示します。
+
+保存開始候補H1では同じH1について全28通貨を再度確認するため、保存開始前に`Ready 28/28`へ到達していても再評価されます。候補H1で28/28がそろうとゲートが開き、WriterとDB保存処理が開始します。
+
 ### 13.2 通貨別状態
 
 | 状態 | 意味 |
 |---|---|
 | `BASE` | 初期化中、または現在H1をbaselineへ設定した |
-| `WAIT` | 次のH1新規足待ち |
-| `RUN` | Elliott分析中 |
+| `WAIT` | 次のH1新規足、TESTER保存開始時刻または全通貨事前分析成功待ち |
+| `RUN` | 通常のElliott分析またはTESTER事前分析中 |
 | `RETRY` | 履歴、Server情報、分析またはSnapshot生成を再試行中 |
 | `DB` | Snapshot生成済み、DB保存待ちまたは保存再試行中 |
 | `OK` | 対象H1のDB保存完了 |
@@ -534,14 +600,37 @@ LIVEのチャート時間足にはH1制限を設けていませんが、用途�
 - Optimizationでは使用しない
 - 28通貨すべての履歴とシンボルを利用できる環境を使用する
 - 既定ではCommon DBを使用するため、既存LIVEデータとの混在に注意する
-- 比較時は`source_mode`、`analysis_version`および`analysis_input_hash`を分ける
+- 比較時は`source_mode`、`analysis_version`、`analysis_input_hash`および`input_hash`を分ける
+
+`observationTesterSaveStartTime = 0`は従来互換設定です。追加の二段階事前分析と全通貨ゲートを使用せず、通貨ごとに初回分析へ成功したH1から保存します。28通貨の収集開始H1をそろえたい場合は、0より大きい保存開始時刻を指定してください。
+
+次は、保存対象期間の前に約6年の事前分析期間を置く設定例です。日時はすべて接続先ブローカーの取引サーバー時刻で指定します。
+
+| 設定 | 例 |
+|---|---|
+| TESTER開始 | `2019.01.01 00:00` |
+| `observationTesterSaveStartTime` | `D'2025.07.01 00:00'` |
+| TESTER終了 | `2025.12.31 23:59` |
+
+この例では、2025年7月1日より前のH1を履歴および実分析の準備に使用しますが、ObservationとRun行を生成せず、FIFOへの追加およびGapの加算も行いません。保存開始候補H1で全28通貨が同じH1の事前分析に成功するとゲートが開き、そのH1から通常収集へ移ります。1通貨でも失敗した場合は全体を保存せず、次のH1を新しい候補にします。
+
+MN1の最低61本には約5年1か月が必要です。休日、履歴配信範囲およびブローカー差を考慮し、TESTER開始は保存開始時刻より余裕を持って前へ設定してください。61本と206本を満たしても、全28通貨の実分析が成功するまでは保存を開始しません。
+
+保存開始時刻がH1境界と一致しない例は次のとおりです。
+
+| 入力 | 判定 |
+|---|---|
+| `D'2025.07.01 18:00'` | `18:00`のH1が最初の保存候補 |
+| `D'2025.07.01 18:30'` | `18:00`は事前分析扱い、`19:00`のH1が最初の保存候補 |
+
+再現性を高めるため、通常はH1境界に一致する時刻を指定してください。入力値はJSTへ自動解釈されません。
 
 ## 16. 障害対応
 
 | 表示・事象 | 主な原因 | 対応 |
 |---|---|---|
-| `Ready`が28未満 | LIVEではMN1～H1履歴の不足・同期待ち。TESTERでは初回分析またはSnapshot生成の未成功も含む | Terminal接続、各シンボルの履歴および詳細メッセージを確認する |
-| `DB WAIT` | DB接続、WAL、table作成またはRun保存待ち | DBファイル、権限、他プロセスのlockを確認する |
+| `Ready`が28未満 | LIVEではMN1～H1履歴の不足・同期待ち。TESTERでは初回分析、事前分析またはSnapshot生成の未成功も含む | Terminal接続、各シンボルの履歴および詳細メッセージを確認する |
+| `DB WAIT` | DB接続、WAL、table作成またはRun保存待ち。保存開始ゲートが閉じている期間も正常に表示する | 保存ゲート中でなければDBファイル、権限、他プロセスのlockを確認する |
 | `RETRY` | H1系列、Server情報、Elliott分析またはSnapshot生成待ち | 詳細メッセージとExpertsログを確認する |
 | `DB`が継続 | Queue保存中または保存失敗後の再試行 | Queue増加とDB接続を確認する |
 | `Queue`が増加 | DBの書込み速度低下または接続障害 | DB Writer、disk、lock、retry設定を確認する |
@@ -619,7 +708,7 @@ HAVING COUNT(time_frame.id) <> 5;
 ## 19. 既知の制約
 
 - 起動前または停止中のH1は収集しない
-- 分析失敗が次のH1まで続いた場合、欠損を自動バックフィルしない
+- 保存ゲートが開いた後に分析失敗が次のH1まで続いた場合、欠損を自動バックフィルしない
 - FIFOはメモリのみで、終了時の未保存Snapshotは失われる
 - 28通貨はコードで固定され、入力から増減できない
 - 1インスタンスが28通貨を順番に処理するため、処理時間中にH1境界が変わると欠損になり得る
@@ -628,10 +717,12 @@ HAVING COUNT(time_frame.id) <> 5;
 - 自然キーが同じ別Runとの同時書込みを検出すると、再起動まで処理を停止する
 - DB障害がQueue容量を超えて続くと、新しい観測を保持できない
 - Status Panelの表示設定はRun比較用の入力Hashへ含まれない
-- TESTERでその通貨の初回履歴準備が未完了の場合、同じH1内の後続`OnCalculate`では準備状態を再確認せず、次のH1境界で再確認する
-- TESTERで初回履歴準備後の分析が失敗した場合も、分析準備完了フラグが立つまでは同じH1内で再試行せず、次のH1境界へ進む。最初のSnapshotが成功した後は通常のpending再試行へ移行する
-- TESTERで最初のSnapshotへ成功する前に保存できなかったH1は、DB上では欠損するがStatus Panelの`Gap`へ加算されない
-- 状態パネルの現在バッチ時刻は28通貨の現在H1開始時刻の最大値であり、ブローカー側で通貨ごとの開始時刻が一時的にずれた場合、Detect・Analyze・Save件数はその最大時刻と一致する通貨だけを集計する
+- `observationTesterSaveStartTime = 0`のTESTERでその通貨の初回履歴準備が未完了の場合、同じH1内の後続`OnCalculate`では準備状態を再確認せず、次のH1境界で再確認する
+- `observationTesterSaveStartTime = 0`のTESTERで初回履歴準備後の分析が失敗した場合も、分析準備完了フラグが立つまでは同じH1内で再試行せず、次のH1境界へ進む。最初のSnapshotが成功した後は通常のpending再試行へ移行する
+- `observationTesterSaveStartTime = 0`のTESTERで最初のSnapshotへ成功する前に保存できなかったH1は、DB上では欠損するがStatus Panelの`Gap`へ加算されない
+- `observationTesterSaveStartTime > 0`の事前分析は、通貨ごとに各H1で最大1回だけ実行する。履歴準備または分析に失敗しても同じH1内では再試行せず、Gapを加算しないまま次のH1で再試行する
+- `observationTesterSaveStartTime > 0`では、保存開始時刻以上でも全28通貨が同じH1の事前分析に成功するまでObservation、FIFO、DB RunおよびGapを生成しない。除外したH1を後からバックフィルしない
+- 保存開始候補で28通貨の現在H1が一致しない場合は全体ゲートを開かない。ゲート後に一時的な時刻差が発生した場合、状態パネルのDetect・Analyze・Save件数は現在バッチ時刻と一致する通貨だけを集計する
 
 ## 20. 関連実装
 

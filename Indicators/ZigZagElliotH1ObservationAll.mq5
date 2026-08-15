@@ -28,6 +28,9 @@ input int observationTimerSeconds = 2;
 /** DB接続または保存失敗後の再試行間隔秒。 */
 input int observationDatabaseRetrySeconds = 15;
 
+/** TESTERで観測保存を開始するサーバー時刻。0の場合は従来どおり。 */
+input datetime observationTesterSaveStartTime = 0;
+
 /** 保存待ちSnapshot FIFOの最大件数。 */
 input int observationQueueCapacity = 672;
 
@@ -84,6 +87,7 @@ int OnInit() {
         observationDatabaseUseCommonFolder,
         observationTimerSeconds,
         observationDatabaseRetrySeconds,
+        observationTesterSaveStartTime,
         observationQueueCapacity
     );
 

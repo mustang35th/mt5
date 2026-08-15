@@ -45,11 +45,13 @@ public:
         this.executing = false;
         this.timerEnabled = false;
         this.testerMode = false;
+        this.testerSaveGateOpen = false;
         this.databaseReady = false;
         this.competingWriterDetected = false;
         this.timerSeconds = 2;
         this.databaseRetrySeconds = 5;
         this.queueCapacity = 672;
+        this.observationTesterSaveStartTime = 0;
         this.nextDatabaseRetryTime = 0;
         this.currentBatchH1BarTime = 0;
         this.lastDatabaseSaveServerTime = 0;
@@ -81,6 +83,7 @@ public:
      * @param fromUseCommonFolder 共通フォルダを使用する場合true
      * @param fromTimerSeconds H1境界確認間隔秒
      * @param fromDatabaseRetrySeconds DB再接続間隔秒
+     * @param fromTesterSaveStartTime TESTER観測保存開始サーバー時刻
      * @param fromQueueCapacity 保存待ちSnapshot最大数
      * @return 初期化結果
      */
@@ -89,6 +92,7 @@ public:
         const bool fromUseCommonFolder,
         const int fromTimerSeconds,
         const int fromDatabaseRetrySeconds,
+        const datetime fromTesterSaveStartTime,
         const int fromQueueCapacity
     ) {
         this.destroy();
@@ -105,6 +109,7 @@ public:
                 || fromTimerSeconds > 60
                 || fromDatabaseRetrySeconds <= 0
                 || fromDatabaseRetrySeconds > 3600
+                || fromTesterSaveStartTime < 0
                 || fromQueueCapacity < 28) {
             this.status.message = "入力値が不正です";
 
@@ -117,6 +122,14 @@ public:
         this.databaseRetrySeconds = fromDatabaseRetrySeconds;
         this.queueCapacity = fromQueueCapacity;
         this.testerMode = MQLInfoInteger(MQL_TESTER) != 0;
+        this.observationTesterSaveStartTime = 0;
+
+        if (this.testerMode) {
+            this.observationTesterSaveStartTime =
+                fromTesterSaveStartTime;
+        }
+        this.testerSaveGateOpen =
+            !this.isTesterSaveWindowEnabled();
 
         MarketContext allContext(
             "ALL",
@@ -249,6 +262,7 @@ public:
         this.initialized = false;
         this.executing = false;
         this.testerMode = false;
+        this.testerSaveGateOpen = false;
         this.databaseReady = false;
         this.competingWriterDetected = false;
         this.nextDatabaseRetryTime = 0;
@@ -257,6 +271,7 @@ public:
         this.lastExecutionMilliseconds = 0;
         this.totalSavedCount = 0;
         this.totalGapCount = 0;
+        this.observationTesterSaveStartTime = 0;
         this.lastDatabaseMessage = "";
         ZeroMemory(this.databaseRun);
         this.clearStateArrays();
@@ -306,6 +321,9 @@ private:
     /** ストラテジーテスターの場合true。 */
     bool testerMode;
 
+    /** TESTERの全通貨事前分析が完了し保存可能な場合true。 */
+    bool testerSaveGateOpen;
+
     /** 観測を保存可能なDB接続がある場合true。 */
     bool databaseReady;
 
@@ -326,6 +344,9 @@ private:
 
     /** Snapshotキュー最大数。 */
     int queueCapacity;
+
+    /** TESTERで観測保存を開始するサーバー時刻。 */
+    datetime observationTesterSaveStartTime;
 
     /** 次にDB接続または保存を再試行できるローカル時刻。 */
     datetime nextDatabaseRetryTime;
@@ -375,6 +396,12 @@ private:
     /** 通貨ごとの初回分析履歴ゲート通過状態。 */
     bool analysisReadyFlags[];
 
+    /** 通貨ごとにTESTER事前分析が成功したH1バー開始時刻。 */
+    datetime testerPreflightH1BarTimes[];
+
+    /** 通貨ごとにTESTER事前分析を試行したH1バー開始時刻。 */
+    datetime testerPreflightAttemptH1BarTimes[];
+
     /** 通貨ごとに別RunのWriter競合を検出した場合true。 */
     bool symbolCompetingWriterFlags[];
 
@@ -407,8 +434,27 @@ private:
             this.processSymbol(i);
         }
 
-        this.tryReconnectDatabaseIfDue();
-        this.drainSnapshotQueue();
+        bool testerSaveGateOpened = this.tryOpenTesterSaveGate();
+
+        if (testerSaveGateOpened) {
+            for (int i = 0; i < total; i++) {
+                this.processSymbol(i);
+            }
+        }
+
+        if (this.isPersistenceAllowed()) {
+            this.tryReconnectDatabaseIfDue();
+            this.drainSnapshotQueue();
+        } else {
+            this.lastDatabaseMessage =
+                "TESTER保存開始前ウォームアップ";
+
+            if (this.currentBatchH1BarTime
+                    >= this.observationTesterSaveStartTime) {
+                this.lastDatabaseMessage =
+                    "全通貨のTESTER事前分析成功待ち";
+            }
+        }
         ulong elapsed = GetTickCount64() - startTick;
         this.lastExecutionMilliseconds = (int)elapsed;
         this.executing = false;
@@ -445,6 +491,16 @@ private:
 
         if (currentH1BarTime > this.currentBatchH1BarTime) {
             this.currentBatchH1BarTime = currentH1BarTime;
+        }
+
+        if (this.isTesterSaveWindowEnabled()
+                && !this.testerSaveGateOpen) {
+            this.processTesterPreflight(
+                fromIndex,
+                currentH1BarTime
+            );
+
+            return;
         }
 
         if (this.testerMode
@@ -544,6 +600,196 @@ private:
     }
 
     /**
+     * TESTER保存開始前の1通貨を実分析し、結果を保存せず破棄する。
+     *
+     * 保存開始時刻までは最初の成功後にH1時刻だけ追従する。保存開始時刻へ
+     * 到達したH1では改めて実分析し、全通貨同一passの成功を確認する。
+     *
+     * @param fromIndex 対象通貨インデックス
+     * @param fromCurrentH1BarTime 現在H1バー開始時刻
+     */
+    void processTesterPreflight(
+        const int fromIndex,
+        const datetime fromCurrentH1BarTime
+    ) {
+        bool saveStartReached =
+            fromCurrentH1BarTime
+                >= this.observationTesterSaveStartTime;
+
+        if (!saveStartReached
+                && this.analysisReadyFlags[fromIndex]) {
+            this.lastDetectedH1BarTimes[fromIndex] =
+                fromCurrentH1BarTime;
+            this.pendingAnalysisH1BarTimes[fromIndex] = 0;
+            this.symbolRetryCounts[fromIndex] = 0;
+            this.setSymbolStatus(
+                fromIndex,
+                "WAIT",
+                "TESTER保存開始前ウォームアップ"
+            );
+
+            return;
+        }
+
+        if (this.lastDetectedH1BarTimes[fromIndex]
+                != fromCurrentH1BarTime) {
+            this.lastDetectedH1BarTimes[fromIndex] =
+                fromCurrentH1BarTime;
+            this.pendingAnalysisH1BarTimes[fromIndex] =
+                fromCurrentH1BarTime;
+            this.symbolRetryCounts[fromIndex] = 0;
+        }
+
+        if (saveStartReached
+                && this.testerPreflightH1BarTimes[fromIndex]
+                    != fromCurrentH1BarTime) {
+            this.analysisReadyFlags[fromIndex] = false;
+        }
+
+        if (this.analysisReadyFlags[fromIndex]
+                && (!saveStartReached
+                    || this.testerPreflightH1BarTimes[fromIndex]
+                        == fromCurrentH1BarTime)) {
+            this.pendingAnalysisH1BarTimes[fromIndex] = 0;
+            this.symbolRetryCounts[fromIndex] = 0;
+            this.setSymbolStatus(
+                fromIndex,
+                "WAIT",
+                "全通貨のTESTER事前分析成功待ち"
+            );
+
+            return;
+        }
+
+        if (this.testerPreflightAttemptH1BarTimes[fromIndex]
+                == fromCurrentH1BarTime) {
+            this.pendingAnalysisH1BarTimes[fromIndex] = 0;
+            this.setSymbolStatus(
+                fromIndex,
+                "RETRY",
+                "次のH1でTESTER事前分析を再試行"
+            );
+
+            return;
+        }
+
+        if (this.pendingAnalysisH1BarTimes[fromIndex] <= 0) {
+            this.pendingAnalysisH1BarTimes[fromIndex] =
+                fromCurrentH1BarTime;
+        }
+        this.testerPreflightAttemptH1BarTimes[fromIndex] =
+            fromCurrentH1BarTime;
+        this.capturePendingObservation(fromIndex, true);
+    }
+
+    /**
+     * TESTER事前分析中のH1境界変化を欠損にせず現在足へ追従する。
+     *
+     * @param fromIndex 対象通貨インデックス
+     * @param fromCurrentH1BarTime 現在H1バー開始時刻
+     */
+    void handleTesterPreflightBoundaryChanged(
+        const int fromIndex,
+        const datetime fromCurrentH1BarTime
+    ) {
+        this.analysisReadyFlags[fromIndex] = false;
+        this.lastDetectedH1BarTimes[fromIndex] =
+            fromCurrentH1BarTime;
+        this.pendingAnalysisH1BarTimes[fromIndex] = 0;
+        this.currentH1BarTimes[fromIndex] =
+            fromCurrentH1BarTime;
+        this.symbolRetryCounts[fromIndex]++;
+
+        if (fromCurrentH1BarTime > 0) {
+            this.pendingAnalysisH1BarTimes[fromIndex] =
+                fromCurrentH1BarTime;
+        }
+
+        if (fromCurrentH1BarTime > this.currentBatchH1BarTime) {
+            this.currentBatchH1BarTime = fromCurrentH1BarTime;
+        }
+        this.setSymbolStatus(
+            fromIndex,
+            "WAIT",
+            "H1境界更新後にTESTER事前分析を再試行"
+        );
+    }
+
+    /**
+     * TESTER保存開始条件を確認し、全通貨を同一H1の保存対象にする。
+     *
+     * @return この呼び出しで保存ゲートを開いた場合true
+     */
+    bool tryOpenTesterSaveGate() {
+        if (!this.isTesterSaveWindowEnabled()
+                || this.testerSaveGateOpen
+                || this.getReadyCount()
+                    != requiredTargetSymbolCount) {
+            return false;
+        }
+
+        for (int i = 0; i < ArraySize(this.symbolNames); i++) {
+            if (this.currentH1BarTimes[i]
+                        < this.observationTesterSaveStartTime
+                    || this.currentH1BarTimes[i]
+                        != this.currentBatchH1BarTime
+                    || this.testerPreflightH1BarTimes[i]
+                        != this.currentH1BarTimes[i]) {
+                return false;
+            }
+        }
+
+        this.testerSaveGateOpen = true;
+        this.nextDatabaseRetryTime = 0;
+        this.lastDatabaseMessage = "";
+
+        for (int i = 0; i < ArraySize(this.symbolNames); i++) {
+            this.lastDetectedH1BarTimes[i] =
+                this.currentH1BarTimes[i];
+            this.pendingAnalysisH1BarTimes[i] =
+                this.currentH1BarTimes[i];
+            this.symbolRetryCounts[i] = 0;
+            this.setSymbolStatus(
+                i,
+                "BASE",
+                "TESTER観測保存を開始"
+            );
+        }
+        this.logger.info(
+            __FUNCTION__,
+            StringFormat(
+                "TESTER observation save gate opened. saveStart=%s h1=%s",
+                this.formatDateTime(
+                    this.observationTesterSaveStartTime
+                ),
+                this.formatDateTime(this.currentBatchH1BarTime)
+            )
+        );
+
+        return true;
+    }
+
+    /**
+     * TESTERの保存開始日時を使用するか確認する。
+     *
+     * @return TESTERで0以外の保存開始日時を使用する場合true
+     */
+    bool isTesterSaveWindowEnabled() {
+        return this.testerMode
+            && this.observationTesterSaveStartTime > 0;
+    }
+
+    /**
+     * DB接続とSnapshot保存を実行可能か確認する。
+     *
+     * @return 保存処理を実行可能な場合true
+     */
+    bool isPersistenceAllowed() {
+        return !this.isTesterSaveWindowEnabled()
+            || this.testerSaveGateOpen;
+    }
+
+    /**
      * 新しいH1境界を通貨状態へ反映する。
      *
      * 前の分析待ちが残っている場合は復元不能な欠損として記録し、現在足を
@@ -607,9 +853,14 @@ private:
      * 1通貨の分析待ちH1について分析し、固定SnapshotをFIFOへ追加する。
      *
      * @param fromIndex 対象通貨インデックス
+     * @param fromDiscard 分析成功結果を保存せず破棄する場合true
      */
-    void capturePendingObservation(const int fromIndex) {
-        if (this.snapshotQueue.Total() >= this.queueCapacity) {
+    void capturePendingObservation(
+        const int fromIndex,
+        const bool fromDiscard = false
+    ) {
+        if (!fromDiscard
+                && this.snapshotQueue.Total() >= this.queueCapacity) {
             this.setSymbolStatus(
                 fromIndex,
                 "DB",
@@ -619,7 +870,7 @@ private:
             return;
         }
 
-        if (this.databaseRun.sourceServer == "") {
+        if (!fromDiscard && this.databaseRun.sourceServer == "") {
             this.databaseRun.sourceServer = AccountInfoString(ACCOUNT_SERVER);
 
             if (this.databaseRun.sourceServer == "") {
@@ -656,6 +907,14 @@ private:
         );
 
         if (beforeH1BarTime != targetH1BarTime) {
+            if (fromDiscard) {
+                this.handleTesterPreflightBoundaryChanged(
+                    fromIndex,
+                    beforeH1BarTime
+                );
+
+                return;
+            }
             this.handleBoundaryChangedDuringAnalysis(
                 fromIndex,
                 targetH1BarTime,
@@ -665,7 +924,15 @@ private:
             return;
         }
 
-        this.setSymbolStatus(fromIndex, "RUN", "Elliott分析中");
+        if (fromDiscard) {
+            this.setSymbolStatus(
+                fromIndex,
+                "RUN",
+                "TESTER事前分析中"
+            );
+        } else {
+            this.setSymbolStatus(fromIndex, "RUN", "Elliott分析中");
+        }
         MarketContext marketContext(
             symbolName,
             ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
@@ -712,6 +979,15 @@ private:
 
         if (afterH1BarTime != targetH1BarTime) {
             delete elliotAll;
+
+            if (fromDiscard) {
+                this.handleTesterPreflightBoundaryChanged(
+                    fromIndex,
+                    afterH1BarTime
+                );
+
+                return;
+            }
             this.handleBoundaryChangedDuringAnalysis(
                 fromIndex,
                 targetH1BarTime,
@@ -729,6 +1005,22 @@ private:
                 fromIndex,
                 "RETRY",
                 "Elliott分析を再試行"
+            );
+
+            return;
+        }
+
+        if (fromDiscard) {
+            delete elliotAll;
+            this.analysisReadyFlags[fromIndex] = true;
+            this.testerPreflightH1BarTimes[fromIndex] =
+                targetH1BarTime;
+            this.pendingAnalysisH1BarTimes[fromIndex] = 0;
+            this.symbolRetryCounts[fromIndex] = 0;
+            this.setSymbolStatus(
+                fromIndex,
+                "WAIT",
+                "TESTER事前分析成功"
             );
 
             return;
@@ -1167,6 +1459,8 @@ private:
         ArrayResize(this.symbolQueuedCounts, total);
         ArrayResize(this.symbolRetryCounts, total);
         ArrayResize(this.analysisReadyFlags, total);
+        ArrayResize(this.testerPreflightH1BarTimes, total);
+        ArrayResize(this.testerPreflightAttemptH1BarTimes, total);
         ArrayResize(this.symbolCompetingWriterFlags, total);
         ArrayResize(this.symbolStatusCodes, total);
         ArrayResize(this.symbolMessages, total);
@@ -1183,6 +1477,8 @@ private:
             this.symbolQueuedCounts[i] = 0;
             this.symbolRetryCounts[i] = 0;
             this.analysisReadyFlags[i] = false;
+            this.testerPreflightH1BarTimes[i] = 0;
+            this.testerPreflightAttemptH1BarTimes[i] = 0;
             this.symbolCompetingWriterFlags[i] = false;
             this.symbolStatusCodes[i] = "BASE";
             this.symbolMessages[i] = "初期化中";
@@ -1378,6 +1674,11 @@ private:
         inputText += "|timerSeconds=" + IntegerToString(this.timerSeconds);
         inputText += "|databaseRetrySeconds="
             + IntegerToString(this.databaseRetrySeconds);
+        inputText += "|observationTesterSaveStartTime="
+            + StringFormat(
+                "%I64d",
+                (long)this.observationTesterSaveStartTime
+            );
         inputText += "|queueCapacity="
             + IntegerToString(this.queueCapacity);
 
@@ -1444,7 +1745,9 @@ private:
     void refreshStatus() {
         this.status.isRunning = this.initialized;
         this.status.isWriterActive =
-            this.initialized && !this.competingWriterDetected;
+            this.initialized
+                && !this.competingWriterDetected
+                && this.isPersistenceAllowed();
         this.status.isDatabaseConnected = this.databaseReady;
         this.status.runId = this.databaseRun.id;
         this.status.sourceMode = this.databaseRun.sourceMode;
@@ -1519,6 +1822,10 @@ private:
      * @return 検出済み通貨数
      */
     int getCurrentDetectedCount() {
+        if (this.isTesterSaveWindowEnabled()
+                && !this.testerSaveGateOpen) {
+            return 0;
+        }
         int count = 0;
 
         for (int i = 0; i < ArraySize(this.currentH1BarTimes); i++) {
@@ -1544,6 +1851,10 @@ private:
      * @return 分析成功通貨数
      */
     int getCurrentAnalyzedCount() {
+        if (this.isTesterSaveWindowEnabled()
+                && !this.testerSaveGateOpen) {
+            return 0;
+        }
         int count = 0;
 
         for (int i = 0; i < ArraySize(this.lastCapturedH1BarTimes); i++) {
@@ -1563,6 +1874,10 @@ private:
      * @return 保存成功通貨数
      */
     int getCurrentSavedCount() {
+        if (this.isTesterSaveWindowEnabled()
+                && !this.testerSaveGateOpen) {
+            return 0;
+        }
         int count = 0;
 
         for (int i = 0; i < ArraySize(this.lastSavedH1BarTimes); i++) {
@@ -1589,6 +1904,8 @@ private:
         ArrayResize(this.symbolQueuedCounts, 0);
         ArrayResize(this.symbolRetryCounts, 0);
         ArrayResize(this.analysisReadyFlags, 0);
+        ArrayResize(this.testerPreflightH1BarTimes, 0);
+        ArrayResize(this.testerPreflightAttemptH1BarTimes, 0);
         ArrayResize(this.symbolCompetingWriterFlags, 0);
         ArrayResize(this.symbolStatusCodes, 0);
         ArrayResize(this.symbolMessages, 0);

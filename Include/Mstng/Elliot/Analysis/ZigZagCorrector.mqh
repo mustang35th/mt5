@@ -230,24 +230,37 @@ private:
     int getCorrectIndex(ZigZagPoint &zigZagPointHigher) {
         int leftIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTime);
         int rightIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTimeNext);
+
+        if (leftIndex < 0 || rightIndex < 0) {
+            return -1;
+        }
         
         
         // 左側から検索
         int index = this.getLeftIndex(leftIndex);
-        
-        ZigZagPoint *zigZagPoint = this.orgZigZagPointList.At(index);
-        
-        if (zigZagPointHigher.isPeak == zigZagPoint.isPeak) {
-            return index;
+
+        if (index >= 0) {
+            ZigZagPoint *zigZagPoint =
+                this.orgZigZagPointList.At(index);
+
+            if (CheckPointer(zigZagPoint) != POINTER_INVALID
+                    && zigZagPointHigher.isPeak == zigZagPoint.isPeak) {
+                return index;
+            }
         }
         
         
         // 右側の検索
         index = this.getRightIndex(rightIndex);
-        
-        zigZagPoint = this.orgZigZagPointList.At(index);
-        
-        if (zigZagPointHigher.isPeak == zigZagPoint.isPeak) {
+
+        if (index < 0) {
+            return -1;
+        }
+        ZigZagPoint *zigZagPoint =
+            this.orgZigZagPointList.At(index);
+
+        if (CheckPointer(zigZagPoint) != POINTER_INVALID
+                && zigZagPointHigher.isPeak == zigZagPoint.isPeak) {
             return index;
         }
         
