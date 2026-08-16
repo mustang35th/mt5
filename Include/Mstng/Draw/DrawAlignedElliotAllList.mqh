@@ -28,7 +28,7 @@ enum DrawAlignedElliotAllListColumn {
 };
 
 /**
- * D1から表示時間足まで売買方向が一致した複数シンボルを描画するクラス。
+ * 指定開始足から表示時間足まで売買方向が一致した複数シンボルを描画するクラス。
  *
  * BUYとSELLを別セクションに分け、MN1から各時間足の最新Elliott波動、
  * Fibonacci比率およびEMA200方向を2段の固定一覧パネルへ表示する。
@@ -184,10 +184,15 @@ public:
             currentTimeFrameText = "CUR";
         }
 
+        ENUM_TIMEFRAMES alignmentStartTimeFrame =
+            fromDecision.getAlignmentStartTimeFrame();
         string alignmentStartTimeFrameText =
-            TimeUtil::convertTimeFrameToString(
-                fromDecision.getAlignmentStartTimeFrame()
-            );
+            TimeUtil::convertTimeFrameToString(alignmentStartTimeFrame);
+
+        if (currentTimeFrame == PERIOD_D1
+                && alignmentStartTimeFrame == PERIOD_MN1) {
+            alignmentStartTimeFrameText = "MN1+W1";
+        }
 
         if (alignmentStartTimeFrameText == "") {
             alignmentStartTimeFrameText = "CUR";

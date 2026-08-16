@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.14"
+#property version   "1.15"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -21,7 +21,13 @@
  */
 enum ZigZagElliotListMode {
     ZIGZAG_ELLIOT_LIST_MODE_CHART = 0, // CHART
-    ZIGZAG_ELLIOT_LIST_MODE_D1 = 1     // D1 / ALIGN W1 / D1 SORT
+    ZIGZAG_ELLIOT_LIST_MODE_D1 = 1     // D1 / ALIGN SETTING / D1 SORT
+};
+
+/** D1モードの上位時間足一致条件。 */
+enum ZigZagElliotListD1AlignmentMode {
+    ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY = 0,   // W1
+    ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1 = 1 // MN1 AND W1
 };
 
 /** CHARTモードの並び替え基準。D1モードではD1専用ソートを使用する。 */
@@ -29,6 +35,10 @@ input ElliotListSortType sortType = ELLIOT_LIST_SORT_M15_ELLIOT_EMA;
 
 /** 一覧の基準時間足モード。 */
 input ZigZagElliotListMode listMode = ZIGZAG_ELLIOT_LIST_MODE_CHART;
+
+/** D1モードの上位時間足一致条件。CHARTモードでは使用しない。 */
+input ZigZagElliotListD1AlignmentMode d1AlignmentMode =
+    ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY;
 
 /** 描画専用インジケーターの非表示バッファ。 */
 double gHiddenBuffer[];
@@ -52,16 +62,30 @@ int OnInit() {
         return INIT_PARAMETERS_INCORRECT;
     }
 
+    if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
+            && d1AlignmentMode != ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY
+            && d1AlignmentMode
+                != ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1) {
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
     ENUM_TIMEFRAMES listTimeFrame = _Period;
     ENUM_TIMEFRAMES alignmentStartTimeFrame = PERIOD_D1;
     ElliotListSortType effectiveSortType = sortType;
     bool testerHistoryWarmUpEnabled = false;
+    string alignmentText = "W1";
 
     if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1) {
         listTimeFrame = PERIOD_D1;
         alignmentStartTimeFrame = PERIOD_W1;
         effectiveSortType = ELLIOT_LIST_SORT_D1_ELLIOT_EMA;
         testerHistoryWarmUpEnabled = true;
+
+        if (d1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1) {
+            alignmentStartTimeFrame = PERIOD_MN1;
+            alignmentText = "MN1+W1";
+        }
     }
 
     MarketContext context(_Symbol, listTimeFrame);
@@ -88,7 +112,7 @@ int OnInit() {
     string shortName = "ZigZag Elliott List ALL " + context.timeFrameLabel;
 
     if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1) {
-        shortName += " ALIGN W1";
+        shortName += " ALIGN " + alignmentText;
     }
 
     IndicatorSetString(INDICATOR_SHORTNAME, shortName);
