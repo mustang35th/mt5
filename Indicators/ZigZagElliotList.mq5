@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.15"
+#property version   "1.16"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -30,6 +30,12 @@ enum ZigZagElliotListD1AlignmentMode {
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1 = 1 // MN1 AND W1
 };
 
+/** H1の上位時間足一致条件。 */
+enum ZigZagElliotListH1AlignmentMode {
+    ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1 = 0,  // D1 AND H4 AND H1
+    ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1 = 1  // MN1 AND W1 AND D1 AND H4 AND H1
+};
+
 /** CHARTモードの並び替え基準。D1モードではD1専用ソートを使用する。 */
 input ElliotListSortType sortType = ELLIOT_LIST_SORT_M15_ELLIOT_EMA;
 
@@ -39,6 +45,10 @@ input ZigZagElliotListMode listMode = ZIGZAG_ELLIOT_LIST_MODE_CHART;
 /** D1モードの上位時間足一致条件。CHARTモードでは使用しない。 */
 input ZigZagElliotListD1AlignmentMode d1AlignmentMode =
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY;
+
+/** H1の上位時間足一致条件。実効時間足がH1の場合のみ使用する。 */
+input ZigZagElliotListH1AlignmentMode h1AlignmentMode =
+    ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1;
 
 /** 描画専用インジケーターの非表示バッファ。 */
 double gHiddenBuffer[];
@@ -86,6 +96,20 @@ int OnInit() {
             alignmentStartTimeFrame = PERIOD_MN1;
             alignmentText = "MN1+W1";
         }
+    } else if (listTimeFrame == PERIOD_H1) {
+        if (h1AlignmentMode != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1
+                && h1AlignmentMode
+                    != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1) {
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
+        alignmentText = "D1-H1";
+
+        if (h1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1) {
+            alignmentStartTimeFrame = PERIOD_MN1;
+            alignmentText = "MN1-H1";
+        }
     }
 
     MarketContext context(_Symbol, listTimeFrame);
@@ -111,7 +135,8 @@ int OnInit() {
 
     string shortName = "ZigZag Elliott List ALL " + context.timeFrameLabel;
 
-    if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1) {
+    if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
+            || listTimeFrame == PERIOD_H1) {
         shortName += " ALIGN " + alignmentText;
     }
 

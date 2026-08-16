@@ -192,6 +192,12 @@ public:
         if (currentTimeFrame == PERIOD_D1
                 && alignmentStartTimeFrame == PERIOD_MN1) {
             alignmentStartTimeFrameText = "MN1+W1";
+        } else if (currentTimeFrame == PERIOD_H1
+                && alignmentStartTimeFrame == PERIOD_D1) {
+            alignmentStartTimeFrameText = "D1-H1";
+        } else if (currentTimeFrame == PERIOD_H1
+                && alignmentStartTimeFrame == PERIOD_MN1) {
+            alignmentStartTimeFrameText = "MN1-H1";
         }
 
         if (alignmentStartTimeFrameText == "") {
