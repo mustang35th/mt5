@@ -458,6 +458,15 @@ private:
         fromEntity.w1Ema200Direction = this.normalizeText(
             fromEntity.w1Ema200Direction
         );
+        fromEntity.h1DirectionAlignmentMode = this.normalizeText(
+            fromEntity.h1DirectionAlignmentMode
+        );
+        fromEntity.h1DirectionAlignmentState = this.normalizeText(
+            fromEntity.h1DirectionAlignmentState
+        );
+        fromEntity.h1DirectionAlignmentDirection = this.normalizeText(
+            fromEntity.h1DirectionAlignmentDirection
+        );
         fromEntity.currencyStrengthCalculationVersion = this.normalizeText(
             fromEntity.currencyStrengthCalculationVersion
         );
@@ -659,6 +668,9 @@ private:
                 || fromAlertEntity.w1ConfirmationMode == ""
                 || fromAlertEntity.w1ConfirmationState == ""
                 || fromAlertEntity.w1Ema200Direction == ""
+                || fromAlertEntity.h1DirectionAlignmentMode == ""
+                || fromAlertEntity.h1DirectionAlignmentState == ""
+                || fromAlertEntity.h1DirectionAlignmentDirection == ""
                 || fromAlertEntity.snapshotHash == "") {
             this.logger.error(__FUNCTION__, "alert required value is invalid.");
 

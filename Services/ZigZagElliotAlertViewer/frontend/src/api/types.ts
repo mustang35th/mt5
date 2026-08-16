@@ -22,6 +22,22 @@ export type W1ConfirmationState =
   | "REJECT";
 export type W1ConfirmationModeFilter = "all" | W1ConfirmationMode;
 export type W1ConfirmationStateFilter = "all" | W1ConfirmationState;
+export type H1DirectionAlignmentMode =
+  | "D1_TO_H1"
+  | "MN1_TO_H1_OBSERVE"
+  | "MN1_TO_H1_REQUIRED"
+  | "INVALID";
+export type H1DirectionAlignmentState =
+  | "NOT_EVALUATED"
+  | "NOT_APPLICABLE"
+  | "D1_TO_H1"
+  | "FULL_BUY"
+  | "FULL_SELL"
+  | "MN1_MISMATCH"
+  | "W1_MISMATCH"
+  | "MN1_W1_MISMATCH"
+  | "UNAVAILABLE"
+  | "INVALID";
 export type GmoTargetFilter = "all" | "target" | "excluded";
 export type SortOrder = "asc" | "desc";
 export type AlertSort =
@@ -66,6 +82,8 @@ export interface HealthResponse {
   analysis_profile_reason?: string | null;
   w1_confirmation_available?: boolean;
   w1_confirmation_reason?: string | null;
+  h1_direction_alignment_available?: boolean;
+  h1_direction_alignment_reason?: string | null;
 }
 
 export interface RunItem {
@@ -111,6 +129,9 @@ export interface OptionsResponse {
   w1_confirmation_modes?: W1ConfirmationMode[];
   w1_confirmation_states?: W1ConfirmationState[];
   w1_confirmation_available?: boolean;
+  h1_direction_alignment_modes?: H1DirectionAlignmentMode[];
+  h1_direction_alignment_states?: H1DirectionAlignmentState[];
+  h1_direction_alignment_available?: boolean;
 }
 
 export interface W1ConfirmationDiagnostics {
@@ -125,7 +146,19 @@ export interface W1ConfirmationDiagnostics {
   is_w1_confirmation_legacy: boolean;
 }
 
-export interface AlertListItem extends W1ConfirmationDiagnostics {
+export interface H1DirectionAlignmentDiagnostics {
+  h1_direction_alignment_mode: H1DirectionAlignmentMode;
+  h1_direction_alignment_state: H1DirectionAlignmentState;
+  is_h1_direction_alignment_available: boolean;
+  is_h1_direction_alignment_valid: boolean;
+  h1_direction_alignment_direction: "BUY" | "SELL" | "NONE";
+  is_h1_mn1_direction_matched: boolean;
+  is_h1_w1_direction_matched: boolean;
+  is_h1_direction_alignment_passed: boolean;
+  is_h1_direction_alignment_legacy: boolean;
+}
+
+export interface AlertListItem extends W1ConfirmationDiagnostics, H1DirectionAlignmentDiagnostics {
   id: number;
   run_id: number;
   source_mode: string;
@@ -192,7 +225,7 @@ export interface SummaryResponse {
   symbol_count: number;
 }
 
-export interface AlertDetail extends W1ConfirmationDiagnostics {
+export interface AlertDetail extends W1ConfirmationDiagnostics, H1DirectionAlignmentDiagnostics {
   id: number;
   run_id: number;
   symbol_name: string;

@@ -99,6 +99,17 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
+        if (!isH1DirectionAlignmentModeValid(
+                this.config.h1DirectionAlignmentMode
+        )) {
+            this.logger.error(
+                __FUNCTION__,
+                "H1 direction alignment mode is invalid."
+            );
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
         if (this.config.currencyStrengthEnabled
                 && !CurrencyStrengthCalculationProfile
                     ::isVoteWeightModeValid(

@@ -32,6 +32,7 @@ import {
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import { GridControls, type GridColumnOption } from "./GridControls";
+import { H1DirectionAlignmentBadge } from "./H1DirectionAlignmentBadge";
 import { W1ConfirmationBadge } from "./W1ConfirmationBadge";
 
 interface AlertTableProps {
@@ -81,6 +82,7 @@ const GRID_COLUMN_IDS = [
   "judgement",
   "h1_structure_rank",
   ...TIME_FRAME_ANALYSIS_COLUMN_IDS,
+  "h1_direction_alignment",
   "is_w1_aligned",
   "risk_pips",
   "entry_result",
@@ -113,6 +115,7 @@ const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
   { colId: "tf_d1", label: "D1 方向 / EMA200" },
   { colId: "tf_h4", label: "H4 方向 / EMA200" },
   { colId: "tf_h1", label: "H1 方向 / EMA200" },
+  { colId: "h1_direction_alignment", label: "MN1～H1一致" },
   { colId: "is_w1_aligned", label: "W1確認" },
   { colId: "risk_pips", label: "Risk / Spread" },
   { colId: "entry_result", label: "ENTRY" },
@@ -413,6 +416,29 @@ function W1ConfirmationCell(params: ICellRendererParams<AlertListItem>) {
           ? `方向 ${alert.is_w1_aligned === null ? "不明" : alert.is_w1_aligned ? "一致" : "不一致"}`
           : alert.w1_confirmation_state}
         {` / EMA ${displayValue(alert.w1_ema200_direction)}`}
+      </span>
+    </div>
+  );
+}
+
+function H1DirectionAlignmentCell(
+  params: ICellRendererParams<AlertListItem>,
+) {
+  const alert = dataFrom(params);
+  if (!alert) return null;
+  const isLegacy = alert.is_h1_direction_alignment_legacy
+    || alert.h1_direction_alignment_state === "NOT_EVALUATED";
+  return (
+    <div className="grid-cell-stack h1-direction-alignment-cell">
+      <H1DirectionAlignmentBadge alignment={alert} compact />
+      <span className="subtext">
+        {isLegacy
+          ? "方向一致診断なし"
+          : `基準 ${alert.h1_direction_alignment_direction}`}
+        {!isLegacy && alert.h1_direction_alignment_mode !== "D1_TO_H1" && (
+          ` / MN1 ${alert.is_h1_mn1_direction_matched ? "一致" : "不一致"}`
+            + ` / W1 ${alert.is_h1_w1_direction_matched ? "一致" : "不一致"}`
+        )}
       </span>
     </div>
   );
@@ -720,6 +746,14 @@ export function AlertTable({
       minWidth: 120,
       cellRenderer: timeFrameAnalysisCell(column),
     })),
+    {
+      colId: "h1_direction_alignment",
+      field: "h1_direction_alignment_state",
+      headerName: "MN1～H1一致",
+      initialWidth: 230,
+      minWidth: 210,
+      cellRenderer: H1DirectionAlignmentCell,
+    },
     {
       colId: "is_w1_aligned",
       field: "w1_confirmation_state",

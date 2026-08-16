@@ -255,6 +255,30 @@ private:
         fromEntity.isW1ConfirmationPassed = boolToInteger(
             fromResult.isW1ConfirmationPassed
         );
+        fromEntity.h1DirectionAlignmentMode = normalizeText(
+            fromResult.h1DirectionAlignmentMode
+        );
+        fromEntity.h1DirectionAlignmentState = normalizeText(
+            fromResult.h1DirectionAlignmentState
+        );
+        fromEntity.isH1DirectionAlignmentAvailable = boolToInteger(
+            fromResult.isH1DirectionAlignmentAvailable
+        );
+        fromEntity.isH1DirectionAlignmentValid = boolToInteger(
+            fromResult.isH1DirectionAlignmentValid
+        );
+        fromEntity.h1DirectionAlignmentDirection = normalizeText(
+            fromResult.h1DirectionAlignmentDirection
+        );
+        fromEntity.isH1Mn1DirectionMatched = boolToInteger(
+            fromResult.isH1Mn1DirectionMatched
+        );
+        fromEntity.isH1W1DirectionMatched = boolToInteger(
+            fromResult.isH1W1DirectionMatched
+        );
+        fromEntity.isH1DirectionAlignmentPassed = boolToInteger(
+            fromResult.isH1DirectionAlignmentPassed
+        );
         fromEntity.spreadPips = fromElliotAll.todayRate.spread;
         fromEntity.isCurrencyStrengthEnabled = boolToInteger(
             fromElliotAll.isCurrencyStrengthEntryFilterEnabled
@@ -820,6 +844,24 @@ private:
         );
         sourceText += "|" + IntegerToString(
             fromEntity.isW1ConfirmationPassed
+        );
+        sourceText += "|" + fromEntity.h1DirectionAlignmentMode;
+        sourceText += "|" + fromEntity.h1DirectionAlignmentState;
+        sourceText += "|" + IntegerToString(
+            fromEntity.isH1DirectionAlignmentAvailable
+        );
+        sourceText += "|" + IntegerToString(
+            fromEntity.isH1DirectionAlignmentValid
+        );
+        sourceText += "|" + fromEntity.h1DirectionAlignmentDirection;
+        sourceText += "|" + IntegerToString(
+            fromEntity.isH1Mn1DirectionMatched
+        );
+        sourceText += "|" + IntegerToString(
+            fromEntity.isH1W1DirectionMatched
+        );
+        sourceText += "|" + IntegerToString(
+            fromEntity.isH1DirectionAlignmentPassed
         );
         sourceText += "|" + fromEntity.waveSummaryText;
         sourceText += "|" + fromEntity.elliotCsvText;

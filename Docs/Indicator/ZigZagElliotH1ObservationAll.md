@@ -309,7 +309,7 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 | Run `strategy_version` | `H1_OBSERVATION_ALL_V1` |
 | Run `schema_version` | `2` |
 
-ここでいう`schema_version = 2`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 3`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。
+ここでいう`schema_version = 2`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 4`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
 

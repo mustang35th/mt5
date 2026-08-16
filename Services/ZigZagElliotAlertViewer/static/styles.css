@@ -858,6 +858,8 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .badge-row { display: flex; flex-wrap: wrap; gap: 7px; }
 .w1-confirmation-badges-compact { flex-wrap: nowrap; gap: 4px; }
 .w1-confirmation-cell .subtext { white-space: nowrap; }
+.h1-direction-alignment-badges-compact { flex-wrap: nowrap; gap: 4px; }
+.h1-direction-alignment-cell .subtext { white-space: nowrap; }
 .detail-price { text-align: right; font-variant-numeric: tabular-nums; }
 .detail-price strong { display: block; font-size: 1.4rem; }
 .detail-price span { color: var(--muted); font-size: 0.72rem; }

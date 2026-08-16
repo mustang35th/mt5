@@ -82,6 +82,30 @@ struct Mtf3In3AlertResult {
     /** 選択モードのW1確認条件を満たす場合true。 */
     bool isW1ConfirmationPassed;
 
+    /** H1方向一致モード。 */
+    string h1DirectionAlignmentMode;
+
+    /** H1方向一致の診断状態。 */
+    string h1DirectionAlignmentState;
+
+    /** H1方向一致に必要な分析結果を取得できた場合true。 */
+    bool isH1DirectionAlignmentAvailable;
+
+    /** H1方向一致に必要な方向値が判定可能な場合true。 */
+    bool isH1DirectionAlignmentValid;
+
+    /** H1を基準とした判定方向。 */
+    string h1DirectionAlignmentDirection;
+
+    /** MN1方向がH1方向と一致する場合true。 */
+    bool isH1Mn1DirectionMatched;
+
+    /** W1方向がH1方向と一致する場合true。 */
+    bool isH1W1DirectionMatched;
+
+    /** 選択範囲のH1方向一致条件を満たす場合true。 */
+    bool isH1DirectionAlignmentPassed;
+
     /**
      * 全フィールドを未判定状態へ初期化する。
      */
@@ -109,6 +133,14 @@ struct Mtf3In3AlertResult {
         this.w1Ema200Direction = "NONE";
         this.isW1Ema200Matched = false;
         this.isW1ConfirmationPassed = true;
+        this.h1DirectionAlignmentMode = "D1_TO_H1";
+        this.h1DirectionAlignmentState = "NOT_APPLICABLE";
+        this.isH1DirectionAlignmentAvailable = false;
+        this.isH1DirectionAlignmentValid = false;
+        this.h1DirectionAlignmentDirection = "NONE";
+        this.isH1Mn1DirectionMatched = false;
+        this.isH1W1DirectionMatched = false;
+        this.isH1DirectionAlignmentPassed = true;
     }
 };
 

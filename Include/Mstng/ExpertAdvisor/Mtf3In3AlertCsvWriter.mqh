@@ -14,7 +14,7 @@
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
 
-#define MTF3_IN3_ALERT_CSV_FIELD_COUNT 72
+#define MTF3_IN3_ALERT_CSV_FIELD_COUNT 80
 
 /**
  * MTF_3in3のアラート候補を検証用CSVへ追記する。
@@ -76,7 +76,7 @@ public:
             ",",
             true,
             true,
-            "Logs\\Mtf3In3AlertValidation\\MTF3IN3_ALERT_V3",
+            "Logs\\Mtf3In3AlertValidation\\MTF3IN3_ALERT_V4",
             CSV_FILE_WRITE_MODE_APPEND
         );
 
@@ -165,6 +165,14 @@ private:
         fromValues[index++] = "w1_ema200_direction";
         fromValues[index++] = "w1_ema200_matched";
         fromValues[index++] = "w1_confirmation_passed";
+        fromValues[index++] = "h1_direction_alignment_mode";
+        fromValues[index++] = "h1_direction_alignment_state";
+        fromValues[index++] = "h1_direction_alignment_available";
+        fromValues[index++] = "h1_direction_alignment_valid";
+        fromValues[index++] = "h1_direction_alignment_direction";
+        fromValues[index++] = "h1_mn1_direction_matched";
+        fromValues[index++] = "h1_w1_direction_matched";
+        fromValues[index++] = "h1_direction_alignment_passed";
         fromValues[index++] = "currency_strength_enabled";
         fromValues[index++] = "currency_strength_status";
         fromValues[index++] = "currency_strength_available";
@@ -266,7 +274,7 @@ private:
         ArrayResize(fromValues, MTF3_IN3_ALERT_CSV_FIELD_COUNT);
         int index = 0;
 
-        fromValues[index++] = "MTF3IN3_ALERT_V3";
+        fromValues[index++] = "MTF3IN3_ALERT_V4";
         fromValues[index++] = fromValidationRunId;
         fromValues[index++] = eventId;
         fromValues[index++] = fromSource;
@@ -338,6 +346,24 @@ private:
         );
         fromValues[index++] = formatBool(
             fromResult.isW1ConfirmationPassed
+        );
+        fromValues[index++] = fromResult.h1DirectionAlignmentMode;
+        fromValues[index++] = fromResult.h1DirectionAlignmentState;
+        fromValues[index++] = formatBool(
+            fromResult.isH1DirectionAlignmentAvailable
+        );
+        fromValues[index++] = formatBool(
+            fromResult.isH1DirectionAlignmentValid
+        );
+        fromValues[index++] = fromResult.h1DirectionAlignmentDirection;
+        fromValues[index++] = formatBool(
+            fromResult.isH1Mn1DirectionMatched
+        );
+        fromValues[index++] = formatBool(
+            fromResult.isH1W1DirectionMatched
+        );
+        fromValues[index++] = formatBool(
+            fromResult.isH1DirectionAlignmentPassed
         );
         fromValues[index++] = formatBool(
             fromElliotAll.isCurrencyStrengthEntryFilterEnabled

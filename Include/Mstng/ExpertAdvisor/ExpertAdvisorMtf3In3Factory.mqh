@@ -26,19 +26,23 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
+     * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */
     static ExpertAdvisorMTF_3in3 *create(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow = true,
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY
+            H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
+            H1_DIRECTION_ALIGNMENT_D1_TO_H1
     ) {
         if (fromMarketContext.timeFrame == PERIOD_H1) {
             return new ExpertAdvisorMtf3In3H1(
                 fromMarketContext,
                 fromIsDrawArrow,
-                fromH1W1ConfirmationMode
+                fromH1W1ConfirmationMode,
+                fromH1DirectionAlignmentMode
             );
         }
 
@@ -59,7 +63,8 @@ public:
         return new ExpertAdvisorMTF_3in3(
             fromMarketContext,
             fromIsDrawArrow,
-            fromH1W1ConfirmationMode
+            fromH1W1ConfirmationMode,
+            fromH1DirectionAlignmentMode
         );
     }
 };

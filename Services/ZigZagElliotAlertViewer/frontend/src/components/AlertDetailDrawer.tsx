@@ -29,6 +29,11 @@ import {
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import {
+  H1DirectionAlignmentBadge,
+  h1DirectionAlignmentModeLabel,
+  h1DirectionAlignmentStateDescription,
+} from "./H1DirectionAlignmentBadge";
+import {
   W1ConfirmationBadge,
   w1ConfirmationModeLabel,
   w1ConfirmationStateDescription,
@@ -109,6 +114,44 @@ function w1EvaluationLabel(alert: AlertDetailResponse["alert"]): string {
   }
   if (alert.is_w1_confirmation_legacy) return "未記録（Legacy）";
   return result;
+}
+
+function h1DirectionAlignmentEvaluationLabel(
+  alert: AlertDetailResponse["alert"],
+): string {
+  if (alert.is_h1_direction_alignment_legacy) return "未記録（Legacy）";
+  if (alert.h1_direction_alignment_state === "NOT_APPLICABLE") return "対象外";
+  const result = alert.is_h1_direction_alignment_passed ? "通過" : "不通過";
+  if (alert.h1_direction_alignment_mode === "MN1_TO_H1_OBSERVE") {
+    return `${result}（記録のみ・エントリー制限なし）`;
+  }
+  return result;
+}
+
+function h1DirectionAlignmentDataLabel(
+  alert: AlertDetailResponse["alert"],
+): string {
+  if (alert.is_h1_direction_alignment_legacy) return "未記録（Legacy）";
+  if (
+    alert.h1_direction_alignment_state === "D1_TO_H1"
+    || alert.h1_direction_alignment_state === "NOT_APPLICABLE"
+  ) {
+    return "対象外";
+  }
+  return `${yesNo(alert.is_h1_direction_alignment_available)} / ${yesNo(alert.is_h1_direction_alignment_valid)}`;
+}
+
+function h1DirectionAlignmentMatchLabel(
+  alert: AlertDetailResponse["alert"],
+): string {
+  if (alert.is_h1_direction_alignment_legacy) return "未記録（Legacy）";
+  if (
+    alert.h1_direction_alignment_state === "D1_TO_H1"
+    || alert.h1_direction_alignment_state === "NOT_APPLICABLE"
+  ) {
+    return "対象外";
+  }
+  return `${yesNo(alert.is_h1_mn1_direction_matched)} / ${yesNo(alert.is_h1_w1_direction_matched)}`;
 }
 
 function Badge({ text, variant = "neutral" }: { text: string; variant?: string }) {
@@ -467,6 +510,7 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
               </span>
             )}
             <Badge text={`H1 ${structureLabel(alert.h1_structure_rank, alert.is_h1_structure_late)}`} />
+            <H1DirectionAlignmentBadge alignment={alert} />
             <W1ConfirmationBadge confirmation={alert} />
             <Badge text={run?.source_mode || "UNKNOWN"} />
             {String(run?.tester_model || "").toLowerCase().includes("open") && <Badge text="Open Prices" variant="warn" />}
@@ -537,6 +581,32 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
             <DetailField label="W1確認 EMA200方向" value={alert.w1_ema200_direction} />
             <DetailField label="W1確認 EMA200一致" value={yesNo(alert.is_w1_ema200_matched)} />
             <DetailField label="W1ルール評価" value={w1EvaluationLabel(alert)} />
+            <DetailField
+              label="H1方向一致モード"
+              value={alert.is_h1_direction_alignment_legacy
+                ? "未記録（Legacy）"
+                : `${h1DirectionAlignmentModeLabel(alert.h1_direction_alignment_mode)} / ${alert.h1_direction_alignment_mode}`}
+            />
+            <DetailField
+              label="H1方向一致状態"
+              value={`${alert.h1_direction_alignment_state} / ${h1DirectionAlignmentStateDescription(alert.h1_direction_alignment_state)}`}
+            />
+            <DetailField
+              label="H1方向一致 基準方向"
+              value={alert.h1_direction_alignment_direction}
+            />
+            <DetailField
+              label="H1方向一致 データ取得 / 有効"
+              value={h1DirectionAlignmentDataLabel(alert)}
+            />
+            <DetailField
+              label="H1方向一致 MN1 / W1"
+              value={h1DirectionAlignmentMatchLabel(alert)}
+            />
+            <DetailField
+              label="H1方向一致 ルール評価"
+              value={h1DirectionAlignmentEvaluationLabel(alert)}
+            />
             <DetailField label="Run" value={run ? `${run.id} / ${displayValue(run.program_version)}` : "不明"} />
             <DetailField label="Signal key" value={alert.market_signal_key} />
             <DetailField label="Snapshot" value="アラート記録時点" />

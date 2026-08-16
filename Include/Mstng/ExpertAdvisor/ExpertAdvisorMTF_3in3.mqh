@@ -10,6 +10,8 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF_3IN3_MQH
 
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
+#include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
+#include <Mstng\ExpertAdvisor\H1DirectionAlignmentResult.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationResult.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
@@ -27,19 +29,23 @@ public:
      * @param fromTimeFrame 分析対象時間足。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
+     * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
      */
     ExpertAdvisorMTF_3in3(
         string fromSymbolName,
         ENUM_TIMEFRAMES fromTimeFrame,
         bool fromIsDrawArrow = true,
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY
+            H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
+            H1_DIRECTION_ALIGNMENT_D1_TO_H1
     ) {
         MarketContext context(fromSymbolName, fromTimeFrame);
         this.initialize(
             context,
             fromIsDrawArrow,
-            fromH1W1ConfirmationMode
+            fromH1W1ConfirmationMode,
+            fromH1DirectionAlignmentMode
         );
     }
 
@@ -49,17 +55,21 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
+     * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
      */
     ExpertAdvisorMTF_3in3(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow = true,
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY
+            H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
+            H1_DIRECTION_ALIGNMENT_D1_TO_H1
     ) {
         this.initialize(
             fromMarketContext,
             fromIsDrawArrow,
-            fromH1W1ConfirmationMode
+            fromH1W1ConfirmationMode,
+            fromH1DirectionAlignmentMode
         );
     }
 
@@ -106,6 +116,22 @@ public:
             this.w1ConfirmationResult.isEma200Matched;
         result.isW1ConfirmationPassed =
             this.w1ConfirmationResult.isPassed;
+        result.h1DirectionAlignmentMode =
+            this.h1DirectionAlignmentResult.mode;
+        result.h1DirectionAlignmentState =
+            this.h1DirectionAlignmentResult.state;
+        result.isH1DirectionAlignmentAvailable =
+            this.h1DirectionAlignmentResult.isAvailable;
+        result.isH1DirectionAlignmentValid =
+            this.h1DirectionAlignmentResult.isValid;
+        result.h1DirectionAlignmentDirection =
+            this.h1DirectionAlignmentResult.direction;
+        result.isH1Mn1DirectionMatched =
+            this.h1DirectionAlignmentResult.isMn1DirectionMatched;
+        result.isH1W1DirectionMatched =
+            this.h1DirectionAlignmentResult.isW1DirectionMatched;
+        result.isH1DirectionAlignmentPassed =
+            this.h1DirectionAlignmentResult.isPassed;
 
         if (!this.isEntryEvaluated) {
             return result;
@@ -122,6 +148,12 @@ public:
     }
         
 protected:
+    /** H1エントリーの方向一致モード。 */
+    H1DirectionAlignmentMode h1DirectionAlignmentMode;
+
+    /** 直近のH1方向一致診断結果。 */
+    H1DirectionAlignmentResult h1DirectionAlignmentResult;
+
     /** H1エントリーのW1確認モード。 */
     H1W1ConfirmationMode h1W1ConfirmationMode;
 
@@ -132,6 +164,7 @@ protected:
      * W1確認診断を今回の分析用の未判定状態へ初期化する。
      */
     virtual void resetStrategySpecificAnalysisOutcome() override {
+        this.resetTimeFrameDirectionAlignmentResult();
         this.resetTimeFrameHigherConfirmationResult();
     }
 
@@ -160,6 +193,8 @@ protected:
                 //&& this.expertAdvisorElliot.isBuySellFromH1(this.elliotAll, this.isBuy)
 
                 && this.elliotAll.isBuySell(PERIOD_D1)
+
+                && this.isTimeFrameDirectionAlignmentConditionMatched()
 
                 //&& this.expertAdvisorElliot.isWaveUnconfirmed(this.elliotH1)
 
@@ -296,6 +331,15 @@ protected:
      * @return 時間足固有の上位足確認条件を満たす場合true。
      */
     virtual bool isTimeFrameHigherConfirmationConditionMatched() {
+        return true;
+    }
+
+    /**
+     * 時間足固有の売買方向一致条件を判定する。
+     *
+     * @return 時間足固有の方向一致条件を満たす場合true。
+     */
+    virtual bool isTimeFrameDirectionAlignmentConditionMatched() {
         return true;
     }
 
@@ -448,22 +492,54 @@ private:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
+     * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
      */
     void initialize(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow,
-        H1W1ConfirmationMode fromH1W1ConfirmationMode
+        H1W1ConfirmationMode fromH1W1ConfirmationMode,
+        H1DirectionAlignmentMode fromH1DirectionAlignmentMode
     ) {
         this.logger.setLevel(LOG_INFO);
 
         this.init(fromMarketContext, fromIsDrawArrow);
 
+        this.h1DirectionAlignmentMode = fromH1DirectionAlignmentMode;
         this.h1W1ConfirmationMode = fromH1W1ConfirmationMode;
+        this.h1DirectionAlignmentResult.reset();
         this.w1ConfirmationResult.reset();
         this.isDarwText = true;
         this.name = "MTF_3in3";
         this.fontSize = 20;
         this.resetEntryValidation();
+    }
+
+    /**
+     * H1方向一致診断を今回の分析用の未判定状態へ初期化する。
+     */
+    void resetTimeFrameDirectionAlignmentResult() {
+        this.h1DirectionAlignmentResult.reset();
+
+        if (this.marketContext.timeFrame != PERIOD_H1) {
+            return;
+        }
+
+        if (!isH1DirectionAlignmentModeValid(
+                this.h1DirectionAlignmentMode
+        )) {
+            this.h1DirectionAlignmentResult.mode = "INVALID";
+            this.h1DirectionAlignmentResult.state = "INVALID";
+            this.h1DirectionAlignmentResult.isPassed = false;
+
+            return;
+        }
+
+        this.h1DirectionAlignmentResult.mode =
+            getH1DirectionAlignmentModeText(
+                this.h1DirectionAlignmentMode
+            );
+        this.h1DirectionAlignmentResult.state = "NOT_EVALUATED";
+        this.h1DirectionAlignmentResult.isPassed = false;
     }
 
     /**

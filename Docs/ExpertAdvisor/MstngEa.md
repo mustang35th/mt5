@@ -8,7 +8,7 @@
 | 対象バージョン | `1.05` |
 | 対象プラットフォーム | MetaTrader 5 |
 | 既定戦略 | `STRATEGY_TYPE_MTF_3IN3` |
-| 最終更新日 | 2026-08-15 |
+| 最終更新日 | 2026-08-16 |
 
 本書は、現行コードを正本として、`MstngEa`の初期化、判定タイミング、エントリー、発注、決済、利益戻し状態の永続化、画面表示およびログ出力をまとめた仕様書です。
 
@@ -524,10 +524,10 @@ volume,price,position_ticket,deal_ticket,profit,reason,entry_csv_text
 
 ### 14.4 `MTF_3in3`検証CSV
 
-`InpMtf3In3AlertCsvEnabled = true`の場合、`isAlert = true`の候補を72列の検証CSVへ保存します。
+`InpMtf3In3AlertCsvEnabled = true`の場合、`isAlert = true`の候補を80列の検証CSVへ保存します。V4でH1方向一致診断8列を追加しています。
 
 ```text
-Logs\Mtf3In3AlertValidation\MTF3IN3_ALERT_V3\<date>_<symbol>_<timeframe>.csv
+Logs\Mtf3In3AlertValidation\MTF3IN3_ALERT_V4\<date>_<symbol>_<timeframe>.csv
 ```
 
 Strategy Testerの最適化中は複数Agentの同時書込を避けるため出力しません。

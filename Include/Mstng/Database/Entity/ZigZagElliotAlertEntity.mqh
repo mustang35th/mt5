@@ -138,6 +138,30 @@ struct ZigZagElliotAlertEntity {
     /** W1確認モードの判定結果が通過の場合1。 */
     int isW1ConfirmationPassed;
 
+    /** H1方向一致モード。 */
+    string h1DirectionAlignmentMode;
+
+    /** H1方向一致の診断状態。 */
+    string h1DirectionAlignmentState;
+
+    /** MN1～H1の方向判定を取得できた場合1。 */
+    int isH1DirectionAlignmentAvailable;
+
+    /** MN1～H1の方向判定が有効な場合1。 */
+    int isH1DirectionAlignmentValid;
+
+    /** H1方向一致の基準方向。BUY、SELLまたはNONE。 */
+    string h1DirectionAlignmentDirection;
+
+    /** MN1方向がH1基準方向と一致する場合1。 */
+    int isH1Mn1DirectionMatched;
+
+    /** W1方向がH1基準方向と一致する場合1。 */
+    int isH1W1DirectionMatched;
+
+    /** H1方向一致条件を満たす場合1。 */
+    int isH1DirectionAlignmentPassed;
+
     /** 判定時のスプレッドpips。 */
     double spreadPips;
 

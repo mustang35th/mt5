@@ -747,6 +747,55 @@ def add_w1_confirmation_fixture_columns(database_path: Path) -> None:
     connection.close()
 
 
+def add_h1_direction_alignment_fixture_columns(database_path: Path) -> None:
+    """Add the current H1 direction-alignment contract to an alert fixture."""
+
+    definitions = [
+        "h1_direction_alignment_mode TEXT NOT NULL DEFAULT 'D1_TO_H1'",
+        "h1_direction_alignment_state TEXT NOT NULL DEFAULT 'NOT_EVALUATED'",
+        "is_h1_direction_alignment_available INTEGER NOT NULL DEFAULT 0",
+        "is_h1_direction_alignment_valid INTEGER NOT NULL DEFAULT 0",
+        "h1_direction_alignment_direction TEXT NOT NULL DEFAULT 'NONE'",
+        "is_h1_mn1_direction_matched INTEGER NOT NULL DEFAULT 0",
+        "is_h1_w1_direction_matched INTEGER NOT NULL DEFAULT 0",
+        "is_h1_direction_alignment_passed INTEGER NOT NULL DEFAULT 0",
+    ]
+    with sqlite3.connect(database_path) as connection:
+        for definition in definitions:
+            connection.execute(
+                f"ALTER TABLE zigzag_elliot_alerts ADD COLUMN {definition}"
+            )
+        connection.execute(
+            """
+            UPDATE zigzag_elliot_alerts
+            SET h1_direction_alignment_mode = 'MN1_TO_H1_REQUIRED',
+                h1_direction_alignment_state = 'FULL_BUY',
+                is_h1_direction_alignment_available = 1,
+                is_h1_direction_alignment_valid = 1,
+                h1_direction_alignment_direction = 'BUY',
+                is_h1_mn1_direction_matched = 1,
+                is_h1_w1_direction_matched = 1,
+                is_h1_direction_alignment_passed = 1
+            WHERE id = 1
+            """
+        )
+        connection.execute(
+            """
+            UPDATE zigzag_elliot_alerts
+            SET h1_direction_alignment_mode = 'MN1_TO_H1_OBSERVE',
+                h1_direction_alignment_state = 'MN1_MISMATCH',
+                is_h1_direction_alignment_available = 1,
+                is_h1_direction_alignment_valid = 1,
+                h1_direction_alignment_direction = 'SELL',
+                is_h1_mn1_direction_matched = 0,
+                is_h1_w1_direction_matched = 1,
+                is_h1_direction_alignment_passed = 0
+            WHERE id = 2
+            """
+        )
+    connection.close()
+
+
 class AlertSummaryTest(unittest.TestCase):
     """Verify filtered metrics and the unfiltered database total contract."""
 
@@ -993,6 +1042,81 @@ class W1ConfirmationApiTest(unittest.TestCase):
                 {"w1ConfirmationState": ["DIRECTION_CONFLICT"]}
             )
         self.assertEqual(400, context.exception.status)
+
+
+class H1DirectionAlignmentApiTest(unittest.TestCase):
+    """Verify current H1 direction diagnostics and legacy read compatibility."""
+
+    def test_legacy_schema_projects_not_evaluated(self) -> None:
+        """Expose databases created before V4 without inventing diagnostics."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "legacy-h1-alignment.sqlite"
+            create_alert_summary_database(database_path)
+            database = AlertDatabase(database_path)
+            try:
+                page = database.alerts({})
+                options = database.options()
+                csv_text = database.export_csv({}).decode("utf-8-sig")
+            finally:
+                database.close()
+
+        self.assertEqual(3, page["total"])
+        self.assertTrue(page["items"][0]["is_h1_direction_alignment_legacy"])
+        self.assertEqual(
+            "NOT_EVALUATED",
+            page["items"][0]["h1_direction_alignment_state"],
+        )
+        self.assertEqual(
+            "D1_TO_H1",
+            page["items"][0]["h1_direction_alignment_mode"],
+        )
+        self.assertFalse(options["h1_direction_alignment_available"])
+        self.assertIn(
+            "NOT_EVALUATED",
+            options["h1_direction_alignment_states"],
+        )
+        self.assertIn(
+            "h1_direction_alignment_state",
+            csv_text.splitlines()[0],
+        )
+
+    def test_current_schema_exposes_list_detail_and_csv_diagnostics(self) -> None:
+        """Return the persisted V4 diagnosis consistently from every endpoint."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            list_path = Path(directory) / "current-h1-alignment-list.sqlite"
+            create_alert_summary_database(list_path)
+            add_h1_direction_alignment_fixture_columns(list_path)
+            database = AlertDatabase(list_path)
+            try:
+                page = database.alerts({})
+                options = database.options()
+                csv_text = database.export_csv({}).decode("utf-8-sig")
+            finally:
+                database.close()
+
+            detail_path = Path(directory) / "current-h1-alignment-detail.sqlite"
+            create_observation_database(detail_path)
+            add_h1_direction_alignment_fixture_columns(detail_path)
+            detail_database = AlertDatabase(detail_path)
+            try:
+                detail_database.validate()
+                detail = detail_database.alert_detail(1)["alert"]
+            finally:
+                detail_database.close()
+
+        first = next(item for item in page["items"] if item["id"] == 1)
+        self.assertFalse(first["is_h1_direction_alignment_legacy"])
+        self.assertEqual("MN1_TO_H1_REQUIRED", first["h1_direction_alignment_mode"])
+        self.assertEqual("FULL_BUY", first["h1_direction_alignment_state"])
+        self.assertEqual("BUY", first["h1_direction_alignment_direction"])
+        self.assertTrue(first["is_h1_mn1_direction_matched"])
+        self.assertTrue(first["is_h1_w1_direction_matched"])
+        self.assertTrue(first["is_h1_direction_alignment_passed"])
+        self.assertEqual("FULL_BUY", detail["h1_direction_alignment_state"])
+        self.assertTrue(options["h1_direction_alignment_available"])
+        self.assertIn("MN1_TO_H1_REQUIRED", csv_text)
 
 
 def create_observation_database(database_path: Path) -> None:

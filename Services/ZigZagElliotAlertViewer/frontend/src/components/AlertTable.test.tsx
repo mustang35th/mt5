@@ -73,6 +73,23 @@ function alertWithAlignment(id: number, aligned: boolean | null): AlertListItem 
     is_w1_ema200_matched: id === 1,
     is_w1_confirmation_passed: id === 1 || id === 2,
     is_w1_confirmation_legacy: id === 3,
+    h1_direction_alignment_mode: id === 1
+      ? "MN1_TO_H1_REQUIRED"
+      : id === 2
+        ? "MN1_TO_H1_OBSERVE"
+        : "D1_TO_H1",
+    h1_direction_alignment_state: id === 1
+      ? "FULL_BUY"
+      : id === 2
+        ? "MN1_MISMATCH"
+        : "NOT_EVALUATED",
+    is_h1_direction_alignment_available: id !== 3,
+    is_h1_direction_alignment_valid: id !== 3,
+    h1_direction_alignment_direction: id === 3 ? "NONE" : "BUY",
+    is_h1_mn1_direction_matched: id === 1,
+    is_h1_w1_direction_matched: id === 1 || id === 2,
+    is_h1_direction_alignment_passed: id === 1,
+    is_h1_direction_alignment_legacy: id === 3,
   };
 }
 
@@ -97,7 +114,7 @@ describe("AlertTable", () => {
     );
     expect(await screen.findByText("両方一致")).toBeInTheDocument();
     expect(screen.getByText("方向一致・EMA逆")).toBeInTheDocument();
-    expect(screen.getByText("Legacy / 未記録")).toBeInTheDocument();
+    expect(screen.getAllByText("Legacy / 未記録")).toHaveLength(2);
     expect(screen.getAllByText("OR")).toHaveLength(2);
     expect(screen.getByText("STRONG / EMA BUY")).toBeInTheDocument();
     expect(screen.getByText("EMA_CONFLICT / EMA SELL")).toBeInTheDocument();

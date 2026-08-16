@@ -9,6 +9,7 @@
 #ifndef MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_DAO_MQH
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_DAO_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotAlertH1DirectionAlignmentMigration.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotAlertW1ConfirmationMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
@@ -95,6 +96,28 @@ public:
         sql += "CHECK(is_w1_ema200_matched IN (0, 1)),";
         sql += "is_w1_confirmation_passed INTEGER NOT NULL DEFAULT 1 ";
         sql += "CHECK(is_w1_confirmation_passed IN (0, 1)),";
+        sql += "h1_direction_alignment_mode TEXT NOT NULL ";
+        sql += "DEFAULT 'D1_TO_H1' CHECK(h1_direction_alignment_mode IN (";
+        sql += "'D1_TO_H1', 'MN1_TO_H1_OBSERVE',";
+        sql += " 'MN1_TO_H1_REQUIRED', 'INVALID')),";
+        sql += "h1_direction_alignment_state TEXT NOT NULL ";
+        sql += "DEFAULT 'NOT_EVALUATED' CHECK(h1_direction_alignment_state IN (";
+        sql += "'NOT_EVALUATED', 'NOT_APPLICABLE', 'D1_TO_H1',";
+        sql += " 'FULL_BUY', 'FULL_SELL', 'MN1_MISMATCH', 'W1_MISMATCH',";
+        sql += " 'MN1_W1_MISMATCH', 'UNAVAILABLE', 'INVALID')),";
+        sql += "is_h1_direction_alignment_available INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_h1_direction_alignment_available IN (0, 1)),";
+        sql += "is_h1_direction_alignment_valid INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_h1_direction_alignment_valid IN (0, 1)),";
+        sql += "h1_direction_alignment_direction TEXT NOT NULL DEFAULT 'NONE' ";
+        sql += "CHECK(h1_direction_alignment_direction IN (";
+        sql += "'BUY', 'SELL', 'NONE')),";
+        sql += "is_h1_mn1_direction_matched INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_h1_mn1_direction_matched IN (0, 1)),";
+        sql += "is_h1_w1_direction_matched INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_h1_w1_direction_matched IN (0, 1)),";
+        sql += "is_h1_direction_alignment_passed INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_h1_direction_alignment_passed IN (0, 1)),";
         sql += "spread_pips REAL NOT NULL,";
         sql += "is_currency_strength_enabled INTEGER NOT NULL ";
         sql += "CHECK(is_currency_strength_enabled IN (0, 1)),";
@@ -143,7 +166,10 @@ public:
             return false;
         }
 
-        if (!ZigZagElliotAlertW1ConfirmationMigration::execute(
+        if (!ZigZagElliotAlertH1DirectionAlignmentMigration::execute(
+                this.databaseHandle
+            )
+                || !ZigZagElliotAlertW1ConfirmationMigration::execute(
                 this.databaseHandle
             )) {
             return false;
@@ -387,7 +413,14 @@ private:
         sql += " w1_confirmation_state, is_w1_confirmation_available,";
         sql += " is_w1_confirmation_valid, is_w1_direction_matched,";
         sql += " w1_ema200_direction, is_w1_ema200_matched,";
-        sql += " is_w1_confirmation_passed, spread_pips,";
+        sql += " is_w1_confirmation_passed, h1_direction_alignment_mode,";
+        sql += " h1_direction_alignment_state,";
+        sql += " is_h1_direction_alignment_available,";
+        sql += " is_h1_direction_alignment_valid,";
+        sql += " h1_direction_alignment_direction,";
+        sql += " is_h1_mn1_direction_matched,";
+        sql += " is_h1_w1_direction_matched,";
+        sql += " is_h1_direction_alignment_passed, spread_pips,";
         sql += " is_currency_strength_enabled, currency_strength_status,";
         sql += " is_currency_strength_available,";
         sql += " currency_strength_calculation_version, currency_strength_run_id,";
@@ -408,7 +441,8 @@ private:
         sql += " ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45,";
         sql += " ?46, ?47, ?48, ?49, ?50, ?51, ?52, ?53, ?54, ?55, ?56,";
         sql += " ?57, ?58, ?59, ?60, ?61, ?62, ?63, ?64, ?65, ?66, ?67,";
-        sql += " ?68, ?69, ?70, ?71";
+        sql += " ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78,";
+        sql += " ?79";
         sql += ")";
 
         return sql;
@@ -594,6 +628,62 @@ private:
             );
         }
         if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.h1DirectionAlignmentMode
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.h1DirectionAlignmentState
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isH1DirectionAlignmentAvailable
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isH1DirectionAlignmentValid
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.h1DirectionAlignmentDirection
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isH1Mn1DirectionMatched
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isH1W1DirectionMatched
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isH1DirectionAlignmentPassed
+            );
+        }
+        if (isBound) {
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.spreadPips);
         }
         if (isBound) {
@@ -759,7 +849,7 @@ private:
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.createdAtText);
         }
 
-        return isBound && index == 71;
+        return isBound && index == 79;
     }
 
     /**

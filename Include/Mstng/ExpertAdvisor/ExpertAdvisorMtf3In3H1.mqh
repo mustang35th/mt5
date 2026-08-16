@@ -10,6 +10,7 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_H1_MQH
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
+#include <Mstng\ExpertAdvisor\H1DirectionAlignmentDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
 
@@ -29,20 +30,48 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
+     * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
      */
     ExpertAdvisorMtf3In3H1(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow = true,
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY
+            H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
+            H1_DIRECTION_ALIGNMENT_D1_TO_H1
     ) : ExpertAdvisorMTF_3in3(
         fromMarketContext,
         fromIsDrawArrow,
-        fromH1W1ConfirmationMode
+        fromH1W1ConfirmationMode,
+        fromH1DirectionAlignmentMode
     ) {
     }
 
 protected:
+    /**
+     * H1を基準にMN1からH1までのElliott売買方向を照合する。
+     *
+     * OBSERVEでは診断結果だけを保持し、REQUIREDでは取得不能、
+     * 不正値または方向不一致をエントリー条件から除外する。
+     *
+     * @return 選択されたH1方向一致モードのゲートを通過する場合true。
+     */
+    virtual bool isTimeFrameDirectionAlignmentConditionMatched() override {
+        if (this.marketContext.timeFrame != PERIOD_H1) {
+            this.h1DirectionAlignmentResult.reset();
+
+            return false;
+        }
+
+        H1DirectionAlignmentDecision decision;
+
+        return decision.evaluate(
+            this.h1DirectionAlignmentMode,
+            this.elliotAll,
+            this.h1DirectionAlignmentResult
+        );
+    }
+
     /**
      * H1が第1波、第3波または第5波か判定する。
      *

@@ -58,6 +58,16 @@ W1_CONFIRMATION_ALERT_COLUMNS = {
     "is_w1_ema200_matched",
     "is_w1_confirmation_passed",
 }
+H1_DIRECTION_ALIGNMENT_ALERT_COLUMNS = {
+    "h1_direction_alignment_mode",
+    "h1_direction_alignment_state",
+    "is_h1_direction_alignment_available",
+    "is_h1_direction_alignment_valid",
+    "h1_direction_alignment_direction",
+    "is_h1_mn1_direction_matched",
+    "is_h1_w1_direction_matched",
+    "is_h1_direction_alignment_passed",
+}
 EMA200_TIME_FRAME_COLUMNS = {
     "is_ema200_buy",
     "is_ema200_sell",
@@ -80,6 +90,24 @@ W1_CONFIRMATION_STATES = {
     "EMA_ONLY",
     "REJECT_NONE",
     "REJECT",
+}
+H1_DIRECTION_ALIGNMENT_MODES = {
+    "D1_TO_H1",
+    "MN1_TO_H1_OBSERVE",
+    "MN1_TO_H1_REQUIRED",
+    "INVALID",
+}
+H1_DIRECTION_ALIGNMENT_STATES = {
+    "NOT_EVALUATED",
+    "NOT_APPLICABLE",
+    "D1_TO_H1",
+    "FULL_BUY",
+    "FULL_SELL",
+    "MN1_MISMATCH",
+    "W1_MISMATCH",
+    "MN1_W1_MISMATCH",
+    "UNAVAILABLE",
+    "INVALID",
 }
 
 # Keep this classification aligned with SymbolNameInfoAll.setGmo().
@@ -344,6 +372,12 @@ BOOLEAN_COLUMNS = {
     "is_w1_ema200_matched",
     "is_w1_confirmation_passed",
     "is_w1_confirmation_legacy",
+    "is_h1_direction_alignment_available",
+    "is_h1_direction_alignment_valid",
+    "is_h1_mn1_direction_matched",
+    "is_h1_w1_direction_matched",
+    "is_h1_direction_alignment_passed",
+    "is_h1_direction_alignment_legacy",
     "w1_is_buy",
     "w1_is_wave_confirmed",
     "w1_is_wave_motive",
@@ -712,6 +746,58 @@ class AlertDatabase:
         """
 
     @staticmethod
+    def h1_direction_alignment_schema_status(
+        connection: Connection,
+    ) -> dict[str, Any]:
+        """Return availability of the optional H1 direction diagnosis."""
+
+        actual_columns = AlertDatabase.table_columns(
+            connection,
+            "zigzag_elliot_alerts",
+        )
+        missing_columns = sorted(
+            H1_DIRECTION_ALIGNMENT_ALERT_COLUMNS - actual_columns
+        )
+        return {
+            "available": not missing_columns,
+            "reason": None
+            if not missing_columns
+            else "H1 direction alignment columns are not available",
+            "missing_columns": missing_columns,
+        }
+
+    @staticmethod
+    def h1_direction_alignment_projection(connection: Connection) -> str:
+        """Return real H1 direction columns or legacy-safe defaults."""
+
+        if AlertDatabase.h1_direction_alignment_schema_status(connection)[
+            "available"
+        ]:
+            return """
+                a.h1_direction_alignment_mode,
+                a.h1_direction_alignment_state,
+                a.is_h1_direction_alignment_available,
+                a.is_h1_direction_alignment_valid,
+                a.h1_direction_alignment_direction,
+                a.is_h1_mn1_direction_matched,
+                a.is_h1_w1_direction_matched,
+                a.is_h1_direction_alignment_passed,
+                CASE WHEN a.h1_direction_alignment_state = 'NOT_EVALUATED'
+                     THEN 1 ELSE 0 END AS is_h1_direction_alignment_legacy,
+            """
+        return """
+            'D1_TO_H1' AS h1_direction_alignment_mode,
+            'NOT_EVALUATED' AS h1_direction_alignment_state,
+            0 AS is_h1_direction_alignment_available,
+            0 AS is_h1_direction_alignment_valid,
+            'NONE' AS h1_direction_alignment_direction,
+            0 AS is_h1_mn1_direction_matched,
+            0 AS is_h1_w1_direction_matched,
+            0 AS is_h1_direction_alignment_passed,
+            1 AS is_h1_direction_alignment_legacy,
+        """
+
+    @staticmethod
     def ema200_projection(connection: Connection) -> str:
         """Return list EMA200 flags with legacy-safe defaults."""
 
@@ -791,6 +877,32 @@ class AlertDatabase:
                     alert[key] = value
         alert["is_w1_confirmation_legacy"] = (
             alert["w1_confirmation_state"] == "NOT_EVALUATED"
+        )
+
+    @staticmethod
+    def apply_h1_direction_alignment_defaults(
+        alert: dict[str, Any],
+    ) -> None:
+        """Normalize a reflected legacy alert to the H1 diagnosis contract."""
+
+        defaults: dict[str, Any] = {
+            "h1_direction_alignment_mode": "D1_TO_H1",
+            "h1_direction_alignment_state": "NOT_EVALUATED",
+            "is_h1_direction_alignment_available": False,
+            "is_h1_direction_alignment_valid": False,
+            "h1_direction_alignment_direction": "NONE",
+            "is_h1_mn1_direction_matched": False,
+            "is_h1_w1_direction_matched": False,
+            "is_h1_direction_alignment_passed": False,
+        }
+        if not H1_DIRECTION_ALIGNMENT_ALERT_COLUMNS.issubset(alert):
+            alert.update(defaults)
+        else:
+            for key, value in defaults.items():
+                if alert[key] is None:
+                    alert[key] = value
+        alert["is_h1_direction_alignment_legacy"] = (
+            alert["h1_direction_alignment_state"] == "NOT_EVALUATED"
         )
 
     @staticmethod
@@ -888,6 +1000,9 @@ class AlertDatabase:
             observation_status = self.observation_schema_status(connection)
             analysis_profile_status = self.analysis_profile_schema_status(connection)
             w1_confirmation_status = self.w1_confirmation_schema_status(connection)
+            h1_direction_alignment_status = (
+                self.h1_direction_alignment_schema_status(connection)
+            )
             observation_count = 0
             if observation_status["available"]:
                 observation_count = connection.execute(
@@ -903,6 +1018,12 @@ class AlertDatabase:
             "analysis_profile_reason": analysis_profile_status["reason"],
             "w1_confirmation_available": w1_confirmation_status["available"],
             "w1_confirmation_reason": w1_confirmation_status["reason"],
+            "h1_direction_alignment_available": (
+                h1_direction_alignment_status["available"]
+            ),
+            "h1_direction_alignment_reason": (
+                h1_direction_alignment_status["reason"]
+            ),
         }
 
     def runs(self) -> dict[str, Any]:
@@ -1075,6 +1196,17 @@ class AlertDatabase:
             result["w1_confirmation_modes"] = sorted(W1_CONFIRMATION_MODES)
             result["w1_confirmation_available"] = (
                 self.w1_confirmation_schema_status(connection)["available"]
+            )
+            result["h1_direction_alignment_modes"] = sorted(
+                H1_DIRECTION_ALIGNMENT_MODES
+            )
+            result["h1_direction_alignment_states"] = sorted(
+                H1_DIRECTION_ALIGNMENT_STATES
+            )
+            result["h1_direction_alignment_available"] = (
+                self.h1_direction_alignment_schema_status(connection)[
+                    "available"
+                ]
             )
         return result
 
@@ -2090,6 +2222,9 @@ class AlertDatabase:
 
         with self.connect() as connection:
             w1_confirmation_columns = self.w1_confirmation_projection(connection)
+            h1_direction_alignment_columns = (
+                self.h1_direction_alignment_projection(connection)
+            )
             ema200_columns = self.ema200_projection(connection)
 
         return f"""
@@ -2129,6 +2264,7 @@ class AlertDatabase:
                     a.is_h1_structure_late, a.is_h1_direction_exception,
                     a.alert_title, a.wave_summary_text,
                     {w1_confirmation_columns}
+                    {h1_direction_alignment_columns}
                     a.created_at, a.created_at_text,
                     mn1.buy_sell_label AS mn1_side,
                     w1.buy_sell_label AS w1_side,
@@ -2263,6 +2399,7 @@ class AlertDatabase:
             alert = model_to_dict(alert_entity) or {}
             alert["is_gmo_target"] = is_gmo_target(alert.get("symbol_name"))
             self.apply_w1_confirmation_defaults(alert)
+            self.apply_h1_direction_alignment_defaults(alert)
             run = model_to_dict(run_entity)
             w1: dict[str, Any] | None = None
             if w1_entity is not None:
@@ -2359,6 +2496,15 @@ class AlertDatabase:
                    is_w1_direction_matched, w1_ema200_direction,
                    is_w1_ema200_matched, is_w1_confirmation_passed,
                    is_w1_confirmation_legacy,
+                   h1_direction_alignment_mode,
+                   h1_direction_alignment_state,
+                   is_h1_direction_alignment_available,
+                   is_h1_direction_alignment_valid,
+                   h1_direction_alignment_direction,
+                   is_h1_mn1_direction_matched,
+                   is_h1_w1_direction_matched,
+                   is_h1_direction_alignment_passed,
+                   is_h1_direction_alignment_legacy,
                    reference_price, is_stop_loss_available, stop_loss,
                    risk_pips, spread_pips, long_medium_rank_difference,
                    medium_short_rank_difference, alert_title,
@@ -2403,6 +2549,15 @@ class AlertDatabase:
             "is_w1_ema200_matched",
             "is_w1_confirmation_passed",
             "is_w1_confirmation_legacy",
+            "h1_direction_alignment_mode",
+            "h1_direction_alignment_state",
+            "is_h1_direction_alignment_available",
+            "is_h1_direction_alignment_valid",
+            "h1_direction_alignment_direction",
+            "is_h1_mn1_direction_matched",
+            "is_h1_w1_direction_matched",
+            "is_h1_direction_alignment_passed",
+            "is_h1_direction_alignment_legacy",
             "reference_price",
             "is_stop_loss_available",
             "stop_loss",

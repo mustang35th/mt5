@@ -191,7 +191,7 @@ bool dropDatabaseObjects(
 void initializeRunEntity(ZigZagElliotAlertRunEntity &fromEntity) {
     fromEntity.id = 0;
     fromEntity.runUid = "zigzag-elliot-alert-smoke-run-v1";
-    fromEntity.schemaVersion = 3;
+    fromEntity.schemaVersion = 4;
     fromEntity.sourceMode = "TESTER";
     fromEntity.source = "ZigZagElliot";
     fromEntity.programName = "ZigZagElliot";
@@ -295,6 +295,14 @@ void initializeAlertEntity(
     fromEntity.w1Ema200Direction = "BUY";
     fromEntity.isW1Ema200Matched = 1;
     fromEntity.isW1ConfirmationPassed = 1;
+    fromEntity.h1DirectionAlignmentMode = "MN1_TO_H1_REQUIRED";
+    fromEntity.h1DirectionAlignmentState = "FULL_BUY";
+    fromEntity.isH1DirectionAlignmentAvailable = 1;
+    fromEntity.isH1DirectionAlignmentValid = 1;
+    fromEntity.h1DirectionAlignmentDirection = "BUY";
+    fromEntity.isH1Mn1DirectionMatched = 1;
+    fromEntity.isH1W1DirectionMatched = 1;
+    fromEntity.isH1DirectionAlignmentPassed = 1;
     fromEntity.spreadPips = 2.1;
     fromEntity.isCurrencyStrengthEnabled = 1;
     fromEntity.currencyStrengthStatus = 1;
@@ -679,7 +687,7 @@ bool verifySavedSnapshot(
             fromDatabaseHandle,
             "SELECT COUNT(*) FROM zigzag_elliot_alert_runs "
                 "WHERE run_uid = 'zigzag-elliot-alert-smoke-run-v1' "
-                "AND schema_version = 3",
+                "AND schema_version = 4",
             runCount,
             fromLogger
         )
@@ -896,6 +904,39 @@ bool verifyW1ConfirmationValues(
 }
 
 /**
+ * 保存したH1方向一致診断値を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromAlertId アラートID。
+ * @param fromLogger ロガー。
+ * @return 期待値と一致する場合true。
+ */
+bool verifyH1DirectionAlignmentValues(
+    const int fromDatabaseHandle,
+    const long fromAlertId,
+    Logger &fromLogger
+) {
+    long matchedCount = 0;
+    string sql = "SELECT COUNT(*) FROM zigzag_elliot_alerts WHERE id = ";
+    sql += StringFormat("%I64d", fromAlertId);
+    sql += " AND h1_direction_alignment_mode = 'MN1_TO_H1_REQUIRED'";
+    sql += " AND h1_direction_alignment_state = 'FULL_BUY'";
+    sql += " AND is_h1_direction_alignment_available = 1";
+    sql += " AND is_h1_direction_alignment_valid = 1";
+    sql += " AND h1_direction_alignment_direction = 'BUY'";
+    sql += " AND is_h1_mn1_direction_matched = 1";
+    sql += " AND is_h1_w1_direction_matched = 1";
+    sql += " AND is_h1_direction_alignment_passed = 1";
+
+    return readLong(
+        fromDatabaseHandle,
+        sql,
+        matchedCount,
+        fromLogger
+    ) && matchedCount == 1;
+}
+
+/**
  * 旧スキーマを再現するため、W1確認診断列を削除する。
  *
  * @param fromDatabaseHandle データベースハンドル。
@@ -915,6 +956,50 @@ bool removeW1ConfirmationSchemaForMigrationTest(
         "w1_ema200_direction",
         "is_w1_ema200_matched",
         "is_w1_confirmation_passed"
+    };
+
+    for (int i = 0; i < ArraySize(columns); i++) {
+        string sql = "ALTER TABLE zigzag_elliot_alerts DROP COLUMN ";
+        sql += columns[i];
+        ResetLastError();
+
+        if (!DatabaseExecute(fromDatabaseHandle, sql)) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DROP COLUMN failed. column=%s error=%d",
+                    columns[i],
+                    GetLastError()
+                )
+            );
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * 旧スキーマを再現するため、H1方向一致診断列を削除する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 全対象列を削除できた場合true。
+ */
+bool removeH1DirectionAlignmentSchemaForMigrationTest(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    string columns[8] = {
+        "h1_direction_alignment_mode",
+        "h1_direction_alignment_state",
+        "is_h1_direction_alignment_available",
+        "is_h1_direction_alignment_valid",
+        "h1_direction_alignment_direction",
+        "is_h1_mn1_direction_matched",
+        "is_h1_w1_direction_matched",
+        "is_h1_direction_alignment_passed"
     };
 
     for (int i = 0; i < ArraySize(columns); i++) {
@@ -963,6 +1048,39 @@ bool verifyW1ConfirmationMigrationDefaults(
     sql += " AND w1_ema200_direction = 'NONE'";
     sql += " AND is_w1_ema200_matched = 0";
     sql += " AND is_w1_confirmation_passed = 1";
+
+    return readLong(
+        fromDatabaseHandle,
+        sql,
+        matchedCount,
+        fromLogger
+    ) && matchedCount == 1;
+}
+
+/**
+ * 旧行へ設定されたH1方向一致診断の移行既定値を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromAlertId アラートID。
+ * @param fromLogger ロガー。
+ * @return 既定値と一致する場合true。
+ */
+bool verifyH1DirectionAlignmentMigrationDefaults(
+    const int fromDatabaseHandle,
+    const long fromAlertId,
+    Logger &fromLogger
+) {
+    long matchedCount = 0;
+    string sql = "SELECT COUNT(*) FROM zigzag_elliot_alerts WHERE id = ";
+    sql += StringFormat("%I64d", fromAlertId);
+    sql += " AND h1_direction_alignment_mode = 'D1_TO_H1'";
+    sql += " AND h1_direction_alignment_state = 'NOT_EVALUATED'";
+    sql += " AND is_h1_direction_alignment_available = 0";
+    sql += " AND is_h1_direction_alignment_valid = 0";
+    sql += " AND h1_direction_alignment_direction = 'NONE'";
+    sql += " AND is_h1_mn1_direction_matched = 0";
+    sql += " AND is_h1_w1_direction_matched = 0";
+    sql += " AND is_h1_direction_alignment_passed = 0";
 
     return readLong(
         fromDatabaseHandle,
@@ -1074,15 +1192,15 @@ void OnStart() {
         return;
     }
 
-    ZigZagElliotAlertRunEntity invalidV3RunEntity;
-    initializeRunEntity(invalidV3RunEntity);
-    invalidV3RunEntity.runUid =
-        "zigzag-elliot-alert-smoke-run-invalid-v3";
-    invalidV3RunEntity.analysisInputHash = "INVALID";
+    ZigZagElliotAlertRunEntity invalidV4RunEntity;
+    initializeRunEntity(invalidV4RunEntity);
+    invalidV4RunEntity.runUid =
+        "zigzag-elliot-alert-smoke-run-invalid-v4";
+    invalidV4RunEntity.analysisInputHash = "INVALID";
 
-    if (persistenceService.saveRun(invalidV3RunEntity)
-            || invalidV3RunEntity.id != 0) {
-        logger.error(__FUNCTION__, "Invalid V3 Run was not rejected.");
+    if (persistenceService.saveRun(invalidV4RunEntity)
+            || invalidV4RunEntity.id != 0) {
+        logger.error(__FUNCTION__, "Invalid V4 Run was not rejected.");
 
         return;
     }
@@ -1236,6 +1354,10 @@ void OnStart() {
         verificationDatabase.getHandle(),
         firstAlertId,
         logger
+    ) && verifyH1DirectionAlignmentValues(
+        verificationDatabase.getHandle(),
+        firstAlertId,
+        logger
     );
     verificationDatabase.close();
 
@@ -1248,11 +1370,15 @@ void OnStart() {
     SqliteDatabase legacySchemaDatabase(databaseFileName, useCommonFolder);
 
     if (!legacySchemaDatabase.open()
+            || !removeH1DirectionAlignmentSchemaForMigrationTest(
+                legacySchemaDatabase.getHandle(),
+                logger
+            )
             || !removeW1ConfirmationSchemaForMigrationTest(
                 legacySchemaDatabase.getHandle(),
                 logger
             )) {
-        logger.error(__FUNCTION__, "Legacy W1 schema preparation failed.");
+        logger.error(__FUNCTION__, "Legacy alert schema preparation failed.");
         legacySchemaDatabase.close();
 
         return;
@@ -1275,7 +1401,7 @@ void OnStart() {
 
     if (migrationPersistenceService == NULL
             || !migrationPersistenceService.createTables()) {
-        logger.error(__FUNCTION__, "W1 confirmation migration failed.");
+        logger.error(__FUNCTION__, "Alert diagnosis migration failed.");
         migrationContext.close();
 
         return;
@@ -1316,11 +1442,15 @@ void OnStart() {
         verificationDatabase.getHandle(),
         firstAlertId,
         logger
+    ) && verifyH1DirectionAlignmentMigrationDefaults(
+        verificationDatabase.getHandle(),
+        firstAlertId,
+        logger
     );
     verificationDatabase.close();
 
     if (!isMigrationVerified) {
-        logger.error(__FUNCTION__, "W1 confirmation migration verification failed.");
+        logger.error(__FUNCTION__, "Alert diagnosis migration verification failed.");
 
         return;
     }
