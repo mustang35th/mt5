@@ -70,13 +70,16 @@ public:
      * @param fromSortType 一覧の並び替え基準
      * @param fromAlignmentStartTimeFrame 一致判定の開始時間足
      * @param fromTesterHistoryWarmUpEnabled テスター履歴ゲートを使用する場合true
+     * @param fromAlignmentRule 一致判定ルール
      * @return 初期化結果
      */
     int initialize(
         MarketContext &fromMarketContext,
         ElliotListSortType fromSortType = ELLIOT_LIST_SORT_ENTRY_PRIORITY,
         ENUM_TIMEFRAMES fromAlignmentStartTimeFrame = PERIOD_D1,
-        bool fromTesterHistoryWarmUpEnabled = false
+        bool fromTesterHistoryWarmUpEnabled = false,
+        ElliotDirectionAlignmentRule fromAlignmentRule =
+            ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES
     ) {
         this.destroy();
 
@@ -104,7 +107,8 @@ public:
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         this.alignmentDecision = new ElliotDirectionAlignmentDecision(
-            fromAlignmentStartTimeFrame
+            fromAlignmentStartTimeFrame,
+            fromAlignmentRule
         );
 
         if (this.alignmentDecision == NULL) {
