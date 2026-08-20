@@ -495,6 +495,54 @@ class AlertFilterTest(unittest.TestCase):
                 {"w1ConfirmationState": ["CONFLICT"]}
             )
 
+    def test_h1_direction_alignment_filters_use_exact_persisted_values(
+        self,
+    ) -> None:
+        """Bind the new H1 mode and each persisted diagnostic state."""
+
+        mode = "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"
+        states = (
+            "EMA200_FALLBACK_BUY",
+            "EMA200_FALLBACK_SELL",
+            "MN1_EMA200_MISMATCH",
+        )
+        for state in states:
+            with self.subTest(state=state):
+                filters = AlertDatabase.parse_filters(
+                    {
+                        "h1DirectionAlignmentMode": [f" {mode} "],
+                        "h1DirectionAlignmentState": [f" {state} "],
+                    }
+                )
+                self.assertIn(
+                    "h1_direction_alignment_mode = :h1_direction_alignment_mode",
+                    filters.derived_where_sql,
+                )
+                self.assertIn(
+                    "h1_direction_alignment_state = :h1_direction_alignment_state",
+                    filters.derived_where_sql,
+                )
+                self.assertEqual(
+                    mode,
+                    filters.parameters["h1_direction_alignment_mode"],
+                )
+                self.assertEqual(
+                    state,
+                    filters.parameters["h1_direction_alignment_state"],
+                )
+
+    def test_unknown_h1_direction_alignment_values_are_rejected(self) -> None:
+        """Reject UI-only or misspelled H1 mode and state names."""
+
+        cases = (
+            ({"h1DirectionAlignmentMode": ["MN1_OR_EMA200"]}, "H1 mode"),
+            ({"h1DirectionAlignmentState": ["EMA200_FALLBACK"]}, "H1 state"),
+        )
+        for query, message in cases:
+            with self.subTest(query=query):
+                with self.assertRaisesRegex(RequestError, message):
+                    AlertDatabase.parse_filters(query)
+
 
 def create_alert_summary_database(database_path: Path) -> None:
     """Create the columns read by the production alert-summary CTE."""
@@ -768,12 +816,13 @@ def add_h1_direction_alignment_fixture_columns(database_path: Path) -> None:
         connection.execute(
             """
             UPDATE zigzag_elliot_alerts
-            SET h1_direction_alignment_mode = 'MN1_TO_H1_REQUIRED',
-                h1_direction_alignment_state = 'FULL_BUY',
+            SET h1_direction_alignment_mode =
+                    'W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED',
+                h1_direction_alignment_state = 'EMA200_FALLBACK_BUY',
                 is_h1_direction_alignment_available = 1,
                 is_h1_direction_alignment_valid = 1,
                 h1_direction_alignment_direction = 'BUY',
-                is_h1_mn1_direction_matched = 1,
+                is_h1_mn1_direction_matched = 0,
                 is_h1_w1_direction_matched = 1,
                 is_h1_direction_alignment_passed = 1
             WHERE id = 1
@@ -1082,17 +1131,24 @@ class H1DirectionAlignmentApiTest(unittest.TestCase):
         )
 
     def test_current_schema_exposes_list_detail_and_csv_diagnostics(self) -> None:
-        """Return the persisted V4 diagnosis consistently from every endpoint."""
+        """Return the persisted DB V5 diagnosis consistently from every endpoint."""
 
         with tempfile.TemporaryDirectory() as directory:
             list_path = Path(directory) / "current-h1-alignment-list.sqlite"
             create_alert_summary_database(list_path)
             add_h1_direction_alignment_fixture_columns(list_path)
             database = AlertDatabase(list_path)
+            query = {
+                "h1DirectionAlignmentMode": [
+                    "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"
+                ],
+                "h1DirectionAlignmentState": ["EMA200_FALLBACK_BUY"],
+            }
             try:
-                page = database.alerts({})
+                page = database.alerts(query)
+                summary = database.summary(query)
                 options = database.options()
-                csv_text = database.export_csv({}).decode("utf-8-sig")
+                csv_text = database.export_csv(query).decode("utf-8-sig")
             finally:
                 database.close()
 
@@ -1106,17 +1162,39 @@ class H1DirectionAlignmentApiTest(unittest.TestCase):
             finally:
                 detail_database.close()
 
-        first = next(item for item in page["items"] if item["id"] == 1)
+        self.assertEqual(1, page["total"])
+        self.assertEqual(page["total"], summary["total_count"])
+        first = page["items"][0]
         self.assertFalse(first["is_h1_direction_alignment_legacy"])
-        self.assertEqual("MN1_TO_H1_REQUIRED", first["h1_direction_alignment_mode"])
-        self.assertEqual("FULL_BUY", first["h1_direction_alignment_state"])
+        self.assertEqual(
+            "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+            first["h1_direction_alignment_mode"],
+        )
+        self.assertEqual(
+            "EMA200_FALLBACK_BUY",
+            first["h1_direction_alignment_state"],
+        )
         self.assertEqual("BUY", first["h1_direction_alignment_direction"])
-        self.assertTrue(first["is_h1_mn1_direction_matched"])
+        self.assertFalse(first["is_h1_mn1_direction_matched"])
         self.assertTrue(first["is_h1_w1_direction_matched"])
         self.assertTrue(first["is_h1_direction_alignment_passed"])
-        self.assertEqual("FULL_BUY", detail["h1_direction_alignment_state"])
+        self.assertEqual(
+            "EMA200_FALLBACK_BUY",
+            detail["h1_direction_alignment_state"],
+        )
         self.assertTrue(options["h1_direction_alignment_available"])
-        self.assertIn("MN1_TO_H1_REQUIRED", csv_text)
+        self.assertIn(
+            "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+            options["h1_direction_alignment_modes"],
+        )
+        for state in (
+            "EMA200_FALLBACK_BUY",
+            "EMA200_FALLBACK_SELL",
+            "MN1_EMA200_MISMATCH",
+        ):
+            self.assertIn(state, options["h1_direction_alignment_states"])
+        self.assertIn("W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED", csv_text)
+        self.assertIn("EMA200_FALLBACK_BUY", csv_text)
 
 
 def create_observation_database(database_path: Path) -> None:

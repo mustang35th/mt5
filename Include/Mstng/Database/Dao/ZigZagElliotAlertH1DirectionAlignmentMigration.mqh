@@ -12,14 +12,15 @@
 #include <Mstng\Log\Logger.mqh>
 
 /**
- * 既存アラートテーブルへH1方向一致診断列を非破壊で追加するクラス。
+ * 既存アラートテーブルのH1方向一致診断スキーマを移行するクラス。
  *
- * 既存行は診断導入前のデータとして保持し、推測による補完を行わない。
+ * 診断列の追加とCHECK制約の拡張を非破壊で行い、
+ * 既存行に対して推測による補完を行わない。
  */
 class ZigZagElliotAlertH1DirectionAlignmentMigration {
 public:
     /**
-     * H1方向一致診断列の存在を保証する。
+     * H1方向一致診断列と現行CHECK制約の存在を保証する。
      *
      * @param fromDatabaseHandle SQLiteデータベースハンドル。
      * @return 移行または存在確認に成功した場合true。
@@ -35,7 +36,19 @@ public:
         }
 
         if (hasAllColumns(fromDatabaseHandle, logger)) {
-            return true;
+            bool hasCurrentConstraintsValue = false;
+
+            if (!hasCurrentConstraints(
+                    fromDatabaseHandle,
+                    hasCurrentConstraintsValue,
+                    logger
+                )) {
+                return false;
+            }
+
+            if (hasCurrentConstraintsValue) {
+                return true;
+            }
         }
 
         ResetLastError();
@@ -58,7 +71,8 @@ public:
                 "H1 direction alignment migration write lock",
                 logger
             )
-                || !ensureColumns(fromDatabaseHandle, logger)) {
+                || !ensureColumns(fromDatabaseHandle, logger)
+                || !ensureCurrentConstraints(fromDatabaseHandle, logger)) {
             rollback(fromDatabaseHandle, logger);
 
             return false;
@@ -141,6 +155,41 @@ private:
     }
 
     /**
+     * H1方向一致モード列の現行定義を生成する。
+     *
+     * @param fromColumnName 定義へ使用する列名。
+     * @return 列定義。
+     */
+    static string createModeColumnDefinition(const string fromColumnName) {
+        string definition = "TEXT NOT NULL DEFAULT 'D1_TO_H1' CHECK(";
+        definition += fromColumnName + " IN (";
+        definition += "'D1_TO_H1', 'MN1_TO_H1_OBSERVE', ";
+        definition += "'MN1_TO_H1_REQUIRED', ";
+        definition += "'W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED', ";
+        definition += "'INVALID'))";
+
+        return definition;
+    }
+
+    /**
+     * H1方向一致状態列の現行定義を生成する。
+     *
+     * @param fromColumnName 定義へ使用する列名。
+     * @return 列定義。
+     */
+    static string createStateColumnDefinition(const string fromColumnName) {
+        string definition = "TEXT NOT NULL DEFAULT 'NOT_EVALUATED' CHECK(";
+        definition += fromColumnName + " IN (";
+        definition += "'NOT_EVALUATED', 'NOT_APPLICABLE', 'D1_TO_H1', ";
+        definition += "'FULL_BUY', 'FULL_SELL', 'MN1_MISMATCH', ";
+        definition += "'W1_MISMATCH', 'MN1_W1_MISMATCH', ";
+        definition += "'EMA200_FALLBACK_BUY', 'EMA200_FALLBACK_SELL', ";
+        definition += "'MN1_EMA200_MISMATCH', 'UNAVAILABLE', 'INVALID'))";
+
+        return definition;
+    }
+
+    /**
      * H1方向一致診断列を追加する。
      *
      * @param fromDatabaseHandle SQLiteデータベースハンドル。
@@ -154,10 +203,9 @@ private:
         if (!ensureColumn(
                 fromDatabaseHandle,
                 "h1_direction_alignment_mode",
-                "TEXT NOT NULL DEFAULT 'D1_TO_H1' "
-                    + "CHECK(h1_direction_alignment_mode IN ("
-                    + "'D1_TO_H1', 'MN1_TO_H1_OBSERVE', "
-                    + "'MN1_TO_H1_REQUIRED', 'INVALID'))",
+                createModeColumnDefinition(
+                    "h1_direction_alignment_mode"
+                ),
                 fromLogger
             )) {
             return false;
@@ -166,12 +214,9 @@ private:
         if (!ensureColumn(
                 fromDatabaseHandle,
                 "h1_direction_alignment_state",
-                "TEXT NOT NULL DEFAULT 'NOT_EVALUATED' "
-                    + "CHECK(h1_direction_alignment_state IN ("
-                    + "'NOT_EVALUATED', 'NOT_APPLICABLE', 'D1_TO_H1', "
-                    + "'FULL_BUY', 'FULL_SELL', 'MN1_MISMATCH', "
-                    + "'W1_MISMATCH', 'MN1_W1_MISMATCH', "
-                    + "'UNAVAILABLE', 'INVALID'))",
+                createStateColumnDefinition(
+                    "h1_direction_alignment_state"
+                ),
                 fromLogger
             )) {
             return false;
@@ -230,6 +275,271 @@ private:
             0,
             fromLogger
         );
+    }
+
+    /**
+     * H1方向一致モードと状態のCHECK制約を現行定義へ移行する。
+     *
+     * @param fromDatabaseHandle SQLiteデータベースハンドル。
+     * @param fromLogger ロガー。
+     * @return 移行または存在確認に成功した場合true。
+     */
+    static bool ensureCurrentConstraints(
+        const int fromDatabaseHandle,
+        Logger &fromLogger
+    ) {
+        string tableSql = "";
+
+        if (!readTableSql(fromDatabaseHandle, tableSql, fromLogger)) {
+            return false;
+        }
+
+        if (StringFind(
+                tableSql,
+                "'W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED'"
+            ) < 0
+                && !replaceConstraintColumn(
+                    fromDatabaseHandle,
+                    "h1_direction_alignment_mode",
+                    "h1_direction_alignment_mode_v5",
+                    createModeColumnDefinition(
+                        "h1_direction_alignment_mode_v5"
+                    ),
+                    fromLogger
+                )) {
+            return false;
+        }
+
+        bool isStateCurrent = StringFind(
+            tableSql,
+            "'EMA200_FALLBACK_BUY'"
+        ) >= 0 && StringFind(
+            tableSql,
+            "'EMA200_FALLBACK_SELL'"
+        ) >= 0 && StringFind(
+            tableSql,
+            "'MN1_EMA200_MISMATCH'"
+        ) >= 0;
+
+        if (!isStateCurrent
+                && !replaceConstraintColumn(
+                    fromDatabaseHandle,
+                    "h1_direction_alignment_state",
+                    "h1_direction_alignment_state_v5",
+                    createStateColumnDefinition(
+                        "h1_direction_alignment_state_v5"
+                    ),
+                    fromLogger
+                )) {
+            return false;
+        }
+
+        bool hasCurrentConstraintsValue = false;
+
+        return hasCurrentConstraints(
+            fromDatabaseHandle,
+            hasCurrentConstraintsValue,
+            fromLogger
+        ) && hasCurrentConstraintsValue;
+    }
+
+    /**
+     * CHECK制約を保持する列を現行定義の列へ非破壊で置き換える。
+     *
+     * @param fromDatabaseHandle SQLiteデータベースハンドル。
+     * @param fromColumnName 置換対象列名。
+     * @param fromTemporaryColumnName 移行用一時列名。
+     * @param fromTemporaryColumnDefinition 一時列定義。
+     * @param fromLogger ロガー。
+     * @return 置換に成功した場合true。
+     */
+    static bool replaceConstraintColumn(
+        const int fromDatabaseHandle,
+        const string fromColumnName,
+        const string fromTemporaryColumnName,
+        const string fromTemporaryColumnDefinition,
+        Logger &fromLogger
+    ) {
+        bool hasTemporaryColumn = false;
+
+        if (!hasColumn(
+                fromDatabaseHandle,
+                fromTemporaryColumnName,
+                hasTemporaryColumn,
+                fromLogger
+            )) {
+            return false;
+        }
+
+        if (hasTemporaryColumn) {
+            fromLogger.error(
+                __FUNCTION__,
+                "Temporary migration column already exists. column="
+                    + fromTemporaryColumnName
+            );
+
+            return false;
+        }
+
+        string sql = "ALTER TABLE zigzag_elliot_alerts ADD COLUMN ";
+        sql += fromTemporaryColumnName + " ";
+        sql += fromTemporaryColumnDefinition;
+
+        if (!executeSql(
+                fromDatabaseHandle,
+                sql,
+                "H1 direction alignment constraint column add",
+                fromLogger
+            )) {
+            return false;
+        }
+
+        sql = "UPDATE zigzag_elliot_alerts SET ";
+        sql += fromTemporaryColumnName + " = " + fromColumnName;
+
+        if (!executeSql(
+                fromDatabaseHandle,
+                sql,
+                "H1 direction alignment constraint value copy",
+                fromLogger
+            )) {
+            return false;
+        }
+
+        sql = "ALTER TABLE zigzag_elliot_alerts DROP COLUMN ";
+        sql += fromColumnName;
+
+        if (!executeSql(
+                fromDatabaseHandle,
+                sql,
+                "H1 direction alignment old constraint column drop",
+                fromLogger
+            )) {
+            return false;
+        }
+
+        sql = "ALTER TABLE zigzag_elliot_alerts RENAME COLUMN ";
+        sql += fromTemporaryColumnName + " TO " + fromColumnName;
+
+        if (!executeSql(
+                fromDatabaseHandle,
+                sql,
+                "H1 direction alignment constraint column rename",
+                fromLogger
+            )) {
+            return false;
+        }
+
+        fromLogger.info(
+            __FUNCTION__,
+            "Alert H1 direction alignment CHECK expanded. column="
+                + fromColumnName
+        );
+
+        return true;
+    }
+
+    /**
+     * H1方向一致モードと状態のCHECK制約が現行定義か確認する。
+     *
+     * @param fromDatabaseHandle SQLiteデータベースハンドル。
+     * @param fromHasCurrentConstraints 現行定義の場合trueを設定する。
+     * @param fromLogger ロガー。
+     * @return 確認処理に成功した場合true。
+     */
+    static bool hasCurrentConstraints(
+        const int fromDatabaseHandle,
+        bool &fromHasCurrentConstraints,
+        Logger &fromLogger
+    ) {
+        fromHasCurrentConstraints = false;
+        string tableSql = "";
+
+        if (!readTableSql(fromDatabaseHandle, tableSql, fromLogger)) {
+            return false;
+        }
+
+        fromHasCurrentConstraints = StringFind(
+            tableSql,
+            "'W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED'"
+        ) >= 0 && StringFind(
+            tableSql,
+            "'EMA200_FALLBACK_BUY'"
+        ) >= 0 && StringFind(
+            tableSql,
+            "'EMA200_FALLBACK_SELL'"
+        ) >= 0 && StringFind(
+            tableSql,
+            "'MN1_EMA200_MISMATCH'"
+        ) >= 0;
+
+        return true;
+    }
+
+    /**
+     * sqlite_masterからアラートテーブル定義を取得する。
+     *
+     * @param fromDatabaseHandle SQLiteデータベースハンドル。
+     * @param fromTableSql テーブル定義SQLの格納先。
+     * @param fromLogger ロガー。
+     * @return 取得に成功した場合true。
+     */
+    static bool readTableSql(
+        const int fromDatabaseHandle,
+        string &fromTableSql,
+        Logger &fromLogger
+    ) {
+        fromTableSql = "";
+        string sql = "SELECT sql FROM sqlite_master ";
+        sql += "WHERE type = 'table' ";
+        sql += "AND name = 'zigzag_elliot_alerts'";
+        ResetLastError();
+        int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseRead(requestHandle)) {
+            int readErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseRead failed. error=%d",
+                    readErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        ResetLastError();
+
+        if (!DatabaseColumnText(requestHandle, 0, fromTableSql)) {
+            int columnErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            fromLogger.error(
+                __FUNCTION__,
+                StringFormat(
+                    "DatabaseColumnText failed. error=%d",
+                    columnErrorCode
+                )
+            );
+
+            return false;
+        }
+
+        DatabaseFinalize(requestHandle);
+
+        return true;
     }
 
     /**

@@ -68,7 +68,7 @@ public:
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.h1W1ConfirmationMode = H1_W1_CONFIRMATION_OBSERVE_ONLY;
         this.h1DirectionAlignmentMode =
-            H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED;
+            H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;
         this.currencyStrengthRankVisible = true;

@@ -74,19 +74,19 @@ function alertWithAlignment(id: number, aligned: boolean | null): AlertListItem 
     is_w1_confirmation_passed: id === 1 || id === 2,
     is_w1_confirmation_legacy: id === 3,
     h1_direction_alignment_mode: id === 1
-      ? "MN1_TO_H1_REQUIRED"
+      ? "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"
       : id === 2
         ? "MN1_TO_H1_OBSERVE"
         : "D1_TO_H1",
     h1_direction_alignment_state: id === 1
-      ? "FULL_BUY"
+      ? "EMA200_FALLBACK_BUY"
       : id === 2
         ? "MN1_MISMATCH"
         : "NOT_EVALUATED",
     is_h1_direction_alignment_available: id !== 3,
     is_h1_direction_alignment_valid: id !== 3,
     h1_direction_alignment_direction: id === 3 ? "NONE" : "BUY",
-    is_h1_mn1_direction_matched: id === 1,
+    is_h1_mn1_direction_matched: false,
     is_h1_w1_direction_matched: id === 1 || id === 2,
     is_h1_direction_alignment_passed: id === 1,
     is_h1_direction_alignment_legacy: id === 3,
@@ -116,6 +116,10 @@ describe("AlertTable", () => {
     expect(screen.getByText("方向一致・EMA逆")).toBeInTheDocument();
     expect(screen.getAllByText("Legacy / 未記録")).toHaveLength(2);
     expect(screen.getAllByText("OR")).toHaveLength(2);
+    expect(screen.getByText("EMA200補完BUY")).toHaveClass("good");
+    expect(screen.getByText("W1～H1一致＋MN1またはW1 EMA200・必須"))
+      .toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "H1方向ルール" })).toBeInTheDocument();
     expect(screen.getByText("STRONG / EMA BUY")).toBeInTheDocument();
     expect(screen.getByText("EMA_CONFLICT / EMA SELL")).toBeInTheDocument();
     expect(screen.getByText("方向 不明 / EMA NONE")).toBeInTheDocument();

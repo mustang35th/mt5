@@ -33,6 +33,8 @@ describe("searchState", () => {
     expect(params.has("w1Aligned")).toBe(false);
     expect(params.has("w1ConfirmationMode")).toBe(false);
     expect(params.has("w1ConfirmationState")).toBe(false);
+    expect(params.has("h1DirectionAlignmentMode")).toBe(false);
+    expect(params.has("h1DirectionAlignmentState")).toBe(false);
     expect(params.get("page")).toBe("1");
     expect(params.get("sort")).toBe("jst_time");
   });
@@ -49,6 +51,28 @@ describe("searchState", () => {
     expect(params.get("w1ConfirmationMode")).toBe("OBSERVE_ONLY");
     expect(readSearchState("?w1ConfirmationState=CONFLICT").w1ConfirmationState).toBe("all");
     expect(readSearchState("?w1ConfirmationMode=OR").w1ConfirmationMode).toBe("all");
+  });
+
+  it("round-trips only exact H1 direction rule state and mode values", () => {
+    const state = readSearchState(
+      "?h1DirectionAlignmentState=EMA200_FALLBACK_SELL"
+        + "&h1DirectionAlignmentMode=W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+    );
+    expect(state.h1DirectionAlignmentState).toBe("EMA200_FALLBACK_SELL");
+    expect(state.h1DirectionAlignmentMode)
+      .toBe("W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED");
+    const params = buildSearchParams(state);
+    expect(params.get("h1DirectionAlignmentState")).toBe("EMA200_FALLBACK_SELL");
+    expect(params.get("h1DirectionAlignmentMode"))
+      .toBe("W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED");
+    expect(
+      readSearchState("?h1DirectionAlignmentState=EMA200_FALLBACK")
+        .h1DirectionAlignmentState,
+    ).toBe("all");
+    expect(
+      readSearchState("?h1DirectionAlignmentMode=MN1_OR_EMA200")
+        .h1DirectionAlignmentMode,
+    ).toBe("all");
   });
 
   it("restores and serializes only supported GMO target filters", () => {

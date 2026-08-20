@@ -20,7 +20,10 @@ enum H1DirectionAlignmentMode {
     H1_DIRECTION_ALIGNMENT_MN1_TO_H1_OBSERVE = 1,
 
     /** MN1からH1までの方向一致をエントリー条件にする。 */
-    H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED = 2
+    H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED = 2,
+
+    /** W1からH1の一致と、MN1またはW1 EMA200の一致を要求する。 */
+    H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED = 3
 };
 
 /**
@@ -44,6 +47,11 @@ string getH1DirectionAlignmentModeText(
         return "MN1_TO_H1_REQUIRED";
     }
 
+    if (fromMode
+            == H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED) {
+        return "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED";
+    }
+
     return "INVALID";
 }
 
@@ -58,7 +66,9 @@ bool isH1DirectionAlignmentModeValid(
 ) {
     return fromMode == H1_DIRECTION_ALIGNMENT_D1_TO_H1
         || fromMode == H1_DIRECTION_ALIGNMENT_MN1_TO_H1_OBSERVE
-        || fromMode == H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED;
+        || fromMode == H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED
+        || fromMode
+            == H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
 }
 
 #endif // MSTNG_EXPERT_ADVISOR_H1_DIRECTION_ALIGNMENT_MODE_MQH

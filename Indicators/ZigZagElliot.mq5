@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.27"
+#property version   "1.28"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -71,9 +71,9 @@ input bool currencyStrengthDatabaseSplitByYear = true;
 /** 通貨強弱DBで共通フォルダを使用する場合true。 */
 input bool currencyStrengthDatabaseUseCommonFolder = true;
 
-/** H1エントリーで使用するMN1からH1までの方向一致モード。 */
+/** H1エントリーで使用する上位時間足方向一致モード。 */
 input H1DirectionAlignmentMode h1DirectionAlignmentMode =
-    H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED;
+    H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
 
 #property indicator_type1   DRAW_LINE
 #property indicator_type2   DRAW_LINE

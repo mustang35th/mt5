@@ -13,6 +13,9 @@ const STATE_DESCRIPTIONS: Record<H1DirectionAlignmentState, string> = {
   MN1_MISMATCH: "MN1だけH1方向と不一致",
   W1_MISMATCH: "W1だけH1方向と不一致",
   MN1_W1_MISMATCH: "MN1とW1がH1方向と不一致",
+  EMA200_FALLBACK_BUY: "W1～H1がすべてBUYで、MN1不一致をW1 EMA200 BUYで補完",
+  EMA200_FALLBACK_SELL: "W1～H1がすべてSELLで、MN1不一致をW1 EMA200 SELLで補完",
+  MN1_EMA200_MISMATCH: "W1～H1は一致したが、MN1とW1 EMA200が基準方向と不一致",
   UNAVAILABLE: "必要な時間足の分析結果を取得できない",
   INVALID: "方向一致の分析結果または設定が不正",
 };
@@ -26,6 +29,9 @@ const STATE_SHORT_LABELS: Record<H1DirectionAlignmentState, string> = {
   MN1_MISMATCH: "MN1不一致",
   W1_MISMATCH: "W1不一致",
   MN1_W1_MISMATCH: "MN1・W1不一致",
+  EMA200_FALLBACK_BUY: "EMA200補完BUY",
+  EMA200_FALLBACK_SELL: "EMA200補完SELL",
+  MN1_EMA200_MISMATCH: "MN1・EMA200不一致",
   UNAVAILABLE: "取得不可",
   INVALID: "不正",
 };
@@ -34,17 +40,25 @@ const MODE_LABELS: Record<H1DirectionAlignmentMode, string> = {
   D1_TO_H1: "D1～H1",
   MN1_TO_H1_OBSERVE: "MN1～H1・記録のみ",
   MN1_TO_H1_REQUIRED: "MN1～H1・必須",
+  W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED: "W1～H1一致＋MN1またはW1 EMA200・必須",
   INVALID: "不正",
 };
 
 function stateVariant(state: H1DirectionAlignmentState): string {
-  if (state === "FULL_BUY" || state === "FULL_SELL" || state === "D1_TO_H1") {
+  if (
+    state === "FULL_BUY"
+    || state === "FULL_SELL"
+    || state === "D1_TO_H1"
+    || state === "EMA200_FALLBACK_BUY"
+    || state === "EMA200_FALLBACK_SELL"
+  ) {
     return "good";
   }
   if (
     state === "MN1_MISMATCH"
     || state === "W1_MISMATCH"
     || state === "MN1_W1_MISMATCH"
+    || state === "MN1_EMA200_MISMATCH"
     || state === "UNAVAILABLE"
     || state === "INVALID"
   ) {
@@ -74,7 +88,7 @@ function observeEvaluationText(
   if (alignment.h1_direction_alignment_state === "INVALID") {
     return "不正・記録のみのためエントリー制限なし";
   }
-  return `${alignment.is_h1_direction_alignment_passed ? "全足一致" : "全足不一致"}・記録のみのためエントリー制限なし`;
+  return `ルール${alignment.is_h1_direction_alignment_passed ? "通過" : "不通過"}・記録のみのためエントリー制限なし`;
 }
 
 export function H1DirectionAlignmentBadge({

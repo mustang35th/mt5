@@ -68,14 +68,14 @@ function detailPayload(alertId = 74) {
       is_w1_ema200_matched: false,
       is_w1_confirmation_passed: false,
       is_w1_confirmation_legacy: false,
-      h1_direction_alignment_mode: "MN1_TO_H1_OBSERVE",
-      h1_direction_alignment_state: "MN1_MISMATCH",
+      h1_direction_alignment_mode: "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+      h1_direction_alignment_state: "EMA200_FALLBACK_BUY",
       is_h1_direction_alignment_available: true,
       is_h1_direction_alignment_valid: true,
       h1_direction_alignment_direction: "BUY",
       is_h1_mn1_direction_matched: false,
       is_h1_w1_direction_matched: true,
-      is_h1_direction_alignment_passed: false,
+      is_h1_direction_alignment_passed: true,
       is_h1_direction_alignment_legacy: false,
     },
     run: {
@@ -177,9 +177,20 @@ describe("AlertDetailDrawer", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(screen.getByText("UNAVAILABLE / 取得不可")).toBeInTheDocument();
     expect(screen.getByText("mode: 記録のみ")).toBeInTheDocument();
-    expect(screen.getAllByText("不通過（記録のみ・エントリー制限なし）")).toHaveLength(2);
-    expect(screen.getByText("MN1_MISMATCH / MN1不一致")).toBeInTheDocument();
-    expect(screen.getByText("mode: MN1～H1・記録のみ")).toBeInTheDocument();
+    expect(screen.getByText("不通過（記録のみ・エントリー制限なし）")).toBeInTheDocument();
+    expect(screen.getByText("EMA200_FALLBACK_BUY / EMA200補完BUY")).toBeInTheDocument();
+    expect(screen.getByText("mode: W1～H1一致＋MN1またはW1 EMA200・必須"))
+      .toBeInTheDocument();
+    const h1Mode = screen.getByText("H1方向一致モード").closest(".detail-field");
+    const h1State = screen.getByText("H1方向一致状態").closest(".detail-field");
+    const h1Evaluation = screen.getByText("H1方向一致 ルール評価").closest(".detail-field");
+    expect(h1Mode).toHaveTextContent(
+      "W1～H1一致＋MN1またはW1 EMA200・必須 / W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+    );
+    expect(h1State).toHaveTextContent(
+      "EMA200_FALLBACK_BUY / W1～H1がすべてBUYで、MN1不一致をW1 EMA200 BUYで補完",
+    );
+    expect(h1Evaluation).toHaveTextContent("通過");
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
     expect(screen.getAllByText("▼ DOWN / 下降")).toHaveLength(5);
     expect(screen.getAllByText("▼3.iii")).toHaveLength(5);

@@ -6,6 +6,8 @@ import Select, { type SelectChangeEvent } from "@mui/material/Select";
 import { useState, type FormEvent } from "react";
 import type {
   GmoTargetFilter,
+  H1DirectionAlignmentMode,
+  H1DirectionAlignmentState,
   OptionsResponse,
   RunItem,
   SearchState,
@@ -13,6 +15,10 @@ import type {
   W1ConfirmationMode,
   W1ConfirmationState,
 } from "../api/types";
+import {
+  h1DirectionAlignmentModeLabel,
+  h1DirectionAlignmentStateDescription,
+} from "./H1DirectionAlignmentBadge";
 import {
   w1ConfirmationModeLabel,
   w1ConfirmationStateDescription,
@@ -44,6 +50,8 @@ const SEARCH_VALUE_KEYS: ReadonlyArray<keyof SearchState> = [
   "w1Aligned",
   "w1ConfirmationMode",
   "w1ConfirmationState",
+  "h1DirectionAlignmentMode",
+  "h1DirectionAlignmentState",
   "from",
   "to",
   "pageSize",
@@ -81,6 +89,8 @@ export function alertFilterSummary(value: SearchState): string {
     value.w1Aligned !== "all",
     value.w1ConfirmationMode !== "all",
     value.w1ConfirmationState !== "all",
+    value.h1DirectionAlignmentMode !== "all",
+    value.h1DirectionAlignmentState !== "all",
     value.from !== "" || value.to !== "",
   ].filter(Boolean).length;
   const additionalFilters = additionalFilterCount > 0
@@ -105,6 +115,28 @@ const W1_CONFIRMATION_STATE_ORDER: W1ConfirmationState[] = [
   "REJECT_NONE",
   "REJECT",
   "OFF",
+  "NOT_APPLICABLE",
+  "UNAVAILABLE",
+  "INVALID",
+  "NOT_EVALUATED",
+];
+const H1_DIRECTION_ALIGNMENT_MODE_ORDER: H1DirectionAlignmentMode[] = [
+  "D1_TO_H1",
+  "MN1_TO_H1_OBSERVE",
+  "MN1_TO_H1_REQUIRED",
+  "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+  "INVALID",
+];
+const H1_DIRECTION_ALIGNMENT_STATE_ORDER: H1DirectionAlignmentState[] = [
+  "FULL_BUY",
+  "FULL_SELL",
+  "EMA200_FALLBACK_BUY",
+  "EMA200_FALLBACK_SELL",
+  "MN1_EMA200_MISMATCH",
+  "MN1_MISMATCH",
+  "W1_MISMATCH",
+  "MN1_W1_MISMATCH",
+  "D1_TO_H1",
   "NOT_APPLICABLE",
   "UNAVAILABLE",
   "INVALID",
@@ -371,6 +403,48 @@ export function FilterPanel({
             {W1_CONFIRMATION_MODE_ORDER.map((mode) => (
               <option key={mode} value={mode}>
                 {mode === "OFF" ? "OFF" : `${w1ConfirmationModeLabel(mode)}（${mode}）`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>H1方向ルール状態</span>
+          <select
+            aria-label="H1方向ルール状態"
+            value={value.h1DirectionAlignmentState}
+            onChange={(event) => {
+              const nextValue = event.target.value as SearchState["h1DirectionAlignmentState"];
+              if (nextValue === "all" || H1_DIRECTION_ALIGNMENT_STATE_ORDER.includes(nextValue)) {
+                onChange({ ...value, h1DirectionAlignmentState: nextValue });
+              }
+            }}
+          >
+            <option value="all">すべて</option>
+            {H1_DIRECTION_ALIGNMENT_STATE_ORDER.map((state) => (
+              <option key={state} value={state}>
+                {state === "NOT_EVALUATED"
+                  ? "NOT_EVALUATED（Legacy）"
+                  : `${state}（${h1DirectionAlignmentStateDescription(state)}）`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>H1方向ルールモード</span>
+          <select
+            aria-label="H1方向ルールモード"
+            value={value.h1DirectionAlignmentMode}
+            onChange={(event) => {
+              const nextValue = event.target.value as SearchState["h1DirectionAlignmentMode"];
+              if (nextValue === "all" || H1_DIRECTION_ALIGNMENT_MODE_ORDER.includes(nextValue)) {
+                onChange({ ...value, h1DirectionAlignmentMode: nextValue });
+              }
+            }}
+          >
+            <option value="all">すべて</option>
+            {H1_DIRECTION_ALIGNMENT_MODE_ORDER.map((mode) => (
+              <option key={mode} value={mode}>
+                {`${h1DirectionAlignmentModeLabel(mode)}（${mode}）`}
               </option>
             ))}
           </select>

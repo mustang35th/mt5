@@ -115,7 +115,7 @@ const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
   { colId: "tf_d1", label: "D1 方向 / EMA200" },
   { colId: "tf_h4", label: "H4 方向 / EMA200" },
   { colId: "tf_h1", label: "H1 方向 / EMA200" },
-  { colId: "h1_direction_alignment", label: "MN1～H1一致" },
+  { colId: "h1_direction_alignment", label: "H1方向ルール" },
   { colId: "is_w1_aligned", label: "W1確認" },
   { colId: "risk_pips", label: "Risk / Spread" },
   { colId: "entry_result", label: "ENTRY" },
@@ -749,7 +749,7 @@ export function AlertTable({
     {
       colId: "h1_direction_alignment",
       field: "h1_direction_alignment_state",
-      headerName: "MN1～H1一致",
+      headerName: "H1方向ルール",
       initialWidth: 230,
       minWidth: 210,
       cellRenderer: H1DirectionAlignmentCell,

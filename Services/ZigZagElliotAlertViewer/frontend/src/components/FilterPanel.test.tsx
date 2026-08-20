@@ -59,6 +59,8 @@ describe("FilterPanel", () => {
     expect(screen.getByRole("combobox", { name: "GMO取引" })).toHaveValue("all");
     expect(screen.getByRole("combobox", { name: "W1確認" })).toHaveValue("all");
     expect(screen.getByRole("combobox", { name: "W1確認モード" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "H1方向ルール状態" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "H1方向ルールモード" })).toHaveValue("all");
   });
 
   it("selects exact persisted W1 state and mode values", () => {
@@ -71,7 +73,33 @@ describe("FilterPanel", () => {
     expect(state).toHaveValue("EMA_CONFLICT");
     expect(mode).toHaveValue("OBSERVE_ONLY");
     expect(screen.getByRole("option", { name: /EMA_CONFLICT/ })).toHaveValue("EMA_CONFLICT");
-    expect(screen.getByRole("option", { name: /記録のみ/ })).toHaveValue("OBSERVE_ONLY");
+    expect(screen.getByRole("option", { name: "記録のみ（OBSERVE_ONLY）" }))
+      .toHaveValue("OBSERVE_ONLY");
+  });
+
+  it("selects exact persisted H1 rule state and mode values", () => {
+    render(<FilterPanelHarness />);
+
+    const state = screen.getByRole("combobox", { name: "H1方向ルール状態" });
+    const mode = screen.getByRole("combobox", { name: "H1方向ルールモード" });
+    fireEvent.change(state, { target: { value: "EMA200_FALLBACK_BUY" } });
+    fireEvent.change(mode, {
+      target: { value: "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED" },
+    });
+    expect(state).toHaveValue("EMA200_FALLBACK_BUY");
+    expect(mode).toHaveValue("W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED");
+    expect(screen.getByRole("option", { name: /EMA200_FALLBACK_BUY/ }))
+      .toHaveValue("EMA200_FALLBACK_BUY");
+    expect(screen.getByRole("option", { name: /W1～H1一致＋MN1またはW1 EMA200/ }))
+      .toHaveValue("W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED");
+    expect(hasAlertUnappliedChanges(
+      {
+        ...DEFAULT_SEARCH_STATE,
+        h1DirectionAlignmentState: "EMA200_FALLBACK_BUY",
+        h1DirectionAlignmentMode: "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+      },
+      DEFAULT_SEARCH_STATE,
+    )).toBe(true);
   });
 
   it("marks all as selected and preserves an unknown URL value while editing", () => {

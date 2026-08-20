@@ -26,6 +26,7 @@ export type H1DirectionAlignmentMode =
   | "D1_TO_H1"
   | "MN1_TO_H1_OBSERVE"
   | "MN1_TO_H1_REQUIRED"
+  | "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"
   | "INVALID";
 export type H1DirectionAlignmentState =
   | "NOT_EVALUATED"
@@ -36,8 +37,13 @@ export type H1DirectionAlignmentState =
   | "MN1_MISMATCH"
   | "W1_MISMATCH"
   | "MN1_W1_MISMATCH"
+  | "EMA200_FALLBACK_BUY"
+  | "EMA200_FALLBACK_SELL"
+  | "MN1_EMA200_MISMATCH"
   | "UNAVAILABLE"
   | "INVALID";
+export type H1DirectionAlignmentModeFilter = "all" | H1DirectionAlignmentMode;
+export type H1DirectionAlignmentStateFilter = "all" | H1DirectionAlignmentState;
 export type GmoTargetFilter = "all" | "target" | "excluded";
 export type SortOrder = "asc" | "desc";
 export type AlertSort =
@@ -63,6 +69,8 @@ export interface SearchState {
   w1Aligned: W1Alignment;
   w1ConfirmationMode: W1ConfirmationModeFilter;
   w1ConfirmationState: W1ConfirmationStateFilter;
+  h1DirectionAlignmentMode: H1DirectionAlignmentModeFilter;
+  h1DirectionAlignmentState: H1DirectionAlignmentStateFilter;
   from: string;
   to: string;
   pageSize: number;

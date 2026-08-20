@@ -95,6 +95,7 @@ H1_DIRECTION_ALIGNMENT_MODES = {
     "D1_TO_H1",
     "MN1_TO_H1_OBSERVE",
     "MN1_TO_H1_REQUIRED",
+    "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
     "INVALID",
 }
 H1_DIRECTION_ALIGNMENT_STATES = {
@@ -106,6 +107,9 @@ H1_DIRECTION_ALIGNMENT_STATES = {
     "MN1_MISMATCH",
     "W1_MISMATCH",
     "MN1_W1_MISMATCH",
+    "EMA200_FALLBACK_BUY",
+    "EMA200_FALLBACK_SELL",
+    "MN1_EMA200_MISMATCH",
     "UNAVAILABLE",
     "INVALID",
 }
@@ -2191,6 +2195,32 @@ class AlertDatabase:
                 )
             derived_clauses.append("w1_confirmation_mode = :w1_confirmation_mode")
             parameters["w1_confirmation_mode"] = confirmation_mode
+
+        h1_alignment_state = (
+            first("h1DirectionAlignmentState") or "all"
+        ).upper()
+        if h1_alignment_state != "ALL":
+            if h1_alignment_state not in H1_DIRECTION_ALIGNMENT_STATES:
+                raise RequestError(
+                    "h1DirectionAlignmentState must be an exact persisted H1 state or all"
+                )
+            derived_clauses.append(
+                "h1_direction_alignment_state = :h1_direction_alignment_state"
+            )
+            parameters["h1_direction_alignment_state"] = h1_alignment_state
+
+        h1_alignment_mode = (
+            first("h1DirectionAlignmentMode") or "all"
+        ).upper()
+        if h1_alignment_mode != "ALL":
+            if h1_alignment_mode not in H1_DIRECTION_ALIGNMENT_MODES:
+                raise RequestError(
+                    "h1DirectionAlignmentMode must be an exact persisted H1 mode or all"
+                )
+            derived_clauses.append(
+                "h1_direction_alignment_mode = :h1_direction_alignment_mode"
+            )
+            parameters["h1_direction_alignment_mode"] = h1_alignment_mode
 
         sort_key = first("sort") or "jst_time"
         if sort_key not in SORT_COLUMNS:

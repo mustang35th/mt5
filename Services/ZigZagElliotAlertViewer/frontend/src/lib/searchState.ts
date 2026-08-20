@@ -1,5 +1,7 @@
 import type {
   AlertSort,
+  H1DirectionAlignmentMode,
+  H1DirectionAlignmentState,
   SearchState,
   SourceMode,
   ViewerTab,
@@ -19,6 +21,8 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
   w1Aligned: "all",
   w1ConfirmationMode: "all",
   w1ConfirmationState: "all",
+  h1DirectionAlignmentMode: "all",
+  h1DirectionAlignmentState: "all",
   from: "",
   to: "",
   pageSize: 50,
@@ -60,6 +64,30 @@ const W1_CONFIRMATION_STATES = new Set<W1ConfirmationState>([
   "REJECT",
 ]);
 
+const H1_DIRECTION_ALIGNMENT_MODES = new Set<H1DirectionAlignmentMode>([
+  "D1_TO_H1",
+  "MN1_TO_H1_OBSERVE",
+  "MN1_TO_H1_REQUIRED",
+  "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+  "INVALID",
+]);
+
+const H1_DIRECTION_ALIGNMENT_STATES = new Set<H1DirectionAlignmentState>([
+  "NOT_EVALUATED",
+  "NOT_APPLICABLE",
+  "D1_TO_H1",
+  "FULL_BUY",
+  "FULL_SELL",
+  "MN1_MISMATCH",
+  "W1_MISMATCH",
+  "MN1_W1_MISMATCH",
+  "EMA200_FALLBACK_BUY",
+  "EMA200_FALLBACK_SELL",
+  "MN1_EMA200_MISMATCH",
+  "UNAVAILABLE",
+  "INVALID",
+]);
+
 function positiveInteger(value: string | null, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -89,6 +117,8 @@ export function readSearchState(search: string): SearchState {
   const alignment = params.get("w1Aligned");
   const confirmationMode = params.get("w1ConfirmationMode") as W1ConfirmationMode | null;
   const confirmationState = params.get("w1ConfirmationState") as W1ConfirmationState | null;
+  const h1AlignmentMode = params.get("h1DirectionAlignmentMode") as H1DirectionAlignmentMode | null;
+  const h1AlignmentState = params.get("h1DirectionAlignmentState") as H1DirectionAlignmentState | null;
   const requestedGmoTarget = params.get("gmoTarget");
   const sort = params.get("sort") as AlertSort | null;
   const requestedPageSize = positiveInteger(params.get("pageSize"), DEFAULT_SEARCH_STATE.pageSize);
@@ -118,6 +148,12 @@ export function readSearchState(search: string): SearchState {
       : "all",
     w1ConfirmationState: confirmationState && W1_CONFIRMATION_STATES.has(confirmationState)
       ? confirmationState
+      : "all",
+    h1DirectionAlignmentMode: h1AlignmentMode && H1_DIRECTION_ALIGNMENT_MODES.has(h1AlignmentMode)
+      ? h1AlignmentMode
+      : "all",
+    h1DirectionAlignmentState: h1AlignmentState && H1_DIRECTION_ALIGNMENT_STATES.has(h1AlignmentState)
+      ? h1AlignmentState
       : "all",
     from: dateInputValue(params.get("from")),
     to: dateInputValue(params.get("to")),
@@ -154,6 +190,12 @@ export function buildSearchParams(
   }
   if (state.w1ConfirmationState !== "all") {
     params.set("w1ConfirmationState", state.w1ConfirmationState);
+  }
+  if (state.h1DirectionAlignmentMode !== "all") {
+    params.set("h1DirectionAlignmentMode", state.h1DirectionAlignmentMode);
+  }
+  if (state.h1DirectionAlignmentState !== "all") {
+    params.set("h1DirectionAlignmentState", state.h1DirectionAlignmentState);
   }
   if (state.from) params.set("from", state.from);
   if (state.to) params.set("to", state.to);

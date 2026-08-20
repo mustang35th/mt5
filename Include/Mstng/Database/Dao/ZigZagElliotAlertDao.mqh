@@ -99,12 +99,15 @@ public:
         sql += "h1_direction_alignment_mode TEXT NOT NULL ";
         sql += "DEFAULT 'D1_TO_H1' CHECK(h1_direction_alignment_mode IN (";
         sql += "'D1_TO_H1', 'MN1_TO_H1_OBSERVE',";
-        sql += " 'MN1_TO_H1_REQUIRED', 'INVALID')),";
+        sql += " 'MN1_TO_H1_REQUIRED',";
+        sql += " 'W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED', 'INVALID')),";
         sql += "h1_direction_alignment_state TEXT NOT NULL ";
         sql += "DEFAULT 'NOT_EVALUATED' CHECK(h1_direction_alignment_state IN (";
         sql += "'NOT_EVALUATED', 'NOT_APPLICABLE', 'D1_TO_H1',";
         sql += " 'FULL_BUY', 'FULL_SELL', 'MN1_MISMATCH', 'W1_MISMATCH',";
-        sql += " 'MN1_W1_MISMATCH', 'UNAVAILABLE', 'INVALID')),";
+        sql += " 'MN1_W1_MISMATCH', 'EMA200_FALLBACK_BUY',";
+        sql += " 'EMA200_FALLBACK_SELL', 'MN1_EMA200_MISMATCH',";
+        sql += " 'UNAVAILABLE', 'INVALID')),";
         sql += "is_h1_direction_alignment_available INTEGER NOT NULL DEFAULT 0 ";
         sql += "CHECK(is_h1_direction_alignment_available IN (0, 1)),";
         sql += "is_h1_direction_alignment_valid INTEGER NOT NULL DEFAULT 0 ";

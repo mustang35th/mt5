@@ -28,6 +28,25 @@ void setDirection(Elliot *fromElliot, const bool fromIsBuy) {
 }
 
 /**
+ * テスト用ElliotへEMA200方向を設定する。
+ *
+ * @param fromElliot 設定対象。
+ * @param fromIsBuy BUYフラグ。
+ * @param fromIsSell SELLフラグ。
+ * @param fromLabel BUY、SELLまたはNONE。
+ */
+void setEma200Direction(
+    Elliot *fromElliot,
+    const bool fromIsBuy,
+    const bool fromIsSell,
+    const string fromLabel
+) {
+    fromElliot.oscillator.ema200.isBuy = fromIsBuy;
+    fromElliot.oscillator.ema200.isSell = fromIsSell;
+    fromElliot.oscillator.ema200.buySellLabel = fromLabel;
+}
+
+/**
  * MN1からH1までの方向を持つテスト用分析結果を生成する。
  *
  * @param fromIsMn1Buy MN1がBUY方向の場合true。
@@ -263,6 +282,177 @@ bool validateDirectionalCases() {
 }
 
 /**
+ * MN1またはW1 EMA200を使用する必須モードを検証する。
+ *
+ * @return すべて期待値どおりの場合true。
+ */
+bool validateMn1OrEma200Cases() {
+    H1DirectionAlignmentDecision decision;
+    H1DirectionAlignmentResult result;
+    bool isAllMatched = true;
+    ElliotAll *elliotAll = createElliotAll(
+        true, true, true, true, true
+    );
+    bool isGatePassed = decision.evaluate(
+        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+        elliotAll,
+        result
+    );
+
+    if (!isGatePassed
+            || !assertResult(
+                "MN1 BUY MATCH",
+                result,
+                "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+                "FULL_BUY",
+                "BUY",
+                true,
+                true,
+                true
+            )) {
+        isAllMatched = false;
+    }
+
+    delete elliotAll;
+    elliotAll = createElliotAll(false, true, true, true, true);
+    Elliot *elliotW1 = elliotAll.getElliot(PERIOD_W1);
+    setEma200Direction(elliotW1, true, false, "BUY");
+    isGatePassed = decision.evaluate(
+        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+        elliotAll,
+        result
+    );
+
+    if (!isGatePassed
+            || !assertResult(
+                "EMA200 FALLBACK BUY",
+                result,
+                "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+                "EMA200_FALLBACK_BUY",
+                "BUY",
+                false,
+                true,
+                true
+            )) {
+        isAllMatched = false;
+    }
+
+    delete elliotAll;
+    elliotAll = createElliotAll(true, false, false, false, false);
+    elliotW1 = elliotAll.getElliot(PERIOD_W1);
+    setEma200Direction(elliotW1, false, true, "SELL");
+    isGatePassed = decision.evaluate(
+        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+        elliotAll,
+        result
+    );
+
+    if (!isGatePassed
+            || !assertResult(
+                "EMA200 FALLBACK SELL",
+                result,
+                "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+                "EMA200_FALLBACK_SELL",
+                "SELL",
+                false,
+                true,
+                true
+            )) {
+        isAllMatched = false;
+    }
+
+    delete elliotAll;
+    elliotAll = createElliotAll(false, true, true, true, true);
+    elliotW1 = elliotAll.getElliot(PERIOD_W1);
+    setEma200Direction(elliotW1, false, true, "SELL");
+    isGatePassed = decision.evaluate(
+        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+        elliotAll,
+        result
+    );
+
+    if (isGatePassed
+            || !assertResult(
+                "MN1 EMA200 MISMATCH",
+                result,
+                "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+                "MN1_EMA200_MISMATCH",
+                "BUY",
+                false,
+                true,
+                false
+            )) {
+        isAllMatched = false;
+    }
+
+    delete elliotAll;
+    elliotAll = createElliotAll(true, false, true, true, true);
+    elliotW1 = elliotAll.getElliot(PERIOD_W1);
+    setEma200Direction(elliotW1, true, false, "BUY");
+    isGatePassed = decision.evaluate(
+        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+        elliotAll,
+        result
+    );
+
+    if (isGatePassed
+            || !assertResult(
+                "W1 REQUIRED",
+                result,
+                "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+                "W1_MISMATCH",
+                "BUY",
+                true,
+                false,
+                false
+            )) {
+        isAllMatched = false;
+    }
+
+    delete elliotAll;
+    elliotAll = createElliotAll(true, true, true, true, true);
+    elliotW1 = elliotAll.getElliot(PERIOD_W1);
+    setEma200Direction(elliotW1, true, true, "BUY");
+    isGatePassed = decision.evaluate(
+        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+        elliotAll,
+        result
+    );
+
+    if (isGatePassed
+            || result.state != "INVALID"
+            || !result.isAvailable
+            || result.isValid
+            || result.isPassed) {
+        Print("FAIL EMA200 conflict");
+        isAllMatched = false;
+    }
+
+    delete elliotAll;
+    elliotAll = createElliotAll(true, true, true, true, true);
+    elliotW1 = elliotAll.getElliot(PERIOD_W1);
+    setEma200Direction(elliotW1, true, false, "SELL");
+    isGatePassed = decision.evaluate(
+        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+        elliotAll,
+        result
+    );
+
+    if (isGatePassed
+            || result.state != "INVALID"
+            || !result.isAvailable
+            || result.isValid
+            || result.isPassed) {
+        Print("FAIL EMA200 inconsistent label");
+        isAllMatched = false;
+    }
+
+    delete elliotAll;
+
+    return isAllMatched;
+}
+
+/**
  * 既定、取得不能および不正値の動作を検証する。
  *
  * @return すべて期待値どおりの場合true。
@@ -392,6 +582,10 @@ void OnStart() {
     int failureCount = 0;
 
     if (!validateDirectionalCases()) {
+        failureCount++;
+    }
+
+    if (!validateMn1OrEma200Cases()) {
         failureCount++;
     }
 

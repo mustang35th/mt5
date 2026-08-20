@@ -6,10 +6,10 @@
 |---|---|
 | 対象機能 | `ZigZagElliot`の`MTF_3in3`アラート履歴 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| スキーマバージョン | 4 |
+| スキーマバージョン | 5 |
 | 保存単位 | 実行、アラート、時間足別分析、最新Waveポイント |
 | 重複時の動作 | 最初に保存したスナップショットを維持 |
-| 最終更新日 | 2026-08-16 |
+| 最終更新日 | 2026-08-20 |
 
 本書は、ZigZagElliotがアラートを出した時点の判定情報とElliott波動を、後からSQLで検索および再構成できる形式で保存する第1段階の仕様を定義します。
 
@@ -124,7 +124,7 @@ ON zigzag_elliot_alert_runs(started_at);
 
 `run_uid`は1回の実行中に変化しません。テスターを再実行した場合は新しいRunとして扱います。
 
-現行のAlert Runは`schema_version = 4`、`strategy_version = MTF3IN3_V3`です。H1方向一致診断の導入前に保存したRunのバージョンは書き換えません。
+現行のAlert Runは`schema_version = 5`、`program_version = 1.28`、`strategy_version = MTF3IN3_V4`です。H1方向一致CHECK制約の拡張前に保存したRunのバージョンは書き換えません。
 
 ## 7. `zigzag_elliot_alerts`
 
@@ -152,15 +152,17 @@ H1のW1確認は、W1の3本Stochasticによる分析方向とW1 EMA200方向を
 
 既存行は推測で再判定せず、`OFF`、`NOT_EVALUATED`および各フラグの既定値でW1確認のLegacyとして保持します。
 
-H1方向一致はH1の3本Stochastic多数決方向を基準にします。`D1_TO_H1`は従来のD1・H4・H1一致条件を維持し、`MN1_TO_H1_OBSERVE`はMN1・W1・D1・H4・H1の一致結果を記録するだけでエントリーを制限しません。`MN1_TO_H1_REQUIRED`は同じ5足の全一致を必須にし、取得不能または不正値をfail-closedで拒否します。
+H1方向一致はH1の3本Stochastic多数決方向を基準にします。`D1_TO_H1`は従来のD1・H4・H1一致条件を維持し、`MN1_TO_H1_OBSERVE`はMN1・W1・D1・H4・H1の一致結果を記録するだけでエントリーを制限しません。`MN1_TO_H1_REQUIRED`は同じ5足の全一致を必須にします。`W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`はW1・D1・H4・H1の全一致に加え、MN1方向またはW1 EMA200方向のどちらか一方がH1方向と一致することを必須にします。REQUIREDモードは取得不能または不正値をfail-closedで拒否します。
 
-`ZigZagElliot`の既定値は`MN1_TO_H1_REQUIRED`です。
+`ZigZagElliot`の既定値は`W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`です。
 
-`MN1_TO_H1_REQUIRED`ではW1分析方向の一致がすでに必須です。そのためW1確認を`DIRECTION_OR_EMA200`にすると方向条件で常に通過し、`DIRECTION_AND_EMA200`にすると実質的にW1 EMA200一致が追加条件になります。`MN1_TO_H1_OBSERVE`は記録だけなので、既存のW1確認ゲート動作を変えません。
+`MN1_TO_H1_REQUIRED`と`W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`ではW1分析方向の一致がすでに必須です。そのためW1確認を`DIRECTION_OR_EMA200`にすると方向条件で常に通過し、`DIRECTION_AND_EMA200`にすると実質的にW1 EMA200一致が追加条件になります。`MN1_TO_H1_OBSERVE`は記録だけなので、既存のW1確認ゲート動作を変えません。
 
-Alert DBとV4検証CSVは`isAlert = true`の候補だけを保存します。`MN1_TO_H1_REQUIRED`で不一致、`UNAVAILABLE`または`INVALID`となった候補はSignalCount加算前に拒否されるため、Alert行や検証CSV行自体が生成されません。不一致状態を比較用に保存する場合は`MN1_TO_H1_OBSERVE`を使用します。
+Alert DBと80列のV4検証CSVは`isAlert = true`の候補だけを保存します。REQUIREDモードで不一致、`UNAVAILABLE`または`INVALID`となった候補はSignalCount加算前に拒否されるため、Alert行や検証CSV行自体が生成されません。不一致状態を比較用に保存する場合は`MN1_TO_H1_OBSERVE`を使用します。DBスキーマをV5へ更新しても、検証CSVの形式と列数はV4・80列のまま変更しません。
 
-診断状態は`NOT_APPLICABLE`、`D1_TO_H1`、`FULL_BUY`、`FULL_SELL`、`MN1_MISMATCH`、`W1_MISMATCH`、`MN1_W1_MISMATCH`、`UNAVAILABLE`および`INVALID`を保存します。`NOT_EVALUATED`はLegacy専用です。既存行は非破壊migrationでモード`D1_TO_H1`、状態`NOT_EVALUATED`、方向`NONE`、各フラグ`0`として保持し、ViewerでLegacy表示します。新しいRunはH1方向一致モードとW1確認モードを`input_text`と`input_hash`へ含めます。
+診断状態は`NOT_APPLICABLE`、`D1_TO_H1`、`FULL_BUY`、`FULL_SELL`、`MN1_MISMATCH`、`W1_MISMATCH`、`MN1_W1_MISMATCH`、`EMA200_FALLBACK_BUY`、`EMA200_FALLBACK_SELL`、`MN1_EMA200_MISMATCH`、`UNAVAILABLE`および`INVALID`を保存します。`EMA200_FALLBACK_BUY`と`EMA200_FALLBACK_SELL`はMN1不一致をW1 EMA200方向の一致で補完した通過状態、`MN1_EMA200_MISMATCH`はMN1とW1 EMA200のどちらもH1方向に一致しない拒否状態です。`NOT_EVALUATED`はLegacy専用です。既存行は非破壊migrationでモード`D1_TO_H1`、状態`NOT_EVALUATED`、方向`NONE`、各フラグ`0`として保持し、ViewerでLegacy表示します。新しいRunはH1方向一致モードとW1確認モードを`input_text`と`input_hash`へ含めます。
+
+既存共有DBにH1方向一致診断列がすでに存在しても、旧CHECK制約では新しいモードと状態を保存できません。V5 migrationは`sqlite_master`のテーブル定義から旧CHECK制約を検出し、トランザクション内で対象2列の値を一時列へコピーして制約だけを拡張します。永続列の追加、既存値の再判定およびRunの書き換えは行わず、再実行しても変更が重複しません。
 
 `signal_reference_point_time`は現在時間足の`getLatestPoint2()`の時刻です。確定済みを保証する名称ではありません。
 
@@ -333,6 +335,9 @@ mstng-zigzag-elliot-alert-smoke-test.sqlite
 - `point_order`合計が35で、ポイント順が欠落していないこと
 - 各時間足の`point_count`と子Point件数が一致すること
 - H1方向一致診断8列の保存値とLegacy migration既定値が一致すること
+- V5の新モードと3つの診断状態がfresh DBのCHECK制約へ含まれること
+- 旧CHECK制約を持つDBを非破壊でV5へ移行し、既存行を保持できること
+- V5 migrationを連続実行しても重複変更やエラーが発生しないこと
 - 最新ポイントが時間足ごとに1件、シグナル基準ポイントが全体で1件であること
 - 対応する時間足がないPointを混ぜた保存が失敗し、親子行とEntity IDを残さないこと
 - `PRAGMA foreign_keys = 1`

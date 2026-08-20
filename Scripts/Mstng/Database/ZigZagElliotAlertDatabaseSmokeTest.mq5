@@ -191,7 +191,7 @@ bool dropDatabaseObjects(
 void initializeRunEntity(ZigZagElliotAlertRunEntity &fromEntity) {
     fromEntity.id = 0;
     fromEntity.runUid = "zigzag-elliot-alert-smoke-run-v1";
-    fromEntity.schemaVersion = 4;
+    fromEntity.schemaVersion = 5;
     fromEntity.sourceMode = "TESTER";
     fromEntity.source = "ZigZagElliot";
     fromEntity.programName = "ZigZagElliot";
@@ -295,12 +295,13 @@ void initializeAlertEntity(
     fromEntity.w1Ema200Direction = "BUY";
     fromEntity.isW1Ema200Matched = 1;
     fromEntity.isW1ConfirmationPassed = 1;
-    fromEntity.h1DirectionAlignmentMode = "MN1_TO_H1_REQUIRED";
-    fromEntity.h1DirectionAlignmentState = "FULL_BUY";
+    fromEntity.h1DirectionAlignmentMode =
+        "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED";
+    fromEntity.h1DirectionAlignmentState = "EMA200_FALLBACK_BUY";
     fromEntity.isH1DirectionAlignmentAvailable = 1;
     fromEntity.isH1DirectionAlignmentValid = 1;
     fromEntity.h1DirectionAlignmentDirection = "BUY";
-    fromEntity.isH1Mn1DirectionMatched = 1;
+    fromEntity.isH1Mn1DirectionMatched = 0;
     fromEntity.isH1W1DirectionMatched = 1;
     fromEntity.isH1DirectionAlignmentPassed = 1;
     fromEntity.spreadPips = 2.1;
@@ -687,7 +688,7 @@ bool verifySavedSnapshot(
             fromDatabaseHandle,
             "SELECT COUNT(*) FROM zigzag_elliot_alert_runs "
                 "WHERE run_uid = 'zigzag-elliot-alert-smoke-run-v1' "
-                "AND schema_version = 4",
+                "AND schema_version = 5",
             runCount,
             fromLogger
         )
@@ -871,6 +872,39 @@ bool verifySavedSnapshot(
 }
 
 /**
+ * スモークテスト用SQLを実行する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromSql 実行するSQL。
+ * @param fromOperationName ログ用の操作名。
+ * @param fromLogger ロガー。
+ * @return 実行に成功した場合true。
+ */
+bool executeSmokeSql(
+    const int fromDatabaseHandle,
+    const string fromSql,
+    const string fromOperationName,
+    Logger &fromLogger
+) {
+    ResetLastError();
+
+    if (DatabaseExecute(fromDatabaseHandle, fromSql)) {
+        return true;
+    }
+
+    fromLogger.error(
+        __FUNCTION__,
+        StringFormat(
+            "DatabaseExecute failed. operation=%s error=%d",
+            fromOperationName,
+            GetLastError()
+        )
+    );
+
+    return false;
+}
+
+/**
  * 保存したW1確認診断値を確認する。
  *
  * @param fromDatabaseHandle データベースハンドル。
@@ -912,6 +946,264 @@ bool verifyW1ConfirmationValues(
  * @return 期待値と一致する場合true。
  */
 bool verifyH1DirectionAlignmentValues(
+    const int fromDatabaseHandle,
+    const long fromAlertId,
+    Logger &fromLogger
+) {
+    long matchedCount = 0;
+    string sql = "SELECT COUNT(*) FROM zigzag_elliot_alerts WHERE id = ";
+    sql += StringFormat("%I64d", fromAlertId);
+    sql += " AND h1_direction_alignment_mode =";
+    sql += " 'W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED'";
+    sql += " AND h1_direction_alignment_state = 'EMA200_FALLBACK_BUY'";
+    sql += " AND is_h1_direction_alignment_available = 1";
+    sql += " AND is_h1_direction_alignment_valid = 1";
+    sql += " AND h1_direction_alignment_direction = 'BUY'";
+    sql += " AND is_h1_mn1_direction_matched = 0";
+    sql += " AND is_h1_w1_direction_matched = 1";
+    sql += " AND is_h1_direction_alignment_passed = 1";
+
+    return readLong(
+        fromDatabaseHandle,
+        sql,
+        matchedCount,
+        fromLogger
+    ) && matchedCount == 1;
+}
+
+/**
+ * H1方向一致列を旧CHECK制約の一時列へ置き換える。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromColumnName 置換対象列名。
+ * @param fromTemporaryColumnName 一時列名。
+ * @param fromTemporaryColumnDefinition 一時列定義。
+ * @param fromLogger ロガー。
+ * @return 置換に成功した場合true。
+ */
+bool replaceH1DirectionAlignmentColumnWithLegacyConstraint(
+    const int fromDatabaseHandle,
+    const string fromColumnName,
+    const string fromTemporaryColumnName,
+    const string fromTemporaryColumnDefinition,
+    Logger &fromLogger
+) {
+    string sql = "ALTER TABLE zigzag_elliot_alerts ADD COLUMN ";
+    sql += fromTemporaryColumnName + " ";
+    sql += fromTemporaryColumnDefinition;
+
+    if (!executeSmokeSql(
+            fromDatabaseHandle,
+            sql,
+            "legacy constraint column add",
+            fromLogger
+        )) {
+        return false;
+    }
+
+    sql = "UPDATE zigzag_elliot_alerts SET ";
+    sql += fromTemporaryColumnName + " = " + fromColumnName;
+
+    if (!executeSmokeSql(
+            fromDatabaseHandle,
+            sql,
+            "legacy constraint value copy",
+            fromLogger
+        )) {
+        return false;
+    }
+
+    sql = "ALTER TABLE zigzag_elliot_alerts DROP COLUMN ";
+    sql += fromColumnName;
+
+    if (!executeSmokeSql(
+            fromDatabaseHandle,
+            sql,
+            "current constraint column drop",
+            fromLogger
+        )) {
+        return false;
+    }
+
+    sql = "ALTER TABLE zigzag_elliot_alerts RENAME COLUMN ";
+    sql += fromTemporaryColumnName + " TO " + fromColumnName;
+
+    return executeSmokeSql(
+        fromDatabaseHandle,
+        sql,
+        "legacy constraint column rename",
+        fromLogger
+    );
+}
+
+/**
+ * CHECK拡張前のH1方向一致列と既存行を再現する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromAlertId 既存行のアラートID。
+ * @param fromLogger ロガー。
+ * @return 旧CHECK制約の再現に成功した場合true。
+ */
+bool prepareLegacyH1DirectionAlignmentConstraints(
+    const int fromDatabaseHandle,
+    const long fromAlertId,
+    Logger &fromLogger
+) {
+    ResetLastError();
+
+    if (!DatabaseTransactionBegin(fromDatabaseHandle)) {
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "DatabaseTransactionBegin failed. error=%d",
+                GetLastError()
+            )
+        );
+
+        return false;
+    }
+
+    string sql = "UPDATE zigzag_elliot_alerts SET ";
+    sql += "h1_direction_alignment_mode = 'MN1_TO_H1_REQUIRED', ";
+    sql += "h1_direction_alignment_state = 'FULL_BUY', ";
+    sql += "is_h1_mn1_direction_matched = 1 WHERE id = ";
+    sql += StringFormat("%I64d", fromAlertId);
+    string modeDefinition =
+        "TEXT NOT NULL DEFAULT 'D1_TO_H1' CHECK(";
+    modeDefinition += "h1_direction_alignment_mode_legacy_test IN (";
+    modeDefinition += "'D1_TO_H1', 'MN1_TO_H1_OBSERVE', ";
+    modeDefinition += "'MN1_TO_H1_REQUIRED', 'INVALID'))";
+    string stateDefinition =
+        "TEXT NOT NULL DEFAULT 'NOT_EVALUATED' CHECK(";
+    stateDefinition += "h1_direction_alignment_state_legacy_test IN (";
+    stateDefinition += "'NOT_EVALUATED', 'NOT_APPLICABLE', 'D1_TO_H1', ";
+    stateDefinition += "'FULL_BUY', 'FULL_SELL', 'MN1_MISMATCH', ";
+    stateDefinition += "'W1_MISMATCH', 'MN1_W1_MISMATCH', ";
+    stateDefinition += "'UNAVAILABLE', 'INVALID'))";
+
+    if (!executeSmokeSql(
+            fromDatabaseHandle,
+            sql,
+            "legacy constraint fixture update",
+            fromLogger
+        )
+            || !replaceH1DirectionAlignmentColumnWithLegacyConstraint(
+                fromDatabaseHandle,
+                "h1_direction_alignment_mode",
+                "h1_direction_alignment_mode_legacy_test",
+                modeDefinition,
+                fromLogger
+            )
+            || !replaceH1DirectionAlignmentColumnWithLegacyConstraint(
+                fromDatabaseHandle,
+                "h1_direction_alignment_state",
+                "h1_direction_alignment_state_legacy_test",
+                stateDefinition,
+                fromLogger
+            )) {
+        DatabaseTransactionRollback(fromDatabaseHandle);
+
+        return false;
+    }
+
+    ResetLastError();
+
+    if (!DatabaseTransactionCommit(fromDatabaseHandle)) {
+        int commitErrorCode = GetLastError();
+        DatabaseTransactionRollback(fromDatabaseHandle);
+        fromLogger.error(
+            __FUNCTION__,
+            StringFormat(
+                "DatabaseTransactionCommit failed. error=%d",
+                commitErrorCode
+            )
+        );
+
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * H1方向一致のCHECK制約が現行値を許可するか確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 現行モードと状態が全て定義されている場合true。
+ */
+bool verifyCurrentH1DirectionAlignmentConstraints(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    string tableSql = "";
+    string sql = "SELECT sql FROM sqlite_master ";
+    sql += "WHERE type = 'table' AND name = 'zigzag_elliot_alerts'";
+
+    return readText(
+        fromDatabaseHandle,
+        sql,
+        tableSql,
+        fromLogger
+    ) && StringFind(
+        tableSql,
+        "'W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED'"
+    ) >= 0 && StringFind(
+        tableSql,
+        "'EMA200_FALLBACK_BUY'"
+    ) >= 0 && StringFind(
+        tableSql,
+        "'EMA200_FALLBACK_SELL'"
+    ) >= 0 && StringFind(
+        tableSql,
+        "'MN1_EMA200_MISMATCH'"
+    ) >= 0;
+}
+
+/**
+ * H1方向一致のCHECK制約が旧定義へ戻っているか確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 現行モードと状態が定義されていない場合true。
+ */
+bool verifyLegacyH1DirectionAlignmentConstraints(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    string tableSql = "";
+    string sql = "SELECT sql FROM sqlite_master ";
+    sql += "WHERE type = 'table' AND name = 'zigzag_elliot_alerts'";
+
+    return readText(
+        fromDatabaseHandle,
+        sql,
+        tableSql,
+        fromLogger
+    ) && StringFind(
+        tableSql,
+        "'W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED'"
+    ) < 0 && StringFind(
+        tableSql,
+        "'EMA200_FALLBACK_BUY'"
+    ) < 0 && StringFind(
+        tableSql,
+        "'EMA200_FALLBACK_SELL'"
+    ) < 0 && StringFind(
+        tableSql,
+        "'MN1_EMA200_MISMATCH'"
+    ) < 0;
+}
+
+/**
+ * CHECK拡張後も既存H1方向一致値が保持されているか確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromAlertId アラートID。
+ * @param fromLogger ロガー。
+ * @return 既存値が保持されている場合true。
+ */
+bool verifyPreservedH1DirectionAlignmentValues(
     const int fromDatabaseHandle,
     const long fromAlertId,
     Logger &fromLogger
@@ -1192,15 +1484,15 @@ void OnStart() {
         return;
     }
 
-    ZigZagElliotAlertRunEntity invalidV4RunEntity;
-    initializeRunEntity(invalidV4RunEntity);
-    invalidV4RunEntity.runUid =
-        "zigzag-elliot-alert-smoke-run-invalid-v4";
-    invalidV4RunEntity.analysisInputHash = "INVALID";
+    ZigZagElliotAlertRunEntity invalidV5RunEntity;
+    initializeRunEntity(invalidV5RunEntity);
+    invalidV5RunEntity.runUid =
+        "zigzag-elliot-alert-smoke-run-invalid-v5";
+    invalidV5RunEntity.analysisInputHash = "INVALID";
 
-    if (persistenceService.saveRun(invalidV4RunEntity)
-            || invalidV4RunEntity.id != 0) {
-        logger.error(__FUNCTION__, "Invalid V4 Run was not rejected.");
+    if (persistenceService.saveRun(invalidV5RunEntity)
+            || invalidV5RunEntity.id != 0) {
+        logger.error(__FUNCTION__, "Invalid V5 Run was not rejected.");
 
         return;
     }
@@ -1358,11 +1650,100 @@ void OnStart() {
         verificationDatabase.getHandle(),
         firstAlertId,
         logger
+    ) && verifyCurrentH1DirectionAlignmentConstraints(
+        verificationDatabase.getHandle(),
+        logger
     );
     verificationDatabase.close();
 
     if (!isVerified) {
         logger.error(__FUNCTION__, "Saved snapshot verification failed.");
+
+        return;
+    }
+
+    SqliteDatabase legacyConstraintDatabase(
+        databaseFileName,
+        useCommonFolder
+    );
+
+    if (!legacyConstraintDatabase.open()
+            || !prepareLegacyH1DirectionAlignmentConstraints(
+                legacyConstraintDatabase.getHandle(),
+                firstAlertId,
+                logger
+            )
+            || !verifyLegacyH1DirectionAlignmentConstraints(
+                legacyConstraintDatabase.getHandle(),
+                logger
+            )) {
+        logger.error(
+            __FUNCTION__,
+            "Legacy H1 direction CHECK preparation failed."
+        );
+        legacyConstraintDatabase.close();
+
+        return;
+    }
+
+    legacyConstraintDatabase.close();
+    ZigZagElliotAlertDatabaseContext constraintMigrationContext(
+        databaseFileName,
+        useCommonFolder
+    );
+
+    if (!constraintMigrationContext.open()
+            || !constraintMigrationContext.isReady()) {
+        logger.error(
+            __FUNCTION__,
+            "H1 direction CHECK migration context open failed."
+        );
+
+        return;
+    }
+
+    ZigZagElliotAlertPersistenceService *constraintMigrationService =
+        constraintMigrationContext.getPersistenceService();
+
+    if (constraintMigrationService == NULL
+            || !constraintMigrationService.createTables()
+            || !constraintMigrationService.createTables()) {
+        logger.error(
+            __FUNCTION__,
+            "H1 direction CHECK idempotent migration failed."
+        );
+        constraintMigrationContext.close();
+
+        return;
+    }
+
+    constraintMigrationContext.close();
+
+    if (!verificationDatabase.open()) {
+        logger.error(
+            __FUNCTION__,
+            "H1 direction CHECK migration verification open failed."
+        );
+
+        return;
+    }
+
+    bool isConstraintMigrationVerified =
+        verifyCurrentH1DirectionAlignmentConstraints(
+            verificationDatabase.getHandle(),
+            logger
+        ) && verifyPreservedH1DirectionAlignmentValues(
+            verificationDatabase.getHandle(),
+            firstAlertId,
+            logger
+        );
+    verificationDatabase.close();
+
+    if (!isConstraintMigrationVerified) {
+        logger.error(
+            __FUNCTION__,
+            "H1 direction CHECK migration verification failed."
+        );
 
         return;
     }

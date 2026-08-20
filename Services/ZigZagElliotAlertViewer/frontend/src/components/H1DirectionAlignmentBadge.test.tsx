@@ -21,7 +21,9 @@ describe("H1DirectionAlignmentBadge", () => {
 
     expect(screen.getByText("MN1_MISMATCH / MN1不一致")).toBeInTheDocument();
     expect(screen.getByText("mode: MN1～H1・記録のみ")).toBeInTheDocument();
-    expect(screen.getByLabelText(/記録のみのためエントリー制限なし/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/ルール不通過・記録のみのためエントリー制限なし/))
+      .toBeInTheDocument();
+    expect(screen.queryByLabelText(/全足/)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -42,7 +44,46 @@ describe("H1DirectionAlignmentBadge", () => {
     expect(
       screen.getByLabelText(new RegExp(`${label}・記録のみのためエントリー制限なし`)),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/全足不一致・記録のみ/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/ルール不通過・記録のみ/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["EMA200_FALLBACK_BUY", "BUY", "EMA200補完BUY"],
+    ["EMA200_FALLBACK_SELL", "SELL", "EMA200補完SELL"],
+  ] as const)("shows %s as a successful EMA200 fallback", (state, direction, label) => {
+    render(
+      <H1DirectionAlignmentBadge
+        alignment={{
+          ...OBSERVE_MISMATCH,
+          h1_direction_alignment_mode: "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+          h1_direction_alignment_state: state,
+          h1_direction_alignment_direction: direction,
+          is_h1_direction_alignment_passed: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(`${state} / ${label}`)).toHaveClass("good");
+    expect(screen.getByText("mode: W1～H1一致＋MN1またはW1 EMA200・必須"))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText(/ルール評価通過/)).toBeInTheDocument();
+  });
+
+  it("shows an MN1 and EMA200 mismatch as a warning", () => {
+    render(
+      <H1DirectionAlignmentBadge
+        alignment={{
+          ...OBSERVE_MISMATCH,
+          h1_direction_alignment_mode: "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED",
+          h1_direction_alignment_state: "MN1_EMA200_MISMATCH",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("MN1_EMA200_MISMATCH / MN1・EMA200不一致"))
+      .toHaveClass("warn");
+    expect(screen.getByLabelText(/MN1とW1 EMA200が基準方向と不一致/))
+      .toHaveAccessibleName(/ルール評価不通過/);
   });
 
   it("labels legacy rows as unrecorded", () => {

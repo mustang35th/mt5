@@ -10,7 +10,7 @@
 #define MSTNG_EXPERT_ADVISOR_H1_DIRECTION_ALIGNMENT_RESULT_MQH
 
 /**
- * H1エントリーのMN1からH1までの売買方向一致診断結果。
+ * H1エントリーの上位時間足売買方向一致診断結果。
  */
 struct H1DirectionAlignmentResult {
     /** 選択された方向一致モード。 */
