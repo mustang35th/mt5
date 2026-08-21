@@ -121,6 +121,77 @@ void assertH1Alignment(
 }
 
 /**
+ * H1次点候補判定の期待値を検証する。
+ *
+ * @param fromCaseName テストケース名
+ * @param fromIsH1Buy H1がBUYの場合true
+ * @param fromIsH4Buy H4がBUYの場合true
+ * @param fromIsD1Buy D1がBUYの場合true
+ * @param fromIsW1Buy W1がBUYの場合true
+ * @param fromIsMn1Buy MN1がBUYの場合true
+ * @param fromIsW1Ema200Buy W1 EMA200がBUYの場合true
+ * @param fromIsW1Ema200Sell W1 EMA200がSELLの場合true
+ * @param fromExpectedAvailable 判定可能な期待値
+ * @param fromExpectedRunnerUp 次点候補の期待値
+ * @param fromExpectedAlignType 完成時方向の期待値
+ * @param fromExpectedMissingCondition 不足条件の期待値
+ */
+void assertH1RunnerUp(
+    const string fromCaseName,
+    const bool fromIsH1Buy,
+    const bool fromIsH4Buy,
+    const bool fromIsD1Buy,
+    const bool fromIsW1Buy,
+    const bool fromIsMn1Buy,
+    const bool fromIsW1Ema200Buy,
+    const bool fromIsW1Ema200Sell,
+    const bool fromExpectedAvailable,
+    const bool fromExpectedRunnerUp,
+    const TrendAlignType fromExpectedAlignType,
+    const H1ElliotAlignmentMissingCondition fromExpectedMissingCondition
+) {
+    H1ElliotAlignmentRunnerUpResult result;
+    bool isAvailable =
+        ElliotDirectionAlignmentDecision::
+            evaluateH1W1WithMn1OrEma200RunnerUp(
+                fromIsH1Buy,
+                fromIsH4Buy,
+                fromIsD1Buy,
+                fromIsW1Buy,
+                fromIsMn1Buy,
+                fromIsW1Ema200Buy,
+                fromIsW1Ema200Sell,
+                result
+            );
+    bool isMatched = isAvailable == fromExpectedAvailable
+        && result.isRunnerUp == fromExpectedRunnerUp
+        && result.alignType == fromExpectedAlignType
+        && result.missingCondition == fromExpectedMissingCondition;
+
+    if (fromExpectedRunnerUp) {
+        isMatched = isMatched
+            && result.matchedConditionCount == 4
+            && result.requiredConditionCount == 5;
+    }
+
+    if (isMatched) {
+        return;
+    }
+
+    gFailureCount++;
+    PrintFormat(
+        "FAIL %s available=%s runnerUp=%s align=%s missing=%d matched=%d required=%d",
+        fromCaseName,
+        (string)isAvailable,
+        (string)result.isRunnerUp,
+        convertAlignTypeText(result.alignType),
+        (int)result.missingCondition,
+        result.matchedConditionCount,
+        result.requiredConditionCount
+    );
+}
+
+/**
  * BUY方向の判定ケースを検証する。
  */
 void validateBuyCases() {
@@ -281,6 +352,111 @@ void validateH1InvalidEmaCases() {
 }
 
 /**
+ * H1次点候補のBUY完成形を検証する。
+ */
+void validateH1BuyRunnerUpCases() {
+    assertH1RunnerUp(
+        "H1 BUY COMPLETE",
+        true, true, true, true, true, false, false,
+        true, false, trendAlignNone, h1ElliotAlignmentMissingNone
+    );
+    assertH1RunnerUp(
+        "H1 BUY WAIT H1",
+        false, true, true, true, true, false, false,
+        true, true, trendAlignBuy, h1ElliotAlignmentMissingH1
+    );
+    assertH1RunnerUp(
+        "H1 BUY WAIT H4",
+        true, false, true, true, true, false, false,
+        true, true, trendAlignBuy, h1ElliotAlignmentMissingH4
+    );
+    assertH1RunnerUp(
+        "H1 BUY WAIT D1",
+        true, true, false, true, true, false, false,
+        true, true, trendAlignBuy, h1ElliotAlignmentMissingD1
+    );
+    assertH1RunnerUp(
+        "H1 BUY WAIT W1",
+        true, true, true, false, true, false, false,
+        true, true, trendAlignBuy, h1ElliotAlignmentMissingW1
+    );
+    assertH1RunnerUp(
+        "H1 BUY WAIT MN1 OR EMA",
+        true, true, true, true, false, false, false,
+        true, true, trendAlignBuy,
+        h1ElliotAlignmentMissingMn1OrW1Ema200
+    );
+    assertH1RunnerUp(
+        "H1 BUY EMA ALTERNATIVE COMPLETE",
+        true, true, true, true, false, true, false,
+        true, false, trendAlignNone, h1ElliotAlignmentMissingNone
+    );
+    assertH1RunnerUp(
+        "H1 BUY TWO CONDITIONS MISSING",
+        true, false, false, true, true, false, false,
+        true, false, trendAlignNone, h1ElliotAlignmentMissingNone
+    );
+}
+
+/**
+ * H1次点候補のSELL完成形を検証する。
+ */
+void validateH1SellRunnerUpCases() {
+    assertH1RunnerUp(
+        "H1 SELL COMPLETE",
+        false, false, false, false, false, false, false,
+        true, false, trendAlignNone, h1ElliotAlignmentMissingNone
+    );
+    assertH1RunnerUp(
+        "H1 SELL WAIT H1",
+        true, false, false, false, false, false, false,
+        true, true, trendAlignSell, h1ElliotAlignmentMissingH1
+    );
+    assertH1RunnerUp(
+        "H1 SELL WAIT H4",
+        false, true, false, false, false, false, false,
+        true, true, trendAlignSell, h1ElliotAlignmentMissingH4
+    );
+    assertH1RunnerUp(
+        "H1 SELL WAIT D1",
+        false, false, true, false, false, false, false,
+        true, true, trendAlignSell, h1ElliotAlignmentMissingD1
+    );
+    assertH1RunnerUp(
+        "H1 SELL WAIT W1",
+        false, false, false, true, false, false, false,
+        true, true, trendAlignSell, h1ElliotAlignmentMissingW1
+    );
+    assertH1RunnerUp(
+        "H1 SELL WAIT MN1 OR EMA",
+        false, false, false, false, true, false, false,
+        true, true, trendAlignSell,
+        h1ElliotAlignmentMissingMn1OrW1Ema200
+    );
+    assertH1RunnerUp(
+        "H1 SELL EMA ALTERNATIVE COMPLETE",
+        false, false, false, false, true, false, true,
+        true, false, trendAlignNone, h1ElliotAlignmentMissingNone
+    );
+    assertH1RunnerUp(
+        "H1 SELL TWO CONDITIONS MISSING",
+        false, true, true, false, false, false, false,
+        true, false, trendAlignNone, h1ElliotAlignmentMissingNone
+    );
+}
+
+/**
+ * H1次点候補で不正なEMA200状態を除外することを検証する。
+ */
+void validateH1RunnerUpInvalidEmaCases() {
+    assertH1RunnerUp(
+        "H1 RUNNER UP EMA CONFLICT",
+        true, true, true, true, false, true, true,
+        false, false, trendAlignNone, h1ElliotAlignmentMissingNone
+    );
+}
+
+/**
  * 内部判定ルールのenum値が既存互換であることを検証する。
  */
 void validateAlignmentRuleValues() {
@@ -308,6 +484,9 @@ void OnStart() {
     validateH1BuyCases();
     validateH1SellCases();
     validateH1InvalidEmaCases();
+    validateH1BuyRunnerUpCases();
+    validateH1SellRunnerUpCases();
+    validateH1RunnerUpInvalidEmaCases();
     validateAlignmentRuleValues();
 
     if (gFailureCount == 0) {

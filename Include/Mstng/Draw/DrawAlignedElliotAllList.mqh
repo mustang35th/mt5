@@ -65,6 +65,7 @@ public:
         this.createdRowCount = 0;
         this.createdBuyCount = 0;
         this.createdSellCount = 0;
+        this.createdH1RunnerUpCount = 0;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
         this.sortType = fromSortType;
         this.gmoSymbolNameInfoAll.setGmo();
@@ -90,6 +91,8 @@ public:
         this.entryLegendWidth = 270;
         this.entryLegendHeight = 130;
         this.entryLegendRowHeight = 18;
+        this.h1RunnerUpGroupHeight = 18;
+        this.h1RunnerUpSectionGap = 4;
 
         this.fontName = "MS Gothic";
         this.titleFontSize = 11;
@@ -157,17 +160,40 @@ public:
         );
 
         int rowCount = buyCount + sellCount;
+        bool h1RunnerUpPanelEnabled = currentTimeFrame == PERIOD_H1
+            && fromDecision.getAlignmentRule()
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200;
+        int h1RunnerUpIndexes[];
+        H1ElliotAlignmentRunnerUpResult h1RunnerUpResults[];
+        int h1RunnerUpBuyCount = 0;
+        int h1RunnerUpSellCount = 0;
+        int h1RunnerUpCount = 0;
+
+        if (h1RunnerUpPanelEnabled) {
+            h1RunnerUpCount = this.buildH1RunnerUpOrder(
+                fromElliotAllList,
+                fromDecision,
+                currentTimeFrame,
+                h1RunnerUpIndexes,
+                h1RunnerUpResults,
+                h1RunnerUpBuyCount,
+                h1RunnerUpSellCount
+            );
+        }
 
         if (!this.created
                 || this.createdRowCount != rowCount
                 || this.createdBuyCount != buyCount
                 || this.createdSellCount != sellCount
+                || this.createdH1RunnerUpCount != h1RunnerUpCount
                 || this.createdCurrentTimeFrame != currentTimeFrame) {
             if (!this.create(
                 buyCount,
                 sellCount,
                 currentTimeFrame,
-                displayTimeFrames
+                displayTimeFrames,
+                h1RunnerUpPanelEnabled,
+                h1RunnerUpCount
             )) {
                 return false;
             }
@@ -238,6 +264,16 @@ public:
             buyCount
         );
 
+        if (h1RunnerUpPanelEnabled) {
+            this.drawH1RunnerUpRows(
+                fromElliotAllList,
+                h1RunnerUpIndexes,
+                h1RunnerUpResults,
+                h1RunnerUpBuyCount,
+                h1RunnerUpSellCount
+            );
+        }
+
         ChartRedraw(this.chartId);
 
         return true;
@@ -269,6 +305,9 @@ private:
 
     /** 生成済みのSELL行数。 */
     int createdSellCount;
+
+    /** 生成済みのH1次点候補行数。 */
+    int createdH1RunnerUpCount;
 
     /** 生成済み列の基準時間足。 */
     ENUM_TIMEFRAMES createdCurrentTimeFrame;
@@ -341,6 +380,12 @@ private:
 
     /** ENTRY凡例1行の高さ。 */
     int entryLegendRowHeight;
+
+    /** H1次点候補のグループ見出し高さ。 */
+    int h1RunnerUpGroupHeight;
+
+    /** H1次点候補のBUY・SELL間余白。 */
+    int h1RunnerUpSectionGap;
 
     /** 表示フォント名。 */
     string fontName;
@@ -449,13 +494,17 @@ private:
      * @param fromSellCount SELL行数。
      * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayTimeFrames 表示対象時間足一覧。
+     * @param fromH1RunnerUpPanelEnabled H1次点候補を表示する場合true。
+     * @param fromH1RunnerUpCount H1次点候補行数。
      * @return 生成に成功した場合true。
      */
     bool create(
         int fromBuyCount,
         int fromSellCount,
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
-        const ENUM_TIMEFRAMES &fromDisplayTimeFrames[]
+        const ENUM_TIMEFRAMES &fromDisplayTimeFrames[],
+        bool fromH1RunnerUpPanelEnabled,
+        int fromH1RunnerUpCount
     ) {
         this.destroyObjects();
 
@@ -515,9 +564,16 @@ private:
             return false;
         }
 
-        if (!this.createEntryLegend()) {
-            this.destroyObjects();
-            return false;
+        if (fromH1RunnerUpPanelEnabled) {
+            if (!this.createH1RunnerUpPanel(fromH1RunnerUpCount)) {
+                this.destroyObjects();
+                return false;
+            }
+        } else {
+            if (!this.createEntryLegend()) {
+                this.destroyObjects();
+                return false;
+            }
         }
 
         for (int i = 0; i < columnCount; i++) {
@@ -668,6 +724,7 @@ private:
         this.createdRowCount = rowCount;
         this.createdBuyCount = fromBuyCount;
         this.createdSellCount = fromSellCount;
+        this.createdH1RunnerUpCount = fromH1RunnerUpCount;
         this.createdCurrentTimeFrame = fromCurrentTimeFrame;
         this.created = true;
 
@@ -749,6 +806,435 @@ private:
         }
 
         return true;
+    }
+
+    /**
+     * 一覧右側へH1方向一致の次点候補パネルを生成する。
+     *
+     * @param fromRunnerUpCount 次点候補行数。
+     * @return 生成に成功した場合true。
+     */
+    bool createH1RunnerUpPanel(int fromRunnerUpCount) {
+        int panelLeftOffset = this.panelWidth + this.entryLegendGap;
+        int firstGroupTopOffset = this.headerHeight + 8;
+        int panelHeight = firstGroupTopOffset
+            + (this.h1RunnerUpGroupHeight * 2)
+            + this.h1RunnerUpSectionGap
+            + (fromRunnerUpCount * this.entryLegendRowHeight)
+            + this.bottomPadding;
+
+        if (!this.createRectangle(
+            this.objectPrefix + "H1RunnerUpPanel",
+            this.xDistance + panelLeftOffset,
+            this.yDistance,
+            this.entryLegendWidth,
+            panelHeight,
+            this.panelBackgroundColor,
+            this.borderColor,
+            0
+        )) {
+            return false;
+        }
+
+        if (!this.createRectangle(
+            this.objectPrefix + "H1RunnerUpTitleBackground",
+            this.xDistance + panelLeftOffset + 1,
+            this.yDistance + 1,
+            this.entryLegendWidth - 2,
+            this.headerHeight,
+            this.headerBackgroundColor,
+            this.headerBackgroundColor,
+            1
+        )) {
+            return false;
+        }
+
+        if (!this.createLabel(
+            this.objectPrefix + "H1RunnerUpTitle",
+            panelLeftOffset + 12,
+            5,
+            this.titleFontSize,
+            this.titleColor,
+            "NEXT H1"
+        )) {
+            return false;
+        }
+
+        if (!this.createLabel(
+            this.objectPrefix + "H1RunnerUpGroupBuy",
+            panelLeftOffset + 12,
+            firstGroupTopOffset,
+            this.bodyFontSize,
+            this.buyColor,
+            "BUY 0"
+        )) {
+            return false;
+        }
+
+        if (!this.createLabel(
+            this.objectPrefix + "H1RunnerUpGroupSell",
+            panelLeftOffset + 12,
+            firstGroupTopOffset
+                + this.h1RunnerUpGroupHeight
+                + this.h1RunnerUpSectionGap,
+            this.bodyFontSize,
+            this.sellColor,
+            "SELL 0"
+        )) {
+            return false;
+        }
+
+        for (int i = 0; i < fromRunnerUpCount; i++) {
+            if (!this.createLabel(
+                this.getH1RunnerUpRowObjectName(i),
+                panelLeftOffset + 12,
+                firstGroupTopOffset + this.h1RunnerUpGroupHeight,
+                this.bodyFontSize,
+                this.mutedColor,
+                "-"
+            )) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * H1方向一致の次点候補をBUY、SELL、未達条件の順に抽出する。
+     *
+     * 同一方向かつ同一未達条件の候補は元一覧の順序を維持する。
+     *
+     * @param fromElliotAllList 分析結果一覧。
+     * @param fromDecision H1次点候補判定クラス。
+     * @param fromCurrentTimeFrame 表示時間足。
+     * @param fromDisplayIndexes 表示用インデックスの格納先。
+     * @param fromRunnerUpResults 次点候補判定結果の格納先。
+     * @param fromBuyCount BUY候補件数の格納先。
+     * @param fromSellCount SELL候補件数の格納先。
+     * @return 次点候補件数。
+     */
+    int buildH1RunnerUpOrder(
+        ElliotAllList *fromElliotAllList,
+        ElliotDirectionAlignmentDecision *fromDecision,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
+        int &fromDisplayIndexes[],
+        H1ElliotAlignmentRunnerUpResult &fromRunnerUpResults[],
+        int &fromBuyCount,
+        int &fromSellCount
+    ) {
+        ArrayResize(fromDisplayIndexes, 0);
+        ArrayResize(fromRunnerUpResults, 0);
+        fromBuyCount = 0;
+        fromSellCount = 0;
+
+        if (fromElliotAllList == NULL || fromDecision == NULL) {
+            return 0;
+        }
+
+        int total = fromElliotAllList.elliotAllList.Total();
+
+        if (ArrayResize(fromDisplayIndexes, total) != total
+                || ArrayResize(fromRunnerUpResults, total) != total) {
+            ArrayResize(fromDisplayIndexes, 0);
+            ArrayResize(fromRunnerUpResults, 0);
+
+            return 0;
+        }
+
+        int displayCount = 0;
+
+        for (int i = 0; i < total; i++) {
+            ElliotAll *elliotAll = fromElliotAllList.elliotAllList.At(i);
+            H1ElliotAlignmentRunnerUpResult runnerUpResult;
+
+            if (!fromDecision.getH1RunnerUpResult(
+                elliotAll,
+                fromCurrentTimeFrame,
+                runnerUpResult
+            ) || !runnerUpResult.isRunnerUp) {
+                continue;
+            }
+
+            if (runnerUpResult.alignType == trendAlignBuy) {
+                fromBuyCount++;
+            } else if (runnerUpResult.alignType == trendAlignSell) {
+                fromSellCount++;
+            } else {
+                continue;
+            }
+
+            fromDisplayIndexes[displayCount] = i;
+            fromRunnerUpResults[displayCount] = runnerUpResult;
+            displayCount++;
+        }
+
+        ArrayResize(fromDisplayIndexes, displayCount);
+        ArrayResize(fromRunnerUpResults, displayCount);
+        this.sortH1RunnerUpOrder(fromDisplayIndexes, fromRunnerUpResults);
+
+        return displayCount;
+    }
+
+    /**
+     * H1次点候補をBUY、SELL、未達条件の順に安定ソートする。
+     *
+     * @param fromDisplayIndexes 表示用インデックス。
+     * @param fromRunnerUpResults インデックスと対応する次点候補判定結果。
+     */
+    void sortH1RunnerUpOrder(
+        int &fromDisplayIndexes[],
+        H1ElliotAlignmentRunnerUpResult &fromRunnerUpResults[]
+    ) {
+        int displayCount = ArraySize(fromDisplayIndexes);
+
+        if (displayCount != ArraySize(fromRunnerUpResults)) {
+            return;
+        }
+
+        for (int i = 1; i < displayCount; i++) {
+            int currentIndex = fromDisplayIndexes[i];
+            H1ElliotAlignmentRunnerUpResult currentResult =
+                fromRunnerUpResults[i];
+            int j = i - 1;
+
+            while (j >= 0
+                    && this.shouldShiftH1RunnerUpResult(
+                        currentResult,
+                        fromRunnerUpResults[j]
+                    )) {
+                fromDisplayIndexes[j + 1] = fromDisplayIndexes[j];
+                fromRunnerUpResults[j + 1] = fromRunnerUpResults[j];
+                j--;
+            }
+
+            fromDisplayIndexes[j + 1] = currentIndex;
+            fromRunnerUpResults[j + 1] = currentResult;
+        }
+    }
+
+    /**
+     * 現在のH1次点候補を比較対象より前へ移動するか判定する。
+     *
+     * @param fromCurrentResult 現在の次点候補判定結果。
+     * @param fromPreviousResult 比較対象の次点候補判定結果。
+     * @return 現在結果を前へ移動する場合true。
+     */
+    bool shouldShiftH1RunnerUpResult(
+        H1ElliotAlignmentRunnerUpResult &fromCurrentResult,
+        H1ElliotAlignmentRunnerUpResult &fromPreviousResult
+    ) {
+        int currentDirectionOrder = this.getH1RunnerUpDirectionOrder(
+            fromCurrentResult.alignType
+        );
+        int previousDirectionOrder = this.getH1RunnerUpDirectionOrder(
+            fromPreviousResult.alignType
+        );
+
+        if (currentDirectionOrder != previousDirectionOrder) {
+            return currentDirectionOrder < previousDirectionOrder;
+        }
+
+        if (fromCurrentResult.missingCondition
+                != fromPreviousResult.missingCondition) {
+            return (int)fromCurrentResult.missingCondition
+                < (int)fromPreviousResult.missingCondition;
+        }
+
+        return false;
+    }
+
+    /**
+     * H1次点候補の方向表示順を取得する。
+     *
+     * @param fromAlignType 次点候補の方向。
+     * @return BUYは0、SELLは1、それ以外は2。
+     */
+    int getH1RunnerUpDirectionOrder(TrendAlignType fromAlignType) {
+        if (fromAlignType == trendAlignBuy) {
+            return 0;
+        }
+
+        if (fromAlignType == trendAlignSell) {
+            return 1;
+        }
+
+        return 2;
+    }
+
+    /**
+     * H1方向一致の次点候補パネルを更新する。
+     *
+     * @param fromElliotAllList 分析結果一覧。
+     * @param fromDisplayIndexes 表示用インデックス。
+     * @param fromRunnerUpResults 次点候補判定結果。
+     * @param fromBuyCount BUY候補件数。
+     * @param fromSellCount SELL候補件数。
+     */
+    void drawH1RunnerUpRows(
+        ElliotAllList *fromElliotAllList,
+        const int &fromDisplayIndexes[],
+        H1ElliotAlignmentRunnerUpResult &fromRunnerUpResults[],
+        int fromBuyCount,
+        int fromSellCount
+    ) {
+        if (fromElliotAllList == NULL) {
+            return;
+        }
+
+        int displayCount = ArraySize(fromDisplayIndexes);
+
+        if (displayCount != ArraySize(fromRunnerUpResults)
+                || displayCount != fromBuyCount + fromSellCount) {
+            return;
+        }
+
+        ObjectSetString(
+            this.chartId,
+            this.objectPrefix + "H1RunnerUpTitle",
+            OBJPROP_TEXT,
+            StringFormat("NEXT H1 4/5  B%d / S%d", fromBuyCount, fromSellCount)
+        );
+        ObjectSetString(
+            this.chartId,
+            this.objectPrefix + "H1RunnerUpGroupBuy",
+            OBJPROP_TEXT,
+            StringFormat("BUY  %d", fromBuyCount)
+        );
+        ObjectSetString(
+            this.chartId,
+            this.objectPrefix + "H1RunnerUpGroupSell",
+            OBJPROP_TEXT,
+            StringFormat("SELL  %d", fromSellCount)
+        );
+
+        int sellGroupTopOffset = this.getH1RunnerUpSellGroupTopOffset(
+            fromBuyCount
+        );
+        ObjectSetInteger(
+            this.chartId,
+            this.objectPrefix + "H1RunnerUpGroupSell",
+            OBJPROP_YDISTANCE,
+            this.yDistance + sellGroupTopOffset
+        );
+
+        for (int i = 0; i < displayCount; i++) {
+            ElliotAll *elliotAll = fromElliotAllList.elliotAllList.At(
+                fromDisplayIndexes[i]
+            );
+            string symbolText = "-";
+
+            if (elliotAll != NULL) {
+                symbolText = this.getSymbolText(
+                    elliotAll.marketContext.symbolName
+                );
+            }
+
+            string missingText = this.getH1RunnerUpMissingConditionText(
+                (int)fromRunnerUpResults[i].missingCondition
+            );
+            string rowText = symbolText + "  WAIT " + missingText;
+            string objectName = this.getH1RunnerUpRowObjectName(i);
+            color rowColor = this.getAlignColor(
+                fromRunnerUpResults[i].alignType
+            );
+
+            ObjectSetString(
+                this.chartId,
+                objectName,
+                OBJPROP_TEXT,
+                rowText
+            );
+            ObjectSetString(
+                this.chartId,
+                objectName,
+                OBJPROP_TOOLTIP,
+                rowText
+            );
+            ObjectSetInteger(
+                this.chartId,
+                objectName,
+                OBJPROP_COLOR,
+                rowColor
+            );
+            ObjectSetInteger(
+                this.chartId,
+                objectName,
+                OBJPROP_YDISTANCE,
+                this.yDistance + this.getH1RunnerUpRowTopOffset(
+                    i,
+                    fromBuyCount
+                )
+            );
+        }
+    }
+
+    /**
+     * H1次点候補の未達条件表示を取得する。
+     *
+     * @param fromMissingCondition 未達条件。
+     * @return H1、H4、D1、W1またはMN1|W1EMA。
+     */
+    string getH1RunnerUpMissingConditionText(int fromMissingCondition) {
+        if (fromMissingCondition == h1ElliotAlignmentMissingH1) {
+            return "H1";
+        }
+
+        if (fromMissingCondition == h1ElliotAlignmentMissingH4) {
+            return "H4";
+        }
+
+        if (fromMissingCondition == h1ElliotAlignmentMissingD1) {
+            return "D1";
+        }
+
+        if (fromMissingCondition == h1ElliotAlignmentMissingW1) {
+            return "W1";
+        }
+
+        if (fromMissingCondition
+                == h1ElliotAlignmentMissingMn1OrW1Ema200) {
+            return "MN1|W1EMA";
+        }
+
+        return "-";
+    }
+
+    /**
+     * H1次点候補のSELLグループ見出し位置を取得する。
+     *
+     * @param fromBuyCount BUY候補件数。
+     * @return パネル上端からの位置。
+     */
+    int getH1RunnerUpSellGroupTopOffset(int fromBuyCount) {
+        return this.headerHeight
+            + 8
+            + this.h1RunnerUpGroupHeight
+            + (fromBuyCount * this.entryLegendRowHeight)
+            + this.h1RunnerUpSectionGap;
+    }
+
+    /**
+     * H1次点候補行の位置を取得する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromBuyCount BUY候補件数。
+     * @return パネル上端からの位置。
+     */
+    int getH1RunnerUpRowTopOffset(int fromRowIndex, int fromBuyCount) {
+        int firstGroupTopOffset = this.headerHeight + 8;
+
+        if (fromRowIndex < fromBuyCount) {
+            return firstGroupTopOffset
+                + this.h1RunnerUpGroupHeight
+                + (fromRowIndex * this.entryLegendRowHeight);
+        }
+
+        int sellRowIndex = fromRowIndex - fromBuyCount;
+
+        return this.getH1RunnerUpSellGroupTopOffset(fromBuyCount)
+            + this.h1RunnerUpGroupHeight
+            + (sellRowIndex * this.entryLegendRowHeight);
     }
 
     /**
@@ -1934,6 +2420,17 @@ private:
     }
 
     /**
+     * H1次点候補行のオブジェクト名を取得する。
+     *
+     * @param fromRowIndex 行番号。
+     * @return オブジェクト名。
+     */
+    string getH1RunnerUpRowObjectName(int fromRowIndex) {
+        return this.objectPrefix
+            + "H1RunnerUpRow_" + IntegerToString(fromRowIndex);
+    }
+
+    /**
      * 一覧パネル専用オブジェクトを削除する。
      */
     void destroyObjects() {
@@ -1942,6 +2439,7 @@ private:
         this.createdRowCount = 0;
         this.createdBuyCount = 0;
         this.createdSellCount = 0;
+        this.createdH1RunnerUpCount = 0;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
     }
 };
