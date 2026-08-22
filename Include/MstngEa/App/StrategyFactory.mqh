@@ -12,6 +12,7 @@
 #define MSTNGEA_APP_STRATEGYFACTORY_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Config\StrategyType.mqh>
@@ -33,6 +34,7 @@ public:
      * @param timeFrameValue 時間足
      * @param signalCountValue シグナル回数
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード
      * @return 戦略
      */
     static IStrategyAdapter *create(
@@ -41,14 +43,17 @@ public:
         ENUM_TIMEFRAMES timeFrameValue,
         SignalCount *signalCountValue,
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY
+            H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY
     ) {
         MarketContext context(symbolNameValue, timeFrameValue);
         return StrategyFactory::create(
             strategyTypeValue,
             context,
             signalCountValue,
-            fromH1W1ConfirmationMode
+            fromH1W1ConfirmationMode,
+            fromH1Ema200ConfirmationMode
         );
     }
 
@@ -59,6 +64,7 @@ public:
      * @param fromMarketContext Market context
      * @param fromSignalCount Signal count
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード
      * @return Strategy
      */
     static IStrategyAdapter *create(
@@ -66,14 +72,17 @@ public:
         MarketContext &fromMarketContext,
         SignalCount *fromSignalCount,
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY
+            H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY
     ) {
 
         if (fromStrategyType == STRATEGY_TYPE_MTF_3IN3) {
             return new ExpertAdvisorMtf3In3Adapter(
                 fromMarketContext,
                 fromSignalCount,
-                fromH1W1ConfirmationMode
+                fromH1W1ConfirmationMode,
+                fromH1Ema200ConfirmationMode
             );
         }
 

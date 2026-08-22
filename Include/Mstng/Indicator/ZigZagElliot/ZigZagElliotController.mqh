@@ -110,6 +110,17 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
+        if (!isH1Ema200ConfirmationModeValid(
+                this.config.h1Ema200ConfirmationMode
+        )) {
+            this.logger.error(
+                __FUNCTION__,
+                "H1 EMA200 confirmation mode is invalid."
+            );
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
         if (this.config.currencyStrengthEnabled
                 && !CurrencyStrengthCalculationProfile
                     ::isVoteWeightModeValid(

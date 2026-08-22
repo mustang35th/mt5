@@ -11,6 +11,7 @@
 #ifndef MSTNGEA_CONFIG_EACONFIG_MQH
 #define MSTNGEA_CONFIG_EACONFIG_MQH
 
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <MstngEa\Config\H1PositionManagementMode.mqh>
 #include <MstngEa\Config\StrategyType.mqh>
@@ -68,6 +69,9 @@ public:
     /** H1エントリーで使用するW1確認モード。 */
     H1W1ConfirmationMode h1W1ConfirmationMode;
 
+    /** H1エントリーで使用するEMA200確認モード。 */
+    H1Ema200ConfirmationMode h1Ema200ConfirmationMode;
+
     /**
      * コンストラクタ
      */
@@ -89,6 +93,8 @@ public:
         this.h1PositionManagementMode = H1_POSITION_MANAGEMENT_LEGACY;
         this.h1ZigZagTrailBufferPips = 5.0;
         this.h1W1ConfirmationMode = H1_W1_CONFIRMATION_OBSERVE_ONLY;
+        this.h1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY;
     }
 };
 

@@ -11,6 +11,7 @@
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentDecision.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
 
@@ -18,7 +19,8 @@
  * H1を現在足としてMTF_3in3エントリーを判定する。
  *
  * D1とH4は売買方向の一致確認に使用し、H1の第1波/3波/5波を
- * エントリー対象波動とする。H1 EMA200はH1方向を確認し、
+ * エントリー対象波動とする。H1 EMA200は常にH1方向を確認し、
+ * H1_AND_H4_REQUIREDではH4 EMA200も同方向を要求する。
  * 選択した方向一致モードではW1 EMA200も判定に使用する。
  * H1の最新ZigZagポイントは確定・未確定を問わず、
  * エントリー成立時はメール送信対象とする。
@@ -32,6 +34,7 @@ public:
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
      * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード。
      */
     ExpertAdvisorMtf3In3H1(
         MarketContext &fromMarketContext,
@@ -39,12 +42,15 @@ public:
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
             H1_W1_CONFIRMATION_OBSERVE_ONLY,
         H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
-            H1_DIRECTION_ALIGNMENT_D1_TO_H1
+            H1_DIRECTION_ALIGNMENT_D1_TO_H1,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY
     ) : ExpertAdvisorMTF_3in3(
         fromMarketContext,
         fromIsDrawArrow,
         fromH1W1ConfirmationMode,
-        fromH1DirectionAlignmentMode
+        fromH1DirectionAlignmentMode,
+        fromH1Ema200ConfirmationMode
     ) {
     }
 
@@ -100,19 +106,22 @@ protected:
     }
 
     /**
-     * H1のEMA200方向が売買方向と一致するか判定する。
+     * 選択モードに従いH1およびH4のEMA200方向を判定する。
      *
-     * D1とH4のEMA200方向はH1エントリー条件に使用しない。
-     *
-     * @return H1のEMA200方向が一致する場合true。
+     * @return 選択モードのEMA200方向条件を満たす場合true。
      */
     virtual bool isTimeFrameEma200ConditionMatched() override {
         if (this.marketContext.timeFrame != PERIOD_H1) {
             return false;
         }
 
-        return this.expertAdvisorEma200.isEma200BuySell(
-            this.elliotCurrent
+        H1Ema200ConfirmationDecision decision;
+
+        return decision.evaluate(
+            this.h1Ema200ConfirmationMode,
+            this.isBuy,
+            this.elliotCurrent,
+            this.elliotH4
         );
     }
 

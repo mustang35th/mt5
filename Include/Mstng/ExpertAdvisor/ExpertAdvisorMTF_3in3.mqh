@@ -12,6 +12,7 @@
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentResult.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationResult.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
@@ -30,6 +31,7 @@ public:
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
      * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード。
      */
     ExpertAdvisorMTF_3in3(
         string fromSymbolName,
@@ -38,14 +40,17 @@ public:
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
             H1_W1_CONFIRMATION_OBSERVE_ONLY,
         H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
-            H1_DIRECTION_ALIGNMENT_D1_TO_H1
+            H1_DIRECTION_ALIGNMENT_D1_TO_H1,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY
     ) {
         MarketContext context(fromSymbolName, fromTimeFrame);
         this.initialize(
             context,
             fromIsDrawArrow,
             fromH1W1ConfirmationMode,
-            fromH1DirectionAlignmentMode
+            fromH1DirectionAlignmentMode,
+            fromH1Ema200ConfirmationMode
         );
     }
 
@@ -56,6 +61,7 @@ public:
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
      * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード。
      */
     ExpertAdvisorMTF_3in3(
         MarketContext &fromMarketContext,
@@ -63,13 +69,16 @@ public:
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
             H1_W1_CONFIRMATION_OBSERVE_ONLY,
         H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
-            H1_DIRECTION_ALIGNMENT_D1_TO_H1
+            H1_DIRECTION_ALIGNMENT_D1_TO_H1,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY
     ) {
         this.initialize(
             fromMarketContext,
             fromIsDrawArrow,
             fromH1W1ConfirmationMode,
-            fromH1DirectionAlignmentMode
+            fromH1DirectionAlignmentMode,
+            fromH1Ema200ConfirmationMode
         );
     }
 
@@ -148,6 +157,9 @@ public:
     }
         
 protected:
+    /** H1エントリーのEMA200確認モード。 */
+    H1Ema200ConfirmationMode h1Ema200ConfirmationMode;
+
     /** H1エントリーの方向一致モード。 */
     H1DirectionAlignmentMode h1DirectionAlignmentMode;
 
@@ -493,18 +505,21 @@ private:
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
      * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード。
      */
     void initialize(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow,
         H1W1ConfirmationMode fromH1W1ConfirmationMode,
-        H1DirectionAlignmentMode fromH1DirectionAlignmentMode
+        H1DirectionAlignmentMode fromH1DirectionAlignmentMode,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode
     ) {
         this.logger.setLevel(LOG_INFO);
 
         this.init(fromMarketContext, fromIsDrawArrow);
 
         this.h1DirectionAlignmentMode = fromH1DirectionAlignmentMode;
+        this.h1Ema200ConfirmationMode = fromH1Ema200ConfirmationMode;
         this.h1W1ConfirmationMode = fromH1W1ConfirmationMode;
         this.h1DirectionAlignmentResult.reset();
         this.w1ConfirmationResult.reset();

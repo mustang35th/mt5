@@ -14,6 +14,8 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\ExpertAdvisor\ElliottWaveInfo.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
+#include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Strategy\IStrategyAdapter.mqh>
@@ -30,13 +32,16 @@ public:
      * @param timeFrameValue 時間足
      * @param signalCountValue シグナル回数
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード
      */
     ExpertAdvisorMtf3In3Adapter(
         string symbolNameValue,
         ENUM_TIMEFRAMES timeFrameValue,
         SignalCount *signalCountValue,
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY
+            H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY
     ) {
         this.expertAdvisorMtf3In3 = NULL;
         this.signalCount = NULL;
@@ -44,7 +49,8 @@ public:
         this.initialize(
             context,
             signalCountValue,
-            fromH1W1ConfirmationMode
+            fromH1W1ConfirmationMode,
+            fromH1Ema200ConfirmationMode
         );
     }
 
@@ -54,19 +60,23 @@ public:
      * @param fromMarketContext 市場コンテキスト
      * @param fromSignalCount シグナル回数
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード
      */
     ExpertAdvisorMtf3In3Adapter(
         MarketContext &fromMarketContext,
         SignalCount *fromSignalCount,
         H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY
+            H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY
     ) {
         this.expertAdvisorMtf3In3 = NULL;
         this.signalCount = NULL;
         this.initialize(
             fromMarketContext,
             fromSignalCount,
-            fromH1W1ConfirmationMode
+            fromH1W1ConfirmationMode,
+            fromH1Ema200ConfirmationMode
         );
     }
 
@@ -180,17 +190,21 @@ private:
      * @param fromMarketContext 市場コンテキスト
      * @param fromSignalCount シグナル回数
      * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード
+     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード
      */
     void initialize(
         MarketContext &fromMarketContext,
         SignalCount *fromSignalCount,
-        H1W1ConfirmationMode fromH1W1ConfirmationMode
+        H1W1ConfirmationMode fromH1W1ConfirmationMode,
+        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode
     ) {
         // 外部戦略を生成
         this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
             fromMarketContext,
             false,
-            fromH1W1ConfirmationMode
+            fromH1W1ConfirmationMode,
+            H1_DIRECTION_ALIGNMENT_D1_TO_H1,
+            fromH1Ema200ConfirmationMode
         );
         this.signalCount = fromSignalCount;
         this.elliottInfoText = "-";

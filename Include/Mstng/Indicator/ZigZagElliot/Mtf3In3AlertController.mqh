@@ -82,7 +82,8 @@ public:
             this.marketContext,
             true,
             this.config.h1W1ConfirmationMode,
-            this.config.h1DirectionAlignmentMode
+            this.config.h1DirectionAlignmentMode,
+            this.config.h1Ema200ConfirmationMode
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -367,6 +368,10 @@ private:
         inputText += "|h1DirectionAlignmentMode="
             + getH1DirectionAlignmentModeText(
                 this.config.h1DirectionAlignmentMode
+            );
+        inputText += "|h1Ema200ConfirmationMode="
+            + getH1Ema200ConfirmationModeText(
+                this.config.h1Ema200ConfirmationMode
             );
         inputText += "|currencyStrengthEnabled="
             + (string)this.config.currencyStrengthEnabled;

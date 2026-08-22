@@ -10,6 +10,7 @@
 #define MSTNG_INDICATOR_ZIGZAG_ELLIOT_CONFIG_MQH
 
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
@@ -35,6 +36,8 @@ public:
     H1W1ConfirmationMode h1W1ConfirmationMode;
     /** H1エントリーで使用する方向一致モード。 */
     H1DirectionAlignmentMode h1DirectionAlignmentMode;
+    /** H1エントリーで使用するEMA200確認モード。 */
+    H1Ema200ConfirmationMode h1Ema200ConfirmationMode;
     /** 通貨強弱を利用する場合true。 */
     bool currencyStrengthEnabled;
     /** 通貨強弱をエントリー条件として使用する場合true。 */
@@ -69,6 +72,8 @@ public:
         this.h1W1ConfirmationMode = H1_W1_CONFIRMATION_OBSERVE_ONLY;
         this.h1DirectionAlignmentMode =
             H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
+        this.h1Ema200ConfirmationMode =
+            H1_EMA200_CONFIRMATION_H1_ONLY;
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;
         this.currencyStrengthRankVisible = true;

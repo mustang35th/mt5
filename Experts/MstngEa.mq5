@@ -16,6 +16,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthExecutionInfoProvider.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
@@ -94,6 +95,10 @@ input double InpH1ZigZagTrailBufferPips = 5.0;
 input H1W1ConfirmationMode InpH1W1ConfirmationMode =
     H1_W1_CONFIRMATION_OBSERVE_ONLY;
 
+/** H1エントリーで使用するEMA200確認モード。 */
+input H1Ema200ConfirmationMode InpH1Ema200ConfirmationMode =
+    H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED;
+
 /** シンボル名 */
 string g_symbolName;
 
@@ -156,6 +161,14 @@ int OnInit() {
         return INIT_PARAMETERS_INCORRECT;
     }
 
+    if (!isH1Ema200ConfirmationModeValid(
+            InpH1Ema200ConfirmationMode
+    )) {
+        Print("MstngEa H1 EMA200 confirmation mode is invalid");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
     if (InpUseCurrencyStrength
             && InpCurrencyStrengthDatabaseFileName == "") {
         Print("MstngEa requires currency strength database file name");
@@ -212,6 +225,8 @@ int OnInit() {
     g_eaConfig.h1PositionManagementMode = InpH1PositionManagementMode;
     g_eaConfig.h1ZigZagTrailBufferPips = InpH1ZigZagTrailBufferPips;
     g_eaConfig.h1W1ConfirmationMode = InpH1W1ConfirmationMode;
+    g_eaConfig.h1Ema200ConfirmationMode =
+        InpH1Ema200ConfirmationMode;
 
     if (g_eaConfig.h1PositionManagementMode
             == H1_POSITION_MANAGEMENT_ZIGZAG_TRAIL_ONLY) {
@@ -308,7 +323,8 @@ int OnInit() {
         g_eaConfig.strategyType,
         g_marketContext,
         g_signalCount,
-        g_eaConfig.h1W1ConfirmationMode
+        g_eaConfig.h1W1ConfirmationMode,
+        g_eaConfig.h1Ema200ConfirmationMode
     );
 
     // 画面表示を生成

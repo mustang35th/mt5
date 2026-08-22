@@ -38,6 +38,10 @@ input bool h1DisplayWaveEntryLimitEnabled = false;
 input H1W1ConfirmationMode h1W1ConfirmationMode =
     H1_W1_CONFIRMATION_OBSERVE_ONLY;
 
+/** H1エントリーで使用するEMA200確認モード。 */
+input H1Ema200ConfirmationMode h1Ema200ConfirmationMode =
+    H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED;
+
 /** 通貨強弱を利用する場合true。 */
 input bool currencyStrengthEnabled = true;
 
@@ -102,6 +106,7 @@ int OnInit() {
     config.h1DisplayWaveEntryLimitEnabled =
         h1DisplayWaveEntryLimitEnabled;
     config.h1W1ConfirmationMode = h1W1ConfirmationMode;
+    config.h1Ema200ConfirmationMode = h1Ema200ConfirmationMode;
     config.currencyStrengthEnabled = currencyStrengthEnabled;
     config.currencyStrengthEntryFilterEnabled =
         currencyStrengthEntryFilterEnabled;
