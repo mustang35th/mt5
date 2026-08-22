@@ -20,6 +20,7 @@ import { GmoTargetBadge } from "./GmoTargetBadge";
 import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 
 interface ObservationDetailDrawerProps {
+  initialView?: ObservationDetailView;
   observationId: number | null;
   onClose: () => void;
   onNavigate: (observationId: number) => void;
@@ -524,6 +525,7 @@ function DetailContent({
 }
 
 export function ObservationDetailDrawer({
+  initialView = "cards",
   observationId,
   onClose,
   onNavigate,
@@ -537,12 +539,18 @@ export function ObservationDetailDrawer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [navigationAnnouncement, setNavigationAnnouncement] = useState("");
-  const [view, setView] = useState<ObservationDetailView>("cards");
+  const [view, setView] = useState<ObservationDetailView>(initialView);
   const isOpen = observationId !== null;
 
   useEffect(() => {
     onNavigateRef.current = onNavigate;
   }, [onNavigate]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setView(initialView);
+    }
+  }, [initialView, isOpen]);
 
   useEffect(() => {
     const dialog = dialogRef.current;

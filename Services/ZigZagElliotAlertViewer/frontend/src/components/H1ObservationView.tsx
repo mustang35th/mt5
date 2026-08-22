@@ -505,6 +505,7 @@ export function H1ObservationView({
         <div className="toast" role="alert" aria-live="assertive">{loadError}</div>
       )}
       <ObservationDetailDrawer
+        initialView="grid"
         observationId={selectedObservationId}
         onClose={closeDetail}
         onNavigate={navigateDetail}

@@ -515,11 +515,29 @@ describe("App", () => {
     expect(within(detailDialog).getByRole("heading", {
       name: "AUDUSD / 2026.08.10 07:00:00",
     })).toBeInTheDocument();
+    expect(detailDialog).toHaveClass("observation-grid-mode");
+    expect(within(detailDialog).getByText("TIMEFRAME COMPARISON")).toBeInTheDocument();
+    expect(within(detailDialog).getByRole("button", { name: "全画面グリッド" }))
+      .toHaveAttribute("aria-pressed", "true");
+    expect(await within(detailDialog).findByRole("grid", {
+      name: "時間足別 H1新規足スナップショットグリッド",
+    })).toBeInTheDocument();
+    fireEvent.click(within(detailDialog).getByRole("button", { name: "カード表示" }));
+    expect(detailDialog).not.toHaveClass("observation-grid-mode");
     expect(within(detailDialog).getAllByText("最新点 JST")).toHaveLength(5);
     expect(within(detailDialog).getByText(`Profile / ${TESTER_ANALYSIS_PROFILE_HASH}`)).toBeInTheDocument();
     expect(within(detailDialog).getByText(ANALYSIS_PROFILE_TEXT)).toBeInTheDocument();
     expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/observations/9")).toBe(true);
     fireEvent.click(within(detailDialog).getByRole("button", { name: "H1観測詳細を閉じる" }));
+    await waitFor(() => expect(detailButton).toHaveFocus());
+    fireEvent.click(detailButton);
+    const reopenedDetailDialog = await screen.findByRole("dialog");
+    expect(reopenedDetailDialog).toHaveClass("observation-grid-mode");
+    expect(within(reopenedDetailDialog).getByRole("button", { name: "全画面グリッド" }))
+      .toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(reopenedDetailDialog).getByRole("button", {
+      name: "H1観測詳細を閉じる",
+    }));
     await waitFor(() => expect(detailButton).toHaveFocus());
     expect(screen.getByLabelText("開始日（JST）")).toHaveValue("2026-08-01");
     expect(screen.getByLabelText("終了日（JST）")).toHaveValue("2026-08-10");
