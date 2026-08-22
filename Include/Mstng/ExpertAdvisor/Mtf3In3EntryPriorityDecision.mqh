@@ -11,6 +11,7 @@
 
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorEma200.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3Ema200DistancePolicy.mqh>
 
 /**
  * MTF_3in3のエントリー優先度。
@@ -147,6 +148,7 @@ public:
 
         bool isBuy = elliotCurrent.isBuy;
         ExpertAdvisorEma200 expertAdvisorEma200(isBuy);
+        Mtf3In3Ema200DistancePolicy ema200DistancePolicy;
 
         if (this.isWaveDirectionMatched(elliotCurrent, isBuy)) {
             fromResult.conditionMatchCount++;
@@ -195,7 +197,10 @@ public:
             fromResult.conditionMatchCount++;
         }
 
-        if (isH1 || this.isEma200DistanceWithin(elliotCurrent)) {
+        if (ema200DistancePolicy.isCloseEma200DiffPipsWithin(
+            fromCurrentTimeFrame,
+            elliotCurrent.oscillator.ema200.closeEma200DiffPips
+        )) {
             fromResult.conditionMatchCount++;
         }
 
@@ -220,9 +225,6 @@ private:
 
     /** M5第3波のフィボナッチエクスパンション許容上限%。 */
     static const double maxM5Elliot3FibonacciExpansionPercent;
-
-    /** Close1とEMA200[1]のエントリー許容距離pips。 */
-    static const double maxCloseEma200DiffPips;
 
     /**
      * 現在足の売買方向と最新Wave方向が一致するか判定する。
@@ -335,32 +337,9 @@ private:
         return false;
     }
 
-    /**
-     * Close1とEMA200[1]の距離が25pips以下か判定する。
-     *
-     * @param fromElliotCurrent 現在時間足のElliot。
-     * @return 絶対距離が25pips以下の場合true。
-     */
-    bool isEma200DistanceWithin(Elliot *fromElliotCurrent) {
-        if (fromElliotCurrent == NULL) {
-            return false;
-        }
-
-        double closeEma200DiffPips = MathAbs(
-            fromElliotCurrent.oscillator.ema200.closeEma200DiffPips
-        );
-
-        if (closeEma200DiffPips
-                <= Mtf3In3EntryPriorityDecision::maxCloseEma200DiffPips) {
-            return true;
-        }
-
-        return false;
-    }
 };
 
 const int Mtf3In3EntryPriorityDecision::requiredConditionCount = 9;
 const double Mtf3In3EntryPriorityDecision::maxM5Elliot3FibonacciExpansionPercent = 161.8;
-const double Mtf3In3EntryPriorityDecision::maxCloseEma200DiffPips = 25.0;
 
 #endif // MSTNG_EXPERT_ADVISOR_MTF3_IN3_ENTRY_PRIORITY_DECISION_MQH

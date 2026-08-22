@@ -16,6 +16,7 @@
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationResult.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3Ema200DistancePolicy.mqh>
 
 /**
  * 複数時間足のElliott波動、GMMAおよびEMA200を使用してエントリーを判定する。
@@ -258,14 +259,18 @@ protected:
         string timeFrameRejectReason = "";
         bool isTimeFrameEntryAllowed =
             this.isTimeFrameEntryConditionMatched(timeFrameRejectReason);
-        this.closeEma200DiffPipsResult = MathAbs(
-            this.elliotCurrent.oscillator.ema200.closeEma200DiffPips
-        );
-        this.maxCloseEma200DiffPipsResult = this.getMaxCloseEma200DiffPips();
+        Mtf3In3Ema200DistancePolicy ema200DistancePolicy;
+        double closeEma200DiffPips =
+            this.elliotCurrent.oscillator.ema200.closeEma200DiffPips;
+        this.closeEma200DiffPipsResult = MathAbs(closeEma200DiffPips);
+        this.maxCloseEma200DiffPipsResult =
+            ema200DistancePolicy.getMaxCloseEma200DiffPips(
+                this.marketContext.timeFrame
+            );
         this.isEma200DistanceWithinResult =
-            this.expertAdvisorEma200.isCloseEma200DiffPipsWithin(
-                this.elliotCurrent,
-                this.maxCloseEma200DiffPipsResult
+            ema200DistancePolicy.isCloseEma200DiffPipsWithin(
+                this.marketContext.timeFrame,
+                closeEma200DiffPips
             );
 
         if (!this.isEntryWaveResult) {
@@ -474,12 +479,6 @@ private:
     /** M5第3波のフィボナッチエクスパンション許容上限%。 */
     static const double maxM5Elliot3FibonacciExpansionPercent;
 
-    /** Close1とEMA200[1]のエントリー許容距離pips。 */
-    static const double maxCloseEma200DiffPips;
-
-    /** JPYペアのClose1とEMA200[1]のエントリー許容距離pips。 */
-    static const double maxCloseEma200DiffPipsJpy;
-
     /** 直近のエントリー判定結果コード。 */
     string entryResult;
 
@@ -597,19 +596,6 @@ private:
         this.closeEma200DiffPipsResult = 0.0;
         this.maxCloseEma200DiffPipsResult = 0.0;
         this.isEma200DistanceWithinResult = false;
-    }
-
-    /**
-     * Close1とEMA200[1]のエントリー許容距離pipsを取得する。
-     *
-     * @return エントリー許容距離pips。
-     */
-    double getMaxCloseEma200DiffPips() {
-        if (this.marketContext.isJpy()) {
-            return ExpertAdvisorMTF_3in3::maxCloseEma200DiffPipsJpy;
-        }
-
-        return ExpertAdvisorMTF_3in3::maxCloseEma200DiffPips;
     }
 
     /**
@@ -879,7 +865,5 @@ private:
 };
 
 const double ExpertAdvisorMTF_3in3::maxM5Elliot3FibonacciExpansionPercent = 161.8;
-const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPips = 25.0;
-const double ExpertAdvisorMTF_3in3::maxCloseEma200DiffPipsJpy = 25.0;
 
 #endif // MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF_3IN3_MQH

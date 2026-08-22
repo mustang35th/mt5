@@ -157,16 +157,12 @@ protected:
     }
 
     /**
-     * H1では現在足とEMA200の距離制限を使用しない。
+     * H1で現在足とEMA200の距離制限を使用する。
      *
-     * @return H1の場合false。それ以外の場合true。
+     * @return 常にtrue。
      */
     virtual bool isTimeFrameEma200DistanceRequired() override {
-        if (this.marketContext.timeFrame != PERIOD_H1) {
-            return true;
-        }
-
-        return false;
+        return true;
     }
 
     /**

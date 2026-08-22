@@ -9,7 +9,7 @@
 | スキーマバージョン | 5 |
 | 保存単位 | 実行、アラート、時間足別分析、最新Waveポイント |
 | 重複時の動作 | 最初に保存したスナップショットを維持 |
-| 最終更新日 | 2026-08-20 |
+| 最終更新日 | 2026-08-22 |
 
 本書は、ZigZagElliotがアラートを出した時点の判定情報とElliott波動を、後からSQLで検索および再構成できる形式で保存する第1段階の仕様を定義します。
 
@@ -124,7 +124,7 @@ ON zigzag_elliot_alert_runs(started_at);
 
 `run_uid`は1回の実行中に変化しません。テスターを再実行した場合は新しいRunとして扱います。
 
-現行のAlert Runは`schema_version = 5`、`program_version = 1.28`、`strategy_version = MTF3IN3_V4`です。H1方向一致CHECK制約の拡張前に保存したRunのバージョンは書き換えません。
+現行のAlert Runは`schema_version = 5`、`program_version = 1.29`、`strategy_version = MTF3IN3_V5`です。H1のEMA200距離50 pips制限追加前に保存したRunのバージョンは書き換えません。
 
 ## 7. `zigzag_elliot_alerts`
 
@@ -147,6 +147,8 @@ ON zigzag_elliot_alert_runs(started_at);
 | H1構造 | `h1_structure_rank`, `is_h1_structure_valid`, `is_h1_structure_late`, `is_h1_direction_exception` |
 | 監査用テキスト | `alert_title`, `alert_text`, `wave_summary_text`, `elliot_csv_text` |
 | 保存時刻 | `created_at`, `created_at_text` |
+
+EMA200距離は`abs(Close[1] - EMA200[1])`で判定します。`max_close_ema200_diff_pips`はH1で50.0、M15・M5で25.0です。絶対距離が上限以下なら`is_ema200_distance_within = 1`、超過候補は`entry_result = EMA200_DISTANCE_REJECTED`として保存します。
 
 H1のW1確認は、W1の3本Stochasticによる分析方向とW1 EMA200方向を、H1のエントリー方向へ照合します。`OBSERVE_ONLY`はOR条件の結果だけを記録してエントリーを制限しません。`DIRECTION_OR_EMA200`はどちらか一方、`DIRECTION_AND_EMA200`は両方の一致を要求し、`OFF`は確認を無効にします。既定値は`OBSERVE_ONLY`です。
 

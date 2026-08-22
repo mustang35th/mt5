@@ -10,7 +10,7 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.05"
+#property version   "1.06"
 
 #property strict
 
