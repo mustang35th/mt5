@@ -870,6 +870,24 @@ describe("App", () => {
     await waitFor(() => expect(detailButton).toHaveFocus());
   });
 
+  it("opens TIMEFRAME COMPARISON directly and restores focus to its trigger", async () => {
+    render(<App />);
+    const comparisonButton = await screen.findByRole("button", {
+      name: "AUDUSD BUY 2026.07.31 01:00:00 のTIMEFRAME COMPARISONを表示",
+    });
+    comparisonButton.focus();
+    fireEvent.click(comparisonButton);
+
+    expect(await screen.findByText("TIMEFRAME COMPARISON")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveClass("observation-grid-mode");
+    expect(screen.getByRole("button", { name: "TF比較" }))
+      .toHaveAttribute("aria-pressed", "true");
+
+    fireEvent(dialog, new Event("cancel", { bubbles: false, cancelable: true }));
+    await waitFor(() => expect(comparisonButton).toHaveFocus());
+  });
+
   it("uses a grid header to request whole-result server sorting", async () => {
     render(<App />);
     const firstHeader = await screen.findByRole("columnheader", { name: "通貨" });

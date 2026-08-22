@@ -44,6 +44,7 @@ interface AlertTableProps {
   styleNonce?: string;
   gridControlsTarget?: HTMLElement | null;
   onSort: (sort: AlertSort) => void;
+  onOpenComparison: (alertId: number, fromTrigger: HTMLButtonElement) => void;
   onOpenDetail: (alertId: number, fromTrigger: HTMLButtonElement) => void;
 }
 
@@ -488,6 +489,7 @@ export function AlertTable({
   styleNonce,
   gridControlsTarget,
   onSort,
+  onOpenComparison,
   onOpenDetail,
 }: AlertTableProps) {
   const gridApiRef = useRef<GridApi<AlertListItem> | null>(null);
@@ -646,20 +648,34 @@ export function AlertTable({
     return undefined;
   }, [highlightedIds]);
 
-  const DetailCell = useCallback((params: ICellRendererParams<AlertListItem>) => {
+  const ActionCell = useCallback((params: ICellRendererParams<AlertListItem>) => {
     const alert = dataFrom(params);
     if (!alert) return null;
     return (
-      <button
-        aria-label={`${alert.symbol_name} ${alert.side} ${alert.jst_time_text} の詳細を表示`}
-        className="secondary-button detail-open-button"
-        type="button"
-        onClick={(event) => onOpenDetail(alert.id, event.currentTarget)}
+      <div
+        aria-label={`${alert.symbol_name} ${alert.side} ${alert.jst_time_text} の操作`}
+        role="group"
+        style={{ alignItems: "center", display: "flex", gap: "6px" }}
       >
-        詳細
-      </button>
+        <button
+          aria-label={`${alert.symbol_name} ${alert.side} ${alert.jst_time_text} のTIMEFRAME COMPARISONを表示`}
+          className="secondary-button detail-open-button"
+          type="button"
+          onClick={(event) => onOpenComparison(alert.id, event.currentTarget)}
+        >
+          TF比較
+        </button>
+        <button
+          aria-label={`${alert.symbol_name} ${alert.side} ${alert.jst_time_text} の詳細を表示`}
+          className="secondary-button detail-open-button"
+          type="button"
+          onClick={(event) => onOpenDetail(alert.id, event.currentTarget)}
+        >
+          詳細
+        </button>
+      </div>
     );
-  }, [onOpenDetail]);
+  }, [onOpenComparison, onOpenDetail]);
 
   const columnDefs = useMemo<ColDef<AlertListItem>[]>(() => [
     {
@@ -784,15 +800,16 @@ export function AlertTable({
     },
     {
       colId: "detail",
-      headerName: "詳細",
+      headerName: "操作",
       initialPinned: "right",
-      initialWidth: 90,
+      initialWidth: 190,
+      minWidth: 180,
       lockPinned: true,
       lockPosition: "right",
       suppressMovable: true,
-      cellRenderer: DetailCell,
+      cellRenderer: ActionCell,
     },
-  ], [DetailCell, onSort, order, sort]);
+  ], [ActionCell, onSort, order, sort]);
 
   const gridControls = (
     <GridControls

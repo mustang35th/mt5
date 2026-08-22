@@ -96,29 +96,75 @@ function timeFrame(
 ): AlertTimeFrame {
   return {
     id,
+    alert_id: 74,
+    time_frame: order,
     time_frame_text: label,
     time_frame_order: order,
     is_current_time_frame: label === "H1",
+    is_buy: true,
     buy_sell_label: "BUY",
+    wave_count: 4,
     is_wave_confirmed: label === "MN1",
     is_wave_motive: true,
     is_wave_uptrend: false,
     wave_trend_label: "▼",
+    previous_last_elliot_label: "2",
     latest_wave_index: 3,
     point_count: 2,
+    latest_elliot_index: 3,
     latest_elliot_label: "3",
+    latest_sub_elliot_index: 3,
     latest_sub_elliot_label: "iii",
+    previous_open: 1.2,
+    previous_high: 1.3,
+    previous_low: 1.1,
+    previous_close: 1.25,
+    current_open: 1.25,
+    current_high: 1.3,
+    current_low: 1.2,
+    is_fibo_expansion_available: false,
+    fe618_price: 0,
+    fe1000_price: 0,
+    fe1272_price: 0,
+    fe1618_price: 0,
+    fe2000_price: 0,
+    distance_to_fe2000_pips: 0,
+    oscillator_count: 3,
+    is_oscillator_buy: true,
+    stochastic_main_order: 1,
     stochastic_main_order_text: "BUY",
     stochastic_main_direction_text: "BUY",
+    stochastic_short_count: 1,
+    stochastic_short_main: 80,
+    stochastic_short_signal: 70,
+    stochastic_middle_count: 2,
+    stochastic_middle_main: 70,
+    stochastic_middle_signal: 60,
+    stochastic_long_count: 3,
+    stochastic_long_main: 60,
+    stochastic_long_signal: 50,
     gmma_trend_count: 3,
     gmma_cross_count: -2,
+    ema30: 1.24,
+    ema60: 1.23,
+    ema30_ema60_diff_pips: 10,
     is_ema200_available: true,
+    ema200_close1: 1.25,
+    ema200_shift1: 1.2,
+    ema200_compare: 0.05,
+    ema200_slope_pips: 2,
+    ema200_close_diff_pips: 5,
+    ema200_close_position: 1,
+    ema200_slope_direction: 1,
+    ema200_up_count: 3,
+    ema200_down_count: 0,
+    ema200_trend_count: 3,
     is_ema200_buy: false,
     is_ema200_sell: false,
     atr14_pips: 10,
-    is_fibo_expansion_available: false,
-    distance_to_fe2000_pips: 0,
     current_close: 1.23456,
+    created_at: 0,
+    created_at_text: "2026.07.31 01:00:00",
     ...overrides,
   };
 }
@@ -126,9 +172,13 @@ function timeFrame(
 function point(id: number, timeFrame: string, order: number, pointOrder: number) {
   return {
     id,
+    alert_id: 74,
+    alert_timeframe_id: order + 1,
+    time_frame: order,
     time_frame_text: timeFrame,
     time_frame_order: order,
     point_order: pointOrder,
+    bar_time: id,
     bar_time_text: `2026.01.0${id} 00:00:00`,
     rate: 1.2 + id / 100,
     is_peak: true,
@@ -146,12 +196,156 @@ function point(id: number, timeFrame: string, order: number, pointOrder: number)
   };
 }
 
+function provideGridLayoutSize() {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_440);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(1_440);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(800);
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+    bottom: 800,
+    height: 800,
+    left: 0,
+    right: 1_440,
+    top: 0,
+    width: 1_440,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.classList.remove("drawer-open");
 });
 
 describe("AlertDetailDrawer", () => {
+  it("opens the alert snapshot directly in TIMEFRAME COMPARISON and switches views", async () => {
+    provideGridLayoutSize();
+    const timeFrames = [
+      timeFrame(1, "MN1", 0),
+      timeFrame(2, "W1", 1),
+      timeFrame(3, "D1", 2),
+      timeFrame(4, "H4", 3),
+      timeFrame(5, "H1", 4),
+    ];
+    const points = [point(1, "MN1", 0, 0), point(2, "H1", 4, 0)];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/alerts/74") return jsonResponse(detailPayload());
+      if (path === "/api/alerts/74/timeframes") {
+        return jsonResponse({ items: timeFrames, count: timeFrames.length });
+      }
+      if (path === "/api/alerts/74/points") {
+        return jsonResponse({ items: points, count: points.length });
+      }
+      throw new Error(`unexpected path: ${path}`);
+    }));
+
+    render(
+      <AlertDetailDrawer
+        alertId={74}
+        initialView="comparison"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("TIMEFRAME COMPARISON")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveClass("observation-grid-mode");
+    expect(screen.getByRole("button", { name: "TF比較" }))
+      .toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "詳細" }))
+      .toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "TIMEFRAME COMPARISONを閉じる" }))
+      .toHaveFocus();
+
+    const grid = await screen.findByRole("grid", {
+      name: "アラート時間足比較スナップショットグリッド",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: 価格・Fibo" }));
+    await waitFor(() => {
+      const serverTimeCells = Array.from(
+        grid.querySelectorAll<HTMLElement>('.ag-cell[col-id="latest_point_time_text"]'),
+      );
+      expect(serverTimeCells.some((cell) => (
+        cell.textContent?.includes("2026.01.01 00:00:00")
+      ))).toBe(true);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "詳細" }));
+    expect(dialog).not.toHaveClass("observation-grid-mode");
+    expect(screen.queryByText("TIMEFRAME COMPARISON")).not.toBeInTheDocument();
+    expect(screen.getByText("判定情報")).toBeInTheDocument();
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3);
+  });
+
+  it("shows legacy comparison values as unavailable instead of false SELL states", async () => {
+    provideGridLayoutSize();
+    const legacyTimeFrame = timeFrame(1, "H1", 4, {
+      is_ema200_available: false,
+    });
+    const legacyValues = legacyTimeFrame as unknown as Record<string, unknown>;
+    for (const key of [
+      "is_wave_confirmed",
+      "is_wave_motive",
+      "is_wave_uptrend",
+      "is_fibo_expansion_available",
+      "is_oscillator_buy",
+    ]) {
+      delete legacyValues[key];
+    }
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/alerts/74") {
+        return jsonResponse(detailPayload());
+      }
+      if (path === "/api/alerts/74/timeframes") {
+        return jsonResponse({ items: [legacyTimeFrame], count: 1 });
+      }
+      if (path === "/api/alerts/74/points") {
+        return jsonResponse({ items: [], count: 0 });
+      }
+      throw new Error(`unexpected path: ${path}`);
+    }));
+
+    render(
+      <AlertDetailDrawer
+        alertId={74}
+        initialView="comparison"
+        onClose={vi.fn()}
+      />,
+    );
+
+    const grid = await screen.findByRole("grid", {
+      name: "アラート時間足比較スナップショットグリッド",
+    });
+    expect(within(grid).getByLabelText("EMA200判定 記録なし")).toBeInTheDocument();
+    expect(within(grid).queryByText(/▼/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: 波動" }));
+    await waitFor(() => {
+      expect(grid.querySelector('.ag-cell[col-id="wave_direction"]')).toHaveTextContent("—");
+      expect(grid.querySelector('.ag-cell[col-id="wave_state"]')).toHaveTextContent("—");
+      expect(grid.querySelector('.ag-cell[col-id="wave_type"]')).toHaveTextContent("—");
+      expect(within(grid).queryByText("形成中")).not.toBeInTheDocument();
+      expect(within(grid).queryByText("修正波")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: 価格・Fibo" }));
+    await waitFor(() => {
+      expect(grid.querySelector('.ag-cell[col-id="fibo_expansion_status"]'))
+        .toHaveTextContent("—");
+      expect(within(grid).queryByText("未取得")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: オシレーター" }));
+    await waitFor(() => {
+      expect(grid.querySelector('.ag-cell[col-id="oscillator"]')).toHaveTextContent("—");
+      expect(within(grid).queryByText(/SELL \/ count/)).not.toBeInTheDocument();
+    });
+  });
+
   it("loads the three detail APIs and renders analysis and wave data without treating zero as missing", async () => {
     const timeFrames = [
       timeFrame(1, "MN1", 0),

@@ -10,12 +10,13 @@ import {
   type RowClassParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type {
   AlertDetailResponse,
   AlertPoint,
   AlertTimeFrame,
+  ObservationDetailTimeFrame,
   PointsResponse,
   TimeFramesResponse,
 } from "../api/types";
@@ -33,14 +34,18 @@ import {
   h1DirectionAlignmentModeLabel,
   h1DirectionAlignmentStateDescription,
 } from "./H1DirectionAlignmentBadge";
+import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 import {
   W1ConfirmationBadge,
   w1ConfirmationModeLabel,
   w1ConfirmationStateDescription,
 } from "./W1ConfirmationBadge";
 
+export type AlertDetailView = "detail" | "comparison";
+
 interface AlertDetailDrawerProps {
   alertId: number | null;
+  initialView?: AlertDetailView;
   onClose: () => void;
   styleNonce?: string;
 }
@@ -671,13 +676,85 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
   );
 }
 
-export function AlertDetailDrawer({ alertId, onClose, styleNonce }: AlertDetailDrawerProps) {
+/**
+ * アラート保存時点の時間足を共通比較グリッド形式へ変換します。
+ *
+ * @param bundle アラート詳細、時間足およびWaveポイント
+ * @return TIMEFRAME COMPARISONへ渡す時間足一覧
+ */
+function comparisonTimeFrames(bundle: DetailBundle): ObservationDetailTimeFrame[] {
+  const latestPoints = new Map<number, AlertPoint>();
+  for (const point of bundle.points.items) {
+    if (point.is_latest) latestPoints.set(point.alert_timeframe_id, point);
+  }
+
+  return bundle.timeFrames.items.map((timeFrame) => {
+    const latestPoint = latestPoints.get(timeFrame.id);
+    return {
+      ...timeFrame,
+      observation_id: timeFrame.alert_id,
+      is_anchor_time_frame: timeFrame.is_current_time_frame,
+      latest_point_time: latestPoint?.bar_time ?? 0,
+      latest_point_time_text: latestPoint?.bar_time_text ?? "",
+      latest_point_jst_time: 0,
+      latest_point_jst_time_text: "",
+      latest_point_rate: latestPoint?.rate ?? Number.NaN,
+    };
+  });
+}
+
+function ComparisonContent({ bundle, styleNonce }: {
+  bundle: DetailBundle;
+  styleNonce?: string;
+}) {
+  const alert = bundle.detail.alert;
+  const run = bundle.detail.run;
+  const timeFrames = useMemo(() => comparisonTimeFrames(bundle), [bundle]);
+
+  return (
+    <section className="observation-snapshot-grid-content">
+      <div className="observation-snapshot-grid-context">
+        <div>
+          <p className="eyebrow">TIMEFRAME COMPARISON</p>
+          <div className="observation-snapshot-grid-symbol">
+            <strong>{alert.symbol_name}</strong>
+            <GmoTargetBadge isTarget={alert.is_gmo_target} />
+          </div>
+        </div>
+        <div className="observation-snapshot-grid-context-values">
+          <span>{alert.side}</span>
+          <span>JST {displayValue(alert.jst_time_text)}</span>
+          <span>Server {displayValue(alert.server_time_text)}</span>
+          <span>Alert {alert.id}</span>
+          <span>Run {run?.id ?? "—"}</span>
+        </div>
+      </div>
+      <ObservationTimeFrameSnapshotGrid
+        ariaLabel="アラート時間足比較スナップショットグリッド"
+        styleNonce={styleNonce}
+        timeFrames={timeFrames}
+      />
+    </section>
+  );
+}
+
+export function AlertDetailDrawer({
+  alertId,
+  initialView = "detail",
+  onClose,
+  styleNonce,
+}: AlertDetailDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [bundle, setBundle] = useState<DetailBundle | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [view, setView] = useState<AlertDetailView>(initialView);
   const isOpen = alertId !== null;
+
+  useEffect(() => {
+    setView(initialView);
+  }, [alertId, initialView]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -745,7 +822,7 @@ export function AlertDetailDrawer({ alertId, onClose, styleNonce }: AlertDetailD
   return (
     <dialog
       aria-labelledby="reactDetailTitle"
-      className="react-detail-dialog"
+      className={`react-detail-dialog${view === "comparison" ? " observation-grid-mode" : ""}`}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -758,12 +835,51 @@ export function AlertDetailDrawer({ alertId, onClose, styleNonce }: AlertDetailD
           <p className="eyebrow">ALERT SNAPSHOT</p>
           <h2 id="reactDetailTitle">{title}</h2>
         </div>
-        <button aria-label="詳細を閉じる" className="close-button" onClick={onClose} ref={closeButtonRef} type="button">×</button>
+        <div className="observation-detail-header-actions">
+          {bundle && (
+            <div
+              aria-label="アラートスナップショット表示"
+              className="observation-detail-view-toggle"
+              role="group"
+            >
+              <button
+                aria-pressed={view === "detail"}
+                className="secondary-button"
+                onClick={() => setView("detail")}
+                type="button"
+              >
+                詳細
+              </button>
+              <button
+                aria-pressed={view === "comparison"}
+                className="secondary-button"
+                onClick={() => setView("comparison")}
+                type="button"
+              >
+                TF比較
+              </button>
+            </div>
+          )}
+          <button
+            aria-label={view === "comparison" ? "TIMEFRAME COMPARISONを閉じる" : "詳細を閉じる"}
+            className="close-button"
+            onClick={onClose}
+            ref={closeButtonRef}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
       </div>
       <div aria-busy={loading} className="drawer-body">
         {loading && <p className="loading-message" role="status" aria-live="polite">詳細を読み込んでいます…</p>}
         {error && <p className="loading-message" role="alert">{error}</p>}
-        {!loading && !error && bundle && <DetailContent bundle={bundle} styleNonce={styleNonce} />}
+        {!loading && !error && bundle && view === "detail" && (
+          <DetailContent bundle={bundle} styleNonce={styleNonce} />
+        )}
+        {!loading && !error && bundle && view === "comparison" && (
+          <ComparisonContent bundle={bundle} styleNonce={styleNonce} />
+        )}
       </div>
     </dialog>
   );

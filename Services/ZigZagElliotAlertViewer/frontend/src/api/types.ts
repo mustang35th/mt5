@@ -298,32 +298,21 @@ export interface AlertDetailResponse {
   w1: W1Summary | null;
 }
 
-export interface AlertTimeFrame {
-  id: number;
-  time_frame_text: string;
-  time_frame_order: number;
+export type AlertTimeFrame = Omit<
+  ObservationDetailTimeFrame,
+  | "observation_id"
+  | "is_anchor_time_frame"
+  | "latest_point_time"
+  | "latest_point_time_text"
+  | "latest_point_jst_time"
+  | "latest_point_jst_time_text"
+  | "latest_point_rate"
+> & {
+  alert_id: number;
   is_current_time_frame: boolean;
-  buy_sell_label: string;
-  is_wave_confirmed: boolean;
-  is_wave_motive: boolean;
-  is_wave_uptrend: boolean;
-  wave_trend_label: string;
-  latest_wave_index: number;
-  point_count: number;
-  latest_elliot_label: string;
-  latest_sub_elliot_label: string;
-  stochastic_main_order_text: string;
-  stochastic_main_direction_text: string;
-  gmma_trend_count: number;
-  gmma_cross_count: number;
   is_ema200_available: boolean;
-  is_ema200_buy: boolean;
-  is_ema200_sell: boolean;
-  atr14_pips: number;
-  is_fibo_expansion_available: boolean;
-  distance_to_fe2000_pips: number;
-  current_close: number;
-}
+  raw_csv_text?: string;
+};
 
 export interface TimeFramesResponse {
   items: AlertTimeFrame[];
@@ -332,9 +321,13 @@ export interface TimeFramesResponse {
 
 export interface AlertPoint {
   id: number;
+  alert_id: number;
+  alert_timeframe_id: number;
+  time_frame: number;
   time_frame_text: string;
   time_frame_order: number;
   point_order: number;
+  bar_time: number;
   bar_time_text: string;
   rate: number;
   is_peak: boolean;

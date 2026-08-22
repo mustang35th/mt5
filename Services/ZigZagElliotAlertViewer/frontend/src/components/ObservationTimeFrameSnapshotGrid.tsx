@@ -39,6 +39,7 @@ import {
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 
 export interface ObservationTimeFrameSnapshotGridProps {
+  ariaLabel?: string;
   timeFrames: readonly ObservationDetailTimeFrame[];
   styleNonce?: string;
 }
@@ -86,6 +87,10 @@ const snapshotGridTheme = themeQuartz
   });
 
 type SnapshotFormatter = (timeFrame: ObservationDetailTimeFrame) => string;
+
+type Ema200AvailabilityTimeFrame = ObservationDetailTimeFrame & {
+  is_ema200_available?: boolean;
+};
 
 type ColumnGroupPresetId =
   | "essentials"
@@ -225,9 +230,27 @@ function isCollapsibleColumnGroupId(
 }
 
 function waveLabel(timeFrame: ObservationDetailTimeFrame): string {
+  if (typeof timeFrame.is_wave_uptrend !== "boolean") {
+    return "—";
+  }
+
   const main = displayValue(timeFrame.latest_elliot_label);
   const sub = displayValue(timeFrame.latest_sub_elliot_label);
   return `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)}${main} [${timeFrame.latest_elliot_index}] / ${sub} [${timeFrame.latest_sub_elliot_index}]`;
+}
+
+function booleanLabel(
+  value: boolean | undefined,
+  trueLabel: string,
+  falseLabel: string,
+): string {
+  if (typeof value !== "boolean") {
+    return "—";
+  }
+  if (value) {
+    return trueLabel;
+  }
+  return falseLabel;
 }
 
 function ohlcLabel(
@@ -305,6 +328,10 @@ function signedSnapshotCellRenderer(fromParts: SnapshotCellParts) {
 }
 
 function ema200Direction(timeFrame: ObservationDetailTimeFrame): string {
+  const availableTimeFrame = timeFrame as Ema200AvailabilityTimeFrame;
+  if (availableTimeFrame.is_ema200_available === false) {
+    return "記録なし";
+  }
   if (timeFrame.is_ema200_buy && timeFrame.is_ema200_sell) return "BUY / SELL";
   if (timeFrame.is_ema200_buy) return "BUY";
   if (timeFrame.is_ema200_sell) return "SELL";
@@ -395,7 +422,13 @@ function Ema200DirectionCell(
   params: ICellRendererParams<ObservationDetailTimeFrame, string>,
 ) {
   if (!params.data) return null;
-  return <Ema200SignalBadge timeFrame={params.data} />;
+  const timeFrame = params.data as Ema200AvailabilityTimeFrame;
+  return (
+    <Ema200SignalBadge
+      available={timeFrame.is_ema200_available !== false}
+      timeFrame={timeFrame}
+    />
+  );
 }
 
 function ElliottWaveDirectionCell(
@@ -403,9 +436,16 @@ function ElliottWaveDirectionCell(
 ) {
   const timeFrame = params.data;
   if (!timeFrame) return null;
-  const directionClass = timeFrame.is_wave_uptrend ? "uptrend" : "downtrend";
+  let directionClass = "";
+  if (typeof timeFrame.is_wave_uptrend === "boolean") {
+    if (timeFrame.is_wave_uptrend) {
+      directionClass = " uptrend";
+    } else {
+      directionClass = " downtrend";
+    }
+  }
   return (
-    <span className={`snapshot-elliott-wave-value ${directionClass}`}>
+    <span className={`snapshot-elliott-wave-value${directionClass}`}>
       {displayValue(params.value)}
     </span>
   );
@@ -470,7 +510,11 @@ const COLUMN_DEFS: Array<
           WAVE_DIRECTION_COLUMN_ID,
           "Wave方向",
           96,
-          (timeFrame) => formatElliottDirection(timeFrame.is_wave_uptrend),
+          (timeFrame) => booleanLabel(
+            timeFrame.is_wave_uptrend,
+            formatElliottDirection(true),
+            formatElliottDirection(false),
+          ),
         ),
         cellRenderer: ElliottWaveDirectionCell,
       },
@@ -478,13 +522,13 @@ const COLUMN_DEFS: Array<
         "wave_state",
         "Wave状態",
         96,
-        (timeFrame) => timeFrame.is_wave_confirmed ? "確定" : "形成中",
+        (timeFrame) => booleanLabel(timeFrame.is_wave_confirmed, "確定", "形成中"),
       ),
       detailSnapshotColumn(
         "wave_type",
         "Wave種別",
         96,
-        (timeFrame) => timeFrame.is_wave_motive ? "推進波" : "修正波",
+        (timeFrame) => booleanLabel(timeFrame.is_wave_motive, "推進波", "修正波"),
       ),
       detailSnapshotColumn(
         "wave_count_latest_index",
@@ -564,7 +608,11 @@ const COLUMN_DEFS: Array<
         FIBO_EXPANSION_STATUS_COLUMN_ID,
         "Fibo / FE",
         104,
-        (timeFrame) => timeFrame.is_fibo_expansion_available ? "取得済" : "未取得",
+        (timeFrame) => booleanLabel(
+          timeFrame.is_fibo_expansion_available,
+          "取得済",
+          "未取得",
+        ),
       ),
       detailSnapshotColumn(
         "fe618_fe1000",
@@ -605,12 +653,30 @@ const COLUMN_DEFS: Array<
           OSCILLATOR_COLUMN_ID,
           "Oscillator",
           164,
-          (timeFrame) => `${timeFrame.is_oscillator_buy ? "BUY" : "SELL"} / count ${formatSignedNumber(timeFrame.oscillator_count, 0)}`,
+          (timeFrame) => {
+            if (typeof timeFrame.is_oscillator_buy !== "boolean") {
+              return "—";
+            }
+            let direction = "SELL";
+            if (timeFrame.is_oscillator_buy) {
+              direction = "BUY";
+            }
+            return `${direction} / count ${formatSignedNumber(timeFrame.oscillator_count, 0)}`;
+          },
         ),
-        cellRenderer: signedSnapshotCellRenderer((timeFrame) => [
-          `${timeFrame.is_oscillator_buy ? "BUY" : "SELL"} / count `,
-          signedValue(timeFrame.oscillator_count, 0),
-        ]),
+        cellRenderer: signedSnapshotCellRenderer((timeFrame) => {
+          if (typeof timeFrame.is_oscillator_buy !== "boolean") {
+            return ["—"];
+          }
+          let direction = "SELL";
+          if (timeFrame.is_oscillator_buy) {
+            direction = "BUY";
+          }
+          return [
+            `${direction} / count `,
+            signedValue(timeFrame.oscillator_count, 0),
+          ];
+        }),
       },
       detailSnapshotColumn(
         "stochastic",
@@ -814,6 +880,7 @@ function EmptySnapshotOverlay() {
 }
 
 export function ObservationTimeFrameSnapshotGrid({
+  ariaLabel = "時間足別 H1新規足スナップショットグリッド",
   timeFrames,
   styleNonce,
 }: ObservationTimeFrameSnapshotGridProps) {
@@ -848,10 +915,10 @@ export function ObservationTimeFrameSnapshotGrid({
     );
     event.api.setGridAriaProperty(
       "label",
-      "時間足別 H1新規足スナップショットグリッド",
+      ariaLabel,
     );
     setGridReady(true);
-  }, [applyPinning, columnGroupStateValue]);
+  }, [applyPinning, ariaLabel, columnGroupStateValue]);
 
   const handleColumnGroupOpened = useCallback((
     event: ColumnGroupOpenedEvent<ObservationDetailTimeFrame>,
@@ -895,7 +962,7 @@ export function ObservationTimeFrameSnapshotGrid({
 
   return (
     <div
-      aria-label="時間足別 H1新規足スナップショットグリッド"
+      aria-label={ariaLabel}
       className="observation-timeframe-snapshot-grid"
       role="region"
       style={{ height: "100%", minHeight: 0, minWidth: 0, width: "100%" }}

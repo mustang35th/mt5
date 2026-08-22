@@ -99,6 +99,7 @@ describe("AlertTable", () => {
   });
 
   it("renders compact W1 confirmation states and escapes DB text", async () => {
+    const onOpenComparison = vi.fn();
     const onOpenDetail = vi.fn();
     const onSort = vi.fn();
     const view = render(
@@ -109,6 +110,7 @@ describe("AlertTable", () => {
         sort="jst_time"
         order="desc"
         onSort={onSort}
+        onOpenComparison={onOpenComparison}
         onOpenDetail={onOpenDetail}
       />,
     );
@@ -149,6 +151,7 @@ describe("AlertTable", () => {
     expect(screen.getAllByText("test <img onerror=alert(1)>")).toHaveLength(3);
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByRole("columnheader", { name: "時間足" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
     await waitFor(() => {
       const timeFrameCells = view.container.querySelectorAll('.ag-cell[col-id="time_frame"]');
       expect(timeFrameCells).toHaveLength(3);
@@ -188,6 +191,11 @@ describe("AlertTable", () => {
     const detailButton = screen.getAllByRole("button", { name: "AUDUSD BUY 2026.07.31 01:00:00 の詳細を表示" })[0];
     fireEvent.click(detailButton);
     expect(onOpenDetail).toHaveBeenCalledWith(1, detailButton);
+    const comparisonButton = screen.getAllByRole("button", {
+      name: "AUDUSD BUY 2026.07.31 01:00:00 のTIMEFRAME COMPARISONを表示",
+    })[0];
+    fireEvent.click(comparisonButton);
+    expect(onOpenComparison).toHaveBeenCalledWith(1, comparisonButton);
   });
 
   it("requests server sorting without changing the current page row order", async () => {
@@ -201,6 +209,7 @@ describe("AlertTable", () => {
         sort="jst_time"
         order="desc"
         onSort={onSort}
+        onOpenComparison={vi.fn()}
         onOpenDetail={vi.fn()}
       />,
     );
@@ -236,6 +245,7 @@ describe("AlertTable", () => {
         sort="jst_time"
         order="desc"
         onSort={vi.fn()}
+        onOpenComparison={vi.fn()}
         onOpenDetail={vi.fn()}
       />,
     );
@@ -281,6 +291,7 @@ describe("AlertTable", () => {
         sort="jst_time"
         order="desc"
         onSort={vi.fn()}
+        onOpenComparison={vi.fn()}
         onOpenDetail={vi.fn()}
       />,
     );
@@ -323,6 +334,7 @@ describe("AlertTable", () => {
         sort="jst_time"
         order="desc"
         onSort={vi.fn()}
+        onOpenComparison={vi.fn()}
         onOpenDetail={vi.fn()}
       />,
     );
@@ -384,6 +396,7 @@ describe("AlertTable", () => {
         sort="symbol_name"
         order="desc"
         onSort={vi.fn()}
+        onOpenComparison={vi.fn()}
         onOpenDetail={vi.fn()}
       />,
     );
@@ -408,6 +421,7 @@ describe("AlertTable", () => {
         sort="jst_time"
         order="desc"
         onSort={vi.fn()}
+        onOpenComparison={vi.fn()}
         onOpenDetail={vi.fn()}
       />,
     );

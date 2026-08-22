@@ -15,7 +15,10 @@ import type {
   SummaryResponse,
   ViewerTab,
 } from "./api/types";
-import { AlertDetailDrawer } from "./components/AlertDetailDrawer";
+import {
+  AlertDetailDrawer,
+  type AlertDetailView,
+} from "./components/AlertDetailDrawer";
 import { AlertTable } from "./components/AlertTable";
 import { AppliedConditionSummary } from "./components/AppliedConditionSummary";
 import {
@@ -126,7 +129,8 @@ export default function App({ styleNonce }: AppProps) {
     () => document.visibilityState !== "hidden",
   );
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(null);
-  const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [selectedAlertView, setSelectedAlertView] = useState<AlertDetailView>("detail");
+  const alertTriggerRef = useRef<HTMLButtonElement | null>(null);
   const activeResultControllerRef = useRef<AbortController | null>(null);
   const refreshQueuedRef = useRef(false);
   const visibilityRefreshPendingRef = useRef(false);
@@ -391,12 +395,19 @@ export default function App({ styleNonce }: AppProps) {
   }, [applied, commitSearch]);
 
   const openDetail = useCallback((alertId: number, fromTrigger: HTMLButtonElement) => {
-    detailTriggerRef.current = fromTrigger;
+    alertTriggerRef.current = fromTrigger;
+    setSelectedAlertView("detail");
+    setSelectedAlertId(alertId);
+  }, []);
+
+  const openComparison = useCallback((alertId: number, fromTrigger: HTMLButtonElement) => {
+    alertTriggerRef.current = fromTrigger;
+    setSelectedAlertView("comparison");
     setSelectedAlertId(alertId);
   }, []);
 
   const closeDetail = useCallback(() => {
-    const trigger = detailTriggerRef.current;
+    const trigger = alertTriggerRef.current;
     setSelectedAlertId(null);
     window.requestAnimationFrame(() => {
       if (trigger?.isConnected && !trigger.disabled) trigger.focus();
@@ -570,6 +581,7 @@ export default function App({ styleNonce }: AppProps) {
                         styleNonce={styleNonce}
                         gridControlsTarget={gridControlsTarget}
                         onSort={changeSort}
+                        onOpenComparison={openComparison}
                         onOpenDetail={openDetail}
                       />
                       <Pagination page={page} pageCount={alerts.page_count} onPage={changePage} />
@@ -598,7 +610,12 @@ export default function App({ styleNonce }: AppProps) {
           {fatalError || loadError}
         </div>
       )}
-      <AlertDetailDrawer alertId={selectedAlertId} onClose={closeDetail} styleNonce={styleNonce} />
+      <AlertDetailDrawer
+        alertId={selectedAlertId}
+        initialView={selectedAlertView}
+        onClose={closeDetail}
+        styleNonce={styleNonce}
+      />
     </>
   );
 }
