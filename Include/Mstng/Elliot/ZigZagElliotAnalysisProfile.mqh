@@ -18,11 +18,11 @@
 class ZigZagElliotAnalysisProfile {
 public:
     /** @return Elliott分析バージョン。 */
-    static string getAnalysisVersion() { return "ELLIOT_MN1_V2"; }
+    static string getAnalysisVersion() { return "ELLIOT_MN1_V3"; }
 
     /** @return 分析Profileバージョン。 */
     static string getProfileVersion() {
-        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V1";
+        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V2";
     }
 
     /** @return 短期Stochastic K期間。 */
@@ -242,6 +242,11 @@ public:
     /** @return 上位足同期後の再分析最大ラウンド数。 */
     static int getHigherReanalyzeMaxRounds() { return 3; }
 
+    /** @return 上位足の確定修正区間を単一Waveへ統合する規則。 */
+    static string getHigherCorrectiveSegmentRule() {
+        return "STRICT_CONFIRMED_FOUR_POINT_V1";
+    }
+
     /** @return 上位足Waveを取得できない場合の分析バー数。 */
     static int getHigherBarsFallbackCount() { return 300; }
 
@@ -374,6 +379,11 @@ public:
             text,
             "ELLIOT_HIGHER_REANALYZE_MAX_ROUNDS",
             getHigherReanalyzeMaxRounds()
+        );
+        appendText(
+            text,
+            "ELLIOT_HIGHER_CORRECTIVE_SEGMENT_RULE",
+            getHigherCorrectiveSegmentRule()
         );
         appendInteger(
             text,

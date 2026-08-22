@@ -301,8 +301,9 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 
 | 項目 | 値 |
 |---|---|
-| `analysis_version` | `ELLIOT_MN1_V2` |
-| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V1` |
+| `analysis_version` | `ELLIOT_MN1_V3` |
+| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V2` |
+| 親修正区間規則 | `STRICT_CONFIRMED_FOUR_POINT_V1` |
 | Analysis start | MN1 |
 | Anchor | H1 |
 | Run `strategy` | `H1_OBSERVATION_ALL` |
@@ -312,6 +313,8 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 ここでいう`schema_version = 2`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 5`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
+
+`STRICT_CONFIRMED_FOUR_POINT_V1`は、隣接する親子時間足の確定済み修正区間を対象とします。下位足の通常分析と再分析を完了した後、その親区間で追加されたWave群から重複境界と区間外の文脈点を除きます。親区間の左右境界に対応するポイント間が、補完ポイントを含まない4点の有効な山谷列となる場合、親区間の方向を持つ単一の修正Waveへ置換し、3つの転換点を`A`、`B`、`C`として連続表示します。形成中の親区間、4点以外の構成または境界を一意に検証できない構成は置換せず、既存の分析結果を使用します。
 
 インジケーター運用入力は別の`input_text`へ保存し、FNV-1aによる`input_hash`を生成します。運用入力にはDB名、Common使用有無、Timer秒、DB再試行秒、TESTER保存開始時刻、Queue容量および解決後の28実シンボル名を含めます。
 

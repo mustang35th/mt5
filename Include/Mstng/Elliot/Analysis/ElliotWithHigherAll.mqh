@@ -7,6 +7,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Elliot\Analysis\ElliotBase.mqh>
+#include <Mstng\Elliot\Analysis\ElliotHigherSegmentPointListBuilder.mqh>
 #include <Mstng\Elliot\Analysis\ElliotRecount.mqh>
 #include <Mstng\Elliot\Analysis\ElliotSubwaves.mqh>
 #include <Mstng\Elliot\Analysis\ElliotWithHigher.mqh>
@@ -239,8 +240,10 @@ private:
                 ZigZagPoint *zigZagPointHigherLeft = zigZagPointListHigher.At(j - 1);    // ポイント左側
                 
                 int elliotIndex = zigZagPointHigherRight.elliotIndex;
+                bool isDeletedHigherPoint = false;
                 
                 if (elliotIndex == Constant::DELETE_FLG) {
+                    isDeletedHigherPoint = true;
                     elliotIndex = zigZagPointHigherRight.orgElliotIndex;
                 }
                 
@@ -284,7 +287,18 @@ private:
                     if (i == 0 && j == startPoint) {
                         isLatest = true;  // 最新波動
                     }
-                    
+
+                    bool isConfirmedHigherCorrectiveSegment = false;
+
+                    if (!isLatest
+                            && !isDeletedHigherPoint
+                            && !zigZagPointHigherLeft.isAddedPoint
+                            && !zigZagPointHigherRight.isAddedPoint
+                            && elliotIndex >= 2
+                            && Util::isEven(elliotIndex)) {
+                        isConfirmedHigherCorrectiveSegment = true;
+                    }
+
                     this.logger.debug(__FUNCTION__, StringFormat("isMotive = %s", (string)isMotive));
                     this.logger.debug(__FUNCTION__, StringFormat("isUptrend = %s", (string)isUptrend));
                     this.logger.debug(__FUNCTION__, StringFormat("isLatest = %s", (string)isLatest));
@@ -305,11 +319,67 @@ private:
                     } else {
                     }
                     
-                    if (!this.getWaveWithHigher(zigZagPointListWithHigher, isMotive, isUptrend, isLatest)) {    // 波動分析
+                    if (!this.getWaveWithHigher(
+                            zigZagPointListWithHigher,
+                            isMotive,
+                            isUptrend,
+                            isLatest
+                        )) {    // 波動分析
                         this.logger.error(__FUNCTION__, "getWaveWithHigher false");
                         LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
-                        
+
                         return false;
+                    }
+
+                    if (isConfirmedHigherCorrectiveSegment) {
+                        int totalAfter = this.waveList.Total();
+                        ElliotHigherSegmentPointListBuilder pointListBuilder;
+                        CArrayObj higherCorrectivePointList;
+
+                        if (pointListBuilder.buildFromWaveRange(
+                                this.marketContext,
+                                this.waveList,
+                                totalBefore,
+                                totalAfter - 1,
+                                zigZagPointHigherLeft,
+                                zigZagPointHigherRight,
+                                isUptrend,
+                                higherCorrectivePointList
+                            )) {
+                            if (!this.waveList.DeleteRange(
+                                    totalBefore,
+                                    totalAfter - 1
+                                )) {
+                                this.logger.error(
+                                    __FUNCTION__,
+                                    "Failed to replace higher corrective segment waves"
+                                );
+                                LogUtil::printMethodEnd(
+                                    this.logger,
+                                    __FUNCTION__,
+                                    false
+                                );
+
+                                return false;
+                            }
+
+                            WaveUtil::addWave(
+                                this.logger,
+                                this.waveList,
+                                this.marketContext,
+                                higherCorrectivePointList,
+                                false,
+                                isUptrend
+                            );
+                        } else {
+                            this.logger.debug(
+                                __FUNCTION__,
+                                StringFormat(
+                                    "Skip post-analysis higher corrective segment grouping. reason=%s",
+                                    pointListBuilder.getErrorMessage()
+                                )
+                            );
+                        }
                     }
                     
                     if (isCorrect) {    // 一時補正したrateを戻す。
@@ -350,7 +420,7 @@ private:
         
         return true;
     }
-    
+
     /**
      * 上位足区間から抽出したポイント列をWaveとして分析する。
      *
