@@ -10,6 +10,7 @@
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_RUN_DAO_MQH
 
 #include <Mstng\Database\Dao\ZigZagElliotAlertRunAnalysisProfileMigration.mqh>
+#include <Mstng\Database\Dao\ZigZagElliotAlertRunExecutionProgressMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -65,7 +66,14 @@ public:
         sql += "market_started_at INTEGER NOT NULL,";
         sql += "market_started_at_text TEXT NOT NULL,";
         sql += "created_at INTEGER NOT NULL,";
-        sql += "created_at_text TEXT NOT NULL";
+        sql += "created_at_text TEXT NOT NULL,";
+        sql += "status TEXT NOT NULL DEFAULT 'LEGACY',";
+        sql += "evaluation_started_at INTEGER NOT NULL DEFAULT 0,";
+        sql += "last_completed_h1_bar_time INTEGER NOT NULL DEFAULT 0,";
+        sql += "evaluated_h1_count INTEGER NOT NULL DEFAULT 0,";
+        sql += "saved_alert_count INTEGER NOT NULL DEFAULT 0,";
+        sql += "completed_at INTEGER NOT NULL DEFAULT 0,";
+        sql += "error_text TEXT NOT NULL DEFAULT ''";
         sql += ")";
 
         if (!this.executeSql(sql, "zigzag_elliot_alert_runs table")) {
@@ -73,6 +81,12 @@ public:
         }
 
         if (!ZigZagElliotAlertRunAnalysisProfileMigration::execute(
+                this.databaseHandle
+            )) {
+            return false;
+        }
+
+        if (!ZigZagElliotAlertRunExecutionProgressMigration::execute(
                 this.databaseHandle
             )) {
             return false;
@@ -115,6 +129,14 @@ public:
             return false;
         }
 
+        if (fromEntity.status == NULL || fromEntity.status == "") {
+            fromEntity.status = "LEGACY";
+        }
+
+        if (fromEntity.errorText == NULL) {
+            fromEntity.errorText = "";
+        }
+
         fromEntity.id = 0;
         string sql = "INSERT INTO zigzag_elliot_alert_runs (";
         sql += "run_uid, schema_version, source_mode, source, program_name,";
@@ -123,11 +145,14 @@ public:
         sql += " source_login, source_chart_id, terminal_build,";
         sql += " tester_from, tester_to, tester_model, input_text, input_hash,";
         sql += " started_at, started_at_text, market_started_at,";
-        sql += " market_started_at_text, created_at, created_at_text";
+        sql += " market_started_at_text, created_at, created_at_text,";
+        sql += " status, evaluation_started_at,";
+        sql += " last_completed_h1_bar_time, evaluated_h1_count,";
+        sql += " saved_alert_count, completed_at, error_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,";
         sql += " ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23,";
-        sql += " ?24, ?25, ?26";
+        sql += " ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33";
         sql += ")";
 
         ResetLastError();
@@ -219,6 +244,43 @@ public:
         if (isBound) {
             isBound = DatabaseBind(requestHandle, 25, fromEntity.createdAtText);
         }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 26, fromEntity.status);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                27,
+                fromEntity.evaluationStartedAt
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                28,
+                fromEntity.lastCompletedH1BarTime
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                29,
+                fromEntity.evaluatedH1Count
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                30,
+                fromEntity.savedAlertCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 31, fromEntity.completedAt);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 32, fromEntity.errorText);
+        }
 
         if (!isBound) {
             int bindErrorCode = GetLastError();
@@ -243,6 +305,136 @@ public:
         }
 
         return this.getLastInsertId(fromEntity.id);
+    }
+
+    /**
+     * Run実行状態、進捗およびテスター再現情報を更新する。
+     *
+     * @param fromEntity 更新対象Runと実行進捗。
+     * @return 更新処理に成功した場合true。
+     */
+    bool updateExecutionProgress(
+        ZigZagElliotAlertRunEntity &fromEntity
+    ) {
+        if (!this.isDatabaseReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (fromEntity.errorText == NULL) {
+            fromEntity.errorText = "";
+        }
+
+        if (fromEntity.testerModel == NULL) {
+            fromEntity.testerModel = "";
+        }
+
+        if (fromEntity.id <= 0
+                || fromEntity.status == ""
+                || fromEntity.testerFrom < 0
+                || fromEntity.testerTo < 0
+                || (fromEntity.testerFrom > 0
+                    && fromEntity.testerTo > 0
+                    && fromEntity.testerTo < fromEntity.testerFrom)
+                || fromEntity.evaluationStartedAt < 0
+                || fromEntity.lastCompletedH1BarTime < 0
+                || fromEntity.evaluatedH1Count < 0
+                || fromEntity.savedAlertCount < 0
+                || fromEntity.completedAt < 0) {
+            this.logger.error(
+                __FUNCTION__,
+                "Run execution progress value is invalid."
+            );
+
+            return false;
+        }
+
+        string sql = "UPDATE zigzag_elliot_alert_runs SET status = ?1,";
+        sql += " evaluation_started_at = ?2,";
+        sql += " last_completed_h1_bar_time = ?3,";
+        sql += " evaluated_h1_count = ?4, saved_alert_count = ?5,";
+        sql += " completed_at = ?6, error_text = ?7,";
+        sql += " tester_from = ?8, tester_to = ?9, tester_model = ?10";
+        sql += " WHERE id = ?11";
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        bool isBound = DatabaseBind(requestHandle, 0, fromEntity.status);
+
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                1,
+                fromEntity.evaluationStartedAt
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                2,
+                fromEntity.lastCompletedH1BarTime
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                3,
+                fromEntity.evaluatedH1Count
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                requestHandle,
+                4,
+                fromEntity.savedAlertCount
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 5, fromEntity.completedAt);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 6, fromEntity.errorText);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 7, fromEntity.testerFrom);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 8, fromEntity.testerTo);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 9, fromEntity.testerModel);
+        }
+        if (isBound) {
+            isBound = DatabaseBind(requestHandle, 10, fromEntity.id);
+        }
+
+        if (!isBound) {
+            int bindErrorCode = GetLastError();
+            DatabaseFinalize(requestHandle);
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabaseBind failed. error=%d", bindErrorCode)
+            );
+
+            return false;
+        }
+
+        bool isExecuted = this.executeRequest(
+            requestHandle,
+            __FUNCTION__,
+            "update alert run execution progress"
+        );
+        DatabaseFinalize(requestHandle);
+
+        return isExecuted;
     }
 
     /**

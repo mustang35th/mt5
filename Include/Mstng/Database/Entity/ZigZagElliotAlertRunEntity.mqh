@@ -95,6 +95,27 @@ struct ZigZagElliotAlertRunEntity {
 
     /** レコード作成時刻表示文字列。 */
     string createdAtText;
+
+    /** Run実行状態。 */
+    string status;
+
+    /** H1評価開始時刻。未開始の場合は0。 */
+    datetime evaluationStartedAt;
+
+    /** 最後に評価完了したH1バー開始時刻。未完了の場合は0。 */
+    datetime lastCompletedH1BarTime;
+
+    /** 評価完了したH1バー数。 */
+    int evaluatedH1Count;
+
+    /** 保存済みAlert件数。 */
+    int savedAlertCount;
+
+    /** Run完了時刻。未完了の場合は0。 */
+    datetime completedAt;
+
+    /** Run継続不能または不完全終了の理由。 */
+    string errorText;
 };
 
 #endif // MSTNG_DATABASE_ENTITY_ZIGZAG_ELLIOT_ALERT_RUN_ENTITY_MQH

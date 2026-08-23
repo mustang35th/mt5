@@ -132,6 +132,44 @@ public:
     }
 
     /**
+     * 保存済みRunの実行状態、進捗およびテスター再現情報を更新する。
+     *
+     * @param fromRunEntity 更新対象Runと実行進捗。
+     * @return 更新に成功した場合true。
+     */
+    bool updateRunExecutionProgress(
+        ZigZagElliotAlertRunEntity &fromRunEntity
+    ) {
+        if (!this.isReady(__FUNCTION__)) {
+            return false;
+        }
+
+        this.normalizeRunTextValues(fromRunEntity);
+
+        if (fromRunEntity.id <= 0
+                || fromRunEntity.status == ""
+                || fromRunEntity.testerFrom < 0
+                || fromRunEntity.testerTo < 0
+                || (fromRunEntity.testerFrom > 0
+                    && fromRunEntity.testerTo > 0
+                    && fromRunEntity.testerTo < fromRunEntity.testerFrom)
+                || fromRunEntity.evaluationStartedAt < 0
+                || fromRunEntity.lastCompletedH1BarTime < 0
+                || fromRunEntity.evaluatedH1Count < 0
+                || fromRunEntity.savedAlertCount < 0
+                || fromRunEntity.completedAt < 0) {
+            this.logger.error(
+                __FUNCTION__,
+                "Run execution progress value is invalid."
+            );
+
+            return false;
+        }
+
+        return this.runDao.updateExecutionProgress(fromRunEntity);
+    }
+
+    /**
      * 1アラート分の親子スナップショットを保存する。
      *
      * 同一実行内の同一自然キーが存在する場合は最初のスナップショットを保持し、
@@ -392,6 +430,13 @@ private:
         fromRunEntity.createdAtText = this.normalizeText(
             fromRunEntity.createdAtText
         );
+        fromRunEntity.status = this.normalizeText(fromRunEntity.status);
+
+        if (fromRunEntity.status == "") {
+            fromRunEntity.status = "LEGACY";
+        }
+
+        fromRunEntity.errorText = this.normalizeText(fromRunEntity.errorText);
     }
 
     /**

@@ -16,6 +16,8 @@
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
 #include <Mstng\Elliot\ElliotListSortType.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
+#include <Mstng\Indicator\ZigZagElliot\Mtf3In3AlertAllController.mqh>
+#include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Log\LogUtil.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
@@ -38,6 +40,7 @@ public:
         this.oscillatorHandleManager = NULL;
         this.alignmentDecision = NULL;
         this.drawer = NULL;
+        this.alertAllController = NULL;
         this.initialized = false;
         this.executing = false;
         this.timerEnabled = false;
@@ -71,15 +74,26 @@ public:
      * @param fromAlignmentStartTimeFrame 一致判定の開始時間足
      * @param fromTesterHistoryWarmUpEnabled テスター履歴ゲートを使用する場合true
      * @param fromAlignmentRule 一致判定ルール
+     * @param fromAlertConfig 全通貨Alert判定およびDB設定
+     * @param fromAlertTesterStartTime TESTER設定の開始サーバー時刻
+     * @param fromAlertTesterSaveStartTime TESTER Alert保存開始サーバー時刻
+     * @param fromAlertTesterExpectedLastH1BarTime 収集対象の最終H1時刻
+     * @param fromAlertTesterMinimumWarmUpH1Bars 保存前の最低連続評価本数
+     * @param fromAlertTesterOneMinuteOhlcConfirmed 1 minute OHLC設定確認
      * @return 初期化結果
      */
     int initialize(
         MarketContext &fromMarketContext,
-        ElliotListSortType fromSortType = ELLIOT_LIST_SORT_ENTRY_PRIORITY,
-        ENUM_TIMEFRAMES fromAlignmentStartTimeFrame = PERIOD_D1,
-        bool fromTesterHistoryWarmUpEnabled = false,
-        ElliotDirectionAlignmentRule fromAlignmentRule =
-            ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES
+        ElliotListSortType fromSortType,
+        ENUM_TIMEFRAMES fromAlignmentStartTimeFrame,
+        bool fromTesterHistoryWarmUpEnabled,
+        ElliotDirectionAlignmentRule fromAlignmentRule,
+        ZigZagElliotConfig &fromAlertConfig,
+        const datetime fromAlertTesterStartTime,
+        const datetime fromAlertTesterSaveStartTime,
+        const datetime fromAlertTesterExpectedLastH1BarTime,
+        const int fromAlertTesterMinimumWarmUpH1Bars,
+        const bool fromAlertTesterOneMinuteOhlcConfirmed
     ) {
         this.destroy();
 
@@ -100,6 +114,7 @@ public:
         this.testerWarmUpCheckCount = 0;
         this.lastAnalysisWarmUpProgress = -1;
         this.pendingRetryCount = 0;
+        this.maxPendingRetryCount = 3;
         this.hasPendingAnalysis = false;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
@@ -166,6 +181,17 @@ public:
 
         this.symbolNameInfoAll.setAll();
 
+        if (fromAlertConfig.mtf3In3AlertDatabaseEnabled
+                && !this.resolveTargetSymbols()) {
+            this.logger.error(
+                __FUNCTION__,
+                "failed to resolve all-symbol alert targets"
+            );
+            this.destroy();
+
+            return INIT_FAILED;
+        }
+
         if (this.getTargetSymbolCount() == 0) {
             this.logger.error(__FUNCTION__, "target symbol list is empty");
             this.destroy();
@@ -195,6 +221,44 @@ public:
         }
 
         this.oscillatorHandleManager.setTimeframesFromMn1ToAll();
+
+        if (fromAlertConfig.mtf3In3AlertDatabaseEnabled) {
+            this.alertAllController = new Mtf3In3AlertAllController();
+
+            if (this.alertAllController == NULL) {
+                this.logger.error(
+                    __FUNCTION__,
+                    "failed to create all-symbol alert controller"
+                );
+                this.destroy();
+
+                return INIT_FAILED;
+            }
+
+            int alertInitializeResult =
+                this.alertAllController.initialize(
+                    this.marketContext,
+                    fromAlertConfig,
+                    this.symbolNameInfoAll,
+                    fromAlertTesterStartTime,
+                    fromAlertTesterSaveStartTime,
+                    fromAlertTesterExpectedLastH1BarTime,
+                    fromAlertTesterMinimumWarmUpH1Bars,
+                    fromAlertTesterOneMinuteOhlcConfirmed
+                );
+
+            if (alertInitializeResult != INIT_SUCCEEDED) {
+                this.logger.error(
+                    __FUNCTION__,
+                    "failed to initialize all-symbol alert controller"
+                );
+                this.destroy();
+
+                return alertInitializeResult;
+            }
+
+        }
+
         this.drawer = new DrawAlignedElliotAllList(0, 0, fromSortType);
 
         if (this.drawer == NULL) {
@@ -274,6 +338,9 @@ private:
 
     /** BUY、SELL別一覧描画。 */
     DrawAlignedElliotAllList *drawer;
+
+    /** 28通貨MTF_3in3 Alert判定制御。 */
+    Mtf3In3AlertAllController *alertAllController;
 
     /** ロガー。 */
     Logger logger;
@@ -596,6 +663,13 @@ private:
             return;
         }
 
+        if (this.alertAllController != NULL
+                && this.alertAllController.hasFatalError()) {
+            TesterStop();
+
+            return;
+        }
+
         datetime currentBarTime = iTime(
             this.marketContext.symbolName,
             this.updateTimeFrame,
@@ -621,7 +695,43 @@ private:
         }
 
         if (!this.isTesterAnalysisHistoryReady(currentBarTime)) {
+            if (this.alertAllController != NULL) {
+                this.alertAllController.handleUnavailableAnalysis(
+                    currentBarTime,
+                    "all-symbol analysis history is not ready"
+                );
+                this.lastProcessedBarTime = currentBarTime;
+                this.hasPendingAnalysis = false;
+
+                if (this.alertAllController.hasFatalError()) {
+                    TesterStop();
+                }
+            }
+
             return;
+        }
+
+        Mtf3In3AlertAllAnchorStatus alertAnchorStatus =
+            MTF3_IN3_ALERT_ALL_ANCHOR_READY;
+
+        if (this.alertAllController != NULL) {
+            alertAnchorStatus = this.alertAllController.prepareAnchor(
+                currentBarTime
+            );
+
+            if (alertAnchorStatus
+                    != MTF3_IN3_ALERT_ALL_ANCHOR_READY
+                    && alertAnchorStatus
+                        != MTF3_IN3_ALERT_ALL_ANCHOR_COMPLETED) {
+                this.lastProcessedBarTime = currentBarTime;
+                this.hasPendingAnalysis = false;
+
+                if (this.alertAllController.hasFatalError()) {
+                    TesterStop();
+                }
+
+                return;
+            }
         }
 
         this.executing = true;
@@ -632,7 +742,22 @@ private:
 
         if (elliotAllList == NULL) {
             this.logger.error(__FUNCTION__, "failed to create ElliotAllList");
-            this.hasPendingAnalysis = true;
+
+            if (this.alertAllController != NULL) {
+                this.alertAllController.handleUnavailableAnalysis(
+                    currentBarTime,
+                    "failed to create all-symbol List batch"
+                );
+                this.lastProcessedBarTime = currentBarTime;
+                this.hasPendingAnalysis = false;
+
+                if (this.alertAllController.hasFatalError()) {
+                    TesterStop();
+                }
+            } else {
+                this.hasPendingAnalysis = true;
+            }
+
             this.executing = false;
 
             return;
@@ -645,11 +770,39 @@ private:
             this.symbolNameInfoAll
         );
 
-        this.hasPendingAnalysis = this.containsPendingAnalysis(elliotAllList);
+        bool listAnalysisPending =
+            this.containsPendingAnalysis(elliotAllList);
+
+        if (this.alertAllController != NULL) {
+            this.hasPendingAnalysis = false;
+
+            if (listAnalysisPending) {
+                this.alertAllController.handleUnavailableAnalysis(
+                    currentBarTime,
+                    "List analysis prerequisites are incomplete"
+                );
+            } else if (alertAnchorStatus
+                    != MTF3_IN3_ALERT_ALL_ANCHOR_COMPLETED) {
+                this.alertAllController.execute(
+                    elliotAllList,
+                    currentBarTime
+                );
+            }
+
+            if (this.alertAllController.hasFatalError()
+                    || this.alertAllController.isCollectionCompleted()) {
+                TesterStop();
+            }
+        } else {
+            this.hasPendingAnalysis = listAnalysisPending;
+        }
 
         if (!this.drawer.draw(elliotAllList, this.alignmentDecision)) {
             this.logger.error(__FUNCTION__, "failed to draw aligned Elliot list");
-            this.hasPendingAnalysis = true;
+
+            if (this.alertAllController == NULL) {
+                this.hasPendingAnalysis = true;
+            }
         }
 
         delete elliotAllList;
@@ -680,6 +833,96 @@ private:
         }
 
         return count;
+    }
+
+    /**
+     * 28通貨の正規名をブローカーの実シンボル名へ解決する。
+     *
+     * @return 全28通貨を解決できた場合true
+     */
+    bool resolveTargetSymbols() {
+        if (this.symbolNameInfoAll == NULL
+                || this.symbolNameInfoAll.size() != 28) {
+            return false;
+        }
+
+        for (int i = 0; i < this.symbolNameInfoAll.size(); i++) {
+            SymbolNameInfo *info =
+                this.symbolNameInfoAll.getSymbolNameInfo(i);
+
+            if (info == NULL || !info.isTarget) {
+                return false;
+            }
+
+            string resolvedSymbolName =
+                this.resolveSymbolName(info.symbolName);
+
+            if (resolvedSymbolName == "") {
+                this.logger.error(
+                    __FUNCTION__,
+                    "failed to resolve symbol=" + info.symbolName
+                );
+
+                return false;
+            }
+
+            info.symbolName = resolvedSymbolName;
+        }
+
+        return true;
+    }
+
+    /**
+     * 正規通貨ペア名に対応する実シンボル名を取得する。
+     *
+     * @param fromCanonicalSymbolName 6文字の正規通貨ペア名
+     * @return 解決した実シンボル名。存在しない場合は空文字
+     */
+    string resolveSymbolName(const string fromCanonicalSymbolName) {
+        bool isCustom = false;
+
+        if (SymbolExist(fromCanonicalSymbolName, isCustom)
+                && SymbolSelect(fromCanonicalSymbolName, true)) {
+            return fromCanonicalSymbolName;
+        }
+
+        string expectedBase = StringSubstr(
+            fromCanonicalSymbolName,
+            0,
+            3
+        );
+        string expectedProfit = StringSubstr(
+            fromCanonicalSymbolName,
+            3,
+            3
+        );
+        string resolvedSymbolName = "";
+        int resolvedLength = 0;
+        int total = SymbolsTotal(false);
+
+        for (int i = 0; i < total; i++) {
+            string candidate = SymbolName(i, false);
+
+            if (candidate == ""
+                    || StringFind(candidate, fromCanonicalSymbolName) < 0
+                    || !SymbolSelect(candidate, true)
+                    || SymbolInfoString(candidate, SYMBOL_CURRENCY_BASE)
+                        != expectedBase
+                    || SymbolInfoString(candidate, SYMBOL_CURRENCY_PROFIT)
+                        != expectedProfit) {
+                continue;
+            }
+
+            int candidateLength = StringLen(candidate);
+
+            if (resolvedSymbolName == ""
+                    || candidateLength < resolvedLength) {
+                resolvedSymbolName = candidate;
+                resolvedLength = candidateLength;
+            }
+        }
+
+        return resolvedSymbolName;
     }
 
     /**
@@ -766,6 +1009,11 @@ private:
             this.drawer = NULL;
         }
 
+        if (this.alertAllController != NULL) {
+            delete this.alertAllController;
+            this.alertAllController = NULL;
+        }
+
         if (this.alignmentDecision != NULL) {
             delete this.alignmentDecision;
             this.alignmentDecision = NULL;
@@ -791,6 +1039,7 @@ private:
         this.testerWarmUpCheckCount = 0;
         this.lastAnalysisWarmUpProgress = -1;
         this.pendingRetryCount = 0;
+        this.maxPendingRetryCount = 3;
         ArrayResize(this.analysisTimeFrames, 0);
         ArrayResize(this.historyWarmUpTimeFrames, 0);
     }

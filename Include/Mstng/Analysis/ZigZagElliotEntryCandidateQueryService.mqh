@@ -29,14 +29,22 @@ public:
         const int fromDatabaseHandle
     ) {
         this.databaseHandle = fromDatabaseHandle;
+        this.hasRunStatusColumn = false;
+        this.runStatusColumnInspectionSucceeded = false;
         this.logger.setLevel(LOG_INFO);
+
+        if (this.databaseHandle != INVALID_HANDLE) {
+            this.runStatusColumnInspectionSucceeded =
+                this.inspectRunStatusColumn();
+        }
     }
 
     /**
      * 指定したRunのメタデータを取得する。
      *
      * レコードが存在しない場合も検索成功としてtrueを返し、
-     * fromIsFoundへfalseを設定する。Run完了状態の推定は行わない。
+     * fromIsFoundへfalseを設定する。status列が存在する場合はLEGACYまたは
+     * COMPLETEDのRunだけを取得する。
      *
      * @param fromRunId 取得対象のRun ID。
      * @param fromInfo 取得結果の格納先。
@@ -57,6 +65,7 @@ public:
 
         string sql = this.getRunSelectSql();
         sql += "WHERE runs.id = ?1 ";
+        sql += this.getEligibleRunStatusCondition();
         sql += "ORDER BY runs.id DESC LIMIT 1";
 
         ResetLastError();
@@ -117,7 +126,8 @@ public:
     /**
      * エントリー候補を保持する直近Run一覧を取得する。
      *
-     * RunはID降順で返すが、自動選択および完了状態の推定は行わない。
+     * RunはID降順で返す。status列が存在する場合はLEGACYまたは
+     * COMPLETEDのRunだけを取得する。
      *
      * @param fromLimit 最大取得件数。1～100。
      * @param fromInfos 取得結果の格納先。
@@ -146,6 +156,7 @@ public:
         sql += "WHERE runs.source_mode = 'TESTER' ";
         sql += "AND runs.source = 'ZIGZAG_ELLIOT' ";
         sql += "AND runs.strategy = 'MTF_3in3' ";
+        sql += this.getEligibleRunStatusCondition();
         sql += "AND EXISTS (";
         sql += "SELECT 1 FROM zigzag_elliot_alerts AS alerts ";
         sql += "WHERE alerts.run_id = runs.id ";
@@ -259,6 +270,7 @@ public:
         sql += "INNER JOIN zigzag_elliot_alert_runs AS runs ";
         sql += "ON runs.id = alerts.run_id ";
         sql += "WHERE alerts.run_id = ?1 ";
+        sql += this.getEligibleRunStatusCondition();
         sql += "AND alerts.time_frame_text = 'H1' ";
         sql += "AND alerts.is_alert = 1 ";
         sql += "AND alerts.is_entry = 1 ";
@@ -348,8 +360,99 @@ private:
     /** データベースハンドル。 */
     int databaseHandle;
 
+    /** Runテーブルにstatus列が存在する場合true。 */
+    bool hasRunStatusColumn;
+
+    /** Runテーブルのstatus列確認に成功した場合true。 */
+    bool runStatusColumnInspectionSucceeded;
+
     /** ロガー。 */
     Logger logger;
+
+    /**
+     * Runテーブルのstatus列有無を確認する。
+     *
+     * @return テーブル情報の取得に成功した場合true。
+     */
+    bool inspectRunStatusColumn() {
+        this.hasRunStatusColumn = false;
+        ResetLastError();
+        int requestHandle = DatabasePrepare(
+            this.databaseHandle,
+            "PRAGMA table_info(zigzag_elliot_alert_runs)"
+        );
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(
+                __FUNCTION__,
+                StringFormat("DatabasePrepare failed. error=%d", GetLastError())
+            );
+
+            return false;
+        }
+
+        while (true) {
+            ResetLastError();
+
+            if (!DatabaseRead(requestHandle)) {
+                int readErrorCode = GetLastError();
+                DatabaseFinalize(requestHandle);
+
+                if (readErrorCode == ERR_DATABASE_NO_MORE_DATA) {
+                    return true;
+                }
+
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "DatabaseRead failed. error=%d",
+                        readErrorCode
+                    )
+                );
+
+                return false;
+            }
+
+            string columnName = "";
+            ResetLastError();
+
+            if (!DatabaseColumnText(requestHandle, 1, columnName)) {
+                int columnErrorCode = GetLastError();
+                DatabaseFinalize(requestHandle);
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "DatabaseColumnText failed. error=%d",
+                        columnErrorCode
+                    )
+                );
+
+                return false;
+            }
+
+            if (columnName == "status") {
+                DatabaseFinalize(requestHandle);
+                this.hasRunStatusColumn = true;
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Outcome対象Runのstatus絞り込み条件を取得する。
+     *
+     * @return status列がある場合はSQL条件、ない場合は空文字。
+     */
+    string getEligibleRunStatusCondition() {
+        if (!this.hasRunStatusColumn) {
+            return "";
+        }
+
+        return "AND runs.status IN ('LEGACY', 'COMPLETED') ";
+    }
 
     /**
      * SourceRunInfoの列順にRun取得SELECTの共通部分を生成する。
@@ -459,16 +562,25 @@ private:
      * @return 利用可能な場合true。
      */
     bool isDatabaseReady(const string fromMethodName) {
-        if (this.databaseHandle != INVALID_HANDLE) {
-            return true;
+        if (this.databaseHandle == INVALID_HANDLE) {
+            this.logger.error(
+                fromMethodName,
+                "databaseHandle is INVALID_HANDLE."
+            );
+
+            return false;
         }
 
-        this.logger.error(
-            fromMethodName,
-            "databaseHandle is INVALID_HANDLE."
-        );
+        if (!this.runStatusColumnInspectionSucceeded) {
+            this.logger.error(
+                fromMethodName,
+                "Run status column inspection failed."
+            );
 
-        return false;
+            return false;
+        }
+
+        return true;
     }
 
     /**

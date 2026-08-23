@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.19"
+#property version   "1.20"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -14,6 +14,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ElliotListSortType.mqh>
+#include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotListController.mqh>
 
 /**
@@ -51,6 +52,46 @@ input ZigZagElliotListD1AlignmentMode d1AlignmentMode =
 /** H1の上位時間足一致条件。実効時間足がH1の場合のみ使用する。 */
 input ZigZagElliotListH1AlignmentMode h1AlignmentMode =
     ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1;
+
+/** 28通貨のMTF_3in3 Alertを共通DB Runへ保存する場合true。 */
+input bool mtf3In3AlertDatabaseEnabled = false;
+
+/** 28通貨MTF_3in3 Alertデータベースファイル名。 */
+input string mtf3In3AlertDatabaseFileName =
+    "mstng-zigzag-elliot-alert.sqlite";
+
+/** 28通貨MTF_3in3 Alert DBで共通フォルダを使用する場合true。 */
+input bool mtf3In3AlertDatabaseUseCommonFolder = true;
+
+/** TESTER設定の開始サーバー時刻。Alert有効時は必須。 */
+input datetime mtf3In3AlertTesterStartTime = 0;
+
+/** TESTERでAlert保存を開始するサーバー時刻。Alert有効時は必須。 */
+input datetime mtf3In3AlertTesterSaveStartTime = 0;
+
+/** TESTERで収集を完了させる最後のH1バー開始時刻。 */
+input datetime mtf3In3AlertTesterExpectedLastH1BarTime = 0;
+
+/** Alert保存前に連続評価を必須とするH1本数。 */
+input int mtf3In3AlertTesterMinimumWarmUpH1Bars = 5000;
+
+/** TESTERモデルを「1 minute OHLC」に設定済みの場合true。 */
+input bool mtf3In3AlertTesterOneMinuteOhlcConfirmed = false;
+
+/** Alert判定でH1表示波ごとのエントリー回数制限を使用する場合true。 */
+input bool alertH1DisplayWaveEntryLimitEnabled = false;
+
+/** Alert判定で使用するH1 W1確認モード。 */
+input H1W1ConfirmationMode alertH1W1ConfirmationMode =
+    H1_W1_CONFIRMATION_OBSERVE_ONLY;
+
+/** Alert判定で使用するH1方向一致モード。 */
+input H1DirectionAlignmentMode alertH1DirectionAlignmentMode =
+    H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
+
+/** Alert判定で使用するH1 EMA200確認モード。 */
+input H1Ema200ConfirmationMode alertH1Ema200ConfirmationMode =
+    H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED;
 
 /** 描画専用インジケーターの非表示バッファ。 */
 double gHiddenBuffer[];
@@ -132,6 +173,32 @@ int OnInit() {
         }
     }
 
+    if (mtf3In3AlertDatabaseEnabled
+            && listTimeFrame == PERIOD_H1) {
+        testerHistoryWarmUpEnabled = true;
+    }
+
+    ZigZagElliotConfig alertConfig;
+    alertConfig.mailValidationFileEnabled = false;
+    alertConfig.mtf3In3AlertCsvEnabled = false;
+    alertConfig.mtf3In3AlertDatabaseEnabled =
+        mtf3In3AlertDatabaseEnabled;
+    alertConfig.mtf3In3AlertDatabaseFileName =
+        mtf3In3AlertDatabaseFileName;
+    alertConfig.mtf3In3AlertDatabaseUseCommonFolder =
+        mtf3In3AlertDatabaseUseCommonFolder;
+    alertConfig.h1DisplayWaveEntryLimitEnabled =
+        alertH1DisplayWaveEntryLimitEnabled;
+    alertConfig.h1W1ConfirmationMode =
+        alertH1W1ConfirmationMode;
+    alertConfig.h1DirectionAlignmentMode =
+        alertH1DirectionAlignmentMode;
+    alertConfig.h1Ema200ConfirmationMode =
+        alertH1Ema200ConfirmationMode;
+    alertConfig.currencyStrengthEnabled = false;
+    alertConfig.currencyStrengthEntryFilterEnabled = false;
+    alertConfig.currencyStrengthRankVisible = false;
+
     MarketContext context(_Symbol, listTimeFrame);
     gZigZagElliotListController = new ZigZagElliotListController();
 
@@ -144,7 +211,13 @@ int OnInit() {
         effectiveSortType,
         alignmentStartTimeFrame,
         testerHistoryWarmUpEnabled,
-        alignmentRule
+        alignmentRule,
+        alertConfig,
+        mtf3In3AlertTesterStartTime,
+        mtf3In3AlertTesterSaveStartTime,
+        mtf3In3AlertTesterExpectedLastH1BarTime,
+        mtf3In3AlertTesterMinimumWarmUpH1Bars,
+        mtf3In3AlertTesterOneMinuteOhlcConfirmed
     );
 
     if (initializeResult != INIT_SUCCEEDED) {
