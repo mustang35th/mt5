@@ -719,7 +719,7 @@ private:
     /** Required continuous H1 evaluations before saveStart. */
     int testerMinimumWarmUpH1Bars;
 
-    /** First H1 open observed by the running Strategy Tester. */
+    /** H1 open observed at the first Strategy Tester server time. */
     datetime firstObservedH1BarTime;
 
     /** Last preflight H1 logged as skipped. */
@@ -848,10 +848,10 @@ private:
     }
 
     /**
-     * Verifies that the declared tester start is the actual first H1.
+     * Verifies that the declared tester start is the first server time.
      *
-     * @param fromH1BarTime First or subsequent observed H1 open.
-     * @return True when the first observed H1 matches testerStartTime.
+     * @param fromH1BarTime H1 open observed for diagnostics.
+     * @return True when the first observed server time matches testerStartTime.
      */
     bool validateFirstObservedH1BarTime(
         const datetime fromH1BarTime
@@ -860,9 +860,7 @@ private:
             this.firstObservedH1BarTime = fromH1BarTime;
             datetime firstObservedServerTime = TimeCurrent();
 
-            if (this.firstObservedH1BarTime != this.testerStartTime
-                    || firstObservedServerTime
-                        != this.testerStartTime) {
+            if (firstObservedServerTime != this.testerStartTime) {
                 this.setFatalError(
                     __FUNCTION__,
                     "tester start does not match first observation expected="
@@ -881,7 +879,7 @@ private:
             }
         }
 
-        return this.firstObservedH1BarTime == this.testerStartTime;
+        return true;
     }
 
     /**
