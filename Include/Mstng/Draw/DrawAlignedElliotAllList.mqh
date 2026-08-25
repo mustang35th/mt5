@@ -67,6 +67,8 @@ public:
         this.createdSellCount = 0;
         this.createdH1RunnerUpCount = 0;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
+        this.lastCompletedTitleText = "";
+        this.lastCompletedTitleTimeText = "";
         this.sortType = fromSortType;
         this.gmoSymbolNameInfoAll.setGmo();
 
@@ -74,10 +76,10 @@ public:
         this.xDistance = 12;
         this.yDistance = 12;
         this.panelWidth = 800;
-        this.headerHeight = 25;
-        this.columnHeaderYDistance = 39;
-        this.separatorYDistance = 58;
-        this.firstGroupYDistance = 66;
+        this.headerHeight = 45;
+        this.columnHeaderYDistance = 59;
+        this.separatorYDistance = 78;
+        this.firstGroupYDistance = 86;
         this.groupHeight = 20;
         this.rowHeight = 36;
         this.emaRowOffset = 16;
@@ -89,7 +91,7 @@ public:
         this.fibonacciRightPadding = 18;
         this.entryLegendGap = 8;
         this.entryLegendWidth = 270;
-        this.entryLegendHeight = 130;
+        this.entryLegendHeight = 150;
         this.entryLegendRowHeight = 18;
         this.h1RunnerUpGroupHeight = 18;
         this.h1RunnerUpSectionGap = 4;
@@ -159,6 +161,11 @@ public:
             errorCount
         );
 
+        int targetCount = fromElliotAllList.targetCount;
+        int analyzedCount = fromElliotAllList.elliotAllList.Total();
+        bool analysisCompleted = targetCount == 28
+            && analyzedCount == targetCount
+            && errorCount == 0;
         int rowCount = buyCount + sellCount;
         bool h1RunnerUpPanelEnabled = currentTimeFrame == PERIOD_H1
             && fromDecision.getAlignmentRule()
@@ -197,9 +204,10 @@ public:
             )) {
                 return false;
             }
+
+            this.restoreLastCompletedTitle();
         }
 
-        int targetCount = fromElliotAllList.targetCount;
         string currentTimeFrameText = TimeUtil::convertTimeFrameToString(currentTimeFrame);
 
         if (currentTimeFrameText == "") {
@@ -238,14 +246,16 @@ public:
             alignmentStartTimeFrameText = "CUR";
         }
 
-        this.updateTitle(
-            currentTimeFrameText,
-            alignmentStartTimeFrameText,
-            buyCount,
-            sellCount,
-            targetCount,
-            errorCount
-        );
+        if (analysisCompleted) {
+            this.updateTitle(
+                currentTimeFrameText,
+                alignmentStartTimeFrameText,
+                buyCount,
+                sellCount,
+                targetCount,
+                errorCount
+            );
+        }
         this.updateGroupHeaders(buyCount, sellCount);
         this.drawRows(
             fromElliotAllList,
@@ -408,6 +418,12 @@ private:
     /** タイトル文字色。 */
     color titleColor;
 
+    /** 最後に28通貨の分析が完了したタイトル文字列。 */
+    string lastCompletedTitleText;
+
+    /** 最後に28通貨の分析が完了した実行時刻文字列。 */
+    string lastCompletedTitleTimeText;
+
     /** 列ヘッダー文字色。 */
     color headerColor;
 
@@ -559,6 +575,18 @@ private:
             this.titleFontSize,
             this.titleColor,
             "ZigZag Elliott List ALL"
+        )) {
+            this.destroyObjects();
+            return false;
+        }
+
+        if (!this.createLabel(
+            this.objectPrefix + "TitleTime",
+            14,
+            23,
+            this.bodyFontSize,
+            this.headerColor,
+            "LAST ANALYSIS --"
         )) {
             this.destroyObjects();
             return false;
@@ -1647,48 +1675,67 @@ private:
     ) {
         datetime serverTime = TimeCurrent();
         datetime japanTime = TimeJapanUtil::getJapanTime(serverTime);
+        string executionModeText = "LIVE";
 
-        string fullTitleText = StringFormat(
-            "ZigZag Elliott List ALL %s ANALYZE MN1 / ALIGN %s BUY %d / SELL %d / TARGET %d / ERROR %d JST %s SV %s",
+        if ((bool)MQLInfoInteger(MQL_TESTER)) {
+            executionModeText = "TESTER";
+        }
+
+        this.lastCompletedTitleText = StringFormat(
+            "ZigZag Elliott List ALL %s ANALYZE MN1 / ALIGN %s BUY %d / SELL %d / TARGET %d / ERROR %d",
             fromTimeFrameText,
             fromAlignmentStartTimeFrameText,
             fromBuyCount,
             fromSellCount,
             fromTargetCount,
-            fromErrorCount,
-            this.formatTitleTime(japanTime),
-            this.formatTitleTime(serverTime)
+            fromErrorCount
         );
-        string displayTitleText = fullTitleText;
+        this.lastCompletedTitleTimeText = StringFormat(
+            "LAST JST %s / SERVER %s / %s",
+            this.formatTitleTime(japanTime),
+            this.formatTitleTime(serverTime),
+            executionModeText
+        );
 
-        if (fromTimeFrameText == "D1") {
-            displayTitleText = StringFormat(
-                "ZZ Elliott %s/%s B%d S%d T%d E%d JST %s",
-                fromTimeFrameText,
-                fromAlignmentStartTimeFrameText,
-                fromBuyCount,
-                fromSellCount,
-                fromTargetCount,
-                fromErrorCount,
-                this.formatTitleTime(japanTime)
-            );
+        this.restoreLastCompletedTitle();
+    }
+
+    /**
+     * 最後に28通貨の分析が完了したタイトルを再表示する。
+     */
+    void restoreLastCompletedTitle() {
+        if (this.lastCompletedTitleText == ""
+                || this.lastCompletedTitleTimeText == "") {
+            return;
         }
+
+        string tooltipText = this.lastCompletedTitleText
+            + " | " + this.lastCompletedTitleTimeText;
 
         ObjectSetString(
             this.chartId,
             this.objectPrefix + "Title",
             OBJPROP_TEXT,
-            displayTitleText
+            this.lastCompletedTitleText
         );
-
-        if (fromTimeFrameText == "D1") {
-            ObjectSetString(
-                this.chartId,
-                this.objectPrefix + "Title",
-                OBJPROP_TOOLTIP,
-                fullTitleText
-            );
-        }
+        ObjectSetString(
+            this.chartId,
+            this.objectPrefix + "TitleTime",
+            OBJPROP_TEXT,
+            this.lastCompletedTitleTimeText
+        );
+        ObjectSetString(
+            this.chartId,
+            this.objectPrefix + "Title",
+            OBJPROP_TOOLTIP,
+            tooltipText
+        );
+        ObjectSetString(
+            this.chartId,
+            this.objectPrefix + "TitleTime",
+            OBJPROP_TOOLTIP,
+            tooltipText
+        );
     }
 
     /**
@@ -2057,18 +2104,20 @@ private:
      * タイトル表示用の日時文字列へ変換する。
      *
      * @param fromDatetime 変換対象日時。
-     * @return 月日と時分を表す文字列。
+     * @return 年月日と時分秒を表す文字列。
      */
     string formatTitleTime(datetime fromDatetime) {
         MqlDateTime dateTime;
         TimeToStruct(fromDatetime, dateTime);
 
         return StringFormat(
-            "%02d/%02d %02d:%02d",
+            "%04d.%02d.%02d %02d:%02d:%02d",
+            dateTime.year,
             dateTime.mon,
             dateTime.day,
             dateTime.hour,
-            dateTime.min
+            dateTime.min,
+            dateTime.sec
         );
     }
 
