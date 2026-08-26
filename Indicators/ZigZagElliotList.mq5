@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.21"
+#property version   "1.22"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -65,6 +65,9 @@ input bool mtf3In3AlertDatabaseUseCommonFolder = true;
 
 /** TESTER設定の開始サーバー時刻。Alert有効時は必須。 */
 input datetime mtf3In3AlertTesterStartTime = 0;
+
+/** TESTERで28通貨Alert連続評価を開始するサーバー時刻。0はTesterStart。 */
+input datetime mtf3In3AlertTesterEvaluationStartTime = 0;
 
 /** TESTERでAlert保存を開始するサーバー時刻。Alert有効時は必須。 */
 input datetime mtf3In3AlertTesterSaveStartTime = 0;
@@ -214,6 +217,7 @@ int OnInit() {
         alignmentRule,
         alertConfig,
         mtf3In3AlertTesterStartTime,
+        mtf3In3AlertTesterEvaluationStartTime,
         mtf3In3AlertTesterSaveStartTime,
         mtf3In3AlertTesterExpectedLastH1BarTime,
         mtf3In3AlertTesterMinimumWarmUpH1Bars,

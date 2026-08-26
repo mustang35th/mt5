@@ -374,7 +374,7 @@ protected:
      * 指定位置からZigZagポイント全体をWaveへ分割する。
      *
      * 直前Waveの終点を次のWaveの起点として共有しながら過去方向へ進む。
-     * 異常な位置更新による無限ループを防ぐため、最大30回で終了する。
+     * 入力ポイント数まで処理し、分割位置が前進しない場合は異常終了する。
      *
      * @param fromPosition Wave分割開始位置
      * @param isMotive 最初に生成するWaveの種別
@@ -382,7 +382,6 @@ protected:
      */
     bool makeWaveList(int fromPosition, bool isMotive) {
         int position = fromPosition;
-        int count = 0;
         
         int total = this.zigZagPointList.Total();
         
@@ -397,9 +396,6 @@ protected:
         
         this.logger.debug(__FUNCTION__, zigZagPoint0.toString());
         this.logger.debug(__FUNCTION__, zigZagPointLast.toString());
-        
-        int maxLoop =
-            ZigZagElliotAnalysisProfile::getWaveSplitMaxLoopCount();
         
         while (position < total) {
             int previousPosition = position;
@@ -430,16 +426,6 @@ protected:
                 return false;
             }
                         
-            if (++count > maxLoop) {
-                this.logger.error(
-                    __FUNCTION__,
-                    StringFormat("ループ終了 = %d回", maxLoop)
-                );
-                
-                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
-                
-                return false;
-            }
         }
         
         this.analyzeWave();
@@ -596,6 +582,10 @@ protected:
             } else {    // 前回ポイントがない場合
                 this.logger.error(__FUNCTION__, "zigZagPointBefore is NULL!");
                 this.logger.error(__FUNCTION__, StringFormat("zigZagPoint = %s", zigZagPoint.toString()));
+
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
             }
         }
         
@@ -642,6 +632,19 @@ protected:
     
         // ZigZagの転換点リストを、解析対象の点列として保持する。
         ZigZagPointUtil::copyZigZagPointList(zigZag.zigZagPointList, this.zigZagPointList);
+
+        if (this.zigZagPointList.Total() < 2) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "Insufficient ZigZag points. total=%d",
+                    this.zigZagPointList.Total()
+                )
+            );
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
         
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);

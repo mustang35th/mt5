@@ -18,11 +18,11 @@
 class ZigZagElliotAnalysisProfile {
 public:
     /** @return Elliott分析バージョン。 */
-    static string getAnalysisVersion() { return "ELLIOT_MN1_V3"; }
+    static string getAnalysisVersion() { return "ELLIOT_MN1_V4"; }
 
     /** @return 分析Profileバージョン。 */
     static string getProfileVersion() {
-        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V2";
+        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V3";
     }
 
     /** @return 短期Stochastic K期間。 */
@@ -233,8 +233,10 @@ public:
     /** @return 最上位足ZigZag計算の最大バー数。 */
     static int getZigZagHighestMaxBars() { return 300; }
 
-    /** @return Wave分割処理の最大ループ回数。 */
-    static int getWaveSplitMaxLoopCount() { return 30; }
+    /** @return Wave分割処理の終了規則。 */
+    static string getWaveSplitTerminationRule() {
+        return "POSITION_PROGRESS_TO_POINT_COUNT_V1";
+    }
 
     /** @return 上位足から参照する最大Wave数。 */
     static int getHigherTimeFrameWaveLimit() { return 5; }
@@ -365,10 +367,10 @@ public:
         appendInteger(text, "ZIGZAG_DEVIATION", getZigZagDeviation());
         appendInteger(text, "ZIGZAG_BACKSTEP", getZigZagBackstep());
         appendInteger(text, "ZIGZAG_HIGHEST_MAX_BARS", getZigZagHighestMaxBars());
-        appendInteger(
+        appendText(
             text,
-            "ELLIOT_WAVE_SPLIT_MAX_LOOPS",
-            getWaveSplitMaxLoopCount()
+            "ELLIOT_WAVE_SPLIT_TERMINATION_RULE",
+            getWaveSplitTerminationRule()
         );
         appendInteger(
             text,

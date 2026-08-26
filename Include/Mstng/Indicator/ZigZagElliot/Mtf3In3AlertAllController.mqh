@@ -33,9 +33,10 @@
  */
 enum Mtf3In3AlertAllAnchorStatus {
     MTF3_IN3_ALERT_ALL_ANCHOR_FATAL = -1,
-    MTF3_IN3_ALERT_ALL_ANCHOR_SKIPPED = 0,
+    MTF3_IN3_ALERT_ALL_ANCHOR_PENDING = 0,
     MTF3_IN3_ALERT_ALL_ANCHOR_READY = 1,
-    MTF3_IN3_ALERT_ALL_ANCHOR_COMPLETED = 2
+    MTF3_IN3_ALERT_ALL_ANCHOR_COMPLETED = 2,
+    MTF3_IN3_ALERT_ALL_ANCHOR_SKIPPED = 3
 };
 
 /**
@@ -149,8 +150,9 @@ public:
  * Evaluates 28 symbols with per-symbol state and one shared Alert DB Run.
  *
  * ElliotAll objects are reused from ZigZagElliotList. Only the MTF_3in3 EA
- * and SignalCount are retained separately for each symbol. Evaluation is
- * accepted only at the actual H1 open so delayed analysis cannot look ahead.
+ * and SignalCount are retained separately for each symbol. The H1 bar open is
+ * retained as the common anchor, while evaluation waits within that H1 until
+ * every symbol has reached the same bar.
  */
 class Mtf3In3AlertAllController {
 public:
@@ -166,6 +168,7 @@ public:
         this.oneMinuteOhlcConfirmed = false;
         this.hostSymbolName = "";
         this.testerStartTime = 0;
+        this.testerEvaluationStartTime = 0;
         this.testerSaveStartTime = 0;
         this.testerExpectedLastH1BarTime = 0;
         this.testerMinimumWarmUpH1Bars = 0;
@@ -193,6 +196,7 @@ public:
      * @param fromConfig Alert and database configuration.
      * @param fromSymbolNameInfoAll Resolved 28-symbol list.
      * @param fromTesterStartTime Configured tester start time.
+     * @param fromTesterEvaluationStartTime First H1 open eligible for evaluation.
      * @param fromTesterSaveStartTime First H1 open eligible for saving.
      * @param fromTesterExpectedLastH1BarTime Required final H1 open.
      * @param fromTesterMinimumWarmUpH1Bars Required pre-save evaluations.
@@ -204,6 +208,7 @@ public:
         ZigZagElliotConfig &fromConfig,
         SymbolNameInfoAll &fromSymbolNameInfoAll,
         const datetime fromTesterStartTime,
+        const datetime fromTesterEvaluationStartTime,
         const datetime fromTesterSaveStartTime,
         const datetime fromTesterExpectedLastH1BarTime,
         const int fromTesterMinimumWarmUpH1Bars,
@@ -215,6 +220,13 @@ public:
         this.oneMinuteOhlcConfirmed = fromOneMinuteOhlcConfirmed;
         this.hostSymbolName = fromMarketContext.symbolName;
         this.testerStartTime = fromTesterStartTime;
+        this.testerEvaluationStartTime =
+            fromTesterEvaluationStartTime;
+
+        if (this.testerEvaluationStartTime <= 0) {
+            this.testerEvaluationStartTime = this.testerStartTime;
+        }
+
         this.testerSaveStartTime = fromTesterSaveStartTime;
         this.testerExpectedLastH1BarTime =
             fromTesterExpectedLastH1BarTime;
@@ -286,10 +298,11 @@ public:
         this.logger.info(
             __FUNCTION__,
             StringFormat(
-                "MTF_3in3 all-symbol alert is ready. runId=%I64d symbols=%d testerStart=%s saveStart=%s expectedLast=%s warmUpH1=%d model=1_MINUTE_OHLC",
+                "MTF_3in3 all-symbol alert is ready. runId=%I64d symbols=%d testerStart=%s evaluationStart=%s saveStart=%s expectedLast=%s warmUpH1=%d model=1_MINUTE_OHLC",
                 this.databaseRun.id,
                 this.symbolStates.Total(),
                 this.formatDateTime(this.testerStartTime),
+                this.formatDateTime(this.testerEvaluationStartTime),
                 this.formatDateTime(this.testerSaveStartTime),
                 this.formatDateTime(this.testerExpectedLastH1BarTime),
                 this.testerMinimumWarmUpH1Bars
@@ -297,6 +310,30 @@ public:
         );
 
         return INIT_SUCCEEDED;
+    }
+
+    /**
+     * Skips expensive all-symbol work before the configured evaluation range.
+     *
+     * @param fromH1BarTime Host H1 bar open time.
+     * @return Skipped before evaluationStart, otherwise ready or fatal.
+     */
+    Mtf3In3AlertAllAnchorStatus prepareEvaluationWindow(
+        const datetime fromH1BarTime
+    ) {
+        if (!this.initialized || this.fatalError) {
+            return MTF3_IN3_ALERT_ALL_ANCHOR_FATAL;
+        }
+
+        if (!this.validateFirstObservedH1BarTime(fromH1BarTime)) {
+            return MTF3_IN3_ALERT_ALL_ANCHOR_FATAL;
+        }
+
+        if (fromH1BarTime < this.testerEvaluationStartTime) {
+            return MTF3_IN3_ALERT_ALL_ANCHOR_SKIPPED;
+        }
+
+        return MTF3_IN3_ALERT_ALL_ANCHOR_READY;
     }
 
     /**
@@ -373,11 +410,16 @@ public:
 
         datetime actualDecisionTime = TimeCurrent();
 
-        if (actualDecisionTime != fromH1BarTime) {
+        if (!this.isDecisionWithinH1Anchor(
+                actualDecisionTime,
+                fromH1BarTime
+            )) {
             return this.handleUnavailableAnchor(
                 fromH1BarTime,
-                "decision is not at H1 open actual="
-                    + this.formatDateTime(actualDecisionTime)
+                "decision is outside H1 anchor actual="
+                    + this.formatDateTime(actualDecisionTime),
+                true,
+                true
             );
         }
 
@@ -385,9 +427,10 @@ public:
             Mtf3In3AlertSymbolState *state = this.symbolStates.At(i);
 
             if (state == NULL
-                    || !this.isSymbolAnchorExact(
+                    || !this.isSymbolAnchorReady(
                         state.symbolName,
-                        fromH1BarTime
+                        fromH1BarTime,
+                        actualDecisionTime
                     )) {
                 string symbolName = "NULL";
 
@@ -398,7 +441,9 @@ public:
                 return this.handleUnavailableAnchor(
                     fromH1BarTime,
                     "all-symbol H1 anchor is unavailable symbol="
-                        + symbolName
+                        + symbolName,
+                    true,
+                    false
                 );
             }
         }
@@ -417,7 +462,31 @@ public:
         const datetime fromH1BarTime,
         const string fromReason
     ) {
-        return this.handleUnavailableAnchor(fromH1BarTime, fromReason);
+        return this.handleUnavailableAnchor(
+            fromH1BarTime,
+            fromReason,
+            false,
+            false
+        );
+    }
+
+    /**
+     * Records a retryable incomplete List batch for the current H1.
+     *
+     * @param fromH1BarTime Host H1 bar open time.
+     * @param fromReason Pending reason.
+     * @return Resulting anchor status.
+     */
+    Mtf3In3AlertAllAnchorStatus handlePendingAnalysis(
+        const datetime fromH1BarTime,
+        const string fromReason
+    ) {
+        return this.handleUnavailableAnchor(
+            fromH1BarTime,
+            fromReason,
+            true,
+            true
+        );
     }
 
     /**
@@ -442,10 +511,33 @@ public:
             return false;
         }
 
-        if (!this.isBatchReady(fromElliotAllList, fromH1BarTime)) {
+        datetime decisionTime = TimeCurrent();
+
+        if (!this.isDecisionWithinH1Anchor(
+                decisionTime,
+                fromH1BarTime
+            )) {
             this.handleUnavailableAnchor(
                 fromH1BarTime,
-                "List analysis batch is incomplete"
+                "decision changed outside H1 anchor actual="
+                    + this.formatDateTime(decisionTime),
+                true,
+                true
+            );
+
+            return false;
+        }
+
+        if (!this.isBatchReady(
+                fromElliotAllList,
+                fromH1BarTime,
+                decisionTime
+            )) {
+            this.handleUnavailableAnchor(
+                fromH1BarTime,
+                "List analysis batch is incomplete",
+                true,
+                true
             );
 
             return false;
@@ -484,7 +576,8 @@ public:
             if (!this.isSymbolStateReady(
                     state,
                     elliotAll,
-                    fromH1BarTime
+                    fromH1BarTime,
+                    decisionTime
                 )) {
                 string symbolName = "NULL";
 
@@ -509,12 +602,13 @@ public:
                 state.signalCount
             );
 
-            if (TimeCurrent() != fromH1BarTime
+            if (TimeCurrent() != decisionTime
                     || elliotAll.tradeTimeInfo.serverTime
-                        != fromH1BarTime
-                    || !this.isSymbolAnchorExact(
+                        != decisionTime
+                    || !this.isSymbolAnchorReady(
                         state.symbolName,
-                        fromH1BarTime
+                        fromH1BarTime,
+                        decisionTime
                     )) {
                 this.setFatalError(
                     __FUNCTION__,
@@ -547,17 +641,18 @@ public:
 
             if (!isBuilt
                     || state.pendingSnapshot.alert.serverTime
-                        != fromH1BarTime
+                        != decisionTime
                     || state.pendingSnapshot.alert.currentBarTime
                         != fromH1BarTime
-                    || !this.isSymbolAnchorExact(
+                    || !this.isSymbolAnchorReady(
                         state.symbolName,
-                        fromH1BarTime
+                        fromH1BarTime,
+                        decisionTime
                     )) {
                 state.pendingSnapshot.clear();
                 this.setFatalError(
                     __FUNCTION__,
-                    "failed to build exact-anchor snapshot symbol="
+                    "failed to build synchronized H1 snapshot symbol="
                         + state.symbolName
                 );
 
@@ -582,8 +677,17 @@ public:
         this.databaseRun.lastCompletedH1BarTime = fromH1BarTime;
         this.databaseRun.evaluatedH1Count = this.evaluatedH1Count;
         this.databaseRun.savedAlertCount = this.totalSavedCount;
-        this.databaseRun.status = "RUNNING";
-        this.databaseRun.completedAt = 0;
+        bool collectionCompleted = fromH1BarTime
+            == this.testerExpectedLastH1BarTime;
+
+        if (collectionCompleted) {
+            this.databaseRun.status = "COMPLETED";
+            this.databaseRun.completedAt = TimeLocal();
+        } else {
+            this.databaseRun.status = "RUNNING";
+            this.databaseRun.completedAt = 0;
+        }
+
         this.databaseRun.errorText = "";
 
         if (!this.persistRunProgress()) {
@@ -597,7 +701,8 @@ public:
 
         if (this.evaluatedH1Count == 1
                 || this.evaluatedH1Count % 100 == 0
-                || fromH1BarTime == this.testerSaveStartTime) {
+                || fromH1BarTime == this.testerSaveStartTime
+                || collectionCompleted) {
             this.logger.info(
                 __FUNCTION__,
                 StringFormat(
@@ -656,6 +761,7 @@ public:
         this.oneMinuteOhlcConfirmed = false;
         this.hostSymbolName = "";
         this.testerStartTime = 0;
+        this.testerEvaluationStartTime = 0;
         this.testerSaveStartTime = 0;
         this.testerExpectedLastH1BarTime = 0;
         this.testerMinimumWarmUpH1Bars = 0;
@@ -709,6 +815,9 @@ private:
 
     /** Configured Strategy Tester start time. */
     datetime testerStartTime;
+
+    /** First H1 open eligible for all-symbol Alert evaluation. */
+    datetime testerEvaluationStartTime;
 
     /** First H1 open eligible for Alert persistence. */
     datetime testerSaveStartTime;
@@ -774,12 +883,23 @@ private:
                     != requiredTargetSymbolCount
                 || !this.isHostTarget(fromSymbolNameInfoAll)
                 || this.testerStartTime <= 0
+                || this.testerEvaluationStartTime
+                    < this.testerStartTime
+                || this.testerEvaluationStartTime
+                    >= this.testerSaveStartTime
                 || this.testerSaveStartTime <= this.testerStartTime
+                || (long)(this.testerSaveStartTime
+                    - this.testerEvaluationStartTime)
+                    < (long)this.testerMinimumWarmUpH1Bars
+                        * PeriodSeconds(PERIOD_H1)
                 || this.testerExpectedLastH1BarTime
                     < this.testerSaveStartTime
                 || this.testerMinimumWarmUpH1Bars < 1
                 || this.testerMinimumWarmUpH1Bars > 100000
                 || !this.isH1OpenTime(this.testerStartTime)
+                || !this.isH1OpenTime(
+                    this.testerEvaluationStartTime
+                )
                 || !this.isH1OpenTime(this.testerSaveStartTime)
                 || !this.isH1OpenTime(
                     this.testerExpectedLastH1BarTime
@@ -800,7 +920,7 @@ private:
                 )) {
             this.logger.error(
                 __FUNCTION__,
-                "all-symbol Alert input is invalid; tester start/saveStart/expectedLast, warm-up count, H1 target FX, and 1 minute OHLC confirmation are required"
+                "all-symbol Alert input is invalid; tester start/evaluationStart/saveStart/expectedLast, minimum elapsed warm-up, H1 target FX, and 1 minute OHLC confirmation are required"
             );
 
             return false;
@@ -883,23 +1003,38 @@ private:
     }
 
     /**
-     * Converts an unavailable H1 into preflight skip or fatal failure.
+     * Converts an unavailable H1 into same-H1 pending or fatal failure.
      *
      * @param fromH1BarTime Host H1 bar open time.
      * @param fromReason Failure reason.
-     * @return Skipped before state start, otherwise fatal.
+     * @param fromAllowSameH1Retry True to retry while the anchor is current.
+     * @param fromInfoLogEnabled True to log one INFO per pending H1.
+     * @return Pending when retry or preflight skip is allowed, otherwise fatal.
      */
     Mtf3In3AlertAllAnchorStatus handleUnavailableAnchor(
         const datetime fromH1BarTime,
-        const string fromReason
+        const string fromReason,
+        const bool fromAllowSameH1Retry,
+        const bool fromInfoLogEnabled
     ) {
         if (!this.validateFirstObservedH1BarTime(fromH1BarTime)) {
             return MTF3_IN3_ALERT_ALL_ANCHOR_FATAL;
         }
 
-        if (this.evaluationStartedH1BarTime > 0
-                || (this.testerSaveStartTime > 0
-                    && fromH1BarTime >= this.testerSaveStartTime)) {
+        datetime decisionTime = TimeCurrent();
+        bool isCurrentH1 = this.isDecisionWithinH1Anchor(
+            decisionTime,
+            fromH1BarTime
+        ) && iTime(this.hostSymbolName, PERIOD_H1, 0)
+            == fromH1BarTime;
+
+        bool strictFailureRequired =
+            this.evaluationStartedH1BarTime > 0
+            || (this.testerSaveStartTime > 0
+                && fromH1BarTime >= this.testerSaveStartTime);
+
+        if (strictFailureRequired
+                && (!fromAllowSameH1Retry || !isCurrentH1)) {
             this.setFatalError(
                 __FUNCTION__,
                 fromReason + " anchor="
@@ -909,17 +1044,25 @@ private:
             return MTF3_IN3_ALERT_ALL_ANCHOR_FATAL;
         }
 
-        if (this.lastSkippedH1BarTime != fromH1BarTime) {
+        if (fromInfoLogEnabled
+                && this.lastSkippedH1BarTime != fromH1BarTime) {
             this.logger.info(
                 __FUNCTION__,
-                "all-symbol preflight H1 skipped. anchor="
+                "all-symbol H1 pending. anchor="
                     + this.formatDateTime(fromH1BarTime)
                     + " reason=" + fromReason
             );
             this.lastSkippedH1BarTime = fromH1BarTime;
+        } else if (!fromInfoLogEnabled) {
+            this.logger.debug(
+                __FUNCTION__,
+                "all-symbol H1 synchronization pending. anchor="
+                    + this.formatDateTime(fromH1BarTime)
+                    + " reason=" + fromReason
+            );
         }
 
-        return MTF3_IN3_ALERT_ALL_ANCHOR_SKIPPED;
+        return MTF3_IN3_ALERT_ALL_ANCHOR_PENDING;
     }
 
     /**
@@ -947,15 +1090,39 @@ private:
     }
 
     /**
-     * Checks one symbol for an exact H1-open bar and tick timestamp.
+     * Checks whether the decision time belongs to the anchored H1.
+     *
+     * @param fromDecisionTime Actual common decision time.
+     * @param fromH1BarTime Expected H1 open.
+     * @return True while the decision remains inside the anchored H1.
+     */
+    bool isDecisionWithinH1Anchor(
+        const datetime fromDecisionTime,
+        const datetime fromH1BarTime
+    ) {
+        int h1Seconds = PeriodSeconds(PERIOD_H1);
+
+        if (fromDecisionTime < fromH1BarTime
+                || fromH1BarTime <= 0
+                || h1Seconds <= 0) {
+            return false;
+        }
+
+        return fromDecisionTime < fromH1BarTime + h1Seconds;
+    }
+
+    /**
+     * Checks one symbol for the anchored H1 and a current-H1 tick.
      *
      * @param fromSymbolName Broker symbol name.
      * @param fromH1BarTime Expected H1 open.
-     * @return True only for an exact common anchor.
+     * @param fromDecisionTime Actual common decision time.
+     * @return True when the symbol has reached the common H1 without a future tick.
      */
-    bool isSymbolAnchorExact(
+    bool isSymbolAnchorReady(
         const string fromSymbolName,
-        const datetime fromH1BarTime
+        const datetime fromH1BarTime,
+        const datetime fromDecisionTime
     ) {
         if (fromSymbolName == ""
                 || iTime(fromSymbolName, PERIOD_H1, 0)
@@ -970,7 +1137,8 @@ private:
             return false;
         }
 
-        return tick.time == fromH1BarTime;
+        return tick.time >= fromH1BarTime
+            && tick.time <= fromDecisionTime;
     }
 
     /**
@@ -978,11 +1146,13 @@ private:
      *
      * @param fromElliotAllList List analysis batch.
      * @param fromH1BarTime Expected H1 open.
-     * @return True when all 28 results are usable at the exact anchor.
+     * @param fromDecisionTime Actual common decision time.
+     * @return True when all 28 results are usable at the common H1.
      */
     bool isBatchReady(
         ElliotAllList *fromElliotAllList,
-        const datetime fromH1BarTime
+        const datetime fromH1BarTime,
+        const datetime fromDecisionTime
     ) {
         if (fromElliotAllList == NULL
                 || fromElliotAllList.targetCount
@@ -1009,10 +1179,11 @@ private:
                     || elliotAll.marketContext.timeFrame != PERIOD_H1
                     || !this.areAlertElliotsReady(elliotAll)
                     || elliotAll.tradeTimeInfo.serverTime
-                        != fromH1BarTime
-                    || !this.isSymbolAnchorExact(
+                        != fromDecisionTime
+                    || !this.isSymbolAnchorReady(
                         state.symbolName,
-                        fromH1BarTime
+                        fromH1BarTime,
+                        fromDecisionTime
                     )) {
                 return false;
             }
@@ -1062,12 +1233,14 @@ private:
      * @param fromState Per-symbol state.
      * @param fromElliotAll Reused List analysis.
      * @param fromH1BarTime Expected H1 open.
+     * @param fromDecisionTime Actual common decision time.
      * @return True when the state can be advanced once.
      */
     bool isSymbolStateReady(
         Mtf3In3AlertSymbolState *fromState,
         ElliotAll *fromElliotAll,
-        const datetime fromH1BarTime
+        const datetime fromH1BarTime,
+        const datetime fromDecisionTime
     ) {
         if (fromState == NULL
                 || fromState.expertAdvisor == NULL
@@ -1091,10 +1264,11 @@ private:
         }
 
         return fromElliotAll.tradeTimeInfo.serverTime
-                == fromH1BarTime
-            && this.isSymbolAnchorExact(
+                == fromDecisionTime
+            && this.isSymbolAnchorReady(
                 fromState.symbolName,
-                fromH1BarTime
+                fromH1BarTime,
+                fromDecisionTime
             );
     }
 
@@ -1267,7 +1441,7 @@ private:
         this.databaseRun.sourceMode = "TESTER";
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.21";
+        this.databaseRun.programVersion = "1.22";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V5";
         this.databaseRun.analysisVersion =
@@ -1345,6 +1519,11 @@ private:
             + (string)this.oneMinuteOhlcConfirmed;
         inputText += "|testerStartTime="
             + StringFormat("%I64d", (long)this.testerStartTime);
+        inputText += "|testerEvaluationStartTime="
+            + StringFormat(
+                "%I64d",
+                (long)this.testerEvaluationStartTime
+            );
         inputText += "|testerSaveStartTime="
             + StringFormat("%I64d", (long)this.testerSaveStartTime);
         inputText += "|testerExpectedLastH1BarTime="
@@ -1399,6 +1578,15 @@ private:
         if (!this.databaseReady
                 || this.databaseContext == NULL
                 || this.databaseRun.id <= 0) {
+            return;
+        }
+
+        if (!this.fatalError
+                && this.databaseRun.status == "COMPLETED"
+                && this.databaseRun.completedAt > 0
+                && this.lastCompletedH1BarTime
+                    == this.testerExpectedLastH1BarTime
+                && !this.hasPendingSnapshots()) {
             return;
         }
 

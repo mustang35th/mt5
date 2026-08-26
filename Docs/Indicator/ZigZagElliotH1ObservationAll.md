@@ -301,9 +301,10 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 
 | 項目 | 値 |
 |---|---|
-| `analysis_version` | `ELLIOT_MN1_V3` |
-| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V2` |
+| `analysis_version` | `ELLIOT_MN1_V4` |
+| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V3` |
 | 親修正区間規則 | `STRICT_CONFIRMED_FOUR_POINT_V1` |
+| Wave分割終了規則 | `POSITION_PROGRESS_TO_POINT_COUNT_V1` |
 | Analysis start | MN1 |
 | Anchor | H1 |
 | Run `strategy` | `H1_OBSERVATION_ALL` |

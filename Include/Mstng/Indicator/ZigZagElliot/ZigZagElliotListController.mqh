@@ -76,6 +76,7 @@ public:
      * @param fromAlignmentRule 一致判定ルール
      * @param fromAlertConfig 全通貨Alert判定およびDB設定
      * @param fromAlertTesterStartTime TESTER設定の開始サーバー時刻
+     * @param fromAlertTesterEvaluationStartTime TESTER Alert連続評価開始時刻
      * @param fromAlertTesterSaveStartTime TESTER Alert保存開始サーバー時刻
      * @param fromAlertTesterExpectedLastH1BarTime 収集対象の最終H1時刻
      * @param fromAlertTesterMinimumWarmUpH1Bars 保存前の最低連続評価本数
@@ -90,6 +91,7 @@ public:
         ElliotDirectionAlignmentRule fromAlignmentRule,
         ZigZagElliotConfig &fromAlertConfig,
         const datetime fromAlertTesterStartTime,
+        const datetime fromAlertTesterEvaluationStartTime,
         const datetime fromAlertTesterSaveStartTime,
         const datetime fromAlertTesterExpectedLastH1BarTime,
         const int fromAlertTesterMinimumWarmUpH1Bars,
@@ -241,6 +243,7 @@ public:
                     fromAlertConfig,
                     this.symbolNameInfoAll,
                     fromAlertTesterStartTime,
+                    fromAlertTesterEvaluationStartTime,
                     fromAlertTesterSaveStartTime,
                     fromAlertTesterExpectedLastH1BarTime,
                     fromAlertTesterMinimumWarmUpH1Bars,
@@ -711,6 +714,30 @@ private:
             return;
         }
 
+        if (this.alertAllController != NULL) {
+            Mtf3In3AlertAllAnchorStatus evaluationWindowStatus =
+                this.alertAllController.prepareEvaluationWindow(
+                    currentBarTime
+                );
+
+            if (evaluationWindowStatus
+                    == MTF3_IN3_ALERT_ALL_ANCHOR_SKIPPED) {
+                this.lastProcessedBarTime = currentBarTime;
+                this.hasPendingAnalysis = false;
+
+                return;
+            }
+
+            if (evaluationWindowStatus
+                    == MTF3_IN3_ALERT_ALL_ANCHOR_FATAL) {
+                this.lastProcessedBarTime = currentBarTime;
+                this.hasPendingAnalysis = false;
+                TesterStop();
+
+                return;
+            }
+        }
+
         Mtf3In3AlertAllAnchorStatus alertAnchorStatus =
             MTF3_IN3_ALERT_ALL_ANCHOR_READY;
 
@@ -723,11 +750,12 @@ private:
                     != MTF3_IN3_ALERT_ALL_ANCHOR_READY
                     && alertAnchorStatus
                         != MTF3_IN3_ALERT_ALL_ANCHOR_COMPLETED) {
-                this.lastProcessedBarTime = currentBarTime;
-                this.hasPendingAnalysis = false;
-
                 if (this.alertAllController.hasFatalError()) {
+                    this.lastProcessedBarTime = currentBarTime;
+                    this.hasPendingAnalysis = false;
                     TesterStop();
+                } else {
+                    this.hasPendingAnalysis = true;
                 }
 
                 return;
@@ -777,16 +805,28 @@ private:
             this.hasPendingAnalysis = false;
 
             if (listAnalysisPending) {
-                this.alertAllController.handleUnavailableAnalysis(
+                Mtf3In3AlertAllAnchorStatus unavailableStatus =
+                    this.alertAllController.handlePendingAnalysis(
                     currentBarTime,
                     "List analysis prerequisites are incomplete"
                 );
+
+                if (unavailableStatus
+                        == MTF3_IN3_ALERT_ALL_ANCHOR_PENDING) {
+                    this.hasPendingAnalysis = true;
+                }
             } else if (alertAnchorStatus
                     != MTF3_IN3_ALERT_ALL_ANCHOR_COMPLETED) {
-                this.alertAllController.execute(
+                bool alertAnalysisCompleted =
+                    this.alertAllController.execute(
                     elliotAllList,
                     currentBarTime
                 );
+
+                if (!alertAnalysisCompleted
+                        && !this.alertAllController.hasFatalError()) {
+                    this.hasPendingAnalysis = true;
+                }
             }
 
             if (this.alertAllController.hasFatalError()
