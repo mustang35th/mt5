@@ -353,6 +353,8 @@ export type ObservationSort = "anchor_jst_time" | "symbol_name";
 
 export type ObservationSyncTimeFrame = "MN1" | "W1" | "D1" | "H4";
 
+export type ObservationFullAlignment = "" | "FULL" | "BUY" | "SELL";
+
 export interface ObservationSearchState {
   sourceMode: SourceMode;
   runId: number | null;
@@ -365,6 +367,7 @@ export interface ObservationSearchState {
   to: string;
   jstTime: string;
   syncTimeFrames: ObservationSyncTimeFrame[];
+  fullAlignment: ObservationFullAlignment;
   pageSize: number;
   page: number;
   sort: ObservationSort;

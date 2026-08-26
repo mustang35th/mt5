@@ -9,7 +9,7 @@ import {
 describe("observationSearchState", () => {
   it("restores the H1 observation filters and rejects unsupported values", () => {
     expect(readObservationSearchState(
-      "?tab=h1&sourceMode=TESTER&runId=4&analysisVersion=ELLIOT_MN1_V2&analysisInputHash=profile-hash&analysisProfileKind=profile&symbol=AUDUSD&gmoTarget=excluded&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=D1&syncTimeFrame=MN1&syncTimeFrame=MN1&page=2&pageSize=25&sort=bad&order=asc",
+      "?tab=h1&sourceMode=TESTER&runId=4&analysisVersion=ELLIOT_MN1_V2&analysisInputHash=profile-hash&analysisProfileKind=profile&symbol=AUDUSD&gmoTarget=excluded&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=D1&syncTimeFrame=MN1&syncTimeFrame=MN1&fullAlignment=BUY&page=2&pageSize=25&sort=bad&order=asc",
     )).toEqual({
       sourceMode: "TESTER",
       runId: 4,
@@ -22,6 +22,7 @@ describe("observationSearchState", () => {
       to: "2026-08-10",
       jstTime: "07:00",
       syncTimeFrames: ["MN1", "D1"],
+      fullAlignment: "BUY",
       page: 2,
       pageSize: 25,
       sort: "anchor_jst_time",
@@ -44,6 +45,7 @@ describe("observationSearchState", () => {
     expect(params.has("gmoTarget")).toBe(false);
     expect(params.has("jstTime")).toBe(false);
     expect(params.has("syncTimeFrame")).toBe(false);
+    expect(params.has("fullAlignment")).toBe(false);
     expect(params.get("sort")).toBe("anchor_jst_time");
     replaceObservationSearchUrl(DEFAULT_OBSERVATION_SEARCH_STATE);
     const browserParams = new URLSearchParams(window.location.search);
@@ -86,5 +88,19 @@ describe("observationSearchState", () => {
     });
     expect(params.get("jstTime")).toBe("23:00");
     expect(params.getAll("syncTimeFrame")).toEqual(["MN1", "H4"]);
+  });
+
+  it("restores and serializes only supported full-alignment filters", () => {
+    expect(readObservationSearchState("?fullAlignment=FULL").fullAlignment).toBe("FULL");
+    expect(readObservationSearchState("?fullAlignment=BUY").fullAlignment).toBe("BUY");
+    expect(readObservationSearchState("?fullAlignment=SELL").fullAlignment).toBe("SELL");
+    expect(readObservationSearchState("?fullAlignment=full").fullAlignment).toBe("");
+    expect(readObservationSearchState("?fullAlignment=INVALID").fullAlignment).toBe("");
+
+    const params = buildObservationSearchParams({
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      fullAlignment: "FULL",
+    });
+    expect(params.get("fullAlignment")).toBe("FULL");
   });
 });

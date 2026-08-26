@@ -2324,6 +2324,129 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual(1, combined_summary["live_count"])
         self.assertEqual(0, combined_summary["tester_count"])
 
+    def test_full_alignment_filters_list_and_summary_by_direction(self) -> None:
+        """Require W1 through H1 and strict H4/H1 EMA200 alignment."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            database = AlertDatabase(database_path)
+            try:
+                full_page = database.observations(
+                    {
+                        "fullAlignment": [" full "],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                buy_page = database.observations(
+                    {
+                        "fullAlignment": ["buy"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                sell_page = database.observations(
+                    {
+                        "fullAlignment": ["SELL"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                full_summary = database.observation_summary(
+                    {"fullAlignment": ["FULL"]}
+                )
+                buy_summary = database.observation_summary(
+                    {"fullAlignment": ["BUY"]}
+                )
+                sell_summary = database.observation_summary(
+                    {"fullAlignment": ["SELL"]}
+                )
+            finally:
+                database.close()
+
+        self.assertEqual([1, 2, 3], [item["id"] for item in full_page["items"]])
+        self.assertEqual([1, 2], [item["id"] for item in buy_page["items"]])
+        self.assertEqual([3], [item["id"] for item in sell_page["items"]])
+        self.assertEqual(3, full_summary["total_count"])
+        self.assertEqual(2, full_summary["live_count"])
+        self.assertEqual(1, full_summary["tester_count"])
+        self.assertEqual(2, buy_summary["total_count"])
+        self.assertEqual(2, buy_summary["live_count"])
+        self.assertEqual(0, buy_summary["tester_count"])
+        self.assertEqual(1, sell_summary["total_count"])
+        self.assertEqual(0, sell_summary["live_count"])
+        self.assertEqual(1, sell_summary["tester_count"])
+
+    def test_full_alignment_rejects_partial_and_invalid_matches(self) -> None:
+        """Exclude mixed directions, invalid EMA states, NULLs and missing rows."""
+
+        invalid_cases = [
+            (
+                "mixed_is_buy",
+                "UPDATE zigzag_elliot_observation_timeframes "
+                "SET is_buy = 0 WHERE observation_id = 1 "
+                "AND time_frame_order = 2",
+            ),
+            (
+                "ema_none",
+                "UPDATE zigzag_elliot_observation_timeframes "
+                "SET is_ema200_buy = 0, is_ema200_sell = 0 "
+                "WHERE observation_id = 1 AND time_frame_order = 3",
+            ),
+            (
+                "ema_both",
+                "UPDATE zigzag_elliot_observation_timeframes "
+                "SET is_ema200_buy = 1, is_ema200_sell = 1 "
+                "WHERE observation_id = 1 AND time_frame_order = 4",
+            ),
+            (
+                "ema_opposite",
+                "UPDATE zigzag_elliot_observation_timeframes "
+                "SET is_ema200_buy = 0, is_ema200_sell = 1 "
+                "WHERE observation_id = 1 AND time_frame_order = 3",
+            ),
+            (
+                "ema_null",
+                "UPDATE zigzag_elliot_observation_timeframes "
+                "SET is_ema200_buy = NULL "
+                "WHERE observation_id = 1 AND time_frame_order = 4",
+            ),
+            (
+                "missing_time_frame",
+                "DELETE FROM zigzag_elliot_observation_timeframes "
+                "WHERE observation_id = 1 AND time_frame_order = 3",
+            ),
+        ]
+        for case_name, mutation_sql in invalid_cases:
+            with self.subTest(case_name=case_name):
+                with tempfile.TemporaryDirectory() as directory:
+                    database_path = Path(directory) / "alerts.sqlite"
+                    create_observation_database(database_path)
+                    with sqlite3.connect(database_path) as connection:
+                        connection.execute(mutation_sql)
+                    connection.close()
+                    database = AlertDatabase(database_path)
+                    try:
+                        page = database.observations(
+                            {
+                                "fullAlignment": ["FULL"],
+                                "sort": ["id"],
+                                "order": ["asc"],
+                            }
+                        )
+                        summary = database.observation_summary(
+                            {"fullAlignment": ["FULL"]}
+                        )
+                    finally:
+                        database.close()
+
+                self.assertEqual(
+                    [2, 3],
+                    [item["id"] for item in page["items"]],
+                )
+                self.assertEqual(2, summary["total_count"])
+
     def test_analysis_profile_contract_and_legacy_fallback(self) -> None:
         """Prefer the latest stored profile while retaining legacy observations."""
 
@@ -2691,6 +2814,7 @@ class ObservationDatabaseTest(unittest.TestCase):
                 "to": ["2024-01-04"],
                 "jstTime": ["09:00"],
                 "syncTimeFrame": [" h4 ", "D1", "H4", "d1", " "],
+                "fullAlignment": ["buy"],
             }
         )
         self.assertIn("o.source_mode = :source_mode", filters.where_sql)
@@ -2709,6 +2833,12 @@ class ObservationDatabaseTest(unittest.TestCase):
             "COUNT(DISTINCT sync_tf.time_frame_text)",
             filters.where_sql,
         )
+        self.assertIn(
+            "full_h1.is_buy = :full_alignment_is_buy",
+            filters.where_sql,
+        )
+        self.assertIn("full_h4.is_ema200_buy = 1", filters.where_sql)
+        self.assertIn("full_h1.is_ema200_sell = 0", filters.where_sql)
         self.assertEqual("TESTER", filters.parameters["source_mode"])
         self.assertEqual("profile-hash", filters.parameters["analysis_input_hash"])
         self.assertEqual("V2", filters.parameters["analysis_version"])
@@ -2717,7 +2847,12 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual("H4", filters.parameters["sync_time_frame_0"])
         self.assertEqual("D1", filters.parameters["sync_time_frame_1"])
         self.assertEqual(2, filters.parameters["sync_time_frame_count"])
+        self.assertEqual(1, filters.parameters["full_alignment_is_buy"])
         self.assertEqual("profile", filters.analysis_profile_kind)
+        self.assertNotIn(
+            "full_w1",
+            AlertDatabase.parse_observation_filters({}).where_sql,
+        )
         self.assertEqual(
             "anchor_jst_time",
             AlertDatabase.parse_observation_filters({}).sort_sql,
@@ -2761,6 +2896,15 @@ class ObservationDatabaseTest(unittest.TestCase):
             AlertDatabase.parse_observation_filters(
                 {"analysisProfileKind": ["mixed"]}
             )
+        for invalid_alignment in ["", "ALL", "BUY' OR 1=1 --"]:
+            with self.subTest(full_alignment=invalid_alignment):
+                with self.assertRaisesRegex(
+                    RequestError,
+                    "fullAlignment must be FULL, BUY or SELL",
+                ):
+                    AlertDatabase.parse_observation_filters(
+                        {"fullAlignment": [invalid_alignment]}
+                    )
         for invalid_time in [
             "9:00",
             "09:30",

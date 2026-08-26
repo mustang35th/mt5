@@ -580,6 +580,7 @@ H1境界直後は一時的に`ANALYZING`または`WAITING`になります。
 Viewerは次を行います。
 
 - Run、分析Profile、LIVE・TESTER、通貨、JST期間などによる検索
+- W1・D1・H4・H1の分析方向とH4・H1 EMA200方向による完全一致検索
 - MN1、W1、D1、H4、H1の一覧比較
 - 詳細カードとTIMEFRAME COMPARISON
 - Elliott、Wave、Stochastic、GMMA、ATRおよびEMA200の表示

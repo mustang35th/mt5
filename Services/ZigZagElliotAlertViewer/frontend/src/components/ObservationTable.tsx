@@ -126,6 +126,39 @@ function dataFrom(params: ICellRendererParams<ObservationListItem>) {
   return params.data;
 }
 
+type FullAlignmentSide = "BUY" | "SELL";
+
+function strictEma200Matches(
+  timeFrame: ObservationTimeFrame,
+  side: FullAlignmentSide,
+): boolean {
+  if (side === "BUY") {
+    return timeFrame.is_ema200_buy === true && timeFrame.is_ema200_sell === false;
+  }
+  return timeFrame.is_ema200_buy === false && timeFrame.is_ema200_sell === true;
+}
+
+export function observationFullAlignmentSide(
+  observation: ObservationListItem,
+): FullAlignmentSide | null {
+  const w1 = timeFrameFrom(observation, "W1");
+  const d1 = timeFrameFrom(observation, "D1");
+  const h4 = timeFrameFrom(observation, "H4");
+  const h1 = timeFrameFrom(observation, "H1");
+  if (!w1 || !d1 || !h4 || !h1) return null;
+
+  const requiredTimeFrames = [w1, d1, h4, h1];
+  if (requiredTimeFrames.every((timeFrame) => timeFrame.is_buy === true)
+      && strictEma200Matches(h4, "BUY") && strictEma200Matches(h1, "BUY")) {
+    return "BUY";
+  }
+  if (requiredTimeFrames.every((timeFrame) => timeFrame.is_buy === false)
+      && strictEma200Matches(h4, "SELL") && strictEma200Matches(h1, "SELL")) {
+    return "SELL";
+  }
+  return null;
+}
+
 function ObservationTimeCell(params: ICellRendererParams<ObservationListItem>) {
   const observation = dataFrom(params);
   if (!observation) return null;
@@ -151,6 +184,7 @@ function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
   const profileKind = observation.analysis_profile_is_legacy ? "Legacy" : "Profile";
   const profileHash = observation.analysis_input_hash.slice(0, 8) || "—";
   const shortVersion = observation.analysis_version.replace(/^ELLIOT_MN1_/, "");
+  const fullAlignmentSide = observationFullAlignmentSide(observation);
   return (
     <div className="grid-cell-stack">
       <Stack
@@ -167,6 +201,17 @@ function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
         >
           {observation.symbol_name}
         </Typography>
+        {fullAlignmentSide && (
+          <Box
+            aria-label={`W1～H1＋EMA200 完全一致 ${fullAlignmentSide}`}
+            className={`badge ${sideClass(fullAlignmentSide)}`}
+            component="span"
+            title={`W1・D1・H4・H1の方向とH4・H1のEMA200が${fullAlignmentSide}で完全一致`}
+            sx={{ flex: "0 0 auto", fontSize: "0.56rem", px: 0.5 }}
+          >
+            FULL {fullAlignmentSide}
+          </Box>
+        )}
         <GmoTargetBadge compact isTarget={observation.is_gmo_target} />
         <Box component="span" className="badge neutral" sx={{ flex: "0 0 auto" }}>
           {displayValue(observation.source_mode)}
@@ -348,8 +393,8 @@ export function ObservationTable({
       field: "symbol_name",
       headerName: "通貨",
       initialPinned: "left",
-      initialWidth: 185,
-      minWidth: 170,
+      initialWidth: 250,
+      minWidth: 230,
       lockPinned: true,
       suppressMovable: true,
       headerComponent: SortHeader,

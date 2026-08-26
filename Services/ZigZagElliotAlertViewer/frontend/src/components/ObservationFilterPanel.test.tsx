@@ -5,6 +5,7 @@ import type { ObservationSearchState } from "../api/types";
 import { DEFAULT_OBSERVATION_SEARCH_STATE } from "../lib/observationSearchState";
 import {
   hasObservationUnappliedChanges,
+  observationFilterSummary,
   ObservationFilterPanel,
 } from "./ObservationFilterPanel";
 
@@ -49,5 +50,40 @@ describe("ObservationFilterPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
     expect(gmoTarget).toHaveTextContent("すべて");
+  });
+
+  it("edits, summarizes, compares, and resets the full-alignment filter", () => {
+    render(<ObservationFilterPanelHarness />);
+
+    const fullAlignment = screen.getByRole("combobox", {
+      name: "W1～H1＋EMA200一致",
+    });
+    expect(fullAlignment).toHaveTextContent("指定なし");
+    fireEvent.mouseDown(fullAlignment);
+    expect(screen.getByRole("option", { name: "方向問わず完全一致" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "完全BUY" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "完全SELL" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "方向問わず完全一致" }));
+
+    expect(fullAlignment).toHaveTextContent("方向問わず完全一致");
+    expect(hasObservationUnappliedChanges(
+      { ...DEFAULT_OBSERVATION_SEARCH_STATE, fullAlignment: "FULL" },
+      DEFAULT_OBSERVATION_SEARCH_STATE,
+    )).toBe(true);
+    expect(observationFilterSummary({
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      fullAlignment: "FULL",
+    })).toContain("W1～H1＋EMA200 方向問わず完全一致");
+    expect(observationFilterSummary({
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      fullAlignment: "BUY",
+    })).toContain("W1～H1＋EMA200 完全BUY");
+    expect(observationFilterSummary({
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      fullAlignment: "SELL",
+    })).toContain("W1～H1＋EMA200 完全SELL");
+
+    fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
+    expect(fullAlignment).toHaveTextContent("指定なし");
   });
 });

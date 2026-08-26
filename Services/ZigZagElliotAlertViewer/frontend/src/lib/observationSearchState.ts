@@ -1,5 +1,6 @@
 import type {
   AnalysisProfileKind,
+  ObservationFullAlignment,
   ObservationSearchState,
   ObservationSort,
   ObservationSyncTimeFrame,
@@ -30,6 +31,7 @@ export const DEFAULT_OBSERVATION_SEARCH_STATE: ObservationSearchState = {
   to: "",
   jstTime: "",
   syncTimeFrames: [],
+  fullAlignment: "",
   pageSize: 50,
   page: 1,
   sort: "anchor_jst_time",
@@ -68,6 +70,11 @@ function observationSyncTimeFrames(values: string[]): ObservationSyncTimeFrame[]
   return OBSERVATION_SYNC_TIME_FRAMES.filter((timeFrame) => requestedValues.has(timeFrame));
 }
 
+function observationFullAlignment(value: string | null): ObservationFullAlignment {
+  if (value === "FULL" || value === "BUY" || value === "SELL") return value;
+  return "";
+}
+
 export function readObservationSearchState(search: string): ObservationSearchState {
   const params = new URLSearchParams(search);
   const requestedSourceMode = params.get("sourceMode");
@@ -100,6 +107,7 @@ export function readObservationSearchState(search: string): ObservationSearchSta
     to: dateInputValue(params.get("to")),
     jstTime: timeInputValue(params.get("jstTime")),
     syncTimeFrames: observationSyncTimeFrames(params.getAll("syncTimeFrame")),
+    fullAlignment: observationFullAlignment(params.get("fullAlignment")),
     pageSize: [25, 50, 100].includes(requestedPageSize)
       ? requestedPageSize
       : DEFAULT_OBSERVATION_SEARCH_STATE.pageSize,
@@ -132,6 +140,7 @@ export function buildObservationSearchParams(
   for (const timeFrame of observationSyncTimeFrames(state.syncTimeFrames)) {
     params.append("syncTimeFrame", timeFrame);
   }
+  if (state.fullAlignment) params.set("fullAlignment", state.fullAlignment);
   if (includePaging) {
     params.set("page", String(state.page));
     params.set("pageSize", String(state.pageSize));

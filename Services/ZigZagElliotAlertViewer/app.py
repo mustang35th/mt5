@@ -1563,6 +1563,64 @@ class AlertDatabase:
                 """
             )
 
+        full_alignment = first("fullAlignment")
+        if full_alignment is not None:
+            full_alignment = full_alignment.upper()
+            if full_alignment not in {"FULL", "BUY", "SELL"}:
+                raise RequestError(
+                    "fullAlignment must be FULL, BUY or SELL"
+                )
+            direction_clause = ""
+            if full_alignment != "FULL":
+                direction_clause = (
+                    "AND full_h1.is_buy = :full_alignment_is_buy"
+                )
+                parameters["full_alignment_is_buy"] = int(
+                    full_alignment == "BUY"
+                )
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM zigzag_elliot_observation_timeframes AS full_w1
+                    INNER JOIN zigzag_elliot_observation_timeframes AS full_d1
+                            ON full_d1.observation_id = full_w1.observation_id
+                           AND full_d1.time_frame_order = 2
+                    INNER JOIN zigzag_elliot_observation_timeframes AS full_h4
+                            ON full_h4.observation_id = full_w1.observation_id
+                           AND full_h4.time_frame_order = 3
+                    INNER JOIN zigzag_elliot_observation_timeframes AS full_h1
+                            ON full_h1.observation_id = full_w1.observation_id
+                           AND full_h1.time_frame_order = 4
+                    WHERE full_w1.observation_id = o.id
+                      AND full_w1.time_frame_order = 1
+                      AND full_w1.is_buy IN (0, 1)
+                      AND full_d1.is_buy = full_w1.is_buy
+                      AND full_h4.is_buy = full_w1.is_buy
+                      AND full_h1.is_buy = full_w1.is_buy
+                      AND (
+                          (
+                              full_h1.is_buy = 1
+                              AND full_h4.is_ema200_buy = 1
+                              AND full_h4.is_ema200_sell = 0
+                              AND full_h1.is_ema200_buy = 1
+                              AND full_h1.is_ema200_sell = 0
+                          )
+                          OR (
+                              full_h1.is_buy = 0
+                              AND full_h4.is_ema200_buy = 0
+                              AND full_h4.is_ema200_sell = 1
+                              AND full_h1.is_ema200_buy = 0
+                              AND full_h1.is_ema200_sell = 1
+                          )
+                      )
+                      """
+                + direction_clause
+                + """
+                )
+                """
+            )
+
         search_text = first("q")
         if search_text:
             if len(search_text) > MAX_SEARCH_LENGTH:

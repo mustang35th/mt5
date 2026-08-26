@@ -135,6 +135,13 @@ function gmoTargetSummary(gmoTarget: GmoTargetFilter): string {
   return "すべて";
 }
 
+function fullAlignmentSummary(value: ObservationSearchState["fullAlignment"]): string {
+  if (value === "FULL") return "方向問わず完全一致";
+  if (value === "BUY") return "完全BUY";
+  if (value === "SELL") return "完全SELL";
+  return "指定なし";
+}
+
 export function observationFilterSummary(value: ObservationSearchState): string {
   const mode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
@@ -151,6 +158,7 @@ export function observationFilterSummary(value: ObservationSearchState): string 
     ? `上位足同期 ${value.syncTimeFrames.join("・")}`
     : "上位足同期なし";
   return `${mode} / ${run} / ${profile} / ${symbol} / ${period} / ${jstTime} / ${synchronization}`
+    + ` / W1～H1＋EMA200 ${fullAlignmentSummary(value.fullAlignment)}`
     + ` / GMO取引 ${gmoTargetSummary(value.gmoTarget)}`;
 }
 
@@ -169,6 +177,7 @@ export function hasObservationUnappliedChanges(
     || value.to !== appliedValue.to
     || value.jstTime !== appliedValue.jstTime
     || !sameSyncTimeFrames(value.syncTimeFrames, appliedValue.syncTimeFrames)
+    || value.fullAlignment !== appliedValue.fullAlignment
     || value.pageSize !== appliedValue.pageSize;
 }
 
@@ -490,6 +499,28 @@ export function ObservationFilterPanel({
                   <ListItemText primary={timeFrame} />
                 </MenuItem>
               ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small">
+            <InputLabel id="observationFullAlignmentLabel" shrink>W1～H1＋EMA200一致</InputLabel>
+            <Select
+              displayEmpty
+              labelId="observationFullAlignmentLabel"
+              label="W1～H1＋EMA200一致"
+              value={value.fullAlignment}
+              renderValue={(selected) => fullAlignmentSummary(selected)}
+              onChange={(event) => {
+                const fullAlignment = event.target.value as string;
+                if (fullAlignment === "" || fullAlignment === "FULL"
+                    || fullAlignment === "BUY" || fullAlignment === "SELL") {
+                  onChange({ ...value, fullAlignment });
+                }
+              }}
+            >
+              <MenuItem value="">指定なし</MenuItem>
+              <MenuItem value="FULL">方向問わず完全一致</MenuItem>
+              <MenuItem value="BUY">完全BUY</MenuItem>
+              <MenuItem value="SELL">完全SELL</MenuItem>
             </Select>
           </FormControl>
           <FormControl size="small">

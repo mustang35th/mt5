@@ -1,13 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ObservationListItem, ObservationTimeFrame } from "../api/types";
-import { ObservationTable } from "./ObservationTable";
+import { ObservationTable, observationFullAlignmentSide } from "./ObservationTable";
 
 function timeFrame(
   label: string,
   order: number,
   isEma200Buy: boolean,
   isEma200Sell: boolean,
+  isBuy = true,
 ): ObservationTimeFrame {
   return {
     id: 100 + order,
@@ -16,8 +17,8 @@ function timeFrame(
     time_frame_text: label,
     time_frame_order: order,
     is_anchor_time_frame: label === "H1",
-    is_buy: true,
-    buy_sell_label: "BUY",
+    is_buy: isBuy,
+    buy_sell_label: isBuy ? "BUY" : "SELL",
     wave_count: 2,
     latest_wave_index: 1,
     is_wave_confirmed: true,
@@ -44,6 +45,13 @@ function timeFrame(
     is_ema200_buy: isEma200Buy,
     is_ema200_sell: isEma200Sell,
   };
+}
+
+function fullAlignmentTimeFrames(side: "BUY" | "SELL"): ObservationTimeFrame[] {
+  const isBuy = side === "BUY";
+  return ["W1", "D1", "H4", "H1"].map((label, order) => (
+    timeFrame(label, order, isBuy, !isBuy, isBuy)
+  ));
 }
 
 function observation(
@@ -150,5 +158,59 @@ describe("ObservationTable", () => {
     expect(screen.getByLabelText("EMA200判定 NONE")).toHaveTextContent("EMA200 NONE");
     expect(screen.getByLabelText("EMA200判定 異常。BUYとSELLが同時に記録されています"))
       .toHaveTextContent("EMA200 異常");
+  });
+
+  it("shows FULL BUY and FULL SELL only for strict W1-to-H1 and EMA200 alignment", async () => {
+    const fullBuy = observation(11, "AUDUSD", true, fullAlignmentTimeFrames("BUY"));
+    const fullSell = observation(12, "EURUSD", true, fullAlignmentTimeFrames("SELL"));
+    const mixedDirection = observation(13, "GBPUSD", true, fullAlignmentTimeFrames("BUY"));
+    mixedDirection.time_frames[1] = {
+      ...mixedDirection.time_frames[1],
+      is_buy: false,
+      buy_sell_label: "SELL",
+    };
+    const emaNone = observation(14, "NZDUSD", true, fullAlignmentTimeFrames("BUY"));
+    emaNone.time_frames[2] = {
+      ...emaNone.time_frames[2],
+      is_ema200_buy: false,
+      is_ema200_sell: false,
+    };
+    const emaBoth = observation(15, "USDCAD", true, fullAlignmentTimeFrames("SELL"));
+    emaBoth.time_frames[3] = {
+      ...emaBoth.time_frames[3],
+      is_ema200_buy: true,
+      is_ema200_sell: true,
+    };
+    const missingH1 = observation(
+      16,
+      "USDCHF",
+      true,
+      fullAlignmentTimeFrames("BUY").filter((item) => item.time_frame_text !== "H1"),
+    );
+
+    expect(observationFullAlignmentSide(fullBuy)).toBe("BUY");
+    expect(observationFullAlignmentSide(fullSell)).toBe("SELL");
+    expect(observationFullAlignmentSide(mixedDirection)).toBeNull();
+    expect(observationFullAlignmentSide(emaNone)).toBeNull();
+    expect(observationFullAlignmentSide(emaBoth)).toBeNull();
+    expect(observationFullAlignmentSide(missingH1)).toBeNull();
+
+    render(
+      <ObservationTable
+        available
+        items={[fullBuy, fullSell, mixedDirection, emaNone, emaBoth, missingH1]}
+        loading={false}
+        onOpenDetail={vi.fn()}
+        onSort={vi.fn()}
+        order="desc"
+        sort="anchor_jst_time"
+      />,
+    );
+
+    expect(await screen.findByLabelText("W1～H1＋EMA200 完全一致 BUY"))
+      .toHaveTextContent("FULL BUY");
+    expect(screen.getByLabelText("W1～H1＋EMA200 完全一致 SELL"))
+      .toHaveTextContent("FULL SELL");
+    expect(screen.getAllByText(/^FULL (BUY|SELL)$/)).toHaveLength(2);
   });
 });
