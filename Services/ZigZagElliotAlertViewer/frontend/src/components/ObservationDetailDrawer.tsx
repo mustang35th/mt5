@@ -51,6 +51,11 @@ function DetailField({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function spreadLabel(spreadPips: number | null | undefined): string {
+  if (spreadPips === null || spreadPips === undefined) return "未記録";
+  return `${formatNumber(spreadPips)} pips`;
+}
+
 function TimeFrameValue({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
@@ -457,6 +462,7 @@ function DetailContent({
             <span>JST {displayValue(observation.anchor_jst_time_text)}</span>
             <span>Server {displayValue(observation.anchor_bar_time_text)}</span>
             <span>Run {observation.run_id}</span>
+            <span>Spread {spreadLabel(observation.spread_pips)}</span>
           </div>
         </div>
         <ObservationTimeFrameSnapshotGrid
@@ -502,6 +508,7 @@ function DetailContent({
           />
           <DetailField label="Anchor time frame" value={observation.anchor_time_frame_text} />
           <DetailField label="Capture phase" value={observation.capture_phase} />
+          <DetailField label="Spread" value={spreadLabel(observation.spread_pips)} />
           <DetailField label="Source mode / server" value={`${observation.source_mode} / ${displayValue(observation.source_server)}`} />
           <DetailField label="Run started" value={observation.started_at_text} />
           <DetailField label="Tester model" value={observation.tester_model} />

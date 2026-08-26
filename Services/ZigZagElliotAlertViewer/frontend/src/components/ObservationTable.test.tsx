@@ -51,6 +51,7 @@ function observation(
   symbol: string,
   isGmoTarget: boolean,
   timeFrames: ObservationTimeFrame[] = [],
+  spreadPips: number | null = 1.2,
 ): ObservationListItem {
   return {
     id,
@@ -67,6 +68,7 @@ function observation(
     anchor_time_frame: 16_385,
     anchor_time_frame_text: "H1",
     capture_phase: "BAR_OPEN_FIRST_SUCCESS",
+    spread_pips: spreadPips,
     analysis_version: "2.0",
     analysis_input_hash: "analysis-hash",
     snapshot_hash: `snapshot-${id}`,
@@ -78,6 +80,28 @@ function observation(
 }
 
 describe("ObservationTable", () => {
+  it("shows recorded, legacy, and zero spread values", async () => {
+    render(
+      <ObservationTable
+        available
+        items={[
+          observation(1, "USDJPY", true, [], 1.2),
+          observation(2, "USDCAD", false, [], null),
+          observation(3, "EURUSD", false, [], 0),
+        ]}
+        loading={false}
+        onOpenDetail={vi.fn()}
+        onSort={vi.fn()}
+        order="desc"
+        sort="anchor_jst_time"
+      />,
+    );
+
+    expect(await screen.findByText("1.2 pips")).toBeInTheDocument();
+    expect(screen.getByText("未記録")).toBeInTheDocument();
+    expect(screen.getByText("0.0 pips")).toBeInTheDocument();
+  });
+
   it("shows GMO target state next to each symbol", async () => {
     render(
       <ObservationTable

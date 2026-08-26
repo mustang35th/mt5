@@ -24,6 +24,7 @@ import {
   displayValue,
   elliottDirectionSymbol,
   formatElliottDirection,
+  formatNumber,
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
@@ -180,6 +181,19 @@ function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
         Run {observation.run_id} / {shortVersion} {profileKind} {profileHash}
       </Typography>
     </div>
+  );
+}
+
+function SpreadCell(params: ICellRendererParams<ObservationListItem>) {
+  const observation = dataFrom(params);
+  if (!observation) return null;
+  const spread = observation.spread_pips;
+  return (
+    <span>
+      {spread === null || spread === undefined
+        ? "未記録"
+        : `${formatNumber(spread)} pips`}
+    </span>
   );
 }
 
@@ -341,6 +355,14 @@ export function ObservationTable({
       headerComponent: SortHeader,
       headerComponentParams: sortHeaderParameters("symbol_name", sort, order, onSort),
       cellRenderer: SymbolCell,
+    },
+    {
+      colId: "spread_pips",
+      field: "spread_pips",
+      headerName: "Spread",
+      initialWidth: 105,
+      minWidth: 100,
+      cellRenderer: SpreadCell,
     },
     ...TIME_FRAMES.map((timeFrame): ColDef<ObservationListItem> => ({
       colId: `time_frame_${timeFrame.toLowerCase()}`,

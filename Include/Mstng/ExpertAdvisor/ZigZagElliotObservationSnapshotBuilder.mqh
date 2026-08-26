@@ -103,7 +103,8 @@ private:
                 || fromAnchorBarTime <= 0
                 || fromRunEntity.id <= 0
                 || normalizeText(fromRunEntity.analysisInputHash) == ""
-                || normalizeText(fromRunEntity.sourceMode) == "") {
+                || normalizeText(fromRunEntity.sourceMode) == ""
+                || !isSpreadValid(fromElliotAll)) {
             return false;
         }
 
@@ -117,6 +118,29 @@ private:
         }
 
         return true;
+    }
+
+    /**
+     * 分析開始時に取得したスプレッドが保存可能か確認する。
+     *
+     * @param fromElliotAll H1までのElliott分析結果
+     * @return Bid・Ask・スプレッドが有効な場合true
+     */
+    static bool isSpreadValid(ElliotAll *fromElliotAll) {
+        double bid = fromElliotAll.todayRate.bid;
+        double ask = fromElliotAll.todayRate.ask;
+        double spreadPips = fromElliotAll.todayRate.spread;
+
+        return MathIsValidNumber(bid)
+            && MathIsValidNumber(ask)
+            && MathIsValidNumber(spreadPips)
+            && bid != EMPTY_VALUE
+            && ask != EMPTY_VALUE
+            && spreadPips != EMPTY_VALUE
+            && bid > 0.0
+            && ask > 0.0
+            && ask >= bid
+            && spreadPips >= 0.0;
     }
 
     /**
@@ -159,6 +183,7 @@ private:
             fromEntity.anchorJstTime
         );
         fromEntity.capturePhase = "BAR_OPEN_FIRST_SUCCESS";
+        fromEntity.spreadPips = fromElliotAll.todayRate.spread;
         fromEntity.analysisVersion = normalizeText(
             fromRunEntity.analysisVersion
         );
@@ -373,13 +398,14 @@ private:
         ZigZagElliotObservationEntity &fromEntity,
         ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[]
     ) {
-        string sourceText = "H1_OBSERVATION_V1";
+        string sourceText = "H1_OBSERVATION_V2";
         appendText(sourceText, fromEntity.sourceMode);
         appendText(sourceText, fromEntity.sourceServer);
         appendText(sourceText, fromEntity.symbolName);
         appendInteger(sourceText, fromEntity.anchorTimeFrame);
         appendDateTime(sourceText, fromEntity.anchorBarTime);
         appendText(sourceText, fromEntity.capturePhase);
+        appendDouble(sourceText, fromEntity.spreadPips);
         appendText(sourceText, fromEntity.analysisVersion);
         appendText(sourceText, fromEntity.analysisInputHash);
         appendInteger(sourceText, ArraySize(fromTimeFrameEntities));

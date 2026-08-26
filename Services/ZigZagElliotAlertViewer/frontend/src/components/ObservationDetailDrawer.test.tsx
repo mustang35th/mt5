@@ -43,6 +43,7 @@ function observation(id = 41): ObservationDetailParent {
     anchor_time_frame: 16_385,
     anchor_time_frame_text: "H1",
     capture_phase: "BAR_OPEN_FIRST_SUCCESS",
+    spread_pips: 1.2,
     analysis_version: "2.0",
     analysis_input_hash: "analysis-hash",
     snapshot_hash: "snapshot-hash",
@@ -388,6 +389,7 @@ describe("ObservationDetailDrawer", () => {
     );
     expect(screen.getByText("JST 2026.08.10 11:00:00 / Server 2026.08.10 05:00:00")).toBeInTheDocument();
     expect(screen.getByText("Run 7")).toBeInTheDocument();
+    expect(screen.getByText("1.2 pips")).toBeInTheDocument();
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
     expect(screen.getAllByText("▲ 上昇")).toHaveLength(1);
     expect(screen.getAllByText("▼ 下降")).toHaveLength(4);
@@ -448,6 +450,7 @@ describe("ObservationDetailDrawer", () => {
     expect(cardButton).toHaveAttribute("aria-pressed", "false");
     expect(gridButton).toHaveAttribute("aria-pressed", "true");
     expect(dialog).toHaveClass("observation-grid-mode");
+    expect(screen.getByText("Spread 1.2 pips")).toBeInTheDocument();
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
     const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
     await expectColumnLayout(grid, []);
@@ -514,6 +517,30 @@ describe("ObservationDetailDrawer", () => {
     expect(screen.queryByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(5);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("distinguishes an unrecorded spread from a valid zero spread", async () => {
+    const legacyPayload = detailPayload();
+    legacyPayload.observation.spread_pips = null;
+    const zeroPayload = detailPayload();
+    zeroPayload.observation.spread_pips = 0;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(legacyPayload))
+      .mockResolvedValueOnce(jsonResponse(zeroPayload));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = render(
+      <ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("未記録")).toBeInTheDocument();
+
+    rerender(
+      <ObservationDetailDrawer observationId={42} onClose={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("0.0 pips")).toBeInTheDocument();
   });
 
   it("colors Elliott wave values independently from the analysis direction", async () => {

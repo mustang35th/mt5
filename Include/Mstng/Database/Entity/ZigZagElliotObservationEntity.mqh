@@ -51,6 +51,9 @@ struct ZigZagElliotObservationEntity {
     /** 観測タイミング種別。 */
     string capturePhase;
 
+    /** 観測取得時点のスプレッド（pips）。 */
+    double spreadPips;
+
     /** Elliott分析バージョン。 */
     string analysisVersion;
 

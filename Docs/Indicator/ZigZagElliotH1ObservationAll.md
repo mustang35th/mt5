@@ -5,7 +5,7 @@
 | 項目 | 内容 |
 |---|---|
 | 対象 | `Indicators/ZigZagElliotH1ObservationAll.mq5` |
-| プログラムバージョン | `1.00` |
+| プログラムバージョン | `1.01` |
 | 役割 | 全28通貨のH1新規足時点におけるElliott分析結果を時系列保存する |
 | 基準時間足 | H1 |
 | 保存時間足 | MN1、W1、D1、H4、H1 |
@@ -308,10 +308,10 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 | Analysis start | MN1 |
 | Anchor | H1 |
 | Run `strategy` | `H1_OBSERVATION_ALL` |
-| Run `strategy_version` | `H1_OBSERVATION_ALL_V1` |
-| Run `schema_version` | `2` |
+| Run `strategy_version` | `H1_OBSERVATION_ALL_V2` |
+| Run `schema_version` | `3` |
 
-ここでいう`schema_version = 2`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 5`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。
+ここでいう`schema_version = 3`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 5`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
 
@@ -371,18 +371,24 @@ zigzag_elliot_alert_runs (1)
 
 ### 9.2 親Observation
 
-`zigzag_elliot_observations`は、1通貨・1つのH1開始時刻・1分析Profileの観測本体です。`id`を含めて18列あります。
+`zigzag_elliot_observations`は、1通貨・1つのH1開始時刻・1分析Profileの観測本体です。`id`を含めて19列あります。
 
 | グループ | 主な項目 |
 |---|---|
 | Run | `run_id` |
 | 実行元 | `source_mode`、`source_server` |
-| 市場 | `symbol_name`、H1のanchor時間足 |
+| 市場 | `symbol_name`、H1のanchor時間足、`spread_pips` |
 | 時刻 | Server/JSTのH1開始時刻と表示文字列 |
 | 取得方法 | `capture_phase` |
 | 分析Profile | `analysis_version`、`analysis_input_hash` |
 | 完全性 | `snapshot_hash`、`time_frame_count` |
 | 作成 | `created_at`と表示文字列 |
+
+`spread_pips`には、各通貨のElliott分析開始時に取得したBidとAskの差をpips換算して保存します。エントリーのスプレッド判定およびAlert DBと同じ`todayRate.spread`を使用し、Snapshot生成時やDB保存時には再取得しません。高スプレッドも観測値として上限を設けず保存します。
+
+既存DBにはnullable列を非破壊で追加し、過去行を推測で補完しません。過去行の`NULL`は未記録、保存済みの`0.0`は有効なゼロスプレッドとして区別し、Viewerでは`NULL`を「未記録」と表示します。
+
+この値は28通貨Collectorが対象通貨を順次分析した時点のSnapshotです。別チャートで動く実エントリー判定と完全に同一時刻であることは保証しないため、厳密なReject証跡ではなく観測時点の近接値として扱います。
 
 ### 9.3 時間足別Observation
 
@@ -449,7 +455,7 @@ source_mode
 
 ### 10.4 Snapshot Hash
 
-`snapshot_hash`は、親の取得元・自然キー相当値と5時間足の構造化値から生成する16桁の大文字16進文字列です。ID、Run ID、作成日時、JSTおよび表示用日時文字列は含めません。暗号学的Hashではなく、Snapshot内容の比較用です。分析設定を識別する`analysis_input_hash`とは目的が異なります。
+`snapshot_hash`は、親の取得元・自然キー相当値、取得時スプレッドおよび5時間足の構造化値から生成する16桁の大文字16進文字列です。スプレッド追加後のHash payloadは`H1_OBSERVATION_V2`です。ID、Run ID、作成日時、JSTおよび表示用日時文字列は含めません。暗号学的Hashではなく、Snapshot内容の比較用です。分析設定を識別する`analysis_input_hash`とは目的が異なります。既存行のHashは再計算しません。
 
 - `analysis_input_hash`: どの計算設定を使用したか
 - `snapshot_hash`: その時点でどの分析結果を保存したか

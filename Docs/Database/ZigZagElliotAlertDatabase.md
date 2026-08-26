@@ -78,7 +78,7 @@ zigzag_elliot_alert_runs (1)
 | 価格・pips・% | `REAL` | `double` | 小数値を保持 |
 | 利用不能値 | 0または空文字 | 対応型 | `is_*_available`と組み合わせる |
 
-第1段階では暗黙のSQL NULLを使用しません。任意情報は利用可能フラグと0または空文字で表現します。これにより、未取得と有効な0をフラグで区別します。
+第1段階では暗黙のSQL NULLを使用しません。任意情報は利用可能フラグと0または空文字で表現します。これにより、未取得と有効な0をフラグで区別します。後方互換migrationで追加するH1 Observationの`spread_pips`だけは例外で、過去行の`NULL`を未記録、新規行の`0.0`を有効値として区別します。過去行への推測バックフィルは行いません。
 
 ### 5.1 分析ProfileとHash
 
@@ -198,7 +198,7 @@ UNIQUE(
 3. hashが異なる場合も既存行と子行を更新しません。
 4. hash差異をINFOへ記録し、最初のスナップショットを維持します。
 
-Alertの`snapshot_hash`はアラート判定、H1方向一致診断、時間足別分析および保存対象となる最新Wave全ポイントから生成します。H1 Observationの`snapshot_hash`も、保存した観測結果から生成します。いずれも分析設定を識別する`analysis_input_hash`とは用途が異なります。
+Alertの`snapshot_hash`はアラート判定、H1方向一致診断、時間足別分析および保存対象となる最新Wave全ポイントから生成します。H1 Observationの`snapshot_hash`は、取得時の`spread_pips`を含む保存対象の観測結果から生成します。いずれも分析設定を識別する`analysis_input_hash`とは用途が異なります。
 
 同一シグナルの再カウント推移が必要になった場合は、第2段階以降でRevisionテーブルを追加します。
 

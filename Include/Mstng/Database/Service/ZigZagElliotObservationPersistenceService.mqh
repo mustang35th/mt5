@@ -476,6 +476,9 @@ private:
                 )
                 || fromObservationEntity.capturePhase
                     != "BAR_OPEN_FIRST_SUCCESS"
+                || !MathIsValidNumber(fromObservationEntity.spreadPips)
+                || fromObservationEntity.spreadPips == EMPTY_VALUE
+                || fromObservationEntity.spreadPips < 0.0
                 || fromObservationEntity.analysisVersion == ""
                 || fromObservationEntity.analysisInputHash == ""
                 || fromObservationEntity.snapshotHash == ""

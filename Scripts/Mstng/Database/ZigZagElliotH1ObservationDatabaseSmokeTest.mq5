@@ -497,7 +497,7 @@ void initializeRunEntity(ZigZagElliotAlertRunEntity &fromEntity) {
     ZeroMemory(fromEntity);
     fromEntity.id = 0;
     fromEntity.runUid = "zigzag-elliot-h1-observation-smoke-run-v1";
-    fromEntity.schemaVersion = 2;
+    fromEntity.schemaVersion = 3;
     fromEntity.sourceMode = "TESTER";
     fromEntity.source = "ZIGZAG_ELLIOT";
     fromEntity.programName = "ZigZagElliot";
@@ -571,6 +571,7 @@ void initializeObservationEntity(
         TIME_DATE | TIME_SECONDS
     );
     fromEntity.capturePhase = "BAR_OPEN_FIRST_SUCCESS";
+    fromEntity.spreadPips = 31.4;
     fromEntity.analysisVersion =
         ZigZagElliotAnalysisProfile::getAnalysisVersion();
     fromEntity.analysisInputHash =
@@ -728,6 +729,67 @@ void initializeTimeFrameEntities(
     // NULL文字列をServiceが空文字列へ正規化することも確認する。
     fromEntities[0].previousLastElliotLabel = NULL;
     fromEntities[0].latestSubElliotLabel = NULL;
+}
+
+/**
+ * 旧スキーマを再現するため、スプレッド列を削除する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 削除できた場合true。
+ */
+bool removeSpreadSchemaForMigrationTest(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    return executeSql(
+        fromDatabaseHandle,
+        "ALTER TABLE zigzag_elliot_observations DROP COLUMN spread_pips",
+        "remove spread schema for migration test",
+        fromLogger
+    );
+}
+
+/**
+ * 非破壊migrationで追加したnullableスプレッド列を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 列定義が正しい場合true。
+ */
+bool verifySpreadMigration(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    long columnCount = 0;
+
+    if (!readLong(
+            fromDatabaseHandle,
+            "SELECT COUNT(*) FROM sqlite_master "
+                + "WHERE type = 'table' "
+                + "AND name = 'zigzag_elliot_observations' "
+                + "AND LOWER(sql) LIKE '%spread_pips real%' "
+                + "AND LOWER(sql) LIKE "
+                + "'%check(spread_pips is null or spread_pips >= 0)%'",
+            columnCount,
+            fromLogger
+        )) {
+        return false;
+    }
+
+    if (columnCount == 1) {
+        return true;
+    }
+
+    fromLogger.error(
+        __FUNCTION__,
+        StringFormat(
+            "Spread migration mismatch. columnCount=%I64d",
+            columnCount
+        )
+    );
+
+    return false;
 }
 
 /**
@@ -1104,6 +1166,7 @@ bool verifySavedObservation(
     long layoutCount = 0;
     long h1AnchorCount = 0;
     long invalidAnchorCount = 0;
+    long spreadValueCount = 0;
     long retainedHashCount = 0;
     long replacedChildCount = 0;
     long normalizedTextCount = 0;
@@ -1194,6 +1257,14 @@ bool verifySavedObservation(
                 fromDatabaseHandle,
                 "SELECT COUNT(*) FROM zigzag_elliot_observations WHERE id = "
                     + observationIdText
+                    + " AND ABS(spread_pips - 31.4) < 0.000001",
+                spreadValueCount,
+                fromLogger
+            )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) FROM zigzag_elliot_observations WHERE id = "
+                    + observationIdText
                     + " AND snapshot_hash = 'observation-snapshot-v1'",
                 retainedHashCount,
                 fromLogger
@@ -1260,6 +1331,7 @@ bool verifySavedObservation(
             || layoutCount != 5
             || h1AnchorCount != 1
             || invalidAnchorCount != 0
+            || spreadValueCount != 1
             || retainedHashCount != 1
             || replacedChildCount != 0
             || normalizedTextCount != 1
@@ -1272,7 +1344,7 @@ bool verifySavedObservation(
             StringFormat(
                 "Observation mismatch. runs=%I64d observations=%I64d "
                 + "timeFrames=%I64d layout=%I64d h1Anchor=%I64d "
-                + "invalidAnchor=%I64d retainedHash=%I64d "
+                + "invalidAnchor=%I64d spread=%I64d retainedHash=%I64d "
                 + "replacedChild=%I64d normalized=%I64d "
                 + "foreignKeys=%I64d rawTables=%I64d pointTables=%I64d "
                 + "integrity=%s",
@@ -1282,6 +1354,7 @@ bool verifySavedObservation(
                 layoutCount,
                 h1AnchorCount,
                 invalidAnchorCount,
+                spreadValueCount,
                 retainedHashCount,
                 replacedChildCount,
                 normalizedTextCount,
@@ -1388,6 +1461,17 @@ void OnStart() {
 
         return;
     }
+
+    if (!removeSpreadSchemaForMigrationTest(databaseHandle, logger)
+            || !persistenceService.createTables()
+            || !verifySpreadMigration(databaseHandle, logger)
+            || !persistenceService.createTables()) {
+        logger.error(__FUNCTION__, "Spread schema migration verification failed.");
+
+        return;
+    }
+
+    logger.info(__FUNCTION__, "Spread schema migration was verified.");
 
     ZigZagElliotAlertRunEntity runEntity;
     initializeRunEntity(runEntity);
@@ -1549,6 +1633,37 @@ void OnStart() {
     }
 
     logger.info(__FUNCTION__, "Expected child JST validation failure was verified.");
+
+    ZigZagElliotObservationEntity invalidSpreadObservationEntity;
+    ZigZagElliotObservationTimeFrameEntity invalidSpreadTimeFrameEntities[];
+    initializeObservationEntity(
+        runEntity.id,
+        D'2026.07.20 01:00:00',
+        "observation-snapshot-invalid-spread",
+        invalidSpreadObservationEntity
+    );
+    initializeTimeFrameEntities(invalidSpreadTimeFrameEntities);
+    invalidSpreadObservationEntity.spreadPips = -0.1;
+    logger.info(
+        __FUNCTION__,
+        "Starting expected spread validation failure verification."
+    );
+
+    if (persistenceService.saveSnapshot(
+            invalidSpreadObservationEntity,
+            invalidSpreadTimeFrameEntities
+        )
+            || !areSnapshotIdsCleared(
+                invalidSpreadObservationEntity,
+                invalidSpreadTimeFrameEntities
+            )
+            || !verifyTotalCounts(databaseHandle, 1, 5, logger)) {
+        logger.error(__FUNCTION__, "Spread validation failure verification failed.");
+
+        return;
+    }
+
+    logger.info(__FUNCTION__, "Expected spread validation failure was verified.");
 
     if (!createRollbackTrigger(databaseHandle, logger)) {
         return;

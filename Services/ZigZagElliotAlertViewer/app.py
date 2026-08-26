@@ -952,6 +952,15 @@ class AlertDatabase:
                 }
         return {"available": True, "reason": None}
 
+    @staticmethod
+    def observation_spread_available(connection: Connection) -> bool:
+        """Return whether observation parents contain captured spread values."""
+
+        return "spread_pips" in AlertDatabase.table_columns(
+            connection,
+            "zigzag_elliot_observations",
+        )
+
     def validate(self) -> dict[str, Any]:
         """Validate the required schema without modifying the database."""
 
@@ -1611,6 +1620,7 @@ class AlertDatabase:
     def observation_rows_cte(
         filters: ObservationFilters,
         analysis_profile_available: bool = False,
+        spread_available: bool = False,
     ) -> str:
         """Return filtered parents; child rows are loaded only after paging."""
 
@@ -1662,6 +1672,9 @@ class AlertDatabase:
             analysis_profile_filter_sql = (
                 f" AND ({profile_kind_expression}) = :analysis_profile_kind"
             )
+        spread_expression = "NULL AS spread_pips"
+        if spread_available:
+            spread_expression = "o.spread_pips"
         return f"""
             WITH observation_rows AS (
                 SELECT
@@ -1674,6 +1687,7 @@ class AlertDatabase:
                     o.anchor_time_frame_text, o.anchor_bar_time,
                     o.anchor_bar_time_text, o.anchor_jst_time,
                     o.anchor_jst_time_text, o.capture_phase,
+                    {spread_expression},
                     o.analysis_version, o.analysis_input_hash,
                     {analysis_profile_columns}
                     o.snapshot_hash, o.time_frame_count,
@@ -1752,9 +1766,11 @@ class AlertDatabase:
             if not self.observation_schema_status(connection)["available"]:
                 return self.unavailable_observation_list(filters)
             analysis_profile_status = self.analysis_profile_schema_status(connection)
+            spread_available = self.observation_spread_available(connection)
             cte = self.observation_rows_cte(
                 filters,
                 analysis_profile_status["available"],
+                spread_available,
             )
             count_sql = cte + " SELECT COUNT(*) FROM observation_rows"
             list_sql = (
@@ -1822,9 +1838,11 @@ class AlertDatabase:
             if not self.observation_schema_status(connection)["available"]:
                 return unavailable
             analysis_profile_status = self.analysis_profile_schema_status(connection)
+            spread_available = self.observation_spread_available(connection)
             sql = self.observation_rows_cte(
                 filters,
                 analysis_profile_status["available"],
+                spread_available,
             ) + """
                 SELECT COUNT(*) AS total_count,
                        COALESCE(SUM(CASE WHEN source_mode = 'LIVE'
@@ -1923,6 +1941,7 @@ class AlertDatabase:
 
         parent_sql_template = """
             SELECT o.*,
+                   {spread_pips_column}
                    is_gmo_target(o.symbol_name) AS is_gmo_target,
                    r.run_uid, r.source, r.program_name, r.program_version,
                    r.strategy, r.strategy_version, r.tester_from, r.tester_to,
@@ -1947,6 +1966,9 @@ class AlertDatabase:
                     "navigation": {"older": None, "newer": None},
                 }
             analysis_profile_status = self.analysis_profile_schema_status(connection)
+            spread_pips_column = "NULL AS spread_pips,"
+            if self.observation_spread_available(connection):
+                spread_pips_column = ""
             analysis_profile_columns = """
                 NULL AS analysis_input_text,
                 1 AS analysis_profile_is_legacy,
@@ -1981,6 +2003,7 @@ class AlertDatabase:
                 """
             parent_sql = parent_sql_template.format(
                 analysis_profile_columns=analysis_profile_columns,
+                spread_pips_column=spread_pips_column,
             )
             connection.exec_driver_sql("BEGIN")
             try:
