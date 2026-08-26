@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.00"
+#property version   "1.01"
 #property script_show_inputs
 
 #include <Mstng\Analysis\ZigZagElliotEntryCandidateQueryService.mqh>
@@ -15,6 +15,17 @@
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\RateUtil.mqh>
+
+/**
+ * 仮想エントリー時刻の評価方法。
+ */
+enum ZigZagElliotEntryOutcomeTimingMode {
+    /** H1始値と判定時刻が一致するレコードだけを評価する。 */
+    ZIGZAG_ELLIOT_ENTRY_OUTCOME_H1_OPEN_ONLY = 0,
+
+    /** 判定後、最初のM1始値で仮想エントリーする。 */
+    ZIGZAG_ELLIOT_ENTRY_OUTCOME_NEXT_M1_OPEN = 1
+};
 
 /** 参照元Alert DBファイル名。 */
 input string sourceDatabaseFileName =
@@ -33,6 +44,10 @@ input bool databaseUseCommonFolder = true;
 /** 初期SL未到達時に決済するH1本数。 */
 input int horizonH1Bars = 48;
 
+/** 仮想エントリー時刻の評価方法。 */
+input ZigZagElliotEntryOutcomeTimingMode entryTimingMode =
+    ZIGZAG_ELLIOT_ENTRY_OUTCOME_NEXT_M1_OPEN;
+
 /** 履歴取得の最大試行回数。 */
 input int historyRetryCount = 5;
 
@@ -45,11 +60,19 @@ input int historyRetryIntervalMilliseconds = 500;
 /** 進捗を出力する処理件数間隔。 */
 input int progressInterval = 25;
 
-/** M1価格の評価モデル。 */
-const string outcomePriceModel = "M1_BID_SPREAD_APPROX_V1";
+/** H1始値専用のM1価格評価モデル。 */
+const string outcomeH1OpenPriceModel = "M1_BID_SPREAD_APPROX_V1";
 
-/** 後処理ロジックのバージョン。 */
-const string outcomeEvaluationVersion = "INITIAL_SL_HORIZON_V2";
+/** H1始値専用の後処理ロジックバージョン。 */
+const string outcomeH1OpenEvaluationVersion = "INITIAL_SL_HORIZON_V2";
+
+/** 次M1始値のM1価格評価モデル。 */
+const string outcomeNextM1OpenPriceModel =
+    "M1_NEXT_OPEN_BID_SPREAD_APPROX_V1";
+
+/** 次M1始値の後処理ロジックバージョン。 */
+const string outcomeNextM1OpenEvaluationVersion =
+    "INITIAL_SL_NEXT_M1_OPEN_HORIZON_V1";
 
 /** Alert DBと再計算リスクの許容差pips。 */
 const double riskTolerancePips = 0.11;
@@ -78,6 +101,55 @@ struct OutcomeHistoryRange {
 };
 
 /**
+ * H1始値専用モードか判定する。
+ *
+ * @return H1始値専用の場合true。
+ */
+bool isOutcomeH1OpenOnly() {
+    return entryTimingMode
+        == ZIGZAG_ELLIOT_ENTRY_OUTCOME_H1_OPEN_ONLY;
+}
+
+/**
+ * エントリー時刻モデルの表示名を取得する。
+ *
+ * @return 設定中モデルの表示名。
+ */
+string getOutcomeTimingModeText() {
+    if (isOutcomeH1OpenOnly()) {
+        return "H1_OPEN_ONLY";
+    }
+
+    return "NEXT_M1_OPEN";
+}
+
+/**
+ * 設定中の価格評価モデルを取得する。
+ *
+ * @return DBへ保存する価格評価モデル。
+ */
+string getOutcomePriceModel() {
+    if (isOutcomeH1OpenOnly()) {
+        return outcomeH1OpenPriceModel;
+    }
+
+    return outcomeNextM1OpenPriceModel;
+}
+
+/**
+ * 設定中の評価ロジックバージョンを取得する。
+ *
+ * @return DBへ保存する評価ロジックバージョン。
+ */
+string getOutcomeEvaluationVersion() {
+    if (isOutcomeH1OpenOnly()) {
+        return outcomeH1OpenEvaluationVersion;
+    }
+
+    return outcomeNextM1OpenEvaluationVersion;
+}
+
+/**
  * 現在時刻を取得する。
  *
  * @return 取引サーバー時刻。利用不能時はローカル時刻。
@@ -104,6 +176,15 @@ datetime getOutcomeCurrentTime() {
  * @return 実行可能な場合true。
  */
 bool validateOutcomeInputs(Logger &fromLogger) {
+    if (entryTimingMode
+            != ZIGZAG_ELLIOT_ENTRY_OUTCOME_H1_OPEN_ONLY
+            && entryTimingMode
+                != ZIGZAG_ELLIOT_ENTRY_OUTCOME_NEXT_M1_OPEN) {
+        fromLogger.error(__FUNCTION__, "entryTimingMode is invalid.");
+
+        return false;
+    }
+
     if (sourceDatabaseFileName == "") {
         fromLogger.error(__FUNCTION__, "sourceDatabaseFileName is empty.");
 
@@ -168,7 +249,11 @@ bool printRecentOutcomeSourceRuns(
 ) {
     SourceRunInfo runInfos[];
 
-    if (!fromQueryService.findRecentEligibleRuns(10, runInfos)) {
+    if (!fromQueryService.findRecentEligibleRuns(
+            10,
+            isOutcomeH1OpenOnly(),
+            runInfos
+        )) {
         return false;
     }
 
@@ -177,7 +262,8 @@ bool printRecentOutcomeSourceRuns(
     if (runCount <= 0) {
         fromLogger.warn(
             __FUNCTION__,
-            "H1 ENTRYを持つRunが見つかりません。"
+            "対象Entryを持つRunが見つかりません。 timingMode="
+                + getOutcomeTimingModeText()
         );
 
         return true;
@@ -185,7 +271,8 @@ bool printRecentOutcomeSourceRuns(
 
     fromLogger.info(
         __FUNCTION__,
-        "sourceRunIdを指定してください。直近候補を表示します。"
+        "sourceRunIdを指定してください。直近候補を表示します。 timingMode="
+            + getOutcomeTimingModeText()
     );
 
     for (int i = 0; i < runCount; i++) {
@@ -946,10 +1033,10 @@ bool copyOutcomeH1Horizon(
 }
 
 /**
- * エントリー時刻から評価終了までの完成済みM1を取得する。
+ * シグナルH1始値から評価終了までの完成済みM1を取得する。
  *
  * @param fromSymbolName 対象シンボル。
- * @param fromEntryTime エントリー時刻。
+ * @param fromHistoryStartTime 履歴検証を開始するH1始値。
  * @param fromHorizonEnd 評価終了時刻。
  * @param fromH1Rates エントリーH1からの履歴。
  * @param fromHorizonH1Bars 評価対象H1本数。
@@ -961,7 +1048,7 @@ bool copyOutcomeH1Horizon(
  */
 bool copyOutcomeM1Rates(
     const string fromSymbolName,
-    const datetime fromEntryTime,
+    const datetime fromHistoryStartTime,
     const datetime fromHorizonEnd,
     const MqlRates &fromH1Rates[],
     const int fromHorizonH1Bars,
@@ -991,7 +1078,7 @@ bool copyOutcomeM1Rates(
         copiedCount = CopyRates(
             fromSymbolName,
             PERIOD_M1,
-            fromEntryTime,
+            fromHistoryStartTime,
             lastIncludedTime,
             fromRates
         );
@@ -1030,7 +1117,7 @@ bool copyOutcomeM1Rates(
     string diagnosticText = buildOutcomeSeriesDiagnosticText(
         fromSymbolName,
         PERIOD_M1,
-        fromEntryTime,
+        fromHistoryStartTime,
         lastIncludedTime,
         copiedCount,
         copyErrorCode
@@ -1041,6 +1128,94 @@ bool copyOutcomeM1Rates(
     }
 
     fromCalculationNote += diagnosticText;
+
+    return false;
+}
+
+/**
+ * 仮想エントリー価格の確定に使用する完成済みM1を1本取得する。
+ *
+ * H1本数別の履歴取得結果にかかわらず同じ仮想価格を保存できるよう、
+ * NEXT_M1_OPENのエントリーM1を評価期間全体とは分けて取得する。
+ *
+ * @param fromSymbolName 対象シンボル。
+ * @param fromEntryTime 仮想エントリーM1開始時刻。
+ * @param fromRate 取得したM1格納先。
+ * @param fromDataStatus 取得不能理由格納先。
+ * @param fromCalculationNote 取得不能の診断情報格納先。
+ * @return 指定時刻のM1を取得できた場合true。
+ */
+bool copyOutcomeEntryM1Rate(
+    const string fromSymbolName,
+    const datetime fromEntryTime,
+    MqlRates &fromRate,
+    string &fromDataStatus,
+    string &fromCalculationNote
+) {
+    fromDataStatus = "ENTRY_M1_HISTORY_NOT_READY";
+    fromCalculationNote = "";
+    MqlRates rates[];
+    ArraySetAsSeries(rates, false);
+    int copiedCount = -1;
+    int copyErrorCode = 0;
+    int m1Seconds = PeriodSeconds(PERIOD_M1);
+
+    if (m1Seconds <= 0) {
+        fromDataStatus = "INVALID_TIMEFRAME_SECONDS";
+
+        return false;
+    }
+
+    datetime requestedTo = fromEntryTime + m1Seconds - 1;
+
+    for (int i = 0; i < historyRetryCount; i++) {
+        if (IsStopped()) {
+            fromDataStatus = "STOPPED";
+
+            return false;
+        }
+
+        ArrayResize(rates, 0);
+        ResetLastError();
+        copiedCount = CopyRates(
+            fromSymbolName,
+            PERIOD_M1,
+            fromEntryTime,
+            requestedTo,
+            rates
+        );
+        copyErrorCode = GetLastError();
+
+        if (copiedCount == 1
+                && ArraySize(rates) == 1
+                && rates[0].time == fromEntryTime
+                && MathIsValidNumber(rates[0].open)
+                && rates[0].open > 0.0
+                && rates[0].spread >= 0) {
+            fromRate = rates[0];
+            fromDataStatus = "READY";
+
+            return true;
+        }
+
+        if (i + 1 < historyRetryCount
+                && historyRetryIntervalMilliseconds > 0) {
+            Sleep(historyRetryIntervalMilliseconds);
+        }
+    }
+
+    if (copiedCount > 0) {
+        fromDataStatus = "ENTRY_M1_RATE_INVALID";
+    }
+
+    fromCalculationNote = buildOutcomeSeriesDiagnosticText(
+        fromSymbolName,
+        PERIOD_M1,
+        fromEntryTime,
+        requestedTo,
+        copiedCount,
+        copyErrorCode
+    );
 
     return false;
 }
@@ -1080,9 +1255,303 @@ void initializeOutcomeEntity(
     fromEntity.exitReason = "NOT_EVALUATED";
     fromEntity.dataStatus = "NOT_EVALUATED";
     fromEntity.calculationNote = "";
-    fromEntity.priceModel = outcomePriceModel;
-    fromEntity.evaluationVersion = outcomeEvaluationVersion;
+    fromEntity.priceModel = getOutcomePriceModel();
+    fromEntity.evaluationVersion = getOutcomeEvaluationVersion();
     fromEntity.createdAt = getOutcomeCurrentTime();
+}
+
+/**
+ * 2つの計算補足をセミコロン区切りで連結する。
+ *
+ * @param fromFirst 前半の補足。
+ * @param fromSecond 後半の補足。
+ * @return 連結した補足。
+ */
+string joinOutcomeCalculationNote(
+    const string fromFirst,
+    const string fromSecond
+) {
+    if (fromFirst == "") {
+        return fromSecond;
+    }
+
+    if (fromSecond == "") {
+        return fromFirst;
+    }
+
+    return fromFirst + ";" + fromSecond;
+}
+
+/**
+ * 設定中モデルの仮想エントリー時刻を確定する。
+ *
+ * @param fromCandidate エントリー候補。
+ * @param fromEntryTime 仮想エントリー時刻格納先。
+ * @param fromDataStatus 確定不能理由格納先。
+ * @return 仮想エントリー時刻を確定できた場合true。
+ */
+bool resolveOutcomeEntryTime(
+    EntryCandidate &fromCandidate,
+    datetime &fromEntryTime,
+    string &fromDataStatus
+) {
+    fromEntryTime = 0;
+    fromDataStatus = "";
+
+    if (isOutcomeH1OpenOnly()) {
+        if (((long)fromCandidate.entryTime % 60) != 0) {
+            fromDataStatus = "ENTRY_MINUTE_AMBIGUOUS";
+
+            return false;
+        }
+
+        if (fromCandidate.entryTime != fromCandidate.currentBarTime) {
+            fromDataStatus = "ENTRY_NOT_H1_OPEN";
+
+            return false;
+        }
+
+        fromEntryTime = fromCandidate.entryTime;
+
+        return true;
+    }
+
+    int h1Seconds = PeriodSeconds(PERIOD_H1);
+    int m1Seconds = PeriodSeconds(PERIOD_M1);
+
+    if (h1Seconds <= 0 || m1Seconds <= 0) {
+        fromDataStatus = "INVALID_TIMEFRAME_SECONDS";
+
+        return false;
+    }
+
+    datetime h1EndTime = fromCandidate.currentBarTime + h1Seconds;
+
+    if (fromCandidate.entryTime < fromCandidate.currentBarTime
+            || fromCandidate.entryTime >= h1EndTime) {
+        fromDataStatus = "SIGNAL_TIME_OUTSIDE_H1";
+
+        return false;
+    }
+
+    long signalSeconds = (long)fromCandidate.entryTime;
+    long remainderSeconds = signalSeconds % m1Seconds;
+    fromEntryTime = fromCandidate.entryTime;
+
+    if (remainderSeconds != 0) {
+        fromEntryTime = (datetime)(
+            signalSeconds + m1Seconds - remainderSeconds
+        );
+    }
+
+    if (fromEntryTime >= h1EndTime) {
+        fromEntryTime = 0;
+        fromDataStatus = "NEXT_M1_OPEN_OUTSIDE_H1";
+
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * 完全性確認済みM1から仮想エントリー以降を切り出す。
+ *
+ * NEXT_M1_OPENでは仮想エントリー時刻と同じM1が必要。H1_OPEN_ONLYでは
+ * 無ティック分を許容し、仮想エントリー時刻以降の最初のM1から評価する。
+ *
+ * @param fromFullRates H1始値から取得した完全性確認済みM1。
+ * @param fromEntryTime 仮想エントリー時刻。
+ * @param fromRates 計算用M1格納先。
+ * @param fromDataStatus 切り出し不能理由格納先。
+ * @return 計算用M1を切り出せた場合true。
+ */
+bool copyOutcomeCalculationRates(
+    const MqlRates &fromFullRates[],
+    const datetime fromEntryTime,
+    MqlRates &fromRates[],
+    string &fromDataStatus
+) {
+    ArrayResize(fromRates, 0);
+    ArraySetAsSeries(fromRates, false);
+    fromDataStatus = "";
+    int fullRateCount = ArraySize(fromFullRates);
+    int startIndex = -1;
+
+    for (int i = 0; i < fullRateCount; i++) {
+        if (fromFullRates[i].time < fromEntryTime) {
+            continue;
+        }
+
+        if (!isOutcomeH1OpenOnly()
+                && fromFullRates[i].time != fromEntryTime) {
+            fromDataStatus = "NEXT_M1_OPEN_RATE_NOT_FOUND";
+
+            return false;
+        }
+
+        startIndex = i;
+        break;
+    }
+
+    if (startIndex < 0) {
+        fromDataStatus = "ENTRY_M1_RATE_NOT_FOUND";
+
+        return false;
+    }
+
+    int rateCount = fullRateCount - startIndex;
+
+    if (ArrayResize(fromRates, rateCount) != rateCount) {
+        ArrayResize(fromRates, 0);
+        fromDataStatus = "M1_ARRAY_RESIZE_FAILED";
+
+        return false;
+    }
+
+    for (int i = 0; i < rateCount; i++) {
+        fromRates[i] = fromFullRates[startIndex + i];
+    }
+
+    return true;
+}
+
+/**
+ * 設定中モデルの仮想エントリー価格を確定する。
+ *
+ * NEXT_M1_OPENのBUYはM1 Bid始値へspreadを加えたAsk近似、SELLは
+ * M1 Bid始値を使用する。H1_OPEN_ONLYはAlert参照価格を維持する。
+ *
+ * @param fromCandidate エントリー候補。
+ * @param fromRates 仮想エントリー以降のM1。
+ * @param fromPoint 1point相当の価格幅。
+ * @param fromPipSize 1pip相当の価格幅。
+ * @param fromEntryTime 仮想エントリー時刻。
+ * @param fromEntryPrice 仮想エントリー価格格納先。
+ * @param fromCalculationNote エントリーモデル補足格納先。
+ * @return 仮想エントリー価格を確定できた場合true。
+ */
+bool resolveOutcomeEntryPrice(
+    EntryCandidate &fromCandidate,
+    const MqlRates &fromRates[],
+    const double fromPoint,
+    const double fromPipSize,
+    const datetime fromEntryTime,
+    double &fromEntryPrice,
+    string &fromCalculationNote
+) {
+    fromEntryPrice = fromCandidate.entryPrice;
+    fromCalculationNote = "";
+
+    if (isOutcomeH1OpenOnly()) {
+        return true;
+    }
+
+    if (ArraySize(fromRates) <= 0
+            || fromRates[0].time != fromEntryTime) {
+        return false;
+    }
+
+    double spreadPrice = (double)fromRates[0].spread * fromPoint;
+    double modeledSpreadPips = spreadPrice / fromPipSize;
+    fromEntryPrice = fromRates[0].open;
+
+    if (fromCandidate.side == "BUY") {
+        fromEntryPrice += spreadPrice;
+    } else if (fromCandidate.side != "SELL") {
+        return false;
+    }
+
+    if (!MathIsValidNumber(fromEntryPrice) || fromEntryPrice <= 0.0) {
+        return false;
+    }
+
+    fromCalculationNote = StringFormat(
+        "ENTRY_TIMING=NEXT_M1_OPEN;HORIZON_ANCHOR=SIGNAL_H1;SIGNAL_TIME=%s;SOURCE_ENTRY_PRICE=%.10f;MODELED_ENTRY_TIME=%s;MODELED_ENTRY_PRICE=%.10f;MODELED_SPREAD_PIPS=%.8f",
+        TimeToString(fromCandidate.entryTime, TIME_DATE | TIME_SECONDS),
+        fromCandidate.entryPrice,
+        TimeToString(fromEntryTime, TIME_DATE | TIME_SECONDS),
+        fromEntryPrice,
+        modeledSpreadPips
+    );
+
+    if (fromRates[0].spread == 0) {
+        fromCalculationNote += ";MODELED_ENTRY_SPREAD_ZERO";
+    }
+
+    return true;
+}
+
+/**
+ * 仮想エントリー価格から初期SLまでのリスクを確認する。
+ *
+ * H1_OPEN_ONLYではAlert DBのリスクとの一致も確認する。NEXT_M1_OPENは
+ * 約定価格を置き換えるため、差分を正常なモデル差として補足へ保存する。
+ *
+ * @param fromCandidate エントリー候補。
+ * @param fromEntryPrice 仮想エントリー価格。
+ * @param fromPipSize 1pip相当の価格幅。
+ * @param fromEntity 保存用Outcome。
+ * @return リスクが評価可能な場合true。
+ */
+bool validateOutcomeRisk(
+    EntryCandidate &fromCandidate,
+    const double fromEntryPrice,
+    const double fromPipSize,
+    ZigZagElliotEntryOutcomeEntity &fromEntity
+) {
+    if ((fromCandidate.side == "BUY"
+                && fromCandidate.stopLoss >= fromEntryPrice)
+            || (fromCandidate.side == "SELL"
+                && fromCandidate.stopLoss <= fromEntryPrice)) {
+        fromEntity.dataStatus = "INVALID_STOP_LOSS_SIDE";
+
+        return false;
+    }
+
+    fromEntity.calculatedRiskPips = MathAbs(
+        fromEntryPrice - fromCandidate.stopLoss
+    ) / fromPipSize;
+
+    if (!MathIsValidNumber(fromEntity.calculatedRiskPips)
+            || fromEntity.calculatedRiskPips <= 0.0) {
+        fromEntity.calculatedRiskPips = 0.0;
+        fromEntity.dataStatus = "INVALID_RISK";
+
+        return false;
+    }
+
+    double riskDifference = MathAbs(
+        fromEntity.calculatedRiskPips - fromCandidate.riskPips
+    );
+
+    if (isOutcomeH1OpenOnly()) {
+        if (riskDifference > riskTolerancePips) {
+            fromEntity.dataStatus = "RISK_MISMATCH";
+            fromEntity.calculationNote = StringFormat(
+                "source=%.8f calculated=%.8f difference=%.8f",
+                fromCandidate.riskPips,
+                fromEntity.calculatedRiskPips,
+                riskDifference
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    fromEntity.calculationNote = joinOutcomeCalculationNote(
+        fromEntity.calculationNote,
+        StringFormat(
+            "SOURCE_RISK_PIPS=%.8f;MODELED_RISK_PIPS=%.8f;RISK_DIFFERENCE_PIPS=%.8f",
+            fromCandidate.riskPips,
+            fromEntity.calculatedRiskPips,
+            riskDifference
+        )
+    );
+
+    return true;
 }
 
 /**
@@ -1196,43 +1665,77 @@ void evaluateOutcomeCandidate(
         return;
     }
 
-    fromEntity.calculatedRiskPips = MathAbs(
-        fromCandidate.entryPrice - fromCandidate.stopLoss
-    ) / pipSize;
+    datetime entryTime = 0;
+    string entryStatus = "";
 
-    if (!MathIsValidNumber(fromEntity.calculatedRiskPips)
-            || fromEntity.calculatedRiskPips <= 0.0) {
-        fromEntity.calculatedRiskPips = 0.0;
-        fromEntity.dataStatus = "INVALID_RISK";
-
-        return;
-    }
-
-    double riskDifference = MathAbs(
-        fromEntity.calculatedRiskPips - fromCandidate.riskPips
-    );
-
-    if (riskDifference > riskTolerancePips) {
-        fromEntity.dataStatus = "RISK_MISMATCH";
-        fromEntity.calculationNote = StringFormat(
-            "source=%.8f calculated=%.8f difference=%.8f",
-            fromCandidate.riskPips,
-            fromEntity.calculatedRiskPips,
-            riskDifference
-        );
+    if (!resolveOutcomeEntryTime(
+            fromCandidate,
+            entryTime,
+            entryStatus
+        )) {
+        fromEntity.dataStatus = entryStatus;
 
         return;
     }
 
-    if (((long)fromCandidate.entryTime % 60) != 0) {
-        fromEntity.dataStatus = "ENTRY_MINUTE_AMBIGUOUS";
+    fromEntity.entryTime = entryTime;
+    fromEntity.evaluationStartTime = entryTime;
+    MqlRates entryRates[];
+
+    if (!isOutcomeH1OpenOnly()) {
+        MqlRates entryRate;
+        string entryHistoryNote = "";
+
+        if (!copyOutcomeEntryM1Rate(
+                fromCandidate.symbolName,
+                entryTime,
+                entryRate,
+                entryStatus,
+                entryHistoryNote
+            )) {
+            fromEntity.dataStatus = entryStatus;
+            fromEntity.calculationNote = entryHistoryNote;
+
+            return;
+        }
+
+        ArrayResize(entryRates, 1);
+        ArraySetAsSeries(entryRates, false);
+        entryRates[0] = entryRate;
+    }
+
+    double entryPrice = 0.0;
+    string entryNote = "";
+
+    if (!resolveOutcomeEntryPrice(
+            fromCandidate,
+            entryRates,
+            point,
+            pipSize,
+            entryTime,
+            entryPrice,
+            entryNote
+        )) {
+        fromEntity.dataStatus = "ENTRY_PRICE_RESOLUTION_FAILED";
 
         return;
     }
 
-    if (fromCandidate.entryTime != fromCandidate.currentBarTime) {
-        fromEntity.dataStatus = "ENTRY_NOT_H1_OPEN";
+    fromEntity.entryPrice = entryPrice;
+    fromEntity.calculationNote = entryNote;
 
+    if (!isOutcomeH1OpenOnly()) {
+        if (entryRates[0].spread == 0) {
+            fromEntity.isZeroSpread = 1;
+        }
+    }
+
+    if (!validateOutcomeRisk(
+            fromCandidate,
+            entryPrice,
+            pipSize,
+            fromEntity
+        )) {
         return;
     }
 
@@ -1251,44 +1754,63 @@ void evaluateOutcomeCandidate(
             historyNote
         )) {
         fromEntity.dataStatus = historyStatus;
-        fromEntity.calculationNote = historyNote;
+        fromEntity.calculationNote = joinOutcomeCalculationNote(
+            fromEntity.calculationNote,
+            historyNote
+        );
 
         return;
     }
 
     fromEntity.evaluationEndTime = horizonEnd;
-    MqlRates m1Rates[];
+    MqlRates fullM1Rates[];
 
     if (!copyOutcomeM1Rates(
             fromCandidate.symbolName,
-            fromCandidate.entryTime,
+            fromCandidate.currentBarTime,
             horizonEnd,
             h1Rates,
             horizonH1Bars,
             point,
-            m1Rates,
+            fullM1Rates,
             historyStatus,
             historyNote
         )) {
-        fromEntity.copiedM1Bars = ArraySize(m1Rates);
+        fromEntity.copiedM1Bars = ArraySize(fullM1Rates);
         fromEntity.dataStatus = historyStatus;
-        fromEntity.calculationNote = historyNote;
+        fromEntity.calculationNote = joinOutcomeCalculationNote(
+            fromEntity.calculationNote,
+            historyNote
+        );
 
         return;
     }
 
-    fromEntity.copiedM1Bars = ArraySize(m1Rates);
+    fromEntity.copiedM1Bars = ArraySize(fullM1Rates);
+    MqlRates calculationRates[];
+
+    if (!copyOutcomeCalculationRates(
+            fullM1Rates,
+            entryTime,
+            calculationRates,
+            entryStatus
+        )) {
+        fromEntity.dataStatus = entryStatus;
+
+        return;
+    }
+
     ZigZagElliotEntryOutcomeResult result;
 
     if (!ZigZagElliotEntryOutcomeCalculator::calculate(
             fromCandidate.side,
-            fromCandidate.entryPrice,
+            entryPrice,
             fromCandidate.stopLoss,
             pipSize,
             point,
-            fromCandidate.entryTime,
+            entryTime,
             horizonEnd,
-            m1Rates,
+            calculationRates,
             result
         )) {
         fromEntity.dataStatus = result.dataStatus;
@@ -1321,7 +1843,10 @@ void evaluateOutcomeCandidate(
     fromEntity.barsHeldM1 = result.barsHeldM1;
     fromEntity.barsHeldH1 = barsHeldH1;
     fromEntity.dataStatus = result.dataStatus;
-    fromEntity.calculationNote = buildOutcomeCalculationNote(result);
+    fromEntity.calculationNote = joinOutcomeCalculationNote(
+        fromEntity.calculationNote,
+        buildOutcomeCalculationNote(result)
+    );
 
     if (result.zeroSpreadBarCount > 0) {
         fromEntity.isZeroSpread = 1;
@@ -1348,8 +1873,8 @@ void buildOutcomeRunEntity(
         sourceDatabaseFileName,
         fromSourceRunInfo.runId,
         fromSourceRunInfo.runUid,
-        outcomePriceModel,
-        outcomeEvaluationVersion,
+        getOutcomePriceModel(),
+        getOutcomeEvaluationVersion(),
         horizonH1Bars
     );
     fromEntity.sourceDatabaseFileName = sourceDatabaseFileName;
@@ -1370,8 +1895,8 @@ void buildOutcomeRunEntity(
     fromEntity.sourceTesterTo = fromSourceRunInfo.testerTo;
     fromEntity.sourceTesterModel = fromSourceRunInfo.testerModel;
     fromEntity.horizonH1Bars = horizonH1Bars;
-    fromEntity.priceModel = outcomePriceModel;
-    fromEntity.evaluationVersion = outcomeEvaluationVersion;
+    fromEntity.priceModel = getOutcomePriceModel();
+    fromEntity.evaluationVersion = getOutcomeEvaluationVersion();
     fromEntity.startedAt = getOutcomeCurrentTime();
     fromEntity.createdAt = fromEntity.startedAt;
 }
@@ -1435,20 +1960,41 @@ void OnStart() {
 
     EntryCandidate candidates[];
 
-    if (!queryService.findEntries(sourceRunId, candidates)) {
+    if (!queryService.findEntries(
+            sourceRunId,
+            isOutcomeH1OpenOnly(),
+            candidates
+        )) {
         logger.error(__FUNCTION__, "H1 ENTRYの読取に失敗しました。");
 
         return;
     }
 
     int totalCount = ArraySize(candidates);
+
+    if (totalCount <= 0) {
+        logger.warn(
+            __FUNCTION__,
+            StringFormat(
+                "No eligible H1 ENTRY. sourceRunId=%I64d timingMode=%s",
+                sourceRunId,
+                getOutcomeTimingModeText()
+            )
+        );
+
+        return;
+    }
+
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Outcome build started. sourceRunId=%I64d entries=%d horizonH1=%d program=%s strategy=%s analysis=%s",
+            "Outcome build started. sourceRunId=%I64d entries=%d horizonH1=%d timingMode=%s priceModel=%s evaluationVersion=%s program=%s strategy=%s analysis=%s",
             sourceRunId,
             totalCount,
             horizonH1Bars,
+            getOutcomeTimingModeText(),
+            getOutcomePriceModel(),
+            getOutcomeEvaluationVersion(),
             sourceRunInfo.programVersion,
             sourceRunInfo.strategyVersion,
             sourceRunInfo.analysisVersion

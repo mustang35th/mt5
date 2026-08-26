@@ -5,12 +5,23 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.00"
+#property version   "1.01"
 #property script_show_inputs
 
 #include <Mstng\Common\File\CsvFileWriter.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Log\Logger.mqh>
+
+/**
+ * 比較対象Outcomeの仮想エントリー時刻モデル。
+ */
+enum ZigZagElliotEntryOutcomeComparisonTimingMode {
+    /** H1始値専用モデル。 */
+    ZIGZAG_ELLIOT_ENTRY_OUTCOME_COMPARISON_H1_OPEN_ONLY = 0,
+
+    /** 判定後、最初のM1始値で仮想エントリーするモデル。 */
+    ZIGZAG_ELLIOT_ENTRY_OUTCOME_COMPARISON_NEXT_M1_OPEN = 1
+};
 
 /** Outcome DBファイル名。 */
 input string outcomeDatabaseFileName =
@@ -23,6 +34,10 @@ input string sourceDatabaseFileName =
 /** 比較対象のAlert Run ID。 */
 input long sourceRunId = 0;
 
+/** 比較対象Outcomeの仮想エントリー時刻モデル。 */
+input ZigZagElliotEntryOutcomeComparisonTimingMode comparisonTimingMode =
+    ZIGZAG_ELLIOT_ENTRY_OUTCOME_COMPARISON_NEXT_M1_OPEN;
+
 /** DBをTerminal Common Filesから読み取る場合true。 */
 input bool databaseUseCommonFolder = true;
 
@@ -33,10 +48,18 @@ input string outputCsvFileName = "";
 input bool outputUseCommonFolder = true;
 
 /** 比較対象の価格モデル。 */
-const string comparisonPriceModel = "M1_BID_SPREAD_APPROX_V1";
+const string comparisonH1OpenPriceModel = "M1_BID_SPREAD_APPROX_V1";
 
 /** 比較対象の評価ロジックバージョン。 */
-const string comparisonEvaluationVersion = "INITIAL_SL_HORIZON_V2";
+const string comparisonH1OpenEvaluationVersion = "INITIAL_SL_HORIZON_V2";
+
+/** 次M1始値モデルの価格評価モデル。 */
+const string comparisonNextM1OpenPriceModel =
+    "M1_NEXT_OPEN_BID_SPREAD_APPROX_V1";
+
+/** 次M1始値モデルの評価ロジックバージョン。 */
+const string comparisonNextM1OpenEvaluationVersion =
+    "INITIAL_SL_NEXT_M1_OPEN_HORIZON_V1";
 
 /** 比較CSVのスキーマバージョン。 */
 const string comparisonCsvSchemaVersion =
@@ -47,6 +70,48 @@ const int comparisonHorizonCount = 4;
 
 /** 比較CSVの列数。 */
 const int comparisonCsvFieldCount = 60;
+
+/**
+ * 比較対象の価格評価モデルを取得する。
+ *
+ * @return DB検索およびCSVへ使用する価格評価モデル。
+ */
+string getComparisonPriceModel() {
+    if (comparisonTimingMode
+            == ZIGZAG_ELLIOT_ENTRY_OUTCOME_COMPARISON_H1_OPEN_ONLY) {
+        return comparisonH1OpenPriceModel;
+    }
+
+    return comparisonNextM1OpenPriceModel;
+}
+
+/**
+ * 比較対象の評価ロジックバージョンを取得する。
+ *
+ * @return DB検索およびCSVへ使用する評価ロジックバージョン。
+ */
+string getComparisonEvaluationVersion() {
+    if (comparisonTimingMode
+            == ZIGZAG_ELLIOT_ENTRY_OUTCOME_COMPARISON_H1_OPEN_ONLY) {
+        return comparisonH1OpenEvaluationVersion;
+    }
+
+    return comparisonNextM1OpenEvaluationVersion;
+}
+
+/**
+ * 比較対象エントリー時刻モデルの表示名を取得する。
+ *
+ * @return 設定中モデルの表示名。
+ */
+string getComparisonTimingModeText() {
+    if (comparisonTimingMode
+            == ZIGZAG_ELLIOT_ENTRY_OUTCOME_COMPARISON_H1_OPEN_ONLY) {
+        return "H1_OPEN_ONLY";
+    }
+
+    return "NEXT_M1_OPEN";
+}
 
 /**
  * 比較対象Outcome Runの検証情報。
@@ -451,8 +516,9 @@ string getComparisonSourceDatabaseToken() {
  */
 string getDefaultComparisonOutputFileName() {
     return StringFormat(
-        "mstng-zigzag-elliot-entry-outcome-comparison-%s-run-%I64d.csv",
+        "mstng-zigzag-elliot-entry-outcome-comparison-%s-%s-run-%I64d.csv",
         getComparisonSourceDatabaseToken(),
+        getComparisonTimingModeText(),
         sourceRunId
     );
 }
@@ -484,6 +550,15 @@ bool isComparisonCsvFileName(const string fromFileName) {
  * @return 実行可能な場合true。
  */
 bool validateComparisonInputs(Logger &fromLogger) {
+    if (comparisonTimingMode
+            != ZIGZAG_ELLIOT_ENTRY_OUTCOME_COMPARISON_H1_OPEN_ONLY
+            && comparisonTimingMode
+                != ZIGZAG_ELLIOT_ENTRY_OUTCOME_COMPARISON_NEXT_M1_OPEN) {
+        fromLogger.error(__FUNCTION__, "comparisonTimingMode is invalid.");
+
+        return false;
+    }
+
     if (outcomeDatabaseFileName == "") {
         fromLogger.error(__FUNCTION__, "outcomeDatabaseFileName is empty.");
 
@@ -574,7 +649,7 @@ bool bindComparisonQueryInputs(
         isBound = DatabaseBind(
             fromRequestHandle,
             2,
-            comparisonPriceModel
+            getComparisonPriceModel()
         );
     }
 
@@ -582,7 +657,7 @@ bool bindComparisonQueryInputs(
         isBound = DatabaseBind(
             fromRequestHandle,
             3,
-            comparisonEvaluationVersion
+            getComparisonEvaluationVersion()
         );
     }
 
@@ -1633,8 +1708,8 @@ bool setComparisonRowValues(
     fromValues[index++] = sourceDatabaseFileName;
     fromValues[index++] = StringFormat("%I64d", sourceRunId);
     fromValues[index++] = fromSourceRunUid;
-    fromValues[index++] = comparisonEvaluationVersion;
-    fromValues[index++] = comparisonPriceModel;
+    fromValues[index++] = getComparisonEvaluationVersion();
+    fromValues[index++] = getComparisonPriceModel();
     fromValues[index++] = fromComparison.marketSignalKey;
     fromValues[index++] = IntegerToString(
         fromComparison.marketSignalKeyAlertCount
@@ -1961,12 +2036,13 @@ void OnStart() {
     logger.info(
         __FUNCTION__,
         StringFormat(
-            "Outcome comparison export started. sourceRunId=%I64d outcomeRuns=%s sourceRows=%d comparisonRows=%d evaluation=%s",
+            "Outcome comparison export started. sourceRunId=%I64d outcomeRuns=%s sourceRows=%d comparisonRows=%d priceModel=%s evaluation=%s",
             sourceRunId,
             buildComparisonRunText(runInfos),
             ArraySize(sourceRows),
             ArraySize(comparisons),
-            comparisonEvaluationVersion
+            getComparisonPriceModel(),
+            getComparisonEvaluationVersion()
         )
     );
 

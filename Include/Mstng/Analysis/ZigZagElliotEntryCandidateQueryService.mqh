@@ -130,11 +130,13 @@ public:
      * COMPLETEDのRunだけを取得する。
      *
      * @param fromLimit 最大取得件数。1～100。
+     * @param fromRequireH1Open H1始値と判定時刻の一致を必須にする場合true。
      * @param fromInfos 取得結果の格納先。
      * @return 検索処理に成功した場合true。
      */
     bool findRecentEligibleRuns(
         const int fromLimit,
+        const bool fromRequireH1Open,
         SourceRunInfo &fromInfos[]
     ) {
         ArrayResize(fromInfos, 0);
@@ -164,7 +166,16 @@ public:
         sql += "AND alerts.is_alert = 1 ";
         sql += "AND alerts.is_entry = 1 ";
         sql += "AND alerts.entry_result = 'ENTRY' ";
-        sql += "AND alerts.is_stop_loss_available = 1";
+        sql += "AND alerts.is_stop_loss_available = 1 ";
+
+        if (fromRequireH1Open) {
+            sql += "AND alerts.server_time = alerts.current_bar_time ";
+            sql += "AND (alerts.server_time % 60) = 0 ";
+        } else {
+            sql += "AND alerts.server_time >= alerts.current_bar_time ";
+            sql += "AND alerts.server_time <= alerts.current_bar_time + 3540 ";
+        }
+
         sql += ") ORDER BY runs.id DESC LIMIT ?1";
 
         ResetLastError();
@@ -248,11 +259,13 @@ public:
      * ENTRYレコードに限定する。レコードがない場合は空配列でtrueを返す。
      *
      * @param fromRunId 取得対象のRun ID。
+     * @param fromRequireH1Open H1始値と判定時刻の一致を必須にする場合true。
      * @param fromEntries 取得結果の格納先。
      * @return 検索処理に成功した場合true。
      */
     bool findEntries(
         const long fromRunId,
+        const bool fromRequireH1Open,
         EntryCandidate &fromEntries[]
     ) {
         ArrayResize(fromEntries, 0);
@@ -276,6 +289,15 @@ public:
         sql += "AND alerts.is_entry = 1 ";
         sql += "AND alerts.entry_result = 'ENTRY' ";
         sql += "AND alerts.is_stop_loss_available = 1 ";
+
+        if (fromRequireH1Open) {
+            sql += "AND alerts.server_time = alerts.current_bar_time ";
+            sql += "AND (alerts.server_time % 60) = 0 ";
+        } else {
+            sql += "AND alerts.server_time >= alerts.current_bar_time ";
+            sql += "AND alerts.server_time <= alerts.current_bar_time + 3540 ";
+        }
+
         sql += "ORDER BY alerts.server_time ASC, alerts.id ASC";
 
         ResetLastError();
