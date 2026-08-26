@@ -17,6 +17,7 @@ import {
 } from "../lib/format";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
+import { H1EntryCheckPanel } from "./H1EntryCheckPanel";
 import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 
 interface ObservationDetailDrawerProps {
@@ -465,6 +466,10 @@ function DetailContent({
             <span>Spread {spreadLabel(observation.spread_pips)}</span>
           </div>
         </div>
+        <H1EntryCheckPanel
+          spreadPips={observation.spread_pips}
+          timeFrames={timeFrames}
+        />
         <ObservationTimeFrameSnapshotGrid
           styleNonce={styleNonce}
           timeFrames={timeFrames}

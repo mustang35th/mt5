@@ -443,6 +443,9 @@ describe("ObservationDetailDrawer", () => {
     expect(gridButton).toHaveAttribute("aria-pressed", "false");
     expect(dialog).not.toHaveClass("observation-grid-mode");
     expect(screen.getAllByRole("article")).toHaveLength(5);
+    expect(screen.queryByRole("region", {
+      name: "ZigZagElliot H1エントリー条件",
+    })).not.toBeInTheDocument();
     expect(screen.queryByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).not.toBeInTheDocument();
 
     fireEvent.click(gridButton);
@@ -452,6 +455,14 @@ describe("ObservationDetailDrawer", () => {
     expect(dialog).toHaveClass("observation-grid-mode");
     expect(screen.getByText("Spread 1.2 pips")).toBeInTheDocument();
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
+    const entryCheck = screen.getByRole("region", {
+      name: "ZigZagElliot H1エントリー条件",
+    });
+    expect(within(entryCheck).getByLabelText("総合判定 NG"))
+      .toHaveTextContent("総合 NG");
+    expect(within(entryCheck).getByText("Snapshot推定")).toBeInTheDocument();
+    expect(within(entryCheck).getByRole("status"))
+      .toHaveTextContent("最初のNG: H1 Wave方向");
     const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
     await expectColumnLayout(grid, []);
     expect(screen.getByRole("button", { name: "列プリセット: 要点のみ" }))
@@ -514,6 +525,9 @@ describe("ObservationDetailDrawer", () => {
     expect(cardButton).toHaveAttribute("aria-pressed", "true");
     expect(gridButton).toHaveAttribute("aria-pressed", "false");
     expect(dialog).not.toHaveClass("observation-grid-mode");
+    expect(screen.queryByRole("region", {
+      name: "ZigZagElliot H1エントリー条件",
+    })).not.toBeInTheDocument();
     expect(screen.queryByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(5);
     expect(fetchMock).toHaveBeenCalledTimes(1);

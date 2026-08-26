@@ -52,6 +52,7 @@ function detailPayload(alertId = 74) {
       close_ema200_diff_pips: 10,
       max_close_ema200_diff_pips: 25,
       spread_pips: 1.2,
+      is_currency_strength_enabled: false,
       currency_strength_status: 0,
       is_currency_strength_available: false,
       long_medium_rank_difference: 5,
@@ -259,6 +260,13 @@ describe("AlertDetailDrawer", () => {
       .toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("button", { name: "TIMEFRAME COMPARISONを閉じる" }))
       .toHaveFocus();
+    const entryCheck = screen.getByRole("region", {
+      name: "ZigZagElliot H1エントリー条件",
+    });
+    expect(within(entryCheck).getByLabelText("総合判定 OK"))
+      .toHaveTextContent("総合 OK");
+    expect(within(entryCheck).getByText("保存判定")).toBeInTheDocument();
+    expect(within(entryCheck).getByRole("status")).toHaveTextContent("ENTRY");
 
     const grid = await screen.findByRole("grid", {
       name: "アラート時間足比較スナップショットグリッド",
@@ -276,6 +284,9 @@ describe("AlertDetailDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "詳細" }));
     expect(dialog).not.toHaveClass("observation-grid-mode");
     expect(screen.queryByText("TIMEFRAME COMPARISON")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", {
+      name: "ZigZagElliot H1エントリー条件",
+    })).not.toBeInTheDocument();
     expect(screen.getByText("判定情報")).toBeInTheDocument();
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3);
   });
@@ -602,6 +613,7 @@ describe("AlertDetailDrawer", () => {
   });
 
   it("uses the M5 current snapshot for the hero without marking H1 as current", async () => {
+    provideGridLayoutSize();
     const timeFrames = [
       timeFrame(5, "H1", 4, {
         is_current_time_frame: false,
@@ -648,6 +660,12 @@ describe("AlertDetailDrawer", () => {
     expect(within(m5Card).getByText("現在足")).toBeInTheDocument();
     expect(view.container.querySelectorAll(".timeframe-card[aria-current='true']"))
       .toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "TF比較" }));
+    const entryCheck = screen.getByRole("region", {
+      name: "ZigZagElliot H1エントリー条件",
+    });
+    expect(within(entryCheck).getByText("Snapshot推定")).toBeInTheDocument();
+    expect(within(entryCheck).queryByText("保存判定")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 

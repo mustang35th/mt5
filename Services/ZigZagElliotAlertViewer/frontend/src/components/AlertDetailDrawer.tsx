@@ -34,6 +34,7 @@ import {
   h1DirectionAlignmentModeLabel,
   h1DirectionAlignmentStateDescription,
 } from "./H1DirectionAlignmentBadge";
+import { H1EntryCheckPanel } from "./H1EntryCheckPanel";
 import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 import {
   W1ConfirmationBadge,
@@ -710,6 +711,10 @@ function ComparisonContent({ bundle, styleNonce }: {
   const alert = bundle.detail.alert;
   const run = bundle.detail.run;
   const timeFrames = useMemo(() => comparisonTimeFrames(bundle), [bundle]);
+  const savedH1Decision = timeFrames.some((timeFrame) => (
+    timeFrame.is_anchor_time_frame
+    && timeFrame.time_frame_text.trim().toUpperCase() === "H1"
+  )) ? alert : null;
 
   return (
     <section className="observation-snapshot-grid-content">
@@ -729,6 +734,11 @@ function ComparisonContent({ bundle, styleNonce }: {
           <span>Run {run?.id ?? "—"}</span>
         </div>
       </div>
+      <H1EntryCheckPanel
+        savedDecision={savedH1Decision}
+        spreadPips={alert.spread_pips}
+        timeFrames={timeFrames}
+      />
       <ObservationTimeFrameSnapshotGrid
         ariaLabel="アラート時間足比較スナップショットグリッド"
         styleNonce={styleNonce}

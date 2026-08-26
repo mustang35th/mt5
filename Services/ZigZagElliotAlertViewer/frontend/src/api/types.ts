@@ -264,6 +264,7 @@ export interface AlertDetail extends W1ConfirmationDiagnostics, H1DirectionAlign
   close_ema200_diff_pips: number;
   max_close_ema200_diff_pips: number;
   spread_pips: number;
+  is_currency_strength_enabled?: boolean;
   currency_strength_status: number;
   is_currency_strength_available: boolean;
   long_medium_rank_difference: number;
