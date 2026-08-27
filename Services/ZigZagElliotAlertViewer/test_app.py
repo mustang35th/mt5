@@ -24,6 +24,7 @@ from app import (
     W1_TIME_FRAME,
     canonical_symbol_name,
     is_gmo_target,
+    normalize_allowed_host,
 )
 
 
@@ -99,6 +100,34 @@ class StubDatabase:
         }
 
 
+class AllowedHostTest(unittest.TestCase):
+    """Verify exact reverse-proxy Host configuration."""
+
+    def test_allowed_host_is_normalized(self) -> None:
+        """Normalize case while retaining an explicit HTTPS port."""
+
+        self.assertEqual(
+            "steelers.tail9d1d2a.ts.net:443",
+            normalize_allowed_host("STEELERS.TAIL9D1D2A.TS.NET:443"),
+        )
+
+    def test_url_wildcard_and_invalid_port_are_rejected(self) -> None:
+        """Require one exact HTTP Host authority rather than a URL or pattern."""
+
+        for host in [
+            "",
+            "https://steelers.tail9d1d2a.ts.net",
+            "*.tail9d1d2a.ts.net",
+            "user@steelers.tail9d1d2a.ts.net",
+            "steelers.tail9d1d2a.ts.net;parameter",
+            "steelers.tail9d1d2a.ts.net%2fpath",
+            "steelers.tail9d1d2a.ts.net:0",
+            "steelers.tail9d1d2a.ts.net:65536",
+        ]:
+            with self.subTest(host=host), self.assertRaises(ValueError):
+                normalize_allowed_host(host)
+
+
 class ViewerRouteTest(unittest.TestCase):
     """Verify the standard, compatibility and fallback viewer routes."""
 
@@ -111,7 +140,15 @@ class ViewerRouteTest(unittest.TestCase):
         """Start an isolated HTTP server on an operating-system assigned port."""
 
         static_path = Path(__file__).resolve().parent / "static"
-        cls.server = ViewerServer((DEFAULT_HOST, 0), StubDatabase(), static_path)  # type: ignore[arg-type]
+        cls.server = ViewerServer(
+            (DEFAULT_HOST, 0),
+            StubDatabase(),  # type: ignore[arg-type]
+            static_path,
+            allowed_hosts=(
+                "steelers.tail9d1d2a.ts.net",
+                "steelers.tail9d1d2a.ts.net:443",
+            ),
+        )
         cls.port = int(cls.server.server_address[1])
         cls.server_thread = threading.Thread(
             target=cls.server.serve_forever,
@@ -285,6 +322,42 @@ class ViewerRouteTest(unittest.TestCase):
             health_headers.get("content-type", "").startswith("application/json")
         )
         self.assertEqual("ok", json.loads(health_payload)["status"])
+
+    def test_explicit_tailscale_serve_hosts_are_allowed(self) -> None:
+        """Allow only the configured Tailscale Serve authorities."""
+
+        for host in [
+            "steelers.tail9d1d2a.ts.net",
+            "STEELERS.TAIL9D1D2A.TS.NET",
+            "steelers.tail9d1d2a.ts.net:443",
+        ]:
+            with self.subTest(host=host):
+                status, _, payload = self.get("/api/health", host=host)
+                self.assertEqual(200, status)
+                self.assertEqual("ok", json.loads(payload)["status"])
+
+        for host in [
+            "steelers.tail9d1d2a.ts.net.evil.example",
+            "steelers.tail9d1d2a.ts.net:444",
+        ]:
+            with self.subTest(host=host):
+                status, _, _ = self.get("/api/health", host=host)
+                self.assertEqual(400, status)
+
+    def test_unconfigured_viewer_keeps_local_only_host_allowlist(self) -> None:
+        """Keep Tailscale authorities opt-in for the default server."""
+
+        static_path = Path(__file__).resolve().parent / "static"
+        server = ViewerServer(
+            (DEFAULT_HOST, 0),
+            StubDatabase(),  # type: ignore[arg-type]
+            static_path,
+        )
+        try:
+            self.assertNotIn("steelers.tail9d1d2a.ts.net", server.allowed_hosts)
+            self.assertIn(DEFAULT_HOST, server.allowed_hosts)
+        finally:
+            server.server_close()
 
     def test_second_viewer_cannot_share_the_listening_port(self) -> None:
         """Reject a stale Viewer process attempting to share the same port."""

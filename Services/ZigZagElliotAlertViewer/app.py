@@ -14,7 +14,7 @@ import secrets
 import sys
 import threading
 import webbrowser
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
@@ -2805,11 +2805,13 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             )
 
     def is_allowed_host(self) -> bool:
-        """Reject DNS rebinding and non-local Host headers."""
+        """Reject DNS rebinding and Host headers not explicitly permitted."""
 
-        host_header = (self.headers.get("Host") or "").strip().lower()
-        port = self.viewer_server.server_address[1]
-        return host_header in {DEFAULT_HOST, f"{DEFAULT_HOST}:{port}"}
+        host_headers = self.headers.get_all("Host", [])
+        if len(host_headers) != 1:
+            return False
+        host_header = host_headers[0].strip().lower()
+        return host_header in self.viewer_server.allowed_hosts
 
     def send_static(self, request_path: str) -> None:
         """Send one of the fixed, non-traversable static files."""
@@ -2933,7 +2935,12 @@ class ViewerServer(ThreadingHTTPServer):
         address: tuple[str, int],
         database: AlertDatabase,
         static_path: Path,
+        *,
+        allowed_hosts: Collection[str] | None = None,
     ):
+        configured_allowed_hosts = {
+            normalize_allowed_host(host) for host in (allowed_hosts or ())
+        }
         self.instance_mutex_handle: int | None = None
         if address[1] != 0:
             self.acquire_instance_mutex(address)
@@ -2945,6 +2952,14 @@ class ViewerServer(ThreadingHTTPServer):
         except BaseException:
             self.release_instance_mutex()
             raise
+        bound_port = int(self.server_address[1])
+        self.allowed_hosts = frozenset(
+            {
+                DEFAULT_HOST,
+                f"{DEFAULT_HOST}:{bound_port}",
+                *configured_allowed_hosts,
+            }
+        )
         self.database = database
         self.static_path = static_path
 
@@ -2993,6 +3008,38 @@ class ViewerServer(ThreadingHTTPServer):
         self.instance_mutex_handle = None
 
 
+def normalize_allowed_host(host: str) -> str:
+    """Normalize and validate one exact HTTP Host authority."""
+
+    normalized_host = host.strip().lower()
+    has_invalid_character = any(
+        character.isspace()
+        or ord(character) < 32
+        or ord(character) == 127
+        or character in "*/\\@?#,;%"
+        for character in normalized_host
+    )
+    if not normalized_host or has_invalid_character or normalized_host.endswith(":"):
+        raise ValueError("allowed host must be one exact hostname or IP with optional port")
+
+    parsed_host = urlparse(f"//{normalized_host}")
+    try:
+        port = parsed_host.port
+    except ValueError as error:
+        raise ValueError("allowed host has an invalid port") from error
+    if (
+        not parsed_host.hostname
+        or parsed_host.username is not None
+        or parsed_host.password is not None
+        or parsed_host.path
+        or parsed_host.query
+        or parsed_host.fragment
+        or port == 0
+    ):
+        raise ValueError("allowed host must be one exact hostname or IP with optional port")
+    return normalized_host
+
+
 def parse_arguments() -> argparse.Namespace:
     """Parse command-line options."""
 
@@ -3004,6 +3051,14 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "--allowed-host",
+        action="append",
+        default=[],
+        type=normalize_allowed_host,
+        metavar="HOST",
+        help="additional exact Host header authority (repeatable)",
+    )
     parser.add_argument("--open-browser", action="store_true")
     return parser.parse_args()
 
@@ -3037,7 +3092,12 @@ def main() -> int:
 
     static_path = Path(__file__).resolve().parent / "static"
     try:
-        server = ViewerServer((arguments.host, arguments.port), database, static_path)
+        server = ViewerServer(
+            (arguments.host, arguments.port),
+            database,
+            static_path,
+            allowed_hosts=arguments.allowed_host,
+        )
     except OSError as error:
         print(
             f"Viewer could not listen on {arguments.host}:{arguments.port}: {error}",
@@ -3049,6 +3109,8 @@ def main() -> int:
     print("ZigZagElliot Alert Viewer")
     print(f"Database: {health['database']}")
     print(f"Alerts: {health['alert_count']} / journal: {health['journal_mode']}")
+    if arguments.allowed_host:
+        print(f"Allowed proxy Host: {', '.join(arguments.allowed_host)}")
     print(f"Open: {url}")
     print("Close this window or press Ctrl+C to stop.")
     if arguments.open_browser:

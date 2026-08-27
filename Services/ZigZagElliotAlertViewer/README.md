@@ -2,7 +2,7 @@
 
 `ZigZagElliot`が保存したElliottアラートと、`ZigZagElliotH1ObservationAll`が保存したH1 Observationを、ローカルブラウザで検索・閲覧する読み取り専用ビューアです。
 
-Python 3.14とSQLAlchemy 2.0を使用します。通信先は`127.0.0.1`だけで、インターネットや外部PCへ公開しません。
+Python 3.14とSQLAlchemy 2.0を使用します。Viewerの待受先は`127.0.0.1`だけです。付属の起動ファイルは、指定したtailnet内ホストも明示的に許可します。
 
 ## 初回セットアップ
 
@@ -43,6 +43,20 @@ http://127.0.0.1:5187/legacy/
 ```
 
 従来のReact版URL `http://127.0.0.1:5187/react/` も、既存ブックマークとの互換性のため利用できます。
+
+## Tailscaleから起動
+
+Tailscale Serveが`http://127.0.0.1:5187`へ転送済みの環境では、通常どおり`start-viewer.cmd`をダブルクリックします。tailnet内の端末から次のURLを開きます。
+
+```text
+https://steelers.tail9d1d2a.ts.net/
+```
+
+起動ファイルはViewerだけを起動し、Tailscale Serveの設定は変更しません。すでに上記URLでJSONエラーが返る環境では、Serveの再設定は不要です。
+
+付属の起動ファイルでは`steelers.tail9d1d2a.ts.net`と`:443`付きのHostだけを完全一致で追加許可します。Viewerの待受先は引き続き`127.0.0.1:5187`で、LANや全インターフェースへ直接公開しません。
+
+Viewer自体にユーザー認証はありません。Tailscale ACLで閲覧端末を制限し、インターネット公開用のFunnelは使用しないでください。
 
 既定では次のDBを参照します。
 
@@ -93,7 +107,13 @@ Runを指定しない場合は、選択した実行モードに属する複数Ru
 & "$env:LOCALAPPDATA\Python\bin\python.exe" app.py --database "C:\path\to\database.sqlite" --port 5187 --open-browser
 ```
 
-オプションを省略した場合、待受先は`127.0.0.1`、ポートは`5187`です。外部ネットワークへは公開しません。
+`app.py`を直接実行してオプションを省略した場合、待受先は`127.0.0.1`、ポートは`5187`です。外部ネットワークへは公開しません。
+
+信頼するローカルリバースプロキシのHostは、完全一致で追加できます。`--allowed-host`は複数回指定できます。URLやワイルドカードは指定できません。
+
+```powershell
+& "$env:LOCALAPPDATA\Python\bin\python.exe" app.py --allowed-host "steelers.tail9d1d2a.ts.net" --allowed-host "steelers.tail9d1d2a.ts.net:443"
+```
 
 ## React版の開発とビルド
 

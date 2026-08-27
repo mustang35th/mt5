@@ -20,7 +20,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-"%PYTHON_EXE%" app.py --open-browser
+"%PYTHON_EXE%" app.py --open-browser --allowed-host "steelers.tail9d1d2a.ts.net" --allowed-host "steelers.tail9d1d2a.ts.net:443" %*
 
 if errorlevel 1 (
     echo.
