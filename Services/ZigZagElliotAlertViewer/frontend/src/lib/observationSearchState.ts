@@ -32,6 +32,7 @@ export const DEFAULT_OBSERVATION_SEARCH_STATE: ObservationSearchState = {
   jstTime: "",
   syncTimeFrames: [],
   fullAlignment: "",
+  groupMode: "h1",
   pageSize: 50,
   page: 1,
   sort: "anchor_jst_time",
@@ -75,6 +76,10 @@ function observationFullAlignment(value: string | null): ObservationFullAlignmen
   return "";
 }
 
+function observationGroupMode(value: string | null): ObservationSearchState["groupMode"] {
+  return value === "signal" ? "signal" : "h1";
+}
+
 export function readObservationSearchState(search: string): ObservationSearchState {
   const params = new URLSearchParams(search);
   const requestedSourceMode = params.get("sourceMode");
@@ -91,6 +96,13 @@ export function readObservationSearchState(search: string): ObservationSearchSta
     || requestedProfileKind === "legacy"
     ? requestedProfileKind
     : "";
+  const groupMode = observationGroupMode(params.get("groupMode"));
+  const requestedFullAlignment = observationFullAlignment(
+    params.get("fullAlignment"),
+  );
+  const fullAlignment = groupMode === "signal" && requestedFullAlignment === ""
+    ? "FULL"
+    : requestedFullAlignment;
   return {
     sourceMode,
     runId: params.has("runId") ? positiveInteger(params.get("runId"), 0) || null : null,
@@ -107,7 +119,8 @@ export function readObservationSearchState(search: string): ObservationSearchSta
     to: dateInputValue(params.get("to")),
     jstTime: timeInputValue(params.get("jstTime")),
     syncTimeFrames: observationSyncTimeFrames(params.getAll("syncTimeFrame")),
-    fullAlignment: observationFullAlignment(params.get("fullAlignment")),
+    fullAlignment,
+    groupMode,
     pageSize: [25, 50, 100].includes(requestedPageSize)
       ? requestedPageSize
       : DEFAULT_OBSERVATION_SEARCH_STATE.pageSize,
@@ -141,6 +154,7 @@ export function buildObservationSearchParams(
     params.append("syncTimeFrame", timeFrame);
   }
   if (state.fullAlignment) params.set("fullAlignment", state.fullAlignment);
+  if (state.groupMode === "signal") params.set("groupMode", "signal");
   if (includePaging) {
     params.set("page", String(state.page));
     params.set("pageSize", String(state.pageSize));

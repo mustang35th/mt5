@@ -355,6 +355,7 @@ export type ObservationSort = "anchor_jst_time" | "symbol_name";
 export type ObservationSyncTimeFrame = "MN1" | "W1" | "D1" | "H4";
 
 export type ObservationFullAlignment = "" | "FULL" | "BUY" | "SELL";
+export type ObservationGroupMode = "h1" | "signal";
 
 export interface ObservationSearchState {
   sourceMode: SourceMode;
@@ -369,6 +370,7 @@ export interface ObservationSearchState {
   jstTime: string;
   syncTimeFrames: ObservationSyncTimeFrame[];
   fullAlignment: ObservationFullAlignment;
+  groupMode: ObservationGroupMode;
   pageSize: number;
   page: number;
   sort: ObservationSort;
@@ -436,6 +438,19 @@ export interface ObservationListItem {
   created_at: number;
   created_at_text: string;
   time_frames: ObservationTimeFrame[];
+  signal_rule_version?: "FULL_ALIGNMENT_EPISODE_V1";
+  signal_side?: AlertSide;
+  signal_start_observation_id?: number;
+  signal_end_observation_id?: number;
+  signal_end_anchor_bar_time?: number;
+  signal_end_anchor_bar_time_text?: string;
+  signal_end_anchor_jst_time?: number;
+  signal_end_anchor_jst_time_text?: string;
+  signal_h1_count?: number;
+  signal_is_left_censored?: boolean;
+  signal_is_right_censored?: boolean;
+  signal_has_data_gap_before?: boolean;
+  signal_has_data_gap_after?: boolean;
 }
 
 export interface ObservationDetailParent extends Omit<ObservationListItem, "time_frames"> {
@@ -523,6 +538,7 @@ export interface ObservationsResponse {
   page: number;
   page_size: number;
   page_count: number;
+  grouped?: boolean;
 }
 
 export interface ObservationOptionsResponse {
@@ -581,6 +597,10 @@ export interface ObservationSummaryResponse {
   last_anchor_jst_time_text: string | null;
   analysis_profile_count?: number;
   legacy_profile_observation_count?: number;
+  matched_observation_count?: number;
+  signal_buy_count?: number;
+  signal_sell_count?: number;
+  grouped?: boolean;
 }
 
 export interface ApiErrorResponse {

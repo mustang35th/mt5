@@ -44,6 +44,7 @@ DEFAULT_DATABASE_NAME = "mstng-zigzag-elliot-alert.sqlite"
 MAX_PAGE_SIZE = 200
 MAX_SEARCH_LENGTH = 200
 MAX_TIME_FRAME_FILTERS = 32
+SQLITE_MAX_INTEGER = (1 << 63) - 1
 OBSERVATION_SYNC_TIME_FRAMES = {"MN1", "W1", "D1", "H4"}
 W1_TIME_FRAME = 32769
 REACT_CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
@@ -389,6 +390,10 @@ BOOLEAN_COLUMNS = {
     "analysis_profile_is_legacy",
     "is_legacy",
     "is_gmo_target",
+    "signal_is_left_censored",
+    "signal_is_right_censored",
+    "signal_has_data_gap_before",
+    "signal_has_data_gap_after",
 }
 
 
@@ -418,8 +423,11 @@ class ObservationFilters:
     """Validated filters for H1 observation list and summary endpoints."""
 
     where_sql: str
+    signal_candidate_where_sql: str
+    signal_result_where_sql: str
     parameters: dict[str, Any]
     analysis_profile_kind: str | None
+    group_continuous: bool
     sort_sql: str
     order_sql: str
     page: int
@@ -566,6 +574,64 @@ def sqlite_is_gmo_target(symbol_name: Any) -> int:
     return int(is_gmo_target(symbol_name))
 
 
+def sqlite_is_consecutive_market_h1(
+    previous_time: Any,
+    current_time: Any,
+) -> int:
+    """Return whether two stored times are adjacent tradable FX H1 bars."""
+
+    try:
+        previous_epoch = int(previous_time)
+        current_epoch = int(current_time)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    elapsed = current_epoch - previous_epoch
+    if elapsed == 3600:
+        return 1
+    if elapsed <= 0:
+        return 0
+
+    try:
+        previous = datetime.fromtimestamp(previous_epoch, timezone.utc)
+        current = datetime.fromtimestamp(current_epoch, timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return 0
+    is_weekend = (
+        elapsed == 49 * 3600
+        and previous.weekday() == 4
+        and previous.hour == 23
+        and previous.minute == 0
+        and current.weekday() == 0
+        and current.hour == 0
+        and current.minute == 0
+    )
+    is_christmas = (
+        elapsed == 25 * 3600
+        and previous.year == current.year
+        and previous.month == 12
+        and previous.day == 24
+        and previous.hour == 23
+        and previous.minute == 0
+        and current.month == 12
+        and current.day == 26
+        and current.hour == 0
+        and current.minute == 0
+    )
+    is_new_year = (
+        elapsed == 25 * 3600
+        and current.year == previous.year + 1
+        and previous.month == 12
+        and previous.day == 31
+        and previous.hour == 23
+        and previous.minute == 0
+        and current.month == 1
+        and current.day == 2
+        and current.hour == 0
+        and current.minute == 0
+    )
+    return int(is_weekend or is_christmas or is_new_year)
+
+
 def add_gmo_target_filter(
     value: str | None,
     symbol_column: str,
@@ -624,6 +690,12 @@ class AlertDatabase:
             "is_gmo_target",
             1,
             sqlite_is_gmo_target,
+            deterministic=True,
+        )
+        dbapi_connection.create_function(
+            "is_consecutive_market_h1",
+            2,
+            sqlite_is_consecutive_market_h1,
             deterministic=True,
         )
         cursor = dbapi_connection.cursor()
@@ -1434,24 +1506,34 @@ class AlertDatabase:
             return values[0].strip()
 
         clauses: list[str] = []
+        signal_candidate_clauses: list[str] = []
+        signal_result_clauses: list[str] = []
         parameters: dict[str, Any] = {}
+
+        group_mode = (first("groupMode") or "H1").upper()
+        if group_mode not in {"H1", "SIGNAL"}:
+            raise RequestError("groupMode must be H1 or SIGNAL")
+        group_continuous = group_mode == "SIGNAL"
 
         source_mode = (first("sourceMode") or "all").upper()
         if source_mode not in {"ALL", "LIVE", "TESTER"}:
             raise RequestError("sourceMode must be LIVE, TESTER or all")
         if source_mode != "ALL":
             clauses.append("o.source_mode = :source_mode")
+            signal_candidate_clauses.append("o.source_mode = :source_mode")
             parameters["source_mode"] = source_mode
 
         run_id_text = first("runId")
         if run_id_text:
             run_id = positive_int(run_id_text, "runId", 1)
             clauses.append("o.run_id = :run_id")
+            signal_candidate_clauses.append("o.run_id = :run_id")
             parameters["run_id"] = run_id
 
         symbol = first("symbol")
         if symbol:
             clauses.append("o.symbol_name = :symbol_name")
+            signal_candidate_clauses.append("o.symbol_name = :symbol_name")
             parameters["symbol_name"] = symbol
 
         add_gmo_target_filter(
@@ -1460,10 +1542,19 @@ class AlertDatabase:
             clauses,
             parameters,
         )
+        add_gmo_target_filter(
+            first("gmoTarget"),
+            "o.symbol_name",
+            signal_candidate_clauses,
+            parameters,
+        )
 
         analysis_version = first("analysisVersion")
         if analysis_version:
             clauses.append("o.analysis_version = :analysis_version")
+            signal_candidate_clauses.append(
+                "o.analysis_version = :analysis_version"
+            )
             parameters["analysis_version"] = analysis_version
 
         analysis_input_hash = first("analysisInputHash")
@@ -1473,6 +1564,10 @@ class AlertDatabase:
                     f"analysisInputHash must be at most {MAX_SEARCH_LENGTH} characters"
                 )
             clauses.append(
+                "o.analysis_input_hash <> '' "
+                "AND o.analysis_input_hash = :analysis_input_hash"
+            )
+            signal_candidate_clauses.append(
                 "o.analysis_input_hash <> '' "
                 "AND o.analysis_input_hash = :analysis_input_hash"
             )
@@ -1492,8 +1587,7 @@ class AlertDatabase:
             side = side.upper()
             if side not in {"BUY", "SELL"}:
                 raise RequestError("side must be BUY or SELL")
-            clauses.append(
-                """
+            side_clause = """
                 EXISTS (
                     SELECT 1
                     FROM zigzag_elliot_observation_timeframes AS side_tf
@@ -1502,23 +1596,33 @@ class AlertDatabase:
                       AND side_tf.buy_sell_label = :h1_side
                 )
                 """
+            clauses.append(side_clause)
+            signal_result_clauses.append(
+                "e.full_alignment_side = :h1_side"
             )
             parameters["h1_side"] = side
 
         from_date = first("from")
         if from_date:
             clauses.append("o.anchor_jst_time >= :from_time")
+            signal_result_clauses.append(
+                "e.anchor_jst_time >= :from_time"
+            )
             parameters["from_time"] = parse_date_boundary(from_date, False)
 
         to_date = first("to")
         if to_date:
             clauses.append("o.anchor_jst_time < :to_time")
+            signal_result_clauses.append("e.anchor_jst_time < :to_time")
             parameters["to_time"] = parse_date_boundary(to_date, True)
 
         jst_time = first("jstTime")
         if jst_time:
             clauses.append(
                 "strftime('%H:%M', o.anchor_jst_time, 'unixepoch') = :jst_time"
+            )
+            signal_result_clauses.append(
+                "strftime('%H:%M', e.anchor_jst_time, 'unixepoch') = :jst_time"
             )
             parameters["jst_time"] = parse_jst_time(jst_time)
 
@@ -1541,7 +1645,7 @@ class AlertDatabase:
                 placeholders.append(f":{parameter_name}")
                 parameters[parameter_name] = time_frame
             parameters["sync_time_frame_count"] = len(sync_time_frames)
-            clauses.append(
+            sync_clause = (
                 """
                 EXISTS (
                     SELECT 1
@@ -1562,6 +1666,10 @@ class AlertDatabase:
                 )
                 """
             )
+            clauses.append(sync_clause)
+            signal_result_clauses.append(
+                sync_clause.replace("o.id", "e.id")
+            )
 
         full_alignment = first("fullAlignment")
         if full_alignment is not None:
@@ -1578,6 +1686,10 @@ class AlertDatabase:
                 parameters["full_alignment_is_buy"] = int(
                     full_alignment == "BUY"
                 )
+                signal_result_clauses.append(
+                    "e.full_alignment_side = :signal_full_alignment_side"
+                )
+                parameters["signal_full_alignment_side"] = full_alignment
             clauses.append(
                 """
                 EXISTS (
@@ -1626,8 +1738,7 @@ class AlertDatabase:
             if len(search_text) > MAX_SEARCH_LENGTH:
                 raise RequestError(f"q must be at most {MAX_SEARCH_LENGTH} characters")
             parameters["search_text"] = f"%{escape_like(search_text)}%"
-            clauses.append(
-                """
+            search_clause = """
                 (
                     COALESCE(o.symbol_name, '') LIKE :search_text ESCAPE '\\'
                     OR COALESCE(o.source_server, '')
@@ -1647,6 +1758,9 @@ class AlertDatabase:
                     )
                 )
                 """
+            clauses.append(search_clause)
+            signal_result_clauses.append(
+                search_clause.replace("o.", "e.")
             )
 
         sort_key = first("sort") or "anchor_jst_time"
@@ -1664,10 +1778,23 @@ class AlertDatabase:
         where_sql = ""
         if clauses:
             where_sql = " AND " + " AND ".join(clauses)
+        signal_candidate_where_sql = ""
+        if signal_candidate_clauses:
+            signal_candidate_where_sql = (
+                " AND " + " AND ".join(signal_candidate_clauses)
+            )
+        signal_result_where_sql = ""
+        if signal_result_clauses:
+            signal_result_where_sql = (
+                " AND " + " AND ".join(signal_result_clauses)
+            )
         return ObservationFilters(
             where_sql=where_sql,
+            signal_candidate_where_sql=signal_candidate_where_sql,
+            signal_result_where_sql=signal_result_where_sql,
             parameters=parameters,
             analysis_profile_kind=analysis_profile_kind,
+            group_continuous=group_continuous,
             sort_sql=OBSERVATION_SORT_COLUMNS[sort_key],
             order_sql=order.upper(),
             page=page,
@@ -1758,6 +1885,356 @@ class AlertDatabase:
         """
 
     @staticmethod
+    def observation_signal_rows_cte(
+        filters: ObservationFilters,
+        analysis_profile_available: bool = False,
+        spread_available: bool = False,
+    ) -> str:
+        """Return consecutive FULL rows collapsed before paging."""
+
+        analysis_profile_columns = """
+            NULL AS analysis_input_text,
+            1 AS analysis_profile_is_legacy,
+            'legacy' AS analysis_profile_kind,
+        """
+        if analysis_profile_available:
+            analysis_profile_columns = """
+                CASE
+                    WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                     AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                     AND r.analysis_version = o.analysis_version
+                     AND r.analysis_input_hash = o.analysis_input_hash
+                    THEN r.analysis_input_text
+                    ELSE NULL
+                END AS analysis_input_text,
+                CASE
+                    WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                     AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                     AND r.analysis_version = o.analysis_version
+                     AND r.analysis_input_hash = o.analysis_input_hash
+                    THEN 0
+                    ELSE 1
+                END AS analysis_profile_is_legacy,
+                CASE
+                    WHEN NULLIF(r.analysis_input_text, '') IS NOT NULL
+                     AND NULLIF(r.analysis_input_hash, '') IS NOT NULL
+                     AND r.analysis_version = o.analysis_version
+                     AND r.analysis_input_hash = o.analysis_input_hash
+                    THEN 'profile'
+                    ELSE 'legacy'
+                END AS analysis_profile_kind,
+            """
+        analysis_profile_filter_sql = ""
+        if filters.analysis_profile_kind is not None:
+            analysis_profile_filter_sql = (
+                " AND o.analysis_profile_kind = :analysis_profile_kind"
+            )
+        spread_expression = "NULL AS spread_pips"
+        if spread_available:
+            spread_expression = "o.spread_pips"
+        symbol_stream_partition = """
+            source_mode, source_server, run_id, symbol_name,
+            anchor_time_frame, capture_phase, analysis_version,
+            analysis_input_hash
+        """
+        episode_partition = symbol_stream_partition + ", signal_number"
+        return f"""
+            WITH signal_state_rows AS (
+                SELECT
+                    o.id, o.run_id, r.run_uid, o.source_mode, o.source_server,
+                    r.program_name, r.program_version, r.strategy,
+                    r.strategy_version,
+                    o.symbol_name,
+                    is_gmo_target(o.symbol_name) AS is_gmo_target,
+                    o.anchor_time_frame,
+                    o.anchor_time_frame_text, o.anchor_bar_time,
+                    o.anchor_bar_time_text, o.anchor_jst_time,
+                    o.anchor_jst_time_text, o.capture_phase,
+                    {spread_expression},
+                    o.analysis_version, o.analysis_input_hash,
+                    {analysis_profile_columns}
+                    o.snapshot_hash, o.time_frame_count,
+                    o.created_at, o.created_at_text,
+                    CASE
+                        WHEN full_w1.is_buy = 1
+                         AND full_d1.is_buy = 1
+                         AND full_h4.is_buy = 1
+                         AND full_h1.is_buy = 1
+                         AND full_h4.is_ema200_buy = 1
+                         AND full_h4.is_ema200_sell = 0
+                         AND full_h1.is_ema200_buy = 1
+                         AND full_h1.is_ema200_sell = 0
+                        THEN 'BUY'
+                        WHEN full_w1.is_buy = 0
+                         AND full_d1.is_buy = 0
+                         AND full_h4.is_buy = 0
+                         AND full_h1.is_buy = 0
+                         AND full_h4.is_ema200_buy = 0
+                         AND full_h4.is_ema200_sell = 1
+                         AND full_h1.is_ema200_buy = 0
+                         AND full_h1.is_ema200_sell = 1
+                        THEN 'SELL'
+                        ELSE NULL
+                    END AS full_alignment_side
+                FROM zigzag_elliot_observations AS o
+                INNER JOIN zigzag_elliot_alert_runs AS r ON r.id = o.run_id
+                LEFT JOIN zigzag_elliot_observation_timeframes AS full_w1
+                        ON full_w1.observation_id = o.id
+                       AND full_w1.time_frame_order = 1
+                LEFT JOIN zigzag_elliot_observation_timeframes AS full_d1
+                        ON full_d1.observation_id = o.id
+                       AND full_d1.time_frame_order = 2
+                LEFT JOIN zigzag_elliot_observation_timeframes AS full_h4
+                        ON full_h4.observation_id = o.id
+                       AND full_h4.time_frame_order = 3
+                LEFT JOIN zigzag_elliot_observation_timeframes AS full_h1
+                        ON full_h1.observation_id = o.id
+                       AND full_h1.time_frame_order = 4
+            ),
+            signal_partition_rows AS (
+                SELECT o.*
+                FROM signal_state_rows AS o
+                WHERE o.full_alignment_side IS NOT NULL
+                      {filters.signal_candidate_where_sql}
+                      {analysis_profile_filter_sql}
+            ),
+            signal_stream_rows AS (
+                SELECT id, run_id, source_mode, source_server, symbol_name,
+                       anchor_time_frame, capture_phase, analysis_version,
+                       analysis_input_hash, anchor_bar_time, anchor_jst_time,
+                       full_alignment_side,
+                       LAG(anchor_bar_time) OVER (
+                           PARTITION BY {symbol_stream_partition}
+                           ORDER BY anchor_bar_time, id
+                       ) AS previous_stream_anchor_bar_time,
+                       LAG(full_alignment_side) OVER (
+                           PARTITION BY {symbol_stream_partition}
+                           ORDER BY anchor_bar_time, id
+                       ) AS previous_stream_side
+                FROM signal_partition_rows
+            ),
+            signal_marked_rows AS (
+                SELECT signal_stream_rows.*,
+                       CASE
+                           WHEN previous_stream_side = full_alignment_side
+                            AND is_consecutive_market_h1(
+                                previous_stream_anchor_bar_time,
+                                anchor_bar_time
+                            ) = 1
+                            AND NOT EXISTS (
+                                SELECT 1
+                                FROM zigzag_elliot_observations
+                                     AS between_observation
+                                WHERE between_observation.source_mode
+                                          = signal_stream_rows.source_mode
+                                  AND between_observation.source_server
+                                          = signal_stream_rows.source_server
+                                  AND between_observation.run_id
+                                          = signal_stream_rows.run_id
+                                  AND between_observation.symbol_name
+                                          = signal_stream_rows.symbol_name
+                                  AND between_observation.anchor_time_frame
+                                          = signal_stream_rows.anchor_time_frame
+                                  AND between_observation.capture_phase
+                                          = signal_stream_rows.capture_phase
+                                  AND between_observation.analysis_version
+                                          = signal_stream_rows.analysis_version
+                                  AND between_observation.analysis_input_hash
+                                          = signal_stream_rows.analysis_input_hash
+                                  AND between_observation.anchor_bar_time
+                                          > previous_stream_anchor_bar_time
+                                  AND between_observation.anchor_bar_time
+                                          < signal_stream_rows.anchor_bar_time
+                            )
+                           THEN 0 ELSE 1
+                       END AS is_signal_start
+                FROM signal_stream_rows
+            ),
+            signal_numbered_rows AS (
+                SELECT signal_marked_rows.*,
+                       SUM(is_signal_start) OVER (
+                           PARTITION BY {symbol_stream_partition}
+                           ORDER BY anchor_bar_time, id
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                       ) AS signal_number
+                FROM signal_marked_rows
+            ),
+            signal_episode_bounds AS (
+                SELECT source_mode, source_server, run_id, symbol_name,
+                       anchor_time_frame, capture_phase, analysis_version,
+                       analysis_input_hash, signal_number,
+                       MIN(anchor_bar_time) AS signal_start_anchor_bar_time,
+                       MAX(anchor_bar_time) AS signal_end_anchor_bar_time,
+                       COUNT(*) AS signal_h1_count
+                FROM signal_numbered_rows
+                GROUP BY {episode_partition}
+            ),
+            observation_rows AS (
+                SELECT
+                    start_observation.id, start_observation.run_id,
+                    start_observation.run_uid, start_observation.source_mode,
+                    start_observation.source_server,
+                    start_observation.program_name,
+                    start_observation.program_version,
+                    start_observation.strategy,
+                    start_observation.strategy_version,
+                    start_observation.symbol_name,
+                    start_observation.is_gmo_target,
+                    start_observation.anchor_time_frame,
+                    start_observation.anchor_time_frame_text,
+                    start_observation.anchor_bar_time,
+                    start_observation.anchor_bar_time_text,
+                    start_observation.anchor_jst_time,
+                    start_observation.anchor_jst_time_text,
+                    start_observation.capture_phase,
+                    start_observation.spread_pips,
+                    start_observation.analysis_version,
+                    start_observation.analysis_input_hash,
+                    start_observation.analysis_input_text,
+                    start_observation.analysis_profile_is_legacy,
+                    start_observation.analysis_profile_kind,
+                    start_observation.snapshot_hash,
+                    start_observation.time_frame_count,
+                    start_observation.created_at,
+                    start_observation.created_at_text,
+                    'FULL_ALIGNMENT_EPISODE_V1' AS signal_rule_version,
+                    e.full_alignment_side AS signal_side,
+                    e.id AS signal_start_observation_id,
+                    signal_end.id AS signal_end_observation_id,
+                    end_observation.anchor_bar_time
+                        AS signal_end_anchor_bar_time,
+                    end_observation.anchor_bar_time_text
+                        AS signal_end_anchor_bar_time_text,
+                    end_observation.anchor_jst_time
+                        AS signal_end_anchor_jst_time,
+                    end_observation.anchor_jst_time_text
+                        AS signal_end_anchor_jst_time_text,
+                    bounds.signal_h1_count,
+                    CASE WHEN previous_observation.id IS NULL
+                         THEN 1 ELSE 0 END AS signal_is_left_censored,
+                    CASE WHEN next_observation.id IS NULL
+                         THEN 1 ELSE 0 END AS signal_is_right_censored,
+                    CASE
+                        WHEN previous_observation.id IS NOT NULL
+                         AND (
+                             is_consecutive_market_h1(
+                                 previous_observation.anchor_bar_time,
+                                 e.anchor_bar_time
+                             ) = 0
+                             OR (
+                                 SELECT COUNT(DISTINCT previous_tf.time_frame_order)
+                                 FROM zigzag_elliot_observation_timeframes
+                                      AS previous_tf
+                                 WHERE previous_tf.observation_id
+                                           = previous_observation.id
+                                   AND previous_tf.time_frame_order
+                                           IN (1, 2, 3, 4)
+                             ) <> 4
+                         )
+                        THEN 1 ELSE 0
+                    END AS signal_has_data_gap_before,
+                    CASE
+                        WHEN next_observation.id IS NOT NULL
+                         AND (
+                             is_consecutive_market_h1(
+                                 signal_end.anchor_bar_time,
+                                 next_observation.anchor_bar_time
+                             ) = 0
+                             OR (
+                                 SELECT COUNT(DISTINCT next_tf.time_frame_order)
+                                 FROM zigzag_elliot_observation_timeframes
+                                      AS next_tf
+                                 WHERE next_tf.observation_id
+                                           = next_observation.id
+                                   AND next_tf.time_frame_order
+                                           IN (1, 2, 3, 4)
+                             ) <> 4
+                         )
+                        THEN 1 ELSE 0
+                    END AS signal_has_data_gap_after
+                FROM signal_episode_bounds AS bounds
+                INNER JOIN signal_numbered_rows AS e
+                        ON e.source_mode = bounds.source_mode
+                       AND e.source_server = bounds.source_server
+                       AND e.run_id = bounds.run_id
+                       AND e.symbol_name = bounds.symbol_name
+                       AND e.anchor_time_frame = bounds.anchor_time_frame
+                       AND e.capture_phase = bounds.capture_phase
+                       AND e.analysis_version = bounds.analysis_version
+                       AND e.analysis_input_hash = bounds.analysis_input_hash
+                       AND e.signal_number = bounds.signal_number
+                       AND e.anchor_bar_time
+                           = bounds.signal_start_anchor_bar_time
+                INNER JOIN signal_numbered_rows AS signal_end
+                        ON signal_end.source_mode = bounds.source_mode
+                       AND signal_end.source_server = bounds.source_server
+                       AND signal_end.run_id = bounds.run_id
+                       AND signal_end.symbol_name = bounds.symbol_name
+                       AND signal_end.anchor_time_frame
+                           = bounds.anchor_time_frame
+                       AND signal_end.capture_phase = bounds.capture_phase
+                       AND signal_end.analysis_version = bounds.analysis_version
+                       AND signal_end.analysis_input_hash
+                           = bounds.analysis_input_hash
+                       AND signal_end.signal_number = bounds.signal_number
+                       AND signal_end.anchor_bar_time
+                           = bounds.signal_end_anchor_bar_time
+                INNER JOIN signal_partition_rows AS start_observation
+                        ON start_observation.id = e.id
+                INNER JOIN signal_partition_rows AS end_observation
+                        ON end_observation.id = signal_end.id
+                LEFT JOIN zigzag_elliot_observations AS previous_observation
+                       ON previous_observation.id = (
+                           SELECT previous_parent.id
+                           FROM zigzag_elliot_observations AS previous_parent
+                           WHERE previous_parent.source_mode = e.source_mode
+                             AND previous_parent.source_server = e.source_server
+                             AND previous_parent.run_id = e.run_id
+                             AND previous_parent.symbol_name = e.symbol_name
+                             AND previous_parent.anchor_time_frame
+                                   = e.anchor_time_frame
+                             AND previous_parent.capture_phase = e.capture_phase
+                             AND previous_parent.analysis_version
+                                   = e.analysis_version
+                             AND previous_parent.analysis_input_hash
+                                   = e.analysis_input_hash
+                             AND previous_parent.anchor_bar_time
+                                   < e.anchor_bar_time
+                           ORDER BY previous_parent.anchor_bar_time DESC,
+                                    previous_parent.id DESC
+                           LIMIT 1
+                       )
+                LEFT JOIN zigzag_elliot_observations AS next_observation
+                       ON next_observation.id = (
+                           SELECT next_parent.id
+                           FROM zigzag_elliot_observations AS next_parent
+                           WHERE next_parent.source_mode
+                                   = signal_end.source_mode
+                             AND next_parent.source_server
+                                   = signal_end.source_server
+                             AND next_parent.run_id = signal_end.run_id
+                             AND next_parent.symbol_name
+                                   = signal_end.symbol_name
+                             AND next_parent.anchor_time_frame
+                                   = signal_end.anchor_time_frame
+                             AND next_parent.capture_phase
+                                   = signal_end.capture_phase
+                             AND next_parent.analysis_version
+                                   = signal_end.analysis_version
+                             AND next_parent.analysis_input_hash
+                                   = signal_end.analysis_input_hash
+                             AND next_parent.anchor_bar_time
+                                   > signal_end.anchor_bar_time
+                           ORDER BY next_parent.anchor_bar_time,
+                                    next_parent.id
+                           LIMIT 1
+                       )
+                WHERE 1 = 1
+                      {filters.signal_result_where_sql}
+            )
+        """
+
+    @staticmethod
     def unavailable_observation_list(filters: ObservationFilters) -> dict[str, Any]:
         """Return a predictable empty page while optional tables are absent."""
 
@@ -1768,6 +2245,7 @@ class AlertDatabase:
             "page": 1,
             "page_size": filters.page_size,
             "page_count": 0,
+            "grouped": filters.group_continuous,
         }
 
     @staticmethod
@@ -1825,13 +2303,22 @@ class AlertDatabase:
                 return self.unavailable_observation_list(filters)
             analysis_profile_status = self.analysis_profile_schema_status(connection)
             spread_available = self.observation_spread_available(connection)
-            cte = self.observation_rows_cte(
+            rows_cte = self.observation_rows_cte
+            if filters.group_continuous:
+                rows_cte = self.observation_signal_rows_cte
+            cte = rows_cte(
                 filters,
                 analysis_profile_status["available"],
                 spread_available,
             )
-            count_sql = cte + " SELECT COUNT(*) FROM observation_rows"
             list_sql = (
+                cte
+                + " SELECT observation_rows.*, COUNT(*) OVER () AS result_total"
+                + " FROM observation_rows"
+                + f" ORDER BY {filters.sort_sql} {filters.order_sql}, id DESC"
+                + " LIMIT :limit OFFSET :offset"
+            )
+            raw_list_sql = (
                 cte
                 + " SELECT * FROM observation_rows"
                 + f" ORDER BY {filters.sort_sql} {filters.order_sql}, id DESC"
@@ -1839,16 +2326,71 @@ class AlertDatabase:
             )
             parameters = dict(filters.parameters)
             parameters["limit"] = filters.page_size
+            requested_offset = (filters.page - 1) * filters.page_size
             connection.exec_driver_sql("BEGIN")
             try:
-                total = connection.execute(
-                    text(count_sql), filters.parameters
-                ).scalar_one()
-                page_count = (total + filters.page_size - 1) // filters.page_size
-                effective_page = 1 if page_count == 0 else min(filters.page, page_count)
-                parameters["offset"] = (effective_page - 1) * filters.page_size
-                rows = connection.execute(text(list_sql), parameters).mappings()
-                items = [row_to_dict(row) for row in rows]
+                if not filters.group_continuous:
+                    count_sql = cte + " SELECT COUNT(*) FROM observation_rows"
+                    total = int(connection.execute(
+                        text(count_sql), filters.parameters
+                    ).scalar_one())
+                    page_count = (
+                        total + filters.page_size - 1
+                    ) // filters.page_size
+                    effective_page = (
+                        1 if page_count == 0 else min(filters.page, page_count)
+                    )
+                    parameters["offset"] = (
+                        effective_page - 1
+                    ) * filters.page_size
+                    rows = connection.execute(
+                        text(raw_list_sql), parameters
+                    ).mappings()
+                    items = [row_to_dict(row) for row in rows]
+                else:
+                    rows = []
+                    if requested_offset <= SQLITE_MAX_INTEGER:
+                        parameters["offset"] = requested_offset
+                        rows = list(
+                            connection.execute(
+                                text(list_sql),
+                                parameters,
+                            ).mappings()
+                        )
+                    total = 0
+                    effective_page = filters.page
+                    items = []
+                    if rows:
+                        total = int(rows[0]["result_total"])
+                        for row in rows:
+                            values = dict(row)
+                            values.pop("result_total", None)
+                            items.append(values_to_dict(values))
+                    elif filters.page > 1:
+                        count_sql = cte + " SELECT COUNT(*) FROM observation_rows"
+                        total = int(connection.execute(
+                            text(count_sql), filters.parameters
+                        ).scalar_one())
+                        page_count = (
+                            total + filters.page_size - 1
+                        ) // filters.page_size
+                        effective_page = 1 if page_count == 0 else page_count
+                        if total > 0:
+                            parameters["offset"] = (
+                                effective_page - 1
+                            ) * filters.page_size
+                            rows = list(connection.execute(
+                                text(list_sql), parameters
+                            ).mappings())
+                            for row in rows:
+                                values = dict(row)
+                                values.pop("result_total", None)
+                                items.append(values_to_dict(values))
+                page_count = (
+                    total + filters.page_size - 1
+                ) // filters.page_size
+                if page_count == 0:
+                    effective_page = 1
                 observation_ids = [
                     int(item["id"]) for item in items if item is not None
                 ]
@@ -1868,6 +2410,7 @@ class AlertDatabase:
             "page": effective_page,
             "page_size": filters.page_size,
             "page_count": page_count,
+            "grouped": filters.group_continuous,
         }
 
     def observation_summary(self, query: dict[str, list[str]]) -> dict[str, Any]:
@@ -1891,17 +2434,48 @@ class AlertDatabase:
             "last_anchor_jst_time_text": None,
             "analysis_profile_count": 0,
             "legacy_profile_observation_count": 0,
+            "matched_observation_count": 0,
+            "signal_buy_count": 0,
+            "signal_sell_count": 0,
+            "grouped": filters.group_continuous,
         }
         with self.connect() as connection:
             if not self.observation_schema_status(connection)["available"]:
                 return unavailable
             analysis_profile_status = self.analysis_profile_schema_status(connection)
             spread_available = self.observation_spread_available(connection)
-            sql = self.observation_rows_cte(
+            rows_cte = self.observation_rows_cte
+            if filters.group_continuous:
+                rows_cte = self.observation_signal_rows_cte
+            signal_summary_columns = """
+                       COUNT(*) AS matched_observation_count,
+                       0 AS signal_buy_count,
+                       0 AS signal_sell_count,
+            """
+            legacy_profile_count_expression = (
+                "COALESCE(SUM(analysis_profile_is_legacy), 0)"
+            )
+            if filters.group_continuous:
+                signal_summary_columns = """
+                       COALESCE(SUM(signal_h1_count), 0)
+                           AS matched_observation_count,
+                       COALESCE(SUM(CASE WHEN signal_side = 'BUY'
+                                         THEN 1 ELSE 0 END), 0)
+                           AS signal_buy_count,
+                       COALESCE(SUM(CASE WHEN signal_side = 'SELL'
+                                         THEN 1 ELSE 0 END), 0)
+                           AS signal_sell_count,
+                """
+                legacy_profile_count_expression = """
+                    COALESCE(SUM(
+                        analysis_profile_is_legacy * signal_h1_count
+                    ), 0)
+                """
+            sql = rows_cte(
                 filters,
                 analysis_profile_status["available"],
                 spread_available,
-            ) + """
+            ) + f"""
                 SELECT COUNT(*) AS total_count,
                        COALESCE(SUM(CASE WHEN source_mode = 'LIVE'
                                          THEN 1 ELSE 0 END), 0) AS live_count,
@@ -1918,8 +2492,9 @@ class AlertDatabase:
                                FROM observation_rows
                            ) AS exact_profiles
                        ) AS analysis_profile_count,
-                       COALESCE(SUM(analysis_profile_is_legacy), 0)
+                       {legacy_profile_count_expression}
                            AS legacy_profile_observation_count,
+                       {signal_summary_columns}
                        MIN(anchor_bar_time) AS first_anchor_bar_time,
                        MIN(anchor_bar_time_text) AS first_anchor_bar_time_text,
                        MAX(anchor_bar_time) AS last_anchor_bar_time,
@@ -1933,6 +2508,7 @@ class AlertDatabase:
             row = connection.execute(text(sql), filters.parameters).mappings().one()
         result = row_to_dict(row) or {}
         result["available"] = True
+        result["grouped"] = filters.group_continuous
         return result
 
     @staticmethod

@@ -25,6 +25,7 @@ from app import (
     canonical_symbol_name,
     is_gmo_target,
     normalize_allowed_host,
+    sqlite_is_consecutive_market_h1,
 )
 
 
@@ -1716,6 +1717,114 @@ def insert_observation_parent_rows(
     )
 
 
+def clone_observation_fixture(
+    connection: sqlite3.Connection,
+    observation_id: int,
+    symbol: str,
+    bar_time: int,
+    bar_time_text: str,
+    jst_time: int,
+    jst_time_text: str,
+    state: str,
+) -> None:
+    """Clone fixture observation 1 at a new market H1 and classification state."""
+
+    connection.execute(
+        """
+        INSERT INTO zigzag_elliot_observations (
+            id, run_id, source_mode, source_server, symbol_name,
+            anchor_time_frame, anchor_time_frame_text,
+            anchor_bar_time, anchor_bar_time_text,
+            anchor_jst_time, anchor_jst_time_text, capture_phase,
+            analysis_version, analysis_input_hash, snapshot_hash,
+            time_frame_count, created_at, created_at_text
+        )
+        SELECT :observation_id, 1, source_mode, source_server, :symbol_name,
+               anchor_time_frame, anchor_time_frame_text,
+               :bar_time, :bar_time_text, :jst_time, :jst_time_text,
+               capture_phase, analysis_version, analysis_input_hash,
+               :snapshot_hash, time_frame_count, :bar_time, :bar_time_text
+        FROM zigzag_elliot_observations
+        WHERE id = 1
+        """,
+        {
+            "observation_id": observation_id,
+            "symbol_name": symbol,
+            "bar_time": bar_time,
+            "bar_time_text": bar_time_text,
+            "jst_time": jst_time,
+            "jst_time_text": jst_time_text,
+            "snapshot_hash": f"signal-snapshot-{observation_id}",
+        },
+    )
+    columns = [
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(zigzag_elliot_observation_timeframes)"
+        )
+    ]
+    quoted_columns = ", ".join(f'"{column}"' for column in columns)
+    select_expressions: list[str] = []
+    for column in columns:
+        expression = f'"{column}"'
+        if column == "id":
+            expression = ":time_frame_id_base + time_frame_order"
+        elif column == "observation_id":
+            expression = ":observation_id"
+        elif column in {"latest_point_time", "created_at"}:
+            expression = ":bar_time"
+        elif column == "latest_point_jst_time":
+            expression = ":jst_time"
+        elif column in {"latest_point_time_text", "created_at_text"}:
+            expression = ":bar_time_text"
+        elif column == "latest_point_jst_time_text":
+            expression = ":jst_time_text"
+        select_expressions.append(expression)
+    connection.execute(
+        "INSERT INTO zigzag_elliot_observation_timeframes ("
+        + quoted_columns
+        + ") SELECT "
+        + ", ".join(select_expressions)
+        + " FROM zigzag_elliot_observation_timeframes "
+        + "WHERE observation_id = 1",
+        {
+            "time_frame_id_base": observation_id * 10,
+            "observation_id": observation_id,
+            "bar_time": bar_time,
+            "bar_time_text": bar_time_text,
+            "jst_time": jst_time,
+            "jst_time_text": jst_time_text,
+        },
+    )
+    is_buy = state != "SELL"
+    connection.execute(
+        """
+        UPDATE zigzag_elliot_observation_timeframes
+        SET is_buy = :is_buy,
+            buy_sell_label = :side,
+            is_ema200_buy = :is_buy,
+            is_ema200_sell = :is_sell
+        WHERE observation_id = :observation_id
+        """,
+        {
+            "is_buy": int(is_buy),
+            "is_sell": int(not is_buy),
+            "side": "BUY" if is_buy else "SELL",
+            "observation_id": observation_id,
+        },
+    )
+    if state == "NONE":
+        connection.execute(
+            """
+            UPDATE zigzag_elliot_observation_timeframes
+            SET is_ema200_buy = 0, is_ema200_sell = 0
+            WHERE observation_id = :observation_id
+              AND time_frame_order = 3
+            """,
+            {"observation_id": observation_id},
+        )
+
+
 def add_alert_detail_time_frame_fixture(
     database_path: Path,
     include_ema200_columns: bool,
@@ -2451,6 +2560,234 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual(0, sell_summary["live_count"])
         self.assertEqual(1, sell_summary["tester_count"])
 
+    def test_continuous_full_h1_rows_are_grouped_before_filtering_and_paging(
+        self,
+    ) -> None:
+        """Collapse market-adjacent FULL rows and split direction, NONE and gaps."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "DELETE FROM zigzag_elliot_observation_timeframes "
+                    "WHERE observation_id IN (2, 3)"
+                )
+                connection.execute(
+                    "DELETE FROM zigzag_elliot_observations WHERE id IN (2, 3)"
+                )
+                rows = [
+                    (10, "EURUSD", 1704070800, "2024.01.01 01:00:00",
+                     1704103200, "2024.01.01 10:00:00", "BUY"),
+                    (11, "EURUSD", 1704074400, "2024.01.01 02:00:00",
+                     1704106800, "2024.01.01 11:00:00", "NONE"),
+                    (12, "EURUSD", 1704078000, "2024.01.01 03:00:00",
+                     1704110400, "2024.01.01 12:00:00", "BUY"),
+                    (13, "EURUSD", 1704081600, "2024.01.01 04:00:00",
+                     1704114000, "2024.01.01 13:00:00", "SELL"),
+                    (14, "EURUSD", 1704085200, "2024.01.01 05:00:00",
+                     1704117600, "2024.01.01 14:00:00", "SELL"),
+                    (17, "EURUSD", 1704092400, "2024.01.01 07:00:00",
+                     1704124800, "2024.01.01 16:00:00", "SELL"),
+                ]
+                for row in rows:
+                    clone_observation_fixture(connection, *row)
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET latest_sub_elliot_label = 'ONLY_MIDDLE' "
+                    "WHERE observation_id = 10"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET latest_sub_elliot_label = 'START_MATCH' "
+                    "WHERE observation_id = 1"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET is_buy = 0, buy_sell_label = 'SELL' "
+                    "WHERE observation_id = 10 AND time_frame_order = 0"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                summary = database.observation_summary(
+                    {"groupMode": ["SIGNAL"]}
+                )
+                sell_page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "fullAlignment": ["SELL"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                ranged_page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "from": ["2024-01-01T12:00"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                middle_search_page = database.observations(
+                    {"groupMode": ["signal"], "q": ["ONLY_MIDDLE"]}
+                )
+                start_search_page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "q": ["START_MATCH"],
+                    }
+                )
+                synchronized_page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "syncTimeFrame": ["MN1"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                second_page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                        "pageSize": ["2"],
+                        "page": ["2"],
+                    }
+                )
+                clamped_page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                        "pageSize": ["2"],
+                        "page": ["999"],
+                    }
+                )
+                huge_page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                        "pageSize": ["2"],
+                        "page": ["999999999999999999999999999999"],
+                    }
+                )
+            finally:
+                database.close()
+
+        self.assertTrue(page["grouped"])
+        self.assertEqual([1, 12, 13, 17], [item["id"] for item in page["items"]])
+        self.assertEqual([2, 1, 2, 1], [item["signal_h1_count"] for item in page["items"]])
+        self.assertEqual(
+            ["BUY", "BUY", "SELL", "SELL"],
+            [item["signal_side"] for item in page["items"]],
+        )
+        self.assertEqual(10, page["items"][0]["signal_end_observation_id"])
+        self.assertTrue(page["items"][0]["signal_is_left_censored"])
+        self.assertFalse(page["items"][1]["signal_has_data_gap_before"])
+        self.assertTrue(page["items"][2]["signal_has_data_gap_after"])
+        self.assertTrue(page["items"][3]["signal_has_data_gap_before"])
+        self.assertTrue(page["items"][3]["signal_is_right_censored"])
+        self.assertEqual(4, summary["total_count"])
+        self.assertEqual(6, summary["matched_observation_count"])
+        self.assertEqual(6, summary["legacy_profile_observation_count"])
+        self.assertEqual(2, summary["signal_buy_count"])
+        self.assertEqual(2, summary["signal_sell_count"])
+        self.assertEqual([13, 17], [item["id"] for item in sell_page["items"]])
+        self.assertEqual(
+            [12, 13, 17],
+            [item["id"] for item in ranged_page["items"]],
+        )
+        self.assertEqual(0, middle_search_page["total"])
+        self.assertEqual(1, start_search_page["total"])
+        self.assertEqual(2, start_search_page["items"][0]["signal_h1_count"])
+        self.assertEqual(
+            [1, 12, 13, 17],
+            [item["id"] for item in synchronized_page["items"]],
+        )
+        self.assertEqual(2, synchronized_page["items"][0]["signal_h1_count"])
+        self.assertEqual([13, 17], [item["id"] for item in second_page["items"]])
+        self.assertEqual(4, second_page["total"])
+        self.assertEqual(2, second_page["page_count"])
+        self.assertEqual(2, clamped_page["page"])
+        self.assertEqual([13, 17], [item["id"] for item in clamped_page["items"]])
+        self.assertEqual(2, huge_page["page"])
+        self.assertEqual([13, 17], [item["id"] for item in huge_page["items"]])
+
+    def test_missing_timeframe_parent_splits_and_marks_signal_gap(self) -> None:
+        """Treat an incomplete H1 snapshot as an unknown boundary."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "DELETE FROM zigzag_elliot_observation_timeframes "
+                    "WHERE observation_id IN (2, 3)"
+                )
+                connection.execute(
+                    "DELETE FROM zigzag_elliot_observations WHERE id IN (2, 3)"
+                )
+                clone_observation_fixture(
+                    connection,
+                    10,
+                    "EURUSD",
+                    1704070800,
+                    "2024.01.01 01:00:00",
+                    1704103200,
+                    "2024.01.01 10:00:00",
+                    "BUY",
+                )
+                clone_observation_fixture(
+                    connection,
+                    11,
+                    "EURUSD",
+                    1704074400,
+                    "2024.01.01 02:00:00",
+                    1704106800,
+                    "2024.01.01 11:00:00",
+                    "BUY",
+                )
+                connection.execute(
+                    "DELETE FROM zigzag_elliot_observation_timeframes "
+                    "WHERE observation_id = 10 AND time_frame_order = 3"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+            finally:
+                database.close()
+
+        self.assertEqual([1, 11], [item["id"] for item in page["items"]])
+        self.assertEqual([1, 1], [item["signal_h1_count"] for item in page["items"]])
+        self.assertTrue(page["items"][0]["signal_has_data_gap_after"])
+        self.assertTrue(page["items"][1]["signal_has_data_gap_before"])
+        self.assertTrue(page["items"][0]["signal_is_left_censored"])
+        self.assertTrue(page["items"][1]["signal_is_right_censored"])
+
+    def test_invalid_observation_group_mode_is_rejected(self) -> None:
+        """Reject unknown grouping modes instead of widening the query."""
+
+        with self.assertRaisesRegex(RequestError, "groupMode must be H1 or SIGNAL"):
+            AlertDatabase.parse_observation_filters(
+                {"groupMode": ["continuous; DROP TABLE x"]}
+            )
+
     def test_full_alignment_rejects_partial_and_invalid_matches(self) -> None:
         """Exclude mixed directions, invalid EMA states, NULLs and missing rows."""
 
@@ -3109,6 +3446,51 @@ class ObservationDatabaseTest(unittest.TestCase):
             "2024.01.02 09:00:00",
             run_three["last_observation_jst_time_text"],
         )
+
+
+class MarketH1ContinuityTest(unittest.TestCase):
+    """Verify the conservative server-time market adjacency rule."""
+
+    def test_known_market_closures_are_continuous(self) -> None:
+        """Keep regular, weekend and fixed holiday boundaries continuous."""
+
+        friday_23 = 1704495600
+        monday_00 = 1704672000
+        christmas_eve_23 = 1735081200
+        boxing_day_00 = 1735171200
+        new_year_eve_23 = 1735686000
+        january_second_00 = 1735776000
+        self.assertEqual(
+            1,
+            sqlite_is_consecutive_market_h1(1704067200, 1704070800),
+        )
+        self.assertEqual(
+            1,
+            sqlite_is_consecutive_market_h1(friday_23, monday_00),
+        )
+        self.assertEqual(
+            1,
+            sqlite_is_consecutive_market_h1(
+                christmas_eve_23,
+                boxing_day_00,
+            ),
+        )
+        self.assertEqual(
+            1,
+            sqlite_is_consecutive_market_h1(
+                new_year_eve_23,
+                january_second_00,
+            ),
+        )
+        self.assertEqual(
+            0,
+            sqlite_is_consecutive_market_h1(1704067200, 1704074400),
+        )
+        self.assertEqual(
+            0,
+            sqlite_is_consecutive_market_h1(friday_23, monday_00 + 3600),
+        )
+        self.assertEqual(0, sqlite_is_consecutive_market_h1(None, monday_00))
 
 
 class GmoTargetTest(unittest.TestCase):

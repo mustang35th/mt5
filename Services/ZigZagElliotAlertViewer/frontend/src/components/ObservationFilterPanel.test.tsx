@@ -86,4 +86,36 @@ describe("ObservationFilterPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
     expect(fullAlignment).toHaveTextContent("指定なし");
   });
+
+  it("switches to consecutive signal display and enables FULL alignment", () => {
+    render(<ObservationFilterPanelHarness />);
+
+    const groupMode = screen.getByRole("combobox", { name: "表示単位" });
+    const fullAlignment = screen.getByRole("combobox", {
+      name: "W1～H1＋EMA200一致",
+    });
+    expect(groupMode).toHaveTextContent("H1ごと");
+    fireEvent.mouseDown(groupMode);
+    fireEvent.click(screen.getByRole("option", { name: "連続FULLを1シグナル" }));
+
+    expect(groupMode).toHaveTextContent("連続FULLを1シグナル");
+    expect(fullAlignment).toHaveTextContent("方向問わず完全一致");
+    expect(hasObservationUnappliedChanges(
+      {
+        ...DEFAULT_OBSERVATION_SEARCH_STATE,
+        groupMode: "signal",
+        fullAlignment: "FULL",
+      },
+      DEFAULT_OBSERVATION_SEARCH_STATE,
+    )).toBe(true);
+    expect(observationFilterSummary({
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      groupMode: "signal",
+      fullAlignment: "FULL",
+    })).toContain("表示 連続FULLを1シグナル");
+
+    fireEvent.click(screen.getByRole("button", { name: "条件をリセット" }));
+    expect(groupMode).toHaveTextContent("H1ごと");
+    expect(fullAlignment).toHaveTextContent("指定なし");
+  });
 });

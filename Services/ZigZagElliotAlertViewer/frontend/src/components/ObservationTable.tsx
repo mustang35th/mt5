@@ -24,6 +24,7 @@ import {
   displayValue,
   elliottDirectionSymbol,
   formatElliottDirection,
+  formatInteger,
   formatNumber,
   formatSignedNumber,
   sideClass,
@@ -34,6 +35,7 @@ import { GmoTargetBadge } from "./GmoTargetBadge";
 interface ObservationTableProps {
   items: ObservationListItem[];
   available: boolean;
+  grouped: boolean;
   loading: boolean;
   sort: ObservationSort;
   order: SortOrder;
@@ -162,6 +164,13 @@ export function observationFullAlignmentSide(
 function ObservationTimeCell(params: ICellRendererParams<ObservationListItem>) {
   const observation = dataFrom(params);
   if (!observation) return null;
+  const isSignal = observation.signal_h1_count !== undefined;
+  const serverTitle = isSignal
+    ? `Server ${displayValue(observation.anchor_bar_time_text)} → ${displayValue(observation.signal_end_anchor_bar_time_text)}`
+    : `Server ${displayValue(observation.anchor_bar_time_text)} / H1新規足`;
+  const subText = isSignal
+    ? `→ ${displayValue(observation.signal_end_anchor_jst_time_text)} / ${formatInteger(observation.signal_h1_count)} H1`
+    : `Server ${displayValue(observation.anchor_bar_time_text)} / H1新規足`;
   return (
     <div className="grid-cell-stack">
       <span className="date-main">{displayValue(observation.anchor_jst_time_text)}</span>
@@ -169,10 +178,10 @@ function ObservationTimeCell(params: ICellRendererParams<ObservationListItem>) {
         className="date-sub"
         component="span"
         noWrap
-        title={`Server ${displayValue(observation.anchor_bar_time_text)} / H1新規足`}
+        title={serverTitle}
         sx={{ maxWidth: "100%" }}
       >
-        Server {displayValue(observation.anchor_bar_time_text)} / H1新規足
+        {subText}
       </Typography>
     </div>
   );
@@ -184,7 +193,7 @@ function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
   const profileKind = observation.analysis_profile_is_legacy ? "Legacy" : "Profile";
   const profileHash = observation.analysis_input_hash.slice(0, 8) || "—";
   const shortVersion = observation.analysis_version.replace(/^ELLIOT_MN1_/, "");
-  const fullAlignmentSide = observationFullAlignmentSide(observation);
+  const fullAlignmentSide = observation.signal_side || observationFullAlignmentSide(observation);
   return (
     <div className="grid-cell-stack">
       <Stack
@@ -225,6 +234,39 @@ function SymbolCell(params: ICellRendererParams<ObservationListItem>) {
       >
         Run {observation.run_id} / {shortVersion} {profileKind} {profileHash}
       </Typography>
+    </div>
+  );
+}
+
+function SignalSpanCell(params: ICellRendererParams<ObservationListItem>) {
+  const observation = dataFrom(params);
+  if (!observation || observation.signal_h1_count === undefined) return null;
+  const boundaryLabels = [
+    observation.signal_is_left_censored ? "左打切り" : "",
+    observation.signal_is_right_censored ? "右打切り" : "",
+    observation.signal_has_data_gap_before ? "欠損前" : "",
+    observation.signal_has_data_gap_after ? "欠損後" : "",
+  ].filter(Boolean);
+  return (
+    <div className="grid-cell-stack">
+      <Typography component="span" sx={{ fontSize: "0.76rem", fontWeight: 800 }}>
+        {formatInteger(observation.signal_h1_count)} H1
+      </Typography>
+      <Stack
+        direction="row"
+        spacing={0.4}
+        sx={{ alignItems: "center", flexWrap: "wrap", minWidth: 0, rowGap: 0.25 }}
+      >
+        {boundaryLabels.length === 0 ? (
+          <Typography className="subtext" component="span" noWrap>
+            完結
+          </Typography>
+        ) : boundaryLabels.map((label) => (
+          <Box className="badge neutral" component="span" key={label} sx={{ fontSize: "0.56rem", px: 0.5 }}>
+            {label}
+          </Box>
+        ))}
+      </Stack>
     </div>
   );
 }
@@ -340,6 +382,7 @@ function detailCell(onOpenDetail: ObservationTableProps["onOpenDetail"]) {
 export function ObservationTable({
   items,
   available,
+  grouped,
   loading,
   sort,
   order,
@@ -366,20 +409,24 @@ export function ObservationTable({
 
   const EmptyOverlay = useCallback(() => (
     <div className="empty-state grid-empty-state">
-      <strong>{available ? "該当するH1観測はありません" : "H1観測はまだ利用されていません"}</strong>
+      <strong>
+        {available
+          ? grouped ? "該当する連続FULLシグナルはありません" : "該当するH1観測はありません"
+          : "H1観測はまだ利用されていません"}
+      </strong>
       <span>
         {available
           ? "JST期間や通貨などの検索条件を変更してください。"
           : "観測DB機能を有効にすると、次のH1新規足から記録されます。"}
       </span>
     </div>
-  ), [available]);
+  ), [available, grouped]);
 
   const columnDefs = useMemo<ColDef<ObservationListItem>[]>(() => [
     {
       colId: "anchor_jst_time",
       field: "anchor_jst_time_text",
-      headerName: "JST日時",
+      headerName: grouped ? "開始JST" : "JST日時",
       initialPinned: "left",
       initialWidth: 180,
       lockPinned: true,
@@ -401,10 +448,18 @@ export function ObservationTable({
       headerComponentParams: sortHeaderParameters("symbol_name", sort, order, onSort),
       cellRenderer: SymbolCell,
     },
+    ...(grouped ? [{
+      colId: "signal_h1_count",
+      field: "signal_h1_count" as const,
+      headerName: "継続",
+      initialWidth: 130,
+      minWidth: 120,
+      cellRenderer: SignalSpanCell,
+    }] : []),
     {
       colId: "spread_pips",
       field: "spread_pips",
-      headerName: "Spread",
+      headerName: grouped ? "開始Spread" : "Spread",
       initialWidth: 105,
       minWidth: 100,
       cellRenderer: SpreadCell,
@@ -428,11 +483,17 @@ export function ObservationTable({
       suppressMovable: true,
       cellRenderer: detailCell(onOpenDetail),
     },
-  ], [onOpenDetail, onSort, order, sort]);
+  ], [grouped, onOpenDetail, onSort, order, sort]);
 
   return (
-    <div className="grid-view" role="region" aria-label="H1 Elliott推移検索結果" aria-busy={loading}>
+    <div
+      className="grid-view"
+      role="region"
+      aria-label={grouped ? "連続H1シグナル検索結果" : "H1 Elliott推移検索結果"}
+      aria-busy={loading}
+    >
       <Box sx={{ px: 1.5, pb: 0.75, color: "text.secondary", fontSize: "0.68rem" }}>
+        {grouped && "連続FULL：同一通貨・同一方向で連続する市場H1を1シグナルに集約 / "}
         各時間足：BUY/SELL / Elliott（主波・下位波） / 波方向（▲上昇・▼下降）・状態 / EMA200 / GMMA（Trend・Cross）
       </Box>
       <div className="alert-grid density-compact">

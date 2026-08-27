@@ -23,6 +23,7 @@ describe("observationSearchState", () => {
       jstTime: "07:00",
       syncTimeFrames: ["MN1", "D1"],
       fullAlignment: "BUY",
+      groupMode: "h1",
       page: 2,
       pageSize: 25,
       sort: "anchor_jst_time",
@@ -46,6 +47,7 @@ describe("observationSearchState", () => {
     expect(params.has("jstTime")).toBe(false);
     expect(params.has("syncTimeFrame")).toBe(false);
     expect(params.has("fullAlignment")).toBe(false);
+    expect(params.has("groupMode")).toBe(false);
     expect(params.get("sort")).toBe("anchor_jst_time");
     replaceObservationSearchUrl(DEFAULT_OBSERVATION_SEARCH_STATE);
     const browserParams = new URLSearchParams(window.location.search);
@@ -101,6 +103,22 @@ describe("observationSearchState", () => {
       ...DEFAULT_OBSERVATION_SEARCH_STATE,
       fullAlignment: "FULL",
     });
+    expect(params.get("fullAlignment")).toBe("FULL");
+  });
+
+  it("restores and serializes the consecutive signal display mode", () => {
+    const signalState = readObservationSearchState("?groupMode=signal");
+    expect(signalState.groupMode).toBe("signal");
+    expect(signalState.fullAlignment).toBe("FULL");
+    expect(readObservationSearchState("?groupMode=SIGNAL").groupMode).toBe("h1");
+    expect(readObservationSearchState("?groupMode=invalid").groupMode).toBe("h1");
+
+    const params = buildObservationSearchParams({
+      ...DEFAULT_OBSERVATION_SEARCH_STATE,
+      groupMode: "signal",
+      fullAlignment: "FULL",
+    });
+    expect(params.get("groupMode")).toBe("signal");
     expect(params.get("fullAlignment")).toBe("FULL");
   });
 });

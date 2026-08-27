@@ -142,6 +142,10 @@ function fullAlignmentSummary(value: ObservationSearchState["fullAlignment"]): s
   return "指定なし";
 }
 
+function groupModeSummary(value: ObservationSearchState["groupMode"]): string {
+  return value === "signal" ? "連続FULLを1シグナル" : "H1ごと";
+}
+
 export function observationFilterSummary(value: ObservationSearchState): string {
   const mode = value.sourceMode === "all" ? "LIVE＋TESTER" : value.sourceMode;
   const run = value.runId === null ? "全Run" : `Run ${value.runId}`;
@@ -159,6 +163,7 @@ export function observationFilterSummary(value: ObservationSearchState): string 
     : "上位足同期なし";
   return `${mode} / ${run} / ${profile} / ${symbol} / ${period} / ${jstTime} / ${synchronization}`
     + ` / W1～H1＋EMA200 ${fullAlignmentSummary(value.fullAlignment)}`
+    + ` / 表示 ${groupModeSummary(value.groupMode)}`
     + ` / GMO取引 ${gmoTargetSummary(value.gmoTarget)}`;
 }
 
@@ -178,6 +183,7 @@ export function hasObservationUnappliedChanges(
     || value.jstTime !== appliedValue.jstTime
     || !sameSyncTimeFrames(value.syncTimeFrames, appliedValue.syncTimeFrames)
     || value.fullAlignment !== appliedValue.fullAlignment
+    || value.groupMode !== appliedValue.groupMode
     || value.pageSize !== appliedValue.pageSize;
 }
 
@@ -521,6 +527,24 @@ export function ObservationFilterPanel({
               <MenuItem value="FULL">方向問わず完全一致</MenuItem>
               <MenuItem value="BUY">完全BUY</MenuItem>
               <MenuItem value="SELL">完全SELL</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small">
+            <InputLabel id="observationGroupModeLabel" shrink>表示単位</InputLabel>
+            <Select
+              labelId="observationGroupModeLabel"
+              label="表示単位"
+              value={value.groupMode}
+              onChange={(event) => {
+                const groupMode = event.target.value === "signal" ? "signal" : "h1";
+                const fullAlignment = groupMode === "signal" && value.fullAlignment === ""
+                  ? "FULL"
+                  : value.fullAlignment;
+                onChange({ ...value, groupMode, fullAlignment });
+              }}
+            >
+              <MenuItem value="h1">H1ごと</MenuItem>
+              <MenuItem value="signal">連続FULLを1シグナル</MenuItem>
             </Select>
           </FormControl>
           <FormControl size="small">

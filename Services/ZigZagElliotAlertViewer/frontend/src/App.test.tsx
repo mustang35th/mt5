@@ -236,7 +236,26 @@ describe("App", () => {
         });
       }
       if (path.startsWith("/api/observations?")) {
-        return jsonResponse(observationsResponse());
+        const response = observationsResponse();
+        if (path.includes("groupMode=signal") && response.items.length > 0) {
+          Object.assign(response, { grouped: true });
+          Object.assign(response.items[0], {
+            signal_rule_version: "FULL_ALIGNMENT_EPISODE_V1",
+            signal_side: "BUY",
+            signal_start_observation_id: 9,
+            signal_end_observation_id: 11,
+            signal_end_anchor_bar_time: 1786316400,
+            signal_end_anchor_bar_time_text: "2026.08.10 03:00:00",
+            signal_end_anchor_jst_time: 1786338000,
+            signal_end_anchor_jst_time_text: "2026.08.10 09:00:00",
+            signal_h1_count: 3,
+            signal_is_left_censored: false,
+            signal_is_right_censored: false,
+            signal_has_data_gap_before: false,
+            signal_has_data_gap_after: false,
+          });
+        }
+        return jsonResponse(response);
       }
       if (path === "/api/observations/9") {
         const observation = observationsResponse().items[0];
@@ -251,6 +270,7 @@ describe("App", () => {
         });
       }
       if (path.startsWith("/api/observation-summary?")) {
+        const grouped = path.includes("groupMode=signal");
         return jsonResponse({
           available: observationAvailable,
           total_count: observationAvailable ? 1 : 0,
@@ -266,6 +286,10 @@ describe("App", () => {
           first_anchor_jst_time_text: observationAvailable ? "2026.08.10 07:00:00" : null,
           last_anchor_jst_time: observationAvailable ? 1786330800 : null,
           last_anchor_jst_time_text: observationAvailable ? "2026.08.10 07:00:00" : null,
+          matched_observation_count: observationAvailable ? (grouped ? 3 : 1) : 0,
+          signal_buy_count: observationAvailable && grouped ? 1 : 0,
+          signal_sell_count: 0,
+          grouped,
         });
       }
       if (path === "/api/alerts/74") {
@@ -587,6 +611,45 @@ describe("App", () => {
       expect(parameters.get("sort")).toBe("anchor_jst_time");
       expect(parameters.get("order")).toBe("asc");
     });
+  });
+
+  it("opens consecutive FULL observations as one H1 signal", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?tab=h1&sourceMode=TESTER&runId=3&fullAlignment=FULL&groupMode=signal",
+    );
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "連続H1シグナル" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "表示単位" }))
+      .toHaveTextContent("連続FULLを1シグナル");
+    expect(await screen.findByRole("columnheader", { name: /開始JST/ }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "継続" })).toBeInTheDocument();
+    expect(screen.getByText("→ 2026.08.10 09:00:00 / 3 H1")).toBeInTheDocument();
+    expect(screen.getByText("3 H1")).toBeInTheDocument();
+    expect(screen.getByText("完結")).toBeInTheDocument();
+    expect(screen.getByLabelText("W1～H1＋EMA200 完全一致 BUY"))
+      .toHaveTextContent("FULL BUY");
+    expect(screen.getByText("対象H1").nextElementSibling).toHaveTextContent("3");
+    expect(screen.getByText("シグナル数").nextElementSibling).toHaveTextContent("1");
+
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls.map(([path]) => String(path));
+      expect(calls.some((path) => (
+        path.startsWith("/api/observations?sourceMode=TESTER")
+        && path.includes("fullAlignment=FULL")
+        && path.includes("groupMode=signal")
+      ))).toBe(true);
+      expect(calls.some((path) => (
+        path.startsWith("/api/observation-summary?sourceMode=TESTER")
+        && path.includes("groupMode=signal")
+      ))).toBe(true);
+    });
+    expect(new URLSearchParams(window.location.search).get("groupMode"))
+      .toBe("signal");
   });
 
   it("selects the latest analysis profile for an H1 mode before loading observations", async () => {

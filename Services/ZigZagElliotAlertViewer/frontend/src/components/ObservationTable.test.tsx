@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ObservationListItem, ObservationTimeFrame } from "../api/types";
 import { ObservationTable, observationFullAlignmentSide } from "./ObservationTable";
@@ -92,6 +92,7 @@ describe("ObservationTable", () => {
     render(
       <ObservationTable
         available
+        grouped={false}
         items={[
           observation(1, "USDJPY", true, [], 1.2),
           observation(2, "USDCAD", false, [], null),
@@ -114,6 +115,7 @@ describe("ObservationTable", () => {
     render(
       <ObservationTable
         available
+        grouped={false}
         items={[
           observation(1, "USDJPY", true),
           observation(2, "USDCAD", false),
@@ -134,6 +136,7 @@ describe("ObservationTable", () => {
     render(
       <ObservationTable
         available
+        grouped={false}
         items={[
           observation(1, "USDJPY", true, [
             timeFrame("MN1", 0, false, false),
@@ -198,6 +201,7 @@ describe("ObservationTable", () => {
     render(
       <ObservationTable
         available
+        grouped={false}
         items={[fullBuy, fullSell, mixedDirection, emaNone, emaBoth, missingH1]}
         loading={false}
         onOpenDetail={vi.fn()}
@@ -212,5 +216,55 @@ describe("ObservationTable", () => {
     expect(screen.getByLabelText("W1～H1＋EMA200 完全一致 SELL"))
       .toHaveTextContent("FULL SELL");
     expect(screen.getAllByText(/^FULL (BUY|SELL)$/)).toHaveLength(2);
+  });
+
+  it("shows one row for a consecutive FULL signal with its span and boundaries", async () => {
+    const onOpenDetail = vi.fn();
+    const signal = {
+      ...observation(21, "AUDUSD", true, []),
+      signal_rule_version: "FULL_ALIGNMENT_EPISODE_V1" as const,
+      signal_side: "BUY" as const,
+      signal_start_observation_id: 21,
+      signal_end_observation_id: 25,
+      signal_end_anchor_bar_time: 1_786_392_000,
+      signal_end_anchor_bar_time_text: "2026.08.10 07:00:00",
+      signal_end_anchor_jst_time: 1_786_413_600,
+      signal_end_anchor_jst_time_text: "2026.08.10 13:00:00",
+      signal_h1_count: 3,
+      signal_is_left_censored: true,
+      signal_is_right_censored: false,
+      signal_has_data_gap_before: false,
+      signal_has_data_gap_after: true,
+    };
+
+    render(
+      <ObservationTable
+        available
+        grouped
+        items={[signal]}
+        loading={false}
+        onOpenDetail={onOpenDetail}
+        onSort={vi.fn()}
+        order="desc"
+        sort="anchor_jst_time"
+      />,
+    );
+
+    expect(await screen.findByRole("region", { name: "連続H1シグナル検索結果" }))
+      .toBeInTheDocument();
+    expect(await screen.findByText("3 H1")).toBeInTheDocument();
+    expect(screen.getByText("開始JST")).toBeInTheDocument();
+    expect(screen.getByText("開始Spread")).toBeInTheDocument();
+    expect(screen.getByText("継続")).toBeInTheDocument();
+    expect(screen.getByText("→ 2026.08.10 13:00:00 / 3 H1")).toBeInTheDocument();
+    expect(screen.getByText("左打切り")).toBeInTheDocument();
+    expect(screen.getByText("欠損後")).toBeInTheDocument();
+    expect(screen.getByLabelText("W1～H1＋EMA200 完全一致 BUY"))
+      .toHaveTextContent("FULL BUY");
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "AUDUSD JST 2026.08.10 11:00:00 のH1推移詳細を表示",
+    }));
+    expect(onOpenDetail).toHaveBeenCalledWith(21, expect.any(HTMLButtonElement));
   });
 });

@@ -62,20 +62,29 @@ function checkedTime(fromDate: Date | null): string {
 
 function SummaryStrip({
   summary,
+  grouped,
   compact = false,
 }: {
   summary: ObservationSummaryResponse | null;
+  grouped: boolean;
   compact?: boolean;
 }) {
-  const values = [
-    ["観測数", summary?.total_count],
-    ["Run数", summary?.run_count],
-    ["通貨数", summary?.symbol_count],
-  ] as const;
+  const values = grouped
+    ? [
+      ["シグナル数", summary?.total_count],
+      ["対象H1", summary?.matched_observation_count],
+      ["BUY", summary?.signal_buy_count],
+      ["SELL", summary?.signal_sell_count],
+    ] as const
+    : [
+      ["観測数", summary?.total_count],
+      ["Run数", summary?.run_count],
+      ["通貨数", summary?.symbol_count],
+    ] as const;
   return (
     <Box className={`observation-summary-strip${compact ? " compact" : ""}`} sx={{
       display: "grid",
-      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+      gridTemplateColumns: `repeat(${values.length}, minmax(0, 1fr))`,
       gap: 1,
       m: "10px 0",
       "@media (min-width: 1280px)": {
@@ -361,11 +370,17 @@ export function H1ObservationView({
   useEffect(() => () => activeControllerRef.current?.abort(), []);
 
   const commitSearch = useCallback((value: ObservationSearchState) => {
+    if (value.groupMode !== applied.groupMode) {
+      detailTriggerRef.current = null;
+      setSelectedObservationId(null);
+      setObservations(null);
+      setSummary(null);
+    }
     requestModeRef.current = "foreground";
     setDraft(value);
     setApplied(value);
     setRequestGeneration((current) => current + 1);
-  }, []);
+  }, [applied.groupMode]);
 
   const changeSort = useCallback((sort: ObservationSort) => {
     const order = applied.sort === sort && applied.order === "desc" ? "asc" : "desc";
@@ -400,6 +415,7 @@ export function H1ObservationView({
   const total = observations?.total || 0;
   const page = observations?.page || applied.page;
   const pageSize = observations?.page_size || applied.pageSize;
+  const grouped = applied.groupMode === "signal";
   const first = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);
   let resultStatus = `${formatInteger(total)}件中 ${formatInteger(first)}–${formatInteger(last)}件`;
@@ -431,7 +447,7 @@ export function H1ObservationView({
           summary={observationFilterSummary(applied)}
           hasUnappliedChanges={hasObservationUnappliedChanges(draft, applied)}
         />
-        <SummaryStrip summary={summary} compact />
+        <SummaryStrip summary={summary} grouped={grouped} compact />
       </div>
       <div className={`viewer-workspace${filterExpanded ? "" : " filter-sidebar-collapsed"}`}>
         <aside
@@ -460,8 +476,10 @@ export function H1ObservationView({
           <section className="results-panel" aria-labelledby="observationResultsTitle">
             <div className="section-heading results-heading">
               <div className="results-title-line">
-                <p className="eyebrow">H1 OBSERVATIONS</p>
-                <h2 id="observationResultsTitle">H1推移</h2>
+                <p className="eyebrow">{grouped ? "H1 SIGNALS" : "H1 OBSERVATIONS"}</p>
+                <h2 id="observationResultsTitle">
+                  {grouped ? "連続H1シグナル" : "H1推移"}
+                </h2>
                 <p className="result-status" role="status" aria-live="polite">{resultStatus}</p>
               </div>
               <div className="results-tools">
@@ -480,6 +498,7 @@ export function H1ObservationView({
                 <ObservationTable
                   items={observations.items}
                   available={observations.available}
+                  grouped={grouped}
                   loading={loading || refreshing}
                   sort={applied.sort}
                   order={applied.order}
