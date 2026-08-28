@@ -17,7 +17,8 @@
 enum ElliotDirectionAlignmentRule {
     ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES = 0,
     ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_WITH_MN1_OR_EMA200 = 1,
-    ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200 = 2
+    ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200 = 2,
+    ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200 = 3
 };
 
 /** H1次点候補で不足している一致条件。 */
@@ -151,6 +152,13 @@ public:
             return false;
         }
 
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200
+                && (fromCurrentTimeFrame != PERIOD_H4
+                    || this.alignmentStartTimeFrame != PERIOD_MN1)) {
+            return false;
+        }
+
         ENUM_TIMEFRAMES timeFrames[];
 
         if (!this.buildTargetTimeFrames(fromCurrentTimeFrame, timeFrames)) {
@@ -185,6 +193,13 @@ public:
         if (this.alignmentRule
                 == ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200
                 && (fromCurrentTimeFrame != PERIOD_H1
+                    || this.alignmentStartTimeFrame != PERIOD_MN1)) {
+            return trendAlignNone;
+        }
+
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200
+                && (fromCurrentTimeFrame != PERIOD_H4
                     || this.alignmentStartTimeFrame != PERIOD_MN1)) {
             return trendAlignNone;
         }
@@ -242,6 +257,30 @@ public:
 
             return ElliotDirectionAlignmentDecision::evaluateH1W1WithMn1OrEma200(
                 elliotH1.isBuy,
+                elliotH4.isBuy,
+                elliotD1.isBuy,
+                elliotW1.isBuy,
+                elliotMN1.isBuy,
+                elliotW1.oscillator.ema200.isBuy,
+                elliotW1.oscillator.ema200.isSell
+            );
+        }
+
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200) {
+            Elliot *elliotH4 = fromElliotAll.getElliot(PERIOD_H4);
+            Elliot *elliotD1 = fromElliotAll.getElliot(PERIOD_D1);
+            Elliot *elliotW1 = fromElliotAll.getElliot(PERIOD_W1);
+            Elliot *elliotMN1 = fromElliotAll.getElliot(PERIOD_MN1);
+
+            if (elliotH4 == NULL
+                    || elliotD1 == NULL
+                    || elliotW1 == NULL
+                    || elliotMN1 == NULL) {
+                return trendAlignNone;
+            }
+
+            return ElliotDirectionAlignmentDecision::evaluateH4W1WithMn1OrEma200(
                 elliotH4.isBuy,
                 elliotD1.isBuy,
                 elliotW1.isBuy,
@@ -373,6 +412,38 @@ public:
         }
 
         return trendAlignSell;
+    }
+
+    /**
+     * H4、D1、W1の方向一致に、MN1またはW1 EMA200の方向一致を加えて判定する。
+     *
+     * @param fromIsH4Buy H4がBUYの場合true
+     * @param fromIsD1Buy D1がBUYの場合true
+     * @param fromIsW1Buy W1がBUYの場合true
+     * @param fromIsMn1Buy MN1がBUYの場合true
+     * @param fromIsW1Ema200Buy W1 EMA200がBUYの場合true
+     * @param fromIsW1Ema200Sell W1 EMA200がSELLの場合true
+     * @return BUY一致、SELL一致、または不一致
+     */
+    static TrendAlignType evaluateH4W1WithMn1OrEma200(
+        bool fromIsH4Buy,
+        bool fromIsD1Buy,
+        bool fromIsW1Buy,
+        bool fromIsMn1Buy,
+        bool fromIsW1Ema200Buy,
+        bool fromIsW1Ema200Sell
+    ) {
+        if (fromIsH4Buy != fromIsD1Buy) {
+            return trendAlignNone;
+        }
+
+        return ElliotDirectionAlignmentDecision::evaluateD1W1WithMn1OrEma200(
+            fromIsD1Buy,
+            fromIsW1Buy,
+            fromIsMn1Buy,
+            fromIsW1Ema200Buy,
+            fromIsW1Ema200Sell
+        );
     }
 
     /**

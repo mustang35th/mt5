@@ -73,6 +73,51 @@ void assertD1Alignment(
 }
 
 /**
+ * H4専用方向一致判定の期待値を検証する。
+ *
+ * @param fromCaseName テストケース名
+ * @param fromIsH4Buy H4がBUYの場合true
+ * @param fromIsD1Buy D1がBUYの場合true
+ * @param fromIsW1Buy W1がBUYの場合true
+ * @param fromIsMn1Buy MN1がBUYの場合true
+ * @param fromIsW1Ema200Buy W1 EMA200がBUYの場合true
+ * @param fromIsW1Ema200Sell W1 EMA200がSELLの場合true
+ * @param fromExpected 期待するトレンド一致種別
+ */
+void assertH4Alignment(
+    const string fromCaseName,
+    const bool fromIsH4Buy,
+    const bool fromIsD1Buy,
+    const bool fromIsW1Buy,
+    const bool fromIsMn1Buy,
+    const bool fromIsW1Ema200Buy,
+    const bool fromIsW1Ema200Sell,
+    const TrendAlignType fromExpected
+) {
+    TrendAlignType actual =
+        ElliotDirectionAlignmentDecision::evaluateH4W1WithMn1OrEma200(
+            fromIsH4Buy,
+            fromIsD1Buy,
+            fromIsW1Buy,
+            fromIsMn1Buy,
+            fromIsW1Ema200Buy,
+            fromIsW1Ema200Sell
+        );
+
+    if (actual == fromExpected) {
+        return;
+    }
+
+    gFailureCount++;
+    PrintFormat(
+        "FAIL %s expected=%s actual=%s",
+        fromCaseName,
+        convertAlignTypeText(fromExpected),
+        convertAlignTypeText(actual)
+    );
+}
+
+/**
  * H1専用方向一致判定の期待値を検証する。
  *
  * @param fromCaseName テストケース名
@@ -262,6 +307,72 @@ void validateInvalidEmaCases() {
     assertD1Alignment(
         "SELL EMA CONFLICT",
         false, false, false, true, true, trendAlignNone
+    );
+}
+
+/**
+ * H4のBUY方向判定ケースを検証する。
+ */
+void validateH4BuyCases() {
+    assertH4Alignment(
+        "H4 BUY MN1 FALLBACK",
+        true, true, true, true, false, false, trendAlignBuy
+    );
+    assertH4Alignment(
+        "H4 BUY EMA FALLBACK",
+        true, true, true, false, true, false, trendAlignBuy
+    );
+    assertH4Alignment(
+        "H4 BUY H4 MISMATCH",
+        false, true, true, true, true, false, trendAlignNone
+    );
+    assertH4Alignment(
+        "H4 BUY W1 MISMATCH",
+        true, true, false, true, true, false, trendAlignNone
+    );
+    assertH4Alignment(
+        "H4 BUY NEITHER MATCH",
+        true, true, true, false, false, false, trendAlignNone
+    );
+}
+
+/**
+ * H4のSELL方向判定ケースを検証する。
+ */
+void validateH4SellCases() {
+    assertH4Alignment(
+        "H4 SELL MN1 FALLBACK",
+        false, false, false, false, false, false, trendAlignSell
+    );
+    assertH4Alignment(
+        "H4 SELL EMA FALLBACK",
+        false, false, false, true, false, true, trendAlignSell
+    );
+    assertH4Alignment(
+        "H4 SELL H4 MISMATCH",
+        true, false, false, false, false, true, trendAlignNone
+    );
+    assertH4Alignment(
+        "H4 SELL W1 MISMATCH",
+        false, false, true, false, false, true, trendAlignNone
+    );
+    assertH4Alignment(
+        "H4 SELL NEITHER MATCH",
+        false, false, false, true, false, false, trendAlignNone
+    );
+}
+
+/**
+ * H4判定で不正なEMA200状態を安全側へ倒すことを検証する。
+ */
+void validateH4InvalidEmaCases() {
+    assertH4Alignment(
+        "H4 BUY EMA CONFLICT",
+        true, true, true, true, true, true, trendAlignNone
+    );
+    assertH4Alignment(
+        "H4 SELL EMA CONFLICT",
+        false, false, false, false, true, true, trendAlignNone
     );
 }
 
@@ -463,7 +574,8 @@ void validateAlignmentRuleValues() {
     bool isMatched =
         (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES == 0
         && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_WITH_MN1_OR_EMA200 == 1
-        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200 == 2;
+        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200 == 2
+        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200 == 3;
 
     if (isMatched) {
         return;
@@ -481,6 +593,9 @@ void OnStart() {
     validateBuyCases();
     validateSellCases();
     validateInvalidEmaCases();
+    validateH4BuyCases();
+    validateH4SellCases();
+    validateH4InvalidEmaCases();
     validateH1BuyCases();
     validateH1SellCases();
     validateH1InvalidEmaCases();

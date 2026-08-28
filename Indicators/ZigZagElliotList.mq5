@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.22"
+#property version   "1.23"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -22,10 +22,11 @@
  */
 enum ZigZagElliotListMode {
     ZIGZAG_ELLIOT_LIST_MODE_CHART = 0, // CHART
-    ZIGZAG_ELLIOT_LIST_MODE_D1 = 1     // D1 / ALIGN SETTING / D1 SORT
+    ZIGZAG_ELLIOT_LIST_MODE_D1 = 1,    // D1 / ALIGN SETTING / D1 SORT
+    ZIGZAG_ELLIOT_LIST_MODE_H4 = 2     // H4 / ALIGN SETTING / ENTRY PRIORITY SORT
 };
 
-/** D1モードの上位時間足一致条件。 */
+/** D1モードとH4モードの上位時間足一致条件。 */
 enum ZigZagElliotListD1AlignmentMode {
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY = 0, // W1
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1 = 1, // MN1 AND W1
@@ -39,13 +40,13 @@ enum ZigZagElliotListH1AlignmentMode {
     ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200 = 2 // W1-H1 AND (MN1 OR W1 EMA200)
 };
 
-/** CHARTモードの並び替え基準。D1モードではD1専用ソートを使用する。 */
+/** CHARTモードの並び替え基準。D1は専用、H4はエントリー優先順を使用する。 */
 input ElliotListSortType sortType = ELLIOT_LIST_SORT_M15_ELLIOT_EMA;
 
 /** 一覧の基準時間足モード。 */
 input ZigZagElliotListMode listMode = ZIGZAG_ELLIOT_LIST_MODE_CHART;
 
-/** D1モードの上位時間足一致条件。CHARTモードでは使用しない。 */
+/** D1モードとH4モードの上位時間足一致条件。CHARTモードでは使用しない。 */
 input ZigZagElliotListD1AlignmentMode d1AlignmentMode =
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY;
 
@@ -118,7 +119,19 @@ int OnInit() {
         return INIT_PARAMETERS_INCORRECT;
     }
 
-    if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
+    if ((bool)MQLInfoInteger(MQL_TESTER)
+            && listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
+            && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_H4)) {
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if (listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
+            && mtf3In3AlertDatabaseEnabled) {
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if ((listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
+                || listMode == ZIGZAG_ELLIOT_LIST_MODE_H4)
             && d1AlignmentMode != ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY
             && d1AlignmentMode
                 != ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1
@@ -151,6 +164,24 @@ int OnInit() {
             alignmentRule =
                 ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_WITH_MN1_OR_EMA200;
             alignmentText = "W1&(MN1|W1EMA)";
+        }
+    } else if (listMode == ZIGZAG_ELLIOT_LIST_MODE_H4) {
+        listTimeFrame = PERIOD_H4;
+        alignmentStartTimeFrame = PERIOD_W1;
+        effectiveSortType = ELLIOT_LIST_SORT_ENTRY_PRIORITY;
+        testerHistoryWarmUpEnabled = true;
+        alignmentText = "W1-H4";
+
+        if (d1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1) {
+            alignmentStartTimeFrame = PERIOD_MN1;
+            alignmentText = "MN1-H4";
+        } else if (d1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_WITH_MN1_OR_EMA200) {
+            alignmentStartTimeFrame = PERIOD_MN1;
+            alignmentRule =
+                ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200;
+            alignmentText = "W1-H4&(MN1|W1EMA)";
         }
     } else if (listTimeFrame == PERIOD_H1) {
         if (h1AlignmentMode != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1
@@ -234,6 +265,7 @@ int OnInit() {
     string shortName = "ZigZag Elliott List ALL " + context.timeFrameLabel;
 
     if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
+            || listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
             || listTimeFrame == PERIOD_H1) {
         shortName += " ALIGN " + alignmentText;
     }

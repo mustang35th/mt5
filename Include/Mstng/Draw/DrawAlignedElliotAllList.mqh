@@ -227,6 +227,10 @@ public:
                 && fromDecision.getAlignmentRule()
                     == ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200) {
             alignmentStartTimeFrameText = "W1-H1&(MN1|W1EMA)";
+        } else if (currentTimeFrame == PERIOD_H4
+                && fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200) {
+            alignmentStartTimeFrameText = "W1-H4&(MN1|W1EMA)";
         } else if (currentTimeFrame == PERIOD_D1
                 && fromDecision.getAlignmentRule()
                     == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_WITH_MN1_OR_EMA200) {
@@ -234,6 +238,15 @@ public:
         } else if (currentTimeFrame == PERIOD_D1
                 && alignmentStartTimeFrame == PERIOD_MN1) {
             alignmentStartTimeFrameText = "MN1+W1";
+        } else if (currentTimeFrame == PERIOD_H4
+                && alignmentStartTimeFrame == PERIOD_D1) {
+            alignmentStartTimeFrameText = "D1-H4";
+        } else if (currentTimeFrame == PERIOD_H4
+                && alignmentStartTimeFrame == PERIOD_W1) {
+            alignmentStartTimeFrameText = "W1-H4";
+        } else if (currentTimeFrame == PERIOD_H4
+                && alignmentStartTimeFrame == PERIOD_MN1) {
+            alignmentStartTimeFrameText = "MN1-H4";
         } else if (currentTimeFrame == PERIOD_H1
                 && alignmentStartTimeFrame == PERIOD_D1) {
             alignmentStartTimeFrameText = "D1-H1";
