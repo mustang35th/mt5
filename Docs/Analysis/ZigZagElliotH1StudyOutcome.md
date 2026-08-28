@@ -156,3 +156,50 @@ WHERE e.is_research_eligible = 1
 確認本数別Entryは1本確認15,658件、2本確認9,823件、3本確認5,191件です。Outcome失敗は6H1が34件、12H1が53件、24H1が88件、48H1が179件で、すべて`FUTURE_H1_GAP`です。
 
 この値は既定期間と現行Versionの期待値です。参照元DB、研究期間または判定・計算Versionを変更したRunへ流用しないでください。
+
+## 9. 基準成績CSV
+
+`ZigZagElliotH1StudyBaselineExporter`は、完了済みOutcome Runを読み取り専用で集計し、Step 5の基準成績CSVを作成します。参照DBは更新しません。
+
+集計軸は次の36グループです。
+
+- 連続確認: 1本、2本、3本
+- 評価期間: 6、12、24、48H1
+- 方向範囲: `ALL`、`BUY`、`SELL`
+
+`ALL`は同じ確認本数・評価期間のBUYとSELLを合算した監査行です。BUY／SELLの件数合計とALLが一致することを確認できます。
+
+Entryの母数と成績の母数は分けて保存します。
+
+| 項目 | 定義 |
+|---|---|
+| `candidate_entry_count` | 研究対象外を含むグループ内の全Entry |
+| `eligible_entry_count` | `is_research_eligible = 1`のEntry |
+| `calculated_outcome_count` | 研究対象Entryかつ`is_calculated = 1`のOutcome |
+| `failed_outcome_count` | 研究対象Entryかつ`is_calculated = 0`のOutcome |
+| 勝ち／負け／同値 | 計算成功した`net_profit_pips`の正／負／0 |
+| 勝率 | 勝ち件数 ÷ 計算成功件数 |
+| Profit Factor | 正の`net_profit_pips`合計 ÷ 負の`net_profit_pips`絶対値合計 |
+| 平均・中央値 | 計算成功した`net_profit_pips`だけを使用 |
+| MFE／MAE平均 | 計算成功した保存値の平均 |
+| ATR換算平均 | 各OutcomeのATR換算値を先に計算してから平均 |
+| Entry Spread平均 | Outcomeの成否を問わない研究対象EntryのSpread平均 |
+| Gap率 | `FUTURE_H1_GAP`件数 ÷ 研究対象Entry数 |
+
+損失合計が0の場合、有限のProfit Factorを作りません。正の損益が存在する場合は`INFINITE_NO_LOSS`、損益変動がない場合は`NO_VARIATION`、計算標本がない場合は`NO_SAMPLE`を`profit_factor_status`へ出力し、`profit_factor`は空欄にします。
+
+実行手順は次のとおりです。
+
+1. Outcome Builderが完了していることを確認します。集計中は同じOutcome DBへBuilderを同時実行しません。
+2. MetaEditorで`Scripts/Mstng/Analysis/ZigZagElliotH1StudyBaselineExporter.mq5`をコンパイルします。
+3. MT5のNavigatorからScriptをチャートへ実行します。
+4. `outcomeRunId = 0`の場合、`COMPLETED`のRunが1件だけなら自動選択します。複数ある場合はRun IDを明示します。
+5. 既定ではTerminal Common Filesへ次のCSVを上書きします。
+
+```text
+mstng-zigzag-elliot-h1-study-baseline-2024-2025-r1-run-1.csv
+```
+
+既定r1では、研究対象30,657 Entryに4期間を付けた122,628 Outcomeのうち、122,274件が計算成功、354件が`FUTURE_H1_GAP`です。Run全体の計算成功122,334件には研究対象外15 Entryの60 Outcomeが含まれるため、基準成績の母数には使用しません。
+
+このCSVは母集団の異なる1本／2本／3本確認をそのまま比較する基準集計です。同じEpisodeに限定した公平比較は次のStepで別集計します。
