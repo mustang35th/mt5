@@ -5,13 +5,13 @@
 | 項目 | 内容 |
 |---|---|
 | 対象 | `Indicators/ZigZagElliotH1ObservationAll.mq5` |
-| プログラムバージョン | `1.01` |
+| プログラムバージョン | `1.02` |
 | 役割 | 全28通貨のH1新規足時点におけるElliott分析結果を時系列保存する |
 | 基準時間足 | H1 |
 | 保存時間足 | MN1、W1、D1、H4、H1 |
 | 保存先 | MetaTrader 5組み込みSQLite |
 | 観測タイミング | `BAR_OPEN_FIRST_SUCCESS` |
-| 最終更新日 | 2026-08-15 |
+| 最終更新日 | 2026-08-28 |
 
 本書は、`ZigZagElliotH1ObservationAll`の収集対象、実行ライフサイクル、H1境界の扱い、分析内容、FIFO、DB保存、状態パネルおよび障害時の動作を定義します。
 
@@ -35,7 +35,9 @@ DB全体のAlertテーブル、共通Runおよびデータ表現については�
 - エントリー可否の判定やアラート送信
 - 過去に欠損したH1 Snapshotのバックフィル
 - 全ZigZagポイント履歴の保存
-- MFE、MAE、SL、TPまたは損益結果の保存
+- MFE、MAE、SL、TPまたは損益結果の保存（収集インジケーター単体）
+
+収集後のObservationから6／12／24／48H1のMFE、MAEおよび損益を計算する場合は、[ZigZagElliot H1推移 将来成績](../Analysis/ZigZagElliotH1StudyOutcome.md)の後処理Scriptを使用します。結果は参照元とは別の研究用DBへ保存します。
 
 ## 3. 全体構成
 
@@ -308,10 +310,10 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 | Analysis start | MN1 |
 | Anchor | H1 |
 | Run `strategy` | `H1_OBSERVATION_ALL` |
-| Run `strategy_version` | `H1_OBSERVATION_ALL_V2` |
-| Run `schema_version` | `3` |
+| Run `strategy_version` | `H1_OBSERVATION_ALL_V3` |
+| Run `schema_version` | `4` |
 
-ここでいう`schema_version = 3`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 5`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。
+ここでいう`schema_version = 4`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 5`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.02`です。
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
 
@@ -371,13 +373,13 @@ zigzag_elliot_alert_runs (1)
 
 ### 9.2 親Observation
 
-`zigzag_elliot_observations`は、1通貨・1つのH1開始時刻・1分析Profileの観測本体です。`id`を含めて19列あります。
+`zigzag_elliot_observations`は、1通貨・1つのH1開始時刻・1分析Profileの観測本体です。`id`を含めて20列あります。
 
 | グループ | 主な項目 |
 |---|---|
 | Run | `run_id` |
 | 実行元 | `source_mode`、`source_server` |
-| 市場 | `symbol_name`、H1のanchor時間足、`spread_pips` |
+| 市場 | `symbol_name`、H1のanchor時間足、`spread_pips`、`pip_size` |
 | 時刻 | Server/JSTのH1開始時刻と表示文字列 |
 | 取得方法 | `capture_phase` |
 | 分析Profile | `analysis_version`、`analysis_input_hash` |
@@ -386,7 +388,9 @@ zigzag_elliot_alert_runs (1)
 
 `spread_pips`には、各通貨のElliott分析開始時に取得したBidとAskの差をpips換算して保存します。エントリーのスプレッド判定およびAlert DBと同じ`todayRate.spread`を使用し、Snapshot生成時やDB保存時には再取得しません。高スプレッドも観測値として上限を設けず保存します。
 
-既存DBにはnullable列を非破壊で追加し、過去行を推測で補完しません。過去行の`NULL`は未記録、保存済みの`0.0`は有効なゼロスプレッドとして区別し、Viewerでは`NULL`を「未記録」と表示します。
+`pip_size`には、対象ブローカー実シンボルの`SYMBOL_POINT`と`SYMBOL_DIGITS`から取得した1pip相当の価格幅を保存します。3桁・5桁シンボルはPoint×10、それ以外はPointです。`schema_version = 4`以降の新しいRunでは、Snapshot生成時のMT5実測値を使用します。
+
+既存DBには`spread_pips`と`pip_size`をnullable列として非破壊で追加します。`spread_pips`の過去行は推測で補完せず、`NULL`を「未記録」、保存済みの`0.0`を有効なゼロスプレッドとして区別します。`pip_size`は、列追加前の28通貨ペアについて、`symbol_name`に`JPY`を含む7ペアを`0.01`、残る21ペアを`0.0001`としてmigration時に補完します。旧Runには保存当時のPointとDigitsがないため、この値は対象28ペアの既知のpip規則に基づく推定値です。
 
 この値は28通貨Collectorが対象通貨を順次分析した時点のSnapshotです。別チャートで動く実エントリー判定と完全に同一時刻であることは保証しないため、厳密なReject証跡ではなく観測時点の近接値として扱います。
 
@@ -455,7 +459,7 @@ source_mode
 
 ### 10.4 Snapshot Hash
 
-`snapshot_hash`は、親の取得元・自然キー相当値、取得時スプレッドおよび5時間足の構造化値から生成する16桁の大文字16進文字列です。スプレッド追加後のHash payloadは`H1_OBSERVATION_V2`です。ID、Run ID、作成日時、JSTおよび表示用日時文字列は含めません。暗号学的Hashではなく、Snapshot内容の比較用です。分析設定を識別する`analysis_input_hash`とは目的が異なります。既存行のHashは再計算しません。
+`snapshot_hash`は、親の取得元・自然キー相当値、取得時スプレッド、`pip_size`および5時間足の構造化値から生成する16桁の大文字16進文字列です。`pip_size`追加後のHash payloadは`H1_OBSERVATION_V3`です。ID、Run ID、作成日時、JSTおよび表示用日時文字列は含めません。暗号学的Hashではなく、Snapshot内容の比較用です。分析設定を識別する`analysis_input_hash`とは目的が異なります。migrationで`pip_size`を補完する既存行のHashは再計算しません。
 
 - `analysis_input_hash`: どの計算設定を使用したか
 - `snapshot_hash`: その時点でどの分析結果を保存したか
@@ -673,7 +677,8 @@ mstng-zigzag-elliot-h1-observation-smoke-test.sqlite
 - 同一hashの冪等保存
 - hashが異なる重複でもfirst-writeを維持すること
 - Server時刻とJSTの整合
-- 旧JST列なしSchemaからのMigration
+- 旧JST列なしSchemaおよび旧`pip_size`列なしSchemaからのMigration
+- JPY・非JPY既存行の`pip_size`推定補完と新規行のMT5実測値保存
 - 親・子の不正値拒否
 - 子INSERT失敗時のTransaction ROLLBACK
 - 必須Indexの存在とQuery Plan

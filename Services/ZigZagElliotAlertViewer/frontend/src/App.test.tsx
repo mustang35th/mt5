@@ -105,6 +105,7 @@ function observationsResponse() {
       anchor_time_frame_text: "H1",
       capture_phase: "BAR_OPEN_FIRST_SUCCESS",
       spread_pips: 1.2,
+      pip_size: 0.0001,
       analysis_version: ANALYSIS_VERSION,
       analysis_input_hash: TESTER_ANALYSIS_PROFILE_HASH,
       analysis_input_text: ANALYSIS_PROFILE_TEXT,

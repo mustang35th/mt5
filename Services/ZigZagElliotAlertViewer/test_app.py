@@ -2189,6 +2189,7 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIsNone(page["items"][0]["analysis_input_text"])
         self.assertTrue(page["items"][0]["analysis_profile_is_legacy"])
         self.assertIsNone(page["items"][0]["spread_pips"])
+        self.assertIsNone(page["items"][0]["pip_size"])
         self.assertTrue(detail["available"])
         self.assertEqual(
             {"older": None, "newer": None},
@@ -2197,6 +2198,7 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIsNone(detail["observation"]["analysis_input_text"])
         self.assertTrue(detail["observation"]["analysis_profile_is_legacy"])
         self.assertIsNone(detail["observation"]["spread_pips"])
+        self.assertIsNone(detail["observation"]["pip_size"])
         self.assertEqual(
             "2024.01.01 09:00:00",
             detail["observation"]["anchor_jst_time_text"],
@@ -2225,6 +2227,7 @@ class ObservationDatabaseTest(unittest.TestCase):
                 "analysis_profile_kind",
                 "is_gmo_target",
                 "spread_pips",
+                "pip_size",
             }
         )
         self.assertEqual(expected_parent_columns, set(detail["observation"]))
@@ -2299,6 +2302,64 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIsNone(spread_by_id[3])
         self.assertEqual(1.7, first_detail["observation"]["spread_pips"])
         self.assertEqual(0.0, second_detail["observation"]["spread_pips"])
+        self.assertIsNone(first_detail["observation"]["pip_size"])
+
+    def test_optional_pip_size_is_returned_by_list_signal_and_detail(self) -> None:
+        """Expose captured pip sizes without requiring the new parent column."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_observations "
+                    "ADD COLUMN pip_size REAL"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observations "
+                    "SET pip_size = 0.0001 WHERE id = 1"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observations "
+                    "SET pip_size = 0.01 WHERE id = 3"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                page = database.observations(
+                    {
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                signal_page = database.observations(
+                    {
+                        "groupMode": ["signal"],
+                        "sort": ["id"],
+                        "order": ["asc"],
+                    }
+                )
+                summary = database.observation_summary({})
+                eurusd_detail = database.observation_detail(1)
+                usdjpy_detail = database.observation_detail(3)
+            finally:
+                database.close()
+
+        pip_size_by_id = {
+            item["id"]: item["pip_size"] for item in page["items"]
+        }
+        signal_pip_size_by_id = {
+            item["id"]: item["pip_size"] for item in signal_page["items"]
+        }
+        self.assertEqual(3, summary["total_count"])
+        self.assertEqual(0.0001, pip_size_by_id[1])
+        self.assertIsNone(pip_size_by_id[2])
+        self.assertEqual(0.01, pip_size_by_id[3])
+        self.assertEqual(0.0001, signal_pip_size_by_id[1])
+        self.assertEqual(0.01, signal_pip_size_by_id[3])
+        self.assertEqual(0.0001, eurusd_detail["observation"]["pip_size"])
+        self.assertEqual(0.01, usdjpy_detail["observation"]["pip_size"])
+        self.assertIsNone(eurusd_detail["observation"]["spread_pips"])
 
     def test_detail_navigation_crosses_runs_and_excludes_other_streams(
         self,

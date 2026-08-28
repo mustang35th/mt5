@@ -13,6 +13,7 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshot.mqh>
+#include <Mstng\Util\RateUtil.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
 /**
@@ -104,7 +105,8 @@ private:
                 || fromRunEntity.id <= 0
                 || normalizeText(fromRunEntity.analysisInputHash) == ""
                 || normalizeText(fromRunEntity.sourceMode) == ""
-                || !isSpreadValid(fromElliotAll)) {
+                || !isSpreadValid(fromElliotAll)
+                || !isPipSizeValid(fromElliotAll)) {
             return false;
         }
 
@@ -141,6 +143,35 @@ private:
             && ask > 0.0
             && ask >= bid
             && spreadPips >= 0.0;
+    }
+
+    /**
+     * 1pip相当の価格幅が保存可能か確認する。
+     *
+     * @param fromElliotAll H1までのElliott分析結果
+     * @return pip sizeが有効な場合true
+     */
+    static bool isPipSizeValid(ElliotAll *fromElliotAll) {
+        double pipSize = calculatePipSize(fromElliotAll);
+
+        return MathIsValidNumber(pipSize)
+            && pipSize != EMPTY_VALUE
+            && pipSize > 0.0;
+    }
+
+    /**
+     * 市場コンテキストから1pip相当の価格幅を取得する。
+     *
+     * @param fromElliotAll H1までのElliott分析結果
+     * @return 1pip相当の価格幅
+     */
+    static double calculatePipSize(ElliotAll *fromElliotAll) {
+        double point = RateUtil::getPoint(fromElliotAll.marketContext);
+        double pipInPoints = RateUtil::getPipInPoints(
+            fromElliotAll.marketContext
+        );
+
+        return point * pipInPoints;
     }
 
     /**
@@ -184,6 +215,7 @@ private:
         );
         fromEntity.capturePhase = "BAR_OPEN_FIRST_SUCCESS";
         fromEntity.spreadPips = fromElliotAll.todayRate.spread;
+        fromEntity.pipSize = calculatePipSize(fromElliotAll);
         fromEntity.analysisVersion = normalizeText(
             fromRunEntity.analysisVersion
         );
@@ -398,7 +430,7 @@ private:
         ZigZagElliotObservationEntity &fromEntity,
         ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[]
     ) {
-        string sourceText = "H1_OBSERVATION_V2";
+        string sourceText = "H1_OBSERVATION_V3";
         appendText(sourceText, fromEntity.sourceMode);
         appendText(sourceText, fromEntity.sourceServer);
         appendText(sourceText, fromEntity.symbolName);
@@ -406,6 +438,7 @@ private:
         appendDateTime(sourceText, fromEntity.anchorBarTime);
         appendText(sourceText, fromEntity.capturePhase);
         appendDouble(sourceText, fromEntity.spreadPips);
+        appendDouble(sourceText, fromEntity.pipSize);
         appendText(sourceText, fromEntity.analysisVersion);
         appendText(sourceText, fromEntity.analysisInputHash);
         appendInteger(sourceText, ArraySize(fromTimeFrameEntities));

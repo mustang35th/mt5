@@ -54,6 +54,9 @@ struct ZigZagElliotObservationEntity {
     /** 観測取得時点のスプレッド（pips）。 */
     double spreadPips;
 
+    /** 1pip相当の価格幅。 */
+    double pipSize;
+
     /** Elliott分析バージョン。 */
     string analysisVersion;
 

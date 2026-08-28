@@ -10,6 +10,7 @@
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_OBSERVATION_DAO_MQH
 
 #include <Mstng\Database\Dao\ZigZagElliotObservationJstMigration.mqh>
+#include <Mstng\Database\Dao\ZigZagElliotObservationPipSizeMigration.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationSpreadMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
@@ -57,6 +58,8 @@ public:
         sql += "CHECK(capture_phase = 'BAR_OPEN_FIRST_SUCCESS'),";
         sql += "spread_pips REAL ";
         sql += "CHECK(spread_pips IS NULL OR spread_pips >= 0),";
+        sql += "pip_size REAL ";
+        sql += "CHECK(pip_size IS NULL OR pip_size > 0),";
         sql += "analysis_version TEXT NOT NULL,";
         sql += "analysis_input_hash TEXT NOT NULL,";
         sql += "snapshot_hash TEXT NOT NULL,";
@@ -85,6 +88,12 @@ public:
         }
 
         if (!ZigZagElliotObservationSpreadMigration::execute(
+                this.databaseHandle
+            )) {
+            return false;
+        }
+
+        if (!ZigZagElliotObservationPipSizeMigration::execute(
                 this.databaseHandle
             )) {
             return false;
@@ -349,12 +358,12 @@ private:
         sql += " anchor_time_frame, anchor_time_frame_text,";
         sql += " anchor_bar_time, anchor_bar_time_text,";
         sql += " anchor_jst_time, anchor_jst_time_text, capture_phase,";
-        sql += " spread_pips, analysis_version, analysis_input_hash,";
+        sql += " spread_pips, pip_size, analysis_version, analysis_input_hash,";
         sql += " snapshot_hash,";
         sql += " time_frame_count, created_at, created_at_text";
         sql += ") VALUES (";
         sql += "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,";
-        sql += " ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18";
+        sql += " ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19";
         sql += ") ON CONFLICT(";
         sql += "source_mode, source_server, symbol_name,";
         sql += " anchor_time_frame, anchor_bar_time, capture_phase,";
@@ -436,6 +445,9 @@ private:
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.spreadPips);
         }
         if (isBound) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.pipSize);
+        }
+        if (isBound) {
             isBound = DatabaseBind(
                 fromRequestHandle,
                 index++,
@@ -470,7 +482,7 @@ private:
             );
         }
 
-        return isBound && index == 18;
+        return isBound && index == 19;
     }
 
     /**

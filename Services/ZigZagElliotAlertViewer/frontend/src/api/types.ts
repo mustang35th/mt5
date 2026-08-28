@@ -429,6 +429,7 @@ export interface ObservationListItem {
   anchor_time_frame_text: string;
   capture_phase: string;
   spread_pips: number | null;
+  pip_size: number | null;
   analysis_version: string;
   analysis_input_hash: string;
   analysis_input_text?: string | null;

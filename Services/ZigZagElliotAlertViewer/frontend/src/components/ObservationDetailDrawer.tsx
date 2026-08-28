@@ -57,6 +57,11 @@ function spreadLabel(spreadPips: number | null | undefined): string {
   return `${formatNumber(spreadPips)} pips`;
 }
 
+function pipSizeLabel(pipSize: number | null | undefined): string {
+  if (pipSize === null || pipSize === undefined) return "未記録";
+  return String(pipSize);
+}
+
 function TimeFrameValue({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
@@ -464,6 +469,7 @@ function DetailContent({
             <span>Server {displayValue(observation.anchor_bar_time_text)}</span>
             <span>Run {observation.run_id}</span>
             <span>Spread {spreadLabel(observation.spread_pips)}</span>
+            <span>Pip size {pipSizeLabel(observation.pip_size)}</span>
           </div>
         </div>
         <H1EntryCheckPanel
@@ -514,6 +520,7 @@ function DetailContent({
           <DetailField label="Anchor time frame" value={observation.anchor_time_frame_text} />
           <DetailField label="Capture phase" value={observation.capture_phase} />
           <DetailField label="Spread" value={spreadLabel(observation.spread_pips)} />
+          <DetailField label="Pip size" value={pipSizeLabel(observation.pip_size)} />
           <DetailField label="Source mode / server" value={`${observation.source_mode} / ${displayValue(observation.source_server)}`} />
           <DetailField label="Run started" value={observation.started_at_text} />
           <DetailField label="Tester model" value={observation.tester_model} />

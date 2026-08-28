@@ -1033,6 +1033,15 @@ class AlertDatabase:
             "zigzag_elliot_observations",
         )
 
+    @staticmethod
+    def observation_pip_size_available(connection: Connection) -> bool:
+        """Return whether observation parents contain captured pip sizes."""
+
+        return "pip_size" in AlertDatabase.table_columns(
+            connection,
+            "zigzag_elliot_observations",
+        )
+
     def validate(self) -> dict[str, Any]:
         """Validate the required schema without modifying the database."""
 
@@ -1806,6 +1815,7 @@ class AlertDatabase:
         filters: ObservationFilters,
         analysis_profile_available: bool = False,
         spread_available: bool = False,
+        pip_size_available: bool = False,
     ) -> str:
         """Return filtered parents; child rows are loaded only after paging."""
 
@@ -1860,6 +1870,9 @@ class AlertDatabase:
         spread_expression = "NULL AS spread_pips"
         if spread_available:
             spread_expression = "o.spread_pips"
+        pip_size_expression = "NULL AS pip_size"
+        if pip_size_available:
+            pip_size_expression = "o.pip_size"
         return f"""
             WITH observation_rows AS (
                 SELECT
@@ -1872,7 +1885,7 @@ class AlertDatabase:
                     o.anchor_time_frame_text, o.anchor_bar_time,
                     o.anchor_bar_time_text, o.anchor_jst_time,
                     o.anchor_jst_time_text, o.capture_phase,
-                    {spread_expression},
+                    {spread_expression}, {pip_size_expression},
                     o.analysis_version, o.analysis_input_hash,
                     {analysis_profile_columns}
                     o.snapshot_hash, o.time_frame_count,
@@ -1889,6 +1902,7 @@ class AlertDatabase:
         filters: ObservationFilters,
         analysis_profile_available: bool = False,
         spread_available: bool = False,
+        pip_size_available: bool = False,
     ) -> str:
         """Return consecutive FULL rows collapsed before paging."""
 
@@ -1932,6 +1946,9 @@ class AlertDatabase:
         spread_expression = "NULL AS spread_pips"
         if spread_available:
             spread_expression = "o.spread_pips"
+        pip_size_expression = "NULL AS pip_size"
+        if pip_size_available:
+            pip_size_expression = "o.pip_size"
         symbol_stream_partition = """
             source_mode, source_server, run_id, symbol_name,
             anchor_time_frame, capture_phase, analysis_version,
@@ -1950,7 +1967,7 @@ class AlertDatabase:
                     o.anchor_time_frame_text, o.anchor_bar_time,
                     o.anchor_bar_time_text, o.anchor_jst_time,
                     o.anchor_jst_time_text, o.capture_phase,
-                    {spread_expression},
+                    {spread_expression}, {pip_size_expression},
                     o.analysis_version, o.analysis_input_hash,
                     {analysis_profile_columns}
                     o.snapshot_hash, o.time_frame_count,
@@ -2088,6 +2105,7 @@ class AlertDatabase:
                     start_observation.anchor_jst_time_text,
                     start_observation.capture_phase,
                     start_observation.spread_pips,
+                    start_observation.pip_size,
                     start_observation.analysis_version,
                     start_observation.analysis_input_hash,
                     start_observation.analysis_input_text,
@@ -2303,6 +2321,7 @@ class AlertDatabase:
                 return self.unavailable_observation_list(filters)
             analysis_profile_status = self.analysis_profile_schema_status(connection)
             spread_available = self.observation_spread_available(connection)
+            pip_size_available = self.observation_pip_size_available(connection)
             rows_cte = self.observation_rows_cte
             if filters.group_continuous:
                 rows_cte = self.observation_signal_rows_cte
@@ -2310,6 +2329,7 @@ class AlertDatabase:
                 filters,
                 analysis_profile_status["available"],
                 spread_available,
+                pip_size_available,
             )
             list_sql = (
                 cte
@@ -2444,6 +2464,7 @@ class AlertDatabase:
                 return unavailable
             analysis_profile_status = self.analysis_profile_schema_status(connection)
             spread_available = self.observation_spread_available(connection)
+            pip_size_available = self.observation_pip_size_available(connection)
             rows_cte = self.observation_rows_cte
             if filters.group_continuous:
                 rows_cte = self.observation_signal_rows_cte
@@ -2475,6 +2496,7 @@ class AlertDatabase:
                 filters,
                 analysis_profile_status["available"],
                 spread_available,
+                pip_size_available,
             ) + f"""
                 SELECT COUNT(*) AS total_count,
                        COALESCE(SUM(CASE WHEN source_mode = 'LIVE'
@@ -2576,6 +2598,7 @@ class AlertDatabase:
         parent_sql_template = """
             SELECT o.*,
                    {spread_pips_column}
+                   {pip_size_column}
                    is_gmo_target(o.symbol_name) AS is_gmo_target,
                    r.run_uid, r.source, r.program_name, r.program_version,
                    r.strategy, r.strategy_version, r.tester_from, r.tester_to,
@@ -2603,6 +2626,9 @@ class AlertDatabase:
             spread_pips_column = "NULL AS spread_pips,"
             if self.observation_spread_available(connection):
                 spread_pips_column = ""
+            pip_size_column = "NULL AS pip_size,"
+            if self.observation_pip_size_available(connection):
+                pip_size_column = ""
             analysis_profile_columns = """
                 NULL AS analysis_input_text,
                 1 AS analysis_profile_is_legacy,
@@ -2638,6 +2664,7 @@ class AlertDatabase:
             parent_sql = parent_sql_template.format(
                 analysis_profile_columns=analysis_profile_columns,
                 spread_pips_column=spread_pips_column,
+                pip_size_column=pip_size_column,
             )
             connection.exec_driver_sql("BEGIN")
             try:

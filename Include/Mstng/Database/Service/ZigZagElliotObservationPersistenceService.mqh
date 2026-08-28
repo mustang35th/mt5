@@ -479,6 +479,9 @@ private:
                 || !MathIsValidNumber(fromObservationEntity.spreadPips)
                 || fromObservationEntity.spreadPips == EMPTY_VALUE
                 || fromObservationEntity.spreadPips < 0.0
+                || !MathIsValidNumber(fromObservationEntity.pipSize)
+                || fromObservationEntity.pipSize == EMPTY_VALUE
+                || fromObservationEntity.pipSize <= 0.0
                 || fromObservationEntity.analysisVersion == ""
                 || fromObservationEntity.analysisInputHash == ""
                 || fromObservationEntity.snapshotHash == ""

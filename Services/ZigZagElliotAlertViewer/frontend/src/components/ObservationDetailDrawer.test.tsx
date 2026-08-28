@@ -44,6 +44,7 @@ function observation(id = 41): ObservationDetailParent {
     anchor_time_frame_text: "H1",
     capture_phase: "BAR_OPEN_FIRST_SUCCESS",
     spread_pips: 1.2,
+    pip_size: 0.0001,
     analysis_version: "2.0",
     analysis_input_hash: "analysis-hash",
     snapshot_hash: "snapshot-hash",
@@ -390,6 +391,7 @@ describe("ObservationDetailDrawer", () => {
     expect(screen.getByText("JST 2026.08.10 11:00:00 / Server 2026.08.10 05:00:00")).toBeInTheDocument();
     expect(screen.getByText("Run 7")).toBeInTheDocument();
     expect(screen.getByText("1.2 pips")).toBeInTheDocument();
+    expect(screen.getByText("0.0001")).toBeInTheDocument();
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
     expect(screen.getAllByText("▲ 上昇")).toHaveLength(1);
     expect(screen.getAllByText("▼ 下降")).toHaveLength(4);
@@ -454,6 +456,7 @@ describe("ObservationDetailDrawer", () => {
     expect(gridButton).toHaveAttribute("aria-pressed", "true");
     expect(dialog).toHaveClass("observation-grid-mode");
     expect(screen.getByText("Spread 1.2 pips")).toBeInTheDocument();
+    expect(screen.getByText("Pip size 0.0001")).toBeInTheDocument();
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
     const entryCheck = screen.getByRole("region", {
       name: "ZigZagElliot H1エントリー条件",
@@ -555,6 +558,30 @@ describe("ObservationDetailDrawer", () => {
     );
 
     expect(await screen.findByText("0.0 pips")).toBeInTheDocument();
+  });
+
+  it("shows pip size without rounding and handles an unrecorded value", async () => {
+    const legacyPayload = detailPayload();
+    legacyPayload.observation.pip_size = null;
+    const precisePayload = detailPayload();
+    precisePayload.observation.pip_size = 0.0001;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(legacyPayload))
+      .mockResolvedValueOnce(jsonResponse(precisePayload));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = render(
+      <ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("未記録")).toBeInTheDocument();
+
+    rerender(
+      <ObservationDetailDrawer observationId={42} onClose={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("0.0001")).toBeInTheDocument();
   });
 
   it("colors Elliott wave values independently from the analysis direction", async () => {

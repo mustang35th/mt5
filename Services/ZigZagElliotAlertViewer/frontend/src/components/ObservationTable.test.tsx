@@ -77,6 +77,7 @@ function observation(
     anchor_time_frame_text: "H1",
     capture_phase: "BAR_OPEN_FIRST_SUCCESS",
     spread_pips: spreadPips,
+    pip_size: 0.0001,
     analysis_version: "2.0",
     analysis_input_hash: "analysis-hash",
     snapshot_hash: `snapshot-${id}`,
