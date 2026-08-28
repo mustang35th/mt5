@@ -225,6 +225,19 @@ public:
 
         if (currentTimeFrame == PERIOD_H1
                 && fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1) {
+            alignmentStartTimeFrameText = "W1-D1&(H4|H1)";
+        } else if (currentTimeFrame == PERIOD_H1
+                && fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1) {
+            alignmentStartTimeFrameText = "MN1-D1&(H4|H1)";
+        } else if (currentTimeFrame == PERIOD_H1
+                && fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1) {
+            alignmentStartTimeFrameText =
+                "W1-D1&(MN1|W1EMA)&(H4|H1)";
+        } else if (currentTimeFrame == PERIOD_H1
+                && fromDecision.getAlignmentRule()
                     == ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200) {
             alignmentStartTimeFrameText = "W1-H1&(MN1|W1EMA)";
         } else if (currentTimeFrame == PERIOD_H4
@@ -1393,9 +1406,15 @@ private:
 
             Mtf3In3EntryPriorityResult priorityResult;
             priorityResult.reset();
+            ENUM_TIMEFRAMES priorityTimeFrame =
+                this.getEntryPriorityTimeFrame(
+                    elliotAll,
+                    fromDecision,
+                    fromCurrentTimeFrame
+                );
             priorityDecision.evaluate(
                 elliotAll,
-                fromCurrentTimeFrame,
+                priorityTimeFrame,
                 priorityResult
             );
             D1ElliotEmaSortResult d1SortResult;
@@ -1433,6 +1452,56 @@ private:
         );
 
         return displayCount;
+    }
+
+    /**
+     * エントリー優先度判定で使用する基準時間足を取得する。
+     *
+     * D1条件かつH4・H1のどちらかが一致するH1モードでは、D1とH1が
+     * 同方向の場合にH1を優先し、それ以外はD1と一致するH4を使用する。
+     *
+     * @param fromElliotAll 分析結果。
+     * @param fromDecision 完全一致判定クラス。
+     * @param fromCurrentTimeFrame 表示時間足。
+     * @return エントリー優先度判定で使用する基準時間足。
+     */
+    ENUM_TIMEFRAMES getEntryPriorityTimeFrame(
+        ElliotAll *fromElliotAll,
+        ElliotDirectionAlignmentDecision *fromDecision,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame
+    ) {
+        if (fromElliotAll == NULL
+                || fromDecision == NULL
+                || fromCurrentTimeFrame != PERIOD_H1) {
+            return fromCurrentTimeFrame;
+        }
+
+        ElliotDirectionAlignmentRule alignmentRule =
+            fromDecision.getAlignmentRule();
+        bool isD1H4OrH1Rule = alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1
+            || alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1
+            || alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1;
+
+        if (!isD1H4OrH1Rule) {
+            return fromCurrentTimeFrame;
+        }
+
+        Elliot *elliotD1 = fromElliotAll.getElliot(PERIOD_D1);
+        Elliot *elliotH4 = fromElliotAll.getElliot(PERIOD_H4);
+        Elliot *elliotH1 = fromElliotAll.getElliot(PERIOD_H1);
+
+        if (elliotD1 == NULL || elliotH4 == NULL || elliotH1 == NULL) {
+            return fromCurrentTimeFrame;
+        }
+
+        if (elliotD1.isBuy == elliotH1.isBuy) {
+            return PERIOD_H1;
+        }
+
+        return PERIOD_H4;
     }
 
     /**

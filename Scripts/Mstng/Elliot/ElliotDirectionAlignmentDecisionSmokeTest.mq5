@@ -166,6 +166,81 @@ void assertH1Alignment(
 }
 
 /**
+ * D1条件とH4またはH1条件を組み合わせる判定の期待値を検証する。
+ *
+ * @param fromCaseName テストケース名
+ * @param fromAlignmentRule 一致判定ルール
+ * @param fromIsH1Buy H1がBUYの場合true
+ * @param fromIsH4Buy H4がBUYの場合true
+ * @param fromIsD1Buy D1がBUYの場合true
+ * @param fromIsW1Buy W1がBUYの場合true
+ * @param fromIsMn1Buy MN1がBUYの場合true
+ * @param fromIsW1Ema200Buy W1 EMA200がBUYの場合true
+ * @param fromIsW1Ema200Sell W1 EMA200がSELLの場合true
+ * @param fromExpected 期待するトレンド一致種別
+ */
+void assertH1D1OrAlignment(
+    const string fromCaseName,
+    const ElliotDirectionAlignmentRule fromAlignmentRule,
+    const bool fromIsH1Buy,
+    const bool fromIsH4Buy,
+    const bool fromIsD1Buy,
+    const bool fromIsW1Buy,
+    const bool fromIsMn1Buy,
+    const bool fromIsW1Ema200Buy,
+    const bool fromIsW1Ema200Sell,
+    const TrendAlignType fromExpected
+) {
+    TrendAlignType actual = trendAlignNone;
+
+    if (fromAlignmentRule
+            == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1) {
+        actual = ElliotDirectionAlignmentDecision::
+            evaluateH1D1W1WithH4OrH1(
+                fromIsH1Buy,
+                fromIsH4Buy,
+                fromIsD1Buy,
+                fromIsW1Buy
+            );
+    } else if (fromAlignmentRule
+            == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1) {
+        actual = ElliotDirectionAlignmentDecision::
+            evaluateH1D1Mn1W1WithH4OrH1(
+                fromIsH1Buy,
+                fromIsH4Buy,
+                fromIsD1Buy,
+                fromIsW1Buy,
+                fromIsMn1Buy
+            );
+    } else if (fromAlignmentRule
+            == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1) {
+        actual = ElliotDirectionAlignmentDecision::
+            evaluateH1D1W1WithMn1OrEma200AndH4OrH1(
+                fromIsH1Buy,
+                fromIsH4Buy,
+                fromIsD1Buy,
+                fromIsW1Buy,
+                fromIsMn1Buy,
+                fromIsW1Ema200Buy,
+                fromIsW1Ema200Sell
+            );
+    }
+
+    if (actual == fromExpected) {
+        return;
+    }
+
+    gFailureCount++;
+    PrintFormat(
+        "FAIL %s rule=%d expected=%s actual=%s",
+        fromCaseName,
+        (int)fromAlignmentRule,
+        convertAlignTypeText(fromExpected),
+        convertAlignTypeText(actual)
+    );
+}
+
+/**
  * H1次点候補判定の期待値を検証する。
  *
  * @param fromCaseName テストケース名
@@ -463,6 +538,177 @@ void validateH1InvalidEmaCases() {
 }
 
 /**
+ * D1とW1の一致にH4またはH1の一致を加える判定を検証する。
+ */
+void validateH1D1W1WithH4OrH1Cases() {
+    ElliotDirectionAlignmentRule rule =
+        ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1;
+
+    assertH1D1OrAlignment(
+        "D1 W1 OR BUY BOTH",
+        rule, true, true, true, true, false, false, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR BUY H4 ONLY",
+        rule, false, true, true, true, false, false, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR BUY H1 ONLY",
+        rule, true, false, true, true, false, false, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR BUY NEITHER",
+        rule, false, false, true, true, false, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR BUY W1 MISMATCH",
+        rule, true, true, true, false, false, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR SELL BOTH",
+        rule, false, false, false, false, false, false, false, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR SELL H4 ONLY",
+        rule, true, false, false, false, false, false, false, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR SELL H1 ONLY",
+        rule, false, true, false, false, false, false, false, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR SELL NEITHER",
+        rule, true, true, false, false, false, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 OR SELL W1 MISMATCH",
+        rule, false, false, false, true, false, false, false, trendAlignNone
+    );
+}
+
+/**
+ * MN1、W1、D1の一致にH4またはH1の一致を加える判定を検証する。
+ */
+void validateH1D1Mn1W1WithH4OrH1Cases() {
+    ElliotDirectionAlignmentRule rule =
+        ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1;
+
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR BUY BOTH",
+        rule, true, true, true, true, true, false, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR BUY H4 ONLY",
+        rule, false, true, true, true, true, false, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR BUY H1 ONLY",
+        rule, true, false, true, true, true, false, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR BUY NEITHER",
+        rule, false, false, true, true, true, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR BUY W1 MISMATCH",
+        rule, true, true, true, false, true, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR BUY MN1 MISMATCH",
+        rule, true, true, true, true, false, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR SELL BOTH",
+        rule, false, false, false, false, false, false, false, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR SELL H4 ONLY",
+        rule, true, false, false, false, false, false, false, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR SELL H1 ONLY",
+        rule, false, true, false, false, false, false, false, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR SELL NEITHER",
+        rule, true, true, false, false, false, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR SELL W1 MISMATCH",
+        rule, false, false, false, true, false, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 MN1 W1 OR SELL MN1 MISMATCH",
+        rule, false, false, false, false, true, false, false, trendAlignNone
+    );
+}
+
+/**
+ * D1とW1、MN1またはEMA200、H4またはH1の複合判定を検証する。
+ */
+void validateH1D1W1WithMn1OrEmaAndH4OrH1Cases() {
+    ElliotDirectionAlignmentRule rule =
+        ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1;
+
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR BUY BOTH",
+        rule, true, true, true, true, true, false, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR BUY H4 ONLY",
+        rule, false, true, true, true, false, true, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR BUY H1 ONLY",
+        rule, true, false, true, true, false, true, false, trendAlignBuy
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR BUY LOWER NEITHER",
+        rule, false, false, true, true, true, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR BUY W1 MISMATCH",
+        rule, true, true, true, false, true, true, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR BUY BASE NEITHER",
+        rule, true, true, true, true, false, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR BUY EMA CONFLICT",
+        rule, true, true, true, true, true, true, true, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR SELL BOTH",
+        rule, false, false, false, false, false, false, false, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR SELL H4 ONLY",
+        rule, true, false, false, false, true, false, true, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR SELL H1 ONLY",
+        rule, false, true, false, false, true, false, true, trendAlignSell
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR SELL LOWER NEITHER",
+        rule, true, true, false, false, false, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR SELL W1 MISMATCH",
+        rule, false, false, false, true, false, false, true, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR SELL BASE NEITHER",
+        rule, false, false, false, false, true, false, false, trendAlignNone
+    );
+    assertH1D1OrAlignment(
+        "D1 W1 MN1 EMA OR SELL EMA CONFLICT",
+        rule, false, false, false, false, false, true, true, trendAlignNone
+    );
+}
+
+/**
  * H1次点候補のBUY完成形を検証する。
  */
 void validateH1BuyRunnerUpCases() {
@@ -575,7 +821,10 @@ void validateAlignmentRuleValues() {
         (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES == 0
         && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_WITH_MN1_OR_EMA200 == 1
         && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200 == 2
-        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200 == 3;
+        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200 == 3
+        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1 == 4
+        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1 == 5
+        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1 == 6;
 
     if (isMatched) {
         return;
@@ -599,6 +848,9 @@ void OnStart() {
     validateH1BuyCases();
     validateH1SellCases();
     validateH1InvalidEmaCases();
+    validateH1D1W1WithH4OrH1Cases();
+    validateH1D1Mn1W1WithH4OrH1Cases();
+    validateH1D1W1WithMn1OrEmaAndH4OrH1Cases();
     validateH1BuyRunnerUpCases();
     validateH1SellRunnerUpCases();
     validateH1RunnerUpInvalidEmaCases();

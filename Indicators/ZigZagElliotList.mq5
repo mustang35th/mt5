@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.23"
+#property version   "1.24"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -26,7 +26,7 @@ enum ZigZagElliotListMode {
     ZIGZAG_ELLIOT_LIST_MODE_H4 = 2     // H4 / ALIGN SETTING / ENTRY PRIORITY SORT
 };
 
-/** D1モードとH4モードの上位時間足一致条件。 */
+/** D1・H4モードとH1のD1条件モードで使用する上位時間足一致条件。 */
 enum ZigZagElliotListD1AlignmentMode {
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY = 0, // W1
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1 = 1, // MN1 AND W1
@@ -37,7 +37,8 @@ enum ZigZagElliotListD1AlignmentMode {
 enum ZigZagElliotListH1AlignmentMode {
     ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1 = 0, // D1 AND H4 AND H1
     ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1 = 1, // MN1 AND W1 AND D1 AND H4 AND H1
-    ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200 = 2 // W1-H1 AND (MN1 OR W1 EMA200)
+    ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200 = 2, // W1-H1 AND (MN1 OR W1 EMA200)
+    ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1 = 3 // D1 CONDITION AND (H4 OR H1)
 };
 
 /** CHARTモードの並び替え基準。D1は専用、H4はエントリー優先順を使用する。 */
@@ -46,7 +47,7 @@ input ElliotListSortType sortType = ELLIOT_LIST_SORT_M15_ELLIOT_EMA;
 /** 一覧の基準時間足モード。 */
 input ZigZagElliotListMode listMode = ZIGZAG_ELLIOT_LIST_MODE_CHART;
 
-/** D1モードとH4モードの上位時間足一致条件。CHARTモードでは使用しない。 */
+/** D1・H4モードとH1のD1条件モードで使用する上位時間足一致条件。 */
 input ZigZagElliotListD1AlignmentMode d1AlignmentMode =
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY;
 
@@ -131,7 +132,11 @@ int OnInit() {
     }
 
     if ((listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
-                || listMode == ZIGZAG_ELLIOT_LIST_MODE_H4)
+                || listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
+                || (listMode == ZIGZAG_ELLIOT_LIST_MODE_CHART
+                    && _Period == PERIOD_H1
+                    && h1AlignmentMode
+                        == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1))
             && d1AlignmentMode != ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY
             && d1AlignmentMode
                 != ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1
@@ -188,7 +193,9 @@ int OnInit() {
                 && h1AlignmentMode
                     != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1
                 && h1AlignmentMode
-                    != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200) {
+                    != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200
+                && h1AlignmentMode
+                    != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1) {
             return INIT_PARAMETERS_INCORRECT;
         }
 
@@ -204,6 +211,26 @@ int OnInit() {
             alignmentRule =
                 ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200;
             alignmentText = "W1-H1&(MN1|W1EMA)";
+        } else if (h1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1) {
+            alignmentStartTimeFrame = PERIOD_W1;
+            alignmentRule =
+                ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1;
+            alignmentText = "W1-D1&(H4|H1)";
+
+            if (d1AlignmentMode
+                    == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1) {
+                alignmentStartTimeFrame = PERIOD_MN1;
+                alignmentRule =
+                    ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1;
+                alignmentText = "MN1-D1&(H4|H1)";
+            } else if (d1AlignmentMode
+                    == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_WITH_MN1_OR_EMA200) {
+                alignmentStartTimeFrame = PERIOD_MN1;
+                alignmentRule =
+                    ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1;
+                alignmentText = "W1-D1&(MN1|W1EMA)&(H4|H1)";
+            }
         }
     }
 
