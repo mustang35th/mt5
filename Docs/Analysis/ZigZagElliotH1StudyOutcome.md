@@ -177,7 +177,7 @@ Entryの母数と成績の母数は分けて保存します。
 | `eligible_entry_count` | `is_research_eligible = 1`のEntry |
 | `calculated_outcome_count` | 研究対象Entryかつ`is_calculated = 1`のOutcome |
 | `failed_outcome_count` | 研究対象Entryかつ`is_calculated = 0`のOutcome |
-| 勝ち／負け／同値 | 計算成功した`net_profit_pips`の正／負／0 |
+| 勝ち／負け／同値 | 計算成功した`net_profit_pips`が`+1e-8`超／`-1e-8`未満／絶対値`1e-8`以下 |
 | 勝率 | 勝ち件数 ÷ 計算成功件数 |
 | Profit Factor | 正の`net_profit_pips`合計 ÷ 負の`net_profit_pips`絶対値合計 |
 | 平均・中央値 | 計算成功した`net_profit_pips`だけを使用 |
@@ -187,6 +187,8 @@ Entryの母数と成績の母数は分けて保存します。
 | Gap率 | `FUTURE_H1_GAP`件数 ÷ 研究対象Entry数 |
 
 損失合計が0の場合、有限のProfit Factorを作りません。正の損益が存在する場合は`INFINITE_NO_LOSS`、損益変動がない場合は`NO_VARIATION`、計算標本がない場合は`NO_SAMPLE`を`profit_factor_status`へ出力し、`profit_factor`は空欄にします。
+
+浮動小数計算による数学的な0の微小誤差を勝ち／負けへ分類しないため、`1e-8 pips`を許容誤差として使用します。使用値は`profit_zero_epsilon_pips`列へ出力し、許容誤差内の値はProfit Factorの正負合計からも除外します。
 
 実行手順は次のとおりです。
 
@@ -203,3 +205,44 @@ mstng-zigzag-elliot-h1-study-baseline-2024-2025-r1-run-1.csv
 既定r1では、研究対象30,657 Entryに4期間を付けた122,628 Outcomeのうち、122,274件が計算成功、354件が`FUTURE_H1_GAP`です。Run全体の計算成功122,334件には研究対象外15 Entryの60 Outcomeが含まれるため、基準成績の母数には使用しません。
 
 このCSVは母集団の異なる1本／2本／3本確認をそのまま比較する基準集計です。同じEpisodeに限定した公平比較は次のStepで別集計します。
+
+## 10. 同一Episodeの確認本数比較
+
+`ZigZagElliotH1StudyConfirmationComparisonExporter`は、同じSignal Episodeに属する1本／2本／3本確認Entryを比較し、確認を待つことによる成績差を出力します。Outcome DBは読み取り専用で開き、参照DBを更新しません。
+
+Episodeの結合キーは`outcome_run_id`と`signal_start_observation_id`です。評価期間は各Entryを起点とする6／12／24／48H1であり、同じ決済時刻を比較するものではありません。
+
+比較Cohortは次の2種類です。
+
+| Cohort | 候補 | 成績集計対象 |
+|---|---|---|
+| `PAIR_1_2` | 同じEpisodeに1本・2本確認Entryが存在 | 両Entryが研究対象で、同じ評価期間の両Outcomeを計算できるEpisode |
+| `COMMON_1_2_3` | 同じEpisodeに1本・2本・3本確認Entryが存在 | 3 Entryが研究対象で、同じ評価期間の3 Outcomeをすべて計算できるEpisode |
+
+既定ではTerminal Common Filesへ次の2ファイルを上書きします。
+
+```text
+mstng-zigzag-elliot-h1-study-confirmation-comparison-episodes-2024-2025-r1-run-1.csv
+mstng-zigzag-elliot-h1-study-confirmation-comparison-summary-2024-2025-r1-run-1.csv
+```
+
+実行時は`ZigZagElliotH1StudyConfirmationComparisonExporter.mq5`をコンパイルし、スクリプトとして実行します。`outcomeRunId = 0`の場合、`COMPLETED`のOutcome Runが1件だけなら自動選択します。複数ある場合は比較対象のRun IDを明示します。
+
+Episode明細CSVは、1本・2本確認Entryが存在するEpisodeを評価期間ごとに1行出力します。研究対象外、Outcome計算不能、3本確認が存在しない行も監査できるように残します。各確認本数のEntry時刻、Spread、gross／net損益、ATR換算、MFE、MAE、最大利益到達本数と、`2 - 1`、`3 - 1`、`3 - 2`の差を保存します。
+
+差分は正の値を「確認を待った側の改善」と読めるように統一します。gross／net損益、MFE、ATR損益は待機側から先行側を引き、MAE、Spread、最大利益到達本数は先行側から待機側を引きます。最大利益到達本数の短縮は両OutcomeのMFEが正の場合だけ集計します。ATR損益差は各Entry固有のATRで換算した値同士の差であり、同一ATRを分母にした比較ではありません。
+
+集計CSVは、Cohort 2種類、評価期間4種類、方向`ALL`／`BUY`／`SELL`の24行です。候補・研究対象・比較可能・Gap件数、Coverage、各確認本数の勝率・平均・中央値・Profit Factor、各差分の改善／同値／悪化件数を保存します。
+
+損益の勝ち／負け／同値および差分の改善／悪化／同値は、`1e-8 pips`を許容誤差として判定します。絶対値が許容誤差以下の損益は同値、差分は0へ正規化します。使用値は`profit_zero_epsilon_pips`列へ出力します。
+
+既定r1の受入件数は次のとおりです。
+
+| Cohort | 候補 | 共通研究対象 | 6H1 | 12H1 | 24H1 | 48H1 |
+|---|---:|---:|---:|---:|---:|---:|
+| `PAIR_1_2` | 9,823 | 9,819 | 9,806 | 9,800 | 9,792 | 9,758 |
+| `COMMON_1_2_3` | 5,191 | 5,189 | 5,185 | 5,183 | 5,178 | 5,161 |
+
+Episode明細は39,292行、集計は24行です。集計中は同じOutcome DBへOutcome Builderを同時実行しません。
+
+共通Cohortは、後から2本または3本まで条件が継続したEpisodeへ事後的に限定した比較です。確認を待つことによるEntry位置の差を調べる用途には使えますが、ライブ時点の無条件期待値ではありません。実運用母集団の判断ではStep 5の基準成績も併記してください。

@@ -29,10 +29,13 @@ input string outputCsvFileName = "";
 input bool outputUseCommonFolder = true;
 
 /** 基準成績CSVのスキーマバージョン。 */
-const string baselineCsvSchemaVersion = "H1_STUDY_BASELINE_V1";
+const string baselineCsvSchemaVersion = "H1_STUDY_BASELINE_V2";
+
+/** 損益を同値とみなす許容誤差pips。 */
+const double baselineProfitZeroEpsilonPips = 0.00000001;
 
 /** 基準成績CSVの列数。 */
-const int baselineCsvFieldCount = 48;
+const int baselineCsvFieldCount = 49;
 
 /** 集計方向数。 */
 const int baselineSideScopeCount = 3;
@@ -1072,6 +1075,10 @@ bool aggregateBaselineRow(
     fromRow.sideScope = fromSideScope;
     fromRow.confirmationH1Count = fromConfirmationH1Count;
     fromRow.horizonH1Bars = fromHorizonH1Bars;
+    string profitEpsilonText = DoubleToString(
+        baselineProfitZeroEpsilonPips,
+        10
+    );
     string sql = "SELECT COUNT(e.id),";
     sql += "COALESCE(SUM(CASE WHEN e.is_research_eligible = 0 ";
     sql += "THEN 1 ELSE 0 END), 0),";
@@ -1087,22 +1094,27 @@ bool aggregateBaselineRow(
     sql += "COALESCE(SUM(CASE WHEN e.is_research_eligible = 1 ";
     sql += "AND o.data_status = 'FUTURE_H1_GAP' THEN 1 ELSE 0 END), 0),";
     sql += "COALESCE(SUM(CASE WHEN e.is_research_eligible = 1 ";
-    sql += "AND o.is_calculated = 1 AND o.net_profit_pips > 0 ";
+    sql += "AND o.is_calculated = 1 AND o.net_profit_pips > ";
+    sql += profitEpsilonText + " ";
     sql += "THEN 1 ELSE 0 END), 0),";
     sql += "COALESCE(SUM(CASE WHEN e.is_research_eligible = 1 ";
-    sql += "AND o.is_calculated = 1 AND o.net_profit_pips < 0 ";
+    sql += "AND o.is_calculated = 1 AND o.net_profit_pips < -";
+    sql += profitEpsilonText + " ";
     sql += "THEN 1 ELSE 0 END), 0),";
     sql += "COALESCE(SUM(CASE WHEN e.is_research_eligible = 1 ";
-    sql += "AND o.is_calculated = 1 AND o.net_profit_pips = 0 ";
+    sql += "AND o.is_calculated = 1 AND ABS(o.net_profit_pips) <= ";
+    sql += profitEpsilonText + " ";
     sql += "THEN 1 ELSE 0 END), 0),";
     sql += "COALESCE(SUM(CASE WHEN e.is_research_eligible = 1 ";
     sql += "AND o.is_calculated = 1 THEN o.net_profit_pips ";
     sql += "ELSE 0.0 END), 0.0),";
     sql += "COALESCE(SUM(CASE WHEN e.is_research_eligible = 1 ";
-    sql += "AND o.is_calculated = 1 AND o.net_profit_pips > 0 ";
+    sql += "AND o.is_calculated = 1 AND o.net_profit_pips > ";
+    sql += profitEpsilonText + " ";
     sql += "THEN o.net_profit_pips ELSE 0.0 END), 0.0),";
     sql += "COALESCE(-SUM(CASE WHEN e.is_research_eligible = 1 ";
-    sql += "AND o.is_calculated = 1 AND o.net_profit_pips < 0 ";
+    sql += "AND o.is_calculated = 1 AND o.net_profit_pips < -";
+    sql += profitEpsilonText + " ";
     sql += "THEN o.net_profit_pips ELSE 0.0 END), 0.0),";
     sql += "COALESCE(AVG(CASE WHEN e.is_research_eligible = 1 ";
     sql += "AND o.is_calculated = 1 THEN o.gross_profit_pips END), 0.0),";
@@ -1534,6 +1546,7 @@ bool setBaselineHeaderValues(
     fromValues[index++] = "spread_model";
     fromValues[index++] = "evaluation_version";
     fromValues[index++] = "horizons_text";
+    fromValues[index++] = "profit_zero_epsilon_pips";
     fromValues[index++] = "side_scope";
     fromValues[index++] = "confirmation_h1_count";
     fromValues[index++] = "horizon_h1_bars";
@@ -1645,6 +1658,10 @@ bool setBaselineRowValues(
     fromValues[index++] = fromRunInfo.spreadModel;
     fromValues[index++] = fromRunInfo.evaluationVersion;
     fromValues[index++] = fromRunInfo.horizonsText;
+    fromValues[index++] = DoubleToString(
+        baselineProfitZeroEpsilonPips,
+        10
+    );
     fromValues[index++] = fromRow.sideScope;
     fromValues[index++] = IntegerToString(fromRow.confirmationH1Count);
     fromValues[index++] = IntegerToString(fromRow.horizonH1Bars);
