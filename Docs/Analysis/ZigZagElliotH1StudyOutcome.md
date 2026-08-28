@@ -286,3 +286,61 @@ mstng-zigzag-elliot-h1-study-condition-breakdown-2024-2025-r1-run-1.csv
 | `FULL_ALIGNMENT` | 15,658 | 9,823 | 5,191 |
 
 `FULL_ALIGNMENT`の36行はStep 5の基準成績と一致することを回帰条件とします。隣接ルールでは条件追加によりEpisodeの区切りとEntry時刻も変わるため、成績差は条件単体の固定母集団における因果効果ではありません。「その条件を実運用ルールへ追加した場合のシグナル頻度と成績の変化」として解釈します。
+
+## 12. 時期・通貨ペア別の安定性確認
+
+`ZigZagElliotH1StudyConditionStabilityExporter`は、Step 7と同じ条件Episodeと将来成績を期間・通貨ペア別に分解します。参照元H1推移DBは読み取り専用で開き、参照元DBと既存Outcome DBは更新しません。
+
+目的は、Step 7の全体成績が特定の年、四半期または少数通貨ペアだけに依存していないかを確認することです。良い区分を探して条件を追加するための最適化ツールではありません。
+
+出力行には`dimension_type`と`dimension_value`を追加し、次の4種類を出力します。
+
+| `dimension_type` | `dimension_value` | 既定r1の区分数 | 内容 |
+|---|---|---:|---|
+| `OVERALL` | `ALL` | 1 | Step 7と同じ全体集計 |
+| `YEAR` | `2024`、`2025` | 2 | Episode開始JSTの年 |
+| `QUARTER` | `2024-Q1`～`2025-Q4` | 8 | Episode開始JSTの年・四半期 |
+| `SYMBOL` | `AUDUSD`など | 28 | 参照元Streamの通貨ペア |
+
+期間bucketはEntry時刻ではなく、`period_bucket_policy = EPISODE_START_JST_V1`としてEpisode開始JSTから決定します。Step 7の研究期間判定と基準をそろえ、次H1 Entryが成立しない研究対象外候補も必ず1つの年と1つの四半期へ配分できるようにするためです。このポリシーはCSVの全行へ出力します。
+
+各区分について、Step 7と同じ6条件ルール、3確認本数、4評価期間、3方向範囲を組み合わせます。既定r1の行数は次のとおりです。
+
+| 対象 | 計算 | 行数 |
+|---|---:|---:|
+| `OVERALL` | 1 × 6 × 3 × 4 × 3 | 216 |
+| `YEAR` | 2 × 6 × 3 × 4 × 3 | 432 |
+| `QUARTER` | 8 × 6 × 3 × 4 × 3 | 1,728 |
+| `SYMBOL` | 28 × 6 × 3 × 4 × 3 | 6,048 |
+| 合計 | 39 × 6 × 3 × 4 × 3 | 8,424 |
+
+完全な比較cubeにするため、候補が0件の組み合わせも行を出力します。CSVはStep 7の55列に`period_bucket_policy`、`dimension_type`、`dimension_value`を追加した58列です。勝敗、Profit Factor、MFE、MAE、ATR換算、SpreadおよびGapの定義はStep 7と変えません。
+
+期間bucketの終端で将来成績を打ち切りません。例えば2024年12月に開始したEpisodeの48H1 Outcomeが2025年に入っても、そのOutcomeは`YEAR = 2024`に集計します。四半期も同様です。年・四半期の境界を越えただけで`FUTURE_H1_GAP`にしません。
+
+研究期間の終了後にあるObservationも、48H1成績を確定するための将来バッファとして使用します。実際に将来H1が非連続または不足している場合は、Step 7と同じく評価期間ごとに計算不能とし、`future_h1_gap_count`またはその他の失敗件数へ残します。6H1を計算できて48H1を計算できない候補を行ごと除外しません。
+
+出力後は次の再合算条件を確認します。
+
+- `OVERALL`の216行がStep 7の対応行と一致すること
+- 同じ条件ルール・確認本数・評価期間・方向において、`YEAR`、`QUARTER`、`SYMBOL`それぞれの件数合計が`OVERALL`と一致すること
+- 各`YEAR`に属する4四半期の件数合計がその`YEAR`と一致すること
+- 各bucketで`BUY + SELL = ALL`が候補、研究対象、計算成功、失敗、Gap、勝ち、負け、同値の全件数について成立すること
+- 加算可能な損益合計も同様に再合算でき、率、平均、Profit Factorを件数と損益合計から再計算できること
+
+中央値は子bucketの中央値を足したり平均したりして復元できません。`OVERALL`の中央値は全個別Outcomeから直接計算し、Step 7との一致で検証します。
+
+実行手順は次のとおりです。
+
+1. MetaEditorで`Scripts/Mstng/Analysis/ZigZagElliotH1StudyConditionStabilityExporter.mq5`をコンパイルします。
+2. MT5のNavigatorからScriptをチャートへ実行します。
+3. `sourceRunId = 0`の場合、対象にできるSource Runが1件だけなら自動選択します。複数ある場合はRun IDを明示します。
+4. 既定ではTerminal Common Filesへ次のCSVを上書きします。
+
+```text
+mstng-zigzag-elliot-h1-study-condition-stability-2024-2025-r1-run-1.csv
+```
+
+5. CSVが8,424行・58列であること、Journalの完了ログ、上記の再合算条件を確認します。
+
+同じ候補は`OVERALL`、`YEAR`、`QUARTER`、`SYMBOL`へそれぞれ1回ずつ表現されるため、異なる`dimension_type`の行を足してシグナル件数と解釈しません。28通貨ペア×6ルール×3確認本数×4期間×3方向の多数比較になるため、少数標本の極端な勝率やProfit Factorをそのまま採用条件にしません。最低標本数と、年・四半期・通貨ペアにまたがる一貫性基準を先に固定してから判定します。
