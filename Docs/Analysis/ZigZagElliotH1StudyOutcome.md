@@ -246,3 +246,43 @@ Episode明細CSVは、1本・2本確認Entryが存在するEpisodeを評価期�
 Episode明細は39,292行、集計は24行です。集計中は同じOutcome DBへOutcome Builderを同時実行しません。
 
 共通Cohortは、後から2本または3本まで条件が継続したEpisodeへ事後的に限定した比較です。確認を待つことによるEntry位置の差を調べる用途には使えますが、ライブ時点の無条件期待値ではありません。実運用母集団の判断ではStep 5の基準成績も併記してください。
+
+## 11. 条件ファネル別の成績分解
+
+`ZigZagElliotH1StudyConditionBreakdownExporter`は、参照元H1推移DBを読み取り専用で開き、方向条件を段階的に追加したときのシグナル数と将来成績を比較します。参照元DBと既存Outcome DBは更新しません。
+
+現行Outcome Runは、W1／D1／H4／H1方向とH4／H1 EMA200が完全一致したObservationだけを候補化しています。そのため、既存Outcomeへ条件列を追加して集計しても全Entryが同じ条件を満たし、条件差を検証できません。Step 7では参照元の全Observationから、次の累積ルールごとにEpisodeと将来成績を再計算します。
+
+| 順序 | `condition_rule` | 必須条件 | 今回追加する条件 |
+|---:|---|---|---|
+| 1 | `H1_DIRECTION` | H1方向 | H1方向 |
+| 2 | `H4_H1_DIRECTION` | H4、H1方向一致 | H4方向 |
+| 3 | `D1_H4_H1_DIRECTION` | D1、H4、H1方向一致 | D1方向 |
+| 4 | `W1_D1_H4_H1_DIRECTION` | W1、D1、H4、H1方向一致 | W1方向 |
+| 5 | `W1_D1_H4_H1_DIRECTION_H1_EMA200` | 4方向＋H1 EMA200一致 | H1 EMA200 |
+| 6 | `FULL_ALIGNMENT` | 4方向＋H1／H4 EMA200一致 | H4 EMA200 |
+
+方向はH1を基準にBUYまたはSELLとします。EMA200はBUY時に`is_ema200_buy = 1`かつ`is_ema200_sell = 0`、SELL時に`is_ema200_buy = 0`かつ`is_ema200_sell = 1`を要求します。両方0の`NONE`をSELLへ含めません。全ルールでW1／D1／H4／H1の子Observationがそろっていることを要求し、欠損による母集団差を防ぎます。
+
+各ルールを個別にON／OFF判定し、同じ方向で連続するH1を1つのEpisodeへまとめます。各Episodeについて1本目、2本連続確認後、3本連続確認後を候補にし、研究用Entryは確認完了の次H1始値です。評価期間と価格モデルはStep 4と同じ6／12／24／48H1、`H1_BID_OHLC_V1`、`ENTRY_SPREAD_ONCE_V1`です。
+
+出力は既定でTerminal Common Filesの次のCSVです。
+
+```text
+mstng-zigzag-elliot-h1-study-condition-breakdown-2024-2025-r1-run-1.csv
+```
+
+集計軸は6ルール、3確認本数、4評価期間、方向`ALL`／`BUY`／`SELL`の216行です。候補・研究対象・計算成功・Gap件数、勝ち／負け／同値、勝率、平均・中央値、Profit Factor、MFE、MAE、ATR換算損益、Entry Spread、最大利益到達本数をStep 5と同じ定義で出力します。勝敗とProfit Factorには`1e-8 pips`の許容誤差を使用します。
+
+既定r1の候補Entry件数は次のとおりです。
+
+| 条件ルール | 1本確認 | 2本確認 | 3本確認 |
+|---|---:|---:|---:|
+| `H1_DIRECTION` | 108,344 | 83,513 | 56,778 |
+| `H4_H1_DIRECTION` | 73,521 | 51,375 | 31,948 |
+| `D1_H4_H1_DIRECTION` | 41,133 | 26,886 | 15,154 |
+| `W1_D1_H4_H1_DIRECTION` | 22,543 | 14,343 | 7,734 |
+| `W1_D1_H4_H1_DIRECTION_H1_EMA200` | 20,626 | 12,922 | 6,873 |
+| `FULL_ALIGNMENT` | 15,658 | 9,823 | 5,191 |
+
+`FULL_ALIGNMENT`の36行はStep 5の基準成績と一致することを回帰条件とします。隣接ルールでは条件追加によりEpisodeの区切りとEntry時刻も変わるため、成績差は条件単体の固定母集団における因果効果ではありません。「その条件を実運用ルールへ追加した場合のシグナル頻度と成績の変化」として解釈します。
