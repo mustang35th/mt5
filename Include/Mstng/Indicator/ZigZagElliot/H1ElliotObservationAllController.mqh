@@ -1622,7 +1622,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 4;
+        this.databaseRun.schemaVersion = 5;
         this.databaseRun.sourceMode = "LIVE";
 
         if (this.testerMode) {
@@ -1631,9 +1631,9 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.02";
+        this.databaseRun.programVersion = "1.03";
         this.databaseRun.strategy = "H1_OBSERVATION_ALL";
-        this.databaseRun.strategyVersion = "H1_OBSERVATION_ALL_V3";
+        this.databaseRun.strategyVersion = "H1_OBSERVATION_ALL_V4";
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();
         this.databaseRun.analysisInputText =

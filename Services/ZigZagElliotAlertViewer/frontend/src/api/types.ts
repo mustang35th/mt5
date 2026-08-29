@@ -319,10 +319,12 @@ export type AlertTimeFrame = Omit<
   | "latest_point_jst_time"
   | "latest_point_jst_time_text"
   | "latest_point_rate"
+  | "latest_point_is_added"
 > & {
   alert_id: number;
   is_current_time_frame: boolean;
   is_ema200_available: boolean;
+  latest_point_is_added: boolean | null;
   raw_csv_text?: string;
 };
 
@@ -414,6 +416,7 @@ export interface ObservationTimeFrame {
   latest_point_jst_time: number;
   latest_point_jst_time_text: string;
   latest_point_rate: number;
+  latest_point_is_added: boolean | null;
   current_close: number;
   stochastic_main_order_text: string;
   stochastic_main_direction_text: string;

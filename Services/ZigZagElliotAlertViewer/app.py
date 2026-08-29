@@ -354,6 +354,7 @@ BOOLEAN_COLUMNS = {
     "is_wave_confirmed",
     "is_wave_motive",
     "is_wave_uptrend",
+    "latest_point_is_added",
     "is_fibo_expansion_available",
     "is_oscillator_buy",
     "is_ema200_buy",
@@ -1040,6 +1041,17 @@ class AlertDatabase:
         return "pip_size" in AlertDatabase.table_columns(
             connection,
             "zigzag_elliot_observations",
+        )
+
+    @staticmethod
+    def observation_latest_point_added_available(
+        connection: Connection,
+    ) -> bool:
+        """Return whether timeframe snapshots contain the latest point kind."""
+
+        return "latest_point_is_added" in AlertDatabase.table_columns(
+            connection,
+            "zigzag_elliot_observation_timeframes",
         )
 
     def validate(self) -> dict[str, Any]:
@@ -2282,6 +2294,9 @@ class AlertDatabase:
             name = f"observation_id_{index}"
             placeholders.append(f":{name}")
             parameters[name] = observation_id
+        latest_point_added_column = "NULL AS latest_point_is_added,"
+        if AlertDatabase.observation_latest_point_added_available(connection):
+            latest_point_added_column = "latest_point_is_added,"
         sql = f"""
             SELECT id, observation_id, time_frame, time_frame_text,
                    time_frame_order, is_anchor_time_frame,
@@ -2292,7 +2307,8 @@ class AlertDatabase:
                    latest_sub_elliot_index, latest_sub_elliot_label,
                    latest_point_time, latest_point_time_text,
                    latest_point_jst_time, latest_point_jst_time_text,
-                   latest_point_rate, current_close,
+                   latest_point_rate, {latest_point_added_column}
+                   current_close,
                    stochastic_main_order_text,
                    stochastic_main_direction_text,
                    gmma_trend_count, gmma_cross_count,
@@ -2608,11 +2624,6 @@ class AlertDatabase:
             INNER JOIN zigzag_elliot_alert_runs AS r ON r.id = o.run_id
             WHERE o.id = :observation_id
         """
-        time_frame_sql = """
-            SELECT * FROM zigzag_elliot_observation_timeframes
-            WHERE observation_id = :observation_id
-            ORDER BY time_frame_order, id
-        """
         parameters = {"observation_id": observation_id}
         with self.connect() as connection:
             if not self.observation_schema_status(connection)["available"]:
@@ -2622,6 +2633,15 @@ class AlertDatabase:
                     "time_frames": [],
                     "navigation": {"older": None, "newer": None},
                 }
+            time_frame_projection = "tf.*, NULL AS latest_point_is_added"
+            if self.observation_latest_point_added_available(connection):
+                time_frame_projection = "tf.*"
+            time_frame_sql = f"""
+                SELECT {time_frame_projection}
+                FROM zigzag_elliot_observation_timeframes AS tf
+                WHERE observation_id = :observation_id
+                ORDER BY time_frame_order, id
+            """
             analysis_profile_status = self.analysis_profile_schema_status(connection)
             spread_pips_column = "NULL AS spread_pips,"
             if self.observation_spread_available(connection):
@@ -3149,20 +3169,51 @@ class AlertDatabase:
         is_ema200_available = EMA200_TIME_FRAME_COLUMNS.issubset(
             time_frame_columns
         )
+        point_columns: set[str] = set()
+        with self.connect() as connection:
+            point_columns = self.table_columns(
+                connection,
+                "zigzag_elliot_alert_points",
+            )
         with Session(self.engine) as session:
             if session.get(alert_model, alert_id) is None:
                 raise RequestError("alert was not found", HTTPStatus.NOT_FOUND)
-            entities = session.scalars(
+            entities = list(session.scalars(
                 select(time_frame_model)
                 .where(time_frame_model.alert_id == alert_id)
                 .order_by(time_frame_model.time_frame_order, time_frame_model.id)
-            )
+            ))
+            latest_point_added: dict[int, bool] = {}
+            latest_point_columns = {
+                "alert_timeframe_id",
+                "is_added_point",
+                "is_latest",
+            }
+            if latest_point_columns.issubset(point_columns):
+                latest_rows = session.execute(
+                    text("""
+                        SELECT p.alert_timeframe_id, p.is_added_point
+                        FROM zigzag_elliot_alert_points AS p
+                        INNER JOIN zigzag_elliot_alert_timeframes AS tf
+                                ON tf.id = p.alert_timeframe_id
+                        WHERE tf.alert_id = :alert_id
+                          AND p.is_latest = 1
+                        ORDER BY p.point_order, p.id
+                    """),
+                    {"alert_id": alert_id},
+                ).mappings()
+                for row in latest_rows:
+                    if row["is_added_point"] is not None:
+                        latest_point_added[int(row["alert_timeframe_id"])] = bool(
+                            row["is_added_point"]
+                        )
             items: list[dict[str, Any]] = []
             for entity in entities:
                 item = model_to_dict(entity) or {}
                 item["is_ema200_available"] = is_ema200_available
                 item["is_ema200_buy"] = bool(item.get("is_ema200_buy", False))
                 item["is_ema200_sell"] = bool(item.get("is_ema200_sell", False))
+                item["latest_point_is_added"] = latest_point_added.get(entity.id)
                 items.append(item)
         return {"items": items, "count": len(items)}
 

@@ -9,6 +9,7 @@
 #ifndef MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_OBSERVATION_TF_DAO_MQH
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_OBSERVATION_TF_DAO_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotObservationAddedPointMigration.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationJstMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
@@ -70,6 +71,9 @@ public:
         sql += "CHECK(latest_point_jst_time > 0),";
         sql += "latest_point_jst_time_text TEXT NOT NULL,";
         sql += "latest_point_rate REAL NOT NULL,";
+        sql += "latest_point_is_added INTEGER ";
+        sql += "CHECK(latest_point_is_added IS NULL ";
+        sql += "OR latest_point_is_added IN (0, 1)),";
         sql += "previous_open REAL NOT NULL,";
         sql += "previous_high REAL NOT NULL,";
         sql += "previous_low REAL NOT NULL,";
@@ -140,6 +144,12 @@ public:
                 "latest_point_time",
                 "latest_point_jst_time",
                 "latest_point_jst_time_text"
+            )) {
+            return false;
+        }
+
+        if (!ZigZagElliotObservationAddedPointMigration::execute(
+                this.databaseHandle
             )) {
             return false;
         }
@@ -245,7 +255,7 @@ private:
         sql += " latest_sub_elliot_index, latest_sub_elliot_label,";
         sql += " latest_point_time, latest_point_time_text,";
         sql += " latest_point_jst_time, latest_point_jst_time_text,";
-        sql += " latest_point_rate,";
+        sql += " latest_point_rate, latest_point_is_added,";
         sql += " previous_open, previous_high, previous_low, previous_close,";
         sql += " current_open, current_high, current_low, current_close,";
         sql += " is_fibo_expansion_available, fe618_price, fe1000_price,";
@@ -266,7 +276,7 @@ private:
         sql += " created_at, created_at_text";
         sql += ") VALUES (";
 
-        for (int i = 1; i <= 73; i++) {
+        for (int i = 1; i <= 74; i++) {
             if (i > 1) {
                 sql += ", ";
             }
@@ -412,6 +422,13 @@ private:
                 fromRequestHandle,
                 index++,
                 fromEntity.latestPointRate
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointIsAdded
             );
         }
         if (isBound) {
@@ -642,7 +659,7 @@ private:
             );
         }
 
-        return isBound && index == 73;
+        return isBound && index == 74;
     }
 
     /**

@@ -1924,6 +1924,48 @@ class AlertTimeFrameDetailEma200Test(unittest.TestCase):
             self.assertIs(item["is_ema200_available"], False)
             self.assertIs(item["is_ema200_buy"], False)
             self.assertIs(item["is_ema200_sell"], False)
+            self.assertIsNone(item["latest_point_is_added"])
+
+    def test_latest_point_added_state_is_mapped_to_each_timeframe(self) -> None:
+        """Expose the isAddedPoint flag only from each stored latest point."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "detail-timeframes.sqlite"
+            create_observation_database(database_path)
+            add_alert_detail_time_frame_fixture(database_path, False)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_alert_points "
+                    "ADD COLUMN is_latest INTEGER"
+                )
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_alert_points "
+                    "ADD COLUMN is_added_point INTEGER"
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO zigzag_elliot_alert_points (
+                        id, alert_timeframe_id, point_order,
+                        is_latest, is_added_point
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (1, 1, 0, 1, 0),
+                        (2, 2, 0, 0, 0),
+                        (3, 2, 1, 1, 1),
+                    ],
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                database.validate()
+                response = database.timeframes(1)
+            finally:
+                database.close()
+
+        items = response["items"]
+        self.assertIs(items[0]["latest_point_is_added"], False)
+        self.assertIs(items[1]["latest_point_is_added"], True)
 
 
 class ObservationDatabaseTest(unittest.TestCase):
@@ -2153,6 +2195,9 @@ class ObservationDatabaseTest(unittest.TestCase):
             "2024.01.01 09:00:00",
             page["items"][0]["time_frames"][4]["latest_point_jst_time_text"],
         )
+        self.assertIsNone(
+            page["items"][0]["time_frames"][4]["latest_point_is_added"]
+        )
         self.assertEqual(1, date_page["total"])
         self.assertEqual("EURUSD", date_page["items"][0]["symbol_name"])
         self.assertEqual(3, summary["total_count"])
@@ -2207,6 +2252,7 @@ class ObservationDatabaseTest(unittest.TestCase):
             "2024.01.01 09:00:00",
             detail["time_frames"][4]["latest_point_jst_time_text"],
         )
+        self.assertIsNone(detail["time_frames"][4]["latest_point_is_added"])
         self.assertEqual(5, len(detail["time_frames"]))
         expected_parent_columns = (
             OBSERVATION_REQUIRED_COLUMNS["zigzag_elliot_observations"]
@@ -2234,7 +2280,7 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual(
             OBSERVATION_REQUIRED_COLUMNS[
                 "zigzag_elliot_observation_timeframes"
-            ],
+            ] | {"latest_point_is_added"},
             set(detail["time_frames"][0]),
         )
         self.assertEqual(0.0, detail["time_frames"][0]["previous_open"])
@@ -2258,6 +2304,60 @@ class ObservationDatabaseTest(unittest.TestCase):
             "2024.01.01 09:00:00",
             run_one["first_observation_jst_time_text"],
         )
+
+    def test_optional_latest_point_added_is_returned_by_list_and_detail(
+        self,
+    ) -> None:
+        """Expose recorded latest-point kinds while preserving nullable rows."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_observation_timeframes "
+                    "ADD COLUMN latest_point_is_added INTEGER"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET latest_point_is_added = 0 "
+                    "WHERE observation_id = 1 AND time_frame_text = 'H4'"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET latest_point_is_added = 1 "
+                    "WHERE observation_id = 1 AND time_frame_text = 'H1'"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                health = database.validate()
+                page = database.observations(
+                    {
+                        "sourceMode": ["LIVE"],
+                        "pageSize": ["1"],
+                        "sort": ["anchor_bar_time"],
+                        "order": ["asc"],
+                    }
+                )
+                detail = database.observation_detail(1)
+            finally:
+                database.close()
+
+        self.assertTrue(health["observation_available"])
+        list_time_frames = {
+            item["time_frame_text"]: item
+            for item in page["items"][0]["time_frames"]
+        }
+        detail_time_frames = {
+            item["time_frame_text"]: item for item in detail["time_frames"]
+        }
+        self.assertIs(list_time_frames["H4"]["latest_point_is_added"], False)
+        self.assertIs(list_time_frames["H1"]["latest_point_is_added"], True)
+        self.assertIsNone(list_time_frames["MN1"]["latest_point_is_added"])
+        self.assertIs(detail_time_frames["H4"]["latest_point_is_added"], False)
+        self.assertIs(detail_time_frames["H1"]["latest_point_is_added"], True)
+        self.assertIsNone(detail_time_frames["MN1"]["latest_point_is_added"])
 
     def test_optional_spread_is_returned_by_list_and_detail(self) -> None:
         """Expose captured spread while keeping zero as a recorded value."""

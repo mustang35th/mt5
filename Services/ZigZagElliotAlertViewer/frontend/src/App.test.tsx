@@ -72,6 +72,7 @@ function observationTimeFrame(timeFrame: string, index: number) {
     latest_point_jst_time: 1786330800,
     latest_point_jst_time_text: "2026.08.10 07:00:00",
     latest_point_rate: 1.23456,
+    latest_point_is_added: false,
     current_close: 1.235,
     stochastic_main_order_text: "SHORT>MIDDLE>LONG",
     stochastic_main_direction_text: "BUY",

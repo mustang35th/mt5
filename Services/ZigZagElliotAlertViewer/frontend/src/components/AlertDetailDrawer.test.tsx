@@ -164,6 +164,7 @@ function timeFrame(
     is_ema200_sell: false,
     atr14_pips: 10,
     current_close: 1.23456,
+    latest_point_is_added: label === "H4" ? true : label === "H1" ? null : false,
     created_at: 0,
     created_at_text: "2026.07.31 01:00:00",
     ...overrides,
@@ -305,6 +306,15 @@ describe("AlertDetailDrawer", () => {
     const grid = await screen.findByRole("grid", {
       name: "アラート時間足比較スナップショットグリッド",
     });
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: 波動" }));
+    await waitFor(() => {
+      const zigZagCells = Array.from(
+        grid.querySelectorAll<HTMLElement>('.ag-cell[col-id="zigzag_state"]'),
+      );
+      expect(zigZagCells.some((cell) => cell.textContent?.includes("通常"))).toBe(true);
+      expect(zigZagCells.some((cell) => cell.textContent?.includes("追加ポイント"))).toBe(true);
+      expect(zigZagCells.some((cell) => cell.textContent?.includes("未記録"))).toBe(true);
+    });
     fireEvent.click(screen.getByRole("button", { name: "列プリセット: 価格・Fibo" }));
     await waitFor(() => {
       const serverTimeCells = Array.from(
@@ -372,6 +382,7 @@ describe("AlertDetailDrawer", () => {
     await waitFor(() => {
       expect(grid.querySelector('.ag-cell[col-id="wave_direction"]')).toHaveTextContent("—");
       expect(grid.querySelector('.ag-cell[col-id="wave_state"]')).toHaveTextContent("—");
+      expect(grid.querySelector('.ag-cell[col-id="zigzag_state"]')).toHaveTextContent("未記録");
       expect(grid.querySelector('.ag-cell[col-id="wave_type"]')).toHaveTextContent("—");
       expect(within(grid).queryByText("形成中")).not.toBeInTheDocument();
       expect(within(grid).queryByText("修正波")).not.toBeInTheDocument();

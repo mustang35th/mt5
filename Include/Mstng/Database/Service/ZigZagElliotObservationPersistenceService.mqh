@@ -540,6 +540,7 @@ private:
                         entity.latestPointJstTimeText
                     )
                     || entity.latestPointRate <= 0.0
+                    || !this.isBooleanValue(entity.latestPointIsAdded)
                     || entity.createdAt <= 0
                     || entity.createdAtText == ""
                     || !this.isBooleanValue(entity.isBuy)

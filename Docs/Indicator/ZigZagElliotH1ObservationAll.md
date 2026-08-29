@@ -5,13 +5,13 @@
 | 項目 | 内容 |
 |---|---|
 | 対象 | `Indicators/ZigZagElliotH1ObservationAll.mq5` |
-| プログラムバージョン | `1.02` |
+| プログラムバージョン | `1.03` |
 | 役割 | 全28通貨のH1新規足時点におけるElliott分析結果を時系列保存する |
 | 基準時間足 | H1 |
 | 保存時間足 | MN1、W1、D1、H4、H1 |
 | 保存先 | MetaTrader 5組み込みSQLite |
 | 観測タイミング | `BAR_OPEN_FIRST_SUCCESS` |
-| 最終更新日 | 2026-08-28 |
+| 最終更新日 | 2026-08-29 |
 
 本書は、`ZigZagElliotH1ObservationAll`の収集対象、実行ライフサイクル、H1境界の扱い、分析内容、FIFO、DB保存、状態パネルおよび障害時の動作を定義します。
 
@@ -310,10 +310,10 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 | Analysis start | MN1 |
 | Anchor | H1 |
 | Run `strategy` | `H1_OBSERVATION_ALL` |
-| Run `strategy_version` | `H1_OBSERVATION_ALL_V3` |
-| Run `schema_version` | `4` |
+| Run `strategy_version` | `H1_OBSERVATION_ALL_V4` |
+| Run `schema_version` | `5` |
 
-ここでいう`schema_version = 4`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 5`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.02`です。
+ここでいう`schema_version = 5`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 5`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.03`です。
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
 
@@ -396,14 +396,14 @@ zigzag_elliot_alert_runs (1)
 
 ### 9.3 時間足別Observation
 
-`zigzag_elliot_observation_timeframes`は、親1行につき固定5行を保存します。`id`を含めて1行74列あります。
+`zigzag_elliot_observation_timeframes`は、親1行につき固定5行を保存します。`id`を含めて1行75列あります。
 
 | グループ | 主な項目 |
 |---|---|
 | 時間足 | 時間足、固定順序、H1アンカーフラグ |
 | 分析方向 | BUY・SELL、Oscillator方向 |
 | Wave | Wave数、最新Wave、確定、推進・修正、上昇・下降 |
-| Elliott | 直前ラベル、最新ラベル、Subラベル、最新点時刻・価格 |
+| Elliott | 直前ラベル、最新ラベル、Subラベル、最新点時刻・価格・補完ポイントフラグ |
 | OHLC | 1本前の確定足と現在形成足のOHLC |
 | Fibonacci Expansion | 利用可否、61.8～200.0%、現在価格との距離 |
 | Stochastic | 3本の継続数、Main、Signal、Main並び順 |
@@ -412,6 +412,8 @@ zigzag_elliot_alert_runs (1)
 | EMA200 | Close、比較EMA、傾き、距離、位置・傾きcode、上下回数、BUY・SELL判定 |
 
 全ZigZagポイント配列は保存せず、最新Waveと最新点の構造化スカラーだけを保存します。
+
+`latest_point_is_added`は、各時間足の`Elliot.getLatestPoint()`が指す`ZigZagPoint.isAddedPoint`を保存します。新規行は通常ポイントを0、補完ポイントを1とします。既存DBへはnullable列を非破壊で追加し、保存当時の値を推測できない過去行は`NULL`の「未記録」として保持します。
 
 ## 10. DBファイルとRun
 
@@ -459,7 +461,7 @@ source_mode
 
 ### 10.4 Snapshot Hash
 
-`snapshot_hash`は、親の取得元・自然キー相当値、取得時スプレッド、`pip_size`および5時間足の構造化値から生成する16桁の大文字16進文字列です。`pip_size`追加後のHash payloadは`H1_OBSERVATION_V3`です。ID、Run ID、作成日時、JSTおよび表示用日時文字列は含めません。暗号学的Hashではなく、Snapshot内容の比較用です。分析設定を識別する`analysis_input_hash`とは目的が異なります。migrationで`pip_size`を補完する既存行のHashは再計算しません。
+`snapshot_hash`は、親の取得元・自然キー相当値、取得時スプレッド、`pip_size`および5時間足の構造化値から生成する16桁の大文字16進文字列です。`latest_point_is_added`追加後のHash payloadは`H1_OBSERVATION_V4`です。ID、Run ID、作成日時、JSTおよび表示用日時文字列は含めません。暗号学的Hashではなく、Snapshot内容の比較用です。分析設定を識別する`analysis_input_hash`とは目的が異なります。migrationで列追加や`pip_size`補完を行う既存行のHashは再計算しません。
 
 - `analysis_input_hash`: どの計算設定を使用したか
 - `snapshot_hash`: その時点でどの分析結果を保存したか
@@ -677,8 +679,9 @@ mstng-zigzag-elliot-h1-observation-smoke-test.sqlite
 - 同一hashの冪等保存
 - hashが異なる重複でもfirst-writeを維持すること
 - Server時刻とJSTの整合
-- 旧JST列なしSchemaおよび旧`pip_size`列なしSchemaからのMigration
+- 旧JST列なしSchema、旧`pip_size`列なしSchemaおよび旧`latest_point_is_added`列なしSchemaからのMigration
 - JPY・非JPY既存行の`pip_size`推定補完と新規行のMT5実測値保存
+- `latest_point_is_added`の既存行NULL維持と新規行0・1保存
 - 親・子の不正値拒否
 - 子INSERT失敗時のTransaction ROLLBACK
 - 必須Indexの存在とQuery Plan
@@ -756,5 +759,6 @@ HAVING COUNT(time_frame.id) <> 5;
 - [ZigZagElliotObservationPersistenceService.mqh](../../Include/Mstng/Database/Service/ZigZagElliotObservationPersistenceService.mqh)
 - [ZigZagElliotObservationDao.mqh](../../Include/Mstng/Database/Dao/ZigZagElliotObservationDao.mqh)
 - [ZigZagElliotObservationTimeFrameDao.mqh](../../Include/Mstng/Database/Dao/ZigZagElliotObservationTimeFrameDao.mqh)
+- [ZigZagElliotObservationAddedPointMigration.mqh](../../Include/Mstng/Database/Dao/ZigZagElliotObservationAddedPointMigration.mqh)
 - [ZigZagElliotアラートデータベース仕様書](../Database/ZigZagElliotAlertDatabase.md)
 - [ZigZagElliot Alert Viewer README](../../Services/ZigZagElliotAlertViewer/README.md)

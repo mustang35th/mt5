@@ -90,6 +90,9 @@ struct ZigZagElliotObservationTimeFrameEntity {
     /** 最新ポイントの価格。 */
     double latestPointRate;
 
+    /** 最新ポイントが補完ポイントの場合1。 */
+    int latestPointIsAdded;
+
     /** 1本前の確定足始値。 */
     double previousOpen;
 

@@ -36,6 +36,7 @@ function timeFrame(
     latest_point_jst_time: 1_786_406_400,
     latest_point_jst_time_text: "2026.08.10 11:00:00",
     latest_point_rate: 1.23456,
+    latest_point_is_added: false,
     current_close: 1.235,
     stochastic_main_order_text: "SHORT>MIDDLE>LONG",
     stochastic_main_direction_text: "BUY",

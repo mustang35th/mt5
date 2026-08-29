@@ -90,6 +90,7 @@ function timeFrame(id: number, label: string, order: number): ObservationDetailT
     latest_point_jst_time: 1_786_406_400,
     latest_point_jst_time_text: `2026.08.10 11:0${order}:00`,
     latest_point_rate: 105.12345 + order,
+    latest_point_is_added: label === "H4" ? true : label === "H1" ? null : false,
     previous_open: 105.1,
     previous_high: 105.3,
     previous_low: 105.0,
@@ -261,6 +262,7 @@ const COLUMN_GROUP_IDS = {
   wave: [
     "wave_direction",
     "wave_state",
+    "zigzag_state",
     "wave_type",
     "wave_count_latest_index",
     "previous_last_elliot_label",
@@ -514,6 +516,9 @@ describe("ObservationDetailDrawer", () => {
       const hasValue = (columnId: string, expected: string) => Array.from(
         grid.querySelectorAll<HTMLElement>(`.ag-cell[col-id="${columnId}"]`),
       ).some((cell) => cell.textContent?.includes(expected));
+      expect(hasValue("zigzag_state", "通常")).toBe(true);
+      expect(hasValue("zigzag_state", "追加ポイント")).toBe(true);
+      expect(hasValue("zigzag_state", "未記録")).toBe(true);
       expect(hasValue("stochastic_short", "count +3 / Main 75.12 / Signal 70.34")).toBe(true);
       expect(hasValue("ema30_ema60_diff_pips", "+10.0 pips")).toBe(true);
       expect(hasValue("ema200_slope_distance", "+2.5 / +30.0 pips")).toBe(true);
@@ -675,6 +680,7 @@ describe("ObservationDetailDrawer", () => {
       for (const columnId of [
         "buy_sell_label",
         "wave_state",
+        "zigzag_state",
         "wave_type",
         "wave_count_latest_index",
         "previous_last_elliot_label",

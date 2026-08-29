@@ -497,7 +497,7 @@ void initializeRunEntity(ZigZagElliotAlertRunEntity &fromEntity) {
     ZeroMemory(fromEntity);
     fromEntity.id = 0;
     fromEntity.runUid = "zigzag-elliot-h1-observation-smoke-run-v1";
-    fromEntity.schemaVersion = 4;
+    fromEntity.schemaVersion = 5;
     fromEntity.sourceMode = "TESTER";
     fromEntity.source = "ZIGZAG_ELLIOT";
     fromEntity.programName = "ZigZagElliot";
@@ -658,6 +658,7 @@ void initializeTimeFrameEntity(
         TIME_DATE | TIME_SECONDS
     );
     fromEntity.latestPointRate = priceBase + 0.00100;
+    fromEntity.latestPointIsAdded = fromTimeFrameOrder % 2;
     fromEntity.previousOpen = priceBase;
     fromEntity.previousHigh = priceBase + 0.00300;
     fromEntity.previousLow = priceBase - 0.00200;
@@ -730,6 +731,150 @@ void initializeTimeFrameEntities(
     // NULL文字列をServiceが空文字列へ正規化することも確認する。
     fromEntities[0].previousLastElliotLabel = NULL;
     fromEntities[0].latestSubElliotLabel = NULL;
+}
+
+/**
+ * 旧スキーマを再現するため、最新補完ポイント列を削除する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 削除できた場合true。
+ */
+bool removeAddedPointSchemaForMigrationTest(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    string sql = "ALTER TABLE zigzag_elliot_observation_timeframes ";
+    sql += "DROP COLUMN latest_point_is_added";
+
+    return executeSql(
+        fromDatabaseHandle,
+        sql,
+        "remove latest point is-added schema for migration test",
+        fromLogger
+    );
+}
+
+/**
+ * 非破壊migrationで追加したnullable最新補完ポイント列を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromObservationId 列追加前に保存したObservation ID。
+ * @param fromLogger ロガー。
+ * @return 列定義と既存行のNULLが正しい場合true。
+ */
+bool verifyAddedPointMigration(
+    const int fromDatabaseHandle,
+    const long fromObservationId,
+    Logger &fromLogger
+) {
+    long schemaCount = 0;
+    long legacyNullCount = 0;
+    string observationIdText = StringFormat("%I64d", fromObservationId);
+
+    if (!readLong(
+            fromDatabaseHandle,
+            "SELECT COUNT(*) FROM sqlite_master "
+                + "WHERE type = 'table' "
+                + "AND name = 'zigzag_elliot_observation_timeframes' "
+                + "AND LOWER(sql) LIKE "
+                + "'%latest_point_is_added integer%' "
+                + "AND LOWER(sql) LIKE '%check(latest_point_is_added is null "
+                + "or latest_point_is_added in (0, 1))%'",
+            schemaCount,
+            fromLogger
+        )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) "
+                    + "FROM zigzag_elliot_observation_timeframes "
+                    + "WHERE observation_id = " + observationIdText + " "
+                    + "AND latest_point_is_added IS NULL",
+                legacyNullCount,
+                fromLogger
+            )) {
+        return false;
+    }
+
+    if (schemaCount == 1 && legacyNullCount == 5) {
+        return true;
+    }
+
+    fromLogger.error(
+        __FUNCTION__,
+        StringFormat(
+            "Added point migration mismatch. schema=%I64d legacyNull=%I64d",
+            schemaCount,
+            legacyNullCount
+        )
+    );
+
+    return false;
+}
+
+/**
+ * 新規行の最新補完ポイント値が0または1で保存されたことを確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromObservationId 新規保存したObservation ID。
+ * @param fromLogger ロガー。
+ * @return Fixtureの0・1がすべて一致する場合true。
+ */
+bool verifyAddedPointValues(
+    const int fromDatabaseHandle,
+    const long fromObservationId,
+    Logger &fromLogger
+) {
+    long validCount = 0;
+    long addedCount = 0;
+    long normalCount = 0;
+    string observationIdText = StringFormat("%I64d", fromObservationId);
+
+    if (!readLong(
+            fromDatabaseHandle,
+            "SELECT COUNT(*) "
+                + "FROM zigzag_elliot_observation_timeframes "
+                + "WHERE observation_id = " + observationIdText + " "
+                + "AND latest_point_is_added IN (0, 1)",
+            validCount,
+            fromLogger
+        )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) "
+                    + "FROM zigzag_elliot_observation_timeframes "
+                    + "WHERE observation_id = " + observationIdText + " "
+                    + "AND latest_point_is_added = 1",
+                addedCount,
+                fromLogger
+            )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) "
+                    + "FROM zigzag_elliot_observation_timeframes "
+                    + "WHERE observation_id = " + observationIdText + " "
+                    + "AND latest_point_is_added = 0",
+                normalCount,
+                fromLogger
+            )) {
+        return false;
+    }
+
+    if (validCount == 5 && addedCount == 2 && normalCount == 3) {
+        return true;
+    }
+
+    fromLogger.error(
+        __FUNCTION__,
+        StringFormat(
+            "Added point value mismatch. valid=%I64d added=%I64d normal=%I64d",
+            validCount,
+            addedCount,
+            normalCount
+        )
+    );
+
+    return false;
 }
 
 /**
@@ -1279,6 +1424,7 @@ bool verifySavedObservation(
     long invalidAnchorCount = 0;
     long spreadValueCount = 0;
     long pipSizeValueCount = 0;
+    long legacyAddedPointNullCount = 0;
     long retainedHashCount = 0;
     long replacedChildCount = 0;
     long normalizedTextCount = 0;
@@ -1383,6 +1529,15 @@ bool verifySavedObservation(
             )
             || !readLong(
                 fromDatabaseHandle,
+                "SELECT COUNT(*) "
+                    "FROM zigzag_elliot_observation_timeframes "
+                    "WHERE observation_id = " + observationIdText
+                    + " AND latest_point_is_added IS NULL",
+                legacyAddedPointNullCount,
+                fromLogger
+            )
+            || !readLong(
+                fromDatabaseHandle,
                 "SELECT COUNT(*) FROM zigzag_elliot_observations WHERE id = "
                     + observationIdText
                     + " AND snapshot_hash = 'observation-snapshot-v1'",
@@ -1453,6 +1608,7 @@ bool verifySavedObservation(
             || invalidAnchorCount != 0
             || spreadValueCount != 1
             || pipSizeValueCount != 1
+            || legacyAddedPointNullCount != 5
             || retainedHashCount != 1
             || replacedChildCount != 0
             || normalizedTextCount != 1
@@ -1466,7 +1622,7 @@ bool verifySavedObservation(
                 "Observation mismatch. runs=%I64d observations=%I64d "
                 + "timeFrames=%I64d layout=%I64d h1Anchor=%I64d "
                 + "invalidAnchor=%I64d spread=%I64d pipSize=%I64d "
-                + "retainedHash=%I64d "
+                + "legacyAddedNull=%I64d retainedHash=%I64d "
                 + "replacedChild=%I64d normalized=%I64d "
                 + "foreignKeys=%I64d rawTables=%I64d pointTables=%I64d "
                 + "integrity=%s",
@@ -1478,6 +1634,7 @@ bool verifySavedObservation(
                 invalidAnchorCount,
                 spreadValueCount,
                 pipSizeValueCount,
+                legacyAddedPointNullCount,
                 retainedHashCount,
                 replacedChildCount,
                 normalizedTextCount,
@@ -1636,6 +1793,32 @@ void OnStart() {
 
     long firstObservationId = observationEntity.id;
 
+    if (!removeAddedPointSchemaForMigrationTest(databaseHandle, logger)
+            || !persistenceService.createTables()
+            || !verifyAddedPointMigration(
+                databaseHandle,
+                firstObservationId,
+                logger
+            )
+            || !persistenceService.createTables()
+            || !verifyAddedPointMigration(
+                databaseHandle,
+                firstObservationId,
+                logger
+            )) {
+        logger.error(
+            __FUNCTION__,
+            "Added point schema migration verification failed."
+        );
+
+        return;
+    }
+
+    logger.info(
+        __FUNCTION__,
+        "Added point schema migration was verified."
+    );
+
     ZigZagElliotObservationEntity jpyMigrationObservationEntity;
     ZigZagElliotObservationTimeFrameEntity jpyMigrationTimeFrameEntities[];
     initializeObservationEntity(
@@ -1655,6 +1838,11 @@ void OnStart() {
             || !areSnapshotIdsAssigned(
                 jpyMigrationObservationEntity,
                 jpyMigrationTimeFrameEntities
+            )
+            || !verifyAddedPointValues(
+                databaseHandle,
+                jpyMigrationObservationEntity.id,
+                logger
             )) {
         logger.error(__FUNCTION__, "JPY migration observation save failed.");
 
@@ -1888,6 +2076,43 @@ void OnStart() {
     logger.info(
         __FUNCTION__,
         "Expected pip size validation failure was verified."
+    );
+
+    ZigZagElliotObservationEntity invalidAddedPointObservationEntity;
+    ZigZagElliotObservationTimeFrameEntity invalidAddedPointTimeFrames[];
+    initializeObservationEntity(
+        runEntity.id,
+        D'2026.07.20 01:00:00',
+        "observation-snapshot-invalid-added-point",
+        invalidAddedPointObservationEntity
+    );
+    initializeTimeFrameEntities(invalidAddedPointTimeFrames);
+    invalidAddedPointTimeFrames[3].latestPointIsAdded = 2;
+    logger.info(
+        __FUNCTION__,
+        "Starting expected added point validation failure verification."
+    );
+
+    if (persistenceService.saveSnapshot(
+            invalidAddedPointObservationEntity,
+            invalidAddedPointTimeFrames
+        )
+            || !areSnapshotIdsCleared(
+                invalidAddedPointObservationEntity,
+                invalidAddedPointTimeFrames
+            )
+            || !verifyTotalCounts(databaseHandle, 1, 5, logger)) {
+        logger.error(
+            __FUNCTION__,
+            "Added point validation failure verification failed."
+        );
+
+        return;
+    }
+
+    logger.info(
+        __FUNCTION__,
+        "Expected added point validation failure was verified."
     );
 
     if (!createRollbackTrigger(databaseHandle, logger)) {

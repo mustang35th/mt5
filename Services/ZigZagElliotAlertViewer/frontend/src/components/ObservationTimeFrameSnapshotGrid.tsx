@@ -253,6 +253,22 @@ function booleanLabel(
   return falseLabel;
 }
 
+/**
+ * 最新ZigZagポイントの保存状態を表示します。
+ *
+ * @param timeFrame 時間足スナップショット
+ * @return 通常、追加ポイントまたは未記録
+ */
+function zigZagStateLabel(timeFrame: ObservationDetailTimeFrame): string {
+  if (typeof timeFrame.latest_point_is_added !== "boolean") {
+    return "未記録";
+  }
+  if (timeFrame.latest_point_is_added) {
+    return "追加ポイント";
+  }
+  return "通常";
+}
+
 function ohlcLabel(
   open: number,
   high: number,
@@ -523,6 +539,12 @@ const COLUMN_DEFS: Array<
         "Wave状態",
         96,
         (timeFrame) => booleanLabel(timeFrame.is_wave_confirmed, "確定", "形成中"),
+      ),
+      detailSnapshotColumn(
+        "zigzag_state",
+        "ZigZag状態",
+        116,
+        zigZagStateLabel,
       ),
       detailSnapshotColumn(
         "wave_type",

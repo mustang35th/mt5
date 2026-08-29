@@ -357,6 +357,9 @@ private:
             fromEntity.latestPointJstTime
         );
         fromEntity.latestPointRate = fromLatestPoint.rate;
+        fromEntity.latestPointIsAdded = boolToInteger(
+            fromLatestPoint.isAddedPoint
+        );
         fromEntity.previousOpen = fromElliot.previousOhlcInfo.open;
         fromEntity.previousHigh = fromElliot.previousOhlcInfo.high;
         fromEntity.previousLow = fromElliot.previousOhlcInfo.low;
@@ -430,7 +433,7 @@ private:
         ZigZagElliotObservationEntity &fromEntity,
         ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[]
     ) {
-        string sourceText = "H1_OBSERVATION_V3";
+        string sourceText = "H1_OBSERVATION_V4";
         appendText(sourceText, fromEntity.sourceMode);
         appendText(sourceText, fromEntity.sourceServer);
         appendText(sourceText, fromEntity.symbolName);
@@ -503,6 +506,7 @@ private:
         appendText(fromSourceText, fromEntity.latestSubElliotLabel);
         appendDateTime(fromSourceText, fromEntity.latestPointTime);
         appendDouble(fromSourceText, fromEntity.latestPointRate);
+        appendInteger(fromSourceText, fromEntity.latestPointIsAdded);
         appendDouble(fromSourceText, fromEntity.previousOpen);
         appendDouble(fromSourceText, fromEntity.previousHigh);
         appendDouble(fromSourceText, fromEntity.previousLow);
