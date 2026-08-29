@@ -27,6 +27,7 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { CurrencyStrengthSnapshotPanel } from "./CurrencyStrengthSnapshotPanel";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import {
@@ -734,6 +735,7 @@ function ComparisonContent({ bundle, styleNonce }: {
           <span>Run {run?.id ?? "—"}</span>
         </div>
       </div>
+      <CurrencyStrengthSnapshotPanel alert={alert} />
       <H1EntryCheckPanel
         savedDecision={savedH1Decision}
         spreadPips={alert.spread_pips}

@@ -267,6 +267,17 @@ export interface AlertDetail extends W1ConfirmationDiagnostics, H1DirectionAlign
   is_currency_strength_enabled?: boolean;
   currency_strength_status: number;
   is_currency_strength_available: boolean;
+  currency_strength_calculation_version?: string;
+  currency_strength_run_id?: number;
+  currency_strength_source_mode?: string;
+  currency_strength_target_m5_bar_time?: number;
+  currency_strength_m5_bar_time?: number;
+  base_currency?: string;
+  base_long_medium_rank?: number;
+  base_medium_short_rank?: number;
+  quote_currency?: string;
+  quote_long_medium_rank?: number;
+  quote_medium_short_rank?: number;
   long_medium_rank_difference: number;
   medium_short_rank_difference: number;
   market_signal_key: string;

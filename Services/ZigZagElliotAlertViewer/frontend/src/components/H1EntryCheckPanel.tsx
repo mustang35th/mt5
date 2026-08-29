@@ -3,6 +3,7 @@ import type {
   AlertDetail,
   ObservationDetailTimeFrame,
 } from "../api/types";
+import { evaluateCurrencyStrengthSnapshot } from "../lib/currencyStrengthSnapshot";
 import { formatNumber, formatSignedNumber } from "../lib/format";
 
 export type H1EntryCheckStatus = "OK" | "NG" | "参考" | "対象外" | "不明";
@@ -186,30 +187,58 @@ function buildCurrencyStrengthItem(
   const mediumShortDifference = finiteNumber(
     fromSavedDecision.medium_short_rank_difference,
   );
-  if (
-    !fromSavedDecision.is_currency_strength_available
-    || longMediumDifference === null
-    || mediumShortDifference === null
-  ) {
+  const currencyStrength = evaluateCurrencyStrengthSnapshot(fromSavedDecision);
+  if (!fromSavedDecision.is_currency_strength_available) {
     return requiredItem(
       "currency_strength",
       "事前ゲート",
       "通貨強弱",
       `status ${fromSavedDecision.currency_strength_status} / 利用不可`,
-      `${fromSavedDecision.side}方向へ両期間の順位差が一致`,
+      `${fromSavedDecision.side}方向へ両期間の順位差が一致 / M5時刻一致`,
       false,
     );
   }
-  const passed = fromSavedDecision.side === "BUY"
-    ? longMediumDifference > 0 && mediumShortDifference > 0
-    : longMediumDifference < 0 && mediumShortDifference < 0;
+  const rankDifferenceText = longMediumDifference === null
+    || mediumShortDifference === null
+    ? "順位差 記録なし"
+    : `順位差 ${formatSignedNumber(longMediumDifference, 0)} / ${formatSignedNumber(mediumShortDifference, 0)}`;
+  if (currencyStrength.freshness === "不明") {
+    return unknownItem(
+      "currency_strength",
+      "事前ゲート",
+      "通貨強弱",
+      `${rankDifferenceText} / M5時刻 未記録`,
+      `${fromSavedDecision.side}方向へ両期間が一致 / M5時刻一致`,
+      true,
+    );
+  }
+  if (currencyStrength.freshness === "STALE") {
+    return requiredItem(
+      "currency_strength",
+      "事前ゲート",
+      "通貨強弱",
+      `${rankDifferenceText} / M5 STALE`,
+      `${fromSavedDecision.side}方向へ両期間が一致 / M5時刻一致`,
+      false,
+    );
+  }
+  if (longMediumDifference === null || mediumShortDifference === null) {
+    return unknownItem(
+      "currency_strength",
+      "事前ゲート",
+      "通貨強弱",
+      `${rankDifferenceText} / M5 EXACT`,
+      `${fromSavedDecision.side}方向へ両期間が一致 / M5時刻一致`,
+      true,
+    );
+  }
   return requiredItem(
     "currency_strength",
     "事前ゲート",
     "通貨強弱",
-    `順位差 ${formatSignedNumber(longMediumDifference, 0)} / ${formatSignedNumber(mediumShortDifference, 0)}`,
-    `${fromSavedDecision.side}方向へ両期間が一致`,
-    passed,
+    `${rankDifferenceText} / M5 EXACT`,
+    `${fromSavedDecision.side}方向へ両期間が一致 / M5時刻一致`,
+    currencyStrength.judgement === "OK",
   );
 }
 

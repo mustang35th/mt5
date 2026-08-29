@@ -231,9 +231,28 @@ describe("AlertDetailDrawer", () => {
       timeFrame(5, "H1", 4),
     ];
     const points = [point(1, "MN1", 0, 0), point(2, "H1", 4, 0)];
+    const payload = detailPayload();
+    Object.assign(payload.alert, {
+      is_currency_strength_enabled: true,
+      currency_strength_status: 3,
+      is_currency_strength_available: true,
+      currency_strength_calculation_version: "pair-direction-weighted-closed-v1",
+      currency_strength_run_id: 12,
+      currency_strength_source_mode: "TESTER",
+      currency_strength_target_m5_bar_time: 1_785_438_000,
+      currency_strength_m5_bar_time: 1_785_438_000,
+      base_currency: "AUD",
+      base_long_medium_rank: 2,
+      base_medium_short_rank: 3,
+      quote_currency: "USD",
+      quote_long_medium_rank: 7,
+      quote_medium_short_rank: 6,
+      long_medium_rank_difference: 5,
+      medium_short_rank_difference: 3,
+    });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
-      if (path === "/api/alerts/74") return jsonResponse(detailPayload());
+      if (path === "/api/alerts/74") return jsonResponse(payload);
       if (path === "/api/alerts/74/timeframes") {
         return jsonResponse({ items: timeFrames, count: timeFrames.length });
       }
@@ -267,6 +286,21 @@ describe("AlertDetailDrawer", () => {
       .toHaveTextContent("総合 OK");
     expect(within(entryCheck).getByText("保存判定")).toBeInTheDocument();
     expect(within(entryCheck).getByRole("status")).toHaveTextContent("ENTRY");
+    const currencyStrength = screen.getByRole("region", {
+      name: "通貨強弱（Alert保存時点）",
+    });
+    expect(within(currencyStrength).getByText("Entry条件: 使用"))
+      .toBeInTheDocument();
+    expect(within(currencyStrength).getByText("判定: OK"))
+      .toBeInTheDocument();
+    expect(within(currencyStrength).getByText("BUY一致"))
+      .toBeInTheDocument();
+    expect(within(currencyStrength).getByText("EXACT"))
+      .toBeInTheDocument();
+    expect(within(currencyStrength).getByText("AUD 2位"))
+      .toBeInTheDocument();
+    expect(within(currencyStrength).getByText("USD 7位"))
+      .toBeInTheDocument();
 
     const grid = await screen.findByRole("grid", {
       name: "アラート時間足比較スナップショットグリッド",

@@ -172,6 +172,8 @@ describe("buildH1EntryCheckSnapshot", () => {
       is_currency_strength_enabled: true,
       currency_strength_status: 3,
       is_currency_strength_available: true,
+      currency_strength_target_m5_bar_time: 1_785_438_000,
+      currency_strength_m5_bar_time: 1_785_438_000,
       long_medium_rank_difference: 5,
       medium_short_rank_difference: 3,
       h1_direction_alignment_mode: "MN1_TO_H1_REQUIRED",
@@ -207,7 +209,7 @@ describe("buildH1EntryCheckSnapshot", () => {
       status: "OK",
     });
     expect(item(snapshot.items, "currency_strength")).toMatchObject({
-      actual: "順位差 +5 / +3",
+      actual: "順位差 +5 / +3 / M5 EXACT",
       status: "OK",
     });
     expect(item(snapshot.items, "mn1_w1_direction")).toMatchObject({
@@ -231,6 +233,64 @@ describe("buildH1EntryCheckSnapshot", () => {
       expected: "50.0 pips以下（保存判定）",
       status: "NG",
     });
+  });
+
+  it("rejects stale currency strength and keeps missing Legacy M5 times unknown", () => {
+    const savedDecision = {
+      is_entry: false,
+      entry_result: "CURRENCY_STRENGTH_REJECTED",
+      side: "BUY",
+      spread_pips: 1,
+      is_currency_strength_enabled: true,
+      currency_strength_status: 3,
+      is_currency_strength_available: true,
+      currency_strength_target_m5_bar_time: 1_785_438_000,
+      currency_strength_m5_bar_time: 1_785_437_700,
+      long_medium_rank_difference: 5,
+      medium_short_rank_difference: 3,
+    } as AlertDetail;
+
+    const staleSnapshot = buildH1EntryCheckSnapshot(
+      passingBuyTimeFrames(),
+      1,
+      savedDecision,
+    );
+    expect(item(staleSnapshot.items, "currency_strength")).toMatchObject({
+      actual: "順位差 +5 / +3 / M5 STALE",
+      status: "NG",
+      required: true,
+    });
+
+    const legacySnapshot = buildH1EntryCheckSnapshot(
+      passingBuyTimeFrames(),
+      1,
+      {
+        ...savedDecision,
+        currency_strength_target_m5_bar_time: undefined,
+        currency_strength_m5_bar_time: undefined,
+      },
+    );
+    expect(item(legacySnapshot.items, "currency_strength")).toMatchObject({
+      actual: "順位差 +5 / +3 / M5時刻 未記録",
+      status: "不明",
+      required: true,
+    });
+
+    const zeroSentinelSnapshot = buildH1EntryCheckSnapshot(
+      passingBuyTimeFrames(),
+      1,
+      {
+        ...savedDecision,
+        currency_strength_target_m5_bar_time: 0,
+        currency_strength_m5_bar_time: 0,
+      },
+    );
+    expect(item(zeroSentinelSnapshot.items, "currency_strength"))
+      .toMatchObject({
+        actual: "順位差 +5 / +3 / M5時刻 未記録",
+        status: "不明",
+        required: true,
+      });
   });
 
   it("distinguishes disabled and observe-only saved modes from failures", () => {
