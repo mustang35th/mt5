@@ -19,7 +19,8 @@
  * H1を現在足としてMTF_3in3エントリーを判定する。
  *
  * D1とH4は売買方向の一致確認に使用し、H1の第1波/3波/5波を
- * エントリー対象波動とする。H1 EMA200は常にH1方向を確認し、
+ * エントリー対象波動とする。H4は第1波/3波、または第3波に
+ * 副次波がある第5波を対象とする。H1 EMA200は常にH1方向を確認し、
  * H1_AND_H4_REQUIREDではH4 EMA200も同方向を要求する。
  * 選択した方向一致モードではW1 EMA200も判定に使用する。
  * H1の最新ZigZagポイントは確定・未確定を問わず、
@@ -80,16 +81,18 @@ protected:
     }
 
     /**
-     * H1が第1波、第3波または第5波か判定する。
+     * H1の波動条件を共通Judgeでは判定しない。
      *
-     * @return H1用の波動条件を満たす場合true。
+     * H1およびH4の波動条件はEntry側で判定する。
+     *
+     * @return H1の場合true。それ以外の場合false。
      */
     virtual bool isTimeFrameWaveConditionMatched() override {
         if (this.marketContext.timeFrame != PERIOD_H1) {
             return false;
         }
 
-        return this.isEntryWave(this.elliotCurrent);
+        return true;
     }
 
     /**
@@ -154,6 +157,58 @@ protected:
             elliotW1,
             this.w1ConfirmationResult
         );
+    }
+
+    /**
+     * H1エントリー時のH4波動条件を判定する。
+     *
+     * H4の第1波および第3波はそのまま許可する。第5波は、第3波に
+     * 副次波がある場合だけ許可する。
+     *
+     * @param fromRejectReason 条件未達時の結果コード。
+     * @return H4波動条件を満たす場合true。
+     */
+    virtual bool isTimeFrameEntryConditionMatched(
+        string &fromRejectReason
+    ) override {
+        fromRejectReason = "";
+
+        if (this.marketContext.timeFrame != PERIOD_H1
+                || this.elliotH4 == NULL
+                || this.elliotH4.marketContext.timeFrame != PERIOD_H4) {
+            fromRejectReason = "H4_ELLIOT_UNAVAILABLE";
+
+            return false;
+        }
+
+        Wave *latestWave = this.elliotH4.getLatestWave();
+        ZigZagPoint *latestPoint = this.elliotH4.getLatestPoint();
+
+        if (latestWave == NULL || latestPoint == NULL) {
+            fromRejectReason = "H4_ELLIOT_UNAVAILABLE";
+
+            return false;
+        }
+
+        string elliotLabel = latestPoint.elliotLabel;
+
+        if (elliotLabel == "1" || elliotLabel == "3") {
+            return true;
+        }
+
+        if (elliotLabel != "5") {
+            fromRejectReason = "H4_ELLIOT_LABEL_REJECTED";
+
+            return false;
+        }
+
+        if (!latestWave.hasSubElliot(5, 3)) {
+            fromRejectReason = "H4_WAVE3_SUB_ELLIOT_REJECTED";
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
