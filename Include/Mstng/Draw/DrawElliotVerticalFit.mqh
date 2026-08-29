@@ -465,6 +465,13 @@ private:
         double topLevel =
             (double)(layoutHigherTimeFrameDisplayCount + 1);
         double bottomLevel = topLevel * 1.5;
+
+        // DrawElliotの上位3足目に追加した間隔を上下余白へ反映する。
+        if (layoutHigherTimeFrameDisplayCount == 3) {
+            topLevel += 0.5;
+            bottomLevel += 1.5;
+        }
+
         int topPadding = (int)MathCeil(
             (topLevel * (fontHeight + labelDistance))
             + (maxFontHeight / 2.0)

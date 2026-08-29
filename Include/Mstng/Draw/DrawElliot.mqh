@@ -122,6 +122,13 @@ public:
             }
 
             double downLevel = (double)(higherIndex + 1) * 1.5;
+
+            // 上位3足目は拡大フォント同士の間隔を上下で広げる。
+            if (higherIndex == 3) {
+                upLevel += 0.5;
+                downLevel += 1.5;
+            }
+
             int edgeLane =
                 this.layoutHigherTimeFrameDisplayCount - higherIndex;
 
@@ -713,6 +720,9 @@ protected:
     /**
      * 矢印ラベル表示のための価格位置を算出する。
      *
+     * チャート座標へ変換できない場合は、表示価格幅から1ピクセル当たりの
+     * 価格を算出して同じ上下オフセットを適用する。
+     *
      * @param time 基準時間
      * @param price 基準価格
      * @param level レベルオフセット
@@ -741,17 +751,38 @@ protected:
         } else {
        	    distance = (level - 1) * (double)drawProperties.fontPixelHeight + level * drawProperties.elliotPixelDistance;
         }
+
+        int pixelDistance = (int)distance;
        
+        bool isConverted = false;
+
         if (ChartTimePriceToXY(0, 0, time, price, xPosition, yPosition)) {
             if (ChartXYToTimePrice(
                     0,
                     xPosition,
-                    yPosition + (int)distance,
+                    yPosition + pixelDistance,
                     subWindow,
                     drawTime,
                     convertedPrice
             )) {
                 drawPrice = convertedPrice;
+                isConverted = true;
+            }
+        }
+
+        if (!isConverted) {
+            int chartHeight = (int)ChartGetInteger(
+                0,
+                CHART_HEIGHT_IN_PIXELS,
+                0
+            );
+            double priceMin = ChartGetDouble(0, CHART_PRICE_MIN, 0);
+            double priceMax = ChartGetDouble(0, CHART_PRICE_MAX, 0);
+
+            if (chartHeight > 1 && priceMax > priceMin) {
+                double pricePerPixel =
+                    (priceMax - priceMin) / ((double)chartHeight - 1.0);
+                drawPrice = price - (double)pixelDistance * pricePerPixel;
             }
         }
 
