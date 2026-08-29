@@ -40,6 +40,7 @@ import { Ema200SignalBadge } from "./Ema200SignalBadge";
 
 export interface ObservationTimeFrameSnapshotGridProps {
   ariaLabel?: string;
+  showLatestPointDetails?: boolean;
   timeFrames: readonly ObservationDetailTimeFrame[];
   styleNonce?: string;
 }
@@ -58,6 +59,8 @@ const GRID_MODULES = [
 const TIME_FRAME_COLUMN_ID = "time_frame_text";
 const EMA200_DIRECTION_COLUMN_ID = "ema200_direction";
 const WAVE_DIRECTION_COLUMN_ID = "wave_direction";
+const LATEST_POINT_SUMMARY_COLUMN_ID = "latest_point_summary";
+const LATEST_POINT_SHAPE_COLUMN_ID = "latest_point_shape";
 const LATEST_POINT_RATE_COLUMN_ID = "latest_point_rate";
 const FIBO_EXPANSION_STATUS_COLUMN_ID = "fibo_expansion_status";
 const OSCILLATOR_COLUMN_ID = "oscillator";
@@ -95,6 +98,7 @@ type Ema200AvailabilityTimeFrame = ObservationDetailTimeFrame & {
 type ColumnGroupPresetId =
   | "essentials"
   | "wave"
+  | "zigzag_point"
   | "price_fibo"
   | "oscillator"
   | "ema200"
@@ -119,6 +123,12 @@ const COLUMN_GROUP_PRESETS: readonly ColumnGroupPreset[] = [
     label: "波動",
     groups: columnGroupState("wave"),
     focusColumnId: WAVE_DIRECTION_COLUMN_ID,
+  },
+  {
+    id: "zigzag_point",
+    label: "ZigZag Point",
+    groups: columnGroupState("zigzag_point"),
+    focusColumnId: LATEST_POINT_SHAPE_COLUMN_ID,
   },
   {
     id: "price_fibo",
@@ -170,9 +180,10 @@ function columnGroupState(
  */
 function matchingColumnGroupPreset(
   fromState: TimeFrameComparisonColumnGroupState,
+  fromGroupIds: readonly TimeFrameComparisonColumnGroupId[],
 ): ColumnGroupPresetId | null {
   for (const preset of COLUMN_GROUP_PRESETS) {
-    const matches = TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS.every(
+    const matches = fromGroupIds.every(
       (groupId) => preset.groups[groupId] === fromState[groupId],
     );
     if (matches) return preset.id;
@@ -184,16 +195,21 @@ function matchingColumnGroupPreset(
  * Grid APIの列グループ状態から許可グループだけを取得します。
  *
  * @param fromApi Grid API
+ * @param fromState 現在の列グループ開閉状態
+ * @param fromGroupIds この画面で有効な列グループID
  * @return 列グループ開閉状態
  */
 function columnGroupStateFromApi(
   fromApi: GridApi<ObservationDetailTimeFrame>,
+  fromState: TimeFrameComparisonColumnGroupState,
+  fromGroupIds: readonly TimeFrameComparisonColumnGroupId[],
 ): TimeFrameComparisonColumnGroupState {
-  const state = defaultTimeFrameComparisonColumnGroupState();
-  for (const item of fromApi.getColumnGroupState()) {
-    if (isCollapsibleColumnGroupId(item.groupId)) {
-      state[item.groupId] = item.open;
-    }
+  const state = { ...fromState };
+  const gridState = new Map(
+    fromApi.getColumnGroupState().map((item) => [item.groupId, item.open]),
+  );
+  for (const groupId of fromGroupIds) {
+    state[groupId] = gridState.get(groupId) === true;
   }
   return state;
 }
@@ -216,19 +232,6 @@ function persistColumnGroupState(
   }
 }
 
-/**
- * 折りたたみ可能な列グループIDかを判定します。
- *
- * @param fromGroupId 判定対象ID
- * @return 許可グループの場合true
- */
-function isCollapsibleColumnGroupId(
-  fromGroupId: string,
-): fromGroupId is TimeFrameComparisonColumnGroupId {
-  return (TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS as readonly string[])
-    .includes(fromGroupId);
-}
-
 function waveLabel(timeFrame: ObservationDetailTimeFrame): string {
   if (typeof timeFrame.is_wave_uptrend !== "boolean") {
     return "—";
@@ -240,7 +243,7 @@ function waveLabel(timeFrame: ObservationDetailTimeFrame): string {
 }
 
 function booleanLabel(
-  value: boolean | undefined,
+  value: boolean | null | undefined,
   trueLabel: string,
   falseLabel: string,
 ): string {
@@ -267,6 +270,146 @@ function zigZagStateLabel(timeFrame: ObservationDetailTimeFrame): string {
     return "追加ポイント";
   }
   return "通常";
+}
+
+function isRecordedNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isRecordedPositiveNumber(value: number | null | undefined): value is number {
+  return isRecordedNumber(value) && value > 0;
+}
+
+function numberWithUnit(
+  value: number | null | undefined,
+  digits: number,
+  unit: string,
+): string {
+  if (!isRecordedNumber(value)) return "—";
+  return `${formatNumber(value, digits)}${unit}`;
+}
+
+function signedNumberWithUnit(
+  value: number | null | undefined,
+  digits: number,
+  unit: string,
+): string {
+  if (!isRecordedNumber(value)) return "—";
+  return `${formatSignedNumber(value, digits)}${unit}`;
+}
+
+function latestPointShapeLabel(timeFrame: ObservationDetailTimeFrame): string {
+  return booleanLabel(timeFrame.latest_point_is_peak, "Peak", "Bottom");
+}
+
+function latestPointSummaryLabel(timeFrame: ObservationDetailTimeFrame): string {
+  if (typeof timeFrame.latest_point_is_peak !== "boolean") return "未記録";
+  return `${latestPointShapeLabel(timeFrame)} / ${numberWithUnit(
+    timeFrame.latest_point_wave_bars_from_start,
+    0,
+    "本",
+  )} / ${signedNumberWithUnit(timeFrame.latest_point_pips_diff, 1, " pips")}`;
+}
+
+function latestPointFibonacciLabel(timeFrame: ObservationDetailTimeFrame): string {
+  const originalIndex = timeFrame.latest_point_org_elliot_index;
+  if (!isRecordedNumber(originalIndex)) return "未記録";
+  if (originalIndex <= 1) return "対象外";
+  if (originalIndex % 2 === 0) {
+    if (!isRecordedPositiveNumber(timeFrame.latest_point_fibonacci_percent)) {
+      return "未記録";
+    }
+    const fibonacci = numberWithUnit(
+      timeFrame.latest_point_fibonacci_percent,
+      1,
+      "%",
+    );
+    return fibonacci === "—" ? "未記録" : `F ${fibonacci}`;
+  }
+  if (!isRecordedPositiveNumber(
+    timeFrame.latest_point_fibonacci_expansion_percent,
+  )) {
+    return "未記録";
+  }
+  const expansion = numberWithUnit(
+    timeFrame.latest_point_fibonacci_expansion_percent,
+    1,
+    "%",
+  );
+  return expansion === "—" ? "未記録" : `FE ${expansion}`;
+}
+
+function latestPointFiboDepthLabel(timeFrame: ObservationDetailTimeFrame): string {
+  const originalIndex = timeFrame.latest_point_org_elliot_index;
+  if (!isRecordedNumber(originalIndex)) return "未記録";
+  if (originalIndex <= 1 || originalIndex % 2 !== 0) return "対象外";
+  if (!isRecordedPositiveNumber(timeFrame.latest_point_fibonacci_percent)) {
+    return "未記録";
+  }
+  const label = typeof timeFrame.latest_point_fibo_depth_zone_label === "string"
+    ? timeFrame.latest_point_fibo_depth_zone_label.trim()
+    : "";
+  const hasZone = isRecordedNumber(timeFrame.latest_point_fibo_depth_zone);
+  if (!label && !hasZone) return "未記録";
+  if (!hasZone) return label;
+  if (!label) return `[${formatNumber(timeFrame.latest_point_fibo_depth_zone, 0)}]`;
+  return `${label} [${formatNumber(timeFrame.latest_point_fibo_depth_zone, 0)}]`;
+}
+
+function latestPointElliottKindLabel(timeFrame: ObservationDetailTimeFrame): string {
+  return booleanLabel(
+    timeFrame.latest_point_is_elliot_alphabet,
+    "Alphabet波",
+    "数字波",
+  );
+}
+
+function elliottPointLabel(
+  label: string | null | undefined,
+  index: number | null | undefined,
+): string {
+  const normalizedLabel = typeof label === "string" ? label.trim() : "";
+  if (!normalizedLabel) return "—";
+  if (!isRecordedNumber(index)) return normalizedLabel;
+  return `${normalizedLabel} [${formatNumber(index, 0)}]`;
+}
+
+function latestPointReanalysisLabel(timeFrame: ObservationDetailTimeFrame): string {
+  const original = elliottPointLabel(
+    timeFrame.latest_point_org_elliot_label,
+    timeFrame.latest_point_org_elliot_index,
+  );
+  if (original === "—") return "—";
+  const current = elliottPointLabel(
+    timeFrame.latest_elliot_label,
+    timeFrame.latest_elliot_index,
+  );
+  if (current === "—") return original;
+  return `${original} → ${current}`;
+}
+
+function latestPointCorrectionLabel(timeFrame: ObservationDetailTimeFrame): string {
+  return booleanLabel(timeFrame.latest_point_is_correct, "補正済", "未補正");
+}
+
+function formatStoredEpoch(value: number | null | undefined): string {
+  if (!isRecordedNumber(value) || value <= 0) return "—";
+  const date = new Date(value * 1_000);
+  if (Number.isNaN(date.getTime())) return "—";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getUTCFullYear()}.${pad(date.getUTCMonth() + 1)}.${pad(
+    date.getUTCDate(),
+  )} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+}
+
+function latestPointBarPositionLabel(timeFrame: ObservationDetailTimeFrame): string {
+  const parts: string[] = [];
+  if (isRecordedNumber(timeFrame.latest_point_bar_index)) {
+    parts.push(`#${formatNumber(timeFrame.latest_point_bar_index, 0)}`);
+  }
+  const timeNext = formatStoredEpoch(timeFrame.latest_point_time_next);
+  if (timeNext !== "—") parts.push(timeNext);
+  return parts.length > 0 ? parts.join(" / ") : "—";
 }
 
 function ohlcLabel(
@@ -496,6 +639,92 @@ const ema200DirectionColumn: ColDef<ObservationDetailTimeFrame, string> = {
     ema200Direction,
   ),
   cellRenderer: Ema200DirectionCell,
+};
+
+const latestZigZagPointColumnGroup: ColGroupDef<ObservationDetailTimeFrame> = {
+  groupId: "zigzag_point",
+  headerName: "最新ZigZag Point",
+  marryChildren: true,
+  openByDefault: false,
+  children: [
+    {
+      ...snapshotColumn(
+        LATEST_POINT_SUMMARY_COLUMN_ID,
+        "Point要約",
+        210,
+        latestPointSummaryLabel,
+      ),
+      columnGroupShow: "closed",
+    },
+    detailSnapshotColumn(
+      LATEST_POINT_SHAPE_COLUMN_ID,
+      "Point形状",
+      112,
+      latestPointShapeLabel,
+    ),
+    detailSnapshotColumn(
+      "latest_point_wave_bars_from_start",
+      "Wave経過",
+      112,
+      (timeFrame) => numberWithUnit(
+        timeFrame.latest_point_wave_bars_from_start,
+        0,
+        "本",
+      ),
+    ),
+    {
+      ...detailSnapshotColumn(
+        "latest_point_pips_diff",
+        "価格差",
+        132,
+        (timeFrame) => signedNumberWithUnit(
+          timeFrame.latest_point_pips_diff,
+          1,
+          " pips",
+        ),
+      ),
+      cellRenderer: signedSnapshotCellRenderer((timeFrame) => {
+        if (!isRecordedNumber(timeFrame.latest_point_pips_diff)) return ["—"];
+        return [signedValue(timeFrame.latest_point_pips_diff), " pips"];
+      }),
+    },
+    detailSnapshotColumn(
+      "latest_point_fibonacci",
+      "F / FE",
+      132,
+      latestPointFibonacciLabel,
+    ),
+    detailSnapshotColumn(
+      "latest_point_fibo_depth_zone",
+      "Depth Zone",
+      132,
+      latestPointFiboDepthLabel,
+    ),
+    detailSnapshotColumn(
+      "latest_point_elliott_kind",
+      "ラベル種別",
+      122,
+      latestPointElliottKindLabel,
+    ),
+    detailSnapshotColumn(
+      "latest_point_reanalysis",
+      "再分析",
+      178,
+      latestPointReanalysisLabel,
+    ),
+    detailSnapshotColumn(
+      "latest_point_correction",
+      "補正状態",
+      112,
+      latestPointCorrectionLabel,
+    ),
+    detailSnapshotColumn(
+      "latest_point_bar_position",
+      "Bar / 次足開始",
+      226,
+      latestPointBarPositionLabel,
+    ),
+  ],
 };
 
 const COLUMN_DEFS: Array<
@@ -865,6 +1094,18 @@ const COLUMN_DEFS: Array<
   },
 ];
 
+function columnDefs(
+  showLatestPointDetails: boolean,
+): Array<ColDef<ObservationDetailTimeFrame> | ColGroupDef<ObservationDetailTimeFrame>> {
+  if (!showLatestPointDetails) return COLUMN_DEFS;
+  return [
+    COLUMN_DEFS[0],
+    COLUMN_DEFS[1],
+    latestZigZagPointColumnGroup,
+    ...COLUMN_DEFS.slice(2),
+  ];
+}
+
 function orderedTimeFrames(
   timeFrames: readonly ObservationDetailTimeFrame[],
 ): ObservationDetailTimeFrame[] {
@@ -903,6 +1144,7 @@ function EmptySnapshotOverlay() {
 
 export function ObservationTimeFrameSnapshotGrid({
   ariaLabel = "時間足別 H1新規足スナップショットグリッド",
+  showLatestPointDetails = false,
   timeFrames,
   styleNonce,
 }: ObservationTimeFrameSnapshotGridProps) {
@@ -912,10 +1154,26 @@ export function ObservationTimeFrameSnapshotGrid({
   const [columnGroupStateValue, setColumnGroupStateValue] = useState(
     readTimeFrameComparisonColumnGroupState,
   );
+  const effectiveGroupIds = useMemo(
+    () => TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS.filter(
+      (groupId) => showLatestPointDetails || groupId !== "zigzag_point",
+    ),
+    [showLatestPointDetails],
+  );
+  const availablePresets = useMemo(
+    () => COLUMN_GROUP_PRESETS.filter(
+      (preset) => showLatestPointDetails || preset.id !== "zigzag_point",
+    ),
+    [showLatestPointDetails],
+  );
+  const gridColumnDefs = useMemo(
+    () => columnDefs(showLatestPointDetails),
+    [showLatestPointDetails],
+  );
   const rowData = useMemo(() => orderedTimeFrames(timeFrames), [timeFrames]);
   const activePresetId = useMemo(
-    () => matchingColumnGroupPreset(columnGroupStateValue),
-    [columnGroupStateValue],
+    () => matchingColumnGroupPreset(columnGroupStateValue, effectiveGroupIds),
+    [columnGroupStateValue, effectiveGroupIds],
   );
 
   const applyPinning = useCallback((api: GridApi<ObservationDetailTimeFrame>) => {
@@ -930,7 +1188,7 @@ export function ObservationTimeFrameSnapshotGrid({
     gridApiRef.current = event.api;
     applyPinning(event.api);
     event.api.setColumnGroupState(
-      TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS.map((groupId) => ({
+      effectiveGroupIds.map((groupId) => ({
         groupId,
         open: columnGroupStateValue[groupId],
       })),
@@ -940,24 +1198,31 @@ export function ObservationTimeFrameSnapshotGrid({
       ariaLabel,
     );
     setGridReady(true);
-  }, [applyPinning, ariaLabel, columnGroupStateValue]);
+  }, [applyPinning, ariaLabel, columnGroupStateValue, effectiveGroupIds]);
 
   const handleColumnGroupOpened = useCallback((
     event: ColumnGroupOpenedEvent<ObservationDetailTimeFrame>,
   ) => {
-    const nextState = columnGroupStateFromApi(event.api);
+    const nextState = columnGroupStateFromApi(
+      event.api,
+      columnGroupStateValue,
+      effectiveGroupIds,
+    );
     setColumnGroupStateValue(nextState);
     persistColumnGroupState(nextState);
-  }, []);
+  }, [columnGroupStateValue, effectiveGroupIds]);
 
   const applyColumnGroupPreset = useCallback((fromPresetId: ColumnGroupPresetId) => {
     const api = gridApiRef.current;
     const preset = COLUMN_GROUP_PRESETS.find((item) => item.id === fromPresetId);
     if (!api || !preset) return;
 
-    const nextState = { ...preset.groups };
+    const nextState = { ...columnGroupStateValue };
+    for (const groupId of effectiveGroupIds) {
+      nextState[groupId] = preset.groups[groupId];
+    }
     api.setColumnGroupState(
-      TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS.map((groupId) => ({
+      effectiveGroupIds.map((groupId) => ({
         groupId,
         open: nextState[groupId],
       })),
@@ -965,7 +1230,7 @@ export function ObservationTimeFrameSnapshotGrid({
     setColumnGroupStateValue(nextState);
     persistColumnGroupState(nextState);
     api.ensureColumnVisible(preset.focusColumnId, "start");
-  }, []);
+  }, [columnGroupStateValue, effectiveGroupIds]);
 
   const resetColumnGroupState = useCallback(() => {
     const api = gridApiRef.current;
@@ -997,7 +1262,7 @@ export function ObservationTimeFrameSnapshotGrid({
         <span className="observation-timeframe-column-toolbar-label">列表示</span>
         {wideLayout ? (
           <div className="observation-timeframe-column-presets">
-            {COLUMN_GROUP_PRESETS.map((preset) => (
+            {availablePresets.map((preset) => (
               <button
                 aria-label={`列プリセット: ${preset.label}`}
                 aria-pressed={activePresetId === preset.id}
@@ -1023,7 +1288,7 @@ export function ObservationTimeFrameSnapshotGrid({
             {activePresetId === null && (
               <option disabled value="custom">カスタム</option>
             )}
-            {COLUMN_GROUP_PRESETS.map((preset) => (
+            {availablePresets.map((preset) => (
               <option key={preset.id} value={preset.id}>{preset.label}</option>
             ))}
           </select>
@@ -1044,7 +1309,7 @@ export function ObservationTimeFrameSnapshotGrid({
       >
         <AgGridReact<ObservationDetailTimeFrame>
           animateRows={false}
-          columnDefs={COLUMN_DEFS}
+          columnDefs={gridColumnDefs}
           defaultColDef={{
             filter: false,
             resizable: true,

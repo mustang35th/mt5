@@ -93,6 +93,45 @@ struct ZigZagElliotObservationTimeFrameEntity {
     /** 最新ポイントが補完ポイントの場合1。 */
     int latestPointIsAdded;
 
+    /** 最新ポイントの保存時点のバーインデックス。 */
+    int latestPointBarIndex;
+
+    /** 最新ポイントの次バー開始時刻。 */
+    datetime latestPointTimeNext;
+
+    /** 最新ポイントの波動開始からの経過本数。 */
+    int latestPointWaveBarsFromStart;
+
+    /** 最新ポイントがZigZagの山の場合1、谷の場合0。 */
+    int latestPointIsPeak;
+
+    /** 最新ポイントと前回ポイントの価格差pips。 */
+    double latestPointPipsDiff;
+
+    /** 最新ポイントのフィボナッチ・リトレースメント%。 */
+    double latestPointFibonacciPercent;
+
+    /** 最新ポイントのフィボナッチ深度ゾーンコード。 */
+    int latestPointFiboDepthZone;
+
+    /** 最新ポイントのフィボナッチ深度ゾーン表示文字列。 */
+    string latestPointFiboDepthZoneLabel;
+
+    /** 最新ポイントのフィボナッチ・エクスパンション%。 */
+    double latestPointFibonacciExpansionPercent;
+
+    /** 最新ポイントのElliottラベルがアルファベットの場合1。 */
+    int latestPointIsElliotAlphabet;
+
+    /** 最新ポイントの再分析前Elliott波動番号。 */
+    int latestPointOrgElliotIndex;
+
+    /** 最新ポイントの再分析前Elliott波動ラベル。 */
+    string latestPointOrgElliotLabel;
+
+    /** 最新ポイントが補正済みの場合1。 */
+    int latestPointIsCorrect;
+
     /** 1本前の確定足始値。 */
     double previousOpen;
 

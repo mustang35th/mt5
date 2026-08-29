@@ -23,9 +23,10 @@ describe("timeFrameComparisonPreferences", () => {
     );
 
     localStorage.setItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY, JSON.stringify({
-      version: 1,
+      version: 2,
       groups: {
         wave: true,
+        zigzag_point: false,
         price: false,
         fibo_expansion: false,
         oscillator_stochastic: "open",
@@ -39,9 +40,10 @@ describe("timeFrameComparisonPreferences", () => {
 
   it("round-trips allowed group state and ignores unknown groups", () => {
     localStorage.setItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY, JSON.stringify({
-      version: 1,
+      version: 2,
       groups: {
         wave: true,
+        zigzag_point: false,
         price: false,
         fibo_expansion: true,
         oscillator_stochastic: false,
@@ -52,6 +54,7 @@ describe("timeFrameComparisonPreferences", () => {
 
     expect(readTimeFrameComparisonColumnGroupState(localStorage)).toEqual({
       wave: true,
+      zigzag_point: false,
       price: false,
       fibo_expansion: true,
       oscillator_stochastic: false,
@@ -60,6 +63,7 @@ describe("timeFrameComparisonPreferences", () => {
 
     writeTimeFrameComparisonColumnGroupState({
       wave: false,
+      zigzag_point: true,
       price: true,
       fibo_expansion: false,
       oscillator_stochastic: true,
@@ -68,9 +72,10 @@ describe("timeFrameComparisonPreferences", () => {
     expect(JSON.parse(
       localStorage.getItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY) ?? "",
     )).toEqual({
-      version: 1,
+      version: 2,
       groups: {
         wave: false,
+        zigzag_point: true,
         price: true,
         fibo_expansion: false,
         oscillator_stochastic: true,
@@ -82,6 +87,7 @@ describe("timeFrameComparisonPreferences", () => {
   it("clears the saved state", () => {
     writeTimeFrameComparisonColumnGroupState({
       wave: true,
+      zigzag_point: true,
       price: true,
       fibo_expansion: true,
       oscillator_stochastic: true,

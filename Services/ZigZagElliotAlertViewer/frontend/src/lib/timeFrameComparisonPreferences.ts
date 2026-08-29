@@ -1,10 +1,11 @@
 export const TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY =
-  "zigzagElliotAlertViewer.timeframeComparisonColumnGroups.v1";
+  "zigzagElliotAlertViewer.timeframeComparisonColumnGroups.v2";
 
-export const TIME_FRAME_COMPARISON_COLUMN_GROUP_STATE_VERSION = 1;
+export const TIME_FRAME_COMPARISON_COLUMN_GROUP_STATE_VERSION = 2;
 
 export const TIME_FRAME_COMPARISON_COLLAPSIBLE_GROUP_IDS = [
   "wave",
+  "zigzag_point",
   "price",
   "fibo_expansion",
   "oscillator_stochastic",
@@ -36,6 +37,7 @@ type StorageRemover = Pick<Storage, "removeItem">;
 export function defaultTimeFrameComparisonColumnGroupState(): TimeFrameComparisonColumnGroupState {
   return {
     wave: false,
+    zigzag_point: false,
     price: false,
     fibo_expansion: false,
     oscillator_stochastic: false,

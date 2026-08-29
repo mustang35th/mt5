@@ -78,7 +78,7 @@ zigzag_elliot_alert_runs (1)
 | 価格・pips・% | `REAL` | `double` | 小数値を保持 |
 | 利用不能値 | 0または空文字 | 対応型 | `is_*_available`と組み合わせる |
 
-第1段階では暗黙のSQL NULLを使用しません。任意情報は利用可能フラグと0または空文字で表現します。これにより、未取得と有効な0をフラグで区別します。後方互換migrationで追加するH1 Observationの`spread_pips`、`pip_size`および`latest_point_is_added`は、既存テーブルへ非破壊で追加できるよう物理列をnullableとします。`spread_pips`の過去行は推測で補完せず、`NULL`を未記録、新規行の`0.0`を有効値として区別します。`latest_point_is_added`も過去行は`NULL`の未記録とし、新規行は0または1を保存します。
+第1段階では暗黙のSQL NULLを使用しません。任意情報は利用可能フラグと0または空文字で表現します。これにより、未取得と有効な0をフラグで区別します。後方互換migrationで追加するH1 Observationの`spread_pips`、`pip_size`、`latest_point_is_added`および最新ポイント詳細13列は、既存テーブルへ非破壊で追加できるよう物理列をnullableとします。`spread_pips`の過去行は推測で補完せず、`NULL`を未記録、新規行の`0.0`を有効値として区別します。最新ポイント関連の過去行も`NULL`の未記録とし、新規行から実測値を保存します。
 
 `pip_size`は、列追加前に保存された28通貨ペアについて、`symbol_name`に`JPY`を含む7ペアを`0.01`、残る21ペアを`0.0001`としてmigration時に補完します。旧Runには保存当時のMT5のPointとDigitsがないため、この補完値は対象28ペアの既知のpip規則に基づく推定値です。`schema_version = 4`以降の新しいH1 Observation Runは、対象ブローカー実シンボルの`SYMBOL_POINT`と`SYMBOL_DIGITS`から、3桁・5桁ならPoint×10、それ以外ならPointとして算出した実測値をSnapshotへ保存します。
 
@@ -126,7 +126,7 @@ ON zigzag_elliot_alert_runs(started_at);
 
 `run_uid`は1回の実行中に変化しません。テスターを再実行した場合は新しいRunとして扱います。
 
-現行のAlert Runは`schema_version = 5`、`program_version = 1.29`、`strategy_version = MTF3IN3_V5`です。現行のH1 Observation Runは`schema_version = 5`、`program_version = 1.03`、`strategy_version = H1_OBSERVATION_ALL_V4`です。既存Runのバージョンは書き換えません。
+現行のAlert Runは`schema_version = 5`、`program_version = 1.29`、`strategy_version = MTF3IN3_V5`です。現行のH1 Observation Runは`schema_version = 6`、`program_version = 1.04`、`strategy_version = H1_OBSERVATION_ALL_V5`です。既存Runのバージョンは書き換えません。
 
 ## 7. `zigzag_elliot_alerts`
 
@@ -200,7 +200,7 @@ UNIQUE(
 3. hashが異なる場合も既存行と子行を更新しません。
 4. hash差異をINFOへ記録し、最初のスナップショットを維持します。
 
-Alertの`snapshot_hash`はアラート判定、H1方向一致診断、時間足別分析および保存対象となる最新Wave全ポイントから生成します。H1 Observationの`snapshot_hash`は、取得時の`spread_pips`、`pip_size`および時間足別`latest_point_is_added`を含む保存対象の観測結果から生成します。Hash payloadは`H1_OBSERVATION_V4`です。既存行のHashは再計算しません。いずれも分析設定を識別する`analysis_input_hash`とは用途が異なります。
+Alertの`snapshot_hash`はアラート判定、H1方向一致診断、時間足別分析および保存対象となる最新Wave全ポイントから生成します。H1 Observationの`snapshot_hash`は、取得時の`spread_pips`、`pip_size`および時間足別の最新ポイント詳細を含む保存対象の観測結果から生成します。Hash payloadは`H1_OBSERVATION_V5`です。既存行のHashは再計算しません。いずれも分析設定を識別する`analysis_input_hash`とは用途が異なります。
 
 同一シグナルの再カウント推移が必要になった場合は、第2段階以降でRevisionテーブルを追加します。
 

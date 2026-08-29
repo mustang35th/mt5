@@ -482,6 +482,19 @@ export interface ObservationDetailParent extends Omit<ObservationListItem, "time
 }
 
 export interface ObservationDetailTimeFrame extends ObservationTimeFrame {
+  latest_point_bar_index?: number | null;
+  latest_point_time_next?: number | null;
+  latest_point_wave_bars_from_start?: number | null;
+  latest_point_is_peak?: boolean | null;
+  latest_point_pips_diff?: number | null;
+  latest_point_fibonacci_percent?: number | null;
+  latest_point_fibo_depth_zone?: number | null;
+  latest_point_fibo_depth_zone_label?: string | null;
+  latest_point_fibonacci_expansion_percent?: number | null;
+  latest_point_is_elliot_alphabet?: boolean | null;
+  latest_point_org_elliot_index?: number | null;
+  latest_point_org_elliot_label?: string | null;
+  latest_point_is_correct?: boolean | null;
   previous_open: number;
   previous_high: number;
   previous_low: number;

@@ -91,6 +91,21 @@ function timeFrame(id: number, label: string, order: number): ObservationDetailT
     latest_point_jst_time_text: `2026.08.10 11:0${order}:00`,
     latest_point_rate: 105.12345 + order,
     latest_point_is_added: label === "H4" ? true : label === "H1" ? null : false,
+    latest_point_bar_index: order,
+    latest_point_time_next: 1_786_341_600 + (order * 3_600),
+    latest_point_wave_bars_from_start: 10 + order,
+    latest_point_is_peak: order % 2 === 0,
+    latest_point_pips_diff: label === "H1" ? -12.5 : 8.5 + order,
+    latest_point_fibonacci_percent: 38.2 + order,
+    latest_point_fibo_depth_zone: order,
+    latest_point_fibo_depth_zone_label: `D${order}`,
+    latest_point_fibonacci_expansion_percent: 100 + order,
+    latest_point_is_elliot_alphabet: order >= 3,
+    latest_point_org_elliot_index: order + 2,
+    latest_point_org_elliot_label: order >= 3
+      ? String.fromCharCode("A".charCodeAt(0) + order - 3)
+      : String(order + 2),
+    latest_point_is_correct: order % 2 === 1,
     previous_open: 105.1,
     previous_high: 105.3,
     previous_low: 105.0,
@@ -268,6 +283,17 @@ const COLUMN_GROUP_IDS = {
     "previous_last_elliot_label",
     "point_count",
   ],
+  zigzag_point: [
+    "latest_point_shape",
+    "latest_point_wave_bars_from_start",
+    "latest_point_pips_diff",
+    "latest_point_fibonacci",
+    "latest_point_fibo_depth_zone",
+    "latest_point_elliott_kind",
+    "latest_point_reanalysis",
+    "latest_point_correction",
+    "latest_point_bar_position",
+  ],
   price: [
     "latest_point_jst_time_text",
     "latest_point_time_text",
@@ -306,6 +332,7 @@ type ColumnGroupId = keyof typeof COLUMN_GROUP_IDS;
 
 const COLUMN_GROUP_LABELS: Record<ColumnGroupId, string> = {
   wave: "波動",
+  zigzag_point: "最新ZigZag Point",
   price: "最新ポイント・価格",
   fibo_expansion: "Fibo / FE",
   oscillator_stochastic: "Oscillator / Stochastic",
@@ -314,11 +341,28 @@ const COLUMN_GROUP_LABELS: Record<ColumnGroupId, string> = {
 
 const COLUMN_GROUP_REPRESENTATIVES: Record<ColumnGroupId, string> = {
   wave: "wave_direction",
+  zigzag_point: "latest_point_summary",
   price: "latest_point_rate",
   fibo_expansion: "fibo_expansion_status",
   oscillator_stochastic: "oscillator",
   trend_ema: "gmma_trend_cross",
 };
+
+const LATEST_POINT_DETAIL_KEYS = [
+  "latest_point_bar_index",
+  "latest_point_time_next",
+  "latest_point_wave_bars_from_start",
+  "latest_point_is_peak",
+  "latest_point_pips_diff",
+  "latest_point_fibonacci_percent",
+  "latest_point_fibo_depth_zone",
+  "latest_point_fibo_depth_zone_label",
+  "latest_point_fibonacci_expansion_percent",
+  "latest_point_is_elliot_alphabet",
+  "latest_point_org_elliot_index",
+  "latest_point_org_elliot_label",
+  "latest_point_is_correct",
+] as const;
 
 function displayedColumnIds(grid: HTMLElement): string[] {
   return Array.from(
@@ -481,6 +525,8 @@ describe("ObservationDetailDrawer", () => {
       expect(hasValue("elliott_sub", "▼3 [3] / i [1]")).toBe(true);
       expect(hasValue("wave_direction", "▲ 上昇")).toBe(true);
       expect(hasValue("wave_direction", "▼ 下降")).toBe(true);
+      expect(hasValue("latest_point_summary", "Peak / 10本 / +8.5 pips")).toBe(true);
+      expect(hasValue("latest_point_summary", "Bottom / 13本 / +11.5 pips")).toBe(true);
       expect(hasValue("gmma_trend_cross", "+4 / +1")).toBe(true);
 
       const skipBadge = within(grid).getByLabelText("EMA200判定 対象外。MN1は計算を省略");
@@ -507,6 +553,7 @@ describe("ObservationDetailDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "列プリセット: すべて展開" }));
     await expectColumnLayout(grid, [
       "wave",
+      "zigzag_point",
       "price",
       "fibo_expansion",
       "oscillator_stochastic",
@@ -519,6 +566,20 @@ describe("ObservationDetailDrawer", () => {
       expect(hasValue("zigzag_state", "通常")).toBe(true);
       expect(hasValue("zigzag_state", "追加ポイント")).toBe(true);
       expect(hasValue("zigzag_state", "未記録")).toBe(true);
+      expect(hasValue("latest_point_shape", "Peak")).toBe(true);
+      expect(hasValue("latest_point_shape", "Bottom")).toBe(true);
+      expect(hasValue("latest_point_wave_bars_from_start", "14本")).toBe(true);
+      expect(hasValue("latest_point_pips_diff", "-12.5 pips")).toBe(true);
+      expect(hasValue("latest_point_fibonacci", "F 42.2%")).toBe(true);
+      expect(hasValue("latest_point_fibonacci", "FE 103.0%")).toBe(true);
+      expect(hasValue("latest_point_fibo_depth_zone", "D4 [4]")).toBe(true);
+      expect(hasValue("latest_point_fibo_depth_zone", "対象外")).toBe(true);
+      expect(hasValue("latest_point_elliott_kind", "Alphabet波")).toBe(true);
+      expect(hasValue("latest_point_elliott_kind", "数字波")).toBe(true);
+      expect(hasValue("latest_point_reanalysis", "B [6] → 3 [3]")).toBe(true);
+      expect(hasValue("latest_point_correction", "補正済")).toBe(true);
+      expect(hasValue("latest_point_correction", "未補正")).toBe(true);
+      expect(hasValue("latest_point_bar_position", "#0 / 2026.08.10 06:00")).toBe(true);
       expect(hasValue("stochastic_short", "count +3 / Main 75.12 / Signal 70.34")).toBe(true);
       expect(hasValue("ema30_ema60_diff_pips", "+10.0 pips")).toBe(true);
       expect(hasValue("ema200_slope_distance", "+2.5 / +30.0 pips")).toBe(true);
@@ -539,6 +600,96 @@ describe("ObservationDetailDrawer", () => {
     expect(screen.queryByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(5);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("distinguishes valid false and zero point details from unrecorded values", async () => {
+    provideGridLayoutSize();
+    const payload = detailPayload();
+    const nullTimeFrame = payload.time_frames.find(
+      (item) => item.time_frame_text === "D1",
+    );
+    const missingTimeFrame = payload.time_frames.find(
+      (item) => item.time_frame_text === "H4",
+    );
+    const zeroFibonacciTimeFrame = payload.time_frames.find(
+      (item) => item.time_frame_text === "MN1",
+    );
+    const negativeExpansionTimeFrame = payload.time_frames.find(
+      (item) => item.time_frame_text === "W1",
+    );
+    if (!nullTimeFrame
+        || !missingTimeFrame
+        || !zeroFibonacciTimeFrame
+        || !negativeExpansionTimeFrame) {
+      throw new Error("Point detail compatibility fixtures not found");
+    }
+    zeroFibonacciTimeFrame.latest_point_fibonacci_percent = 0;
+    zeroFibonacciTimeFrame.latest_point_pips_diff = 0;
+    negativeExpansionTimeFrame.latest_point_fibonacci_expansion_percent = -1;
+    const nullValues = nullTimeFrame as unknown as Record<string, unknown>;
+    const missingValues = missingTimeFrame as unknown as Record<string, unknown>;
+    for (const key of LATEST_POINT_DETAIL_KEYS) {
+      nullValues[key] = null;
+      delete missingValues[key];
+    }
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(payload)));
+
+    render(<ObservationDetailDrawer observationId={41} onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "CADJPY / 2026.08.10 11:00:00" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const grid = await screen.findByRole("grid", { name: "時間足別 H1新規足スナップショットグリッド" });
+    const rowCell = (timeFrameLabel: string, columnId: string): HTMLElement => {
+      const timeFrameCell = Array.from(
+        grid.querySelectorAll<HTMLElement>('.ag-cell[col-id="time_frame_text"]'),
+      ).find((cell) => cell.textContent?.includes(timeFrameLabel));
+      const rowIndex = timeFrameCell?.closest<HTMLElement>(".ag-row")
+        ?.getAttribute("row-index");
+      const cell = rowIndex === null || rowIndex === undefined
+        ? null
+        : grid.querySelector<HTMLElement>(
+          `.ag-row[row-index="${rowIndex}"] .ag-cell[col-id="${columnId}"]`,
+        );
+      if (!cell) throw new Error(`cell not found: ${timeFrameLabel}/${columnId}`);
+      return cell;
+    };
+
+    await waitFor(() => {
+      expect(rowCell("D1", "latest_point_summary")).toHaveTextContent("未記録");
+      expect(rowCell("H4", "latest_point_summary")).toHaveTextContent("未記録");
+      expect(rowCell("MN1", "latest_point_summary"))
+        .toHaveTextContent("Peak / 10本 / 0.0 pips");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "列プリセット: ZigZag Point" }));
+    await expectColumnLayout(grid, ["zigzag_point"]);
+    await waitFor(() => {
+      expect(rowCell("W1", "latest_point_shape")).toHaveTextContent("Bottom");
+      expect(rowCell("MN1", "latest_point_elliott_kind")).toHaveTextContent("数字波");
+      expect(rowCell("MN1", "latest_point_correction")).toHaveTextContent("未補正");
+      expect(rowCell("MN1", "latest_point_bar_position"))
+        .toHaveTextContent("#0 / 2026.08.10 06:00");
+      const zeroPips = rowCell("MN1", "latest_point_pips_diff");
+      expect(zeroPips).toHaveTextContent("0.0 pips");
+      expect(zeroPips.querySelector(".snapshot-signed-value")).toHaveClass("neutral");
+      for (const columnId of [
+        "latest_point_shape",
+        "latest_point_wave_bars_from_start",
+        "latest_point_pips_diff",
+        "latest_point_elliott_kind",
+        "latest_point_reanalysis",
+        "latest_point_correction",
+        "latest_point_bar_position",
+      ]) {
+        expect(rowCell("D1", columnId)).toHaveTextContent("—");
+        expect(rowCell("H4", columnId)).toHaveTextContent("—");
+      }
+      expect(rowCell("D1", "latest_point_fibonacci")).toHaveTextContent("未記録");
+      expect(rowCell("H4", "latest_point_fibo_depth_zone")).toHaveTextContent("未記録");
+      expect(rowCell("MN1", "latest_point_fibonacci")).toHaveTextContent("未記録");
+      expect(rowCell("MN1", "latest_point_fibo_depth_zone")).toHaveTextContent("未記録");
+      expect(rowCell("W1", "latest_point_fibonacci")).toHaveTextContent("未記録");
+    });
   });
 
   it("distinguishes an unrecorded spread from a valid zero spread", async () => {
@@ -621,6 +772,7 @@ describe("ObservationDetailDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "列プリセット: すべて展開" }));
     await expectColumnLayout(grid, [
       "wave",
+      "zigzag_point",
       "price",
       "fibo_expansion",
       "oscillator_stochastic",
@@ -685,6 +837,15 @@ describe("ObservationDetailDrawer", () => {
         "wave_count_latest_index",
         "previous_last_elliot_label",
         "point_count",
+        "latest_point_shape",
+        "latest_point_wave_bars_from_start",
+        "latest_point_pips_diff",
+        "latest_point_fibonacci",
+        "latest_point_fibo_depth_zone",
+        "latest_point_elliott_kind",
+        "latest_point_reanalysis",
+        "latest_point_correction",
+        "latest_point_bar_position",
         "latest_point_jst_time_text",
         "latest_point_time_text",
         "latest_point_rate",
@@ -740,6 +901,7 @@ describe("ObservationDetailDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "列プリセット: すべて展開" }));
     await expectColumnLayout(grid, [
       "wave",
+      "zigzag_point",
       "price",
       "fibo_expansion",
       "oscillator_stochastic",
@@ -792,6 +954,10 @@ describe("ObservationDetailDrawer", () => {
       expect(signedTokens(emaDiff)).toHaveLength(1);
       expect(signedTokens(emaDiff)[0]).toHaveClass("negative");
 
+      const pointPips = cellWithText("latest_point_pips_diff", "-12.5 pips");
+      expect(signedTokens(pointPips)).toHaveLength(1);
+      expect(signedTokens(pointPips)[0]).toHaveClass("negative");
+
       const emaSlopeDistance = cellWithText(
         "ema200_slope_distance",
         "-2.5 / 0.0 pips",
@@ -815,6 +981,14 @@ describe("ObservationDetailDrawer", () => {
         "ema200_close1_shift1",
         "ema200_compare",
         "latest_point_rate",
+        "latest_point_shape",
+        "latest_point_wave_bars_from_start",
+        "latest_point_fibonacci",
+        "latest_point_fibo_depth_zone",
+        "latest_point_elliott_kind",
+        "latest_point_reanalysis",
+        "latest_point_correction",
+        "latest_point_bar_position",
         "fe618_fe1000",
         "distance_to_fe2000_pips",
       ]) {
@@ -981,6 +1155,7 @@ describe("ObservationDetailDrawer", () => {
     const presetCases: Array<{ label: string; openGroups: ColumnGroupId[] }> = [
       { label: "要点のみ", openGroups: [] },
       { label: "波動", openGroups: ["wave"] },
+      { label: "ZigZag Point", openGroups: ["zigzag_point"] },
       { label: "価格・Fibo", openGroups: ["price", "fibo_expansion"] },
       { label: "オシレーター", openGroups: ["oscillator_stochastic"] },
       { label: "EMA200検証", openGroups: ["trend_ema"] },
@@ -988,6 +1163,7 @@ describe("ObservationDetailDrawer", () => {
         label: "すべて展開",
         openGroups: [
           "wave",
+          "zigzag_point",
           "price",
           "fibo_expansion",
           "oscillator_stochastic",
@@ -1039,6 +1215,7 @@ describe("ObservationDetailDrawer", () => {
       );
       expect(stored.groups).toEqual({
         wave: true,
+        zigzag_point: false,
         price: false,
         fibo_expansion: false,
         oscillator_stochastic: false,
@@ -1060,9 +1237,10 @@ describe("ObservationDetailDrawer", () => {
   it("restores allowed group state and clears it when column display is reset", async () => {
     provideGridLayoutSize();
     localStorage.setItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY, JSON.stringify({
-      version: 1,
+      version: 2,
       groups: {
         wave: false,
+        zigzag_point: false,
         price: true,
         fibo_expansion: false,
         oscillator_stochastic: false,
@@ -1113,6 +1291,7 @@ describe("ObservationDetailDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "列プリセット: すべて展開" }));
     await expectColumnLayout(grid, [
       "wave",
+      "zigzag_point",
       "price",
       "fibo_expansion",
       "oscillator_stochastic",

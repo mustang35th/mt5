@@ -432,6 +432,12 @@ private:
         fromEntity.latestSubElliotLabel = this.normalizeText(
             fromEntity.latestSubElliotLabel
         );
+        fromEntity.latestPointFiboDepthZoneLabel = this.normalizeText(
+            fromEntity.latestPointFiboDepthZoneLabel
+        );
+        fromEntity.latestPointOrgElliotLabel = this.normalizeText(
+            fromEntity.latestPointOrgElliotLabel
+        );
         fromEntity.latestPointTimeText = this.normalizeText(
             fromEntity.latestPointTimeText
         );
@@ -541,6 +547,11 @@ private:
                     )
                     || entity.latestPointRate <= 0.0
                     || !this.isBooleanValue(entity.latestPointIsAdded)
+                    || !this.isBooleanValue(entity.latestPointIsPeak)
+                    || !this.isBooleanValue(
+                        entity.latestPointIsElliotAlphabet
+                    )
+                    || !this.isBooleanValue(entity.latestPointIsCorrect)
                     || entity.createdAt <= 0
                     || entity.createdAtText == ""
                     || !this.isBooleanValue(entity.isBuy)

@@ -477,6 +477,7 @@ function DetailContent({
           timeFrames={timeFrames}
         />
         <ObservationTimeFrameSnapshotGrid
+          showLatestPointDetails
           styleNonce={styleNonce}
           timeFrames={timeFrames}
         />

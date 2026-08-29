@@ -497,7 +497,7 @@ void initializeRunEntity(ZigZagElliotAlertRunEntity &fromEntity) {
     ZeroMemory(fromEntity);
     fromEntity.id = 0;
     fromEntity.runUid = "zigzag-elliot-h1-observation-smoke-run-v1";
-    fromEntity.schemaVersion = 5;
+    fromEntity.schemaVersion = 6;
     fromEntity.sourceMode = "TESTER";
     fromEntity.source = "ZIGZAG_ELLIOT";
     fromEntity.programName = "ZigZagElliot";
@@ -659,6 +659,32 @@ void initializeTimeFrameEntity(
     );
     fromEntity.latestPointRate = priceBase + 0.00100;
     fromEntity.latestPointIsAdded = fromTimeFrameOrder % 2;
+    fromEntity.latestPointBarIndex = 100 + fromTimeFrameOrder;
+    fromEntity.latestPointTimeNext = fromEntity.latestPointTime
+        + 3600 * (fromTimeFrameOrder + 1);
+    fromEntity.latestPointWaveBarsFromStart = 10 + fromTimeFrameOrder;
+    fromEntity.latestPointIsPeak = fromTimeFrameOrder % 2;
+    fromEntity.latestPointPipsDiff = 100.5 + fromTimeFrameOrder;
+    fromEntity.latestPointFibonacciPercent = 23.6 + fromTimeFrameOrder;
+    fromEntity.latestPointFiboDepthZone = fromTimeFrameOrder;
+    fromEntity.latestPointFiboDepthZoneLabel =
+        "ZONE" + IntegerToString(fromTimeFrameOrder);
+    fromEntity.latestPointFibonacciExpansionPercent =
+        61.8 + fromTimeFrameOrder;
+    fromEntity.latestPointIsElliotAlphabet = 0;
+
+    if (fromTimeFrameOrder >= 3) {
+        fromEntity.latestPointIsElliotAlphabet = 1;
+    }
+
+    fromEntity.latestPointOrgElliotIndex = 30 + fromTimeFrameOrder;
+    fromEntity.latestPointOrgElliotLabel =
+        "O" + IntegerToString(fromEntity.latestPointOrgElliotIndex);
+    fromEntity.latestPointIsCorrect = 0;
+
+    if (fromTimeFrameOrder == 2) {
+        fromEntity.latestPointIsCorrect = 1;
+    }
     fromEntity.previousOpen = priceBase;
     fromEntity.previousHigh = priceBase + 0.00300;
     fromEntity.previousLow = priceBase - 0.00200;
@@ -731,6 +757,8 @@ void initializeTimeFrameEntities(
     // NULL文字列をServiceが空文字列へ正規化することも確認する。
     fromEntities[0].previousLastElliotLabel = NULL;
     fromEntities[0].latestSubElliotLabel = NULL;
+    fromEntities[0].latestPointFiboDepthZoneLabel = NULL;
+    fromEntities[0].latestPointOrgElliotLabel = NULL;
 }
 
 /**
@@ -871,6 +899,262 @@ bool verifyAddedPointValues(
             validCount,
             addedCount,
             normalCount
+        )
+    );
+
+    return false;
+}
+
+/**
+ * 最新ポイント詳細列名を初期化する。
+ *
+ * @param fromColumnNames 列名配列。
+ */
+void initializePointDetailColumnNames(string &fromColumnNames[]) {
+    ArrayResize(fromColumnNames, 13);
+    fromColumnNames[0] = "latest_point_bar_index";
+    fromColumnNames[1] = "latest_point_time_next";
+    fromColumnNames[2] = "latest_point_wave_bars_from_start";
+    fromColumnNames[3] = "latest_point_is_peak";
+    fromColumnNames[4] = "latest_point_pips_diff";
+    fromColumnNames[5] = "latest_point_fibonacci_percent";
+    fromColumnNames[6] = "latest_point_fibo_depth_zone";
+    fromColumnNames[7] = "latest_point_fibo_depth_zone_label";
+    fromColumnNames[8] = "latest_point_fibonacci_expansion_percent";
+    fromColumnNames[9] = "latest_point_is_elliot_alphabet";
+    fromColumnNames[10] = "latest_point_org_elliot_index";
+    fromColumnNames[11] = "latest_point_org_elliot_label";
+    fromColumnNames[12] = "latest_point_is_correct";
+}
+
+/**
+ * 旧スキーマを再現するため、最新ポイント詳細列を削除する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromLogger ロガー。
+ * @return 全列を削除できた場合true。
+ */
+bool removePointDetailsSchemaForMigrationTest(
+    const int fromDatabaseHandle,
+    Logger &fromLogger
+) {
+    string columnNames[];
+    initializePointDetailColumnNames(columnNames);
+
+    for (int i = 0; i < ArraySize(columnNames); i++) {
+        string sql = "ALTER TABLE zigzag_elliot_observation_timeframes ";
+        sql += "DROP COLUMN " + columnNames[i];
+
+        if (!executeSql(
+                fromDatabaseHandle,
+                sql,
+                "remove point detail schema for migration test",
+                fromLogger
+            )) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * 非破壊migrationで追加したnullable最新ポイント詳細列を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromObservationId 列追加前に保存したObservation ID。
+ * @param fromLogger ロガー。
+ * @return 列定義と既存行のNULLが正しい場合true。
+ */
+bool verifyPointDetailsMigration(
+    const int fromDatabaseHandle,
+    const long fromObservationId,
+    Logger &fromLogger
+) {
+    string columnNames[];
+    initializePointDetailColumnNames(columnNames);
+    string columnNameSql = "";
+    string legacyNullSql =
+        "SELECT COUNT(*) FROM zigzag_elliot_observation_timeframes "
+        + "WHERE observation_id = "
+        + StringFormat("%I64d", fromObservationId);
+
+    for (int i = 0; i < ArraySize(columnNames); i++) {
+        if (i > 0) {
+            columnNameSql += ", ";
+        }
+
+        columnNameSql += "'" + columnNames[i] + "'";
+        legacyNullSql += " AND " + columnNames[i] + " IS NULL";
+    }
+
+    long schemaCount = 0;
+    long booleanSchemaCount = 0;
+    long legacyNullCount = 0;
+
+    if (!readLong(
+            fromDatabaseHandle,
+            "SELECT COUNT(*) FROM pragma_table_info("
+                + "'zigzag_elliot_observation_timeframes') "
+                + "WHERE name IN (" + columnNameSql + ")",
+            schemaCount,
+            fromLogger
+        )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) FROM sqlite_master "
+                    + "WHERE type = 'table' "
+                    + "AND name = 'zigzag_elliot_observation_timeframes' "
+                    + "AND LOWER(sql) LIKE "
+                    + "'%check(latest_point_is_peak is null "
+                    + "or latest_point_is_peak in (0, 1))%' "
+                    + "AND LOWER(sql) LIKE "
+                    + "'%check(latest_point_is_elliot_alphabet is null "
+                    + "or latest_point_is_elliot_alphabet in (0, 1))%' "
+                    + "AND LOWER(sql) LIKE "
+                    + "'%check(latest_point_is_correct is null "
+                    + "or latest_point_is_correct in (0, 1))%'",
+                booleanSchemaCount,
+                fromLogger
+            )
+            || !readLong(
+                fromDatabaseHandle,
+                legacyNullSql,
+                legacyNullCount,
+                fromLogger
+            )) {
+        return false;
+    }
+
+    if (schemaCount == 13
+            && booleanSchemaCount == 1
+            && legacyNullCount == 5) {
+        return true;
+    }
+
+    fromLogger.error(
+        __FUNCTION__,
+        StringFormat(
+            "Point details migration mismatch. schema=%I64d "
+                + "booleanSchema=%I64d legacyNull=%I64d",
+            schemaCount,
+            booleanSchemaCount,
+            legacyNullCount
+        )
+    );
+
+    return false;
+}
+
+/**
+ * 新規行の最新ポイント詳細値を確認する。
+ *
+ * @param fromDatabaseHandle データベースハンドル。
+ * @param fromObservationId 新規保存したObservation ID。
+ * @param fromLogger ロガー。
+ * @return Fixtureの値がすべて一致する場合true。
+ */
+bool verifyPointDetailsValues(
+    const int fromDatabaseHandle,
+    const long fromObservationId,
+    Logger &fromLogger
+) {
+    string observationIdText = StringFormat("%I64d", fromObservationId);
+    long recordedCount = 0;
+    long h1ValueCount = 0;
+    long normalizedTextCount = 0;
+    string recordedSql =
+        "SELECT COUNT(*) FROM zigzag_elliot_observation_timeframes "
+        + "WHERE observation_id = " + observationIdText;
+    string columnNames[];
+    initializePointDetailColumnNames(columnNames);
+
+    for (int i = 0; i < ArraySize(columnNames); i++) {
+        recordedSql += " AND " + columnNames[i] + " IS NOT NULL";
+    }
+
+    recordedSql += " AND latest_point_bar_index = 100 + time_frame_order";
+    recordedSql += " AND latest_point_time_next = latest_point_time ";
+    recordedSql += "+ 3600 * (time_frame_order + 1)";
+    recordedSql += " AND latest_point_wave_bars_from_start ";
+    recordedSql += "= 10 + time_frame_order";
+    recordedSql += " AND latest_point_is_peak ";
+    recordedSql += "= time_frame_order % 2";
+    recordedSql += " AND ABS(latest_point_pips_diff ";
+    recordedSql += "- (100.5 + time_frame_order)) < 0.000001";
+    recordedSql += " AND ABS(latest_point_fibonacci_percent ";
+    recordedSql += "- (23.6 + time_frame_order)) < 0.000001";
+    recordedSql += " AND latest_point_fibo_depth_zone ";
+    recordedSql += "= time_frame_order";
+    recordedSql += " AND ABS(latest_point_fibonacci_expansion_percent ";
+    recordedSql += "- (61.8 + time_frame_order)) < 0.000001";
+    recordedSql += " AND latest_point_is_elliot_alphabet ";
+    recordedSql += "= CASE WHEN time_frame_order >= 3 THEN 1 ELSE 0 END";
+    recordedSql += " AND latest_point_org_elliot_index ";
+    recordedSql += "= 30 + time_frame_order";
+    recordedSql += " AND latest_point_is_correct ";
+    recordedSql += "= CASE WHEN time_frame_order = 2 THEN 1 ELSE 0 END";
+
+    if (!readLong(
+            fromDatabaseHandle,
+            recordedSql,
+            recordedCount,
+            fromLogger
+        )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) "
+                    + "FROM zigzag_elliot_observation_timeframes "
+                    + "WHERE observation_id = " + observationIdText + " "
+                    + "AND time_frame_order = 4 "
+                    + "AND latest_point_bar_index = 104 "
+                    + "AND latest_point_time_next = latest_point_time + 18000 "
+                    + "AND latest_point_wave_bars_from_start = 14 "
+                    + "AND latest_point_is_peak = 0 "
+                    + "AND ABS(latest_point_pips_diff - 104.5) < 0.000001 "
+                    + "AND ABS(latest_point_fibonacci_percent - 27.6) "
+                    + "< 0.000001 "
+                    + "AND latest_point_fibo_depth_zone = 4 "
+                    + "AND latest_point_fibo_depth_zone_label = 'ZONE4' "
+                    + "AND ABS(latest_point_fibonacci_expansion_percent "
+                    + "- 65.8) < 0.000001 "
+                    + "AND latest_point_is_elliot_alphabet = 1 "
+                    + "AND latest_point_org_elliot_index = 34 "
+                    + "AND latest_point_org_elliot_label = 'O34' "
+                    + "AND latest_point_is_correct = 0",
+                h1ValueCount,
+                fromLogger
+            )
+            || !readLong(
+                fromDatabaseHandle,
+                "SELECT COUNT(*) "
+                    + "FROM zigzag_elliot_observation_timeframes "
+                    + "WHERE observation_id = " + observationIdText + " "
+                    + "AND time_frame_order = 0 "
+                    + "AND latest_point_fibo_depth_zone_label = '' "
+                    + "AND latest_point_fibo_depth_zone_label IS NOT NULL "
+                    + "AND latest_point_org_elliot_label = '' "
+                    + "AND latest_point_org_elliot_label IS NOT NULL",
+                normalizedTextCount,
+                fromLogger
+            )) {
+        return false;
+    }
+
+    if (recordedCount == 5
+            && h1ValueCount == 1
+            && normalizedTextCount == 1) {
+        return true;
+    }
+
+    fromLogger.error(
+        __FUNCTION__,
+        StringFormat(
+            "Point detail value mismatch. recorded=%I64d h1=%I64d "
+                + "normalized=%I64d",
+            recordedCount,
+            h1ValueCount,
+            normalizedTextCount
         )
     );
 
@@ -1819,6 +2103,32 @@ void OnStart() {
         "Added point schema migration was verified."
     );
 
+    if (!removePointDetailsSchemaForMigrationTest(databaseHandle, logger)
+            || !persistenceService.createTables()
+            || !verifyPointDetailsMigration(
+                databaseHandle,
+                firstObservationId,
+                logger
+            )
+            || !persistenceService.createTables()
+            || !verifyPointDetailsMigration(
+                databaseHandle,
+                firstObservationId,
+                logger
+            )) {
+        logger.error(
+            __FUNCTION__,
+            "Point details schema migration verification failed."
+        );
+
+        return;
+    }
+
+    logger.info(
+        __FUNCTION__,
+        "Point details schema migration was verified."
+    );
+
     ZigZagElliotObservationEntity jpyMigrationObservationEntity;
     ZigZagElliotObservationTimeFrameEntity jpyMigrationTimeFrameEntities[];
     initializeObservationEntity(
@@ -1840,6 +2150,11 @@ void OnStart() {
                 jpyMigrationTimeFrameEntities
             )
             || !verifyAddedPointValues(
+                databaseHandle,
+                jpyMigrationObservationEntity.id,
+                logger
+            )
+            || !verifyPointDetailsValues(
                 databaseHandle,
                 jpyMigrationObservationEntity.id,
                 logger
@@ -1871,14 +2186,7 @@ void OnStart() {
                 firstObservationId,
                 jpyMigrationObservationId,
                 logger
-            )
-            || !executeSql(
-                databaseHandle,
-                deleteJpyMigrationSql,
-                "delete JPY pip size migration observation",
-                logger
-            )
-            || !verifyTotalCounts(databaseHandle, 1, 5, logger)) {
+            )) {
         logger.error(
             __FUNCTION__,
             "Pip size schema migration verification failed."
@@ -1897,7 +2205,19 @@ void OnStart() {
                 observationEntity,
                 timeFrameEntities,
                 logger
-            )) {
+            )
+            || !verifyPointDetailsValues(
+                databaseHandle,
+                jpyMigrationObservationId,
+                logger
+            )
+            || !executeSql(
+                databaseHandle,
+                deleteJpyMigrationSql,
+                "delete JPY pip size migration observation",
+                logger
+            )
+            || !verifyTotalCounts(databaseHandle, 1, 5, logger)) {
         logger.error(__FUNCTION__, "JST schema migration verification failed.");
 
         return;
@@ -2114,6 +2434,59 @@ void OnStart() {
         __FUNCTION__,
         "Expected added point validation failure was verified."
     );
+
+    for (int i = 0; i < 3; i++) {
+        ZigZagElliotObservationEntity invalidPointDetailObservationEntity;
+        ZigZagElliotObservationTimeFrameEntity invalidPointDetailTimeFrames[];
+        string invalidPointDetailName = "";
+        initializeObservationEntity(
+            runEntity.id,
+            D'2026.07.20 01:00:00',
+            "observation-snapshot-invalid-point-detail-" + IntegerToString(i),
+            invalidPointDetailObservationEntity
+        );
+        initializeTimeFrameEntities(invalidPointDetailTimeFrames);
+
+        if (i == 0) {
+            invalidPointDetailTimeFrames[3].latestPointIsPeak = 2;
+            invalidPointDetailName = "latestPointIsPeak";
+        } else if (i == 1) {
+            invalidPointDetailTimeFrames[3].latestPointIsElliotAlphabet = 2;
+            invalidPointDetailName = "latestPointIsElliotAlphabet";
+        } else {
+            invalidPointDetailTimeFrames[3].latestPointIsCorrect = 2;
+            invalidPointDetailName = "latestPointIsCorrect";
+        }
+
+        logger.info(
+            __FUNCTION__,
+            "Starting expected " + invalidPointDetailName
+                + " validation failure verification."
+        );
+
+        if (persistenceService.saveSnapshot(
+                invalidPointDetailObservationEntity,
+                invalidPointDetailTimeFrames
+            )
+                || !areSnapshotIdsCleared(
+                    invalidPointDetailObservationEntity,
+                    invalidPointDetailTimeFrames
+                )
+                || !verifyTotalCounts(databaseHandle, 1, 5, logger)) {
+            logger.error(
+                __FUNCTION__,
+                invalidPointDetailName + " validation failure verification failed."
+            );
+
+            return;
+        }
+
+        logger.info(
+            __FUNCTION__,
+            "Expected " + invalidPointDetailName
+                + " validation failure was verified."
+        );
+    }
 
     if (!createRollbackTrigger(databaseHandle, logger)) {
         return;

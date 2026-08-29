@@ -5,7 +5,7 @@
 | 項目 | 内容 |
 |---|---|
 | 対象 | `Indicators/ZigZagElliotH1ObservationAll.mq5` |
-| プログラムバージョン | `1.03` |
+| プログラムバージョン | `1.04` |
 | 役割 | 全28通貨のH1新規足時点におけるElliott分析結果を時系列保存する |
 | 基準時間足 | H1 |
 | 保存時間足 | MN1、W1、D1、H4、H1 |
@@ -310,10 +310,10 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 | Analysis start | MN1 |
 | Anchor | H1 |
 | Run `strategy` | `H1_OBSERVATION_ALL` |
-| Run `strategy_version` | `H1_OBSERVATION_ALL_V4` |
-| Run `schema_version` | `5` |
+| Run `strategy_version` | `H1_OBSERVATION_ALL_V5` |
+| Run `schema_version` | `6` |
 
-ここでいう`schema_version = 5`は、本インジケーターが作成するRun行のメタデータです。共有DBの現行Alert仕様で使用するRunの`schema_version = 5`や、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.03`です。
+ここでいう`schema_version = 6`は、本インジケーターが作成するRun行のメタデータです。共有DBのAlert Runや、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.04`です。
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
 
@@ -396,14 +396,15 @@ zigzag_elliot_alert_runs (1)
 
 ### 9.3 時間足別Observation
 
-`zigzag_elliot_observation_timeframes`は、親1行につき固定5行を保存します。`id`を含めて1行75列あります。
+`zigzag_elliot_observation_timeframes`は、親1行につき固定5行を保存します。`id`を含めて1行88列あります。
 
 | グループ | 主な項目 |
 |---|---|
 | 時間足 | 時間足、固定順序、H1アンカーフラグ |
 | 分析方向 | BUY・SELL、Oscillator方向 |
 | Wave | Wave数、最新Wave、確定、推進・修正、上昇・下降 |
-| Elliott | 直前ラベル、最新ラベル、Subラベル、最新点時刻・価格・補完ポイントフラグ |
+| Elliott | 直前ラベル、最新ラベル、Subラベル、最新点の時刻・価格・補完／山谷／補正フラグ、再分析前ラベル |
+| 最新ZigZagPoint | バー位置、次バー時刻、経過本数、pips差、F、深度ゾーン、FE、数字・アルファベット種別 |
 | OHLC | 1本前の確定足と現在形成足のOHLC |
 | Fibonacci Expansion | 利用可否、61.8～200.0%、現在価格との距離 |
 | Stochastic | 3本の継続数、Main、Signal、Main並び順 |
@@ -413,7 +414,13 @@ zigzag_elliot_alert_runs (1)
 
 全ZigZagポイント配列は保存せず、最新Waveと最新点の構造化スカラーだけを保存します。
 
+最新ポイント詳細13列を追加しても保存対象は1時間足につき最新点1件です。現在が第5波のときに過去の第3波の副次波、FまたはFEをDBから復元するには、全ポイント子テーブルまたは第3波専用の集約列が別途必要です。
+
 `latest_point_is_added`は、各時間足の`Elliot.getLatestPoint()`が指す`ZigZagPoint.isAddedPoint`を保存します。新規行は通常ポイントを0、補完ポイントを1とします。既存DBへはnullable列を非破壊で追加し、保存当時の値を推測できない過去行は`NULL`の「未記録」として保持します。
+
+同じ最新ポイントについて、`barIndex`、`barTimeNext`、`waveBarsFromStart`、`isPeak`、`pipsDiff`、`fibonacciPercent`、Fibonacci深度ゾーン、`fibonacciExpansionPercent`、`isElliotAlphabet`、再分析前Elliott番号・ラベルおよび`isCorrect`も保存します。既存DBへ追加した13列は過去値を復元せず`NULL`とし、新規Observationから実測値を保存します。
+
+ViewerのH1推移詳細では、`TIMEFRAME COMPARISON`の折りたたみ列`最新ZigZag Point`に13項目をまとめて表示します。Fは再分析前Elliott番号が偶数、FEは奇数の場合に表示し、Depth ZoneはF対象時だけ表示します。アラート詳細は別データ経路のため、この列を表示しません。旧DBの項目なしとMigration済み既存行の`NULL`はいずれも未記録として扱い、`false`と`0`は有効値として表示します。
 
 ## 10. DBファイルとRun
 
@@ -461,7 +468,7 @@ source_mode
 
 ### 10.4 Snapshot Hash
 
-`snapshot_hash`は、親の取得元・自然キー相当値、取得時スプレッド、`pip_size`および5時間足の構造化値から生成する16桁の大文字16進文字列です。`latest_point_is_added`追加後のHash payloadは`H1_OBSERVATION_V4`です。ID、Run ID、作成日時、JSTおよび表示用日時文字列は含めません。暗号学的Hashではなく、Snapshot内容の比較用です。分析設定を識別する`analysis_input_hash`とは目的が異なります。migrationで列追加や`pip_size`補完を行う既存行のHashは再計算しません。
+`snapshot_hash`は、親の取得元・自然キー相当値、取得時スプレッド、`pip_size`および5時間足の構造化値から生成する16桁の大文字16進文字列です。最新ポイント詳細13項目追加後のHash payloadは`H1_OBSERVATION_V5`です。ID、Run ID、作成日時、JSTおよび表示用日時文字列は含めません。暗号学的Hashではなく、Snapshot内容の比較用です。分析設定を識別する`analysis_input_hash`とは目的が異なります。migrationで列追加や`pip_size`補完を行う既存行のHashは再計算しません。
 
 - `analysis_input_hash`: どの計算設定を使用したか
 - `snapshot_hash`: その時点でどの分析結果を保存したか
@@ -679,9 +686,10 @@ mstng-zigzag-elliot-h1-observation-smoke-test.sqlite
 - 同一hashの冪等保存
 - hashが異なる重複でもfirst-writeを維持すること
 - Server時刻とJSTの整合
-- 旧JST列なしSchema、旧`pip_size`列なしSchemaおよび旧`latest_point_is_added`列なしSchemaからのMigration
+- 旧JST列なしSchema、旧`pip_size`列なしSchema、旧`latest_point_is_added`列なしSchemaおよび最新ポイント詳細13列なしSchemaからのMigration
 - JPY・非JPY既存行の`pip_size`推定補完と新規行のMT5実測値保存
 - `latest_point_is_added`の既存行NULL維持と新規行0・1保存
+- 最新ポイント詳細13列の既存行NULL維持、Migration再実行および新規行の値保存
 - 親・子の不正値拒否
 - 子INSERT失敗時のTransaction ROLLBACK
 - 必須Indexの存在とQuery Plan
@@ -760,5 +768,6 @@ HAVING COUNT(time_frame.id) <> 5;
 - [ZigZagElliotObservationDao.mqh](../../Include/Mstng/Database/Dao/ZigZagElliotObservationDao.mqh)
 - [ZigZagElliotObservationTimeFrameDao.mqh](../../Include/Mstng/Database/Dao/ZigZagElliotObservationTimeFrameDao.mqh)
 - [ZigZagElliotObservationAddedPointMigration.mqh](../../Include/Mstng/Database/Dao/ZigZagElliotObservationAddedPointMigration.mqh)
+- [ZigZagElliotObservationPointDetailsMigration.mqh](../../Include/Mstng/Database/Dao/ZigZagElliotObservationPointDetailsMigration.mqh)
 - [ZigZagElliotアラートデータベース仕様書](../Database/ZigZagElliotAlertDatabase.md)
 - [ZigZagElliot Alert Viewer README](../../Services/ZigZagElliotAlertViewer/README.md)

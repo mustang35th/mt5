@@ -11,6 +11,7 @@
 
 #include <Mstng\Database\Dao\ZigZagElliotObservationAddedPointMigration.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationJstMigration.mqh>
+#include <Mstng\Database\Dao\ZigZagElliotObservationPointDetailsMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -74,6 +75,25 @@ public:
         sql += "latest_point_is_added INTEGER ";
         sql += "CHECK(latest_point_is_added IS NULL ";
         sql += "OR latest_point_is_added IN (0, 1)),";
+        sql += "latest_point_bar_index INTEGER,";
+        sql += "latest_point_time_next INTEGER,";
+        sql += "latest_point_wave_bars_from_start INTEGER,";
+        sql += "latest_point_is_peak INTEGER ";
+        sql += "CHECK(latest_point_is_peak IS NULL ";
+        sql += "OR latest_point_is_peak IN (0, 1)),";
+        sql += "latest_point_pips_diff REAL,";
+        sql += "latest_point_fibonacci_percent REAL,";
+        sql += "latest_point_fibo_depth_zone INTEGER,";
+        sql += "latest_point_fibo_depth_zone_label TEXT,";
+        sql += "latest_point_fibonacci_expansion_percent REAL,";
+        sql += "latest_point_is_elliot_alphabet INTEGER ";
+        sql += "CHECK(latest_point_is_elliot_alphabet IS NULL ";
+        sql += "OR latest_point_is_elliot_alphabet IN (0, 1)),";
+        sql += "latest_point_org_elliot_index INTEGER,";
+        sql += "latest_point_org_elliot_label TEXT,";
+        sql += "latest_point_is_correct INTEGER ";
+        sql += "CHECK(latest_point_is_correct IS NULL ";
+        sql += "OR latest_point_is_correct IN (0, 1)),";
         sql += "previous_open REAL NOT NULL,";
         sql += "previous_high REAL NOT NULL,";
         sql += "previous_low REAL NOT NULL,";
@@ -149,6 +169,12 @@ public:
         }
 
         if (!ZigZagElliotObservationAddedPointMigration::execute(
+                this.databaseHandle
+            )) {
+            return false;
+        }
+
+        if (!ZigZagElliotObservationPointDetailsMigration::execute(
                 this.databaseHandle
             )) {
             return false;
@@ -256,6 +282,15 @@ private:
         sql += " latest_point_time, latest_point_time_text,";
         sql += " latest_point_jst_time, latest_point_jst_time_text,";
         sql += " latest_point_rate, latest_point_is_added,";
+        sql += " latest_point_bar_index, latest_point_time_next,";
+        sql += " latest_point_wave_bars_from_start, latest_point_is_peak,";
+        sql += " latest_point_pips_diff, latest_point_fibonacci_percent,";
+        sql += " latest_point_fibo_depth_zone,";
+        sql += " latest_point_fibo_depth_zone_label,";
+        sql += " latest_point_fibonacci_expansion_percent,";
+        sql += " latest_point_is_elliot_alphabet,";
+        sql += " latest_point_org_elliot_index,";
+        sql += " latest_point_org_elliot_label, latest_point_is_correct,";
         sql += " previous_open, previous_high, previous_low, previous_close,";
         sql += " current_open, current_high, current_low, current_close,";
         sql += " is_fibo_expansion_available, fe618_price, fe1000_price,";
@@ -276,7 +311,7 @@ private:
         sql += " created_at, created_at_text";
         sql += ") VALUES (";
 
-        for (int i = 1; i <= 74; i++) {
+        for (int i = 1; i <= 87; i++) {
             if (i > 1) {
                 sql += ", ";
             }
@@ -429,6 +464,97 @@ private:
                 fromRequestHandle,
                 index++,
                 fromEntity.latestPointIsAdded
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointBarIndex
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointTimeNext
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointWaveBarsFromStart
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointIsPeak
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointPipsDiff
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointFibonacciPercent
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointFiboDepthZone
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointFiboDepthZoneLabel
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointFibonacciExpansionPercent
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointIsElliotAlphabet
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointOrgElliotIndex
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointOrgElliotLabel
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.latestPointIsCorrect
             );
         }
         if (isBound) {
@@ -659,7 +785,7 @@ private:
             );
         }
 
-        return isBound && index == 74;
+        return isBound && index == 87;
     }
 
     /**

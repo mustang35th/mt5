@@ -306,6 +306,12 @@ describe("AlertDetailDrawer", () => {
     const grid = await screen.findByRole("grid", {
       name: "アラート時間足比較スナップショットグリッド",
     });
+    expect(screen.queryByRole("button", { name: "列プリセット: ZigZag Point" }))
+      .not.toBeInTheDocument();
+    expect(Array.from(grid.querySelectorAll<HTMLElement>(".ag-header-group-text"))
+      .some((header) => header.textContent === "最新ZigZag Point")).toBe(false);
+    expect(grid.querySelector('[col-id="latest_point_summary"]')).toBeNull();
+    expect(grid.querySelector('[col-id="latest_point_shape"]')).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "列プリセット: 波動" }));
     await waitFor(() => {
       const zigZagCells = Array.from(

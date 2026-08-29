@@ -2359,6 +2359,52 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIs(detail_time_frames["H1"]["latest_point_is_added"], True)
         self.assertIsNone(detail_time_frames["MN1"]["latest_point_is_added"])
 
+    def test_optional_point_detail_booleans_are_normalized_in_detail(
+        self,
+    ) -> None:
+        """Normalize newly recorded point flags while preserving legacy NULL."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_observation_timeframes "
+                    "ADD COLUMN latest_point_is_peak INTEGER"
+                )
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_observation_timeframes "
+                    "ADD COLUMN latest_point_is_elliot_alphabet INTEGER"
+                )
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_observation_timeframes "
+                    "ADD COLUMN latest_point_is_correct INTEGER"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET latest_point_is_peak = 1, "
+                    "latest_point_is_elliot_alphabet = 0, "
+                    "latest_point_is_correct = 1 "
+                    "WHERE observation_id = 1 AND time_frame_text = 'H1'"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                detail = database.observation_detail(1)
+            finally:
+                database.close()
+
+        detail_time_frames = {
+            item["time_frame_text"]: item for item in detail["time_frames"]
+        }
+        self.assertIs(detail_time_frames["H1"]["latest_point_is_peak"], True)
+        self.assertIs(
+            detail_time_frames["H1"]["latest_point_is_elliot_alphabet"],
+            False,
+        )
+        self.assertIs(detail_time_frames["H1"]["latest_point_is_correct"], True)
+        self.assertIsNone(detail_time_frames["MN1"]["latest_point_is_peak"])
+
     def test_optional_spread_is_returned_by_list_and_detail(self) -> None:
         """Expose captured spread while keeping zero as a recorded value."""
 

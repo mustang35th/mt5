@@ -360,6 +360,32 @@ private:
         fromEntity.latestPointIsAdded = boolToInteger(
             fromLatestPoint.isAddedPoint
         );
+        fromEntity.latestPointBarIndex = fromLatestPoint.barIndex;
+        fromEntity.latestPointTimeNext = fromLatestPoint.barTimeNext;
+        fromEntity.latestPointWaveBarsFromStart =
+            fromLatestPoint.waveBarsFromStart;
+        fromEntity.latestPointIsPeak = boolToInteger(fromLatestPoint.isPeak);
+        fromEntity.latestPointPipsDiff = fromLatestPoint.pipsDiff;
+        fromEntity.latestPointFibonacciPercent =
+            fromLatestPoint.fibonacciPercent;
+        fromEntity.latestPointFiboDepthZone =
+            (int)fromLatestPoint.fiboDepthZone;
+        fromEntity.latestPointFiboDepthZoneLabel = normalizeText(
+            fromLatestPoint.fiboDepthZoneLabel
+        );
+        fromEntity.latestPointFibonacciExpansionPercent =
+            fromLatestPoint.fibonacciExpansionPercent;
+        fromEntity.latestPointIsElliotAlphabet = boolToInteger(
+            fromLatestPoint.isElliotAlphabet
+        );
+        fromEntity.latestPointOrgElliotIndex =
+            fromLatestPoint.orgElliotIndex;
+        fromEntity.latestPointOrgElliotLabel = normalizeText(
+            fromLatestPoint.orgElliotLabel
+        );
+        fromEntity.latestPointIsCorrect = boolToInteger(
+            fromLatestPoint.isCorrect
+        );
         fromEntity.previousOpen = fromElliot.previousOhlcInfo.open;
         fromEntity.previousHigh = fromElliot.previousOhlcInfo.high;
         fromEntity.previousLow = fromElliot.previousOhlcInfo.low;
@@ -433,7 +459,7 @@ private:
         ZigZagElliotObservationEntity &fromEntity,
         ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[]
     ) {
-        string sourceText = "H1_OBSERVATION_V4";
+        string sourceText = "H1_OBSERVATION_V5";
         appendText(sourceText, fromEntity.sourceMode);
         appendText(sourceText, fromEntity.sourceServer);
         appendText(sourceText, fromEntity.symbolName);
@@ -507,6 +533,34 @@ private:
         appendDateTime(fromSourceText, fromEntity.latestPointTime);
         appendDouble(fromSourceText, fromEntity.latestPointRate);
         appendInteger(fromSourceText, fromEntity.latestPointIsAdded);
+        appendInteger(fromSourceText, fromEntity.latestPointBarIndex);
+        appendDateTime(fromSourceText, fromEntity.latestPointTimeNext);
+        appendInteger(
+            fromSourceText,
+            fromEntity.latestPointWaveBarsFromStart
+        );
+        appendInteger(fromSourceText, fromEntity.latestPointIsPeak);
+        appendDouble(fromSourceText, fromEntity.latestPointPipsDiff);
+        appendDouble(
+            fromSourceText,
+            fromEntity.latestPointFibonacciPercent
+        );
+        appendInteger(fromSourceText, fromEntity.latestPointFiboDepthZone);
+        appendText(
+            fromSourceText,
+            fromEntity.latestPointFiboDepthZoneLabel
+        );
+        appendDouble(
+            fromSourceText,
+            fromEntity.latestPointFibonacciExpansionPercent
+        );
+        appendInteger(
+            fromSourceText,
+            fromEntity.latestPointIsElliotAlphabet
+        );
+        appendInteger(fromSourceText, fromEntity.latestPointOrgElliotIndex);
+        appendText(fromSourceText, fromEntity.latestPointOrgElliotLabel);
+        appendInteger(fromSourceText, fromEntity.latestPointIsCorrect);
         appendDouble(fromSourceText, fromEntity.previousOpen);
         appendDouble(fromSourceText, fromEntity.previousHigh);
         appendDouble(fromSourceText, fromEntity.previousLow);
