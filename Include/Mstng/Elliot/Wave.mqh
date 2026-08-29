@@ -222,6 +222,64 @@ public:
         
         return this.zigZagPointList.At(total - 2);
     }
+
+    /**
+     * 指定した数字Elliott波動に下位波動があるか判定する。
+     *
+     * 指定波動に属するポイントの下位波動番号またはラベルが
+     * 1件でも設定されている場合にtrueを返す。
+     *
+     * @param fromElliotIndex 判定対象のElliott波動番号
+     * @return 指定波動に下位波動がある場合true
+     */
+    bool hasSubElliot(const int fromElliotIndex) {
+        if (!this.isMotive || fromElliotIndex <= 0) {
+            return false;
+        }
+
+        for (int i = 0; i < this.zigZagPointList.Total(); i++) {
+            ZigZagPoint *zigZagPoint = this.zigZagPointList.At(i);
+
+            if (zigZagPoint == NULL
+                    || !zigZagPoint.isNumeric()
+                    || zigZagPoint.elliotIndex != fromElliotIndex) {
+                continue;
+            }
+
+            if (zigZagPoint.subElliotIndex != 0
+                    || !StringUtil::isEmpty(zigZagPoint.subElliotLabel)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 現在の数字Elliott波動を確認して指定波動の下位波動を判定する。
+     *
+     * @param fromCurrentElliotIndex 期待する現在のElliott波動番号
+     * @param fromTargetElliotIndex 下位波動を確認するElliott波動番号
+     * @return 現在波動が一致し、指定波動に下位波動がある場合true
+     */
+    bool hasSubElliot(
+        const int fromCurrentElliotIndex,
+        const int fromTargetElliotIndex
+    ) {
+        if (!this.isMotive || fromCurrentElliotIndex <= 0) {
+            return false;
+        }
+
+        ZigZagPoint *latestPoint = this.getLatestPoint();
+
+        if (latestPoint == NULL
+                || !latestPoint.isNumeric()
+                || latestPoint.elliotIndex != fromCurrentElliotIndex) {
+            return false;
+        }
+
+        return this.hasSubElliot(fromTargetElliotIndex);
+    }
     
     /**
      * 1つ前のWaveと比較して現在Waveの確定状態を設定する。
