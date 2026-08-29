@@ -121,6 +121,17 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
+        if (!isElliotHigherTimeFrameDisplayCountValid(
+                this.config.elliotHigherTimeFrameDisplayCount
+        )) {
+            this.logger.error(
+                __FUNCTION__,
+                "Elliott higher timeframe display count is invalid."
+            );
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
         if (this.config.currencyStrengthEnabled
                 && !CurrencyStrengthCalculationProfile
                     ::isVoteWeightModeValid(
@@ -408,7 +419,8 @@ private:
         if (this.chartController == NULL
                 || !this.chartController.initialize(
                     this.marketContext,
-                    this.analysisController.getOscillatorHandlePool()
+                    this.analysisController.getOscillatorHandlePool(),
+                    (int)this.config.elliotHigherTimeFrameDisplayCount
                 )) {
             return false;
         }

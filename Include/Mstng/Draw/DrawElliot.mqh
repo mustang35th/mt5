@@ -38,10 +38,22 @@ public:
      * 描画列幅の初期値を設定して初期化する。
      *
      * @param fromSimpleDisplay 簡易表示の場合true
+     * @param fromHigherTimeFrameDisplayCount 波動ラベルを表示する上位時間足数
      */
-    DrawElliot(bool fromSimpleDisplay = false) {
+    DrawElliot(
+        bool fromSimpleDisplay = false,
+        int fromHigherTimeFrameDisplayCount = 2
+    ) {
         this.logger.setLevel(LOG_INFO);
         this.clampVertical = false;
+        this.higherTimeFrameDisplayCount = fromHigherTimeFrameDisplayCount;
+
+        if (this.higherTimeFrameDisplayCount != 2
+                && this.higherTimeFrameDisplayCount != 3) {
+            this.higherTimeFrameDisplayCount = 2;
+        }
+
+        this.layoutHigherTimeFrameDisplayCount = 2;
         
         this.addDrawPropertiesElliotList(true, 90); // COLMUN_TIME_FRAME
         this.addDrawPropertiesElliotList(true, 110);    // COLMUN_BUYSELL
@@ -87,36 +99,40 @@ public:
             this.setLabel();
         }
         
-        int fontSize = 2;
-        double upLevel = 0;
-        double downLevel = 0;
-        
-        Elliot *elliot2 = this.elliotAll.getElliot(this.elliotAll.marketContext.timeFrame, 2);
-        
-        if (elliot2 != NULL) {
-            fontSize = 4;
-            upLevel = 3;
-            downLevel = 4.5;
-            
-            this.setElliot(elliot2, "Elliot2", fontSize, upLevel, downLevel, 0);
-        }
-        
-        
-        Elliot *elliot1 = this.elliotAll.getElliot(this.elliotAll.marketContext.timeFrame, 1);
-        
-        if (elliot1 != NULL) {
-            fontSize = 2;
-            upLevel = 2;
-            downLevel = 3;
-            
-            this.setElliot(elliot1, "Elliot1", fontSize, upLevel, downLevel, 1);
-        }
-        
-        
-        Elliot *elliot0 = this.elliotAll.getElliot(this.elliotAll.marketContext.timeFrame);
-        
-        if (elliot0 != NULL) {
-            this.setElliot(elliot0, "Elliot0", 0, 0, 1.5, 2);
+        this.layoutHigherTimeFrameDisplayCount =
+            this.getLayoutHigherTimeFrameDisplayCount();
+
+        for (int higherIndex = this.layoutHigherTimeFrameDisplayCount;
+                higherIndex >= 0;
+                higherIndex--) {
+            Elliot *elliot = this.elliotAll.getElliot(
+                this.elliotAll.marketContext.timeFrame,
+                higherIndex
+            );
+
+            if (elliot == NULL) {
+                continue;
+            }
+
+            int fontSizeIncrease = higherIndex * 2;
+            double upLevel = 0;
+
+            if (higherIndex > 0) {
+                upLevel = (double)(higherIndex + 1);
+            }
+
+            double downLevel = (double)(higherIndex + 1) * 1.5;
+            int edgeLane =
+                this.layoutHigherTimeFrameDisplayCount - higherIndex;
+
+            this.setElliot(
+                elliot,
+                "Elliot" + IntegerToString(higherIndex),
+                fontSizeIncrease,
+                upLevel,
+                downLevel,
+                edgeLane
+            );
         }
         
         if (fromIsElliotInfoVisible) {
@@ -444,6 +460,12 @@ protected:
 
     /** Elliottラベルをチャート上下端へ収める場合true。 */
     bool clampVertical;
+
+    /** 波動ラベルを表示する設定上の上位時間足数。 */
+    int higherTimeFrameDisplayCount;
+
+    /** 現在の描画で使用する上位時間足数。 */
+    int layoutHigherTimeFrameDisplayCount;
     
     /** 列表示設定のリスト。時間軸ごとに表示可否と幅を保持する。 */
     CArrayObj drawPropertiesElliotList;
@@ -780,7 +802,9 @@ protected:
         }
 
         double labelHeight = baseFontHeight * (double)fromFontSize / (double)baseFontSize;
-        double maxFontSize = (double)(baseFontSize + 4);
+        double maxFontSize = (double)(
+            baseFontSize + this.layoutHigherTimeFrameDisplayCount * 2
+        );
         double maxLabelHeight = baseFontHeight * maxFontSize / (double)baseFontSize;
         double edgeInset = labelHeight / 2.0 + (double)drawProperties.elliotPixelDistance;
 
@@ -810,6 +834,28 @@ protected:
     }
 
 private:
+    /**
+     * 現在足で使用する波動ラベルの上位時間足数を取得する。
+     *
+     * 上位3足が存在しない場合は従来の上位2足レイアウトを維持する。
+     *
+     * @return 描画レイアウトへ使用する上位時間足数
+     */
+    int getLayoutHigherTimeFrameDisplayCount() {
+        if (this.higherTimeFrameDisplayCount == 3) {
+            Elliot *elliotHigher3 = this.elliotAll.getElliot(
+                this.elliotAll.marketContext.timeFrame,
+                3
+            );
+
+            if (elliotHigher3 != NULL) {
+                return 3;
+            }
+        }
+
+        return 2;
+    }
+
     /**
      * 値の符号に応じて描画用フォントカラーを返す。
      *

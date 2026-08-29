@@ -34,6 +34,7 @@ public:
         this.ema200Indicator = NULL;
         this.japanTimeAxisView = NULL;
         this.drawElliotVerticalFit = NULL;
+        this.elliotHigherTimeFrameDisplayCount = 2;
         this.elliotInfoVisible = true;
         this.elliotInfoSimple = true;
         this.initialVerticalFitPending = true;
@@ -51,11 +52,13 @@ public:
      *
      * @param fromMarketContext 市場コンテキスト
      * @param fromOscillatorHandlePool オシレーターハンドルプール
+     * @param fromElliotHigherTimeFrameDisplayCount 波動ラベルを表示する上位時間足数
      * @return 初期化に成功した場合true
      */
     bool initialize(
         MarketContext &fromMarketContext,
-        OscillatorHandlePool *fromOscillatorHandlePool
+        OscillatorHandlePool *fromOscillatorHandlePool,
+        int fromElliotHigherTimeFrameDisplayCount = 2
     ) {
         this.destroy();
 
@@ -66,6 +69,8 @@ public:
         this.marketContext = fromMarketContext;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
+        this.elliotHigherTimeFrameDisplayCount =
+            fromElliotHigherTimeFrameDisplayCount;
         this.elliotInfoVisible = true;
         this.elliotInfoSimple = true;
         this.initialVerticalFitPending = true;
@@ -93,7 +98,8 @@ public:
 
         this.japanTimeAxisView.create();
         this.drawElliotVerticalFit = new DrawElliotVerticalFit(
-            this.isVerticalFitLabelClampMode()
+            this.isVerticalFitLabelClampMode(),
+            this.elliotHigherTimeFrameDisplayCount
         );
 
         if (this.drawElliotVerticalFit == NULL) {
@@ -156,7 +162,8 @@ public:
             fromElliotAll,
             this.elliotInfoVisible,
             this.isVerticalFitLabelClampEnabled(),
-            this.elliotInfoSimple
+            this.elliotInfoSimple,
+            this.elliotHigherTimeFrameDisplayCount
         );
     }
 
@@ -339,6 +346,8 @@ private:
     JapanTimeAxisView *japanTimeAxisView;
     /** Elliott上下FIT。 */
     DrawElliotVerticalFit *drawElliotVerticalFit;
+    /** 波動ラベルを表示する上位時間足数。 */
+    int elliotHigherTimeFrameDisplayCount;
     /** Elliott情報表を表示する場合true。 */
     bool elliotInfoVisible;
     /** Elliott情報を簡易表示する場合true。 */
@@ -609,7 +618,8 @@ private:
             fromElliotAll,
             this.elliotInfoVisible,
             this.isVerticalFitLabelClampEnabled(),
-            this.elliotInfoSimple
+            this.elliotInfoSimple,
+            this.elliotHigherTimeFrameDisplayCount
         );
     }
 

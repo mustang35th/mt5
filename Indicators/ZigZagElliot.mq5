@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.30"
+#property version   "1.31"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -98,6 +98,13 @@ input group "06. H1方向一致（主条件）"
 input(name="方向一致（主条件）") H1DirectionAlignmentMode h1DirectionAlignmentMode =
     H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
 
+input group "07. チャート表示"
+
+/** チャートへ波動ラベルを表示する上位時間足数。 */
+input(name="波動ラベルの上位足数")
+ElliotHigherTimeFrameDisplayCount elliotHigherTimeFrameDisplayCount =
+    ELLIOT_HIGHER_TIME_FRAME_DISPLAY_THREE;
+
 #property indicator_type1   DRAW_LINE
 #property indicator_type2   DRAW_LINE
 #property indicator_type3   DRAW_LINE
@@ -145,6 +152,8 @@ int OnInit() {
     config.currencyStrengthDatabaseUseCommonFolder =
         currencyStrengthDatabaseUseCommonFolder;
     config.h1DirectionAlignmentMode = h1DirectionAlignmentMode;
+    config.elliotHigherTimeFrameDisplayCount =
+        elliotHigherTimeFrameDisplayCount;
     MarketContext marketContext(_Symbol, _Period);
     gController = new ZigZagElliotController();
 

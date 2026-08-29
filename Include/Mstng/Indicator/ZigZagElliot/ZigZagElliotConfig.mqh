@@ -12,6 +12,7 @@
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
+#include <Mstng\Indicator\ZigZagElliot\ElliotHigherTimeFrameDisplayCount.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
 
@@ -58,6 +59,8 @@ public:
     bool currencyStrengthDatabaseSplitByYear;
     /** 通貨強弱DBで共通フォルダを使用する場合true。 */
     bool currencyStrengthDatabaseUseCommonFolder;
+    /** チャートへ波動ラベルを表示する上位時間足数。 */
+    ElliotHigherTimeFrameDisplayCount elliotHigherTimeFrameDisplayCount;
     /**
      * デフォルト設定で初期化する。
      */
@@ -87,6 +90,8 @@ public:
             "mstng-currency-strength.sqlite";
         this.currencyStrengthDatabaseSplitByYear = true;
         this.currencyStrengthDatabaseUseCommonFolder = true;
+        this.elliotHigherTimeFrameDisplayCount =
+            ELLIOT_HIGHER_TIME_FRAME_DISPLAY_THREE;
     }
 };
 

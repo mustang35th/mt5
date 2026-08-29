@@ -15,7 +15,7 @@
 /**
  * 画面内のElliott波動ラベルが上下へ収まるよう価格軸を調整するクラス。
  *
- * 現在表示中のローソク足と、DrawElliotが描画する現在足および上位2足の
+ * 現在表示中のローソク足と、DrawElliotが描画する現在足および設定上位足の
  * ZigZagポイントから価格範囲を算出し、ラベル用の上下余白を加えて固定する。
  * FIT解除時は、変更前の価格軸設定を復元する。
  * Visual Testerでは価格軸固定を使用せず、DrawElliot側のラベル位置補正を有効化する。
@@ -26,11 +26,22 @@ public:
      * 価格軸設定と表示範囲の初期値を設定する。
      *
      * @param fromUseLabelClamp ラベル位置補正を使用する場合true
+     * @param fromHigherTimeFrameDisplayCount 波動ラベルを表示する上位時間足数
      */
-    DrawElliotVerticalFit(bool fromUseLabelClamp = false) {
+    DrawElliotVerticalFit(
+        bool fromUseLabelClamp = false,
+        int fromHigherTimeFrameDisplayCount = 2
+    ) {
         this.logger.setLevel(LOG_INFO);
         this.chartId = 0;
         this.useLabelClamp = fromUseLabelClamp;
+        this.higherTimeFrameDisplayCount = fromHigherTimeFrameDisplayCount;
+
+        if (this.higherTimeFrameDisplayCount != 2
+                && this.higherTimeFrameDisplayCount != 3) {
+            this.higherTimeFrameDisplayCount = 2;
+        }
+
         this.isEnabledValue = false;
         this.isOriginalScaleSaved = false;
         this.originalScaleFix = false;
@@ -252,6 +263,9 @@ private:
     /** ラベル位置補正を使用する場合true。 */
     bool useLabelClamp;
 
+    /** 波動ラベルを表示する設定上の上位時間足数。 */
+    int higherTimeFrameDisplayCount;
+
     /** 上下FITが有効な場合true。 */
     bool isEnabledValue;
 
@@ -293,6 +307,31 @@ private:
 
     /** 価格変更比較用の最小価格単位。 */
     double lastPoint;
+
+    /**
+     * 現在足で使用する波動ラベルの上位時間足数を取得する。
+     *
+     * 上位3足が存在しない場合は従来の上位2足レイアウトを維持する。
+     *
+     * @param fromElliotAll Elliott分析結果
+     * @return 描画レイアウトへ使用する上位時間足数
+     */
+    int getLayoutHigherTimeFrameDisplayCount(
+        ElliotAll *fromElliotAll
+    ) {
+        if (this.higherTimeFrameDisplayCount == 3) {
+            Elliot *elliotHigher3 = fromElliotAll.getElliot(
+                fromElliotAll.marketContext.timeFrame,
+                3
+            );
+
+            if (elliotHigher3 != NULL) {
+                return 3;
+            }
+        }
+
+        return 2;
+    }
 
     /**
      * 上下FIT適用前の価格軸設定を保存する。
@@ -398,12 +437,16 @@ private:
             return false;
         }
 
+        int layoutHigherTimeFrameDisplayCount =
+            this.getLayoutHigherTimeFrameDisplayCount(fromElliotAll);
+
         this.addVisibleElliotRange(
             fromElliotAll,
             rightVisibleBar,
             toFirstVisibleBar,
             priceMin,
-            priceMax
+            priceMax,
+            layoutHigherTimeFrameDisplayCount
         );
 
         double fontHeight = (double)this.drawProperties.fontPixelHeight;
@@ -413,17 +456,23 @@ private:
         }
 
         double maxFontHeight = fontHeight
-            * (double)(this.drawProperties.elliotFontSize + 4)
+            * (double)(
+                this.drawProperties.elliotFontSize
+                + layoutHigherTimeFrameDisplayCount * 2
+            )
             / (double)this.drawProperties.elliotFontSize;
         double labelDistance = (double)this.drawProperties.elliotPixelDistance;
+        double topLevel =
+            (double)(layoutHigherTimeFrameDisplayCount + 1);
+        double bottomLevel = topLevel * 1.5;
         int topPadding = (int)MathCeil(
-            (3.0 * (fontHeight + labelDistance))
+            (topLevel * (fontHeight + labelDistance))
             + (maxFontHeight / 2.0)
             + labelDistance
         );
         int bottomPadding = (int)MathCeil(
-            (3.5 * fontHeight)
-            + (4.5 * labelDistance)
+            ((bottomLevel - 1.0) * fontHeight)
+            + (bottomLevel * labelDistance)
             + (maxFontHeight / 2.0)
             + labelDistance
         );
@@ -521,15 +570,17 @@ private:
      * @param fromFirstVisibleBar 左端表示バー
      * @param toPriceMin 最安値
      * @param toPriceMax 最高値
+     * @param fromHigherTimeFrameDisplayCount 計算対象の上位時間足数
      */
     void addVisibleElliotRange(
             ElliotAll *fromElliotAll,
             int fromRightVisibleBar,
             int fromFirstVisibleBar,
             double &toPriceMin,
-            double &toPriceMax
+            double &toPriceMax,
+            int fromHigherTimeFrameDisplayCount
     ) {
-        for (int i = 0; i <= 2; i++) {
+        for (int i = 0; i <= fromHigherTimeFrameDisplayCount; i++) {
             Elliot *elliot = NULL;
 
             if (i == 0) {

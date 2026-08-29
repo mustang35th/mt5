@@ -53,12 +53,14 @@ public:
      * @param fromIsElliotInfoVisible エリオット情報表示有無
      * @param fromClampElliotVertical Elliottラベルを上下端へ収める場合true
      * @param fromSimpleElliotInfo Elliott情報を簡易表示する場合true
+     * @param fromElliotHigherTimeFrameDisplayCount 波動ラベルを表示する上位時間足数
      */
     void drawAll(
         ElliotAll *fromElliotAll,
         bool fromIsElliotInfoVisible = true,
         bool fromClampElliotVertical = false,
-        bool fromSimpleElliotInfo = false
+        bool fromSimpleElliotInfo = false,
+        int fromElliotHigherTimeFrameDisplayCount = 2
     ) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -79,7 +81,10 @@ public:
         drawZigZag.draw(this.elliotAll);
         
         
-        DrawElliot drawElliot(fromSimpleElliotInfo);
+        DrawElliot drawElliot(
+            fromSimpleElliotInfo,
+            fromElliotHigherTimeFrameDisplayCount
+        );
         
         drawElliot.draw(
             this.elliotAll,
