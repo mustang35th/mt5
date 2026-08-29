@@ -157,12 +157,12 @@ protected:
     }
 
     /**
-     * H1で現在足とEMA200の距離制限を使用する。
+     * H1では現在足とEMA200の距離制限を使用しない。
      *
-     * @return 常にtrue。
+     * @return 常にfalse。
      */
     virtual bool isTimeFrameEma200DistanceRequired() override {
-        return true;
+        return false;
     }
 
     /**

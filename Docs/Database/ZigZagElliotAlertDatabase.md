@@ -150,7 +150,7 @@ ON zigzag_elliot_alert_runs(started_at);
 | 監査用テキスト | `alert_title`, `alert_text`, `wave_summary_text`, `elliot_csv_text` |
 | 保存時刻 | `created_at`, `created_at_text` |
 
-EMA200距離は`abs(Close[1] - EMA200[1])`で判定します。`max_close_ema200_diff_pips`はH1で50.0、M15・M5で25.0です。絶対距離が上限以下なら`is_ema200_distance_within = 1`、超過候補は`entry_result = EMA200_DISTANCE_REJECTED`として保存します。
+EMA200距離は`abs(Close[1] - EMA200[1])`で算出します。`max_close_ema200_diff_pips`はH1で50.0、M15・M5で25.0で、絶対距離が上限以下なら`is_ema200_distance_within = 1`を保存します。現行H1ではこの値を診断用にのみ使い、距離超過でエントリーを制限しません。M15・M5の超過候補と、制限廃止前のH1履歴は`entry_result = EMA200_DISTANCE_REJECTED`として保存されます。
 
 H1のW1確認は、W1の3本Stochasticによる分析方向とW1 EMA200方向を、H1のエントリー方向へ照合します。`OBSERVE_ONLY`はOR条件の結果だけを記録してエントリーを制限しません。`DIRECTION_OR_EMA200`はどちらか一方、`DIRECTION_AND_EMA200`は両方の一致を要求し、`OFF`は確認を無効にします。既定値は`OBSERVE_ONLY`です。
 

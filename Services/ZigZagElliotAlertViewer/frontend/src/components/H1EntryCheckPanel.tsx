@@ -676,42 +676,55 @@ function buildEma200DistanceItem(
   fromH1: EntryCheckTimeFrame | undefined,
   fromSavedDecision: AlertDetail | null | undefined,
 ): H1EntryCheckItem {
+  const savedEntryResult = String(
+    fromSavedDecision?.entry_result || "",
+  ).trim();
   if (
     fromSavedDecision
     && typeof fromSavedDecision.is_ema200_distance_within === "boolean"
   ) {
     const distance = finiteNumber(fromSavedDecision.close_ema200_diff_pips);
     const maxDistance = finiteNumber(fromSavedDecision.max_close_ema200_diff_pips);
-    return requiredItem(
+    const actual = distance === null
+      ? "保存値不明"
+      : `${formatNumber(Math.abs(distance))} pips`;
+    if (savedEntryResult === "EMA200_DISTANCE_REJECTED") {
+      return requiredItem(
+        "h1_ema200_distance",
+        "Entry",
+        "H1 EMA200距離",
+        actual,
+        `${formatNumber(maxDistance ?? 50)} pips以下（保存時判定）`,
+        false,
+      );
+    }
+    return optionalItem(
       "h1_ema200_distance",
       "Entry",
       "H1 EMA200距離",
-      distance === null
-        ? "保存値不明"
-        : `${formatNumber(Math.abs(distance))} pips`,
-      `${formatNumber(maxDistance ?? 50)} pips以下（保存判定）`,
-      fromSavedDecision.is_ema200_distance_within,
+      actual,
+      "現行H1ではエントリー条件に使用しない",
+      "参考",
     );
   }
   const distance = finiteNumber(fromH1?.ema200_close_diff_pips);
   if (distance === null) {
-    return requiredItem(
+    return unknownItem(
       "h1_ema200_distance",
       "Entry",
       "H1 EMA200距離",
       "記録なし",
-      "絶対値50.0 pips以下",
-      null,
+      "現行H1ではエントリー条件に使用しない",
     );
   }
   const absoluteDistance = Math.abs(distance);
-  return requiredItem(
+  return optionalItem(
     "h1_ema200_distance",
     "Entry",
     "H1 EMA200距離",
     `${formatNumber(absoluteDistance)} pips`,
-    "絶対値50.0 pips以下",
-    absoluteDistance <= 50,
+    "現行H1ではエントリー条件に使用しない",
+    "参考",
   );
 }
 

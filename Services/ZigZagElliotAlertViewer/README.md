@@ -81,7 +81,7 @@ DBは読み取り専用で開きます。MT5が使用中のWALを含む最新状
 
 一覧からアラートを選択すると、判定情報、MN1から現在足までの時間足別スナップショット、最新Waveを構成するポイントを確認できます。
 
-アラート詳細およびH1推移詳細の`TIMEFRAME COMPARISON`には、折りたたみ式の`H1 ENTRY CHECK`を表示します。Spread、方向、H1 Wave、Elliott、GMMA、EMA200、W1確認、Signal CountおよびEMA200距離を実行順で確認できます。H1アラートは保存済みEntry結果を総合判定の正本とし、H1推移はObservation Snapshotから判定できる項目だけを参考評価します。実行時mode、通貨強弱またはCountが未記録の場合は`不明`とし、Snapshotだけで総合OKを断定しません。アラート側には保存時点の通貨強弱を常時表示し、基軸・決済通貨の長中期／中短期順位、順位差、方向、Entry使用状態、取得元およびM5時刻の`EXACT`／`STALE`を確認できます。H1推移DBには通貨強弱Snapshotがないため、このカードはアラート詳細だけに表示します。
+アラート詳細およびH1推移詳細の`TIMEFRAME COMPARISON`には、折りたたみ式の`H1 ENTRY CHECK`を表示します。Spread、方向、H1 Wave、Elliott、GMMA、EMA200、W1確認、Signal CountおよびEMA200距離を実行順で確認できます。現行H1のEMA200距離は参考表示とし、制限廃止前の保存済み`EMA200_DISTANCE_REJECTED`は当時のNG判定として表示します。H1アラートは保存済みEntry結果を総合判定の正本とし、H1推移はObservation Snapshotから判定できる項目だけを参考評価します。実行時mode、通貨強弱またはCountが未記録の場合は`不明`とし、Snapshotだけで総合OKを断定しません。アラート側には保存時点の通貨強弱を常時表示し、基軸・決済通貨の長中期／中短期順位、順位差、方向、Entry使用状態、取得元およびM5時刻の`EXACT`／`STALE`を確認できます。H1推移DBには通貨強弱Snapshotがないため、このカードはアラート詳細だけに表示します。
 
 H1推移タブでは、実行モード、Run、通貨、JST日時範囲、上位足同期および`W1～H1＋EMA200一致`で検索します。一覧はJST日時を主表示とし、H1新規足と最新点のServer日時も併記します。
 

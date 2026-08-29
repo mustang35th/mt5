@@ -126,7 +126,7 @@ describe("buildH1EntryCheckSnapshot", () => {
     expect(item(snapshot.items, "h1_ema200_distance").status).toBe("不明");
   });
 
-  it("applies strict EMA200 flags, SELL GMMA thresholds, and absolute 50 pips boundary", () => {
+  it("applies strict EMA200 flags and keeps H1 EMA200 distance as reference", () => {
     const sellTimeFrames = [
       timeFrame("D1", { is_buy: false }),
       timeFrame("H4", {
@@ -158,7 +158,9 @@ describe("buildH1EntryCheckSnapshot", () => {
     });
     expect(item(snapshot.items, "h1_ema200_distance")).toMatchObject({
       actual: "50.0 pips",
-      status: "OK",
+      expected: "現行H1ではエントリー条件に使用しない",
+      status: "参考",
+      required: false,
     });
     expect(snapshot.overallReason).toBe("最初のNG: H1 GMMA cross");
   });
@@ -230,7 +232,7 @@ describe("buildH1EntryCheckSnapshot", () => {
     });
     expect(item(snapshot.items, "h1_ema200_distance")).toMatchObject({
       actual: "51.0 pips",
-      expected: "50.0 pips以下（保存判定）",
+      expected: "50.0 pips以下（保存時判定）",
       status: "NG",
     });
   });
@@ -312,9 +314,9 @@ describe("buildH1EntryCheckSnapshot", () => {
       entry_count: 1,
       is_entry_count_match: true,
       is_entry_evaluated: true,
-      close_ema200_diff_pips: 10,
+      close_ema200_diff_pips: 51,
       max_close_ema200_diff_pips: 50,
-      is_ema200_distance_within: true,
+      is_ema200_distance_within: false,
     } as AlertDetail;
 
     const snapshot = buildH1EntryCheckSnapshot(
@@ -328,6 +330,12 @@ describe("buildH1EntryCheckSnapshot", () => {
     expect(item(snapshot.items, "h1_display_wave_scope").status).toBe("OK");
     expect(item(snapshot.items, "mn1_w1_direction").status).toBe("対象外");
     expect(item(snapshot.items, "w1_confirmation")).toMatchObject({
+      status: "参考",
+      required: false,
+    });
+    expect(item(snapshot.items, "h1_ema200_distance")).toMatchObject({
+      actual: "51.0 pips",
+      expected: "現行H1ではエントリー条件に使用しない",
       status: "参考",
       required: false,
     });
