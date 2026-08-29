@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.29"
+#property version   "1.30"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -15,68 +15,87 @@
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotController.mqh>
 
+input group "01. Alert出力"
+
 /** Mail内容を検証用ファイルへ出力する場合true。 */
-input bool mailValidationFileEnabled = false;
+input(name="メール検証ファイルを出力")
+bool mailValidationFileEnabled = false;
 
 /** MTF_3in3アラート検証CSVを出力する場合true。 */
-input bool mtf3In3AlertCsvEnabled = true;
+input(name="Alert検証CSVを出力") bool mtf3In3AlertCsvEnabled = true;
+
+input group "02. Alert DB"
 
 /** MTF_3in3アラートをデータベースへ保存する場合true。 */
-input bool mtf3In3AlertDatabaseEnabled = true;
+input(name="DB保存を有効化") bool mtf3In3AlertDatabaseEnabled = true;
 
 /** MTF_3in3アラートデータベースファイル名。 */
-input string mtf3In3AlertDatabaseFileName =
+input(name="Alert DBファイル名") string mtf3In3AlertDatabaseFileName =
     "mstng-zigzag-elliot-alert.sqlite";
 
 /** MTF_3in3アラートデータベースで共通フォルダを使用する場合true。 */
-input bool mtf3In3AlertDatabaseUseCommonFolder = true;
+input(name="Commonフォルダを使用")
+bool mtf3In3AlertDatabaseUseCommonFolder = true;
+
+input group "03. H1エントリー追加条件"
 
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
-input bool h1DisplayWaveEntryLimitEnabled = false;
+input(name="H1表示波の回数制限")
+bool h1DisplayWaveEntryLimitEnabled = false;
 
 /** H1エントリーで使用するW1確認モード。 */
-input H1W1ConfirmationMode h1W1ConfirmationMode =
+input(name="W1確認（追加条件）") H1W1ConfirmationMode h1W1ConfirmationMode =
     H1_W1_CONFIRMATION_OBSERVE_ONLY;
 
 /** H1エントリーで使用するEMA200確認モード。 */
-input H1Ema200ConfirmationMode h1Ema200ConfirmationMode =
+input(name="EMA200確認（追加条件）")
+H1Ema200ConfirmationMode h1Ema200ConfirmationMode =
     H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED;
 
+input group "04. 通貨強弱"
+
 /** 通貨強弱を利用する場合true。 */
-input bool currencyStrengthEnabled = true;
+input(name="通貨強弱を使用") bool currencyStrengthEnabled = true;
 
 /** 通貨強弱をエントリー条件として使用する場合true。 */
-input bool currencyStrengthEntryFilterEnabled = false;
+input(name="エントリー条件に使用")
+bool currencyStrengthEntryFilterEnabled = false;
 
 /** 通貨強弱順位パネルを表示する場合true。 */
-input bool currencyStrengthRankVisible = true;
+input(name="順位パネルを表示") bool currencyStrengthRankVisible = true;
 
 /** 通貨強弱順位パネルの右端からの距離。 */
-input int currencyStrengthRankPanelXDistance = 48;
+input(name="パネル右位置") int currencyStrengthRankPanelXDistance = 48;
 
 /** 通貨強弱情報の再取得間隔秒。 */
-input int currencyStrengthRefreshSeconds = 15;
+input(name="再取得間隔（秒）") int currencyStrengthRefreshSeconds = 15;
+
+input group "05. 通貨強弱DB・集計"
 
 /** 通貨強弱DB参照プロファイル。 */
-input CurrencyStrengthRankDatabaseProfile currencyStrengthDatabaseProfile =
+input(name="参照元（LIVE/TESTER）")
+CurrencyStrengthRankDatabaseProfile currencyStrengthDatabaseProfile =
     CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;
 
 /** 通貨強弱の投票ウェイト方式。 */
-input CurrencyStrengthVoteWeightMode currencyStrengthVoteWeightMode =
+input(name="投票方式") CurrencyStrengthVoteWeightMode currencyStrengthVoteWeightMode =
     CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
 
 /** 通貨強弱DBファイル名。 */
-input string currencyStrengthDatabaseFileName =
+input(name="通貨強弱DBファイル名") string currencyStrengthDatabaseFileName =
     "mstng-currency-strength.sqlite";
 
 /** 通貨強弱DBを年単位で分割する場合true。 */
-input bool currencyStrengthDatabaseSplitByYear = true;
+input(name="年別DBを使用") bool currencyStrengthDatabaseSplitByYear = true;
 
 /** 通貨強弱DBで共通フォルダを使用する場合true。 */
-input bool currencyStrengthDatabaseUseCommonFolder = true;
+input(name="Commonフォルダを使用")
+bool currencyStrengthDatabaseUseCommonFolder = true;
+
+input group "06. H1方向一致（主条件）"
 
 /** H1エントリーで使用する上位時間足方向一致モード。 */
-input H1DirectionAlignmentMode h1DirectionAlignmentMode =
+input(name="方向一致（主条件）") H1DirectionAlignmentMode h1DirectionAlignmentMode =
     H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
 
 #property indicator_type1   DRAW_LINE
