@@ -280,6 +280,41 @@ public:
 
         return this.hasSubElliot(fromTargetElliotIndex);
     }
+
+    /**
+     * 現在波に対する直前の推進波で下位波動を持つ波動番号を取得する。
+     *
+     * 現在2・3波の場合は1波、現在4・5波の場合は3波を確認する。
+     *
+     * @return 下位波動を持つ直前の推進波番号。対象がない場合0
+     */
+    int getPreviousMotiveSubElliotIndex() {
+        if (!this.isMotive) {
+            return 0;
+        }
+
+        ZigZagPoint *latestPoint = this.getLatestPoint();
+
+        if (latestPoint == NULL || !latestPoint.isNumeric()) {
+            return 0;
+        }
+
+        int previousMotiveElliotIndex = 0;
+
+        if (latestPoint.elliotIndex == 2
+                || latestPoint.elliotIndex == 3) {
+            previousMotiveElliotIndex = 1;
+        } else if (latestPoint.elliotIndex == 4
+                || latestPoint.elliotIndex == 5) {
+            previousMotiveElliotIndex = 3;
+        }
+
+        if (!this.hasSubElliot(previousMotiveElliotIndex)) {
+            return 0;
+        }
+
+        return previousMotiveElliotIndex;
+    }
     
     /**
      * 1つ前のWaveと比較して現在Waveの確定状態を設定する。

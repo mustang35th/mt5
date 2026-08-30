@@ -414,6 +414,17 @@ public:
             if (!latestWave.isConfirmed) {
                 elliotText = latestWave.getConfirmedLabel() + elliotText;
             }
+
+            int previousMotiveSubElliotIndex =
+                latestWave.getPreviousMotiveSubElliotIndex();
+
+            if (previousMotiveSubElliotIndex > 0) {
+                elliotText = StringFormat(
+                    "[%d副] %s",
+                    previousMotiveSubElliotIndex,
+                    elliotText
+                );
+            }
             
             DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, 
                                 drawProperties.elliotAlertSize, elliotText, objX, objY);

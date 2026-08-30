@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.00"
+#property version   "1.01"
 
 #include <Mstng\Elliot\Wave.mqh>
 
@@ -177,6 +177,128 @@ void validateCurrentWaveFiveCondition() {
 }
 
 /**
+ * 直前の推進波における下位波動番号を検証する。
+ *
+ * @param fromCaseName 検証名
+ * @param fromCurrentElliotIndex 現在のElliott波動番号
+ * @param fromTargetElliotIndex 下位波動を設定するElliott波動番号
+ * @param fromHasSubElliot 下位波動を設定する場合true
+ * @param fromExpectedIndex 期待する直前の推進波番号
+ */
+void assertPreviousMotiveSubElliotIndex(
+    const string fromCaseName,
+    const int fromCurrentElliotIndex,
+    const int fromTargetElliotIndex,
+    const bool fromHasSubElliot,
+    const int fromExpectedIndex
+) {
+    Wave wave;
+    wave.isMotive = true;
+    int subElliotIndex = 0;
+    string subElliotLabel = "";
+
+    if (fromHasSubElliot) {
+        subElliotIndex = 1;
+        subElliotLabel = "i";
+    }
+
+    assertCondition(
+        fromCaseName + " add target",
+        addPoint(
+            wave,
+            fromTargetElliotIndex,
+            false,
+            subElliotIndex,
+            subElliotLabel
+        )
+    );
+    assertCondition(
+        fromCaseName + " add current",
+        addPoint(wave, fromCurrentElliotIndex, false, 0, "")
+    );
+    assertCondition(
+        fromCaseName,
+        wave.getPreviousMotiveSubElliotIndex() == fromExpectedIndex
+    );
+}
+
+/**
+ * 現在波に応じて直前の推進波にある下位波動を取得することを確認する。
+ */
+void validatePreviousMotiveSubElliotIndex() {
+    assertPreviousMotiveSubElliotIndex(
+        "current two uses wave one",
+        2,
+        1,
+        true,
+        1
+    );
+    assertPreviousMotiveSubElliotIndex(
+        "current three uses wave one",
+        3,
+        1,
+        true,
+        1
+    );
+    assertPreviousMotiveSubElliotIndex(
+        "current four uses wave three",
+        4,
+        3,
+        true,
+        3
+    );
+    assertPreviousMotiveSubElliotIndex(
+        "current five uses wave three",
+        5,
+        3,
+        true,
+        3
+    );
+    assertPreviousMotiveSubElliotIndex(
+        "current one has no previous motive",
+        1,
+        1,
+        true,
+        0
+    );
+    assertPreviousMotiveSubElliotIndex(
+        "target has no sub elliot",
+        4,
+        3,
+        false,
+        0
+    );
+    assertPreviousMotiveSubElliotIndex(
+        "other motive sub does not match",
+        4,
+        1,
+        true,
+        0
+    );
+
+    Wave emptyWave;
+    emptyWave.isMotive = true;
+    assertCondition(
+        "empty wave has no previous motive sub",
+        emptyWave.getPreviousMotiveSubElliotIndex() == 0
+    );
+
+    Wave correctionWave;
+    assertCondition(
+        "add correction sub",
+        addPoint(correctionWave, 3, true, 1, "i")
+    );
+    assertCondition(
+        "add current correction",
+        addPoint(correctionWave, 5, true, 0, "")
+    );
+    assertCondition(
+        "correction has no previous motive sub",
+        correctionWave.getPreviousMotiveSubElliotIndex() == 0
+    );
+}
+
+/**
  * Wave下位波動判定のSmoke Testを実行する。
  */
 void OnStart() {
@@ -184,6 +306,7 @@ void OnStart() {
     validateSubElliotDetection();
     validateSubElliotExclusion();
     validateCurrentWaveFiveCondition();
+    validatePreviousMotiveSubElliotIndex();
 
     if (gFailureCount == 0) {
         Print("WaveSubElliotSmokeTest PASS");

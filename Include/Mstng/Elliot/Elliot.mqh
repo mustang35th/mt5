@@ -341,18 +341,28 @@ public:
         
         Wave *wave = this.getLatestWave();
         ZigZagPoint *zigZagPoint = this.getLatestPoint();
-        string confirmedLabel = "";
+        string elliotText = zigZagPoint.getTextIndexInfo();
 
         if (!wave.isConfirmed) {
-            confirmedLabel = wave.getConfirmedLabel();
+            elliotText = wave.getConfirmedLabel() + elliotText;
+        }
+
+        int previousMotiveSubElliotIndex =
+            wave.getPreviousMotiveSubElliotIndex();
+
+        if (previousMotiveSubElliotIndex > 0) {
+            elliotText = StringFormat(
+                "[%d副] %s",
+                previousMotiveSubElliotIndex,
+                elliotText
+            );
         }
         
         text += StringFormat(
-            "%s/%s/%s%s\n",
+            "%s/%s/%s\n",
             this.marketContext.timeFrameLabel,
             this.buySellLabel,
-            confirmedLabel,
-            zigZagPoint.getTextIndexInfo()
+            elliotText
         );
         
         text += StringFormat("EMA200/%s/\n", this.oscillator.ema200.getText());
