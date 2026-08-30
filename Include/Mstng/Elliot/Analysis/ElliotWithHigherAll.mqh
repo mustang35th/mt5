@@ -389,6 +389,26 @@ private:
                         
                         zigZagPointLast.rate = oldRate;
                     }
+
+                    if (!this.replaceHigherThreeWaveContinuation(
+                            totalBefore,
+                            zigZagPointHigherLeft,
+                            zigZagPointHigherRight,
+                            isMotive,
+                            isUptrend
+                        )) {
+                        this.logger.error(
+                            __FUNCTION__,
+                            "replaceHigherThreeWaveContinuation false"
+                        );
+                        LogUtil::printMethodEnd(
+                            this.logger,
+                            __FUNCTION__,
+                            false
+                        );
+
+                        return false;
+                    }
                     
                     if (isLatest) {
                     if (elliotHigher.isBuy == this.isBuy) { // トレンド一致の場合
@@ -418,6 +438,84 @@ private:
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
+        return true;
+    }
+
+    /**
+     * 親1区間内で3分割された子Waveを単一Waveへ置換する。
+     *
+     * 既存の修正区間統合後にWaveが厳密に3件残り、親方向・逆方向・
+     * 親方向の構造、共有境界および親境界がすべて一致する場合だけ
+     * 4つの境界アンカーへ再構築して置換する。条件外は既存Waveを維持する。
+     *
+     * @param fromWaveIndexStart 今回の親区間で追加したWaveの開始位置
+     * @param fromHigherLeftPoint 親区間の古い側境界
+     * @param fromHigherRightPoint 親区間の新しい側境界
+     * @param fromIsMotive 親区間が推進波の場合true
+     * @param fromIsUptrend 親区間が上昇方向の場合true
+     * @return 置換成功または対象外の場合true。置換処理失敗時false
+     */
+    bool replaceHigherThreeWaveContinuation(
+        const int fromWaveIndexStart,
+        ZigZagPoint &fromHigherLeftPoint,
+        ZigZagPoint &fromHigherRightPoint,
+        const bool fromIsMotive,
+        const bool fromIsUptrend
+    ) {
+        int waveTotal = this.waveList.Total();
+
+        if (fromWaveIndexStart < 0
+                || waveTotal - fromWaveIndexStart != 3) {
+            return true;
+        }
+
+        int waveIndexEnd = waveTotal - 1;
+        ElliotHigherSegmentPointListBuilder pointListBuilder;
+        CArrayObj continuationAnchorPointList;
+
+        if (!pointListBuilder.buildFromThreeWaveContinuationRange(
+                this.marketContext,
+                this.waveList,
+                fromWaveIndexStart,
+                waveIndexEnd,
+                fromHigherLeftPoint,
+                fromHigherRightPoint,
+                fromIsUptrend,
+                fromIsMotive,
+                continuationAnchorPointList
+            )) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "Skip higher three wave continuation grouping. reason=%s",
+                    pointListBuilder.getErrorMessage()
+                )
+            );
+
+            return true;
+        }
+
+        if (!this.waveList.DeleteRange(
+                fromWaveIndexStart,
+                waveIndexEnd
+            )) {
+            this.logger.error(
+                __FUNCTION__,
+                "Failed to replace higher three wave continuation"
+            );
+
+            return false;
+        }
+
+        WaveUtil::addWave(
+            this.logger,
+            this.waveList,
+            this.marketContext,
+            continuationAnchorPointList,
+            fromIsMotive,
+            fromIsUptrend
+        );
+
         return true;
     }
 

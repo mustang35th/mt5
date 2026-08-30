@@ -12,13 +12,16 @@
 #include <Arrays\ArrayObj.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\Wave.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Elliot\ZigZagPoint.mqh>
+#include <Mstng\Util\RateUtil.mqh>
 
 /**
  * 上位足の1区間に対応するポイント列を構築するクラス。
  *
  * 新しい順の下位足ZigZagポイントから上位足の左右境界を特定し、
- * 境界内にある4つの実ポイントを古い順に複製する。
+ * Strict V1または親区間内の3Wave継続再カウントに対応する
+ * 4アンカーを古い順に複製する。
  */
 class ElliotHigherSegmentPointListBuilder {
 public:
@@ -202,6 +205,139 @@ public:
     }
 
     /**
+     * 親区間内の親方向・逆方向・親方向の3Waveを4アンカーへ再構築する。
+     *
+     * Wave一覧は小さいインデックスほど新しいものとして扱う。対象範囲は
+     * 厳密に3Waveとし、すべてのWave種別が親区間と一致することを要求する。
+     * 親左境界、古いWave終点、中央Wave終点、親右境界を新しい
+     * 0・1・2・3または0・A・B・C用のアンカーとして古い順に複製する。
+     *
+     * @param fromMarketContext 期待するシンボルと時間足
+     * @param fromWaveList 分析後Wave一覧。インデックス0が最新
+     * @param fromWaveIndexStart 対象範囲の新しい側Waveインデックス
+     * @param fromWaveIndexEnd 対象範囲の古い側Waveインデックス
+     * @param fromHigherLeftPoint 上位足区間の古い側境界
+     * @param fromHigherRightPoint 上位足区間の新しい側境界
+     * @param fromIsUptrend 期待する上位足区間の方向
+     * @param fromIsMotive 期待する上位足区間のWave種別
+     * @param toZigZagPointList 構築したポイント一覧
+     * @return 3Wave継続統合条件をすべて満たした場合true
+     */
+    bool buildFromThreeWaveContinuationRange(
+        MarketContext &fromMarketContext,
+        CArrayObj &fromWaveList,
+        const int fromWaveIndexStart,
+        const int fromWaveIndexEnd,
+        ZigZagPoint &fromHigherLeftPoint,
+        ZigZagPoint &fromHigherRightPoint,
+        const bool fromIsUptrend,
+        const bool fromIsMotive,
+        CArrayObj &toZigZagPointList
+    ) {
+        this.errorMessage = "";
+        toZigZagPointList.Clear();
+
+        if (!this.validateThreeWaveContinuationRange(
+                fromWaveList,
+                fromWaveIndexStart,
+                fromWaveIndexEnd,
+                fromIsUptrend,
+                fromIsMotive
+            )) {
+            return false;
+        }
+
+        if (fromHigherLeftPoint.isAddedPoint
+                || fromHigherRightPoint.isAddedPoint) {
+            return this.fail(
+                "three wave continuation higher added point is not allowed"
+            );
+        }
+
+        CArrayObj flattenedPointList;
+
+        if (!this.flattenWaveRange(
+                fromMarketContext,
+                fromWaveList,
+                fromWaveIndexStart,
+                fromWaveIndexEnd,
+                flattenedPointList
+            )) {
+            return false;
+        }
+
+        if (!this.validateInput(
+                fromMarketContext,
+                flattenedPointList,
+                fromHigherLeftPoint,
+                fromHigherRightPoint
+            )) {
+            return false;
+        }
+
+        if (!this.validateUniqueContinuationBoundaries(
+                fromMarketContext,
+                flattenedPointList,
+                fromHigherLeftPoint,
+                fromHigherRightPoint
+            )) {
+            return false;
+        }
+
+        if (!this.validatePointSequence(
+                fromMarketContext,
+                flattenedPointList,
+                0,
+                flattenedPointList.Total() - 1,
+                fromIsUptrend
+            )) {
+            return false;
+        }
+
+        CArrayObj continuationAnchorPointList;
+
+        if (!this.copyThreeWaveContinuationAnchorSequence(
+                fromWaveList,
+                fromWaveIndexStart,
+                fromWaveIndexEnd,
+                continuationAnchorPointList
+            )) {
+            return false;
+        }
+
+        if (!this.validatePointSequence(
+                fromMarketContext,
+                continuationAnchorPointList,
+                0,
+                continuationAnchorPointList.Total() - 1,
+                fromIsUptrend
+            )) {
+            return false;
+        }
+
+        if (!this.validateContinuationAnchorRates(
+                fromMarketContext,
+                continuationAnchorPointList,
+                fromIsUptrend,
+                fromIsMotive
+            )) {
+            return false;
+        }
+
+        if (!this.copyPointSequence(
+                continuationAnchorPointList,
+                0,
+                continuationAnchorPointList.Total() - 1,
+                toZigZagPointList
+            )) {
+            toZigZagPointList.Clear();
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * 直前の構築失敗理由を取得する。
      *
      * @return 構築成功時は空文字列、失敗時は理由
@@ -213,6 +349,452 @@ public:
 private:
     /** 直前の構築失敗理由。 */
     string errorMessage;
+
+    /**
+     * 3Waveの共有終点から新しい0・1・2・3用アンカーを作成する。
+     *
+     * 出力はBuilder内部の検証順に合わせ、新しい順とする。各アンカーの
+     * 旧Elliott・Fibonacci情報は消去し、再構築後のWave分析で再計算する。
+     *
+     * @param fromWaveList 分析後Wave一覧
+     * @param fromWaveIndexStart 対象範囲の新しい側Waveインデックス
+     * @param fromWaveIndexEnd 対象範囲の古い側Waveインデックス
+     * @param toPointList 4アンカー一覧。インデックス0が最新
+     * @return 4アンカーを複製できた場合true
+     */
+    bool copyThreeWaveContinuationAnchorSequence(
+        CArrayObj &fromWaveList,
+        const int fromWaveIndexStart,
+        const int fromWaveIndexEnd,
+        CArrayObj &toPointList
+    ) {
+        toPointList.Clear();
+
+        Wave *newerWave = fromWaveList.At(fromWaveIndexStart);
+        Wave *middleWave = fromWaveList.At(fromWaveIndexStart + 1);
+        Wave *olderWave = fromWaveList.At(fromWaveIndexEnd);
+
+        if (CheckPointer(newerWave) == POINTER_INVALID
+                || CheckPointer(middleWave) == POINTER_INVALID
+                || CheckPointer(olderWave) == POINTER_INVALID) {
+            return this.fail(
+                "three wave continuation anchor source is invalid"
+            );
+        }
+
+        ZigZagPoint *point3 = newerWave.getLatestPoint();
+        ZigZagPoint *point2 = middleWave.getLatestPoint();
+        ZigZagPoint *point1 = olderWave.getLatestPoint();
+        ZigZagPoint *point0 = olderWave.zigZagPointList.At(0);
+
+        if (!this.addClonedContinuationAnchorPoint(
+                point3,
+                "point3",
+                toPointList
+            )
+                || !this.addClonedContinuationAnchorPoint(
+                    point2,
+                    "point2",
+                    toPointList
+                )
+                || !this.addClonedContinuationAnchorPoint(
+                    point1,
+                    "point1",
+                    toPointList
+                )
+                || !this.addClonedContinuationAnchorPoint(
+                    point0,
+                    "point0",
+                    toPointList
+                )) {
+            toPointList.Clear();
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 3Wave再カウント用アンカーを複製して追加する。
+     *
+     * @param fromPoint 複製元ポイント
+     * @param fromSourceLabel エラー表示用アンカー名
+     * @param toPointList 追加先一覧
+     * @return 複製と追加に成功した場合true
+     */
+    bool addClonedContinuationAnchorPoint(
+        ZigZagPoint *fromPoint,
+        const string fromSourceLabel,
+        CArrayObj &toPointList
+    ) {
+        if (CheckPointer(fromPoint) == POINTER_INVALID) {
+            return this.fail(
+                "three wave continuation anchor is invalid. source="
+                + fromSourceLabel
+            );
+        }
+
+        ZigZagPoint *clonedPoint = fromPoint.clone();
+
+        if (clonedPoint == NULL) {
+            return this.fail(
+                "three wave continuation anchor clone failed. source="
+                + fromSourceLabel
+            );
+        }
+
+        this.resetContinuationAnchorAnalysis(clonedPoint);
+
+        if (!toPointList.Add(clonedPoint)) {
+            delete clonedPoint;
+
+            return this.fail(
+                "three wave continuation anchor add failed. source="
+                + fromSourceLabel
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * 再構築前のWaveに由来する分析値をアンカーから消去する。
+     *
+     * @param fromPoint 初期化対象アンカー
+     */
+    void resetContinuationAnchorAnalysis(ZigZagPoint *fromPoint) {
+        fromPoint.waveBarsFromStart = 0;
+        fromPoint.pipsDiff = 0;
+        fromPoint.fibonacciPercent = 0;
+        fromPoint.fiboDepthZone = FIBO_DEPTH_UNKNOWN;
+        fromPoint.fiboDepthZoneLabel = "";
+        fromPoint.fibonacciExpansionPercent = 0;
+        fromPoint.isElliotAlphabet = false;
+        fromPoint.elliotIndex = 0;
+        fromPoint.elliotLabel = "";
+        fromPoint.subElliotIndex = 0;
+        fromPoint.subElliotLabel = "";
+        fromPoint.orgElliotIndex = 0;
+        fromPoint.orgElliotLabel = "";
+        fromPoint.parentWave = NULL;
+    }
+
+    /**
+     * 新しい0・1・2・3アンカーの継続価格条件を検証する。
+     *
+     * 上昇は2が起点を割らず3が1を更新すること、下降はその反対を
+     * 要求する。推進波では後段再カウントで1・2が削除されないよう、
+     * 2のFibonacci Retracementが既存上限未満であることも要求する。
+     *
+     * @param fromMarketContext 分析対象市場コンテキスト
+     * @param fromPointList 新しい順の4アンカー一覧
+     * @param fromIsUptrend 親区間が上昇の場合true
+     * @param fromIsMotive 親区間が推進波の場合true
+     * @return 継続価格条件を満たす場合true
+     */
+    bool validateContinuationAnchorRates(
+        MarketContext &fromMarketContext,
+        CArrayObj &fromPointList,
+        const bool fromIsUptrend,
+        const bool fromIsMotive
+    ) {
+        if (fromPointList.Total() != 4) {
+            return this.fail(
+                "three wave continuation anchor total must be four"
+            );
+        }
+
+        ZigZagPoint *point3 = fromPointList.At(0);
+        ZigZagPoint *point2 = fromPointList.At(1);
+        ZigZagPoint *point1 = fromPointList.At(2);
+        ZigZagPoint *point0 = fromPointList.At(3);
+
+        if (CheckPointer(point3) == POINTER_INVALID
+                || CheckPointer(point2) == POINTER_INVALID
+                || CheckPointer(point1) == POINTER_INVALID
+                || CheckPointer(point0) == POINTER_INVALID) {
+            return this.fail(
+                "three wave continuation anchor contains invalid point"
+            );
+        }
+
+        double point3Rate = NormalizeDouble(
+            point3.rate,
+            fromMarketContext.digits
+        );
+        double point2Rate = NormalizeDouble(
+            point2.rate,
+            fromMarketContext.digits
+        );
+        double point1Rate = NormalizeDouble(
+            point1.rate,
+            fromMarketContext.digits
+        );
+        double point0Rate = NormalizeDouble(
+            point0.rate,
+            fromMarketContext.digits
+        );
+
+        if (fromIsUptrend) {
+            if (point2Rate <= point0Rate) {
+                return this.fail(
+                    "three wave continuation point 2 breaks origin"
+                );
+            }
+
+            if (point3Rate <= point1Rate) {
+                return this.fail(
+                    "three wave continuation point 3 does not extend point 1"
+                );
+            }
+        } else {
+            if (point2Rate >= point0Rate) {
+                return this.fail(
+                    "three wave continuation point 2 breaks origin"
+                );
+            }
+
+            if (point3Rate >= point1Rate) {
+                return this.fail(
+                    "three wave continuation point 3 does not extend point 1"
+                );
+            }
+        }
+
+        if (!fromIsMotive) {
+            return true;
+        }
+
+        double point1Pips = this.getContinuationPips(
+            point0.rate,
+            point1.rate,
+            fromMarketContext
+        );
+        double point2Pips = this.getContinuationPips(
+            point1.rate,
+            point2.rate,
+            fromMarketContext
+        );
+
+        if (point1Pips <= 0) {
+            return this.fail(
+                "three wave continuation point 1 move is invalid"
+            );
+        }
+
+        double retracementPercent = NormalizeDouble(
+            point2Pips / point1Pips * 100,
+            ZigZagElliotAnalysisProfile::getFiboDepthPercentDigits()
+        );
+        double retracementLimit = ZigZagElliotAnalysisProfile
+            ::getRecountMaxCorrectionPercent();
+
+        if (retracementPercent >= retracementLimit) {
+            return this.fail(
+                StringFormat(
+                    "three wave continuation point 2 retracement is too deep. percent=%.1f limit=%.1f",
+                    retracementPercent,
+                    retracementLimit
+                )
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Wave分析と同じ丸め条件で2レート間のpipsを取得する。
+     *
+     * 通常はRateUtilを使用する。市場情報からSYMBOL_POINTを
+     * 取得できない場合だけ、小数桁数からpointを補完する。
+     *
+     * @param fromRate 基準レート
+     * @param toRate 比較先レート
+     * @param fromMarketContext 分析対象市場コンテキスト
+     * @return 2レート間の絶対pips
+     */
+    double getContinuationPips(
+        const double fromRate,
+        const double toRate,
+        MarketContext &fromMarketContext
+    ) {
+        double pips = RateUtil::getDiffPips(
+            fromRate,
+            toRate,
+            fromMarketContext
+        );
+
+        if (pips > 0) {
+            return pips;
+        }
+
+        if (fromMarketContext.digits < 0) {
+            return 0;
+        }
+
+        double point = MathPow(10.0, -fromMarketContext.digits);
+        double pipSize = ZigZagElliotAnalysisProfile::getPipInPoints(
+            fromMarketContext.digits
+        ) * point;
+
+        if (pipSize <= 0) {
+            return 0;
+        }
+
+        return NormalizeDouble(
+            MathAbs(toRate - fromRate) / pipSize,
+            ZigZagElliotAnalysisProfile::getPipsResultDigits()
+        );
+    }
+
+    /**
+     * 親区間へ統合できる3Wave構造か判定する。
+     *
+     * Wave一覧は新しい順であるため、新しいWave、中央Wave、古いWaveの
+     * 方向が親方向、逆方向、親方向となることを要求する。
+     *
+     * @param fromWaveList 分析後Wave一覧
+     * @param fromWaveIndexStart 対象範囲の新しい側Waveインデックス
+     * @param fromWaveIndexEnd 対象範囲の古い側Waveインデックス
+     * @param fromIsUptrend 期待する上位足区間の方向
+     * @param fromIsMotive 期待する上位足区間のWave種別
+     * @return 統合対象の3Wave構造である場合true
+     */
+    bool validateThreeWaveContinuationRange(
+        CArrayObj &fromWaveList,
+        const int fromWaveIndexStart,
+        const int fromWaveIndexEnd,
+        const bool fromIsUptrend,
+        const bool fromIsMotive
+    ) {
+        int waveTotal = fromWaveList.Total();
+
+        if (fromWaveIndexStart < 0
+                || fromWaveIndexEnd >= waveTotal
+                || fromWaveIndexEnd != fromWaveIndexStart + 2) {
+            return this.fail(
+                StringFormat(
+                    "three wave continuation range is invalid. start=%d end=%d total=%d",
+                    fromWaveIndexStart,
+                    fromWaveIndexEnd,
+                    waveTotal
+                )
+            );
+        }
+
+        Wave *newerWave = fromWaveList.At(fromWaveIndexStart);
+        Wave *middleWave = fromWaveList.At(fromWaveIndexStart + 1);
+        Wave *olderWave = fromWaveList.At(fromWaveIndexEnd);
+
+        if (CheckPointer(newerWave) == POINTER_INVALID
+                || CheckPointer(middleWave) == POINTER_INVALID
+                || CheckPointer(olderWave) == POINTER_INVALID) {
+            return this.fail("three wave continuation contains invalid wave");
+        }
+
+        if (newerWave.isMotive != fromIsMotive
+                || middleWave.isMotive != fromIsMotive
+                || olderWave.isMotive != fromIsMotive) {
+            return this.fail("three wave continuation motive type mismatch");
+        }
+
+        if (newerWave.isUptrend != fromIsUptrend
+                || middleWave.isUptrend == fromIsUptrend
+                || olderWave.isUptrend != fromIsUptrend) {
+            return this.fail("three wave continuation direction mismatch");
+        }
+
+        return true;
+    }
+
+    /**
+     * 平坦化した3Waveの両端が親境界へ一意に一致するか判定する。
+     *
+     * @param fromMarketContext 期待するシンボルと時間足
+     * @param fromPointList 共有境界を除いた新しい順のポイント一覧
+     * @param fromHigherLeftPoint 上位足区間の古い側境界
+     * @param fromHigherRightPoint 上位足区間の新しい側境界
+     * @return 両端だけが各親境界へ一致する場合true
+     */
+    bool validateUniqueContinuationBoundaries(
+        MarketContext &fromMarketContext,
+        CArrayObj &fromPointList,
+        ZigZagPoint &fromHigherLeftPoint,
+        ZigZagPoint &fromHigherRightPoint
+    ) {
+        double rightBoundaryRate = 0;
+        double leftBoundaryRate = 0;
+
+        if (!this.getBoundaryRate(
+                fromMarketContext,
+                fromPointList,
+                fromHigherRightPoint,
+                rightBoundaryRate
+            )) {
+            return this.fail("three wave continuation right boundary not found");
+        }
+
+        if (!this.getBoundaryRate(
+                fromMarketContext,
+                fromPointList,
+                fromHigherLeftPoint,
+                leftBoundaryRate
+            )) {
+            return this.fail("three wave continuation left boundary not found");
+        }
+
+        int rightCandidateCount = 0;
+        int leftCandidateCount = 0;
+        int rightIndex = -1;
+        int leftIndex = -1;
+
+        for (int i = 0; i < fromPointList.Total(); i++) {
+            ZigZagPoint *point = fromPointList.At(i);
+
+            if (this.isBoundaryPoint(
+                    fromMarketContext,
+                    point,
+                    fromHigherRightPoint,
+                    rightBoundaryRate
+                )) {
+                rightCandidateCount++;
+                rightIndex = i;
+            }
+
+            if (this.isBoundaryPoint(
+                    fromMarketContext,
+                    point,
+                    fromHigherLeftPoint,
+                    leftBoundaryRate
+                )) {
+                leftCandidateCount++;
+                leftIndex = i;
+            }
+        }
+
+        if (rightCandidateCount != 1 || leftCandidateCount != 1) {
+            return this.fail(
+                StringFormat(
+                    "three wave continuation boundary is ambiguous. right=%d left=%d",
+                    rightCandidateCount,
+                    leftCandidateCount
+                )
+            );
+        }
+
+        if (rightIndex != 0 || leftIndex != fromPointList.Total() - 1) {
+            return this.fail(
+                StringFormat(
+                    "three wave continuation boundary must match endpoints. right=%d left=%d total=%d",
+                    rightIndex,
+                    leftIndex,
+                    fromPointList.Total()
+                )
+            );
+        }
+
+        return true;
+    }
 
     /**
      * 2つの修正Waveを4アンカーへ圧縮できる構造か判定する。

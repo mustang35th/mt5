@@ -18,11 +18,11 @@
 class ZigZagElliotAnalysisProfile {
 public:
     /** @return Elliott分析バージョン。 */
-    static string getAnalysisVersion() { return "ELLIOT_MN1_V5"; }
+    static string getAnalysisVersion() { return "ELLIOT_MN1_V6"; }
 
     /** @return 分析Profileバージョン。 */
     static string getProfileVersion() {
-        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V4";
+        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V5";
     }
 
     /** @return 短期Stochastic K期間。 */
@@ -249,6 +249,11 @@ public:
         return "STRICT_CONFIRMED_FOUR_POINT_OR_NESTED_ABC_AB_V2";
     }
 
+    /** @return 親区間内の3Wave継続構造を単一Waveへ統合する規則。 */
+    static string getHigherThreeWaveContinuationRule() {
+        return "EXACT_PARENT_SEGMENT_THREE_WAVE_FOUR_ANCHOR_DOW_RECOUNT_V1";
+    }
+
     /** @return 上位足Waveを取得できない場合の分析バー数。 */
     static int getHigherBarsFallbackCount() { return 300; }
 
@@ -386,6 +391,11 @@ public:
             text,
             "ELLIOT_HIGHER_CORRECTIVE_SEGMENT_RULE",
             getHigherCorrectiveSegmentRule()
+        );
+        appendText(
+            text,
+            "ELLIOT_HIGHER_THREE_WAVE_CONTINUATION_RULE",
+            getHigherThreeWaveContinuationRule()
         );
         appendInteger(
             text,

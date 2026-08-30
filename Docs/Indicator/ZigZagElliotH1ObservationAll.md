@@ -303,9 +303,10 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 
 | 項目 | 値 |
 |---|---|
-| `analysis_version` | `ELLIOT_MN1_V5` |
-| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V4` |
+| `analysis_version` | `ELLIOT_MN1_V6` |
+| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V5` |
 | 親修正区間規則 | `STRICT_CONFIRMED_FOUR_POINT_OR_NESTED_ABC_AB_V2` |
+| 親区間3Wave再カウント規則 | `EXACT_PARENT_SEGMENT_THREE_WAVE_FOUR_ANCHOR_DOW_RECOUNT_V1` |
 | Wave分割終了規則 | `POSITION_PROGRESS_TO_POINT_COUNT_V1` |
 | Analysis start | MN1 |
 | Anchor | H1 |
@@ -320,6 +321,8 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 `STRICT_CONFIRMED_FOUR_POINT_OR_NESTED_ABC_AB_V2`は、隣接する親子時間足の確定済み修正区間を対象とします。下位足の通常分析と再分析を完了した後、その親区間で追加されたWave群から重複境界と区間外の文脈点を除きます。親区間の左右境界に対応するポイント間が、補完ポイントを含まない4点の有効な山谷列となる場合は、従来どおり親区間の方向を持つ単一の修正Waveへ置換します。
 
 4点にならない場合でも、親方向の修正`A-B-C`（4点）に逆方向の修正`A-B`（3点）が連続する6点構成は、古い修正の終点を新しい`A`、続く逆方向修正の`A`を新しい`B`、同`B`を新しい`C`として、親方向の単一修正`A-B-C`へ統合します。上昇・下降の両方向およびすべての隣接時間足に同じ規則を適用します。形成中の親区間、補完ポイントを含む構成、Wave数・点数・方向が一致しない構成または境界を一意に検証できない構成は置換せず、既存の分析結果を使用します。
+
+`EXACT_PARENT_SEGMENT_THREE_WAVE_FOUR_ANCHOR_DOW_RECOUNT_V1`は、通常の再分析と親修正区間統合を完了した後、同じ親足ポイント区間内に子Waveがちょうど3件残る場合に適用します。3件の方向が親方向・逆方向・親方向で、推進／修正種別、共有境界、親区間の左右境界、時系列および山谷交互を検証でき、補完ポイントを含まない場合だけ、親左境界、古いWave終点、中央Wave終点、親右境界の4実アンカーから親方向の単一Waveを再構築します。推進波では、古いWave終点（例：旧`▲3.iii`）を新しい`▲1`、中央Wave終点（例：旧`▼3`）を新しい`▲2`、新しい側Wave終点（例：旧`▲1`）を新しい`▲3`として再分析します。上昇では新しい2またはBが起点より上、新しい3またはCが新しい1またはAより上となることを要求し、下降では反転します。推進波では新しい2のFが再カウント上限未満であることも要求します。旧内部ポイントは主Waveから除外し、推進波は1・2・3、修正波はA・B・C、FおよびFEを再計算します。時間足名には依存せず、上昇・下降およびすべての隣接時間足へ同じ規則を適用します。条件外では従来の3Waveを維持します。
 
 インジケーター運用入力は別の`input_text`へ保存し、FNV-1aによる`input_hash`を生成します。運用入力にはDB名、Common使用有無、Timer秒、DB再試行秒、TESTER保存開始時刻、Queue容量および解決後の28実シンボル名を含めます。
 
