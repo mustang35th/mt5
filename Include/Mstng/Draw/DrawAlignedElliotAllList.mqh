@@ -16,6 +16,7 @@
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
 #include <Mstng\Elliot\ElliotListSortType.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
+#include <Mstng\Elliot\H1D1EntrySortDecision.mqh>
 #include <Mstng\Elliot\M15ElliotEmaSortDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3EntryPriorityDecision.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
@@ -950,6 +951,19 @@ private:
             legendColors[2] = this.entrySetupColor;
             legendColors[3] = this.entryErrorColor;
             legendColors[4] = this.entryErrorColor;
+        } else if (this.sortType == ELLIOT_LIST_SORT_H1_D1_ENTRY
+                && fromCurrentTimeFrame == PERIOD_H1) {
+            legendTitle = "H1 SORT: D1条件 → H1 ENTRY";
+            legendTexts[0] = "D1-S W1+MN1+W1EMA";
+            legendTexts[1] = "D1-A W1+(MN1|W1EMA)";
+            legendTexts[2] = "D1-B W1のみ";
+            legendTexts[3] = "D1-NG/ERR W1不一致/データ不足";
+            legendTexts[4] = "ENTRY READY→NEAR→SETUP→ALIGN→ERROR";
+            legendColors[0] = this.entryReadyColor;
+            legendColors[1] = this.entryNearColor;
+            legendColors[2] = this.entrySetupColor;
+            legendColors[3] = this.entryErrorColor;
+            legendColors[4] = this.normalColor;
         }
 
         if (!this.createRectangle(
@@ -1511,6 +1525,7 @@ private:
         int displayIndexes[];
         Mtf3In3EntryPriorityResult priorityResults[];
         D1ElliotEmaSortResult d1SortResults[];
+        H1D1EntrySortResult h1D1SortResults[];
         M15ElliotEmaSortResult m15SortResults[];
         int displayCount = this.buildDisplayOrder(
             fromElliotAllList,
@@ -1520,6 +1535,7 @@ private:
             displayIndexes,
             priorityResults,
             d1SortResults,
+            h1D1SortResults,
             m15SortResults
         );
 
@@ -1534,7 +1550,8 @@ private:
                 fromDisplayTimeFrames,
                 fromAlignType,
                 priorityResults[i],
-                d1SortResults[i]
+                d1SortResults[i],
+                h1D1SortResults[i]
             );
         }
     }
@@ -1552,6 +1569,7 @@ private:
      * @param fromDisplayIndexes 表示用インデックスの格納先。
      * @param fromPriorityResults 優先度判定結果の格納先。
      * @param fromD1SortResults D1 Elliott・EMA200ソート結果の格納先。
+     * @param fromH1D1SortResults H1用D1環境・ENTRYソート結果の格納先。
      * @param fromM15SortResults M15 Elliott・EMA200ソート結果の格納先。
      * @return 表示対象件数。
      */
@@ -1563,11 +1581,13 @@ private:
         int &fromDisplayIndexes[],
         Mtf3In3EntryPriorityResult &fromPriorityResults[],
         D1ElliotEmaSortResult &fromD1SortResults[],
+        H1D1EntrySortResult &fromH1D1SortResults[],
         M15ElliotEmaSortResult &fromM15SortResults[]
     ) {
         ArrayResize(fromDisplayIndexes, 0);
         ArrayResize(fromPriorityResults, 0);
         ArrayResize(fromD1SortResults, 0);
+        ArrayResize(fromH1D1SortResults, 0);
         ArrayResize(fromM15SortResults, 0);
 
         int total = fromElliotAllList.elliotAllList.Total();
@@ -1575,10 +1595,12 @@ private:
         if (ArrayResize(fromDisplayIndexes, total) != total
                 || ArrayResize(fromPriorityResults, total) != total
                 || ArrayResize(fromD1SortResults, total) != total
+                || ArrayResize(fromH1D1SortResults, total) != total
                 || ArrayResize(fromM15SortResults, total) != total) {
             ArrayResize(fromDisplayIndexes, 0);
             ArrayResize(fromPriorityResults, 0);
             ArrayResize(fromD1SortResults, 0);
+            ArrayResize(fromH1D1SortResults, 0);
             ArrayResize(fromM15SortResults, 0);
 
             return 0;
@@ -1586,6 +1608,7 @@ private:
 
         Mtf3In3EntryPriorityDecision priorityDecision;
         D1ElliotEmaSortDecision d1SortDecision;
+        H1D1EntrySortDecision h1D1SortDecision;
         M15ElliotEmaSortDecision m15SortDecision;
         int displayCount = 0;
 
@@ -1620,12 +1643,26 @@ private:
             );
             D1ElliotEmaSortResult d1SortResult;
             d1SortResult.reset();
+            H1D1EntrySortResult h1D1SortResult;
+            h1D1SortResult.reset();
             M15ElliotEmaSortResult m15SortResult;
             m15SortResult.reset();
 
-            if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
-                    && fromCurrentTimeFrame == PERIOD_D1) {
+            if ((this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
+                        && fromCurrentTimeFrame == PERIOD_D1)
+                    || (this.sortType == ELLIOT_LIST_SORT_H1_D1_ENTRY
+                        && fromCurrentTimeFrame == PERIOD_H1)) {
                 d1SortDecision.evaluate(elliotAll, d1SortResult);
+            }
+
+            if (this.sortType == ELLIOT_LIST_SORT_H1_D1_ENTRY
+                    && fromCurrentTimeFrame == PERIOD_H1) {
+                h1D1SortDecision.evaluate(
+                    d1SortResult,
+                    priorityTimeFrame,
+                    priorityResult,
+                    h1D1SortResult
+                );
             }
 
             if (this.sortType == ELLIOT_LIST_SORT_M15_ELLIOT_EMA
@@ -1636,6 +1673,7 @@ private:
             fromDisplayIndexes[displayCount] = i;
             fromPriorityResults[displayCount] = priorityResult;
             fromD1SortResults[displayCount] = d1SortResult;
+            fromH1D1SortResults[displayCount] = h1D1SortResult;
             fromM15SortResults[displayCount] = m15SortResult;
             displayCount++;
         }
@@ -1643,12 +1681,14 @@ private:
         ArrayResize(fromDisplayIndexes, displayCount);
         ArrayResize(fromPriorityResults, displayCount);
         ArrayResize(fromD1SortResults, displayCount);
+        ArrayResize(fromH1D1SortResults, displayCount);
         ArrayResize(fromM15SortResults, displayCount);
         this.sortDisplayOrder(
             fromCurrentTimeFrame,
             fromDisplayIndexes,
             fromPriorityResults,
             fromD1SortResults,
+            fromH1D1SortResults,
             fromM15SortResults
         );
 
@@ -1708,13 +1748,15 @@ private:
     /**
      * 表示用インデックスを優先度順に安定ソートする。
      *
-     * D1またはM15 Elliott・EMA200ソート選択時は方向を主キーとし、
-     * 現在のエントリー優先度を副キーにする。他の場合は優先度順にする。
+     * H1ではD1環境とH1直接一致を主キー、ENTRYを副キーにする。
+     * D1またはM15 Elliott・EMA200ソート選択時は各専用順を使用し、
+     * その他の場合はENTRY優先度順にする。
      *
      * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayIndexes 表示用インデックス。
      * @param fromPriorityResults インデックスと対応する優先度判定結果。
      * @param fromD1SortResults インデックスと対応するD1ソート結果。
+     * @param fromH1D1SortResults インデックスと対応するH1用ソート結果。
      * @param fromM15SortResults インデックスと対応するM15ソート結果。
      */
     void sortDisplayOrder(
@@ -1722,12 +1764,14 @@ private:
         int &fromDisplayIndexes[],
         Mtf3In3EntryPriorityResult &fromPriorityResults[],
         D1ElliotEmaSortResult &fromD1SortResults[],
+        H1D1EntrySortResult &fromH1D1SortResults[],
         M15ElliotEmaSortResult &fromM15SortResults[]
     ) {
         int displayCount = ArraySize(fromDisplayIndexes);
 
         if (displayCount != ArraySize(fromPriorityResults)
                 || displayCount != ArraySize(fromD1SortResults)
+                || displayCount != ArraySize(fromH1D1SortResults)
                 || displayCount != ArraySize(fromM15SortResults)) {
             return;
         }
@@ -1737,6 +1781,8 @@ private:
             Mtf3In3EntryPriorityResult currentResult = fromPriorityResults[i];
             D1ElliotEmaSortResult currentD1SortResult =
                 fromD1SortResults[i];
+            H1D1EntrySortResult currentH1D1SortResult =
+                fromH1D1SortResults[i];
             M15ElliotEmaSortResult currentM15SortResult =
                 fromM15SortResults[i];
             int j = i - 1;
@@ -1746,6 +1792,8 @@ private:
                         fromCurrentTimeFrame,
                         currentD1SortResult,
                         fromD1SortResults[j],
+                        currentH1D1SortResult,
+                        fromH1D1SortResults[j],
                         currentM15SortResult,
                         fromM15SortResults[j],
                         currentResult,
@@ -1754,6 +1802,7 @@ private:
                 fromDisplayIndexes[j + 1] = fromDisplayIndexes[j];
                 fromPriorityResults[j + 1] = fromPriorityResults[j];
                 fromD1SortResults[j + 1] = fromD1SortResults[j];
+                fromH1D1SortResults[j + 1] = fromH1D1SortResults[j];
                 fromM15SortResults[j + 1] = fromM15SortResults[j];
                 j--;
             }
@@ -1761,6 +1810,7 @@ private:
             fromDisplayIndexes[j + 1] = currentIndex;
             fromPriorityResults[j + 1] = currentResult;
             fromD1SortResults[j + 1] = currentD1SortResult;
+            fromH1D1SortResults[j + 1] = currentH1D1SortResult;
             fromM15SortResults[j + 1] = currentM15SortResult;
         }
     }
@@ -1771,6 +1821,8 @@ private:
      * @param fromCurrentTimeFrame 表示時間足。
      * @param fromCurrentD1SortResult 現在のD1ソート結果。
      * @param fromPreviousD1SortResult 比較対象のD1ソート結果。
+     * @param fromCurrentH1D1SortResult 現在のH1用ソート結果。
+     * @param fromPreviousH1D1SortResult 比較対象のH1用ソート結果。
      * @param fromCurrentM15SortResult 現在のM15ソート結果。
      * @param fromPreviousM15SortResult 比較対象のM15ソート結果。
      * @param fromCurrentPriorityResult 現在のエントリー優先度判定結果。
@@ -1781,11 +1833,24 @@ private:
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
         D1ElliotEmaSortResult &fromCurrentD1SortResult,
         D1ElliotEmaSortResult &fromPreviousD1SortResult,
+        H1D1EntrySortResult &fromCurrentH1D1SortResult,
+        H1D1EntrySortResult &fromPreviousH1D1SortResult,
         M15ElliotEmaSortResult &fromCurrentM15SortResult,
         M15ElliotEmaSortResult &fromPreviousM15SortResult,
         Mtf3In3EntryPriorityResult &fromCurrentPriorityResult,
         Mtf3In3EntryPriorityResult &fromPreviousPriorityResult
     ) {
+        if (this.sortType == ELLIOT_LIST_SORT_H1_D1_ENTRY
+                && fromCurrentTimeFrame == PERIOD_H1) {
+            H1D1EntrySortDecision h1D1SortDecision;
+            int compareResult = h1D1SortDecision.compare(
+                fromCurrentH1D1SortResult,
+                fromPreviousH1D1SortResult
+            );
+
+            return compareResult < 0;
+        }
+
         if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
                 && fromCurrentTimeFrame == PERIOD_D1) {
             D1ElliotEmaSortDecision d1SortDecision;
@@ -1866,6 +1931,7 @@ private:
      * @param fromAlignType 一致方向。
      * @param fromPriorityResult エントリー優先度判定結果。
      * @param fromD1SortResult D1条件ソート判定結果。
+     * @param fromH1D1SortResult H1用D1環境・ENTRYソート結果。
      */
     void drawRow(
         int fromRowIndex,
@@ -1874,7 +1940,8 @@ private:
         const ENUM_TIMEFRAMES &fromDisplayTimeFrames[],
         TrendAlignType fromAlignType,
         Mtf3In3EntryPriorityResult &fromPriorityResult,
-        D1ElliotEmaSortResult &fromD1SortResult
+        D1ElliotEmaSortResult &fromD1SortResult,
+        H1D1EntrySortResult &fromH1D1SortResult
     ) {
         if (fromElliotAll == NULL) {
             return;
@@ -1900,11 +1967,25 @@ private:
         color entryColor = this.getEntryPriorityColor(
             fromPriorityResult.rank
         );
+        string entryDetailText = " ";
+        color entryDetailColor = this.mutedColor;
 
         if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
                 && fromCurrentTimeFrame == PERIOD_D1) {
             entryText = this.getD1ConditionRankText(fromD1SortResult);
             entryColor = this.getD1ConditionRankColor(fromD1SortResult);
+        } else if (this.sortType == ELLIOT_LIST_SORT_H1_D1_ENTRY
+                && fromCurrentTimeFrame == PERIOD_H1) {
+            entryText = this.getD1ConditionRankText(fromD1SortResult);
+            entryColor = this.getD1ConditionRankColor(fromD1SortResult);
+            entryDetailText = TimeUtil::convertTimeFrameToString(
+                fromH1D1SortResult.entryTimeFrame
+            ) + " " + this.getEntryPriorityText(
+                fromPriorityResult.rank
+            );
+            entryDetailColor = this.getEntryPriorityColor(
+                fromPriorityResult.rank
+            );
         }
 
         this.setCell(
@@ -1916,8 +1997,8 @@ private:
         this.setEmaCell(
             fromRowIndex,
             drawAlignedElliotAllListColumnEntryPriority,
-            " ",
-            this.mutedColor
+            entryDetailText,
+            entryDetailColor
         );
 
         int timeFrameCount = ArraySize(fromDisplayTimeFrames);
@@ -2787,6 +2868,11 @@ private:
             if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
                     && fromCurrentTimeFrame == PERIOD_D1) {
                 return "D1 RANK";
+            }
+
+            if (this.sortType == ELLIOT_LIST_SORT_H1_D1_ENTRY
+                    && fromCurrentTimeFrame == PERIOD_H1) {
+                return "D1 / ENTRY";
             }
 
             return "ENTRY";

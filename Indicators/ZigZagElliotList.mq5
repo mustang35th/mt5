@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.28"
+#property version   "1.29"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -43,7 +43,7 @@ enum ZigZagElliotListH1AlignmentMode {
 
 input group "01. 一覧表示"
 
-/** CHARTモードの並び替え基準。D1は専用、H4はエントリー優先順を使用する。 */
+/** CHARTモードの並び替え基準。D1・H4・H1は各専用順を使用する。 */
 input(name="並び順（CHARTのみ）") ElliotListSortType sortType =
     ELLIOT_LIST_SORT_M15_ELLIOT_EMA;
 
@@ -211,6 +211,8 @@ int OnInit() {
             alignmentText = "W1-H4&(MN1|W1EMA)";
         }
     } else if (listTimeFrame == PERIOD_H1) {
+        effectiveSortType = ELLIOT_LIST_SORT_H1_D1_ENTRY;
+
         if (h1AlignmentMode != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1
                 && h1AlignmentMode
                     != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1
