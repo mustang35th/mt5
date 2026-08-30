@@ -303,9 +303,9 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 
 | 項目 | 値 |
 |---|---|
-| `analysis_version` | `ELLIOT_MN1_V4` |
-| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V3` |
-| 親修正区間規則 | `STRICT_CONFIRMED_FOUR_POINT_V1` |
+| `analysis_version` | `ELLIOT_MN1_V5` |
+| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V4` |
+| 親修正区間規則 | `STRICT_CONFIRMED_FOUR_POINT_OR_NESTED_ABC_AB_V2` |
 | Wave分割終了規則 | `POSITION_PROGRESS_TO_POINT_COUNT_V1` |
 | Analysis start | MN1 |
 | Anchor | H1 |
@@ -317,7 +317,9 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
 
-`STRICT_CONFIRMED_FOUR_POINT_V1`は、隣接する親子時間足の確定済み修正区間を対象とします。下位足の通常分析と再分析を完了した後、その親区間で追加されたWave群から重複境界と区間外の文脈点を除きます。親区間の左右境界に対応するポイント間が、補完ポイントを含まない4点の有効な山谷列となる場合、親区間の方向を持つ単一の修正Waveへ置換し、3つの転換点を`A`、`B`、`C`として連続表示します。形成中の親区間、4点以外の構成または境界を一意に検証できない構成は置換せず、既存の分析結果を使用します。
+`STRICT_CONFIRMED_FOUR_POINT_OR_NESTED_ABC_AB_V2`は、隣接する親子時間足の確定済み修正区間を対象とします。下位足の通常分析と再分析を完了した後、その親区間で追加されたWave群から重複境界と区間外の文脈点を除きます。親区間の左右境界に対応するポイント間が、補完ポイントを含まない4点の有効な山谷列となる場合は、従来どおり親区間の方向を持つ単一の修正Waveへ置換します。
+
+4点にならない場合でも、親方向の修正`A-B-C`（4点）に逆方向の修正`A-B`（3点）が連続する6点構成は、古い修正の終点を新しい`A`、続く逆方向修正の`A`を新しい`B`、同`B`を新しい`C`として、親方向の単一修正`A-B-C`へ統合します。上昇・下降の両方向およびすべての隣接時間足に同じ規則を適用します。形成中の親区間、補完ポイントを含む構成、Wave数・点数・方向が一致しない構成または境界を一意に検証できない構成は置換せず、既存の分析結果を使用します。
 
 インジケーター運用入力は別の`input_text`へ保存し、FNV-1aによる`input_hash`を生成します。運用入力にはDB名、Common使用有無、Timer秒、DB再試行秒、TESTER保存開始時刻、Queue容量および解決後の28実シンボル名を含めます。
 

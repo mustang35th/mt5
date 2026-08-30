@@ -89,7 +89,9 @@ public:
      *
      * Wave一覧は小さいインデックスほど新しいものとして扱う。各Wave内の
      * ポイントを新しい順へ平坦化し、隣接Waveの共有境界を1点にまとめた後、
-     * 親境界間のStrict V1判定を実行する。
+     * 親境界間のStrict V1判定を実行する。Strict V1が失敗し、
+     * 親方向4点の修正Waveと逆方向3点の修正Waveが連続する場合は、
+     * 4つのアンカーポイントへ圧縮して再判定する。
      *
      * @param fromMarketContext 期待するシンボルと時間足
      * @param fromWaveList 分析後Wave一覧。インデックス0が最新
@@ -99,7 +101,7 @@ public:
      * @param fromHigherRightPoint 上位足区間の新しい側境界
      * @param fromIsUptrend 期待する上位足区間の方向
      * @param toZigZagPointList 構築したポイント一覧
-     * @return Strict V1条件をすべて満たした場合true
+     * @return Strict V1または修正Wave圧縮条件をすべて満たした場合true
      */
     bool buildFromWaveRange(
         MarketContext &fromMarketContext,
@@ -126,14 +128,77 @@ public:
             return false;
         }
 
-        return this.build(
-            fromMarketContext,
-            flattenedPointList,
-            fromHigherLeftPoint,
-            fromHigherRightPoint,
-            fromIsUptrend,
-            toZigZagPointList
-        );
+        if (this.build(
+                fromMarketContext,
+                flattenedPointList,
+                fromHigherLeftPoint,
+                fromHigherRightPoint,
+                fromIsUptrend,
+                toZigZagPointList
+            )) {
+            return true;
+        }
+
+        string strictErrorMessage = this.errorMessage;
+
+        if (!this.isCollapsibleCorrectionWavePair(
+                fromMarketContext,
+                fromWaveList,
+                fromWaveIndexStart,
+                fromWaveIndexEnd,
+                fromIsUptrend,
+                flattenedPointList
+            )) {
+            this.errorMessage = strictErrorMessage;
+            return false;
+        }
+
+        if (!this.validatePointSequence(
+                fromMarketContext,
+                flattenedPointList,
+                0,
+                flattenedPointList.Total() - 1,
+                fromIsUptrend
+            )) {
+            string sourceErrorMessage = this.errorMessage;
+            toZigZagPointList.Clear();
+
+            return this.fail(
+                "correction wave pair source invalid. "
+                + sourceErrorMessage
+            );
+        }
+
+        CArrayObj collapsedPointList;
+
+        if (!this.copyCollapsedCorrectionPointSequence(
+                fromWaveList,
+                fromWaveIndexStart,
+                fromWaveIndexEnd,
+                collapsedPointList
+            )) {
+            toZigZagPointList.Clear();
+            return false;
+        }
+
+        if (!this.build(
+                fromMarketContext,
+                collapsedPointList,
+                fromHigherLeftPoint,
+                fromHigherRightPoint,
+                fromIsUptrend,
+                toZigZagPointList
+            )) {
+            string collapseErrorMessage = this.errorMessage;
+            toZigZagPointList.Clear();
+
+            return this.fail(
+                "correction wave pair collapse failed. "
+                + collapseErrorMessage
+            );
+        }
+
+        return true;
     }
 
     /**
@@ -148,6 +213,150 @@ public:
 private:
     /** 直前の構築失敗理由。 */
     string errorMessage;
+
+    /**
+     * 2つの修正Waveを4アンカーへ圧縮できる構造か判定する。
+     *
+     * Wave一覧は新しい順であり、新しいWaveは親と逆方向の3点、
+     * 古いWaveは親方向の4点であることを要求する。
+     * このメソッドは失敗理由を変更しない。
+     *
+     * @param fromMarketContext 期待するシンボルと時間足
+     * @param fromWaveList 分析後Wave一覧
+     * @param fromWaveIndexStart 対象範囲の新しい側Waveインデックス
+     * @param fromWaveIndexEnd 対象範囲の古い側Waveインデックス
+     * @param fromIsUptrend 期待する上位足区間の方向
+     * @param fromFlattenedPointList 共有境界を除いた平坦化済みポイント一覧
+     * @return 圧縮対象の構造である場合true
+     */
+    bool isCollapsibleCorrectionWavePair(
+        MarketContext &fromMarketContext,
+        CArrayObj &fromWaveList,
+        const int fromWaveIndexStart,
+        const int fromWaveIndexEnd,
+        const bool fromIsUptrend,
+        CArrayObj &fromFlattenedPointList
+    ) {
+        if (fromWaveIndexEnd != fromWaveIndexStart + 1
+                || fromFlattenedPointList.Total() != 6) {
+            return false;
+        }
+
+        Wave *newerWave = fromWaveList.At(fromWaveIndexStart);
+        Wave *olderWave = fromWaveList.At(fromWaveIndexEnd);
+
+        if (CheckPointer(newerWave) == POINTER_INVALID
+                || CheckPointer(olderWave) == POINTER_INVALID) {
+            return false;
+        }
+
+        if (newerWave.zigZagPointList.Total() != 3
+                || olderWave.zigZagPointList.Total() != 4
+                || newerWave.isMotive
+                || olderWave.isMotive
+                || olderWave.isUptrend != fromIsUptrend
+                || newerWave.isUptrend == fromIsUptrend) {
+            return false;
+        }
+
+        return this.isSharedWaveBoundary(
+            fromMarketContext,
+            newerWave,
+            olderWave
+        );
+    }
+
+    /**
+     * 2つの修正Waveから4アンカーを新しい順へ複製する。
+     *
+     * 古いWaveの内部A・Bを省略し、古い始点、共有境界、
+     * 新しいWaveのA・Bを古い順のアンカーとして採用する。
+     * Builder入力用には逆順で追加する。
+     *
+     * @param fromWaveList 分析後Wave一覧
+     * @param fromWaveIndexStart 対象範囲の新しい側Waveインデックス
+     * @param fromWaveIndexEnd 対象範囲の古い側Waveインデックス
+     * @param toPointList 圧縮したポイント一覧。インデックス0が最新
+     * @return 全アンカーを複製できた場合true
+     */
+    bool copyCollapsedCorrectionPointSequence(
+        CArrayObj &fromWaveList,
+        const int fromWaveIndexStart,
+        const int fromWaveIndexEnd,
+        CArrayObj &toPointList
+    ) {
+        toPointList.Clear();
+
+        Wave *newerWave = fromWaveList.At(fromWaveIndexStart);
+        Wave *olderWave = fromWaveList.At(fromWaveIndexEnd);
+
+        if (!this.addClonedPoint(
+                newerWave.zigZagPointList.At(2),
+                "newer[2]",
+                toPointList
+            )
+                || !this.addClonedPoint(
+                    newerWave.zigZagPointList.At(1),
+                    "newer[1]",
+                    toPointList
+                )
+                || !this.addClonedPoint(
+                    olderWave.zigZagPointList.At(3),
+                    "older[3]",
+                    toPointList
+                )
+                || !this.addClonedPoint(
+                    olderWave.zigZagPointList.At(0),
+                    "older[0]",
+                    toPointList
+                )) {
+            toPointList.Clear();
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * ポイントを複製して一覧へ追加する。
+     *
+     * @param fromPoint 複製元ポイント
+     * @param fromSourceLabel エラー表示用の位置
+     * @param toPointList 追加先一覧
+     * @return 複製と追加に成功した場合true
+     */
+    bool addClonedPoint(
+        ZigZagPoint *fromPoint,
+        const string fromSourceLabel,
+        CArrayObj &toPointList
+    ) {
+        if (CheckPointer(fromPoint) == POINTER_INVALID) {
+            return this.fail(
+                "collapsed source point is invalid. source="
+                + fromSourceLabel
+            );
+        }
+
+        ZigZagPoint *clonedPoint = fromPoint.clone();
+
+        if (clonedPoint == NULL) {
+            return this.fail(
+                "collapsed source point clone failed. source="
+                + fromSourceLabel
+            );
+        }
+
+        if (!toPointList.Add(clonedPoint)) {
+            delete clonedPoint;
+
+            return this.fail(
+                "collapsed source point add failed. source="
+                + fromSourceLabel
+            );
+        }
+
+        return true;
+    }
 
     /**
      * 指定Wave範囲を共有境界を除いて新しい順へ平坦化する。
@@ -556,14 +765,14 @@ private:
     }
 
     /**
-     * 指定境界内の4点がStrict V1条件を満たすか判定する。
+     * 指定境界内のポイントがStrict V1の配列条件を満たすか判定する。
      *
      * @param fromMarketContext 期待するシンボルと時間足
      * @param fromRawPointList 抽出済み下位足ポイント一覧
      * @param fromRightIndex 新しい側境界のインデックス
      * @param fromLeftIndex 古い側境界のインデックス
      * @param fromIsUptrend 期待する上位足区間の方向
-     * @return Strict V1条件を満たす場合true
+     * @return Strict V1の配列条件を満たす場合true
      */
     bool validatePointSequence(
         MarketContext &fromMarketContext,
@@ -662,14 +871,14 @@ private:
     }
 
     /**
-     * 指定境界内の4点がStrict V1条件を満たすか副作用なく判定する。
+     * 指定境界内のポイントがStrict V1の配列条件を満たすか副作用なく判定する。
      *
      * @param fromMarketContext 期待するシンボルと時間足
      * @param fromRawPointList 抽出済み下位足ポイント一覧
      * @param fromRightIndex 新しい側境界のインデックス
      * @param fromLeftIndex 古い側境界のインデックス
      * @param fromIsUptrend 期待する上位足区間の方向
-     * @return Strict V1条件を満たす場合true
+     * @return Strict V1の配列条件を満たす場合true
      */
     bool isValidPointSequence(
         MarketContext &fromMarketContext,

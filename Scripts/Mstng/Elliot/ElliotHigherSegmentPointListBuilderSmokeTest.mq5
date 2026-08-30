@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.20"
+#property version   "1.21"
 
 #include <Mstng\Elliot\Analysis\ElliotHigherSegmentPointListBuilder.mqh>
 #include <Mstng\Elliot\Wave.mqh>
@@ -312,6 +312,111 @@ bool createDownSplitWaveList(
 }
 
 /**
+ * 親方向ABCと反対方向ABの修正Waveペアを新しい順で生成する。
+ *
+ * 古いWaveの内部A-Bは圧縮対象となり、共有境界が統合後のAとなる。
+ *
+ * @param fromMarketContext 下位足市場コンテキスト
+ * @param fromWaveList 生成先Wave一覧
+ * @param fromIsUptrend 親区間が上昇の場合true
+ * @return 生成に成功した場合true
+ */
+bool createNestedCorrectionPairWaveList(
+    MarketContext &fromMarketContext,
+    CArrayObj &fromWaveList,
+    const bool fromIsUptrend
+) {
+    datetime baseTime = D'2026.08.06 00:00:00';
+    double firstRate = 1.10000;
+    double olderARate = 1.20000;
+    double olderBRate = 1.15000;
+    double sharedBoundaryRate = 1.30000;
+    double newerARate = 1.22000;
+    double latestRate = 1.35000;
+    bool firstIsPeak = false;
+    bool olderAIsPeak = true;
+    bool olderBIsPeak = false;
+    bool sharedBoundaryIsPeak = true;
+    bool newerAIsPeak = false;
+    bool latestIsPeak = true;
+
+    if (!fromIsUptrend) {
+        firstRate = 1.35000;
+        olderARate = 1.25000;
+        olderBRate = 1.30000;
+        sharedBoundaryRate = 1.10000;
+        newerARate = 1.18000;
+        latestRate = 1.05000;
+        firstIsPeak = true;
+        olderAIsPeak = false;
+        olderBIsPeak = true;
+        sharedBoundaryIsPeak = false;
+        newerAIsPeak = true;
+        latestIsPeak = false;
+    }
+
+    CArrayObj newerPointList;
+    bool result = addPoint(newerPointList, fromMarketContext,
+        baseTime + 5 * 3600, sharedBoundaryRate,
+        sharedBoundaryIsPeak, false);
+    result = result && addPoint(newerPointList, fromMarketContext,
+        baseTime + 6 * 3600, newerARate, newerAIsPeak, false);
+    result = result && addPoint(newerPointList, fromMarketContext,
+        baseTime + 9 * 3600, latestRate, latestIsPeak, false);
+
+    if (!result) {
+        return false;
+    }
+
+    Wave *newerWave = new Wave(
+        fromMarketContext,
+        newerPointList,
+        false,
+        !fromIsUptrend
+    );
+
+    if (newerWave == NULL || !fromWaveList.Add(newerWave)) {
+        if (newerWave != NULL) {
+            delete newerWave;
+        }
+
+        return false;
+    }
+
+    CArrayObj olderPointList;
+    result = addPoint(olderPointList, fromMarketContext,
+        baseTime + 2 * 3600, firstRate, firstIsPeak, false);
+    result = result && addPoint(olderPointList, fromMarketContext,
+        baseTime + 3 * 3600, olderARate, olderAIsPeak, false);
+    result = result && addPoint(olderPointList, fromMarketContext,
+        baseTime + 4 * 3600, olderBRate, olderBIsPeak, false);
+    result = result && addPoint(olderPointList, fromMarketContext,
+        baseTime + 5 * 3600, sharedBoundaryRate,
+        sharedBoundaryIsPeak, false);
+
+    if (!result) {
+        return false;
+    }
+
+    Wave *olderWave = new Wave(
+        fromMarketContext,
+        olderPointList,
+        false,
+        fromIsUptrend
+    );
+
+    if (olderWave == NULL || !fromWaveList.Add(olderWave)) {
+        if (olderWave != NULL) {
+            delete olderWave;
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * 入力非破壊確認用文字列を生成する。
  *
  * @param fromPointList 対象一覧
@@ -360,6 +465,67 @@ bool areOutputPointsCloned(
 
             if (outputPoint == rawPoint) {
                 return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Wave一覧の主要値を入力非破壊確認用文字列へ変換する。
+ *
+ * @param fromWaveList 対象Wave一覧
+ * @return Wave属性とポイント主要値を連結した文字列
+ */
+string createWaveListSignature(CArrayObj &fromWaveList) {
+    string signature = IntegerToString(fromWaveList.Total());
+
+    for (int i = 0; i < fromWaveList.Total(); i++) {
+        Wave *wave = fromWaveList.At(i);
+
+        if (CheckPointer(wave) == POINTER_INVALID) {
+            signature += "|INVALID";
+            continue;
+        }
+
+        signature += "|" + IntegerToString((int)wave.isMotive);
+        signature += "," + IntegerToString((int)wave.isUptrend);
+        signature += "," + createPointListSignature(
+            wave.zigZagPointList
+        );
+    }
+
+    return signature;
+}
+
+/**
+ * 出力ポイントがWave一覧の入力ポイントと参照共有していないか検証する。
+ *
+ * @param fromWaveList 入力Wave一覧
+ * @param fromOutputPointList 出力ポイント一覧
+ * @return 全出力が入力とは別インスタンスの場合true
+ */
+bool areWaveOutputPointsCloned(
+    CArrayObj &fromWaveList,
+    CArrayObj &fromOutputPointList
+) {
+    for (int i = 0; i < fromOutputPointList.Total(); i++) {
+        ZigZagPoint *outputPoint = fromOutputPointList.At(i);
+
+        for (int j = 0; j < fromWaveList.Total(); j++) {
+            Wave *wave = fromWaveList.At(j);
+
+            if (CheckPointer(wave) == POINTER_INVALID) {
+                return false;
+            }
+
+            for (int k = 0; k < wave.zigZagPointList.Total(); k++) {
+                ZigZagPoint *inputPoint = wave.zigZagPointList.At(k);
+
+                if (outputPoint == inputPoint) {
+                    return false;
+                }
             }
         }
     }
@@ -478,6 +644,50 @@ void assertRejected(
 }
 
 /**
+ * Wave範囲構築の拒否、出力消去および入力非破壊を検証する。
+ *
+ * @param fromCaseName 検証名
+ * @param fromMarketContext 下位足市場コンテキスト
+ * @param fromWaveList 入力Wave一覧
+ * @param fromLeftPoint 上位足左境界
+ * @param fromRightPoint 上位足右境界
+ * @param fromIsUptrend 期待方向
+ * @param fromErrorText 期待する失敗理由の一部
+ */
+void assertWaveRangeRejected(
+    const string fromCaseName,
+    MarketContext &fromMarketContext,
+    CArrayObj &fromWaveList,
+    ZigZagPoint &fromLeftPoint,
+    ZigZagPoint &fromRightPoint,
+    const bool fromIsUptrend,
+    const string fromErrorText
+) {
+    string signature = createWaveListSignature(fromWaveList);
+    CArrayObj outputPointList;
+    addPoint(outputPointList, fromMarketContext,
+        D'2026.07.01 00:00:00', 1.00000, false, false);
+    ElliotHigherSegmentPointListBuilder builder;
+    bool result = builder.buildFromWaveRange(
+        fromMarketContext,
+        fromWaveList,
+        0,
+        1,
+        fromLeftPoint,
+        fromRightPoint,
+        fromIsUptrend,
+        outputPointList
+    );
+    assertCondition(fromCaseName + " rejected", !result);
+    assertCondition(fromCaseName + " output cleared",
+        outputPointList.Total() == 0);
+    assertCondition(fromCaseName + " error",
+        StringFind(builder.getErrorMessage(), fromErrorText) >= 0);
+    assertCondition(fromCaseName + " input unchanged",
+        createWaveListSignature(fromWaveList) == signature);
+}
+
+/**
  * 下降4点の切り出しとラベルを検証する。
  */
 void validateDownSuccess() {
@@ -580,6 +790,150 @@ void validateWaveRangeSuccess() {
         output,
         false,
         "▼"
+    );
+}
+
+/**
+ * 親方向ABCと反対方向ABを単一の親方向ABCへ圧縮できることを検証する。
+ *
+ * @param fromIsUptrend 親区間が上昇の場合true
+ */
+void validateNestedCorrectionPairSuccess(const bool fromIsUptrend) {
+    string caseName = "NESTED UP";
+    string trendLabel = "▲";
+    double firstRate = 1.10000;
+    double sharedBoundaryRate = 1.30000;
+    double newerARate = 1.22000;
+    double latestRate = 1.35000;
+    bool firstIsPeak = false;
+    bool sharedBoundaryIsPeak = true;
+    bool newerAIsPeak = false;
+    bool latestIsPeak = true;
+
+    if (!fromIsUptrend) {
+        caseName = "NESTED DOWN";
+        trendLabel = "▼";
+        firstRate = 1.35000;
+        sharedBoundaryRate = 1.10000;
+        newerARate = 1.18000;
+        latestRate = 1.05000;
+        firstIsPeak = true;
+        sharedBoundaryIsPeak = false;
+        newerAIsPeak = true;
+        latestIsPeak = false;
+    }
+
+    MarketContext context("TEST", PERIOD_H1, "H1", 5);
+    MarketContext higherContext("TEST", PERIOD_H4, "H4", 5);
+    CArrayObj waveList;
+    CArrayObj output;
+    assertCondition(
+        caseName + " fixture",
+        createNestedCorrectionPairWaveList(
+            context,
+            waveList,
+            fromIsUptrend
+        )
+    );
+    ZigZagPoint left(higherContext);
+    ZigZagPoint right(higherContext);
+    setHigherPoints(
+        left,
+        right,
+        D'2026.08.06 00:00:00',
+        firstRate,
+        latestRate,
+        fromIsUptrend
+    );
+    string signature = createWaveListSignature(waveList);
+    ElliotHigherSegmentPointListBuilder builder;
+    bool result = builder.buildFromWaveRange(
+        context,
+        waveList,
+        0,
+        1,
+        left,
+        right,
+        fromIsUptrend,
+        output
+    );
+    assertCondition(caseName + " build", result);
+    assertCondition(caseName + " total", output.Total() == 4);
+    assertOutputPoint(caseName + " 0", output, 0,
+        D'2026.08.06 02:00:00', firstRate, firstIsPeak);
+    assertOutputPoint(caseName + " 1", output, 1,
+        D'2026.08.06 05:00:00', sharedBoundaryRate,
+        sharedBoundaryIsPeak);
+    assertOutputPoint(caseName + " 2", output, 2,
+        D'2026.08.06 06:00:00', newerARate, newerAIsPeak);
+    assertOutputPoint(caseName + " 3", output, 3,
+        D'2026.08.06 09:00:00', latestRate, latestIsPeak);
+    assertCorrectionLabels(
+        caseName + " labels",
+        context,
+        output,
+        fromIsUptrend,
+        trendLabel
+    );
+    assertCondition(caseName + " cloned",
+        areWaveOutputPointsCloned(waveList, output));
+    assertCondition(caseName + " immutable",
+        createWaveListSignature(waveList) == signature);
+}
+
+/**
+ * 修正Waveペア圧縮の安全な拒否条件を検証する。
+ */
+void validateNestedCorrectionPairConditions() {
+    MarketContext context("TEST", PERIOD_H1, "H1", 5);
+    MarketContext higherContext("TEST", PERIOD_H4, "H4", 5);
+    ZigZagPoint left(higherContext);
+    ZigZagPoint right(higherContext);
+    setHigherPoints(left, right, D'2026.08.06 00:00:00',
+        1.10000, 1.35000, true);
+
+    CArrayObj addedPointWaveList;
+    createNestedCorrectionPairWaveList(context, addedPointWaveList, true);
+    Wave *addedPointOlderWave = addedPointWaveList.At(1);
+    ZigZagPoint *hiddenAddedPoint = addedPointOlderWave.zigZagPointList.At(1);
+    hiddenAddedPoint.isAddedPoint = true;
+    assertWaveRangeRejected(
+        "NESTED hidden added",
+        context,
+        addedPointWaveList,
+        left,
+        right,
+        true,
+        "added point is not allowed"
+    );
+
+    CArrayObj motiveWaveList;
+    createNestedCorrectionPairWaveList(context, motiveWaveList, true);
+    Wave *motiveNewerWave = motiveWaveList.At(0);
+    motiveNewerWave.isMotive = true;
+    assertWaveRangeRejected(
+        "NESTED motive",
+        context,
+        motiveWaveList,
+        left,
+        right,
+        true,
+        "boundary slice must contain four points"
+    );
+
+    CArrayObj directionWaveList;
+    createNestedCorrectionPairWaveList(context, directionWaveList, true);
+    Wave *directionNewerWave = directionWaveList.At(0);
+    directionNewerWave.isUptrend = true;
+    directionNewerWave.trendLabel = "▲";
+    assertWaveRangeRejected(
+        "NESTED direction",
+        context,
+        directionWaveList,
+        left,
+        right,
+        true,
+        "boundary slice must contain four points"
     );
 }
 
@@ -799,6 +1153,9 @@ void OnStart() {
     validateDownSuccess();
     validateUpSuccess();
     validateWaveRangeSuccess();
+    validateNestedCorrectionPairSuccess(true);
+    validateNestedCorrectionPairSuccess(false);
+    validateNestedCorrectionPairConditions();
     validateWaveRangeConditions();
     validateStrictConditions();
     validateSequenceConditions();

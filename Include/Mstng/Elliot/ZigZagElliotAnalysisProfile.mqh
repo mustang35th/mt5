@@ -18,11 +18,11 @@
 class ZigZagElliotAnalysisProfile {
 public:
     /** @return Elliott分析バージョン。 */
-    static string getAnalysisVersion() { return "ELLIOT_MN1_V4"; }
+    static string getAnalysisVersion() { return "ELLIOT_MN1_V5"; }
 
     /** @return 分析Profileバージョン。 */
     static string getProfileVersion() {
-        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V3";
+        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V4";
     }
 
     /** @return 短期Stochastic K期間。 */
@@ -246,7 +246,7 @@ public:
 
     /** @return 上位足の確定修正区間を単一Waveへ統合する規則。 */
     static string getHigherCorrectiveSegmentRule() {
-        return "STRICT_CONFIRMED_FOUR_POINT_V1";
+        return "STRICT_CONFIRMED_FOUR_POINT_OR_NESTED_ABC_AB_V2";
     }
 
     /** @return 上位足Waveを取得できない場合の分析バー数。 */
