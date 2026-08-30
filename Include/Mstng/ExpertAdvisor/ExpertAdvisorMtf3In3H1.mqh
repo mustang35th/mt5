@@ -12,15 +12,16 @@
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationDecision.mqh>
+#include <Mstng\ExpertAdvisor\H1EntryWaveDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
 
 /**
  * H1を現在足としてMTF_3in3エントリーを判定する。
  *
- * D1とH4は売買方向の一致確認に使用し、H1の第1波/3波/5波を
- * エントリー対象波動とする。H4は第1波/3波、または第3波に
- * 副次波がある第5波を対象とする。H1 EMA200は常にH1方向を確認し、
+ * D1とH4は売買方向の一致確認に使用し、H1とH4の第1波/3波、
+ * または第3波に副次波がない有効な第5波をエントリー対象とする。
+ * H1 EMA200は常にH1方向を確認し、
  * H1_AND_H4_REQUIREDではH4 EMA200も同方向を要求する。
  * 選択した方向一致モードではW1 EMA200も判定に使用する。
  * H1の最新ZigZagポイントは確定・未確定を問わず、
@@ -160,50 +161,52 @@ protected:
     }
 
     /**
-     * H1エントリー時のH4波動条件を判定する。
+     * H1エントリー時のH1およびH4波動条件を判定する。
      *
-     * H4の第1波および第3波はそのまま許可する。第5波は、第3波に
-     * 副次波がある場合だけ許可する。
+     * H1を先に判定し、通過した場合だけH4を判定する。第1波と第3波は
+     * 許可し、第5波は同じWaveの第3波に副次波がない場合だけ許可する。
      *
      * @param fromRejectReason 条件未達時の結果コード。
-     * @return H4波動条件を満たす場合true。
+     * @return H1およびH4の波動条件を満たす場合true。
      */
     virtual bool isTimeFrameEntryConditionMatched(
         string &fromRejectReason
     ) override {
         fromRejectReason = "";
 
-        if (this.marketContext.timeFrame != PERIOD_H1
-                || this.elliotH4 == NULL
-                || this.elliotH4.marketContext.timeFrame != PERIOD_H4) {
+        if (this.marketContext.timeFrame != PERIOD_H1) {
             fromRejectReason = "H4_ELLIOT_UNAVAILABLE";
 
             return false;
         }
 
-        Wave *latestWave = this.elliotH4.getLatestWave();
-        ZigZagPoint *latestPoint = this.elliotH4.getLatestPoint();
+        H1EntryWaveDecision decision;
+        H1EntryWaveResult h1Result;
 
-        if (latestWave == NULL || latestPoint == NULL) {
-            fromRejectReason = "H4_ELLIOT_UNAVAILABLE";
-
-            return false;
-        }
-
-        string elliotLabel = latestPoint.elliotLabel;
-
-        if (elliotLabel == "1" || elliotLabel == "3") {
-            return true;
-        }
-
-        if (elliotLabel != "5") {
-            fromRejectReason = "H4_ELLIOT_LABEL_REJECTED";
+        if (!decision.evaluate(
+                this.elliotCurrent,
+                PERIOD_H1,
+                "ELLIOT_LABEL_REJECTED",
+                "ELLIOT_LABEL_REJECTED",
+                "H1_WAVE3_SUB_ELLIOT_PRESENT_REJECTED",
+                h1Result
+            )) {
+            fromRejectReason = h1Result.rejectReason;
 
             return false;
         }
 
-        if (!latestWave.hasSubElliot(5, 3)) {
-            fromRejectReason = "H4_WAVE3_SUB_ELLIOT_REJECTED";
+        H1EntryWaveResult h4Result;
+
+        if (!decision.evaluate(
+                this.elliotH4,
+                PERIOD_H4,
+                "H4_ELLIOT_UNAVAILABLE",
+                "H4_ELLIOT_LABEL_REJECTED",
+                "H4_WAVE3_SUB_ELLIOT_PRESENT_REJECTED",
+                h4Result
+            )) {
+            fromRejectReason = h4Result.rejectReason;
 
             return false;
         }
@@ -221,25 +224,19 @@ protected:
     }
 
     /**
-     * H1対象波動判定を第1波/第3波/第5波に拡張する。
+     * H1の最新ラベルがEntry側で詳細判定する対象か確認する。
+     *
+     * 第5波の構造と第3波の副次波はisTimeFrameEntryConditionMatched()で
+     * 判定し、その結果コードをエントリー対象外理由へ反映する。
      *
      * @return H1対象波の場合true。
      */
     virtual bool isEntryWave(Elliot *fromElliot) override {
-        if (fromElliot == NULL) {
-            return false;
-        }
+        H1EntryWaveDecision decision;
+        H1EntryWaveResult result;
+        decision.evaluate(fromElliot, PERIOD_H1, result);
 
-        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
-        if (latestPoint == NULL) {
-            return false;
-        }
-
-        string elliotLabel = latestPoint.elliotLabel;
-
-        return elliotLabel == "1"
-            || elliotLabel == "3"
-            || elliotLabel == "5";
+        return result.isEntryLabel;
     }
 
     /**

@@ -1443,7 +1443,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.22";
         this.databaseRun.strategy = "MTF_3in3";
-        this.databaseRun.strategyVersion = "MTF3IN3_V5";
+        this.databaseRun.strategyVersion = "MTF3IN3_V6";
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();
         this.databaseRun.analysisInputText =

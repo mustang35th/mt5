@@ -126,7 +126,7 @@ ON zigzag_elliot_alert_runs(started_at);
 
 `run_uid`は1回の実行中に変化しません。テスターを再実行した場合は新しいRunとして扱います。
 
-現行のAlert Runは`schema_version = 5`、`program_version = 1.29`、`strategy_version = MTF3IN3_V5`です。現行のH1 Observation Runは`schema_version = 6`、`program_version = 1.04`、`strategy_version = H1_OBSERVATION_ALL_V5`です。既存Runのバージョンは書き換えません。
+現行のAlert Runは`schema_version = 5`、`program_version = 1.29`、`strategy_version = MTF3IN3_V6`です。現行のH1 Observation Runは`schema_version = 6`、`program_version = 1.04`、`strategy_version = H1_OBSERVATION_ALL_V5`です。既存Runのバージョンは書き換えません。
 
 ## 7. `zigzag_elliot_alerts`
 

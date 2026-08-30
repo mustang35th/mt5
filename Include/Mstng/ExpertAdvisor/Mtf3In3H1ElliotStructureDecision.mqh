@@ -11,6 +11,7 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
+#include <Mstng\ExpertAdvisor\H1EntryWaveDecision.mqh>
 
 /**
  * H1エントリーにおけるD1、H4およびH1のElliott構造ランク。
@@ -49,7 +50,7 @@ public:
     /** D1、H4およびH1の親子構造が有効な場合true。 */
     bool isStructureValid;
 
-    /** D1またはH4が5、Eの終盤phaseの場合true。 */
+    /** D1、H4またはH1が5、Eの終盤phaseの場合true。 */
     bool isLate;
 
     /** 売買方向といずれかの現在脚方向が一致しない場合true。 */
@@ -235,7 +236,9 @@ public:
             return;
         }
 
-        fromResult.isLate = d1Index == 5 || h4Index == 5;
+        fromResult.isLate = d1Index == 5
+            || h4Index == 5
+            || h1Index == 5;
         fromResult.isDirectionException =
             !this.isCurrentLegDirectionMatched(
                 waveD1,
@@ -268,8 +271,24 @@ public:
 
         if (!waveH1.isMotive
                 || pointH1.isElliotAlphabet
-                || (h1Index != 1 && h1Index != 3)
                 || pointH1.elliotLabel != expectedH1Label) {
+            return;
+        }
+
+        H1EntryWaveDecision entryWaveDecision;
+        H1EntryWaveResult h4EntryWaveResult;
+        H1EntryWaveResult h1EntryWaveResult;
+
+        if (!entryWaveDecision.evaluate(
+                elliotH4,
+                PERIOD_H4,
+                h4EntryWaveResult
+            )
+                || !entryWaveDecision.evaluate(
+                    elliotH1,
+                    PERIOD_H1,
+                    h1EntryWaveResult
+                )) {
             return;
         }
 
