@@ -12,12 +12,24 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 
 /**
+ * D1条件の一致ランク。
+ */
+enum D1ConditionSortRank {
+    d1ConditionSortRankNg = 0,
+    d1ConditionSortRankB = 1,
+    d1ConditionSortRankA = 2,
+    d1ConditionSortRankS = 3
+};
+
+/**
  * D1 Elliott・EMA200方向ソート判定結果。
  */
 class D1ElliotEmaSortResult {
 public:
     /** 判定に必要な分析結果が揃っている場合true。 */
     bool isEvaluated;
+    /** D1に対するW1・MN1・W1 EMA200の一致ランク。 */
+    D1ConditionSortRank d1ConditionRank;
     /** D1最新Waveの方向一致ランク。 */
     int d1WaveDirectionRank;
     /** D1 EMA200の方向一致ランク。 */
@@ -41,6 +53,7 @@ public:
      */
     void reset() {
         this.isEvaluated = false;
+        this.d1ConditionRank = d1ConditionSortRankNg;
         this.d1WaveDirectionRank = 0;
         this.d1EmaDirectionRank = 0;
         this.w1WaveDirectionRank = 0;
@@ -52,8 +65,8 @@ public:
 /**
  * D1一覧専用のElliott最新Wave方向とEMA200方向を判定するクラス。
  *
- * D1、W1、MN1の順に現在の売買方向との一致を評価し、
- * D1の状態を上位足の一致で相殺しない辞書順を提供する。
+ * W1を必須条件、MN1とW1 EMA200を加点条件としてD1条件を評価する。
+ * 同一条件ランク内ではD1、W1、MN1のWaveとEMA200を辞書順で比較する。
  */
 class D1ElliotEmaSortDecision {
 public:
@@ -92,6 +105,14 @@ public:
 
         bool isBuy = elliotD1.isBuy;
 
+        fromResult.d1ConditionRank =
+            D1ElliotEmaSortDecision::evaluateConditionRank(
+                isBuy,
+                elliotW1.isBuy,
+                elliotMN1.isBuy,
+                elliotW1.oscillator.ema200.isBuy,
+                elliotW1.oscillator.ema200.isSell
+            );
         fromResult.d1WaveDirectionRank =
             this.getWaveDirectionRank(elliotD1, isBuy);
         fromResult.d1EmaDirectionRank =
@@ -103,6 +124,52 @@ public:
         fromResult.mn1WaveDirectionRank =
             this.getWaveDirectionRank(elliotMN1, isBuy);
         fromResult.isEvaluated = true;
+    }
+
+    /**
+     * D1に対する上位足条件の一致ランクを判定する。
+     *
+     * W1一致を必須とし、MN1とW1 EMA200の一致数でS・A・Bを分ける。
+     * EMA200がNONEまたはBUY・SELL競合の場合は一致として扱わない。
+     *
+     * @param fromIsD1Buy D1がBUY方向の場合true。
+     * @param fromIsW1Buy W1がBUY方向の場合true。
+     * @param fromIsMn1Buy MN1がBUY方向の場合true。
+     * @param fromIsW1Ema200Buy W1 EMA200がBUYの場合true。
+     * @param fromIsW1Ema200Sell W1 EMA200がSELLの場合true。
+     * @return D1条件の一致ランク。
+     */
+    static D1ConditionSortRank evaluateConditionRank(
+        bool fromIsD1Buy,
+        bool fromIsW1Buy,
+        bool fromIsMn1Buy,
+        bool fromIsW1Ema200Buy,
+        bool fromIsW1Ema200Sell
+    ) {
+        if (fromIsW1Buy != fromIsD1Buy) {
+            return d1ConditionSortRankNg;
+        }
+
+        bool isMn1Matched = fromIsMn1Buy == fromIsD1Buy;
+        bool isW1EmaMatched = false;
+
+        if (fromIsW1Ema200Buy != fromIsW1Ema200Sell) {
+            if (fromIsD1Buy && fromIsW1Ema200Buy) {
+                isW1EmaMatched = true;
+            } else if (!fromIsD1Buy && fromIsW1Ema200Sell) {
+                isW1EmaMatched = true;
+            }
+        }
+
+        if (isMn1Matched && isW1EmaMatched) {
+            return d1ConditionSortRankS;
+        }
+
+        if (isMn1Matched || isW1EmaMatched) {
+            return d1ConditionSortRankA;
+        }
+
+        return d1ConditionSortRankB;
     }
 
     /**
@@ -125,6 +192,15 @@ public:
         }
 
         int compareResult = this.compareRank(
+            (int)fromLeftResult.d1ConditionRank,
+            (int)fromRightResult.d1ConditionRank
+        );
+
+        if (compareResult != 0) {
+            return compareResult;
+        }
+
+        compareResult = this.compareRank(
             fromLeftResult.d1WaveDirectionRank,
             fromRightResult.d1WaveDirectionRank
         );

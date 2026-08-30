@@ -30,8 +30,8 @@ enum DrawAlignedElliotAllListColumn {
 /**
  * 指定開始足から表示時間足まで売買方向が一致した複数シンボルを描画するクラス。
  *
- * BUYとSELLを別セクションに分け、MN1から各時間足の最新Elliott波動、
- * Fibonacci比率およびEMA200方向を2段の固定一覧パネルへ表示する。
+ * BUYを左、SELLを右のパネルに分け、MN1から各時間足の最新Elliott波動、
+ * Fibonacci比率およびEMA200方向を固定一覧へ表示する。
  * 分析結果と判定クラスへの参照は保持しない。
  */
 class DrawAlignedElliotAllList {
@@ -66,7 +66,11 @@ public:
         this.createdBuyCount = 0;
         this.createdSellCount = 0;
         this.createdH1RunnerUpCount = 0;
+        this.createdH1RunnerUpBuyCount = 0;
+        this.createdH1RunnerUpSellCount = 0;
+        this.createdH1RunnerUpPanelEnabled = false;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
+        this.supplementalPanelTopOffset = 0;
         this.lastCompletedTitleText = "";
         this.lastCompletedTitleTimeText = "";
         this.sortType = fromSortType;
@@ -83,18 +87,17 @@ public:
         this.groupHeight = 20;
         this.rowHeight = 36;
         this.emaRowOffset = 16;
-        this.sectionGap = 4;
+        this.sectionGap = 8;
         this.bottomPadding = 10;
         this.tableLeftOffset = 12;
         this.cellLeftPadding = 12;
         this.columnWidth = 108;
         this.fibonacciRightPadding = 18;
         this.entryLegendGap = 8;
-        this.entryLegendWidth = 270;
-        this.entryLegendHeight = 150;
+        this.entryLegendHeaderHeight = 26;
+        this.entryLegendHeight = 56;
         this.entryLegendRowHeight = 18;
         this.h1RunnerUpGroupHeight = 18;
-        this.h1RunnerUpSectionGap = 4;
 
         this.fontName = "MS Gothic";
         this.titleFontSize = 11;
@@ -193,6 +196,10 @@ public:
                 || this.createdBuyCount != buyCount
                 || this.createdSellCount != sellCount
                 || this.createdH1RunnerUpCount != h1RunnerUpCount
+                || this.createdH1RunnerUpBuyCount != h1RunnerUpBuyCount
+                || this.createdH1RunnerUpSellCount != h1RunnerUpSellCount
+                || this.createdH1RunnerUpPanelEnabled
+                    != h1RunnerUpPanelEnabled
                 || this.createdCurrentTimeFrame != currentTimeFrame) {
             if (!this.create(
                 buyCount,
@@ -200,7 +207,8 @@ public:
                 currentTimeFrame,
                 displayTimeFrames,
                 h1RunnerUpPanelEnabled,
-                h1RunnerUpCount
+                h1RunnerUpBuyCount,
+                h1RunnerUpSellCount
             )) {
                 return false;
             }
@@ -345,6 +353,15 @@ private:
     /** 生成済みのH1次点候補行数。 */
     int createdH1RunnerUpCount;
 
+    /** 生成済みのH1 BUY次点候補行数。 */
+    int createdH1RunnerUpBuyCount;
+
+    /** 生成済みのH1 SELL次点候補行数。 */
+    int createdH1RunnerUpSellCount;
+
+    /** H1次点候補パネルを生成済みの場合true。 */
+    bool createdH1RunnerUpPanelEnabled;
+
     /** 生成済み列の基準時間足。 */
     ENUM_TIMEFRAMES createdCurrentTimeFrame;
 
@@ -363,8 +380,11 @@ private:
     /** チャート上端からの距離。 */
     int yDistance;
 
-    /** パネル横幅。 */
+    /** BUYまたはSELLの片側パネル横幅。 */
     int panelWidth;
+
+    /** 一覧下側の補助パネル上端位置。 */
+    int supplementalPanelTopOffset;
 
     /** タイトル背景の高さ。 */
     int headerHeight;
@@ -375,7 +395,7 @@ private:
     /** 区切り線のY位置。 */
     int separatorYDistance;
 
-    /** BUYグループ見出しのY位置。 */
+    /** BUY・SELLグループ見出しのY位置。 */
     int firstGroupYDistance;
 
     /** グループ見出しの高さ。 */
@@ -387,7 +407,7 @@ private:
     /** EMA200表示段の上段からの位置。 */
     int emaRowOffset;
 
-    /** BUYとSELLセクション間の余白。 */
+    /** BUYとSELLパネル間の横余白。 */
     int sectionGap;
 
     /** パネル下余白。 */
@@ -405,23 +425,20 @@ private:
     /** Fibonacci表示の時間足列右端からの余白。 */
     int fibonacciRightPadding;
 
-    /** 一覧とENTRY凡例の間隔。 */
+    /** 一覧と下側補助パネルの間隔。 */
     int entryLegendGap;
-
-    /** ENTRY凡例の横幅。 */
-    int entryLegendWidth;
 
     /** ENTRY凡例の高さ。 */
     int entryLegendHeight;
+
+    /** ENTRY凡例タイトル背景の高さ。 */
+    int entryLegendHeaderHeight;
 
     /** ENTRY凡例1行の高さ。 */
     int entryLegendRowHeight;
 
     /** H1次点候補のグループ見出し高さ。 */
     int h1RunnerUpGroupHeight;
-
-    /** H1次点候補のBUY・SELL間余白。 */
-    int h1RunnerUpSectionGap;
 
     /** 表示フォント名。 */
     string fontName;
@@ -537,7 +554,8 @@ private:
      * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayTimeFrames 表示対象時間足一覧。
      * @param fromH1RunnerUpPanelEnabled H1次点候補を表示する場合true。
-     * @param fromH1RunnerUpCount H1次点候補行数。
+     * @param fromH1RunnerUpBuyCount H1 BUY次点候補行数。
+     * @param fromH1RunnerUpSellCount H1 SELL次点候補行数。
      * @return 生成に成功した場合true。
      */
     bool create(
@@ -546,7 +564,8 @@ private:
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
         const ENUM_TIMEFRAMES &fromDisplayTimeFrames[],
         bool fromH1RunnerUpPanelEnabled,
-        int fromH1RunnerUpCount
+        int fromH1RunnerUpBuyCount,
+        int fromH1RunnerUpSellCount
     ) {
         this.destroyObjects();
 
@@ -554,21 +573,53 @@ private:
         int columnCount = timeFrameCount
             + drawAlignedElliotAllListColumnTimeFrameStart;
         int rowCount = fromBuyCount + fromSellCount;
+        int h1RunnerUpCount = fromH1RunnerUpBuyCount
+            + fromH1RunnerUpSellCount;
 
+        this.configureColumnWidth(timeFrameCount);
         this.panelWidth = this.calculatePanelWidth(
             fromCurrentTimeFrame,
             timeFrameCount
         );
 
-        int sellGroupYDistance = this.getSellGroupYDistance(fromBuyCount);
-        int panelHeight = sellGroupYDistance
+        int maximumRowCount = fromBuyCount;
+
+        if (fromSellCount > maximumRowCount) {
+            maximumRowCount = fromSellCount;
+        }
+
+        if (maximumRowCount == 0) {
+            maximumRowCount = 1;
+        }
+
+        int panelHeight = this.firstGroupYDistance
             + this.groupHeight
-            + (fromSellCount * this.rowHeight)
+            + (maximumRowCount * this.rowHeight)
             + this.bottomPadding;
+        int combinedPanelWidth = this.getCombinedPanelWidth();
+        int sellPanelLeftOffset = this.getDirectionPanelLeftOffset(
+            trendAlignSell
+        );
+        this.supplementalPanelTopOffset = panelHeight
+            + this.entryLegendGap;
 
         if (!this.createRectangle(
-            this.objectPrefix + "Panel",
+            this.objectPrefix + "PanelBuy",
             this.xDistance,
+            this.yDistance,
+            this.panelWidth,
+            panelHeight,
+            this.panelBackgroundColor,
+            this.borderColor,
+            0
+        )) {
+            this.destroyObjects();
+            return false;
+        }
+
+        if (!this.createRectangle(
+            this.objectPrefix + "PanelSell",
+            this.xDistance + sellPanelLeftOffset,
             this.yDistance,
             this.panelWidth,
             panelHeight,
@@ -584,7 +635,7 @@ private:
             this.objectPrefix + "TitleBackground",
             this.xDistance + 1,
             this.yDistance + 1,
-            this.panelWidth - 2,
+            combinedPanelWidth - 2,
             this.headerHeight,
             this.headerBackgroundColor,
             this.headerBackgroundColor,
@@ -618,158 +669,44 @@ private:
             return false;
         }
 
+        if (!this.createDirectionPanel(
+            trendAlignBuy,
+            0,
+            fromBuyCount,
+            fromBuyCount,
+            fromCurrentTimeFrame,
+            fromDisplayTimeFrames,
+            columnCount,
+            panelHeight
+        )) {
+            this.destroyObjects();
+            return false;
+        }
+
+        if (!this.createDirectionPanel(
+            trendAlignSell,
+            fromBuyCount,
+            fromSellCount,
+            fromBuyCount,
+            fromCurrentTimeFrame,
+            fromDisplayTimeFrames,
+            columnCount,
+            panelHeight
+        )) {
+            this.destroyObjects();
+            return false;
+        }
+
         if (fromH1RunnerUpPanelEnabled) {
-            if (!this.createH1RunnerUpPanel(fromH1RunnerUpCount)) {
+            if (!this.createH1RunnerUpPanel(
+                fromH1RunnerUpBuyCount,
+                fromH1RunnerUpSellCount
+            )) {
                 this.destroyObjects();
                 return false;
             }
         } else {
-            if (!this.createEntryLegend()) {
-                this.destroyObjects();
-                return false;
-            }
-        }
-
-        for (int i = 0; i < columnCount; i++) {
-            if (!this.createLabel(
-                this.getHeaderObjectName(i),
-                this.getColumnLeftOffset(i),
-                this.columnHeaderYDistance,
-                this.bodyFontSize,
-                this.headerColor,
-                this.getHeaderText(i, fromDisplayTimeFrames)
-            )) {
-                this.destroyObjects();
-                return false;
-            }
-        }
-
-        if (!this.createRectangle(
-            this.objectPrefix + "Separator",
-            this.xDistance + this.tableLeftOffset,
-            this.yDistance + this.separatorYDistance,
-            this.panelWidth - (this.tableLeftOffset * 2),
-            1,
-            this.borderColor,
-            this.borderColor,
-            1
-        )) {
-            this.destroyObjects();
-            return false;
-        }
-
-        int verticalStartOffset = this.columnHeaderYDistance - 4;
-        int verticalHeight = panelHeight
-            - verticalStartOffset
-            - this.bottomPadding;
-
-        for (int i = 1; i < columnCount; i++) {
-            int verticalXDistance = this.xDistance
-                + this.getColumnLeftOffset(i)
-                - this.cellLeftPadding;
-
-            if (!this.createRectangle(
-                this.objectPrefix + "ColumnSeparator_" + IntegerToString(i),
-                verticalXDistance,
-                this.yDistance + verticalStartOffset,
-                1,
-                verticalHeight,
-                this.borderColor,
-                this.borderColor,
-                1
-            )) {
-                this.destroyObjects();
-                return false;
-            }
-        }
-
-        if (!this.createLabel(
-            this.objectPrefix + "GroupBuy",
-            14,
-            this.firstGroupYDistance,
-            this.bodyFontSize,
-            this.buyColor,
-            "BUY"
-        )) {
-            this.destroyObjects();
-            return false;
-        }
-
-        if (!this.createLabel(
-            this.objectPrefix + "GroupSell",
-            14,
-            sellGroupYDistance,
-            this.bodyFontSize,
-            this.sellColor,
-            "SELL"
-        )) {
-            this.destroyObjects();
-            return false;
-        }
-
-        for (int i = 0; i < rowCount; i++) {
-            int rowYDistance = this.getRowYDistance(i, fromBuyCount);
-
-            for (int j = 0; j < columnCount; j++) {
-                if (!this.createLabel(
-                    this.getCellObjectName(i, j),
-                    this.getColumnLeftOffset(j),
-                    rowYDistance,
-                    this.bodyFontSize,
-                    this.normalColor,
-                    "-"
-                )) {
-                    this.destroyObjects();
-                    return false;
-                }
-
-                if (!this.createLabel(
-                    this.getEmaCellObjectName(i, j),
-                    this.getColumnLeftOffset(j),
-                    rowYDistance + this.emaRowOffset,
-                    this.bodyFontSize,
-                    this.mutedColor,
-                    "-"
-                )) {
-                    this.destroyObjects();
-                    return false;
-                }
-
-                if (j >= drawAlignedElliotAllListColumnTimeFrameStart
-                        && !this.createLabel(
-                            this.getFibonacciCellObjectName(i, j),
-                            this.getColumnLeftOffset(j)
-                                + this.columnWidth
-                                - this.fibonacciRightPadding,
-                            rowYDistance + this.emaRowOffset,
-                            this.bodyFontSize - 1,
-                            this.headerColor,
-                            " ",
-                            ANCHOR_RIGHT_UPPER
-                        )) {
-                    this.destroyObjects();
-                    return false;
-                }
-            }
-
-            bool drawSeparator = false;
-
-            if (i < fromBuyCount - 1) {
-                drawSeparator = true;
-            } else if (i >= fromBuyCount && i < rowCount - 1) {
-                drawSeparator = true;
-            }
-
-            if (drawSeparator && !this.createRectangle(
-                this.objectPrefix + "RowSeparator_" + IntegerToString(i),
-                this.xDistance + this.tableLeftOffset,
-                this.yDistance + rowYDistance + this.rowHeight - 3,
-                this.panelWidth - (this.tableLeftOffset * 2),
-                1,
-                this.borderColor,
-                this.borderColor,
-                1
-            )) {
+            if (!this.createEntryLegend(fromCurrentTimeFrame)) {
                 this.destroyObjects();
                 return false;
             }
@@ -778,7 +715,10 @@ private:
         this.createdRowCount = rowCount;
         this.createdBuyCount = fromBuyCount;
         this.createdSellCount = fromSellCount;
-        this.createdH1RunnerUpCount = fromH1RunnerUpCount;
+        this.createdH1RunnerUpCount = h1RunnerUpCount;
+        this.createdH1RunnerUpBuyCount = fromH1RunnerUpBuyCount;
+        this.createdH1RunnerUpSellCount = fromH1RunnerUpSellCount;
+        this.createdH1RunnerUpPanelEnabled = fromH1RunnerUpPanelEnabled;
         this.createdCurrentTimeFrame = fromCurrentTimeFrame;
         this.created = true;
 
@@ -786,18 +726,237 @@ private:
     }
 
     /**
-     * 一覧右側へENTRY優先度の凡例を生成する。
+     * BUYまたはSELLの片側一覧パネルを生成する。
      *
+     * @param fromAlignType 描画する方向。
+     * @param fromStartRowIndex グローバル行の開始番号。
+     * @param fromRowCount 対象方向の行数。
+     * @param fromBuyCount BUY行数。
+     * @param fromCurrentTimeFrame 表示時間足。
+     * @param fromDisplayTimeFrames 表示対象時間足一覧。
+     * @param fromColumnCount 列数。
+     * @param fromPanelHeight パネル高さ。
      * @return 生成に成功した場合true。
      */
-    bool createEntryLegend() {
-        int legendLeftOffset = this.panelWidth + this.entryLegendGap;
+    bool createDirectionPanel(
+        TrendAlignType fromAlignType,
+        int fromStartRowIndex,
+        int fromRowCount,
+        int fromBuyCount,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
+        const ENUM_TIMEFRAMES &fromDisplayTimeFrames[],
+        int fromColumnCount,
+        int fromPanelHeight
+    ) {
+        int panelLeftOffset = this.getDirectionPanelLeftOffset(fromAlignType);
+        string directionSuffix = this.getDirectionObjectSuffix(fromAlignType);
+
+        for (int i = 0; i < fromColumnCount; i++) {
+            if (!this.createLabel(
+                this.getHeaderObjectName(fromAlignType, i),
+                panelLeftOffset + this.getColumnLeftOffset(i),
+                this.columnHeaderYDistance,
+                this.bodyFontSize,
+                this.headerColor,
+                this.getHeaderText(
+                    i,
+                    fromCurrentTimeFrame,
+                    fromDisplayTimeFrames
+                )
+            )) {
+                return false;
+            }
+        }
+
+        if (!this.createRectangle(
+            this.objectPrefix + "Separator" + directionSuffix,
+            this.xDistance + panelLeftOffset + this.tableLeftOffset,
+            this.yDistance + this.separatorYDistance,
+            this.panelWidth - (this.tableLeftOffset * 2),
+            1,
+            this.borderColor,
+            this.borderColor,
+            1
+        )) {
+            return false;
+        }
+
+        int verticalStartOffset = this.columnHeaderYDistance - 4;
+        int verticalHeight = fromPanelHeight
+            - verticalStartOffset
+            - this.bottomPadding;
+
+        for (int i = 1; i < fromColumnCount; i++) {
+            int verticalXDistance = this.xDistance
+                + panelLeftOffset
+                + this.getColumnLeftOffset(i)
+                - this.cellLeftPadding;
+
+            if (!this.createRectangle(
+                this.objectPrefix + "ColumnSeparator" + directionSuffix
+                    + "_" + IntegerToString(i),
+                verticalXDistance,
+                this.yDistance + verticalStartOffset,
+                1,
+                verticalHeight,
+                this.borderColor,
+                this.borderColor,
+                1
+            )) {
+                return false;
+            }
+        }
+
+        string groupObjectName = this.objectPrefix + "GroupBuy";
+        string groupText = StringFormat("BUY  %d", fromRowCount);
+        color groupColor = this.buyColor;
+
+        if (fromAlignType == trendAlignSell) {
+            groupObjectName = this.objectPrefix + "GroupSell";
+            groupText = StringFormat("SELL  %d", fromRowCount);
+            groupColor = this.sellColor;
+        }
+
+        if (!this.createLabel(
+            groupObjectName,
+            panelLeftOffset + 14,
+            this.firstGroupYDistance,
+            this.bodyFontSize,
+            groupColor,
+            groupText
+        )) {
+            return false;
+        }
+
+        if (fromRowCount == 0
+                && !this.createLabel(
+                    this.objectPrefix + "Empty" + directionSuffix,
+                    panelLeftOffset + this.getColumnLeftOffset(0),
+                    this.firstGroupYDistance + this.groupHeight,
+                    this.bodyFontSize,
+                    this.mutedColor,
+                    "候補なし"
+                )) {
+            return false;
+        }
+
+        for (int i = 0; i < fromRowCount; i++) {
+            int rowIndex = fromStartRowIndex + i;
+            int rowYDistance = this.getRowYDistance(
+                rowIndex,
+                fromBuyCount
+            );
+
+            for (int j = 0; j < fromColumnCount; j++) {
+                if (!this.createLabel(
+                    this.getCellObjectName(rowIndex, j),
+                    panelLeftOffset + this.getColumnLeftOffset(j),
+                    rowYDistance,
+                    this.bodyFontSize,
+                    this.normalColor,
+                    "-"
+                )) {
+                    return false;
+                }
+
+                if (!this.createLabel(
+                    this.getEmaCellObjectName(rowIndex, j),
+                    panelLeftOffset + this.getColumnLeftOffset(j),
+                    rowYDistance + this.emaRowOffset,
+                    this.bodyFontSize,
+                    this.mutedColor,
+                    "-"
+                )) {
+                    return false;
+                }
+
+                if (j >= drawAlignedElliotAllListColumnTimeFrameStart
+                        && !this.createLabel(
+                            this.getFibonacciCellObjectName(rowIndex, j),
+                            panelLeftOffset
+                                + this.getColumnLeftOffset(j)
+                                + this.columnWidth
+                                - this.fibonacciRightPadding,
+                            rowYDistance + this.emaRowOffset,
+                            this.bodyFontSize - 1,
+                            this.headerColor,
+                            " ",
+                            ANCHOR_RIGHT_UPPER
+                        )) {
+                    return false;
+                }
+            }
+
+            if (i < fromRowCount - 1
+                    && !this.createRectangle(
+                        this.objectPrefix + "RowSeparator_"
+                            + IntegerToString(rowIndex),
+                        this.xDistance
+                            + panelLeftOffset
+                            + this.tableLeftOffset,
+                        this.yDistance
+                            + rowYDistance
+                            + this.rowHeight
+                            - 3,
+                        this.panelWidth - (this.tableLeftOffset * 2),
+                        1,
+                        this.borderColor,
+                        this.borderColor,
+                        1
+                    )) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * 一覧下側へENTRY優先度またはD1条件ランクの凡例を生成する。
+     *
+     * @param fromCurrentTimeFrame 表示時間足。
+     * @return 生成に成功した場合true。
+     */
+    bool createEntryLegend(ENUM_TIMEFRAMES fromCurrentTimeFrame) {
+        int legendLeftOffset = 0;
+        int legendTopOffset = this.supplementalPanelTopOffset;
+        int legendWidth = this.getCombinedPanelWidth();
+        string legendTitle = "ENTRY 判定";
+        string legendTexts[] = {
+            "READY 主要条件成立",
+            "NEAR あと1条件",
+            "SETUP 複数条件待ち",
+            "ALIGN 1/3波待ち",
+            "ERROR データ不足"
+        };
+        color legendColors[] = {
+            this.entryReadyColor,
+            this.entryNearColor,
+            this.entrySetupColor,
+            this.mutedColor,
+            this.entryErrorColor
+        };
+
+        if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
+                && fromCurrentTimeFrame == PERIOD_D1) {
+            legendTitle = "D1 条件ランク";
+            legendTexts[0] = "D1-S W1+MN1+W1EMA";
+            legendTexts[1] = "D1-A W1+(MN1|W1EMA)";
+            legendTexts[2] = "D1-B W1のみ";
+            legendTexts[3] = "D1-NG W1不一致";
+            legendTexts[4] = "D1-ERR データ不足";
+            legendColors[0] = this.entryReadyColor;
+            legendColors[1] = this.entryNearColor;
+            legendColors[2] = this.entrySetupColor;
+            legendColors[3] = this.entryErrorColor;
+            legendColors[4] = this.entryErrorColor;
+        }
 
         if (!this.createRectangle(
             this.objectPrefix + "EntryLegendPanel",
             this.xDistance + legendLeftOffset,
-            this.yDistance,
-            this.entryLegendWidth,
+            this.yDistance + legendTopOffset,
+            legendWidth,
             this.entryLegendHeight,
             this.panelBackgroundColor,
             this.borderColor,
@@ -809,9 +968,9 @@ private:
         if (!this.createRectangle(
             this.objectPrefix + "EntryLegendTitleBackground",
             this.xDistance + legendLeftOffset + 1,
-            this.yDistance + 1,
-            this.entryLegendWidth - 2,
-            this.headerHeight,
+            this.yDistance + legendTopOffset + 1,
+            legendWidth - 2,
+            this.entryLegendHeaderHeight,
             this.headerBackgroundColor,
             this.headerBackgroundColor,
             1
@@ -822,35 +981,23 @@ private:
         if (!this.createLabel(
             this.objectPrefix + "EntryLegendTitle",
             legendLeftOffset + 12,
-            5,
+            legendTopOffset + 5,
             this.titleFontSize,
             this.titleColor,
-            "ENTRY 判定"
+            legendTitle
         )) {
             return false;
         }
-
-        string legendTexts[] = {
-            "READY  主要条件成立・最終判定前",
-            "NEAR   あと1条件でREADY",
-            "SETUP  対象波成立・複数条件待ち",
-            "ALIGN  対象時間足の1/3波待ち",
-            "ERROR  判定データ不足"
-        };
-        color legendColors[] = {
-            this.entryReadyColor,
-            this.entryNearColor,
-            this.entrySetupColor,
-            this.mutedColor,
-            this.entryErrorColor
-        };
         int legendCount = ArraySize(legendTexts);
+        int legendColumnWidth = legendWidth / legendCount;
 
         for (int i = 0; i < legendCount; i++) {
             if (!this.createLabel(
                 this.objectPrefix + "EntryLegend_" + IntegerToString(i),
-                legendLeftOffset + 12,
-                this.headerHeight + 8 + (i * this.entryLegendRowHeight),
+                legendLeftOffset + 12 + (i * legendColumnWidth),
+                legendTopOffset
+                    + this.entryLegendHeaderHeight
+                    + 8,
                 this.bodyFontSize,
                 legendColors[i],
                 legendTexts[i]
@@ -863,25 +1010,52 @@ private:
     }
 
     /**
-     * 一覧右側へH1方向一致の次点候補パネルを生成する。
+     * 一覧下側へH1方向一致の次点候補パネルを生成する。
      *
-     * @param fromRunnerUpCount 次点候補行数。
+     * @param fromBuyCount BUY次点候補行数。
+     * @param fromSellCount SELL次点候補行数。
      * @return 生成に成功した場合true。
      */
-    bool createH1RunnerUpPanel(int fromRunnerUpCount) {
-        int panelLeftOffset = this.panelWidth + this.entryLegendGap;
+    bool createH1RunnerUpPanel(int fromBuyCount, int fromSellCount) {
+        int panelTopOffset = this.supplementalPanelTopOffset;
         int firstGroupTopOffset = this.headerHeight + 8;
+        int maximumRowCount = fromBuyCount;
+
+        if (fromSellCount > maximumRowCount) {
+            maximumRowCount = fromSellCount;
+        }
+
+        if (maximumRowCount == 0) {
+            maximumRowCount = 1;
+        }
+
         int panelHeight = firstGroupTopOffset
-            + (this.h1RunnerUpGroupHeight * 2)
-            + this.h1RunnerUpSectionGap
-            + (fromRunnerUpCount * this.entryLegendRowHeight)
+            + this.h1RunnerUpGroupHeight
+            + (maximumRowCount * this.entryLegendRowHeight)
             + this.bottomPadding;
+        int combinedPanelWidth = this.getCombinedPanelWidth();
+        int sellPanelLeftOffset = this.getDirectionPanelLeftOffset(
+            trendAlignSell
+        );
 
         if (!this.createRectangle(
-            this.objectPrefix + "H1RunnerUpPanel",
-            this.xDistance + panelLeftOffset,
-            this.yDistance,
-            this.entryLegendWidth,
+            this.objectPrefix + "H1RunnerUpPanelBuy",
+            this.xDistance,
+            this.yDistance + panelTopOffset,
+            this.panelWidth,
+            panelHeight,
+            this.panelBackgroundColor,
+            this.borderColor,
+            0
+        )) {
+            return false;
+        }
+
+        if (!this.createRectangle(
+            this.objectPrefix + "H1RunnerUpPanelSell",
+            this.xDistance + sellPanelLeftOffset,
+            this.yDistance + panelTopOffset,
+            this.panelWidth,
             panelHeight,
             this.panelBackgroundColor,
             this.borderColor,
@@ -892,9 +1066,9 @@ private:
 
         if (!this.createRectangle(
             this.objectPrefix + "H1RunnerUpTitleBackground",
-            this.xDistance + panelLeftOffset + 1,
-            this.yDistance + 1,
-            this.entryLegendWidth - 2,
+            this.xDistance + 1,
+            this.yDistance + panelTopOffset + 1,
+            combinedPanelWidth - 2,
             this.headerHeight,
             this.headerBackgroundColor,
             this.headerBackgroundColor,
@@ -905,8 +1079,8 @@ private:
 
         if (!this.createLabel(
             this.objectPrefix + "H1RunnerUpTitle",
-            panelLeftOffset + 12,
-            5,
+            12,
+            panelTopOffset + 5,
             this.titleFontSize,
             this.titleColor,
             "NEXT H1"
@@ -916,8 +1090,8 @@ private:
 
         if (!this.createLabel(
             this.objectPrefix + "H1RunnerUpGroupBuy",
-            panelLeftOffset + 12,
-            firstGroupTopOffset,
+            12,
+            panelTopOffset + firstGroupTopOffset,
             this.bodyFontSize,
             this.buyColor,
             "BUY 0"
@@ -927,10 +1101,8 @@ private:
 
         if (!this.createLabel(
             this.objectPrefix + "H1RunnerUpGroupSell",
-            panelLeftOffset + 12,
-            firstGroupTopOffset
-                + this.h1RunnerUpGroupHeight
-                + this.h1RunnerUpSectionGap,
+            sellPanelLeftOffset + 12,
+            panelTopOffset + firstGroupTopOffset,
             this.bodyFontSize,
             this.sellColor,
             "SELL 0"
@@ -938,11 +1110,50 @@ private:
             return false;
         }
 
-        for (int i = 0; i < fromRunnerUpCount; i++) {
+        if (fromBuyCount == 0
+                && !this.createLabel(
+                    this.objectPrefix + "H1RunnerUpEmptyBuy",
+                    12,
+                    panelTopOffset
+                        + firstGroupTopOffset
+                        + this.h1RunnerUpGroupHeight,
+                    this.bodyFontSize,
+                    this.mutedColor,
+                    "候補なし"
+                )) {
+            return false;
+        }
+
+        if (fromSellCount == 0
+                && !this.createLabel(
+                    this.objectPrefix + "H1RunnerUpEmptySell",
+                    sellPanelLeftOffset + 12,
+                    panelTopOffset
+                        + firstGroupTopOffset
+                        + this.h1RunnerUpGroupHeight,
+                    this.bodyFontSize,
+                    this.mutedColor,
+                    "候補なし"
+                )) {
+            return false;
+        }
+
+        int runnerUpCount = fromBuyCount + fromSellCount;
+
+        for (int i = 0; i < runnerUpCount; i++) {
+            int rowPanelLeftOffset = 0;
+
+            if (i >= fromBuyCount) {
+                rowPanelLeftOffset = sellPanelLeftOffset;
+            }
+
             if (!this.createLabel(
                 this.getH1RunnerUpRowObjectName(i),
-                panelLeftOffset + 12,
-                firstGroupTopOffset + this.h1RunnerUpGroupHeight,
+                rowPanelLeftOffset + 12,
+                panelTopOffset + this.getH1RunnerUpRowTopOffset(
+                    i,
+                    fromBuyCount
+                ),
                 this.bodyFontSize,
                 this.mutedColor,
                 "-"
@@ -1162,16 +1373,6 @@ private:
             StringFormat("SELL  %d", fromSellCount)
         );
 
-        int sellGroupTopOffset = this.getH1RunnerUpSellGroupTopOffset(
-            fromBuyCount
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectPrefix + "H1RunnerUpGroupSell",
-            OBJPROP_YDISTANCE,
-            this.yDistance + sellGroupTopOffset
-        );
-
         for (int i = 0; i < displayCount; i++) {
             ElliotAll *elliotAll = fromElliotAllList.elliotAllList.At(
                 fromDisplayIndexes[i]
@@ -1192,6 +1393,13 @@ private:
             color rowColor = this.getAlignColor(
                 fromRunnerUpResults[i].alignType
             );
+            int rowPanelLeftOffset = 0;
+
+            if (i >= fromBuyCount) {
+                rowPanelLeftOffset = this.getDirectionPanelLeftOffset(
+                    trendAlignSell
+                );
+            }
 
             ObjectSetString(
                 this.chartId,
@@ -1214,11 +1422,19 @@ private:
             ObjectSetInteger(
                 this.chartId,
                 objectName,
+                OBJPROP_XDISTANCE,
+                this.xDistance + rowPanelLeftOffset + 12
+            );
+            ObjectSetInteger(
+                this.chartId,
+                objectName,
                 OBJPROP_YDISTANCE,
-                this.yDistance + this.getH1RunnerUpRowTopOffset(
-                    i,
-                    fromBuyCount
-                )
+                this.yDistance
+                    + this.supplementalPanelTopOffset
+                    + this.getH1RunnerUpRowTopOffset(
+                        i,
+                        fromBuyCount
+                    )
             );
         }
     }
@@ -1255,20 +1471,6 @@ private:
     }
 
     /**
-     * H1次点候補のSELLグループ見出し位置を取得する。
-     *
-     * @param fromBuyCount BUY候補件数。
-     * @return パネル上端からの位置。
-     */
-    int getH1RunnerUpSellGroupTopOffset(int fromBuyCount) {
-        return this.headerHeight
-            + 8
-            + this.h1RunnerUpGroupHeight
-            + (fromBuyCount * this.entryLegendRowHeight)
-            + this.h1RunnerUpSectionGap;
-    }
-
-    /**
      * H1次点候補行の位置を取得する。
      *
      * @param fromRowIndex 表示行番号。
@@ -1277,18 +1479,15 @@ private:
      */
     int getH1RunnerUpRowTopOffset(int fromRowIndex, int fromBuyCount) {
         int firstGroupTopOffset = this.headerHeight + 8;
+        int localRowIndex = fromRowIndex;
 
-        if (fromRowIndex < fromBuyCount) {
-            return firstGroupTopOffset
-                + this.h1RunnerUpGroupHeight
-                + (fromRowIndex * this.entryLegendRowHeight);
+        if (fromRowIndex >= fromBuyCount) {
+            localRowIndex = fromRowIndex - fromBuyCount;
         }
 
-        int sellRowIndex = fromRowIndex - fromBuyCount;
-
-        return this.getH1RunnerUpSellGroupTopOffset(fromBuyCount)
+        return firstGroupTopOffset
             + this.h1RunnerUpGroupHeight
-            + (sellRowIndex * this.entryLegendRowHeight);
+            + (localRowIndex * this.entryLegendRowHeight);
     }
 
     /**
@@ -1331,9 +1530,11 @@ private:
             this.drawRow(
                 fromStartRowIndex + i,
                 elliotAll,
+                fromCurrentTimeFrame,
                 fromDisplayTimeFrames,
                 fromAlignType,
-                priorityResults[i]
+                priorityResults[i],
+                d1SortResults[i]
             );
         }
     }
@@ -1660,16 +1861,20 @@ private:
      *
      * @param fromRowIndex 表示行番号。
      * @param fromElliotAll 分析結果。
+     * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayTimeFrames 表示対象時間足一覧。
      * @param fromAlignType 一致方向。
      * @param fromPriorityResult エントリー優先度判定結果。
+     * @param fromD1SortResult D1条件ソート判定結果。
      */
     void drawRow(
         int fromRowIndex,
         ElliotAll *fromElliotAll,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
         const ENUM_TIMEFRAMES &fromDisplayTimeFrames[],
         TrendAlignType fromAlignType,
-        Mtf3In3EntryPriorityResult &fromPriorityResult
+        Mtf3In3EntryPriorityResult &fromPriorityResult,
+        D1ElliotEmaSortResult &fromD1SortResult
     ) {
         if (fromElliotAll == NULL) {
             return;
@@ -1689,11 +1894,24 @@ private:
             "EMA200",
             this.headerColor
         );
+        string entryText = this.getEntryPriorityText(
+            fromPriorityResult.rank
+        );
+        color entryColor = this.getEntryPriorityColor(
+            fromPriorityResult.rank
+        );
+
+        if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
+                && fromCurrentTimeFrame == PERIOD_D1) {
+            entryText = this.getD1ConditionRankText(fromD1SortResult);
+            entryColor = this.getD1ConditionRankColor(fromD1SortResult);
+        }
+
         this.setCell(
             fromRowIndex,
             drawAlignedElliotAllListColumnEntryPriority,
-            this.getEntryPriorityText(fromPriorityResult.rank),
-            this.getEntryPriorityColor(fromPriorityResult.rank)
+            entryText,
+            entryColor
         );
         this.setEmaCell(
             fromRowIndex,
@@ -2151,6 +2369,58 @@ private:
     }
 
     /**
+     * D1条件ランクの表示文字列を取得する。
+     *
+     * @param fromResult D1条件ソート判定結果。
+     * @return D1-S / D1-A / D1-B / D1-NG / D1-ERR。
+     */
+    string getD1ConditionRankText(D1ElliotEmaSortResult &fromResult) {
+        if (!fromResult.isEvaluated) {
+            return "D1-ERR";
+        }
+
+        if (fromResult.d1ConditionRank == d1ConditionSortRankS) {
+            return "D1-S";
+        }
+
+        if (fromResult.d1ConditionRank == d1ConditionSortRankA) {
+            return "D1-A";
+        }
+
+        if (fromResult.d1ConditionRank == d1ConditionSortRankB) {
+            return "D1-B";
+        }
+
+        return "D1-NG";
+    }
+
+    /**
+     * D1条件ランクの表示色を取得する。
+     *
+     * @param fromResult D1条件ソート判定結果。
+     * @return D1条件ランクに対応する表示色。
+     */
+    color getD1ConditionRankColor(D1ElliotEmaSortResult &fromResult) {
+        if (!fromResult.isEvaluated) {
+            return this.entryErrorColor;
+        }
+
+        if (fromResult.d1ConditionRank == d1ConditionSortRankS) {
+            return this.entryReadyColor;
+        }
+
+        if (fromResult.d1ConditionRank == d1ConditionSortRankA) {
+            return this.entryNearColor;
+        }
+
+        if (fromResult.d1ConditionRank == d1ConditionSortRankB) {
+            return this.entrySetupColor;
+        }
+
+        return this.entryErrorColor;
+    }
+
+    /**
      * 一致方向の表示色を取得する。
      *
      * @param fromAlignType 一致方向。
@@ -2400,6 +2670,27 @@ private:
     }
 
     /**
+     * 表示時間足数に応じて一覧列幅を設定する。
+     *
+     * 下位足で列数が増えた場合も左右パネルが横へ広がりすぎないようにする。
+     *
+     * @param fromTimeFrameCount 表示時間足数。
+     */
+    void configureColumnWidth(int fromTimeFrameCount) {
+        this.columnWidth = 108;
+
+        if (fromTimeFrameCount >= 8) {
+            this.columnWidth = 86;
+
+            return;
+        }
+
+        if (fromTimeFrameCount >= 7) {
+            this.columnWidth = 96;
+        }
+    }
+
+    /**
      * 時間足列数に応じたパネル横幅を取得する。
      *
      * @param fromCurrentTimeFrame 一覧基準の時間足。
@@ -2427,6 +2718,43 @@ private:
     }
 
     /**
+     * BUY・SELL一覧を合わせた横幅を取得する。
+     *
+     * @return 左右一覧の合計横幅。
+     */
+    int getCombinedPanelWidth() {
+        return (this.panelWidth * 2) + this.sectionGap;
+    }
+
+    /**
+     * 指定方向のパネル左端位置を取得する。
+     *
+     * @param fromAlignType 対象方向。
+     * @return 一覧全体の左端からの位置。
+     */
+    int getDirectionPanelLeftOffset(TrendAlignType fromAlignType) {
+        if (fromAlignType == trendAlignSell) {
+            return this.panelWidth + this.sectionGap;
+        }
+
+        return 0;
+    }
+
+    /**
+     * 指定方向のオブジェクト名サフィックスを取得する。
+     *
+     * @param fromAlignType 対象方向。
+     * @return BuyまたはSell。
+     */
+    string getDirectionObjectSuffix(TrendAlignType fromAlignType) {
+        if (fromAlignType == trendAlignSell) {
+            return "Sell";
+        }
+
+        return "Buy";
+    }
+
+    /**
      * 列の左端位置を取得する。
      *
      * @param fromColumnIndex 列番号。
@@ -2442,11 +2770,13 @@ private:
      * 列ヘッダー文字列を取得する。
      *
      * @param fromColumnIndex 列番号。
+     * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayTimeFrames 表示対象時間足一覧。
      * @return 列ヘッダー文字列。
      */
     string getHeaderText(
         int fromColumnIndex,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
         const ENUM_TIMEFRAMES &fromDisplayTimeFrames[]
     ) {
         if (fromColumnIndex == drawAlignedElliotAllListColumnSymbol) {
@@ -2454,6 +2784,11 @@ private:
         }
 
         if (fromColumnIndex == drawAlignedElliotAllListColumnEntryPriority) {
+            if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
+                    && fromCurrentTimeFrame == PERIOD_D1) {
+                return "D1 RANK";
+            }
+
             return "ENTRY";
         }
 
@@ -2468,19 +2803,6 @@ private:
     }
 
     /**
-     * SELLグループ見出しのY位置を取得する。
-     *
-     * @param fromBuyCount BUY行数。
-     * @return パネル上端からの位置。
-     */
-    int getSellGroupYDistance(int fromBuyCount) {
-        return this.firstGroupYDistance
-            + this.groupHeight
-            + (fromBuyCount * this.rowHeight)
-            + this.sectionGap;
-    }
-
-    /**
      * 指定表示行のY位置を取得する。
      *
      * @param fromRowIndex 表示行番号。
@@ -2488,27 +2810,31 @@ private:
      * @return パネル上端からの位置。
      */
     int getRowYDistance(int fromRowIndex, int fromBuyCount) {
-        if (fromRowIndex < fromBuyCount) {
-            return this.firstGroupYDistance
-                + this.groupHeight
-                + (fromRowIndex * this.rowHeight);
+        int localRowIndex = fromRowIndex;
+
+        if (fromRowIndex >= fromBuyCount) {
+            localRowIndex = fromRowIndex - fromBuyCount;
         }
 
-        int sellRowIndex = fromRowIndex - fromBuyCount;
-
-        return this.getSellGroupYDistance(fromBuyCount)
+        return this.firstGroupYDistance
             + this.groupHeight
-            + (sellRowIndex * this.rowHeight);
+            + (localRowIndex * this.rowHeight);
     }
 
     /**
      * 列ヘッダーのオブジェクト名を取得する。
      *
+     * @param fromAlignType 対象方向。
      * @param fromColumnIndex 列番号。
      * @return オブジェクト名。
      */
-    string getHeaderObjectName(int fromColumnIndex) {
-        return this.objectPrefix + "Header_" + IntegerToString(fromColumnIndex);
+    string getHeaderObjectName(
+        TrendAlignType fromAlignType,
+        int fromColumnIndex
+    ) {
+        return this.objectPrefix
+            + "Header" + this.getDirectionObjectSuffix(fromAlignType)
+            + "_" + IntegerToString(fromColumnIndex);
     }
 
     /**
@@ -2571,7 +2897,11 @@ private:
         this.createdBuyCount = 0;
         this.createdSellCount = 0;
         this.createdH1RunnerUpCount = 0;
+        this.createdH1RunnerUpBuyCount = 0;
+        this.createdH1RunnerUpSellCount = 0;
+        this.createdH1RunnerUpPanelEnabled = false;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
+        this.supplementalPanelTopOffset = 0;
     }
 };
 
