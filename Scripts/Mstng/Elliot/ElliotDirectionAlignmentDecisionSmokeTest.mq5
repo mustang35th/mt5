@@ -31,6 +31,151 @@ string convertAlignTypeText(const TrendAlignType fromAlignType) {
 }
 
 /**
+ * 判定可能な最小Elliotを生成する。
+ *
+ * @param fromTimeFrame 対象時間足
+ * @param fromIsBuy BUY方向の場合true
+ * @return 呼び出し側が所有するElliot。生成失敗時NULL
+ */
+Elliot *createReadyElliot(
+    const ENUM_TIMEFRAMES fromTimeFrame,
+    const bool fromIsBuy
+) {
+    Elliot *elliot = new Elliot("EURUSD", fromTimeFrame);
+
+    if (elliot == NULL) {
+        return NULL;
+    }
+
+    elliot.isBuy = fromIsBuy;
+    elliot.oscillator.isBuy = fromIsBuy;
+
+    if (fromIsBuy) {
+        elliot.buySellLabel = "BUY";
+    } else {
+        elliot.buySellLabel = "SELL";
+    }
+
+    CArrayObj pointList;
+    ZigZagPoint *point = new ZigZagPoint(elliot.marketContext);
+
+    if (point == NULL) {
+        delete elliot;
+
+        return NULL;
+    }
+
+    point.elliotIndex = 1;
+    point.isElliotAlphabet = false;
+    point.setElliotLabel();
+
+    if (!pointList.Add(point)) {
+        delete point;
+        delete elliot;
+
+        return NULL;
+    }
+
+    Wave *wave = new Wave(
+        elliot.marketContext,
+        pointList,
+        true,
+        fromIsBuy
+    );
+
+    if (wave == NULL || !elliot.waveList.Add(wave)) {
+        if (wave != NULL) {
+            delete wave;
+        }
+
+        delete elliot;
+
+        return NULL;
+    }
+
+    return elliot;
+}
+
+/**
+ * M5終端の同一分析結果をH1とM5で独立評価できることを検証する。
+ */
+void validateIndependentViewTimeFrames() {
+    ElliotAll *elliotAll = new ElliotAll("EURUSD", PERIOD_M5);
+    Elliot *elliotH1 = createReadyElliot(PERIOD_H1, true);
+    Elliot *elliotM5 = createReadyElliot(PERIOD_M5, false);
+
+    if (elliotAll == NULL || elliotH1 == NULL || elliotM5 == NULL) {
+        if (elliotH1 != NULL) {
+            delete elliotH1;
+        }
+
+        if (elliotM5 != NULL) {
+            delete elliotM5;
+        }
+
+        if (elliotAll != NULL) {
+            delete elliotAll;
+        }
+
+        gFailureCount++;
+        Print("FAIL INDEPENDENT VIEW allocation");
+
+        return;
+    }
+
+    if (!elliotAll.elliotList.Add(elliotH1)) {
+        delete elliotH1;
+        delete elliotM5;
+        delete elliotAll;
+        gFailureCount++;
+        Print("FAIL INDEPENDENT VIEW add H1");
+
+        return;
+    }
+
+    if (!elliotAll.elliotList.Add(elliotM5)) {
+        delete elliotM5;
+        delete elliotAll;
+        gFailureCount++;
+        Print("FAIL INDEPENDENT VIEW add M5");
+
+        return;
+    }
+
+    elliotAll.elliotCurrent = elliotM5;
+    elliotAll.isAnalysisSucceeded = true;
+
+    ElliotDirectionAlignmentDecision h1Decision(PERIOD_H1);
+    ElliotDirectionAlignmentDecision m5Decision(PERIOD_M5);
+    bool isH1Ready = h1Decision.isReady(elliotAll, PERIOD_H1);
+    bool isM5Ready = m5Decision.isReady(elliotAll, PERIOD_M5);
+    TrendAlignType h1AlignType = h1Decision.getAlignType(
+        elliotAll,
+        PERIOD_H1
+    );
+    TrendAlignType m5AlignType = m5Decision.getAlignType(
+        elliotAll,
+        PERIOD_M5
+    );
+
+    if (!isH1Ready
+            || !isM5Ready
+            || h1AlignType != trendAlignBuy
+            || m5AlignType != trendAlignSell) {
+        gFailureCount++;
+        PrintFormat(
+            "FAIL INDEPENDENT VIEW h1Ready=%s m5Ready=%s h1=%s m5=%s",
+            (string)isH1Ready,
+            (string)isM5Ready,
+            convertAlignTypeText(h1AlignType),
+            convertAlignTypeText(m5AlignType)
+        );
+    }
+
+    delete elliotAll;
+}
+
+/**
  * D1専用方向一致判定の期待値を検証する。
  *
  * @param fromCaseName テストケース名
@@ -855,6 +1000,7 @@ void OnStart() {
     validateH1SellRunnerUpCases();
     validateH1RunnerUpInvalidEmaCases();
     validateAlignmentRuleValues();
+    validateIndependentViewTimeFrames();
 
     if (gFailureCount == 0) {
         Print("ElliotDirectionAlignmentDecisionSmokeTest PASS");

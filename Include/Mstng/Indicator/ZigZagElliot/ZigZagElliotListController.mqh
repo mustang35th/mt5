@@ -39,7 +39,9 @@ public:
         this.symbolNameInfoAll = NULL;
         this.oscillatorHandleManager = NULL;
         this.alignmentDecision = NULL;
+        this.h1AlignmentDecision = NULL;
         this.drawer = NULL;
+        this.h1Drawer = NULL;
         this.alertAllController = NULL;
         this.initialized = false;
         this.executing = false;
@@ -47,6 +49,7 @@ public:
         this.isTester = false;
         this.testerHistoryWarmUpEnabled = false;
         this.hasPendingAnalysis = false;
+        this.h1M5IndependentModeEnabled = false;
         this.updateTimeFrame = PERIOD_M5;
         this.lastProcessedBarTime = 0;
         this.lastTesterWarmUpCheckBarTime = 0;
@@ -74,6 +77,9 @@ public:
      * @param fromAlignmentStartTimeFrame 一致判定の開始時間足
      * @param fromTesterHistoryWarmUpEnabled テスター履歴ゲートを使用する場合true
      * @param fromAlignmentRule 一致判定ルール
+     * @param fromH1M5IndependentModeEnabled H1・M5独立2段表示の場合true
+     * @param fromH1AlignmentStartTimeFrame H1一覧の一致判定開始時間足
+     * @param fromH1AlignmentRule H1一覧の一致判定ルール
      * @param fromAlertConfig 全通貨Alert判定およびDB設定
      * @param fromAlertTesterStartTime TESTER設定の開始サーバー時刻
      * @param fromAlertTesterEvaluationStartTime TESTER Alert連続評価開始時刻
@@ -89,6 +95,9 @@ public:
         ENUM_TIMEFRAMES fromAlignmentStartTimeFrame,
         bool fromTesterHistoryWarmUpEnabled,
         ElliotDirectionAlignmentRule fromAlignmentRule,
+        bool fromH1M5IndependentModeEnabled,
+        ENUM_TIMEFRAMES fromH1AlignmentStartTimeFrame,
+        ElliotDirectionAlignmentRule fromH1AlignmentRule,
         ZigZagElliotConfig &fromAlertConfig,
         const datetime fromAlertTesterStartTime,
         const datetime fromAlertTesterEvaluationStartTime,
@@ -101,6 +110,8 @@ public:
 
         this.marketContext = fromMarketContext;
         this.isTester = (bool)MQLInfoInteger(MQL_TESTER);
+        this.h1M5IndependentModeEnabled =
+            fromH1M5IndependentModeEnabled;
         this.testerHistoryWarmUpEnabled =
             fromTesterHistoryWarmUpEnabled && this.isTester;
         this.updateTimeFrame = PERIOD_M5;
@@ -154,6 +165,54 @@ public:
             this.destroy();
 
             return INIT_PARAMETERS_INCORRECT;
+        }
+
+        if (this.h1M5IndependentModeEnabled) {
+            if (this.marketContext.timeFrame != PERIOD_M5) {
+                this.logger.error(
+                    __FUNCTION__,
+                    "H1/M5 independent mode requires M5 market context"
+                );
+                this.destroy();
+
+                return INIT_PARAMETERS_INCORRECT;
+            }
+
+            this.h1AlignmentDecision =
+                new ElliotDirectionAlignmentDecision(
+                    fromH1AlignmentStartTimeFrame,
+                    fromH1AlignmentRule
+                );
+
+            if (this.h1AlignmentDecision == NULL) {
+                this.logger.error(
+                    __FUNCTION__,
+                    "failed to create H1 alignment decision"
+                );
+                this.destroy();
+
+                return INIT_FAILED;
+            }
+
+            ENUM_TIMEFRAMES h1AlignmentTimeFrames[];
+
+            if (!this.h1AlignmentDecision.buildTargetTimeFrames(
+                PERIOD_H1,
+                h1AlignmentTimeFrames
+            )) {
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat(
+                        "failed to build H1 alignment timeframe range start=%s",
+                        TimeUtil::convertTimeFrameToString(
+                            fromH1AlignmentStartTimeFrame
+                        )
+                    )
+                );
+                this.destroy();
+
+                return INIT_PARAMETERS_INCORRECT;
+            }
         }
 
         if (!ElliotTimeFrameRange::build(
@@ -262,13 +321,49 @@ public:
 
         }
 
-        this.drawer = new DrawAlignedElliotAllList(0, 0, fromSortType);
+        int drawerInstanceIndex = 0;
+
+        if (this.h1M5IndependentModeEnabled) {
+            drawerInstanceIndex = 1;
+        }
+
+        this.drawer = new DrawAlignedElliotAllList(
+            0,
+            drawerInstanceIndex,
+            fromSortType
+        );
 
         if (this.drawer == NULL) {
             this.logger.error(__FUNCTION__, "failed to create list drawer");
             this.destroy();
 
             return INIT_FAILED;
+        }
+
+        if (this.h1M5IndependentModeEnabled) {
+            this.h1Drawer = new DrawAlignedElliotAllList(
+                0,
+                0,
+                ELLIOT_LIST_SORT_H1_D1_ENTRY
+            );
+
+            if (this.h1Drawer == NULL) {
+                this.logger.error(
+                    __FUNCTION__,
+                    "failed to create H1 list drawer"
+                );
+                this.destroy();
+
+                return INIT_FAILED;
+            }
+
+            this.h1Drawer.setMinimumPanelWidth(900);
+            this.h1Drawer.setSectionTitle("H1 ENVIRONMENT");
+            this.h1Drawer.setEntryLegendEnabled(false);
+            this.h1Drawer.setH1RunnerUpEnabled(false);
+            this.drawer.setMinimumPanelWidth(900);
+            this.drawer.setSectionTitle("M5 INDEPENDENT");
+            this.drawer.setEntryLegendEnabled(false);
         }
 
         if (!this.isTester) {
@@ -339,8 +434,14 @@ private:
     /** 指定開始足から表示足までの方向一致判定。 */
     ElliotDirectionAlignmentDecision *alignmentDecision;
 
+    /** 独立2段表示で使用するH1方向一致判定。 */
+    ElliotDirectionAlignmentDecision *h1AlignmentDecision;
+
     /** BUY、SELL別一覧描画。 */
     DrawAlignedElliotAllList *drawer;
+
+    /** 独立2段表示で使用するH1一覧描画。 */
+    DrawAlignedElliotAllList *h1Drawer;
 
     /** 28通貨MTF_3in3 Alert判定制御。 */
     Mtf3In3AlertAllController *alertAllController;
@@ -365,6 +466,9 @@ private:
 
     /** 分析未完了の対象が存在する場合true。 */
     bool hasPendingAnalysis;
+
+    /** H1・M5を独立した上下2段で表示する場合true。 */
+    bool h1M5IndependentModeEnabled;
 
     /** 分析更新の基準時間足。ライブではM5。 */
     ENUM_TIMEFRAMES updateTimeFrame;
@@ -837,7 +941,50 @@ private:
             this.hasPendingAnalysis = listAnalysisPending;
         }
 
-        if (!this.drawer.draw(elliotAllList, this.alignmentDecision)) {
+        int m5PanelYDistance = 12;
+
+        if (this.h1M5IndependentModeEnabled) {
+            bool h1DrawSucceeded = this.h1Drawer != NULL
+                && this.h1AlignmentDecision != NULL
+                && this.h1Drawer.draw(
+                    elliotAllList,
+                    this.h1AlignmentDecision,
+                    PERIOD_H1,
+                    this.alignmentDecision,
+                    PERIOD_M5
+                );
+
+            if (!h1DrawSucceeded) {
+                this.logger.error(
+                    __FUNCTION__,
+                    "failed to draw independent H1 Elliot list"
+                );
+
+                if (this.alertAllController == NULL) {
+                    this.hasPendingAnalysis = true;
+                }
+            } else {
+                m5PanelYDistance += this.h1Drawer.getRenderedHeight() + 8;
+            }
+
+            this.drawer.setYDistance(m5PanelYDistance);
+        }
+
+        ElliotDirectionAlignmentDecision *overlapDecision = NULL;
+        ENUM_TIMEFRAMES overlapTimeFrame = PERIOD_CURRENT;
+
+        if (this.h1M5IndependentModeEnabled) {
+            overlapDecision = this.h1AlignmentDecision;
+            overlapTimeFrame = PERIOD_H1;
+        }
+
+        if (!this.drawer.draw(
+            elliotAllList,
+            this.alignmentDecision,
+            this.marketContext.timeFrame,
+            overlapDecision,
+            overlapTimeFrame
+        )) {
             this.logger.error(__FUNCTION__, "failed to draw aligned Elliot list");
 
             if (this.alertAllController == NULL) {
@@ -1023,10 +1170,20 @@ private:
         for (int i = 0; i < total; i++) {
             ElliotAll *elliotAll = fromElliotAllList.elliotAllList.At(i);
 
-            if (!this.alignmentDecision.isReady(
+            if (this.alignmentDecision == NULL
+                    || !this.alignmentDecision.isReady(
                 elliotAll,
                 this.marketContext.timeFrame
             )) {
+                return true;
+            }
+
+            if (this.h1M5IndependentModeEnabled
+                    && (this.h1AlignmentDecision == NULL
+                        || !this.h1AlignmentDecision.isReady(
+                            elliotAll,
+                            PERIOD_H1
+                        ))) {
                 return true;
             }
         }
@@ -1049,6 +1206,12 @@ private:
             this.drawer = NULL;
         }
 
+        if (this.h1Drawer != NULL) {
+            this.h1Drawer.clear();
+            delete this.h1Drawer;
+            this.h1Drawer = NULL;
+        }
+
         if (this.alertAllController != NULL) {
             delete this.alertAllController;
             this.alertAllController = NULL;
@@ -1057,6 +1220,11 @@ private:
         if (this.alignmentDecision != NULL) {
             delete this.alignmentDecision;
             this.alignmentDecision = NULL;
+        }
+
+        if (this.h1AlignmentDecision != NULL) {
+            delete this.h1AlignmentDecision;
+            this.h1AlignmentDecision = NULL;
         }
 
         if (this.oscillatorHandleManager != NULL) {
@@ -1073,6 +1241,7 @@ private:
         this.executing = false;
         this.testerHistoryWarmUpEnabled = false;
         this.hasPendingAnalysis = false;
+        this.h1M5IndependentModeEnabled = false;
         this.updateTimeFrame = PERIOD_M5;
         this.lastProcessedBarTime = 0;
         this.lastTesterWarmUpCheckBarTime = 0;

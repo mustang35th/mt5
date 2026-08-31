@@ -72,6 +72,7 @@ public:
         this.createdH1RunnerUpPanelEnabled = false;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
         this.supplementalPanelTopOffset = 0;
+        this.renderedHeight = 0;
         this.lastCompletedTitleText = "";
         this.lastCompletedTitleTimeText = "";
         this.sortType = fromSortType;
@@ -81,6 +82,10 @@ public:
         this.xDistance = 12;
         this.yDistance = 12;
         this.panelWidth = 800;
+        this.minimumPanelWidth = 0;
+        this.sectionTitle = "";
+        this.entryLegendEnabled = true;
+        this.h1RunnerUpEnabled = true;
         this.headerHeight = 45;
         this.columnHeaderYDistance = 59;
         this.separatorYDistance = 78;
@@ -113,6 +118,9 @@ public:
         this.mutedColor = C'130,130,130';
         this.buyColor = clrAqua;
         this.sellColor = clrHotPink;
+        this.overlapBuyBackgroundColor = C'20,70,130';
+        this.overlapSellBackgroundColor = C'130,35,45';
+        this.overlapTextColor = clrWhite;
         this.entryReadyColor = clrLime;
         this.entryNearColor = clrGold;
         this.entrySetupColor = clrOrange;
@@ -137,11 +145,61 @@ public:
         ElliotAllList *fromElliotAllList,
         ElliotDirectionAlignmentDecision *fromDecision
     ) {
+        if (fromElliotAllList == NULL) {
+            return false;
+        }
+
+        return this.draw(
+            fromElliotAllList,
+            fromDecision,
+            fromElliotAllList.marketContext.timeFrame
+        );
+    }
+
+    /**
+     * 指定時間足を基準に売買方向が完全一致した複数シンボルを一覧表示する。
+     *
+     * @param fromElliotAllList 描画対象の分析結果一覧。
+     * @param fromDecision 完全一致および分析準備状態の判定クラス。
+     * @param fromCurrentTimeFrame 表示基準の時間足。
+     * @return 描画に成功した場合true。
+     */
+    bool draw(
+        ElliotAllList *fromElliotAllList,
+        ElliotDirectionAlignmentDecision *fromDecision,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame
+    ) {
+        return this.draw(
+            fromElliotAllList,
+            fromDecision,
+            fromCurrentTimeFrame,
+            NULL,
+            PERIOD_CURRENT
+        );
+    }
+
+    /**
+     * 指定時間足の一覧を描画し、別一覧にも存在する行を強調する。
+     *
+     * @param fromElliotAllList 描画対象の分析結果一覧。
+     * @param fromDecision 完全一致および分析準備状態の判定クラス。
+     * @param fromCurrentTimeFrame 表示基準の時間足。
+     * @param fromOverlapDecision 重複確認先の完全一致判定クラス。
+     * @param fromOverlapTimeFrame 重複確認先の表示基準時間足。
+     * @return 描画に成功した場合true。
+     */
+    bool draw(
+        ElliotAllList *fromElliotAllList,
+        ElliotDirectionAlignmentDecision *fromDecision,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame,
+        ElliotDirectionAlignmentDecision *fromOverlapDecision,
+        ENUM_TIMEFRAMES fromOverlapTimeFrame
+    ) {
         if (fromElliotAllList == NULL || fromDecision == NULL) {
             return false;
         }
 
-        ENUM_TIMEFRAMES currentTimeFrame = fromElliotAllList.marketContext.timeFrame;
+        ENUM_TIMEFRAMES currentTimeFrame = fromCurrentTimeFrame;
         ENUM_TIMEFRAMES displayTimeFrames[];
 
         if (!ElliotTimeFrameRange::build(
@@ -171,7 +229,8 @@ public:
             && analyzedCount == targetCount
             && errorCount == 0;
         int rowCount = buyCount + sellCount;
-        bool h1RunnerUpPanelEnabled = currentTimeFrame == PERIOD_H1
+        bool h1RunnerUpPanelEnabled = this.h1RunnerUpEnabled
+            && currentTimeFrame == PERIOD_H1
             && fromDecision.getAlignmentRule()
                 == ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200;
         int h1RunnerUpIndexes[];
@@ -275,6 +334,9 @@ public:
         } else if (currentTimeFrame == PERIOD_H1
                 && alignmentStartTimeFrame == PERIOD_MN1) {
             alignmentStartTimeFrameText = "MN1-H1";
+        } else if (currentTimeFrame == PERIOD_M5
+                && alignmentStartTimeFrame == PERIOD_D1) {
+            alignmentStartTimeFrameText = "D1-M5";
         }
 
         if (alignmentStartTimeFrameText == "") {
@@ -297,6 +359,8 @@ public:
             fromDecision,
             currentTimeFrame,
             displayTimeFrames,
+            fromOverlapDecision,
+            fromOverlapTimeFrame,
             trendAlignBuy,
             0
         );
@@ -305,6 +369,8 @@ public:
             fromDecision,
             currentTimeFrame,
             displayTimeFrames,
+            fromOverlapDecision,
+            fromOverlapTimeFrame,
             trendAlignSell,
             buyCount
         );
@@ -330,6 +396,86 @@ public:
     void clear() {
         this.destroyObjects();
         ChartRedraw(this.chartId);
+    }
+
+    /**
+     * 一覧パネル上端のY位置を設定する。
+     *
+     * @param fromYDistance チャート上端からの距離。
+     */
+    void setYDistance(int fromYDistance) {
+        if (fromYDistance < 0 || this.yDistance == fromYDistance) {
+            return;
+        }
+
+        this.destroyObjects();
+        this.yDistance = fromYDistance;
+    }
+
+    /**
+     * BUYまたはSELLの片側パネル最小横幅を設定する。
+     *
+     * @param fromMinimumPanelWidth 片側パネルの最小横幅。0は自動幅。
+     */
+    void setMinimumPanelWidth(int fromMinimumPanelWidth) {
+        if (fromMinimumPanelWidth < 0
+                || this.minimumPanelWidth == fromMinimumPanelWidth) {
+            return;
+        }
+
+        this.destroyObjects();
+        this.minimumPanelWidth = fromMinimumPanelWidth;
+    }
+
+    /**
+     * 一覧パネルの識別タイトルを設定する。
+     *
+     * @param fromSectionTitle 識別タイトル。空文字列は既定タイトル。
+     */
+    void setSectionTitle(string fromSectionTitle) {
+        if (this.sectionTitle == fromSectionTitle) {
+            return;
+        }
+
+        this.destroyObjects();
+        this.sectionTitle = fromSectionTitle;
+    }
+
+    /**
+     * ENTRY凡例の表示有無を設定する。
+     *
+     * @param fromEnabled 表示する場合true。
+     */
+    void setEntryLegendEnabled(bool fromEnabled) {
+        if (this.entryLegendEnabled == fromEnabled) {
+            return;
+        }
+
+        this.destroyObjects();
+        this.entryLegendEnabled = fromEnabled;
+    }
+
+    /**
+     * H1次点候補パネルの表示有無を設定する。
+     *
+     * @param fromEnabled 表示する場合true。
+     */
+    void setH1RunnerUpEnabled(bool fromEnabled) {
+        if (this.h1RunnerUpEnabled == fromEnabled) {
+            return;
+        }
+
+        this.destroyObjects();
+        this.h1RunnerUpEnabled = fromEnabled;
+    }
+
+    /**
+     * 現在生成されている一覧全体の縦幅を取得する。
+     *
+     * @return 一覧と補助パネルを含む縦幅。
+     */
+    int getRenderedHeight() {
+        return this.renderedHeight;
     }
 
 private:
@@ -386,6 +532,21 @@ private:
 
     /** 一覧下側の補助パネル上端位置。 */
     int supplementalPanelTopOffset;
+
+    /** 一覧と補助パネルを含む生成済み縦幅。 */
+    int renderedHeight;
+
+    /** BUYまたはSELLの片側パネル最小横幅。 */
+    int minimumPanelWidth;
+
+    /** 一覧パネルの識別タイトル。 */
+    string sectionTitle;
+
+    /** ENTRY凡例を表示する場合true。 */
+    bool entryLegendEnabled;
+
+    /** H1次点候補パネルを表示する場合true。 */
+    bool h1RunnerUpEnabled;
 
     /** タイトル背景の高さ。 */
     int headerHeight;
@@ -482,6 +643,15 @@ private:
 
     /** SELL文字色。 */
     color sellColor;
+
+    /** H1・M5共通BUY候補のSYMBOL背景色。 */
+    color overlapBuyBackgroundColor;
+
+    /** H1・M5共通SELL候補のSYMBOL背景色。 */
+    color overlapSellBackgroundColor;
+
+    /** H1・M5共通候補のSYMBOL文字色。 */
+    color overlapTextColor;
 
     /** エントリーREADY文字色。 */
     color entryReadyColor;
@@ -603,6 +773,30 @@ private:
         );
         this.supplementalPanelTopOffset = panelHeight
             + this.entryLegendGap;
+        this.renderedHeight = panelHeight;
+
+        if (fromH1RunnerUpPanelEnabled) {
+            int maximumRunnerUpRowCount = fromH1RunnerUpBuyCount;
+
+            if (fromH1RunnerUpSellCount > maximumRunnerUpRowCount) {
+                maximumRunnerUpRowCount = fromH1RunnerUpSellCount;
+            }
+
+            if (maximumRunnerUpRowCount == 0) {
+                maximumRunnerUpRowCount = 1;
+            }
+
+            int runnerUpPanelHeight = this.headerHeight
+                + 8
+                + this.h1RunnerUpGroupHeight
+                + (maximumRunnerUpRowCount * this.entryLegendRowHeight)
+                + this.bottomPadding;
+            this.renderedHeight = this.supplementalPanelTopOffset
+                + runnerUpPanelHeight;
+        } else if (this.entryLegendEnabled) {
+            this.renderedHeight = this.supplementalPanelTopOffset
+                + this.entryLegendHeight;
+        }
 
         if (!this.createRectangle(
             this.objectPrefix + "PanelBuy",
@@ -652,7 +846,7 @@ private:
             5,
             this.titleFontSize,
             this.titleColor,
-            "ZigZag Elliott List ALL"
+            this.getTitlePrefix()
         )) {
             this.destroyObjects();
             return false;
@@ -706,7 +900,7 @@ private:
                 this.destroyObjects();
                 return false;
             }
-        } else {
+        } else if (this.entryLegendEnabled) {
             if (!this.createEntryLegend(fromCurrentTimeFrame)) {
                 this.destroyObjects();
                 return false;
@@ -847,6 +1041,22 @@ private:
                 rowIndex,
                 fromBuyCount
             );
+
+            if (!this.createRectangle(
+                this.getSymbolCellBackgroundObjectName(rowIndex),
+                this.xDistance
+                    + panelLeftOffset
+                    + this.tableLeftOffset
+                    + 2,
+                this.yDistance + rowYDistance - 2,
+                this.columnWidth - 4,
+                this.rowHeight - 4,
+                this.panelBackgroundColor,
+                this.panelBackgroundColor,
+                1
+            )) {
+                return false;
+            }
 
             for (int j = 0; j < fromColumnCount; j++) {
                 if (!this.createLabel(
@@ -1511,6 +1721,8 @@ private:
      * @param fromDecision 完全一致判定クラス。
      * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayTimeFrames 表示対象時間足一覧。
+     * @param fromOverlapDecision 重複確認先の完全一致判定クラス。
+     * @param fromOverlapTimeFrame 重複確認先の表示時間足。
      * @param fromAlignType 描画する方向。
      * @param fromStartRowIndex 描画開始行番号。
      */
@@ -1519,6 +1731,8 @@ private:
         ElliotDirectionAlignmentDecision *fromDecision,
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
         const ENUM_TIMEFRAMES &fromDisplayTimeFrames[],
+        ElliotDirectionAlignmentDecision *fromOverlapDecision,
+        ENUM_TIMEFRAMES fromOverlapTimeFrame,
         TrendAlignType fromAlignType,
         int fromStartRowIndex
     ) {
@@ -1548,6 +1762,8 @@ private:
                 elliotAll,
                 fromCurrentTimeFrame,
                 fromDisplayTimeFrames,
+                fromOverlapDecision,
+                fromOverlapTimeFrame,
                 fromAlignType,
                 priorityResults[i],
                 d1SortResults[i],
@@ -1928,6 +2144,8 @@ private:
      * @param fromElliotAll 分析結果。
      * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayTimeFrames 表示対象時間足一覧。
+     * @param fromOverlapDecision 重複確認先の完全一致判定クラス。
+     * @param fromOverlapTimeFrame 重複確認先の表示時間足。
      * @param fromAlignType 一致方向。
      * @param fromPriorityResult エントリー優先度判定結果。
      * @param fromD1SortResult D1条件ソート判定結果。
@@ -1938,6 +2156,8 @@ private:
         ElliotAll *fromElliotAll,
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
         const ENUM_TIMEFRAMES &fromDisplayTimeFrames[],
+        ElliotDirectionAlignmentDecision *fromOverlapDecision,
+        ENUM_TIMEFRAMES fromOverlapTimeFrame,
         TrendAlignType fromAlignType,
         Mtf3In3EntryPriorityResult &fromPriorityResult,
         D1ElliotEmaSortResult &fromD1SortResult,
@@ -1948,12 +2168,28 @@ private:
         }
 
         color directionColor = this.getAlignColor(fromAlignType);
+        bool isOverlap = this.isOverlapCandidate(
+            fromElliotAll,
+            fromOverlapDecision,
+            fromOverlapTimeFrame
+        );
+        color symbolColor = directionColor;
+
+        if (isOverlap) {
+            symbolColor = this.overlapTextColor;
+        }
+
+        this.setSymbolCellBackground(
+            fromRowIndex,
+            fromAlignType,
+            isOverlap
+        );
 
         this.setCell(
             fromRowIndex,
             drawAlignedElliotAllListColumnSymbol,
             this.getSymbolText(fromElliotAll.marketContext.symbolName),
-            directionColor
+            symbolColor
         );
         this.setEmaCell(
             fromRowIndex,
@@ -2063,7 +2299,8 @@ private:
         }
 
         this.lastCompletedTitleText = StringFormat(
-            "ZigZag Elliott List ALL %s ANALYZE MN1 / ALIGN %s BUY %d / SELL %d / TARGET %d / ERROR %d",
+            "%s %s ANALYZE MN1 / ALIGN %s BUY %d / SELL %d / TARGET %d / ERROR %d",
+            this.getTitlePrefix(),
             fromTimeFrameText,
             fromAlignmentStartTimeFrameText,
             fromBuyCount,
@@ -2079,6 +2316,19 @@ private:
         );
 
         this.restoreLastCompletedTitle();
+    }
+
+    /**
+     * 一覧パネルのタイトル先頭文字列を取得する。
+     *
+     * @return 識別タイトルまたは既定タイトル。
+     */
+    string getTitlePrefix() {
+        if (this.sectionTitle != "") {
+            return this.sectionTitle;
+        }
+
+        return "ZigZag Elliott List ALL";
     }
 
     /**
@@ -2555,6 +2805,75 @@ private:
     }
 
     /**
+     * 対象行が重複確認先の一覧にも存在するか判定する。
+     *
+     * @param fromElliotAll 対象シンボルの分析結果。
+     * @param fromOverlapDecision 重複確認先の完全一致判定クラス。
+     * @param fromOverlapTimeFrame 重複確認先の表示時間足。
+     * @return 重複確認先でBUYまたはSELL候補の場合true。
+     */
+    bool isOverlapCandidate(
+        ElliotAll *fromElliotAll,
+        ElliotDirectionAlignmentDecision *fromOverlapDecision,
+        ENUM_TIMEFRAMES fromOverlapTimeFrame
+    ) {
+        if (fromElliotAll == NULL
+                || fromOverlapDecision == NULL
+                || fromOverlapTimeFrame == PERIOD_CURRENT
+                || !fromOverlapDecision.isReady(
+                    fromElliotAll,
+                    fromOverlapTimeFrame
+                )) {
+            return false;
+        }
+
+        TrendAlignType overlapAlignType = fromOverlapDecision.getAlignType(
+            fromElliotAll,
+            fromOverlapTimeFrame
+        );
+
+        return overlapAlignType == trendAlignBuy
+            || overlapAlignType == trendAlignSell;
+    }
+
+    /**
+     * SYMBOLセル背景をH1・M5共通候補の方向色へ更新する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromAlignType 表示行の一致方向。
+     * @param fromOverlap 共通候補の場合true。
+     */
+    void setSymbolCellBackground(
+        int fromRowIndex,
+        TrendAlignType fromAlignType,
+        bool fromOverlap
+    ) {
+        color backgroundColor = this.panelBackgroundColor;
+
+        if (fromOverlap && fromAlignType == trendAlignBuy) {
+            backgroundColor = this.overlapBuyBackgroundColor;
+        } else if (fromOverlap && fromAlignType == trendAlignSell) {
+            backgroundColor = this.overlapSellBackgroundColor;
+        }
+
+        string objectName = this.getSymbolCellBackgroundObjectName(
+            fromRowIndex
+        );
+        ObjectSetInteger(
+            this.chartId,
+            objectName,
+            OBJPROP_BGCOLOR,
+            backgroundColor
+        );
+        ObjectSetInteger(
+            this.chartId,
+            objectName,
+            OBJPROP_COLOR,
+            backgroundColor
+        );
+    }
+
+    /**
      * セルの文字列と色を更新する。
      *
      * @param fromRowIndex 表示行番号。
@@ -2787,12 +3106,12 @@ private:
         int width = (this.tableLeftOffset * 2)
             + (columnCount * this.columnWidth);
 
-        if (fromCurrentTimeFrame == PERIOD_D1) {
-            return width;
+        if (fromCurrentTimeFrame != PERIOD_D1 && width < 800) {
+            width = 800;
         }
 
-        if (width < 800) {
-            width = 800;
+        if (width < this.minimumPanelWidth) {
+            width = this.minimumPanelWidth;
         }
 
         return width;
@@ -2937,6 +3256,18 @@ private:
     }
 
     /**
+     * SYMBOLセル背景のオブジェクト名を取得する。
+     *
+     * @param fromRowIndex 行番号。
+     * @return SYMBOLセル背景のオブジェクト名。
+     */
+    string getSymbolCellBackgroundObjectName(int fromRowIndex) {
+        return this.objectPrefix
+            + "Row_" + IntegerToString(fromRowIndex)
+            + "_SymbolBackground";
+    }
+
+    /**
      * EMA200セルのオブジェクト名を取得する。
      *
      * @param fromRowIndex 行番号。
@@ -2988,6 +3319,7 @@ private:
         this.createdH1RunnerUpPanelEnabled = false;
         this.createdCurrentTimeFrame = PERIOD_CURRENT;
         this.supplementalPanelTopOffset = 0;
+        this.renderedHeight = 0;
     }
 };
 

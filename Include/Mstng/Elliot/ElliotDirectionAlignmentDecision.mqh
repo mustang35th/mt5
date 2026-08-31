@@ -412,7 +412,15 @@ public:
                 );
         }
 
-        bool isBuy = fromElliotAll.elliotCurrent.isBuy;
+        Elliot *elliotCurrent = fromElliotAll.getElliot(
+            fromCurrentTimeFrame
+        );
+
+        if (elliotCurrent == NULL) {
+            return trendAlignNone;
+        }
+
+        bool isBuy = elliotCurrent.isBuy;
         int total = ArraySize(timeFrames);
 
         for (int i = 0; i < total; i++) {
@@ -856,11 +864,11 @@ private:
             return false;
         }
 
-        if (fromElliotAll.elliotCurrent == NULL) {
-            return false;
-        }
+        Elliot *elliotCurrent = fromElliotAll.getElliot(
+            fromCurrentTimeFrame
+        );
 
-        if (fromElliotAll.elliotCurrent.marketContext.timeFrame != fromCurrentTimeFrame) {
+        if (elliotCurrent == NULL) {
             return false;
         }
 

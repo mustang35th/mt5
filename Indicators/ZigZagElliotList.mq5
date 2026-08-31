@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.29"
+#property version   "1.30"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -23,7 +23,8 @@
 enum ZigZagElliotListMode {
     ZIGZAG_ELLIOT_LIST_MODE_CHART = 0, // チャート時間足
     ZIGZAG_ELLIOT_LIST_MODE_D1 = 1,    // D1固定
-    ZIGZAG_ELLIOT_LIST_MODE_H4 = 2     // H4固定
+    ZIGZAG_ELLIOT_LIST_MODE_H4 = 2,    // H4固定
+    ZIGZAG_ELLIOT_LIST_MODE_H1_M5_INDEPENDENT = 3 // H1＋M5独立2段
 };
 
 /** D1・H4モードとH1のD1条件モードで使用する上位時間足一致条件。 */
@@ -58,8 +59,8 @@ input(name="D1条件（D1/H4・H1特殊モード）")
 ZigZagElliotListD1AlignmentMode d1AlignmentMode =
     ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY;
 
-/** H1の上位時間足一致条件。実効時間足がH1の場合のみ使用する。 */
-input(name="H1条件（CHART・H1のみ）")
+/** H1の上位時間足一致条件。H1一覧を表示する場合のみ使用する。 */
+input(name="H1条件（CHART・H1／H1＋M5上段）")
 ZigZagElliotListH1AlignmentMode h1AlignmentMode =
     ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1;
 
@@ -136,6 +137,9 @@ int OnInit() {
         return INIT_FAILED;
     }
 
+    bool h1M5IndependentModeEnabled = listMode
+        == ZIGZAG_ELLIOT_LIST_MODE_H1_M5_INDEPENDENT;
+
     if ((bool)MQLInfoInteger(MQL_TESTER)
             && listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
             && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_D1)) {
@@ -148,7 +152,14 @@ int OnInit() {
         return INIT_PARAMETERS_INCORRECT;
     }
 
-    if (listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
+    if ((bool)MQLInfoInteger(MQL_TESTER)
+            && h1M5IndependentModeEnabled
+            && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_M5)) {
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if ((listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
+                || h1M5IndependentModeEnabled)
             && mtf3In3AlertDatabaseEnabled) {
         return INIT_PARAMETERS_INCORRECT;
     }
@@ -158,6 +169,9 @@ int OnInit() {
                 || (listMode == ZIGZAG_ELLIOT_LIST_MODE_CHART
                     && _Period == PERIOD_H1
                     && h1AlignmentMode
+                        == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1)
+                || (h1M5IndependentModeEnabled
+                    && h1AlignmentMode
                         == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1))
             && d1AlignmentMode != ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_ONLY
             && d1AlignmentMode
@@ -165,6 +179,62 @@ int OnInit() {
             && d1AlignmentMode
                 != ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_WITH_MN1_OR_EMA200) {
         return INIT_PARAMETERS_INCORRECT;
+    }
+
+    bool h1AlignmentSettingsEnabled = h1M5IndependentModeEnabled
+        || (listMode == ZIGZAG_ELLIOT_LIST_MODE_CHART
+            && _Period == PERIOD_H1);
+
+    if (h1AlignmentSettingsEnabled
+            && h1AlignmentMode
+                != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1
+            && h1AlignmentMode
+                != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1
+            && h1AlignmentMode
+                != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200
+            && h1AlignmentMode
+                != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1) {
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    ENUM_TIMEFRAMES h1AlignmentStartTimeFrame = PERIOD_D1;
+    ElliotDirectionAlignmentRule h1AlignmentRule =
+        ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES;
+    string h1AlignmentText = "D1-H1";
+
+    if (h1AlignmentSettingsEnabled
+            && h1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1) {
+        h1AlignmentStartTimeFrame = PERIOD_MN1;
+        h1AlignmentText = "MN1-H1";
+    } else if (h1AlignmentSettingsEnabled
+            && h1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200) {
+        h1AlignmentStartTimeFrame = PERIOD_MN1;
+        h1AlignmentRule =
+            ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200;
+        h1AlignmentText = "W1-H1&(MN1|W1EMA)";
+    } else if (h1AlignmentSettingsEnabled
+            && h1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1) {
+        h1AlignmentStartTimeFrame = PERIOD_W1;
+        h1AlignmentRule =
+            ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1;
+        h1AlignmentText = "W1-D1&(H4|H1)";
+
+        if (d1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1) {
+            h1AlignmentStartTimeFrame = PERIOD_MN1;
+            h1AlignmentRule =
+                ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1;
+            h1AlignmentText = "MN1-D1&(H4|H1)";
+        } else if (d1AlignmentMode
+                == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_WITH_MN1_OR_EMA200) {
+            h1AlignmentStartTimeFrame = PERIOD_MN1;
+            h1AlignmentRule =
+                ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1;
+            h1AlignmentText = "W1-D1&(MN1|W1EMA)&(H4|H1)";
+        }
     }
 
     ENUM_TIMEFRAMES listTimeFrame = _Period;
@@ -210,52 +280,16 @@ int OnInit() {
                 ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200;
             alignmentText = "W1-H4&(MN1|W1EMA)";
         }
+    } else if (h1M5IndependentModeEnabled) {
+        listTimeFrame = PERIOD_M5;
+        effectiveSortType = ELLIOT_LIST_SORT_ENTRY_PRIORITY;
+        testerHistoryWarmUpEnabled = true;
+        alignmentText = h1AlignmentText + " / M5 D1-M5";
     } else if (listTimeFrame == PERIOD_H1) {
         effectiveSortType = ELLIOT_LIST_SORT_H1_D1_ENTRY;
-
-        if (h1AlignmentMode != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_TO_H1
-                && h1AlignmentMode
-                    != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1
-                && h1AlignmentMode
-                    != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200
-                && h1AlignmentMode
-                    != ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1) {
-            return INIT_PARAMETERS_INCORRECT;
-        }
-
-        alignmentText = "D1-H1";
-
-        if (h1AlignmentMode
-                == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_MN1_TO_H1) {
-            alignmentStartTimeFrame = PERIOD_MN1;
-            alignmentText = "MN1-H1";
-        } else if (h1AlignmentMode
-                == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200) {
-            alignmentStartTimeFrame = PERIOD_MN1;
-            alignmentRule =
-                ELLIOT_DIRECTION_ALIGNMENT_RULE_H1_W1_WITH_MN1_OR_EMA200;
-            alignmentText = "W1-H1&(MN1|W1EMA)";
-        } else if (h1AlignmentMode
-                == ZIGZAG_ELLIOT_LIST_H1_ALIGNMENT_D1_WITH_H4_OR_H1) {
-            alignmentStartTimeFrame = PERIOD_W1;
-            alignmentRule =
-                ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1;
-            alignmentText = "W1-D1&(H4|H1)";
-
-            if (d1AlignmentMode
-                    == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_MN1_AND_W1) {
-                alignmentStartTimeFrame = PERIOD_MN1;
-                alignmentRule =
-                    ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1;
-                alignmentText = "MN1-D1&(H4|H1)";
-            } else if (d1AlignmentMode
-                    == ZIGZAG_ELLIOT_LIST_D1_ALIGNMENT_W1_WITH_MN1_OR_EMA200) {
-                alignmentStartTimeFrame = PERIOD_MN1;
-                alignmentRule =
-                    ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1;
-                alignmentText = "W1-D1&(MN1|W1EMA)&(H4|H1)";
-            }
-        }
+        alignmentStartTimeFrame = h1AlignmentStartTimeFrame;
+        alignmentRule = h1AlignmentRule;
+        alignmentText = h1AlignmentText;
     }
 
     if (mtf3In3AlertDatabaseEnabled
@@ -297,6 +331,9 @@ int OnInit() {
         alignmentStartTimeFrame,
         testerHistoryWarmUpEnabled,
         alignmentRule,
+        h1M5IndependentModeEnabled,
+        h1AlignmentStartTimeFrame,
+        h1AlignmentRule,
         alertConfig,
         mtf3In3AlertTesterStartTime,
         mtf3In3AlertTesterEvaluationStartTime,
@@ -317,6 +354,7 @@ int OnInit() {
 
     if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
             || listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
+            || h1M5IndependentModeEnabled
             || listTimeFrame == PERIOD_H1) {
         shortName += " ALIGN " + alignmentText;
     }
