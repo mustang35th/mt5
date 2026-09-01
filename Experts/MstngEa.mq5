@@ -10,7 +10,7 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.06"
+#property version   "1.07"
 
 #property strict
 
@@ -28,76 +28,107 @@
 #include <MstngEa\Config\H1PositionManagementMode.mqh>
 #include <MstngEa\Trade\MagicNumberUtil.mqh>
 
+input group "01. 基本設定"
+
 /** 戦略種別 */
-input StrategyType InpStrategyType = STRATEGY_TYPE_MTF_3IN3;
+input(name="使用戦略") StrategyType InpStrategyType =
+    STRATEGY_TYPE_MTF_3IN3;
 
 /** ロット */
-input double InpLotSize = 0.01;
+input(name="固定ロット") double InpLotSize = 0.01;
+
+input group "02. 画面表示"
 
 /** パネル再描画間隔ミリ秒 */
-input int InpPanelRefreshMilliseconds = 1000;
+input(name="パネル更新間隔（ミリ秒）")
+int InpPanelRefreshMilliseconds = 1000;
+
+input group "03. 利益保護・決済（LEGACY）"
 
 /** 利益戻し決済使用 */
-input bool InpUseProfitRetracementExit = true;
+input(name="利益戻し決済を使用")
+bool InpUseProfitRetracementExit = true;
 
 /** 利益戻し決済開始R倍率 */
-input double InpProfitRetracementStartR = 1.5;
+input(name="利益戻し監視開始（R）")
+double InpProfitRetracementStartR = 1.5;
 
 /** 利益戻し決済戻し率 */
-input double InpProfitRetracementRate = 0.30;
+input(name="利益戻し許容率（0.30＝30%）")
+double InpProfitRetracementRate = 0.30;
 
 /** 建値移動使用 */
-input bool InpUseBreakEven = true;
+input(name="建値移動を使用") bool InpUseBreakEven = true;
 
 /** 建値移動発動R倍率 */
-input double InpBreakEvenTriggerR = 1.0;
+input(name="建値移動開始（R）") double InpBreakEvenTriggerR = 1.0;
 
 /** 建値移動加算pips */
-input double InpBreakEvenPlusPips = 1.0;
+input(name="建値から追加保護（pips）")
+double InpBreakEvenPlusPips = 1.0;
+
+input group "04. 通貨強弱フィルター"
 
 /** 通貨強弱利用 */
-input bool InpUseCurrencyStrength = false;
+input(name="通貨強弱を使用") bool InpUseCurrencyStrength = false;
 
 /** 通貨強弱DB参照プロファイル */
-input CurrencyStrengthRankDatabaseProfile InpCurrencyStrengthDatabaseProfile =
+input(name="DB参照元（AUTO推奨）")
+CurrencyStrengthRankDatabaseProfile InpCurrencyStrengthDatabaseProfile =
     CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_AUTO;
 
 /** 通貨強弱DBファイル名 */
-input string InpCurrencyStrengthDatabaseFileName = "mstng-currency-strength.sqlite";
+input(name="DBファイル名") string InpCurrencyStrengthDatabaseFileName =
+    "mstng-currency-strength.sqlite";
 
 /** 通貨強弱DB年単位分割 */
-input bool InpCurrencyStrengthDatabaseSplitByYear = true;
+input(name="年別DBを使用")
+bool InpCurrencyStrengthDatabaseSplitByYear = true;
 
 /** 通貨強弱DB共通フォルダ使用 */
-input bool InpCurrencyStrengthDatabaseUseCommonFolder = true;
+input(name="Commonフォルダを使用")
+bool InpCurrencyStrengthDatabaseUseCommonFolder = true;
 
 /** 通貨強弱DB再取得間隔秒 */
-input int InpCurrencyStrengthRefreshSeconds = 15;
+input(name="再取得間隔（秒）") int InpCurrencyStrengthRefreshSeconds = 15;
 
 /** 通貨強弱票重み付け方式 */
-input CurrencyStrengthVoteWeightMode InpCurrencyStrengthVoteWeightMode =
+input(name="投票方式")
+CurrencyStrengthVoteWeightMode InpCurrencyStrengthVoteWeightMode =
     CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
 
+input group "05. 検証出力（MTF_3in3）"
+
 /** MTF_3in3アラート検証CSV出力 */
-input bool InpMtf3In3AlertCsvEnabled = false;
+input(name="Alert検証CSVを出力") bool InpMtf3In3AlertCsvEnabled = false;
+
+input group "06. M5エントリー条件（MTF_3in3）"
 
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
-input bool InpH1DisplayWaveEntryLimitEnabled = false;
+input(name="同一H1表示波は1回まで")
+bool InpH1DisplayWaveEntryLimitEnabled = false;
 
-/** H1ポジションの決済管理モード。 */
-input H1PositionManagementMode InpH1PositionManagementMode =
-    H1_POSITION_MANAGEMENT_LEGACY;
-
-/** H1 ZigZagトレイルのSLバッファー（pips）。 */
-input double InpH1ZigZagTrailBufferPips = 5.0;
+input group "07. H1エントリー条件（MTF_3in3）"
 
 /** H1エントリーで使用するW1確認モード。 */
-input H1W1ConfirmationMode InpH1W1ConfirmationMode =
+input(name="W1確認") H1W1ConfirmationMode InpH1W1ConfirmationMode =
     H1_W1_CONFIRMATION_OBSERVE_ONLY;
 
 /** H1エントリーで使用するEMA200確認モード。 */
-input H1Ema200ConfirmationMode InpH1Ema200ConfirmationMode =
+input(name="EMA200確認")
+H1Ema200ConfirmationMode InpH1Ema200ConfirmationMode =
     H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED;
+
+input group "08. H1ポジション管理（H1 MTF_3in3）"
+
+/** H1ポジションの決済管理モード。 */
+input(name="H1ポジション管理")
+H1PositionManagementMode InpH1PositionManagementMode =
+    H1_POSITION_MANAGEMENT_LEGACY;
+
+/** H1 ZigZagトレイルのSLバッファー（pips）。 */
+input(name="ZigZagトレイル余白（pips）")
+double InpH1ZigZagTrailBufferPips = 5.0;
 
 /** シンボル名 */
 string g_symbolName;
