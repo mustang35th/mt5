@@ -5,6 +5,7 @@
 ## 仕様書一覧
 
 - [通貨強弱データベース仕様書](CurrencyStrengthDatabase.md)
+- [MstngH1Eaデータベース設計書](MstngH1EaDatabase.md)
 
 ## 更新方針
 
