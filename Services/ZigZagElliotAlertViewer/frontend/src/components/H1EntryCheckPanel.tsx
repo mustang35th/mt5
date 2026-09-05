@@ -270,7 +270,7 @@ function buildSpreadItem(
       "Judge",
       "Spread",
       "記録なし",
-      "3.0 pips以下",
+      "5.0 pips以下",
       null,
     );
   }
@@ -279,8 +279,8 @@ function buildSpreadItem(
     "Judge",
     "Spread",
     `${formatNumber(fromSpreadPips)} pips`,
-    "3.0 pips以下",
-    fromSpreadPips <= 3,
+    "5.0 pips以下",
+    fromSpreadPips <= 5,
   );
 }
 
@@ -924,6 +924,7 @@ export function H1EntryCheckPanel({
           {snapshot.source === "SAVED"
             ? "総合結果と保存済み診断はAlert記録を正本とし、その他の行は保存時Snapshotから表示します。"
             : "Snapshot推定は保存済みの分析値だけを使用します。mode・通貨強弱・countが未記録の場合、総合は判定不能です。"}
+          Spread行は現行H1上限の5.0 pipsで再判定するため、過去の判定条件とは異なる場合があります。
         </p>
         <div className="h1-entry-check-table-wrap">
           <table aria-label="H1エントリー条件チェック" className="h1-entry-check-table">

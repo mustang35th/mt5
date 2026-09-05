@@ -481,7 +481,7 @@ protected:
      *
      * @return スプレッドが3以下の場合true。
      */
-    bool isSpread() {
+    virtual bool isSpread() {
         bool isSpread = false;
         
         if (this.elliotAll.todayRate.spread <= 3) {

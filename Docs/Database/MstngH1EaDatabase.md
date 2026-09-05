@@ -9,7 +9,7 @@
 | 物理スキーマバージョン | 1 |
 | 保存単位 | EA起動、H1判定、H1 ZigZagトレイル、取引ライフサイクル |
 | 文書状態 | 基本設計・実装前 |
-| 最終更新日 | 2026-09-03 |
+| 最終更新日 | 2026-09-05 |
 
 本書は、`MstngH1Ea`がH1判定、発注、約定および決済を保存し、再起動後にbroker状態と整合するためのSQLite構造を定義します。EA全体の動作は[MstngH1Ea基本設計書](../ExpertAdvisor/MstngH1Ea.md)を参照してください。
 
@@ -18,8 +18,9 @@
 初版では次を保存します。
 
 - EA起動ごとの環境、設定およびバージョン
-- すべてのH1新規バーのBUY、SELLまたはSKIP判定
+- 起動時の進行中バーを含む、評価対象H1バーのBUY、SELLまたはSKIP確定判定
 - 判定に使用した主要条件と拒否理由
+- 既存H1 `MTF_3in3`のJudge成立回数、初回Entry評価およびEA発注可否の区別
 - 発注要求から決済完了までの取引状態
 - H1 ZigZagトレイル評価、pending保護SL候補および適用済みSL
 - 取引要求、SL変更、broker order、各dealおよびPositionのEvent履歴
@@ -159,17 +160,19 @@ LIVE   : H1_EA_CONTEXT_V1|LIVE|server|login|symbol|H1|magic
 TESTER : H1_EA_CONTEXT_V1|TESTER|run_uid|server|login|symbol|H1|magic
 ```
 
-LIVEは再起動前後で同じキーを使用し、消費済みシグナルとactive取引を引き継ぎます。TesterはRunごとにキーを分け、同じ期間を繰り返しテストしても過去RunのDecisionと衝突しないようにします。この`context_key`をDecisionとTradeの重複防止scopeとして使用します。
+LIVEは再起動前後で同じキーを使用し、保存済みJudge成立回数、消費済みシグナルおよびactive取引を引き継ぎます。Tradeを持たない消費済みSKIPも引継ぎ対象です。TesterはRunごとにキーを分け、同じ期間を繰り返しテストしても過去RunのDecisionと衝突しないようにします。この`context_key`をDecisionとTradeの重複防止scopeとして使用します。
 
 キー文字列は`H1_EA_CONTEXT_V1`を先頭に、表記どおりの固定順、区切り文字`|`、整数の10進表記で生成します。serverとsymbolに`|`が含まれる場合は初期化を拒否し、暗黙の置換は行いません。`run_uid`は`source_mode|server|login|chart_id|started_at|GetTickCount64`をUTF-8でSHA-256化した64桁小文字16進文字列とします。`GetTickCount64()`はUID生成材料にだけ使用し、日時として保存しません。
 
 分析Profileは既存の`ZigZagElliotAnalysisProfile::createCanonicalText()`と`createHash()`をそのまま使用します。EA設定は次の固定順で生成し、数値の小数桁も固定します。
 
 ```text
-H1_EA_CONFIG_V1|LOT_SIZE=<8桁>|MAX_INITIAL_SL_PIPS=<1桁>|ZIGZAG_SL_BUFFER_PIPS=10.0
+H1_EA_CONFIG_V1|LOT_SIZE=<8桁>|MAX_INITIAL_SL_PIPS=<1桁>|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_OBSERVE_ONLY|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30|TESTER_EVALUATION_TRIGGER=TICK
 ```
 
-`ZIGZAG_SL_BUFFER_PIPS`は初期SLとH1 ZigZagトレイルSLに共通する内部固定値です。初版ではinputから変更できません。この固定値を変更する場合は`strategy_version`も更新します。
+`ZIGZAG_SL_BUFFER_PIPS`は初期SLとH1 ZigZagトレイルSLに共通する内部固定値です。初版ではinputから変更できません。上記の戦略・評価タイミング設定は現在の`ZigZagElliot` H1の初期設定に合わせた固定値です。W1追加確認は観測のみですが、主条件のW1方向および「MN1方向またはW1 EMA200方向」は必須判定へ使用します。これらの固定値またはシグナル消費規則を変更する場合は`strategy_version`も更新します。
+
+`MAX_SPREAD_PIPS=5.0`は基本設計v0.5のH1上限です。旧3.0 pips仕様との違いはRun設定と戦略バージョンで識別し、保存済みDecisionは新上限で再判定・上書きしません。
 
 `status`は次に限定します。
 
@@ -206,7 +209,7 @@ CREATE INDEX idx_h1_ea_runs_context_started
 ON h1_ea_runs(context_key, started_at, id);
 ```
 
-EAは10秒間隔の`OnTimer()`でheartbeatを更新し、Leaseを更新時点から60秒間有効にします。起動時に同一`context_key`の`RUNNING`が存在する場合、有効なLeaseなら二重起動として後発を拒否します。期限切れの場合だけ、transaction内で旧Runを`INTERRUPTED`へ更新して新Runを作成します。通常経路の新規注文、SL変更および候補跨ぎ成行決済では、今回Runの`status = 'RUNNING'`と未失効Leaseを、それぞれの要求Event・Trade更新と同一transactionで確認します。commit直後にbrokerへ送信し、確認と送信の間へ別のDB処理を挟みません。
+EAは1秒間隔の`OnTimer()`内で10秒の経過を確認してheartbeatを更新し、Leaseを更新時点から60秒間有効にします。LIVEの初回1秒後・以降30秒間隔のEntry評価とはスケジュールを分離します。TesterのEntry評価はtickを契機とします。起動時に同一`context_key`の`RUNNING`が存在する場合、有効なLeaseなら二重起動として後発を拒否します。期限切れの場合だけ、transaction内で旧Runを`INTERRUPTED`へ更新して新Runを作成します。通常経路の新規注文、SL変更および候補跨ぎ成行決済では、今回Runの`status = 'RUNNING'`と未失効Leaseを、それぞれの要求Event・Trade更新と同一transactionで確認します。commit直後にbrokerへ送信し、確認と送信の間へ別のDB処理を挟みません。
 
 DB接続中にLease所有権を失った旧Runは、注文・変更・決済を停止します。DB障害中は、排他Lockを保持し、最後に確認できたLeaseが未失効の間だけ現在Runが既存ポジションのリスク管理を継続します。
 
@@ -226,9 +229,11 @@ Run登録とLease取得は別処理にせず、期限切れRunの更新と新し
 
 ## 8. `h1_ea_decisions`
 
-H1新規バー1本につき1行を保存します。エントリー成立時だけでなく、保有中、分析不能および条件未達もSKIPとして保存します。
+評価対象H1バー1本につき確定Decisionを1行保存します。起動時の進行中バーも、同一コンテキストの保存済みDecisionがなければ対象です。LIVEは初回1秒後・以降30秒間隔の評価機会、Testerはtickで、そのバーの最初の分析成功時にJudge、回数およびEntryを確定します。保有中または条件未達でも確定した結果をSKIPとして保存します。
 
-DecisionはEntry判定の正本です。保有中の同じH1バーで行うH1 ZigZagトレイル評価はTrade Eventへ保存し、Decisionへトレイル状態を混在させません。
+分析失敗だけではJudge・回数を更新せず、確定Decisionも作りません。同じH1バー内で再試行し、失敗した試行は運用ログへ残します。成功しないままバーが切り替わった場合は、前バーを`SKIP / ANALYSIS_UNAVAILABLE`、回数0・未消費として確定保存します。最初に確定したDecisionは再評価または上書きしません。稼働していなかった過去バーを推測で補完しません。
+
+Decisionは戦略Entry判定とEA発注可否の正本です。H1新規バー最初のtickで行うH1 ZigZagトレイル評価はTrade Eventへ保存し、Decisionへトレイル状態を混在させません。Entryとトレイルは別の評価契機であり、同一H1バーでも分析・評価時刻が一致するとは限りません。
 
 ### 8.1 識別・時刻
 
@@ -259,7 +264,12 @@ server|symbol|time_frame|h1_bar_time|signal_reference_time|MTF_3in3|side
 | `decision` | TEXT | Yes | `SKIP`、`BUY`または`SELL` |
 | `reason_code` | TEXT | Yes | 最終判定または対象外理由 |
 | `signal_side` | TEXT | No | `BUY`または`SELL` |
-| `is_signal_consumed` | INTEGER | Yes | 同一シグナルを消費した場合1 |
+| `is_judge_matched` | INTEGER | Yes | 共通Judge成立時1。Entry波動条件とEA発注制限は含めない |
+| `signal_count` | INTEGER | Yes | 今回Judge成立時の加算後回数。Judge未成立・分析不能時は0 |
+| `entry_count` | INTEGER | Yes | Entry評価対象の成立回数。初版は1固定 |
+| `is_entry_evaluated` | INTEGER | Yes | 今回、初回Judge成立により既存相当のEntry判定を実行した場合1 |
+| `is_strategy_entry` | INTEGER | Yes | 既存H1戦略のEntry成立時1。EA発注制限によるSKIPとは区別する |
+| `is_signal_consumed` | INTEGER | Yes | 同一シグナルの初回Judge成立行だけ1。Entry不成立のSKIPも消費する |
 | `spread_pips` | REAL | No | 判定時Spread |
 | `requested_volume` | REAL | No | 正規化後の要求ロット |
 | `initial_stop_loss` | REAL | No | 注文前に検証した初期SL |
@@ -270,6 +280,8 @@ server|symbol|time_frame|h1_bar_time|signal_reference_time|MTF_3in3|side
 
 | 列 | 型 | 必須 | 内容 |
 |---|---|---:|---|
+| `mn1_direction` | TEXT | No | MN1の`BUY`または`SELL` |
+| `w1_direction` | TEXT | No | W1の`BUY`または`SELL` |
 | `d1_direction` | TEXT | No | D1の`BUY`または`SELL` |
 | `h4_direction` | TEXT | No | H4の`BUY`または`SELL` |
 | `h1_direction` | TEXT | No | H1の`BUY`または`SELL` |
@@ -280,11 +292,16 @@ server|symbol|time_frame|h1_bar_time|signal_reference_time|MTF_3in3|side
 | `is_h4_wave_accepted` | INTEGER | Yes | H4波動条件通過 |
 | `h1_gmma_trend_count` | INTEGER | No | H1 GMMA trend count |
 | `h1_gmma_cross_count` | INTEGER | No | H1 GMMA cross count |
-| `h1_ema200_direction` | TEXT | No | H1 EMA200方向 |
-| `h4_ema200_direction` | TEXT | No | H4 EMA200方向 |
+| `h1_ema200_direction` | TEXT | No | H1 EMA200方向。`BUY`、`SELL`または`NONE` |
+| `h4_ema200_direction` | TEXT | No | H4 EMA200方向。`BUY`、`SELL`または`NONE` |
+| `w1_ema200_direction` | TEXT | No | W1 EMA200方向。`BUY`、`SELL`または`NONE` |
+| `h1_direction_alignment_mode` | TEXT | Yes | Runの固定方向一致モード |
+| `is_h1_direction_alignment_passed` | INTEGER | Yes | W1からH1一致かつMN1方向またはW1 EMA200方向一致の場合1 |
 | `analysis_snapshot_text` | TEXT | Yes | 追加診断値のCanonical Text |
 
-主要条件はSQL検索できる個別列へ保存し、補足情報だけを`analysis_snapshot_text`へ保存します。判定ロジックの変更時も、既存行を再判定または上書きしません。
+主要条件はSQL検索できる個別列へ保存し、補足情報だけを`analysis_snapshot_text`へ保存します。Entry未評価時の`is_h1_wave_accepted`と`is_h4_wave_accepted`は0とし、波動条件NGとは`is_entry_evaluated`で区別します。未取得の方向はNULL、有効なEMA200中立は`NONE`とし、混同しません。判定ロジックの変更時も、既存行を再判定または上書きしません。
+
+`is_strategy_entry = 1`でも、保有中、初期SL不正、SL幅超過など確定保存前の安全条件がNGなら`decision = 'SKIP'`となります。戦略Entry成立と実発注を同じフラグで表さず、安全条件が後から改善しても同じシグナルを再評価しません。BUY/SELL Decisionと`OPEN_PENDING`のcommit後に行う`OrderCheck()`が失敗した場合は、確定DecisionをSKIPへ変更せず、失敗EventとTradeの`OPEN_FAILED`へ記録します。シグナル消費は解除しません。
 
 `analysis_snapshot_text`は`H1_EA_DECISION_V1`を先頭に、8.2と8.3の列を表の順で`|列名=値`として連結します。小数はpipsを1桁、価格を対象シンボルのDigits、ロットを2桁で固定します。`snapshot_hash`は識別子と保存時刻を除くDecision保存値、`analysis_version`および`analysis_input_hash`を同じ順で連結したUTF-8文字列のSHA-256です。
 
@@ -312,21 +329,47 @@ WHERE is_signal_consumed = 1;
 次は`CREATE TABLE h1_ea_decisions (...)`内へ組み込む制約断片です。
 
 ```sql
+CHECK(decision IN ('SKIP', 'BUY', 'SELL')),
+CHECK(is_judge_matched IN (0, 1)),
+CHECK(is_entry_evaluated IN (0, 1)),
+CHECK(is_strategy_entry IN (0, 1)),
+CHECK(is_signal_consumed IN (0, 1)),
+CHECK(entry_count = 1),
 CHECK(
-    is_signal_consumed = 0 OR (
-        decision IN ('BUY', 'SELL')
-        AND signal_reference_time IS NOT NULL
+    (is_judge_matched = 0 AND signal_count = 0)
+    OR (is_judge_matched = 1 AND signal_count >= 1)
+),
+CHECK(
+    (signal_count = 1 AND is_signal_consumed = 1 AND is_entry_evaluated = 1)
+    OR (signal_count <> 1 AND is_signal_consumed = 0 AND is_entry_evaluated = 0)
+),
+CHECK(is_strategy_entry = 0 OR is_entry_evaluated = 1),
+CHECK(
+    is_judge_matched = 0 OR (
+        signal_reference_time IS NOT NULL
         AND signal_reference_time > 0
+        AND signal_side IS NOT NULL
         AND signal_side IN ('BUY', 'SELL')
+    )
+),
+CHECK(
+    decision = 'SKIP' OR (
+        is_strategy_entry = 1
+        AND is_signal_consumed = 1
+        AND decision = signal_side
         AND initial_stop_loss IS NOT NULL
         AND initial_stop_loss > 0.0
     )
 )
 ```
 
-`run_id`を消費済みシグナルの一意条件へ含めません。Runを含めると、EA再起動後に同じシグナルを再注文できるためです。
+Judge初回成立時に波動条件や発注安全条件がNGなら、`SKIP`でも`is_signal_consumed = 1`として保存します。この行では初期SLのNULLを許可します。後続バーで同じJudgeが成立した場合は回数2以上、`is_signal_consumed = 0`、Entry未評価のSKIPを保存します。
+
+`run_id`と`h1_bar_time`を消費済みシグナルの一意条件へ含めません。含めると、再起動またはバー更新によって同じシグナルを再注文できるためです。Alert照合用の`market_signal_key`を消費済みキーへ流用しません。
 
 LIVEの同じH1バーでEAを再起動した場合、新RunへDecisionを複製しません。最初に保存したDecisionがそのバーの正本です。Run別の全バー件数を集計する場合は、この引継ぎ行が旧Runに所属することを考慮します。Testerは`context_key`へ`run_uid`を含むため、各Runが独立したDecisionを持ちます。
+
+保存済み回数は同一コンテキスト・基準時刻・方向の`is_judge_matched = 1`行から復元します。Judge不成立バーが途中にあってもリセットしません。回数と初回消費は同じDecisionで記録し、確定保存の再試行では再加算しません。未保存状態の存在が分かっている場合は、DB行がないことを回数0の根拠にせず、新規Entryを停止して14章の障害処理を適用します。
 
 検索用索引は次を用意します。
 
@@ -346,7 +389,7 @@ ON h1_ea_decisions(reason_code, h1_bar_time, id);
 
 ## 9. `h1_ea_trades`
 
-1回のエントリー試行から決済完了までを1行で表します。エントリー条件が成立したDecisionだけが0または1行を持ちます。
+1回のエントリー試行から決済完了までを1行で表します。戦略Entryと確定保存前の安全条件を満たしたBUY/SELL Decisionだけが0または1行を持ちます。初回Judgeを消費しただけのSKIPにはTradeを作成しません。commit後の`OrderCheck()`失敗はTradeを`OPEN_FAILED`へ更新して保存します。
 
 ### 9.1 列
 
@@ -911,6 +954,9 @@ recovery_issue_code, quarantined_pending_text
 3. 同じtransactionで期限切れRunだけを`INTERRUPTED`へ更新し、今回Runを`RUNNING`で追加してLeaseを取得する
 4. brokerとactive取引をPosition Ticket単位で照合する
 5. brokerの現在SLとpending・適用済みトレイル候補を照合する
+6. 現在H1バーの確定Decisionと、保存済みJudge回数・消費済みシグナルを復元する。Tradeを持たないSKIPも対象とする
+
+現在H1バーが保存済みならEntryを再評価しません。未保存かつ未保存状態の欠落が疑われない場合は、次の既存互換の評価機会から進行中バーを対象にします。旧Runが終了したことを理由にJudge回数を0へ戻しません。この再起動永続化は既存インジケータのメモリ内`SignalCount`に対する安全上の拡張であり、再起動を挟んだ動作まで完全一致させる仕様ではありません。
 
 `OPEN_PENDING`でPositionがない場合、現在order、履歴orderおよびdealを確認します。orderが有効なら`OPEN_PENDING`を維持し、orderが終端状態かつdealもPositionもない場合だけ`OPEN_FAILED`へ更新します。判定不能なら`RECOVERY_REQUIRED`へ移行します。
 
@@ -932,16 +978,24 @@ pending候補のPosition Identifierまたは方向が現在Positionと一致し�
 
 ### 11.2 H1判定
 
-- H1新規バーごとにDecisionを1行保存します。
-- 条件未達は`decision = 'SKIP'`と理由コードを保存します。
+- LIVEは起動1秒後を初回とし、以降30秒間隔の評価機会でEntry用分析を行います。Testerではtickを契機とします。すでに確定DecisionがDBにある、または同一プロセスのメモリに保存待ちの確定判定があるH1バーは、再分析・再評価・Judge回数の再加算をしません。
+- 対象H1バーの最初の分析成功時に、保有・注文待ちの有無にかかわらずJudgeを評価します。Judge成立時は基準時刻・方向ごとの回数を加算し、初回だけH1/H4のEntry波動条件を評価します。
+- 初回Judge成立は波動条件NGまたはEA発注安全条件NGでも消費します。最終Decisionは`SKIP`として、拒否理由、回数1、`is_entry_evaluated = 1`および`is_signal_consumed = 1`を保存します。既存戦略だけは成立していた場合、`is_strategy_entry = 1`を残します。
+- 同じシグナルのJudge成立2回目以降は回数だけを加算し、`SKIP / SIGNAL_ALREADY_CONSUMED`、Entry未評価・`is_signal_consumed = 0`として保存します。途中のJudge不成立で回数をリセットしません。
+- Judge未成立は回数0・未消費の`SKIP`と理由コードを保存します。分析失敗時はまだ確定Decisionを作らず同じバーを再試行し、失敗を運用ログへ残します。成功せずバーが変わった場合だけ前バーを`SKIP / ANALYSIS_UNAVAILABLE`で確定し、過去バーのEntryは実行しません。
+- 保有、pending取引、候補跨ぎ決済中またはその他の安全条件NGは発注を禁止しますが、成功した分析からの戦略判定と初回消費を取り消しません。安全条件が改善しても後続の評価機会へ注文を繰り延べません。
+- Judge回数・初回消費を含む確定Decisionは、Lease所有確認と同一transactionで保存します。発注可能な初回Entryの場合だけ、Tradeの`OPEN_PENDING`、`ENTRY_REQUEST`および`action_uid`も同じtransactionへ含めます。SKIPにはTrade/Eventを作成しません。
+- transactionをcommitできるまで`OrderSend()`を実行しません。commit前の保存失敗はrollbackし、同一プロセスでは確定判定を再加算せず保持します。復旧後に保存できても、失った評価機会の注文を遅延送信しません。
+
+トレイル評価はEntryの評価待ちと独立して次のように保存します。
+
+- H1新規バー最初のtickを契機に分析し、Entryポーリング完了を待たずにトレイルを評価します。同一H1バーの分析時刻が異なる場合もそれぞれの判定時刻を保持します。
 - Tradeが`OPEN`の場合だけH1 ZigZagトレイルを評価します。`OPEN_PARTIAL`では初期SLを維持し、残注文の終端確認を優先します。
 - `pending_stop_loss_kind = 'INITIAL_RESTORE'`の間は新しいトレイル候補を作らず、`INITIAL_STOP_LOSS_RESTORE_PENDING`として見送ります。
-- 保有中はEntry Decisionを`SKIP`で保存し、同じH1バーのトレイル評価を1 Tradeにつき1件の`TRAIL_EVALUATION`として別に保存します。分析失敗も見送り理由を保存します。
+- トレイル評価を1 Trade・H1バーにつき1件の`TRAIL_EVALUATION`として保存します。トレイル側の分析失敗も見送り理由を保存しますが、これだけでEntry側のバーを処理済みにしません。
 - H1バーごとの採用または見送りをトレイル評価Eventへ保存し、`last_trail_evaluated_h1_bar_time`を更新します。新しい`TRAIL_CANDIDATE`を採用した場合だけpending候補も同一transactionで登録します。`INITIAL_RESTORE`と`TRAIL_RESTORE`の登録そのものには`TRAIL_EVALUATION`を作成しません。
 - `INITIAL_RESTORE`以外では、現在broker SLより1tick以上保護側であり、かつpendingがある場合はそのpendingよりも1tick以上保護側の候補だけでpendingを置き換えます。`INITIAL_RESTORE`は新規トレイル候補で置き換えません。
 - `pending_stop_loss_action_uid`が未完了の場合は新候補へ置き換えず、`SL_MODIFY_ACTION_PENDING`として見送ります。
-- 完全なエントリー条件成立時は、Lease所有確認、Decisionのシグナル消費、Tradeの`OPEN_PENDING`、`ENTRY_REQUEST`および`action_uid`を同一transactionで保存します。
-- transactionをcommitできるまで`OrderSend()`を実行しません。
 
 ### 11.3 新規約定
 
@@ -1017,7 +1071,8 @@ Tradeの`close_reason`と`broker_close_reason`は、Positionを消滅させた�
 
 次は必ず単一transactionで保存します。
 
-- Lease所有確認、エントリーDecisionの消費、`OPEN_PENDING`、`ENTRY_REQUEST`およびaction確定
+- Lease所有確認と、Judge成立回数・初回消費を含む確定Decision。初回波動NGまたはEA安全条件NGのSKIPも消費する
+- 発注可能な初回Entryでは、上記Decisionに加え`OPEN_PENDING`、`ENTRY_REQUEST`およびaction確定
 - H1バーの`TRAIL_EVALUATION`、最終評価バーおよび、採用時だけ`TRAIL_CANDIDATE`の登録・置換
 - Recovery Eventと、`INITIAL_RESTORE`・`TRAIL_RESTORE`の登録または構造不正pendingの隔離・解除
 - Lease所有確認、`SL_MODIFY_REQUEST`、一意な`action_uid`およびpending actionの確定
@@ -1032,7 +1087,7 @@ Tradeの`close_reason`と`broker_close_reason`は、Positionを消滅させた�
 
 ## 13. 冪等性とbroker照合
 
-- 市場シグナルは`context_key`、`signal_reference_time`および`signal_side`で一意にします。
+- 市場シグナルの初回Judge消費は`context_key`、`signal_reference_time`および`signal_side`で一意にします。回数2以上の確定Decisionは後続H1バーへ保存できますが、Entryは再評価しません。
 - Positionは`POSITION_IDENTIFIER`および`DEAL_POSITION_ID`で関連付けます。
 - ticketとMagicはTEXTで保存します。
 - broker由来の約定結果はbroker履歴を正本とします。
@@ -1044,7 +1099,7 @@ Tradeの`close_reason`と`broker_close_reason`は、Positionを消滅させた�
 
 手動決済のdealでMagicが変わっていても、初版はヘッジ口座に限定し、既知の`POSITION_IDENTIFIER`を正本として同じTradeへ関連付けます。broker transactionまたは保存済み変更元情報から手動・他EAを積極的に確認できた保護側SLだけを`EXTERNAL`とし、由来を証明できない保護側SLは`UNKNOWN`として、どちらもEAから緩めません。自EA actionとの不一致または要求履歴の欠落だけで`EXTERNAL`とは断定しません。保存済み水準より緩い、または削除された場合は保存済み水準の復元対象とします。
 
-brokerに存在しないSKIP判定、EA内部の決済意図、未送信要求、トレイル基準点およびSL設定元はbroker履歴だけから完全復元できません。
+brokerに存在しないSKIP判定、Judge成立回数・初回消費、EA内部の決済意図、未送信要求、トレイル基準点およびSL設定元はbroker履歴だけから完全復元できません。
 
 ## 14. DB障害時
 
@@ -1056,6 +1111,7 @@ broker SLはDB・Lease状態にかかわらず継続する。
 
 - 接続不能、破損、schema不一致またはmigration失敗時にDBを削除しません。
 - 新規OPENの事前保存に失敗した場合は発注しません。
+- Judge判定の保存に失敗した場合も新規OPENを停止し、同一プロセス内では確定済みの判定・回数・消費をメモリへ保持します。再保存で再加算せず、復旧後にその判定の注文を遅延送信しません。未送信のEntry候補は`SKIP / DB_UNAVAILABLE`として監査情報を保持します。
 - 保有中の保存失敗ではtransactionをrollbackします。排他Lockと既知Leaseの安全期限内ならpending候補をメモリへ保持し、リスク低減のSL変更または候補跨ぎ決済を継続できます。
 - 未保存Eventは同一プロセス内のメモリキューへ保持し、復旧後にFIFOで保存します。
 - メモリキューは再起動をまたぐ永続性を保証しません。
@@ -1063,7 +1119,8 @@ broker SLはDB・Lease状態にかかわらず継続する。
 - broker SLは常に継続し、H1 ZigZag SL変更と候補跨ぎ成行決済は排他Lockと既知Leaseの安全期限内ならDB復旧を待ちません。
 - 起動後に一度もLeaseを取得できていないRunは、Lockを保持していてもbroker SL以外の注文、SL変更および成行決済を送信しません。
 - 次回起動時にbroker履歴からorder、deal、Positionおよび適用済みSLの事実だけを補完します。
-- DB障害中に未保存のSKIP判定、基準点、pending候補およびSL設定元は完全補完できず、断定不能な設定元は`UNKNOWN`とします。
+- DB障害中に未保存のSKIP判定、Judge回数・初回消費、基準点、pending候補およびSL設定元は完全補完できず、断定不能な設定元は`UNKNOWN`とします。
+- 保存前に異常終了したメモリ内のJudge状態は、DBとbrokerだけでは完全な欠落検出・復元を保証できません。未保存状態の存在を検出した場合は、DB行がないことを「Judge初回」と読み替えず、新規Entry停止を維持します。保存済みの回数・消費についてだけ再起動後の重複防止を保証します。
 - 未反映のメモリ内pending候補は再起動で失われる可能性がありますが、最後にbrokerへ設定済みのSLは残ります。
 
 未保存キューの上限値と再接続間隔は実装設計時に固定定数として定義し、inputにはしません。
@@ -1071,8 +1128,8 @@ broker SLはDB・Lease状態にかかわらず継続する。
 ## 15. スキーマ移行
 
 - 初版は新規DBとして`user_version = 1`を作成します。
-- H1 ZigZagトレイルはEA・DB実装前の初版定義へ取り込むため、物理`user_version = 1`とRunの`schema_version = 1`を維持し、version 2 migrationは作成しません。
-- 4テーブルの初回CREATE定義、Entity、DAOおよびSmokeTestの期待列へトレイル列を含めます。
+- H1 ZigZagトレイルおよび既存H1 Entry互換のJudge回数・初回消費はEA・DB実装前の初版定義へ取り込むため、物理`user_version = 1`とRunの`schema_version = 1`を維持し、version 2 migrationは作成しません。
+- 4テーブルの初回CREATE定義、Entity、DAOおよびSmokeTestの期待列へトレイル列とJudge・Entry診断列を含めます。
 - 将来の変更は専用Migrationクラスで実施します。
 - `PRAGMA table_info`と`sqlite_schema`で変更前後を確認します。
 - migrationは起動時にtransactionで書込み権を取得したWriterだけが実行し、schema再確認後に開始します。
@@ -1139,6 +1196,22 @@ Viewer連携はEA初版の対象外です。将来設計では、少なくとも
 43. 構造不正なpendingをRecovery Eventへ隔離して構造化列を全NULLにし、`RECOVERY_REQUIRED`へ移行できる
 44. 手動・他EAを積極的に確認できたSLだけを`EXTERNAL`、由来を証明できないSLを`UNKNOWN`へ分類できる
 45. `INITIAL_RESTORE`中は新しいトレイル候補を作成しない
+46. 初回Judge成立時の波動NGを`SKIP`・消費済み・SLなしで保存でき、Tradeを作成しない
+47. 初回波動NGの後、同じシグナルの波動条件がOKになっても回数2以上・Entry未評価として注文しない
+48. 同じシグナルのJudge不成立バーを挟んでも回数をリセットせず、初回消費を解除しない
+49. 保有中または初期SL不正でもJudge初回を消費し、戦略Entry成立なら`is_strategy_entry = 1`のSKIPを保存できる
+50. 消費済みSKIPをLIVEの再起動後にも復元し、H1バー変更後も同じシグナルを再消費しない
+51. 同じH1バーの再評価・再保存・再起動でJudge回数を重複加算せず、確定Decisionを上書きしない
+52. 未消費、Entry未評価、戦略Entry不成立またはSLなしのBUY/SELL DecisionをCHECK制約で拒否できる
+53. 初回JudgeのSKIP保存失敗、およびEntry Decision・Trade・Eventの保存失敗で部分保存やbroker送信が発生しない
+54. RunのCanonical ConfigへMN1分析開始、主方向一致・W1追加確認・EMA200確認モード、表示波制限OFF、通貨強弱フィルターOFF、entry count 1および評価タイミングを固定順で保存できる
+55. MN1・W1方向とW1 EMA200の`NONE`、未取得NULL、主条件通過結果を区別して保存できる
+56. LIVEの起動1秒後・以降30秒ごと、Testerのtickを評価契機とし、未保存の起動時進行中H1バーも判定できる
+57. 同一H1バーで分析失敗後に成功した場合、失敗で回数を消費せず、成功時のDecisionだけを確定できる
+58. 分析が成功しないままH1バーが切り替わった場合、前バーを`ANALYSIS_UNAVAILABLE`・回数0・未消費で確定し、過去バーの注文を送らない
+59. H1最初のtickのトレイル評価とEntryポーリングを独立保存し、一方の分析失敗・評価済み状態で他方を処理済みにしない
+60. DB復旧時にメモリ内のJudge回数を再加算せず保存し、失った評価機会のOPENを遅延送信しない
+61. 未保存Judge状態の欠落を検出した場合、回数0へ推定復元して新規注文しない
 
 ## 18. 実装予定
 

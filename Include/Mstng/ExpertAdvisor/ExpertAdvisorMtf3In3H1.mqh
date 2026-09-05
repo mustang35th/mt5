@@ -58,6 +58,15 @@ public:
 
 protected:
     /**
+     * H1エントリーのスプレッドが許容範囲内か判定する。
+     *
+     * @return スプレッドが5.0 pips以下の場合true。
+     */
+    virtual bool isSpread() override {
+        return this.elliotAll.todayRate.spread <= 5.0;
+    }
+
+    /**
      * H1を基準に上位時間足のElliott売買方向を照合する。
      *
      * OBSERVEでは診断結果だけを保持し、REQUIREDでは取得不能、

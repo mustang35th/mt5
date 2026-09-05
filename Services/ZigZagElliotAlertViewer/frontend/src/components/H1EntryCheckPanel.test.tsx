@@ -104,13 +104,51 @@ describe("buildH1EntryCheckSnapshot", () => {
     h1.is_wave_uptrend = false;
     h1.latest_elliot_label = "2";
 
-    const snapshot = buildH1EntryCheckSnapshot(timeFrames, 3.1);
+    const snapshot = buildH1EntryCheckSnapshot(timeFrames, 5.1);
 
     expect(item(snapshot.items, "spread").status).toBe("NG");
     expect(item(snapshot.items, "h1_wave_direction").status).toBe("NG");
     expect(item(snapshot.items, "h1_elliott_wave").status).toBe("NG");
     expect(snapshot.overallStatus).toBe("NG");
     expect(snapshot.overallReason).toBe("最初のNG: Spread");
+  });
+
+  it.each([
+    [0, "OK"],
+    [3, "OK"],
+    [3.1, "OK"],
+    [5, "OK"],
+    [5.01, "NG"],
+    [null, "不明"],
+  ])("checks Spread %s against the inclusive H1 limit of 5 pips", (spread, status) => {
+    const snapshot = buildH1EntryCheckSnapshot(passingBuyTimeFrames(), spread);
+
+    expect(item(snapshot.items, "spread")).toMatchObject({
+      status,
+      expected: "5.0 pips以下",
+    });
+  });
+
+  it("keeps the saved overall result when current Spread rules now pass", () => {
+    const savedDecision = {
+      is_entry: false,
+      entry_result: "NOT_EVALUATED",
+      spread_pips: 4,
+    } as AlertDetail;
+    const snapshot = buildH1EntryCheckSnapshot(
+      passingBuyTimeFrames(),
+      1,
+      savedDecision,
+    );
+
+    expect(item(snapshot.items, "spread")).toMatchObject({
+      actual: "4.0 pips",
+      expected: "5.0 pips以下",
+      status: "OK",
+    });
+    expect(snapshot.source).toBe("SAVED");
+    expect(snapshot.overallStatus).toBe("NG");
+    expect(snapshot.overallReason).toBe("Entry未評価（NOT_EVALUATED）");
   });
 
   it("returns 判定不能 when a required Snapshot value is missing and no known NG exists", () => {
