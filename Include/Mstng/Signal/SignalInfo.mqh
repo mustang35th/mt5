@@ -43,6 +43,22 @@ public:
         
         return this.count;
     }
+
+    /**
+     * 永続化済みの回数を復元する。
+     *
+     * @param fromCount 復元する非負の回数。
+     * @return 回数が有効な場合true。
+     */
+    bool restoreCount(const int fromCount) {
+        if (fromCount < 0) {
+            return false;
+        }
+
+        this.count = fromCount;
+
+        return true;
+    }
     
     /**
      * 指定した識別情報と同じシグナルか判定する。

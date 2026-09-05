@@ -99,6 +99,46 @@ public:
     }
 
     /**
+     * 指定シグナルの永続化済み回数を加算せず復元する。
+     *
+     * @param fromTime シグナル基準時刻。
+     * @param fromIsBuy BUY方向の場合true。
+     * @param fromCount 復元する非負の回数。
+     * @return 復元に成功した場合true。
+     */
+    bool restoreCount(
+        const datetime fromTime,
+        const bool fromIsBuy,
+        const int fromCount
+    ) {
+        if (fromTime <= 0 || fromCount < 0) {
+            return false;
+        }
+
+        SignalInfo *signalInfo = this.getSignalInfo(fromTime, fromIsBuy);
+
+        if (signalInfo == NULL) {
+            if (fromCount == 0) {
+                return true;
+            }
+
+            signalInfo = new SignalInfo(fromTime, fromIsBuy);
+
+            if (signalInfo == NULL) {
+                return false;
+            }
+
+            if (!this.signalInfoList.Add(signalInfo)) {
+                delete signalInfo;
+
+                return false;
+            }
+        }
+
+        return signalInfo.restoreCount(fromCount);
+    }
+
+    /**
      * 指定したElliott表示波がエントリー済みか判定する。
      *
      * @param fromWaveStartTime 波の開始時刻。

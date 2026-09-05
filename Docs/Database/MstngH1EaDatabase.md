@@ -4,11 +4,11 @@
 
 | 項目 | 内容 |
 |---|---|
-| 対象機能 | 新規H1専用EA（仮称：`MstngH1Ea`）の判定・取引永続化 |
+| 対象機能 | H1専用EA `MstngH1Ea`の判定・取引永続化 |
 | DBMS | MetaTrader 5組み込みSQLite |
 | 物理スキーマバージョン | 1 |
 | 保存単位 | EA起動、H1判定、H1 ZigZagトレイル、取引ライフサイクル |
-| 文書状態 | 基本設計・実装前 |
+| 文書状態 | 初版実装・テスター受入確認前 |
 | 最終更新日 | 2026-09-05 |
 
 本書は、`MstngH1Ea`がH1判定、発注、約定および決済を保存し、再起動後にbroker状態と整合するためのSQLite構造を定義します。EA全体の動作は[MstngH1Ea基本設計書](../ExpertAdvisor/MstngH1Ea.md)を参照してください。
@@ -167,12 +167,16 @@ LIVEは再起動前後で同じキーを使用し、保存済みJudge成立回�
 分析Profileは既存の`ZigZagElliotAnalysisProfile::createCanonicalText()`と`createHash()`をそのまま使用します。EA設定は次の固定順で生成し、数値の小数桁も固定します。
 
 ```text
-H1_EA_CONFIG_V1|LOT_SIZE=<8桁>|MAX_INITIAL_SL_PIPS=<1桁>|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_OBSERVE_ONLY|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30|TESTER_EVALUATION_TRIGGER=TICK
+H1_EA_CONFIG_V1|LOT_SIZE=<8桁>|MAX_INITIAL_SL_PIPS=<1桁>|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_OBSERVE_ONLY|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30|TESTER_EVALUATION_TRIGGER=TICK|TESTER_TRADE_START_TIME=<epoch秒>
 ```
 
 `ZIGZAG_SL_BUFFER_PIPS`は初期SLとH1 ZigZagトレイルSLに共通する内部固定値です。初版ではinputから変更できません。上記の戦略・評価タイミング設定は現在の`ZigZagElliot` H1の初期設定に合わせた固定値です。W1追加確認は観測のみですが、主条件のW1方向および「MN1方向またはW1 EMA200方向」は必須判定へ使用します。これらの固定値またはシグナル消費規則を変更する場合は`strategy_version`も更新します。
 
 `MAX_SPREAD_PIPS=5.0`は基本設計v0.5のH1上限です。旧3.0 pips仕様との違いはRun設定と戦略バージョンで識別し、保存済みDecisionは新上限で再判定・上書きしません。
+
+`TESTER_TRADE_START_TIME`は有効な`InpTesterTradeStartTime`を`datetime`の秒整数へ変換した値です。Testerの既定入力は`2026.01.01 00:00`、0なら開始日時の制限なし、LIVEの有効値は入力値にかかわらず0です。Tester内のサーバー日時として扱い、UTC/JST変換は行いません。この値を末尾へ追加した`config_text`と、その全体の`config_hash`を既存Run列へ保存します。列追加・スキーマ変更・既存Runの書換えは行いません。
+
+売買開始日時設定はEA `1.01`、安全条件付きの高速ウォームアップはEA `1.02`で導入し、既存の`program_version`列で識別します。高速化用inputや保存列は追加せず、物理スキーマとRunの`schema_version`は1を維持します。
 
 `status`は次に限定します。
 
@@ -211,6 +215,8 @@ ON h1_ea_runs(context_key, started_at, id);
 
 EAは1秒間隔の`OnTimer()`内で10秒の経過を確認してheartbeatを更新し、Leaseを更新時点から60秒間有効にします。LIVEの初回1秒後・以降30秒間隔のEntry評価とはスケジュールを分離します。TesterのEntry評価はtickを契機とします。起動時に同一`context_key`の`RUNNING`が存在する場合、有効なLeaseなら二重起動として後発を拒否します。期限切れの場合だけ、transaction内で旧Runを`INTERRUPTED`へ更新して新Runを作成します。通常経路の新規注文、SL変更および候補跨ぎ成行決済では、今回Runの`status = 'RUNNING'`と未失効Leaseを、それぞれの要求Event・Trade更新と同一transactionで確認します。commit直後にbrokerへ送信し、確認と送信の間へ別のDB処理を挟みません。
 
+EA 1.02では、Testerの売買開始前でDB・Lease・排他Lockが正常、取引照合が完了し、他銘柄分を含む口座内のポジション・注文と未保存Decision・Eventなどの未処理状態がない場合だけ、Timer・heartbeatを30秒間隔にします。Leaseは60秒のままです。売買開始時、既存リスクの発見時、DB・Lease異常時には通常のTimer 1秒・heartbeat 10秒へ戻し、高速期間の30秒のDB再確認待ちも解除します。これは処理頻度の切替だけであり、Runの所有確認や失効時の取引停止条件を緩和しません。
+
 DB接続中にLease所有権を失った旧Runは、注文・変更・決済を停止します。DB障害中は、排他Lockを保持し、最後に確認できたLeaseが未失効の間だけ現在Runが既存ポジションのリスク管理を継続します。
 
 ### 7.1 DB非依存の排他Lock
@@ -230,6 +236,8 @@ Run登録とLease取得は別処理にせず、期限切れRunの更新と新し
 ## 8. `h1_ea_decisions`
 
 評価対象H1バー1本につき確定Decisionを1行保存します。起動時の進行中バーも、同一コンテキストの保存済みDecisionがなければ対象です。LIVEは初回1秒後・以降30秒間隔の評価機会、Testerはtickで、そのバーの最初の分析成功時にJudge、回数およびEntryを確定します。保有中または条件未達でも確定した結果をSKIPとして保存します。
+
+ただしTesterの売買開始日時より前は履歴準備専用期間とし、Entryとは別の`lastWarmupBar`でH1バーごとに1回だけ`strategy.prepareHistory()`による本数・同期確認を行います。Entry用の完全な波動分析、Judge評価、Entry状態のobserve・finalize、回数加算・初回消費、Decision・新規Entry Tradeの保存、新規注文を行いません。開始前の準備失敗も後から`ANALYSIS_UNAVAILABLE`のDecisionへ補完しません。Run・heartbeatと既存ポジションの保護・監査保存は継続します。開始日時以降の最初のtickから、同じH1バーであっても通常の完全な分析・評価を新たに実行し、ウォームアップ期間のEntry状態・Judge回数は持ち込みません。
 
 分析失敗だけではJudge・回数を更新せず、確定Decisionも作りません。同じH1バー内で再試行し、失敗した試行は運用ログへ残します。成功しないままバーが切り替わった場合は、前バーを`SKIP / ANALYSIS_UNAVAILABLE`、回数0・未消費として確定保存します。最初に確定したDecisionは再評価または上書きしません。稼働していなかった過去バーを推測で補完しません。
 
@@ -303,7 +311,7 @@ server|symbol|time_frame|h1_bar_time|signal_reference_time|MTF_3in3|side
 
 `is_strategy_entry = 1`でも、保有中、初期SL不正、SL幅超過など確定保存前の安全条件がNGなら`decision = 'SKIP'`となります。戦略Entry成立と実発注を同じフラグで表さず、安全条件が後から改善しても同じシグナルを再評価しません。BUY/SELL Decisionと`OPEN_PENDING`のcommit後に行う`OrderCheck()`が失敗した場合は、確定DecisionをSKIPへ変更せず、失敗EventとTradeの`OPEN_FAILED`へ記録します。シグナル消費は解除しません。
 
-`analysis_snapshot_text`は`H1_EA_DECISION_V1`を先頭に、8.2と8.3の列を表の順で`|列名=値`として連結します。小数はpipsを1桁、価格を対象シンボルのDigits、ロットを2桁で固定します。`snapshot_hash`は識別子と保存時刻を除くDecision保存値、`analysis_version`および`analysis_input_hash`を同じ順で連結したUTF-8文字列のSHA-256です。
+`analysis_snapshot_text`は`H1_EA_DECISION_V1`を先頭に、8.2と8.3の列（自身の`analysis_snapshot_text`列を除く）を表の順で`|列名=値`として連結します。未取得は`~`です。小数はpipsを1桁、価格を対象シンボルのDigits、ロットを2桁で固定します。`snapshot_hash`は識別子と保存時刻を除くDecision保存値、`analysis_version`および`analysis_input_hash`を同じ順で連結したUTF-8文字列のSHA-256です。
 
 ### 8.4 一意性
 
@@ -577,7 +585,8 @@ CHECK(pending_stop_loss_action_uid IS NULL
         AND pending_stop_loss IS NOT NULL
     ))
 CHECK(pending_stop_loss IS NULL
-    OR status IN ('OPEN', 'RECOVERY_REQUIRED'))
+    OR status IN ('OPEN', 'RECOVERY_REQUIRED')
+    OR (status = 'OPEN_PARTIAL' AND pending_stop_loss_kind = 'INITIAL_RESTORE'))
 CHECK(status <> 'CLOSED' OR (
     closed_at_msc IS NOT NULL
     AND closed_at_msc > 0
@@ -589,9 +598,9 @@ CHECK(status <> 'CLOSED' OR (
 ))
 ```
 
-pending保護SL候補は、未登録なら全列NULL、登録済みなら`pending_stop_loss_kind`と`pending_stop_loss`を必須とします。トレイル由来の2種はH1バーとZigZag情報も必須、初期SL復元はそれらを全列NULLとします。`pending_stop_loss_action_uid`は送信要求を確定してから結果を解決するまでだけ設定します。適用済みトレイル情報は全列NULLまたは全列有効のまとまりとして保存します。再試行時刻は`GetTickCount64()`を使用するプロセス内制御値のため保存せず、再起動時はbroker照合後に即時再試行できます。
+pending保護SL候補は、未登録なら全列NULL、登録済みなら`pending_stop_loss_kind`と`pending_stop_loss`を必須とします。トレイル由来の2種はH1バーとZigZag情報も必須、初期SL復元はそれらを全列NULLとします。`OPEN_PARTIAL`は約定済み数量の初期保護を維持するため`INITIAL_RESTORE`だけを例外的に許可し、トレイル候補は許可しません。`pending_stop_loss_action_uid`は送信要求を確定してから結果を解決するまでだけ設定します。適用済みトレイル情報は全列NULLまたは全列有効のまとまりとして保存します。再試行時刻はプロセス内制御値（LIVEは`GetTickCount64()`、Testerは`TimeCurrent()`をミリ秒化したテスト内経過時間）のため保存せず、再起動時はbroker照合後に即時再試行できます。
 
-正常なトレイル評価中とpending処理中はTradeの`status`を`OPEN`とします。pendingまたは未完了actionを安全に断定できない場合は`RECOVERY_REQUIRED`へ移行し、新規注文、SL変更および成行決済を停止してbroker照合だけを行います。照合で状態を一意に確定し、必要なら保存済み初期SL・適用済みトレイルSLから構造上有効なpendingを再構成して、Tradeを`OPEN`へ戻すtransactionをcommitした後だけ送信を再開します。通常のbroker SL約定は明示的な成行決済要求を伴わないため、`OPEN`から直接`CLOSED`へ更新できます。候補跨ぎ成行決済を送信する場合だけ`CLOSE_PENDING`へ移行します。
+正常なトレイル評価中とpending処理中はTradeの`status`を`OPEN`とします。例外は部分約定中の初期SL復元で、この場合だけ`OPEN_PARTIAL`を維持します。pendingまたは未完了actionを安全に断定できない場合は`RECOVERY_REQUIRED`へ移行し、新規注文、SL変更および成行決済を停止してbroker照合だけを行います。照合で状態を一意に確定し、必要なら保存済み初期SL・適用済みトレイルSLから構造上有効なpendingを再構成して、Tradeを`OPEN`または初期SL復元中の`OPEN_PARTIAL`へ戻すtransactionをcommitした後だけ送信を再開します。通常のbroker SL約定は明示的な成行決済要求を伴わないため、`OPEN`から直接`CLOSED`へ更新できます。候補跨ぎ成行決済を送信する場合だけ`CLOSE_PENDING`へ移行します。
 
 ### 9.3 制約と索引
 
@@ -879,6 +888,8 @@ CHECK(event_type <> 'DEAL_ADD' OR (
 
 `SL_MODIFY_REQUEST`では`stop_loss`へ要求候補、`stop_loss_action_kind`へ要求種別を保存し、確認結果2列はNULLとします。`SL_MODIFY_RESULT`では同じ要求候補・種別に加え、broker照合でSLありを確認した場合は`is_confirmed_stop_loss_present = 1`と実SL、SLなしを確認した場合は`is_confirmed_stop_loss_present = 0`と`confirmed_stop_loss = NULL`を保存します。要求の成功・失敗とSLの有無を正常取得できた場合だけResultを作成します。broker照合自体が失敗した場合はResultを作らず、actionを未完了のまま`RECOVERY_REQUIRED`として再照合します。
 
+応答不明・受付中のSL要求では、旧SLを読み取れた事実だけを失敗Resultにしません。遅延反映を否定できないため、候補の反映または当該要求への終端応答を確認するまで未完了actionを維持します。
+
 ### 10.2 一意性と索引
 
 ```sql
@@ -978,6 +989,7 @@ pending候補のPosition Identifierまたは方向が現在Positionと一致し�
 
 ### 11.2 H1判定
 
+- Testerの`TESTER_TRADE_START_TIME`より前はH1バーごとに1回の履歴準備確認だけを行い、Entry用の完全分析および以下のJudge・Decision・新規Entry保存処理へ進みません。0ならこの制限はなく、LIVEにも適用しません。履歴不足はTF別の本数・同期・最古日時をINFOログへ初回に出し、状態変化時は最短1時間間隔、状態不変の再通知は24時間間隔、分析再開時は1回とします。不足系列への履歴再取得要求は最短60秒間隔です。MN1の61本／W1からH1の各206本の準備条件は変えません。
 - LIVEは起動1秒後を初回とし、以降30秒間隔の評価機会でEntry用分析を行います。Testerではtickを契機とします。すでに確定DecisionがDBにある、または同一プロセスのメモリに保存待ちの確定判定があるH1バーは、再分析・再評価・Judge回数の再加算をしません。
 - 対象H1バーの最初の分析成功時に、保有・注文待ちの有無にかかわらずJudgeを評価します。Judge成立時は基準時刻・方向ごとの回数を加算し、初回だけH1/H4のEntry波動条件を評価します。
 - 初回Judge成立は波動条件NGまたはEA発注安全条件NGでも消費します。最終Decisionは`SKIP`として、拒否理由、回数1、`is_entry_evaluated = 1`および`is_signal_consumed = 1`を保存します。既存戦略だけは成立していた場合、`is_strategy_entry = 1`を残します。
@@ -1015,7 +1027,7 @@ Position成立を確認した時点で、対象Position Ticketからbroker SLを
 
 pending保護SL候補がある場合は次の順で処理します。
 
-1. Tradeが`OPEN`で、`pending_stop_loss_action_uid`が未完了でないことを確認する
+1. Tradeが`OPEN`、または初期SL復元に限り`OPEN_PARTIAL`で、`pending_stop_loss_action_uid`が未完了でないことを確認する
 2. brokerの現在SL、Position Ticket、BUYのBidまたはSELLのAskを再取得する
 3. broker SLが候補以上に保護済みなら、実SLと設定元を保存してSL変更を送信せずpendingを解除する
 4. 候補を価格が跨いでいれば、pending種別に対応するcross理由、Lease確認、`CLOSE_PENDING`、`EXIT_REQUEST`、Exit用`action_uid`およびpending解除を同一transactionで保存し、commit後に成行決済する
@@ -1123,7 +1135,7 @@ broker SLはDB・Lease状態にかかわらず継続する。
 - 保存前に異常終了したメモリ内のJudge状態は、DBとbrokerだけでは完全な欠落検出・復元を保証できません。未保存状態の存在を検出した場合は、DB行がないことを「Judge初回」と読み替えず、新規Entry停止を維持します。保存済みの回数・消費についてだけ再起動後の重複防止を保証します。
 - 未反映のメモリ内pending候補は再起動で失われる可能性がありますが、最後にbrokerへ設定済みのSLは残ります。
 
-未保存キューの上限値と再接続間隔は実装設計時に固定定数として定義し、inputにはしません。
+未保存キューはDecision 256件、Trade/Event 256件を上限とし、DB再接続・FIFO再保存は最短5秒間隔とします。inputにはしません。
 
 ## 15. スキーマ移行
 
@@ -1212,10 +1224,14 @@ Viewer連携はEA初版の対象外です。将来設計では、少なくとも
 59. H1最初のtickのトレイル評価とEntryポーリングを独立保存し、一方の分析失敗・評価済み状態で他方を処理済みにしない
 60. DB復旧時にメモリ内のJudge回数を再加算せず保存し、失った評価機会のOPENを遅延送信しない
 61. 未保存Judge状態の欠落を検出した場合、回数0へ推定復元して新規注文しない
+62. Runの`config_text`と`config_hash`へ有効な`TESTER_TRADE_START_TIME`を保存し、Testerの指定日時・0の制限なし・LIVEの有効値0を区別できる。既存スキーマとRun行を変更しない
+63. Testerの開始前にはDecision・新規Entry Tradeを保存せず、Run・heartbeatと既存保護処理の監査は継続できる。開始前バーのSKIP補完・Judge回数の消費も行わない
+64. 開始後の最初のtickで通常評価を始め、ウォームアップ期間の処理済みバー・回数を持ち込まずに初回消費を保存できる
+65. 安全条件を満たすTester高速ウォームアップ時だけheartbeatを30秒へ切り替え、Leaseの60秒とRun所有確認を維持する。開始時・リスク発見時・DB異常時は通常10秒へ戻し、Decision・新規Entryの保存抑止と既存保護を両立できる
 
-## 18. 実装予定
+## 18. 実装ファイル
 
-初版では次を新設します。名称は実装時に既存パッケージ構成へ合わせて確定します。
+初版では次を新設しました。
 
 ```text
 Include/Mstng/Database/H1EaDatabaseContext.mqh
@@ -1227,8 +1243,10 @@ Include/Mstng/Database/Dao/H1EaRunDao.mqh
 Include/Mstng/Database/Dao/H1EaDecisionDao.mqh
 Include/Mstng/Database/Dao/H1EaTradeDao.mqh
 Include/Mstng/Database/Dao/H1EaTradeEventDao.mqh
+Include/Mstng/Database/Dao/H1EaSql.mqh
 Include/Mstng/Database/Service/H1EaPersistenceService.mqh
 Scripts/Mstng/Database/H1EaDatabaseSmokeTest.mq5
+Scripts/Mstng/Database/test_h1_ea_database_contract.py
 ```
 
 接続管理は[SqliteDatabase.mqh](../../Include/Mstng/Database/SqliteDatabase.mqh)を再利用し、複数Writer向け設定は[ZigZagElliotAlertDatabaseContext.mqh](../../Include/Mstng/Database/ZigZagElliotAlertDatabaseContext.mqh)の方式を踏襲します。
