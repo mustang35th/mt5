@@ -71,8 +71,8 @@ class TesterWarmupWiringTests(unittest.TestCase):
         cls.persistence = PERSISTENCE.read_text(encoding="utf-8-sig")
 
     def test_program_version_changes_without_new_inputs(self):
-        self.assertRegex(self.expert, r'#property\s+version\s+"1\.02"')
-        self.assertIn('return "1.02";', method(self.config, "getProgramVersion"))
+        self.assertRegex(self.expert, r'#property\s+version\s+"1\.05"')
+        self.assertIn('return "1.05";', method(self.config, "getProgramVersion"))
         self.assertEqual(
             re.findall(r"(?m)^input\s+(?:double|datetime|int|bool|string)\s+(\w+)\s*=", self.expert),
             ["InpLotSize", "InpMaxInitialStopLossPips", "InpTesterTradeStartTime"],
@@ -181,6 +181,23 @@ class TesterWarmupWiringTests(unittest.TestCase):
             self.assertIn(guard, compact)
         for forbidden in ("OrderSend(", "Database", "this.reconcile(", "this.readPosition("):
             self.assertNotIn(forbidden, body)
+
+    def test_executor_empty_action_guards_have_explicit_empty_initializers(self):
+        # In MQL5 an uninitialized string is NULL, which is not equal to "".
+        gate = method(self.executor, "isIdleForTesterWarmup")
+        guarded_names = set(re.findall(r'this\.(\w+)\s*!=\s*""', gate))
+        self.assertIn("entryActionUid", guarded_names)
+        constructor = method(self.executor, "H1EaTradeExecutor")
+        masked = code_only(constructor)
+        initialized_names = {
+            match.group(1)
+            for match in re.finditer(r'this\.(\w+)\s*=\s*""\s*;', constructor)
+            if masked[match.start():match.start() + 4] == "this"
+        }
+        for name in sorted(guarded_names):
+            with self.subTest(field=name):
+                self.assertIn(name, initialized_names,
+                              f"{name} must be initialized to an empty string, not NULL")
 
     def test_fast_tick_and_timer_recheck_safety_before_skipping_normal_work(self):
         for name in ("onTick", "onTimer"):

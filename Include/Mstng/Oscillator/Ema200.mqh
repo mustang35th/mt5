@@ -981,31 +981,25 @@ private:
         }
 
         int copyCount = maxShift + 1;
-        int calculatedCount = BarsCalculated(this.ema200Handle);
-
-        if (calculatedCount < copyCount) {
-            this.logger.info(
-                __FUNCTION__,
-                StringFormat(
-                    "EMA200 is not ready. calculatedCount=%d copyCount=%d",
-                    calculatedCount,
-                    copyCount
-                )
-            );
-
-            return false;
-        }
-
         ArraySetAsSeries(emaBuffer, true);
 
         ResetLastError();
 
+        // 非ビジュアルのTesterでも計算が始まるよう、準備確認より先に取得を要求する。
         int copied = CopyBuffer(this.ema200Handle, 0, 0, copyCount, emaBuffer);
 
-        if (copied < copyCount) {
+        if (copied != copyCount) {
             this.logger.error(__FUNCTION__, StringFormat("CopyBuffer error. copied=%d copyCount=%d code=%d", copied, copyCount, GetLastError()));
 
             return false;
+        }
+
+        for (int i = 0; i < copyCount; i++) {
+            if (!MathIsValidNumber(emaBuffer[i]) || emaBuffer[i] == EMPTY_VALUE) {
+                this.logger.error(__FUNCTION__, StringFormat("CopyBuffer returned invalid value. shift=%d", i));
+
+                return false;
+            }
         }
 
         return true;

@@ -158,7 +158,7 @@ public:
     /**
      * プログラム世代を返す。
      */
-    static string getProgramVersion() { return "1.02"; }
+    static string getProgramVersion() { return "1.05"; }
 
     /**
      * Entry互換条件とトレイルを含む戦略世代を返す。

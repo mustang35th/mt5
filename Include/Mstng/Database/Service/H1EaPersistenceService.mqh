@@ -307,6 +307,124 @@ public:
     }
 
     /**
+     * 現context内でdeal監査未完了のCLOSEDを主キー順に一件取得する。
+     * NULLの約定ticketは欠落と推測せず、明示的な監査待ちだけを別途拾う。
+     * 起動時の全件監査ではendpointやmarkerに依存せず、途中約定の欠落も再照合する。
+     */
+    bool loadClosedTradeForDealAudit(const string fromContext, const long fromAfterId,
+            H1EaTradeEntity &fromTrade, bool &fromFound, const bool fromFullAudit = false) {
+        fromFound = false;
+        if (StringLen(fromContext) == 0 || fromAfterId < 0) {
+            return this.fail("CLOSED_DEAL_AUDIT_QUERY_INVALID");
+        }
+        string where = "context_key=" + H1EaSql::text(fromContext)
+            + " AND status='CLOSED' AND id>" + IntegerToString(fromAfterId);
+        if (!fromFullAudit) {
+            where += " AND (last_error='DEAL_EVENTS_PENDING'"
+                + " OR (entry_deal_ticket IS NOT NULL AND NOT EXISTS ("
+                + "SELECT 1 FROM h1_ea_trade_events e WHERE e.trade_id=h1_ea_trades.id"
+                + " AND e.event_type='DEAL_ADD' AND e.deal_ticket=h1_ea_trades.entry_deal_ticket))"
+                + " OR (exit_deal_ticket IS NOT NULL AND NOT EXISTS ("
+                + "SELECT 1 FROM h1_ea_trade_events e WHERE e.trade_id=h1_ea_trades.id"
+                + " AND e.event_type='DEAL_ADD' AND e.deal_ticket=h1_ea_trades.exit_deal_ticket)))";
+        }
+        where += " ORDER BY id ASC";
+        if (!H1EaTradeDao::load(this.getHandle(), where, fromTrade, fromFound)) {
+            return this.fail("CLOSED_DEAL_AUDIT_READ_FAILED");
+        }
+        this.lastError = "";
+        return true;
+    }
+
+    /**
+     * 遅延した途中約定のため、endpointや監査待ちに依存せずCLOSEDを取得する。
+     * 指定contextとPosition IDが完全一致する過去取引だけを対象にする。
+     */
+    bool loadClosedTradeByPosition(const string fromContext, const string fromPositionIdentifier,
+            H1EaTradeEntity &fromTrade, bool &fromFound) {
+        fromFound = false;
+        if (StringLen(fromContext) == 0 || StringLen(fromPositionIdentifier) == 0) {
+            return this.fail("CLOSED_DEAL_POSITION_QUERY_INVALID");
+        }
+        if (!H1EaTradeDao::load(this.getHandle(),
+                "context_key=" + H1EaSql::text(fromContext) + " AND status='CLOSED'"
+                + " AND position_identifier=" + H1EaSql::text(fromPositionIdentifier),
+                fromTrade, fromFound)) {
+            return this.fail("CLOSED_DEAL_POSITION_READ_FAILED");
+        }
+        this.lastError = "";
+        return true;
+    }
+
+    /**
+     * CLOSEDのbroker約定事実だけを追記し、過去Tradeのsnapshotは更新しない。
+     * Lease不要の監査専用経路であり、現在の取引状態変更や発注を許可しない。
+     */
+    bool appendClosedDealEvent(const long fromRunId, const long fromTradeId,
+            H1EaTradeEventEntity &fromEvent) {
+        if (fromEvent.eventType != "DEAL_ADD" || StringLen(fromEvent.dealTicket) == 0
+                || (fromEvent.tradeId != 0 && fromEvent.tradeId != fromTradeId)) {
+            return this.fail("CLOSED_DEAL_EVENT_INVALID");
+        }
+        H1EaRunEntity run;
+        H1EaTradeEntity trade;
+        if (!this.beginClosedDealAudit(fromRunId, fromTradeId, run, trade)) {
+            return false;
+        }
+        string scope = "LIVE|" + run.accountServer + "|"
+            + IntegerToString(run.accountLogin) + "|" + fromEvent.dealTicket;
+        if (run.sourceMode == "TESTER") {
+            scope = "TESTER|" + run.runUid + "|" + fromEvent.dealTicket;
+        }
+        if (StringLen(trade.positionIdentifier) == 0
+                || fromEvent.positionIdentifier != trade.positionIdentifier
+                || fromEvent.dealScopeKey != scope || fromEvent.eventUid != scope) {
+            return this.complete(false, "CLOSED_DEAL_EVENT_SCOPE_INVALID");
+        }
+        H1EaTradeEventEntity event = fromEvent;
+        H1EaTradeEventEntity existing;
+        bool found = false;
+        bool success = H1EaTradeEventDao::load(this.getHandle(),
+            "event_uid=" + H1EaSql::text(scope)
+            + " OR deal_scope_key=" + H1EaSql::text(scope), existing, found);
+        if (success && found) {
+            success = existing.tradeId == fromTradeId && existing.eventType == "DEAL_ADD"
+                && existing.eventUid == scope && existing.dealScopeKey == scope
+                && existing.dealTicket == event.dealTicket
+                && existing.positionIdentifier == trade.positionIdentifier;
+            if (success) {
+                event = existing;
+            }
+        } else if (success) {
+            event.id = 0;
+            event.tradeId = fromTradeId;
+            event.runId = fromRunId;
+            success = this.insertEvent(event);
+        }
+        if (!this.complete(success, "CLOSED_DEAL_EVENT_APPEND_FAILED")) {
+            return false;
+        }
+        fromEvent = event;
+        return true;
+    }
+
+    /**
+     * 全dealの保存成功後に監査待ちだけを解除し、他のエラーやTrade状態を保持する。
+     * 呼出側がbroker履歴の全件照合を完了した場合に限って使用する。
+     */
+    bool completeClosedDealAudit(const long fromRunId, const long fromTradeId) {
+        H1EaRunEntity run;
+        H1EaTradeEntity trade;
+        if (!this.beginClosedDealAudit(fromRunId, fromTradeId, run, trade)) {
+            return false;
+        }
+        string sql = "UPDATE h1_ea_trades SET last_error='' WHERE id="
+            + IntegerToString(fromTradeId) + " AND last_error='DEAL_EVENTS_PENDING'";
+        return this.complete(H1EaSql::execute(this.getHandle(), sql),
+            "CLOSED_DEAL_AUDIT_COMPLETE_FAILED");
+    }
+
+    /**
      * 型変換前のpending全7列を、SQLite実型・SQL値付きCanonical Textで取得する。
      * 列名の後の長さは型とSQLリテラルを合わせたUTF-8バイト数とする。
      */
@@ -504,6 +622,31 @@ private:
     bool begin() {
         if (!H1EaSql::execute(this.getHandle(), "BEGIN IMMEDIATE")) {
             return this.fail("TRANSACTION_BEGIN_FAILED");
+        }
+        return true;
+    }
+
+    /**
+     * 後発Runの所有権を維持し、同contextのCLOSEDをtransaction内で読み直す。
+     * Testerの別Runやactive Tradeを過去約定の補完対象にしない。
+     */
+    bool beginClosedDealAudit(const long fromRunId, const long fromTradeId,
+            H1EaRunEntity &fromRun, H1EaTradeEntity &fromTrade) {
+        if (fromRunId <= 0 || fromTradeId <= 0) {
+            return this.fail("CLOSED_DEAL_AUDIT_ID_INVALID");
+        }
+        bool found = false;
+        if (!H1EaRunDao::load(this.getHandle(), "id=" + IntegerToString(fromRunId),
+                fromRun, found) || !found) {
+            return this.fail("CLOSED_DEAL_AUDIT_RUN_READ_FAILED");
+        }
+        if (!this.beginOwned(fromRunId, false, fromRun.contextKey)) {
+            return false;
+        }
+        if (!H1EaTradeDao::load(this.getHandle(), "id=" + IntegerToString(fromTradeId),
+                fromTrade, found) || !found || fromTrade.contextKey != fromRun.contextKey
+                || fromTrade.status != "CLOSED") {
+            return this.complete(false, "CLOSED_DEAL_AUDIT_TRADE_SCOPE_INVALID");
         }
         return true;
     }

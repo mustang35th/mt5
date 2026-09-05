@@ -7,6 +7,7 @@
 #include <MstngH1Ea\Runtime\H1EaClock.mqh>
 #include <MstngH1Ea\Runtime\H1EaOperationLogger.mqh>
 #include <MstngH1Ea\Runtime\H1EaTextUtil.mqh>
+#include <MstngH1Ea\Trade\H1EaDealHistory.mqh>
 #include <MstngH1Ea\Trade\H1EaProtectionPolicy.mqh>
 
 /**
@@ -47,6 +48,8 @@ public:
         this.orderReadFailed = false;
         this.entryCancelAttempted = false;
         this.cancelTurn = true;
+        // 未初期化のNULLを処理中のactionと誤判定しないよう空文字を明示する。
+        this.entryActionUid = "";
         this.exitActionUid = "";
         this.confirmedModifyActionUid = "";
         this.confirmedModifyRetcode = -1;
@@ -54,6 +57,13 @@ public:
         this.pendingStored = false;
         this.ownershipLost = false;
         this.entryH1Bar = 0;
+        this.dealHistoryPending = false;
+        this.closedDealAuditChecked = false;
+        this.closedDealAuditFull = true;
+        this.closedDealAuditAfterId = 0;
+        this.nextClosedDealAuditTick = 0;
+        this.nextPendingDealAuditTick = 0;
+        this.lastDealHistoryFailure = "";
     }
 
     /**
@@ -108,7 +118,16 @@ public:
      * 保存待ち中は新規注文を停止する。
      */
     bool hasUnsavedEvents() {
-        return ArraySize(this.saveQueue) > 0 || this.queueOverflow;
+        return ArraySize(this.saveQueue) > 0 || this.queueOverflow
+            || this.hasPendingDealAudit();
+    }
+
+    /**
+     * 終了時も、保存キューの空とbroker約定明細の照合完了を区別する。
+     */
+    bool hasPendingDealAudit() const {
+        return this.initialized && (this.dealHistoryPending || !this.closedDealAuditChecked
+            || ArraySize(this.pendingDealTickets) > 0);
     }
 
     /**
@@ -119,7 +138,9 @@ public:
         if (!this.initialized || !this.loaded || !this.idleReconciled || this.persistence == NULL
                 || this.runId <= 0 || !this.lockHeld || this.knownLeaseExpires <= 0
                 || this.active || this.ownershipLost || this.queueOverflow || ArraySize(this.saveQueue) > 0
-                || this.recoveryCommitPending || this.orderReadFailed || this.pendingStored) {
+                || this.recoveryCommitPending || this.orderReadFailed || this.pendingStored
+                || this.dealHistoryPending || !this.closedDealAuditChecked
+                || ArraySize(this.pendingDealTickets) > 0) {
             return false;
         }
         if (this.trade.id != 0 || this.trade.status != "" || this.trade.lastError != ""
@@ -343,7 +364,11 @@ public:
             }
             this.loaded = true;
             this.pendingStored = this.active;
+            // 再起動前の中間約定通知が失われていても、activeの全履歴を一度読み直す。
+            this.dealHistoryPending = this.active;
         }
+        this.reconcilePendingDealTickets();
+        this.reconcileClosedDealAudit();
         PositionSnapshot position;
         int positionCount = 0;
         if (!this.readPosition(position, positionCount)) {
@@ -403,7 +428,7 @@ public:
                 this.trade.openedVolume = position.volume;
             }
             bool needsDealRecovery = this.trade.status != "OPEN" || this.trade.entryDealTicket == ""
-                || positionVolumeChanged;
+                || positionVolumeChanged || this.dealHistoryPending;
             bool wasRecovery = this.trade.status == "RECOVERY_REQUIRED";
             bool entryOrderActive = this.entryOrderIsActive();
             if (this.orderReadFailed) {
@@ -603,17 +628,15 @@ public:
             this.confirmedModifyActionUid = this.trade.pendingStopLossActionUid;
             this.confirmedModifyRetcode = (int)fromResult.retcode;
         }
-        this.reconcile();
-        if (fromTransaction.type != TRADE_TRANSACTION_DEAL_ADD || !this.active
-                || fromTransaction.deal == 0 || !HistoryDealSelect(fromTransaction.deal)) {
-            return;
+        bool dealAdded = fromTransaction.type == TRADE_TRANSACTION_DEAL_ADD
+            && fromTransaction.deal > 0 && fromTransaction.symbol == this.symbolName;
+        if (dealAdded) {
+            this.enqueueDealAudit(fromTransaction.deal);
+            // CLOSED後の遅延通知も、現contextの不足明細を再確認する契機にする。
+            this.closedDealAuditChecked = false;
+            this.closedDealAuditAfterId = 0;
+            this.nextClosedDealAuditTick = 0;
         }
-        string identifier = H1EaTextUtil::ticket((ulong)HistoryDealGetInteger(fromTransaction.deal, DEAL_POSITION_ID));
-        if (identifier != this.trade.positionIdentifier) {
-            return;
-        }
-        this.recordDeal(fromTransaction.deal, "CALLBACK");
-        this.aggregateDeals(false);
         this.reconcile();
     }
 
@@ -692,6 +715,22 @@ private:
     bool pendingStored;
     /** 確認済み所有権喪失は古いheartbeat値で解除しない。 */
     bool ownershipLost;
+    /** 現在Tradeの約定読取・保存を再照合する必要がある。 */
+    bool dealHistoryPending;
+    /** 現contextの決済明細欠落を最後まで確認済み。 */
+    bool closedDealAuditChecked;
+    /** 起動時は中間約定の欠落も拾うため、現contextの全CLOSEDを一度走査する。 */
+    bool closedDealAuditFull;
+    /** 成功したCLOSED監査だけを進める走査位置。 */
+    long closedDealAuditAfterId;
+    /** 履歴未準備・DB停止時の再試行を最短1秒に制限する。 */
+    ulong nextClosedDealAuditTick;
+    /** 同じ履歴失敗の毎Tickログを抑制する。 */
+    string lastDealHistoryFailure;
+    /** 通知時に履歴またはDBが未準備でも捨てない約定ticket。 */
+    ulong pendingDealTickets[];
+    /** 通知ticketの再取得間隔。新通知では即時に再確認する。 */
+    ulong nextPendingDealAuditTick;
 
     /**
      * 非DBの送信権限を確認する。起動時未取得Leaseは許可しない。
@@ -1736,48 +1775,246 @@ private:
     }
 
     /**
-     * 単一dealの通知を一意なbrokerキーで追記する。
+     * 取得済みの約定からEventを作り、保存時にbroker履歴を再参照しない。
+     * 過去CLOSEDを補完する場合も現在Tradeの状態を流用しない。
      */
-    void recordDeal(const ulong fromTicket, const string fromSource) {
-        if (this.trade.id <= 0) {
-            return;
+    bool buildDealEvent(const H1EaTradeEntity &fromTrade, const H1EaDealSnapshot &fromDeal,
+            const string fromSource, H1EaTradeEventEntity &fromEvent) {
+        if (fromTrade.id <= 0 || fromTrade.contextKey != this.contextKey
+                || fromDeal.symbol != this.symbolName || fromDeal.ticket == 0
+                || fromDeal.timeMsc <= 0 || fromDeal.volume <= 0.0 || fromDeal.price <= 0.0
+                || H1EaTextUtil::ticket(fromDeal.positionIdentifier) != fromTrade.positionIdentifier
+                || (fromDeal.type != DEAL_TYPE_BUY && fromDeal.type != DEAL_TYPE_SELL)) {
+            return false;
         }
-        H1EaTradeEventEntity event;
-        this.newEvent("DEAL_ADD", event);
-        event.eventSource = fromSource;
-        event.transactionType = TRADE_TRANSACTION_DEAL_ADD;
-        event.dealTicket = H1EaTextUtil::ticket(fromTicket);
-        event.orderTicket = H1EaTextUtil::ticket((ulong)HistoryDealGetInteger(fromTicket, DEAL_ORDER));
-        event.positionIdentifier = H1EaTextUtil::ticket((ulong)HistoryDealGetInteger(fromTicket, DEAL_POSITION_ID));
-        event.brokerTimeMsc = HistoryDealGetInteger(fromTicket, DEAL_TIME_MSC);
-        if (event.brokerTimeMsc <= 0) {
-            return;
-        }
-        event.dealScopeKey = "LIVE|" + AccountInfoString(ACCOUNT_SERVER) + "|"
-            + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "|" + event.dealTicket;
+        fromEvent.reset();
+        fromEvent.tradeId = fromTrade.id;
+        fromEvent.runId = this.runId;
+        fromEvent.eventType = "DEAL_ADD";
+        fromEvent.eventSource = fromSource;
+        fromEvent.serverTime = TimeCurrent();
+        fromEvent.recordedAt = TimeLocal();
+        fromEvent.positionTicket = fromTrade.positionTicket;
+        fromEvent.stopLossSource = fromTrade.stopLossSource;
+        fromEvent.transactionType = TRADE_TRANSACTION_DEAL_ADD;
+        fromEvent.dealTicket = H1EaTextUtil::ticket(fromDeal.ticket);
+        fromEvent.orderTicket = H1EaTextUtil::ticket(fromDeal.orderTicket);
+        fromEvent.positionIdentifier = fromTrade.positionIdentifier;
+        fromEvent.brokerTimeMsc = fromDeal.timeMsc;
+        fromEvent.dealScopeKey = "LIVE|" + AccountInfoString(ACCOUNT_SERVER) + "|"
+            + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "|" + fromEvent.dealTicket;
         if (MQLInfoInteger(MQL_TESTER)) {
-            event.dealScopeKey = "TESTER|" + this.runUid + "|" + event.dealTicket;
+            fromEvent.dealScopeKey = "TESTER|" + this.runUid + "|" + fromEvent.dealTicket;
         }
-        event.eventUid = event.dealScopeKey;
-        event.side = "SELL";
-        if (HistoryDealGetInteger(fromTicket, DEAL_TYPE) == DEAL_TYPE_BUY) {
-            event.side = "BUY";
+        fromEvent.eventUid = fromEvent.dealScopeKey;
+        fromEvent.side = "SELL";
+        if (fromDeal.type == DEAL_TYPE_BUY) {
+            fromEvent.side = "BUY";
         }
-        event.volume = HistoryDealGetDouble(fromTicket, DEAL_VOLUME);
-        event.price = HistoryDealGetDouble(fromTicket, DEAL_PRICE);
-        event.brokerReason = this.brokerReason(HistoryDealGetInteger(fromTicket, DEAL_REASON));
-        long entry = HistoryDealGetInteger(fromTicket, DEAL_ENTRY);
-        event.message = EnumToString((ENUM_DEAL_ENTRY)entry);
-        if (entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY || entry == DEAL_ENTRY_INOUT) {
-            event.exitIntentReason = this.trade.exitIntentReason;
-            event.closeReason = H1EaProtectionPolicy::closeReason(this.trade.exitIntentReason,
-                this.trade.stopLossSource, event.brokerReason);
-            if (this.trade.exitIntentReason == "" && event.brokerReason == "EXPERT"
-                    && (ulong)HistoryDealGetInteger(fromTicket, DEAL_MAGIC) != this.magicNumber) {
-                event.closeReason = "EXTERNAL_CLOSE";
+        fromEvent.volume = fromDeal.volume;
+        fromEvent.price = fromDeal.price;
+        fromEvent.brokerReason = this.brokerReason(fromDeal.reason);
+        fromEvent.message = EnumToString((ENUM_DEAL_ENTRY)fromDeal.entry);
+        if (fromDeal.entry == DEAL_ENTRY_OUT || fromDeal.entry == DEAL_ENTRY_OUT_BY
+                || fromDeal.entry == DEAL_ENTRY_INOUT) {
+            fromEvent.exitIntentReason = fromTrade.exitIntentReason;
+            fromEvent.closeReason = H1EaProtectionPolicy::closeReason(fromTrade.exitIntentReason,
+                fromTrade.stopLossSource, fromEvent.brokerReason);
+            if (fromTrade.exitIntentReason == "" && fromEvent.brokerReason == "EXPERT"
+                    && fromDeal.magic != this.magicNumber) {
+                fromEvent.closeReason = "EXTERNAL_CLOSE";
             }
         }
-        this.saveEvent(event, false);
+        return true;
+    }
+
+    /**
+     * 単一dealの保存、または既存FIFOへの受理結果を呼出元へ返す。
+     */
+    bool recordDeal(const H1EaDealSnapshot &fromDeal, const string fromSource) {
+        if (fromDeal.type != DEAL_TYPE_BUY && fromDeal.type != DEAL_TYPE_SELL) {
+            return true;
+        }
+        H1EaTradeEventEntity event;
+        if (!this.buildDealEvent(this.trade, fromDeal, fromSource, event)) {
+            this.logDealHistoryFailure("DEAL_EVENT_INVALID ticket=" + H1EaTextUtil::ticket(fromDeal.ticket));
+            return false;
+        }
+        return this.saveEvent(event, false);
+    }
+
+    /**
+     * 履歴の取得失敗をDBと独立したログへ残し、同じ失敗の連続出力を抑制する。
+     */
+    void logDealHistoryFailure(const string fromFailure) {
+        if (StringFind(fromFailure, "SNAPSHOT_OWNER_SUPERSEDED") >= 0
+                || StringFind(fromFailure, "RUN_SCOPE_OR_LEASE_LOST") >= 0
+                || StringFind(fromFailure, "LEASE_NOT_OWNED") >= 0) {
+            this.ownershipLost = true;
+            this.knownLeaseExpires = 0;
+        }
+        if (fromFailure != this.lastDealHistoryFailure) {
+            this.writeLog("ERROR", fromFailure);
+            this.lastDealHistoryFailure = fromFailure;
+        }
+    }
+
+    /**
+     * 通知ticketは有限キューで保持する。重複通知は追加せず、上限超過ではEntryを停止する。
+     */
+    void enqueueDealAudit(const ulong fromTicket) {
+        this.nextPendingDealAuditTick = 0;
+        int size = ArraySize(this.pendingDealTickets);
+        for (int i = 0; i < size; i++) {
+            if (this.pendingDealTickets[i] == fromTicket) {
+                return;
+            }
+        }
+        if (size >= 256 || ArrayResize(this.pendingDealTickets, size + 1) != size + 1) {
+            this.queueOverflow = true;
+            this.writeLog("ERROR", "DEAL_AUDIT_QUEUE_FULL ticket=" + H1EaTextUtil::ticket(fromTicket));
+            return;
+        }
+        this.pendingDealTickets[size] = fromTicket;
+    }
+
+    /**
+     * 遅延通知はendpointの有無に関係なく元PositionのCLOSEDへ結合する。
+     * 現在Tradeの約定なら全履歴再集計へ渡し、他のTrade状態は書き換えない。
+     */
+    void reconcilePendingDealTickets() {
+        if (ArraySize(this.pendingDealTickets) == 0 || ArraySize(this.saveQueue) > 0
+                || this.queueOverflow || H1EaClock::milliseconds() < this.nextPendingDealAuditTick) {
+            return;
+        }
+        this.nextPendingDealAuditTick = H1EaClock::milliseconds() + 1000;
+        while (ArraySize(this.pendingDealTickets) > 0) {
+            H1EaDealSnapshot deal;
+            string failure;
+            if (!H1EaDealHistory::read(this.pendingDealTickets[0], deal, failure)) {
+                this.logDealHistoryFailure(failure);
+                return;
+            }
+            if (deal.symbol == this.symbolName && (deal.type == DEAL_TYPE_BUY || deal.type == DEAL_TYPE_SELL)) {
+                string identifier = H1EaTextUtil::ticket(deal.positionIdentifier);
+                H1EaTradeEntity closedTrade;
+                bool found = false;
+                if (!this.persistence.loadClosedTradeByPosition(this.contextKey, identifier, closedTrade, found)) {
+                    this.logDealHistoryFailure(this.persistence.getLastError());
+                    return;
+                }
+                if (found) {
+                    H1EaTradeEventEntity event;
+                    if (!this.buildDealEvent(closedTrade, deal, "CALLBACK", event)
+                            || !this.persistence.appendClosedDealEvent(this.runId, closedTrade.id, event)) {
+                        this.logDealHistoryFailure("CLOSED_DEAL_CALLBACK_SAVE_FAILED ticket="
+                            + H1EaTextUtil::ticket(deal.ticket) + " " + this.persistence.getLastError());
+                        return;
+                    }
+                } else if (this.active && identifier == this.trade.positionIdentifier) {
+                    this.dealHistoryPending = true;
+                }
+            }
+            int size = ArraySize(this.pendingDealTickets);
+            for (int i = 1; i < size; i++) {
+                this.pendingDealTickets[i - 1] = this.pendingDealTickets[i];
+            }
+            ArrayResize(this.pendingDealTickets, size - 1);
+        }
+    }
+
+    /**
+     * CLOSED履歴の途中取得を完了と扱わず、既存Entry/Exit ticketと数量を照合する。
+     */
+    bool closedDealHistoryComplete(const H1EaTradeEntity &fromTrade,
+            const H1EaDealSnapshot &fromDeals[]) {
+        bool entryFound = false;
+        bool exitFound = false;
+        double entryVolume = 0.0;
+        double exitVolume = 0.0;
+        for (int i = 0; i < ArraySize(fromDeals); i++) {
+            if (fromDeals[i].type != DEAL_TYPE_BUY && fromDeals[i].type != DEAL_TYPE_SELL) {
+                continue;
+            }
+            string ticket = H1EaTextUtil::ticket(fromDeals[i].ticket);
+            if (fromDeals[i].entry == DEAL_ENTRY_IN) {
+                entryVolume += fromDeals[i].volume;
+                if (ticket == fromTrade.entryDealTicket) {
+                    entryFound = true;
+                }
+            } else if (fromDeals[i].entry == DEAL_ENTRY_OUT || fromDeals[i].entry == DEAL_ENTRY_OUT_BY) {
+                exitVolume += fromDeals[i].volume;
+                if (ticket == fromTrade.exitDealTicket) {
+                    exitFound = true;
+                }
+            } else {
+                return false;
+            }
+        }
+        return entryFound && exitFound && entryVolume > 0.0
+            && MathAbs(entryVolume - exitVolume) <= 0.00000001
+            && MathAbs(entryVolume - fromTrade.openedVolume) <= 0.00000001;
+    }
+
+    /**
+     * 現contextのCLOSED監査だけを再試行する。注文は送らず、現在Tradeも置換しない。
+     * 成功した取引だけカーソルを進め、失敗時は新規Entryを止めて次回再確認する。
+     */
+    void reconcileClosedDealAudit() {
+        if (this.closedDealAuditChecked || ArraySize(this.saveQueue) > 0 || this.queueOverflow
+                || H1EaClock::milliseconds() < this.nextClosedDealAuditTick) {
+            return;
+        }
+        this.nextClosedDealAuditTick = H1EaClock::milliseconds() + 1000;
+        H1EaTradeEntity closedTrade;
+        bool found = false;
+        if (!this.persistence.loadClosedTradeForDealAudit(this.contextKey,
+                this.closedDealAuditAfterId, closedTrade, found, this.closedDealAuditFull)) {
+            this.logDealHistoryFailure(this.persistence.getLastError());
+            return;
+        }
+        if (!found) {
+            this.closedDealAuditChecked = true;
+            this.closedDealAuditFull = false;
+            return;
+        }
+        H1EaDealSnapshot deals[];
+        string failure;
+        if (!H1EaDealHistory::readPosition(H1EaTextUtil::parseTicket(closedTrade.positionIdentifier),
+                this.symbolName, deals, failure)) {
+            this.logDealHistoryFailure(failure);
+            return;
+        }
+        if (!this.closedDealHistoryComplete(closedTrade, deals)) {
+            this.logDealHistoryFailure("CLOSED_DEAL_HISTORY_INCOMPLETE trade=" + IntegerToString(closedTrade.id));
+            return;
+        }
+        for (int i = 0; i < ArraySize(deals); i++) {
+            if (deals[i].type != DEAL_TYPE_BUY && deals[i].type != DEAL_TYPE_SELL) {
+                continue;
+            }
+            H1EaTradeEventEntity event;
+            if (!this.buildDealEvent(closedTrade, deals[i], "RECONCILIATION", event)
+                    || !this.persistence.appendClosedDealEvent(this.runId, closedTrade.id, event)) {
+                this.logDealHistoryFailure("CLOSED_DEAL_SAVE_FAILED ticket="
+                    + H1EaTextUtil::ticket(deals[i].ticket) + " " + this.persistence.getLastError());
+                return;
+            }
+        }
+        if (!this.persistence.completeClosedDealAudit(this.runId, closedTrade.id)) {
+            this.logDealHistoryFailure(this.persistence.getLastError());
+            return;
+        }
+        this.closedDealAuditAfterId = closedTrade.id;
+        this.nextClosedDealAuditTick = 0;
+        this.lastDealHistoryFailure = "";
+        if (this.trade.id == closedTrade.id && this.trade.status == "CLOSED") {
+            this.dealHistoryPending = false;
+            if (this.trade.lastError == "DEAL_EVENTS_PENDING") {
+                this.trade.lastError = "";
+            }
+        }
+        this.writeLog("INFO", "CLOSED_DEAL_AUDIT_COMPLETE trade=" + IntegerToString(closedTrade.id));
     }
 
     /**
@@ -1785,7 +2022,11 @@ private:
      */
     bool aggregateDeals(const bool fromPositionAbsent) {
         ulong identifier = H1EaTextUtil::parseTicket(this.trade.positionIdentifier);
-        if (identifier == 0 || !HistorySelectByPosition(identifier)) {
+        H1EaDealSnapshot deals[];
+        string failure;
+        if (!H1EaDealHistory::readPosition(identifier, this.symbolName, deals, failure)) {
+            this.dealHistoryPending = true;
+            this.logDealHistoryFailure(failure);
             return false;
         }
         double entryVolume = 0.0;
@@ -1800,40 +2041,31 @@ private:
         long lastTime = 0;
         ulong firstDeal = 0;
         ulong lastDeal = 0;
+        ulong initialOrder = 0;
+        ulong lastMagic = 0;
         string lastReason = "";
-        ulong tickets[];
-        int total = HistoryDealsTotal();
-        if (ArrayResize(tickets, total) != total) {
-            this.trade.lastError = "DEAL_HISTORY_MEMORY_UNAVAILABLE";
-            this.trade.status = "RECOVERY_REQUIRED";
-            return false;
-        }
+        int total = ArraySize(deals);
         for (int i = 0; i < total; i++) {
-            ulong ticket = HistoryDealGetTicket(i);
-            if (ticket == 0) {
-                this.trade.lastError = "DEAL_HISTORY_UNAVAILABLE";
-                this.trade.status = "RECOVERY_REQUIRED";
-                return false;
-            }
-            tickets[i] = ticket;
-            profit += HistoryDealGetDouble(ticket, DEAL_PROFIT);
-            commission += HistoryDealGetDouble(ticket, DEAL_COMMISSION);
-            swap += HistoryDealGetDouble(ticket, DEAL_SWAP);
-            fee += HistoryDealGetDouble(ticket, DEAL_FEE);
-            long entry = HistoryDealGetInteger(ticket, DEAL_ENTRY);
-            long type = HistoryDealGetInteger(ticket, DEAL_TYPE);
+            ulong ticket = deals[i].ticket;
+            profit += deals[i].profit;
+            commission += deals[i].commission;
+            swap += deals[i].swap;
+            fee += deals[i].fee;
+            long entry = deals[i].entry;
+            long type = deals[i].type;
             if (type != DEAL_TYPE_BUY && type != DEAL_TYPE_SELL) {
                 continue;
             }
-            double volume = HistoryDealGetDouble(ticket, DEAL_VOLUME);
-            double price = HistoryDealGetDouble(ticket, DEAL_PRICE);
-            long timeMsc = HistoryDealGetInteger(ticket, DEAL_TIME_MSC);
+            double volume = deals[i].volume;
+            double price = deals[i].price;
+            long timeMsc = deals[i].timeMsc;
             if (entry == DEAL_ENTRY_IN) {
                 entryVolume += volume;
                 entryValue += volume * price;
                 if (firstTime == 0 || timeMsc < firstTime) {
                     firstTime = timeMsc;
                     firstDeal = ticket;
+                    initialOrder = deals[i].orderTicket;
                 }
             } else if (entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY) {
                 exitVolume += volume;
@@ -1841,7 +2073,8 @@ private:
                 if (timeMsc >= lastTime) {
                     lastTime = timeMsc;
                     lastDeal = ticket;
-                    lastReason = this.brokerReason(HistoryDealGetInteger(ticket, DEAL_REASON));
+                    lastReason = this.brokerReason(deals[i].reason);
+                    lastMagic = deals[i].magic;
                 }
             } else if (entry == DEAL_ENTRY_INOUT) {
                 // hedgingでは想定外。反転を推測して数量を二重計上しない。
@@ -1850,6 +2083,14 @@ private:
             }
         }
         if (entryVolume <= 0.0) {
+            this.dealHistoryPending = true;
+            this.logDealHistoryFailure("DEAL_ENTRY_HISTORY_UNAVAILABLE position=" + this.trade.positionIdentifier);
+            return false;
+        }
+        if (this.trade.openedVolume != EMPTY_VALUE
+                && entryVolume + 0.00000001 < this.trade.openedVolume) {
+            this.dealHistoryPending = true;
+            this.logDealHistoryFailure("DEAL_HISTORY_VOLUME_INCOMPLETE position=" + this.trade.positionIdentifier);
             return false;
         }
         this.trade.openPrice = entryValue / entryVolume;
@@ -1860,10 +2101,12 @@ private:
         this.trade.commission = commission;
         this.trade.swap = swap;
         this.trade.fee = fee;
-        ulong initialOrder = (ulong)HistoryDealGetInteger(firstDeal, DEAL_ORDER);
         this.trade.entryOrderTicket = H1EaTextUtil::ticket(initialOrder);
         if (this.trade.requestedStopLoss <= 0.0 && initialOrder > 0) {
-            this.trade.requestedStopLoss = HistoryOrderGetDouble(initialOrder, ORDER_SL);
+            double initialStopLoss = 0.0;
+            if (HistoryOrderSelect(initialOrder) && HistoryOrderGetDouble(initialOrder, ORDER_SL, initialStopLoss)) {
+                this.trade.requestedStopLoss = initialStopLoss;
+            }
         }
         if (exitVolume > 0.0) {
             this.trade.closePrice = exitValue / exitVolume;
@@ -1876,22 +2119,49 @@ private:
             this.trade.closeReason = H1EaProtectionPolicy::closeReason(this.trade.exitIntentReason,
                 this.trade.stopLossSource, lastReason);
             if (this.trade.exitIntentReason == "" && lastReason == "EXPERT"
-                    && (ulong)HistoryDealGetInteger(lastDeal, DEAL_MAGIC) != this.magicNumber) {
+                    && lastMagic != this.magicNumber) {
                 this.trade.closeReason = "EXTERNAL_CLOSE";
             }
             this.trade.status = "CLOSED";
             this.clearPending();
         }
+        bool dealsAccepted = true;
+        if (this.trade.status == "CLOSED") {
+            // Eventの途中まで保存して終了しても、次回起動から残りを再取得できる印を先に残す。
+            this.trade.lastError = "DEAL_EVENTS_PENDING";
+            H1EaTradeEventEntity pendingEvent;
+            this.newEvent("RECOVERY", pendingEvent);
+            pendingEvent.eventSource = "RECONCILIATION";
+            pendingEvent.eventUid = "H1_EA_DEAL_AUDIT_PENDING_V1|" + this.contextKey + "|"
+                + IntegerToString(this.trade.id);
+            pendingEvent.message = "DEAL_EVENTS_PENDING";
+            dealsAccepted = this.saveEvent(pendingEvent, false);
+        }
         for (int i = 0; i < total; i++) {
-            this.recordDeal(tickets[i], "RECONCILIATION");
+            if (!dealsAccepted || !this.recordDeal(deals[i], "RECONCILIATION")) {
+                dealsAccepted = false;
+                break;
+            }
+        }
+        this.dealHistoryPending = !dealsAccepted;
+        if (dealsAccepted) {
+            this.lastDealHistoryFailure = "";
         }
         if (this.trade.status == "CLOSED") {
+            if (dealsAccepted) {
+                this.trade.lastError = "";
+            } else {
+                this.closedDealAuditChecked = false;
+                this.closedDealAuditAfterId = 0;
+                this.nextClosedDealAuditTick = 0;
+            }
             H1EaTradeEventEntity event;
             this.newEvent("RECOVERY", event);
             event.closeReason = this.trade.closeReason;
             event.brokerReason = this.trade.brokerCloseReason;
             this.recoveryEvent(event);
             this.active = false;
+            // brokerの決済事実は確定済み。明細未保存は別のフラグでEntryを止める。
             return true;
         }
         return !fromPositionAbsent;
@@ -2067,15 +2337,8 @@ private:
         ulong tickets[];
         for (int i = 0; i < HistoryDealsTotal(); i++) {
             ulong ticket = HistoryDealGetTicket(i);
-            if (HistoryDealGetString(ticket, DEAL_SYMBOL) != this.symbolName) {
-                continue;
-            }
-            if (this.trade.positionIdentifier != "") {
-                if (H1EaTextUtil::ticket((ulong)HistoryDealGetInteger(ticket, DEAL_POSITION_ID)) != this.trade.positionIdentifier) {
-                    continue;
-                }
-            } else if (H1EaTextUtil::ticket((ulong)HistoryDealGetInteger(ticket, DEAL_ORDER)) != this.trade.entryOrderTicket) {
-                continue;
+            if (ticket == 0) {
+                return "~";
             }
             int size = ArraySize(tickets);
             if (ArrayResize(tickets, size + 1) != size + 1) {
@@ -2086,21 +2349,36 @@ private:
         ArraySort(tickets);
         string result = "";
         for (int i = 0; i < ArraySize(tickets); i++) {
-            ulong ticket = tickets[i];
+            H1EaDealSnapshot deal;
+            string failure;
+            if (!H1EaDealHistory::read(tickets[i], deal, failure)) {
+                this.logDealHistoryFailure(failure);
+                return "~";
+            }
+            if (deal.symbol != this.symbolName) {
+                continue;
+            }
+            if (this.trade.positionIdentifier != "") {
+                if (H1EaTextUtil::ticket(deal.positionIdentifier) != this.trade.positionIdentifier) {
+                    continue;
+                }
+            } else if (H1EaTextUtil::ticket(deal.orderTicket) != this.trade.entryOrderTicket) {
+                continue;
+            }
             string item = "DEAL_V1";
-            H1EaTextUtil::appendField(item, "ticket", H1EaTextUtil::ticket(ticket));
-            H1EaTextUtil::appendField(item, "order", H1EaTextUtil::ticket((ulong)HistoryDealGetInteger(ticket, DEAL_ORDER)));
-            H1EaTextUtil::appendField(item, "position_id", H1EaTextUtil::ticket((ulong)HistoryDealGetInteger(ticket, DEAL_POSITION_ID)));
-            H1EaTextUtil::appendField(item, "entry", IntegerToString(HistoryDealGetInteger(ticket, DEAL_ENTRY)));
-            H1EaTextUtil::appendField(item, "type", IntegerToString(HistoryDealGetInteger(ticket, DEAL_TYPE)));
-            H1EaTextUtil::appendField(item, "volume", DoubleToString(HistoryDealGetDouble(ticket, DEAL_VOLUME), 8));
-            H1EaTextUtil::appendField(item, "price", this.optionalPrice(HistoryDealGetDouble(ticket, DEAL_PRICE)));
-            H1EaTextUtil::appendField(item, "time_msc", IntegerToString(HistoryDealGetInteger(ticket, DEAL_TIME_MSC)));
-            H1EaTextUtil::appendField(item, "reason", IntegerToString(HistoryDealGetInteger(ticket, DEAL_REASON)));
-            H1EaTextUtil::appendField(item, "profit", DoubleToString(HistoryDealGetDouble(ticket, DEAL_PROFIT), 8));
-            H1EaTextUtil::appendField(item, "commission", DoubleToString(HistoryDealGetDouble(ticket, DEAL_COMMISSION), 8));
-            H1EaTextUtil::appendField(item, "swap", DoubleToString(HistoryDealGetDouble(ticket, DEAL_SWAP), 8));
-            H1EaTextUtil::appendField(item, "fee", DoubleToString(HistoryDealGetDouble(ticket, DEAL_FEE), 8));
+            H1EaTextUtil::appendField(item, "ticket", H1EaTextUtil::ticket(deal.ticket));
+            H1EaTextUtil::appendField(item, "order", H1EaTextUtil::ticket(deal.orderTicket));
+            H1EaTextUtil::appendField(item, "position_id", H1EaTextUtil::ticket(deal.positionIdentifier));
+            H1EaTextUtil::appendField(item, "entry", IntegerToString(deal.entry));
+            H1EaTextUtil::appendField(item, "type", IntegerToString(deal.type));
+            H1EaTextUtil::appendField(item, "volume", DoubleToString(deal.volume, 8));
+            H1EaTextUtil::appendField(item, "price", this.optionalPrice(deal.price));
+            H1EaTextUtil::appendField(item, "time_msc", IntegerToString(deal.timeMsc));
+            H1EaTextUtil::appendField(item, "reason", IntegerToString(deal.reason));
+            H1EaTextUtil::appendField(item, "profit", DoubleToString(deal.profit, 8));
+            H1EaTextUtil::appendField(item, "commission", DoubleToString(deal.commission, 8));
+            H1EaTextUtil::appendField(item, "swap", DoubleToString(deal.swap, 8));
+            H1EaTextUtil::appendField(item, "fee", DoubleToString(deal.fee, 8));
             H1EaTextUtil::appendField(result, "deal", item);
         }
         return result;
@@ -2141,6 +2419,7 @@ private:
         H1EaTextUtil::appendField(snapshot, "context_key", this.contextKey);
         H1EaTextUtil::appendField(snapshot, "trade_id", IntegerToString(this.trade.id));
         H1EaTextUtil::appendField(snapshot, "status", this.trade.status);
+        H1EaTextUtil::appendField(snapshot, "last_error", this.optionalText(this.trade.lastError));
         H1EaTextUtil::appendField(snapshot, "position_identifier", this.optionalText(this.trade.positionIdentifier));
         H1EaTextUtil::appendField(snapshot, "position_ticket", this.optionalText(this.trade.positionTicket));
         H1EaTextUtil::appendField(snapshot, "side", this.trade.side);

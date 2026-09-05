@@ -2,6 +2,7 @@
 #define MSTNGH1EA_STRATEGY_MQH
 
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+#include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 #include <MstngH1Ea\Runtime\H1EaClock.mqh>
@@ -116,7 +117,10 @@ public:
         this.elliotAll.isSendMail = false;
         this.elliotAll.timerSeconds = 30;
         this.elliotAll.setOscillatorHandlePool(this.handlePool);
+        LoggerRepeatScope logScope;
+        Logger::beginTesterRepeatScope(this.marketContext.symbolName, barTime, logScope);
         this.elliotAll.analyze();
+        Logger::endTesterRepeatScope(logScope, this.elliotAll.isAnalysisSucceeded);
 
         if (barTime != iTime(this.marketContext.symbolName, PERIOD_H1, 0)) {
             this.lastError = "ANALYSIS_BAR_CHANGED";

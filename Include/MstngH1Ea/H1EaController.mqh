@@ -37,6 +37,8 @@ public:
         this.lastAnalysisLogText = "";
         this.lastAnalysisLogTime = 0;
         this.lastAnalysisErrorBar = 0;
+        this.analysisRetryBar = 0;
+        this.nextAnalysisRetryTime = 0;
         this.timerSeconds = 0;
         this.nextTimerRetryTick = 0;
     }
@@ -185,6 +187,9 @@ public:
             bool tradeQueueSaved = true;
             if (this.executorInitialized) {
                 tradeQueueSaved = this.executor.flushPendingEvents();
+                // 注文を送らない最終照合を行い、決済明細の未完了も検出する。
+                this.executor.reconcile();
+                tradeQueueSaved = this.executor.flushPendingEvents() && tradeQueueSaved;
             }
             string status = "STOPPED";
             string errorText = "";
@@ -195,6 +200,10 @@ public:
             if (ArraySize(this.decisionQueue) > 0 || !tradeQueueSaved || this.auditStateLost) {
                 status = "FAILED";
                 errorText = "AUDIT_STATE_LOST: 未保存Decision/Eventを完全復元できません";
+                this.logger.error("H1EaController.shutdown", errorText);
+            } else if (this.executorInitialized && this.executor.hasPendingDealAudit()) {
+                status = "FAILED";
+                errorText = "DEAL_AUDIT_PENDING: 約定明細の保存確認が未完了です。同contextで履歴再照合が必要です";
                 this.logger.error("H1EaController.shutdown", errorText);
             }
             if (this.run.id > 0 && !this.persistence.finishRun(this.run.id, status, errorText)) {
@@ -257,6 +266,10 @@ private:
     datetime lastAnalysisLogTime;
     /** 履歴待機以外の分析エラーを最後に出力したH1バー。 */
     datetime lastAnalysisErrorBar;
+    /** TesterのEntry分析に失敗したH1バー。トレイルやLIVEと共有しない。 */
+    datetime analysisRetryBar;
+    /** Tester内時刻での次回Entry分析時刻。成功時・H1切替時に解除する。 */
+    datetime nextAnalysisRetryTime;
     /** 設定成功を確認済みのTimer秒数。0は未設定または更新失敗。 */
     int timerSeconds;
     /** Timer設定失敗時の次回試行時刻。最短5秒で再試行する。 */
@@ -509,8 +522,19 @@ private:
         if (this.entryState.isFinalized(barTime)) {
             return;
         }
+        if (this.config.isTester && this.analysisRetryBar == barTime
+                && TimeCurrent() < this.nextAnalysisRetryTime) {
+            return;
+        }
+        this.analysisRetryBar = 0;
+        this.nextAnalysisRetryTime = 0;
         H1EaStrategySnapshot snapshot;
         if (!this.strategy.analyze(snapshot)) {
+            // 未準備の同一H1だけ最短1秒で再試行し、判定回数はまだ消費しない。
+            if (this.config.isTester) {
+                this.analysisRetryBar = barTime;
+                this.nextAnalysisRetryTime = TimeCurrent() + 1;
+            }
             this.logAnalysisWait(barTime);
             return;
         }
