@@ -120,6 +120,29 @@ function observationsResponse() {
   };
 }
 
+function mockObservationPages(total: number) {
+  const originalFetch = vi.mocked(fetch).getMockImplementation();
+  if (!originalFetch) throw new Error("The default API mock must be installed first");
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const response = await originalFetch(input, init);
+    const path = String(input);
+    if (!path.startsWith("/api/observations?")) return response;
+    const parameters = new URL(path, "http://localhost").searchParams;
+    const pageSize = Number(parameters.get("pageSize") || "50");
+    const pageCount = Math.ceil(total / pageSize);
+    const page = Math.min(Number(parameters.get("page") || "1"), Math.max(pageCount, 1));
+    const payload = await response.json();
+    return jsonResponse({
+      ...payload,
+      total,
+      page,
+      page_size: pageSize,
+      page_count: pageCount,
+      items: total === 0 ? [] : payload.items,
+    });
+  });
+}
+
 describe("App", () => {
   beforeEach(() => {
     observationAvailable = true;
@@ -612,6 +635,177 @@ describe("App", () => {
       expect(parameters.get("tab")).toBe("h1");
       expect(parameters.get("sort")).toBe("anchor_jst_time");
       expect(parameters.get("order")).toBe("asc");
+    });
+  });
+
+  it("jumps to an H1 page while preserving applied filters and sorting instead of draft changes", async () => {
+    mockObservationPages(400);
+    window.history.replaceState(
+      null,
+      "",
+      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=MN1&syncTimeFrame=D1&fullAlignment=BUY&sort=anchor_jst_time&order=asc&page=2",
+    );
+    render(<App />);
+
+    const pageInput = await screen.findByRole("textbox", { name: "ページ番号" });
+    await waitFor(() => {
+      expect(pageInput).toBeEnabled();
+      expect(pageInput).toHaveValue("2");
+    });
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "時刻（JST）" }));
+    fireEvent.click(screen.getByRole("option", { name: "08:00" }));
+    expect(screen.getByRole("region", { name: "適用中の検索条件" }))
+      .toHaveTextContent("未検索の変更あり");
+    fireEvent.change(pageInput, { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "移動" }));
+
+    await waitFor(() => {
+      const request = vi.mocked(fetch).mock.calls
+        .map(([path]) => String(path))
+        .filter((path) => path.startsWith("/api/observations?"))
+        .at(-1);
+      expect(request).toBeDefined();
+      for (const parameters of [
+        new URLSearchParams(window.location.search),
+        new URL(request!, "http://localhost").searchParams,
+      ]) {
+        expect(parameters.get("page")).toBe("7");
+        expect(parameters.get("sourceMode")).toBe("TESTER");
+        expect(parameters.get("runId")).toBe("3");
+        expect(parameters.get("symbol")).toBe("AUDUSD");
+        expect(parameters.get("from")).toBe("2026-08-01");
+        expect(parameters.get("to")).toBe("2026-08-10");
+        expect(parameters.get("jstTime")).toBe("07:00");
+        expect(parameters.getAll("syncTimeFrame")).toEqual(["MN1", "D1"]);
+        expect(parameters.get("fullAlignment")).toBe("BUY");
+        expect(parameters.get("analysisVersion")).toBe(ANALYSIS_VERSION);
+        expect(parameters.get("analysisInputHash")).toBe(TESTER_ANALYSIS_PROFILE_HASH);
+        expect(parameters.get("analysisProfileKind")).toBe("profile");
+        expect(parameters.get("sort")).toBe("anchor_jst_time");
+        expect(parameters.get("order")).toBe("asc");
+      }
+      expect(pageInput).toHaveValue("7");
+    });
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("h1");
+  });
+
+  it("submits the H1 page jump form and resets the page after sorting or searching", async () => {
+    mockObservationPages(400);
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=TESTER&runId=3");
+    render(<App />);
+    let pageInput = await screen.findByRole("textbox", { name: "ページ番号" });
+    await waitFor(() => expect(pageInput).toBeEnabled());
+    fireEvent.change(pageInput, { target: { value: "4" } });
+    const pageForm = pageInput.closest("form");
+    expect(pageForm).not.toBeNull();
+    expect(screen.getByRole("button", { name: "移動" })).toHaveAttribute("type", "submit");
+    // A browser's Enter key submits this form; jsdom does not implement that
+    // native default action, so dispatch its submit event directly here.
+    fireEvent.submit(pageForm!);
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get("page")).toBe("4");
+      expect(pageInput).toHaveValue("4");
+      expect(pageInput).toBeEnabled();
+    });
+
+    fireEvent.click(within(screen.getByRole("columnheader", { name: /JST日時/ }))
+      .getByRole("button", { name: /JST日時/ }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("page")).toBe("1");
+      expect(parameters.get("sort")).toBe("anchor_jst_time");
+      expect(parameters.get("order")).toBe("asc");
+      expect(screen.getByRole("textbox", { name: "ページ番号" })).toHaveValue("1");
+      expect(screen.getByRole("textbox", { name: "ページ番号" })).toBeEnabled();
+    });
+
+    // A new search/sort context remounts pagination to discard draft input.
+    pageInput = screen.getByRole("textbox", { name: "ページ番号" });
+    fireEvent.change(pageInput, { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "移動" }));
+    await waitFor(() => {
+      expect(pageInput).toHaveValue("5");
+      expect(pageInput).toBeEnabled();
+    });
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "時刻（JST）" }));
+    fireEvent.click(screen.getByRole("option", { name: "08:00" }));
+    fireEvent.click(screen.getByRole("button", { name: "検索" }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("page")).toBe("1");
+      expect(parameters.get("jstTime")).toBe("08:00");
+      expect(parameters.get("order")).toBe("asc");
+      expect(screen.getByRole("textbox", { name: "ページ番号" })).toHaveValue("1");
+      const request = vi.mocked(fetch).mock.calls
+        .map(([path]) => String(path))
+        .filter((path) => path.startsWith("/api/observations?"))
+        .at(-1);
+      expect(request).toBeDefined();
+      const requested = new URL(request!, "http://localhost").searchParams;
+      expect(requested.get("page")).toBe("1");
+      expect(requested.get("jstTime")).toBe("08:00");
+      expect(requested.get("sort")).toBe("anchor_jst_time");
+      expect(requested.get("order")).toBe("asc");
+    });
+
+    // A filter change must also discard unsubmitted input while already on page 1.
+    fireEvent.change(screen.getByRole("textbox", { name: "ページ番号" }), { target: { value: "8" } });
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "時刻（JST）" }));
+    fireEvent.click(screen.getByRole("option", { name: "09:00" }));
+    fireEvent.click(screen.getByRole("button", { name: "検索" }));
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get("page")).toBe("1");
+      expect(new URLSearchParams(window.location.search).get("jstTime")).toBe("09:00");
+      expect(screen.getByRole("textbox", { name: "ページ番号" })).toHaveValue("1");
+    });
+  });
+
+  it("does not show page-number input on the ordinary alert view", async () => {
+    render(<App />);
+    expect(await screen.findByText("接続済み・LIVE 1件")).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "ページ移動" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "ページ番号" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "移動" })).not.toBeInTheDocument();
+  });
+
+  it("disables H1 page-number input and submission when no observations match", async () => {
+    mockObservationPages(0);
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=TESTER&runId=3");
+    render(<App />);
+    const pageInput = await screen.findByRole("textbox", { name: "ページ番号" });
+    expect(pageInput).toBeDisabled();
+    const jumpButton = screen.getByRole("button", { name: "移動" });
+    expect(jumpButton).toBeDisabled();
+    const callsBefore = vi.mocked(fetch).mock.calls.length;
+    fireEvent.click(jumpButton);
+    fireEvent.submit(pageInput.closest("form")!);
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(callsBefore);
+    expect(new URLSearchParams(window.location.search).get("page")).toBe("1");
+  });
+
+  it("disables the H1 page jump during a refresh and enables it after completion", async () => {
+    mockObservationPages(400);
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=TESTER&runId=3");
+    render(<App />);
+    const pageInput = await screen.findByRole("textbox", { name: "ページ番号" });
+    await waitFor(() => expect(pageInput).toBeEnabled());
+
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!;
+    let completeRefresh: () => void = () => {};
+    const refreshPending = new Promise<void>((resolve) => { completeRefresh = resolve; });
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).startsWith("/api/observations?")) await refreshPending;
+      return originalFetch(input, init);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "今すぐ更新" }));
+    await waitFor(() => {
+      expect(pageInput).toBeDisabled();
+      expect(screen.getByRole("button", { name: "移動" })).toBeDisabled();
+    });
+    await act(async () => { completeRefresh(); });
+    await waitFor(() => {
+      expect(pageInput).toBeEnabled();
+      expect(screen.getByRole("button", { name: "移動" })).toBeEnabled();
     });
   });
 

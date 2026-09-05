@@ -507,8 +507,11 @@ export function H1ObservationView({
                   onOpenDetail={openDetail}
                 />
                 <Pagination
+                  key={JSON.stringify({ ...applied, page: undefined })}
                   page={page}
                   pageCount={observations.page_count}
+                  showPageInput
+                  disabled={loading || refreshing || observations.total === 0}
                   onPage={(nextPage) => commitSearch({ ...applied, page: nextPage })}
                 />
               </>

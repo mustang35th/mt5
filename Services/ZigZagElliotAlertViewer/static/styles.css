@@ -751,6 +751,10 @@ tbody tr:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; 
 .metric-stack { display: grid; gap: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pagination { display: flex; justify-content: center; align-items: center; gap: 14px; padding: 16px; }
 .pagination button:disabled { cursor: not-allowed; opacity: 0.4; }
+.pagination-with-input { flex-wrap: wrap; }
+.pagination-jump { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; max-width: 100%; }
+.pagination-page-input { width: 96px; }
+.pagination-page-error { flex-basis: 100%; }
 
 .empty-state { padding: 56px 20px; color: var(--muted); text-align: center; }
 .empty-state strong, .empty-state span { display: block; }
