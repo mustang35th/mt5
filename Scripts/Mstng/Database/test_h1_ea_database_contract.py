@@ -1,4 +1,8 @@
-"""Exercise the exact MQL5 CREATE statements using isolated in-memory SQLite."""
+"""Exercise actual MQL DDL/ALTER SQL using isolated in-memory SQLite.
+
+Context/DAO wiring assertions are static, not MQL execution. The MQL database
+SmokeTest separately exercises the real migration parser, reconnect and rollback.
+"""
 import json
 import re
 import sqlite3
@@ -7,6 +11,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 DAO = ROOT / "Include" / "Mstng" / "Database" / "Dao"
+CONTEXT = ROOT / "Include" / "Mstng" / "Database" / "H1EaDatabaseContext.mqh"
+
+
+def decision_migration_sql():
+    """Extract the production legacy-removal literal and ALTER SQL, not copies."""
+    source = (DAO / "H1EaDecisionDao.mqh").read_text(encoding="utf-8-sig")
+    legacy = source.split("static string createLegacySql() {", 1)[1].split("return sql;", 1)[0]
+    removal = re.search(r'StringReplace\(sql,\s*("(?:[^"\\]|\\.)*"),\s*""\)', legacy)
+    removed_text = json.loads(removal.group(1))
+    current = next(statement for statement in schema_statements()
+                   if statement.startswith("CREATE TABLE IF NOT EXISTS h1_ea_decisions "))
+    if current.count(removed_text) != 1:
+        raise AssertionError("Legacy schema must remove exactly the dedicated column")
+    alter_body = source.split("static string addD1ColumnSql() {", 1)[1].split("}", 1)[0]
+    alter = json.loads(re.search(r'return\s+("(?:[^"\\]|\\.)*")', alter_body).group(1))
+    return current.replace(removed_text, ""), alter
 
 
 def schema_statements():
@@ -90,8 +110,21 @@ class DatabaseContractTest(unittest.TestCase):
         return values | changes
 
     def test_exact_columns(self):
-        for table, count in (("runs", 23), ("decisions", 41), ("trades", 51), ("trade_events", 38)):
+        for table, count in (("runs", 23), ("decisions", 42), ("trades", 51), ("trade_events", 38)):
             self.assertEqual(len(self.db.execute(f"PRAGMA table_info(h1_ea_{table})").fetchall()), count)
+
+    def test_d1_column_is_nullable_last_column_with_exclusive_known_values(self):
+        column = self.db.execute("PRAGMA table_info(h1_ea_decisions)").fetchall()[-1]
+        self.assertEqual(column, (41, "d1_ema200_direction", "TEXT", 0, None, 0))
+        for direction in (None, "BUY", "SELL", "NONE"):
+            with self.subTest(direction=direction):
+                row = self.insert("decisions", self.decision_values(d1_ema200_direction=direction))
+                self.assertEqual(self.db.execute(
+                    "SELECT d1_ema200_direction FROM h1_ea_decisions WHERE id=?", (row,)
+                ).fetchone()[0], direction)
+        for direction in ("", "NULL", "~", "BOTH", "buy", "BUY ", 0, 1):
+            with self.subTest(direction=direction), self.assertRaises(sqlite3.IntegrityError):
+                self.insert("decisions", self.decision_values(d1_ema200_direction=direction))
 
     def test_exact_sqlite_schema_text_matches_context_validation(self):
         count = 0
@@ -291,6 +324,112 @@ class DatabaseContractTest(unittest.TestCase):
         actual = self.db.execute(query, (trade,)).fetchone()
         self.assertEqual(actual[:6], ("text", "'bad|種別'", "integer", "0", "text", "'malformed''|値'"))
         self.assertEqual(actual[6:], ("null", "NULL") * 4)
+
+    def create_legacy_fixture(self):
+        self.db.close()
+        self.db = sqlite3.connect(":memory:", isolation_level=None)
+        self.db.execute("PRAGMA foreign_keys=ON")
+        legacy, alter = decision_migration_sql()
+        for statement in schema_statements():
+            if statement.startswith("CREATE TABLE IF NOT EXISTS h1_ea_decisions "):
+                statement = legacy
+            self.db.execute(statement)
+        self.db.execute("PRAGMA user_version=1")
+        self.run = self.insert("runs", self.run_values(status="STOPPED"))
+        return alter
+
+    def test_actual_legacy_plus_alter_matches_fresh_schema_without_reordering(self):
+        expected = self.db.execute(
+            "SELECT sql FROM sqlite_schema WHERE name='h1_ea_decisions'"
+        ).fetchone()[0]
+        alter = self.create_legacy_fixture()
+        original_columns = self.db.execute("PRAGMA table_info(h1_ea_decisions)").fetchall()
+        self.assertEqual(len(original_columns), 41)
+        self.db.execute(alter)
+        migrated = self.db.execute("PRAGMA table_info(h1_ea_decisions)").fetchall()
+        self.assertEqual(migrated[:-1], original_columns)
+        self.assertEqual(self.db.execute(
+            "SELECT sql FROM sqlite_schema WHERE name='h1_ea_decisions'"
+        ).fetchone()[0], expected)
+
+    def test_sql_backfill_changes_only_dedicated_column_and_physical_version(self):
+        # Values below are already-decoded fixtures, not a Python replacement
+        # for restoreEma200Diagnostics. Actual parser behavior is in MQL Smoke.
+        alter = self.create_legacy_fixture()
+        snapshots = (
+            (None, "H1_EA_DECISION_V1|decision=SKIP"),
+            ("BUY", "H1_EA_DECISION_V1|d1_ema200_direction=BUY|is_ema200_confirmation_passed=1"),
+            ("SELL", "H1_EA_DECISION_V1|d1_ema200_direction=SELL|is_ema200_confirmation_passed=0"),
+            ("NONE", "H1_EA_DECISION_V1|d1_ema200_direction=NONE|is_ema200_confirmation_passed=0"),
+            (None, "H1_EA_DECISION_V1|d1_ema200_direction=~|is_ema200_confirmation_passed=0"),
+        )
+        ids = [self.insert("decisions", self.decision_values(
+            analysis_snapshot_text=snapshot, snapshot_hash=f"saved-hash-{index}"
+        )) for index, (_, snapshot) in enumerate(snapshots)]
+        original_rows = self.db.execute("SELECT * FROM h1_ea_decisions ORDER BY id").fetchall()
+        original_run = self.db.execute("SELECT * FROM h1_ea_runs").fetchall()
+        self.db.execute("BEGIN IMMEDIATE")
+        self.db.execute(alter)
+        for row_id, (direction, _) in zip(ids, snapshots):
+            if direction is not None:
+                self.db.execute("UPDATE h1_ea_decisions SET d1_ema200_direction=? WHERE id=?", (direction, row_id))
+        self.db.execute("PRAGMA user_version=2")
+        self.db.execute("COMMIT")
+        migrated = self.db.execute("SELECT * FROM h1_ea_decisions ORDER BY id").fetchall()
+        self.assertEqual([row[:-1] for row in migrated], original_rows)
+        self.assertEqual([row[-1] for row in migrated], [value for value, _ in snapshots])
+        self.assertEqual(self.db.execute("SELECT * FROM h1_ea_runs").fetchall(), original_run)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(self.db.execute("SELECT schema_version FROM h1_ea_runs").fetchone()[0], 1)
+
+    def test_alter_and_completed_backfill_updates_rollback_together(self):
+        alter = self.create_legacy_fixture()
+        for index in range(133):
+            self.insert("decisions", self.decision_values(snapshot_hash=f"old-{index}"))
+        original_rows = self.db.execute("SELECT * FROM h1_ea_decisions ORDER BY id").fetchall()
+        original_schema = self.db.execute("SELECT sql FROM sqlite_schema WHERE name='h1_ea_decisions'").fetchone()[0]
+        self.db.execute("BEGIN IMMEDIATE")
+        self.db.execute(alter)
+        self.db.execute("UPDATE h1_ea_decisions SET d1_ema200_direction='BUY' WHERE id<=128")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE h1_ea_decisions SET d1_ema200_direction='INVALID' WHERE id=133")
+        self.db.execute("ROLLBACK")
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(self.db.execute("SELECT * FROM h1_ea_decisions ORDER BY id").fetchall(), original_rows)
+        self.assertEqual(self.db.execute("SELECT sql FROM sqlite_schema WHERE name='h1_ea_decisions'").fetchone()[0], original_schema)
+
+    def test_migration_guard_sql_detects_live_lease_and_case_insensitive_trigger(self):
+        self.create_legacy_fixture()
+        context = CONTEXT.read_text(encoding="utf-8-sig")
+        active_query = re.search(r'"(SELECT COUNT\(\*\) FROM h1_ea_runs WHERE status=\'RUNNING\' AND lease_expires_at>)"', context).group(1)
+        trigger_query = json.loads(re.search(r'"SELECT COUNT\(\*\) FROM sqlite_schema WHERE type=\'trigger\'[^"\n]+"', context).group(0))
+        self.db.execute("UPDATE h1_ea_runs SET status='RUNNING',lease_expires_at=61")
+        self.assertEqual(self.db.execute(active_query + "60").fetchone()[0], 1)
+        self.assertEqual(self.db.execute(active_query + "61").fetchone()[0], 0)
+        self.assertEqual(self.db.execute(trigger_query).fetchone()[0], 0)
+        self.db.execute("CREATE TRIGGER smoke_upper AFTER UPDATE ON H1_EA_DECISIONS BEGIN SELECT 1; END;")
+        self.assertEqual(self.db.execute(trigger_query).fetchone()[0], 1)
+
+    def test_migration_and_dao_guards_remain_wired_without_strategy_recalculation(self):
+        # Static control-flow contracts complement, but do not execute, MQL.
+        context = CONTEXT.read_text(encoding="utf-8-sig")
+        self.assertRegex(context, r'version == 1 && fromInitializeSchema\)\s*\{\s*success = this\.migrateD1Ema200Direction\(\);')
+        self.assertRegex(context, r'version == 2\)\s*\{\s*success = this\.validateSchema\(\);')
+        migration = context.split("bool migrateD1Ema200Direction() {", 1)[1].split("bool prepareSchema", 1)[0]
+        for guard in ("this.validateSchema(true)", "activeRuns != 0", "triggers != 0"):
+            self.assertLess(migration.index(guard), migration.index("H1EaDecisionDao::addD1ColumnSql()"))
+        self.assertLess(migration.index("this.backfillD1Ema200Direction()"), migration.index("PRAGMA user_version=2"))
+        backfill = context.split("bool backfillD1Ema200Direction() {", 1)[1].split("bool migrateD1Ema200Direction", 1)[0]
+        self.assertIn("H1EaDecisionDao::restoreEma200Diagnostics(decision)", backfill)
+        self.assertLess(backfill.index("DatabaseFinalize(request)"), backfill.index("UPDATE h1_ea_decisions SET d1_ema200_direction="))
+        self.assertIn("ORDER BY id LIMIT 128", backfill)
+        for forbidden in ("snapshot_hash=", "analysis_snapshot_text=", "DecisionBuilder", ".evaluate(", "signal_count=", "decision="):
+            self.assertNotIn(forbidden, backfill)
+        self.assertIn('H1EaSql::execute(handle, "ROLLBACK")', context)
+        dao = (DAO / "H1EaDecisionDao.mqh").read_text(encoding="utf-8-sig")
+        insert = dao.split("static bool insert(", 1)[1].split("static bool read(", 1)[0]
+        self.assertLess(insert.index("restoreEma200Diagnostics(diagnostics)"), insert.index("INSERT INTO h1_ea_decisions"))
+        self.assertIn("diagnostics.d1Ema200Direction != fromEntity.d1Ema200Direction", insert)
 
 
 if __name__ == "__main__":

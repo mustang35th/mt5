@@ -8,7 +8,7 @@
 #include <Mstng\Database\SqliteDatabase.mqh>
 
 /**
- * H1 EA専用接続と初版schemaの検証を管理する。
+ * H1 EA専用接続と物理schemaの検証・移行を管理する。
  */
 class H1EaDatabaseContext {
 public:
@@ -27,7 +27,8 @@ public:
     }
 
     /**
-     * Common DBを開く。再接続ではDDLを行わず既存schemaだけを検証する。
+     * Common DBを開く。Run登録前の初期接続・再試行ではschemaを準備する。
+     * Run登録後の再接続ではfromInitializeSchema=falseでDDLを禁止する。
      */
     bool open(const string fromFileName, const bool fromInitializeSchema = true) {
         this.close();
@@ -118,7 +119,7 @@ private:
     /**
      * 保存契約の全table/indexを検証する。
      */
-    bool validateSchema() {
+    bool validateSchema(const bool fromLegacyDecision = false) {
         if (!this.matchesSchema("table", "h1_ea_runs", H1EaRunDao::createSql())) {
             return false;
         }
@@ -134,7 +135,11 @@ private:
         if (!this.matchesSchema("index", "idx_h1_ea_runs_context_started", "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_context_started ON h1_ea_runs(context_key, started_at, id);")) {
             return false;
         }
-        if (!this.matchesSchema("table", "h1_ea_decisions", H1EaDecisionDao::createSql())) {
+        string decisionSql = H1EaDecisionDao::createSql();
+        if (fromLegacyDecision) {
+            decisionSql = H1EaDecisionDao::createLegacySql();
+        }
+        if (!this.matchesSchema("table", "h1_ea_decisions", decisionSql)) {
             return false;
         }
         if (!this.matchesSchema("index", "idx_h1_ea_decisions_context_bar", "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_decisions_context_bar ON h1_ea_decisions(context_key, h1_bar_time);")) {
@@ -207,6 +212,91 @@ private:
     }
 
     /**
+     * 旧snapshotを厳密に読み、D1専用列だけを補完する。
+     * 読取cursorを閉じてから小分けに更新し、text・hash・判定は変更しない。
+     */
+    bool backfillD1Ema200Direction() {
+        int handle = this.getHandle();
+        long lastId = 0;
+        bool hasLastId = false;
+        while (true) {
+            string selectSql = "SELECT id,analysis_snapshot_text FROM h1_ea_decisions";
+            if (hasLastId) {
+                selectSql += " WHERE id>" + IntegerToString(lastId);
+            }
+            selectSql += " ORDER BY id LIMIT 128";
+            int request = DatabasePrepare(handle, selectSql);
+            if (request == INVALID_HANDLE) {
+                return false;
+            }
+            long ids[128];
+            string directions[128];
+            int count = 0;
+            bool success = true;
+            for (int i = 0; i < 128; i++) {
+                ResetLastError();
+                if (!DatabaseRead(request)) {
+                    success = GetLastError() == ERR_DATABASE_NO_MORE_DATA;
+                    break;
+                }
+                H1EaDecisionEntity decision;
+                if (!DatabaseColumnLong(request, 0, ids[count])
+                        || !DatabaseColumnText(request, 1, decision.analysisSnapshotText)
+                        || !H1EaDecisionDao::restoreEma200Diagnostics(decision)) {
+                    success = false;
+                    break;
+                }
+                directions[count] = decision.d1Ema200Direction;
+                count++;
+            }
+            DatabaseFinalize(request);
+            if (!success) {
+                return false;
+            }
+            if (count == 0) {
+                return true;
+            }
+            for (int i = 0; i < count; i++) {
+                // 未記録または~はADD COLUMN直後のNULLを維持する。
+                if (directions[i] == "") {
+                    continue;
+                }
+                string updateSql = "UPDATE h1_ea_decisions SET d1_ema200_direction="
+                    + H1EaSql::text(directions[i]) + " WHERE id=" + IntegerToString(ids[i]);
+                long changed = 0;
+                if (!H1EaSql::execute(handle, updateSql)
+                        || !H1EaSql::scalar(handle, "SELECT changes()", changed) || changed != 1) {
+                    return false;
+                }
+            }
+            lastId = ids[count - 1];
+            hasLastId = true;
+        }
+    }
+
+    /**
+     * 旧EAの稼働とUPDATE副作用がない場合だけ物理schemaをv1からv2へ移す。
+     * 呼出元のtransactionで、列追加・補完・version更新をまとめて確定する。
+     */
+    bool migrateD1Ema200Direction() {
+        int handle = this.getHandle();
+        long activeRuns = 0;
+        long triggers = 0;
+        long now = (long)TimeLocal();
+        if (now <= 0 || !this.validateSchema(true)
+                || !H1EaSql::scalar(handle, "SELECT COUNT(*) FROM h1_ea_runs WHERE status='RUNNING' AND lease_expires_at>"
+                    + IntegerToString(now), activeRuns) || activeRuns != 0
+                || !H1EaSql::scalar(handle, "SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND tbl_name='h1_ea_decisions' COLLATE NOCASE", triggers)
+                || triggers != 0) {
+            return false;
+        }
+        return H1EaSql::execute(handle, H1EaDecisionDao::addD1ColumnSql())
+            && this.backfillD1Ema200Direction()
+            && this.validateSchema()
+            && H1EaSql::execute(handle, "PRAGMA user_version=2");
+    }
+
+    /**
      * DDLとuser_version更新を単一書込transactionへ収める。
      */
     bool prepareSchema(const bool fromInitializeSchema) {
@@ -223,9 +313,11 @@ private:
                 && H1EaTradeEventDao::createTable(handle);
             if (success) {
                 success = this.validateSchema()
-                    && H1EaSql::execute(handle, "PRAGMA user_version=1");
+                    && H1EaSql::execute(handle, "PRAGMA user_version=2");
             }
-        } else if (success && version == 1) {
+        } else if (success && version == 1 && fromInitializeSchema) {
+            success = this.migrateD1Ema200Direction();
+        } else if (success && version == 2) {
             success = this.validateSchema();
         } else {
             success = false;

@@ -10,7 +10,7 @@
 class H1EaDecisionDao {
 public:
     /**
-     * 初版の列・整合制約を返す。
+     * D1 EMA200専用列を含む列・整合制約を返す。
      */
     static string createSql() {
         string sql = "CREATE TABLE IF NOT EXISTS h1_ea_decisions (";
@@ -55,6 +55,7 @@ public:
         sql += "h1_direction_alignment_mode TEXT NOT NULL,";
         sql += "is_h1_direction_alignment_passed INTEGER NOT NULL,";
         sql += "analysis_snapshot_text TEXT NOT NULL,";
+        sql += " d1_ema200_direction TEXT CHECK(d1_ema200_direction IS NULL OR d1_ema200_direction IN ('BUY', 'SELL', 'NONE')),";
         sql += "CHECK(decision IN ('SKIP', 'BUY', 'SELL')),";
         sql += "CHECK(is_judge_matched IN (0, 1)),";
         sql += "CHECK(is_entry_evaluated IN (0, 1)),";
@@ -71,6 +72,22 @@ public:
         sql += "CHECK(is_h1_direction_alignment_passed IN (0,1)),";
         sql += "FOREIGN KEY(run_id) REFERENCES h1_ea_runs(id) ON DELETE RESTRICT)";
         return sql;
+    }
+
+    /**
+     * 移行前の41列schema原文を返す。旧schemaの厳密な照合にだけ使用する。
+     */
+    static string createLegacySql() {
+        string sql = H1EaDecisionDao::createSql();
+        StringReplace(sql, " d1_ema200_direction TEXT CHECK(d1_ema200_direction IS NULL OR d1_ema200_direction IN ('BUY', 'SELL', 'NONE')),", "");
+        return sql;
+    }
+
+    /**
+     * 旧列と制約を維持してD1専用列だけを末尾に追加するSQLを返す。
+     */
+    static string addD1ColumnSql() {
+        return "ALTER TABLE h1_ea_decisions ADD COLUMN d1_ema200_direction TEXT CHECK(d1_ema200_direction IS NULL OR d1_ema200_direction IN ('BUY', 'SELL', 'NONE'))";
     }
 
     /**
@@ -105,14 +122,14 @@ public:
      * 全列をSQLの固定順に列挙する。
      */
     static string columns() {
-        return "id,run_id,context_key,market_signal_key,snapshot_hash,h1_bar_time,evaluated_server_time,created_at,signal_reference_time,decision,reason_code,signal_side,is_judge_matched,signal_count,entry_count,is_entry_evaluated,is_strategy_entry,is_signal_consumed,spread_pips,requested_volume,initial_stop_loss,initial_risk_pips,max_initial_risk_pips,mn1_direction,w1_direction,d1_direction,h4_direction,h1_direction,h1_wave_direction,h1_elliot_label,h4_elliot_label,is_h1_wave_accepted,is_h4_wave_accepted,h1_gmma_trend_count,h1_gmma_cross_count,h1_ema200_direction,h4_ema200_direction,w1_ema200_direction,h1_direction_alignment_mode,is_h1_direction_alignment_passed,analysis_snapshot_text";
+        return "id,run_id,context_key,market_signal_key,snapshot_hash,h1_bar_time,evaluated_server_time,created_at,signal_reference_time,decision,reason_code,signal_side,is_judge_matched,signal_count,entry_count,is_entry_evaluated,is_strategy_entry,is_signal_consumed,spread_pips,requested_volume,initial_stop_loss,initial_risk_pips,max_initial_risk_pips,mn1_direction,w1_direction,d1_direction,h4_direction,h1_direction,h1_wave_direction,h1_elliot_label,h4_elliot_label,is_h1_wave_accepted,is_h4_wave_accepted,h1_gmma_trend_count,h1_gmma_cross_count,h1_ema200_direction,h4_ema200_direction,w1_ema200_direction,h1_direction_alignment_mode,is_h1_direction_alignment_passed,analysis_snapshot_text,d1_ema200_direction";
     }
 
     /**
      * SQL NULLをEntityの未取得値へ変換するSELECT列を返す。
      */
     static string selectColumns() {
-        return "id,run_id,context_key,COALESCE(market_signal_key,''),snapshot_hash,h1_bar_time,evaluated_server_time,created_at,COALESCE(signal_reference_time,0),decision,reason_code,COALESCE(signal_side,''),is_judge_matched,signal_count,entry_count,is_entry_evaluated,is_strategy_entry,is_signal_consumed,COALESCE(spread_pips,1.7976931348623157e308),COALESCE(requested_volume,1.7976931348623157e308),COALESCE(initial_stop_loss,0.0),COALESCE(initial_risk_pips,0.0),max_initial_risk_pips,COALESCE(mn1_direction,''),COALESCE(w1_direction,''),COALESCE(d1_direction,''),COALESCE(h4_direction,''),COALESCE(h1_direction,''),COALESCE(h1_wave_direction,''),COALESCE(h1_elliot_label,''),COALESCE(h4_elliot_label,''),is_h1_wave_accepted,is_h4_wave_accepted,COALESCE(h1_gmma_trend_count,-2147483648),COALESCE(h1_gmma_cross_count,-2147483648),COALESCE(h1_ema200_direction,''),COALESCE(h4_ema200_direction,''),COALESCE(w1_ema200_direction,''),h1_direction_alignment_mode,is_h1_direction_alignment_passed,analysis_snapshot_text";
+        return "id,run_id,context_key,COALESCE(market_signal_key,''),snapshot_hash,h1_bar_time,evaluated_server_time,created_at,COALESCE(signal_reference_time,0),decision,reason_code,COALESCE(signal_side,''),is_judge_matched,signal_count,entry_count,is_entry_evaluated,is_strategy_entry,is_signal_consumed,COALESCE(spread_pips,1.7976931348623157e308),COALESCE(requested_volume,1.7976931348623157e308),COALESCE(initial_stop_loss,0.0),COALESCE(initial_risk_pips,0.0),max_initial_risk_pips,COALESCE(mn1_direction,''),COALESCE(w1_direction,''),COALESCE(d1_direction,''),COALESCE(h4_direction,''),COALESCE(h1_direction,''),COALESCE(h1_wave_direction,''),COALESCE(h1_elliot_label,''),COALESCE(h4_elliot_label,''),is_h1_wave_accepted,is_h4_wave_accepted,COALESCE(h1_gmma_trend_count,-2147483648),COALESCE(h1_gmma_cross_count,-2147483648),COALESCE(h1_ema200_direction,''),COALESCE(h4_ema200_direction,''),COALESCE(w1_ema200_direction,''),h1_direction_alignment_mode,is_h1_direction_alignment_passed,analysis_snapshot_text,COALESCE(d1_ema200_direction,'')";
     }
 
     /**
@@ -161,6 +178,7 @@ public:
         values += "," + H1EaSql::text(fromEntity.h1DirectionAlignmentMode);
         values += "," + IntegerToString((long)fromEntity.isH1DirectionAlignmentPassed);
         values += "," + H1EaSql::text(fromEntity.analysisSnapshotText);
+        values += "," + H1EaSql::optionalText(fromEntity.d1Ema200Direction);
         return values;
     }
 
@@ -168,6 +186,13 @@ public:
      * 新規行を挿入し採番済みIDを返す。transactionは呼出元が管理する。
      */
     static bool insert(const int fromHandle, H1EaDecisionEntity &fromEntity) {
+        H1EaDecisionEntity diagnostics = fromEntity;
+        if (!H1EaDecisionDao::restoreEma200Diagnostics(diagnostics)
+                || diagnostics.d1Ema200Direction != fromEntity.d1Ema200Direction
+                || diagnostics.isEma200ConfirmationPassed != fromEntity.isEma200ConfirmationPassed
+                || diagnostics.hasEma200ConfirmationDiagnostics != fromEntity.hasEma200ConfirmationDiagnostics) {
+            return false;
+        }
         string sql = "INSERT INTO h1_ea_decisions (" + H1EaDecisionDao::columns()
             + ") VALUES (" + H1EaDecisionDao::values(fromEntity) + ")";
         if (!H1EaSql::execute(fromHandle, sql)) {
@@ -316,7 +341,12 @@ public:
         if (!DatabaseColumnText(fromRequest, 40, fromEntity.analysisSnapshotText)) {
             return false;
         }
-        return H1EaDecisionDao::restoreEma200Diagnostics(fromEntity);
+        string savedD1Direction = "";
+        if (!DatabaseColumnText(fromRequest, 41, savedD1Direction)
+                || !H1EaDecisionDao::restoreEma200Diagnostics(fromEntity)) {
+            return false;
+        }
+        return fromEntity.d1Ema200Direction == savedD1Direction;
     }
 
     /**
@@ -341,9 +371,9 @@ public:
         return success;
     }
 
-private:
     /**
      * 追加診断だけをCanonical Textから復元する。旧形式は未取得のまま維持する。
+     * 新列の保存・読込と旧DB移行で同じ検証規則を使用する。
      */
     static bool restoreEma200Diagnostics(H1EaDecisionEntity &fromEntity) {
         fromEntity.d1Ema200Direction = "";
@@ -382,6 +412,7 @@ private:
         return true;
     }
 
+private:
     /**
      * 区切りとキーが完全一致した1項目だけを取得する。重複や値なしは拒否する。
      */

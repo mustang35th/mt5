@@ -18,11 +18,13 @@
 
 コンパイル済みのv1.33へ更新しても、チャートや保存済みsetファイルのinput値が残る場合があります。既存チャートでは「EMA200確認（追加条件）」で`H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED`を明示的に選択してください。従来条件へ戻す場合は`H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED`を選びます。
 
-`ZigZagElliotList` v1.31のH1アラートと`MstngEa` v1.08のH1・`MTF_3in3`も3足必須を初期値にします。保存済みinputを使う場合は各EMA200確認モードを明示的に変更してください。従来の2モードも選択できます。`MstngH1Ea` v1.06は3足必須を固定して使用し、戦略バージョンを`H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2`へ更新します。EMA200以外の各プログラム固有の判定・評価周期は変更しません。
+`ZigZagElliotList` v1.31のH1アラートと`MstngEa` v1.08のH1・`MTF_3in3`も3足必須を初期値にします。保存済みinputを使う場合は各EMA200確認モードを明示的に変更してください。従来の2モードも選択できます。`MstngH1Ea` v1.07は、v1.06で導入した3足必須固定と戦略バージョン`H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2`を維持します。EMA200以外の各プログラム固有の判定・評価周期は変更しません。
 
 `ZigZagElliotList`のH1主一覧には、H1方向を基準とした3足一致の参考表示`EMA3 OK`・`EMA3 NG`・`EMA3 ?`を追加します。H1＋M5モードでは上段H1が対象です。一覧の表示対象、D1優先ソート、READY順位、M5独立判定は変更しません。この参考表示はアラートの確認モード選択とは独立します。
 
-Runの設定記録には選択したEMA200確認モードを保存します。既存DBのスキーマ変更や保存済み判定結果の更新は行いません。H1 Observationの検索でEMA200 D1を指定すると観測の絞り込みを確認できますが、Signal Countに関わる実際のエントリー時刻の変化はテスターで確認してください。
+Runの設定記録には選択したEMA200確認モードを保存します。既存Alert／H1 Observation DBのスキーマ変更や保存済み判定結果の更新は行いません。H1 Observationの検索でEMA200 D1を指定すると観測の絞り込みを確認できますが、Signal Countに関わる実際のエントリー時刻の変化はテスターで確認してください。
+
+`MstngH1Ea`の専用DBだけは、v1.07のRun登録前の初期接続フェーズ（失敗時の再試行を含む）に物理v2へ移行し、Decision末尾へD1 EMA200方向の個別列を追加します。正しい保存済み診断からD1列だけを補完し、未記録・`~`はNULL、`NONE`は評価済み中立として残します。診断テキスト・hash・過去のJudge判定は変更しません。DB内に未失効`RUNNING` LeaseやDecisionの独自triggerがある場合、またはschema・診断が不正な場合は移行を拒否します。Run登録後の再接続ではDDLを実行しません。更新前に同じDBを使う旧版EA・テスターをすべて停止してください。TesterのLeaseはテスト内時刻のため、異なるテスト期間間のWriter停止をLease比較だけでは保証しません。今回の実装作業で運用／Tester DBを直接変更するものではありません。詳細は[MstngH1Eaデータベース設計書](../Database/MstngH1EaDatabase.md)を参照してください。
 
 Viewerの`H1 ENTRY CHECK`は保存時のRun設定を使い、H4・D1を必須／対象外に分けます。設定が未記録・不正の場合やH1 Observationでは参考表示とし、現在の初期値から過去のモードを推測しません。保存済みENTRY結果と研究用FULL・Episodeの定義は変更しません。
 

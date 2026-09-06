@@ -6,7 +6,8 @@
 |---|---|
 | 対象機能 | H1専用EA `MstngH1Ea`の判定・取引永続化 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| 物理スキーマバージョン | 1 |
+| 物理スキーマバージョン | 2（EA 1.07以降） |
+| Run保存契約バージョン | 1（変更なし） |
 | 保存単位 | EA起動、H1判定、H1 ZigZagトレイル、取引ライフサイクル |
 | 文書状態 | 初版実装・テスター受入確認前 |
 | 最終更新日 | 2026-09-06 |
@@ -76,14 +77,14 @@ PRAGMA busy_timeout = 5000;
 ```
 
 - 1 EAインスタンスにつき1接続を保持します。
-- schema作成およびmigrationは起動時だけ実行します。
+- schema作成およびmigrationはRun登録前の初期接続フェーズ（失敗時の再試行を含む）だけ実行します。Run登録後の再接続では既存schemaの確認だけを行い、DDLやmigrationを実行しません。
 - DDLは再実行可能にします。
 - 通常のtickではDDL、migrationおよび長い集計を行いません。
 - 保存は1イベント単位の短いtransactionとします。
 - Viewerはread-onlyで接続し、migrationしません。
 - 複数Writerが同時起動しても、schema確認、DDLおよび`user_version`更新を単一transactionで行います。
 
-物理DB世代は`PRAGMA user_version = 1`で管理します。保存契約の世代は各Runの`schema_version`へも保存し、物理世代と実行データの世代を分離します。
+物理DB世代はEA 1.07から`PRAGMA user_version = 2`で管理します。各Runの`schema_version = 1`は保存契約V1を表し、変更しません。物理世代と実行データの世代を分離し、旧DBの移行条件は15章で定義します。
 
 ## 5. テーブル関係
 
@@ -131,7 +132,7 @@ EA起動1回につき1行を保存します。
 |---|---|---:|---|
 | `id` | INTEGER | Yes | 主キー |
 | `run_uid` | TEXT | Yes | 起動ごとの一意ID |
-| `schema_version` | INTEGER | Yes | 保存契約バージョン |
+| `schema_version` | INTEGER | Yes | 保存契約バージョン。物理v2でも1を維持 |
 | `source_mode` | TEXT | Yes | `LIVE`または`TESTER` |
 | `context_key` | TEXT | Yes | LIVEまたはTesterの実行コンテキストキー |
 | `account_server` | TEXT | Yes | 接続サーバー |
@@ -174,11 +175,13 @@ H1_EA_CONFIG_V1|LOT_SIZE=<8桁>|MAX_INITIAL_SL_PIPS=<1桁>|ZIGZAG_SL_BUFFER_PIPS
 
 EA 1.06ではD1を含む3足EMA200必須化に合わせ、`strategy_version`を`H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2`へ更新します。EMA200設定文字列が変わるため`config_hash`も旧版と区別されます。context keyとmagicの規則は変更せず、同一シグナルの消費状態は引き継ぎます。既存Run・Decisionの設定、hashおよび判定結果は書き換えません。
 
+EA 1.07はD1方向をSQL検索するための物理列追加であり、戦略V2、`config_text`・`config_hash`、分析ProfileおよびDecisionのcanonical・hash定義を変更しません。`program_version`だけでEA 1.06と区別します。
+
 `MAX_SPREAD_PIPS=5.0`は基本設計v0.5のH1上限です。旧3.0 pips仕様との違いはRun設定と戦略バージョンで識別し、保存済みDecisionは新上限で再判定・上書きしません。
 
 `TESTER_TRADE_START_TIME`は有効な`InpTesterTradeStartTime`を`datetime`の秒整数へ変換した値です。Testerの既定入力は`2026.01.01 00:00`、0なら開始日時の制限なし、LIVEの有効値は入力値にかかわらず0です。Tester内のサーバー日時として扱い、UTC/JST変換は行いません。この値を末尾へ追加した`config_text`と、その全体の`config_hash`を既存Run列へ保存します。列追加・スキーマ変更・既存Runの書換えは行いません。
 
-売買開始日時設定はEA `1.01`、安全条件付きの高速ウォームアップはEA `1.02`で導入し、既存の`program_version`列で識別します。高速化用inputや保存列は追加せず、物理スキーマとRunの`schema_version`は1を維持します。
+売買開始日時設定はEA `1.01`、安全条件付きの高速ウォームアップはEA `1.02`で導入し、既存の`program_version`列で識別します。この導入時には高速化用inputや保存列は追加せず、物理スキーマとRunの`schema_version`は1を維持しました。
 
 `status`は次に限定します。
 
@@ -308,14 +311,17 @@ server|symbol|time_frame|h1_bar_time|signal_reference_time|MTF_3in3|side
 | `h1_direction_alignment_mode` | TEXT | Yes | Runの固定方向一致モード |
 | `is_h1_direction_alignment_passed` | INTEGER | Yes | W1からH1一致かつMN1方向またはW1 EMA200方向一致の場合1 |
 | `analysis_snapshot_text` | TEXT | Yes | 追加診断値のCanonical Text |
+| `d1_ema200_direction` | TEXT | No | D1 EMA200方向。`BUY`、`SELL`または`NONE`。物理v2で末尾42列目に追加し、未取得はNULL |
 
 主要条件はSQL検索できる個別列へ保存し、補足情報だけを`analysis_snapshot_text`へ保存します。Entry未評価時の`is_h1_wave_accepted`と`is_h4_wave_accepted`は0とし、波動条件NGとは`is_entry_evaluated`で区別します。未取得の方向はNULL、有効なEMA200中立は`NONE`とし、混同しません。判定ロジックの変更時も、既存行を再判定または上書きしません。
 
 `is_strategy_entry = 1`でも、保有中、初期SL不正、SL幅超過など確定保存前の安全条件がNGなら`decision = 'SKIP'`となります。戦略Entry成立と実発注を同じフラグで表さず、安全条件が後から改善しても同じシグナルを再評価しません。BUY/SELL Decisionと`OPEN_PENDING`のcommit後に行う`OrderCheck()`が失敗した場合は、確定DecisionをSKIPへ変更せず、失敗EventとTradeの`OPEN_FAILED`へ記録します。シグナル消費は解除しません。
 
-`analysis_snapshot_text`は`H1_EA_DECISION_V1`を先頭に、8.2と8.3の列（自身の`analysis_snapshot_text`列を除く）を表の順で`|列名=値`として連結します。未取得は`~`です。小数はpipsを1桁、価格を対象シンボルのDigits、ロットを2桁で固定します。`snapshot_hash`は識別子と保存時刻を除くDecision保存値、`analysis_version`および`analysis_input_hash`を同じ順で連結したUTF-8文字列のSHA-256です。
+`analysis_snapshot_text`は`H1_EA_DECISION_V1`を先頭に、8.2と8.3の従来列（自身の`analysis_snapshot_text`列と物理v2の追加列`d1_ema200_direction`を除く）を表の順で`|列名=値`として連結します。未取得は`~`です。小数はpipsを1桁、価格を対象シンボルのDigits、ロットを2桁で固定します。以下の追加診断を含む固定形式と、`analysis_version`および`analysis_input_hash`を連結したUTF-8文字列のSHA-256を`snapshot_hash`とします。識別子と保存時刻は含めません。
 
-EA 1.06以降の分析成功時は、末尾に`|d1_ema200_direction=BUY/SELL/NONE/~|is_ema200_confirmation_passed=0/1`をこの順で追加し、hashにも含めます。後者はH1・H4・D1の時間足とEMA200フラグを含む厳格な方向一致結果です。物理列は追加しません。分析不能時および両キーのない旧記録では追加診断を未取得として扱い、旧形式の再構築時にもキーを付加しません。DAO読込では両キーの重複・片方だけの存在・不正値を拒否し、未記録を不一致へ変換しません。
+EA 1.06以降の分析成功時は、末尾に`|d1_ema200_direction=BUY/SELL/NONE/~|is_ema200_confirmation_passed=0/1`をこの順で追加し、hashにも含めます。後者はH1・H4・D1の時間足とEMA200フラグを含む厳格な方向一致結果です。分析不能時および両キーのない旧記録では追加診断を未取得として扱い、旧形式の再構築時にもキーを付加しません。DAO読込では両キーの重複・片方だけの存在・不正値を拒否し、未記録を不一致へ変換しません。
+
+EA 1.07では同じD1方向を専用列にも保存します。物理列の追加を理由にcanonicalへD1キーをもう一度加えず、EA 1.06の診断テキストとhash定義を維持します。旧DBの移行では保存済みの正しい診断からD1列だけを補完し、未記録または`~`はNULL、評価済み中立は`NONE`とします。旧テキスト・hash・Judge判定は変更せず、過去の相場データから再計算しません。
 
 ### 8.4 一意性
 
@@ -964,7 +970,7 @@ recovery_issue_code, quarantined_pending_text
 
 ### 11.1 起動
 
-1. DB接続とスキーマを確認する
+1. DB初期接続とスキーマを確認し、必要なら15章の条件を満たす物理v1→v2移行を完了する
 2. 単一transactionで同一コンテキストのLeaseを確認する
 3. 同じtransactionで期限切れRunだけを`INTERRUPTED`へ更新し、今回Runを`RUNNING`で追加してLeaseを取得する
 4. brokerとactive取引をPosition Ticket単位で照合する
@@ -1143,15 +1149,19 @@ broker SLはDB・Lease状態にかかわらず継続する。
 
 ## 15. スキーマ移行
 
-- 初版は新規DBとして`user_version = 1`を作成します。
-- H1 ZigZagトレイルおよび既存H1 Entry互換のJudge回数・初回消費はEA・DB実装前の初版定義へ取り込むため、物理`user_version = 1`とRunの`schema_version = 1`を維持し、version 2 migrationは作成しません。
-- 4テーブルの初回CREATE定義、Entity、DAOおよびSmokeTestの期待列へトレイル列とJudge・Entry診断列を含めます。
-- 将来の変更は専用Migrationクラスで実施します。
-- `PRAGMA table_info`と`sqlite_schema`で変更前後を確認します。
-- migrationは起動時にtransactionで書込み権を取得したWriterだけが実行し、schema再確認後に開始します。
-- 全DDLと検証に成功した後だけ`user_version`を更新します。
+- EA 1.06までの初版は物理`user_version = 1`です。EA 1.07の新規DBは物理v2として作成し、既存の物理v1 DBはRun登録前の初期接続フェーズ（失敗時の再試行を含む）だけv2へ自動移行します。
+- 物理v2では`h1_ea_decisions`の末尾42列目に`d1_ema200_direction TEXT`を追加します。許可値はNULL、`BUY`、`SELL`、`NONE`です。既存41列の順序は変更しません。
+- 旧`analysis_snapshot_text`に正しい追加診断がある行は、そのD1値だけを新列へ補完します。未記録または`~`はNULLのままです。重複キー・片方だけの診断・不正値などを検出した場合は、列追加と補完を含む移行全体をrollbackします。
+- 旧`analysis_snapshot_text`、`snapshot_hash`、Judge・Signal Count・Entry判定とRun行は書き換えません。保存契約V1であるRunの`schema_version = 1`、戦略V2、設定・分析・Decision hashの定義を維持します。
+- migrationは初期接続フェーズにtransactionで書込み権を取得したWriterだけが実行します。DB内の全コンテキストを対象に、未失効Leaseを持つ`RUNNING`行が0件であり、`h1_ea_decisions`に独自triggerが存在しないことを必須とします。移行のために稼働中Runを強制終了しません。
+- `sqlite_schema`の定義で列順・制約を変更前後に厳密確認します。同名の不正なD1列、想定外・破損したschema、対応不能な世代は拒否し、推測で修復しません。DDL・補完・検証のすべてが成功した後だけ`user_version`を2へ更新してcommitします。
+- Run登録後の再接続では物理v2のschema確認だけを行い、DDLやmigrationを実行しません。
 - Viewerは古い・新しいスキーマを検出するだけで変更しません。
 - 対応不能な新しいスキーマでは新規取引を停止します。
+
+これは新版EAの起動時に適用する処理です。今回の実装作業で運用DB・Tester DBを直接変更するものではありません。既存DBを更新する際は、同じDBを使う旧版EA・テスターをすべて停止し、未失効の`RUNNING` Leaseがない状態で新版を起動します。TesterのLeaseはテスト内時刻であり、異なるテスト期間間のWriter停止をLease比較だけでは保証しません。移行失敗時もDBを削除・再作成しません。
+
+物理v2のDBは旧版EAでは開けないため、旧版EA・テスターの停止後、新版を起動する前にDBのバックアップを取ってください。
 
 ## 16. Viewer連携
 

@@ -82,7 +82,7 @@ struct H1EaDecisionEntity {
     string h4Ema200Direction;
     /** W1 EMA200方向。BUY、SELLまたはNONE。 */
     string w1Ema200Direction;
-    /** Canonical Textへ保存するD1 EMA200方向。空文字は未取得、NONEは評価済み。 */
+    /** 専用列とCanonical Textへ保存するD1 EMA200方向。空文字は未取得、NONEは評価済み。 */
     string d1Ema200Direction;
     /** H1・H4・D1 EMA200の方向一致診断。取得済みフラグがtrueの場合だけ有効。 */
     bool isEma200ConfirmationPassed;

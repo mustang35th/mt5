@@ -45,7 +45,7 @@ void OnStart() {
     assertEqual(H1EaTextUtil::ticket(MagicNumberUtil::build(12, marketContext, STRATEGY_TYPE_MTF_3IN3)),
         "1204050501", "magic code 12");
     H1EaConfig config;
-    assertEqual(H1EaConfig::getProgramVersion(), "1.06", "program version");
+    assertEqual(H1EaConfig::getProgramVersion(), "1.07", "program version");
     assertEqual(H1EaConfig::getStrategyVersion(),
         "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2", "three-timeframe strategy version");
     config.lotSize = 0.01;

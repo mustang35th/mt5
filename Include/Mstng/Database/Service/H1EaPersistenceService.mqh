@@ -19,7 +19,7 @@ public:
     }
 
     /**
-     * DBと初版schemaを準備する。再接続時はfalseでDDLを禁止する。
+     * DBと現行schemaを準備する。Run登録後の再接続時はfalseでDDLを禁止する。
      */
     bool open(const string fromFileName, const bool fromInitializeSchema = true) {
         if (!this.context.open(fromFileName, fromInitializeSchema)) {
@@ -154,7 +154,8 @@ public:
         bool success = this.loadDecision(candidate.contextKey, candidate.h1BarTime, existing, found);
         if (success && found) {
             success = existing.snapshotHash == candidate.snapshotHash
-                && existing.analysisSnapshotText == candidate.analysisSnapshotText;
+                && existing.analysisSnapshotText == candidate.analysisSnapshotText
+                && existing.d1Ema200Direction == candidate.d1Ema200Direction;
             if (success) {
                 candidate = existing;
             }

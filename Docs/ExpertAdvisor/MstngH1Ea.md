@@ -10,8 +10,8 @@
 | 対象時間足 | H1固定 |
 | 対象戦略 | `MTF_3in3`固定 |
 | 文書状態 | 初版実装・テスター受入確認中 |
-| 設計バージョン | 0.7 |
-| EAプログラムバージョン | 1.06 |
+| 設計バージョン | 0.8 |
+| EAプログラムバージョン | 1.07 |
 | 最終更新日 | 2026-09-06 |
 
 本書は、`MstngEa`を基礎として機能をH1運用に限定した新EAの初版仕様を定義します。現行の`MstngEa`を変更する設計ではなく、必要な判定クラスだけを再利用して、制御、発注および永続化を新しく構成します。
@@ -22,7 +22,11 @@ v0.5では、通常版と共用する`MTF_3in3`のH1 Spread上限を3.0 pipsか�
 
 v0.7（EA 1.06）では、H1・H4 EMA200一致にD1 EMA200一致をANDで追加します。戦略バージョンは`H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2`とし、固定設定の変更をRunへ記録します。Judge成立回数の消費順序、初期SL、トレイルおよび評価周期は変更しませんが、D1条件の追加により旧版とのEntry時刻・成立回数の一致は保証しません。旧DBの判定は再判定・上書きしません。
 
-D1 EMA200方向と3足の厳格な一致結果は、既存のDecision `analysis_snapshot_text`へ補足診断として保存します。EMA200の不一致・NONE・両方向成立・時間足不整合は`EMA200_DIRECTION_REJECTED`の診断対象です。他のJudge不成立条件もある場合は、既存の先行条件の理由を優先します。DBスキーマと従来の個別列は変更しません。
+D1 EMA200方向と3足の厳格な一致結果は、Decision `analysis_snapshot_text`へ補足診断として保存します。EMA200の不一致・NONE・両方向成立・時間足不整合は`EMA200_DIRECTION_REJECTED`の診断対象です。他のJudge不成立条件もある場合は、既存の先行条件の理由を優先します。
+
+v0.8（EA 1.07）では、D1方向をSQLから参照できるよう`h1_ea_decisions.d1_ema200_direction`を末尾42列目に追加します。未取得はNULL、評価済みは`BUY`・`SELL`・`NONE`です。既存の診断テキストも残し、戦略V2、`config_text`・`config_hash`、分析Profile、`analysis_snapshot_text`・`snapshot_hash`の定義は変更しません。D1キーをcanonicalへ二重追加しません。
+
+物理DBは`PRAGMA user_version = 2`へ移行しますが、Runの保存契約は`schema_version = 1`を維持します。旧DBはRun登録前の初期接続フェーズ（失敗時の再試行を含む）だけ自動移行し、保存済みの正しい診断からD1列だけを補完します。未記録・`~`はNULLのままとし、旧テキスト・hash・Judge・Entry判定は変更しません。今回の実装作業では運用DB・Tester DBへ直接移行を適用しません。
 
 SQLiteの物理構成、列および制約は[MstngH1Eaデータベース設計書](../Database/MstngH1EaDatabase.md)を参照してください。
 
@@ -171,7 +175,7 @@ Magic Numberは既存の`MagicNumberUtil`を利用し、EAコード`12`で自動
 2. Market Context、Magic Numberおよび分析ハンドルを準備する
 3. ポジション取得と注文機能を準備する
 4. Commonフォルダの同一コンテキスト用Lockを排他的に取得する
-5. 専用SQLiteを開き、接続設定とスキーマを確認する
+5. 専用SQLiteを開き、接続設定とスキーマを確認する。Run登録前の初期接続フェーズに限り12.3の条件で物理v1→v2を移行する
 6. 単一transactionで期限切れRunを処理し、今回Runの登録とLease取得を行う
 7. 前回Run、active取引およびpending保護SL候補をbrokerへ照合する
 8. broker SLへ未反映の保護SL候補があれば種別とともに復元して再試行対象にする
@@ -565,6 +569,10 @@ h1_ea_runs (1)
 - 1イベント単位の短いトランザクション
 - 通常tick中にDDLまたは長い集計を実行しない
 
+EA 1.07の物理v1→v2移行は、初期接続フェーズの単一transactionで実行します。同一コンテキストだけでなくDB全体に未失効Leaseを持つ`RUNNING`行がないこと、Decisionの独自triggerがないことを必須とします。同名の不正なD1列、想定外・破損したschema、旧診断の重複・片欠損・不正値は拒否し、移行全体をrollbackします。Run登録後の再接続ではschema確認だけを行い、DDLや移行を実行しません。
+
+既存DBを更新するときは、同じDBを使う旧版EA・テスターをすべて停止し、未失効の`RUNNING` Leaseがない状態で新版を起動します。TesterのLeaseはテスト内時刻であり、異なるテスト期間間のWriter停止をLease比較だけでは保証しません。移行のためにRunを強制終了したり、DBを削除・再作成したりしません。
+
 ### 12.4 DB障害時の原則
 
 ```text
@@ -900,3 +908,10 @@ EA 1.06のD1 EMA200追加（2026-09-06）の確認記録は次のとおりです
 - EA関連Python回帰74件、実CREATE文を使うSQLite回帰22件が成功。Viewerはfrontend 215件・backend 66件、型チェックおよびビルドが成功した。
 - MQL5 SmokeTestにはBUY・SELLの3足一致／不一致、D1のNONE・不正状態、旧2モードの互換性、設定hash、追加診断のDB往復・反復seal・旧形式維持を追加した。MQL5 SmokeTest自体の実行とStrategy Testerによる売買確認は未実施であり、Pythonテストとは区別する。
 - 初期SL・トレイル・M5/M15・評価周期・シグナル消費順序は変更していない。既存の運用／Tester DBの直接更新、EAの起動・停止・設定変更は行っていない。
+
+EA 1.07のD1 EMA200個別列追加（2026-09-06）の確認記録は次のとおりです。
+
+- `MstngH1Ea`、`H1EaDatabaseSmokeTest`、`MstngH1EaConfigSmokeTest`はコンパイルエラー0・警告0。EAは運用先とは別の一時ビルド先でコンパイルした。
+- EA関連Python回帰74件、実CREATE・ALTER文と静的配線を使うDB回帰28件の計102件が成功した。
+- 既存Tester DBを読み取り専用でメモリ上へ複製し、実CREATE・ALTER文による列追加と保存済み診断値の補完を検証した。Decision 21,356件の従来41列はすべて不変で、D1診断のある4,224件を個別列へ補完でき、DB整合性と外部キー検査も正常だった。この検証はMQLの移行処理そのものの実行とは区別する。
+- MQL5 SmokeTestには旧41列からの移行、133件のバッチ境界、診断不正時の全体rollback、専用列とtextの不一致拒否、旧設定・hash維持を追加した。MQL5 SmokeTest自体の実行とEA 1.07のStrategy Tester確認は未実施。元の運用／Tester DBへの直接移行やEAの起動・停止は行っていない。
