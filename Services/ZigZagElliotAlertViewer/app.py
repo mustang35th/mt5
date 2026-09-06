@@ -46,6 +46,7 @@ MAX_SEARCH_LENGTH = 200
 MAX_TIME_FRAME_FILTERS = 32
 SQLITE_MAX_INTEGER = (1 << 63) - 1
 OBSERVATION_SYNC_TIME_FRAMES = {"MN1", "W1", "D1", "H4"}
+OBSERVATION_EMA_SYNC_TIME_FRAMES = {"W1", "D1", "H4", "H1"}
 W1_TIME_FRAME = 32769
 REACT_CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
 
@@ -1693,6 +1694,63 @@ class AlertDatabase:
             clauses.append(sync_clause)
             signal_result_clauses.append(
                 sync_clause.replace("o.id", "e.id")
+            )
+
+        ema_sync_time_frames: list[str] = []
+        seen_ema_sync_time_frames: set[str] = set()
+        for raw_time_frame in query.get("emaSyncTimeFrame", []):
+            time_frame = raw_time_frame.strip().upper()
+            if not time_frame or time_frame in seen_ema_sync_time_frames:
+                continue
+            if time_frame not in OBSERVATION_EMA_SYNC_TIME_FRAMES:
+                raise RequestError(
+                    "emaSyncTimeFrame must be W1, D1, H4 or H1"
+                )
+            seen_ema_sync_time_frames.add(time_frame)
+            ema_sync_time_frames.append(time_frame)
+        if ema_sync_time_frames:
+            placeholders = []
+            for index, time_frame in enumerate(ema_sync_time_frames):
+                parameter_name = f"ema_sync_time_frame_{index}"
+                placeholders.append(f":{parameter_name}")
+                parameters[parameter_name] = time_frame
+            parameters["ema_sync_time_frame_count"] = len(ema_sync_time_frames)
+            ema_sync_clause = (
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM zigzag_elliot_observation_timeframes AS ema_sync_tf
+                    INNER JOIN zigzag_elliot_observation_timeframes AS ema_h1
+                            ON ema_h1.observation_id = ema_sync_tf.observation_id
+                           AND ema_h1.time_frame_order = 4
+                    WHERE ema_sync_tf.observation_id = o.id
+                      AND ema_sync_tf.time_frame_text IN (
+                """
+                + ", ".join(placeholders)
+                + """
+                      )
+                      AND (
+                          (
+                              ema_h1.is_buy = 1
+                              AND ema_sync_tf.is_ema200_buy = 1
+                              AND ema_sync_tf.is_ema200_sell = 0
+                          )
+                          OR (
+                              ema_h1.is_buy = 0
+                              AND ema_sync_tf.is_ema200_buy = 0
+                              AND ema_sync_tf.is_ema200_sell = 1
+                          )
+                      )
+                    GROUP BY ema_sync_tf.observation_id
+                    HAVING COUNT(DISTINCT ema_sync_tf.time_frame_text)
+                           = :ema_sync_time_frame_count
+                )
+                """
+            )
+            clauses.append(ema_sync_clause)
+            # Apply to the original episode start, not the candidate stream.
+            signal_result_clauses.append(
+                ema_sync_clause.replace("o.id", "e.id")
             )
 
         full_alignment = first("fullAlignment")

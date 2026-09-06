@@ -367,6 +367,8 @@ export type ObservationSort = "anchor_jst_time" | "symbol_name";
 
 export type ObservationSyncTimeFrame = "MN1" | "W1" | "D1" | "H4";
 
+export type ObservationEmaSyncTimeFrame = "W1" | "D1" | "H4" | "H1";
+
 export type ObservationFullAlignment = "" | "FULL" | "BUY" | "SELL";
 export type ObservationGroupMode = "h1" | "signal";
 
@@ -382,6 +384,7 @@ export interface ObservationSearchState {
   to: string;
   jstTime: string;
   syncTimeFrames: ObservationSyncTimeFrame[];
+  emaSyncTimeFrames: ObservationEmaSyncTimeFrame[];
   fullAlignment: ObservationFullAlignment;
   groupMode: ObservationGroupMode;
   pageSize: number;

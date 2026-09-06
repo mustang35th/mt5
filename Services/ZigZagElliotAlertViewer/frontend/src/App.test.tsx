@@ -504,7 +504,7 @@ describe("App", () => {
     window.history.replaceState(
       null,
       "",
-      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=D1&syncTimeFrame=MN1&fullAlignment=FULL&sort=anchor_bar_time",
+      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=D1&syncTimeFrame=MN1&emaSyncTimeFrame=H4&emaSyncTimeFrame=W1&fullAlignment=FULL&sort=anchor_bar_time",
     );
     render(<App />);
 
@@ -523,7 +523,9 @@ describe("App", () => {
       .toBeTruthy();
     expect(observationConditionSummary).toHaveTextContent("JST期間 2026-08-01 – 2026-08-10");
     expect(observationConditionSummary).toHaveTextContent("JST時刻 07:00");
-    expect(observationConditionSummary).toHaveTextContent("上位足同期 MN1・D1");
+    expect(observationConditionSummary).toHaveTextContent(
+      "H1方向一致 分析方向 MN1・D1 / EMA200 W1・H4",
+    );
     expect(observationConditionSummary).toHaveTextContent(
       "W1～H1＋EMA200 方向問わず完全一致",
     );
@@ -539,8 +541,8 @@ describe("App", () => {
       `${ANALYSIS_VERSION}｜Profile｜${TESTER_ANALYSIS_PROFILE_HASH}`,
     );
     expect(screen.getByRole("combobox", { name: "時刻（JST）" })).toHaveTextContent("07:00");
-    expect(screen.getByRole("combobox", { name: "上位足同期（H1方向）" }))
-      .toHaveTextContent("MN1・D1");
+    expect(screen.getByRole("combobox", { name: "H1方向との一致" }))
+      .toHaveTextContent("分析方向 MN1・D1 / EMA200 W1・H4");
     expect(screen.getByRole("combobox", { name: "W1～H1＋EMA200一致" }))
       .toHaveTextContent("方向問わず完全一致");
     expect(tabPanel.querySelector(".viewer-summary-bar"))
@@ -605,6 +607,7 @@ describe("App", () => {
       && path.includes("analysisProfileKind=profile")
       && path.includes("jstTime=07%3A00")
       && path.includes("syncTimeFrame=MN1&syncTimeFrame=D1")
+      && path.includes("emaSyncTimeFrame=W1&emaSyncTimeFrame=H4")
       && path.includes("fullAlignment=FULL")
       && path.includes("sort=anchor_jst_time"))).toBe(true);
     expect(calls.some((path) => path.startsWith("/api/observation-summary?sourceMode=TESTER")
@@ -613,6 +616,7 @@ describe("App", () => {
       && path.includes("analysisProfileKind=profile")
       && path.includes("jstTime=07%3A00")
       && path.includes("syncTimeFrame=MN1&syncTimeFrame=D1")
+      && path.includes("emaSyncTimeFrame=W1&emaSyncTimeFrame=H4")
       && path.includes("fullAlignment=FULL")
       && path.includes("sort=anchor_jst_time"))).toBe(true);
     expect(calls.some((path) => path.startsWith("/api/alerts?"))).toBe(false);
@@ -626,6 +630,8 @@ describe("App", () => {
     expect(new URLSearchParams(window.location.search).get("jstTime")).toBe("07:00");
     expect(new URLSearchParams(window.location.search).getAll("syncTimeFrame"))
       .toEqual(["MN1", "D1"]);
+    expect(new URLSearchParams(window.location.search).getAll("emaSyncTimeFrame"))
+      .toEqual(["W1", "H4"]);
     expect(new URLSearchParams(window.location.search).get("fullAlignment")).toBe("FULL");
 
     fireEvent.click(within(screen.getByRole("columnheader", { name: /JST日時/ }))
@@ -635,6 +641,8 @@ describe("App", () => {
       expect(parameters.get("tab")).toBe("h1");
       expect(parameters.get("sort")).toBe("anchor_jst_time");
       expect(parameters.get("order")).toBe("asc");
+      expect(parameters.getAll("syncTimeFrame")).toEqual(["MN1", "D1"]);
+      expect(parameters.getAll("emaSyncTimeFrame")).toEqual(["W1", "H4"]);
     });
   });
 
@@ -643,7 +651,7 @@ describe("App", () => {
     window.history.replaceState(
       null,
       "",
-      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=MN1&syncTimeFrame=D1&fullAlignment=BUY&sort=anchor_jst_time&order=asc&page=2",
+      "/?tab=h1&sourceMode=TESTER&runId=3&symbol=AUDUSD&from=2026-08-01&to=2026-08-10&jstTime=07%3A00&syncTimeFrame=MN1&syncTimeFrame=D1&emaSyncTimeFrame=W1&emaSyncTimeFrame=H4&fullAlignment=BUY&sort=anchor_jst_time&order=asc&page=2",
     );
     render(<App />);
 
@@ -654,8 +662,17 @@ describe("App", () => {
     });
     fireEvent.mouseDown(screen.getByRole("combobox", { name: "時刻（JST）" }));
     fireEvent.click(screen.getByRole("option", { name: "08:00" }));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "H1方向との一致" }));
+    fireEvent.click(screen.getByRole("option", { name: "分析方向 D1" }));
+    fireEvent.click(screen.getByRole("option", { name: "EMA200 H1" }));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
     expect(screen.getByRole("region", { name: "適用中の検索条件" }))
       .toHaveTextContent("未検索の変更あり");
+    expect(screen.getByRole("combobox", { name: "H1方向との一致" }))
+      .toHaveTextContent("分析方向 MN1 / EMA200 W1・H4＋1");
+    expect(screen.getByTitle("分析方向 MN1 / EMA200 W1・H4・H1"))
+      .toBeInTheDocument();
     fireEvent.change(pageInput, { target: { value: "7" } });
     fireEvent.click(screen.getByRole("button", { name: "移動" }));
 
@@ -677,6 +694,7 @@ describe("App", () => {
         expect(parameters.get("to")).toBe("2026-08-10");
         expect(parameters.get("jstTime")).toBe("07:00");
         expect(parameters.getAll("syncTimeFrame")).toEqual(["MN1", "D1"]);
+        expect(parameters.getAll("emaSyncTimeFrame")).toEqual(["W1", "H4"]);
         expect(parameters.get("fullAlignment")).toBe("BUY");
         expect(parameters.get("analysisVersion")).toBe(ANALYSIS_VERSION);
         expect(parameters.get("analysisInputHash")).toBe(TESTER_ANALYSIS_PROFILE_HASH);
@@ -687,6 +705,14 @@ describe("App", () => {
       expect(pageInput).toHaveValue("7");
     });
     expect(new URLSearchParams(window.location.search).get("tab")).toBe("h1");
+    const summaryRequest = vi.mocked(fetch).mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith("/api/observation-summary?"))
+      .at(-1);
+    expect(summaryRequest).toBeDefined();
+    const summaryParameters = new URL(summaryRequest!, "http://localhost").searchParams;
+    expect(summaryParameters.getAll("syncTimeFrame")).toEqual(["MN1", "D1"]);
+    expect(summaryParameters.getAll("emaSyncTimeFrame")).toEqual(["W1", "H4"]);
   });
 
   it("submits the H1 page jump form and resets the page after sorting or searching", async () => {
@@ -813,7 +839,7 @@ describe("App", () => {
     window.history.replaceState(
       null,
       "",
-      "/?tab=h1&sourceMode=TESTER&runId=3&fullAlignment=FULL&groupMode=signal",
+      "/?tab=h1&sourceMode=TESTER&runId=3&syncTimeFrame=D1&emaSyncTimeFrame=W1&emaSyncTimeFrame=H1&fullAlignment=FULL&groupMode=signal",
     );
     render(<App />);
 
@@ -838,14 +864,42 @@ describe("App", () => {
         path.startsWith("/api/observations?sourceMode=TESTER")
         && path.includes("fullAlignment=FULL")
         && path.includes("groupMode=signal")
+        && path.includes("syncTimeFrame=D1")
+        && path.includes("emaSyncTimeFrame=W1&emaSyncTimeFrame=H1")
       ))).toBe(true);
       expect(calls.some((path) => (
         path.startsWith("/api/observation-summary?sourceMode=TESTER")
         && path.includes("groupMode=signal")
+        && path.includes("syncTimeFrame=D1")
+        && path.includes("emaSyncTimeFrame=W1&emaSyncTimeFrame=H1")
       ))).toBe(true);
     });
     expect(new URLSearchParams(window.location.search).get("groupMode"))
       .toBe("signal");
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "H1方向との一致" }));
+    fireEvent.click(screen.getByRole("option", { name: "EMA200 H4" }));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "検索" }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(window.location.search);
+      expect(parameters.get("groupMode")).toBe("signal");
+      expect(parameters.get("fullAlignment")).toBe("FULL");
+      expect(parameters.getAll("syncTimeFrame")).toEqual(["D1"]);
+      expect(parameters.getAll("emaSyncTimeFrame")).toEqual(["W1", "H4", "H1"]);
+      for (const prefix of ["/api/observations?", "/api/observation-summary?"]) {
+        const request = vi.mocked(fetch).mock.calls
+          .map(([path]) => String(path))
+          .filter((path) => path.startsWith(prefix))
+          .at(-1);
+        expect(request).toBeDefined();
+        const requested = new URL(request!, "http://localhost").searchParams;
+        expect(requested.get("groupMode")).toBe("signal");
+        expect(requested.getAll("syncTimeFrame")).toEqual(["D1"]);
+        expect(requested.getAll("emaSyncTimeFrame")).toEqual(["W1", "H4", "H1"]);
+      }
+    });
   });
 
   it("selects the latest analysis profile for an H1 mode before loading observations", async () => {
@@ -923,24 +977,28 @@ describe("App", () => {
     });
   });
 
-  it("applies and resets the H1 JST hour and multiple higher-timeframe synchronizations", async () => {
-    window.history.replaceState(null, "", "/?tab=h1&sourceMode=LIVE");
+  it("applies and resets the H1 JST hour, analysis directions, and EMA200 synchronizations", async () => {
+    mockObservationPages(400);
+    window.history.replaceState(null, "", "/?tab=h1&sourceMode=LIVE&page=4");
     render(<App />);
 
     const jstTimeSelect = await screen.findByRole("combobox", { name: "時刻（JST）" });
     await waitFor(() => {
       expect(new URLSearchParams(window.location.search).get("analysisInputHash"))
         .toBe(LIVE_ANALYSIS_PROFILE_HASH);
+      expect(screen.getByRole("textbox", { name: "ページ番号" })).toHaveValue("4");
     });
     fireEvent.mouseDown(jstTimeSelect);
     fireEvent.click(screen.getByRole("option", { name: "07:00" }));
 
     const synchronizationSelect = screen.getByRole("combobox", {
-      name: "上位足同期（H1方向）",
+      name: "H1方向との一致",
     });
     fireEvent.mouseDown(synchronizationSelect);
-    fireEvent.click(screen.getByRole("option", { name: "MN1" }));
-    fireEvent.click(screen.getByRole("option", { name: "D1" }));
+    fireEvent.click(screen.getByRole("option", { name: "分析方向 MN1" }));
+    fireEvent.click(screen.getByRole("option", { name: "分析方向 D1" }));
+    fireEvent.click(screen.getByRole("option", { name: "EMA200 W1" }));
+    fireEvent.click(screen.getByRole("option", { name: "EMA200 H4" }));
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
 
@@ -951,18 +1009,35 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("option", { name: "完全BUY" }));
 
     expect(jstTimeSelect).toHaveTextContent("07:00");
-    expect(synchronizationSelect).toHaveTextContent("MN1・D1");
+    expect(synchronizationSelect).toHaveTextContent("分析方向 MN1・D1 / EMA200 W1・H4");
     expect(fullAlignmentSelect).toHaveTextContent("完全BUY");
     expect(new URLSearchParams(window.location.search).has("jstTime")).toBe(false);
+    expect(new URLSearchParams(window.location.search).has("syncTimeFrame")).toBe(false);
+    expect(new URLSearchParams(window.location.search).has("emaSyncTimeFrame")).toBe(false);
+    expect(new URLSearchParams(window.location.search).get("page")).toBe("4");
     expect(screen.getByRole("region", { name: "適用中の検索条件" }))
       .toHaveTextContent("未検索の変更あり");
+    expect(screen.getByRole("region", { name: "適用中の検索条件" }))
+      .toHaveTextContent("H1方向一致 指定なし");
+    expect(vi.mocked(fetch).mock.calls.every(([path]) => {
+      const requested = String(path);
+      if (!requested.startsWith("/api/observations?")
+        && !requested.startsWith("/api/observation-summary?")) return true;
+      const parameters = new URL(requested, "http://localhost").searchParams;
+      return !parameters.has("syncTimeFrame") && !parameters.has("emaSyncTimeFrame");
+    })).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "検索" }));
     await waitFor(() => {
       const parameters = new URLSearchParams(window.location.search);
       expect(parameters.get("jstTime")).toBe("07:00");
       expect(parameters.getAll("syncTimeFrame")).toEqual(["MN1", "D1"]);
+      expect(parameters.getAll("emaSyncTimeFrame")).toEqual(["W1", "H4"]);
       expect(parameters.get("fullAlignment")).toBe("BUY");
+      expect(parameters.get("page")).toBe("1");
+      expect(screen.getByRole("textbox", { name: "ページ番号" })).toHaveValue("1");
+      expect(screen.getByRole("region", { name: "適用中の検索条件" }))
+        .toHaveTextContent("H1方向一致 分析方向 MN1・D1 / EMA200 W1・H4");
       const requestedPaths = vi.mocked(fetch).mock.calls.map(([path]) => String(path));
       for (const prefix of ["/api/observations?", "/api/observation-summary?"]) {
         expect(requestedPaths.some((path) => {
@@ -970,6 +1045,7 @@ describe("App", () => {
           const searchParams = new URL(path, "http://localhost").searchParams;
           return searchParams.get("jstTime") === "07:00"
             && searchParams.getAll("syncTimeFrame").join(",") === "MN1,D1"
+            && searchParams.getAll("emaSyncTimeFrame").join(",") === "W1,H4"
             && searchParams.get("fullAlignment") === "BUY";
         })).toBe(true);
       }
@@ -980,10 +1056,23 @@ describe("App", () => {
       const parameters = new URLSearchParams(window.location.search);
       expect(parameters.has("jstTime")).toBe(false);
       expect(parameters.has("syncTimeFrame")).toBe(false);
+      expect(parameters.has("emaSyncTimeFrame")).toBe(false);
       expect(parameters.has("fullAlignment")).toBe(false);
       expect(jstTimeSelect).toHaveTextContent("すべて");
       expect(synchronizationSelect).toHaveTextContent("指定なし");
       expect(fullAlignmentSelect).toHaveTextContent("指定なし");
+      expect(screen.getByRole("region", { name: "適用中の検索条件" }))
+        .toHaveTextContent("H1方向一致 指定なし");
+      for (const prefix of ["/api/observations?", "/api/observation-summary?"]) {
+        const request = vi.mocked(fetch).mock.calls
+          .map(([path]) => String(path))
+          .filter((path) => path.startsWith(prefix))
+          .at(-1);
+        expect(request).toBeDefined();
+        const requested = new URL(request!, "http://localhost").searchParams;
+        expect(requested.has("syncTimeFrame")).toBe(false);
+        expect(requested.has("emaSyncTimeFrame")).toBe(false);
+      }
     });
   });
 

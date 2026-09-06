@@ -4,6 +4,7 @@ import Checkbox from "@mui/material/Checkbox";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import ListItemText from "@mui/material/ListItemText";
+import ListSubheader from "@mui/material/ListSubheader";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Select, { type SelectChangeEvent } from "@mui/material/Select";
@@ -17,11 +18,11 @@ import type {
   ObservationAnalysisProfile,
   ObservationOptionsResponse,
   ObservationSearchState,
-  ObservationSyncTimeFrame,
   RunItem,
   SourceMode,
 } from "../api/types";
 import {
+  OBSERVATION_EMA_SYNC_TIME_FRAMES,
   OBSERVATION_JST_TIMES,
   OBSERVATION_SYNC_TIME_FRAMES,
 } from "../lib/observationSearchState";
@@ -111,7 +112,7 @@ function profileLabel(profile: ObservationAnalysisProfile): string {
 }
 
 function syncTimeFrameSummary(
-  timeFrames: readonly ObservationSyncTimeFrame[],
+  timeFrames: readonly string[],
   emptyLabel: string,
 ): string {
   if (timeFrames.length === 0) return emptyLabel;
@@ -120,13 +121,30 @@ function syncTimeFrameSummary(
 }
 
 function sameSyncTimeFrames(
-  first: readonly ObservationSyncTimeFrame[],
-  second: readonly ObservationSyncTimeFrame[],
+  first: readonly string[],
+  second: readonly string[],
 ): boolean {
   const firstValues = new Set(first);
   const secondValues = new Set(second);
   return firstValues.size === secondValues.size
     && [...firstValues].every((timeFrame) => secondValues.has(timeFrame));
+}
+
+function directionMatchSummary(value: ObservationSearchState, compact = false): string {
+  const conditions: string[] = [];
+  if (value.syncTimeFrames.length > 0) {
+    const timeFrames = compact
+      ? syncTimeFrameSummary(value.syncTimeFrames, "")
+      : value.syncTimeFrames.join("・");
+    conditions.push(`分析方向 ${timeFrames}`);
+  }
+  if (value.emaSyncTimeFrames.length > 0) {
+    const timeFrames = compact
+      ? syncTimeFrameSummary(value.emaSyncTimeFrames, "")
+      : value.emaSyncTimeFrames.join("・");
+    conditions.push(`EMA200 ${timeFrames}`);
+  }
+  return conditions.length > 0 ? conditions.join(" / ") : "指定なし";
 }
 
 function gmoTargetSummary(gmoTarget: GmoTargetFilter): string {
@@ -158,9 +176,7 @@ export function observationFilterSummary(value: ObservationSearchState): string 
     ? `JST期間 ${value.from || "先頭"} – ${value.to || "末尾"}`
     : "JST全期間";
   const jstTime = value.jstTime ? `JST時刻 ${value.jstTime}` : "JST全時刻";
-  const synchronization = value.syncTimeFrames.length > 0
-    ? `上位足同期 ${value.syncTimeFrames.join("・")}`
-    : "上位足同期なし";
+  const synchronization = `H1方向一致 ${directionMatchSummary(value)}`;
   return `${mode} / ${run} / ${profile} / ${symbol} / ${period} / ${jstTime} / ${synchronization}`
     + ` / W1～H1＋EMA200 ${fullAlignmentSummary(value.fullAlignment)}`
     + ` / 表示 ${groupModeSummary(value.groupMode)}`
@@ -182,6 +198,7 @@ export function hasObservationUnappliedChanges(
     || value.to !== appliedValue.to
     || value.jstTime !== appliedValue.jstTime
     || !sameSyncTimeFrames(value.syncTimeFrames, appliedValue.syncTimeFrames)
+    || !sameSyncTimeFrames(value.emaSyncTimeFrames, appliedValue.emaSyncTimeFrames)
     || value.fullAlignment !== appliedValue.fullAlignment
     || value.groupMode !== appliedValue.groupMode
     || value.pageSize !== appliedValue.pageSize;
@@ -213,9 +230,14 @@ export function ObservationFilterPanel({
     () => visibleProfiles.find((profile) => observationProfileMatchesSearch(profile, value)),
     [value, visibleProfiles],
   );
-  const selectedSyncTimeFrames: string[] = value.syncTimeFrames.length === 0
-    ? [NO_SYNC_TIME_FRAMES_VALUE]
-    : value.syncTimeFrames;
+  const selectedSyncConditions: string[] = [
+    ...value.syncTimeFrames,
+    ...value.emaSyncTimeFrames.map((timeFrame) => `EMA200:${timeFrame}`),
+  ];
+  const hasSyncConditions = selectedSyncConditions.length > 0;
+  const selectedSyncTimeFrames = hasSyncConditions
+    ? selectedSyncConditions
+    : [NO_SYNC_TIME_FRAMES_VALUE];
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
@@ -224,16 +246,19 @@ export function ObservationFilterPanel({
   function changeSyncTimeFrames(event: SelectChangeEvent<string[]>) {
     const rawValue = event.target.value;
     const requestedValues = typeof rawValue === "string" ? rawValue.split(",") : rawValue;
-    if (value.syncTimeFrames.length > 0
+    if (hasSyncConditions
         && requestedValues.includes(NO_SYNC_TIME_FRAMES_VALUE)) {
-      onChange({ ...value, syncTimeFrames: [] });
+      onChange({ ...value, syncTimeFrames: [], emaSyncTimeFrames: [] });
       return;
     }
     const requestedTimeFrames = new Set(requestedValues);
     const syncTimeFrames = OBSERVATION_SYNC_TIME_FRAMES.filter(
       (timeFrame) => requestedTimeFrames.has(timeFrame),
     );
-    onChange({ ...value, syncTimeFrames });
+    const emaSyncTimeFrames = OBSERVATION_EMA_SYNC_TIME_FRAMES.filter(
+      (timeFrame) => requestedTimeFrames.has(`EMA200:${timeFrame}`),
+    );
+    onChange({ ...value, syncTimeFrames, emaSyncTimeFrames });
   }
 
   return (
@@ -465,34 +490,31 @@ export function ObservationFilterPanel({
             }}
           >
             <InputLabel id="observationSyncTimeFramesLabel" shrink>
-              上位足同期（H1方向）
+              H1方向との一致
             </InputLabel>
             <Select<string[]>
               displayEmpty
               labelId="observationSyncTimeFramesLabel"
-              label="上位足同期（H1方向）"
+              label="H1方向との一致"
               multiple
               value={selectedSyncTimeFrames}
-              renderValue={(selected) => syncTimeFrameSummary(
-                selected.filter(
-                  (timeFrame) => timeFrame !== NO_SYNC_TIME_FRAMES_VALUE,
-                ) as ObservationSyncTimeFrame[],
-                "指定なし",
-              )}
+              renderValue={() => directionMatchSummary(value, true)}
+              title={directionMatchSummary(value)}
               onChange={changeSyncTimeFrames}
               MenuProps={{ slotProps: { paper: { sx: { maxHeight: 320 } } } }}
             >
               <MenuItem value={NO_SYNC_TIME_FRAMES_VALUE}>
                 <Checkbox
                   aria-hidden="true"
-                  checked={value.syncTimeFrames.length === 0}
+                  checked={!hasSyncConditions}
                   disableRipple
-                  indeterminate={value.syncTimeFrames.length > 0}
+                  indeterminate={hasSyncConditions}
                   size="small"
                   tabIndex={-1}
                 />
                 <ListItemText primary="指定なし" />
               </MenuItem>
+              <ListSubheader>分析方向</ListSubheader>
               {OBSERVATION_SYNC_TIME_FRAMES.map((timeFrame) => (
                 <MenuItem key={timeFrame} value={timeFrame}>
                   <Checkbox
@@ -502,10 +524,26 @@ export function ObservationFilterPanel({
                     size="small"
                     tabIndex={-1}
                   />
-                  <ListItemText primary={timeFrame} />
+                  <ListItemText primary={`分析方向 ${timeFrame}`} />
+                </MenuItem>
+              ))}
+              <ListSubheader>EMA200</ListSubheader>
+              {OBSERVATION_EMA_SYNC_TIME_FRAMES.map((timeFrame) => (
+                <MenuItem key={`EMA200:${timeFrame}`} value={`EMA200:${timeFrame}`}>
+                  <Checkbox
+                    aria-hidden="true"
+                    checked={value.emaSyncTimeFrames.includes(timeFrame)}
+                    disableRipple
+                    size="small"
+                    tabIndex={-1}
+                  />
+                  <ListItemText primary={`EMA200 ${timeFrame}`} />
                 </MenuItem>
               ))}
             </Select>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+              選択した条件すべてをH1の分析方向に一致させます。MN1のEMA200は対象外です。
+            </Typography>
           </FormControl>
           <FormControl size="small">
             <InputLabel id="observationFullAlignmentLabel" shrink>W1～H1＋EMA200一致</InputLabel>

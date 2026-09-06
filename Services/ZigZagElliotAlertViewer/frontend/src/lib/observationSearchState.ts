@@ -1,5 +1,6 @@
 import type {
   AnalysisProfileKind,
+  ObservationEmaSyncTimeFrame,
   ObservationFullAlignment,
   ObservationSearchState,
   ObservationSort,
@@ -12,6 +13,13 @@ export const OBSERVATION_SYNC_TIME_FRAMES: readonly ObservationSyncTimeFrame[] =
   "W1",
   "D1",
   "H4",
+];
+
+export const OBSERVATION_EMA_SYNC_TIME_FRAMES: readonly ObservationEmaSyncTimeFrame[] = [
+  "W1",
+  "D1",
+  "H4",
+  "H1",
 ];
 
 export const OBSERVATION_JST_TIMES: readonly string[] = Array.from(
@@ -31,6 +39,7 @@ export const DEFAULT_OBSERVATION_SEARCH_STATE: ObservationSearchState = {
   to: "",
   jstTime: "",
   syncTimeFrames: [],
+  emaSyncTimeFrames: [],
   fullAlignment: "",
   groupMode: "h1",
   pageSize: 50,
@@ -69,6 +78,11 @@ function timeInputValue(value: string | null): string {
 function observationSyncTimeFrames(values: string[]): ObservationSyncTimeFrame[] {
   const requestedValues = new Set(values.map((value) => value.trim().toUpperCase()));
   return OBSERVATION_SYNC_TIME_FRAMES.filter((timeFrame) => requestedValues.has(timeFrame));
+}
+
+function observationEmaSyncTimeFrames(values: string[]): ObservationEmaSyncTimeFrame[] {
+  const requestedValues = new Set(values.map((value) => value.trim().toUpperCase()));
+  return OBSERVATION_EMA_SYNC_TIME_FRAMES.filter((timeFrame) => requestedValues.has(timeFrame));
 }
 
 function observationFullAlignment(value: string | null): ObservationFullAlignment {
@@ -119,6 +133,7 @@ export function readObservationSearchState(search: string): ObservationSearchSta
     to: dateInputValue(params.get("to")),
     jstTime: timeInputValue(params.get("jstTime")),
     syncTimeFrames: observationSyncTimeFrames(params.getAll("syncTimeFrame")),
+    emaSyncTimeFrames: observationEmaSyncTimeFrames(params.getAll("emaSyncTimeFrame")),
     fullAlignment,
     groupMode,
     pageSize: [25, 50, 100].includes(requestedPageSize)
@@ -152,6 +167,9 @@ export function buildObservationSearchParams(
   if (jstTime) params.set("jstTime", jstTime);
   for (const timeFrame of observationSyncTimeFrames(state.syncTimeFrames)) {
     params.append("syncTimeFrame", timeFrame);
+  }
+  for (const timeFrame of observationEmaSyncTimeFrames(state.emaSyncTimeFrames)) {
+    params.append("emaSyncTimeFrame", timeFrame);
   }
   if (state.fullAlignment) params.set("fullAlignment", state.fullAlignment);
   if (state.groupMode === "signal") params.set("groupMode", "signal");

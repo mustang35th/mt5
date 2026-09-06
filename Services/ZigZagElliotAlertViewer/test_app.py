@@ -11,6 +11,7 @@ import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from itertools import combinations, product
 from pathlib import Path
 
 from app import (
@@ -2712,6 +2713,294 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual(1, combined_summary["total_count"])
         self.assertEqual(1, combined_summary["live_count"])
         self.assertEqual(0, combined_summary["tester_count"])
+
+    def test_ema_sync_matches_every_selected_frame_for_buy_and_sell(self) -> None:
+        """Check all EMA direction combinations and selections against H1."""
+
+        time_frames = ["W1", "D1", "H4", "H1"]
+        expected_rows: list[tuple[int, int, tuple[int, ...]]] = []
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                for is_buy, ema_directions in product(
+                    (0, 1), product((0, 1), repeat=4)
+                ):
+                    observation_id = 10 + len(expected_rows)
+                    expected_rows.append((observation_id, is_buy, ema_directions))
+                    clone_observation_fixture(
+                        connection, observation_id, f"MATRIX{observation_id}",
+                        1704067200, "2024.01.01 00:00:00",
+                        1704099600, "2024.01.01 09:00:00",
+                        "BUY" if is_buy else "SELL",
+                    )
+                    connection.executemany(
+                        "UPDATE zigzag_elliot_observation_timeframes "
+                        "SET is_ema200_buy = ?, is_ema200_sell = ? "
+                        "WHERE observation_id = ? AND time_frame_text = ?",
+                        [
+                            (direction, 1 - direction, observation_id, time_frame)
+                            for time_frame, direction in zip(
+                                time_frames, ema_directions
+                            )
+                        ],
+                    )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                for count in range(5):
+                    for selected_indexes in combinations(range(4), count):
+                        with self.subTest(selected_indexes=selected_indexes):
+                            query = {
+                                "q": ["MATRIX"], "sort": ["id"], "order": ["asc"],
+                                "emaSyncTimeFrame": [
+                                    time_frames[index] for index in selected_indexes
+                                ],
+                            }
+                            expected_ids = [
+                                observation_id
+                                for observation_id, is_buy, directions in expected_rows
+                                if all(
+                                    directions[index] == is_buy
+                                    for index in selected_indexes
+                                )
+                            ]
+                            page = database.observations(query)
+                            summary = database.observation_summary(query)
+                            self.assertEqual(
+                                expected_ids, [item["id"] for item in page["items"]]
+                            )
+                            self.assertEqual(len(expected_ids), page["total"])
+                            self.assertEqual(page["total"], summary["total_count"])
+                paged_query = {
+                    "q": ["MATRIX"], "sort": ["id"], "order": ["asc"],
+                    "emaSyncTimeFrame": ["W1"], "pageSize": ["3"], "page": ["2"],
+                }
+                expected_ids = [
+                    observation_id
+                    for observation_id, is_buy, directions in expected_rows
+                    if directions[0] == is_buy
+                ]
+                page = database.observations(paged_query)
+                self.assertEqual(
+                    expected_ids[3:6], [item["id"] for item in page["items"]]
+                )
+                self.assertEqual(16, page["total"])
+                self.assertEqual(6, page["page_count"])
+                self.assertEqual(
+                    16, database.observation_summary(paged_query)["total_count"]
+                )
+            finally:
+                database.close()
+
+    def test_ema_sync_rejects_invalid_ema_states_and_missing_h1(self) -> None:
+        """Unknown, NONE, conflicting and malformed values never mean SELL."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            database = AlertDatabase(database_path)
+            try:
+                for observation_id, symbol in [(1, "EURUSD"), (3, "USDJPY")]:
+                    for time_frame in ["W1", "D1", "H4", "H1"]:
+                        for ema_buy, ema_sell in [
+                            (0, 0), (1, 1), (None, None), (None, 0),
+                            (1, None), (2, 0), (0, -1), ("BUY", 0),
+                        ]:
+                            with self.subTest(
+                                symbol=symbol, time_frame=time_frame,
+                                ema_buy=ema_buy, ema_sell=ema_sell,
+                            ):
+                                with sqlite3.connect(database_path) as connection:
+                                    connection.execute(
+                                        "UPDATE zigzag_elliot_observation_timeframes "
+                                        "SET is_ema200_buy = ?, is_ema200_sell = ? "
+                                        "WHERE observation_id = ? AND time_frame_text = ?",
+                                        (ema_buy, ema_sell, observation_id, time_frame),
+                                    )
+                                connection.close()
+                                page = database.observations({
+                                    "symbol": [symbol], "emaSyncTimeFrame": [time_frame],
+                                })
+                                self.assertEqual(0, page["total"])
+                for invalid_h1 in [None, -1, 2, "BUY"]:
+                    with self.subTest(invalid_h1=invalid_h1):
+                        with sqlite3.connect(database_path) as connection:
+                            connection.execute(
+                                "UPDATE zigzag_elliot_observation_timeframes "
+                                "SET is_ema200_buy = 1, is_ema200_sell = 0 "
+                                "WHERE observation_id = 1"
+                            )
+                            connection.execute(
+                                "UPDATE zigzag_elliot_observation_timeframes "
+                                "SET is_buy = ? WHERE observation_id = 1 "
+                                "AND time_frame_text = 'H1'", (invalid_h1,),
+                            )
+                        connection.close()
+                        self.assertEqual(0, database.observations({
+                            "symbol": ["EURUSD"], "emaSyncTimeFrame": ["W1"],
+                        })["total"])
+                for missing_frame in ["H1", "W1", "D1", "H4"]:
+                    with self.subTest(missing_frame=missing_frame):
+                        with sqlite3.connect(database_path) as connection:
+                            # Restore the fixture row after checking its absence.
+                            saved_rows = connection.execute(
+                                "SELECT * FROM zigzag_elliot_observation_timeframes "
+                                "WHERE observation_id = 2 AND time_frame_text = ?",
+                                (missing_frame,),
+                            ).fetchall()
+                            connection.execute(
+                                "DELETE FROM zigzag_elliot_observation_timeframes "
+                                "WHERE observation_id = 2 AND time_frame_text = ?",
+                                (missing_frame,),
+                            )
+                        connection.close()
+                        query = {
+                            "symbol": ["GBPUSD"],
+                            "emaSyncTimeFrame": ["W1", "D1", "H4", "H1"],
+                        }
+                        self.assertEqual(0, database.observations(query)["total"])
+                        self.assertEqual(
+                            0, database.observation_summary(query)["total_count"]
+                        )
+                        with sqlite3.connect(database_path) as connection:
+                            connection.executemany(
+                                "INSERT INTO zigzag_elliot_observation_timeframes VALUES ("
+                                + ",".join("?" for _ in saved_rows[0]) + ")",
+                                saved_rows,
+                            )
+                        connection.close()
+            finally:
+                database.close()
+
+    def test_ema_sync_is_independent_and_combines_with_direction_and_full(
+        self,
+    ) -> None:
+        """Keep EMA selection separate from isBuy sync and the existing FULL rule."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET is_buy = 0, buy_sell_label = 'SELL' "
+                    "WHERE observation_id = 1 AND time_frame_text = 'H4'"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET is_ema200_buy = 0, is_ema200_sell = 1 "
+                    "WHERE observation_id = 2 AND time_frame_text = 'W1'"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                cases = [
+                    ({"emaSyncTimeFrame": ["H4"]}, [1, 2, 3]),
+                    ({"syncTimeFrame": ["H4"]}, [2, 3]),
+                    ({"emaSyncTimeFrame": ["H4"], "syncTimeFrame": ["H4"]}, [2, 3]),
+                    ({"emaSyncTimeFrame": ["W1"]}, [1, 3]),
+                    ({"fullAlignment": ["FULL"]}, [2, 3]),
+                    ({"emaSyncTimeFrame": ["W1"], "fullAlignment": ["FULL"]}, [3]),
+                    ({"emaSyncTimeFrame": ["W1"], "syncTimeFrame": ["H4"]}, [3]),
+                ]
+                for query, expected_ids in cases:
+                    with self.subTest(query=query):
+                        page = database.observations({
+                            **query, "sort": ["id"], "order": ["asc"],
+                        })
+                        self.assertEqual(
+                            expected_ids, [item["id"] for item in page["items"]]
+                        )
+                        self.assertEqual(
+                            len(expected_ids),
+                            database.observation_summary(query)["total_count"],
+                        )
+            finally:
+                database.close()
+
+    def test_ema_sync_filters_episode_start_without_changing_its_boundaries(
+        self,
+    ) -> None:
+        """A middle EMA change neither splits a FULL episode nor moves its start."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                for observation_id, offset in [(10, 3600), (11, 7200)]:
+                    clone_observation_fixture(
+                        connection, observation_id, "EURUSD",
+                        1704067200 + offset, f"server-{observation_id}",
+                        1704099600 + offset, f"jst-{observation_id}", "BUY",
+                    )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET is_ema200_buy = 0, is_ema200_sell = 1 "
+                    "WHERE observation_id = 10 AND time_frame_text = 'W1'"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            query = {
+                "symbol": ["EURUSD"], "groupMode": ["SIGNAL"],
+                "emaSyncTimeFrame": ["W1", "D1"], "pageSize": ["1"], "page": ["9"],
+            }
+            try:
+                unfiltered = database.observations({
+                    "symbol": ["EURUSD"], "groupMode": ["SIGNAL"],
+                })
+                page = database.observations(query)
+                self.assertEqual(unfiltered["items"], page["items"])
+                self.assertEqual(1, page["page"])
+                self.assertEqual(1, page["items"][0]["id"])
+                self.assertEqual(11, page["items"][0]["signal_end_observation_id"])
+                self.assertEqual(3, page["items"][0]["signal_h1_count"])
+                self.assertEqual(
+                    3, database.observation_summary(query)["matched_observation_count"]
+                )
+                with sqlite3.connect(database_path) as connection:
+                    connection.execute(
+                        "UPDATE zigzag_elliot_observation_timeframes "
+                        "SET is_ema200_buy = 0, is_ema200_sell = 1 "
+                        "WHERE observation_id = 1 AND time_frame_text = 'W1'"
+                    )
+                connection.close()
+                self.assertEqual(0, database.observations(query)["total"])
+                self.assertEqual(0, database.observation_summary(query)["total_count"])
+                self.assertEqual(3, database.observations({
+                    "symbol": ["EURUSD"], "groupMode": ["SIGNAL"],
+                })["items"][0]["signal_h1_count"])
+            finally:
+                database.close()
+
+    def test_ema_sync_normalizes_binds_and_rejects_unsupported_values(self) -> None:
+        """Use bound values, deduplicate selections and return 400 on invalid TFs."""
+
+        filters = AlertDatabase.parse_observation_filters({
+            "emaSyncTimeFrame": [" h1 ", "W1", "h1", " w1 ", ""],
+        })
+        self.assertEqual("H1", filters.parameters["ema_sync_time_frame_0"])
+        self.assertEqual("W1", filters.parameters["ema_sync_time_frame_1"])
+        self.assertEqual(2, filters.parameters["ema_sync_time_frame_count"])
+        self.assertIn(":ema_sync_time_frame_0", filters.where_sql)
+        self.assertIn("ema_sync_tf.observation_id = o.id", filters.where_sql)
+        self.assertIn(
+            "ema_sync_tf.observation_id = e.id", filters.signal_result_where_sql
+        )
+        self.assertNotIn("ema_sync", filters.signal_candidate_where_sql)
+        self.assertNotIn("'W1'", filters.where_sql)
+        self.assertEqual("", AlertDatabase.parse_observation_filters({
+            "emaSyncTimeFrame": ["", " "],
+        }).where_sql)
+        for invalid in ["MN1", "M5", "W1,H1", "H4' OR 1=1 --"]:
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(
+                    RequestError, "emaSyncTimeFrame must be W1, D1, H4 or H1"
+                ) as raised:
+                    AlertDatabase.parse_observation_filters({
+                        "emaSyncTimeFrame": [invalid],
+                    })
+                self.assertEqual(400, raised.exception.status)
 
     def test_full_alignment_filters_list_and_summary_by_direction(self) -> None:
         """Require W1 through H1 and strict H4/H1 EMA200 alignment."""
