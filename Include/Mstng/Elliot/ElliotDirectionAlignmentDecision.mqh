@@ -84,14 +84,19 @@ public:
      *
      * @param fromAlignmentStartTimeFrame 一致判定の開始時間足
      * @param fromAlignmentRule 一致判定ルール
+     * @param fromD1Ema200Required D1表示時にD1 EMA200方向一致を必須にする場合true
      */
     ElliotDirectionAlignmentDecision(
         ENUM_TIMEFRAMES fromAlignmentStartTimeFrame = PERIOD_D1,
         ElliotDirectionAlignmentRule fromAlignmentRule =
-            ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES
+            ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES,
+        bool fromD1Ema200Required = false
     ) {
         this.alignmentStartTimeFrame = fromAlignmentStartTimeFrame;
         this.alignmentRule = fromAlignmentRule;
+        this.d1Ema200Required = fromD1Ema200Required;
+        this.h1D1AlignmentStartTimeFrame = PERIOD_CURRENT;
+        this.h1D1AlignmentRule = ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES;
     }
 
     /**
@@ -110,6 +115,58 @@ public:
      */
     ElliotDirectionAlignmentRule getAlignmentRule() {
         return this.alignmentRule;
+    }
+
+    /**
+     * D1表示時のEMA200方向一致が必須か取得する。
+     *
+     * @return D1 EMA200方向一致を必須にする場合true
+     */
+    bool isD1Ema200Required() {
+        return this.d1Ema200Required;
+    }
+
+    /**
+     * H1一覧で共通必須とするD1条件を設定する。
+     *
+     * D1 EMA200一致も必須とする。H1以外の表示足には適用しない。
+     *
+     * @param fromAlignmentStartTimeFrame D1条件の開始足。PERIOD_CURRENTは無効
+     * @param fromAlignmentRule D1条件の一致判定ルール
+     */
+    void setH1D1Condition(
+        ENUM_TIMEFRAMES fromAlignmentStartTimeFrame,
+        ElliotDirectionAlignmentRule fromAlignmentRule
+    ) {
+        this.h1D1AlignmentStartTimeFrame = fromAlignmentStartTimeFrame;
+        this.h1D1AlignmentRule = fromAlignmentRule;
+    }
+
+    /**
+     * H1一覧でD1条件を共通必須にするか取得する。
+     *
+     * @return D1条件を設定済みの場合true
+     */
+    bool isH1D1ConditionRequired() {
+        return this.h1D1AlignmentStartTimeFrame != PERIOD_CURRENT;
+    }
+
+    /**
+     * H1一覧のD1共通条件で使用する開始足を取得する。
+     *
+     * @return D1条件の開始足
+     */
+    ENUM_TIMEFRAMES getH1D1AlignmentStartTimeFrame() {
+        return this.h1D1AlignmentStartTimeFrame;
+    }
+
+    /**
+     * H1一覧のD1共通条件で使用する判定ルールを取得する。
+     *
+     * @return D1条件の一致判定ルール
+     */
+    ElliotDirectionAlignmentRule getH1D1AlignmentRule() {
+        return this.h1D1AlignmentRule;
     }
 
     /**
@@ -189,11 +246,25 @@ public:
             return false;
         }
 
-        return this.isReadyWithTimeFrames(
+        if (!this.isReadyWithTimeFrames(
             fromElliotAll,
             fromCurrentTimeFrame,
             timeFrames
-        );
+        )) {
+            return false;
+        }
+
+        if (fromCurrentTimeFrame == PERIOD_H1 && this.isH1D1ConditionRequired()) {
+            ElliotDirectionAlignmentDecision d1Decision(
+                this.h1D1AlignmentStartTimeFrame,
+                this.h1D1AlignmentRule,
+                true
+            );
+
+            return d1Decision.isReady(fromElliotAll, PERIOD_D1);
+        }
+
+        return true;
     }
 
     /**
@@ -260,6 +331,20 @@ public:
             fromCurrentTimeFrame,
             timeFrames
         )) {
+            return trendAlignNone;
+        }
+
+        // D1固定一覧の追加条件。既存の共有方向判定や他の表示足には適用しない。
+        if (fromCurrentTimeFrame == PERIOD_D1
+                && this.d1Ema200Required
+                && !this.isD1Ema200DirectionMatched(fromElliotAll)) {
+            return trendAlignNone;
+        }
+
+        // H1では既存条件にD1共通条件をAND追加する。EMAの基準方向はD1。
+        if (fromCurrentTimeFrame == PERIOD_H1
+                && this.isH1D1ConditionRequired()
+                && this.getH1D1AlignType(fromElliotAll) == trendAlignNone) {
             return trendAlignNone;
         }
 
@@ -470,6 +555,16 @@ public:
                     timeFrames
                 )) {
             return false;
+        }
+
+        if (this.isH1D1ConditionRequired()) {
+            if (!this.isReady(fromElliotAll, fromCurrentTimeFrame)) {
+                return false;
+            }
+
+            if (this.getH1D1AlignType(fromElliotAll) == trendAlignNone) {
+                return true;
+            }
         }
 
         Elliot *elliotH1 = fromElliotAll.getElliot(PERIOD_H1);
@@ -842,6 +937,60 @@ private:
 
     /** 一致判定ルール。 */
     ElliotDirectionAlignmentRule alignmentRule;
+
+    /** D1表示時にのみ適用するEMA200方向一致必須設定。 */
+    bool d1Ema200Required;
+
+    /** H1のD1共通条件開始足。PERIOD_CURRENTの場合は無効。 */
+    ENUM_TIMEFRAMES h1D1AlignmentStartTimeFrame;
+
+    /** H1のD1共通条件で使用するD1一致判定ルール。 */
+    ElliotDirectionAlignmentRule h1D1AlignmentRule;
+
+    /**
+     * 選択されたD1条件とD1 EMA200一致を、既存のD1判定で評価する。
+     *
+     * @param fromElliotAll 複数時間足Elliott分析結果
+     * @return D1条件を満たす方向。不成立または分析不足は不一致
+     */
+    TrendAlignType getH1D1AlignType(ElliotAll *fromElliotAll) {
+        ElliotDirectionAlignmentDecision d1Decision(
+            this.h1D1AlignmentStartTimeFrame,
+            this.h1D1AlignmentRule,
+            true
+        );
+
+        return d1Decision.getAlignType(fromElliotAll, PERIOD_D1);
+    }
+
+    /**
+     * D1分析方向とD1 EMA200方向が厳密に一致するか判定する。
+     *
+     * NONE、BUY・SELL競合、ラベル不整合および対象足の不整合は通過させない。
+     *
+     * @param fromElliotAll 複数時間足Elliott分析結果
+     * @return D1 EMA200方向がD1分析方向と一致する場合true
+     */
+    bool isD1Ema200DirectionMatched(ElliotAll *fromElliotAll) {
+        Elliot *elliotD1 = fromElliotAll.getElliot(PERIOD_D1);
+
+        if (elliotD1 == NULL
+                || elliotD1.marketContext.timeFrame != PERIOD_D1
+                || elliotD1.oscillator.marketContext.timeFrame != PERIOD_D1
+                || elliotD1.oscillator.ema200.marketContext.timeFrame != PERIOD_D1) {
+            return false;
+        }
+
+        bool isEma200Buy = elliotD1.oscillator.ema200.isBuy;
+        bool isEma200Sell = elliotD1.oscillator.ema200.isSell;
+        string direction = elliotD1.oscillator.ema200.getBuySellLabel();
+
+        if (elliotD1.isBuy) {
+            return isEma200Buy && !isEma200Sell && direction == "BUY";
+        }
+
+        return !isEma200Buy && isEma200Sell && direction == "SELL";
+    }
 
     /**
      * 指定時間足一覧の分析結果が一致判定に利用可能か判定する。

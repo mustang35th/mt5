@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.33"
+#property version   "1.34"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -47,9 +47,8 @@ bool h1DisplayWaveEntryLimitEnabled = false;
 input(name="W1確認（追加条件）") H1W1ConfirmationMode h1W1ConfirmationMode =
     H1_W1_CONFIRMATION_OBSERVE_ONLY;
 
-/** H1エントリーで使用するEMA200確認モード。 */
-input(name="EMA200確認（追加条件）")
-H1Ema200ConfirmationMode h1Ema200ConfirmationMode =
+/** H1エントリーのEMA200確認はH1・H4・D1の3足一致必須に固定する。 */
+const H1Ema200ConfirmationMode h1Ema200ConfirmationMode =
     H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED;
 
 input group "04. 通貨強弱"

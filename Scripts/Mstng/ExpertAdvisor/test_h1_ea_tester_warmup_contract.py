@@ -353,6 +353,11 @@ class EmaConfigurationWiringTests(unittest.TestCase):
                 self.assertRegex(source, rf"H1Ema200ConfirmationMode\s+{variable}\s*=\s*{self.mode}\s*;")
                 self.assertRegex(source, rf"{config_name}\.h1Ema200ConfirmationMode\s*=\s*{variable}\s*;")
 
+    def test_normal_indicator_ema_mode_is_constant_not_input(self):
+        source = code_only((ROOT / "Indicators/ZigZagElliot.mq5").read_text(encoding="utf-8-sig"))
+        self.assertRegex(source, rf"\bconst\s+H1Ema200ConfirmationMode\s+h1Ema200ConfirmationMode\s*=\s*{self.mode}\s*;")
+        self.assertNotRegex(source, r"\b(?:input|sinput)\b[^;]*\bh1Ema200ConfirmationMode\s*=")
+
     def test_fixed_ea_canonical_and_both_decision_paths_use_same_three_timeframe_mode(self):
         self.assertIn(
             'return "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2";',

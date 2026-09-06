@@ -344,6 +344,25 @@ public:
             alignmentStartTimeFrameText = "CUR";
         }
 
+        if (currentTimeFrame == PERIOD_D1
+                && fromDecision.isD1Ema200Required()) {
+            alignmentStartTimeFrameText += "&D1EMA";
+        }
+
+        if (currentTimeFrame == PERIOD_H1
+                && fromDecision.isH1D1ConditionRequired()) {
+            string d1ConditionText = "W1";
+
+            if (fromDecision.getH1D1AlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_WITH_MN1_OR_EMA200) {
+                d1ConditionText = "W1&(MN1|W1EMA)";
+            } else if (fromDecision.getH1D1AlignmentStartTimeFrame() == PERIOD_MN1) {
+                d1ConditionText = "MN1+W1";
+            }
+
+            alignmentStartTimeFrameText += "&D1[" + d1ConditionText + "+EMA]";
+        }
+
         if (analysisCompleted) {
             this.updateTitle(
                 currentTimeFrameText,

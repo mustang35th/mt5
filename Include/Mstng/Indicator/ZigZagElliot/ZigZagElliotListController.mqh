@@ -87,6 +87,9 @@ public:
      * @param fromAlertTesterExpectedLastH1BarTime 収集対象の最終H1時刻
      * @param fromAlertTesterMinimumWarmUpH1Bars 保存前の最低連続評価本数
      * @param fromAlertTesterOneMinuteOhlcConfirmed 1 minute OHLC設定確認
+     * @param fromD1Ema200Required D1固定一覧でD1 EMA200方向一致を必須にする場合true
+     * @param fromH1D1AlignmentStartTimeFrame H1共通D1条件の開始足。PERIOD_CURRENTは無効
+     * @param fromH1D1AlignmentRule H1共通D1条件の一致判定ルール
      * @return 初期化結果
      */
     int initialize(
@@ -104,7 +107,11 @@ public:
         const datetime fromAlertTesterSaveStartTime,
         const datetime fromAlertTesterExpectedLastH1BarTime,
         const int fromAlertTesterMinimumWarmUpH1Bars,
-        const bool fromAlertTesterOneMinuteOhlcConfirmed
+        const bool fromAlertTesterOneMinuteOhlcConfirmed,
+        const bool fromD1Ema200Required = false,
+        const ENUM_TIMEFRAMES fromH1D1AlignmentStartTimeFrame = PERIOD_CURRENT,
+        const ElliotDirectionAlignmentRule fromH1D1AlignmentRule =
+            ELLIOT_DIRECTION_ALIGNMENT_RULE_ALL_TIME_FRAMES
     ) {
         this.destroy();
 
@@ -136,7 +143,8 @@ public:
 
         this.alignmentDecision = new ElliotDirectionAlignmentDecision(
             fromAlignmentStartTimeFrame,
-            fromAlignmentRule
+            fromAlignmentRule,
+            fromD1Ema200Required
         );
 
         if (this.alignmentDecision == NULL) {
@@ -144,6 +152,13 @@ public:
             this.destroy();
 
             return INIT_FAILED;
+        }
+
+        if (this.marketContext.timeFrame == PERIOD_H1) {
+            this.alignmentDecision.setH1D1Condition(
+                fromH1D1AlignmentStartTimeFrame,
+                fromH1D1AlignmentRule
+            );
         }
 
         ENUM_TIMEFRAMES alignmentTimeFrames[];
@@ -193,6 +208,11 @@ public:
 
                 return INIT_FAILED;
             }
+
+            this.h1AlignmentDecision.setH1D1Condition(
+                fromH1D1AlignmentStartTimeFrame,
+                fromH1D1AlignmentRule
+            );
 
             ENUM_TIMEFRAMES h1AlignmentTimeFrames[];
 
