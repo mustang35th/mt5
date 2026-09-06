@@ -697,6 +697,9 @@ private:
         fromDecision.h1Ema200Direction = fromSnapshot.h1Ema200Direction;
         fromDecision.h4Ema200Direction = fromSnapshot.h4Ema200Direction;
         fromDecision.w1Ema200Direction = fromSnapshot.w1Ema200Direction;
+        fromDecision.d1Ema200Direction = fromSnapshot.d1Ema200Direction;
+        fromDecision.isEma200ConfirmationPassed = fromSnapshot.isEma200ConfirmationPassed;
+        fromDecision.hasEma200ConfirmationDiagnostics = true;
         fromDecision.isH1DirectionAlignmentPassed = fromSnapshot.isH1DirectionAlignmentPassed;
         if (fromDecision.signalReferenceTime > 0 && fromDecision.signalSide != "") {
             fromDecision.marketSignalKey = this.config.accountServer + "|" + this.config.symbolName

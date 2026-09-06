@@ -137,7 +137,7 @@ public:
             + "|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1"
             + "|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"
             + "|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_OBSERVE_ONLY"
-            + "|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED"
+            + "|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED"
             + "|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0"
             + "|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30"
             + "|TESTER_EVALUATION_TRIGGER=TICK"
@@ -158,12 +158,12 @@ public:
     /**
      * プログラム世代を返す。
      */
-    static string getProgramVersion() { return "1.05"; }
+    static string getProgramVersion() { return "1.06"; }
 
     /**
      * Entry互換条件とトレイルを含む戦略世代を返す。
      */
-    static string getStrategyVersion() { return "H1_MTF3IN3_SPREAD5_ZIGZAG10_V1"; }
+    static string getStrategyVersion() { return "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2"; }
 
 private:
     /**

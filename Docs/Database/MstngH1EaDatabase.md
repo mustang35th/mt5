@@ -9,7 +9,7 @@
 | 物理スキーマバージョン | 1 |
 | 保存単位 | EA起動、H1判定、H1 ZigZagトレイル、取引ライフサイクル |
 | 文書状態 | 初版実装・テスター受入確認前 |
-| 最終更新日 | 2026-09-05 |
+| 最終更新日 | 2026-09-06 |
 
 本書は、`MstngH1Ea`がH1判定、発注、約定および決済を保存し、再起動後にbroker状態と整合するためのSQLite構造を定義します。EA全体の動作は[MstngH1Ea基本設計書](../ExpertAdvisor/MstngH1Ea.md)を参照してください。
 
@@ -167,10 +167,12 @@ LIVEは再起動前後で同じキーを使用し、保存済みJudge成立回�
 分析Profileは既存の`ZigZagElliotAnalysisProfile::createCanonicalText()`と`createHash()`をそのまま使用します。EA設定は次の固定順で生成し、数値の小数桁も固定します。
 
 ```text
-H1_EA_CONFIG_V1|LOT_SIZE=<8桁>|MAX_INITIAL_SL_PIPS=<1桁>|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_OBSERVE_ONLY|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30|TESTER_EVALUATION_TRIGGER=TICK|TESTER_TRADE_START_TIME=<epoch秒>
+H1_EA_CONFIG_V1|LOT_SIZE=<8桁>|MAX_INITIAL_SL_PIPS=<1桁>|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_OBSERVE_ONLY|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30|TESTER_EVALUATION_TRIGGER=TICK|TESTER_TRADE_START_TIME=<epoch秒>
 ```
 
 `ZIGZAG_SL_BUFFER_PIPS`は初期SLとH1 ZigZagトレイルSLに共通する内部固定値です。初版ではinputから変更できません。上記の戦略・評価タイミング設定は現在の`ZigZagElliot` H1の初期設定に合わせた固定値です。W1追加確認は観測のみですが、主条件のW1方向および「MN1方向またはW1 EMA200方向」は必須判定へ使用します。これらの固定値またはシグナル消費規則を変更する場合は`strategy_version`も更新します。
+
+EA 1.06ではD1を含む3足EMA200必須化に合わせ、`strategy_version`を`H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2`へ更新します。EMA200設定文字列が変わるため`config_hash`も旧版と区別されます。context keyとmagicの規則は変更せず、同一シグナルの消費状態は引き継ぎます。既存Run・Decisionの設定、hashおよび判定結果は書き換えません。
 
 `MAX_SPREAD_PIPS=5.0`は基本設計v0.5のH1上限です。旧3.0 pips仕様との違いはRun設定と戦略バージョンで識別し、保存済みDecisionは新上限で再判定・上書きしません。
 
@@ -312,6 +314,8 @@ server|symbol|time_frame|h1_bar_time|signal_reference_time|MTF_3in3|side
 `is_strategy_entry = 1`でも、保有中、初期SL不正、SL幅超過など確定保存前の安全条件がNGなら`decision = 'SKIP'`となります。戦略Entry成立と実発注を同じフラグで表さず、安全条件が後から改善しても同じシグナルを再評価しません。BUY/SELL Decisionと`OPEN_PENDING`のcommit後に行う`OrderCheck()`が失敗した場合は、確定DecisionをSKIPへ変更せず、失敗EventとTradeの`OPEN_FAILED`へ記録します。シグナル消費は解除しません。
 
 `analysis_snapshot_text`は`H1_EA_DECISION_V1`を先頭に、8.2と8.3の列（自身の`analysis_snapshot_text`列を除く）を表の順で`|列名=値`として連結します。未取得は`~`です。小数はpipsを1桁、価格を対象シンボルのDigits、ロットを2桁で固定します。`snapshot_hash`は識別子と保存時刻を除くDecision保存値、`analysis_version`および`analysis_input_hash`を同じ順で連結したUTF-8文字列のSHA-256です。
+
+EA 1.06以降の分析成功時は、末尾に`|d1_ema200_direction=BUY/SELL/NONE/~|is_ema200_confirmation_passed=0/1`をこの順で追加し、hashにも含めます。後者はH1・H4・D1の時間足とEMA200フラグを含む厳格な方向一致結果です。物理列は追加しません。分析不能時および両キーのない旧記録では追加診断を未取得として扱い、旧形式の再構築時にもキーを付加しません。DAO読込では両キーの重複・片方だけの存在・不正値を拒否し、未記録を不一致へ変換しません。
 
 ### 8.4 一意性
 

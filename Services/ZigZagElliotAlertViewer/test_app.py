@@ -1878,6 +1878,51 @@ def add_alert_detail_time_frame_fixture(
 class AlertTimeFrameDetailEma200Test(unittest.TestCase):
     """Verify the stable EMA200 contract of alert timeframe details."""
 
+    def test_alert_run_preserves_optional_input_text_without_schema_changes(
+        self,
+    ) -> None:
+        """Keep saved mode text verbatim and accept legacy runs without input_text."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "detail-run.sqlite"
+            create_observation_database(database_path)
+            legacy_database = AlertDatabase(database_path)
+            try:
+                legacy_database.validate()
+                legacy = legacy_database.alert_detail(1)
+                self.assertIsNone(legacy["run"].get("input_text"))
+            finally:
+                legacy_database.close()
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_alert_runs ADD COLUMN input_text TEXT"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                for saved_text in [
+                    None,
+                    "",
+                    "h1Ema200ConfirmationMode=H1_ONLY",
+                    "before=1|h1Ema200ConfirmationMode=H1_AND_H4_REQUIRED|after=0",
+                    "h1Ema200ConfirmationMode=H1_AND_H4_AND_D1_REQUIRED",
+                    "h1Ema200ConfirmationMode=INVALID",
+                    "h1Ema200ConfirmationMode=H1_ONLY|h1Ema200ConfirmationMode=H1_ONLY",
+                ]:
+                    with self.subTest(saved_text=saved_text):
+                        with sqlite3.connect(database_path) as connection:
+                            connection.execute(
+                                "UPDATE zigzag_elliot_alert_runs SET input_text = ? "
+                                "WHERE id = 1", (saved_text,),
+                            )
+                        connection.close()
+                        database.validate()
+                        detail = database.alert_detail(1)
+                        self.assertEqual(saved_text, detail["run"]["input_text"])
+                        self.assertEqual(1, detail["alert"]["id"])
+            finally:
+                database.close()
+
     def load_time_frames(self, include_ema200_columns: bool) -> dict[str, object]:
         """Return one reflected timeframe response for the selected schema."""
 

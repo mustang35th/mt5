@@ -10,7 +10,7 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.07"
+#property version   "1.08"
 
 #property strict
 
@@ -117,7 +117,7 @@ input(name="W1確認") H1W1ConfirmationMode InpH1W1ConfirmationMode =
 /** H1エントリーで使用するEMA200確認モード。 */
 input(name="EMA200確認")
 H1Ema200ConfirmationMode InpH1Ema200ConfirmationMode =
-    H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED;
+    H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED;
 
 input group "08. H1ポジション管理（H1 MTF_3in3）"
 

@@ -82,6 +82,12 @@ struct H1EaDecisionEntity {
     string h4Ema200Direction;
     /** W1 EMA200方向。BUY、SELLまたはNONE。 */
     string w1Ema200Direction;
+    /** Canonical Textへ保存するD1 EMA200方向。空文字は未取得、NONEは評価済み。 */
+    string d1Ema200Direction;
+    /** H1・H4・D1 EMA200の方向一致診断。取得済みフラグがtrueの場合だけ有効。 */
+    bool isEma200ConfirmationPassed;
+    /** 追加EMA200診断の取得済み状態。旧形式の欠損と有効なfalseを区別する。 */
+    bool hasEma200ConfirmationDiagnostics;
     /** Runの固定方向一致モード。 */
     string h1DirectionAlignmentMode;
     /** W1からH1一致かつMN1方向またはW1 EMA200方向一致の場合1。 */
@@ -138,6 +144,9 @@ struct H1EaDecisionEntity {
         this.h1Ema200Direction = "";
         this.h4Ema200Direction = "";
         this.w1Ema200Direction = "";
+        this.d1Ema200Direction = "";
+        this.isEma200ConfirmationPassed = false;
+        this.hasEma200ConfirmationDiagnostics = false;
         this.h1DirectionAlignmentMode = "";
         this.isH1DirectionAlignmentPassed = false;
         this.analysisSnapshotText = "";

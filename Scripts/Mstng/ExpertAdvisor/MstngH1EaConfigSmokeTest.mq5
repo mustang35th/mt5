@@ -45,6 +45,9 @@ void OnStart() {
     assertEqual(H1EaTextUtil::ticket(MagicNumberUtil::build(12, marketContext, STRATEGY_TYPE_MTF_3IN3)),
         "1204050501", "magic code 12");
     H1EaConfig config;
+    assertEqual(H1EaConfig::getProgramVersion(), "1.06", "program version");
+    assertEqual(H1EaConfig::getStrategyVersion(),
+        "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2", "three-timeframe strategy version");
     config.lotSize = 0.01;
     config.maxInitialStopLossPips = 75.0;
     config.isTester = false;
@@ -53,12 +56,19 @@ void OnStart() {
         "|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1"
         "|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"
         "|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_OBSERVE_ONLY"
-        "|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED"
+        "|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED"
         "|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0"
         "|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30"
         "|TESTER_EVALUATION_TRIGGER=TICK|TESTER_TRADE_START_TIME=0";
     assertEqual(config.createCanonicalText(), expected, "canonical config");
     string unrestrictedHash = H1EaTextUtil::hash(config.createCanonicalText());
+    string previousCanonical = expected;
+    check(StringReplace(previousCanonical,
+        "H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED",
+        "H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED") == 1,
+        "only EMA mode distinguishes previous canonical fixture");
+    check(H1EaTextUtil::hash(previousCanonical) != unrestrictedHash,
+        "three-timeframe EMA mode separates previous config hash");
     datetime startTime = D'2026.01.01 00:00';
     config.isTester = true;
     config.testerTradeStartTime = startTime;

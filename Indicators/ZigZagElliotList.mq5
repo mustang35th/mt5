@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.30"
+#property version   "1.31"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -119,7 +119,7 @@ H1DirectionAlignmentMode alertH1DirectionAlignmentMode =
 /** Alert判定で使用するH1 EMA200確認モード。 */
 input(name="Alert EMA200確認")
 H1Ema200ConfirmationMode alertH1Ema200ConfirmationMode =
-    H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED;
+    H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED;
 
 /** 描画専用インジケーターの非表示バッファ。 */
 double gHiddenBuffer[];

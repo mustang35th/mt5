@@ -74,6 +74,7 @@ describe("buildH1EntryCheckSnapshot", () => {
       "h1_gmma_cross",
       "h1_ema200",
       "h4_ema200",
+      "d1_ema200",
       "w1_confirmation",
       "signal_entry_count",
       "h1_display_wave_scope",
@@ -378,6 +379,111 @@ describe("buildH1EntryCheckSnapshot", () => {
       required: false,
     });
   });
+
+  it.each(["BUY", "SELL"] as const)(
+    "checks required H4/D1 EMA200 states for saved %s modes without rewriting ENTRY",
+    (side) => {
+      const isBuy = side === "BUY";
+      const cases = [
+        { name: "matched", buy: isBuy, sell: !isBuy, status: "OK" },
+        { name: "opposite", buy: !isBuy, sell: isBuy, status: "NG" },
+        { name: "NONE", buy: false, sell: false, status: "NG" },
+        { name: "both", buy: true, sell: true, status: "NG" },
+        { name: "NULL", buy: null, sell: null, status: "不明" },
+        { name: "partial NULL", buy: isBuy, sell: null, status: "不明" },
+      ];
+      for (const mode of [
+        "H1_ONLY", "H1_AND_H4_REQUIRED", "H1_AND_H4_AND_D1_REQUIRED",
+      ]) {
+        for (const state of cases) {
+          // Legacy/corrupt API values can be NULL despite the current boolean type.
+          const timeFrames = passingBuyTimeFrames().map((frame) => ({
+            ...frame,
+            is_buy: isBuy,
+            is_ema200_buy: frame.time_frame_text === "H1" ? isBuy : state.buy,
+            is_ema200_sell: frame.time_frame_text === "H1" ? !isBuy : state.sell,
+          } as ObservationDetailTimeFrame));
+          const snapshot = buildH1EntryCheckSnapshot(
+            timeFrames, 1,
+            { is_entry: true, entry_result: "ENTRY", side } as AlertDetail,
+            `before=1|h1Ema200ConfirmationMode=${mode}|after=0`,
+          );
+          expect(snapshot.ema200ConfirmationMode).toBe(mode);
+          for (const frame of ["H4", "D1"]) {
+            const required = mode !== "H1_ONLY"
+              && (frame === "H4" || mode === "H1_AND_H4_AND_D1_REQUIRED");
+            expect(item(snapshot.items, `${frame.toLowerCase()}_ema200`),
+              `${side} ${mode} ${frame} ${state.name}`).toMatchObject({
+              required,
+              status: required ? state.status : "対象外",
+            });
+          }
+          expect(snapshot.overallStatus).toBe("OK");
+          expect(snapshot.overallReason).toBe("ENTRY");
+        }
+      }
+    },
+  );
+
+  it.each([
+    undefined,
+    null,
+    "",
+    "other=H1_ONLY",
+    "h1Ema200ConfirmationMode=",
+    "h1Ema200ConfirmationMode=INVALID",
+    "h1Ema200ConfirmationMode=0",
+    "h1Ema200ConfirmationMode=h1_only",
+    "h1Ema200ConfirmationMode=H1_ONLY ",
+    " h1Ema200ConfirmationMode=H1_ONLY",
+    "h1Ema200ConfirmationMode=H1_ONLY=extra",
+    "other=h1Ema200ConfirmationMode=H1_ONLY",
+    "h1Ema200ConfirmationModeExtra=H1_ONLY",
+    "h1Ema200ConfirmationMode=H1_ONLY|h1Ema200ConfirmationMode=H1_ONLY",
+    "h1Ema200ConfirmationMode=H1_ONLY|h1Ema200ConfirmationMode=H1_AND_H4_REQUIRED",
+    "h1Ema200ConfirmationMode=H1_ONLY| h1Ema200ConfirmationMode=INVALID",
+  ])("keeps missing, malformed or duplicate saved mode unknown: %s", (inputText) => {
+    const snapshot = buildH1EntryCheckSnapshot(
+      passingBuyTimeFrames(), 1,
+      { is_entry: true, entry_result: "ENTRY" } as AlertDetail,
+      inputText,
+    );
+    expect(snapshot.ema200ConfirmationMode).toBeNull();
+    expect(item(snapshot.items, "h4_ema200").status).toBe("不明");
+    expect(item(snapshot.items, "d1_ema200").status).toBe("不明");
+    expect(snapshot.overallStatus).toBe("OK");
+  });
+
+  it("requires stored EMA values even when the required mode is known", () => {
+    for (const timeFrames of [
+      passingBuyTimeFrames().filter((frame) => frame.time_frame_text === "H1"),
+      passingBuyTimeFrames().map((frame) => ({ ...frame, is_ema200_available: false })),
+      passingBuyTimeFrames().filter((frame) => frame.time_frame_text !== "H1"),
+    ]) {
+      const snapshot = buildH1EntryCheckSnapshot(
+        timeFrames, 1,
+        { is_entry: false, entry_result: "NOT_EVALUATED" } as AlertDetail,
+        "h1Ema200ConfirmationMode=H1_AND_H4_AND_D1_REQUIRED",
+      );
+      for (const id of ["h4_ema200", "d1_ema200"]) {
+        expect(item(snapshot.items, id)).toMatchObject({ status: "不明", required: true });
+      }
+      expect(snapshot.overallStatus).toBe("NG");
+      expect(snapshot.overallReason).toBe("Entry未評価（NOT_EVALUATED）");
+    }
+  });
+
+  it("never applies a Run mode to an Observation or other unsaved H1 decision", () => {
+    const snapshot = buildH1EntryCheckSnapshot(
+      passingBuyTimeFrames(), 1, null,
+      "h1Ema200ConfirmationMode=H1_AND_H4_AND_D1_REQUIRED",
+    );
+    expect(snapshot.ema200ConfirmationMode).toBeNull();
+    expect(snapshot.source).toBe("SNAPSHOT");
+    expect(snapshot.overallStatus).toBe("判定不能");
+    expect(item(snapshot.items, "h4_ema200").status).toBe("不明");
+    expect(item(snapshot.items, "d1_ema200").status).toBe("不明");
+  });
 });
 
 describe("H1EntryCheckPanel", () => {
@@ -408,6 +514,9 @@ describe("H1EntryCheckPanel", () => {
       .toHaveClass("h1-entry-check-status-unknown");
     expect(within(table).getByLabelText("通貨強弱 不明"))
       .toHaveClass("h1-entry-check-status-unknown");
-    expect(within(table).getAllByRole("row")).toHaveLength(18);
+    expect(within(table).getByLabelText("D1 EMA200 不明"))
+      .toHaveClass("h1-entry-check-status-unknown");
+    expect(screen.getByText(/保存時EMA200確認mode: 不明/)).toBeInTheDocument();
+    expect(within(table).getAllByRole("row")).toHaveLength(19);
   });
 });

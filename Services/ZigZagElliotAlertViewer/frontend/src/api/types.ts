@@ -290,6 +290,7 @@ export interface AlertRunDetail {
   source_mode: string;
   program_version: string;
   tester_model: string;
+  input_text?: string | null;
 }
 
 export interface W1Summary {

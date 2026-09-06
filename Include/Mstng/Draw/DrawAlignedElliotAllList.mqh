@@ -18,6 +18,7 @@
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\H1D1EntrySortDecision.mqh>
 #include <Mstng\Elliot\M15ElliotEmaSortDecision.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3EntryPriorityDecision.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
@@ -2191,11 +2192,39 @@ private:
             this.getSymbolText(fromElliotAll.marketContext.symbolName),
             symbolColor
         );
+        string emaReferenceText = "EMA200";
+        color emaReferenceColor = this.headerColor;
+
+        if (fromCurrentTimeFrame == PERIOD_H1) {
+            string emaReferenceTooltip = "";
+            emaReferenceText = this.getH1Ema3ReferenceText(
+                fromElliotAll,
+                emaReferenceTooltip
+            );
+            emaReferenceColor = this.mutedColor;
+
+            if (emaReferenceText == "EMA3 OK") {
+                emaReferenceColor = this.entryReadyColor;
+            } else if (emaReferenceText == "EMA3 NG") {
+                emaReferenceColor = this.entryNearColor;
+            }
+
+            ObjectSetString(
+                this.chartId,
+                this.getEmaCellObjectName(
+                    fromRowIndex,
+                    drawAlignedElliotAllListColumnSymbol
+                ),
+                OBJPROP_TOOLTIP,
+                emaReferenceTooltip
+            );
+        }
+
         this.setEmaCell(
             fromRowIndex,
             drawAlignedElliotAllListColumnSymbol,
-            "EMA200",
-            this.headerColor
+            emaReferenceText,
+            emaReferenceColor
         );
         string entryText = this.getEntryPriorityText(
             fromPriorityResult.rank
@@ -2607,6 +2636,60 @@ private:
         }
 
         return true;
+    }
+
+    /**
+     * H1分析方向に対するD1・H4・H1 EMA200の一致を参考文字列として返す。
+     * 表示対象・既存ランク・並び順には使用せず、SYMBOL列の下段だけに表示する。
+     *
+     * @param fromElliotAll 分析結果。
+     * @param fromTooltip 判定基準と参考表示であることを示す説明。
+     * @return 全足一致はEMA3 OK、不一致はEMA3 NG、対象欠損はEMA3 ?。
+     */
+    string getH1Ema3ReferenceText(
+        ElliotAll *fromElliotAll,
+        string &fromTooltip
+    ) {
+        fromTooltip = "EMA3参考：H1分析方向にD1・H4・H1のEMA200を照合。"
+            + "\nOK=全足一致、NG=不一致/NONE/不正値、?=分析結果の欠損。"
+            + "\n表示対象・D1優先ソート・READY等の既存判定は変更しません。";
+
+        if (fromElliotAll == NULL || !fromElliotAll.isAnalysisSucceeded) {
+            return "EMA3 ?";
+        }
+
+        Elliot *elliotH1 = fromElliotAll.getElliot(PERIOD_H1);
+        Elliot *elliotH4 = fromElliotAll.getElliot(PERIOD_H4);
+        Elliot *elliotD1 = fromElliotAll.getElliot(PERIOD_D1);
+
+        if (elliotH1 == NULL || elliotH4 == NULL || elliotD1 == NULL) {
+            return "EMA3 ?";
+        }
+
+        string h1Direction = "SELL";
+
+        if (elliotH1.isBuy) {
+            h1Direction = "BUY";
+        }
+
+        fromTooltip += "\n基準H1=" + h1Direction
+            + "、D1 EMA=" + this.getEmaText(elliotD1)
+            + "、H4 EMA=" + this.getEmaText(elliotH4)
+            + "、H1 EMA=" + this.getEmaText(elliotH1);
+
+        H1Ema200ConfirmationDecision decision;
+
+        if (decision.evaluate(
+                H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED,
+                elliotH1.isBuy,
+                elliotH1,
+                elliotH4,
+                elliotD1
+        )) {
+            return "EMA3 OK";
+        }
+
+        return "EMA3 NG";
     }
 
     /**

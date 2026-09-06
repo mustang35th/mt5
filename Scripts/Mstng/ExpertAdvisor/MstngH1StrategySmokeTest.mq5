@@ -38,6 +38,19 @@ void setDirection(Elliot *fromElliot, const bool fromIsBuy) {
 }
 
 /**
+ * 分析方向を変えずにEMA200だけを指定方向へ合わせる。
+ */
+void setEmaDirection(Elliot *fromElliot, const bool fromIsBuy) {
+    fromElliot.oscillator.ema200.isBuy = fromIsBuy;
+    fromElliot.oscillator.ema200.isSell = !fromIsBuy;
+    fromElliot.oscillator.ema200.buySellLabel = "SELL";
+
+    if (fromIsBuy) {
+        fromElliot.oscillator.ema200.buySellLabel = "BUY";
+    }
+}
+
+/**
  * 市場データを取得せず第5波の分析フィクスチャを作成する。
  */
 Elliot *createElliot(const ENUM_TIMEFRAMES fromTimeFrame, const bool fromIsBuy) {
@@ -151,7 +164,8 @@ void validateCase(
     const int fromPreviousCount,
     const bool fromExpectedJudge,
     const bool fromExpectedEntry,
-    const string fromExpectedReason
+    const string fromExpectedReason,
+    const bool fromExpectedEmaMatched = true
 ) {
     H1EaStrategyDecision decision;
     H1EaStrategySnapshot snapshot;
@@ -162,13 +176,21 @@ void validateCase(
         return;
     }
 
+    string expectedD1Ema = fromAnalysis.getElliot(PERIOD_D1).oscillator.ema200.getBuySellLabel();
+    assertCondition(fromName + " D1 EMA snapshot", snapshot.d1Ema200Direction == expectedD1Ema);
+    assertCondition(fromName + " strict EMA snapshot", snapshot.isEma200ConfirmationPassed == fromExpectedEmaMatched);
+    assertCondition(fromName + " D1 EMA audit text", StringFind(snapshot.analysisSnapshotText,
+        "|D1_EMA200=" + expectedD1Ema + "|") >= 0);
+    assertCondition(fromName + " strict EMA audit text", StringFind(snapshot.analysisSnapshotText,
+        "|EMA200_MATCHED=" + IntegerToString((int)fromExpectedEmaMatched)) >= 0);
+
     MarketContext context("EURUSD", PERIOD_H1);
     SignalCount count(context);
     count.restoreCount(snapshot.signalReferenceTime, snapshot.isBuy, fromPreviousCount);
     ExpertAdvisorMTF_3in3 *existing = ExpertAdvisorMtf3In3Factory::create(
         context, false, H1_W1_CONFIRMATION_OBSERVE_ONLY,
         H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
-        H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED
+        H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED
     );
 
     if (existing == NULL) {
@@ -194,6 +216,78 @@ void validateCase(
 }
 
 /**
+ * 旧2モードではD1 EMA逆向きでもJudgeと初回Entryが従来どおり通る。
+ */
+void validateLegacyEmaMode(
+    const string fromName,
+    ElliotAll *fromAnalysis,
+    const H1Ema200ConfirmationMode fromMode
+) {
+    MarketContext context("EURUSD", PERIOD_H1);
+    SignalCount count(context);
+    ExpertAdvisorMTF_3in3 *strategy = ExpertAdvisorMtf3In3Factory::create(
+        context, false, H1_W1_CONFIRMATION_OBSERVE_ONLY,
+        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+        fromMode
+    );
+
+    if (strategy == NULL) {
+        assertCondition(fromName + " legacy Factory", false);
+
+        return;
+    }
+
+    strategy.analyze(fromAnalysis, GetPointer(count), 1);
+    Mtf3In3AlertResult result = strategy.getAlertResult();
+    delete strategy;
+    assertCondition(fromName + " legacy Judge passes", result.isJudge);
+    assertCondition(fromName + " legacy first Entry passes", result.isEntry && result.isEntryEvaluated);
+    assertCondition(fromName + " legacy first count", result.signalCount == 1);
+}
+
+/**
+ * 3足必須化と厳密なEMA診断値をBUY/SELL対称に検証する。
+ */
+void validateEmaDirections(ElliotAll *fromAnalysis, const bool fromIsBuy) {
+    ENUM_TIMEFRAMES timeFrames[] = {PERIOD_H1, PERIOD_H4, PERIOD_D1};
+
+    for (int i = 0; i < ArraySize(timeFrames); i++) {
+        Elliot *elliot = fromAnalysis.getElliot(timeFrames[i]);
+        string name = EnumToString(timeFrames[i]);
+        setEmaDirection(elliot, !fromIsBuy);
+        validateCase(name + " EMA opposite no consume", fromAnalysis, 0, false, false,
+            "EMA200_DIRECTION_REJECTED", false);
+        setEmaDirection(elliot, fromIsBuy);
+    }
+
+    Elliot *elliotD1 = fromAnalysis.getElliot(PERIOD_D1);
+    setEmaDirection(elliotD1, !fromIsBuy);
+    validateLegacyEmaMode("D1 opposite H1-only", fromAnalysis, H1_EMA200_CONFIRMATION_H1_ONLY);
+    validateLegacyEmaMode("D1 opposite H1+H4", fromAnalysis, H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED);
+    elliotD1.oscillator.ema200.isBuy = false;
+    elliotD1.oscillator.ema200.isSell = false;
+    elliotD1.oscillator.ema200.buySellLabel = "NONE";
+    validateCase("D1 EMA NONE no consume", fromAnalysis, 0, false, false,
+        "EMA200_DIRECTION_REJECTED", false);
+    setEmaDirection(elliotD1, fromIsBuy);
+    elliotD1.oscillator.ema200.isBuy = true;
+    elliotD1.oscillator.ema200.isSell = true;
+    validateCase("D1 EMA both flags reject matching label", fromAnalysis, 0, false, false,
+        "EMA200_DIRECTION_REJECTED", false);
+    setEmaDirection(elliotD1, fromIsBuy);
+    elliotD1.oscillator.marketContext.timeFrame = PERIOD_H4;
+    validateCase("D1 oscillator timeframe mismatch", fromAnalysis, 0, false, false,
+        "EMA200_DIRECTION_REJECTED", false);
+    elliotD1.oscillator.marketContext.timeFrame = PERIOD_D1;
+    elliotD1.oscillator.ema200.marketContext.timeFrame = PERIOD_H4;
+    validateCase("D1 EMA timeframe mismatch", fromAnalysis, 0, false, false,
+        "EMA200_DIRECTION_REJECTED", false);
+    elliotD1.oscillator.ema200.marketContext.timeFrame = PERIOD_D1;
+    validateCase("three EMA directions recovered first Entry", fromAnalysis, 0, true, true,
+        "STRATEGY_ENTRY");
+}
+
+/**
  * BUY/SELL対称の判定と初回波動NG後の消費維持を検証する。
  */
 void validateDirection(const bool fromIsBuy) {
@@ -206,6 +300,7 @@ void validateDirection(const bool fromIsBuy) {
     }
 
     validateCase("baseline wave5 Spread5", analysis, 0, true, true, "STRATEGY_ENTRY");
+    validateEmaDirections(analysis, fromIsBuy);
     validateCase("consumed previous signal", analysis, 1, true, false, "SIGNAL_ALREADY_CONSUMED");
     analysis.todayRate.spread = 5.01;
     validateCase("Spread excess no consume", analysis, 0, false, false, "SPREAD_TOO_WIDE");
@@ -265,6 +360,8 @@ void OnStart() {
     H1EaStrategySnapshot snapshot;
     assertCondition("missing analysis retryable", !decision.prepare(NULL, referenceTime, snapshot));
     assertCondition("missing analysis consumes nothing", !snapshot.isSignalConsumed && snapshot.signalCount == 0);
+    assertCondition("missing analysis EMA diagnostics reset", snapshot.d1Ema200Direction == ""
+        && !snapshot.isEma200ConfirmationPassed && snapshot.analysisSnapshotText == "");
     assertCondition("count overflow rejects", !decision.evaluate(NULL, INT_MAX, snapshot)
         && snapshot.reasonCode == "SIGNAL_COUNT_INVALID");
     H1EaStrategy strategy;

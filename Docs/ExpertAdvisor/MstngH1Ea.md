@@ -10,15 +10,19 @@
 | 対象時間足 | H1固定 |
 | 対象戦略 | `MTF_3in3`固定 |
 | 文書状態 | 初版実装・テスター受入確認中 |
-| 設計バージョン | 0.6 |
-| EAプログラムバージョン | 1.05 |
-| 最終更新日 | 2026-09-05 |
+| 設計バージョン | 0.7 |
+| EAプログラムバージョン | 1.06 |
+| 最終更新日 | 2026-09-06 |
 
 本書は、`MstngEa`を基礎として機能をH1運用に限定した新EAの初版仕様を定義します。現行の`MstngEa`を変更する設計ではなく、必要な判定クラスだけを再利用して、制御、発注および永続化を新しく構成します。
 
-エントリー互換性の基準は、2026-09-05時点の通常版`ZigZagElliot`をH1チャートで動かした場合の`MTF_3in3`初期設定です。`ZigZagElliotList`や`MstngEa`側の別設定ではありません。条件だけでなく、分析開始時間足、判定周期およびJudge成立回数の扱いを合わせます。実際の発注には、既定のSL・保有数・DBなどの安全条件を別途適用します。
+エントリー互換性の基準は、2026-09-06時点の通常版`ZigZagElliot` v1.33をH1チャートで動かした場合の`MTF_3in3`初期設定です。`ZigZagElliotList`や`MstngEa`側の別設定ではありません。条件だけでなく、分析開始時間足、判定周期およびJudge成立回数の扱いを合わせます。実際の発注には、既定のSL・保有数・DBなどの安全条件を別途適用します。
 
 v0.5では、通常版と共用する`MTF_3in3`のH1 Spread上限を3.0 pipsから5.0 pipsへ拡大します。H1以外と他戦略の上限は変更しません。Spreadは引き続き共通Judgeの成立条件であり、回数消費の順序は変えません。旧3.0 pips仕様とEntry時刻・成立回数が一致することは保証しません。
+
+v0.7（EA 1.06）では、H1・H4 EMA200一致にD1 EMA200一致をANDで追加します。戦略バージョンは`H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2`とし、固定設定の変更をRunへ記録します。Judge成立回数の消費順序、初期SL、トレイルおよび評価周期は変更しませんが、D1条件の追加により旧版とのEntry時刻・成立回数の一致は保証しません。旧DBの判定は再判定・上書きしません。
+
+D1 EMA200方向と3足の厳格な一致結果は、既存のDecision `analysis_snapshot_text`へ補足診断として保存します。EMA200の不一致・NONE・両方向成立・時間足不整合は`EMA200_DIRECTION_REJECTED`の診断対象です。他のJudge不成立条件もある場合は、既存の先行条件の理由を優先します。DBスキーマと従来の個別列は変更しません。
 
 SQLiteの物理構成、列および制約は[MstngH1Eaデータベース設計書](../Database/MstngH1EaDatabase.md)を参照してください。
 
@@ -47,7 +51,7 @@ SQLiteの物理構成、列および制約は[MstngH1Eaデータベース設計�
 - W1、D1、H4、H1の方向一致と、MN1方向またはW1 EMA200方向の一致
 - H1およびH4のElliott波動判定
 - H1 GMMA判定
-- H1およびH4のEMA200方向判定
+- H1・H4・D1のEMA200方向判定
 - 最大5 pipsのSpread制限
 - 1シグナルにつき初回Judge成立時だけ詳細Entry判定（発注試行は最大1回）
 - 同一シンボル、同一Magic Numberで1ポジション
@@ -94,7 +98,7 @@ MstngH1Ea
   │    ├─ Judge成立回数（初回のみEntryへ）
   │    ├─ H1/H4 Elliott
   │    ├─ H1 GMMA
-  │    └─ H1/H4 EMA200
+  │    └─ H1/H4/D1 EMA200
   ├─ H1専用Trade Executor
   │    ├─ OrderCheck
   │    ├─ 成行発注
@@ -130,7 +134,7 @@ MstngH1Ea
 | 戦略 | `MTF_3in3` |
 | W1追加確認 | `H1_W1_CONFIRMATION_OBSERVE_ONLY`（診断のみ） |
 | 方向一致 | `H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED` |
-| EMA200確認 | `H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED` |
+| EMA200確認 | `H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED` |
 | Entry対象回数 | `1`（初回Judge成立時） |
 | H1表示波の回数制限 | `false`（既存初期値。H1へ追加ゲートを設けない） |
 | 通貨強弱のEntryフィルター | `false` |
@@ -306,7 +310,7 @@ Stochastic方向とGMMAは既存H1戦略と同じくshift 0を使用し、判定
 6. MN1のStochastic多数決方向がBUY、またはW1 EMA200方向がBUY
 7. H1 GMMA trend countが`+2`以上
 8. H1 GMMA cross countが`+2`以上
-9. H1とH4のEMA200方向がともにBUY
+9. H1・H4・D1のEMA200方向がすべてBUY
 
 W1 EMA200の`NONE`は有効な診断状態ですが、方向一致の代替条件は満たしません。この場合でもMN1がBUYなら6を満たします。MN1やW1 EMA200の取得不能・不正値は、既存の`H1DirectionAlignmentDecision`と同じく通過させません。別項目のW1追加確認は`OBSERVE_ONLY`であり、主条件に加えてOR/ANDゲートを追加しません。
 
@@ -323,7 +327,7 @@ BUY条件の方向と符号を反転します。
 - H1最新Wave方向が下降
 - H1 GMMA trend countが`-2`以下
 - H1 GMMA cross countが`-2`以下
-- H1とH4のEMA200方向がSELL
+- H1・H4・D1のEMA200方向がすべてSELL
 
 ### 8.4 Elliott波動条件
 
@@ -340,8 +344,7 @@ H1とH4はそれぞれ次のいずれかを要求します。
 初版では次をエントリー条件に使用しません。H1 ZigZagトレイルに必要なポイント情報はこの一覧の対象外です。
 
 - MN1 EMA200
-- D1 EMA200
-- H1またはH4のEMA200距離
+- H1・H4・D1のEMA200距離
 - H1構造ランク
 - 通貨強弱
 - ZigZag最新点の確定状態
@@ -794,7 +797,7 @@ Viewer連携の起動引数と画面構成は、EA初版の実装後に別途設
 | 方向一致 | [H1DirectionAlignmentDecision.mqh](../../Include/Mstng/ExpertAdvisor/H1DirectionAlignmentDecision.mqh) |
 | シグナル回数の参照実装 | [SignalCount.mqh](../../Include/Mstng/Signal/SignalCount.mqh) |
 | H1・H4波動判定 | [H1EntryWaveDecision.mqh](../../Include/Mstng/ExpertAdvisor/H1EntryWaveDecision.mqh) |
-| H1・H4 EMA200 | [H1Ema200ConfirmationDecision.mqh](../../Include/Mstng/ExpertAdvisor/H1Ema200ConfirmationDecision.mqh) |
+| H1・H4・D1 EMA200 | [H1Ema200ConfirmationDecision.mqh](../../Include/Mstng/ExpertAdvisor/H1Ema200ConfirmationDecision.mqh) |
 | H1 ZigZagトレイル判定 | [H1ZigZagTrailDecision.mqh](../../Include/MstngEa/Strategy/H1ZigZagTrailDecision.mqh) |
 | H1新規バー | [NewBarDetector.mqh](../../Include/MstngEa/Market/NewBarDetector.mqh) |
 | ポジション取得 | [PositionService.mqh](../../Include/MstngEa/Trade/PositionService.mqh) |
@@ -890,3 +893,10 @@ EA 1.05の非ビジュアル分析対策（2026-09-05）は15.1のとおりで�
 - `Scripts/Mstng/ExpertAdvisor/test_h1_ea_analysis_retry_contract.py`は実MQLソースの静的検査であり、MQLの実行・指標値・実行速度を検証したものではない。
 - 今回追加の静的検査21件、既存のウォームアップ20件・約定監査29件・DB制約22件の計92件が成功した。CopyBufferの取得順序・失敗伝播、Tester限定の待機・H1切替・Judge未消費、保護処理の順序、分析区間限定のログ抑制と固定上限を確認した。
 - EA 1.05のStrategy Testerは未実行。まず売買開始後の終了日を短くした非ビジュアルテストでW1分析の再開、取引および決済`DEAL_ADD`の保存を確認し、その後に全期間で正常実行時の14取引と比較する。既存の運用／Tester DBおよび大量出力された運用ログは変更・削除していない。
+
+EA 1.06のD1 EMA200追加（2026-09-06）の確認記録は次のとおりです。
+
+- `MstngH1Ea`、`MstngEa`、`ZigZagElliot`、`ZigZagElliotList`、`H1Ema200ConfirmationDecisionSmokeTest`、`MstngH1EaConfigSmokeTest`、`MstngH1StrategySmokeTest`、`H1EaDatabaseSmokeTest`をコンパイルし、すべてエラー0・警告0。最終版EAのコンパイルは運用先とは別の一時ビルド先で実施した。
+- EA関連Python回帰74件、実CREATE文を使うSQLite回帰22件が成功。Viewerはfrontend 215件・backend 66件、型チェックおよびビルドが成功した。
+- MQL5 SmokeTestにはBUY・SELLの3足一致／不一致、D1のNONE・不正状態、旧2モードの互換性、設定hash、追加診断のDB往復・反復seal・旧形式維持を追加した。MQL5 SmokeTest自体の実行とStrategy Testerによる売買確認は未実施であり、Pythonテストとは区別する。
+- 初期SL・トレイル・M5/M15・評価周期・シグナル消費順序は変更していない。既存の運用／Tester DBの直接更新、EAの起動・停止・設定変更は行っていない。

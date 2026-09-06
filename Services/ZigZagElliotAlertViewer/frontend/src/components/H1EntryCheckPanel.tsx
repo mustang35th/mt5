@@ -24,6 +24,7 @@ export interface H1EntryCheckItem {
 
 export interface H1EntryCheckSnapshot {
   direction: "BUY" | "SELL" | null;
+  ema200ConfirmationMode: H1Ema200ConfirmationMode | null;
   overallStatus: H1EntryCheckOverallStatus;
   overallReason: string;
   source: "SAVED" | "SNAPSHOT";
@@ -34,6 +35,7 @@ export interface H1EntryCheckPanelProps {
   timeFrames: readonly ObservationDetailTimeFrame[];
   spreadPips: number | null | undefined;
   savedDecision?: AlertDetail | null;
+  savedRunInputText?: string | null;
 }
 
 type EntryCheckTimeFrame = ObservationDetailTimeFrame & {
@@ -42,7 +44,32 @@ type EntryCheckTimeFrame = ObservationDetailTimeFrame & {
 
 type EntryDirection = "BUY" | "SELL";
 
+type H1Ema200ConfirmationMode =
+  | "H1_ONLY"
+  | "H1_AND_H4_REQUIRED"
+  | "H1_AND_H4_AND_D1_REQUIRED";
+
 const ENTRY_WAVE_LABELS = new Set(["1", "3", "5"]);
+
+/** 保存形式のキー・値が完全一致する単一設定だけを採用します。 */
+function savedEma200ConfirmationMode(
+  fromInputText: unknown,
+): H1Ema200ConfirmationMode | null {
+  if (typeof fromInputText !== "string") return null;
+  const key = "h1Ema200ConfirmationMode";
+  const entries = fromInputText.split("|").filter((entry) => (
+    entry.split("=", 1)[0].trim() === key
+  ));
+  if (entries.length !== 1) return null;
+  for (const mode of [
+    "H1_ONLY",
+    "H1_AND_H4_REQUIRED",
+    "H1_AND_H4_AND_D1_REQUIRED",
+  ] as const) {
+    if (entries[0] === `${key}=${mode}`) return mode;
+  }
+  return null;
+}
 
 /**
  * 時間足名に一致する最初のSnapshotを固定順で取得します。
@@ -498,29 +525,50 @@ function buildH1Ema200Item(
   );
 }
 
-function buildH4Ema200Item(
-  fromH4: EntryCheckTimeFrame | undefined,
+function buildHigherEma200Item(
+  fromTimeFrameText: "H4" | "D1",
+  fromTimeFrame: EntryCheckTimeFrame | undefined,
   fromDirection: EntryDirection | null,
+  fromMode: H1Ema200ConfirmationMode | null,
 ): H1EntryCheckItem {
-  const emaDirection = ema200Direction(fromH4);
-  if (emaDirection === null || fromDirection === null) {
+  const id = `${fromTimeFrameText.toLowerCase()}_ema200`;
+  const label = `${fromTimeFrameText} EMA200`;
+  const emaDirection = ema200Direction(fromTimeFrame);
+  const matchLabel = emaDirection === fromDirection ? "一致" : "不一致";
+  const actual = emaDirection === null
+    ? "記録なし"
+    : `${emaDirection}${fromDirection === null ? "（H1方向不明）" : `（${matchLabel}）`}`;
+  if (fromMode === null) {
     return unknownItem(
-      "h4_ema200",
+      id,
       "Judge",
-      "H4 EMA200",
-      "記録なし",
-      "H4必須mode時はH1方向と排他的に一致",
+      label,
+      actual,
+      "保存時EMA200確認modeが未記録・不正のため参考表示",
       true,
     );
   }
-  const matchLabel = emaDirection === fromDirection ? "一致" : "不一致";
-  return unknownItem(
-    "h4_ema200",
+  const isRequired = fromMode !== "H1_ONLY"
+    && (fromTimeFrameText === "H4"
+      || fromMode === "H1_AND_H4_AND_D1_REQUIRED");
+  if (!isRequired) {
+    return optionalItem(
+      id,
+      "Judge",
+      label,
+      actual,
+      `${fromMode}では使用しない`,
+      "対象外",
+    );
+  }
+  return requiredItem(
+    id,
     "Judge",
-    "H4 EMA200",
-    `${emaDirection}（${matchLabel}）`,
-    "H4 EMA200確認modeが未記録",
-    true,
+    label,
+    actual,
+    `${fromMode} / H1方向と排他的に一致`,
+    emaDirection === null || fromDirection === null
+      ? null : emaDirection === fromDirection,
   );
 }
 
@@ -801,12 +849,14 @@ function savedEntryResultReason(fromEntryResult: string): string {
  * @param fromTimeFrames 時間足Snapshot一覧
  * @param fromSpreadPips 観測時点のSpread pips
  * @param fromSavedDecision 保存済みAlert判定
+ * @param fromSavedRunInputText 保存時Alert Runの設定文字列
  * @return H1エントリー条件Snapshot
  */
 export function buildH1EntryCheckSnapshot(
   fromTimeFrames: readonly ObservationDetailTimeFrame[],
   fromSpreadPips: number | null | undefined,
   fromSavedDecision?: AlertDetail | null,
+  fromSavedRunInputText?: string | null,
 ): H1EntryCheckSnapshot {
   const mn1 = findTimeFrame(fromTimeFrames, "MN1");
   const w1 = findTimeFrame(fromTimeFrames, "W1");
@@ -816,6 +866,9 @@ export function buildH1EntryCheckSnapshot(
   const h1Direction = direction(h1);
   const savedSpread = finiteNumber(fromSavedDecision?.spread_pips);
   const spread = savedSpread ?? finiteNumber(fromSpreadPips);
+  // ObservationやH1以外のAlertへ保存時H1モードを流用しません。
+  const emaMode = fromSavedDecision
+    ? savedEma200ConfirmationMode(fromSavedRunInputText) : null;
 
   const items: H1EntryCheckItem[] = [
     buildCurrencyStrengthItem(fromSavedDecision),
@@ -837,7 +890,8 @@ export function buildH1EntryCheckSnapshot(
       h1Direction,
     ),
     buildH1Ema200Item(h1, h1Direction),
-    buildH4Ema200Item(h4, h1Direction),
+    buildHigherEma200Item("H4", h4, h1Direction, emaMode),
+    buildHigherEma200Item("D1", d1, h1Direction, emaMode),
     buildW1Item(w1, fromSavedDecision),
     buildCountItem(fromSavedDecision),
     buildDisplayWaveScopeItem(fromSavedDecision),
@@ -846,6 +900,7 @@ export function buildH1EntryCheckSnapshot(
   const overall = buildOverall(items, fromSavedDecision);
   return {
     direction: h1Direction,
+    ema200ConfirmationMode: emaMode,
     items,
     ...overall,
   };
@@ -877,11 +932,14 @@ export function H1EntryCheckPanel({
   timeFrames,
   spreadPips,
   savedDecision,
+  savedRunInputText,
 }: H1EntryCheckPanelProps) {
   const headingId = useId();
   const snapshot = useMemo(
-    () => buildH1EntryCheckSnapshot(timeFrames, spreadPips, savedDecision),
-    [savedDecision, spreadPips, timeFrames],
+    () => buildH1EntryCheckSnapshot(
+      timeFrames, spreadPips, savedDecision, savedRunInputText,
+    ),
+    [savedDecision, savedRunInputText, spreadPips, timeFrames],
   );
   let currentPhase: H1EntryCheckPhase | null = null;
 
@@ -913,6 +971,10 @@ export function H1EntryCheckPanel({
           </span>
         </div>
       </div>
+      <p className="h1-entry-check-note">
+        保存時EMA200確認mode: {snapshot.ema200ConfirmationMode ?? "不明（未記録または不正）"}
+        {snapshot.source === "SNAPSHOT" && " / Observation等のSnapshotでは参考表示"}
+      </p>
       <details className="h1-entry-check-disclosure">
         <summary>
           <span className="h1-entry-check-reason" role="status">

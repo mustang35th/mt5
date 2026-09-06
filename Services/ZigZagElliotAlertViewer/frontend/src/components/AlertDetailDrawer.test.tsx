@@ -233,6 +233,9 @@ describe("AlertDetailDrawer", () => {
     ];
     const points = [point(1, "MN1", 0, 0), point(2, "H1", 4, 0)];
     const payload = detailPayload();
+    Object.assign(payload.run, {
+      input_text: "h1Ema200ConfirmationMode=H1_AND_H4_AND_D1_REQUIRED",
+    });
     Object.assign(payload.alert, {
       is_currency_strength_enabled: true,
       currency_strength_status: 3,
@@ -287,6 +290,12 @@ describe("AlertDetailDrawer", () => {
       .toHaveTextContent("総合 OK");
     expect(within(entryCheck).getByText("保存判定")).toBeInTheDocument();
     expect(within(entryCheck).getByRole("status")).toHaveTextContent("ENTRY");
+    expect(within(entryCheck).getByText(
+      "保存時EMA200確認mode: H1_AND_H4_AND_D1_REQUIRED",
+    )).toBeInTheDocument();
+    fireEvent.click(within(entryCheck).getByText("条件を表示"));
+    expect(within(entryCheck).getByLabelText("H4 EMA200 NG")).toBeInTheDocument();
+    expect(within(entryCheck).getByLabelText("D1 EMA200 NG")).toBeInTheDocument();
     const currencyStrength = screen.getByRole("region", {
       name: "通貨強弱（Alert保存時点）",
     });
@@ -382,6 +391,7 @@ describe("AlertDetailDrawer", () => {
       name: "アラート時間足比較スナップショットグリッド",
     });
     expect(within(grid).getByLabelText("EMA200判定 記録なし")).toBeInTheDocument();
+    expect(screen.getByText(/保存時EMA200確認mode: 不明/)).toBeInTheDocument();
     expect(within(grid).queryByText(/▼/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "列プリセット: 波動" }));

@@ -13,27 +13,30 @@
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 
 /**
- * H1エントリー方向に対するH1およびH4 EMA200方向を判定する。
+ * H1エントリー方向に対するH1、H4およびD1 EMA200方向を判定する。
  */
 class H1Ema200ConfirmationDecision {
 public:
     /**
      * モード別のEMA200方向条件を判定する。
      *
-     * H1_ONLYではH4の状態を使用しない。H1_AND_H4_REQUIREDでは
+     * H1_ONLYではH4とD1の状態を使用しない。H1_AND_H4_REQUIREDでは
      * H1とH4の両方がエントリー方向と一致する場合だけ通過させる。
+     * H1_AND_H4_AND_D1_REQUIREDではD1にも同方向の一致を要求する。
      *
      * @param fromMode H1 EMA200確認モード。
      * @param fromIsBuy エントリーがBUY方向の場合true。
      * @param fromElliotH1 H1分析結果。
      * @param fromElliotH4 H4分析結果。
+     * @param fromElliotD1 D1分析結果。D1必須モード以外では使用しない。
      * @return 選択モードのEMA200条件を満たす場合true。
      */
     bool evaluate(
         const H1Ema200ConfirmationMode fromMode,
         const bool fromIsBuy,
         Elliot *fromElliotH1,
-        Elliot *fromElliotH4
+        Elliot *fromElliotH4,
+        Elliot *fromElliotD1 = NULL
     ) {
         if (!isH1Ema200ConfirmationModeValid(fromMode)) {
             return false;
@@ -51,9 +54,21 @@ public:
             return true;
         }
 
+        if (!this.isDirectionMatched(
+                fromElliotH4,
+                PERIOD_H4,
+                fromIsBuy
+        )) {
+            return false;
+        }
+
+        if (fromMode == H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED) {
+            return true;
+        }
+
         return this.isDirectionMatched(
-            fromElliotH4,
-            PERIOD_H4,
+            fromElliotD1,
+            PERIOD_D1,
             fromIsBuy
         );
     }

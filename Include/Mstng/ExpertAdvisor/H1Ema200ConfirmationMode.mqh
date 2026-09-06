@@ -17,7 +17,10 @@ enum H1Ema200ConfirmationMode {
     H1_EMA200_CONFIRMATION_H1_ONLY = 0,
 
     /** H1とH4のEMA200方向一致を要求する。 */
-    H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED = 1
+    H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED = 1,
+
+    /** H1、H4およびD1のEMA200方向一致を要求する。 */
+    H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED = 2
 };
 
 /**
@@ -37,6 +40,10 @@ string getH1Ema200ConfirmationModeText(
         return "H1_AND_H4_REQUIRED";
     }
 
+    if (fromMode == H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED) {
+        return "H1_AND_H4_AND_D1_REQUIRED";
+    }
+
     return "INVALID";
 }
 
@@ -50,7 +57,8 @@ bool isH1Ema200ConfirmationModeValid(
     const H1Ema200ConfirmationMode fromMode
 ) {
     return fromMode == H1_EMA200_CONFIRMATION_H1_ONLY
-        || fromMode == H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED;
+        || fromMode == H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED
+        || fromMode == H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED;
 }
 
 #endif // MSTNG_EXPERT_ADVISOR_H1_EMA200_CONFIRMATION_MODE_MQH

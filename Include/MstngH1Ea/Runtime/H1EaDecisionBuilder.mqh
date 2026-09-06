@@ -46,6 +46,11 @@ public:
         append(text, "w1_ema200_direction", fromDecision.w1Ema200Direction);
         append(text, "h1_direction_alignment_mode", fromDecision.h1DirectionAlignmentMode);
         append(text, "is_h1_direction_alignment_passed", flag(fromDecision.isH1DirectionAlignmentPassed));
+        // 旧形式の未取得診断は追加せず、既存canonicalとhashを維持する。
+        if (fromDecision.hasEma200ConfirmationDiagnostics) {
+            append(text, "d1_ema200_direction", fromDecision.d1Ema200Direction);
+            append(text, "is_ema200_confirmation_passed", flag(fromDecision.isEma200ConfirmationPassed));
+        }
         fromDecision.analysisSnapshotText = text;
         append(text, "analysis_version", ZigZagElliotAnalysisProfile::getAnalysisVersion());
         append(text, "analysis_input_hash", ZigZagElliotAnalysisProfile::createHash());

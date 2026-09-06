@@ -740,6 +740,7 @@ function ComparisonContent({ bundle, styleNonce }: {
       <CurrencyStrengthSnapshotPanel alert={alert} />
       <H1EntryCheckPanel
         savedDecision={savedH1Decision}
+        savedRunInputText={run?.input_text}
         spreadPips={alert.spread_pips}
         timeFrames={timeFrames}
       />

@@ -3,6 +3,7 @@
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentDecision.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1EntryWaveDecision.mqh>
 #include <MstngH1Ea\Strategy\H1EaStrategySnapshot.mqh>
 
@@ -89,6 +90,7 @@ public:
         fromSnapshot.h4Direction = this.direction(elliotH4.isBuy);
         fromSnapshot.h1Direction = this.direction(elliotH1.isBuy);
         fromSnapshot.w1Ema200Direction = elliotW1.oscillator.ema200.getBuySellLabel();
+        fromSnapshot.d1Ema200Direction = elliotD1.oscillator.ema200.getBuySellLabel();
         fromSnapshot.h4Ema200Direction = elliotH4.oscillator.ema200.getBuySellLabel();
         fromSnapshot.h1Ema200Direction = elliotH1.oscillator.ema200.getBuySellLabel();
         fromSnapshot.h1GmmaTrendCount = elliotH1.oscillator.gmmaTrendCount;
@@ -116,15 +118,21 @@ public:
             H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
             fromElliotAll, alignmentResult
         );
+        H1Ema200ConfirmationDecision ema200Decision;
+        fromSnapshot.isEma200ConfirmationPassed = ema200Decision.evaluate(
+            H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED,
+            fromSnapshot.isBuy, elliotH1, elliotH4, elliotD1
+        );
         fromSnapshot.analysisSnapshotText = StringFormat(
-            "MN1=%s|W1=%s|D1=%s|H4=%s|H1=%s|W1_EMA200=%s|H4_EMA200=%s|H1_EMA200=%s|H1_GT=%d|H1_GC=%d|H1_WAVE=%s|H4_WAVE=%s|DIRECTION_STATE=%s",
+            "MN1=%s|W1=%s|D1=%s|H4=%s|H1=%s|W1_EMA200=%s|D1_EMA200=%s|H4_EMA200=%s|H1_EMA200=%s|H1_GT=%d|H1_GC=%d|H1_WAVE=%s|H4_WAVE=%s|DIRECTION_STATE=%s|EMA200_MATCHED=%d",
             fromSnapshot.mn1Direction, fromSnapshot.w1Direction,
             fromSnapshot.d1Direction, fromSnapshot.h4Direction,
             fromSnapshot.h1Direction, fromSnapshot.w1Ema200Direction,
+            fromSnapshot.d1Ema200Direction,
             fromSnapshot.h4Ema200Direction, fromSnapshot.h1Ema200Direction,
             fromSnapshot.h1GmmaTrendCount, fromSnapshot.h1GmmaCrossCount,
             fromSnapshot.h1ElliotLabel, fromSnapshot.h4ElliotLabel,
-            alignmentResult.state
+            alignmentResult.state, (int)fromSnapshot.isEma200ConfirmationPassed
         );
         fromSnapshot.reasonCode = "NOT_EVALUATED";
 
@@ -182,7 +190,7 @@ public:
         ExpertAdvisorMTF_3in3 *strategy = ExpertAdvisorMtf3In3Factory::create(
             context, false, H1_W1_CONFIRMATION_OBSERVE_ONLY,
             H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
-            H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED
+            H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED
         );
 
         if (strategy == NULL) {
@@ -252,8 +260,7 @@ private:
             return "H1_GMMA_CROSS_REJECTED";
         }
 
-        if (fromSnapshot.h1Ema200Direction != fromSnapshot.signalSide
-                || fromSnapshot.h4Ema200Direction != fromSnapshot.signalSide) {
+        if (!fromSnapshot.isEma200ConfirmationPassed) {
             return "EMA200_DIRECTION_REJECTED";
         }
 

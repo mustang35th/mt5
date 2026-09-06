@@ -1,4 +1,4 @@
-"""Static wiring checks for the H1 EA tester warmup gate.
+"""Static wiring checks for the H1 EA warmup gate and fixed EMA configuration.
 
 These tests inspect the real MQL sources. They do not execute MQL, MT5,
 analysis, strategy decisions, database writes, or broker operations.
@@ -71,8 +71,8 @@ class TesterWarmupWiringTests(unittest.TestCase):
         cls.persistence = PERSISTENCE.read_text(encoding="utf-8-sig")
 
     def test_program_version_changes_without_new_inputs(self):
-        self.assertRegex(self.expert, r'#property\s+version\s+"1\.05"')
-        self.assertIn('return "1.05";', method(self.config, "getProgramVersion"))
+        self.assertRegex(self.expert, r'#property\s+version\s+"1\.06"')
+        self.assertIn('return "1.06";', method(self.config, "getProgramVersion"))
         self.assertEqual(
             re.findall(r"(?m)^input\s+(?:double|datetime|int|bool|string)\s+(\w+)\s*=", self.expert),
             ["InpLotSize", "InpMaxInitialStopLossPips", "InpTesterTradeStartTime"],
@@ -327,6 +327,84 @@ class TesterWarmupWiringTests(unittest.TestCase):
         self.assertIn("if(wasRequested){this.nextHistoryRequestTick=H1EaClock::milliseconds()+60000;}", compact)
         self.assertIn("SERIES_FIRSTDATE", body)
         self.assertNotIn("TimeCurrent(", body)
+
+
+class EmaConfigurationWiringTests(unittest.TestCase):
+    """Source wiring only; this does not execute entry or exit decisions."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mode = "H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED"
+        cls.config = CONFIG.read_text(encoding="utf-8-sig")
+        cls.decision = (ROOT / "Include/MstngH1Ea/Strategy/H1EaStrategyDecision.mqh").read_text(encoding="utf-8-sig")
+        cls.factory = (ROOT / "Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh").read_text(encoding="utf-8-sig")
+        cls.executor = EXECUTOR.read_text(encoding="utf-8-sig")
+        cls.initial_stop = (ROOT / "Include/MstngH1Ea/Strategy/H1EaInitialStopLossDecision.mqh").read_text(encoding="utf-8-sig")
+
+    def test_normal_indicator_list_and_legacy_ea_forward_three_timeframe_defaults(self):
+        fixtures = (
+            ("Indicators/ZigZagElliot.mq5", "h1Ema200ConfirmationMode", "config"),
+            ("Indicators/ZigZagElliotList.mq5", "alertH1Ema200ConfirmationMode", "alertConfig"),
+            ("Experts/MstngEa.mq5", "InpH1Ema200ConfirmationMode", "g_eaConfig"),
+        )
+        for path, variable, config_name in fixtures:
+            with self.subTest(path=path):
+                source = code_only((ROOT / path).read_text(encoding="utf-8-sig"))
+                self.assertRegex(source, rf"H1Ema200ConfirmationMode\s+{variable}\s*=\s*{self.mode}\s*;")
+                self.assertRegex(source, rf"{config_name}\.h1Ema200ConfirmationMode\s*=\s*{variable}\s*;")
+
+    def test_fixed_ea_canonical_and_both_decision_paths_use_same_three_timeframe_mode(self):
+        self.assertIn(
+            'return "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2";',
+            method(self.config, "getStrategyVersion"),
+        )
+        self.assertIn(f"|H1_EMA200_CONFIRMATION_MODE={self.mode}", method(self.config, "createCanonicalText"))
+        prepare = re.sub(r"\s+", "", code_only(method(self.decision, "prepare")))
+        self.assertIn(
+            "fromSnapshot.isEma200ConfirmationPassed=ema200Decision.evaluate("
+            f"{self.mode},fromSnapshot.isBuy,elliotH1,elliotH4,elliotD1);",
+            prepare,
+        )
+        evaluate = re.sub(r"\s+", "", code_only(method(self.decision, "evaluate")))
+        self.assertIn(
+            "ExpertAdvisorMtf3In3Factory::create(context,false,H1_W1_CONFIRMATION_OBSERVE_ONLY,"
+            "H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,"
+            f"{self.mode})",
+            evaluate,
+        )
+        self.assertIn("|D1_EMA200=%s|", method(self.decision, "prepare"))
+        self.assertIn("|EMA200_MATCHED=%d", method(self.decision, "prepare"))
+        self.assertRegex(
+            method(self.decision, "getJudgeRejectReason"),
+            r'if\s*\(!fromSnapshot\.isEma200ConfirmationPassed\)\s*\{\s*return "EMA200_DIRECTION_REJECTED";',
+        )
+
+    def test_m5_and_m15_factory_paths_do_not_receive_h1_ema_mode(self):
+        # Branch contracts preserve the separate lower-timeframe strategies;
+        # they are not a claim that every historical output was replayed.
+        compact = re.sub(r"\s+", "", code_only(self.factory))
+        self.assertIn(
+            "H1Ema200ConfirmationModefromH1Ema200ConfirmationMode=H1_EMA200_CONFIRMATION_H1_ONLY",
+            compact,
+        )
+        for timeframe, class_name in (("M5", "ExpertAdvisorMtf3In3M5"), ("M15", "ExpertAdvisorMtf3In3M15")):
+            with self.subTest(timeframe=timeframe):
+                self.assertIn(
+                    f"if(fromMarketContext.timeFrame==PERIOD_{timeframe}){{"
+                    f"returnnew{class_name}(fromMarketContext,fromIsDrawArrow);}}",
+                    compact,
+                )
+
+    def test_initial_stop_and_zigzag_trail_still_use_ten_pips_without_ema_gate(self):
+        initial = re.sub(r"\s+", "", code_only(method(self.initial_stop, "evaluate")))
+        self.assertIn("rawStopLoss=fromPivotPrice+10.0*fromPipSize;", initial)
+        self.assertIn("rawStopLoss=fromPivotPrice-10.0*fromPipSize;", initial)
+        trail = re.sub(r"\s+", "", code_only(method(self.executor, "evaluateTrail")))
+        self.assertIn("H1ZigZagTrailDecisiondecision;", trail)
+        self.assertIn("decision.evaluate(position,fromWave,10.0,this.pipSize,this.tickSize,result)", trail)
+        for body in (initial, trail):
+            self.assertNotIn("H1Ema200Confirmation", body)
+            self.assertNotIn("isEma200ConfirmationPassed", body)
 
 
 if __name__ == "__main__":

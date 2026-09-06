@@ -5,6 +5,7 @@
 #include <Mstng\Database\Dao\H1EaTradeDao.mqh>
 #include <Mstng\Database\Dao\H1EaTradeEventDao.mqh>
 #include <Mstng\Database\Service\H1EaPersistenceService.mqh>
+#include <MstngH1Ea\Runtime\H1EaDecisionBuilder.mqh>
 
 /** 検証成功件数。 */
 int passedCount = 0;
@@ -67,6 +68,131 @@ void prepareDecision(H1EaDecisionEntity &fromDecision, const long fromBar,
 }
 
 /**
+ * 診断値の保存・再読込・再sealでcanonicalとhashが変わらないことを確認する。
+ */
+void verifyDecisionRoundTrip(H1EaPersistenceService &fromService, const long fromRunId,
+        H1EaDecisionEntity &fromDecision, const string fromName) {
+    verify(H1EaDecisionBuilder::seal(fromDecision, 5), fromName + " seal");
+    string expectedText = fromDecision.analysisSnapshotText;
+    string expectedHash = fromDecision.snapshotHash;
+    verify(H1EaDecisionBuilder::seal(fromDecision, 5)
+        && fromDecision.analysisSnapshotText == expectedText
+        && fromDecision.snapshotHash == expectedHash, fromName + " repeated seal stable");
+    if (!fromService.saveDecision(fromRunId, fromDecision)) {
+        verify(false, fromName + " save");
+        return;
+    }
+    H1EaDecisionEntity loaded;
+    bool found = false;
+    bool success = fromService.loadDecision(fromDecision.contextKey, fromDecision.h1BarTime, loaded, found);
+    verify(success && found && loaded.d1Ema200Direction == fromDecision.d1Ema200Direction
+        && loaded.isEma200ConfirmationPassed == fromDecision.isEma200ConfirmationPassed
+        && loaded.hasEma200ConfirmationDiagnostics == fromDecision.hasEma200ConfirmationDiagnostics
+        && loaded.analysisSnapshotText == expectedText && loaded.snapshotHash == expectedHash,
+        fromName + " DAO restores optional diagnostics");
+    if (success && found) {
+        verify(H1EaDecisionBuilder::seal(loaded, 5)
+            && loaded.analysisSnapshotText == expectedText && loaded.snapshotHash == expectedHash,
+            fromName + " DAO roundtrip seal stable");
+    }
+}
+
+/**
+ * 保存行を書き換えずSELECTの診断テキストだけを差し替えてDAOの拒否動作を確認する。
+ */
+void verifyInvalidDecisionDiagnostic(H1EaPersistenceService &fromService, const long fromDecisionId,
+        const string fromText, const string fromName) {
+    string columns = H1EaDecisionDao::selectColumns();
+    StringReplace(columns, "analysis_snapshot_text", H1EaSql::text(fromText));
+    int request = DatabasePrepare(fromService.getHandle(), "SELECT " + columns
+        + " FROM h1_ea_decisions WHERE id=" + IntegerToString(fromDecisionId));
+    if (request == INVALID_HANDLE) {
+        verify(false, fromName + " fixture select");
+        return;
+    }
+    H1EaDecisionEntity loaded;
+    loaded.d1Ema200Direction = "BUY";
+    loaded.isEma200ConfirmationPassed = true;
+    loaded.hasEma200ConfirmationDiagnostics = true;
+    bool selected = DatabaseRead(request);
+    bool success = false;
+    if (selected) {
+        success = H1EaDecisionDao::read(request, loaded);
+    }
+    DatabaseFinalize(request);
+    verify(selected && !success && loaded.d1Ema200Direction == ""
+        && !loaded.isEma200ConfirmationPassed && !loaded.hasEma200ConfirmationDiagnostics,
+        fromName + " rejected without fabricated diagnostics");
+}
+
+/**
+ * 旧形式の未取得と新形式のNONE・falseを区別し、D1診断をhash対象として検証する。
+ */
+void verifyDecisionDiagnostics(H1EaPersistenceService &fromService, const long fromRunId) {
+    H1EaDecisionEntity legacy;
+    prepareDecision(legacy, 36000, 1000);
+    verifyDecisionRoundTrip(fromService, fromRunId, legacy, "legacy diagnostic absent");
+    verify(StringFind(legacy.analysisSnapshotText, "|d1_ema200_direction=") < 0
+        && StringFind(legacy.analysisSnapshotText, "|is_ema200_confirmation_passed=") < 0,
+        "legacy canonical has no new keys");
+
+    H1EaDecisionEntity matched;
+    prepareDecision(matched, 39600, 1100);
+    matched.d1Ema200Direction = "BUY";
+    matched.isEma200ConfirmationPassed = true;
+    matched.hasEma200ConfirmationDiagnostics = true;
+    verifyDecisionRoundTrip(fromService, fromRunId, matched, "EMA200 BUY matched");
+    verify(matched.snapshotHash != legacy.snapshotHash,
+        "additional diagnostics change otherwise identical snapshot hash");
+    H1EaDecisionEntity changed = matched;
+    changed.d1Ema200Direction = "SELL";
+    verify(H1EaDecisionBuilder::seal(changed, 5) && changed.snapshotHash != matched.snapshotHash,
+        "D1 direction is included in snapshot hash");
+    changed = matched;
+    changed.isEma200ConfirmationPassed = false;
+    verify(H1EaDecisionBuilder::seal(changed, 5) && changed.snapshotHash != matched.snapshotHash,
+        "EMA200 boolean is included in snapshot hash");
+
+    H1EaDecisionEntity rejected;
+    prepareDecision(rejected, 43200, 1200);
+    rejected.d1Ema200Direction = "SELL";
+    rejected.hasEma200ConfirmationDiagnostics = true;
+    verifyDecisionRoundTrip(fromService, fromRunId, rejected, "EMA200 SELL rejected");
+    verify(rejected.isEma200ConfirmationPassed == false && rejected.hasEma200ConfirmationDiagnostics,
+        "evaluated false differs from legacy unavailable");
+
+    H1EaDecisionEntity none;
+    prepareDecision(none, 46800, 1300);
+    none.d1Ema200Direction = "NONE";
+    none.hasEma200ConfirmationDiagnostics = true;
+    verifyDecisionRoundTrip(fromService, fromRunId, none, "EMA200 NONE evaluated");
+    H1EaDecisionEntity unavailable;
+    prepareDecision(unavailable, 50400, 1400);
+    unavailable.hasEma200ConfirmationDiagnostics = true;
+    verifyDecisionRoundTrip(fromService, fromRunId, unavailable, "EMA200 direction unavailable");
+    verify(StringFind(unavailable.analysisSnapshotText, "|d1_ema200_direction=~|") >= 0
+        && none.snapshotHash != unavailable.snapshotHash, "NULL direction differs from NONE");
+
+    string prefix = legacy.analysisSnapshotText;
+    verifyInvalidDecisionDiagnostic(fromService, legacy.id,
+        prefix + "|d1_ema200_direction=BUY", "missing boolean");
+    verifyInvalidDecisionDiagnostic(fromService, legacy.id,
+        prefix + "|is_ema200_confirmation_passed=0", "missing direction");
+    verifyInvalidDecisionDiagnostic(fromService, legacy.id,
+        prefix + "|d1_ema200_direction=BUY|is_ema200_confirmation_passed=2", "invalid boolean");
+    verifyInvalidDecisionDiagnostic(fromService, legacy.id,
+        prefix + "|d1_ema200_direction=NULL|is_ema200_confirmation_passed=0", "invalid NULL spelling");
+    verifyInvalidDecisionDiagnostic(fromService, legacy.id,
+        prefix + "|d1_ema200_direction=|is_ema200_confirmation_passed=0", "empty encoded direction");
+    verifyInvalidDecisionDiagnostic(fromService, legacy.id,
+        matched.analysisSnapshotText + "|d1_ema200_direction=SELL", "duplicate direction");
+    verifyInvalidDecisionDiagnostic(fromService, legacy.id,
+        matched.analysisSnapshotText + "|is_ema200_confirmation_passed=0", "duplicate boolean");
+    verifyInvalidDecisionDiagnostic(fromService, legacy.id,
+        prefix + "|d1_ema200_direction_extra=BUY|is_ema200_confirmation_passed=0", "exact direction key required");
+}
+
+/**
  * pendingトレイルのまとまりを解除する。
  */
 void clearPending(H1EaTradeEntity &fromTrade) {
@@ -90,6 +216,7 @@ void verifyPersistence(H1EaPersistenceService &fromService) {
     prepareRun(duplicateRun, "SMOKE_RUN_2");
     verify(!fromService.acquireRun(duplicateRun) && duplicateRun.id == 0, "active lease exclusive");
     verify(fromService.heartbeat(run, TimeLocal()), "heartbeat");
+    verifyDecisionDiagnostics(fromService, run.id);
 
     H1EaDecisionEntity skip;
     prepareDecision(skip, 3600, 100);

@@ -23,6 +23,7 @@
  * または第3波に副次波がない有効な第5波をエントリー対象とする。
  * H1 EMA200は常にH1方向を確認し、
  * H1_AND_H4_REQUIREDではH4 EMA200も同方向を要求する。
+ * H1_AND_H4_AND_D1_REQUIREDではH4とD1 EMA200も同方向を要求する。
  * 選択した方向一致モードではW1 EMA200も判定に使用する。
  * H1の最新ZigZagポイントは確定・未確定を問わず、
  * エントリー成立時はメール送信対象とする。
@@ -119,7 +120,7 @@ protected:
     }
 
     /**
-     * 選択モードに従いH1およびH4のEMA200方向を判定する。
+     * 選択モードに従いH1、H4およびD1のEMA200方向を判定する。
      *
      * @return 選択モードのEMA200方向条件を満たす場合true。
      */
@@ -134,7 +135,8 @@ protected:
             this.h1Ema200ConfirmationMode,
             this.isBuy,
             this.elliotCurrent,
-            this.elliotH4
+            this.elliotH4,
+            this.elliotD1
         );
     }
 

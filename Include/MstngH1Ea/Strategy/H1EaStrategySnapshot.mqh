@@ -39,6 +39,8 @@ struct H1EaStrategySnapshot {
     string h1Direction;
     /** W1 EMA200方向。 */
     string w1Ema200Direction;
+    /** D1 EMA200方向。診断テキストへ保存する。 */
+    string d1Ema200Direction;
     /** H4 EMA200方向。 */
     string h4Ema200Direction;
     /** H1 EMA200方向。 */
@@ -59,6 +61,8 @@ struct H1EaStrategySnapshot {
     bool isH4WaveAccepted;
     /** 上位方向一致診断結果。 */
     bool isH1DirectionAlignmentPassed;
+    /** H1・H4・D1 EMA200の厳密な方向一致診断結果。 */
+    bool isEma200ConfirmationPassed;
     /** 共通Judge成立。 */
     bool isJudge;
     /** 今回Judge成立後の回数。Judge NGでは0。 */
@@ -96,6 +100,7 @@ struct H1EaStrategySnapshot {
         this.h4Direction = "";
         this.h1Direction = "";
         this.w1Ema200Direction = "";
+        this.d1Ema200Direction = "";
         this.h4Ema200Direction = "";
         this.h1Ema200Direction = "";
         this.h1GmmaTrendCount = 0;
@@ -106,6 +111,7 @@ struct H1EaStrategySnapshot {
         this.isH1WaveAccepted = false;
         this.isH4WaveAccepted = false;
         this.isH1DirectionAlignmentPassed = false;
+        this.isEma200ConfirmationPassed = false;
         this.isJudge = false;
         this.signalCount = 0;
         this.isEntryEvaluated = false;

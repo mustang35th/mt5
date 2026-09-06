@@ -316,7 +316,7 @@ public:
         if (!DatabaseColumnText(fromRequest, 40, fromEntity.analysisSnapshotText)) {
             return false;
         }
-        return true;
+        return H1EaDecisionDao::restoreEma200Diagnostics(fromEntity);
     }
 
     /**
@@ -339,6 +339,75 @@ public:
         DatabaseFinalize(request);
         fromFound = success;
         return success;
+    }
+
+private:
+    /**
+     * 追加診断だけをCanonical Textから復元する。旧形式は未取得のまま維持する。
+     */
+    static bool restoreEma200Diagnostics(H1EaDecisionEntity &fromEntity) {
+        fromEntity.d1Ema200Direction = "";
+        fromEntity.isEma200ConfirmationPassed = false;
+        fromEntity.hasEma200ConfirmationDiagnostics = false;
+        string direction = "";
+        string passed = "";
+        bool hasDirection = false;
+        bool hasPassed = false;
+        if (!H1EaDecisionDao::readDiagnosticValue(fromEntity.analysisSnapshotText,
+                "d1_ema200_direction", direction, hasDirection)
+                || !H1EaDecisionDao::readDiagnosticValue(fromEntity.analysisSnapshotText,
+                "is_ema200_confirmation_passed", passed, hasPassed)) {
+            return false;
+        }
+        if (!hasDirection && !hasPassed) {
+            return true;
+        }
+        if (!hasDirection || !hasPassed) {
+            return false;
+        }
+        if (StringFind(fromEntity.analysisSnapshotText, "H1_EA_DECISION_V1|") != 0) {
+            return false;
+        }
+        if (direction != "~" && direction != "BUY" && direction != "SELL" && direction != "NONE") {
+            return false;
+        }
+        if (passed != "0" && passed != "1") {
+            return false;
+        }
+        if (direction != "~") {
+            fromEntity.d1Ema200Direction = direction;
+        }
+        fromEntity.isEma200ConfirmationPassed = passed == "1";
+        fromEntity.hasEma200ConfirmationDiagnostics = true;
+        return true;
+    }
+
+    /**
+     * 区切りとキーが完全一致した1項目だけを取得する。重複や値なしは拒否する。
+     */
+    static bool readDiagnosticValue(const string fromText, const string fromName,
+            string &fromValue, bool &fromFound) {
+        fromValue = "";
+        fromFound = false;
+        string key = "|" + fromName + "=";
+        int position = StringFind(fromText, key);
+        if (position < 0) {
+            return true;
+        }
+        int valueStart = position + StringLen(key);
+        if (StringFind(fromText, key, valueStart) >= 0) {
+            return false;
+        }
+        int valueEnd = StringFind(fromText, "|", valueStart);
+        if (valueEnd < 0) {
+            valueEnd = StringLen(fromText);
+        }
+        if (valueEnd <= valueStart) {
+            return false;
+        }
+        fromValue = StringSubstr(fromText, valueStart, valueEnd - valueStart);
+        fromFound = true;
+        return true;
     }
 };
 
