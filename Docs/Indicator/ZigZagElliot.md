@@ -45,6 +45,31 @@ D1-S／A／Bは従来どおり、D1に対するW1・MN1・W1 EMA200の一致度�
 - [方向一致とD1 EMA200判定](../../Include/Mstng/Elliot/ElliotDirectionAlignmentDecision.mqh)
 - [固定値による回帰テスト](../../Scripts/Mstng/Elliot/ElliotDirectionAlignmentDecisionSmokeTest.mq5)
 
+## H1の方向一致（通常版v1.36）
+
+通常の`ZigZagElliot`では、「方向一致（主条件）」をinputから外し、`h1DirectionAlignmentMode`を`const`定数の`H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`に固定します。空になる「H1方向一致（主条件）」グループを削除し、チャート表示グループを「06. チャート表示」に繰り上げます。
+
+H1の分析方向（`isBuy`）を基準に、次の両方を必須とします。
+
+- W1・D1・H4・H1のisBuyが一致すること。
+- MN1のisBuy、またはW1 EMA200の方向がH1と一致すること。
+
+MN1だけが逆方向でも、W1 EMA200がH1と同方向なら方向一致条件は通過します。MN1とW1 EMA200が両方とも不一致なら対象外です。これは方向一致の条件だけであり、H1・H4・D1 EMA200、波動、Spread、Signal Countなどの既存条件も引き続き必要です。通貨強弱はフィルタ有効時だけ条件に使用する従来の仕様を維持します。
+
+**既存設定への影響：** v1.36へ更新し、通常の`ZigZagElliot`を再読み込みしてください。旧チャート／setファイルに保存された`h1DirectionAlignmentMode`では固定値を変更できません。従来の初期値（値3）と条件は同じですが、値0・1のD1～H1条件や値2のMN1～H1全足一致を使用していたチャートは、固定条件へ切り替わるため対象が変わる場合があります。別端末には更新版を個別に反映してください。
+
+W1追加確認は`OBSERVE_ONLY`固定、EMA200確認はH1・H4・D1の3足必須固定を維持します。Run設定には実際に使う`h1DirectionAlignmentMode=W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`を引き続き保存します。共通の方向一致enum・判定クラス、`ZigZagElliotList`、`MstngEa`、`MstngH1Ea`、DBスキーマおよび過去の保存データは変更しません。
+
+## H1のW1追加確認（通常版v1.35）
+
+通常の`ZigZagElliot`では、「W1確認（追加条件）」をinputから外し、`h1W1ConfirmationMode`を`const`定数の`H1_W1_CONFIRMATION_OBSERVE_ONLY`に固定します。追加確認によるエントリー制限は行わず、W1方向とW1 EMA200の診断処理およびDB保存経路は維持します。Runの設定記録には`h1W1ConfirmationMode=OBSERVE_ONLY`を保存します。
+
+v1.35時点では「方向一致（主条件）」は選択可能で、初期値は「W1・D1・H4・H1のisBuy一致 ＋（MN1方向一致 または W1 EMA200方向一致）」です。W1追加確認を診断専用にしても、主条件側のW1・MN1・W1 EMA200判定は無効になりません。v1.36からは上記のとおり主条件も初期値に固定します。
+
+**既存設定への影響：** v1.35以降へ更新し、通常の`ZigZagElliot`を再読み込みしてください。旧チャート／setファイルに保存された`h1W1ConfirmationMode`では固定値を変更できません。以前OR／ANDを選択していた場合も、更新後は追加確認の制限が外れて診断のみになります。W1追加確認の変更だけでは、従来の初期値`OBSERVE_ONLY`を使っていた場合のエントリー条件は変わりません。v1.35では方向一致（主条件）の保存済み選択値を維持しますが、v1.36では固定条件へ切り替わります。
+
+H1・H4・D1のEMA200一致必須、波動、Spread、Signal Count、通貨強弱および判定タイミングは変更しません。共通のW1確認enum・判定クラスは維持し、`ZigZagElliotList`、`MstngEa`、`MstngH1Ea`の設定・判定には変更を加えません。DBスキーマや過去の保存データも変更しません。
+
 ## H1のEMA200確認（通常版v1.34）
 
 通常の`ZigZagElliot`では、`h1Ema200ConfirmationMode`をinputから外し、`const`定数の`H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED`に固定します。「EMA200確認（追加条件）」はinput一覧に表示しません。

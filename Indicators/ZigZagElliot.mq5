@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.34"
+#property version   "1.36"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -43,13 +43,17 @@ input group "03. H1エントリー追加条件"
 input(name="H1表示波の回数制限")
 bool h1DisplayWaveEntryLimitEnabled = false;
 
-/** H1エントリーで使用するW1確認モード。 */
-input(name="W1確認（追加条件）") H1W1ConfirmationMode h1W1ConfirmationMode =
+/** H1のW1追加確認は診断のみとし、主条件以外のW1制限を追加しない。 */
+const H1W1ConfirmationMode h1W1ConfirmationMode =
     H1_W1_CONFIRMATION_OBSERVE_ONLY;
 
 /** H1エントリーのEMA200確認はH1・H4・D1の3足一致必須に固定する。 */
 const H1Ema200ConfirmationMode h1Ema200ConfirmationMode =
     H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED;
+
+/** H1方向一致はW1～H1一致と、MN1またはW1 EMA200の同方向一致に固定する。 */
+const H1DirectionAlignmentMode h1DirectionAlignmentMode =
+    H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
 
 input group "04. 通貨強弱"
 
@@ -91,13 +95,7 @@ input(name="年別DBを使用") bool currencyStrengthDatabaseSplitByYear = true;
 input(name="Commonフォルダを使用")
 bool currencyStrengthDatabaseUseCommonFolder = true;
 
-input group "06. H1方向一致（主条件）"
-
-/** H1エントリーで使用する上位時間足方向一致モード。 */
-input(name="方向一致（主条件）") H1DirectionAlignmentMode h1DirectionAlignmentMode =
-    H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
-
-input group "07. チャート表示"
+input group "06. チャート表示"
 
 /** チャートへ波動ラベルを表示する上位時間足数。 */
 input(name="波動ラベルの上位足数")
