@@ -81,6 +81,8 @@ public:
 
         Wave *wave = this.waveList.At(0);
 
+        // 再カウントしない最上位足も、F・FE表示に必要な元の波動情報を保持する。
+        ZigZagPointUtil::setOrgField(wave.zigZagPointList);
         ZigZagPointUtil::copyZigZagPointList(wave.zigZagPointList, wave.orgZigZagPointList);
 
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
