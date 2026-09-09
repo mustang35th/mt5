@@ -216,23 +216,24 @@ void validateCase(
 }
 
 /**
- * 旧2モードではD1 EMA逆向きでもJudgeと初回Entryが従来どおり通る。
+ * Factoryの互換引数でH1の共通条件を緩和・強化できないことを確認する。
  */
-void validateLegacyEmaMode(
+void validateFactoryFixedPolicy(
     const string fromName,
     ElliotAll *fromAnalysis,
-    const H1Ema200ConfirmationMode fromMode
+    const H1W1ConfirmationMode fromW1Mode,
+    const H1DirectionAlignmentMode fromDirectionMode,
+    const H1Ema200ConfirmationMode fromEmaMode,
+    const bool fromExpectedJudge
 ) {
     MarketContext context("EURUSD", PERIOD_H1);
     SignalCount count(context);
     ExpertAdvisorMTF_3in3 *strategy = ExpertAdvisorMtf3In3Factory::create(
-        context, false, H1_W1_CONFIRMATION_OBSERVE_ONLY,
-        H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
-        fromMode
+        context, false, fromW1Mode, fromDirectionMode, fromEmaMode
     );
 
     if (strategy == NULL) {
-        assertCondition(fromName + " legacy Factory", false);
+        assertCondition(fromName + " compatible Factory", false);
 
         return;
     }
@@ -240,9 +241,47 @@ void validateLegacyEmaMode(
     strategy.analyze(fromAnalysis, GetPointer(count), 1);
     Mtf3In3AlertResult result = strategy.getAlertResult();
     delete strategy;
-    assertCondition(fromName + " legacy Judge passes", result.isJudge);
-    assertCondition(fromName + " legacy first Entry passes", result.isEntry && result.isEntryEvaluated);
-    assertCondition(fromName + " legacy first count", result.signalCount == 1);
+    assertCondition(fromName + " fixed Judge", result.isJudge == fromExpectedJudge);
+    assertCondition(fromName + " fixed first Entry", result.isEntry == fromExpectedJudge
+        && result.isEntryEvaluated == fromExpectedJudge);
+    assertCondition(fromName + " fixed first count", result.signalCount == (int)fromExpectedJudge);
+    assertCondition(fromName + " fixed W1 diagnostic mode", result.w1ConfirmationMode == "OBSERVE_ONLY");
+    assertCondition(fromName + " fixed primary mode",
+        result.h1DirectionAlignmentMode == "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED");
+}
+
+/**
+ * 別取得した古いW1ではなく本解析のW1を診断と方向条件で共用する。
+ */
+void validatePrimaryW1Snapshot(ElliotAll *fromAnalysis, const bool fromIsBuy) {
+    Elliot *staleW1 = createElliot(PERIOD_W1, !fromIsBuy);
+
+    if (staleW1 == NULL) {
+        assertCondition("stale W1 fixture", false);
+
+        return;
+    }
+
+    fromAnalysis.setH1W1ConfirmationElliot(staleW1);
+    MarketContext context("EURUSD", PERIOD_H1);
+    SignalCount count(context);
+    ExpertAdvisorMTF_3in3 *strategy = ExpertAdvisorMtf3In3Factory::create(context, false);
+
+    if (strategy == NULL) {
+        fromAnalysis.setH1W1ConfirmationElliot(NULL);
+        assertCondition("primary W1 Factory", false);
+
+        return;
+    }
+
+    strategy.analyze(fromAnalysis, GetPointer(count), 1);
+    Mtf3In3AlertResult result = strategy.getAlertResult();
+    delete strategy;
+    fromAnalysis.setH1W1ConfirmationElliot(NULL);
+    assertCondition("primary W1 Entry", result.isJudge && result.isEntry);
+    assertCondition("primary W1 diagnostic direction", result.isW1DirectionMatched);
+    assertCondition("primary W1 diagnostic EMA", result.isW1Ema200Matched
+        && result.w1Ema200Direction == fromAnalysis.getElliot(PERIOD_W1).oscillator.ema200.getBuySellLabel());
 }
 
 /**
@@ -262,8 +301,12 @@ void validateEmaDirections(ElliotAll *fromAnalysis, const bool fromIsBuy) {
 
     Elliot *elliotD1 = fromAnalysis.getElliot(PERIOD_D1);
     setEmaDirection(elliotD1, !fromIsBuy);
-    validateLegacyEmaMode("D1 opposite H1-only", fromAnalysis, H1_EMA200_CONFIRMATION_H1_ONLY);
-    validateLegacyEmaMode("D1 opposite H1+H4", fromAnalysis, H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED);
+    validateFactoryFixedPolicy("D1 opposite H1-only cannot relax", fromAnalysis,
+        H1_W1_CONFIRMATION_OFF, H1_DIRECTION_ALIGNMENT_D1_TO_H1,
+        H1_EMA200_CONFIRMATION_H1_ONLY, false);
+    validateFactoryFixedPolicy("D1 opposite H1+H4 cannot relax", fromAnalysis,
+        H1_W1_CONFIRMATION_OBSERVE_ONLY, H1_DIRECTION_ALIGNMENT_MN1_TO_H1_OBSERVE,
+        H1_EMA200_CONFIRMATION_H1_AND_H4_REQUIRED, false);
     elliotD1.oscillator.ema200.isBuy = false;
     elliotD1.oscillator.ema200.isSell = false;
     elliotD1.oscillator.ema200.buySellLabel = "NONE";
@@ -300,6 +343,7 @@ void validateDirection(const bool fromIsBuy) {
     }
 
     validateCase("baseline wave5 Spread5", analysis, 0, true, true, "STRATEGY_ENTRY");
+    validatePrimaryW1Snapshot(analysis, fromIsBuy);
     validateEmaDirections(analysis, fromIsBuy);
     validateCase("consumed previous signal", analysis, 1, true, false, "SIGNAL_ALREADY_CONSUMED");
     analysis.todayRate.spread = 5.01;
@@ -322,14 +366,26 @@ void validateDirection(const bool fromIsBuy) {
 
     setDirection(elliotMn1, !fromIsBuy);
     validateCase("MN1 opposite W1 EMA alternative", analysis, 0, true, true, "STRATEGY_ENTRY");
+    validateFactoryFixedPolicy("legacy MN1-required cannot tighten", analysis,
+        H1_W1_CONFIRMATION_DIRECTION_AND_EMA200, H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED,
+        H1_EMA200_CONFIRMATION_H1_ONLY, true);
     elliotW1.oscillator.ema200.isBuy = false;
     elliotW1.oscillator.ema200.isSell = false;
     elliotW1.oscillator.ema200.buySellLabel = "NONE";
     validateCase("MN1 opposite EMA NONE rejects", analysis, 0, false, false, "DIRECTION_ALIGNMENT_REJECTED");
+    validateFactoryFixedPolicy("legacy D1-only cannot bypass both alternatives", analysis,
+        H1_W1_CONFIRMATION_OFF, H1_DIRECTION_ALIGNMENT_D1_TO_H1,
+        H1_EMA200_CONFIRMATION_H1_ONLY, false);
     setDirection(elliotMn1, fromIsBuy);
     validateCase("MN1 aligned EMA NONE permitted", analysis, 0, true, true, "STRATEGY_ENTRY");
+    validateFactoryFixedPolicy("legacy W1 AND cannot tighten diagnostics", analysis,
+        H1_W1_CONFIRMATION_DIRECTION_AND_EMA200, H1_DIRECTION_ALIGNMENT_D1_TO_H1,
+        H1_EMA200_CONFIRMATION_H1_ONLY, true);
     setDirection(elliotW1, !fromIsBuy);
     validateCase("W1 opposite rejects", analysis, 0, false, false, "DIRECTION_ALIGNMENT_REJECTED");
+    validateFactoryFixedPolicy("legacy D1-only cannot bypass W1", analysis,
+        H1_W1_CONFIRMATION_OFF, H1_DIRECTION_ALIGNMENT_D1_TO_H1,
+        H1_EMA200_CONFIRMATION_H1_ONLY, false);
     setDirection(elliotW1, fromIsBuy);
     elliotH1.oscillator.gmmaTrendCount = 0;
     validateCase("Judge OFF does not undo count", analysis, 2, false, false, "H1_GMMA_TREND_REJECTED");

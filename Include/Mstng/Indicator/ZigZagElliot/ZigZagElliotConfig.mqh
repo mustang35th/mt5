@@ -12,6 +12,7 @@
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotHigherTimeFrameDisplayCount.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
@@ -72,11 +73,7 @@ public:
             "mstng-zigzag-elliot-alert.sqlite";
         this.mtf3In3AlertDatabaseUseCommonFolder = true;
         this.h1DisplayWaveEntryLimitEnabled = false;
-        this.h1W1ConfirmationMode = H1_W1_CONFIRMATION_OBSERVE_ONLY;
-        this.h1DirectionAlignmentMode =
-            H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
-        this.h1Ema200ConfirmationMode =
-            H1_EMA200_CONFIRMATION_H1_ONLY;
+        this.applyH1EntryPolicy();
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;
         this.currencyStrengthRankVisible = true;
@@ -92,6 +89,15 @@ public:
         this.currencyStrengthDatabaseUseCommonFolder = true;
         this.elliotHigherTimeFrameDisplayCount =
             ELLIOT_HIGHER_TIME_FRAME_DISPLAY_THREE;
+    }
+
+    /**
+     * H1の判定とRun設定が一致するように共通の固定条件を適用する。
+     */
+    void applyH1EntryPolicy() {
+        this.h1W1ConfirmationMode = Mtf3In3H1Policy::getW1ConfirmationMode();
+        this.h1DirectionAlignmentMode = Mtf3In3H1Policy::getDirectionAlignmentMode();
+        this.h1Ema200ConfirmationMode = Mtf3In3H1Policy::getEma200ConfirmationMode();
     }
 };
 

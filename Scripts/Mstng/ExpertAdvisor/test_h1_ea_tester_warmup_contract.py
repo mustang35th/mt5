@@ -48,8 +48,8 @@ def method(source: str, name: str) -> str:
     masked = code_only(source)
     signature = re.search(
         r"(?m)^[ \t]*(?:(?:static|virtual)\s+)*"
-        r"(?:(?:bool|void|int|long|ulong|datetime|string)\s+)?"
-        + re.escape(name) + r"\s*\([^;{}]*?\)\s*(?:const\s*)?\{",
+        r"(?:(?:bool|void|int|long|ulong|datetime|string|ENUM_TIMEFRAMES|H1\w+Mode)\s+)?"
+        + re.escape(name) + r"\s*\([^;{}]*?\)\s*(?:const\s*)?(?:override\s*)?\{",
         masked,
     )
     if signature is None:
@@ -71,8 +71,8 @@ class TesterWarmupWiringTests(unittest.TestCase):
         cls.persistence = PERSISTENCE.read_text(encoding="utf-8-sig")
 
     def test_program_version_changes_without_new_inputs(self):
-        self.assertRegex(self.expert, r'#property\s+version\s+"1\.07"')
-        self.assertIn('return "1.07";', method(self.config, "getProgramVersion"))
+        self.assertRegex(self.expert, r'#property\s+version\s+"1\.08"')
+        self.assertIn('return "1.08";', method(self.config, "getProgramVersion"))
         self.assertEqual(
             re.findall(r"(?m)^input\s+(?:double|datetime|int|bool|string)\s+(\w+)\s*=", self.expert),
             ["InpLotSize", "InpMaxInitialStopLossPips", "InpTesterTradeStartTime"],
@@ -334,48 +334,46 @@ class EmaConfigurationWiringTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.mode = "H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED"
         cls.config = CONFIG.read_text(encoding="utf-8-sig")
         cls.decision = (ROOT / "Include/MstngH1Ea/Strategy/H1EaStrategyDecision.mqh").read_text(encoding="utf-8-sig")
         cls.factory = (ROOT / "Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh").read_text(encoding="utf-8-sig")
         cls.executor = EXECUTOR.read_text(encoding="utf-8-sig")
         cls.initial_stop = (ROOT / "Include/MstngH1Ea/Strategy/H1EaInitialStopLossDecision.mqh").read_text(encoding="utf-8-sig")
 
-    def test_normal_indicator_list_and_legacy_ea_forward_three_timeframe_defaults(self):
-        fixtures = (
-            ("Indicators/ZigZagElliot.mq5", "h1Ema200ConfirmationMode", "config"),
-            ("Indicators/ZigZagElliotList.mq5", "alertH1Ema200ConfirmationMode", "alertConfig"),
-            ("Experts/MstngEa.mq5", "InpH1Ema200ConfirmationMode", "g_eaConfig"),
-        )
-        for path, variable, config_name in fixtures:
-            with self.subTest(path=path):
-                source = code_only((ROOT / path).read_text(encoding="utf-8-sig"))
-                self.assertRegex(source, rf"H1Ema200ConfirmationMode\s+{variable}\s*=\s*{self.mode}\s*;")
-                self.assertRegex(source, rf"{config_name}\.h1Ema200ConfirmationMode\s*=\s*{variable}\s*;")
-
-    def test_normal_indicator_ema_mode_is_constant_not_input(self):
-        source = code_only((ROOT / "Indicators/ZigZagElliot.mq5").read_text(encoding="utf-8-sig"))
-        self.assertRegex(source, rf"\bconst\s+H1Ema200ConfirmationMode\s+h1Ema200ConfirmationMode\s*=\s*{self.mode}\s*;")
-        self.assertNotRegex(source, r"\b(?:input|sinput)\b[^;]*\bh1Ema200ConfirmationMode\s*=")
-
     def test_fixed_ea_canonical_and_both_decision_paths_use_same_three_timeframe_mode(self):
         self.assertIn(
             'return "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2";',
             method(self.config, "getStrategyVersion"),
         )
-        self.assertIn(f"|H1_EMA200_CONFIRMATION_MODE={self.mode}", method(self.config, "createCanonicalText"))
+        canonical = re.sub(r"\s+", "", method(self.config, "createCanonicalText"))
+        for field, prefix, getter in (
+            ("DIRECTION_ALIGNMENT", "H1_DIRECTION_ALIGNMENT_", "DirectionAlignment"),
+            ("W1_CONFIRMATION", "H1_W1_CONFIRMATION_", "W1Confirmation"),
+            ("EMA200_CONFIRMATION", "H1_EMA200_CONFIRMATION_", "Ema200Confirmation"),
+        ):
+            self.assertIn(
+                f'"|H1_{field}_MODE={prefix}"+'
+                f"getH1{getter}ModeText(Mtf3In3H1Policy::get{getter}Mode())", canonical,
+            )
+        self.assertIn("EnumToString(Mtf3In3H1Policy::getAnalysisStartTimeFrame())", canonical)
+        self.assertIn('StringReplace(analysisStartTimeFrame,"PERIOD_","");', canonical)
         prepare = re.sub(r"\s+", "", code_only(method(self.decision, "prepare")))
         self.assertIn(
             "fromSnapshot.isEma200ConfirmationPassed=ema200Decision.evaluate("
-            f"{self.mode},fromSnapshot.isBuy,elliotH1,elliotH4,elliotD1);",
+            "Mtf3In3H1Policy::getEma200ConfirmationMode(),fromSnapshot.isBuy,elliotH1,elliotH4,elliotD1);",
             prepare,
         )
+        self.assertIn("alignmentDecision.evaluate(Mtf3In3H1Policy::getDirectionAlignmentMode(),", prepare)
         evaluate = re.sub(r"\s+", "", code_only(method(self.decision, "evaluate")))
         self.assertIn(
-            "ExpertAdvisorMtf3In3Factory::create(context,false,H1_W1_CONFIRMATION_OBSERVE_ONLY,"
-            "H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,"
-            f"{self.mode})",
+            "ExpertAdvisorMtf3In3Factory::create(context,false,Mtf3In3H1Policy::getW1ConfirmationMode(),"
+            "Mtf3In3H1Policy::getDirectionAlignmentMode(),Mtf3In3H1Policy::getEma200ConfirmationMode())",
             evaluate,
+        )
+        strategy = STRATEGY.read_text(encoding="utf-8-sig")
+        self.assertIn(
+            "this.elliotAll.setAnalysisStartTimeFrame(Mtf3In3H1Policy::getAnalysisStartTimeFrame());",
+            re.sub(r"\s+", "", code_only(method(strategy, "analyze"))),
         )
         self.assertIn("|D1_EMA200=%s|", method(self.decision, "prepare"))
         self.assertIn("|EMA200_MATCHED=%d", method(self.decision, "prepare"))
@@ -412,55 +410,136 @@ class EmaConfigurationWiringTests(unittest.TestCase):
             self.assertNotIn("isEma200ConfirmationPassed", body)
 
 
-class W1ConfigurationWiringTests(unittest.TestCase):
-    """Source contracts for the normal indicator's fixed diagnostic mode."""
+class H1PolicyConfigurationWiringTests(unittest.TestCase):
+    """Common policy and caller wiring, not executed MQL behavior."""
 
-    def test_normal_indicator_w1_mode_is_constant_and_forwarded_not_input(self):
-        indicator = (ROOT / "Indicators/ZigZagElliot.mq5").read_text(encoding="utf-8-sig")
-        source = code_only(indicator)
-        self.assertRegex(
-            source,
-            r"\bconst\s+H1W1ConfirmationMode\s+h1W1ConfirmationMode\s*=\s*"
-            r"H1_W1_CONFIRMATION_OBSERVE_ONLY\s*;",
-        )
-        self.assertNotRegex(source, r"\b(?:input|sinput)\b[^;]*\bh1W1ConfirmationMode\s*=")
-        self.assertRegex(
-            code_only(method(indicator, "OnInit")),
-            r"config\.h1W1ConfirmationMode\s*=\s*h1W1ConfirmationMode\s*;",
-        )
+    @staticmethod
+    def read(path):
+        return (ROOT / path).read_text(encoding="utf-8-sig")
 
-    def test_fixed_w1_mode_still_reaches_strategy_and_run_record(self):
-        controller = (ROOT / "Include/Mstng/Indicator/ZigZagElliot/Mtf3In3AlertController.mqh").read_text(encoding="utf-8-sig")
-        initialize = re.sub(r"\s+", "", code_only(method(controller, "initialize")))
-        self.assertIn("this.config=fromConfig;", initialize)
-        self.assertIn(
-            "ExpertAdvisorMtf3In3Factory::create(this.marketContext,true,this.config.h1W1ConfirmationMode,",
+    def test_policy_owns_all_four_fixed_values(self):
+        policy = self.read("Include/Mstng/ExpertAdvisor/Mtf3In3H1Policy.mqh")
+        for getter, value in (
+            ("DirectionAlignmentMode", "H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"),
+            ("W1ConfirmationMode", "H1_W1_CONFIRMATION_OBSERVE_ONLY"),
+            ("Ema200ConfirmationMode", "H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED"),
+            ("AnalysisStartTimeFrame", "PERIOD_MN1"),
+        ):
+            with self.subTest(getter=getter):
+                self.assertEqual(code_only(method(policy, "get" + getter)).strip(), f"return {value};")
+
+    def test_config_defaults_and_normalization_read_the_same_policy(self):
+        config = self.read("Include/Mstng/Indicator/ZigZagElliot/ZigZagElliotConfig.mqh")
+        self.assertIn("this.applyH1EntryPolicy();", code_only(method(config, "ZigZagElliotConfig")))
+        normalize = re.sub(r"\s+", "", code_only(method(config, "applyH1EntryPolicy")))
+        for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):
+            self.assertIn(f"this.h1{suffix}=Mtf3In3H1Policy::get{suffix}();", normalize)
+
+    def test_unanalyzed_decision_metadata_also_records_the_common_policy(self):
+        controller = CONTROLLER.read_text(encoding="utf-8-sig")
+        initialize = method(controller, "initializeDecision")
+        self.assertRegex(
             initialize,
+            r'fromDecision\.h1DirectionAlignmentMode\s*=\s*"H1_DIRECTION_ALIGNMENT_"\s*\+\s*'
+            r"getH1DirectionAlignmentModeText\(\s*Mtf3In3H1Policy::getDirectionAlignmentMode\(\)\s*\)\s*;",
         )
-        self.assertRegex(
-            method(controller, "createInputText"),
-            r'inputText\s*\+=\s*"\|h1W1ConfirmationMode="\s*\+\s*'
-            r"getH1W1ConfirmationModeText\(\s*this\.config\.h1W1ConfirmationMode\s*\)\s*;",
-        )
-        saved = re.sub(r"\s+", "", code_only(method(controller, "setDatabaseRun")))
-        self.assertIn("stringinputText=this.createInputText();", saved)
-        self.assertIn("this.databaseRun.inputText=inputText;", saved)
-        self.assertIn("this.databaseRun.inputHash=this.createTextHash(inputText);", saved)
+        self.assertNotIn('"H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"', initialize)
 
-    def test_list_and_legacy_ea_keep_separate_w1_inputs(self):
-        fixtures = (
-            ("Indicators/ZigZagElliotList.mq5", "alertH1W1ConfirmationMode", "alertConfig"),
-            ("Experts/MstngEa.mq5", "InpH1W1ConfirmationMode", "g_eaConfig"),
-        )
-        for path, variable, config_name in fixtures:
+    def test_indicator_callers_have_no_local_mode_overrides(self):
+        for path, config_name in (
+            ("Indicators/ZigZagElliot.mq5", "config"),
+            ("Indicators/ZigZagElliotList.mq5", "alertConfig"),
+        ):
             with self.subTest(path=path):
-                source = code_only((ROOT / path).read_text(encoding="utf-8-sig"))
-                self.assertRegex(
-                    source,
-                    rf"\binput(?:\s*\([^)]*\))?\s+H1W1ConfirmationMode\s+{variable}\s*=\s*"
-                    r"H1_W1_CONFIRMATION_OBSERVE_ONLY\s*;",
-                )
-                self.assertRegex(source, rf"{config_name}\.h1W1ConfirmationMode\s*=\s*{variable}\s*;")
+                source = self.read(path)
+                self.assertNotRegex(code_only(source), r"\bH1(?:DirectionAlignment|W1Confirmation|Ema200Confirmation)Mode\s+\w+\s*=")
+                initialize = code_only(method(source, "OnInit"))
+                self.assertIn(f"{config_name}.applyH1EntryPolicy();", initialize)
+                self.assertNotRegex(initialize, rf"{config_name}\.h1(?:DirectionAlignment|W1Confirmation|Ema200Confirmation)Mode\s*=")
+
+    def test_h1_constructor_and_factory_disallow_legacy_override_arguments(self):
+        strategy = code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3H1.mqh"))
+        compact = re.sub(r"\s+", "", strategy)
+        self.assertIn(
+            "ExpertAdvisorMtf3In3H1(MarketContext&fromMarketContext,boolfromIsDrawArrow=true)"
+            ":ExpertAdvisorMTF_3in3(fromMarketContext,fromIsDrawArrow,"
+            "Mtf3In3H1Policy::getW1ConfirmationMode(),Mtf3In3H1Policy::getDirectionAlignmentMode(),"
+            "Mtf3In3H1Policy::getEma200ConfirmationMode())", compact,
+        )
+        factory = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh")))
+        self.assertIn(
+            "if(fromMarketContext.timeFrame==PERIOD_H1){"
+            "returnnewExpertAdvisorMtf3In3H1(fromMarketContext,fromIsDrawArrow);}", factory,
+        )
+        # The other-timeframe compatibility signature is intentionally retained.
+        for argument in ("fromH1W1ConfirmationMode", "fromH1DirectionAlignmentMode", "fromH1Ema200ConfirmationMode"):
+            self.assertIn(argument, factory)
+
+    def test_h1_w1_diagnostics_use_primary_analysis_not_a_separate_snapshot(self):
+        strategy = self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3H1.mqh")
+        body = code_only(method(strategy, "isTimeFrameHigherConfirmationConditionMatched"))
+        self.assertIn("this.elliotAll.getElliot(PERIOD_W1)", body)
+        self.assertNotIn("getH1W1ConfirmationElliot", body)
+        self.assertIn("elliotW1", body)
+        legacy = code_only(self.read("Include/MstngEa/App/EaController.mqh"))
+        self.assertNotIn("setH1W1ConfirmationElliot", legacy)
+
+    def test_normal_and_list_normalize_before_factory_and_run_record(self):
+        for name in ("Mtf3In3AlertController", "Mtf3In3AlertAllController"):
+            with self.subTest(controller=name):
+                source = self.read(f"Include/Mstng/Indicator/ZigZagElliot/{name}.mqh")
+                # The List file also contains the per-symbol state class.
+                source = source[source.index(f"class {name} {{"):]
+                initialize = code_only(method(source, "initialize"))
+                self.assertLess(initialize.index("this.config = fromConfig;"),
+                                initialize.index("this.config.applyH1EntryPolicy();"))
+                if name == "Mtf3In3AlertController":
+                    self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
+                                    initialize.index("ExpertAdvisorMtf3In3Factory::create("))
+                else:
+                    self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
+                                    initialize.index("state.initialize(info.symbolName, this.config)"))
+                text = method(source, "createInputText")
+                for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):
+                    self.assertRegex(
+                        text, rf'inputText\s*\+=\s*"\|h1{suffix}="\s*\+\s*'
+                        rf"getH1{suffix}Text\(\s*this\.config\.h1{suffix}\s*\)\s*;",
+                    )
+                saved = re.sub(r"\s+", "", code_only(method(source, "setDatabaseRun")))
+                self.assertIn("stringinputText=this.createInputText();", saved)
+                self.assertIn("this.databaseRun.inputText=inputText;", saved)
+                self.assertIn("this.databaseRun.inputHash=this.createTextHash(inputText);", saved)
+
+    def test_legacy_ea_uses_policy_and_expands_only_h1_mtf3_history(self):
+        expert = self.read("Experts/MstngEa.mq5")
+        source = code_only(expert)
+        self.assertNotRegex(source, r"\b(?:input|sinput)\b[^;]*\bInpH1(?:W1|Ema200)ConfirmationMode\b")
+        initialize = re.sub(r"\s+", "", code_only(method(expert, "OnInit")))
+        for suffix in ("W1ConfirmationMode", "Ema200ConfirmationMode"):
+            self.assertIn(f"g_eaConfig.h1{suffix}=Mtf3In3H1Policy::get{suffix}();", initialize)
+        self.assertIn(
+            "if(g_timeFrame==PERIOD_H1&&InpStrategyType==STRATEGY_TYPE_MTF_3IN3){"
+            "g_oscillatorHandlePool.setTimeframesFromMn1To();}else{"
+            "g_oscillatorHandlePool.setTimeframesFromD1To();}", initialize,
+        )
+        controller = self.read("Include/MstngEa/App/EaController.mqh")
+        analysis = re.sub(r"\s+", "", code_only(method(controller, "initializeElliotAll")))
+        self.assertIn(
+            "if(this.eaContext.marketContext.timeFrame==PERIOD_H1"
+            "&&this.eaContext.eaConfig.strategyType==STRATEGY_TYPE_MTF_3IN3){"
+            "elliotAllValue.setAnalysisStartTimeFrame(Mtf3In3H1Policy::getAnalysisStartTimeFrame());}", analysis,
+        )
+        adapter = self.read("Include/MstngEa/Strategy/ExpertAdvisorMtf3In3Adapter.mqh")
+        adapter_init = re.sub(r"\s+", "", code_only(method(adapter, "initialize")))
+        self.assertIn("H1DirectionAlignmentModedirectionAlignmentMode=H1_DIRECTION_ALIGNMENT_D1_TO_H1;", adapter_init)
+        self.assertIn("H1W1ConfirmationModew1ConfirmationMode=fromH1W1ConfirmationMode;", adapter_init)
+        self.assertIn("H1Ema200ConfirmationModeema200ConfirmationMode=fromH1Ema200ConfirmationMode;", adapter_init)
+        self.assertIn(
+            "if(fromMarketContext.timeFrame==PERIOD_H1){"
+            "directionAlignmentMode=Mtf3In3H1Policy::getDirectionAlignmentMode();"
+            "w1ConfirmationMode=Mtf3In3H1Policy::getW1ConfirmationMode();"
+            "ema200ConfirmationMode=Mtf3In3H1Policy::getEma200ConfirmationMode();}", adapter_init,
+        )
 
     def test_shared_observe_mode_keeps_numeric_value_text_and_nonblocking_gate(self):
         mode = (ROOT / "Include/Mstng/ExpertAdvisor/H1W1ConfirmationMode.mqh").read_text(encoding="utf-8-sig")
@@ -477,60 +556,7 @@ class W1ConfigurationWiringTests(unittest.TestCase):
         )
 
 
-class DirectionConfigurationWiringTests(unittest.TestCase):
-    """Source contracts for the normal indicator's fixed primary direction mode."""
-
-    def test_normal_direction_mode_is_constant_and_forwarded_not_input(self):
-        indicator = (ROOT / "Indicators/ZigZagElliot.mq5").read_text(encoding="utf-8-sig")
-        source = code_only(indicator)
-        self.assertRegex(
-            source,
-            r"\bconst\s+H1DirectionAlignmentMode\s+h1DirectionAlignmentMode\s*=\s*"
-            r"H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED\s*;",
-        )
-        self.assertNotRegex(source, r"\b(?:input|sinput)\b[^;]*\bh1DirectionAlignmentMode\s*=")
-        self.assertRegex(
-            code_only(method(indicator, "OnInit")),
-            r"config\.h1DirectionAlignmentMode\s*=\s*h1DirectionAlignmentMode\s*;",
-        )
-        controller = (ROOT / "Include/Mstng/Indicator/ZigZagElliot/Mtf3In3AlertController.mqh").read_text(encoding="utf-8-sig")
-        initialize = re.sub(r"\s+", "", code_only(method(controller, "initialize")))
-        self.assertIn("this.config=fromConfig;", initialize)
-        self.assertIn(
-            "ExpertAdvisorMtf3In3Factory::create(this.marketContext,true,this.config.h1W1ConfirmationMode,"
-            "this.config.h1DirectionAlignmentMode,this.config.h1Ema200ConfirmationMode)",
-            initialize,
-        )
-
-    def test_fixed_direction_mode_still_reaches_run_text_and_hash(self):
-        controller = (ROOT / "Include/Mstng/Indicator/ZigZagElliot/Mtf3In3AlertController.mqh").read_text(encoding="utf-8-sig")
-        self.assertRegex(
-            method(controller, "createInputText"),
-            r'inputText\s*\+=\s*"\|h1DirectionAlignmentMode="\s*\+\s*'
-            r"getH1DirectionAlignmentModeText\(\s*this\.config\.h1DirectionAlignmentMode\s*\)\s*;",
-        )
-        saved = re.sub(r"\s+", "", code_only(method(controller, "setDatabaseRun")))
-        self.assertIn("stringinputText=this.createInputText();", saved)
-        self.assertIn("this.databaseRun.inputText=inputText;", saved)
-        self.assertIn("this.databaseRun.inputHash=this.createTextHash(inputText);", saved)
-        mode = (ROOT / "Include/Mstng/ExpertAdvisor/H1DirectionAlignmentMode.mqh").read_text(encoding="utf-8-sig")
-        self.assertRegex(
-            method(mode, "getH1DirectionAlignmentModeText"),
-            r"if\s*\(fromMode\s*==\s*H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED\)"
-            r'\s*\{\s*return "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED";',
-        )
-
-    def test_list_keeps_separate_direction_input_and_shared_enum_values(self):
-        indicator = (ROOT / "Indicators/ZigZagElliotList.mq5").read_text(encoding="utf-8-sig")
-        self.assertRegex(
-            code_only(indicator),
-            r"\binput(?:\s*\([^)]*\))?\s+H1DirectionAlignmentMode\s+alertH1DirectionAlignmentMode\s*=\s*"
-            r"H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED\s*;",
-        )
-        self.assertRegex(
-            code_only(method(indicator, "OnInit")),
-            r"alertConfig\.h1DirectionAlignmentMode\s*=\s*alertH1DirectionAlignmentMode\s*;",
-        )
+    def test_shared_direction_enum_values_and_canonical_suffix_are_preserved(self):
         mode = (ROOT / "Include/Mstng/ExpertAdvisor/H1DirectionAlignmentMode.mqh").read_text(encoding="utf-8-sig")
         self.assertEqual(
             re.findall(r"\b(H1_DIRECTION_ALIGNMENT_\w+)\s*=\s*(\d+)\b", code_only(mode)),
@@ -540,6 +566,11 @@ class DirectionConfigurationWiringTests(unittest.TestCase):
                 ("H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED", "2"),
                 ("H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED", "3"),
             ],
+        )
+        self.assertRegex(
+            method(mode, "getH1DirectionAlignmentModeText"),
+            r"if\s*\(fromMode\s*==\s*H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED\)"
+            r'\s*\{\s*return "W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED";',
         )
 
 

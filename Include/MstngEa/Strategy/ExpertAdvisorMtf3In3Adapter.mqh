@@ -17,6 +17,7 @@
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <MstngEa\Strategy\IStrategyAdapter.mqh>
 
@@ -198,13 +199,23 @@ private:
         H1W1ConfirmationMode fromH1W1ConfirmationMode,
         H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode
     ) {
+        H1DirectionAlignmentMode directionAlignmentMode = H1_DIRECTION_ALIGNMENT_D1_TO_H1;
+        H1W1ConfirmationMode w1ConfirmationMode = fromH1W1ConfirmationMode;
+        H1Ema200ConfirmationMode ema200ConfirmationMode = fromH1Ema200ConfirmationMode;
+
+        if (fromMarketContext.timeFrame == PERIOD_H1) {
+            directionAlignmentMode = Mtf3In3H1Policy::getDirectionAlignmentMode();
+            w1ConfirmationMode = Mtf3In3H1Policy::getW1ConfirmationMode();
+            ema200ConfirmationMode = Mtf3In3H1Policy::getEma200ConfirmationMode();
+        }
+
         // 外部戦略を生成
         this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
             fromMarketContext,
             false,
-            fromH1W1ConfirmationMode,
-            H1_DIRECTION_ALIGNMENT_D1_TO_H1,
-            fromH1Ema200ConfirmationMode
+            w1ConfirmationMode,
+            directionAlignmentMode,
+            ema200ConfirmationMode
         );
         this.signalCount = fromSignalCount;
         this.elliottInfoText = "-";

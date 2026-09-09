@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.36"
+#property version   "1.37"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -42,18 +42,6 @@ input group "03. H1エントリー追加条件"
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
 input(name="H1表示波の回数制限")
 bool h1DisplayWaveEntryLimitEnabled = false;
-
-/** H1のW1追加確認は診断のみとし、主条件以外のW1制限を追加しない。 */
-const H1W1ConfirmationMode h1W1ConfirmationMode =
-    H1_W1_CONFIRMATION_OBSERVE_ONLY;
-
-/** H1エントリーのEMA200確認はH1・H4・D1の3足一致必須に固定する。 */
-const H1Ema200ConfirmationMode h1Ema200ConfirmationMode =
-    H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED;
-
-/** H1方向一致はW1～H1一致と、MN1またはW1 EMA200の同方向一致に固定する。 */
-const H1DirectionAlignmentMode h1DirectionAlignmentMode =
-    H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
 
 input group "04. 通貨強弱"
 
@@ -128,8 +116,7 @@ int OnInit() {
         mtf3In3AlertDatabaseUseCommonFolder;
     config.h1DisplayWaveEntryLimitEnabled =
         h1DisplayWaveEntryLimitEnabled;
-    config.h1W1ConfirmationMode = h1W1ConfirmationMode;
-    config.h1Ema200ConfirmationMode = h1Ema200ConfirmationMode;
+    config.applyH1EntryPolicy();
     config.currencyStrengthEnabled = currencyStrengthEnabled;
     config.currencyStrengthEntryFilterEnabled =
         currencyStrengthEntryFilterEnabled;
@@ -148,7 +135,6 @@ int OnInit() {
         currencyStrengthDatabaseSplitByYear;
     config.currencyStrengthDatabaseUseCommonFolder =
         currencyStrengthDatabaseUseCommonFolder;
-    config.h1DirectionAlignmentMode = h1DirectionAlignmentMode;
     config.elliotHigherTimeFrameDisplayCount =
         elliotHigherTimeFrameDisplayCount;
     MarketContext marketContext(_Symbol, _Period);

@@ -5,10 +5,10 @@
 | 項目 | 内容 |
 |---|---|
 | 対象EA | `Experts/MstngEa.mq5` |
-| 対象バージョン | `1.08` |
+| 対象バージョン | `1.09` |
 | 対象プラットフォーム | MetaTrader 5 |
 | 既定戦略 | `STRATEGY_TYPE_MTF_3IN3` |
-| 最終更新日 | 2026-09-06 |
+| 最終更新日 | 2026-09-09 |
 
 本書は、現行コードを正本として、`MstngEa`の初期化、判定タイミング、エントリー、発注、決済、利益戻し状態の永続化、画面表示およびログ出力をまとめた仕様書です。
 
@@ -38,7 +38,7 @@
 `OnInit()`で次を初期化します。
 
 - 現在のシンボルと時間足
-- D1以下のOscillatorハンドルプール
+- H1・`MTF_3in3`ではMN1～H1、それ以外では従来どおりD1以下のOscillatorハンドルプール
 - シグナル回数管理
 - EA設定とMagic Number
 - 戦略Adapter
@@ -71,16 +71,17 @@
 
 新規バーでは次の順に処理します。
 
-1. 現在時間足までの`ElliotAll`を分析する
-2. H1・`MTF_3in3`の場合はW1確認専用スナップショットを取得する
-3. 任意の通貨強弱実行情報を読み込む
-4. 既存ポジションの戦略決済を判定する。`ZIGZAG_TRAIL_ONLY`では判定結果を決済に使用しない
-5. 決済後のポジションを再取得する
-6. `ZIGZAG_TRAIL_ONLY`では、保有中ならH1 ZigZagトレイル候補を判定する
-7. ZigZag候補跨ぎによる成行決済を開始していなければエントリーを判定する
-8. 注文後のポジションと利益戻し状態を更新する
-9. 必要なら同一M5内の通貨強弱DB待ちを予約する
-10. ステータスとElliott情報を更新する
+1. 現在時間足までの`ElliotAll`を分析する。H1・`MTF_3in3`ではMN1から開始し、本解析のW1を方向判定とW1診断で共用する
+2. 任意の通貨強弱実行情報を読み込む
+3. 既存ポジションの戦略決済を判定する。`ZIGZAG_TRAIL_ONLY`では判定結果を決済に使用しない
+4. 決済後のポジションを再取得する
+5. `ZIGZAG_TRAIL_ONLY`では、保有中ならH1 ZigZagトレイル候補を判定する
+6. ZigZag候補跨ぎによる成行決済を開始していなければエントリーを判定する
+7. 注文後のポジションと利益戻し状態を更新する
+8. 必要なら同一M5内の通貨強弱DB待ちを予約する
+9. ステータスとElliott情報を更新する
+
+H1・`MTF_3in3`はMN1・W1の履歴も必要です。履歴不足や指標取得失敗で全時間足分析が完成しなければ、エントリーしません。同じH1内に分析を再試行する機能は追加せず、次の新規H1バーで再評価します。起動直後の処理、シグナル回数、毎ティックのポジション管理、決済順序は変更しません。親子解析の開始足をD1からMN1へ変更するため、H1・H4の波動判定結果やZigZagに基づくSL価格は以前と変わる可能性があります。
 
 `LEGACY`では、戦略決済後に完全なエントリー条件が成立していれば、同じ新規バーで反対方向を含む新規エントリーが成立する可能性があります。`ZIGZAG_TRAIL_ONLY`で候補跨ぎによる成行決済を開始したバーはエントリー判定を行わず、同じバーでは再エントリーしません。
 
@@ -91,7 +92,7 @@
 
 ## 4. 入力パラメータ
 
-実運用の既定値は`EaConfig`のコンストラクタではなく、`Experts/MstngEa.mq5`のinput値です。
+実運用の入力値は`Experts/MstngEa.mq5`のinput値です。H1・`MTF_3in3`の方向・W1診断・EMA200設定だけは共通`Mtf3In3H1Policy`に固定します。
 
 | 入力値 | 既定値 | 内容 |
 |---|---:|---|
@@ -115,10 +116,10 @@
 | `InpH1DisplayWaveEntryLimitEnabled` | `false` | M5で同一H1表示波への重複エントリーを制限 |
 | `InpH1PositionManagementMode` | `H1_POSITION_MANAGEMENT_LEGACY` | H1ポジションの決済管理モード |
 | `InpH1ZigZagTrailBufferPips` | `5.0` | H1 ZigZag基準点からSLを離すpips |
-| `InpH1W1ConfirmationMode` | `OBSERVE_ONLY` | H1エントリーのW1確認モード |
-| `InpH1Ema200ConfirmationMode` | `H1_AND_H4_AND_D1_REQUIRED` | H1エントリーのEMA200方向確認モード |
 
-初期化時に明示検証するのは、H1ポジション管理モード、W1確認モード、H1 EMA200確認モード、通貨強弱DBファイル名、通貨強弱更新秒、票ウェイト方式、およびTesterでのCommonフォルダ使用です。`ZIGZAG_TRAIL_ONLY`はH1・`STRATEGY_TYPE_MTF_3IN3`だけを許可し、バッファーが0未満の場合も初期化を拒否します。`InpStrategyType`の無効値は明示検証されず、戦略Factoryが`NULL`を返した後に実行時の必須依存チェックで処理を停止します。
+v1.09では`InpH1W1ConfirmationMode`と`InpH1Ema200ConfirmationMode`をinputから削除しました。保存済みset／チャートの旧値では固定方針を変更できません。W1診断は`OBSERVE_ONLY`、EMA200は`H1_AND_H4_AND_D1_REQUIRED`です。
+
+初期化時に明示検証するのは、H1ポジション管理モード、通貨強弱DBファイル名、通貨強弱更新秒、票ウェイト方式、およびTesterでのCommonフォルダ使用です。`ZIGZAG_TRAIL_ONLY`はH1・`STRATEGY_TYPE_MTF_3IN3`だけを許可し、バッファーが0未満の場合も初期化を拒否します。`InpStrategyType`の無効値は明示検証されず、戦略Factoryが`NULL`を返した後に実行時の必須依存チェックで処理を停止します。
 
 ロット、パネル更新間隔、R倍率、戻し率には専用の入力範囲検証がありません。例えば0以下のロットは入力時に拒否されず、発注時のロット正規化で最小ロットになる可能性があります。
 
@@ -176,15 +177,17 @@ H1の新規バーで、自EAポジションがない場合に次をすべて満�
 2. 通貨強弱フィルタが有効なら、対象M5データを取得でき、方向が一致する
 3. スプレッドが5 pips以下
 4. H1のBUY/SELL方向とH1最新Wave方向が一致する
-5. H1、H4、D1のBUY/SELL方向が一致する
+5. H1、H4、D1、W1のBUY/SELL方向が一致し、MN1方向またはW1 EMA200方向の少なくとも片方が同方向
 6. H1とH4の最新Elliott波動が`1`、`3`、または短い3波の後の`5`
 7. H1 GMMA trend countがBUYなら`+2`以上、SELLなら`-2`以下
 8. H1 GMMA cross countがBUYなら`+2`以上、SELLなら`-2`以下
-9. 選択したEMA200確認モードを満たす（初期値はH1・H4・D1すべてがエントリー方向と一致）
-10. 選択したW1確認モードのゲートを通過する
+9. H1・H4・D1のEMA200がすべてエントリー方向と一致する
+10. 本解析W1による確認結果を記録する（`OBSERVE_ONLY`固定で、追加の制限はしない）
 11. 同一シグナルの対象回数と一致する。通常は初回の1回だけ
 
 同一シグナルは、H1の2番目に新しいZigZagポイント時刻と売買方向で識別します。候補成立時に回数を加算するため、ブローカーが注文を拒否しても同一シグナルを自動再発注しません。この回数とM5のH1表示波使用済み情報はメモリ内だけで、EA再起動後には引き継ぎません。
+
+方向条件は共通`W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`です。必要な時間足が取得不能・不正、または方向条件不一致ならシグナル回数を加算する前に拒否します。通常`ZigZagElliot`、一覧Alert、`MstngH1Ea`と同じ共通方針を使用しますが、各プログラムの評価時刻・回数状態・通貨強弱設定・発注条件まで同一にする変更ではありません。M5・M15と他戦略の分析範囲・条件は変更しません。
 
 H1とH4の第1波・第3波はそのまま対象とします。第5波は、同じ推進Wave内に数字の第3波が存在し、その第3波に副次波番号・副次波ラベルが設定されていない場合だけ対象とします。この条件では「第3波に副次波がない」ことを短い3波の判定として使用します。形成中・確定済みの違いは、この波動条件では制限しません。
 
@@ -198,15 +201,7 @@ BUYは次の3条件をすべて満たす場合です。
 
 SELLは上下・符号を反転した3条件です。いずれにも該当しない場合は`NONE`です。
 
-EMA200方向確認モードは次のとおりです。
-
-| モード | エントリーゲート |
-|---|---|
-| `H1_ONLY` | H1 EMA200方向だけをエントリー方向と照合する |
-| `H1_AND_H4_REQUIRED` | H1とH4のEMA200方向が両方ともエントリー方向と一致することを要求する |
-| `H1_AND_H4_AND_D1_REQUIRED` | H1・H4・D1のEMA200方向がすべてエントリー方向と一致することを要求する |
-
-MstngEa v1.08の既定値は`H1_AND_H4_AND_D1_REQUIRED`で、D1も必須になります。対象足のNONE・両方向成立・方向不一致・取得不能・時間足不整合は拒否します。従来の2モードも選択でき、既存チャートやsetファイルの設定を使う場合は明示的に新モードを選択してください。EMA200以外の方向条件、評価周期、M5・M15および他戦略は変更しません。
+MstngEa v1.09では`H1_AND_H4_AND_D1_REQUIRED`に固定し、H1・H4・D1すべてのEMA200方向一致を必須にします。対象足のNONE・両方向成立・方向不一致・取得不能・時間足不整合は拒否します。共通判定クラスは従来の2モードも保持しますが、このEAのH1・`MTF_3in3`では選択できません。
 
 `abs(Close[1] - H1 EMA200[1])`と50.0 pips上限の比較結果は診断用に記録しますが、現行H1のエントリー可否は制限しません。H4・D1のEMA200距離は判定しません。
 
@@ -217,7 +212,6 @@ MstngEa v1.08の既定値は`H1_AND_H4_AND_D1_REQUIRED`で、D1も必須にな�
 - H1最新ZigZagポイントの確定・未確定
 - H1構造ランク`S`、`A`、`B`、`C`、`EXCEPTION`
 - 構造表示の`LATE`、`DIR`
-- D1 EMA200方向（`H1_AND_H4_AND_D1_REQUIRED`以外）
 - `Close[1]`とH1 EMA200[1]の絶対距離
 - H4のCloseとEMA200の距離
 
@@ -227,25 +221,18 @@ MstngEa v1.08の既定値は`H1_AND_H4_AND_D1_REQUIRED`で、D1も必須にな�
 
 ### 8.1 確認対象
 
-W1確認は、D1以下の親子Elliott解析へW1を混入させず、W1のOscillatorだけを独立して更新します。
+W1確認は、MN1～H1の本解析に含まれるW1を使用します。独立したW1確認専用スナップショットは取得しません。方向条件と診断結果で同じW1を参照します。
 
 - W1方向：形成中W1バーの短・中・長Stochastic 3本の多数決
 - W1 EMA200：確定足の終値位置、EMA200傾き、上昇・下降優勢の複合判定
 
 W1方向はElliott Waveの上昇・下降方向ではありません。
 
-### 8.2 モード
+### 8.2 固定モードと方向ゲートの違い
 
-| モード | エントリーゲート | 診断結果`isPassed` |
-|---|---|---|
-| `OFF` | W1確認を行わず通過 | `true` |
-| `OBSERVE_ONLY` | 常に通過 | OR条件の結果を記録 |
-| `DIRECTION_OR_EMA200` | W1方向またはW1 EMA200方向のどちらか一致 | OR条件 |
-| `DIRECTION_AND_EMA200` | W1方向とW1 EMA200方向の両方が一致 | AND条件 |
+W1追加確認は`OBSERVE_ONLY`固定で、W1方向またはW1 EMA200方向が一致するかを診断として記録するだけです。ただし、別の共通方向ゲートがW1～H1一致と「MN1またはW1 EMA200」を必須にするため、W1分析の取得不能・不正値やW1方向不一致でエントリーできるという意味ではありません。方向ゲートを通過しなければ初回シグナル回数も消費しません。
 
-既定の`OBSERVE_ONLY`は記録専用であり、W1不一致、取得不能、不正値でもH1エントリーを制限しません。
-
-強制モードではW1取得不能または不正値をfail-closedで拒否します。W1確認は同一シグナル回数を加算する前に実行するため、不一致の判定だけで初回シグナル回数を消費しません。
+旧`OFF`／`DIRECTION_OR_EMA200`／`DIRECTION_AND_EMA200`は共通クラスの互換値として残りますが、このEAのinputでは選択できません。
 
 ### 8.3 診断状態
 
@@ -538,6 +525,8 @@ volume,price,position_ticket,deal_ticket,profit,reason,entry_csv_text
 
 `profit`はEA成行決済では発注直前の`POSITION_PROFIT`です。broker約定後の手数料、swap、feeを含む確定net損益とは限りません。
 
+H1・`MTF_3in3`の`entry_csv_text`には、MN1・W1を含む分析CSVを引用済みの1フィールドとして保存します。取引CSV／決済CSVの外側15列と検証CSVの80列は変更しません。`ElliotAllFile`の複数足列数契約はこのEAの保存経路では使用しません。
+
 ### 14.4 `MTF_3in3`検証CSV
 
 `InpMtf3In3AlertCsvEnabled = true`の場合、`isAlert = true`の候補を80列の検証CSVへ保存します。V4でH1方向一致診断8列を追加しています。
@@ -594,6 +583,7 @@ Strategy Testerの最適化中は複数Agentの同時書込を避けるため出
 | D1方向一致戦略 | [ExpertAdvisorMTF_3in3_BuySellD1.mqh](../../Include/Mstng/ExpertAdvisor/ExpertAdvisorMTF_3in3_BuySellD1.mqh) |
 | Oscillator `±3`戦略 | [ExpertAdvisorMTF_BuySellCount3.mqh](../../Include/Mstng/ExpertAdvisor/ExpertAdvisorMTF_BuySellCount3.mqh) |
 | W1確認判定 | [H1W1ConfirmationDecision.mqh](../../Include/Mstng/ExpertAdvisor/H1W1ConfirmationDecision.mqh) |
+| 共通H1固定方針 | [Mtf3In3H1Policy.mqh](../../Include/Mstng/ExpertAdvisor/Mtf3In3H1Policy.mqh) |
 | H1ポジション管理モード | [H1PositionManagementMode.mqh](../../Include/MstngEa/Config/H1PositionManagementMode.mqh) |
 | H1 ZigZagトレイル判定 | [H1ZigZagTrailDecision.mqh](../../Include/MstngEa/Strategy/H1ZigZagTrailDecision.mqh) |
 | 共通エントリー・決済判定 | [AbstractExpertAdvisor.mqh](../../Include/Mstng/ExpertAdvisor/AbstractExpertAdvisor.mqh) |

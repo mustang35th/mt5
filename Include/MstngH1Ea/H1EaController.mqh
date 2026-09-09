@@ -2,6 +2,7 @@
 #define MSTNGH1EA_CONTROLLER_MQH
 
 #include <Mstng\Database\Service\H1EaPersistenceService.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <MstngH1Ea\Config\H1EaConfig.mqh>
 #include <MstngH1Ea\Runtime\H1EaClock.mqh>
 #include <MstngH1Ea\Runtime\H1EaDecisionBuilder.mqh>
@@ -664,7 +665,10 @@ private:
         fromDecision.createdAt = TimeLocal();
         fromDecision.maxInitialRiskPips = this.config.maxInitialStopLossPips;
         fromDecision.h1DirectionAlignmentMode =
-            "H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED";
+            "H1_DIRECTION_ALIGNMENT_"
+            + getH1DirectionAlignmentModeText(
+                Mtf3In3H1Policy::getDirectionAlignmentMode()
+            );
     }
 
     /**

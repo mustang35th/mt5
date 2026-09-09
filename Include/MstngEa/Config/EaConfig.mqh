@@ -13,6 +13,7 @@
 
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <MstngEa\Config\H1PositionManagementMode.mqh>
 #include <MstngEa\Config\StrategyType.mqh>
 
@@ -66,10 +67,10 @@ public:
     /** H1 ZigZagトレイルのSLバッファー（pips）。 */
     double h1ZigZagTrailBufferPips;
 
-    /** H1エントリーで使用するW1確認モード。 */
+    /** H1エントリー共通方針のW1診断モード。 */
     H1W1ConfirmationMode h1W1ConfirmationMode;
 
-    /** H1エントリーで使用するEMA200確認モード。 */
+    /** H1エントリー共通方針のEMA200確認モード。 */
     H1Ema200ConfirmationMode h1Ema200ConfirmationMode;
 
     /**
@@ -92,9 +93,9 @@ public:
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.h1PositionManagementMode = H1_POSITION_MANAGEMENT_LEGACY;
         this.h1ZigZagTrailBufferPips = 5.0;
-        this.h1W1ConfirmationMode = H1_W1_CONFIRMATION_OBSERVE_ONLY;
+        this.h1W1ConfirmationMode = Mtf3In3H1Policy::getW1ConfirmationMode();
         this.h1Ema200ConfirmationMode =
-            H1_EMA200_CONFIRMATION_H1_ONLY;
+            Mtf3In3H1Policy::getEma200ConfirmationMode();
     }
 };
 

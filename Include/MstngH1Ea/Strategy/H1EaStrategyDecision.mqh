@@ -5,6 +5,7 @@
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1EntryWaveDecision.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <MstngH1Ea\Strategy\H1EaStrategySnapshot.mqh>
 
 /**
@@ -115,12 +116,12 @@ public:
         H1DirectionAlignmentDecision alignmentDecision;
         H1DirectionAlignmentResult alignmentResult;
         fromSnapshot.isH1DirectionAlignmentPassed = alignmentDecision.evaluate(
-            H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
+            Mtf3In3H1Policy::getDirectionAlignmentMode(),
             fromElliotAll, alignmentResult
         );
         H1Ema200ConfirmationDecision ema200Decision;
         fromSnapshot.isEma200ConfirmationPassed = ema200Decision.evaluate(
-            H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED,
+            Mtf3In3H1Policy::getEma200ConfirmationMode(),
             fromSnapshot.isBuy, elliotH1, elliotH4, elliotD1
         );
         fromSnapshot.analysisSnapshotText = StringFormat(
@@ -188,9 +189,9 @@ public:
         }
 
         ExpertAdvisorMTF_3in3 *strategy = ExpertAdvisorMtf3In3Factory::create(
-            context, false, H1_W1_CONFIRMATION_OBSERVE_ONLY,
-            H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED,
-            H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED
+            context, false, Mtf3In3H1Policy::getW1ConfirmationMode(),
+            Mtf3In3H1Policy::getDirectionAlignmentMode(),
+            Mtf3In3H1Policy::getEma200ConfirmationMode()
         );
 
         if (strategy == NULL) {

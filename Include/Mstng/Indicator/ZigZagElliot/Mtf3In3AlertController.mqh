@@ -64,6 +64,9 @@ public:
 
         this.marketContext = fromMarketContext;
         this.config = fromConfig;
+        if (this.marketContext.timeFrame == PERIOD_H1) {
+            this.config.applyH1EntryPolicy();
+        }
         this.alertCsvEnabled = fromConfig.mtf3In3AlertCsvEnabled;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
@@ -322,7 +325,7 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.36";
+        this.databaseRun.programVersion = "1.37";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         this.databaseRun.analysisVersion =

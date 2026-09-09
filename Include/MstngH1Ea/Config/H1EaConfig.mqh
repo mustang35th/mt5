@@ -3,6 +3,10 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+#include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
+#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
+#include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <MstngEa\Trade\MagicNumberUtil.mqh>
 #include <MstngH1Ea\Runtime\H1EaTextUtil.mqh>
 
@@ -132,12 +136,19 @@ public:
      * DBへ保存する実行設定を固定順序・固定桁数で返す。
      */
     string createCanonicalText() const {
+        string analysisStartTimeFrame = EnumToString(Mtf3In3H1Policy::getAnalysisStartTimeFrame());
+        StringReplace(analysisStartTimeFrame, "PERIOD_", "");
+
         return "H1_EA_CONFIG_V1|LOT_SIZE=" + DoubleToString(this.lotSize, 8)
             + "|MAX_INITIAL_SL_PIPS=" + DoubleToString(this.maxInitialStopLossPips, 1)
-            + "|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1"
-            + "|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"
-            + "|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_OBSERVE_ONLY"
-            + "|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED"
+            + "|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME="
+            + analysisStartTimeFrame
+            + "|H1_DIRECTION_ALIGNMENT_MODE=H1_DIRECTION_ALIGNMENT_"
+            + getH1DirectionAlignmentModeText(Mtf3In3H1Policy::getDirectionAlignmentMode())
+            + "|H1_W1_CONFIRMATION_MODE=H1_W1_CONFIRMATION_"
+            + getH1W1ConfirmationModeText(Mtf3In3H1Policy::getW1ConfirmationMode())
+            + "|H1_EMA200_CONFIRMATION_MODE=H1_EMA200_CONFIRMATION_"
+            + getH1Ema200ConfirmationModeText(Mtf3In3H1Policy::getEma200ConfirmationMode())
             + "|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0"
             + "|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30"
             + "|TESTER_EVALUATION_TRIGGER=TICK"
@@ -158,7 +169,7 @@ public:
     /**
      * プログラム世代を返す。
      */
-    static string getProgramVersion() { return "1.07"; }
+    static string getProgramVersion() { return "1.08"; }
 
     /**
      * Entry互換条件とトレイルを含む戦略世代を返す。

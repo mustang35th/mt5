@@ -10,14 +10,13 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.08"
+#property version   "1.09"
 
 #property strict
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthExecutionInfoProvider.mqh>
-#include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
-#include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
@@ -108,18 +107,7 @@ input group "06. M5エントリー条件（MTF_3in3）"
 input(name="同一H1表示波は1回まで")
 bool InpH1DisplayWaveEntryLimitEnabled = false;
 
-input group "07. H1エントリー条件（MTF_3in3）"
-
-/** H1エントリーで使用するW1確認モード。 */
-input(name="W1確認") H1W1ConfirmationMode InpH1W1ConfirmationMode =
-    H1_W1_CONFIRMATION_OBSERVE_ONLY;
-
-/** H1エントリーで使用するEMA200確認モード。 */
-input(name="EMA200確認")
-H1Ema200ConfirmationMode InpH1Ema200ConfirmationMode =
-    H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED;
-
-input group "08. H1ポジション管理（H1 MTF_3in3）"
+input group "07. H1ポジション管理（H1 MTF_3in3）"
 
 /** H1ポジションの決済管理モード。 */
 input(name="H1ポジション管理")
@@ -186,20 +174,6 @@ int OnInit() {
         return INIT_PARAMETERS_INCORRECT;
     }
 
-    if (!isH1W1ConfirmationModeValid(InpH1W1ConfirmationMode)) {
-        Print("MstngEa H1 W1 confirmation mode is invalid");
-
-        return INIT_PARAMETERS_INCORRECT;
-    }
-
-    if (!isH1Ema200ConfirmationModeValid(
-            InpH1Ema200ConfirmationMode
-    )) {
-        Print("MstngEa H1 EMA200 confirmation mode is invalid");
-
-        return INIT_PARAMETERS_INCORRECT;
-    }
-
     if (InpUseCurrencyStrength
             && InpCurrencyStrengthDatabaseFileName == "") {
         Print("MstngEa requires currency strength database file name");
@@ -237,7 +211,12 @@ int OnInit() {
 
     // 共有オブジェクトを生成
     g_oscillatorHandlePool = new OscillatorHandlePool(g_marketContext);
-    g_oscillatorHandlePool.setTimeframesFromD1To();
+
+    if (g_timeFrame == PERIOD_H1 && InpStrategyType == STRATEGY_TYPE_MTF_3IN3) {
+        g_oscillatorHandlePool.setTimeframesFromMn1To();
+    } else {
+        g_oscillatorHandlePool.setTimeframesFromD1To();
+    }
 
     g_signalCount = new SignalCount(g_marketContext);
     g_eaConfig = new EaConfig();
@@ -255,9 +234,9 @@ int OnInit() {
         InpH1DisplayWaveEntryLimitEnabled;
     g_eaConfig.h1PositionManagementMode = InpH1PositionManagementMode;
     g_eaConfig.h1ZigZagTrailBufferPips = InpH1ZigZagTrailBufferPips;
-    g_eaConfig.h1W1ConfirmationMode = InpH1W1ConfirmationMode;
+    g_eaConfig.h1W1ConfirmationMode = Mtf3In3H1Policy::getW1ConfirmationMode();
     g_eaConfig.h1Ema200ConfirmationMode =
-        InpH1Ema200ConfirmationMode;
+        Mtf3In3H1Policy::getEma200ConfirmationMode();
 
     if (g_eaConfig.h1PositionManagementMode
             == H1_POSITION_MANAGEMENT_ZIGZAG_TRAIL_ONLY) {

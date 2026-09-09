@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.33"
+#property version   "1.34"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -106,20 +106,6 @@ input group "05. Alertエントリー条件（DB有効時のみ）"
 /** Alert判定でH1表示波ごとのエントリー回数制限を使用する場合true。 */
 input(name="H1表示波の回数制限")
 bool alertH1DisplayWaveEntryLimitEnabled = false;
-
-/** Alert判定で使用するH1 W1確認モード。 */
-input(name="Alert W1確認") H1W1ConfirmationMode alertH1W1ConfirmationMode =
-    H1_W1_CONFIRMATION_OBSERVE_ONLY;
-
-/** Alert判定で使用するH1方向一致モード。 */
-input(name="Alert方向一致")
-H1DirectionAlignmentMode alertH1DirectionAlignmentMode =
-    H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
-
-/** Alert判定で使用するH1 EMA200確認モード。 */
-input(name="Alert EMA200確認")
-H1Ema200ConfirmationMode alertH1Ema200ConfirmationMode =
-    H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED;
 
 /** 描画専用インジケーターの非表示バッファ。 */
 double gHiddenBuffer[];
@@ -328,12 +314,7 @@ int OnInit() {
         mtf3In3AlertDatabaseUseCommonFolder;
     alertConfig.h1DisplayWaveEntryLimitEnabled =
         alertH1DisplayWaveEntryLimitEnabled;
-    alertConfig.h1W1ConfirmationMode =
-        alertH1W1ConfirmationMode;
-    alertConfig.h1DirectionAlignmentMode =
-        alertH1DirectionAlignmentMode;
-    alertConfig.h1Ema200ConfirmationMode =
-        alertH1Ema200ConfirmationMode;
+    alertConfig.applyH1EntryPolicy();
     alertConfig.currencyStrengthEnabled = false;
     alertConfig.currencyStrengthEntryFilterEnabled = false;
     alertConfig.currencyStrengthRankVisible = false;

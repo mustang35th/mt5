@@ -15,16 +15,15 @@
 #include <Mstng\ExpertAdvisor\H1EntryWaveDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 
 /**
  * H1を現在足としてMTF_3in3エントリーを判定する。
  *
  * D1とH4は売買方向の一致確認に使用し、H1とH4の第1波/3波、
  * または第3波に副次波がない有効な第5波をエントリー対象とする。
- * H1 EMA200は常にH1方向を確認し、
- * H1_AND_H4_REQUIREDではH4 EMA200も同方向を要求する。
- * H1_AND_H4_AND_D1_REQUIREDではH4とD1 EMA200も同方向を要求する。
- * 選択した方向一致モードではW1 EMA200も判定に使用する。
+ * 方向一致、W1追加診断およびEMA200確認はMtf3In3H1Policyの固定設定を使い、
+ * 呼び出し元の設定によってH1条件を上書きしない。
  * H1の最新ZigZagポイントは確定・未確定を問わず、
  * エントリー成立時はメール送信対象とする。
  */
@@ -35,25 +34,16 @@ public:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
-     * @param fromH1W1ConfirmationMode H1エントリーのW1確認モード。
-     * @param fromH1DirectionAlignmentMode H1エントリーの方向一致モード。
-     * @param fromH1Ema200ConfirmationMode H1エントリーのEMA200確認モード。
      */
     ExpertAdvisorMtf3In3H1(
         MarketContext &fromMarketContext,
-        bool fromIsDrawArrow = true,
-        H1W1ConfirmationMode fromH1W1ConfirmationMode =
-            H1_W1_CONFIRMATION_OBSERVE_ONLY,
-        H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
-            H1_DIRECTION_ALIGNMENT_D1_TO_H1,
-        H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
-            H1_EMA200_CONFIRMATION_H1_ONLY
+        bool fromIsDrawArrow = true
     ) : ExpertAdvisorMTF_3in3(
         fromMarketContext,
         fromIsDrawArrow,
-        fromH1W1ConfirmationMode,
-        fromH1DirectionAlignmentMode,
-        fromH1Ema200ConfirmationMode
+        Mtf3In3H1Policy::getW1ConfirmationMode(),
+        Mtf3In3H1Policy::getDirectionAlignmentMode(),
+        Mtf3In3H1Policy::getEma200ConfirmationMode()
     ) {
     }
 
@@ -70,10 +60,9 @@ protected:
     /**
      * H1を基準に上位時間足のElliott売買方向を照合する。
      *
-     * OBSERVEでは診断結果だけを保持し、REQUIREDでは取得不能、
-     * 不正値または選択モードの方向条件不一致をエントリーから除外する。
+     * 共通ポリシーの方向条件を使い、取得不能、不正値および不一致を除外する。
      *
-     * @return 選択されたH1方向一致モードのゲートを通過する場合true。
+     * @return 共通H1方向一致条件を通過する場合true。
      */
     virtual bool isTimeFrameDirectionAlignmentConditionMatched() override {
         if (this.marketContext.timeFrame != PERIOD_H1) {
@@ -120,9 +109,9 @@ protected:
     }
 
     /**
-     * 選択モードに従いH1、H4およびD1のEMA200方向を判定する。
+     * 共通ポリシーに従いH1、H4およびD1のEMA200方向を判定する。
      *
-     * @return 選択モードのEMA200方向条件を満たす場合true。
+     * @return 共通EMA200方向条件を満たす場合true。
      */
     virtual bool isTimeFrameEma200ConditionMatched() override {
         if (this.marketContext.timeFrame != PERIOD_H1) {
@@ -143,10 +132,10 @@ protected:
     /**
      * W1方向とW1 EMA200方向をH1エントリー方向と照合する。
      *
-     * OBSERVE_ONLYではOR条件の診断結果を保持しつつ、エントリー判定は
-     * 制限しない。強制モードではW1取得不能または不正値を拒否する。
+     * 主条件と同じW1分析結果から診断を記録する。共通ポリシーの
+     * OBSERVE_ONLYを使用し、追加確認によるエントリー制限は行わない。
      *
-     * @return 選択されたW1確認モードのゲートを通過する場合true。
+     * @return W1診断後にエントリー判定を継続する場合true。
      */
     virtual bool isTimeFrameHigherConfirmationConditionMatched() override {
         if (this.marketContext.timeFrame != PERIOD_H1) {
@@ -156,12 +145,7 @@ protected:
         }
 
         H1W1ConfirmationDecision decision;
-        Elliot *elliotW1 =
-            this.elliotAll.getH1W1ConfirmationElliot();
-
-        if (elliotW1 == NULL) {
-            elliotW1 = this.elliotAll.getElliot(PERIOD_W1);
-        }
+        Elliot *elliotW1 = this.elliotAll.getElliot(PERIOD_W1);
 
         return decision.evaluate(
             this.h1W1ConfirmationMode,

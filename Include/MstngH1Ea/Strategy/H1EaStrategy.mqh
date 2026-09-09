@@ -1,7 +1,7 @@
 ﻿#ifndef MSTNGH1EA_STRATEGY_MQH
 #define MSTNGH1EA_STRATEGY_MQH
 
-#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
@@ -109,7 +109,7 @@ public:
 
         this.elliotAll.isTimer = !MQLInfoInteger(MQL_TESTER);
         this.elliotAll.setAnalysisStartTimeFrame(
-            ZigZagElliotAnalysisProfile::getAnalysisStartTimeFrame()
+            Mtf3In3H1Policy::getAnalysisStartTimeFrame()
         );
         this.elliotAll.isMailValidationFileEnabled = false;
         this.elliotAll.isH1DisplayWaveEntryLimitEnabled = false;

@@ -70,6 +70,9 @@ public:
 
         this.marketContext = fromMarketContext;
         this.config = fromConfig;
+        if (this.marketContext.timeFrame == PERIOD_H1) {
+            this.config.applyH1EntryPolicy();
+        }
         this.timerMode = !Util::isStrategyTester();
         this.timerSeconds = 30;
         this.timerInitialized = false;
