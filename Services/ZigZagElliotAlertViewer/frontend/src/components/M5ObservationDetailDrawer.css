@@ -1,0 +1,46 @@
+.react-detail-dialog.m5-detail-dialog { width: min(1540px, 98vw); }
+.m5-detail-dialog .drawer-header { gap: 16px; }
+.m5-detail-dialog .drawer-header > div { min-width: 0; }
+.m5-detail-dialog h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m5-detail-dialog .drawer-body { height: calc(100dvh - 82px); }
+.m5-database-name { color: var(--muted); overflow-wrap: anywhere; }
+.m5-detail-context { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.m5-detail-navigation { display: flex; justify-content: space-between; gap: 12px; margin: 14px 0 8px; }
+.m5-detail-navigation button { display: grid; gap: 4px; min-width: 0; text-align: left; }
+.m5-detail-navigation span, .m5-detail-navigation small { white-space: normal; }
+.m5-note { color: var(--muted); font-size: .8rem; line-height: 1.65; }
+.m5-notice, .m5-warning { color: var(--warn, #e9bc70); }
+.m5-warning[role="alert"] { padding: 12px; border: 1px solid var(--warn, #e9bc70); border-radius: 8px; margin: 12px 0; }
+.m5-warning ul { padding-left: 20px; margin: 6px 0 0; }
+.m5-comparison-scroll { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.m5-comparison { width: 100%; min-width: 1240px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.m5-comparison th, .m5-comparison td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.m5-comparison thead th { color: var(--muted); background: #11212c; font-size: .75rem; }
+.m5-comparison tbody th { position: sticky; left: 0; z-index: 1; background: #0b151c; }
+.m5-comparison th small { display: block; font-size: .65rem; font-weight: normal; margin-top: 3px; }
+.m5-comparison .m5-anchor-row, .m5-comparison .m5-anchor-row th { background: #12332f; }
+.m5-comparison-options { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+.m5-comparison-options button[aria-pressed="true"] { border-color: var(--good, #59d8c2); color: var(--good, #59d8c2); }
+.m5-extra-timeframes { display: grid; gap: 12px; }
+.m5-extra-timeframe { padding: 16px; border: 1px solid var(--line); border-radius: 8px; }
+.m5-extra-timeframe h4 { margin: 0 0 12px; }
+.m5-extra-fields, .m5-quality-fields, .m5-record-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.m5-quality-fields .detail-field, .m5-record-fields .detail-field, .m5-extra-fields .detail-field { min-width: 0; overflow-wrap: anywhere; }
+.m5-quality-fields small { font-size: .72rem; color: var(--muted); line-height: 1.6; }
+.m5-ohlc { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.m5-ohlc td, .m5-ohlc th { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.m5-hash { margin-top: 12px; overflow-wrap: anywhere; }
+.m5-hash code { display: block; padding: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.m5-hash button { margin-right: 10px; }
+.m5-record-fields { margin-top: 16px; }
+@media (max-width: 760px) {
+  .react-detail-dialog.m5-detail-dialog { width: 100vw; }
+  .m5-detail-dialog .drawer-header { padding: 12px; }
+  .m5-detail-dialog .drawer-body { padding: 12px; }
+  .m5-detail-dialog h2 { font-size: 1rem; }
+  .m5-comparison tbody th { position: static; }
+  .m5-quality-fields, .m5-extra-fields, .m5-record-fields { grid-template-columns: 1fr; }
+  .m5-detail-navigation { flex-direction: column; }
+  .m5-extra-timeframe { overflow-x: auto; padding: 10px; }
+  .m5-ohlc { min-width: 570px; }
+}

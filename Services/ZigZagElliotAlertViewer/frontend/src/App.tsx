@@ -3,6 +3,7 @@ import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
+import { m5Api } from "./api/m5Client";
 import type {
   AlertsResponse,
   AlertSort,
@@ -28,6 +29,7 @@ import {
 } from "./components/FilterPanel";
 import { FilterVisibilityToggle } from "./components/FilterVisibilityToggle";
 import { H1ObservationView } from "./components/H1ObservationView";
+import { M5ObservationView } from "./components/M5ObservationView";
 import { Pagination } from "./components/Pagination";
 import { RefreshControls } from "./components/RefreshControls";
 import { SummaryCards } from "./components/SummaryCards";
@@ -90,7 +92,9 @@ function runSourceMode(run: RunItem | undefined): Exclude<SourceMode, "all"> | n
 }
 
 export default function App({ styleNonce }: AppProps) {
-  const initialSearch = useMemo(() => readSearchState(window.location.search), []);
+  const initialSearch = useMemo(() => readSearchState(
+    readViewerTab(window.location.search) === "m5" ? "" : window.location.search,
+  ), []);
   const initialTab = useMemo(() => readViewerTab(window.location.search), []);
   const hasInitialRunParameter = useMemo(
     () => new URLSearchParams(window.location.search).has("runId"),
@@ -138,8 +142,10 @@ export default function App({ styleNonce }: AppProps) {
   const highlightTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (activeTab === "m5" || ready) return;
     let disposed = false;
     const controller = new AbortController();
+    setFatalError("");
     Promise.all([api.health(controller.signal), api.runs(controller.signal), api.options(controller.signal)])
       .then(([healthValue, runsValue, optionsValue]) => {
         if (disposed || controller.signal.aborted) return;
@@ -164,19 +170,30 @@ export default function App({ styleNonce }: AppProps) {
         setOptions(optionsValue);
         setDraft(resolvedSearch);
         setApplied(resolvedSearch);
-        if (initialTab === "alerts") replaceSearchUrl(resolvedSearch);
+        if (activeTab === "alerts") replaceSearchUrl(resolvedSearch);
         setReady(true);
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         if (disposed || controller.signal.aborted) return;
         if (error instanceof DOMException && error.name === "AbortError") return;
         setFatalError(error instanceof Error ? error.message : "起動できませんでした");
+        // Only the default entry may fall back; an explicit legacy tab stays selected.
+        if (!new URLSearchParams(window.location.search).has("tab")) {
+          try {
+            const m5Metadata = await m5Api.metadata("TESTER", null, controller.signal);
+            if (disposed || controller.signal.aborted || !m5Metadata.available) return;
+            window.history.replaceState(null, "", `${window.location.pathname}?tab=m5`);
+            setActiveTab("m5");
+          } catch {
+            // The primary error remains visible; M5 has its own connection state.
+          }
+        }
       });
     return () => {
       disposed = true;
       controller.abort();
     };
-  }, [hasInitialRunParameter, hasInitialSourceModeParameter, initialSearch, initialTab]);
+  }, [activeTab, hasInitialRunParameter, hasInitialSourceModeParameter, initialSearch, ready]);
 
   useEffect(() => {
     if (!ready || activeTab !== "alerts") return;
@@ -420,8 +437,10 @@ export default function App({ styleNonce }: AppProps) {
     if (nextTab === "alerts") {
       replaceSearchUrl(applied);
     } else {
-      const params = new URLSearchParams(window.location.search);
-      params.set("tab", "h1");
+      const params = new URLSearchParams(
+        nextTab === "m5" || activeTab === "m5" ? "" : window.location.search,
+      );
+      params.set("tab", nextTab);
       window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
     }
     setActiveTab(nextTab);
@@ -450,6 +469,7 @@ export default function App({ styleNonce }: AppProps) {
   else if (health && summary) {
     connectionText = `接続済み・${sourceModeLabel} ${formatInteger(summary.total_count)}件`;
   } else if (health) connectionText = `接続済み・${sourceModeLabel}確認中`;
+  if (activeTab === "m5") connectionText = "M5専用DB・接続状態は画面内に表示";
 
   return (
     <>
@@ -484,15 +504,21 @@ export default function App({ styleNonce }: AppProps) {
               label="H1推移"
               value="h1"
             />
+            <Tab
+              id="viewer-tab-m5"
+              aria-controls="viewer-tabpanel-m5"
+              label="M5推移"
+              value="m5"
+            />
           </Tabs>
         </Box>
         <div className="app-brand">
           <p className="eyebrow">ELLIOTT SIGNAL ARCHIVE</p>
           <h1>ZigZagElliot Alert Viewer</h1>
-          <p className="subtitle">アラートとH1新規足の波動構造を、Run単位で検索・比較します。</p>
+          <p className="subtitle">アラートとH1・M5の観測を、それぞれのDB・Run単位で検索・比較します。</p>
         </div>
         <div className="header-actions">
-          <div className={`connection${fatalError ? " error" : health ? " ready" : ""}`} role="status" aria-live="polite">
+          <div className={`connection${activeTab === "m5" ? "" : fatalError ? " error" : health ? " ready" : ""}`} role="status" aria-live="polite">
             <span className="status-dot" />
             <span>{connectionText}</span>
           </div>
@@ -603,9 +629,10 @@ export default function App({ styleNonce }: AppProps) {
           styleNonce={styleNonce}
           onRefreshIntervalChange={changeRefreshInterval}
         />
+        <M5ObservationView active={activeTab === "m5"} styleNonce={styleNonce} />
       </main>
 
-      {(fatalError || (activeTab === "alerts" && loadError)) && (
+      {activeTab !== "m5" && (fatalError || (activeTab === "alerts" && loadError)) && (
         <div className="toast" role="alert" aria-live="assertive">
           {fatalError || loadError}
         </div>

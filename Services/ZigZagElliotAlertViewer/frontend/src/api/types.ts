@@ -1,7 +1,7 @@
 export type AlertSide = "BUY" | "SELL";
 export type SourceMode = "LIVE" | "TESTER" | "all";
 export type AnalysisProfileKind = "profile" | "legacy";
-export type ViewerTab = "alerts" | "h1";
+export type ViewerTab = "alerts" | "h1" | "m5";
 export type W1Alignment = "all" | "aligned" | "mismatched" | "unknown";
 export type W1ConfirmationMode =
   | "OFF"

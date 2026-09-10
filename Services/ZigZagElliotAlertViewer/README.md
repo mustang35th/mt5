@@ -1,6 +1,6 @@
 # ZigZagElliot Alert Viewer
 
-`ZigZagElliot`が保存したElliottアラートと、`ZigZagElliotH1ObservationAll`が保存したH1 Observationを、ローカルブラウザで検索・閲覧する読み取り専用ビューアです。
+`ZigZagElliot`が保存したElliottアラート、`ZigZagElliotH1ObservationAll`のH1 Observation、`ZigZagElliotM5ObservationAll`のM5 Observationを、ローカルブラウザで検索・閲覧する読み取り専用ビューアです。
 
 Python 3.14とSQLAlchemy 2.0を使用します。Viewerの待受先は`127.0.0.1`だけです。付属の起動ファイルは、指定したtailnet内ホストも明示的に許可します。
 
@@ -28,7 +28,7 @@ SQLAlchemyは既存DBのReflectionと読み取り専用クエリに使用しま�
 http://127.0.0.1:5187/
 ```
 
-画面上部のタブで「アラート一覧」と「H1推移」を切り替えられます。アラート一覧は検索、集計、ソート、ページング、CSV出力に加え、H1方向一致診断、判定情報、時間足別Elliott、最新Waveポイントの詳細表示に対応しています。
+画面上部のタブで「アラート一覧」「H1推移」「M5推移」を切り替えられます。アラート一覧は検索、集計、ソート、ページング、CSV出力に加え、H1方向一致診断、判定情報、時間足別Elliott、最新Waveポイントの詳細表示に対応しています。
 
 H1推移は、H1新規足ごとに保存した観測を時系列で表示します。1行に取得時スプレッドと、MN1・W1・D1・H4・H1の分析方向、Elliott、波動状態、EMA200、GMMA、Stochastic、ATRをまとめます。詳細では価格差をpips換算するためのPip sizeも確認できます。`TIMEFRAME COMPARISON`の`ZigZag状態`は、各時間足の最新ポイントを`通常`または`追加ポイント`で表示します。H1推移専用の折りたたみ列`最新ZigZag Point`では、Peak／Bottom、Wave経過本数、価格差、FまたはFE、Depth Zone、数字波／Alphabet波、再分析前後、補正状態およびBar位置を時間足間で比較できます。FとFEは再分析前Elliott番号の偶数／奇数に従って切り替え、Depth ZoneはF対象時だけ表示します。Observation表がまだ作成されていない場合もアラート一覧は通常どおり利用でき、H1推移側だけが未利用表示になります。スプレッド、Pip size、ZigZag状態または最新ポイント詳細追加前の過去行は「未記録」と表示します。
 
@@ -68,7 +68,38 @@ Viewer自体にユーザー認証はありません。Tailscale ACLで閲覧端�
 
 DBは読み取り専用で開きます。MT5が使用中のWALを含む最新状態を、元ファイルの場所で参照します。
 
-## 検索できる項目
+## M5推移の起動・使い方
+
+**簡単な起動方法：このフォルダーの`start-m5-viewer.cmd`をダブルクリックします。** LIVE収集先の`mstng-zigzag-elliot-m5-observation.sqlite`を指定して起動し、「M5推移」タブを実行モードLIVEで開きます。毎回コマンドを入力する必要はありません。
+
+通常の`start-viewer.cmd`は従来どおり残しています。どちらも既定ポートは5187なので、Viewerが起動中ならその黒い起動画面を閉じてから起動してください。既存Viewerを自動停止・設定変更する処理はありません。
+
+M5用の起動ファイルは、下記の指定を代わりに行います。`--database`と既定のAlert／H1接続先は変わりません。M5 DBの自動探索や作成は行いません。
+
+```powershell
+.\start-viewer.cmd --m5-database "$env:APPDATA\MetaQuotes\Terminal\Common\Files\mstng-zigzag-elliot-m5-observation.sqlite" --open-tab m5 --open-source-mode LIVE
+```
+
+Viewerがすでに動いている場合は、そのViewerを終了してから上記で起動し直してください。別プロセスで確認したい場合は`--port 5188`など未使用のポートを追加します。既存プロセスの接続先は起動引数で変更されません。
+
+LIVEを直接開く場合は`http://127.0.0.1:5187/?tab=m5&sourceMode=LIVE`です。M5画面の接続DB名を確認してください。`--open-tab m5`と`--open-source-mode LIVE`は最初に開くタブと検索モードを指定するだけで、DBやCollectorの実行モードは変更しません。Alert／H1タブも利用できます。省略時は従来の初期表示を維持します。M5だけが利用可能な場合もViewerを起動でき、タブ未指定の初期表示はM5になります。M5の未設定・接続エラーはAlert／H1とは別に表示します。`/legacy/`にはM5機能を追加していません。
+
+テスト結果のr3を確認する場合は、上のコマンドのDB名を`mstng-zigzag-elliot-m5-short-20260908-r3.sqlite`、`--open-source-mode`を`TESTER`に変更して起動してください。LIVE DBへの切替でr3を移動・削除・上書きすることはありません。
+
+- 専用起動ファイルではLIVE・観測がある最新LIVE Run・保存済み最新M5から24時間を開きます。URLに実行モードの指定がないM5画面の既定はTESTERのままです。期間の基準はPCの現在日時ではありません。
+- Runを1件選び、通貨、開始／終了JST、5分刻みのJST時刻で検索します。開始を含み、終了を含みません。
+- 50／100／200件表示、日時／通貨の全体ソート、ページ番号の直接入力に対応します。列設定・表示密度・更新間隔はM5専用に保存します。
+- 詳細はMN1／W1／D1／H4／H1／M15／M5の7足、取得品質、保存情報を表示します。前後移動は同一Run・通貨・分析Profileの保存済み観測で、一覧の期間外へ移る場合があります。
+- 品質の未記録と有効な0を区別します。「取得時間」は初検出からSnapshot確定までで、DB保存待ちは含みません。「現在足OHLC」は取得時点の途中経過です。
+- TESTERは手動更新、LIVEは既定15秒更新です。非表示中は停止し、手動期間・過去ページ参照では最新追従を解除します。新Runへは自動切替しません。
+
+M5の分析方向はM5自身を基準に表示します。H1と逆方向の観測も表示し、FULL・H1 ENTRY CHECK・通貨強弱・将来成績の判定は追加しません。品質表示だけで収集の完了や完全性を判定しません。
+
+DBは`mode=ro`・`query_only`で元ファイルのWALを含めて読みます。テーブル・索引の追加やcheckpointは行いません。対応用途は`M5_OBSERVATION_ALL_V1`・M5アンカーで、H1混在DBや未対応形式は理由付きで拒否します。品質テーブル・行・列がない場合も、観測本体は「未記録」表示で閲覧できます。
+
+読み取りAPIは`/api/m5/metadata`、`/api/m5/observations`、`/api/m5/observations/{id}`です。一覧にはRunと日時範囲が必須です。H1専用パラメータの流用は400、DB識別の不一致は409、一時的な読取失敗は503として返します。検索がタイムアウトした場合は期間を狭めて再試行してください。詳しくは[M5 Viewer設計書](../../Docs/Indicator/ZigZagElliotM5ObservationViewer.md)を参照してください。
+
+## 検索できる項目（Alert／H1）
 
 - 実行モード（LIVE／TESTER／すべて）
 - Run

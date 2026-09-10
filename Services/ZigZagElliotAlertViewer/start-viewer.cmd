@@ -6,6 +6,7 @@ set "PYTHONDONTWRITEBYTECODE=1"
 set "PYTHON_EXE=%LOCALAPPDATA%\Python\bin\python.exe"
 set "VIEWER_URL=http://127.0.0.1:5187/"
 set "VIEWER_HEALTH_URL=http://127.0.0.1:5187/api/health"
+set "VIEWER_M5_METADATA_URL=http://127.0.0.1:5187/api/m5/metadata"
 
 if not exist "%PYTHON_EXE%" (
     set "PYTHON_EXE=python.exe"
@@ -15,7 +16,7 @@ cd /d "%~dp0"
 
 if not "%~1"=="" goto start_viewer
 
-powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; $health = Invoke-RestMethod -Uri '%VIEWER_HEALTH_URL%' -TimeoutSec 3; if ($health.status -ne 'ok' -or [string]::IsNullOrWhiteSpace([string]$health.database)) { exit 1 }" >nul 2>&1
+powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; try { $health = Invoke-RestMethod -Uri '%VIEWER_HEALTH_URL%' -TimeoutSec 3; if ($health.status -eq 'ok' -and -not [string]::IsNullOrWhiteSpace([string]$health.database)) { exit 0 } } catch {}; try { $m5Health = Invoke-RestMethod -Uri '%VIEWER_M5_METADATA_URL%' -TimeoutSec 3; if ($m5Health.available -eq $true -and -not [string]::IsNullOrWhiteSpace([string]$m5Health.database.path) -and -not [string]::IsNullOrWhiteSpace([string]$m5Health.database.key)) { exit 0 } } catch {}; exit 1" >nul 2>&1
 if not errorlevel 1 (
     echo ZigZagElliot Alert Viewer is already running.
     echo Opening %VIEWER_URL%

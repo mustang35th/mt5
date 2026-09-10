@@ -165,7 +165,9 @@ export function readSearchState(search: string): SearchState {
 }
 
 export function readViewerTab(search: string): ViewerTab {
-  return new URLSearchParams(search).get("tab") === "h1" ? "h1" : "alerts";
+  const tab = new URLSearchParams(search).get("tab");
+  if (tab === "m5") return "m5";
+  return tab === "h1" ? "h1" : "alerts";
 }
 
 export function buildSearchParams(
@@ -212,6 +214,6 @@ export function buildSearchParams(
 
 export function replaceSearchUrl(state: SearchState, tab: ViewerTab = "alerts"): void {
   const params = buildSearchParams(state);
-  if (tab === "h1") params.set("tab", "h1");
+  if (tab !== "alerts") params.set("tab", tab);
   window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
 }

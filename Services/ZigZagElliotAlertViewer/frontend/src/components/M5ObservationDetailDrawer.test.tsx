@@ -1,0 +1,178 @@
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { m5Api } from "../api/m5Client";
+import type { M5DetailResponse } from "../api/m5Types";
+import { M5_TIME_FRAMES } from "../lib/m5TimeFrame";
+import { TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY } from "../lib/timeFrameComparisonPreferences";
+import { M5ObservationDetailDrawer } from "./M5ObservationDetailDrawer";
+import { M5TimeFrameComparison } from "./M5TimeFrameComparison";
+
+function detail(id = 41, databaseKey = "m5-db-A"): M5DetailResponse {
+  return {
+    databaseKey,
+    observation: { id, run_id: 7, symbol_name: "CADJPY", source_mode: "TESTER", source_server: "Test-Server", anchor_time_frame: 5,
+      anchor_bar_time: 1700000100, anchor_bar_time_text: "2023.11.14 22:15:00", anchor_jst_time: 1700025300, anchor_jst_time_text: "2023.11.15 05:15:00",
+      spread_pips: 0, pip_size: .01, time_frame_count: 7, analysis_version: "ELLIOT_MN1_V6", analysis_input_hash: "a".repeat(64),
+      snapshot_hash: "0123456789ABCDEF", capture_phase: "BAR_OPEN_FIRST_SUCCESS", created_at: 1700000101, created_at_text: "2023.11.14 22:15:01" },
+    run: { id: 7, source_mode: "TESTER", run_uid: "run-7", program_name: "ZigZagElliotM5ObservationAll", program_version: "1.02",
+      strategy: "M5_OBSERVATION_ALL", strategy_version: "M5_OBSERVATION_ALL_V1", observation_count: 28, first_observation_jst_time: 1700025300, last_observation_jst_time: 1700025300 },
+    timeframes: M5_TIME_FRAMES.map(({ id: timeFrame, label }, order) => ({ id: order + 1, observation_id: id, time_frame: timeFrame, time_frame_text: label,
+      time_frame_order: order, is_anchor_time_frame: timeFrame === 5 ? 1 : 0, is_buy: timeFrame === 5 ? 0 : 1,
+      latest_elliot_label: "3", latest_sub_elliot_label: "iii", is_wave_uptrend: 1, is_wave_confirmed: 0, is_wave_motive: 1,
+      latest_point_is_added: 0, is_ema200_buy: 0, is_ema200_sell: 1, gmma_trend_count: 0, gmma_cross_count: -1,
+      stochastic_main_order_text: "S>M>L", stochastic_main_direction_text: "UP", atr14_pips: 0,
+      latest_point_org_elliot_index: 3, latest_point_org_elliot_label: "3", latest_point_fibonacci_expansion_percent: 161.8,
+      latest_point_is_peak: 1, latest_point_wave_bars_from_start: 0, latest_point_pips_diff: 0,
+      previous_open: 100, previous_high: 102, previous_low: 99, previous_close: 101,
+      current_open: 101, current_high: 101, current_low: 101, current_close: 101 })),
+    captureMetrics: { observation_id: id, quote_tick_time_msc: 1700000100000, capture_market_time: 1700000100, analysis_elapsed_ms: 0, capture_elapsed_ms: 0, analysis_attempt_count: 1 },
+    captureMetricsState: { tableAvailable: true, rowAvailable: true, missingColumns: [] },
+    navigation: { older: { id: 40, anchor_bar_time: 1699827300, anchor_bar_time_text: "2023.11.12 22:15:00", anchor_jst_time: 1699852500,
+      anchor_jst_time_text: "2023.11.13 05:15:00", gap_seconds: 172800 }, newer: null },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((accept) => { resolve = accept; });
+  return { promise, resolve };
+}
+
+const props = { observationId: 41, databaseKey: "m5-db-A", databaseName: "m5-study.sqlite", onClose: vi.fn(), onNavigate: vi.fn() };
+
+beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); document.body.classList.remove("drawer-open"); });
+
+describe("M5 observation detail", () => {
+  it("opens comparison first, keeps seven ordered rows, shows independent SELL and zero quality", async () => {
+    const request = vi.spyOn(m5Api, "detail").mockResolvedValue(detail());
+    render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    expect(request).toHaveBeenCalledWith(41, "m5-db-A", expect.any(AbortSignal));
+    const table = within(screen.getByRole("region", { name: "7時間足比較表" })).getByRole("table");
+    expect(Array.from(table.querySelectorAll("tbody tr")).map((row) => row.getAttribute("data-timeframe"))).toEqual(["MN1", "W1", "D1", "H4", "H1", "M15", "M5"]);
+    expect(within(table.querySelector('[data-timeframe="M5"]') as HTMLElement).getByText("SELL", { selector: ".badge" })).toBeInTheDocument();
+    expect(screen.getAllByText("▲3.iii")).toHaveLength(7);
+    expect(screen.getAllByText("基準足")).toHaveLength(1);
+    expect(screen.getByText("対象外（MN1）")).toBeInTheDocument();
+    const quality = screen.getByRole("region", { name: "M5取得品質" });
+    expect(within(quality).getByText("0秒")).toBeInTheDocument();
+    expect(within(quality).getAllByText("0 ms")).toHaveLength(2);
+    expect(screen.getByText("TIMEFRAME COMPARISON").compareDocumentPosition(screen.getByText("CAPTURE QUALITY")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(/ENTRY|FULL BUY|FULL SELL|通貨強弱/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "次の観測なし" })).toBeDisabled();
+    expect(screen.getByText(/172,800秒/)).toHaveTextContent("休場・欠損は断定不可");
+    fireEvent.click(screen.getByRole("button", { name: /前の観測 JST/ }));
+    expect(props.onNavigate).toHaveBeenCalledWith(40);
+  });
+
+  it("preserves missing slots and exposes saved F/FE and forming OHLC only on expansion", async () => {
+    const value = detail();
+    value.timeframes = value.timeframes.filter((row) => row.time_frame !== 15);
+    value.timeframes[0].time_frame_order = 6;
+    value.timeframes[0].is_anchor_time_frame = 1;
+    vi.spyOn(m5Api, "detail").mockResolvedValue(value);
+    render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    expect(screen.getByRole("alert")).toHaveTextContent("M15: 子行が未記録");
+    expect(screen.getByRole("alert")).toHaveTextContent("基準足フラグ不整合");
+    expect(document.querySelectorAll(".m5-comparison tbody tr")).toHaveLength(7);
+    fireEvent.click(screen.getByRole("button", { name: "最新ZigZag Point" }));
+    expect(screen.getAllByText("FE 161.8%")).toHaveLength(6);
+    fireEvent.click(screen.getByRole("button", { name: "OHLC" }));
+    expect(screen.getByText(/現在足OHLCは取得時点の途中経過/)).toBeInTheDocument();
+    expect(localStorage.getItem("m5Observation.comparisonSections.v1")).toContain('"ohlc":true');
+    expect(localStorage.getItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY)).toBeNull();
+  });
+
+  it("reports absent quality table and never substitutes created_at for capture time", async () => {
+    const value = detail();
+    value.captureMetrics = null;
+    value.captureMetricsState = { tableAvailable: false, rowAvailable: false, missingColumns: [] };
+    vi.spyOn(m5Api, "detail").mockResolvedValue(value);
+    render(<M5ObservationDetailDrawer {...props} />);
+    const quality = await screen.findByRole("region", { name: "M5取得品質" });
+    expect(within(quality).getByText("未記録：品質テーブルがありません。")).toBeInTheDocument();
+    expect(within(quality).queryByText("0秒")).not.toBeInTheDocument();
+    expect(within(quality).queryByText("2023.11.14 22:15:01")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("RECORD INFO"));
+    expect(screen.getByText(/created_atはFIFO追加前/)).toHaveTextContent("DB commit完了時刻・収集終了日時ではありません");
+    fireEvent.click(screen.getByRole("button", { name: "M5観測詳細を閉じる" }));
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
+  it("discards superseded IDs even if the aborted old request resolves later", async () => {
+    const old = deferred<M5DetailResponse>();
+    vi.spyOn(m5Api, "detail").mockImplementation((id) => id === 41 ? old.promise : Promise.resolve(detail(id)));
+    const { rerender } = render(<M5ObservationDetailDrawer {...props} />);
+    rerender(<M5ObservationDetailDrawer {...props} observationId={42} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    await act(async () => old.resolve({ ...detail(), observation: { ...detail().observation, symbol_name: "WRONG-OLD" } }));
+    expect(screen.queryByText(/WRONG-OLD/)).not.toBeInTheDocument();
+    expect(screen.getByText("Observation ID").nextSibling).toHaveTextContent("42");
+  });
+
+  it("does not reuse same numeric ID from another database and rejects a wrong DB response", async () => {
+    const next = deferred<M5DetailResponse>();
+    vi.spyOn(m5Api, "detail").mockImplementation((_id, key) => key === "m5-db-A" ? Promise.resolve(detail()) : next.promise);
+    const { rerender } = render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    rerender(<M5ObservationDetailDrawer {...props} databaseKey="m5-db-B" databaseName="other.sqlite" />);
+    expect(screen.queryByText("TIMEFRAME COMPARISON")).not.toBeInTheDocument();
+    await act(async () => next.resolve(detail()));
+    expect(await screen.findByRole("alert")).toHaveTextContent("接続DBまたは観測IDが変わりました");
+    expect(screen.queryByText("CAPTURE QUALITY")).not.toBeInTheDocument();
+  });
+
+  it("does not fetch inactive details, aborts on tab hide, and preserves an error instead of empty data", async () => {
+    const pending = deferred<M5DetailResponse>();
+    const request = vi.spyOn(m5Api, "detail").mockReturnValue(pending.promise);
+    const { rerender } = render(<M5ObservationDetailDrawer {...props} active={false} />);
+    expect(request).not.toHaveBeenCalled();
+    rerender(<M5ObservationDetailDrawer {...props} active />);
+    await waitFor(() => expect(request).toHaveBeenCalledOnce());
+    const signal = request.mock.calls[0][2];
+    rerender(<M5ObservationDetailDrawer {...props} active={false} />);
+    expect(signal?.aborted).toBe(true);
+    await act(async () => pending.resolve(detail()));
+    expect(screen.queryByText("TIMEFRAME COMPARISON")).not.toBeInTheDocument();
+    request.mockRejectedValue(new Error("一時読取失敗"));
+    rerender(<M5ObservationDetailDrawer {...props} active />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("更新失敗：一時読取失敗");
+    expect(screen.queryByText("0件")).not.toBeInTheDocument();
+  });
+});
+
+describe("M5 comparison preference isolation", () => {
+  it("restores expansion after remount without touching existing H1 preferences", () => {
+    localStorage.setItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY, "preserved-H1-settings");
+    const first = render(<M5TimeFrameComparison timeFrames={detail().timeframes} />);
+    fireEvent.click(screen.getByRole("button", { name: "OHLC" }));
+    fireEvent.click(screen.getByRole("button", { name: "指標詳細" }));
+    first.unmount();
+    render(<M5TimeFrameComparison timeFrames={detail().timeframes} />);
+    expect(screen.getByRole("button", { name: "OHLC" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "指標詳細" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "最新ZigZag Point" })).toHaveAttribute("aria-pressed", "false");
+    expect(localStorage.getItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY)).toBe("preserved-H1-settings");
+  });
+
+  it("ignores malformed storage instead of coercing truthy text into expansion", () => {
+    localStorage.setItem("m5Observation.comparisonSections.v1", '{"point":"true","ohlc":1,"indicators":true}');
+    render(<M5TimeFrameComparison timeFrames={[]} />);
+    expect(screen.getByRole("button", { name: "最新ZigZag Point" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "OHLC" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "指標詳細" })).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelectorAll(".m5-comparison tbody tr")).toHaveLength(7);
+  });
+
+  it("continues in memory when browser storage cannot be read or written", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("denied"); });
+    render(<M5TimeFrameComparison timeFrames={detail().timeframes} />);
+    expect(screen.getByRole("button", { name: "OHLC" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: "OHLC" }));
+    expect(screen.getByRole("button", { name: "OHLC" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/現在足OHLCは取得時点の途中経過/)).toBeInTheDocument();
+  });
+});

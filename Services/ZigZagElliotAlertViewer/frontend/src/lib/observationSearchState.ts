@@ -95,6 +95,9 @@ function observationGroupMode(value: string | null): ObservationSearchState["gro
 }
 
 export function readObservationSearchState(search: string): ObservationSearchState {
+  if (new URLSearchParams(search).get("tab") === "m5") {
+    return { ...DEFAULT_OBSERVATION_SEARCH_STATE, syncTimeFrames: [], emaSyncTimeFrames: [] };
+  }
   const params = new URLSearchParams(search);
   const requestedSourceMode = params.get("sourceMode");
   const sourceMode: SourceMode = requestedSourceMode === "TESTER" || requestedSourceMode === "all"

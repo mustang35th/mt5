@@ -21,7 +21,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 try:
     from sqlalchemy import MetaData, create_engine, event, select, text
@@ -36,6 +36,8 @@ except ModuleNotFoundError as error:
         file=sys.stderr,
     )
     raise SystemExit(2) from error
+
+from m5_observations import M5ObservationDatabase, M5RequestError
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -3445,6 +3447,31 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(HTTPStatus.NO_CONTENT)
                 self.end_headers()
                 return
+            if parsed.path.startswith("/api/m5/"):
+                m5_query = parse_qs(parsed.query, keep_blank_values=True)
+                m5_database = self.viewer_server.m5_database
+                if parsed.path == "/api/m5/metadata":
+                    self.send_json(m5_database.metadata(m5_query))
+                    return
+                if parsed.path == "/api/m5/observations":
+                    self.send_json(m5_database.observations(m5_query))
+                    return
+                m5_parts = [part for part in parsed.path.split("/") if part]
+                if len(m5_parts) == 4 and m5_parts[:3] == ["api", "m5", "observations"]:
+                    try:
+                        observation_id = int(m5_parts[3])
+                    except ValueError as error:
+                        raise RequestError("observation id must be an integer") from error
+                    if observation_id <= 0:
+                        raise RequestError("observation id must be greater than zero")
+                    self.send_json(m5_database.detail(observation_id, m5_query))
+                    return
+                raise RequestError("resource was not found", HTTPStatus.NOT_FOUND)
+            if parsed.path.startswith("/api/") and self.viewer_server.database is None:
+                raise RequestError(
+                    self.viewer_server.primary_database_error or "Alert/H1 database is unavailable",
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
             if parsed.path == "/api/health":
                 self.send_json({"status": "ok", **self.viewer_server.database.validate()})
                 return
@@ -3504,7 +3531,7 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                     self.send_json(self.viewer_server.database.points(alert_id, time_frame))
                     return
             raise RequestError("resource was not found", HTTPStatus.NOT_FOUND)
-        except RequestError as error:
+        except (RequestError, M5RequestError) as error:
             self.send_json({"error": str(error)}, error.status)
         except SQLAlchemyError as error:
             print(f"Database error: {error}", file=sys.stderr)
@@ -3648,10 +3675,12 @@ class ViewerServer(ThreadingHTTPServer):
     def __init__(
         self,
         address: tuple[str, int],
-        database: AlertDatabase,
+        database: AlertDatabase | None,
         static_path: Path,
         *,
         allowed_hosts: Collection[str] | None = None,
+        m5_database: M5ObservationDatabase | None = None,
+        primary_database_error: str = "",
     ):
         configured_allowed_hosts = {
             normalize_allowed_host(host) for host in (allowed_hosts or ())
@@ -3676,6 +3705,8 @@ class ViewerServer(ThreadingHTTPServer):
             }
         )
         self.database = database
+        self.m5_database = m5_database if m5_database is not None else M5ObservationDatabase(None)
+        self.primary_database_error = primary_database_error
         self.static_path = static_path
 
     def server_close(self) -> None:
@@ -3765,6 +3796,11 @@ def parse_arguments() -> argparse.Namespace:
         help="SQLite database path (default: MetaTrader Common Files)",
     )
     parser.add_argument("--host", default=DEFAULT_HOST)
+    parser.add_argument(
+        "--m5-database",
+        default=None,
+        help="optional independent M5 Observation SQLite path (read-only; no auto-discovery)",
+    )
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
         "--allowed-host",
@@ -3775,6 +3811,14 @@ def parse_arguments() -> argparse.Namespace:
         help="additional exact Host header authority (repeatable)",
     )
     parser.add_argument("--open-browser", action="store_true")
+    parser.add_argument(
+        "--open-tab", choices=("alerts", "h1", "m5"), default=None,
+        help="initial browser tab (used with --open-browser; default: existing automatic selection)",
+    )
+    parser.add_argument(
+        "--open-source-mode", choices=("LIVE", "TESTER"), default=None,
+        help="initial browser source mode (default: each tab's existing selection)",
+    )
     return parser.parse_args()
 
 
@@ -3789,21 +3833,43 @@ def main() -> int:
         print("Port must be between 1 and 65535", file=sys.stderr)
         return 2
 
-    database_path = Path(arguments.database) if arguments.database else default_database_path()
-    if not database_path.is_file():
-        print(f"Database was not found: {database_path}", file=sys.stderr)
-        return 2
-
     database: AlertDatabase | None = None
+    health: dict[str, Any] | None = None
+    primary_database_error = ""
     try:
+        database_path = Path(arguments.database) if arguments.database else default_database_path()
+        if not database_path.is_file():
+            raise RuntimeError(f"Database was not found: {database_path}")
         database = AlertDatabase(database_path)
         health = database.validate()
-    except (RuntimeError, SQLAlchemyError) as error:
-        print(f"Database could not be opened: {error}", file=sys.stderr)
+    except (RuntimeError, SQLAlchemyError, OSError, ValueError) as error:
+        primary_database_error = f"Alert/H1 database could not be opened: {error}"
+        print(primary_database_error, file=sys.stderr)
         if database is not None:
             database.close()
+        database = None
+        if not arguments.m5_database:
+            return 2
+
+    m5_database: M5ObservationDatabase | None = None
+    try:
+        m5_database = M5ObservationDatabase(
+            Path(arguments.m5_database) if arguments.m5_database else None
+        )
+        m5_metadata = m5_database.metadata({})
+    except (M5RequestError, SQLAlchemyError, OSError, ValueError) as error:
+        if m5_database is None or isinstance(error, ValueError):
+            if m5_database is not None:
+                m5_database.close()
+            m5_database = M5ObservationDatabase(
+                None, initialization_error=f"M5 database could not be initialized: {error}"
+            )
+        m5_metadata = {"available": False, "reason": str(error), "database": None}
+    assert m5_database is not None
+    if database is None and not m5_metadata.get("available"):
+        print(f"M5 database could not be opened: {m5_metadata.get('reason')}", file=sys.stderr)
+        m5_database.close()
         return 2
-    assert database is not None
 
     static_path = Path(__file__).resolve().parent / "static"
     try:
@@ -3812,18 +3878,35 @@ def main() -> int:
             database,
             static_path,
             allowed_hosts=arguments.allowed_host,
+            m5_database=m5_database,
+            primary_database_error=primary_database_error,
         )
     except OSError as error:
         print(
             f"Viewer could not listen on {arguments.host}:{arguments.port}: {error}",
             file=sys.stderr,
         )
-        database.close()
+        if database is not None:
+            database.close()
+        m5_database.close()
         return 2
     url = f"http://{DEFAULT_HOST}:{arguments.port}"
+    open_query = {}
+    if arguments.open_tab is not None:
+        open_query["tab"] = arguments.open_tab
+    if arguments.open_source_mode is not None:
+        open_query["sourceMode"] = arguments.open_source_mode
+    if open_query:
+        url += "/?" + urlencode(open_query)
     print("ZigZagElliot Alert Viewer")
-    print(f"Database: {health['database']}")
-    print(f"Alerts: {health['alert_count']} / journal: {health['journal_mode']}")
+    if health is not None:
+        print(f"Alert/H1 Database: {health['database']}")
+        print(f"Alerts: {health['alert_count']} / journal: {health['journal_mode']}")
+    if arguments.m5_database:
+        m5_info = m5_metadata.get("database") or {}
+        print(f"M5 Database: {m5_info.get('path', arguments.m5_database)}")
+        if not m5_metadata.get("available"):
+            print(f"M5 unavailable: {m5_metadata.get('reason')}")
     if arguments.allowed_host:
         print(f"Allowed proxy Host: {', '.join(arguments.allowed_host)}")
     print(f"Open: {url}")
@@ -3836,7 +3919,9 @@ def main() -> int:
         print("\nStopping viewer...")
     finally:
         server.server_close()
-        database.close()
+        if database is not None:
+            database.close()
+        m5_database.close()
     return 0
 
 
