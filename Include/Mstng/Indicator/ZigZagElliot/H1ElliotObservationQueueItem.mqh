@@ -13,7 +13,7 @@
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshot.mqh>
 
 /**
- * DB保存待ちのH1 Elliott観測Snapshotを表すキュー要素。
+ * DB保存待ちのH1・M5 Elliott観測Snapshotを表すキュー要素。
  *
  * 分析後の値を固定して保持し、保存失敗時も再分析で内容を変更しない。
  */
@@ -22,7 +22,7 @@ public:
     /** 保存対象シンボル。 */
     string symbolName;
 
-    /** 観測対象H1バー開始時刻。 */
+    /** 観測対象の基準バー開始時刻。H1またはM5。 */
     datetime anchorBarTime;
 
     /** DB保存失敗回数。 */

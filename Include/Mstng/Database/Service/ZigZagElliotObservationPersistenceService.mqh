@@ -9,10 +9,13 @@
 #ifndef MSTNG_DATABASE_SERVICE_ZZ_ELLIOT_OBSERVATION_MQH
 #define MSTNG_DATABASE_SERVICE_ZZ_ELLIOT_OBSERVATION_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotObservationCaptureMetricsDao.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationDao.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationTimeFrameDao.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationEntity.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
+#include <Mstng\Elliot\ZigZagElliotObservationProfile.mqh>
+#include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshot.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
@@ -36,6 +39,31 @@ public:
         this.databaseHandle = fromDatabaseHandle;
         this.observationDao = fromObservationDao;
         this.timeFrameDao = fromTimeFrameDao;
+        this.captureMetricsDao = NULL;
+        this.logger.setLevel(LOG_INFO);
+    }
+
+    /**
+     * 固定観測Profileと取得品質DAOを指定して初期化する。
+     *
+     * @param fromDatabaseHandle SQLiteデータベースハンドル。
+     * @param fromObservationDao 観測本体DAO。
+     * @param fromTimeFrameDao 時間足別観測DAO。
+     * @param fromProfile 起動時に固定した観測Profile。
+     * @param fromCaptureMetricsDao M5取得品質DAO。
+     */
+    ZigZagElliotObservationPersistenceService(
+        const int fromDatabaseHandle,
+        ZigZagElliotObservationDao *fromObservationDao,
+        ZigZagElliotObservationTimeFrameDao *fromTimeFrameDao,
+        const ZigZagElliotObservationProfile &fromProfile,
+        ZigZagElliotObservationCaptureMetricsDao *fromCaptureMetricsDao
+    ) {
+        this.databaseHandle = fromDatabaseHandle;
+        this.observationDao = fromObservationDao;
+        this.timeFrameDao = fromTimeFrameDao;
+        this.observationProfile = fromProfile;
+        this.captureMetricsDao = fromCaptureMetricsDao;
         this.logger.setLevel(LOG_INFO);
     }
 
@@ -78,7 +106,78 @@ public:
         ZigZagElliotObservationEntity &fromObservationEntity,
         ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[]
     ) {
+        ZigZagElliotObservationCaptureMetricsEntity captureMetrics;
+        ZeroMemory(captureMetrics);
+
+        return this.saveSnapshotInternal(
+            fromObservationEntity, fromTimeFrameEntities, false, captureMetrics
+        );
+    }
+
+    /**
+     * 分析結果と任意の取得品質を同じSnapshotから保存する。
+     *
+     * @param fromSnapshot H1またはM5の固定済みSnapshot。
+     * @return 新規保存または既存行取得に成功した場合true。
+     */
+    bool saveSnapshot(ZigZagElliotObservationSnapshot &fromSnapshot) {
+        fromSnapshot.captureMetrics.observationId = 0;
+        bool isSaved = this.saveSnapshotInternal(
+            fromSnapshot.observation,
+            fromSnapshot.timeFrames,
+            fromSnapshot.hasCaptureMetrics,
+            fromSnapshot.captureMetrics
+        );
+
+        if (!isSaved) {
+            fromSnapshot.captureMetrics.observationId = 0;
+        }
+
+        return isSaved;
+    }
+
+private:
+    /** データベースハンドル。 */
+    int databaseHandle;
+
+    /** 観測本体DAO。 */
+    ZigZagElliotObservationDao *observationDao;
+
+    /** 時間足別観測DAO。 */
+    ZigZagElliotObservationTimeFrameDao *timeFrameDao;
+
+    /** 起動時に固定した観測Profile。既存コンストラクタではH1。 */
+    ZigZagElliotObservationProfile observationProfile;
+
+    /** M5取得品質DAO。H1では未使用。 */
+    ZigZagElliotObservationCaptureMetricsDao *captureMetricsDao;
+
+    /** ロガー。 */
+    Logger logger;
+
+    /**
+     * Profileに応じた親・子・取得品質を原子的に保存する。
+     *
+     * @param fromObservationEntity 観測本体。
+     * @param fromTimeFrameEntities 時間足別分析一覧。
+     * @param fromHasCaptureMetrics 品質行を保持する場合true。
+     * @param fromCaptureMetrics Snapshot生成時に固定した取得品質。
+     * @return 保存または既存行取得に成功した場合true。
+     */
+    bool saveSnapshotInternal(
+        ZigZagElliotObservationEntity &fromObservationEntity,
+        ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[],
+        const bool fromHasCaptureMetrics,
+        ZigZagElliotObservationCaptureMetricsEntity &fromCaptureMetrics
+    ) {
         if (!this.isReady(__FUNCTION__)) {
+            return false;
+        }
+
+        if (fromHasCaptureMetrics != this.observationProfile.requiresCaptureMetrics()
+                || (fromHasCaptureMetrics && !fromCaptureMetrics.isValid())) {
+            this.logger.error(__FUNCTION__, "observation capture metrics are invalid.");
+
             return false;
         }
 
@@ -90,7 +189,8 @@ public:
         if (!this.isSnapshotValid(
                 fromObservationEntity,
                 fromTimeFrameEntities
-            )) {
+            ) || (this.observationProfile.isM5()
+                && !this.isRunMatched(fromObservationEntity))) {
             return false;
         }
 
@@ -187,6 +287,11 @@ public:
             isSaved = this.timeFrameDao.insert(fromTimeFrameEntities[i]);
         }
 
+        if (isSaved && fromHasCaptureMetrics) {
+            fromCaptureMetrics.observationId = fromObservationEntity.id;
+            isSaved = this.captureMetricsDao.insert(fromCaptureMetrics);
+        }
+
         if (!isSaved) {
             this.rollbackAndClear(
                 __FUNCTION__,
@@ -221,19 +326,6 @@ public:
         return true;
     }
 
-private:
-    /** データベースハンドル。 */
-    int databaseHandle;
-
-    /** 観測本体DAO。 */
-    ZigZagElliotObservationDao *observationDao;
-
-    /** 時間足別観測DAO。 */
-    ZigZagElliotObservationTimeFrameDao *timeFrameDao;
-
-    /** ロガー。 */
-    Logger logger;
-
     /**
      * 延長済みbusy_timeoutの範囲で親子テーブルと全インデックスを準備する。
      *
@@ -244,11 +336,19 @@ private:
             return false;
         }
 
-        if (!this.observationDao.createTable()) {
+        if (!this.observationDao.createTable(this.observationProfile.isM5())) {
             return false;
         }
 
-        return this.timeFrameDao.createTable();
+        if (!this.timeFrameDao.createTable(this.observationProfile.isM5())) {
+            return false;
+        }
+
+        if (this.observationProfile.requiresCaptureMetrics()) {
+            return this.captureMetricsDao.createTable();
+        }
+
+        return true;
     }
 
     /**
@@ -456,7 +556,7 @@ private:
     }
 
     /**
-     * 保存対象スナップショットの必須値と固定5時間足を確認する。
+     * 保存対象スナップショットの必須値とProfileの固定時間足を確認する。
      *
      * @param fromObservationEntity 観測本体。
      * @param fromTimeFrameEntities 時間足別分析一覧。
@@ -471,7 +571,8 @@ private:
                     && fromObservationEntity.sourceMode != "TESTER")
                 || fromObservationEntity.sourceServer == ""
                 || fromObservationEntity.symbolName == ""
-                || fromObservationEntity.anchorTimeFrame != (int)PERIOD_H1
+                || fromObservationEntity.anchorTimeFrame
+                    != (int)this.observationProfile.getAnchorTimeFrame()
                 || fromObservationEntity.anchorTimeFrameText == ""
                 || fromObservationEntity.anchorBarTime <= 0
                 || fromObservationEntity.anchorBarTimeText == ""
@@ -503,26 +604,33 @@ private:
 
         int timeFrameCount = ArraySize(fromTimeFrameEntities);
 
-        if (timeFrameCount != 5
+        if (this.observationProfile.isM5()
+                && (fromObservationEntity.anchorTimeFrameText != "M5"
+                    || fromObservationEntity.anchorBarTimeText
+                        != TimeToString(fromObservationEntity.anchorBarTime, TIME_DATE | TIME_SECONDS)
+                    || fromObservationEntity.createdAtText
+                        != TimeToString(fromObservationEntity.createdAt, TIME_DATE | TIME_SECONDS))) {
+            this.logger.error(__FUNCTION__, "M5 observation time text is invalid.");
+
+            return false;
+        }
+
+        int expectedTimeFrameCount = this.observationProfile.getObservationTimeFrameCount();
+
+        if (timeFrameCount != expectedTimeFrameCount
                 || fromObservationEntity.timeFrameCount != timeFrameCount) {
             this.logger.error(
                 __FUNCTION__,
                 StringFormat(
-                    "observation timeframe count is invalid. actual=%d expected=5 parent=%d",
+                    "observation timeframe count is invalid. actual=%d expected=%d parent=%d",
                     timeFrameCount,
+                    expectedTimeFrameCount,
                     fromObservationEntity.timeFrameCount
                 )
             );
 
             return false;
         }
-
-        int expectedTimeFrames[5];
-        expectedTimeFrames[0] = (int)PERIOD_MN1;
-        expectedTimeFrames[1] = (int)PERIOD_W1;
-        expectedTimeFrames[2] = (int)PERIOD_D1;
-        expectedTimeFrames[3] = (int)PERIOD_H4;
-        expectedTimeFrames[4] = (int)PERIOD_H1;
 
         for (int i = 0; i < timeFrameCount; i++) {
             ZigZagElliotObservationTimeFrameEntity entity =
@@ -533,7 +641,7 @@ private:
                 expectedAnchorValue = 1;
             }
 
-            if (entity.timeFrame != expectedTimeFrames[i]
+            if (entity.timeFrame != (int)this.observationProfile.getObservationTimeFrame(i)
                     || entity.timeFrameOrder != i
                     || entity.isAnchorTimeFrame != expectedAnchorValue
                     || entity.timeFrameText == ""
@@ -571,6 +679,114 @@ private:
                     )
                 );
 
+                return false;
+            }
+
+            if (this.observationProfile.isM5()
+                    && !this.isM5TimeFrameValid(entity)) {
+                this.logger.error(__FUNCTION__, "M5 timeframe scalar or text is invalid.");
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * M5観測と保存済みRunが同じ固定Profile・実行元か確認する。
+     *
+     * @param fromEntity 保存する観測本体。
+     * @return 実行元とProfileが一致する場合true。
+     */
+    bool isRunMatched(ZigZagElliotObservationEntity &fromEntity) {
+        string sql = "SELECT COUNT(*) FROM zigzag_elliot_alert_runs WHERE id=?1";
+        sql += " AND source_mode=?2 AND source_server=?3";
+        sql += " AND analysis_version=?4 AND analysis_input_hash=?5";
+        sql += " AND strategy=?6 AND strategy_version=?7 AND schema_version=?8";
+        sql += " AND analysis_input_text=?9";
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(__FUNCTION__, "M5 Run query preparation failed.");
+
+            return false;
+        }
+
+        string canonicalText = this.observationProfile.createCanonicalText();
+        string profileHash = this.observationProfile.createHash();
+        bool isMatched = fromEntity.analysisVersion
+                == ZigZagElliotAnalysisProfile::getAnalysisVersion()
+            && fromEntity.analysisInputHash == profileHash
+            && profileHash != ""
+            && DatabaseBind(requestHandle, 0, fromEntity.runId)
+            && DatabaseBind(requestHandle, 1, fromEntity.sourceMode)
+            && DatabaseBind(requestHandle, 2, fromEntity.sourceServer)
+            && DatabaseBind(requestHandle, 3, fromEntity.analysisVersion)
+            && DatabaseBind(requestHandle, 4, fromEntity.analysisInputHash)
+            && DatabaseBind(requestHandle, 5, this.observationProfile.getStrategy())
+            && DatabaseBind(requestHandle, 6, this.observationProfile.getStrategyVersion())
+            && DatabaseBind(requestHandle, 7, this.observationProfile.getSchemaVersion())
+            && DatabaseBind(requestHandle, 8, canonicalText);
+        long count = 0;
+
+        if (isMatched) {
+            isMatched = DatabaseRead(requestHandle)
+                && DatabaseColumnLong(requestHandle, 0, count)
+                && count == 1;
+        }
+
+        DatabaseFinalize(requestHandle);
+
+        if (!isMatched) {
+            this.logger.error(__FUNCTION__, "M5 observation Run/Profile mismatch or query failed.");
+        }
+
+        return isMatched;
+    }
+
+    /**
+     * M5の保存値に非有限値・EMPTY_VALUE・不一致の表示時刻がないか確認する。
+     *
+     * @param fromEntity 1時間足の分析結果。
+     * @return 保存できる有限値と表示文字列の場合true。
+     */
+    bool isM5TimeFrameValid(ZigZagElliotObservationTimeFrameEntity &fromEntity) {
+        string expectedTimeFrameText = EnumToString((ENUM_TIMEFRAMES)fromEntity.timeFrame);
+        StringReplace(expectedTimeFrameText, "PERIOD_", "");
+
+        if (fromEntity.timeFrameText != expectedTimeFrameText
+                || fromEntity.latestPointTimeText
+                    != TimeToString(fromEntity.latestPointTime, TIME_DATE | TIME_SECONDS)
+                || fromEntity.createdAtText
+                    != TimeToString(fromEntity.createdAt, TIME_DATE | TIME_SECONDS)
+                || fromEntity.previousOpen <= 0.0 || fromEntity.previousHigh <= 0.0
+                || fromEntity.previousLow <= 0.0 || fromEntity.previousClose <= 0.0
+                || fromEntity.currentOpen <= 0.0 || fromEntity.currentHigh <= 0.0
+                || fromEntity.currentLow <= 0.0 || fromEntity.currentClose <= 0.0) {
+            return false;
+        }
+
+        double values[] = {
+            fromEntity.latestPointRate, fromEntity.latestPointPipsDiff,
+            fromEntity.latestPointFibonacciPercent, fromEntity.latestPointFibonacciExpansionPercent,
+            fromEntity.previousOpen, fromEntity.previousHigh,
+            fromEntity.previousLow, fromEntity.previousClose,
+            fromEntity.currentOpen, fromEntity.currentHigh,
+            fromEntity.currentLow, fromEntity.currentClose,
+            fromEntity.fe618Price, fromEntity.fe1000Price, fromEntity.fe1272Price,
+            fromEntity.fe1618Price, fromEntity.fe2000Price, fromEntity.distanceToFe2000Pips,
+            fromEntity.stochasticShortMain, fromEntity.stochasticShortSignal,
+            fromEntity.stochasticMiddleMain, fromEntity.stochasticMiddleSignal,
+            fromEntity.stochasticLongMain, fromEntity.stochasticLongSignal,
+            fromEntity.ema30, fromEntity.ema60, fromEntity.ema30Ema60DiffPips,
+            fromEntity.atr14Pips, fromEntity.ema200Close1, fromEntity.ema200Shift1,
+            fromEntity.ema200Compare, fromEntity.ema200SlopePips, fromEntity.ema200CloseDiffPips
+        };
+
+        for (int i = 0; i < ArraySize(values); i++) {
+            if (!MathIsValidNumber(values[i]) || values[i] == EMPTY_VALUE) {
                 return false;
             }
         }
@@ -793,7 +1009,10 @@ private:
     bool isReady(const string fromMethodName) {
         if (this.databaseHandle != INVALID_HANDLE
                 && this.observationDao != NULL
-                && this.timeFrameDao != NULL) {
+                && this.timeFrameDao != NULL
+                && this.observationProfile.isValid()
+                && (!this.observationProfile.requiresCaptureMetrics()
+                    || this.captureMetricsDao != NULL)) {
             return true;
         }
 

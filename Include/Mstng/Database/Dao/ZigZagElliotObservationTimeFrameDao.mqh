@@ -33,9 +33,10 @@ public:
     /**
      * 時間足別観測テーブルと検索用インデックスを作成する。
      *
+     * @param fromCurrentSchemaOnly 検査済み現行M5スキーマとしてJST補完を禁止する場合true。
      * @return 作成に成功した場合true。
      */
-    bool createTable() {
+    bool createTable(const bool fromCurrentSchemaOnly = false) {
         if (!this.isDatabaseReady(__FUNCTION__)) {
             return false;
         }
@@ -163,7 +164,8 @@ public:
                 "zigzag_elliot_observation_timeframes",
                 "latest_point_time",
                 "latest_point_jst_time",
-                "latest_point_jst_time_text"
+                "latest_point_jst_time_text",
+                fromCurrentSchemaOnly
             )) {
             return false;
         }

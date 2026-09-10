@@ -222,6 +222,42 @@ public:
     }
     
     /**
+     * 採用済みの同一気配を使用して全時間足を分析する。
+     *
+     * 観測用の明示経路であり、通常のanalyze()の価格取得規則は変更しない。
+     * 呼び出し側は解析前後のバー境界を確認し、同じ気配をSnapshotへ渡す。
+     *
+     * @param fromQuoteTick 解析開始時に採用した気配。
+     * @return 気配が有効で全対象時間足の分析に成功した場合true。
+     */
+    bool analyze(const MqlTick &fromQuoteTick) {
+        LogUtil::printMethodStart(this.logger, __FUNCTION__);
+        uint startCount = GetTickCount();
+        this.isAnalysisSucceeded = false;
+        this.tradeTimeInfo.setData(TimeCurrent());
+
+        if (!this.todayRate.update(this.marketContext, fromQuoteTick)) {
+            this.execTime = GetTickCount() - startCount;
+            this.logger.error(__FUNCTION__, "adopted observation quote is invalid.");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+            return false;
+        }
+
+        this.setTimeFrame(this.marketContext.timeFrame);
+        this.setElliotAll();
+        this.setTrendAlignDecision();
+        this.setHigherStochasticMainOrderDecision();
+        if (this.elliotCurrent != NULL) {
+            this.lossCut.setData(this.elliotCurrent, this.todayRate);
+        }
+        this.logger.debug(__FUNCTION__, this.getCsv());
+        this.execTime = GetTickCount() - startCount;
+        this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", this.execTime));
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, this.isAnalysisSucceeded);
+        return this.isAnalysisSucceeded;
+    }
+
+    /**
      * 全時間足の分析結果をCSV文字列として取得する。
      *
      * @param isDetail trueの場合、レート、複合判定、時間足別詳細を含める

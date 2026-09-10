@@ -14,7 +14,7 @@
 #include <Mstng\Indicator\ZigZagElliot\H1ElliotObservationAllStatus.mqh>
 
 /**
- * 全28通貨H1観測処理の実行状態を固定パネルへ描画するクラス。
+ * 全28通貨H1／M5観測処理の実行状態を固定パネルへ描画するクラス。
  *
  * チャートオブジェクトは初回だけ生成し、状態が変化した場合だけ文字列と
  * 色を更新する。詳細表示時は28通貨を4列7行で表示する。
@@ -30,6 +30,7 @@ public:
      * @param fromXDistance 基準角からのX距離。
      * @param fromYDistance 基準角からのY距離。
      * @param fromDetailVisible 28通貨詳細を表示する場合true。
+     * @param fromCaptureQualityVisible M5の直近取得品質を表示する場合true。
      */
     DrawH1ElliotObservationAllStatus(
         long fromChartId = 0,
@@ -37,7 +38,8 @@ public:
         ENUM_BASE_CORNER fromCorner = CORNER_LEFT_UPPER,
         int fromXDistance = 12,
         int fromYDistance = 12,
-        bool fromDetailVisible = true
+        bool fromDetailVisible = true,
+        bool fromCaptureQualityVisible = false
     ) {
         this.chartId = fromChartId;
 
@@ -53,6 +55,12 @@ public:
             + "H1ObsAll_"
             + fromObjectSuffix
             + "_";
+        this.captureQualityVisible = fromCaptureQualityVisible;
+        this.anchorTimeFrameText = "H1";
+        if (this.captureQualityVisible) {
+            this.anchorTimeFrameText = "M5";
+            this.objectPrefix = Constant::PREFIX_FIXED + "M5ObsAll_" + fromObjectSuffix + "_";
+        }
         this.created = false;
         this.visible = true;
         this.detailVisible = fromDetailVisible;
@@ -79,6 +87,10 @@ public:
         this.detailFirstYDistance = 139;
         this.detailRowHeight = 18;
         this.detailColumnWidth = 180;
+        if (this.captureQualityVisible) {
+            this.detailRowHeight = 36;
+            this.detailPanelHeight = 415;
+        }
         this.fontName = "MS Gothic";
         this.titleFontSize = 11;
         this.bodyFontSize = 9;
@@ -195,6 +207,9 @@ public:
                     this.lastDetailColors[i],
                     changed
                 );
+                if (this.captureQualityVisible) {
+                    this.updateCaptureQuality(fromStatus, i, changed);
+                }
             }
         }
 
@@ -282,6 +297,18 @@ public:
     }
 
 private:
+    /** M5の取得品質を追加表示する場合true。 */
+    bool captureQualityVisible;
+
+    /** パネルの基準時間足表示。 */
+    string anchorTimeFrameText;
+
+    /** 前回の取得品質表示。 */
+    string lastQualityTexts[28];
+
+    /** 前回の取得品質ツールチップ。 */
+    string lastQualityTooltips[28];
+
     /** 描画対象チャートID。 */
     long chartId;
 
@@ -455,7 +482,7 @@ private:
             5,
             this.titleFontSize,
             this.titleColor,
-            "H1 OBSERVATION ALL"
+            this.anchorTimeFrameText + " OBSERVATION ALL"
         )) {
             this.destroyObjects();
 
@@ -507,6 +534,17 @@ private:
                 )) {
                     this.destroyObjects();
 
+                    return false;
+                }
+                if (this.captureQualityVisible && !this.createLabel(
+                    this.getQualityObjectName(i),
+                    14 + (columnIndex * this.detailColumnWidth),
+                    this.detailFirstYDistance + (rowIndex * this.detailRowHeight) + 17,
+                    8,
+                    this.mutedColor,
+                    "-"
+                )) {
+                    this.destroyObjects();
                     return false;
                 }
             }
@@ -686,7 +724,7 @@ private:
             runText = StringFormat("%I64d", fromStatus.runId);
         }
 
-        return "H1 OBSERVATION ALL  ["
+        return this.anchorTimeFrameText + " OBSERVATION ALL  ["
             + this.getOverallText(fromStatus)
             + "]  Run "
             + runText;
@@ -727,7 +765,8 @@ private:
 
         if (fromRowIndex == 1) {
             return StringFormat(
-                "H1 JST %s | Detect %d | Analyze %d | Save %d/%d",
+                "%s JST %s | Detect %d | Analyze %d | Save %d/%d",
+                this.anchorTimeFrameText,
                 this.formatDateTime(fromStatus.currentH1JapanTime, false),
                 fromStatus.detectedCount,
                 fromStatus.analyzedCount,
@@ -759,6 +798,10 @@ private:
                 fromStatus.getStatusCount(h1ElliotObservationAllSymbolStatusError),
                 fromStatus.getStatusCount(h1ElliotObservationAllSymbolStatusGap)
             );
+        }
+
+        if (fromStatus.message == "" && this.captureQualityVisible) {
+            return "Info A=analysis / C=capture / x=attempts | quality bar=server time | details: hover";
         }
 
         if (fromStatus.message == "") {
@@ -804,6 +847,94 @@ private:
         }
 
         return detailText;
+    }
+
+    /**
+     * 直近の取得品質を更新する。時刻を付け、現在バーの計測値と混同させない。
+     *
+     * @param fromStatus 実行状態。
+     * @param fromIndex 通貨インデックス。
+     * @param fromChanged 表示を変更した場合true。
+     */
+    void updateCaptureQuality(
+        H1ElliotObservationAllStatus &fromStatus,
+        const int fromIndex,
+        bool &fromChanged
+    ) {
+        string text = "-";
+        string tooltip = "No captured M5 snapshot";
+        datetime barTime = fromStatus.symbolCaptureMetricsBarTimes[fromIndex];
+        if (barTime > 0) {
+            ZigZagElliotObservationCaptureMetricsEntity metrics =
+                fromStatus.symbolCaptureMetrics[fromIndex];
+            text = TimeToString(barTime, TIME_MINUTES)
+                + " A" + this.formatElapsed(metrics.hasAnalysisElapsedMs, metrics.analysisElapsedMs)
+                + " C" + this.formatElapsed(metrics.hasCaptureElapsedMs, metrics.captureElapsedMs)
+                + " x" + this.formatOptionalLong(metrics.hasAnalysisAttemptCount, metrics.analysisAttemptCount);
+            tooltip = "Latest captured M5 (server): " + this.formatDateTime(barTime, true);
+            tooltip += "\nAnalysis elapsed ms: "
+                + this.formatOptionalLong(metrics.hasAnalysisElapsedMs, metrics.analysisElapsedMs);
+            tooltip += "\nCapture elapsed ms (detection to snapshot): "
+                + this.formatOptionalLong(metrics.hasCaptureElapsedMs, metrics.captureElapsedMs);
+            tooltip += "\nObservation analysis attempts: "
+                + this.formatOptionalLong(metrics.hasAnalysisAttemptCount, metrics.analysisAttemptCount);
+            tooltip += "\nAdopted quote time ms (server): "
+                + this.formatOptionalLong(metrics.hasQuoteTickTimeMsc, metrics.quoteTickTimeMsc);
+            tooltip += "\nCapture market time (server): ";
+            if (metrics.hasCaptureMarketTime) {
+                tooltip += this.formatDateTime((datetime)metrics.captureMarketTime, true);
+            } else {
+                tooltip += "-";
+            }
+            tooltip += "\nCaptured values; DB Save status is shown separately.";
+        }
+        string objectName = this.getQualityObjectName(fromIndex);
+        if (this.lastQualityTexts[fromIndex] != text) {
+            ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, text);
+            this.lastQualityTexts[fromIndex] = text;
+            fromChanged = true;
+        }
+        if (this.lastQualityTooltips[fromIndex] != tooltip) {
+            ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, tooltip);
+            this.lastQualityTooltips[fromIndex] = tooltip;
+            fromChanged = true;
+        }
+    }
+
+    /**
+     * 未取得と有効な0を区別して整数を表示する。
+     */
+    string formatOptionalLong(const bool fromAvailable, const long fromValue) {
+        if (!fromAvailable) {
+            return "-";
+        }
+        return IntegerToString(fromValue);
+    }
+
+    /**
+     * 計測時間を列幅に収まる単位で表示する。正確なmsはツールチップへ表示する。
+     */
+    string formatElapsed(const bool fromAvailable, const long fromMilliseconds) {
+        if (!fromAvailable) {
+            return "-";
+        }
+        if (fromMilliseconds < 1000) {
+            return IntegerToString(fromMilliseconds) + "ms";
+        }
+        if (fromMilliseconds < 60000) {
+            return DoubleToString((double)fromMilliseconds / 1000.0, 1) + "s";
+        }
+        if (fromMilliseconds < 3600000) {
+            return DoubleToString((double)fromMilliseconds / 60000.0, 1) + "m";
+        }
+        return DoubleToString((double)fromMilliseconds / 3600000.0, 1) + "h";
+    }
+
+    /**
+     * 品質ラベルの専用名を取得する。
+     */
+    string getQualityObjectName(const int fromIndex) {
+        return this.objectPrefix + "Quality_" + IntegerToString(fromIndex);
     }
 
     /**
@@ -1141,6 +1272,8 @@ private:
         for (int i = 0; i < 28; i++) {
             this.lastDetailTexts[i] = "";
             this.lastDetailColors[i] = clrNONE;
+            this.lastQualityTexts[i] = "";
+            this.lastQualityTooltips[i] = "";
         }
     }
 };

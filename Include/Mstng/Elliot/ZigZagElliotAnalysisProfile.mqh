@@ -317,7 +317,35 @@ public:
      * @return 監査およびHash生成に使用するCanonical Text。
      */
     static string createCanonicalText() {
-        string text = getProfileVersion();
+        return createCanonicalText(
+            getProfileVersion(),
+            getAnchorTimeFrame(),
+            getAnalysisStartTimeFrame(),
+            getObservationTimeFrameCount(),
+            getObservationTimeFrameOrderText()
+        );
+    }
+
+    /**
+     * 共通計算設定に指定の観測契約を適用したCanonical Textを生成する。
+     *
+     * H1の既存順序・表現を維持し、観測足の設定を重複させない。
+     *
+     * @param fromProfileVersion 観測Profile識別子。
+     * @param fromAnchorTimeFrame 観測基準足。
+     * @param fromAnalysisStartTimeFrame 分析開始足。
+     * @param fromTimeFrameCount 観測時間足数。
+     * @param fromTimeFrameOrderText 観測足の固定順序。
+     * @return 共通計算設定と観測契約のCanonical Text。
+     */
+    static string createCanonicalText(
+        const string fromProfileVersion,
+        const ENUM_TIMEFRAMES fromAnchorTimeFrame,
+        const ENUM_TIMEFRAMES fromAnalysisStartTimeFrame,
+        const int fromTimeFrameCount,
+        const string fromTimeFrameOrderText
+    ) {
+        string text = fromProfileVersion;
         appendInteger(text, "STO_SHORT_K", getStochasticShortKPeriod());
         appendInteger(text, "STO_SHORT_D", getStochasticShortDPeriod());
         appendInteger(text, "STO_SHORT_SLOWING", getStochasticShortSlowing());
@@ -356,18 +384,18 @@ public:
         appendInteger(text, "EMA200_SKIP_MN1", boolToInteger(isEma200SkippedForMn1()));
         appendText(text, "PIPS_RULE", getPipsRule());
         appendInteger(text, "PIPS_RESULT_DIGITS", getPipsResultDigits());
-        appendInteger(text, "ANCHOR_TF", (int)getAnchorTimeFrame());
+        appendInteger(text, "ANCHOR_TF", (int)fromAnchorTimeFrame);
         appendInteger(
             text,
             "ANALYSIS_START_TF",
-            (int)getAnalysisStartTimeFrame()
+            (int)fromAnalysisStartTimeFrame
         );
         appendInteger(
             text,
             "TF_COUNT",
-            getObservationTimeFrameCount()
+            fromTimeFrameCount
         );
-        appendText(text, "TF_ORDER", getObservationTimeFrameOrderText());
+        appendText(text, "TF_ORDER", fromTimeFrameOrderText);
         appendInteger(text, "ZIGZAG_DEPTH", getZigZagDepth());
         appendInteger(text, "ZIGZAG_DEVIATION", getZigZagDeviation());
         appendInteger(text, "ZIGZAG_BACKSTEP", getZigZagBackstep());
@@ -494,6 +522,16 @@ public:
      */
     static string createHash() {
         return createSha256Hash(createCanonicalText());
+    }
+
+    /**
+     * 指定した観測Canonical TextのSHA-256を生成する。
+     *
+     * @param fromCanonicalText 観測Profileが生成した設定文字列。
+     * @return 64桁の小文字16進SHA-256。生成失敗時は空文字列。
+     */
+    static string createHash(const string fromCanonicalText) {
+        return createSha256Hash(fromCanonicalText);
     }
 
 private:

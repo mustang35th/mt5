@@ -120,6 +120,59 @@ public:
     }
 
     /**
+     * 採用済みの同一気配からBid・Ask・Spreadを更新する。
+     *
+     * 観測用解析では価格を再取得しない。無効な気配・pip幅の場合は
+     * 前回値を消去して失敗を返し、通常の価格取得へfallbackしない。
+     * 気配時刻の利用可否は呼び出し側が元のMqlTickで管理する。
+     *
+     * @param fromMarketContext 取得対象の市場コンテキスト。
+     * @param fromQuoteTick 解析開始時に採用したBid・Askの一組。
+     * @return 有効な同一気配から更新できた場合true。
+     */
+    bool update(
+        MarketContext &fromMarketContext,
+        const MqlTick &fromQuoteTick
+    ) {
+        this.initializeMarketContext(fromMarketContext);
+        this.initializeValues();
+
+        if (!MathIsValidNumber(fromQuoteTick.bid)
+                || !MathIsValidNumber(fromQuoteTick.ask)
+                || fromQuoteTick.bid == EMPTY_VALUE
+                || fromQuoteTick.ask == EMPTY_VALUE
+                || fromQuoteTick.bid <= 0.0
+                || fromQuoteTick.ask <= 0.0
+                || fromQuoteTick.ask < fromQuoteTick.bid) {
+            return false;
+        }
+
+        double pipSize = RateUtil::getPoint(this.marketContext)
+            * RateUtil::getPipInPoints(this.marketContext);
+        if (!MathIsValidNumber(pipSize)
+                || pipSize == EMPTY_VALUE
+                || pipSize <= 0.0) {
+            return false;
+        }
+
+        double spreadPips = NormalizeDouble(
+            (fromQuoteTick.ask - fromQuoteTick.bid) / pipSize,
+            ZigZagElliotAnalysisProfile::getPipsResultDigits()
+        );
+        if (!MathIsValidNumber(spreadPips)
+                || spreadPips == EMPTY_VALUE
+                || spreadPips < 0.0) {
+            return false;
+        }
+
+        this.bid = fromQuoteTick.bid;
+        this.ask = fromQuoteTick.ask;
+        this.spread = spreadPips;
+        this.updateDailyRangeAndLabels(this.marketContext.digits);
+        return true;
+    }
+
+    /**
      * シンボル名を使用して最新値を再取得する。
      *
      * @param fromSymbolName 取得対象のシンボル名。
@@ -246,6 +299,15 @@ private:
         // Spread（pips）
         this.spread = RateUtil::getDiffPips(this.bid, this.ask, this.marketContext);
 
+        this.updateDailyRangeAndLabels(digits);
+    }
+
+    /**
+     * Bid・Askを変更せず、当日値幅と表示ラベルを更新する。
+     *
+     * @param fromDigits 価格の表示桁数。
+     */
+    void updateDailyRangeAndLabels(const int fromDigits) {
         bool isDailyRangeAvailable = this.canReadDailyRange();
 
         if (isDailyRangeAvailable) {
@@ -269,13 +331,13 @@ private:
         }
 
         // ラベル作成
-        this.askLabel = DoubleToString(this.ask, digits);
-        this.bidLabel = DoubleToString(this.bid, digits);
+        this.askLabel = DoubleToString(this.ask, fromDigits);
+        this.bidLabel = DoubleToString(this.bid, fromDigits);
         this.spreadLabel = DoubleToString(this.spread, 1);
 
         if (isDailyRangeAvailable) {
-            this.highLabel = DoubleToString(this.high, digits);
-            this.lowLabel = DoubleToString(this.low, digits);
+            this.highLabel = DoubleToString(this.high, fromDigits);
+            this.lowLabel = DoubleToString(this.low, fromDigits);
             this.diffLabel = IntegerToString(this.diff);
             this.diffJpyLabel = IntegerToString(this.diffJpy);
         }

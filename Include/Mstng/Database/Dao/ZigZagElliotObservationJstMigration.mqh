@@ -26,6 +26,7 @@ public:
      * @param fromServerTimeColumnName 変換元サーバー時刻列名。
      * @param fromJstTimeColumnName 日本時刻列名。
      * @param fromJstTimeTextColumnName 日本時刻表示文字列列名。
+     * @param fromCurrentSchemaOnly 検査済み現行M5スキーマの索引準備だけを行う場合true。
      * @return 列追加と既存値の補完に成功した場合true。
      */
     static bool execute(
@@ -33,7 +34,8 @@ public:
         const string fromTableName,
         const string fromServerTimeColumnName,
         const string fromJstTimeColumnName,
-        const string fromJstTimeTextColumnName
+        const string fromJstTimeTextColumnName,
+        const bool fromCurrentSchemaOnly = false
     ) {
         Logger logger;
         logger.setLevel(LOG_INFO);
@@ -56,6 +58,16 @@ public:
                 logger
             )) {
             return true;
+        }
+
+        if (fromCurrentSchemaOnly) {
+            return prepareCurrentSchema(
+                fromDatabaseHandle,
+                fromTableName,
+                fromJstTimeColumnName,
+                fromJstTimeTextColumnName,
+                logger
+            );
         }
 
         long originalBusyTimeout = 0;
@@ -102,6 +114,66 @@ public:
     }
 
 private:
+    /**
+     * 現行JST列と補完済みデータを確認し、呼出元のトランザクションで索引だけを作る。
+     *
+     * M5初期化の外側トランザクションと二重にBEGINせず、既存値も補完しない。
+     *
+     * @param fromDatabaseHandle SQLiteデータベースハンドル。
+     * @param fromTableName 対象テーブル名。
+     * @param fromJstTimeColumnName 日本時刻列名。
+     * @param fromJstTimeTextColumnName 日本時刻表示文字列列名。
+     * @param fromLogger ロガー。
+     * @return 現行形式を確認して索引を準備できた場合true。
+     */
+    static bool prepareCurrentSchema(
+        const int fromDatabaseHandle,
+        const string fromTableName,
+        const string fromJstTimeColumnName,
+        const string fromJstTimeTextColumnName,
+        Logger &fromLogger
+    ) {
+        bool hasJstTimeColumn = false;
+        bool hasJstTimeTextColumn = false;
+
+        if (!hasColumn(
+                fromDatabaseHandle,
+                fromTableName,
+                fromJstTimeColumnName,
+                hasJstTimeColumn,
+                fromLogger
+            ) || !hasJstTimeColumn
+                || !hasColumn(
+                    fromDatabaseHandle,
+                    fromTableName,
+                    fromJstTimeTextColumnName,
+                    hasJstTimeTextColumn,
+                    fromLogger
+                ) || !hasJstTimeTextColumn) {
+            fromLogger.error(__FUNCTION__, "Current observation JST columns are required.");
+
+            return false;
+        }
+
+        if (!isBackfillComplete(
+                fromDatabaseHandle,
+                fromTableName,
+                fromJstTimeColumnName,
+                fromJstTimeTextColumnName,
+                fromLogger
+            )) {
+            return false;
+        }
+
+        return ensureMissingIndex(
+            fromDatabaseHandle,
+            fromTableName,
+            fromJstTimeColumnName,
+            fromJstTimeTextColumnName,
+            fromLogger
+        );
+    }
+
     /**
      * 列追加、既存値補完、検証を1トランザクションで実行する。
      *

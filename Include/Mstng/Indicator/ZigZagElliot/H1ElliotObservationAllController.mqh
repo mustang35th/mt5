@@ -14,8 +14,10 @@
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Database\ZigZagElliotAlertDatabaseContext.mqh>
+#include <Mstng\Database\ZigZagElliotM5ObservationDatabaseContext.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+#include <Mstng\Elliot\ZigZagElliotObservationProfile.mqh>
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshotBuilder.mqh>
 #include <Mstng\Indicator\ZigZagElliot\H1ElliotObservationAllStatus.mqh>
 #include <Mstng\Indicator\ZigZagElliot\H1ElliotObservationQueueItem.mqh>
@@ -26,26 +28,36 @@
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
- * 全28通貨のH1新規足Elliott観測を一括記録するクラス。
+ * 全28通貨の固定H1・M5新規足Elliott観測を一括記録するクラス。
  *
- * 通貨ごとにH1境界を検出してMN1からH1までを分析する。生成済みSnapshotは
+ * 既存H1 APIを維持し、起動時固定Profileで観測基準足を切り替える。生成済みSnapshotは
  * 中央FIFOへ固定し、単一DB接続と単一Runを使って古い順に保存する。
  */
 class H1ElliotObservationAllController {
 public:
     /**
      * 保持ポインタと実行状態を初期化する。
+     *
+     * @param fromAnchorTimeFrame 固定観測基準足。省略時は既存H1。
      */
-    H1ElliotObservationAllController() {
+    H1ElliotObservationAllController(
+        const ENUM_TIMEFRAMES fromAnchorTimeFrame = PERIOD_H1
+    ) : observationProfile(fromAnchorTimeFrame) {
         this.symbolNameInfoAll = NULL;
         this.oscillatorHandleManager = NULL;
         this.databaseContext = NULL;
+        this.m5DatabaseContext = NULL;
+        this.databaseRejected = false;
         this.observationPersistenceService = NULL;
         this.initialized = false;
         this.executing = false;
         this.timerEnabled = false;
         this.testerMode = false;
         this.testerSaveGateOpen = false;
+        this.lastTesterWarmupTime = 0;
+        this.testerWarmupActive = false;
+        this.lastM5TesterProgressText = "";
+        this.lastM5TesterProgressTime = 0;
         this.databaseReady = false;
         this.competingWriterDetected = false;
         this.timerSeconds = 2;
@@ -97,6 +109,7 @@ public:
     ) {
         this.destroy();
         this.status.reset();
+        this.status.anchorTimeFrameText = this.getAnchorTimeFrameText();
 
         if (MQLInfoInteger(MQL_OPTIMIZATION)) {
             this.status.message = "最適化では利用できません";
@@ -104,7 +117,8 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
-        if (fromDatabaseFileName == ""
+        if (!this.observationProfile.isValid()
+                || fromDatabaseFileName == ""
                 || fromTimerSeconds <= 0
                 || fromTimerSeconds > 60
                 || fromDatabaseRetrySeconds <= 0
@@ -131,9 +145,16 @@ public:
         this.testerSaveGateOpen =
             !this.isTesterSaveWindowEnabled();
 
+        if (this.observationProfile.isM5() && this.testerMode
+                && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_M5)) {
+            this.status.message = "TESTERはM5以下の時間足を指定してください";
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
         MarketContext allContext(
             "ALL",
-            ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
+            this.observationProfile.getAnchorTimeFrame()
         );
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(allContext);
@@ -159,7 +180,7 @@ public:
         this.warmUpTargetSymbols();
         this.oscillatorHandleManager =
             new OscillatorHandleManager(
-                ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
+                this.observationProfile.getAnchorTimeFrame()
             );
 
         if (this.oscillatorHandleManager == NULL
@@ -246,6 +267,12 @@ public:
             this.timerEnabled = false;
         }
 
+        if (this.observationProfile.isM5() && this.snapshotQueue.Total() > 0) {
+            this.logger.error(__FUNCTION__, StringFormat(
+                "Unsaved observation snapshots are discarded on shutdown. count=%d",
+                this.snapshotQueue.Total()
+            ));
+        }
         this.snapshotQueue.Clear();
         this.releaseDatabase(false);
 
@@ -263,8 +290,13 @@ public:
         this.executing = false;
         this.testerMode = false;
         this.testerSaveGateOpen = false;
+        this.lastTesterWarmupTime = 0;
+        this.testerWarmupActive = false;
+        this.lastM5TesterProgressText = "";
+        this.lastM5TesterProgressTime = 0;
         this.databaseReady = false;
         this.competingWriterDetected = false;
+        this.databaseRejected = false;
         this.nextDatabaseRetryTime = 0;
         this.currentBatchH1BarTime = 0;
         this.lastDatabaseSaveServerTime = 0;
@@ -289,6 +321,24 @@ private:
 
     /** 全対象シンボルの共有オシレーターハンドル管理。 */
     OscillatorHandleManager *oscillatorHandleManager;
+
+    /** インスタンス生成時に固定する観測基準足・保存契約。 */
+    ZigZagElliotObservationProfile observationProfile;
+
+    /** M5専用の用途検査付きDB接続。H1では生成しない。 */
+    ZigZagElliotM5ObservationDatabaseContext *m5DatabaseContext;
+
+    /** 別用途DBまたは実行元変更を検出し収集を停止した場合true。 */
+    bool databaseRejected;
+
+    /** 通貨別計測対象バー。0は未検出。 */
+    datetime captureTargetBarTimes[];
+
+    /** 通貨別対象バー初検出時の実経過カウンター。0も有効。 */
+    ulong captureDetectedTicks[];
+
+    /** 通貨別対象バーの観測用実解析回数。 */
+    long captureAnalysisAttempts[];
 
     /** 単一SQLite接続と永続化Serviceの所有者。 */
     ZigZagElliotAlertDatabaseContext *databaseContext;
@@ -323,6 +373,18 @@ private:
 
     /** TESTERの全通貨事前分析が完了し保存可能な場合true。 */
     bool testerSaveGateOpen;
+
+    /** M5 TESTER保存開始前の直近準備確認サーバー時刻。 */
+    datetime lastTesterWarmupTime;
+
+    /** M5 TESTER保存開始前の間引き区間へ入った場合true。 */
+    bool testerWarmupActive;
+
+    /** 最後に出力したM5 TESTER進捗。日時は比較へ含めない。 */
+    string lastM5TesterProgressText;
+
+    /** 最後にM5 TESTER進捗を出力したサーバー時刻。 */
+    datetime lastM5TesterProgressTime;
 
     /** 観測を保存可能なDB接続がある場合true。 */
     bool databaseReady;
@@ -411,6 +473,12 @@ private:
     /** 通貨ごとの補足メッセージ。 */
     string symbolMessages[];
 
+    /** 通貨ごとに最後に出力したM5履歴不足の内容。空文字は不足未通知。 */
+    string lastHistoryLogTexts[];
+
+    /** 通貨ごとのM5履歴不足ログ最終出力サーバー時刻。 */
+    datetime lastHistoryLogTimes[];
+
     /**
      * H1境界検出、対象通貨分析およびFIFO保存を1回実行する。
      */
@@ -419,10 +487,22 @@ private:
             return;
         }
 
-        if (this.competingWriterDetected) {
+        if (this.competingWriterDetected || this.databaseRejected) {
             this.lastExecutionMilliseconds = 0;
             this.refreshStatus();
+            this.logM5TesterProgress();
 
+            return;
+        }
+
+        if (!this.ensureExecutionSource()) {
+            this.refreshStatus();
+            this.logM5TesterProgress();
+
+            return;
+        }
+
+        if (this.shouldSkipM5TesterWarmup()) {
             return;
         }
 
@@ -442,6 +522,16 @@ private:
             }
         }
 
+        // 一括解析の途中で口座が切り替わった場合も、旧Runへ保存しない。
+        if (!this.ensureExecutionSource()) {
+            this.lastExecutionMilliseconds = (int)(GetTickCount64() - startTick);
+            this.executing = false;
+            this.refreshStatus();
+            this.logM5TesterProgress();
+
+            return;
+        }
+
         if (this.isPersistenceAllowed()) {
             this.tryReconnectDatabaseIfDue();
             this.drainSnapshotQueue();
@@ -459,6 +549,127 @@ private:
         this.lastExecutionMilliseconds = (int)elapsed;
         this.executing = false;
         this.refreshStatus();
+        this.logM5TesterProgress();
+    }
+
+    /**
+     * M5 TESTER保存開始前だけ28通貨の準備確認を最短1時間間隔にする。
+     *
+     * 保存開始時刻到達後は待機を持ち越さず、通常のM5事前分析へ戻す。
+     * H1、LIVE、保存開始0、保存ゲート開放後の処理周期は変更しない。
+     *
+     * @return 今回の準備確認を省略する場合true。
+     */
+    bool shouldSkipM5TesterWarmup() {
+        if (!this.observationProfile.isM5()
+                || !this.isTesterSaveWindowEnabled()
+                || this.testerSaveGateOpen) {
+            return false;
+        }
+
+        datetime currentTime = TimeCurrent();
+        if (currentTime <= 0) {
+            return false;
+        }
+        if (currentTime >= this.observationTesterSaveStartTime) {
+            if (this.testerWarmupActive) {
+                this.logger.info(__FUNCTION__,
+                    "TESTER_WARMUP_END 保存開始時刻到達。通常のM5事前分析へ復帰");
+            }
+            this.testerWarmupActive = false;
+            this.lastTesterWarmupTime = 0;
+
+            return false;
+        }
+
+        if (!this.testerWarmupActive) {
+            this.testerWarmupActive = true;
+            this.logger.info(__FUNCTION__, StringFormat(
+                "TESTER_WARMUP saveStart=%s intervalSeconds=3600 保存開始前の準備確認を間引き",
+                this.formatDateTime(this.observationTesterSaveStartTime)
+            ));
+        }
+
+        long elapsedSeconds = (long)(currentTime - this.lastTesterWarmupTime);
+        if (this.lastTesterWarmupTime > 0 && elapsedSeconds >= 0
+                && elapsedSeconds < 3600) {
+            return true;
+        }
+        this.lastTesterWarmupTime = currentTime;
+
+        return false;
+    }
+
+    /**
+     * M5 TESTERの保存後または収集停止・待機時に、その時点の進捗を出力する。
+     *
+     * IndicatorのTesterではOnDeinitが呼ばれないため、通常の実行経路で通知する。
+     * 初回・状態変化は即時、不変なら1時間間隔。最終出力も終了確定を意味しない。
+     */
+    void logM5TesterProgress() {
+        if (!this.initialized || !this.observationProfile.isM5()
+                || !this.testerMode) {
+            return;
+        }
+
+        datetime currentTime = TimeCurrent();
+        string progressText = StringFormat(
+            "phase=%s gateOpened=%d ready=%d/%d dbReady=%d saved=%d queued=%d gaps=%d message=%s",
+            this.getM5TesterProgressPhase(currentTime),
+            (int)this.testerSaveGateOpen,
+            this.getReadyCount(),
+            requiredTargetSymbolCount,
+            (int)this.databaseReady,
+            this.totalSavedCount,
+            this.snapshotQueue.Total(),
+            this.totalGapCount,
+            this.lastDatabaseMessage
+        );
+        long elapsedSeconds = (long)(currentTime - this.lastM5TesterProgressTime);
+        if (this.lastM5TesterProgressText != ""
+                && progressText == this.lastM5TesterProgressText
+                && elapsedSeconds >= 0 && elapsedSeconds < 3600) {
+            return;
+        }
+
+        this.logger.info(__FUNCTION__, StringFormat(
+            "M5_TESTER_PROGRESS saveStart=%s serverTime=%s lastM5=%s %s",
+            this.formatDateTime(this.observationTesterSaveStartTime),
+            this.formatDateTime(currentTime),
+            this.formatDateTime(this.currentBatchH1BarTime),
+            progressText
+        ));
+        this.lastM5TesterProgressText = progressText;
+        this.lastM5TesterProgressTime = currentTime;
+    }
+
+    /**
+     * M5 TESTERの進捗区分を取得する。STOPPEDは収集停止でありテスター終了ではない。
+     *
+     * @param fromCurrentTime 現在のサーバー時刻。
+     * @return 実行元待機・準備・開始待ち・DB待機・収集中・異常停止の区分。
+     */
+    string getM5TesterProgressPhase(const datetime fromCurrentTime) {
+        if (this.competingWriterDetected || this.databaseRejected) {
+            return "STOPPED";
+        }
+        if (this.databaseRun.sourceServer == ""
+                || this.lastDatabaseMessage == "取引サーバー情報を取得待ち") {
+            return "SOURCE_WAIT";
+        }
+        if (this.isTesterSaveWindowEnabled()) {
+            if (fromCurrentTime < this.observationTesterSaveStartTime) {
+                return "WARMUP";
+            }
+            if (!this.testerSaveGateOpen) {
+                return "WAIT_GATE";
+            }
+        }
+        if (!this.databaseReady) {
+            return "DB_WAIT";
+        }
+
+        return "COLLECTING";
     }
 
     /**
@@ -471,7 +682,7 @@ private:
         ResetLastError();
         datetime currentH1BarTime = iTime(
             symbolName,
-            ZigZagElliotAnalysisProfile::getAnchorTimeFrame(),
+            this.observationProfile.getAnchorTimeFrame(),
             0
         );
 
@@ -482,11 +693,15 @@ private:
                 "RETRY",
                 "H1系列を取得待ち"
             );
+            if (this.observationProfile.isM5()) {
+                this.isM5AnalysisSeriesReady(fromIndex);
+            }
             this.warmUpSymbol(fromIndex);
 
             return;
         }
 
+        this.observeCaptureBoundary(fromIndex, currentH1BarTime);
         this.currentH1BarTimes[fromIndex] = currentH1BarTime;
 
         if (currentH1BarTime > this.currentBatchH1BarTime) {
@@ -533,6 +748,9 @@ private:
             return;
         }
 
+        // M5の準備完了へ昇格する前の状態で、前区間を欠損集計するか固定する。
+        bool countPreviousGaps = !this.observationProfile.isM5()
+            || this.analysisReadyFlags[fromIndex];
         if (!this.testerMode
                 && !this.analysisReadyFlags[fromIndex]
                 && this.isAnalysisSeriesReady(fromIndex)) {
@@ -571,7 +789,7 @@ private:
             return;
         } else if (currentH1BarTime
                 > this.lastDetectedH1BarTimes[fromIndex]) {
-            this.handleNewBoundary(fromIndex, currentH1BarTime);
+            this.handleNewBoundary(fromIndex, currentH1BarTime, countPreviousGaps);
         }
 
         if (this.pendingAnalysisH1BarTimes[fromIndex] > 0) {
@@ -692,6 +910,7 @@ private:
         const int fromIndex,
         const datetime fromCurrentH1BarTime
     ) {
+        this.observeCaptureBoundary(fromIndex, fromCurrentH1BarTime);
         this.analysisReadyFlags[fromIndex] = false;
         this.lastDetectedH1BarTimes[fromIndex] =
             fromCurrentH1BarTime;
@@ -737,6 +956,11 @@ private:
                         != this.currentH1BarTimes[i]) {
                 return false;
             }
+            if (this.observationProfile.isM5()
+                    && iTime(this.symbolNames[i], PERIOD_M5, 0)
+                        != this.currentBatchH1BarTime) {
+                return false;
+            }
         }
 
         this.testerSaveGateOpen = true;
@@ -758,10 +982,11 @@ private:
         this.logger.info(
             __FUNCTION__,
             StringFormat(
-                "TESTER observation save gate opened. saveStart=%s h1=%s",
+                "TESTER observation save gate opened. saveStart=%s %s=%s",
                 this.formatDateTime(
                     this.observationTesterSaveStartTime
                 ),
+                this.getAnchorTimeFrameText(),
                 this.formatDateTime(this.currentBatchH1BarTime)
             )
         );
@@ -797,10 +1022,12 @@ private:
      *
      * @param fromIndex 対象通貨インデックス
      * @param fromCurrentH1BarTime 新しいH1バー開始時刻
+     * @param fromCountGaps 前区間を通常の欠損として集計する場合true
      */
     void handleNewBoundary(
         const int fromIndex,
-        const datetime fromCurrentH1BarTime
+        const datetime fromCurrentH1BarTime,
+        const bool fromCountGaps
     ) {
         datetime previousBarTime =
             this.lastDetectedH1BarTimes[fromIndex];
@@ -812,12 +1039,13 @@ private:
             fromCurrentH1BarTime
         );
 
-        if (skippedBarCount > 0) {
+        if (fromCountGaps && skippedBarCount > 0) {
             this.totalGapCount += skippedBarCount;
             this.logger.error(
                 __FUNCTION__,
                 StringFormat(
-                    "Skipped H1 observations detected. symbol=%s previous=%s current=%s gaps=%d",
+                    "Skipped %s observations detected. symbol=%s previous=%s current=%s gaps=%d",
+                    this.getAnchorTimeFrameText(),
                     this.symbolNames[fromIndex],
                     this.formatDateTime(previousBarTime),
                     this.formatDateTime(fromCurrentH1BarTime),
@@ -826,12 +1054,13 @@ private:
             );
         }
 
-        if (pendingBarTime > 0 && pendingBarTime < fromCurrentH1BarTime) {
+        if (fromCountGaps && pendingBarTime > 0 && pendingBarTime < fromCurrentH1BarTime) {
             this.totalGapCount++;
             this.logger.error(
                 __FUNCTION__,
                 StringFormat(
-                    "H1 observation gap detected. symbol=%s pending=%s current=%s",
+                    "%s observation gap detected. symbol=%s pending=%s current=%s",
+                    this.getAnchorTimeFrameText(),
                     this.symbolNames[fromIndex],
                     this.formatDateTime(pendingBarTime),
                     this.formatDateTime(fromCurrentH1BarTime)
@@ -844,6 +1073,7 @@ private:
             );
         }
 
+        this.observeCaptureBoundary(fromIndex, fromCurrentH1BarTime);
         this.lastDetectedH1BarTimes[fromIndex] = fromCurrentH1BarTime;
         this.pendingAnalysisH1BarTimes[fromIndex] = fromCurrentH1BarTime;
         this.symbolRetryCounts[fromIndex] = 0;
@@ -872,6 +1102,9 @@ private:
 
         if (!fromDiscard && this.databaseRun.sourceServer == "") {
             this.databaseRun.sourceServer = AccountInfoString(ACCOUNT_SERVER);
+            if (this.observationProfile.isM5()) {
+                this.databaseRun.sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
+            }
 
             if (this.databaseRun.sourceServer == "") {
                 this.symbolRetryCounts[fromIndex]++;
@@ -902,7 +1135,7 @@ private:
             this.pendingAnalysisH1BarTimes[fromIndex];
         datetime beforeH1BarTime = iTime(
             symbolName,
-            ZigZagElliotAnalysisProfile::getAnchorTimeFrame(),
+            this.observationProfile.getAnchorTimeFrame(),
             0
         );
 
@@ -935,7 +1168,7 @@ private:
         }
         MarketContext marketContext(
             symbolName,
-            ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
+            this.observationProfile.getAnchorTimeFrame()
         );
         OscillatorHandlePool *handlePool =
             this.oscillatorHandleManager.getPoolByIndex(fromIndex);
@@ -967,13 +1200,58 @@ private:
         elliotAll.isTimer = true;
         elliotAll.timerSeconds = this.timerSeconds;
         elliotAll.setAnalysisStartTimeFrame(
-            ZigZagElliotAnalysisProfile::getAnalysisStartTimeFrame()
+            this.observationProfile.getAnalysisStartTimeFrame()
         );
         elliotAll.setOscillatorHandlePool(handlePool);
-        elliotAll.analyze();
+        MqlTick quoteTick;
+        ZeroMemory(quoteTick);
+
+        if (this.observationProfile.isM5()) {
+            if (!SymbolInfoTick(symbolName, quoteTick)
+                    || !MathIsValidNumber(quoteTick.bid)
+                    || !MathIsValidNumber(quoteTick.ask)
+                    || quoteTick.bid <= 0.0 || quoteTick.ask < quoteTick.bid) {
+                delete elliotAll;
+                this.symbolRetryCounts[fromIndex]++;
+                this.setSymbolStatus(fromIndex, "RETRY", "有効な同一気配を取得待ち");
+
+                return;
+            }
+
+            // 気配取得で基準系列が更新された場合も、前バーへ付け替えない。
+            datetime quoteBarTime = iTime(symbolName, PERIOD_M5, 0);
+            long quoteServerTime = quoteTick.time;
+            if (quoteTick.time_msc > 0) {
+                quoteServerTime = quoteTick.time_msc / 1000;
+            }
+            if (quoteBarTime != targetH1BarTime
+                    || quoteServerTime >= targetH1BarTime + PeriodSeconds(PERIOD_M5)) {
+                delete elliotAll;
+                if (fromDiscard) {
+                    this.handleTesterPreflightBoundaryChanged(fromIndex, quoteBarTime);
+                } else {
+                    this.handleBoundaryChangedDuringAnalysis(
+                        fromIndex, targetH1BarTime, quoteBarTime
+                    );
+                }
+
+                return;
+            }
+        }
+
+        ulong analysisStartedTick = GetTickCount64();
+        if (this.observationProfile.isM5()) {
+            if (!fromDiscard) {
+                this.captureAnalysisAttempts[fromIndex]++;
+            }
+            elliotAll.analyze(quoteTick);
+        } else {
+            elliotAll.analyze();
+        }
+        ulong analysisElapsed = GetTickCount64() - analysisStartedTick;
         datetime afterH1BarTime = iTime(
             symbolName,
-            ZigZagElliotAnalysisProfile::getAnchorTimeFrame(),
+            this.observationProfile.getAnchorTimeFrame(),
             0
         );
 
@@ -1047,12 +1325,31 @@ private:
             snapshotRun.id = 1;
         }
 
-        bool isBuilt = ZigZagElliotObservationSnapshotBuilder::build(
-            elliotAll,
-            snapshotRun,
-            targetH1BarTime,
-            queueItem.snapshot
-        );
+        bool isBuilt = false;
+        if (this.observationProfile.isM5()) {
+            ZigZagElliotObservationCaptureMetricsEntity captureMetrics;
+            ZeroMemory(captureMetrics);
+            captureMetrics.hasAnalysisElapsedMs = true;
+            captureMetrics.analysisElapsedMs = (long)analysisElapsed;
+            captureMetrics.hasAnalysisAttemptCount = true;
+            captureMetrics.analysisAttemptCount = this.captureAnalysisAttempts[fromIndex];
+            isBuilt = ZigZagElliotObservationSnapshotBuilder::build(
+                elliotAll,
+                snapshotRun,
+                targetH1BarTime,
+                queueItem.snapshot,
+                this.observationProfile,
+                quoteTick,
+                captureMetrics
+            );
+        } else {
+            isBuilt = ZigZagElliotObservationSnapshotBuilder::build(
+                elliotAll,
+                snapshotRun,
+                targetH1BarTime,
+                queueItem.snapshot
+            );
+        }
         delete elliotAll;
 
         if (!isBuilt) {
@@ -1065,6 +1362,28 @@ private:
             );
 
             return;
+        }
+
+        if (this.observationProfile.isM5()) {
+            // Builder完了までを計測し、FIFO・DB待ち時間は含めない。
+            datetime finalBarTime = iTime(symbolName, PERIOD_M5, 0);
+            if (finalBarTime != targetH1BarTime) {
+                delete queueItem;
+                this.handleBoundaryChangedDuringAnalysis(
+                    fromIndex, targetH1BarTime, finalBarTime
+                );
+
+                return;
+            }
+            long captureMarketTime = (long)TimeCurrent();
+            ulong captureFinishedTick = GetTickCount64();
+            queueItem.snapshot.captureMetrics.hasCaptureMarketTime =
+                captureMarketTime > 0;
+            queueItem.snapshot.captureMetrics.captureMarketTime = captureMarketTime;
+            queueItem.snapshot.captureMetrics.hasCaptureElapsedMs =
+                this.captureTargetBarTimes[fromIndex] == targetH1BarTime;
+            queueItem.snapshot.captureMetrics.captureElapsedMs =
+                (long)(captureFinishedTick - this.captureDetectedTicks[fromIndex]);
         }
 
         queueItem.symbolName = symbolName;
@@ -1082,6 +1401,10 @@ private:
             return;
         }
 
+        if (this.observationProfile.isM5()) {
+            this.status.symbolCaptureMetrics[fromIndex] = queueItem.snapshot.captureMetrics;
+            this.status.symbolCaptureMetricsBarTimes[fromIndex] = targetH1BarTime;
+        }
         this.analysisReadyFlags[fromIndex] = true;
         this.pendingAnalysisH1BarTimes[fromIndex] = 0;
         this.lastCapturedH1BarTimes[fromIndex] = targetH1BarTime;
@@ -1102,8 +1425,25 @@ private:
         const datetime fromTargetH1BarTime,
         const datetime fromCurrentH1BarTime
     ) {
+        if (this.observationProfile.isM5() && this.testerMode
+                && !this.isTesterSaveWindowEnabled()
+                && this.lastCapturedH1BarTimes[fromIndex] <= 0
+                && fromCurrentH1BarTime > fromTargetH1BarTime) {
+            this.handleTesterPreflightBoundaryChanged(fromIndex, fromCurrentH1BarTime);
+            // 移行先ではまだ解析していないので、次イベントの初回試行を許可する。
+            this.lastDetectedH1BarTimes[fromIndex] = fromTargetH1BarTime;
+
+            return;
+        }
+
         if (fromCurrentH1BarTime > fromTargetH1BarTime) {
             this.totalGapCount++;
+            if (this.observationProfile.isM5()) {
+                this.totalGapCount += this.countSkippedH1Bars(
+                    this.symbolNames[fromIndex], fromTargetH1BarTime, fromCurrentH1BarTime
+                );
+                this.observeCaptureBoundary(fromIndex, fromCurrentH1BarTime);
+            }
             this.lastDetectedH1BarTimes[fromIndex] = fromCurrentH1BarTime;
             this.pendingAnalysisH1BarTimes[fromIndex] =
                 fromCurrentH1BarTime;
@@ -1159,11 +1499,15 @@ private:
 
             long expectedRunId = this.databaseRun.id;
             queueItem.snapshot.observation.runId = expectedRunId;
-            bool isSaved =
-                this.observationPersistenceService.saveSnapshot(
+            bool isSaved = false;
+            if (this.observationProfile.isM5()) {
+                isSaved = this.observationPersistenceService.saveSnapshot(queueItem.snapshot);
+            } else {
+                isSaved = this.observationPersistenceService.saveSnapshot(
                     queueItem.snapshot.observation,
                     queueItem.snapshot.timeFrames
                 );
+            }
 
             if (!isSaved) {
                 queueItem.retryCount++;
@@ -1262,7 +1606,7 @@ private:
      * 再試行時刻に達している場合、DB接続と同一Runを再準備する。
      */
     void tryReconnectDatabaseIfDue() {
-        if (this.databaseReady) {
+        if (this.databaseReady || this.databaseRejected) {
             return;
         }
 
@@ -1285,6 +1629,9 @@ private:
      */
     bool tryInitializeDatabase() {
         this.releaseDatabase(false);
+        if (this.observationProfile.isM5()) {
+            return this.tryInitializeM5Database();
+        }
         this.databaseRun.sourceServer =
             AccountInfoString(ACCOUNT_SERVER);
         this.databaseRun.sourceLogin =
@@ -1354,6 +1701,11 @@ private:
             this.databaseContext = NULL;
         }
 
+        if (this.m5DatabaseContext != NULL) {
+            this.m5DatabaseContext.close();
+            delete this.m5DatabaseContext;
+            this.m5DatabaseContext = NULL;
+        }
         if (fromClearRun) {
             ZeroMemory(this.databaseRun);
         }
@@ -1450,6 +1802,9 @@ private:
      */
     void initializeStateArrays() {
         int total = this.symbolNameInfoAll.size();
+        ArrayResize(this.captureTargetBarTimes, total);
+        ArrayResize(this.captureDetectedTicks, total);
+        ArrayResize(this.captureAnalysisAttempts, total);
         ArrayResize(this.symbolNames, total);
         ArrayResize(this.currentH1BarTimes, total);
         ArrayResize(this.lastDetectedH1BarTimes, total);
@@ -1464,10 +1819,15 @@ private:
         ArrayResize(this.symbolCompetingWriterFlags, total);
         ArrayResize(this.symbolStatusCodes, total);
         ArrayResize(this.symbolMessages, total);
+        ArrayResize(this.lastHistoryLogTexts, total);
+        ArrayResize(this.lastHistoryLogTimes, total);
 
         for (int i = 0; i < total; i++) {
             SymbolNameInfo *info =
                 this.symbolNameInfoAll.getSymbolNameInfo(i);
+            this.captureTargetBarTimes[i] = 0;
+            this.captureDetectedTicks[i] = 0;
+            this.captureAnalysisAttempts[i] = 0;
             this.symbolNames[i] = info.symbolName;
             this.currentH1BarTimes[i] = 0;
             this.lastDetectedH1BarTimes[i] = 0;
@@ -1482,6 +1842,8 @@ private:
             this.symbolCompetingWriterFlags[i] = false;
             this.symbolStatusCodes[i] = "BASE";
             this.symbolMessages[i] = "初期化中";
+            this.lastHistoryLogTexts[i] = "";
+            this.lastHistoryLogTimes[i] = 0;
         }
     }
 
@@ -1502,18 +1864,18 @@ private:
     void warmUpSymbol(const int fromIndex) {
         ENUM_TIMEFRAMES timeFrames[];
         int timeFrameCount =
-            ZigZagElliotAnalysisProfile::getObservationTimeFrameCount();
+            this.observationProfile.getObservationTimeFrameCount();
         ArrayResize(timeFrames, timeFrameCount);
 
         for (int i = 0; i < timeFrameCount; i++) {
             timeFrames[i] =
-                ZigZagElliotAnalysisProfile::getObservationTimeFrame(i);
+                this.observationProfile.getObservationTimeFrame(i);
         }
 
         if (this.testerMode) {
             for (int i = 0; i < timeFrameCount; i++) {
                 timeFrames[i] =
-                    ZigZagElliotAnalysisProfile::getObservationTimeFrame(
+                    this.observationProfile.getObservationTimeFrame(
                         timeFrameCount - 1 - i
                     );
             }
@@ -1521,7 +1883,7 @@ private:
 
         MarketContext context(
             this.symbolNames[fromIndex],
-            ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
+            this.observationProfile.getAnchorTimeFrame()
         );
         WarmUpSeriesUtil::warmUp(context, timeFrames, 500);
     }
@@ -1533,14 +1895,18 @@ private:
      * @return 全系列が同期済みの場合true
      */
     bool isAnalysisSeriesReady(const int fromIndex) {
+        if (this.observationProfile.isM5()) {
+            return this.isM5AnalysisSeriesReady(fromIndex);
+        }
+
         ENUM_TIMEFRAMES timeFrames[];
         int timeFrameCount =
-            ZigZagElliotAnalysisProfile::getObservationTimeFrameCount();
+            this.observationProfile.getObservationTimeFrameCount();
         ArrayResize(timeFrames, timeFrameCount);
 
         for (int i = 0; i < timeFrameCount; i++) {
             timeFrames[i] =
-                ZigZagElliotAnalysisProfile::getObservationTimeFrame(i);
+                this.observationProfile.getObservationTimeFrame(i);
         }
         string symbolName = this.symbolNames[fromIndex];
 
@@ -1555,7 +1921,7 @@ private:
             int requiredBars = 206;
 
             if (timeFrames[i]
-                    == ZigZagElliotAnalysisProfile::getAnalysisStartTimeFrame()) {
+                    == this.observationProfile.getAnalysisStartTimeFrame()) {
                 requiredBars = 61;
             }
 
@@ -1565,6 +1931,93 @@ private:
         }
 
         return true;
+    }
+
+    /**
+     * M5の全7系列を確認し、不足系列の本数・最古日時・同期状態を通知する。
+     *
+     * 正常な足の本数変化で不足ログが増えないよう、不足系列だけを比較する。
+     * この成功は履歴準備だけを示し、Elliott実分析の成功を代用しない。
+     *
+     * @param fromIndex 対象通貨インデックス。
+     * @return 全7系列が同期済みかつ必要本数を満たす場合true。
+     */
+    bool isM5AnalysisSeriesReady(const int fromIndex) {
+        string symbolName = this.symbolNames[fromIndex];
+        string historyText = "";
+        int total = this.observationProfile.getObservationTimeFrameCount();
+
+        for (int i = 0; i < total; i++) {
+            ENUM_TIMEFRAMES timeFrame =
+                this.observationProfile.getObservationTimeFrame(i);
+            int requiredBars = 206;
+            if (timeFrame == this.observationProfile.getAnalysisStartTimeFrame()) {
+                requiredBars = 61;
+            }
+            bool isSynchronized = WarmUpSeriesUtil::isSeriesSynchronized(
+                symbolName, timeFrame
+            );
+            int availableBars = Bars(symbolName, timeFrame);
+            if (isSynchronized && availableBars >= requiredBars) {
+                continue;
+            }
+
+            long firstDate = 0;
+            SeriesInfoInteger(symbolName, timeFrame, SERIES_FIRSTDATE, firstDate);
+            string timeFrameText = EnumToString(timeFrame);
+            StringReplace(timeFrameText, "PERIOD_", "");
+            string firstDateText = this.formatDateTime((datetime)firstDate);
+            if (firstDateText == "") {
+                firstDateText = "unavailable";
+            }
+            if (historyText != "") {
+                historyText += " ";
+            }
+            historyText += StringFormat(
+                "%s[bars=%d required=%d first=%s synced=%d]",
+                timeFrameText, availableBars, requiredBars, firstDateText,
+                (int)isSynchronized
+            );
+        }
+        this.logM5HistoryStatus(fromIndex, historyText);
+
+        return historyText == "";
+    }
+
+    /**
+     * M5の履歴不足を初回・変化時最短1時間・不変時24時間間隔で通知する。
+     *
+     * 不足解消は直ちに1回通知する。時計後退時はログを抑制しない。
+     *
+     * @param fromIndex 対象通貨インデックス。
+     * @param fromHistoryText 不足系列の内容。空文字は全系列の準備完了。
+     */
+    void logM5HistoryStatus(const int fromIndex, const string fromHistoryText) {
+        if (fromHistoryText == "") {
+            if (this.lastHistoryLogTexts[fromIndex] != "") {
+                this.logger.info(__FUNCTION__,
+                    "HISTORY_READY symbol=" + this.symbolNames[fromIndex]
+                        + " MN1-M5系列の準備完了（実分析成功とは別）");
+            }
+            this.lastHistoryLogTexts[fromIndex] = "";
+            this.lastHistoryLogTimes[fromIndex] = 0;
+
+            return;
+        }
+
+        datetime currentTime = TimeCurrent();
+        long elapsedSeconds = (long)(currentTime - this.lastHistoryLogTimes[fromIndex]);
+        if (this.lastHistoryLogTexts[fromIndex] != "" && elapsedSeconds >= 0
+                && elapsedSeconds < 86400
+                && (fromHistoryText == this.lastHistoryLogTexts[fromIndex]
+                    || elapsedSeconds < 3600)) {
+            return;
+        }
+        this.logger.info(__FUNCTION__,
+            "ANALYSIS_HISTORY_UNAVAILABLE symbol=" + this.symbolNames[fromIndex]
+                + " " + fromHistoryText);
+        this.lastHistoryLogTexts[fromIndex] = fromHistoryText;
+        this.lastHistoryLogTimes[fromIndex] = currentTime;
     }
 
     /**
@@ -1586,7 +2039,7 @@ private:
                 || fromCurrentBarTime <= fromPreviousBarTime
                 || fromCurrentBarTime - fromPreviousBarTime
                     <= PeriodSeconds(
-                        ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
+                        this.observationProfile.getAnchorTimeFrame()
                     )) {
             return 0;
         }
@@ -1594,7 +2047,7 @@ private:
         datetime barTimes[];
         int copiedCount = CopyTime(
             fromSymbolName,
-            ZigZagElliotAnalysisProfile::getAnchorTimeFrame(),
+            this.observationProfile.getAnchorTimeFrame(),
             fromPreviousBarTime + 1,
             fromCurrentBarTime,
             barTimes
@@ -1622,7 +2075,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 6;
+        this.databaseRun.schemaVersion = this.observationProfile.getSchemaVersion();
         this.databaseRun.sourceMode = "LIVE";
 
         if (this.testerMode) {
@@ -1632,14 +2085,17 @@ private:
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.04";
-        this.databaseRun.strategy = "H1_OBSERVATION_ALL";
-        this.databaseRun.strategyVersion = "H1_OBSERVATION_ALL_V5";
+        if (this.observationProfile.isM5()) {
+            this.databaseRun.programVersion = "1.02";
+        }
+        this.databaseRun.strategy = this.observationProfile.getStrategy();
+        this.databaseRun.strategyVersion = this.observationProfile.getStrategyVersion();
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();
         this.databaseRun.analysisInputText =
-            ZigZagElliotAnalysisProfile::createCanonicalText();
+            this.observationProfile.createCanonicalText();
         this.databaseRun.analysisInputHash =
-            ZigZagElliotAnalysisProfile::createHash();
+            this.observationProfile.createHash();
         this.databaseRun.sourceServer = AccountInfoString(ACCOUNT_SERVER);
         this.databaseRun.sourceLogin =
             (long)AccountInfoInteger(ACCOUNT_LOGIN);
@@ -1736,17 +2192,23 @@ private:
         const string fromMessage
     ) {
         this.symbolStatusCodes[fromIndex] = fromStatusCode;
-        this.symbolMessages[fromIndex] = fromMessage;
+        string message = fromMessage;
+        if (this.observationProfile.isM5()) {
+            StringReplace(message, "H1", "M5");
+        }
+        this.symbolMessages[fromIndex] = message;
     }
 
     /**
      * 内部状態を描画用Modelへ反映する。
      */
     void refreshStatus() {
+        this.status.anchorTimeFrameText = this.getAnchorTimeFrameText();
         this.status.isRunning = this.initialized;
         this.status.isWriterActive =
             this.initialized
                 && !this.competingWriterDetected
+                && !this.databaseRejected
                 && this.isPersistenceAllowed();
         this.status.isDatabaseConnected = this.databaseReady;
         this.status.runId = this.databaseRun.id;
@@ -1895,6 +2357,9 @@ private:
      * 通貨状態用の動的配列を解放する。
      */
     void clearStateArrays() {
+        ArrayResize(this.captureTargetBarTimes, 0);
+        ArrayResize(this.captureDetectedTicks, 0);
+        ArrayResize(this.captureAnalysisAttempts, 0);
         ArrayResize(this.symbolNames, 0);
         ArrayResize(this.currentH1BarTimes, 0);
         ArrayResize(this.lastDetectedH1BarTimes, 0);
@@ -1909,6 +2374,121 @@ private:
         ArrayResize(this.symbolCompetingWriterFlags, 0);
         ArrayResize(this.symbolStatusCodes, 0);
         ArrayResize(this.symbolMessages, 0);
+        ArrayResize(this.lastHistoryLogTexts, 0);
+        ArrayResize(this.lastHistoryLogTimes, 0);
+    }
+
+    /**
+     * M5用の初検出計測を更新する。バーが同じなら待機時間と試行回数を保持する。
+     *
+     * @param fromIndex 対象通貨インデックス。
+     * @param fromBarTime 検出した観測基準バー。
+     */
+    void observeCaptureBoundary(const int fromIndex, const datetime fromBarTime) {
+        if (!this.observationProfile.isM5() || fromBarTime <= 0
+                || this.captureTargetBarTimes[fromIndex] == fromBarTime) {
+            return;
+        }
+        this.captureTargetBarTimes[fromIndex] = fromBarTime;
+        this.captureDetectedTicks[fromIndex] = GetTickCount64();
+        this.captureAnalysisAttempts[fromIndex] = 0;
+    }
+
+    /**
+     * M5用途検査付きDBと同じRunを再準備する。
+     *
+     * @return 保存可能な接続を準備できた場合true。
+     */
+    bool tryInitializeM5Database() {
+        if (!this.ensureExecutionSource()) {
+            return false;
+        }
+
+        this.m5DatabaseContext = new ZigZagElliotM5ObservationDatabaseContext(
+            this.databaseFileName, this.databaseUseCommonFolder
+        );
+        if (this.m5DatabaseContext == NULL || !this.m5DatabaseContext.open()) {
+            if (this.m5DatabaseContext != NULL
+                    && this.m5DatabaseContext.isDatabaseRejected()) {
+                this.databaseRejected = true;
+                this.lastDatabaseMessage = "別用途・未対応DBのため収集を停止。M5専用DBを指定してください";
+                for (int i = 0; i < ArraySize(this.symbolNames); i++) {
+                    this.setSymbolStatus(i, "ERR", this.lastDatabaseMessage);
+                }
+            } else {
+                this.lastDatabaseMessage = "DB接続を再試行中";
+            }
+            this.releaseDatabase(false);
+
+            return false;
+        }
+
+        this.observationPersistenceService = this.m5DatabaseContext.getPersistenceService();
+        if (this.observationPersistenceService == NULL
+                || !this.m5DatabaseContext.saveRun(this.databaseRun)) {
+            this.lastDatabaseMessage = "DB Run保存を再試行中";
+            this.releaseDatabase(false);
+
+            return false;
+        }
+        this.databaseReady = true;
+        this.nextDatabaseRetryTime = 0;
+        this.lastDatabaseMessage = "";
+        this.logger.info(__FUNCTION__, StringFormat(
+            "M5 observation database is ready. runId=%I64d runUid=%s",
+            this.databaseRun.id, this.databaseRun.runUid
+        ));
+
+        return true;
+    }
+
+    /**
+     * M5の収集前・保存前に実行元を確認し、別口座の値を同じRunへ混在させない。
+     *
+     * @return H1、または固定したM5実行元が現在と一致する場合true。
+     */
+    bool ensureExecutionSource() {
+        if (!this.observationProfile.isM5()) {
+            return true;
+        }
+        string sourceServer = AccountInfoString(ACCOUNT_SERVER);
+        long sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
+        if (sourceServer == "") {
+            this.lastDatabaseMessage = "取引サーバー情報を取得待ち";
+
+            return false;
+        }
+        if (this.databaseRun.sourceServer == "") {
+            this.databaseRun.sourceServer = sourceServer;
+            this.databaseRun.sourceLogin = sourceLogin;
+
+            return true;
+        }
+        if (this.databaseRun.sourceServer != sourceServer
+                || this.databaseRun.sourceLogin != sourceLogin) {
+            this.databaseRejected = true;
+            this.lastDatabaseMessage = "実行元口座の変更を検出。収集を停止しました";
+            this.releaseDatabase(false);
+            for (int i = 0; i < ArraySize(this.symbolNames); i++) {
+                this.setSymbolStatus(i, "ERR", this.lastDatabaseMessage);
+            }
+
+            return false;
+        }
+        if (this.lastDatabaseMessage == "取引サーバー情報を取得待ち") {
+            this.lastDatabaseMessage = "";
+        }
+        return true;
+    }
+
+    /**
+     * @return 表示・ログ用の固定基準足名。
+     */
+    string getAnchorTimeFrameText() {
+        if (this.observationProfile.isM5()) {
+            return "M5";
+        }
+        return "H1";
     }
 
     /**

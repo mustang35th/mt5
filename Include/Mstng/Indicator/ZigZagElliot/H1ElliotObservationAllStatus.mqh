@@ -10,6 +10,8 @@
 #ifndef MSTNG_H1_ELLIOT_OBSERVATION_ALL_STATUS_MQH
 #define MSTNG_H1_ELLIOT_OBSERVATION_ALL_STATUS_MQH
 
+#include <Mstng\Database\Entity\ZigZagElliotObservationCaptureMetricsEntity.mqh>
+
 enum H1ElliotObservationAllSymbolStatus {
     h1ElliotObservationAllSymbolStatusBase = 0,
     h1ElliotObservationAllSymbolStatusWait = 1,
@@ -22,13 +24,23 @@ enum H1ElliotObservationAllSymbolStatus {
 };
 
 /**
- * 全28通貨H1観測処理の表示用状態を保持するクラス。
+ * 全28通貨H1・M5観測処理の表示用状態を保持するクラス。
  *
  * 収集処理から描画処理へ渡す値だけを保持し、DBや分析オブジェクトへの
  * 参照は保持しない。
+ * H1を含む既存フィールド名は互換のため維持し、M5では基準M5の値を表す。
  */
 class H1ElliotObservationAllStatus {
 public:
+    /** 固定観測基準足の表示名。既存H1フィールド名は互換のため維持する。 */
+    string anchorTimeFrameText;
+
+    /** 通貨ごとの最後にSnapshotへ固定した取得品質。H1では未取得。 */
+    ZigZagElliotObservationCaptureMetricsEntity symbolCaptureMetrics[28];
+
+    /** 通貨ごとの取得品質に対応する基準バー。サーバー時刻、未取得0。 */
+    datetime symbolCaptureMetricsBarTimes[28];
+
     /** インジケータが実行中の場合true。 */
     bool isRunning;
 
@@ -115,6 +127,7 @@ public:
      * 全状態を初期化する。
      */
     void reset() {
+        this.anchorTimeFrameText = "H1";
         this.isRunning = false;
         this.isWriterActive = false;
         this.isDatabaseConnected = false;
@@ -246,6 +259,8 @@ public:
         }
 
         this.symbolNames[fromIndex] = "";
+        ZeroMemory(this.symbolCaptureMetrics[fromIndex]);
+        this.symbolCaptureMetricsBarTimes[fromIndex] = 0;
         this.symbolStatuses[fromIndex] = h1ElliotObservationAllSymbolStatusBase;
         this.symbolPendingCounts[fromIndex] = 0;
         this.symbolRetryCounts[fromIndex] = 0;

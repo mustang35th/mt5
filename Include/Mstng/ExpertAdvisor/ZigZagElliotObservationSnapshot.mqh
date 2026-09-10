@@ -9,6 +9,7 @@
 #ifndef MSTNG_EXPERT_ADVISOR_ZIGZAG_ELLIOT_OBSERVATION_SNAPSHOT_MQH
 #define MSTNG_EXPERT_ADVISOR_ZIGZAG_ELLIOT_OBSERVATION_SNAPSHOT_MQH
 
+#include <Mstng\Database\Entity\ZigZagElliotObservationCaptureMetricsEntity.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationEntity.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
 
@@ -23,6 +24,12 @@ public:
     /** 時間足別分析一覧。 */
     ZigZagElliotObservationTimeFrameEntity timeFrames[];
 
+    /** 取得品質行を保持する場合true。H1ではfalse。 */
+    bool hasCaptureMetrics;
+
+    /** 分析結果と同時に固定した取得品質。DB再送時は更新しない。 */
+    ZigZagElliotObservationCaptureMetricsEntity captureMetrics;
+
     /**
      * 空の観測スナップショットとして初期化する。
      */
@@ -36,6 +43,8 @@ public:
     void clear() {
         ZeroMemory(this.observation);
         ArrayResize(this.timeFrames, 0);
+        this.hasCaptureMetrics = false;
+        ZeroMemory(this.captureMetrics);
     }
 };
 

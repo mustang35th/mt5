@@ -12,14 +12,15 @@
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+#include <Mstng\Elliot\ZigZagElliotObservationProfile.mqh>
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshot.mqh>
 #include <Mstng\Util\RateUtil.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
 /**
- * H1新規足時点のElliott分析結果をDB保存用へ変換するクラス。
+ * 観測基準足時点のElliott分析結果をDB保存用へ変換するクラス。
  *
- * 親観測とMN1、W1、D1、H4、H1の構造化スカラーだけを生成し、
+ * H1の5足またはM5の7足の構造化スカラーだけを生成し、
  * 監査用CSVおよびWaveポイント配列は保持しない。
  */
 class ZigZagElliotObservationSnapshotBuilder {
@@ -39,12 +40,143 @@ public:
         const datetime fromAnchorBarTime,
         ZigZagElliotObservationSnapshot &fromSnapshot
     ) {
+        ZigZagElliotObservationProfile profile;
+        return build(
+            fromElliotAll,
+            fromRunEntity,
+            fromAnchorBarTime,
+            fromSnapshot,
+            profile
+        );
+    }
+
+    /**
+     * 品質を要求しないH1 Profileの観測を既存経路で生成する。
+     *
+     * @param fromElliotAll Elliott分析結果。
+     * @param fromRunEntity 保存済み実行情報。
+     * @param fromAnchorBarTime 観測基準バー開始時刻。
+     * @param fromSnapshot 生成先。
+     * @param fromProfile 起動時に固定した観測Profile。
+     * @return H1観測を生成できた場合true。M5は専用overloadを使用する。
+     */
+    static bool build(
+        ElliotAll *fromElliotAll,
+        ZigZagElliotAlertRunEntity &fromRunEntity,
+        const datetime fromAnchorBarTime,
+        ZigZagElliotObservationSnapshot &fromSnapshot,
+        const ZigZagElliotObservationProfile &fromProfile
+    ) {
+        fromSnapshot.clear();
+        if (!fromProfile.isValid()
+                || fromProfile.requiresCaptureMetrics()
+                || fromElliotAll == NULL
+                || !isSpreadValid(fromElliotAll)) {
+            return false;
+        }
+        return buildSnapshot(
+            fromElliotAll,
+            fromRunEntity,
+            fromAnchorBarTime,
+            fromSnapshot,
+            fromProfile,
+            fromElliotAll.todayRate.spread
+        );
+    }
+
+    /**
+     * 採用済みの同一気配と取得品質からM5観測を生成する。
+     *
+     * 呼び出し側は解析開始時の気配を渡し、解析前後のバー境界を確認する。
+     * 気配を再取得せず、Spreadとその時刻を同じ引数から固定する。
+     *
+     * @param fromElliotAll M5までのElliott分析結果。
+     * @param fromRunEntity 保存済み実行情報。
+     * @param fromAnchorBarTime 観測基準M5バー開始時刻。
+     * @param fromSnapshot 生成先。
+     * @param fromProfile 起動時に固定したM5観測Profile。
+     * @param fromQuoteTick 解析開始時に採用した気配。時刻不明はNULL扱い。
+     * @param fromCaptureMetrics 呼び出し側で計測した取得品質。
+     * @return M5観測と品質を生成できた場合true。
+     */
+    static bool build(
+        ElliotAll *fromElliotAll,
+        ZigZagElliotAlertRunEntity &fromRunEntity,
+        const datetime fromAnchorBarTime,
+        ZigZagElliotObservationSnapshot &fromSnapshot,
+        const ZigZagElliotObservationProfile &fromProfile,
+        const MqlTick &fromQuoteTick,
+        const ZigZagElliotObservationCaptureMetricsEntity &fromCaptureMetrics
+    ) {
+        ZigZagElliotObservationCaptureMetricsEntity captureMetrics;
+        captureMetrics = fromCaptureMetrics;
+        fromSnapshot.clear();
+        if (!fromProfile.isValid()
+                || !fromProfile.isM5()
+                || fromElliotAll == NULL
+                || !isQuoteTickValid(fromQuoteTick)
+                || !isPipSizeValid(fromElliotAll)) {
+            return false;
+        }
+
+        captureMetrics.observationId = 0;
+        captureMetrics.hasQuoteTickTimeMsc = fromQuoteTick.time_msc > 0;
+        captureMetrics.quoteTickTimeMsc = 0;
+        if (captureMetrics.hasQuoteTickTimeMsc) {
+            captureMetrics.quoteTickTimeMsc = fromQuoteTick.time_msc;
+        }
+        if (!captureMetrics.isValid()) {
+            return false;
+        }
+
+        double spreadPips = RateUtil::priceToPips(
+            fromQuoteTick.ask - fromQuoteTick.bid,
+            fromElliotAll.marketContext
+        );
+        if (!buildSnapshot(
+            fromElliotAll,
+            fromRunEntity,
+            fromAnchorBarTime,
+            fromSnapshot,
+            fromProfile,
+            spreadPips
+        )) {
+            return false;
+        }
+
+        fromSnapshot.hasCaptureMetrics = true;
+        fromSnapshot.captureMetrics = captureMetrics;
+        return true;
+    }
+
+private:
+    /**
+     * Profileに従って分析スカラーを生成する共通処理。
+     *
+     * @param fromElliotAll Elliott分析結果。
+     * @param fromRunEntity 保存済み実行情報。
+     * @param fromAnchorBarTime 基準バー開始時刻。
+     * @param fromSnapshot 生成先。
+     * @param fromProfile 固定の観測Profile。
+     * @param fromSpreadPips 採用済み気配のSpread。
+     * @return 全項目を生成できた場合true。
+     */
+    static bool buildSnapshot(
+        ElliotAll *fromElliotAll,
+        ZigZagElliotAlertRunEntity &fromRunEntity,
+        const datetime fromAnchorBarTime,
+        ZigZagElliotObservationSnapshot &fromSnapshot,
+        const ZigZagElliotObservationProfile &fromProfile,
+        const double fromSpreadPips
+    ) {
         fromSnapshot.clear();
 
         if (!isInputValid(
             fromElliotAll,
             fromRunEntity,
-            fromAnchorBarTime
+            fromAnchorBarTime,
+            fromProfile,
+            fromSpreadPips
         )) {
             return false;
         }
@@ -55,7 +187,8 @@ public:
                 || !buildTimeFrames(
                     fromElliotAll,
                     createdAt,
-                    fromSnapshot.timeFrames
+                    fromSnapshot.timeFrames,
+                    fromProfile
                 )) {
             fromSnapshot.clear();
 
@@ -68,11 +201,14 @@ public:
             fromAnchorBarTime,
             createdAt,
             fromSnapshot.timeFrames,
-            fromSnapshot.observation
+            fromSnapshot.observation,
+            fromProfile,
+            fromSpreadPips
         );
         fromSnapshot.observation.snapshotHash = createSnapshotHash(
             fromSnapshot.observation,
-            fromSnapshot.timeFrames
+            fromSnapshot.timeFrames,
+            fromProfile
         );
 
         if (fromSnapshot.observation.snapshotHash == "") {
@@ -84,19 +220,22 @@ public:
         return true;
     }
 
-private:
     /**
-     * Builder入力がH1観測に利用できるか判定する。
+     * Builder入力が指定Profileの観測に利用できるか判定する。
      *
-     * @param fromElliotAll H1までのElliott分析結果
+     * @param fromElliotAll Elliott分析結果
      * @param fromRunEntity 保存済み実行情報
-     * @param fromAnchorBarTime H1バー開始時刻
+     * @param fromAnchorBarTime 基準バー開始時刻
+     * @param fromProfile 固定の観測Profile
+     * @param fromSpreadPips 採用済みSpread
      * @return 利用できる場合true
      */
     static bool isInputValid(
         ElliotAll *fromElliotAll,
         ZigZagElliotAlertRunEntity &fromRunEntity,
-        const datetime fromAnchorBarTime
+        const datetime fromAnchorBarTime,
+        const ZigZagElliotObservationProfile &fromProfile,
+        const double fromSpreadPips
     ) {
         if (fromElliotAll == NULL
                 || !fromElliotAll.isAnalysisSucceeded
@@ -105,21 +244,54 @@ private:
                 || fromRunEntity.id <= 0
                 || normalizeText(fromRunEntity.analysisInputHash) == ""
                 || normalizeText(fromRunEntity.sourceMode) == ""
-                || !isSpreadValid(fromElliotAll)
+                || !fromProfile.isValid()
+                || !MathIsValidNumber(fromSpreadPips)
+                || fromSpreadPips == EMPTY_VALUE
+                || fromSpreadPips < 0.0
                 || !isPipSizeValid(fromElliotAll)) {
             return false;
         }
 
         if (fromElliotAll.marketContext.timeFrame
-                != ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
+                != fromProfile.getAnchorTimeFrame()
                 || fromElliotAll.elliotCurrent.marketContext.timeFrame
-                    != ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
+                    != fromProfile.getAnchorTimeFrame()
                 || fromElliotAll.elliotList.Total()
-                    != ZigZagElliotAnalysisProfile::getObservationTimeFrameCount()) {
+                    != fromProfile.getObservationTimeFrameCount()) {
+            return false;
+        }
+
+        if (fromProfile.isM5()
+                && (fromRunEntity.strategy != fromProfile.getStrategy()
+                    || fromRunEntity.strategyVersion
+                        != fromProfile.getStrategyVersion()
+                    || fromRunEntity.schemaVersion != fromProfile.getSchemaVersion()
+                    || fromRunEntity.analysisVersion
+                        != fromProfile.getAnalysisVersion()
+                    || fromRunEntity.analysisInputText
+                        != fromProfile.createCanonicalText()
+                    || fromRunEntity.analysisInputHash != fromProfile.createHash()
+                    || (fromRunEntity.sourceMode != "LIVE"
+                        && fromRunEntity.sourceMode != "TESTER"))) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * 採用済み気配のBid・Askが有効か確認する。
+     *
+     * @param fromQuoteTick 解析開始時の同一気配。
+     * @return 価格が有効な場合true。時刻不明は価格不正とは扱わない。
+     */
+    static bool isQuoteTickValid(const MqlTick &fromQuoteTick) {
+        return MathIsValidNumber(fromQuoteTick.bid)
+            && MathIsValidNumber(fromQuoteTick.ask)
+            && fromQuoteTick.bid != EMPTY_VALUE
+            && fromQuoteTick.ask != EMPTY_VALUE
+            && fromQuoteTick.bid > 0.0
+            && fromQuoteTick.ask >= fromQuoteTick.bid;
     }
 
     /**
@@ -183,6 +355,8 @@ private:
      * @param fromCreatedAt レコード生成時刻
      * @param fromTimeFrameEntities 時間足別分析一覧
      * @param fromEntity 生成先
+     * @param fromProfile 固定の観測Profile
+     * @param fromSpreadPips 採用済みSpread
      */
     static void buildObservation(
         ElliotAll *fromElliotAll,
@@ -190,7 +364,9 @@ private:
         const datetime fromAnchorBarTime,
         const datetime fromCreatedAt,
         ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[],
-        ZigZagElliotObservationEntity &fromEntity
+        ZigZagElliotObservationEntity &fromEntity,
+        const ZigZagElliotObservationProfile &fromProfile,
+        const double fromSpreadPips
     ) {
         ZeroMemory(fromEntity);
         fromEntity.id = 0;
@@ -201,7 +377,7 @@ private:
             fromElliotAll.marketContext.symbolName
         );
         fromEntity.anchorTimeFrame = (int)
-            ZigZagElliotAnalysisProfile::getAnchorTimeFrame();
+            fromProfile.getAnchorTimeFrame();
         fromEntity.anchorTimeFrameText = normalizeText(
             fromElliotAll.marketContext.timeFrameLabel
         );
@@ -213,8 +389,8 @@ private:
         fromEntity.anchorJstTimeText = formatDateTime(
             fromEntity.anchorJstTime
         );
-        fromEntity.capturePhase = "BAR_OPEN_FIRST_SUCCESS";
-        fromEntity.spreadPips = fromElliotAll.todayRate.spread;
+        fromEntity.capturePhase = fromProfile.getCapturePhase();
+        fromEntity.spreadPips = fromSpreadPips;
         fromEntity.pipSize = calculatePipSize(fromElliotAll);
         fromEntity.analysisVersion = normalizeText(
             fromRunEntity.analysisVersion
@@ -229,7 +405,7 @@ private:
     }
 
     /**
-     * MN1、W1、D1、H4、H1の時間足別Entityを生成する。
+     * Profileの固定順序で時間足別Entityを生成する。
      *
      * ElliotAllの一覧は現在足から上位足の順であるため、逆順に走査して
      * 保存時の表示順を固定する。
@@ -237,17 +413,19 @@ private:
      * @param fromElliotAll H1までのElliott分析結果
      * @param fromCreatedAt レコード生成時刻
      * @param fromEntities 生成先配列
-     * @return 5時間足を生成できた場合true
+     * @param fromProfile 固定の観測Profile
+     * @return 指定時間足をすべて生成できた場合true
      */
     static bool buildTimeFrames(
         ElliotAll *fromElliotAll,
         const datetime fromCreatedAt,
-        ZigZagElliotObservationTimeFrameEntity &fromEntities[]
+        ZigZagElliotObservationTimeFrameEntity &fromEntities[],
+        const ZigZagElliotObservationProfile &fromProfile
     ) {
         int total = fromElliotAll.elliotList.Total();
 
         if (total
-                != ZigZagElliotAnalysisProfile::getObservationTimeFrameCount()
+                != fromProfile.getObservationTimeFrameCount()
                 || ArrayResize(fromEntities, total) != total) {
             return false;
         }
@@ -258,7 +436,7 @@ private:
 
             if (elliot == NULL
                     || elliot.marketContext.timeFrame
-                        != ZigZagElliotAnalysisProfile::getObservationTimeFrame(i)) {
+                        != fromProfile.getObservationTimeFrame(i)) {
                 return false;
             }
 
@@ -278,7 +456,8 @@ private:
                 latestPoint,
                 i,
                 fromCreatedAt,
-                fromEntities[i]
+                fromEntities[i],
+                fromProfile
             )) {
                 return false;
             }
@@ -296,6 +475,7 @@ private:
      * @param fromTimeFrameOrder 上位足からの表示順
      * @param fromCreatedAt レコード生成時刻
      * @param fromEntity 生成先
+     * @param fromProfile 固定の観測Profile
      * @return 生成できた場合true
      */
     static bool buildTimeFrame(
@@ -304,7 +484,8 @@ private:
         ZigZagPoint *fromLatestPoint,
         const int fromTimeFrameOrder,
         const datetime fromCreatedAt,
-        ZigZagElliotObservationTimeFrameEntity &fromEntity
+        ZigZagElliotObservationTimeFrameEntity &fromEntity,
+        const ZigZagElliotObservationProfile &fromProfile
     ) {
         ZeroMemory(fromEntity);
 
@@ -322,7 +503,7 @@ private:
         fromEntity.timeFrameOrder = fromTimeFrameOrder;
         fromEntity.isAnchorTimeFrame = boolToInteger(
             fromElliot.marketContext.timeFrame
-                == ZigZagElliotAnalysisProfile::getAnchorTimeFrame()
+                == fromProfile.getAnchorTimeFrame()
         );
         fromEntity.isBuy = boolToInteger(fromElliot.isBuy);
         fromEntity.buySellLabel = normalizeText(fromElliot.buySellLabel);
@@ -453,13 +634,15 @@ private:
      *
      * @param fromEntity 観測親Entity
      * @param fromTimeFrameEntities 時間足別分析一覧
+     * @param fromProfile 固定の観測Profile
      * @return 16進16桁のハッシュ
      */
     static string createSnapshotHash(
         ZigZagElliotObservationEntity &fromEntity,
-        ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[]
+        ZigZagElliotObservationTimeFrameEntity &fromTimeFrameEntities[],
+        const ZigZagElliotObservationProfile &fromProfile
     ) {
-        string sourceText = "H1_OBSERVATION_V5";
+        string sourceText = fromProfile.getSnapshotHashVersion();
         appendText(sourceText, fromEntity.sourceMode);
         appendText(sourceText, fromEntity.sourceServer);
         appendText(sourceText, fromEntity.symbolName);

@@ -33,9 +33,10 @@ public:
     /**
      * 観測本体テーブルと検索用インデックスを作成する。
      *
+     * @param fromCurrentSchemaOnly 検査済み現行M5スキーマとしてJST補完を禁止する場合true。
      * @return 作成に成功した場合true。
      */
-    bool createTable() {
+    bool createTable(const bool fromCurrentSchemaOnly = false) {
         if (!this.isDatabaseReady(__FUNCTION__)) {
             return false;
         }
@@ -82,7 +83,8 @@ public:
                 "zigzag_elliot_observations",
                 "anchor_bar_time",
                 "anchor_jst_time",
-                "anchor_jst_time_text"
+                "anchor_jst_time_text",
+                fromCurrentSchemaOnly
             )) {
             return false;
         }
