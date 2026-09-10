@@ -1,0 +1,431 @@
+# ZigZagElliotM5ObservationAll 基本設計書
+
+## 1. 文書情報
+
+| 項目 | 内容 |
+|---|---|
+| 対象プログラム | `Indicators/ZigZagElliotM5ObservationAll.mq5`（新規作成予定） |
+| 文書バージョン | `0.1` |
+| 状態 | 基本設計。M5収集・DB対応・Viewerは未実装 |
+| 作成・最終更新日 | 2026-09-10 |
+| 設計元 | `ZigZagElliotH1ObservationAll` v1.04 |
+| 参照ソース | 本書作成時のコミット `a52991b` |
+| 主な対象工程 | ①DB・観測設定の設計、および②M5収集に必要な基本動作 |
+
+本書は、これまで整理したM5版の収集範囲、DB構成、観測設定、取得品質、H1互換性および受け入れ条件をまとめる。記載は実装予定の仕様であり、実装済み・動作確認済みであることを示さない。
+
+既存H1の詳細は[ZigZagElliotH1ObservationAll仕様書](ZigZagElliotH1ObservationAll.md)、共通のDB列定義は[アラートデータベース仕様書](../Database/ZigZagElliotAlertDatabase.md)を参照する。本書で明示したM5差分以外は、既存の計算・保存規則を維持する。
+
+## 2. 目的と対象範囲
+
+全28通貨について、M5新規足ごとの市場状態を上位足込みで記録する収集専用インジケーターを作成する。H1との方向一致やエントリー条件で収集対象を絞らず、後から条件成立前後を比較できるデータを残す。
+
+### 2.1 初期版で行うこと
+
+- 各通貨のM5境界を検出し、MN1からM5までの7時間足を分析する。
+- 対象M5内で最初にSnapshot生成まで成功した結果を固定する。
+- 取得済みSnapshotをFIFOへ保持し、専用SQLite DBへ直列保存する。
+- 分析結果に加え、取得時点・解析時間・解析試行回数を記録する。
+- 状態パネルで準備、分析、保存、キュー、欠損および取得品質を確認できるようにする。
+
+### 2.2 初期版では行わないこと
+
+- 売買注文、決済、ポジション管理、エントリー可否判定、アラート送信。
+- H1方向と一致するM5だけを選別する処理。
+- M5バー途中の全tick・全条件変化の保存。
+- 過去の観測欠損を現在の分析結果から埋めるバックフィル。
+- 全ZigZagポイント配列、全Wave履歴の保存。
+- Episode化、将来損益、MFE・MAEの計算。
+- 既存ViewerのM5対応、および既存H1研究処理のM5対応。
+
+これは「5分ごとの観測」であり、5分の途中に一時成立したシグナルや、別チャートのアラート発生を完全に再現する記録ではない。
+
+## 3. 全体構成と共通化方針
+
+```text
+ZigZagElliotM5ObservationAll（新規）
+  ├─ M5観測設定：28通貨・M5基準・7時間足
+  ├─ 収集制御：LIVE OnTimer / TESTER OnCalculate
+  │    ├─ シンボル解決・履歴準備・境界検出
+  │    ├─ 共通ElliotAllによるMN1→M5分析
+  │    ├─ 観測Snapshot＋取得品質の固定
+  │    └─ FIFO・単一Writerによる保存
+  └─ M5収集状態パネル
+
+M5専用SQLite
+  ├─ 実行情報（Run）
+  └─ 観測本体（1通貨・1M5）
+       ├─ 時間足別分析（7行）
+       └─ 取得品質（1行）
+```
+
+入口のインジケーターはH1版とM5版で分離する。内部では時間足に依存する観測条件を分離し、収集・Snapshot生成・DB保存の既存部品を必要な範囲で共通化する。
+
+| 部品 | 設計方針 |
+|---|---|
+| 共通Elliott計算 | 既存の`ElliotAll`と計算パラメーターを利用。M5専用の波動計算式は作らない |
+| 観測Profile | `ZigZagElliotObservationProfile`等の専用定義を追加する案。H1／M5の基準足・足順序・識別値を管理 |
+| 収集制御 | H1 Controllerの境界検出、再試行、FIFO、Run管理を基にする。全体を機械的にコピーして二重管理しない |
+| Snapshot Builder | 指定Profileの足数・順序・アンカーを使用して既存項目を変換 |
+| 保存検証 | H1は既存5足、M5は7足として厳密に検証。任意足数を無条件に受け入れない |
+| 取得品質 | M5の追加Entity／DAOとして分離。H1には保存を要求しない |
+| 状態表示 | 表示責務を収集・判定・ハンドル管理から分離する |
+
+新規クラス名と共通部品の切り出し単位は実装時に確定する。既存publicメソッドの改名や、関係のないEA・Listのリファクタリングは行わない。
+
+観測Profileは起動時に選択して固定し、収集制御・Builder・保存検証・Hash生成が同じ定義を参照する。H1とM5の同時稼働で設定が入れ替わらないよう、共有グローバル値によるモード切り替えは行わない。
+
+## 4. 固定の観測設定
+
+| 項目 | M5版 |
+|---|---|
+| 基準時間足 | `PERIOD_M5` |
+| 分析開始時間足 | `PERIOD_MN1` |
+| 観測方式 | `BAR_OPEN_FIRST_SUCCESS` |
+| 対象通貨 | 既存`SymbolNameInfoAll.setAll()`の28通貨 |
+| 方向フィルター | なし |
+| Spread上限による除外 | なし。有効な高Spreadも観測値として保存 |
+| Run `strategy` | `M5_OBSERVATION_ALL` |
+| Run `strategy_version` | `M5_OBSERVATION_ALL_V1`（初版予定値） |
+| 観測Profile識別子 | `M5_OBSERVATION_PROFILE_V1`（初版予定値） |
+| Snapshot Hash形式識別子 | `M5_OBSERVATION_V1`（初版予定値） |
+
+### 4.1 保存時間足と順序
+
+| `time_frame_order` | 時間足 | `is_anchor_time_frame` |
+|---:|---|---:|
+| 0 | MN1 | 0 |
+| 1 | W1 | 0 |
+| 2 | D1 | 0 |
+| 3 | H4 | 0 |
+| 4 | H1 | 0 |
+| 5 | M15 | 0 |
+| 6 | M5 | 1 |
+
+保存時間足数は7に固定する。既存の通常版・ListのM5解析と同じ系列であり、M30とM1は含めない。時間足、足数、足順序、28通貨および計算パラメーターはinputにしない。
+
+### 4.2 分析値と履歴準備
+
+上位足も各M5観測時点で再分析する。同じH1・H4バー内でも、形成足OHLC、shift 0のStochastic・GMMA・ATRや波動は変化するため、上位足のバー開始時刻だけをキーにした分析結果キャッシュは初期版では行わない。計算用ハンドルは再利用する。
+
+EMA200の終値位置・傾きなどは現行Profileの参照shiftを維持し、MN1のEMA200計算省略も維持する。保存後に上位足が確定しても、過去Snapshotを確定値に置き換えない。
+
+| 系列 | 最低バー数 |
+|---|---:|
+| MN1 | 61 |
+| W1・D1・H4・H1・M15・M5 | 各206 |
+
+系列同期と最低本数に加え、実際のElliott分析成功を確認する。初期履歴取得の500本要求と、分析準備判定の必須本数は区別する。最上位ZigZagの最大計算範囲300本も、全系列の最低本数ではない。M5版でもMN1履歴が必要であり、M5の履歴だけでウォームアップは完了しない。
+
+## 5. input設計
+
+入力は「保存先」「収集・再試行」「TESTER」「状態表示」の用途別に整理する。既存H1版のinputは変更しない。
+
+| 入力名 | 初期値 | 用途・制約 |
+|---|---|---|
+| `observationDatabaseFileName` | `mstng-zigzag-elliot-m5-observation.sqlite` | M5専用DB。空文字不可 |
+| `observationDatabaseUseCommonFolder` | `true` | 共通フォルダーへ保存 |
+| `observationTimerSeconds` | `2` | LIVEの境界確認間隔。1～60秒 |
+| `observationDatabaseRetrySeconds` | `15` | DB再試行間隔。1～3600秒 |
+| `observationTesterSaveStartTime` | `0` | TESTER保存開始の取引サーバー時刻。0以上 |
+| `observationQueueCapacity` | `672` | 保存待ち親Snapshot数。28以上 |
+| `statusPanelVisible` | `true` | 状態パネル表示 |
+| `statusPanelDetailVisible` | `true` | 28通貨詳細表示 |
+| `statusPanelCorner` | `CORNER_LEFT_UPPER` | 配置基準角 |
+| `statusPanelXDistance` | `12` | X方向距離 |
+| `statusPanelYDistance` | `12` | Y方向距離 |
+
+LIVEでは保存開始時刻を動作に使用せず、有効値0として扱う。表示用の5入力はRunの`input_text`／`input_hash`へ含めない。TESTERはM5以下の時間足を対象とし、M5より上位のテスト足と最適化は初期化時に拒否する。
+
+## 6. DBファイルと誤指定防止
+
+既定の保存場所は次とする。
+
+```text
+Terminal\Common\Files\mstng-zigzag-elliot-m5-observation.sqlite
+```
+
+Common使用を無効にした場合は、その端末の`MQL5\Files`へ保存する。長期研究・テスターモデル違い・条件違いの比較は、期間や試行名を含む別DBファイルで管理し、既存データの削除で再実行先を作らない。
+
+### 6.1 DB確認の順序
+
+1. 既存ファイルの場合は、テーブル・Run・観測の識別情報を読み取りで検査する。
+2. 空の新規DB、または対応するM5観測用DBだけを書き込み対象として許可する。
+3. H1／AlertのRunや観測があるDB、M5以外との混在DB、不明な既存形式は拒否する。
+4. 許可後に限り、書き込み設定、テーブル準備、対応済みmigration、Run保存を開始する。
+
+拒否対象ではDDL、migration、Run INSERT、WAL切り替えなどの書き込みを行わない。観測0件でもH1／AlertのRunだけがあるDBは拒否する。ファイル名だけで用途を判定せず、既存データの足種・Run識別値も確認する。
+
+DBロックや一時的な接続失敗は通常の再試行対象とし、別用途DBの指定は運用エラーとして区別する。異常なDBを自動修復・削除しない。正確な対応スキーマの判別条件は実装時にテストとともに確定する。
+
+### 6.2 接続とRun
+
+- H1版とは別DB・別Runを使用する。
+- 1回の起動では28通貨を単一Runへ関連付け、単一DB接続で直列保存する。
+- 許可されたM5 DBには既存同様の外部キー有効化、WAL、DB待機・再接続規則を適用する。
+- DB再接続でRunを作り直さず、同じRun情報を再利用する。
+- `schema_version`はRunの保存形式メタデータであり、物理DB全体のバージョンと混同しない。M5の初版番号は実装時に確定し、過去H1 Runの番号は変更しない。
+
+## 7. テーブルと保存項目
+
+| テーブル | 関係・責務 |
+|---|---|
+| `zigzag_elliot_alert_runs` | 起動ごとの設定、実行元、計算・プログラムのバージョン |
+| `zigzag_elliot_observations` | 1通貨・1M5・1分析Profileの観測本体 |
+| `zigzag_elliot_observation_timeframes` | 観測本体1行に対して7行 |
+| `zigzag_elliot_observation_capture_metrics` | M5観測本体1行に対して品質情報1行。新規 |
+
+`alert_runs`という既存名称は互換性のため維持する。アラート発生や送信を意味しない。
+
+### 7.1 観測本体
+
+既存の親テーブルの列定義を利用する。主要項目は以下とする。
+
+- `run_id`、`source_mode`（LIVE／TESTER）、`source_server`、`symbol_name`。
+- `anchor_time_frame`／表示文字列、`anchor_bar_time`／表示文字列。
+- `anchor_jst_time`／表示文字列、`capture_phase`。
+- `spread_pips`、`pip_size`。
+- `analysis_version`、`analysis_input_hash`、`snapshot_hash`。
+- `time_frame_count = 7`、`created_at`／表示文字列。
+
+バー時刻は各通貨の`iTime(symbol, PERIOD_M5, 0)`を正本とし、JSTは既存の`TimeJapanUtil`による変換値を保存する。取得が遅れてもバー開始時刻を取得時刻へ置き換えない。
+
+`created_at`は既存形式との互換項目であり、取得遅延の計測には使わない。正確な時計の区別は品質情報側に持たせる。
+
+### 7.2 時間足別分析
+
+既存の時間足別列を7足すべてへ適用する。
+
+| 分類 | 保存内容 |
+|---|---|
+| 方向 | `isBuy`、表示ラベル、Oscillator方向 |
+| Wave | Wave数、最新Wave、確定、推進／修正、上昇／下降 |
+| Elliott | 最新番号・ラベル、副次波番号・ラベル、直前ラベル |
+| 最新ZigZagPoint | 価格、時刻、バー位置、経過本数、pips差、山谷、補完、補正、元の番号・ラベル |
+| F・FE | 最新点のF、深度ゾーン、FE、Expansion価格情報と利用可否 |
+| OHLC | 各時間足の現在形成足と直前確定足のOpen／High／Low／Close |
+| 指標 | Stochastic、GMMA、ATR14、EMA200の位置・傾き・距離・方向など |
+
+各時間足の最新点1件を中心とする構造化スカラーであり、全ポイントの保存ではない。現在第5波のときの過去第3波の副次波やF・FEは、この形式だけでは完全に復元できない。必要になった段階で別の保存設計を行う。
+
+F・FEと再分析前番号も現行ソースから取得する。最上位足の元番号設定修正を含む現在の解析を利用する。既存H1 DBの過去値を書き直さない。
+
+### 7.3 Spreadと気配時刻
+
+M5版は解析開始時の同一`MqlTick`からBid・Ask・更新時刻を一組で採用する。そのBid・AskでSpreadを計算し、対応する`time_msc`を品質情報へ保持する。Snapshot生成時やDB保存時に価格を再取得して差し替えない。
+
+現在の`TodayRate`はBidとAskを別取得し、採用気配時刻を保持しない。そのため、後から取得したtick時刻だけを既存Spreadへ結び付ける実装は不可とする。M5用経路で同一気配を渡す方法を追加し、通常版・H1・EAの既存更新経路は維持する。
+
+Bid／Askが非有限、非正、またはAsk < Bidの場合はSnapshotを生成しない。`pip_size`は対象シンボルのPoint・Digitsから現行規則で取得し、有効な正数を必須とする。高Spreadを理由に観測を除外しない。
+
+`SymbolInfoTick`自体が失敗した場合はSnapshotを生成せず再試行し、別取得のBid・Askへfallbackしない。取得に成功して価格が有効でも、時刻だけを取得できない場合はNULLとし、現在時刻で補完しない。古い気配はその時刻を保持して品質確認に利用する。新しいM5への移行を示す場合は境界を再確認し、古いM5へ結果を付け替えない。
+
+## 8. 取得品質テーブル
+
+`zigzag_elliot_observation_capture_metrics`をM5専用DBに追加する。H1の親・子テーブルへの列追加は不要とする。
+
+| 列名 | SQLite型 | 制約・意味 |
+|---|---|---|
+| `observation_id` | INTEGER | PRIMARY KEY。観測本体への外部キー、削除時CASCADE |
+| `quote_tick_time_msc` | INTEGER | 採用した気配の更新時刻、ミリ秒単位。未取得NULL、記録値は正数 |
+| `capture_market_time` | INTEGER | Snapshot確定時の`TimeCurrent()`、秒単位。未取得NULL、記録値は正数 |
+| `analysis_elapsed_ms` | INTEGER | 成功した解析1回の実経過ミリ秒。未計測NULL、0以上 |
+| `capture_elapsed_ms` | INTEGER | 当該通貨・M5バーの初検出からSnapshot確定までの実経過ミリ秒。未計測NULL、0以上 |
+| `analysis_attempt_count` | INTEGER | 当該M5の観測用実解析回数。未取得NULL、成功Snapshotの記録値は1以上 |
+
+品質行の存在と、個別の計測値が利用可能であることは区別する。新規M5観測には品質行を必須とするが、未取得値を0で埋めない。MQLのEntityでは利用可否フラグ等でNULLと有効な0を区別し、DAOでSQLへ変換する。
+
+### 8.1 時計の意味
+
+`capture_market_time`は市場時刻であり、実際の処理完了を表すPC時計ではない。`OnTimer`の`TimeCurrent()`は対象銘柄に限らない最後の既知の気配時刻であり、TESTERでは模擬時刻になる。[MQL5 TimeCurrent](https://www.mql5.com/en/docs/dateandtime/timecurrent)
+
+実経過時間は`GetTickCount64()`の差で計測する。TESTERで`TimeLocal()`も模擬サーバー時刻となるため、日時の差を実解析時間の代わりに使わない。[MQL5 GetTickCount64](https://www.mql5.com/en/docs/common/gettickcount64)、[MQL5 TimeLocal](https://www.mql5.com/en/docs/dateandtime/timelocal)
+
+- `capture_market_time - anchor_bar_time`は「市場時刻上の取得遅れ」として参照時に算出する。通信遅延や実経過時間とは呼ばない。
+- 負の差や時計不明を0へ丸めて正常扱いせず、確認対象とする。
+- `capture_elapsed_ms`の起点はバー開始ではなく、当該通貨の当該バーを初めて検出した瞬間である。
+- 対象7時間足の解析は順次取得であり、同一tickで原子的に取得したことは保証しない。
+- 品質時刻を取得できなくても、別の時計や`created_at`へfallbackしない。
+
+### 8.2 計測と固定の範囲
+
+- `analysis_elapsed_ms`は、最終的に採用した`ElliotAll.analyze()`呼び出し前後のカウンター差とする。DB書き込み時間は含めない。
+- `capture_elapsed_ms`には初検出後の順番待ち、履歴待ち、再試行、Snapshot生成を含め、FIFO追加後のDB保存待ちは含めない。
+- `analysis_attempt_count`は観測用の実解析開始直前に加算する。履歴確認だけの処理、事前分析で破棄する処理、DB再送は含めない。
+- M5バーが変わったら通貨ごとの計測起点・回数をリセットする。再起動前のカウンターを引き継がない。
+- TESTER保存ゲートが開いた後は観測用解析回数を別管理し、準備用解析を混在させない。同じ候補M5の初検出時点が保持されていれば、その起点からの取得時間を記録する。
+- 品質値は分析結果と一緒にSnapshotへ固定する。保存成功まで同じ値を維持し、DB再送ごとに再計測しない。
+
+## 9. 重複・トランザクション・検証
+
+### 9.1 自然キー
+
+既存の自然キーを維持する。
+
+```text
+source_mode + source_server + symbol_name
++ anchor_time_frame + anchor_bar_time + capture_phase
++ analysis_version + analysis_input_hash
+```
+
+`run_id`は自然キーへ含めない。基準足と分析ProfileでH1／M5を区別できるが、初期版の運用ではDB自体も分離する。
+
+同じキーではfirst-write winsを適用する。同一hashでも異なるhashでも、最初の親・時間足別・品質行を保持する。既存観測に品質行がない場合も、後日の計測値で補完しない。実行条件やテスターモデルの異なる比較は別DBで行う。
+
+異なるRunが同じキーを保存済みの場合は、現行Controllerと同じWriter競合として扱う。PASSIVE／ERRを表示して新規収集・保存を停止し、先行Runの値へ上書きしない。再起動や新規Run作成だけでは重複を回避できないため、同じ期間を再収集する場合は新しいDBを使用する。
+
+### 9.2 保存単位
+
+新規観測は、親1行・時間足別7行・品質1行の計9行を1トランザクションで保存する。いずれかの失敗時はROLLBACKし、一部だけを残さない。Runは従来どおり事前に準備するため、Runだけがある状態は発生し得る。
+
+28通貨全体を1トランザクションにはしない。28通貨成功時の行数は、観測28行・時間足別196行・品質28行となる。
+
+### 9.3 保存前の検証
+
+- 基準足がM5、子件数が7で親の`time_frame_count`と一致すること。
+- 4.1の時間足集合・順序と完全一致し、足種・順序に重複がないこと。
+- アンカーはM5の1行だけであること。
+- 価格・Spread・pip size・日時・真偽値など、既存の保存検証を満たすこと。
+- サーバー時刻・JST変換・表示文字列が一致すること。
+- 品質行が1行で、各値がNULLまたは規定の範囲であること。
+- RunとSnapshotの実行元・分析Profileが一致すること。
+- 解析前後とSnapshot確定時に同じ対象M5であること。後続M5のデータを前のM5へ保存しないこと。
+
+DBの一意制約・外部キーは既存の親子構造を利用し、足数・順序・アンカーの完全性は保存サービスでも確認する。品質テーブルの主キーで1対1を保証する。
+
+## 10. Profile・バージョン・Hash
+
+計算パラメーターと観測契約を区別する。既存`ZigZagElliotAnalysisProfile`のH1用getterをM5へ直接置換しない。
+
+| 項目 | 用途 |
+|---|---|
+| `input_text`／`input_hash` | DB名、Common使用、Timer・DB再試行、保存開始時刻、Queue容量、解決済み28通貨などの運用入力 |
+| `analysis_version` | 共通Elliott計算の世代。作成時ソースは`ELLIOT_MN1_V6` |
+| `analysis_input_text`／`analysis_input_hash` | 共通計算パラメーターと、M5基準・7足順序・取得方式などの観測Profile |
+| `snapshot_hash` | 取得した市場・分析値の同一性比較 |
+| `program_version`／`strategy_version`／`schema_version` | プログラム、収集契約、Run保存形式の識別 |
+
+M5のCanonical Textには、実際の基準足・分析開始足・足数・足順序、固定計算パラメーター、観測方式、同一気配からSpreadを取得する規則を明示する。H1のCanonical Textを複製してH1設定を残したまま、後ろにM5設定を重複追加する方式は避ける。
+
+`analysis_input_hash`は既存同様SHA-256で生成し、M5の識別子を含めてH1と区別する。Snapshot Hashは既存の非暗号学的な内容比較方式を利用し、M5専用の形式識別子と7足の固定順序を使用する。
+
+取得品質5項目は`analysis_input_hash`と`snapshot_hash`へ含めない。同じ分析値でも実行環境・待ち時間・試行回数が変わるためである。品質行の整合は外部キー、同一トランザクション、Snapshot固定および保存テストで確認する。
+
+H1の既存Canonical Text、Hash生成規則、保存されたHash値、Run識別値は変更しない。M5対応に伴ってH1の分析設定が変わったように見える変更を防ぐため、既存H1の文字列・Hash一致を回帰テストする。
+
+## 11. 収集開始・境界・ウォームアップ
+
+### 11.1 LIVEとTESTER
+
+| 条件 | 開始時の扱い |
+|---|---|
+| LIVE | `OnTimer`で確認。起動時の進行中M5はbaselineとし、次の新規M5から保存 |
+| TESTER・保存開始0 | `OnCalculate`で確認。通貨ごとに初回分析・Snapshot生成へ成功した現在M5から保存。全28通貨の開始同期ゲートなし |
+| TESTER・保存開始>0 | 保存開始前は事前分析のみ。同じ候補M5で全28通貨が事前分析成功したら開始ゲートを開く |
+
+保存開始時刻は取引サーバー時刻であり、JST入力とは扱わない。例えば開始`18:03`なら`18:00`は対象外で、`18:05`以降が最初の候補となる。
+
+保存開始>0の事前分析は各M5で最大1回とし、結果を保存せず、FIFO・Gap・DB Runを生成しない。保存開始前に一度成功した通貨は、その後開始時刻まで境界追従を中心に行う。開始時刻以上の候補では改めて全28通貨を確認する。
+
+同じM5の28通貨がそろったら、その実行内の第2 passで観測用に再分析して通常保存へ移る。事前分析の結果をそのまま観測へ転用しない。ゲートは収集開始をそろえる仕組みであり、28件の同時取得・一括COMMIT・全件保存成功を保証するものではない。
+
+### 11.2 通常収集と欠損
+
+1. 各通貨の新しいM5を検出し、対象バーと計測起点を保持する。
+2. 7系列の同期・必要本数を確認する。
+3. 解析前の基準M5を再確認し、気配を採用して全7足を分析する。
+4. 解析後も同じM5であることを確認し、分析結果と品質情報を固定する。
+5. SnapshotをFIFOへ追加し、以後は再分析せず保存を再試行する。
+
+LIVEのpendingおよびTESTER初回Snapshot生成成功後の失敗は、同じM5内で再試行する。DBへの初回保存成功を待つ条件ではなく、初回SnapshotがFIFOで保存待ちでも通常の解析再試行へ移る。TESTER保存開始0で初回Snapshot生成へ成功する前の準備・解析失敗、および保存開始>0の事前分析失敗は、既存同様、次のM5で再評価する。
+
+次のM5までに取得できなかった通常観測は欠損とする。中間の欠損数は実在バーから判定し、週末のようにバーがない時間を機械的に欠損へ数えない。起動baseline・保存開始前・初回準備中は通常Gapと分け、長期データの完全性確認ではパネルのGapだけに依存しない。
+
+## 12. FIFO・負荷・状態表示
+
+生成済みSnapshotは中央FIFOで順序を維持する。DB保存失敗では先頭を削除せずDrainを止め、設定間隔で同じRunへの接続・保存を再試行する。
+
+Queueが満杯なら新規Snapshot生成を止め、対象M5をpendingのまま維持する。次M5まで空きがなければ欠損になる。FIFOはメモリ上だけにあり、インジケーター・端末の終了時に未保存分は失われる。初期版ではディスク退避を追加しない。
+
+| 指標 | 規模・扱い |
+|---|---|
+| 1回の28通貨収集 | 親28行＋時間足別196行＋品質28行 |
+| 1時間の観測回数 | 12回（各M5バーが存在し、全回成功する場合） |
+| H1比の親観測行数 | 12倍 |
+| H1比の時間足別行数 | 16.8倍（12×7÷5）。品質行は別途追加 |
+| Queue 672件 | 28通貨×24回＝M5では約2時間分。H1の24時間分とは異なる |
+| 性能確認 | 短期実測で28通貨の処理時間・取得遅れ・DB容量・Queue滞留を確認 |
+
+処理性能は未計測であり、CPU負荷が単純に12倍または16.8倍になるとは断定しない。LIVEで次の5分境界までに収集を完了できることを最低確認条件とし、テスターの実所要時間とは分けて評価する。根拠のない上位足キャッシュや取得遅延によるデータ除外は導入しない。
+
+状態パネルは、準備／検出／解析／保存の通貨数、DB接続、Writer状態、Queue件数・容量、Gap、通貨別の待機・再試行・エラーを基本とする。取得品質の表示粒度とレイアウトは②の実装時に確定する。28通貨が完全に同一tickで取得されたと読める表示は行わない。
+
+## 13. H1互換性と後工程
+
+- H1インジケーターの名称、input、観測基準、5足順序、開始ゲート、既存保存動作を維持する。
+- H1 DBの既存列・過去データ・Hashを変更しない。M5品質テーブルの作成をH1 DBへ要求しない。
+- 共通化は必要な範囲に限定し、Elliott計算式やH1／M5エントリー条件、EAの発注・決済処理を変更しない。
+- M5 DBを既存Viewerへ接続するだけではM5対応にならない。既存のH1固定の検索、表示順序、FULL、Episode判定を流用しない。
+- 既存の6／12／24／48H1研究処理へM5 DBを入力しない。M5のEpisode・評価期間・エントリー価格は後工程で別途設計する。
+- Viewer対応時は品質テーブルの有無を判別し、ないDBでは未記録と表示する。過去行へ計測値を推測補完しない。
+
+## 14. 実装順序と受け入れ条件
+
+### 14.1 実装順序
+
+1. H1の既存Profile・Hash・保存動作の回帰テストを準備する。
+2. H1／M5の観測Profileを分離し、Builder・保存検証へ適用する。
+3. M5専用DBの誤指定防止、品質Entity／DAO、原子的保存を実装する。
+4. M5 Collector、同一気配の引き渡し、計測、FIFO、状態パネルを実装する。
+5. 短期間の収集とデータ完全性・性能の確認を行う。
+6. 収集結果を確認した後、③ViewerのM5一覧・詳細へ進む。
+
+### 14.2 受け入れ条件
+
+| 分類 | 確認内容 |
+|---|---|
+| 設定 | M5は7足・M5アンカー。H1は既存5足・H1アンカーを維持 |
+| 保存 | 新規親1行に子7行と品質1行。28通貨成功時は28／196／28行 |
+| 検証拒否 | 子不足、重複、順序違い、アンカー違い、不正値を拒否 |
+| 原子性 | 子または品質INSERT失敗時に親を含めROLLBACK。部分保存なし |
+| 重複 | 同一／異なるhashともfirst-write。品質だけ異なる再送も元の品質を維持 |
+| 品質 | NULLと0を区別。同一気配の価格と時刻が対応し、DB再送で値が変わらない |
+| 計測 | 準備待ち・事前分析・DB再送を解析回数へ混入させない。新バーで計測をリセット |
+| 境界 | 解析中のM5切り替わりで旧バーへ保存しない。欠損を後から現在値で埋めない |
+| 開始 | LIVE baseline、TESTER開始0の個別開始、開始>0の28通貨ゲートを個別に検証 |
+| FIFO | DB障害・満杯・復旧時の順序維持と欠損・終了時の扱いを確認 |
+| 誤指定 | H1／Alertデータ入り・RunだけのDBへのDDL／書き込みが発生しない |
+| H1互換 | H1のCanonical Text・Hash・親子保存・既存回帰テストが不変 |
+| ビルド | 対象インジケーターと影響する既存プログラムをMetaEditorでコンパイル |
+| 実測 | 少数バーの目視だけでなく、対象通貨×実在M5バーの欠損、重複、7足＋品質の対応をDBで確認 |
+
+受け入れテストでは専用DBを使い、LIVE運用DBや稼働EAを変更しない。停止中・準備中も含めた要求期間の未収集範囲を報告し、全体GateやStatus PanelのGapが0であるだけで完全と判定しない。
+
+### 14.3 実装段階で具体化する事項
+
+- 新規クラスの最終名称、H1互換を保つ引数・オーバーロード、および共通部品の切り出し範囲。
+- M5のプログラム・Run保存形式の初版番号、対応スキーマ判別と将来migrationの経路。
+- 品質表のNULLバインド方法、DB誤指定防止の詳細テスト。
+- 状態パネルの品質表示、および実測に基づく処理分割・Queue容量調整。
+
+これらは固定のM5観測範囲、H1互換性、first-write、計測の意味を変更しない範囲で具体化する。Viewer・Episode・成績は別設計とする。
+
+## 15. 関連実装と文書
+
+本書作成時に存在する参照元を以下に示す。M5専用プログラム・クラスは未作成である。
+
+- [H1観測インジケーター](../../Indicators/ZigZagElliotH1ObservationAll.mq5)
+- [H1収集Controller](../../Include/Mstng/Indicator/ZigZagElliot/H1ElliotObservationAllController.mqh)
+- [現在の分析Profile](../../Include/Mstng/Elliot/ZigZagElliotAnalysisProfile.mqh)
+- [Observation Snapshot Builder](../../Include/Mstng/ExpertAdvisor/ZigZagElliotObservationSnapshotBuilder.mqh)
+- [Observation保存サービス](../../Include/Mstng/Database/Service/ZigZagElliotObservationPersistenceService.mqh)
+- [Observation親DAO](../../Include/Mstng/Database/Dao/ZigZagElliotObservationDao.mqh)
+- [時間足別DAO](../../Include/Mstng/Database/Dao/ZigZagElliotObservationTimeFrameDao.mqh)
+- [H1 Observation DBスモークテスト](../../Scripts/Mstng/Database/ZigZagElliotH1ObservationDatabaseSmokeTest.mq5)
+- [Viewer README](../../Services/ZigZagElliotAlertViewer/README.md)
+
+## 16. 更新履歴
+
+| 日付 | 文書版 | 内容 |
+|---|---|---|
+| 2026-09-10 | 0.1 | M5専用DB、7足観測Profile、取得品質、H1互換性、基本収集フローと受け入れ条件を作成 |
