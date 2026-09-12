@@ -970,7 +970,8 @@ void validateAlignmentRuleValues() {
         && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_H4_W1_WITH_MN1_OR_EMA200 == 3
         && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1 == 4
         && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1 == 5
-        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1 == 6;
+        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1 == 6
+        && (int)ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1 == 7;
 
     if (isMatched) {
         return;
@@ -1484,6 +1485,181 @@ void validateH1D1RunnerUpGate() {
 }
 
 /**
+ * M5の全32方向組合せでA案と従来の全足一致を比較し、適用範囲と欠損を確認する。
+ */
+void validateM5D1M15WithH4OrH1() {
+    ElliotAll *elliotAll = createD1EmaFilterFixture(true);
+    assertD1EmaCondition(elliotAll != NULL, "M5 OR fixture");
+    if (elliotAll == NULL) {
+        return;
+    }
+
+    ENUM_TIMEFRAMES timeFrames[] = {
+        PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5
+    };
+    ElliotDirectionAlignmentDecision decision(PERIOD_D1,
+        ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1);
+    ElliotDirectionAlignmentDecision legacy(PERIOD_D1);
+    for (int i = 0; i < 32; i++) {
+        bool isBuy = (i & 16) != 0;
+        string direction = "SELL";
+        if (isBuy) {
+            direction = "BUY";
+        }
+        for (int j = 0; j < ArraySize(timeFrames); j++) {
+            elliotAll.getElliot(timeFrames[j]).isBuy = (i & (1 << j)) != 0;
+            setD1TestEma(elliotAll.getElliot(timeFrames[j]), isBuy, !isBuy, direction);
+        }
+
+        // bit順はD1・H4・H1・M15・M5。全一致とH4/H1片方不一致だけを許可。
+        TrendAlignType expected = trendAlignNone;
+        TrendAlignType legacyExpected = trendAlignNone;
+        if (i == 0 || i == 2 || i == 4) {
+            expected = trendAlignSell;
+        } else if (i == 27 || i == 29 || i == 31) {
+            expected = trendAlignBuy;
+        }
+        if (i == 0) {
+            legacyExpected = trendAlignSell;
+        } else if (i == 31) {
+            legacyExpected = trendAlignBuy;
+        }
+
+        string caseName = "M5 OR mask=" + IntegerToString(i);
+        assertD1EmaObjectAlignment(caseName, decision, elliotAll,
+            PERIOD_M5, true, expected);
+        assertD1EmaObjectAlignment(caseName + " legacy", legacy, elliotAll,
+            PERIOD_M5, true, legacyExpected);
+
+        // MN1・W1の分析方向とEMA方向は抽出条件に含めない。
+        elliotAll.getElliot(PERIOD_MN1).isBuy = !isBuy;
+        elliotAll.getElliot(PERIOD_W1).isBuy = !isBuy;
+        string oppositeLabel = "BUY";
+        if (isBuy) {
+            oppositeLabel = "SELL";
+        }
+        setD1TestEma(elliotAll.getElliot(PERIOD_MN1), !isBuy, isBuy, oppositeLabel);
+        setD1TestEma(elliotAll.getElliot(PERIOD_W1), !isBuy, isBuy, oppositeLabel);
+        assertD1EmaObjectAlignment(caseName + " upper EMA optional", decision,
+            elliotAll, PERIOD_M5, true, expected);
+    }
+
+    for (int i = 0; i < ArraySize(timeFrames); i++) {
+        Elliot *elliot = elliotAll.getElliot(timeFrames[i]);
+        elliot.marketContext.timeFrame = PERIOD_M30;
+        assertD1EmaObjectAlignment("M5 OR missing " + EnumToString(timeFrames[i]),
+            decision, elliotAll, PERIOD_M5, false, trendAlignNone);
+        elliot.marketContext.timeFrame = timeFrames[i];
+    }
+    elliotAll.isAnalysisSucceeded = false;
+    assertD1EmaObjectAlignment("M5 OR incomplete", decision, elliotAll,
+        PERIOD_M5, false, trendAlignNone);
+    elliotAll.isAnalysisSucceeded = true;
+    assertD1EmaObjectAlignment("M5 OR null", decision, NULL,
+        PERIOD_M5, false, trendAlignNone);
+    assertD1EmaObjectAlignment("M5 OR restored", decision, elliotAll,
+        PERIOD_M5, true, trendAlignBuy);
+
+    ENUM_TIMEFRAMES otherTimeFrames[] = {
+        PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M1
+    };
+    for (int i = 0; i < ArraySize(otherTimeFrames); i++) {
+        assertD1EmaObjectAlignment("M5 OR rejects " + EnumToString(otherTimeFrames[i]),
+            decision, elliotAll, otherTimeFrames[i], false, trendAlignNone);
+    }
+    ElliotDirectionAlignmentDecision invalidStart(PERIOD_H4,
+        ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1);
+    assertD1EmaObjectAlignment("M5 OR invalid start", invalidStart, elliotAll,
+        PERIOD_M5, false, trendAlignNone);
+    delete elliotAll;
+}
+
+/**
+ * M5の5足EMA全方向組合せと、各足のNONE・不整合をBUY/SELL両方向で確認する。
+ */
+void validateM5Ema200Required() {
+    ENUM_TIMEFRAMES timeFrames[] = {
+        PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5
+    };
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        TrendAlignType expected = trendAlignSell;
+        if (isBuy) {
+            expected = trendAlignBuy;
+        }
+        string direction = convertAlignTypeText(expected);
+        string oppositeLabel = "BUY";
+        if (isBuy) {
+            oppositeLabel = "SELL";
+        }
+        ElliotAll *elliotAll = createD1EmaFilterFixture(isBuy);
+        assertD1EmaCondition(elliotAll != NULL, direction + " EMA5 fixture");
+        if (elliotAll == NULL) {
+            continue;
+        }
+        ElliotDirectionAlignmentDecision decision(PERIOD_D1,
+            ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1);
+        ElliotDirectionAlignmentDecision legacy(PERIOD_D1);
+
+        for (int j = 0; j < 32; j++) {
+            for (int k = 0; k < ArraySize(timeFrames); k++) {
+                bool isEmaBuy = (j & (1 << k)) != 0;
+                string emaLabel = "SELL";
+                if (isEmaBuy) {
+                    emaLabel = "BUY";
+                }
+                setD1TestEma(elliotAll.getElliot(timeFrames[k]),
+                    isEmaBuy, !isEmaBuy, emaLabel);
+            }
+            TrendAlignType emaExpected = trendAlignNone;
+            if ((isBuy && j == 31) || (!isBuy && j == 0)) {
+                emaExpected = expected;
+            }
+            string caseName = direction + " EMA5 mask=" + IntegerToString(j);
+            assertD1EmaObjectAlignment(caseName, decision, elliotAll,
+                PERIOD_M5, true, emaExpected);
+            assertD1EmaObjectAlignment(caseName + " legacy unchanged", legacy,
+                elliotAll, PERIOD_M5, true, expected);
+        }
+
+        for (int j = 0; j < ArraySize(timeFrames); j++) {
+            setD1TestEma(elliotAll.getElliot(timeFrames[j]), isBuy, !isBuy, direction);
+        }
+        for (int j = 0; j < ArraySize(timeFrames); j++) {
+            Elliot *elliot = elliotAll.getElliot(timeFrames[j]);
+            string caseName = direction + " EMA5 " + EnumToString(timeFrames[j]);
+            setD1TestEma(elliot, false, false, "NONE");
+            assertD1EmaObjectAlignment(caseName + " NONE", decision,
+                elliotAll, PERIOD_M5, true, trendAlignNone);
+            setD1TestEma(elliot, true, true, direction);
+            assertD1EmaObjectAlignment(caseName + " conflicting flags", decision,
+                elliotAll, PERIOD_M5, true, trendAlignNone);
+            setD1TestEma(elliot, false, false, direction);
+            assertD1EmaObjectAlignment(caseName + " label without flag", decision,
+                elliotAll, PERIOD_M5, true, trendAlignNone);
+            setD1TestEma(elliot, isBuy, !isBuy, oppositeLabel);
+            assertD1EmaObjectAlignment(caseName + " stale opposite label", decision,
+                elliotAll, PERIOD_M5, true, trendAlignNone);
+            setD1TestEma(elliot, isBuy, !isBuy, "NONE");
+            assertD1EmaObjectAlignment(caseName + " stale NONE label", decision,
+                elliotAll, PERIOD_M5, true, trendAlignNone);
+            setD1TestEma(elliot, isBuy, !isBuy, direction);
+            elliot.oscillator.marketContext.timeFrame = PERIOD_M30;
+            assertD1EmaObjectAlignment(caseName + " oscillator timeframe", decision,
+                elliotAll, PERIOD_M5, true, trendAlignNone);
+            elliot.oscillator.marketContext.timeFrame = timeFrames[j];
+            elliot.oscillator.ema200.marketContext.timeFrame = PERIOD_M30;
+            assertD1EmaObjectAlignment(caseName + " EMA timeframe", decision,
+                elliotAll, PERIOD_M5, true, trendAlignNone);
+            elliot.oscillator.ema200.marketContext.timeFrame = timeFrames[j];
+            assertD1EmaObjectAlignment(caseName + " restored", decision,
+                elliotAll, PERIOD_M5, true, expected);
+        }
+        delete elliotAll;
+    }
+}
+
+/**
  * Smokeテストを実行する。
  */
 void OnStart() {
@@ -1511,6 +1687,8 @@ void OnStart() {
     validateH1D1ConditionCombinations();
     validateH1D1ConditionScope();
     validateH1D1RunnerUpGate();
+    validateM5D1M15WithH4OrH1();
+    validateM5Ema200Required();
 
     if (gFailureCount == 0) {
         Print("ElliotDirectionAlignmentDecisionSmokeTest PASS");

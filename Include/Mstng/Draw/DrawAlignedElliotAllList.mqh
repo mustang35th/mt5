@@ -336,6 +336,10 @@ public:
                 && alignmentStartTimeFrame == PERIOD_MN1) {
             alignmentStartTimeFrameText = "MN1-H1";
         } else if (currentTimeFrame == PERIOD_M5
+                && fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1) {
+            alignmentStartTimeFrameText = "D1=M15=M5&(H4|H1)&EMA5";
+        } else if (currentTimeFrame == PERIOD_M5
                 && alignmentStartTimeFrame == PERIOD_D1) {
             alignmentStartTimeFrameText = "D1-M5";
         }

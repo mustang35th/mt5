@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.34"
+#property version   "1.36"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -290,12 +290,21 @@ int OnInit() {
         listTimeFrame = PERIOD_M5;
         effectiveSortType = ELLIOT_LIST_SORT_ENTRY_PRIORITY;
         testerHistoryWarmUpEnabled = true;
-        alignmentText = h1AlignmentText + " / M5 D1-M5";
+        alignmentText = h1AlignmentText + " / M5 D1=M15=M5&(H4|H1)&EMA5";
     } else if (listTimeFrame == PERIOD_H1) {
         effectiveSortType = ELLIOT_LIST_SORT_H1_D1_ENTRY;
         alignmentStartTimeFrame = h1AlignmentStartTimeFrame;
         alignmentRule = h1AlignmentRule;
         alignmentText = h1AlignmentText;
+    }
+
+    if (listTimeFrame == PERIOD_M5) {
+        alignmentRule =
+            ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1;
+
+        if (!h1M5IndependentModeEnabled) {
+            alignmentText = "D1=M15=M5&(H4|H1)&EMA5";
+        }
     }
 
     if (mtf3In3AlertDatabaseEnabled
@@ -359,7 +368,8 @@ int OnInit() {
     if (listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
             || listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
             || h1M5IndependentModeEnabled
-            || listTimeFrame == PERIOD_H1) {
+            || listTimeFrame == PERIOD_H1
+            || listTimeFrame == PERIOD_M5) {
         shortName += " ALIGN " + alignmentText;
     }
 
