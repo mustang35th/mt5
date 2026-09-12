@@ -17,10 +17,10 @@ export function m5Text(value: unknown): string {
   return String(value);
 }
 
-export function m5Number(value: unknown, digits = 1, unit = ""): string {
+export function m5Number(value: unknown, digits = 1, unit = "", signed = false): string {
   if (value === null || value === undefined) return "未記録";
   if (typeof value !== "number" || !Number.isFinite(value)) return "不正値";
-  return `${new Intl.NumberFormat("ja-JP", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)}${unit}`;
+  return `${new Intl.NumberFormat("ja-JP", { minimumFractionDigits: digits, maximumFractionDigits: digits, signDisplay: signed ? "exceptZero" : "auto" }).format(value)}${unit}`;
 }
 
 export function m5Direction(value: unknown): "BUY" | "SELL" | "不明" {
@@ -34,6 +34,13 @@ export function m5FlagLabel(value: unknown, yes: string, no: string): string {
   const flag = m5Boolean(value);
   if (flag === null) return "未記録";
   return flag ? yes : no;
+}
+
+export function m5PreviousMotiveSubLabel(value: unknown): string {
+  if (value === null || value === undefined) return "未記録";
+  if (value === 0) return "該当なし";
+  if (value === 1 || value === 3) return `${value}波に副次波あり`;
+  return "不正値";
 }
 
 export function m5WaveLabel(timeFrame: M5TimeFrame): string {

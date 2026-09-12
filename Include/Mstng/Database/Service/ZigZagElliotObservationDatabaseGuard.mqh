@@ -7,7 +7,8 @@
  * M5専用観測DBの用途と対応する物理スキーマを読み取りだけで検査する。
  *
  * WAL設定・DDL・migration・Run保存より前に実行する。
- * 初版では空DBと現行4テーブルの完全構成だけを許可し、自動修復しない。
+ * 空DB、初版4テーブル、および副次波列追加後の完全構成だけを許可する。
+ * この検査自体ではDDLや既存値の補完を行わない。
  */
 class ZigZagElliotObservationDatabaseGuard {
 public:
@@ -46,7 +47,8 @@ public:
             fromReason = "DATABASE_READ_ERROR: schema hash failed";
             return false;
         }
-        if (schemaHash != getSupportedSchemaHash()) {
+        if (schemaHash != getSupportedSchemaHash()
+                && schemaHash != getPreviousMotiveSubSchemaHash()) {
             fromReason = "M5_DATABASE_REJECTED: unsupported or incomplete schema";
             return true;
         }
@@ -104,6 +106,13 @@ public:
      */
     static string getSupportedSchemaHash() {
         return "b2abb5f740fc8d451c6a9d70c408e357c6f51b5fb32cf961df650ff16c1da22a";
+    }
+
+    /**
+     * @return 初版スキーマへ副次波列を末尾追加した物理スキーマのSHA-256。
+     */
+    static string getPreviousMotiveSubSchemaHash() {
+        return "4909328bdb7b7c495a103420458fec17eda5555c933bff8fb572c42c3b5b4db2";
     }
 
 private:

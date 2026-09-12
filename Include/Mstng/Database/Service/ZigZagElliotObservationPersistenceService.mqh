@@ -683,7 +683,10 @@ private:
             }
 
             if (this.observationProfile.isM5()
-                    && !this.isM5TimeFrameValid(entity)) {
+                    && (!this.isM5TimeFrameValid(entity)
+                        || (entity.previousMotiveSubElliotIndex != 0
+                            && entity.previousMotiveSubElliotIndex != 1
+                            && entity.previousMotiveSubElliotIndex != 3))) {
                 this.logger.error(__FUNCTION__, "M5 timeframe scalar or text is invalid.");
 
                 return false;

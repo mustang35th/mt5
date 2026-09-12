@@ -278,6 +278,9 @@ struct ZigZagElliotObservationTimeFrameEntity {
 
     /** レコード作成時刻表示文字列。 */
     string createdAtText;
+
+    /** M5観測の直前推進波で副次波がある波番号。1・3、該当なしは0。 */
+    int previousMotiveSubElliotIndex;
 };
 
 #endif // MSTNG_DATABASE_ENTITY_ZIGZAG_ELLIOT_OBSERVATION_TF_ENTITY_MQH

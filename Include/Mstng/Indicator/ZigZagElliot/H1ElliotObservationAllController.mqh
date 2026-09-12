@@ -2086,7 +2086,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.04";
         if (this.observationProfile.isM5()) {
-            this.databaseRun.programVersion = "1.02";
+            this.databaseRun.programVersion = "1.03";
         }
         this.databaseRun.strategy = this.observationProfile.getStrategy();
         this.databaseRun.strategyVersion = this.observationProfile.getStrategyVersion();

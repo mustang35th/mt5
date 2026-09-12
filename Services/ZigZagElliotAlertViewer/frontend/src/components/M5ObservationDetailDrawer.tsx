@@ -84,7 +84,7 @@ export function M5ObservationDetailDrawer({ observationId, databaseKey, database
   const gridScroll = useRef<M5GridScroll>({ left: 0, top: 0 });
   const bodyScroll = useRef(0);
   const [view, setView] = useState(() => readM5Preference<DetailView>(VIEW_KEY, "grid", (value): value is DetailView => value === "normal" || value === "grid"));
-  const [gridExpanded, setGridExpanded] = useState(true);
+  const [gridExpanded, setGridExpanded] = useState(false);
   const [response, setResponse] = useState<M5DetailResponse | null>(null);
   const [lastReadAt, setLastReadAt] = useState("");
   const [loading, setLoading] = useState(false);

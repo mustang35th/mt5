@@ -88,8 +88,8 @@ def schema_text(db):
     return "".join(f"{kind}:{name}:{normalize_sql(sql)}\n" for kind, name, sql in rows)
 
 
-def expected_schema_hash():
-    body = source(GUARD).split("static string getSupportedSchemaHash() {", 1)[1]
+def expected_schema_hash(getter="getSupportedSchemaHash"):
+    body = source(GUARD).split(f"static string {getter}() {{", 1)[1]
     return re.search(r'return "([^"]+)"', body).group(1)
 
 
@@ -102,7 +102,8 @@ def is_allowed(db):
     text = schema_text(db)
     if not text:
         return True
-    if hashlib.sha256(text.encode()).hexdigest() != expected_schema_hash():
+    if hashlib.sha256(text.encode()).hexdigest() not in (
+            expected_schema_hash(), expected_schema_hash("getPreviousMotiveSubSchemaHash")):
         return False
     return not any(db.execute(sql).fetchone()[0] for sql in guard_queries())
 
@@ -151,6 +152,49 @@ class M5ObservationGuardContractTest(unittest.TestCase):
         with closing(sqlite3.connect(":memory:")) as empty:
             self.assertTrue(is_allowed(empty))
         self.assertTrue(is_allowed(self.db))
+
+    def test_timeframe_insert_columns_match_binding_order_for_h1_and_m5(self):
+        dao = source(DAO / "ZigZagElliotObservationTimeFrameDao.mqh")
+        prefix = dao.split("string buildInsertSql() {", 1)[1].split('sql += ") VALUES (";', 1)[0]
+        bindings = dao.split("bool bindEntity(", 1)[1].split("int getInsertParameterCount()", 1)[0]
+        fields = re.findall(r"DatabaseBind\(\s*fromRequestHandle,\s*index\+\+,\s*fromEntity\.(\w+)\s*\)", bindings)
+        bound_columns = [re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", field).lower() for field in fields]
+        for m5, count in ((False, 87), (True, 88)):
+            with self.subTest(m5=m5):
+                body = prefix
+                if not m5:
+                    body = re.sub(r"if \(this.savePreviousMotiveSubElliot\) \{.*?\}", "", body, flags=re.S)
+                sql = "".join(re.findall(r'(?:string sql =|sql \+=) "([^"]*)";', body))
+                columns = [part.strip() for part in sql.split("(", 1)[1].split(",")]
+                self.assertEqual(len(columns), count)
+                self.assertEqual(columns, bound_columns[:count])
+        self.assertRegex(dao, r"if \(this.savePreviousMotiveSubElliot\) \{\s*return 88;\s*\}\s*return 87;")
+
+    def test_previous_motive_sub_migration_preserves_history_and_guards_schema(self):
+        table = "zigzag_elliot_observation_timeframes"
+        observation = self.add_observation()
+        self.insert(table, observation_id=observation, time_frame=5, time_frame_order=0)
+        self.db.commit()
+        migration = source(DAO / "ZigZagElliotObservationPreviousMotiveSubMigration.mqh")
+        statement = next(sql_assignments(migration.split("static bool execute(", 1)[1].split("private:", 1)[0]))
+        self.db.execute("BEGIN")
+        self.db.execute(statement)
+        self.assertEqual(hashlib.sha256(schema_text(self.db).encode()).hexdigest(),
+                         expected_schema_hash("getPreviousMotiveSubSchemaHash"))
+        self.assertTrue(is_allowed(self.db))
+        self.assertIsNone(self.db.execute(f"SELECT previous_motive_sub_elliot_index FROM {table}").fetchone()[0])
+        self.db.rollback()
+        self.assertTrue(is_allowed(self.db))
+        self.assertNotIn("previous_motive_sub_elliot_index", [row[1] for row in self.db.execute(f"PRAGMA table_info({table})")])
+        self.db.execute(statement)
+        for value in (0, 1, 3, None):
+            self.db.execute(f"UPDATE {table} SET previous_motive_sub_elliot_index=?", (value,))
+            self.assertEqual(self.db.execute(f"SELECT previous_motive_sub_elliot_index FROM {table}").fetchone()[0], value)
+        for value in (-1, 2, 4, 1.5, "invalid"):
+            with self.subTest(value=value), self.assertRaises(sqlite3.IntegrityError):
+                self.db.execute(f"UPDATE {table} SET previous_motive_sub_elliot_index=?", (value,))
+        self.db.execute(f"ALTER TABLE {table} ADD COLUMN unexpected INTEGER")
+        self.assertFalse(is_allowed(self.db))
 
     def test_compatible_m5_run_only_is_allowed(self):
         self.add_run()

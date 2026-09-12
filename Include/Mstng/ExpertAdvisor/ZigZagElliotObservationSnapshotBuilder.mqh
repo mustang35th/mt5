@@ -518,6 +518,9 @@ private:
         fromEntity.previousLastElliotLabel = normalizeText(
             fromLatestWave.previousLastElliotLabel
         );
+        if (fromProfile.isM5()) {
+            fromEntity.previousMotiveSubElliotIndex = fromLatestWave.getPreviousMotiveSubElliotIndex();
+        }
         fromEntity.pointCount = fromLatestWave.zigZagPointList.Total();
         fromEntity.latestElliotIndex = fromLatestPoint.elliotIndex;
         fromEntity.latestElliotLabel = normalizeText(
@@ -660,6 +663,9 @@ private:
                 sourceText,
                 fromTimeFrameEntities[i]
             );
+            if (fromProfile.isM5()) {
+                appendInteger(sourceText, fromTimeFrameEntities[i].previousMotiveSubElliotIndex);
+            }
         }
 
         return createTextHash(sourceText);

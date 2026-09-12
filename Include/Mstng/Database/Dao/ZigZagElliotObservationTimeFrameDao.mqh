@@ -12,6 +12,7 @@
 #include <Mstng\Database\Dao\ZigZagElliotObservationAddedPointMigration.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationJstMigration.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationPointDetailsMigration.mqh>
+#include <Mstng\Database\Dao\ZigZagElliotObservationPreviousMotiveSubMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -27,13 +28,14 @@ public:
      */
     ZigZagElliotObservationTimeFrameDao(const int fromDatabaseHandle) {
         this.databaseHandle = fromDatabaseHandle;
+        this.savePreviousMotiveSubElliot = false;
         this.logger.setLevel(LOG_INFO);
     }
 
     /**
      * 時間足別観測テーブルと検索用インデックスを作成する。
      *
-     * @param fromCurrentSchemaOnly 検査済み現行M5スキーマとしてJST補完を禁止する場合true。
+     * @param fromCurrentSchemaOnly 用途検査済みM5としてJST補完を禁止し、M5専用列を準備する場合true。
      * @return 作成に成功した場合true。
      */
     bool createTable(const bool fromCurrentSchemaOnly = false) {
@@ -182,6 +184,12 @@ public:
             return false;
         }
 
+        if (fromCurrentSchemaOnly
+                && !ZigZagElliotObservationPreviousMotiveSubMigration::execute(this.databaseHandle)) {
+            return false;
+        }
+        this.savePreviousMotiveSubElliot = fromCurrentSchemaOnly;
+
         sql = "CREATE UNIQUE INDEX IF NOT EXISTS ";
         sql += "idx_zigzag_elliot_observation_timeframes_anchor ";
         sql += "ON zigzag_elliot_observation_timeframes(observation_id) ";
@@ -265,6 +273,9 @@ private:
     /** データベースハンドル。 */
     int databaseHandle;
 
+    /** M5専用の直前推進波副次波列を保存する場合true。 */
+    bool savePreviousMotiveSubElliot;
+
     /** ロガー。 */
     Logger logger;
 
@@ -311,9 +322,12 @@ private:
         sql += " ema200_slope_direction, ema200_up_count, ema200_down_count,";
         sql += " ema200_trend_count, is_ema200_buy, is_ema200_sell,";
         sql += " created_at, created_at_text";
+        if (this.savePreviousMotiveSubElliot) {
+            sql += ", previous_motive_sub_elliot_index";
+        }
         sql += ") VALUES (";
 
-        for (int i = 1; i <= 87; i++) {
+        for (int i = 1; i <= this.getInsertParameterCount(); i++) {
             if (i > 1) {
                 sql += ", ";
             }
@@ -787,7 +801,23 @@ private:
             );
         }
 
-        return isBound && index == 87;
+        if (isBound && this.savePreviousMotiveSubElliot) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.previousMotiveSubElliotIndex);
+        }
+
+        return isBound && index == this.getInsertParameterCount();
+    }
+
+    /**
+     * 保存用途に対応するINSERTパラメーター数を返す。
+     *
+     * @return H1は87、M5は88。
+     */
+    int getInsertParameterCount() {
+        if (this.savePreviousMotiveSubElliot) {
+            return 88;
+        }
+        return 87;
     }
 
     /**

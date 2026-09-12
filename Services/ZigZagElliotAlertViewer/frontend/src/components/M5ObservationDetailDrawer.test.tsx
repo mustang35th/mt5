@@ -184,6 +184,38 @@ describe("M5 comparison preference isolation", () => {
 });
 
 describe("M5 full-screen detail grid", () => {
+  it("colors each cell by its own direction and leaves neutral values and prices uncolored", async () => {
+    localStorage.removeItem("m5Observation.detailView.v1");
+    const value = detail();
+    Object.assign(value.timeframes.find((row) => row.time_frame === 5)!, {
+      oscillator_count: 2, stochastic_short_count: -3, stochastic_middle_count: 0,
+      stochastic_long_count: null, latest_point_rate: 101.25, latest_point_pips_diff: 12.3,
+      ema200_slope_pips: 0.01, ema200_close_diff_pips: -1.2, ema30_ema60_diff_pips: 2.3,
+    });
+    vi.spyOn(m5Api, "detail").mockResolvedValue(value);
+    render(<M5ObservationDetailDrawer {...props} />);
+    const table = await screen.findByRole("table", { name: "M5詳細7時間足比較" });
+    const cell = (label: string) => {
+      const headers = Array.from(table.querySelectorAll("thead tr:last-child th"));
+      return table.querySelector('[data-timeframe="M5"]')!.children[headers.findIndex((header) => header.textContent === label)].querySelector("span")!;
+    };
+    expect(cell("分析方向")).toHaveClass("m5-sell");
+    expect(cell("Elliott / Sub")).toHaveClass("m5-sell");
+    expect(cell("Elliott / Sub")).toHaveTextContent("▲3.iii");
+    expect(cell("Oscillator Count")).toHaveTextContent("+2");
+    expect(cell("Oscillator Count")).toHaveClass("m5-buy");
+    expect(cell("Stochastic 短期 Count")).toHaveClass("m5-sell");
+    for (const label of ["Stochastic 中期 Count", "Stochastic 長期 Count", "最新点価格", "pips差", "Wave状態", "直前推進波の副次波", "最新点の取得種別", "F / FE（元番号に対応）"]) {
+      expect(cell(label)).not.toHaveClass("m5-buy", "m5-sell");
+    }
+    fireEvent.click(screen.getByRole("button", { name: "すべて表示" }));
+    expect(cell("Wave方向")).toHaveClass("m5-buy");
+    expect(cell("傾き pips")).toHaveTextContent("0.0");
+    expect(cell("傾き pips")).not.toHaveClass("m5-buy", "m5-sell");
+    expect(cell("終値距離 pips")).toHaveClass("m5-sell");
+    expect(cell("EMA30–60距離 pips")).toHaveClass("m5-buy");
+  });
+
   it("shows detailed saved fields without another request and keeps M5 preferences separate", async () => {
     localStorage.removeItem("m5Observation.detailView.v1");
     localStorage.setItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY, "preserved-H1-settings");
@@ -199,6 +231,17 @@ describe("M5 full-screen detail grid", () => {
     fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
     const table = screen.getByRole("table", { name: "M5詳細7時間足比較" });
     expect(Array.from(table.querySelectorAll("tbody tr")).map((row) => row.getAttribute("data-timeframe"))).toEqual(["MN1", "W1", "D1", "H4", "H1", "M15", "M5"]);
+    const summaryLabels = ["時間足", "分析方向", "EMA200方向", "Elliott / Sub", "Wave状態", "直前推進波の副次波", "最新点の取得種別",
+      "F / FE（元番号に対応）", "pips差", "最新点価格", "Oscillator Count", "Stochastic 短期 Count", "Stochastic 中期 Count", "Stochastic 長期 Count", "GMMA Trend", "GMMA Cross"];
+    const columnLabels = () => Array.from(table.querySelectorAll("thead tr:last-child th")).map((header) => header.textContent);
+    expect(columnLabels()).toEqual(summaryLabels);
+    expect(Array.from(table.querySelectorAll("tbody tr")).every((row) => row.children.length === 16)).toBe(true);
+    expect(within(table).getByRole("columnheader", { name: "Wave状態" })).toHaveAttribute("title", expect.stringContaining("\n形成中：最新Waveは未確定です。"));
+    expect(table.querySelector("td[title]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "その他指標" }));
+    expect(screen.getByRole("button", { name: "すべて表示" })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: "すべて表示" }));
+    expect(columnLabels().filter((label) => summaryLabels.includes(label!))).toEqual(summaryLabels);
     expect(within(table).getByRole("columnheader", { name: "取得時点の形成中足 Close" })).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "Stochastic 長期 Signal" })).toBeInTheDocument();
     expect(within(table).getAllByText("FE 161.8%")).toHaveLength(7);
@@ -206,6 +249,8 @@ describe("M5 full-screen detail grid", () => {
     expect(screen.getByRole("region", { name: "M5保存情報" }).querySelector("details")).toHaveAttribute("open");
     expect(screen.getByText("a".repeat(64), { selector: "code" })).toBeVisible();
     expect(request).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "要点のみ" }));
+    expect(columnLabels()).toEqual(summaryLabels);
     expect(localStorage.getItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY)).toBe("preserved-H1-settings");
     first.unmount();
     render(<M5ObservationDetailDrawer {...props} />);
@@ -223,25 +268,37 @@ describe("M5 full-screen detail grid", () => {
     m5.is_fibo_expansion_available = 0;
     m5.fe2000_price = 123;
     m5.ema200_close1 = NaN;
+    m5.previous_motive_sub_elliot_index = 3;
+    value.timeframes.find((row) => row.time_frame === 16385)!.previous_motive_sub_elliot_index = 1;
+    value.timeframes.find((row) => row.time_frame === 16408)!.previous_motive_sub_elliot_index = 0;
+    value.timeframes.find((row) => row.time_frame === 16388)!.previous_motive_sub_elliot_index = 2;
     vi.spyOn(m5Api, "detail").mockResolvedValue(value);
     render(<M5ObservationDetailDrawer {...props} />);
     await screen.findByText("TIMEFRAME COMPARISON");
     fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
     const table = screen.getByRole("table", { name: "M5詳細7時間足比較" });
+    fireEvent.click(screen.getByRole("button", { name: "すべて表示" }));
     const headers = Array.from(table.querySelectorAll("thead tr:last-child th"));
     const cell = (frame: string, label: string) => table.querySelector(`[data-timeframe="${frame}"]`)!.children[headers.findIndex((header) => header.textContent === label)];
     expect(cell("M5", "Close1")).toHaveTextContent("不正値");
+    expect(cell("M5", "直前推進波の副次波")).toHaveTextContent("3波に副次波あり");
+    expect(cell("H1", "直前推進波の副次波")).toHaveTextContent("1波に副次波あり");
+    expect(cell("D1", "直前推進波の副次波")).toHaveTextContent("該当なし");
+    expect(cell("MN1", "直前推進波の副次波")).toHaveTextContent("未記録");
+    expect(cell("H4", "直前推進波の副次波")).toHaveTextContent("不正値");
+    expect(within(table).getByRole("columnheader", { name: "直前推進波の副次波" })).toHaveAttribute("title", expect.stringContaining("現在2・3波：1波の副次波を確認\n"));
+    expect(cell("M5", "直前推進波の副次波")).not.toHaveAttribute("title");
     expect(cell("MN1", "Close1")).toHaveTextContent("対象外（MN1）");
     expect(cell("M5", "FE 200%価格")).toHaveTextContent("利用不可");
     expect(cell("H1", "FE 200%価格")).toHaveTextContent("未記録");
     expect(cell("M5", "ATR14 pips")).toHaveTextContent("0.0");
     expect(cell("M15", "分析方向")).toHaveTextContent("未記録・足構成を要確認");
     expect(cell("W1", "分析方向")).toHaveTextContent("未記録・足構成を要確認");
-    fireEvent.click(screen.getByRole("button", { name: "基本項目のみ" }));
+    fireEvent.click(screen.getByRole("button", { name: "要点のみ" }));
     expect(within(table).queryByRole("columnheader", { name: "Close1" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^EMA200$/ }));
     expect(within(table).getByRole("columnheader", { name: "Close1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "基本項目のみ" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "要点のみ" })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("restores grid and body scroll after navigation while withholding the previous observation", async () => {

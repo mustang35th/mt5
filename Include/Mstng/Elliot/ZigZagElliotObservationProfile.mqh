@@ -154,7 +154,7 @@ public:
      */
     string getSnapshotHashVersion() const {
         if (this.isM5()) {
-            return "M5_OBSERVATION_V1";
+            return "M5_OBSERVATION_V2";
         }
         return "H1_OBSERVATION_V5";
     }

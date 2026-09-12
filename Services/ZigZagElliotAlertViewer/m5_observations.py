@@ -379,7 +379,10 @@ class M5ObservationDatabase:
             ORDER BY observation_id, time_frame_order, id
         """), parameters).mappings()
         for row in rows:
-            timeframes[row["observation_id"]].append(dict(row))
+            item = dict(row)
+            # Legacy databases remain readable without a viewer-side migration.
+            item.setdefault("previous_motive_sub_elliot_index", None)
+            timeframes[row["observation_id"]].append(item)
         if columns[METRICS_TABLE]:
             projection = ["observation_id"]
             for name in METRIC_COLUMNS:

@@ -166,6 +166,29 @@ class M5ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual("EMPTY", empty["status"])
         self.assertEqual({"first": None, "last": None}, empty["range"])
 
+    def test_previous_motive_sub_legacy_and_migrated_values_are_read_only(self) -> None:
+        before = self.path.read_bytes()
+        self.assertTrue(all(row["previous_motive_sub_elliot_index"] is None
+                            for row in self.database.detail(self.identifier)["timeframes"]))
+        self.assertEqual(before, self.path.read_bytes())
+        migration = (PROJECT_ROOT / "Include/Mstng/Database/Dao/ZigZagElliotObservationPreviousMotiveSubMigration.mqh").read_text(encoding="utf-8-sig")
+        body = migration.split('string sql = "ALTER TABLE', 1)[1].split("ResetLastError();", 1)[0]
+        statement = "ALTER TABLE" + "".join(re.findall(r'(?:^|sql \+= )"?([^"\r\n]*)";', body))
+        self.writer.execute(statement)
+        self.writer.commit()
+        self.assertTrue(all(row["previous_motive_sub_elliot_index"] is None
+                            for row in self.database.detail(self.identifier)["timeframes"]))
+        expected = [0, 1, 3, None, 0, 1, 3]
+        for order, value in enumerate(expected):
+            self.writer.execute(f"UPDATE {TIMEFRAME_TABLE} SET previous_motive_sub_elliot_index=? WHERE time_frame_order=?", (value, order))
+        self.writer.commit()
+        before = self.path.read_bytes()
+        detail_rows = self.database.detail(self.identifier)["timeframes"]
+        list_rows = self.database.observations(query())["items"][0]["timeframes"]
+        for rows in (detail_rows, list_rows):
+            self.assertEqual([row["previous_motive_sub_elliot_index"] for row in rows], expected)
+        self.assertEqual(before, self.path.read_bytes())
+
     def test_metadata_has_no_run_and_no_implicit_live_fallback(self) -> None:
         live = self.database.metadata({"sourceMode": ["LIVE"]})
         self.assertIsNone(live["effectiveRunId"])

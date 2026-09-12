@@ -64,8 +64,8 @@
 .m5-timeframe-cell { display: flex; flex-direction: column; justify-content: center; height: 100%; line-height: 1.5; }
 .m5-timeframe-cell small { color: #a5b7c9; }
 .m5-direction { font-weight: 700; }
-.m5-buy { color: #60c2ff; }
-.m5-sell { color: #ff88b2; }
+.m5-buy { color: #60a5fa; }
+.m5-sell { color: #f87171; }
 @media (min-width: 1280px) {
   .m5-observation-view .m5-header { max-height: 30vh; overflow-y: auto; }
   body.react-viewer .m5-workspace .m5-results-panel { min-height: 0; overflow-y: auto; }

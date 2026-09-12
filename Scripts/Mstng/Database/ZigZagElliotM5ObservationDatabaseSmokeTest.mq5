@@ -213,7 +213,7 @@ void testProfiles() {
         && StringFind(m5Profile.createCanonicalText(), "|ANCHOR_TF=16385|") < 0,
         "M5 canonical has no H1 anchor");
     expect(h1Profile.getSnapshotHashVersion() == "H1_OBSERVATION_V5"
-        && m5Profile.getSnapshotHashVersion() == "M5_OBSERVATION_V1", "snapshot namespaces");
+        && m5Profile.getSnapshotHashVersion() == "M5_OBSERVATION_V2", "snapshot namespaces");
 }
 
 /**
@@ -226,7 +226,7 @@ void testInvalidSnapshots(
 ) {
     ZigZagElliotObservationSnapshot snapshot;
     datetime anchor = D'2026.09.10 11:05:00';
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 11; i++) {
         initializeSnapshot(fromProfile, fromRun, anchor, snapshot);
         if (i == 0) {
             ArrayResize(snapshot.timeFrames, 6);
@@ -246,8 +246,10 @@ void testInvalidSnapshots(
             snapshot.captureMetrics.analysisAttemptCount = 0;
         } else if (i == 8) {
             snapshot.observation.sourceServer = "wrong-server";
-        } else {
+        } else if (i == 9) {
             snapshot.timeFrames[0].currentClose = EMPTY_VALUE;
+        } else {
+            snapshot.timeFrames[0].previousMotiveSubElliotIndex = 2;
         }
         expect(!fromService.saveSnapshot(snapshot), "invalid snapshot " + IntegerToString(i));
     }
@@ -325,6 +327,8 @@ void testM5Database(const int fromHandle) {
     expectGuard(fromHandle, true, "M5 Run-only accepted");
     ZigZagElliotObservationSnapshot snapshot;
     initializeSnapshot(profile, run, D'2026.09.10 11:00:00', snapshot);
+    snapshot.timeFrames[0].previousMotiveSubElliotIndex = 1;
+    snapshot.timeFrames[1].previousMotiveSubElliotIndex = 3;
     expect(!service.saveSnapshot(snapshot.observation, snapshot.timeFrames), "M5 two-argument save rejects missing quality");
     if (!expect(service.saveSnapshot(snapshot), "M5 parent + 7 children + quality")) {
         return;
@@ -332,6 +336,9 @@ void testM5Database(const int fromHandle) {
     long originalId = snapshot.observation.id;
     expectLong(fromHandle, "SELECT COUNT(*) FROM zigzag_elliot_observations", 1, "one parent");
     expectLong(fromHandle, "SELECT COUNT(*) FROM zigzag_elliot_observation_timeframes", 7, "seven children");
+    expectLong(fromHandle, "SELECT COUNT(*) FROM zigzag_elliot_observation_timeframes WHERE previous_motive_sub_elliot_index=0", 5, "five no-sub observations");
+    expectLong(fromHandle, "SELECT previous_motive_sub_elliot_index FROM zigzag_elliot_observation_timeframes WHERE time_frame_order=0", 1, "previous motive wave 1 stored");
+    expectLong(fromHandle, "SELECT previous_motive_sub_elliot_index FROM zigzag_elliot_observation_timeframes WHERE time_frame_order=1", 3, "previous motive wave 3 stored");
     expectLong(fromHandle, "SELECT COUNT(*) FROM zigzag_elliot_observation_capture_metrics WHERE quote_tick_time_msc IS NULL AND capture_market_time IS NULL AND analysis_elapsed_ms=0", 1, "NULL and zero are distinct");
     expectGuard(fromHandle, true, "M5 snapshot database accepted");
     for (int i = 0; i < 2; i++) {

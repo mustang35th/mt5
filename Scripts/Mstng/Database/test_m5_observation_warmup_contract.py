@@ -416,12 +416,12 @@ class ObservationWarmupContractTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(actual, expected)
 
-    def test_m5_indicator_and_run_share_progress_log_version(self):
+    def test_m5_indicator_and_run_share_program_version(self):
         indicator = (ROOT / "Indicators/ZigZagElliotM5ObservationAll.mq5").read_text(encoding="utf-8-sig")
-        self.assertRegex(indicator, r'#property version\s+"1\.02"')
+        version = re.search(r'#property version\s+"([^"]+)"', indicator).group(1)
         run = body(self.source, "void setDatabaseRun()")
         self.assertIn('this.databaseRun.programVersion = "1.04"', run)
-        self.assertIn('this.databaseRun.programVersion = "1.02"', body(run, "if (this.observationProfile.isM5())"))
+        self.assertIn(f'this.databaseRun.programVersion = "{version}"', body(run, "if (this.observationProfile.isM5())"))
 
     def test_new_diagnostics_do_not_trade_persist_or_rewrite_gate(self):
         for signature in ("bool shouldSkipM5TesterWarmup()", "bool isM5AnalysisSeriesReady(",

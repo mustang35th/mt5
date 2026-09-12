@@ -109,7 +109,7 @@ class ObservationProfileContractTest(unittest.TestCase):
         self.assertNotRegex(profile, r"static\s+ENUM_TIMEFRAMES\s+anchorTimeFrame")
         self.assertIn("return PERIOD_M15;", profile)
         self.assertIn("return PERIOD_M5;", profile)
-        self.assertIn('return "M5_OBSERVATION_V1";', profile)
+        self.assertIn('return "M5_OBSERVATION_V2";', profile)
         self.assertNotIn("PERIOD_M30", profile)
 
     def test_quality_is_not_part_of_snapshot_hash(self):
@@ -118,6 +118,13 @@ class ObservationProfileContractTest(unittest.TestCase):
         for field in ("quoteTickTimeMsc", "captureMarketTime", "analysisElapsedMs",
                       "captureElapsedMs", "analysisAttemptCount"):
             self.assertNotIn(field, body)
+
+    def test_previous_motive_sub_is_captured_and_hashed_only_for_m5(self):
+        builder = read("ExpertAdvisor/ZigZagElliotObservationSnapshotBuilder.mqh")
+        self.assertRegex(builder, r"if \(fromProfile.isM5\(\)\) \{\s*fromEntity.previousMotiveSubElliotIndex = fromLatestWave.getPreviousMotiveSubElliotIndex\(\);")
+        self.assertRegex(builder, r"if \(fromProfile.isM5\(\)\) \{\s*appendInteger\(sourceText, fromTimeFrameEntities\[i\].previousMotiveSubElliotIndex\);")
+        common = builder.split("static void appendTimeFrameHashValues(", 1)[1]
+        self.assertNotIn("previousMotiveSubElliotIndex", common)
 
     def test_first_write_exits_before_children_or_quality(self):
         service = read("Database/Service/ZigZagElliotObservationPersistenceService.mqh")
