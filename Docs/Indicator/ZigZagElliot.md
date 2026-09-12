@@ -1,5 +1,11 @@
 # ZigZagElliot
 
+## M5エントリーメールの有効化（2026-09-13）
+
+通常版v1.39では、M5もH1と同じくエントリー成立時に`isSendMail = true`を設定します。`ExpertAdvisorMtf3In3M5.shouldSendMail()`を有効化し、既存の`Mail::sendMail()`経路を使用します。実送信は通常版のタイマー実行時だけ行い、MT5のメール設定が必要です。テスターでは実送信せず、既存設定に応じて検証CSVへ送信対象フラグを記録します。
+
+エントリー未成立時や同一シグナルの2回目以降は送信対象にしません。上位足条件・FE・EMA200距離・Spread・重複制限などのエントリー条件と、件名・本文の形式は維持します。MstngEaは描画・メール処理を呼ばないため、内部送信対象フラグがtrueになっても実送信は行いません。
+
 ## H1・M5の上位足条件共通化（2026-09-13）
 
 通常版v1.38のM5は、[Mtf3In3HigherTimeFrameDecision](../../Include/Mstng/ExpertAdvisor/Mtf3In3HigherTimeFrameDecision.mqh)でH1と同じMN1・W1・D1条件を必須とします。基準は現在足の分析方向です。H1は既存の方向診断とEMA200確認から同じ共通クラスの各判定を呼び、判定順序・結果コード・設定値を維持します。

@@ -505,7 +505,7 @@ Elliott情報パネルには、戦略が保持する時間足別の方向、Osci
 
 ### 14.2 メール
 
-H1戦略のエントリー判定成立時には`isSendMail = true`、M5では成立時も`false`が設定されます。ただしMstngEaの戦略Adapterは内部戦略を描画・メール実行なしで生成し、MstngEa自身にも`Mail::sendMail()`呼び出しがありません。
+H1・M5戦略のエントリー判定成立時には`isSendMail = true`が設定されます（M5は2026-09-13に送信対象へ変更）。ただしMstngEaの戦略Adapterは内部戦略を描画・メール実行なしで生成し、MstngEa自身にも`Mail::sendMail()`呼び出しがありません。
 
 したがって、現行MstngEaは実メールを送信しません。`isSendMail`は検証結果上の診断フラグです。
 
