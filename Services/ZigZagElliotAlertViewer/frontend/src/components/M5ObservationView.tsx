@@ -255,13 +255,15 @@ export function M5ObservationView({ active, styleNonce }: Props) {
       <div className="viewer-results-column">
         <div className="results-panel m5-panel m5-results-panel">
           <div className="m5-results-heading">
-            <div className="m5-result-summary"><strong>{result?.total.toLocaleString() ?? "0"}件</strong>
-              <label>ページ件数 <select aria-label="M5ページ件数" value={applied.pageSize} disabled={loading} onChange={(event) => {
-                dirtyDraft.current = false; void load({ ...appliedRef.current, pageSize: Number(event.target.value) as 50 | 100 | 200, page: 1 }, "search");
-              }}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></select></label>
-            </div>
-            <AppliedConditionSummary hasUnappliedChanges={dirtyDraft.current}
+            <div className="m5-result-summary">
+              <strong>{result?.total.toLocaleString() ?? "0"}件</strong>
+              <AppliedConditionSummary hasUnappliedChanges={dirtyDraft.current}
               summary={displayedSearch ? `表示中：${displayedSearch.sourceMode} / Run ${displayedSearch.runId} / ${displayedSearch.from.replace("T", " ")} ≤ JST < ${displayedSearch.to.replace("T", " ")} / 通貨 ${displayedSearch.symbol || "すべて"} / JST時刻 ${displayedSearch.jstTime || "すべて"} / ${displayedSearch.sort === "anchor_jst_time" ? "日時" : "通貨"}${displayedSearch.order === "asc" ? "昇順" : "降順"}` : "検索結果なし"} />
+              {metadata?.range.last && <span className="m5-latest-observation"
+                title="選択Runの最新M5開始JSTです。稼働・収集完了を示すものではありません。">
+                最新観測JST：{m5DateTime(metadata.range.last).replace("T", " ")}
+              </span>}
+            </div>
             {dirtyDraft.current && <p className="m5-notice" role="status">未適用の変更があります。「検索」で反映してください。</p>}
             {latestRun && latestRun.id !== applied.runId && <p className="m5-notice">観測のある最新Runは {latestRun.id} です。選択Runは自動で切り替えません。</p>}
             {applied.sourceMode === "TESTER" && !runs.length && hasLive && <p className="m5-notice">TESTERのRunはありません。LIVEのRunはあります（実行モードで切替）。</p>}
@@ -270,18 +272,24 @@ export function M5ObservationView({ active, styleNonce }: Props) {
             {error && <p role="alert" className="m5-error">更新失敗：{error}{result ? "（前回成功時のデータを表示中）" : ""}</p>}
             {metadata && !available && <p role="status">M5観測は利用できません：{metadata.reason || metadata.status}</p>}
             {available && (!applied.runId || !metadata?.range.last) && <p role="status">選択モード／Runは未収集です。保存済み観測が追加されると期間を選択できます。</p>}
-            {metadata?.range.last && <p className="m5-muted">選択Runの最新M5開始JST：{m5DateTime(metadata.range.last).replace("T", " ")}（稼働・収集完了を示すものではありません）</p>}
-            {applied.sourceMode === "LIVE" ? <RefreshControls intervalSeconds={intervalSeconds} statusText={refreshStatus}
+          </div>
+          <M5ObservationTable items={result?.items || []} databaseKey={databaseKey.current} loading={loading}
+            sort={applied.sort} order={applied.order} styleNonce={styleNonce} onSort={sortRows} onOpenDetail={openDetail}
+            toolbarStart={<div className="m5-refresh-toolbar" title={refreshStatus}>
+            {applied.sourceMode === "LIVE" ? <RefreshControls intervalSeconds={intervalSeconds} statusText="LIVE"
               lastCheckedText={lastChecked ? `最終取得成功：${lastChecked}` : "未取得"} busy={loading}
               onIntervalChange={(value) => { setIntervalSeconds(value); writeM5Preference(M5_REFRESH_KEY, value); }}
               onRefresh={() => void load(appliedRef.current, "refresh")} />
               : <div className="m5-actions"><button className="secondary-button" type="button" disabled={loading} onClick={() => void load(appliedRef.current, "refresh")}>{loading ? "更新中…" : "今すぐ更新"}</button>
                 <small className="m5-muted">{refreshStatus} / 最終取得成功：{lastChecked || "未取得"}</small></div>}
+            </div>} />
+          <div className="m5-pagination-footer">
+            <label className="m5-page-size">ページ件数 <select aria-label="M5ページ件数" value={applied.pageSize} disabled={loading} onChange={(event) => {
+              dirtyDraft.current = false; void load({ ...appliedRef.current, pageSize: Number(event.target.value) as 50 | 100 | 200, page: 1 }, "search");
+            }}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></select></label>
+            <Pagination page={result?.page || applied.page} pageCount={result?.total_pages || 0} showPageInput disabled={loading || !result}
+              onPage={(page) => { dirtyDraft.current = false; void load({ ...appliedRef.current, page, followLatest: false }, "search"); }} />
           </div>
-          <M5ObservationTable items={result?.items || []} databaseKey={databaseKey.current} loading={loading}
-            sort={applied.sort} order={applied.order} styleNonce={styleNonce} onSort={sortRows} onOpenDetail={openDetail} />
-          <Pagination page={result?.page || applied.page} pageCount={result?.total_pages || 0} showPageInput disabled={loading || !result}
-            onPage={(page) => { dirtyDraft.current = false; void load({ ...appliedRef.current, page, followLatest: false }, "search"); }} />
         </div>
       </div>
     </div>

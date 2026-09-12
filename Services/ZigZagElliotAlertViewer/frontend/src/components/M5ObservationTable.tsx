@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery } from "@mui/material";
 import { ClientSideRowModelModule, ColumnApiModule, colorSchemeDarkBlue, themeQuartz,
   type ColDef, type GridApi, type ICellRendererParams } from "ag-grid-community";
@@ -18,6 +18,7 @@ interface Props {
   sort: M5Sort;
   order: "asc" | "desc";
   styleNonce?: string;
+  toolbarStart?: ReactNode;
   onSort: (sort: M5Sort) => void;
   onOpenDetail: (id: number, trigger: HTMLElement) => void;
 }
@@ -34,7 +35,7 @@ const columnLabels = [
   { id: "spread_pips", label: "Spread" }, { id: "quality", label: "取得品質" },
 ];
 
-export function M5ObservationTable({ items, databaseKey, loading, sort, order, styleNonce, onSort, onOpenDetail }: Props) {
+export function M5ObservationTable({ items, databaseKey, loading, sort, order, styleNonce, toolbarStart, onSort, onOpenDetail }: Props) {
   const grid = useRef<GridApi<M5ObservationItem> | null>(null);
   const restoring = useRef(false);
   const wide = useMediaQuery("(min-width: 761px)");
@@ -95,17 +96,20 @@ export function M5ObservationTable({ items, databaseKey, loading, sort, order, s
   }, [sort, order, onSort, onOpenDetail]);
   return <div className="m5-table" aria-label="M5観測検索結果" aria-busy={loading}>
     <div className="m5-table-controls">
-      <small>各足：分析方向 / 波動（▲上昇・▼下降） / EMA200。M5はH1から独立した保存値です。</small>
+      {toolbarStart}
+      <div className="m5-grid-settings">
       <label>行密度 <select aria-label="M5行密度" value={density} onChange={(event) => {
         setDensity(event.target.value); writeM5Preference(M5_DENSITY_KEY, event.target.value);
       }}><option value="compact">コンパクト</option><option value="comfortable">ゆったり</option></select></label>
       <details className="m5-column-settings"><summary>表示設定</summary><div>
+        <p className="m5-muted">各足：分析方向 / 波動（▲上昇・▼下降） / EMA200。M5はH1から独立した保存値です。</p>
         {columnLabels.map((column) => <label key={column.id}><input type="checkbox" checked={!layout.find((item) => item.colId === column.id)?.hide}
           onChange={(event) => { grid.current?.setColumnsVisible([column.id], event.target.checked); saveLayout(); }} />{column.label}</label>)}
-        <button type="button" className="secondary-button" onClick={() => {
+      </div></details>
+      <button type="button" className="secondary-button" onClick={() => {
           restoring.current = true; grid.current?.resetColumnState(); if (grid.current) pinColumns(grid.current); restoring.current = false; saveLayout();
         }}>列設定を初期化</button>
-      </div></details>
+      </div>
     </div>
     <div className="m5-grid">
       <AgGridReact<M5ObservationItem> modules={modules} theme={theme} styleNonce={styleNonce}

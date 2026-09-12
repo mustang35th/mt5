@@ -1,12 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { M5ListResponse, M5Metadata, M5SearchState } from "../api/m5Types";
 import { m5Api } from "../api/m5Client";
 import { M5ObservationView } from "./M5ObservationView";
 
 vi.mock("../api/m5Client", () => ({ m5Api: { metadata: vi.fn(), observations: vi.fn() } }));
-vi.mock("./M5ObservationTable", () => ({ M5ObservationTable: (props: { items: { id: number }[]; onOpenDetail: (id: number, target: HTMLElement) => void; onSort: (key: string) => void }) =>
-  <div data-testid="m5-table">Rows:{props.items.map((row) => row.id).join(",")}<button onClick={(event) => props.onOpenDetail(10, event.currentTarget)}>Open row</button><button onClick={() => props.onSort("symbol_name")}>Sort symbol</button></div> }));
+vi.mock("./M5ObservationTable", () => ({ M5ObservationTable: (props: { items: { id: number }[]; toolbarStart?: ReactNode; onOpenDetail: (id: number, target: HTMLElement) => void; onSort: (key: string) => void }) =>
+  <div data-testid="m5-table">{props.toolbarStart}Rows:{props.items.map((row) => row.id).join(",")}<button onClick={(event) => props.onOpenDetail(10, event.currentTarget)}>Open row</button><button onClick={() => props.onSort("symbol_name")}>Sort symbol</button></div> }));
 vi.mock("./M5ObservationDetailDrawer", () => ({ M5ObservationDetailDrawer: (props: { observationId: number | null; databaseKey: string }) =>
   <div data-testid="m5-detail">{props.databaseKey}:{props.observationId ?? "closed"}</div> }));
 
