@@ -1,0 +1,25 @@
+.m5-snapshot-toolbar, .m5-snapshot-toolbar nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.m5-snapshot-toolbar { justify-content: space-between; margin-bottom: 6px; }
+.m5-snapshot-toolbar .secondary-button { min-height: 30px; padding: 4px 8px; font-size: .75rem; }
+.m5-snapshot-scroll { max-height: 65dvh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.m5-snapshot-table { border-collapse: separate; border-spacing: 0; width: max-content; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.m5-snapshot-table th, .m5-snapshot-table td { min-width: 150px; padding: 8px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; background: #101c2a; }
+.m5-snapshot-table thead th { position: sticky; top: 0; z-index: 3; background: #132234; }
+.m5-snapshot-table thead tr:first-child th { height: 30px; padding-block: 4px; color: var(--muted); }
+.m5-snapshot-table thead tr:nth-child(2) th { top: 30px; }
+.m5-snapshot-table .m5-snapshot-key-0 { position: sticky; left: 0; width: 72px; min-width: 72px; max-width: 72px; }
+.m5-snapshot-table .m5-snapshot-key-1 { position: sticky; left: 72px; width: 90px; min-width: 90px; max-width: 90px; }
+.m5-snapshot-table .m5-snapshot-key-2 { position: sticky; left: 162px; width: 120px; min-width: 120px; max-width: 120px; }
+.m5-snapshot-table .m5-snapshot-key-3 { position: sticky; left: 282px; width: 150px; min-width: 150px; max-width: 150px; border-right: 2px solid #59748a; }
+.m5-snapshot-table [class^="m5-snapshot-key-"] { z-index: 2; white-space: normal; overflow-wrap: anywhere; box-sizing: border-box; }
+.m5-snapshot-table thead [class^="m5-snapshot-key-"] { z-index: 5; }
+.m5-snapshot-table .m5-snapshot-key-group { position: sticky; left: 0; border-right: 2px solid #59748a; }
+.m5-snapshot-table td small { display: block; font-size: .65rem; color: var(--muted); }
+.m5-snapshot-anchor td { background: #12332f; }
+.m5-snapshot-anchor td:first-child { box-shadow: inset 3px 0 #59d8c2; }
+.m5-snapshot-section > .m5-note { margin: 6px 0 0; }
+@media (max-width: 760px) {
+  .m5-snapshot-table .m5-snapshot-key-1, .m5-snapshot-table .m5-snapshot-key-2, .m5-snapshot-table .m5-snapshot-key-3, .m5-snapshot-table .m5-snapshot-key-group { position: static; }
+  .m5-snapshot-table thead .m5-snapshot-key-1, .m5-snapshot-table thead .m5-snapshot-key-2, .m5-snapshot-table thead .m5-snapshot-key-3 { position: sticky; left: auto; z-index: 3; }
+  .m5-snapshot-scroll { max-height: 70dvh; }
+}

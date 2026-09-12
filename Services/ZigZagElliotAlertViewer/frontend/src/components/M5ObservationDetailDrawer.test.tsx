@@ -40,7 +40,7 @@ function deferred<T>() {
 
 const props = { observationId: 41, databaseKey: "m5-db-A", databaseName: "m5-study.sqlite", onClose: vi.fn(), onNavigate: vi.fn() };
 
-beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+beforeEach(() => { localStorage.clear(); localStorage.setItem("m5Observation.detailView.v1", JSON.stringify("normal")); vi.clearAllMocks(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); document.body.classList.remove("drawer-open"); });
 
 describe("M5 observation detail", () => {
@@ -61,6 +61,12 @@ describe("M5 observation detail", () => {
     expect(screen.getByText("TIMEFRAME COMPARISON").compareDocumentPosition(screen.getByText("CAPTURE QUALITY")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText(/ENTRY|FULL BUY|FULL SELL|通貨強弱/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "次の観測なし" })).toBeDisabled();
+    expect(screen.getByTitle("Server 2023.11.14 22:15:00")).toHaveTextContent("Server 2023.11.14 22:15:00");
+    const navigation = screen.getByRole("navigation", { name: "同一Run・通貨の前後観測" });
+    expect(navigation.parentElement).toHaveClass("m5-detail-context");
+    expect(navigation.parentElement?.firstElementChild).toBe(navigation);
+    expect(within(navigation).getByRole("button", { name: /前の観測 JST/ })).toHaveTextContent("← 前");
+    expect(within(navigation).getByRole("button", { name: /前の観測 JST/ })).toHaveAttribute("title", expect.stringContaining("JST 2023.11.13 05:15:00"));
     expect(screen.getByText(/172,800秒/)).toHaveTextContent("休場・欠損は断定不可");
     fireEvent.click(screen.getByRole("button", { name: /前の観測 JST/ }));
     expect(props.onNavigate).toHaveBeenCalledWith(40);
@@ -174,5 +180,99 @@ describe("M5 comparison preference isolation", () => {
     fireEvent.click(screen.getByRole("button", { name: "OHLC" }));
     expect(screen.getByRole("button", { name: "OHLC" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText(/現在足OHLCは取得時点の途中経過/)).toBeInTheDocument();
+  });
+});
+
+describe("M5 full-screen detail grid", () => {
+  it("shows detailed saved fields without another request and keeps M5 preferences separate", async () => {
+    localStorage.removeItem("m5Observation.detailView.v1");
+    localStorage.setItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY, "preserved-H1-settings");
+    const value = detail();
+    value.observation.anchor_jst_time = value.observation.anchor_bar_time + 3600;
+    value.observation.anchor_jst_time_text = "2023.11.14 23:15:00";
+    const request = vi.spyOn(m5Api, "detail").mockResolvedValue(value);
+    const first = render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByRole("table", { name: "M5詳細7時間足比較" });
+    expect(screen.getByTitle("Server 2023.11.14 22:15:00")).toHaveTextContent(/^Server 22:15:00$/);
+    expect(screen.getByRole("navigation", { name: "同一Run・通貨の前後観測" }).parentElement).toHaveClass("m5-detail-context");
+    expect(screen.getByRole("button", { name: "全画面グリッド" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const table = screen.getByRole("table", { name: "M5詳細7時間足比較" });
+    expect(Array.from(table.querySelectorAll("tbody tr")).map((row) => row.getAttribute("data-timeframe"))).toEqual(["MN1", "W1", "D1", "H4", "H1", "M15", "M5"]);
+    expect(within(table).getByRole("columnheader", { name: "取得時点の形成中足 Close" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Stochastic 長期 Signal" })).toBeInTheDocument();
+    expect(within(table).getAllByText("FE 161.8%")).toHaveLength(7);
+    expect(table.querySelector('[data-timeframe="M5"] .m5-snapshot-key-1')).toHaveTextContent("SELL");
+    expect(screen.getByRole("region", { name: "M5保存情報" }).querySelector("details")).toHaveAttribute("open");
+    expect(screen.getByText("a".repeat(64), { selector: "code" })).toBeVisible();
+    expect(request).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY)).toBe("preserved-H1-settings");
+    first.unmount();
+    render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByRole("table", { name: "M5詳細7時間足比較" });
+    expect(screen.getByRole("button", { name: "全画面グリッド" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "通常表示" }));
+    expect(screen.getByText("TIMEFRAME COMPARISON")).toBeInTheDocument();
+  });
+
+  it("expands the selected column group and distinguishes absent, duplicate, zero and unavailable values", async () => {
+    const value = detail();
+    value.timeframes = value.timeframes.filter((row) => row.time_frame !== 15);
+    value.timeframes.push({ ...value.timeframes[1] });
+    const m5 = value.timeframes.find((row) => row.time_frame === 5)!;
+    m5.is_fibo_expansion_available = 0;
+    m5.fe2000_price = 123;
+    m5.ema200_close1 = NaN;
+    vi.spyOn(m5Api, "detail").mockResolvedValue(value);
+    render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    const table = screen.getByRole("table", { name: "M5詳細7時間足比較" });
+    const headers = Array.from(table.querySelectorAll("thead tr:last-child th"));
+    const cell = (frame: string, label: string) => table.querySelector(`[data-timeframe="${frame}"]`)!.children[headers.findIndex((header) => header.textContent === label)];
+    expect(cell("M5", "Close1")).toHaveTextContent("不正値");
+    expect(cell("MN1", "Close1")).toHaveTextContent("対象外（MN1）");
+    expect(cell("M5", "FE 200%価格")).toHaveTextContent("利用不可");
+    expect(cell("H1", "FE 200%価格")).toHaveTextContent("未記録");
+    expect(cell("M5", "ATR14 pips")).toHaveTextContent("0.0");
+    expect(cell("M15", "分析方向")).toHaveTextContent("未記録・足構成を要確認");
+    expect(cell("W1", "分析方向")).toHaveTextContent("未記録・足構成を要確認");
+    fireEvent.click(screen.getByRole("button", { name: "基本項目のみ" }));
+    expect(within(table).queryByRole("columnheader", { name: "Close1" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^EMA200$/ }));
+    expect(within(table).getByRole("columnheader", { name: "Close1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "基本項目のみ" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("restores grid and body scroll after navigation while withholding the previous observation", async () => {
+    const next = deferred<M5DetailResponse>();
+    vi.spyOn(m5Api, "detail").mockImplementation((id) => id === 41 ? Promise.resolve(detail()) : next.promise);
+    const { rerender } = render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    fireEvent.scroll(screen.getByRole("region", { name: "M5全画面グリッド" }), { target: { scrollLeft: 900, scrollTop: 40 } });
+    fireEvent.scroll(document.querySelector(".m5-detail-dialog .drawer-body")!, { target: { scrollTop: 100 } });
+    rerender(<M5ObservationDetailDrawer {...props} observationId={40} />);
+    expect(screen.queryByRole("table", { name: "M5詳細7時間足比較" })).not.toBeInTheDocument();
+    await act(async () => next.resolve(detail(40)));
+    const grid = await screen.findByRole("region", { name: "M5全画面グリッド" });
+    expect(grid.scrollLeft).toBe(900);
+    expect(grid.scrollTop).toBe(40);
+    expect(document.querySelector(".m5-detail-dialog .drawer-body")!.scrollTop).toBe(100);
+    expect(screen.getByText("Observation ID").nextSibling).toHaveTextContent("40");
+  });
+
+  it("allows switching and closing when preference storage is unavailable", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("denied"); });
+    vi.spyOn(m5Api, "detail").mockResolvedValue(detail());
+    render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByRole("table", { name: "M5詳細7時間足比較" });
+    fireEvent.click(screen.getByRole("button", { name: "通常表示" }));
+    expect(screen.getByText("TIMEFRAME COMPARISON")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全画面グリッド" }));
+    expect(screen.getByRole("table", { name: "M5詳細7時間足比較" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "M5観測詳細を閉じる" }));
+    expect(props.onClose).toHaveBeenCalledOnce();
   });
 });

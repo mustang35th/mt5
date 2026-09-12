@@ -1,13 +1,15 @@
 .react-detail-dialog.m5-detail-dialog { width: min(1540px, 98vw); }
-.m5-detail-dialog .drawer-header { gap: 16px; }
+.m5-detail-dialog .drawer-header { gap: 16px; height: auto; min-height: 82px; }
 .m5-detail-dialog .drawer-header > div { min-width: 0; }
 .m5-detail-dialog h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m5-detail-dialog .drawer-body { height: calc(100dvh - 82px); }
 .m5-database-name { color: var(--muted); overflow-wrap: anywhere; }
-.m5-detail-context { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
-.m5-detail-navigation { display: flex; justify-content: space-between; gap: 12px; margin: 14px 0 8px; }
-.m5-detail-navigation button { display: grid; gap: 4px; min-width: 0; text-align: left; }
-.m5-detail-navigation span, .m5-detail-navigation small { white-space: normal; }
+.m5-detail-context { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.m5-detail-context-values { display: flex; flex: 1 1 600px; flex-wrap: wrap; align-items: center; gap: 6px 16px; min-width: 0; }
+.m5-detail-context-values > span { white-space: nowrap; }
+.m5-detail-navigation { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; padding-right: 16px; border-right: 1px solid var(--line); }
+.m5-detail-navigation button { min-height: 30px; padding: 4px 10px; font-size: .75rem; white-space: nowrap; }
+.m5-navigation-gap { margin: 6px 0; }
 .m5-note { color: var(--muted); font-size: .8rem; line-height: 1.65; }
 .m5-notice, .m5-warning { color: var(--warn, #e9bc70); }
 .m5-warning[role="alert"] { padding: 12px; border: 1px solid var(--warn, #e9bc70); border-radius: 8px; margin: 12px 0; }
@@ -33,14 +35,25 @@
 .m5-hash code { display: block; padding: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .m5-hash button { margin-right: 10px; }
 .m5-record-fields { margin-top: 16px; }
+.react-detail-dialog.m5-detail-grid-mode { inset: 0; width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; }
+.m5-detail-grid-mode[open] { display: flex; flex-direction: column; }
+.m5-detail-grid-mode .drawer-header { flex: 0 0 auto; min-height: 64px; padding: 10px 14px; flex-wrap: wrap; }
+.m5-detail-grid-mode .drawer-body { flex: 1 1 auto; height: auto; min-height: 0; padding: 10px 14px; overflow: auto; }
+.m5-detail-grid-mode .m5-database-name { margin: 0 0 6px; font-size: .75rem; }
+.m5-detail-grid-mode .m5-detail-context { padding: 6px 10px; gap: 6px 16px; font-size: .75rem; }
+.m5-detail-grid-mode .m5-note { font-size: .72rem; margin-block: 6px; }
+.m5-detail-grid-mode .detail-section { margin-top: 10px; padding-top: 10px; }
+.m5-detail-grid-mode .m5-snapshot-section { border-top: 0; margin-top: 6px; padding-top: 0; }
 @media (max-width: 760px) {
+  .m5-detail-context-values { flex-basis: 100%; }
+  .m5-detail-navigation { padding-right: 0; border-right: 0; }
   .react-detail-dialog.m5-detail-dialog { width: 100vw; }
   .m5-detail-dialog .drawer-header { padding: 12px; }
   .m5-detail-dialog .drawer-body { padding: 12px; }
   .m5-detail-dialog h2 { font-size: 1rem; }
+  .m5-detail-dialog .drawer-header { flex-wrap: wrap; }
   .m5-comparison tbody th { position: static; }
   .m5-quality-fields, .m5-extra-fields, .m5-record-fields { grid-template-columns: 1fr; }
-  .m5-detail-navigation { flex-direction: column; }
   .m5-extra-timeframe { overflow-x: auto; padding: 10px; }
   .m5-ohlc { min-width: 570px; }
 }
