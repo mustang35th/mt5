@@ -10,7 +10,7 @@
 
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.09"
+#property version   "1.10"
 
 #property strict
 
@@ -212,7 +212,8 @@ int OnInit() {
     // 共有オブジェクトを生成
     g_oscillatorHandlePool = new OscillatorHandlePool(g_marketContext);
 
-    if (g_timeFrame == PERIOD_H1 && InpStrategyType == STRATEGY_TYPE_MTF_3IN3) {
+    if ((g_timeFrame == PERIOD_H1 || g_timeFrame == PERIOD_M5)
+            && InpStrategyType == STRATEGY_TYPE_MTF_3IN3) {
         g_oscillatorHandlePool.setTimeframesFromMn1To();
     } else {
         g_oscillatorHandlePool.setTimeframesFromD1To();

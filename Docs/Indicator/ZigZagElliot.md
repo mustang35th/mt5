@@ -1,5 +1,24 @@
 # ZigZagElliot
 
+## H1・M5の上位足条件共通化（2026-09-13）
+
+通常版v1.38のM5は、[Mtf3In3HigherTimeFrameDecision](../../Include/Mstng/ExpertAdvisor/Mtf3In3HigherTimeFrameDecision.mqh)でH1と同じMN1・W1・D1条件を必須とします。基準は現在足の分析方向です。H1は既存の方向診断とEMA200確認から同じ共通クラスの各判定を呼び、判定順序・結果コード・設定値を維持します。
+
+| 共通条件 | 内容 |
+|---|---|
+| W1・D1分析方向 | 両方がエントリー方向に一致 |
+| MN1／W1追加確認 | MN1分析方向またはW1 EMA200方向がエントリー方向に一致 |
+| D1 EMA200 | エントリー方向に一致。NONEは不可 |
+| データ整合性 | MN1・W1・D1の取得と方向・時間足・ラベルの整合性が必須。MN1一致時もW1 EMA200の不正値は拒否 |
+
+M5の実効条件は、W1＝D1＝H4＝H1＝M15＝M5の分析方向一致、上記OR条件、D1 EMA200一致、および既存M5条件です。H1・M15・M5の1波／3波、M5最新点が通常点、GMMA Trend／Crossの±2以上、H1 EMA200の同方向またはNONE、M15・M5 EMA200の同方向、M5のEMA200距離25 pips以内、3波FE上限161.8%、Spread 3 pips以下を維持します。MN1・W1・D1の波動番号やWave確定状態は追加条件にしません。
+
+共通判定はSignal Count加算前に実行します。不成立理由は`W1_DIRECTION_MISMATCH`、`D1_DIRECTION_MISMATCH`、`MN1_OR_W1_EMA200_MISMATCH`、`D1_EMA200_MISMATCH`等で返し、M5側のDEBUGログへ記録します。通常版のM5 Alert Runは`MTF3IN3_M5_HIGHER_V7`、H1等は既存の`MTF3IN3_V6`を記録します。DB・CSV列や過去の記録は変更しません。
+
+通常版は既にMN1から分析しています。同じM5判定を使うMstngEa v1.10も、M5・MTF_3in3の場合にMN1からのハンドル準備と本解析を行います。MN1・W1の履歴不足時は判定不可となります。EAの分析範囲拡大により波動やZigZag由来SLが変わる可能性があります。M15・他戦略、Listの一覧抽出、M5観測DBの収集条件には適用しません。
+
+検証：H1旧実装と新実装の判定・診断状態57,344ケース、M5共通条件8,192ケースを、実装メソッドのC#構文変換とモックデータによって照合しました。ネイティブ用`Mtf3In3HigherTimeFrameDecisionSmokeTest`には288組み合わせと欠損・不正値ケースを用意しています。ネイティブスクリプトの実行、テスターでの実エントリー・実運用での動作は未確認です。
+
 ## H1エントリー／Alertの共通設定（2026-09-09）
 
 通常版v1.37、List v1.34、MstngEa v1.09、MstngH1Ea v1.08は、[Mtf3In3H1Policy](../../Include/Mstng/ExpertAdvisor/Mtf3In3H1Policy.mqh)の固定値を共通参照します。各`.mq5`への固定値の重複定義は行いません。

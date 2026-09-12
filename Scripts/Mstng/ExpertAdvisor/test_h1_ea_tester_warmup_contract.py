@@ -510,7 +510,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 self.assertIn("this.databaseRun.inputText=inputText;", saved)
                 self.assertIn("this.databaseRun.inputHash=this.createTextHash(inputText);", saved)
 
-    def test_legacy_ea_uses_policy_and_expands_only_h1_mtf3_history(self):
+    def test_legacy_ea_uses_policy_and_expands_h1_and_m5_mtf3_history(self):
         expert = self.read("Experts/MstngEa.mq5")
         source = code_only(expert)
         self.assertNotRegex(source, r"\b(?:input|sinput)\b[^;]*\bInpH1(?:W1|Ema200)ConfirmationMode\b")
@@ -518,14 +518,15 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
         for suffix in ("W1ConfirmationMode", "Ema200ConfirmationMode"):
             self.assertIn(f"g_eaConfig.h1{suffix}=Mtf3In3H1Policy::get{suffix}();", initialize)
         self.assertIn(
-            "if(g_timeFrame==PERIOD_H1&&InpStrategyType==STRATEGY_TYPE_MTF_3IN3){"
+            "if((g_timeFrame==PERIOD_H1||g_timeFrame==PERIOD_M5)&&InpStrategyType==STRATEGY_TYPE_MTF_3IN3){"
             "g_oscillatorHandlePool.setTimeframesFromMn1To();}else{"
             "g_oscillatorHandlePool.setTimeframesFromD1To();}", initialize,
         )
         controller = self.read("Include/MstngEa/App/EaController.mqh")
         analysis = re.sub(r"\s+", "", code_only(method(controller, "initializeElliotAll")))
         self.assertIn(
-            "if(this.eaContext.marketContext.timeFrame==PERIOD_H1"
+            "if((this.eaContext.marketContext.timeFrame==PERIOD_H1"
+            "||this.eaContext.marketContext.timeFrame==PERIOD_M5)"
             "&&this.eaContext.eaConfig.strategyType==STRATEGY_TYPE_MTF_3IN3){"
             "elliotAllValue.setAnalysisStartTimeFrame(Mtf3In3H1Policy::getAnalysisStartTimeFrame());}", analysis,
         )

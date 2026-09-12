@@ -325,9 +325,12 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.37";
+        this.databaseRun.programVersion = "1.38";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
+        if (this.marketContext.timeFrame == PERIOD_M5) {
+            this.databaseRun.strategyVersion = "MTF3IN3_M5_HIGHER_V7";
+        }
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();
         this.databaseRun.analysisInputText =

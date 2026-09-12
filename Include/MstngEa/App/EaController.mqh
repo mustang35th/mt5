@@ -329,7 +329,8 @@ private:
         elliotAllValue.setOscillatorHandlePool(this.eaContext.oscillatorHandlePool);
 
         if (this.eaContext.eaConfig != NULL) {
-            if (this.eaContext.marketContext.timeFrame == PERIOD_H1
+            if ((this.eaContext.marketContext.timeFrame == PERIOD_H1
+                    || this.eaContext.marketContext.timeFrame == PERIOD_M5)
                     && this.eaContext.eaConfig.strategyType == STRATEGY_TYPE_MTF_3IN3) {
                 elliotAllValue.setAnalysisStartTimeFrame(
                     Mtf3In3H1Policy::getAnalysisStartTimeFrame()

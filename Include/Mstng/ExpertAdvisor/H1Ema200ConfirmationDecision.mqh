@@ -11,6 +11,7 @@
 
 #include <Mstng\Elliot\Elliot.mqh>
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3HigherTimeFrameDecision.mqh>
 
 /**
  * H1エントリー方向に対するH1、H4およびD1 EMA200方向を判定する。
@@ -66,11 +67,9 @@ public:
             return true;
         }
 
-        return this.isDirectionMatched(
-            fromElliotD1,
-            PERIOD_D1,
-            fromIsBuy
-        );
+        Mtf3In3HigherTimeFrameDecision decision;
+        string rejectReason;
+        return decision.evaluateD1Ema200(fromIsBuy, fromElliotD1, rejectReason);
     }
 
 private:

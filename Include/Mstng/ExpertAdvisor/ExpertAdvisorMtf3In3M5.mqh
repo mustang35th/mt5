@@ -10,6 +10,7 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_M5_MQH
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3HigherTimeFrameDecision.mqh>
 
 /**
  * M5を現在足としてMTF_3in3エントリーを判定する。
@@ -32,6 +33,24 @@ public:
     }
 
 protected:
+    /**
+     * H1と共通のMN1・W1・D1条件をM5分析方向で判定する。
+     *
+     * @return 上位足条件を満たす場合true。
+     */
+    virtual bool isTimeFrameDirectionAlignmentConditionMatched() override {
+        if (this.marketContext.timeFrame != PERIOD_M5) {
+            return false;
+        }
+        Mtf3In3HigherTimeFrameDecision decision;
+        string rejectReason;
+        bool isPassed = decision.evaluate(this.elliotAll, this.isBuy, rejectReason);
+        if (!isPassed) {
+            this.logger.debug(__FUNCTION__, "higher timeframe rejected: " + rejectReason);
+        }
+        return isPassed;
+    }
+
     /**
      * H1、M15およびM5が第1波または第3波か判定する。
      *
