@@ -5,6 +5,8 @@ import { DEFAULT_M5_SEARCH, M5_JST_TIMES, latestM5Range, m5DateTime, readM5Searc
   replaceM5SearchUrl, validateM5Search } from "../lib/m5ObservationSearchState";
 import { M5_REFRESH_KEY, readM5Preference, writeM5Preference } from "../lib/m5ObservationPreferences";
 import { isRefreshIntervalSeconds, type RefreshIntervalSeconds } from "../lib/refreshSettings";
+import { AppliedConditionSummary } from "./AppliedConditionSummary";
+import { FilterVisibilityToggle } from "./FilterVisibilityToggle";
 import { M5ObservationDetailDrawer } from "./M5ObservationDetailDrawer";
 import { M5ObservationTable } from "./M5ObservationTable";
 import { Pagination } from "./Pagination";
@@ -178,10 +180,15 @@ export function M5ObservationView({ active, styleNonce }: Props) {
   const available = Boolean(metadata?.available);
   const refreshStatus = applied.sourceMode === "TESTER" ? "TESTER：手動更新"
     : intervalSeconds === 0 ? "LIVE：自動更新OFF" : `LIVE：${intervalSeconds}秒更新（非表示中は停止）`;
-  return <section id="viewer-tabpanel-m5" className="m5-observation-view" role="tabpanel" aria-labelledby="viewer-tab-m5">
-    <div className="m5-panel">
-      <h2>M5 OBSERVATIONS</h2>
-      <div className="m5-database" title={metadata?.database?.path || undefined}>接続DB：{metadata?.database?.name || "未設定／確認中"}</div>
+  return <section id="viewer-tabpanel-m5" className="viewer-tab-panel m5-observation-view" role="tabpanel" aria-labelledby="viewer-tab-m5">
+    <header className="m5-panel m5-header">
+      <div className="m5-heading">
+        <div>
+          <h2>M5 OBSERVATIONS</h2>
+          <div className="m5-database" title={metadata?.database?.path || undefined}>接続DB：{metadata?.database?.name || "未設定／確認中"}</div>
+        </div>
+        <FilterVisibilityToggle controls="m5-filter-panel" expanded={searchExpanded} onExpandedChange={setSearchExpanded} />
+      </div>
       <details className="m5-connection-info"><summary>接続情報</summary><dl>
         <dt>解決済みパス</dt><dd>{metadata?.database?.path || "未設定"}</dd>
         <dt>接続状態</dt><dd>{metadata?.status || "確認中"}{metadata?.reason ? ` / ${metadata.reason}` : ""}</dd>
@@ -190,67 +197,81 @@ export function M5ObservationView({ active, styleNonce }: Props) {
           {selectedRun?.analysis_input_text && <pre>{selectedRun.analysis_input_text}</pre>}</dd>
       </dl></details>
       <p className="m5-muted">M5基準・7時間足の保存済み観測を表示します。売買判定や収集の終了判定は行いません。</p>
-      <div className="m5-search-fields">
-        <label>実行モード<select aria-label="M5実行モード" value={applied.sourceMode} onChange={(event) => resetSelection(event.target.value as M5SourceMode, null)}>
-          <option value="TESTER">TESTER</option><option value="LIVE">LIVE</option>
-        </select></label>
-        <label>Run（1件必須）<select aria-label="M5 Run" value={applied.runId ?? ""} disabled={!available || !runs.length}
-          onChange={(event) => resetSelection(applied.sourceMode, Number(event.target.value))}>
-          {!runs.length && <option value="">Runなし</option>}
-          {runs.map((run) => <option key={run.id} value={run.id}>Run {run.id} · v{run.program_version || "未記録"} · {run.observation_count.toLocaleString()}件 · {run.observation_count === 0 ? "未収集" : `${m5DateTime(run.first_observation_jst_time).replace("T", " ")} ～ ${m5DateTime(run.last_observation_jst_time).replace("T", " ")} JST`}</option>)}
-        </select></label>
-      </div>
-      {selectedRun && <p className="m5-muted">Run {selectedRun.id}：{selectedRun.observation_count.toLocaleString()}件 / 保存範囲JST {m5DateTime(metadata?.range.first).replace("T", " ") || "未収集"} ～ {m5DateTime(metadata?.range.last).replace("T", " ") || "未収集"}</p>}
-      {latestRun && latestRun.id !== applied.runId && <p className="m5-notice">観測のある最新Runは {latestRun.id} です。選択Runは自動で切り替えません。</p>}
-      {applied.sourceMode === "TESTER" && !runs.length && hasLive && <p className="m5-notice">TESTERのRunはありません。LIVEのRunはあります（実行モードで切替）。</p>}
-      <div className="m5-actions"><button className="secondary-button" type="button" aria-expanded={searchExpanded} aria-controls="m5-search-form"
-        onClick={() => setSearchExpanded((previous) => !previous)}>検索条件を{searchExpanded ? "閉じる" : "開く"}</button>
-        {dirtyDraft.current && <span className="m5-notice" role="status">未適用の変更があります。「検索」で反映してください。</span>}
-      </div>
-      <form id="m5-search-form" hidden={!searchExpanded} onSubmit={(event) => { event.preventDefault(); search(); }}>
-        <div className="m5-search-fields">
-          <label>開始JST（含む）<input type="datetime-local" aria-label="M5開始JST" step={300} value={draft.from} onChange={(event) => editDraft({ from: event.target.value })} /></label>
-          <label>終了JST（含まない）<input type="datetime-local" aria-label="M5終了JST" step={300} value={draft.to} onChange={(event) => editDraft({ to: event.target.value })} /></label>
-          <label>通貨<select aria-label="M5通貨" value={draft.symbol} onChange={(event) => editDraft({ symbol: event.target.value })}>
-            <option value="">すべての通貨</option>{metadata?.symbols.map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}
-          </select></label>
-          <label>JST時刻<select aria-label="M5 JST時刻" value={draft.jstTime} onChange={(event) => editDraft({ jstTime: event.target.value })}>
-            <option value="">すべての時刻</option>{M5_JST_TIMES.map((time) => <option key={time}>{time}</option>)}
-          </select></label>
+    </header>
+    <div className={`viewer-workspace m5-workspace${searchExpanded ? "" : " filter-sidebar-collapsed"}`}>
+      <aside id="m5-filter-panel" className="viewer-filter-sidebar" aria-label="M5検索条件" hidden={!searchExpanded}>
+        <div className="m5-panel m5-filter-panel">
+          <h3>M5 OBSERVATION SEARCH</h3>
+          <div className="m5-search-fields">
+            <label>実行モード<select aria-label="M5実行モード" value={applied.sourceMode} onChange={(event) => resetSelection(event.target.value as M5SourceMode, null)}>
+              <option value="TESTER">TESTER</option><option value="LIVE">LIVE</option>
+            </select></label>
+            <label>Run（1件必須）<select aria-label="M5 Run" value={applied.runId ?? ""} disabled={!available || !runs.length}
+              onChange={(event) => resetSelection(applied.sourceMode, Number(event.target.value))}>
+              {!runs.length && <option value="">Runなし</option>}
+              {runs.map((run) => <option key={run.id} value={run.id}>Run {run.id} · v{run.program_version || "未記録"}{run.observation_count === 0 ? " · 未収集" : ""}</option>)}
+            </select></label>
+          </div>
+          {selectedRun && <div className="m5-muted m5-run-summary" role="group" aria-label="選択Runの保存範囲">
+            <span>Run {selectedRun.id}：{selectedRun.observation_count.toLocaleString()}件</span>
+            <span>保存範囲JST</span>
+            <span>{m5DateTime(metadata?.range.first).replace("T", " ") || "未収集"}</span>
+            <span>～ {m5DateTime(metadata?.range.last).replace("T", " ") || "未収集"}</span>
+          </div>}
+          <form id="m5-search-form" onSubmit={(event) => { event.preventDefault(); search(); }}>
+            <div className="m5-search-fields">
+              <label>通貨<select aria-label="M5通貨" value={draft.symbol} onChange={(event) => editDraft({ symbol: event.target.value })}>
+                <option value="">すべての通貨</option>{metadata?.symbols.map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}
+              </select></label>
+              <label>開始JST（含む）<input type="datetime-local" aria-label="M5開始JST" step={300} value={draft.from} onChange={(event) => editDraft({ from: event.target.value })} /></label>
+              <label>終了JST（含まない）<input type="datetime-local" aria-label="M5終了JST" step={300} value={draft.to} onChange={(event) => editDraft({ to: event.target.value })} /></label>
+              <label>JST時刻<select aria-label="M5 JST時刻" value={draft.jstTime} onChange={(event) => editDraft({ jstTime: event.target.value })}>
+                <option value="">すべての時刻</option>{M5_JST_TIMES.map((time) => <option key={time}>{time}</option>)}
+              </select></label>
+            </div>
+            <div className="m5-actions m5-search-actions">
+              <button className="primary-button" type="submit" disabled={!available || applied.runId === null || loading}>検索</button>
+              <button className="secondary-button" type="button" disabled={!metadata?.range.last || loading} onClick={() => {
+                dirtyDraft.current = false; void load({ ...appliedRef.current, page: 1 }, "latest");
+              }}>最新24時間</button>
+            </div>
+            <p className="m5-muted m5-range-help">{applied.followLatest ? "最新24時間を追従中" : "固定期間"}<br />5分刻み・終了時刻は含まない</p>
+          </form>
+          {validation && <p role="alert" className="m5-error">{validation}</p>}
         </div>
-        <div className="m5-actions">
-          <button className="primary-button" type="submit" disabled={!available || applied.runId === null || loading}>検索</button>
-          <button className="secondary-button" type="button" disabled={!metadata?.range.last || loading} onClick={() => {
-            dirtyDraft.current = false; void load({ ...appliedRef.current, page: 1 }, "latest");
-          }}>最新24時間</button>
-          <span className="m5-muted">{applied.followLatest ? "最新24時間を追従中" : "固定期間"} / 5分刻み・終了時刻は含まない</span>
+      </aside>
+      <div className="viewer-results-column">
+        <div className="results-panel m5-panel m5-results-panel">
+          <div className="m5-results-heading">
+            <div className="m5-result-summary"><strong>{result?.total.toLocaleString() ?? "0"}件</strong>
+              <label>ページ件数 <select aria-label="M5ページ件数" value={applied.pageSize} disabled={loading} onChange={(event) => {
+                dirtyDraft.current = false; void load({ ...appliedRef.current, pageSize: Number(event.target.value) as 50 | 100 | 200, page: 1 }, "search");
+              }}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></select></label>
+            </div>
+            <AppliedConditionSummary hasUnappliedChanges={dirtyDraft.current}
+              summary={displayedSearch ? `表示中：${displayedSearch.sourceMode} / Run ${displayedSearch.runId} / ${displayedSearch.from.replace("T", " ")} ≤ JST < ${displayedSearch.to.replace("T", " ")} / 通貨 ${displayedSearch.symbol || "すべて"} / JST時刻 ${displayedSearch.jstTime || "すべて"} / ${displayedSearch.sort === "anchor_jst_time" ? "日時" : "通貨"}${displayedSearch.order === "asc" ? "昇順" : "降順"}` : "検索結果なし"} />
+            {dirtyDraft.current && <p className="m5-notice" role="status">未適用の変更があります。「検索」で反映してください。</p>}
+            {latestRun && latestRun.id !== applied.runId && <p className="m5-notice">観測のある最新Runは {latestRun.id} です。選択Runは自動で切り替えません。</p>}
+            {applied.sourceMode === "TESTER" && !runs.length && hasLive && <p className="m5-notice">TESTERのRunはありません。LIVEのRunはあります（実行モードで切替）。</p>}
+            {notice && <p role="status" className="m5-notice">{notice}</p>}
+            {newerOutsideRange && <p className="m5-notice" role="status">選択範囲より新しいM5観測があります。「最新24時間」で表示できます。現在の期間・ページは維持しています。</p>}
+            {error && <p role="alert" className="m5-error">更新失敗：{error}{result ? "（前回成功時のデータを表示中）" : ""}</p>}
+            {metadata && !available && <p role="status">M5観測は利用できません：{metadata.reason || metadata.status}</p>}
+            {available && (!applied.runId || !metadata?.range.last) && <p role="status">選択モード／Runは未収集です。保存済み観測が追加されると期間を選択できます。</p>}
+            {metadata?.range.last && <p className="m5-muted">選択Runの最新M5開始JST：{m5DateTime(metadata.range.last).replace("T", " ")}（稼働・収集完了を示すものではありません）</p>}
+            {applied.sourceMode === "LIVE" ? <RefreshControls intervalSeconds={intervalSeconds} statusText={refreshStatus}
+              lastCheckedText={lastChecked ? `最終取得成功：${lastChecked}` : "未取得"} busy={loading}
+              onIntervalChange={(value) => { setIntervalSeconds(value); writeM5Preference(M5_REFRESH_KEY, value); }}
+              onRefresh={() => void load(appliedRef.current, "refresh")} />
+              : <div className="m5-actions"><button className="secondary-button" type="button" disabled={loading} onClick={() => void load(appliedRef.current, "refresh")}>{loading ? "更新中…" : "今すぐ更新"}</button>
+                <small className="m5-muted">{refreshStatus} / 最終取得成功：{lastChecked || "未取得"}</small></div>}
+          </div>
+          <M5ObservationTable items={result?.items || []} databaseKey={databaseKey.current} loading={loading}
+            sort={applied.sort} order={applied.order} styleNonce={styleNonce} onSort={sortRows} onOpenDetail={openDetail} />
+          <Pagination page={result?.page || applied.page} pageCount={result?.total_pages || 0} showPageInput disabled={loading || !result}
+            onPage={(page) => { dirtyDraft.current = false; void load({ ...appliedRef.current, page, followLatest: false }, "search"); }} />
         </div>
-      </form>
-      {validation && <p role="alert" className="m5-error">{validation}</p>}
-      {notice && <p role="status" className="m5-notice">{notice}</p>}
-      {newerOutsideRange && <p className="m5-notice" role="status">選択範囲より新しいM5観測があります。「最新24時間」で表示できます。現在の期間・ページは維持しています。</p>}
-      {error && <p role="alert" className="m5-error">更新失敗：{error}{result ? "（前回成功時のデータを表示中）" : ""}</p>}
-      {metadata && !available && <p role="status">M5観測は利用できません：{metadata.reason || metadata.status}</p>}
-      {available && (!applied.runId || !metadata?.range.last) && <p role="status">選択モード／Runは未収集です。保存済み観測が追加されると期間を選択できます。</p>}
-      {metadata?.range.last && <p className="m5-muted">選択Runの最新M5開始JST：{m5DateTime(metadata.range.last).replace("T", " ")}（稼働・収集完了を示すものではありません）</p>}
-      {applied.sourceMode === "LIVE" ? <RefreshControls intervalSeconds={intervalSeconds} statusText={refreshStatus}
-        lastCheckedText={lastChecked ? `最終取得成功：${lastChecked}` : "未取得"} busy={loading}
-        onIntervalChange={(value) => { setIntervalSeconds(value); writeM5Preference(M5_REFRESH_KEY, value); }}
-        onRefresh={() => void load(appliedRef.current, "refresh")} />
-        : <div className="m5-actions"><button className="secondary-button" type="button" disabled={loading} onClick={() => void load(appliedRef.current, "refresh")}>{loading ? "更新中…" : "今すぐ更新"}</button>
-          <small className="m5-muted">{refreshStatus} / 最終取得成功：{lastChecked || "未取得"}</small></div>}
-    </div>
-    <div className="m5-panel">
-      <div className="m5-result-summary"><strong>{result?.total.toLocaleString() ?? "0"}件</strong>
-        <small className="m5-muted">{displayedSearch ? `表示中：${displayedSearch.sourceMode} / Run ${displayedSearch.runId} / ${displayedSearch.from.replace("T", " ")} ≤ JST < ${displayedSearch.to.replace("T", " ")} / 通貨 ${displayedSearch.symbol || "すべて"} / JST時刻 ${displayedSearch.jstTime || "すべて"} / ${displayedSearch.sort === "anchor_jst_time" ? "日時" : "通貨"}${displayedSearch.order === "asc" ? "昇順" : "降順"}` : "検索結果なし"}</small>
-        <label>ページ件数 <select aria-label="M5ページ件数" value={applied.pageSize} disabled={loading} onChange={(event) => {
-          dirtyDraft.current = false; void load({ ...appliedRef.current, pageSize: Number(event.target.value) as 50 | 100 | 200, page: 1 }, "search");
-        }}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></select></label>
       </div>
-      <M5ObservationTable items={result?.items || []} databaseKey={databaseKey.current} loading={loading}
-        sort={applied.sort} order={applied.order} styleNonce={styleNonce} onSort={sortRows} onOpenDetail={openDetail} />
-      <Pagination page={result?.page || applied.page} pageCount={result?.total_pages || 0} showPageInput disabled={loading || !result}
-        onPage={(page) => { dirtyDraft.current = false; void load({ ...appliedRef.current, page, followLatest: false }, "search"); }} />
     </div>
     <M5ObservationDetailDrawer observationId={selectedId} databaseKey={databaseKey.current} databaseName={metadata?.database?.name}
       active={active} styleNonce={styleNonce} onNavigate={setSelectedId} onClose={() => {
