@@ -37,6 +37,10 @@ describe("M5 observation independent view", () => {
     expect(m5Api.metadata).toHaveBeenCalledWith("TESTER", null, expect.any(AbortSignal));
     expect(vi.mocked(m5Api.observations).mock.calls[0][0]).toMatchObject({ runId: 3, from: "2026-09-08T06:00", to: "2026-09-09T06:00", page: 1, pageSize: 50 });
     expect(screen.getByText("接続DB：db-a.sqlite")).toBeInTheDocument();
+    expect(screen.getByLabelText("DB接続状態")).toHaveTextContent("接続済み");
+    expect(screen.getByRole("button", { name: "接続詳細" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("C:/db-a.sqlite")).not.toBeVisible();
+    expect(screen.getByText("接続DB：db-a.sqlite")).toHaveAttribute("title", "C:/db-a.sqlite");
     expect(screen.queryByText("FULL")).not.toBeInTheDocument();
   });
   it("groups all search controls in the sidebar and keeps result controls beside it", async () => {
@@ -124,6 +128,7 @@ describe("M5 observation independent view", () => {
     await screen.findByRole("alert");
     expect(screen.getByTestId("m5-table")).toHaveTextContent("Rows:10");
     expect(screen.getByRole("alert")).toHaveTextContent("前回成功時のデータを表示中");
+    expect(screen.getByLabelText("DB接続状態")).toHaveTextContent("読込エラー");
   });
   it("ignores an old list response after another mode has become active", async () => {
     let finishOld!: (value: M5ListResponse) => void;
@@ -162,9 +167,19 @@ describe("M5 observation independent view", () => {
     expect(screen.getByRole("option", { name: "Run 3 · v1.02" })).toBeInTheDocument();
     expect(screen.getByLabelText("選択Runの保存範囲")).toHaveTextContent(/8,?064件/);
     expect(screen.getByLabelText("選択Runの保存範囲")).toHaveTextContent("2026-09-08 06:00");
-    fireEvent.click(screen.getByText("接続情報"));
+    const connectionToggle = screen.getByRole("button", { name: "接続詳細" });
+    const metadataCallsBeforeToggle = vi.mocked(m5Api.metadata).mock.calls.length;
+    const listCallsBeforeToggle = vi.mocked(m5Api.observations).mock.calls.length;
+    fireEvent.click(connectionToggle);
+    expect(connectionToggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("C:/db-a.sqlite")).toBeVisible();
     expect(screen.getByText(/input hash: profile-m5/)).toBeVisible();
+    expect(screen.getByText(/M5基準・7時間足の保存済み観測/)).toBeVisible();
+    fireEvent.click(connectionToggle);
+    expect(connectionToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("C:/db-a.sqlite")).not.toBeVisible();
+    expect(m5Api.metadata).toHaveBeenCalledTimes(metadataCallsBeforeToggle);
+    expect(m5Api.observations).toHaveBeenCalledTimes(listCallsBeforeToggle);
     fireEvent.change(screen.getByLabelText("M5通貨"), { target: { value: "AUDUSD" } });
     expect(screen.getByText(/未適用の変更/)).toBeVisible();
     const sidebar = screen.getByRole("complementary", { name: "M5検索条件" });

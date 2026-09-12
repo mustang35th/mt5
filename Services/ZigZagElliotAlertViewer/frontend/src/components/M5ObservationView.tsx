@@ -30,6 +30,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
   const [lastChecked, setLastChecked] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [searchExpanded, setSearchExpanded] = useState(true);
+  const [connectionExpanded, setConnectionExpanded] = useState(false);
   const [intervalSeconds, setIntervalSeconds] = useState<RefreshIntervalSeconds>(() =>
     readM5Preference<RefreshIntervalSeconds>(M5_REFRESH_KEY, 15, (value): value is RefreshIntervalSeconds =>
       typeof value === "number" && isRefreshIntervalSeconds(value)));
@@ -178,25 +179,36 @@ export function M5ObservationView({ active, styleNonce }: Props) {
   const newerOutsideRange = applied.sourceMode === "LIVE" && !applied.followLatest && displayedSearch
     && metadata?.range.last && m5DateTime(metadata.range.last) >= displayedSearch.to;
   const available = Boolean(metadata?.available);
+  const connectionText = error ? "読込エラー" : !metadata ? "確認中"
+    : metadata.status === "NOT_CONFIGURED" ? "未設定" : available ? "接続済み" : "接続エラー";
+  const connectionTone = error || (metadata && !available && metadata.status !== "NOT_CONFIGURED")
+    ? "error" : available ? "ready" : "pending";
   const refreshStatus = applied.sourceMode === "TESTER" ? "TESTER：手動更新"
     : intervalSeconds === 0 ? "LIVE：自動更新OFF" : `LIVE：${intervalSeconds}秒更新（非表示中は停止）`;
   return <section id="viewer-tabpanel-m5" className="viewer-tab-panel m5-observation-view" role="tabpanel" aria-labelledby="viewer-tab-m5">
     <header className="m5-panel m5-header">
       <div className="m5-heading">
-        <div>
-          <h2>M5 OBSERVATIONS</h2>
-          <div className="m5-database" title={metadata?.database?.path || undefined}>接続DB：{metadata?.database?.name || "未設定／確認中"}</div>
-        </div>
         <FilterVisibilityToggle controls="m5-filter-panel" expanded={searchExpanded} onExpandedChange={setSearchExpanded} />
+        <h2 title="M5 OBSERVATIONS">M5 OBSERVATIONS</h2>
+        <span className={`m5-connection-status m5-connection-${connectionTone}`} role="status" aria-label="DB接続状態"
+          title={error || metadata?.reason || metadata?.status || undefined}>{connectionText}</span>
+        <div className="m5-database" title={metadata?.database?.path || undefined}>接続DB：{metadata?.database?.name || "未設定／確認中"}</div>
+        <span className="m5-header-run">{selectedRun ? `Run ${selectedRun.id}` : "Runなし"}</span>
+        <button className="secondary-button m5-header-button" type="button" aria-controls="m5-connection-details"
+          aria-expanded={connectionExpanded} onClick={() => setConnectionExpanded(!connectionExpanded)}>
+          接続詳細 <span aria-hidden="true">{connectionExpanded ? "▴" : "▾"}</span>
+        </button>
       </div>
-      <details className="m5-connection-info"><summary>接続情報</summary><dl>
+      <div id="m5-connection-details" className="m5-connection-info" role="region" aria-label="接続詳細" hidden={!connectionExpanded}>
+        <dl>
         <dt>解決済みパス</dt><dd>{metadata?.database?.path || "未設定"}</dd>
-        <dt>接続状態</dt><dd>{metadata?.status || "確認中"}{metadata?.reason ? ` / ${metadata.reason}` : ""}</dd>
+        <dt>接続状態</dt><dd>{metadata?.status || "確認中"}{metadata?.reason ? ` / ${metadata.reason}` : ""}{error ? ` / ${error}` : ""}</dd>
         <dt>選択Run</dt><dd>{selectedRun ? `Run ${selectedRun.id} / ${selectedRun.program_name || "未記録"} v${selectedRun.program_version || "未記録"}` : "なし"}</dd>
         <dt>分析Profile</dt><dd>analysis version: {selectedRun?.analysis_version || "未記録"}<br />input hash: {selectedRun?.analysis_input_hash || "未記録"}
           {selectedRun?.analysis_input_text && <pre>{selectedRun.analysis_input_text}</pre>}</dd>
-      </dl></details>
-      <p className="m5-muted">M5基準・7時間足の保存済み観測を表示します。売買判定や収集の終了判定は行いません。</p>
+        </dl>
+        <p className="m5-muted">M5基準・7時間足の保存済み観測を表示します。売買判定や収集の終了判定は行いません。</p>
+      </div>
     </header>
     <div className={`viewer-workspace m5-workspace${searchExpanded ? "" : " filter-sidebar-collapsed"}`}>
       <aside id="m5-filter-panel" className="viewer-filter-sidebar" aria-label="M5検索条件" hidden={!searchExpanded}>
