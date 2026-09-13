@@ -15,7 +15,7 @@
 /**
  * M5を現在足としてMTF_3in3エントリーを判定する。
  *
- * H1、M15およびM5の波動条件に加え、M5固有の
+ * M5の1・3・A・C波を対象とし、M5固有の
  * FE上限、H1表示波の重複制限および成立時のメール送信を管理する。
  */
 class ExpertAdvisorMtf3In3M5 : public ExpertAdvisorMTF_3in3 {
@@ -33,6 +33,48 @@ public:
     }
 
 protected:
+    /**
+     * M5ではEMA200距離を診断用に保持し、エントリー制限を一旦無効にする。
+     *
+     * @return 常にfalse。
+     */
+    virtual bool isTimeFrameEma200DistanceRequired() override {
+        return false;
+    }
+
+    /**
+     * D1・H4・H1・M15・M5のEMA200がM5分析方向と一致するか判定する。
+     *
+     * @return 全5足が有効かつ同方向の場合true。NONEは許可しない。
+     */
+    virtual bool isTimeFrameEma200ConditionMatched() override {
+        if (this.marketContext.timeFrame != PERIOD_M5 || this.elliotAll == NULL) {
+            return false;
+        }
+        Mtf3In3HigherTimeFrameDecision decision;
+        ENUM_TIMEFRAMES timeFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
+        for (int i = 0; i < ArraySize(timeFrames); i++) {
+            if (!decision.isEma200DirectionMatched(
+                    this.elliotAll.getElliot(timeFrames[i]), timeFrames[i], this.isBuy)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * M15がM5と同方向で、H4またはH1も同方向か判定する。
+     * W1・D1とMN1の追加条件は共通の上位足判定で確認する。
+     *
+     * @return M5固有の分析方向条件を満たす場合true。
+     */
+    virtual bool isTimeFrameAnalysisDirectionConditionMatched() override {
+        if (this.marketContext.timeFrame != PERIOD_M5 || this.elliotAll == NULL) {
+            return false;
+        }
+        return this.elliotAll.isBuySellH4OrH1AndM15();
+    }
+
     /**
      * H1と共通のMN1・W1・D1条件をM5分析方向で判定する。
      *
@@ -52,7 +94,7 @@ protected:
     }
 
     /**
-     * H1、M15およびM5が第1波または第3波か判定する。
+     * M5の主波だけを判定し、H1・M15の波動番号は制限しない。
      *
      * @return M5用の波動条件を満たす場合true。
      */
@@ -61,13 +103,30 @@ protected:
             return false;
         }
 
-        return this.isEntryWave(this.elliotHigher2)
-            && this.isEntryWave(this.elliotHigher1)
-            && this.isEntryWave(this.elliotCurrent);
+        return this.isEntryWave(this.elliotCurrent);
     }
 
     /**
-     * M5第3波のフィボナッチエクスパンション上限を確認する。
+     * M5の最新主波が1・3・A・C波のいずれか判定する。
+     *
+     * @param fromElliot 判定対象。副次波ラベルは使用しない。
+     * @return M5の主波がエントリー対象の場合true。
+     */
+    virtual bool isEntryWave(Elliot *fromElliot) override {
+        if (fromElliot == NULL || fromElliot.marketContext.timeFrame != PERIOD_M5) {
+            return false;
+        }
+        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
+        if (latestPoint == NULL) {
+            return false;
+        }
+        string elliotLabel = latestPoint.elliotLabel;
+        return elliotLabel == "1" || elliotLabel == "3"
+            || elliotLabel == "A" || elliotLabel == "C";
+    }
+
+    /**
+     * M5第3波・C波のフィボナッチエクスパンション上限を確認する。
      *
      * @param fromRejectReason 条件未達時の結果コード。
      * @return M5固有の追加条件を満たす場合true。
@@ -82,6 +141,12 @@ protected:
         }
 
         fromRejectReason = "M5_ELLIOT3_FE_REJECTED";
+        if (this.elliotCurrent != NULL) {
+            ZigZagPoint *latestPoint = this.elliotCurrent.getLatestPoint();
+            if (latestPoint != NULL && latestPoint.elliotLabel == "C") {
+                fromRejectReason = "M5_ELLIOTC_FE_REJECTED";
+            }
+        }
 
         return false;
     }

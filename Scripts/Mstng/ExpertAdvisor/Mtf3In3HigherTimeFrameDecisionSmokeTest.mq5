@@ -24,6 +24,15 @@ public:
         this.isBuy = fromAll.elliotCurrent.isBuy;
         return this.isTimeFrameDirectionAlignmentConditionMatched();
     }
+
+    /**
+     * M5固有のEMA200ゲートを注文なしで呼ぶ。
+     */
+    bool evaluateEma(ElliotAll *fromAll, const bool fromIsBuy) {
+        this.elliotAll = fromAll;
+        this.isBuy = fromIsBuy;
+        return this.isTimeFrameEma200ConditionMatched();
+    }
 };
 
 /**
@@ -169,9 +178,41 @@ void validateInvalid(int &fromFailures) {
 /**
  * 上位足共通化の回帰テストを実行する。注文・DB更新は行わない。
  */
+void validateEma(int &fromFailures) {
+    MarketContext context("EURUSD", PERIOD_M5);
+    M5HigherProbe probe(context);
+    ENUM_TIMEFRAMES frames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        int matchingEma = 2;
+        if (isBuy) {
+            matchingEma = 1;
+        }
+        for (int j = 0; j < 243; j++) {
+            ElliotAll *elliotAll = createAll();
+            int combination = j;
+            bool expected = true;
+            for (int k = 0; k < ArraySize(frames); k++) {
+                int ema = combination % 3;
+                combination /= 3;
+                setState(elliotAll.getElliot(frames[k]), isBuy, ema);
+                expected = expected && ema == matchingEma;
+            }
+            check(probe.evaluateEma(elliotAll, isBuy) == expected,
+                StringFormat("EMA5 %d/%d", i, j), fromFailures);
+            delete elliotAll;
+        }
+    }
+    check(!probe.evaluateEma(NULL, true), "EMA5 null analysis", fromFailures);
+}
+
+/**
+ * 上位足と5足EMA200条件を検証する。注文・DB更新は行わない。
+ */
 void OnStart() {
     int failures = 0;
     validateCombinations(failures);
     validateInvalid(failures);
+    validateEma(failures);
     PrintFormat("Mtf3In3HigherTimeFrameDecisionSmokeTest failures=%d", failures);
 }

@@ -205,7 +205,7 @@ protected:
                 //&& this.expertAdvisorElliot.isBuySellFromH4(this.elliotAll, this.isBuy)
                 //&& this.expertAdvisorElliot.isBuySellFromH1(this.elliotAll, this.isBuy)
 
-                && this.elliotAll.isBuySell(PERIOD_D1)
+                && this.isTimeFrameAnalysisDirectionConditionMatched()
 
                 && this.isTimeFrameDirectionAlignmentConditionMatched()
 
@@ -352,6 +352,15 @@ protected:
     }
 
     /**
+     * 現在足からD1までの分析方向一致を判定する。
+     *
+     * @return 対象足の分析方向がすべて一致する場合true。
+     */
+    virtual bool isTimeFrameAnalysisDirectionConditionMatched() {
+        return this.elliotAll.isBuySell(PERIOD_D1);
+    }
+
+    /**
      * 時間足固有の売買方向一致条件を判定する。
      *
      * @return 時間足固有の方向一致条件を満たす場合true。
@@ -421,12 +430,12 @@ protected:
     }
 
     /**
-     * M5第3波のフィボナッチエクスパンション上限を確認する。
+     * M5第3波・C波のフィボナッチエクスパンション上限を確認する。
      *
-     * @return M5第3波以外、またはFEが許容上限以下の場合true。
+     * @return M5第3波・C波以外、またはFEが許容上限以下の場合true。
      */
     bool isM5EntryFibonacciExpansionWithin() {
-        return this.isM5Elliot3FibonacciExpansionWithin();
+        return this.isM5Elliot3OrCFibonacciExpansionWithin();
     }
 
     /**
@@ -476,8 +485,8 @@ protected:
     
     
 private:
-    /** M5第3波のフィボナッチエクスパンション許容上限%。 */
-    static const double maxM5Elliot3FibonacciExpansionPercent;
+    /** M5第3波・C波のフィボナッチエクスパンション許容上限%。 */
+    static const double maxM5Elliot3OrCFibonacciExpansionPercent;
 
     /** 直近のエントリー判定結果コード。 */
     string entryResult;
@@ -730,11 +739,14 @@ private:
     }
 
     /**
-     * 現在足がM5第3波の場合にフィボナッチエクスパンション上限を確認する。
+     * 現在足がM5第3波・C波の場合にフィボナッチエクスパンション上限を確認する。
      *
-     * @return M5第3波以外、またはFEが許容上限以下の場合true。
+     * @return M5第3波・C波以外、またはFEが許容上限以下の場合true。
      */
-    bool isM5Elliot3FibonacciExpansionWithin() {
+    bool isM5Elliot3OrCFibonacciExpansionWithin() {
+        if (this.elliotCurrent == NULL) {
+            return false;
+        }
         if (this.elliotCurrent.marketContext.timeFrame != PERIOD_M5) {
             return true;
         }
@@ -745,7 +757,7 @@ private:
             return false;
         }
 
-        if (latestPoint.elliotLabel != "3") {
+        if (latestPoint.elliotLabel != "3" && latestPoint.elliotLabel != "C") {
             return true;
         }
 
@@ -758,7 +770,8 @@ private:
             this.logger.error(
                 __FUNCTION__,
                 StringFormat(
-                    "invalid M5 Elliott wave 3 FE. value=%f",
+                    "invalid M5 Elliott wave %s FE. value=%f",
+                    latestPoint.elliotLabel,
                     fibonacciExpansionPercent
                 )
             );
@@ -772,7 +785,7 @@ private:
         );
 
         if (fibonacciExpansionPercent
-                <= ExpertAdvisorMTF_3in3::maxM5Elliot3FibonacciExpansionPercent) {
+                <= ExpertAdvisorMTF_3in3::maxM5Elliot3OrCFibonacciExpansionPercent) {
             return true;
         }
 
@@ -864,6 +877,6 @@ private:
     
 };
 
-const double ExpertAdvisorMTF_3in3::maxM5Elliot3FibonacciExpansionPercent = 161.8;
+const double ExpertAdvisorMTF_3in3::maxM5Elliot3OrCFibonacciExpansionPercent = 161.8;
 
 #endif // MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF_3IN3_MQH
