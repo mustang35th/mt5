@@ -82,6 +82,7 @@ export interface M5NavigationItem {
   gap_seconds: number;
 }
 export interface M5DetailResponse {
+  currencyStrength?: M5CurrencyStrength;
   databaseKey: string;
   observation: M5ObservationParent;
   run: M5Run;
@@ -89,4 +90,25 @@ export interface M5DetailResponse {
   captureMetrics: M5CaptureMetrics | null;
   captureMetricsState: M5CaptureMetricsState;
   navigation: { older: M5NavigationItem | null; newer: M5NavigationItem | null };
+}
+
+export interface M5CurrencyStrength {
+  status: "FOUND" | "NOT_CONFIGURED" | "DATABASE_NOT_FOUND" | "IDENTITY_UNAVAILABLE"
+    | "UNSUPPORTED_SYMBOL" | "RECORD_NOT_FOUND" | "AMBIGUOUS" | "INVALID_DATA" | "ERROR";
+  databaseName: string | null;
+  calculationMode: "UNIFORM" | "WEIGHTED";
+  calculationVersion: string;
+  targetM5BarTime: number;
+  actualM5BarTime: number | null;
+  runId: number | null;
+  sourceMode: string | null;
+  baseCurrency: string | null;
+  quoteCurrency: string | null;
+  periods: Array<{
+    label: string;
+    baseRank: number;
+    quoteRank: number;
+    rankDifference: number;
+    direction: "BUY" | "SELL" | "TIE";
+  }>;
 }

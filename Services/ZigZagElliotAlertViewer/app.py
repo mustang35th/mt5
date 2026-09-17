@@ -3803,6 +3803,14 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
+        "--currency-strength-database", default=None,
+        help="optional currency strength SQLite path; default: yearly file beside M5 database",
+    )
+    parser.add_argument(
+        "--currency-strength-calculation", choices=("UNIFORM", "WEIGHTED"), default="WEIGHTED",
+        help="currency strength calculation method for M5 detail references (default: WEIGHTED)",
+    )
+    parser.add_argument(
         "--allowed-host",
         action="append",
         default=[],
@@ -3854,7 +3862,10 @@ def main() -> int:
     m5_database: M5ObservationDatabase | None = None
     try:
         m5_database = M5ObservationDatabase(
-            Path(arguments.m5_database) if arguments.m5_database else None
+            Path(arguments.m5_database) if arguments.m5_database else None,
+            currency_strength_database=(Path(arguments.currency_strength_database)
+                                        if arguments.currency_strength_database else None),
+            currency_strength_calculation=arguments.currency_strength_calculation,
         )
         m5_metadata = m5_database.metadata({})
     except (M5RequestError, SQLAlchemyError, OSError, ValueError) as error:

@@ -3,6 +3,7 @@ import { m5Api } from "../api/m5Client";
 import type { M5DetailResponse, M5NavigationItem } from "../api/m5Types";
 import { m5Direction, m5Number, m5Text, m5TimeFrameSlots } from "../lib/m5TimeFrame";
 import { readM5Preference, writeM5Preference } from "../lib/m5ObservationPreferences";
+import { M5CurrencyStrengthPanel } from "./M5CurrencyStrengthPanel";
 import { M5CaptureQuality } from "./M5CaptureQuality";
 import { M5TimeFrameComparison } from "./M5TimeFrameComparison";
 import { M5TimeFrameSnapshotGrid, type M5GridScroll } from "./M5TimeFrameSnapshotGrid";
@@ -197,6 +198,7 @@ export function M5ObservationDetailDrawer({ observationId, databaseKey, database
             <span>Spread {m5Number(observation.spread_pips, 1, " pips")}</span><span>Run {observation.run_id}</span>
           </div>
         </div>
+        <M5CurrencyStrengthPanel snapshot={shown.currencyStrength} direction={m5Direction(anchor?.is_buy)} />
         <NavigationGap label="前の観測" target={shown.navigation.older} />
         <NavigationGap label="次の観測" target={shown.navigation.newer} />
         {view === "grid" ? <M5TimeFrameSnapshotGrid timeFrames={shown.timeframes} expanded={gridExpanded} onExpandedChange={setGridExpanded} scrollPosition={gridScroll} />

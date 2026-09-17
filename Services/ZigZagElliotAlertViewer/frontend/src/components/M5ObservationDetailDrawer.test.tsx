@@ -59,7 +59,7 @@ describe("M5 observation detail", () => {
     expect(within(quality).getByText("0秒")).toBeInTheDocument();
     expect(within(quality).getAllByText("0 ms")).toHaveLength(2);
     expect(screen.getByText("TIMEFRAME COMPARISON").compareDocumentPosition(screen.getByText("CAPTURE QUALITY")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByText(/ENTRY|FULL BUY|FULL SELL|通貨強弱/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ENTRY|FULL BUY|FULL SELL/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "次の観測なし" })).toBeDisabled();
     expect(screen.getByTitle("Server 2023.11.14 22:15:00")).toHaveTextContent("Server 2023.11.14 22:15:00");
     const navigation = screen.getByRole("navigation", { name: "同一Run・通貨の前後観測" });
@@ -70,6 +70,25 @@ describe("M5 observation detail", () => {
     expect(screen.getByText(/172,800秒/)).toHaveTextContent("休場・欠損は断定不可");
     fireEvent.click(screen.getByRole("button", { name: /前の観測 JST/ }));
     expect(props.onNavigate).toHaveBeenCalledWith(40);
+  });
+
+  it("places the strength reference above the grid and keeps it in normal view", async () => {
+    const value = detail();
+    value.currencyStrength = { status: "FOUND", databaseName: "strength-2023.sqlite", calculationMode: "UNIFORM",
+      calculationVersion: "pair-direction-closed-v1", targetM5BarTime: 1700000100, actualM5BarTime: 1700000100,
+      runId: 42, sourceMode: "TESTER", baseCurrency: "CAD", quoteCurrency: "JPY", periods: [
+        { label: "長中期", baseRank: 2, quoteRank: 7, rankDifference: 5, direction: "BUY" },
+        { label: "中短期", baseRank: 1, quoteRank: 6, rankDifference: 5, direction: "BUY" },
+      ] };
+    localStorage.setItem("m5Observation.detailView.v1", JSON.stringify("grid"));
+    vi.spyOn(m5Api, "detail").mockResolvedValue(value);
+    render(<M5ObservationDetailDrawer {...props} />);
+    const strength = await screen.findByRole("region", { name: "通貨強弱（観測時刻・別DB参照）" });
+    const grid = screen.getByRole("region", { name: "M5全画面時間足比較" });
+    expect(strength.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(strength).getAllByText("+5")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "通常表示" }));
+    expect(screen.getByRole("region", { name: "通貨強弱（観測時刻・別DB参照）" })).toBeInTheDocument();
   });
 
   it("preserves missing slots and exposes saved F/FE and forming OHLC only on expansion", async () => {

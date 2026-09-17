@@ -1,0 +1,19 @@
+.m5-currency-strength { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: .75rem; }
+.m5-currency-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; }
+.m5-currency-heading h3 { margin: 0; font-size: .8rem; cursor: help; }
+.m5-currency-heading small, .m5-currency-reference, .m5-currency-source { color: var(--muted); font-weight: normal; }
+.m5-currency-heading small { margin-left: 6px; }
+.m5-currency-table-scroll { max-width: 620px; overflow-x: auto; margin-top: 4px; }
+.m5-currency-strength table { border-collapse: collapse; width: 100%; min-width: 300px; font-variant-numeric: tabular-nums; }
+.m5-currency-strength th, .m5-currency-strength td { padding: 3px 12px; text-align: right; white-space: nowrap; }
+.m5-currency-strength th:first-child { text-align: left; padding-left: 0; }
+.m5-currency-strength thead { color: var(--muted); }
+.m5-currency-strength tbody tr { border-top: 1px solid var(--line); }
+.m5-currency-strength .buy { color: #60a5fa; }
+.m5-currency-strength .sell { color: #f87171; }
+.m5-currency-strength .tie, .m5-currency-strength .neutral { color: var(--muted); }
+.m5-currency-direction { font-weight: 700; }
+.m5-currency-unavailable { color: var(--muted); }
+.m5-currency-source { margin-top: 5px; overflow-wrap: anywhere; font-size: .7rem; }
+.m5-currency-source summary { cursor: pointer; }
+.m5-currency-source > span { display: block; margin-top: 3px; }

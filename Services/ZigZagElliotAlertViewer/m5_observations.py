@@ -19,6 +19,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
+from m5_currency_strength import M5CurrencyStrengthReader
 
 RUN_TABLE = "zigzag_elliot_alert_runs"
 OBSERVATION_TABLE = "zigzag_elliot_observations"
@@ -146,8 +147,14 @@ def _date_boundary(value: str | None, name: str) -> int:
 class M5ObservationDatabase:
     """One separately configured M5 source; all access uses read-only snapshots."""
 
-    def __init__(self, database_path: Path | None, *, initialization_error: str | None = None):
+    def __init__(self, database_path: Path | None, *, initialization_error: str | None = None,
+                 currency_strength_database: Path | None = None,
+                 currency_strength_calculation: str = "WEIGHTED"):
         self.database_path = database_path.resolve() if database_path is not None else None
+        self.currency_strength = M5CurrencyStrengthReader(
+            self.database_path.parent if self.database_path is not None else None,
+            currency_strength_database, currency_strength_calculation,
+        )
         self.initialization_error = initialization_error
         self.instance_key = uuid.uuid4().hex
         self.engine = None
@@ -487,12 +494,20 @@ class M5ObservationDatabase:
                 run = self._selected_run(connection, row["run_id"], row["source_mode"], columns[RUN_TABLE])
                 timeframes, metrics = self._children(connection, [observation_id], columns)
                 navigation = self._navigation(connection, observation)
-                return {
+                # Account identity stays server-side; it is not exposed in the detail response.
+                source_login = None
+                if "source_login" in columns[RUN_TABLE]:
+                    source_login = connection.execute(text(
+                        f"SELECT source_login FROM {RUN_TABLE} WHERE id = :id"
+                    ), {"id": observation["run_id"]}).scalar_one_or_none()
+                result = {
                     "databaseKey": info["key"], "observation": observation, "run": run,
                     "timeframes": timeframes[observation_id], "captureMetrics": metrics.get(observation_id),
                     "captureMetricsState": self._metrics_state(columns, metrics.get(observation_id)),
                     "navigation": navigation,
                 }
+            result["currencyStrength"] = self.currency_strength.read(observation, source_login)
+            return result
         except _Unavailable as error:
             raise M5RequestError(str(error), 503) from error
 

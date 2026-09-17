@@ -94,7 +94,7 @@ LIVEを直接開く場合は`http://127.0.0.1:5187/?tab=m5&sourceMode=LIVE`で�
 - 品質の未記録と有効な0を区別します。「取得時間」は初検出からSnapshot確定までで、DB保存待ちは含みません。「現在足OHLC」は取得時点の途中経過です。
 - TESTERは手動更新、LIVEは既定15秒更新です。非表示中は停止し、手動期間・過去ページ参照では最新追従を解除します。新Runへは自動切替しません。
 
-M5の分析方向はM5自身を基準に表示します。H1と逆方向の観測も表示し、FULL・H1 ENTRY CHECK・通貨強弱・将来成績の判定は追加しません。品質表示だけで収集の完了や完全性を判定しません。
+M5の分析方向はM5自身を基準に表示します。H1と逆方向の観測も表示し、FULL・H1 ENTRY CHECK・通貨強弱によるEntry・将来成績の判定は追加しません。品質表示だけで収集の完了や完全性を判定しません。
 
 DBは`mode=ro`・`query_only`で元ファイルのWALを含めて読みます。テーブル・索引の追加やcheckpointは行いません。対応用途は`M5_OBSERVATION_ALL_V1`・M5アンカーで、H1混在DBや未対応形式は理由付きで拒否します。品質テーブル・行・列がない場合も、観測本体は「未記録」表示で閲覧できます。
 
@@ -181,3 +181,15 @@ npm run build
 ```
 
 開発時はPythonサーバーを`5187`番で起動したうえで、別のPowerShellから`npm run dev`を実行します。Viteは`http://127.0.0.1:5173/react/`で起動し、`/api`をPythonへ転送します。生成物は`static/react/`へ出力されます。
+
+### M5詳細の通貨強弱（別DB参照）
+
+M5詳細では、観測と同じServer M5時刻の長中期・中短期順位を読み取り専用で参照します。標準のM5専用起動では、観測DBと同じCommon Files内の`mstng-currency-strength-2026.sqlite`（観測年に追従）を使用します。Viewer再起動後に有効になります。Collectorや観測DBの変更は不要です。
+
+計算方式の初期値はWEIGHTEDです。UNIFORMを使用する場合、またはDBを別フォルダに置いた場合は以下のように指定できます。
+
+```bat
+start-m5-viewer.cmd --currency-strength-database "D:\Data\mstng-currency-strength-2026.sqlite" --currency-strength-calculation UNIFORM
+```
+
+時刻・LIVE/TESTER・サーバー・口座・計算方式が一致する完全集計だけ表示します。一致しなければ「該当なし」と表示し、別時刻・別方式へ自動代替しません。口座番号は画面・APIに公開しません。参照元DB名・方式・取得時刻・Runはパネルの「参照元」で確認できます。過去観測にも対応しますが、表示値は閲覧時に別DBから取得した参考値であり、M5観測DBに固定保存された値ではありません。

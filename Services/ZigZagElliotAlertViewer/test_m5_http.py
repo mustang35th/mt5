@@ -109,6 +109,8 @@ class M5StartupTest(unittest.TestCase):
     def run_main(self, primary_path, m5_path, m5_available, *, metadata_error=None,
                  bind_error=None, primary_error=None):
         arguments = argparse.Namespace(
+            currency_strength_database=None, currency_strength_calculation="WEIGHTED",
+
             database=str(primary_path), m5_database=m5_path,
             host=app.DEFAULT_HOST, port=5187, allowed_host=[], open_browser=False,
             open_tab=None, open_source_mode=None,
@@ -197,14 +199,18 @@ class M5StartupTest(unittest.TestCase):
                 m5.close.assert_called_once()
         with patch.object(app, "Path", side_effect=ValueError("fixture invalid primary path")):
             # Test path construction at the primary boundary without mocking M5's Path.
-            arguments = argparse.Namespace(database="bad", m5_database=None, host=app.DEFAULT_HOST,
+            arguments = argparse.Namespace(
+            currency_strength_database=None, currency_strength_calculation="WEIGHTED",
+            database="bad", m5_database=None, host=app.DEFAULT_HOST,
                                            port=5187, allowed_host=[], open_browser=False,
                                            open_tab=None, open_source_mode=None)
             with patch.object(app, "parse_arguments", return_value=arguments), patch("sys.stderr", new_callable=io.StringIO):
                 self.assertEqual(2, app.main())
 
     def test_default_primary_path_error_does_not_prevent_m5_only(self):
-        arguments = argparse.Namespace(database=None, m5_database="m5.sqlite", host=app.DEFAULT_HOST,
+        arguments = argparse.Namespace(
+            currency_strength_database=None, currency_strength_calculation="WEIGHTED",
+            database=None, m5_database="m5.sqlite", host=app.DEFAULT_HOST,
                                        port=5187, allowed_host=[], open_browser=False,
                                        open_tab=None, open_source_mode=None)
         m5 = Mock()
@@ -222,7 +228,9 @@ class M5StartupTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="m5-viewer-startup-") as directory:
             primary_path = Path(directory) / "primary.fixture"
             primary_path.touch()
-            arguments = argparse.Namespace(database=str(primary_path), m5_database="bad\x00.sqlite",
+            arguments = argparse.Namespace(
+            currency_strength_database=None, currency_strength_calculation="WEIGHTED",
+            database=str(primary_path), m5_database="bad\x00.sqlite",
                                            host=app.DEFAULT_HOST, port=5187, allowed_host=[], open_browser=False,
                                            open_tab=None, open_source_mode=None)
             primary = Mock()

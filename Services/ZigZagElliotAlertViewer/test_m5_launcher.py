@@ -20,6 +20,17 @@ class InitialTabTest(unittest.TestCase):
         self.assertIsNone(arguments.open_tab)
         self.assertIsNone(arguments.open_source_mode)
 
+    def test_currency_strength_options_and_defaults(self):
+        with patch("sys.argv", ["app.py"]):
+            arguments = app.parse_arguments()
+        self.assertIsNone(arguments.currency_strength_database)
+        self.assertEqual("WEIGHTED", arguments.currency_strength_calculation)
+        with patch("sys.argv", ["app.py", "--currency-strength-database", "strength.sqlite",
+                                "--currency-strength-calculation", "WEIGHTED"]):
+            arguments = app.parse_arguments()
+        self.assertEqual("strength.sqlite", arguments.currency_strength_database)
+        self.assertEqual("WEIGHTED", arguments.currency_strength_calculation)
+
     def test_unknown_tab_is_rejected(self):
         with patch("sys.argv", ["app.py", "--open-tab", "unknown"]), \
                 patch("sys.stderr", new_callable=io.StringIO):
