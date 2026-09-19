@@ -1,5 +1,9 @@
 # ZigZagElliot
 
+## 保存済みアラートの履歴チャート（2026-09-19）
+
+専用インジケーター`ZigZagElliotAlertHistory`で、指定したRun・期間内のM5アラートを一件ずつ選び、保存時点の最新Wave・波動番号・FE・SL候補をチャートへ表示できます。補正前後の切り替え・比較と波動のツールチップに対応し、表示時の再分析やDB更新は行いません。設定と再現範囲は[履歴チャート仕様](ZigZagElliotAlertHistory.md)を参照してください。
+
 ## テスターのAlert DB保存開始日時（2026-09-19）
 
 通常版v1.45では、`datetime`入力`mtf3In3AlertTesterSaveStartTime`を追加します。既定値は`0`（保存開始日時の制限なし）です。`MQLInfoInteger(MQL_TESTER)`がtrueの場合だけ適用し、通常チャートでは実効値を`0`として扱います。指定日時はブローカーのServer時刻です。JSTへの変換は行いません。
