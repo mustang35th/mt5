@@ -32,6 +32,8 @@ public:
     string mtf3In3AlertDatabaseFileName;
     /** MTF_3in3アラートデータベースで共通フォルダを使用する場合true。 */
     bool mtf3In3AlertDatabaseUseCommonFolder;
+    /** テスターのAlert DB保存開始サーバー時刻。0は日時制限なし。 */
+    datetime mtf3In3AlertTesterSaveStartTime;
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
     /** H1エントリーで使用するW1確認モード。 */
@@ -72,6 +74,7 @@ public:
         this.mtf3In3AlertDatabaseFileName =
             "mstng-zigzag-elliot-alert.sqlite";
         this.mtf3In3AlertDatabaseUseCommonFolder = true;
+        this.mtf3In3AlertTesterSaveStartTime = 0;
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.applyH1EntryPolicy();
         this.currencyStrengthEnabled = true;

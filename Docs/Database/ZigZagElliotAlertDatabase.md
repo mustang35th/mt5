@@ -6,10 +6,10 @@
 |---|---|
 | 対象機能 | `ZigZagElliot`の`MTF_3in3`アラート履歴 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| スキーマバージョン | 5 |
+| 現行Alert Runのスキーマバージョン | 7（保存開始日時の追加では変更なし） |
 | 保存単位 | 実行、アラート、時間足別分析、最新Waveポイント |
 | 重複時の動作 | 最初に保存したスナップショットを維持 |
-| 最終更新日 | 2026-08-29 |
+| 最終更新日 | 2026-09-19 |
 
 本書は、ZigZagElliotがアラートを出した時点の判定情報とElliott波動を、後からSQLで検索および再構成できる形式で保存する第1段階の仕様を定義します。
 
@@ -37,9 +37,10 @@
 
 | 入力値 | 既定値 | 内容 |
 |---|---:|---|
-| `mtf3In3AlertDatabaseEnabled` | `false` | アラートDB保存を有効にする場合true |
+| `mtf3In3AlertDatabaseEnabled` | `true`（通常版input） | アラートDB保存を有効にする場合true |
 | `mtf3In3AlertDatabaseFileName` | `mstng-zigzag-elliot-alert.sqlite` | DBファイル名 |
 | `mtf3In3AlertDatabaseUseCommonFolder` | `true` | Commonフォルダを使用する場合true |
+| `mtf3In3AlertTesterSaveStartTime` | `0` | 通常版v1.45のテスター専用保存開始日時。Server時刻、0は制限なし |
 
 Commonフォルダ使用時の保存先は次のとおりです。
 
@@ -126,7 +127,11 @@ ON zigzag_elliot_alert_runs(started_at);
 
 `run_uid`は1回の実行中に変化しません。テスターを再実行した場合は新しいRunとして扱います。
 
-現行のAlert Runは`schema_version = 5`、`program_version = 1.29`、`strategy_version = MTF3IN3_V6`です。現行のH1 Observation Runは`schema_version = 6`、`program_version = 1.04`、`strategy_version = H1_OBSERVATION_ALL_V5`です。既存Runのバージョンは書き換えません。
+通常版v1.45のAlert Runは`schema_version = 7`を維持し、M5の`strategy_version`は`MTF3IN3_M5_CORRECTED_WAVES_V12`です。保存開始日時の追加ではスキーマや分析バージョンを更新しません。補正前後の追加保存領域については[ZigZagElliot仕様書](../Indicator/ZigZagElliot.md)を参照してください。現行のH1 Observation Runは`schema_version = 6`、`program_version = 1.04`、`strategy_version = H1_OBSERVATION_ALL_V5`です。既存Runのバージョンは書き換えません。
+
+### 6.3 テスター保存開始設定の記録
+
+通常版v1.45の`mtf3In3AlertTesterSaveStartTime`は、指定値と実効開始日時を既存の`input_text`へ記録し、その内容を`input_hash`へ反映します。通常チャートでは実効開始日時を`0`とします。分析条件を変える設定ではないため、`analysis_input_text`・`analysis_input_hash`は変更しません。Runは初期化時に作成し、指定日時への到達まで作成を遅らせません。既存Runの内容は書き換えません。
 
 ## 7. `zigzag_elliot_alerts`
 
@@ -293,9 +298,19 @@ Alert、TimeFrame、Pointは1トランザクションです。途中で1件で�
 
 Pointの論理`timeFrame`とTimeFrameの`time_frame`を照合して、`alert_timeframe_id`を割り当てます。対応しないPointが1件でも残った場合は保存全体を失敗させます。
 
+### 10.3 通常版テスターの保存開始日時
+
+`MQLInfoInteger(MQL_TESTER)`がtrueかつ`mtf3In3AlertTesterSaveStartTime > 0`の場合、分析時の`currentOhlcBarTime`が指定したServer日時以上の場合だけ10.2のDB保存へ進みます。比較はバー開始時刻に対して行い、同時刻を含めます。0指定と通常チャートでは日時による保存制限を行いません。
+
+履歴準備後の分析・補正分析・Signal Countは開始日時より前も連続して処理し、開始日時に達してもリセットしません。元の親Alert・時間足・ポイントと補正メタデータ・補正時間足・補正ポイントには同じ日時条件を適用し、片側だけを保存しません。期間条件を通過しても`isAlert = false`は保存対象外です。保存開始設定は既存のDB無効・最適化中の保存除外を解除しません。
+
+DB保存が有効な場合、初期化時に保存開始方針をINFOへ記録します。開始日時を指定したテスターでは、日時条件を初めて満たした分析バーと最初のDB保存成功を、各Runで別々に1回だけINFOへ記録します。履歴準備完了のログはこれらと分けます。最初の対象バーで必ず保存が発生する仕様ではありません。
+
+例：GBPAUD・M5、テスト期間`2021.01.01`～`2026.09.19`、保存開始`2026.08.01 00:00:00`（Server時刻）。履歴準備後から分析状態を引き継ぎ、指定日時以降に開始するバーのAlertだけを保存します。この期間指定自体は、必要な履歴の取得・分析成功を保証しません。
+
 ## 11. CSVとの関係
 
-DB保存と既存CSV保存は独立した設定です。
+DB保存と既存CSV保存は独立した設定です。テスターの保存開始日時はDBだけに適用し、開始日時より前の分析CSV・Alert検証CSVも既存の出力条件に従います。
 
 | DB | CSV | 動作 |
 |---|---|---|

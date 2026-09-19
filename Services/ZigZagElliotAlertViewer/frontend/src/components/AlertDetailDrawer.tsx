@@ -36,6 +36,7 @@ import {
   h1DirectionAlignmentStateDescription,
 } from "./H1DirectionAlignmentBadge";
 import { H1EntryCheckPanel } from "./H1EntryCheckPanel";
+import { M5AlertSnapshot } from "./M5AlertSnapshot";
 import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 import {
   W1ConfirmationBadge,
@@ -830,14 +831,33 @@ export function AlertDetailDrawer({
     if (isOutside) onClose();
   }
 
-  const title = bundle
-    ? `${bundle.detail.alert.symbol_name} ${bundle.detail.alert.side} / ${bundle.detail.alert.current_bar_time_text}`
-    : "アラート詳細";
+  const isCurrentBundle = bundle !== null && bundle.detail.alert.id === alertId;
+  let isM5Alert = false;
+  let title = "アラート詳細";
+  if (isCurrentBundle && bundle) {
+    const alert = bundle.detail.alert;
+    isM5Alert = alert.time_frame === 5 || alert.time_frame_text === "M5"
+      || bundle.timeFrames.items.some((timeFrame) => (
+        timeFrame.is_current_time_frame && timeFrame.time_frame_text === "M5"
+      ));
+    title = `${alert.symbol_name} ${alert.side} / ${alert.current_bar_time_text}`;
+  }
+  let dialogClassName = "react-detail-dialog";
+  if (isM5Alert || view === "comparison") {
+    dialogClassName += " observation-grid-mode";
+  }
+  let closeLabel = "詳細を閉じる";
+  if (isM5Alert) {
+    dialogClassName += " m5-alert-dialog";
+    closeLabel = "M5アラート詳細を閉じる";
+  } else if (view === "comparison") {
+    closeLabel = "TIMEFRAME COMPARISONを閉じる";
+  }
 
   return (
     <dialog
       aria-labelledby="reactDetailTitle"
-      className={`react-detail-dialog${view === "comparison" ? " observation-grid-mode" : ""}`}
+      className={dialogClassName}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -851,7 +871,7 @@ export function AlertDetailDrawer({
           <h2 id="reactDetailTitle">{title}</h2>
         </div>
         <div className="observation-detail-header-actions">
-          {bundle && (
+          {isCurrentBundle && bundle && !isM5Alert && (
             <div
               aria-label="アラートスナップショット表示"
               className="observation-detail-view-toggle"
@@ -876,7 +896,7 @@ export function AlertDetailDrawer({
             </div>
           )}
           <button
-            aria-label={view === "comparison" ? "TIMEFRAME COMPARISONを閉じる" : "詳細を閉じる"}
+            aria-label={closeLabel}
             className="close-button"
             onClick={onClose}
             ref={closeButtonRef}
@@ -889,10 +909,18 @@ export function AlertDetailDrawer({
       <div aria-busy={loading} className="drawer-body">
         {loading && <p className="loading-message" role="status" aria-live="polite">詳細を読み込んでいます…</p>}
         {error && <p className="loading-message" role="alert">{error}</p>}
-        {!loading && !error && bundle && view === "detail" && (
+        {!loading && !error && isCurrentBundle && bundle && isM5Alert && (
+          <M5AlertSnapshot
+            key={bundle.detail.alert.id}
+            detail={bundle.detail}
+            timeFrames={bundle.timeFrames.items}
+            points={bundle.points.items}
+          />
+        )}
+        {!loading && !error && isCurrentBundle && bundle && !isM5Alert && view === "detail" && (
           <DetailContent bundle={bundle} styleNonce={styleNonce} />
         )}
-        {!loading && !error && bundle && view === "comparison" && (
+        {!loading && !error && isCurrentBundle && bundle && !isM5Alert && view === "comparison" && (
           <ComparisonContent bundle={bundle} styleNonce={styleNonce} />
         )}
       </div>

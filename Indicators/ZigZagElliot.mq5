@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.44"
+#property version   "1.45"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -36,6 +36,10 @@ input(name="Alert DBファイル名") string mtf3In3AlertDatabaseFileName =
 /** MTF_3in3アラートデータベースで共通フォルダを使用する場合true。 */
 input(name="Commonフォルダを使用")
 bool mtf3In3AlertDatabaseUseCommonFolder = true;
+
+/** テスターでAlert DB保存を開始するサーバー時刻。0は日時制限なし。 */
+input(name="テスターDB保存開始日時（サーバー時刻、0=制限なし）")
+datetime mtf3In3AlertTesterSaveStartTime = 0;
 
 input group "03. H1エントリー追加条件"
 
@@ -114,6 +118,8 @@ int OnInit() {
     config.mtf3In3AlertDatabaseFileName = mtf3In3AlertDatabaseFileName;
     config.mtf3In3AlertDatabaseUseCommonFolder =
         mtf3In3AlertDatabaseUseCommonFolder;
+    config.mtf3In3AlertTesterSaveStartTime =
+        mtf3In3AlertTesterSaveStartTime;
     config.h1DisplayWaveEntryLimitEnabled =
         h1DisplayWaveEntryLimitEnabled;
     config.applyH1EntryPolicy();

@@ -158,6 +158,17 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
+        if (MQLInfoInteger(MQL_TESTER)
+                && this.config.mtf3In3AlertDatabaseEnabled
+                && this.config.mtf3In3AlertTesterSaveStartTime < 0) {
+            this.logger.error(
+                __FUNCTION__,
+                "ZigZagElliot tester database save start time is invalid."
+            );
+
+            return INIT_PARAMETERS_INCORRECT;
+        }
+
         if (!this.timerMode
                 && this.config.mtf3In3AlertDatabaseEnabled
                 && !MQLInfoInteger(MQL_OPTIMIZATION)

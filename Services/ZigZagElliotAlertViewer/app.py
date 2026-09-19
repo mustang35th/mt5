@@ -37,6 +37,7 @@ except ModuleNotFoundError as error:
     )
     raise SystemExit(2) from error
 
+from alert_corrections import load_alert_correction
 from m5_observations import M5ObservationDatabase, M5RequestError
 
 
@@ -3183,6 +3184,8 @@ class AlertDatabase:
         run_model = self.model("zigzag_elliot_alert_runs")
         time_frame_model = self.model("zigzag_elliot_alert_timeframes")
         with Session(self.engine) as session:
+            # SQLite's legacy driver does not begin a snapshot for SELECT alone.
+            session.execute(text("BEGIN"))
             alert_entity = session.get(alert_model, alert_id)
             if alert_entity is None:
                 raise RequestError("alert was not found", HTTPStatus.NOT_FOUND)
@@ -3198,6 +3201,7 @@ class AlertDatabase:
             self.apply_w1_confirmation_defaults(alert)
             self.apply_h1_direction_alignment_defaults(alert)
             run = model_to_dict(run_entity)
+            correction = load_alert_correction(session, alert, values_to_dict)
             w1: dict[str, Any] | None = None
             if w1_entity is not None:
                 w1 = values_to_dict(
@@ -3219,7 +3223,7 @@ class AlertDatabase:
                 alert["side"] == "SELL" and not w1["w1_is_buy"]
             )
         alert["is_w1_aligned"] = is_w1_aligned
-        return {"alert": alert, "run": run, "w1": w1}
+        return {"alert": alert, "run": run, "w1": w1, "correction": correction}
 
     def timeframes(self, alert_id: int) -> dict[str, Any]:
         """Return all timeframe snapshots for an alert."""

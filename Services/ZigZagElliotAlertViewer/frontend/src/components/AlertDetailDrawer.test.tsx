@@ -673,7 +673,7 @@ describe("AlertDetailDrawer", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("uses the M5 current snapshot for the hero without marking H1 as current", async () => {
+  it("opens legacy M5 snapshots in the full-screen grid without H1 re-evaluation", async () => {
     provideGridLayoutSize();
     const timeFrames = [
       timeFrame(5, "H1", 4, {
@@ -701,32 +701,12 @@ describe("AlertDetailDrawer", () => {
     expect(await screen.findByRole("heading", {
       name: "USDJPY BUY / 2026.07.30 19:00:00",
     })).toBeInTheDocument();
-    const heroEmaGroup = screen.getByRole("group", { name: "M5 現在足 EMA200" });
-    expect(heroEmaGroup).toHaveAttribute("aria-current", "true");
-    expect(heroEmaGroup.closest(".detail-hero")).toBeInTheDocument();
-    expect(within(heroEmaGroup).getByText("M5 現在足")).toBeInTheDocument();
-    expect(within(heroEmaGroup).getByLabelText("EMA200判定 BUY"))
-      .toHaveTextContent("EMA200 ↑ BUY");
-    const h1Card = screen.getByRole("article", { name: "H1 時間足スナップショット" });
-    const m5Card = screen.getByRole("article", {
-      name: "M5 時間足スナップショット（現在足）",
-    });
-    expect(within(h1Card).getByLabelText("EMA200判定 SELL"))
-      .toHaveTextContent("EMA200 ↓ SELL");
-    expect(h1Card).not.toHaveAttribute("aria-current");
-    expect(within(h1Card).queryByText("現在足")).not.toBeInTheDocument();
-    expect(within(m5Card).getByLabelText("EMA200判定 BUY"))
-      .toHaveTextContent("EMA200 ↑ BUY");
-    expect(m5Card).toHaveAttribute("aria-current", "true");
-    expect(within(m5Card).getByText("現在足")).toBeInTheDocument();
-    expect(view.container.querySelectorAll(".timeframe-card[aria-current='true']"))
-      .toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "TF比較" }));
-    const entryCheck = screen.getByRole("region", {
-      name: "ZigZagElliot H1エントリー条件",
-    });
-    expect(within(entryCheck).getByText("Snapshot推定")).toBeInTheDocument();
-    expect(within(entryCheck).queryByText("保存判定")).not.toBeInTheDocument();
+    expect(view.container.querySelector(".m5-alert-dialog"))
+      .toHaveClass("observation-grid-mode");
+    expect(screen.queryByRole("region", { name: "ZigZagElliot H1エントリー条件" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "TF比較" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "前後比較" })).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 

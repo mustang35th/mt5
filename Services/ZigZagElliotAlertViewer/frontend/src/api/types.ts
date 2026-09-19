@@ -235,6 +235,8 @@ export interface SummaryResponse {
 
 export interface AlertDetail extends W1ConfirmationDiagnostics, H1DirectionAlignmentDiagnostics {
   id: number;
+  time_frame?: number;
+  time_frame_text?: string;
   run_id: number;
   symbol_name: string;
   is_gmo_target?: boolean;
@@ -309,6 +311,50 @@ export interface AlertDetailResponse {
   alert: AlertDetail;
   run: AlertRunDetail | null;
   w1: W1Summary | null;
+  correction?: AlertCorrectionResponse;
+}
+
+export interface AlertCorrectionMetadata {
+  alert_id: number;
+  correction_status: "NONE" | "APPLIED";
+  correction_time_frame: number;
+  original_direction: string;
+  corrected_direction: string;
+  selected_analysis: "ORIGINAL" | "CORRECTED";
+  selected_alert_text: string;
+  selected_current_elliot_label: string;
+  selected_wave_summary_text: string;
+  reference_price: number;
+  is_selected_stop_loss_available: boolean;
+  selected_stop_loss: number;
+  selected_risk_pips: number;
+  original_lc0: number;
+  original_lc5: number;
+  original_lc10: number;
+  original_lc15: number;
+  original_loss_cut_diff_pips: number;
+  original_loss_cut_diff_jpy: number;
+  corrected_lc0: number;
+  corrected_lc5: number;
+  corrected_lc10: number;
+  corrected_lc15: number;
+  corrected_loss_cut_diff_pips: number;
+  corrected_loss_cut_diff_jpy: number;
+  corrected_reference_point_time: number;
+  original_analysis_text: string;
+  corrected_analysis_text: string;
+  corrected_elliot_csv_text: string;
+  comparison_hash: string;
+  created_at: number;
+  created_at_text: string;
+}
+
+export interface AlertCorrectionResponse {
+  status: "APPLIED" | "NONE" | "UNRECORDED" | "INCOMPLETE";
+  reason: string | null;
+  metadata: AlertCorrectionMetadata | null;
+  timeframes: AlertTimeFrame[];
+  points: AlertPoint[];
 }
 
 export type AlertTimeFrame = Omit<
@@ -357,6 +403,20 @@ export interface AlertPoint {
   is_signal_reference: boolean;
   is_added_point: boolean;
   is_correct: boolean;
+  bar_index?: number;
+  bar_time_next?: number;
+  bar_time_next_text?: string;
+  is_bar_time_next_available?: boolean;
+  wave_bars_from_start?: number;
+  fibo_depth_zone?: number;
+  fibo_depth_zone_label?: string;
+  elliot_index?: number;
+  sub_elliot_index?: number;
+  org_elliot_index?: number;
+  org_elliot_label?: string;
+  is_original_elliot_available?: boolean;
+  is_sub_elliot_available?: boolean;
+  is_elliot_alphabet?: boolean;
 }
 
 export interface PointsResponse {

@@ -39,6 +39,8 @@ public:
         this.alertCsvEnabled = true;
         this.databaseContext = NULL;
         this.databaseReady = false;
+        this.databaseSavePeriodReached = false;
+        this.databaseFirstSnapshotSaved = false;
         ZeroMemory(this.databaseRun);
     }
 
@@ -125,6 +127,33 @@ public:
 
         this.expertAdvisorMtf3In3.analyze(fromElliotAll, this.signalCount);
 
+        bool isDatabaseSaveAllowed = false;
+        if (this.config.mtf3In3AlertDatabaseEnabled
+                && this.databaseReady
+                && fromElliotAll.isAnalysisSucceeded
+                && fromElliotAll.elliotCurrent != NULL) {
+            datetime currentBarTime =
+                fromElliotAll.elliotCurrent.currentOhlcBarTime;
+            isDatabaseSaveAllowed =
+                this.isDatabaseSaveTimeReached(currentBarTime);
+
+            if (isDatabaseSaveAllowed
+                    && this.getEffectiveDatabaseSaveStartTime() > 0
+                    && !this.databaseSavePeriodReached) {
+                this.databaseSavePeriodReached = true;
+                this.logger.info(
+                    __FUNCTION__,
+                    StringFormat(
+                        "ZigZagElliot database save period reached. start=%s currentBar=%s",
+                        this.formatDatabaseSaveStartTime(
+                            this.getEffectiveDatabaseSaveStartTime()
+                        ),
+                        TimeToString(currentBarTime, TIME_DATE | TIME_SECONDS)
+                    )
+                );
+            }
+        }
+
         if (!this.expertAdvisorMtf3In3.isAlert) {
             return;
         }
@@ -132,8 +161,7 @@ public:
         Mtf3In3AlertResult alertResult =
             this.expertAdvisorMtf3In3.getAlertResult();
 
-        if (this.config.mtf3In3AlertDatabaseEnabled
-                && this.databaseReady) {
+        if (isDatabaseSaveAllowed) {
             Mtf3In3AlertSnapshot snapshot;
             bool isBuilt = Mtf3In3AlertSnapshotBuilder::build(
                 fromElliotAll,
@@ -171,6 +199,20 @@ public:
                     this.logger.error(
                         __FUNCTION__,
                         "MTF_3in3 alert database save failed"
+                    );
+                } else if (this.getEffectiveDatabaseSaveStartTime() > 0
+                        && !this.databaseFirstSnapshotSaved) {
+                    this.databaseFirstSnapshotSaved = true;
+                    this.logger.info(
+                        __FUNCTION__,
+                        StringFormat(
+                            "ZigZagElliot database first alert saved after tester save start. runId=%I64d currentBar=%s",
+                            this.databaseRun.id,
+                            TimeToString(
+                                snapshot.alert.currentBarTime,
+                                TIME_DATE | TIME_SECONDS
+                            )
+                        )
                     );
                 }
             }
@@ -241,6 +283,53 @@ private:
     ZigZagElliotAlertRunEntity databaseRun;
     /** データベースへ保存可能な場合true。 */
     bool databaseReady;
+    /** テスターの保存対象期間への到達をログへ出力済みの場合true。 */
+    bool databaseSavePeriodReached;
+    /** 保存開始日時以降の最初のAlert保存をログへ出力済みの場合true。 */
+    bool databaseFirstSnapshotSaved;
+
+    /**
+     * 取得済みの対象足がテスターのDB保存開始日時に達したか判定する。
+     *
+     * @param fromCurrentBarTime 分析に使用した現在足の開始サーバー時刻
+     * @return LIVE、日時制限なし、または保存対象期間の場合true
+     */
+    bool isDatabaseSaveTimeReached(const datetime fromCurrentBarTime) {
+        if (!MQLInfoInteger(MQL_TESTER)
+                || this.config.mtf3In3AlertTesterSaveStartTime == 0) {
+            return true;
+        }
+
+        return fromCurrentBarTime > 0
+            && fromCurrentBarTime >= this.config.mtf3In3AlertTesterSaveStartTime;
+    }
+
+    /**
+     * 実行モードへ適用するDB保存開始日時を取得する。
+     *
+     * @return テスターの設定日時。LIVEは0
+     */
+    datetime getEffectiveDatabaseSaveStartTime() {
+        if (!MQLInfoInteger(MQL_TESTER)) {
+            return 0;
+        }
+
+        return this.config.mtf3In3AlertTesterSaveStartTime;
+    }
+
+    /**
+     * DB保存開始日時を設定記録とログ用の文字列へ変換する。
+     *
+     * @param fromSaveStartTime 保存開始サーバー時刻
+     * @return 日時制限なしは0、それ以外は秒までの日時文字列
+     */
+    string formatDatabaseSaveStartTime(const datetime fromSaveStartTime) {
+        if (fromSaveStartTime == 0) {
+            return "0";
+        }
+
+        return TimeToString(fromSaveStartTime, TIME_DATE | TIME_SECONDS);
+    }
 
     /**
      * ZigZagElliotデータベースを開き、実行情報を保存する。
@@ -305,6 +394,18 @@ private:
                 this.databaseRun.runUid
             )
         );
+        this.logger.info(
+            __FUNCTION__,
+            StringFormat(
+                "ZigZagElliot database save policy. testerSaveStartTime=%s effectiveSaveStartTime=%s basis=SERVER_BAR_OPEN zero=UNRESTRICTED",
+                this.formatDatabaseSaveStartTime(
+                    this.config.mtf3In3AlertTesterSaveStartTime
+                ),
+                this.formatDatabaseSaveStartTime(
+                    this.getEffectiveDatabaseSaveStartTime()
+                )
+            )
+        );
 
         return true;
     }
@@ -333,7 +434,7 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.44";
+        this.databaseRun.programVersion = "1.45";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_M5) {
@@ -367,7 +468,7 @@ private:
     }
 
     /**
-     * 判定結果へ影響する設定を比較用文字列として取得する。
+     * 判定とDB保存の設定を比較用文字列として取得する。
      *
      * @return 設定文字列
      */
@@ -399,6 +500,14 @@ private:
             + IntegerToString(
                 (int)this.config.currencyStrengthVoteWeightMode
             );
+        inputText += "|mtf3In3AlertTesterSaveStartTime="
+            + this.formatDatabaseSaveStartTime(
+                this.config.mtf3In3AlertTesterSaveStartTime
+            );
+        inputText += "|mtf3In3AlertEffectiveSaveStartTime="
+            + this.formatDatabaseSaveStartTime(
+                this.getEffectiveDatabaseSaveStartTime()
+            );
 
         return inputText;
     }
@@ -425,6 +534,8 @@ private:
      */
     void releaseDatabase() {
         this.databaseReady = false;
+        this.databaseSavePeriodReached = false;
+        this.databaseFirstSnapshotSaved = false;
         ZeroMemory(this.databaseRun);
 
         if (this.databaseContext != NULL) {
