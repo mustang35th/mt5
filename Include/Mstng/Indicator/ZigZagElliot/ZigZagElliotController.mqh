@@ -46,6 +46,8 @@ public:
         this.lastProcessedBarTime = 0;
         this.lastAnalysisWarmUpProgress = -1;
         ArrayResize(this.analysisTimeFrames, 0);
+        ArrayResize(this.seriesWarmUpRequested, 0);
+        ArrayResize(this.seriesWarmUpRequestBarTimes, 0);
     }
 
     /**
@@ -196,6 +198,12 @@ public:
 
         SymbolSelect(this.marketContext.symbolName, true);
 
+        int analysisTimeFrameCount = ArraySize(this.analysisTimeFrames);
+        ArrayResize(this.seriesWarmUpRequested, analysisTimeFrameCount);
+        ArrayResize(this.seriesWarmUpRequestBarTimes, analysisTimeFrameCount);
+        ArrayInitialize(this.seriesWarmUpRequested, false);
+        ArrayInitialize(this.seriesWarmUpRequestBarTimes, 0);
+
         if (this.timerMode) {
             this.timerSeconds = 1;
             EventSetTimer(this.timerSeconds);
@@ -280,6 +288,17 @@ public:
             return fromRatesTotal;
         }
 
+        bool isAnalysisDataReady = false;
+
+        if (!this.timerMode && this.lastAnalysisWarmUpProgress < 100) {
+            isAnalysisDataReady = this.isAnalysisDataReady();
+
+            if (!isAnalysisDataReady) {
+                // 表示バッファが未計算の間は処理済みとして返さない。
+                return 0;
+            }
+        }
+
         this.chartController.updateOnCalculate(this.timerMode);
 
         if (this.timerMode) {
@@ -288,7 +307,7 @@ public:
             return fromRatesTotal;
         }
 
-        this.execute();
+        this.execute(isAnalysisDataReady);
 
         if (this.analysisController != NULL
                 && this.chartController.syncVerticalFitButtonState(
@@ -362,6 +381,8 @@ public:
         this.lastProcessedBarTime = 0;
         this.lastAnalysisWarmUpProgress = -1;
         ArrayResize(this.analysisTimeFrames, 0);
+        ArrayResize(this.seriesWarmUpRequested, 0);
+        ArrayResize(this.seriesWarmUpRequestBarTimes, 0);
     }
 
 private:
@@ -400,6 +421,10 @@ private:
     int lastAnalysisWarmUpProgress;
     /** MN1から表示足までの分析対象時間足。 */
     ENUM_TIMEFRAMES analysisTimeFrames[];
+    /** 分析対象足ごとに未同期系列を再要求済みの場合true。 */
+    bool seriesWarmUpRequested[];
+    /** 分析対象足ごとの未同期系列を再要求した表示足バー時刻。 */
+    datetime seriesWarmUpRequestBarTimes[];
 
     /**
      * 各責務のControllerを作成する。
@@ -489,8 +514,8 @@ private:
         int bottleneckProgressBars = 0;
         int bottleneckAvailableBars = 0;
         int bottleneckRequiredBars = 0;
-        string insufficientDetails = "";
-        string allBarDetails = "";
+        int availableBarsByTimeFrame[];
+        ArrayResize(availableBarsByTimeFrame, total);
 
         for (int i = 0; i < total; i++) {
             ENUM_TIMEFRAMES timeFrame = this.analysisTimeFrames[i];
@@ -499,6 +524,7 @@ private:
                 this.marketContext.symbolName,
                 timeFrame
             );
+            availableBarsByTimeFrame[i] = availableBars;
             int progressBars = availableBars;
 
             if (progressBars < 0) {
@@ -524,36 +550,41 @@ private:
                 overallProgress = timeFrameProgress;
             }
 
-            if (allBarDetails != "") {
-                allBarDetails += ", ";
+            if (availableBars < requiredBars) {
+                isReady = false;
             }
-
-            allBarDetails += StringFormat(
-                "%s:%d/%d",
-                TimeUtil::convertTimeFrameToString(timeFrame),
-                availableBars,
-                requiredBars
-            );
-
-            if (availableBars >= requiredBars) {
-                continue;
-            }
-
-            isReady = false;
-
-            if (insufficientDetails != "") {
-                insufficientDetails += ", ";
-            }
-
-            insufficientDetails += StringFormat(
-                "%s:%d/%d",
-                TimeUtil::convertTimeFrameToString(timeFrame),
-                availableBars,
-                requiredBars
-            );
         }
 
         if (overallProgress != this.lastAnalysisWarmUpProgress) {
+            string insufficientDetails = "";
+            string allBarDetails = "";
+
+            for (int i = 0; i < total; i++) {
+                ENUM_TIMEFRAMES timeFrame = this.analysisTimeFrames[i];
+                int requiredBars = this.getRequiredAnalysisBars(timeFrame);
+                int availableBars = availableBarsByTimeFrame[i];
+                string barDetails = StringFormat(
+                    "%s:%d/%d",
+                    TimeUtil::convertTimeFrameToString(timeFrame),
+                    availableBars,
+                    requiredBars
+                );
+
+                if (allBarDetails != "") {
+                    allBarDetails += ", ";
+                }
+
+                allBarDetails += barDetails;
+
+                if (availableBars < requiredBars) {
+                    if (insufficientDetails != "") {
+                        insufficientDetails += ", ";
+                    }
+
+                    insufficientDetails += barDetails;
+                }
+            }
+
             if (isReady) {
                 this.logger.info(
                     __FUNCTION__,
@@ -601,30 +632,71 @@ private:
      */
     bool isAnalysisDataReady() {
         int total = ArraySize(this.analysisTimeFrames);
+        bool isTesterWarmUp = !this.timerMode
+            && this.lastAnalysisWarmUpProgress < 100;
+        bool isSynchronized = true;
+        datetime currentBarTime = 0;
+
+        if (isTesterWarmUp) {
+            currentBarTime = this.getSeriesWarmUpRequestBarTime();
+        }
 
         for (int i = 0; i < total; i++) {
             ENUM_TIMEFRAMES timeFrame = this.analysisTimeFrames[i];
 
-            if (!WarmUpSeriesUtil::isSeriesSynchronized(
+            if (WarmUpSeriesUtil::isSeriesSynchronized(
                     this.marketContext.symbolName,
                     timeFrame
                 )) {
+                if (isTesterWarmUp) {
+                    this.seriesWarmUpRequested[i] = false;
+                }
+
+                continue;
+            }
+
+            isSynchronized = false;
+
+            if (!isTesterWarmUp) {
                 WarmUpSeriesUtil::warmUp(
                     this.marketContext,
                     this.analysisTimeFrames,
                     500
                 );
-                this.logger.info(
-                    __FUNCTION__,
-                    StringFormat(
-                        "price series is not ready. symbol=%s timeframe=%s",
-                        this.marketContext.symbolName,
-                        EnumToString(timeFrame)
-                    )
-                );
+            } else {
+                if (this.seriesWarmUpRequested[i]
+                        && this.seriesWarmUpRequestBarTimes[i]
+                            == currentBarTime) {
+                    continue;
+                }
 
+                ENUM_TIMEFRAMES timeFrames[1];
+                timeFrames[0] = timeFrame;
+                WarmUpSeriesUtil::warmUp(
+                    this.marketContext,
+                    timeFrames,
+                    500
+                );
+                this.seriesWarmUpRequested[i] = true;
+                this.seriesWarmUpRequestBarTimes[i] = currentBarTime;
+            }
+
+            this.logger.info(
+                __FUNCTION__,
+                StringFormat(
+                    "price series is not ready. symbol=%s timeframe=%s",
+                    this.marketContext.symbolName,
+                    EnumToString(timeFrame)
+                )
+            );
+
+            if (!isTesterWarmUp) {
                 return false;
             }
+        }
+
+        if (!isSynchronized) {
+            return false;
         }
 
         if (!this.isTesterAnalysisHistoryReady()) {
@@ -632,6 +704,35 @@ private:
         }
 
         return true;
+    }
+
+    /**
+     * 未同期系列の再要求をまとめる表示足バー時刻を取得する。
+     *
+     * 表示足系列が未準備の場合はテスター時刻を表示足単位へ丸める。
+     * どちらも未取得の場合は0を返し、初回要求後は同期または時刻更新を待つ。
+     *
+     * @return 再要求をまとめるバー時刻
+     */
+    datetime getSeriesWarmUpRequestBarTime() {
+        datetime currentBarTime = iTime(
+            this.marketContext.symbolName,
+            this.marketContext.timeFrame,
+            0
+        );
+
+        if (currentBarTime > 0) {
+            return currentBarTime;
+        }
+
+        currentBarTime = TimeCurrent();
+        int periodSeconds = PeriodSeconds(this.marketContext.timeFrame);
+
+        if (currentBarTime > 0 && periodSeconds > 0) {
+            currentBarTime -= currentBarTime % periodSeconds;
+        }
+
+        return currentBarTime;
     }
 
     /**
@@ -740,8 +841,10 @@ private:
      *
      * テスターでは表示足の処理済みバーをスキップする。データ準備または
      * 分析に失敗した場合は処理済み時刻を更新せず、同一バーで再試行する。
+     *
+     * @param fromAnalysisDataReady 同じイベント内でデータ準備確認済みの場合true
      */
-    void execute() {
+    void execute(bool fromAnalysisDataReady = false) {
         datetime analysisStartBarTime = iTime(
             this.marketContext.symbolName,
             this.marketContext.timeFrame,
@@ -776,7 +879,7 @@ private:
             return;
         }
 
-        if (!this.isAnalysisDataReady()) {
+        if (!fromAnalysisDataReady && !this.isAnalysisDataReady()) {
             return;
         }
 
