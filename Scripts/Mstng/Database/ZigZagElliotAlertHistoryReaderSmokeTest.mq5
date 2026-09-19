@@ -1,4 +1,4 @@
-﻿#property copyright "Copyright 2026, MetaQuotes Ltd."
+#property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
 #property version "1.00"
 #property strict
@@ -235,6 +235,7 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     alert.serverTime = fromBarTime;
     alert.jstTime = fromBarTime;
     alert.signalReferencePointTime = 502 + (fromSerial - 1) * 10;
+    alert.alertText = "original " + IntegerToString(fromSerial);
     alert.isJudge = 1;
     alert.signalCount = 1;
     alert.entryCount = 1;
@@ -271,6 +272,9 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     ZigZagElliotAlertTimeFrameEntity correctedTimeFrames[];
     ZigZagElliotAlertPointEntity correctedPoints[];
     initializeAnalysis(false, isApplied, fromBuy, fromCorrectionTimeFrame, timeFrames, points);
+    if (fromSerial != 11) {
+        timeFrames[6].currentOpen = 150.125;
+    }
     for (int i = 0; i < ArraySize(points); i++) {
         points[i].barTime += (fromSerial - 1) * 10;
     }
@@ -355,6 +359,52 @@ void expectSelection(ZigZagElliotAlertHistoryReader &fromReader, const string fr
     }
     expect(isSelected && error == "" && resolvedRunId == fromExpectedRun && ids == fromExpectedIds,
         fromName + " actualRun=" + IntegerToString(resolvedRunId) + " ids=" + ids + " error=" + error);
+    ZigZagElliotAlertHistoryMarker markers[];
+    isSelected = fromReader.selectMarkers(fromSymbol, fromRunId, fromStart, fromEnd,
+        fromEntryOnly, resolvedRunId, alertIds, markers, error);
+    ids = "";
+    for (int i = 0; i < ArraySize(alertIds); i++) {
+        if (i > 0) {
+            ids += ",";
+        }
+        ids += IntegerToString(alertIds[i]);
+        expect(i < ArraySize(markers) && markers[i].alertId == alertIds[i], "marker identity order");
+    }
+    expect(isSelected && error == "" && resolvedRunId == fromExpectedRun && ids == fromExpectedIds
+        && ArraySize(markers) == ArraySize(alertIds), "bulk markers: " + fromName);
+}
+
+/**
+ * 一覧の採用文字・保存価格・旧記録の区別を実DBで照合する。
+ */
+void testMarkers(ZigZagElliotAlertHistoryReader &fromReader, const bool fromLegacy) {
+    long runId = 0;
+    long ids[];
+    ZigZagElliotAlertHistoryMarker markers[];
+    string error = "";
+    bool success = fromReader.selectMarkers("TESTJPY", 2, 1000, 1500, false, runId, ids, markers, error);
+    if (!expect(success && ArraySize(markers) == 6, "six bulk marker rows " + error)) {
+        return;
+    }
+    expect(markers[0].available && markers[0].price == 150.125
+        && markers[0].barTime == 1000 && markers[0].serverTime == 1000 && markers[0].jstTime == 1000,
+        "marker uses saved original M5 open and separate dates");
+    expect(markers[2].available && markers[2].text == "original 4 [元分析]",
+        "missing correction row is explicitly original");
+    expect(!markers[5].available && markers[5].alertId == 11, "invalid open keeps selection but hides label");
+    if (fromLegacy) {
+        expect(markers[0].text == "original 1 [元分析]", "legacy table missing uses original label");
+    } else {
+        expect(markers[0].text == "synthetic APPLIED" && markers[0].correctionText == "H1 SELL→BUY",
+            "adopted label and H1 direction come from metadata");
+        expect(markers[1].text == "synthetic NONE" && markers[1].isEntry == 0,
+            "NONE and non-entry label retained");
+        expect(markers[3].side == "SELL" && markers[3].correctionText == "H4 BUY→SELL",
+            "SELL H4 metadata retained");
+        expect(markers[4].available, "saved label is independent of detailed corrected point completeness");
+    }
+    expect(!fromReader.selectMarkers("TESTJPY", -1, 0, 0, false, runId, ids, markers, error)
+        && ArraySize(markers) == 0 && ArraySize(ids) == 0, "invalid request clears bulk marker cache");
 }
 
 /**
@@ -510,6 +560,7 @@ void testFile(const string fromFileName, const bool fromLegacy) {
         expectSelection(reader, "TESTJPY", 0, 0, 1001, false, latestRun, "1", "unbounded start");
         expectSelection(reader, "TEST' OR 1=1 --", 0, 0, 0, false, latestRun, "10", "escaped exact symbol");
         expectSelection(reader, "UNKNOWN", 0, 0, 0, false, 0, "", "empty auto Run is successful");
+        testMarkers(reader, fromLegacy);
         if (fromLegacy) {
             ZigZagElliotAlertHistorySnapshot snapshot;
             bool isLoaded = reader.loadSnapshot(3, snapshot, error);

@@ -17,6 +17,34 @@ enum ZigZagElliotAlertHistoryView {
 };
 
 /**
+ * 全件表示に必要な保存ラベルだけを保持する。詳細分析は選択時に読み取る。
+ */
+struct ZigZagElliotAlertHistoryMarker {
+    /** 保存アラートID。 */
+    long alertId;
+    /** 発生足のサーバー時刻。 */
+    datetime barTime;
+    /** 判定サーバー時刻。 */
+    datetime serverTime;
+    /** 保存された判定JST。 */
+    datetime jstTime;
+    /** 元分析M5の保存始値。 */
+    double price;
+    /** 保存されたBUYまたはSELL。 */
+    string side;
+    /** 保存されたENTRY成立フラグ。 */
+    int isEntry;
+    /** 保存されたENTRY結果。 */
+    string entryResult;
+    /** 保存された採用文字、未記録時は元文字。 */
+    string text;
+    /** 保存された補正内容の説明。 */
+    string correctionText;
+    /** ラベル表示に必要な保存値を確認できた場合true。 */
+    bool available;
+};
+
+/**
  * 一つのアラートに保存された元分析と補正分析を保持する。
  * 現在の相場から再分析した値は保持しない。
  */

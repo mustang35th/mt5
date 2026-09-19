@@ -130,6 +130,111 @@ public:
     }
 
     /**
+     * 同じ検索条件で全ラベルを一括取得する。波動ポイントや詳細分析は読み取らない。
+     * 表示値が不足する行もIDを残し、前後移動による詳細確認を可能にする。
+     */
+    bool selectMarkers(
+        const string fromSymbol, const long fromRunId,
+        const datetime fromStartTime, const datetime fromEndTime,
+        const bool fromEntryOnly, long &fromResolvedRunId,
+        long &fromAlertIds[], ZigZagElliotAlertHistoryMarker &fromMarkers[], string &fromError
+    ) {
+        ArrayFree(fromAlertIds);
+        ArrayFree(fromMarkers);
+        fromResolvedRunId = fromRunId;
+        fromError = "";
+        if (!this.isOpen(fromError)) {
+            return false;
+        }
+        if (fromSymbol == "" || fromRunId < 0 || fromStartTime < 0 || fromEndTime < 0
+                || (fromEndTime > 0 && fromEndTime <= fromStartTime)) {
+            fromError = "通貨・Run・日時範囲の指定が不正です。";
+            return false;
+        }
+        string correctionColumns = "";
+        if (!this.tableColumns("zigzag_elliot_alert_corrections", correctionColumns, fromError)) {
+            return false;
+        }
+        string correctionProjection = "NULL,'',0,'','',''";
+        string correctionJoin = "";
+        if (correctionColumns != ",") {
+            string reason = "";
+            if (this.projection("zigzag_elliot_alert_corrections",
+                    "correction_status,selected_alert_text,correction_time_frame,original_direction,corrected_direction,selected_analysis",
+                    "c.", false, correctionProjection, reason, fromError)) {
+                correctionJoin = " LEFT JOIN zigzag_elliot_alert_corrections c ON c.alert_id=a.id";
+            } else {
+                if (fromError != "") {
+                    return false;
+                }
+                correctionProjection = "'INCOMPLETE','',0,'','',''";
+            }
+        }
+        string sql = "WITH candidates AS (SELECT id,run_id,current_bar_time,server_time,jst_time,side,is_entry,entry_result,alert_text FROM zigzag_elliot_alerts ";
+        sql += "WHERE symbol_name=?1 AND time_frame=5 AND is_alert=1 ";
+        sql += "AND (?2=0 OR run_id=?2) AND (?3=0 OR current_bar_time>=?3) ";
+        sql += "AND (?4=0 OR current_bar_time<?4) AND (?5=0 OR is_entry=1)) ";
+        sql += "SELECT a.id,a.run_id,a.current_bar_time,a.server_time,a.jst_time,a.side,a.is_entry,a.entry_result,a.alert_text,";
+        sql += "(SELECT CASE WHEN COUNT(*)=1 THEN current_open ELSE NULL END ";
+        sql += "FROM zigzag_elliot_alert_timeframes WHERE alert_id=a.id AND time_frame=5),";
+        sql += correctionProjection + " FROM candidates a" + correctionJoin;
+        sql += " WHERE a.run_id=(SELECT MAX(run_id) FROM candidates) ORDER BY a.current_bar_time,a.id";
+        int request = this.prepare(sql, fromError);
+        if (request == INVALID_HANDLE) {
+            return false;
+        }
+        if (!DatabaseBind(request, 0, fromSymbol) || !DatabaseBind(request, 1, fromRunId)
+                || !DatabaseBind(request, 2, (long)fromStartTime)
+                || !DatabaseBind(request, 3, (long)fromEndTime)
+                || !DatabaseBind(request, 4, (int)fromEntryOnly)) {
+            this.databaseError("bind alert filters", fromError);
+            DatabaseFinalize(request);
+            return false;
+        }
+        bool success = true;
+        bool hasRow = false;
+        while (true) {
+            if (!this.readNext(request, hasRow, fromError)) {
+                success = false;
+                break;
+            }
+            if (!hasRow) {
+                break;
+            }
+            long alertId = 0;
+            long runId = 0;
+            if (!this.readLongValue(request, 0, alertId) || !this.readLongValue(request, 1, runId)
+                    || alertId <= 0 || runId <= 0) {
+                fromError = "アラート一覧の識別情報が不正です。";
+                success = false;
+                break;
+            }
+            int count = ArraySize(fromAlertIds);
+            if (ArrayResize(fromAlertIds, count + 1, 256) != count + 1
+                    || ArrayResize(fromMarkers, count + 1, 256) != count + 1) {
+                fromError = "アラート一覧のメモリを確保できません。";
+                success = false;
+                break;
+            }
+            if (count > 0 && fromAlertIds[count - 1] == alertId) {
+                fromError = "アラートの保存ラベルが重複しています。";
+                success = false;
+                break;
+            }
+            fromAlertIds[count] = alertId;
+            this.readMarker(request, alertId, fromMarkers[count]);
+            fromResolvedRunId = runId;
+        }
+        DatabaseFinalize(request);
+        if (!success) {
+            ArrayFree(fromAlertIds);
+            ArrayFree(fromMarkers);
+            fromResolvedRunId = 0;
+        }
+        return success;
+    }
+
+    /**
      * 一つのアラートの元分析と補正分析を同じ保存状態から読み取る。
      */
     bool loadSnapshot(const long fromAlertId, ZigZagElliotAlertHistorySnapshot &fromSnapshot, string &fromError) {
@@ -167,6 +272,66 @@ private:
     SqliteDatabase *database;
     /** 内部DB診断用ロガー。 */
     Logger logger;
+
+    /**
+     * 一覧のラベル用保存値を検証する。採用文字が欠損した補正を元分析で代用しない。
+     */
+    void readMarker(const int fromRequest, const long fromAlertId, ZigZagElliotAlertHistoryMarker &fromMarker) {
+        ZeroMemory(fromMarker);
+        fromMarker.alertId = fromAlertId;
+        if (!this.readTimeValue(fromRequest, 2, fromMarker.barTime)
+                || !this.readTimeValue(fromRequest, 3, fromMarker.serverTime)
+                || !this.readTimeValue(fromRequest, 4, fromMarker.jstTime)
+                || !this.readTextValue(fromRequest, 5, fromMarker.side)
+                || !this.readIntValue(fromRequest, 6, fromMarker.isEntry, true)
+                || !this.readTextValue(fromRequest, 7, fromMarker.entryResult)
+                || !this.readTextValue(fromRequest, 8, fromMarker.text)
+                || !this.readDoubleValue(fromRequest, 9, fromMarker.price)
+                || fromMarker.barTime <= 0 || fromMarker.serverTime <= 0
+                || fromMarker.price <= 0 || fromMarker.price == EMPTY_VALUE
+                || (fromMarker.side != "BUY" && fromMarker.side != "SELL")) {
+            return;
+        }
+        if (DatabaseColumnType(fromRequest, 10) == DATABASE_FIELD_TYPE_NULL) {
+            fromMarker.correctionText = "補正情報未記録・元分析";
+            if (fromMarker.text != "") {
+                fromMarker.text += " [元分析]";
+                fromMarker.available = true;
+            }
+            return;
+        }
+        string status = "";
+        string selectedAnalysis = "";
+        string selectedText = "";
+        string originalDirection = "";
+        string correctedDirection = "";
+        int correctionTimeFrame = 0;
+        if (!this.readTextValue(fromRequest, 10, status)
+                || !this.readTextValue(fromRequest, 11, selectedText)
+                || !this.readIntValue(fromRequest, 12, correctionTimeFrame)
+                || !this.readTextValue(fromRequest, 13, originalDirection)
+                || !this.readTextValue(fromRequest, 14, correctedDirection)
+                || !this.readTextValue(fromRequest, 15, selectedAnalysis) || selectedText == "") {
+            return;
+        }
+        if (status == "NONE" && selectedAnalysis == "ORIGINAL" && correctionTimeFrame == 0
+                && originalDirection == "" && correctedDirection == "") {
+            fromMarker.correctionText = "補正なし・元分析採用";
+        } else if (status == "APPLIED" && selectedAnalysis == "CORRECTED"
+                && (correctionTimeFrame == PERIOD_H1 || correctionTimeFrame == PERIOD_H4)
+                && (originalDirection == "BUY" || originalDirection == "SELL")
+                && originalDirection != correctedDirection && correctedDirection == fromMarker.side) {
+            string frame = "H1";
+            if (correctionTimeFrame == PERIOD_H4) {
+                frame = "H4";
+            }
+            fromMarker.correctionText = frame + " " + originalDirection + "→" + correctedDirection;
+        } else {
+            return;
+        }
+        fromMarker.text = selectedText;
+        fromMarker.available = true;
+    }
 
     /**
      * 接続状態を確認する。

@@ -3,6 +3,7 @@
 
 #include <Mstng\Database\Query\ZigZagElliotAlertHistoryReader.mqh>
 #include <Mstng\Draw\DrawZigZagElliotAlertHistory.mqh>
+#include <Mstng\Draw\DrawZigZagElliotAlertMarkers.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryData.mqh>
 #include <Mstng\Log\Logger.mqh>
@@ -19,6 +20,7 @@ public:
     ZigZagElliotAlertHistoryController() {
         this.chartId = 0;
         this.drawer = NULL;
+        this.markerDrawer = NULL;
         this.selectedIndex = -1;
         this.resolvedRunId = 0;
         this.snapshotLoaded = false;
@@ -70,6 +72,10 @@ public:
         if (this.drawer == NULL) {
             return INIT_FAILED;
         }
+        this.markerDrawer = new DrawZigZagElliotAlertMarkers(this.chartId, this.prefix);
+        if (this.markerDrawer == NULL) {
+            return INIT_FAILED;
+        }
         this.originalAutoScroll = (bool)ChartGetInteger(this.chartId, CHART_AUTOSCROLL);
         this.autoScrollCaptured = true;
         if (!EventSetTimer(1)) {
@@ -87,6 +93,16 @@ public:
     void onChartEvent(const int fromEventId, const string fromObjectName) {
         if (fromEventId == CHARTEVENT_CHART_CHANGE) {
             this.needsRedraw = true;
+            return;
+        }
+        if (fromEventId == CHARTEVENT_OBJECT_CLICK
+                && StringFind(fromObjectName, this.prefix + "Marker-") == 0) {
+            for (int i = 0; i < ArraySize(this.alertIds); i++) {
+                if (fromObjectName == this.prefix + "Marker-" + IntegerToString(this.alertIds[i])) {
+                    this.select(i);
+                    return;
+                }
+            }
             return;
         }
         if (fromEventId != CHARTEVENT_OBJECT_CLICK
@@ -139,6 +155,11 @@ public:
             delete this.drawer;
             this.drawer = NULL;
         }
+        if (this.markerDrawer != NULL) {
+            this.markerDrawer.clear();
+            delete this.markerDrawer;
+            this.markerDrawer = NULL;
+        }
         if (this.prefix != "") {
             ObjectsDeleteAll(this.chartId, this.prefix);
         }
@@ -151,6 +172,7 @@ public:
             this.autoScrollCaptured = false;
         }
         ArrayFree(this.alertIds);
+        ArrayFree(this.markers);
         this.snapshot.clear();
     }
 
@@ -163,6 +185,10 @@ private:
     ZigZagElliotAlertHistorySnapshot snapshot;
     /** 保存波動の描画。 */
     DrawZigZagElliotAlertHistory *drawer;
+    /** 全件の保存ラベル描画。 */
+    DrawZigZagElliotAlertMarkers *markerDrawer;
+    /** 選択一覧と同じ順序の保存ラベル。 */
+    ZigZagElliotAlertHistoryMarker markers[];
     /** 操作ログ。 */
     Logger logger;
     /** 対象チャート。 */
@@ -193,6 +219,8 @@ private:
     int historyAttempts;
     /** 波動を表示するために必要な最初の時刻。 */
     datetime historyStartTime;
+    /** 一覧の全ラベルを含む履歴終了時刻。 */
+    datetime historyEndTime;
     /** 価格履歴の状態説明。 */
     string historyMessage;
     /** 読取エラーまたは検索結果の説明。 */
@@ -220,11 +248,13 @@ private:
         this.selectedIndex = -1;
         this.resolvedRunId = 0;
         ArrayFree(this.alertIds);
+        ArrayFree(this.markers);
         this.drawer.clear();
+        this.markerDrawer.clear();
         if (!this.reader.open(this.config.databaseFileName, this.config.useCommonFolder, this.loadError)
-                || !this.reader.selectAlerts(this.symbolName, this.config.runId,
+                || !this.reader.selectMarkers(this.symbolName, this.config.runId,
                     this.startTime, this.endTime, this.config.entryOnly,
-                    this.resolvedRunId, this.alertIds, this.loadError)) {
+                    this.resolvedRunId, this.alertIds, this.markers, this.loadError)) {
             this.logger.error(__FUNCTION__, this.loadError);
             this.render();
             return;
@@ -286,6 +316,18 @@ private:
      */
     void beginHistory() {
         this.historyStartTime = this.snapshot.alert.currentBarTime;
+        this.historyEndTime = this.historyStartTime;
+        for (int i = 0; i < ArraySize(this.markers); i++) {
+            if (!this.markers[i].available) {
+                continue;
+            }
+            if (this.markers[i].barTime < this.historyStartTime) {
+                this.historyStartTime = this.markers[i].barTime;
+            }
+            if (this.markers[i].barTime > this.historyEndTime) {
+                this.historyEndTime = this.markers[i].barTime;
+            }
+        }
         this.findHistoryStart(this.snapshot.originalPoints);
         if (this.snapshot.correctionStatus == "APPLIED") {
             this.findHistoryStart(this.snapshot.correctedPoints);
@@ -321,11 +363,12 @@ private:
         this.historyAttempts++;
         datetime barTime = this.snapshot.alert.currentBarTime;
         datetime copiedTimes[];
-        CopyTime(this.symbolName, PERIOD_M5, this.historyStartTime, barTime, copiedTimes);
+        CopyTime(this.symbolName, PERIOD_M5, this.historyStartTime, this.historyEndTime, copiedTimes);
         int barIndex = iBarShift(this.symbolName, PERIOD_M5, barTime, true);
         datetime firstDate = (datetime)SeriesInfoInteger(this.symbolName, PERIOD_M5, SERIES_FIRSTDATE);
         bool hasWaveHistory = firstDate > 0 && firstDate <= this.historyStartTime;
-        if (barIndex >= 0 && hasWaveHistory) {
+        bool hasAlertHistoryEnd = iBarShift(this.symbolName, PERIOD_M5, this.historyEndTime, true) >= 0;
+        if (barIndex >= 0 && hasWaveHistory && hasAlertHistoryEnd) {
             this.historyPending = false;
             this.historyMessage = "保存時点の最新Waveを表示しています。";
             if (!this.navigateToAlert(barIndex)) {
@@ -382,11 +425,14 @@ private:
                 panelTop = 204;
             }
             this.drawer.draw(this.snapshot, this.view, this.config.higherCount,
-                this.config.showPrices, this.config.showTable, panelTop);
+                this.config.showPrices, this.config.showTable, panelTop, false);
         } else {
             this.drawer.clear();
         }
         this.drawControls();
+        if (this.markerDrawer != NULL) {
+            this.markerDrawer.draw(this.markers);
+        }
         ChartRedraw(this.chartId);
     }
 
@@ -479,6 +525,16 @@ private:
                 status = "保存元サーバー: " + server + "（現在の接続先と異なります） | " + status;
                 statusColor = clrOrange;
             }
+        }
+        int unavailableCount = 0;
+        for (int i = 0; i < ArraySize(this.markers); i++) {
+            if (!this.markers[i].available) {
+                unavailableCount++;
+            }
+        }
+        if (unavailableCount > 0) {
+            status = "ラベル保存値不足 " + IntegerToString(unavailableCount) + "件 | " + status;
+            statusColor = clrOrange;
         }
         this.label("Status", status, contentX, 170, statusColor, contentWidth);
     }

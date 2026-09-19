@@ -54,6 +54,7 @@ public:
      * @param fromShowPrices 参照価格・SL候補・M5 FE価格線の表示有無。
      * @param fromShowTable 7足の情報表の表示有無。
      * @param fromPanelTop 保存情報パネルの上端座標。
+     * @param fromShowAlertLabels 選択ラベルも描く場合true。全件表示ではfalse。
      */
     void draw(
         ZigZagElliotAlertHistorySnapshot &fromSnapshot,
@@ -61,7 +62,8 @@ public:
         const int fromHigherCount,
         const bool fromShowPrices,
         const bool fromShowTable,
-        const int fromPanelTop = 8
+        const int fromPanelTop = 8,
+        const bool fromShowAlertLabels = true
     ) {
         this.clear();
         this.hasDrawingError = false;
@@ -96,7 +98,9 @@ public:
         if (fromShowPrices) {
             this.drawFixedPrices(fromSnapshot);
         }
-        this.drawAlertLabels(fromSnapshot, showOriginal, showCorrected);
+        if (fromShowAlertLabels) {
+            this.drawAlertLabels(fromSnapshot, showOriginal, showCorrected);
+        }
         this.drawPanel(fromSnapshot, showOriginal, showCorrected, fromShowTable, fromPanelTop);
         ChartRedraw(this.chartId);
     }
@@ -439,7 +443,7 @@ private:
         }
         ObjectSetString(this.chartId, name, OBJPROP_TEXT, fromText);
         ObjectSetString(this.chartId, name, OBJPROP_FONT, "MS Gothic");
-        ObjectSetInteger(this.chartId, name, OBJPROP_FONTSIZE, 10);
+        ObjectSetInteger(this.chartId, name, OBJPROP_FONTSIZE, 20);
         ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, this.alertTextColor(fromSnapshot));
         ObjectSetInteger(this.chartId, name, OBJPROP_ANCHOR, fromAnchor);
         ObjectSetInteger(this.chartId, name, OBJPROP_BACK, false);
