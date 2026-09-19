@@ -194,6 +194,38 @@ public:
     }
 
     /**
+     * ハンドル所有権を共有せず、分析済みの値だけを複製する。
+     *
+     * コピー先が所有する既存ハンドルは解放し、外部プールの借用は解除する。
+     * コピー元のハンドルとプールは変更せず、コピー先は未初期化状態とする。
+     *
+     * @param fromOriginal 複製する分析済みEMA200状態。
+     */
+    void copySnapshotFrom(Ema200 &fromOriginal) {
+        if (GetPointer(fromOriginal) == GetPointer(this)) {
+            return;
+        }
+
+        this.setEma200HandlePool(NULL);
+        this.setMarketContext(fromOriginal.marketContext);
+        this.close1 = fromOriginal.close1;
+        this.ema200Shift1 = fromOriginal.ema200Shift1;
+        this.ema200Compare = fromOriginal.ema200Compare;
+        this.slopePips = fromOriginal.slopePips;
+        this.closeEma200DiffPips = fromOriginal.closeEma200DiffPips;
+        this.closePosition = fromOriginal.closePosition;
+        this.slopeDirection = fromOriginal.slopeDirection;
+        this.upCount = fromOriginal.upCount;
+        this.downCount = fromOriginal.downCount;
+        this.trendCount = fromOriginal.trendCount;
+        this.isBuy = fromOriginal.isBuy;
+        this.isSell = fromOriginal.isSell;
+        this.buySellLabel = fromOriginal.buySellLabel;
+        this.textLabel = fromOriginal.textLabel;
+        this.signalTextLabel = fromOriginal.signalTextLabel;
+    }
+
+    /**
      * EMA200状態を更新する。
      *
      * @param fromSymbolName シンボル名。

@@ -21,8 +21,18 @@ public:
      * 使用するデータベースハンドルを指定して初期化する。
      *
      * @param fromDatabaseHandle データベースハンドル。
+     * @param fromCorrectedAnalysis 補正後専用テーブルを使用する場合true。
      */
-    ZigZagElliotAlertPointDao(const int fromDatabaseHandle) {
+    ZigZagElliotAlertPointDao(
+        const int fromDatabaseHandle,
+        const bool fromCorrectedAnalysis = false
+    ) {
+        this.tableName = "zigzag_elliot_alert_points";
+        this.parentTableName = "zigzag_elliot_alert_timeframes";
+        if (fromCorrectedAnalysis) {
+            this.tableName = "zigzag_elliot_alert_corrected_points";
+            this.parentTableName = "zigzag_elliot_alert_corrected_timeframes";
+        }
         this.databaseHandle = fromDatabaseHandle;
         this.logger.setLevel(LOG_INFO);
     }
@@ -37,7 +47,7 @@ public:
             return false;
         }
 
-        string sql = "CREATE TABLE IF NOT EXISTS zigzag_elliot_alert_points (";
+        string sql = "CREATE TABLE IF NOT EXISTS " + this.tableName + " (";
         sql += "id INTEGER PRIMARY KEY AUTOINCREMENT,";
         sql += "alert_timeframe_id INTEGER NOT NULL,";
         sql += "point_order INTEGER NOT NULL,";
@@ -80,17 +90,17 @@ public:
         sql += "created_at INTEGER NOT NULL,";
         sql += "created_at_text TEXT NOT NULL,";
         sql += "FOREIGN KEY(alert_timeframe_id) REFERENCES ";
-        sql += "zigzag_elliot_alert_timeframes(id) ON DELETE CASCADE,";
+        sql += this.parentTableName + "(id) ON DELETE CASCADE,";
         sql += "UNIQUE(alert_timeframe_id, point_order)";
         sql += ")";
 
-        if (!this.executeSql(sql, "zigzag_elliot_alert_points table")) {
+        if (!this.executeSql(sql, this.tableName + " table")) {
             return false;
         }
 
         sql = "CREATE UNIQUE INDEX IF NOT EXISTS ";
-        sql += "idx_zigzag_elliot_alert_points_latest ";
-        sql += "ON zigzag_elliot_alert_points(alert_timeframe_id) ";
+        sql += "idx_" + this.tableName + "_latest ";
+        sql += "ON " + this.tableName + "(alert_timeframe_id) ";
         sql += "WHERE is_latest = 1";
 
         if (!this.executeSql(sql, "zigzag elliot latest point index")) {
@@ -98,8 +108,8 @@ public:
         }
 
         sql = "CREATE UNIQUE INDEX IF NOT EXISTS ";
-        sql += "idx_zigzag_elliot_alert_points_signal_reference ";
-        sql += "ON zigzag_elliot_alert_points(alert_timeframe_id) ";
+        sql += "idx_" + this.tableName + "_signal_reference ";
+        sql += "ON " + this.tableName + "(alert_timeframe_id) ";
         sql += "WHERE is_signal_reference = 1";
 
         if (!this.executeSql(sql, "zigzag elliot signal reference index")) {
@@ -107,8 +117,8 @@ public:
         }
 
         sql = "CREATE INDEX IF NOT EXISTS ";
-        sql += "idx_zigzag_elliot_alert_points_wave_lookup ";
-        sql += "ON zigzag_elliot_alert_points(";
+        sql += "idx_" + this.tableName + "_wave_lookup ";
+        sql += "ON " + this.tableName + "(";
         sql += "elliot_label, sub_elliot_label, bar_time)";
 
         if (!this.executeSql(sql, "zigzag elliot point wave index")) {
@@ -117,7 +127,7 @@ public:
 
         this.logger.info(
             __FUNCTION__,
-            "zigzag_elliot_alert_points table and indexes are ready."
+            this.tableName + " table and indexes are ready."
         );
 
         return true;
@@ -177,6 +187,11 @@ public:
     }
 
 private:
+    /** 固定候補から選択した保存テーブル名。 */
+    string tableName;
+    /** 固定候補から選択した親テーブル名。 */
+    string parentTableName;
+
     /** データベースハンドル。 */
     int databaseHandle;
 
@@ -189,7 +204,7 @@ private:
      * @return パラメーター化したINSERT文。
      */
     string buildInsertSql() {
-        string sql = "INSERT INTO zigzag_elliot_alert_points (";
+        string sql = "INSERT INTO " + this.tableName + " (";
         sql += "alert_timeframe_id, point_order, is_latest,";
         sql += " is_signal_reference, rate, bar_index, bar_time, bar_time_text,";
         sql += " is_bar_time_next_available, bar_time_next, bar_time_next_text,";

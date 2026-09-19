@@ -30,9 +30,91 @@ public:
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow = true
     ) : ExpertAdvisorMTF_3in3(fromMarketContext, fromIsDrawArrow) {
+        this.correctedElliotAll = NULL;
+        this.correctedTimeFrame = PERIOD_CURRENT;
+    }
+
+    /**
+     * 所有する補正分析を解放する。
+     */
+    ~ExpertAdvisorMtf3In3M5() {
+        this.releaseCorrectedElliotAll();
+    }
+
+    /**
+     * 直近の判定に採用した補正時間足を取得する。
+     *
+     * @return 補正分析の採用時はH4またはH1。それ以外はPERIOD_CURRENT。
+     */
+    virtual ENUM_TIMEFRAMES getCorrectionTimeFrame() override {
+        if (this.correctedElliotAll != NULL
+                && this.elliotAll == this.correctedElliotAll) {
+            return this.correctedTimeFrame;
+        }
+        return PERIOD_CURRENT;
     }
 
 protected:
+    /**
+     * 前回の補正分析を破棄し、今回の判定結果を初期化する。
+     */
+    virtual void resetStrategySpecificAnalysisOutcome() override {
+        ExpertAdvisorMTF_3in3::resetStrategySpecificAnalysisOutcome();
+        this.releaseCorrectedElliotAll();
+    }
+
+    /**
+     * 元のH4・H1方向から、今回の全エントリー条件へ使用する分析を選択する。
+     *
+     * 両足同方向なら元分析を採用し、片足逆方向ならその足を補正してM5まで
+     * 再分析する。両足逆方向または補正失敗の場合は判定対象外とする。
+     *
+     * @param fromOriginal 補正前の分析結果。所有権は呼び出し元が保持する。
+     * @return 採用する分析への非所有参照。判定対象外の場合はNULL。
+     */
+    virtual ElliotAll *selectJudgmentElliotAll(ElliotAll *fromOriginal) override {
+        if (this.marketContext.timeFrame != PERIOD_M5
+                || fromOriginal == NULL || !fromOriginal.isAnalysisSucceeded
+                || fromOriginal.marketContext.timeFrame != PERIOD_M5
+                || fromOriginal.marketContext.symbolName != this.marketContext.symbolName) {
+            return NULL;
+        }
+
+        Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
+        Elliot *originalH1 = fromOriginal.getElliot(PERIOD_H1);
+        Elliot *originalCurrent = fromOriginal.getElliot(PERIOD_M5);
+        Mtf3In3HigherTimeFrameDecision decision;
+        if (!decision.isDirectionStateValid(originalH4, PERIOD_H4)
+                || !decision.isDirectionStateValid(originalH1, PERIOD_H1)
+                || !decision.isDirectionStateValid(originalCurrent, PERIOD_M5)) {
+            return NULL;
+        }
+
+        bool isH4Matched = originalH4.isBuy == originalCurrent.isBuy;
+        bool isH1Matched = originalH1.isBuy == originalCurrent.isBuy;
+        if (isH4Matched && isH1Matched) {
+            return fromOriginal;
+        }
+        if (!isH4Matched && !isH1Matched) {
+            return NULL;
+        }
+
+        ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_H1;
+        if (!isH4Matched) {
+            correctionTimeFrame = PERIOD_H4;
+        }
+        this.correctedElliotAll = new ElliotAll(this.marketContext);
+        if (this.correctedElliotAll == NULL
+                || !this.correctedElliotAll.analyzeWithDirectionCorrection(
+                    fromOriginal, correctionTimeFrame, originalCurrent.isBuy)) {
+            this.logger.error(__FUNCTION__, "M5 corrected analysis failed");
+            this.releaseCorrectedElliotAll();
+            return NULL;
+        }
+        this.correctedTimeFrame = correctionTimeFrame;
+        return this.correctedElliotAll;
+    }
+
     /**
      * M5ではEMA200距離を診断用に保持し、エントリー制限を一旦無効にする。
      *
@@ -170,12 +252,70 @@ protected:
     }
 
     /**
-     * H1、M15およびM5の波動情報からアラート表示文字列を生成する。
+     * 元分析のH1、M15およびM5から既存履歴用のアラート文字列を生成する。
      *
      * @return アラート表示文字列。
      */
     virtual string buildAlertText() override {
         return this.getThreeTimeFrameAlertText();
+    }
+
+    /**
+     * 判定に採用したH1・M15・M5の波動をチャートへ表示する。
+     *
+     * @return 採用した波動ラベル。補正分析の場合は補正した時間足を末尾へ付ける。
+     */
+    virtual string getChartAlertText() override {
+        string chartAlertText = this.getThreeTimeFrameAlertText(this.elliotAll);
+        if (chartAlertText == "" || this.correctedElliotAll == NULL
+                || this.elliotAll != this.correctedElliotAll) {
+            return chartAlertText;
+        }
+        if (this.correctedTimeFrame == PERIOD_H1) {
+            chartAlertText += " [H1補正]";
+        } else if (this.correctedTimeFrame == PERIOD_H4) {
+            chartAlertText += " [H4補正]";
+        }
+        return chartAlertText;
+    }
+
+    /**
+     * 補正採用時は画面と同じ件名、および補正前後の全分析をメールへ渡す。
+     *
+     * 送信設定と共通情報は元分析を使用し、分析結果の所有権は移動しない。
+     */
+    virtual void sendAlertMail() override {
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        if (this.correctedElliotAll != NULL
+                && this.elliotAll == this.correctedElliotAll) {
+            Mail::sendMail(
+                sourceAnalysis,
+                this.isSendMail,
+                this.elliotAll,
+                this.correctedTimeFrame,
+                this.getChartAlertText()
+            );
+            return;
+        }
+        Mail::sendMail(sourceAnalysis, this.isSendMail);
+    }
+
+private:
+    /** 全エントリー条件の判定に使用する補正分析。本クラスが所有する。 */
+    ElliotAll *correctedElliotAll;
+
+    /** 補正分析で方向を変更した時間足。補正なしはPERIOD_CURRENT。 */
+    ENUM_TIMEFRAMES correctedTimeFrame;
+
+    /**
+     * 所有する補正分析を解放し、次回への持ち越しを防止する。
+     */
+    void releaseCorrectedElliotAll() {
+        if (this.correctedElliotAll != NULL) {
+            delete this.correctedElliotAll;
+            this.correctedElliotAll = NULL;
+        }
+        this.correctedTimeFrame = PERIOD_CURRENT;
     }
 };
 

@@ -142,7 +142,10 @@ public:
                 "ZIGZAG_ELLIOT",
                 0,
                 this.expertAdvisorMtf3In3.alertText,
-                snapshot
+                snapshot,
+                this.expertAdvisorMtf3In3.getJudgmentElliotAll(),
+                this.expertAdvisorMtf3In3.getCorrectionTimeFrame(),
+                this.expertAdvisorMtf3In3.getJudgmentAlertText()
             );
 
             if (!isBuilt) {
@@ -158,7 +161,10 @@ public:
                     && persistenceService.saveSnapshot(
                         snapshot.alert,
                         snapshot.timeFrames,
-                        snapshot.points
+                        snapshot.points,
+                        snapshot.correction,
+                        snapshot.correctedTimeFrames,
+                        snapshot.correctedPoints
                     );
 
                 if (!isSaved) {
@@ -260,7 +266,9 @@ private:
 
         this.databaseContext = new ZigZagElliotAlertDatabaseContext(
             this.config.mtf3In3AlertDatabaseFileName,
-            this.config.mtf3In3AlertDatabaseUseCommonFolder
+            this.config.mtf3In3AlertDatabaseUseCommonFolder,
+            false,
+            true
         );
 
         if (this.databaseContext == NULL || !this.databaseContext.open()) {
@@ -316,7 +324,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 5;
+        this.databaseRun.schemaVersion = 7;
         this.databaseRun.sourceMode = "LIVE";
 
         if (Util::isStrategyTester()) {
@@ -325,11 +333,11 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.43";
+        this.databaseRun.programVersion = "1.44";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_M5) {
-            this.databaseRun.strategyVersion = "MTF3IN3_M5_H4_OR_H1_V11";
+            this.databaseRun.strategyVersion = "MTF3IN3_M5_CORRECTED_WAVES_V12";
         }
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();

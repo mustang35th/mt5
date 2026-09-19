@@ -637,7 +637,10 @@ public:
                 "ZIGZAG_ELLIOT",
                 0,
                 state.expertAdvisor.alertText,
-                state.pendingSnapshot
+                state.pendingSnapshot,
+                state.expertAdvisor.getJudgmentElliotAll(),
+                state.expertAdvisor.getCorrectionTimeFrame(),
+                state.expertAdvisor.getJudgmentAlertText()
             );
 
             if (!isBuilt
@@ -1362,7 +1365,10 @@ private:
             if (!persistenceService.saveSnapshot(
                     state.pendingSnapshot.alert,
                     state.pendingSnapshot.timeFrames,
-                    state.pendingSnapshot.points
+                    state.pendingSnapshot.points,
+                    state.pendingSnapshot.correction,
+                    state.pendingSnapshot.correctedTimeFrames,
+                    state.pendingSnapshot.correctedPoints
                 )) {
                 this.logger.error(
                     __FUNCTION__,
@@ -1390,7 +1396,9 @@ private:
     bool initializeDatabase() {
         this.databaseContext = new ZigZagElliotAlertDatabaseContext(
             this.config.mtf3In3AlertDatabaseFileName,
-            this.config.mtf3In3AlertDatabaseUseCommonFolder
+            this.config.mtf3In3AlertDatabaseUseCommonFolder,
+            false,
+            true
         );
 
         if (this.databaseContext == NULL
@@ -1438,7 +1446,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 6;
+        this.databaseRun.schemaVersion = 7;
         this.databaseRun.sourceMode = "TESTER";
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);

@@ -258,6 +258,123 @@ public:
     }
 
     /**
+     * 元分析の入力値を保持した別インスタンスへM5用の補正波動を構築する。
+     *
+     * MN1からM5まで独立したElliotを生成し、指定したH4またはH1の分析方向だけを
+     * 変更する。下位足は補正済みの親波動で再分析する。元の分析結果は変更しない。
+     * 波動内部は時系列を再取得するため、前後の直近2足OHLCとバー時刻を確認する。
+     * 過去の全履歴を固定した再計算ではない。
+     *
+     * @param fromOriginal 分析成功済みの元M5分析。
+     * @param fromCorrectionTimeFrame 方向を補正するH4またはH1。
+     * @param fromIsBuy 指定時間足の補正後方向。
+     * @return 全時間足の再分析と入力確認に成功した場合true。
+     */
+    bool analyzeWithDirectionCorrection(
+        ElliotAll *fromOriginal,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame,
+        const bool fromIsBuy
+    ) {
+        if (fromOriginal == NULL || fromOriginal == GetPointer(this)) {
+            return false;
+        }
+
+        this.isAnalysisSucceeded = false;
+        if (!fromOriginal.isAnalysisSucceeded
+                || fromOriginal.marketContext.timeFrame != PERIOD_M5
+                || (fromCorrectionTimeFrame != PERIOD_H4
+                    && fromCorrectionTimeFrame != PERIOD_H1)) {
+            return false;
+        }
+
+        this.setMarketContext(fromOriginal.marketContext);
+        LogUtil::printMethodStart(this.logger, __FUNCTION__);
+        uint startCount = GetTickCount();
+        this.isTimer = fromOriginal.isTimer;
+        this.timerSeconds = fromOriginal.timerSeconds;
+        this.tradeTimeInfo = fromOriginal.tradeTimeInfo;
+        this.todayRate = fromOriginal.todayRate;
+        this.currencyStrengthExecutionInfo = fromOriginal.currencyStrengthExecutionInfo;
+        this.isCurrencyStrengthEntryFilterEnabled = fromOriginal.isCurrencyStrengthEntryFilterEnabled;
+        this.isH1DisplayWaveEntryLimitEnabled = fromOriginal.isH1DisplayWaveEntryLimitEnabled;
+        this.isSendMail = false;
+        this.isMailValidationFileEnabled = false;
+        this.mailTitile = "";
+        this.setAnalysisStartTimeFrame(PERIOD_MN1);
+        this.setTimeFrame(PERIOD_M5);
+
+        ENUM_TIMEFRAMES timeFrames[] = {
+            PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4,
+            PERIOD_H1, PERIOD_M15, PERIOD_M5
+        };
+        bool isSucceeded = this.areOriginalRatesUnchanged(
+            fromOriginal, timeFrames
+        );
+
+        for (int i = 0; isSucceeded && i < ArraySize(timeFrames); i++) {
+            Elliot *originalElliot = fromOriginal.getElliot(timeFrames[i]);
+            Elliot *elliotHigher = NULL;
+            if (i > 0) {
+                elliotHigher = this.getElliot(timeFrames[i - 1]);
+            }
+
+            bool analysisIsBuy = originalElliot.isBuy;
+            if (timeFrames[i] == fromCorrectionTimeFrame) {
+                analysisIsBuy = fromIsBuy;
+            }
+
+            Elliot *elliot = new Elliot(originalElliot.marketContext);
+            if (elliot == NULL) {
+                this.logger.error(__FUNCTION__, "corrected Elliot allocation failed.");
+                isSucceeded = false;
+                break;
+            }
+
+            if (!elliot.analyzeFromSnapshot(originalElliot, elliotHigher, analysisIsBuy)) {
+                this.logger.error(__FUNCTION__, StringFormat(
+                    "corrected wave analysis failed. timeFrame=%s",
+                    TimeUtil::convertTimeFrameToString(timeFrames[i])
+                ));
+                delete elliot;
+                isSucceeded = false;
+                break;
+            }
+
+            elliot.setParentElliot(elliot);
+            if (!this.elliotList.Insert(elliot, 0)) {
+                this.logger.error(__FUNCTION__, "corrected Elliot insertion failed.");
+                delete elliot;
+                isSucceeded = false;
+                break;
+            }
+        }
+
+        if (isSucceeded) {
+            isSucceeded = this.areOriginalRatesUnchanged(
+                fromOriginal, timeFrames
+            );
+        }
+
+        if (isSucceeded) {
+            this.elliotCurrent = this.getElliot(PERIOD_M5);
+            isSucceeded = this.elliotCurrent != NULL;
+        }
+
+        if (isSucceeded) {
+            this.setTrendAlignDecision();
+            this.setHigherStochasticMainOrderDecision();
+            this.lossCut.setData(this.elliotCurrent, this.todayRate);
+        } else {
+            this.elliotList.Clear();
+            this.elliotCurrent = NULL;
+        }
+        this.isAnalysisSucceeded = isSucceeded;
+        this.execTime = GetTickCount() - startCount;
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, isSucceeded);
+        return isSucceeded;
+    }
+
+    /**
      * 全時間足の分析結果をCSV文字列として取得する。
      *
      * @param isDetail trueの場合、レート、複合判定、時間足別詳細を含める
@@ -570,6 +687,55 @@ private:
      * 本クラスが所有し、デストラクタで解放する。
      */
     TimeFrameInfoAll *timeFrameInfoAll;
+
+    /**
+     * 元分析と直近2足のOHLCが一致し、再分析中にバーが切り替わっていないか確認する。
+     *
+     * @param fromOriginal 元分析。
+     * @param fromTimeFrames 確認対象時間足。
+     * @return 全時間足の入力値が一致する場合true。
+     */
+    bool areOriginalRatesUnchanged(
+        ElliotAll *fromOriginal,
+        ENUM_TIMEFRAMES &fromTimeFrames[]
+    ) {
+        for (int i = 0; i < ArraySize(fromTimeFrames); i++) {
+            Elliot *elliot = fromOriginal.getElliot(fromTimeFrames[i]);
+            if (elliot == NULL
+                    || elliot.marketContext.symbolName != this.marketContext.symbolName
+                    || elliot.marketContext.timeFrame != fromTimeFrames[i]
+                    || elliot.getLatestWave() == NULL || elliot.getLatestPoint() == NULL) {
+                this.logger.error(__FUNCTION__, "original timeframe analysis is incomplete.");
+                return false;
+            }
+
+            MqlRates rates[];
+            ArraySetAsSeries(rates, true);
+            if (CopyRates(this.marketContext.symbolName, fromTimeFrames[i], 0, 2, rates) != 2) {
+                this.logger.error(__FUNCTION__, "CopyRates failed while checking correction input.");
+                return false;
+            }
+
+            if (rates[0].time <= 0 || rates[1].time <= 0
+                    || rates[0].time != elliot.currentOhlcBarTime
+                    || rates[1].time != elliot.previousOhlcBarTime
+                    || rates[0].open != elliot.currentOhlcInfo.open
+                    || rates[0].high != elliot.currentOhlcInfo.high
+                    || rates[0].low != elliot.currentOhlcInfo.low
+                    || rates[0].close != elliot.currentOhlcInfo.close
+                    || rates[1].open != elliot.previousOhlcInfo.open
+                    || rates[1].high != elliot.previousOhlcInfo.high
+                    || rates[1].low != elliot.previousOhlcInfo.low
+                    || rates[1].close != elliot.previousOhlcInfo.close) {
+                this.logger.debug(__FUNCTION__, StringFormat(
+                    "correction input changed. timeFrame=%s",
+                    TimeUtil::convertTimeFrameToString(fromTimeFrames[i])
+                ));
+                return false;
+            }
+        }
+        return true;
+    }
 
     /**
      * コンストラクタ共通の初期値を設定する。

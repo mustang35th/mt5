@@ -21,8 +21,18 @@ public:
      * 使用するデータベースハンドルを指定して初期化する。
      *
      * @param fromDatabaseHandle データベースハンドル。
+     * @param fromCorrectedAnalysis 補正後専用テーブルを使用する場合true。
      */
-    ZigZagElliotAlertTimeFrameDao(const int fromDatabaseHandle) {
+    ZigZagElliotAlertTimeFrameDao(
+        const int fromDatabaseHandle,
+        const bool fromCorrectedAnalysis = false
+    ) {
+        this.tableName = "zigzag_elliot_alert_timeframes";
+        this.parentTableName = "zigzag_elliot_alerts";
+        if (fromCorrectedAnalysis) {
+            this.tableName = "zigzag_elliot_alert_corrected_timeframes";
+            this.parentTableName = "zigzag_elliot_alert_corrections";
+        }
         this.databaseHandle = fromDatabaseHandle;
         this.logger.setLevel(LOG_INFO);
     }
@@ -38,7 +48,7 @@ public:
         }
 
         string sql = "CREATE TABLE IF NOT EXISTS ";
-        sql += "zigzag_elliot_alert_timeframes (";
+        sql += this.tableName + " (";
         sql += "id INTEGER PRIMARY KEY AUTOINCREMENT,";
         sql += "alert_id INTEGER NOT NULL,";
         sql += "time_frame INTEGER NOT NULL,";
@@ -115,19 +125,24 @@ public:
         sql += "raw_csv_text TEXT NOT NULL,";
         sql += "created_at INTEGER NOT NULL,";
         sql += "created_at_text TEXT NOT NULL,";
-        sql += "FOREIGN KEY(alert_id) REFERENCES zigzag_elliot_alerts(id) ";
+        sql += "FOREIGN KEY(alert_id) REFERENCES " + this.parentTableName + "(";
+        if (this.isCorrectedTable()) {
+            sql += "alert_id) ";
+        } else {
+            sql += "id) ";
+        }
         sql += "ON DELETE CASCADE,";
         sql += "UNIQUE(alert_id, time_frame),";
         sql += "UNIQUE(alert_id, time_frame_order)";
         sql += ")";
 
-        if (!this.executeSql(sql, "zigzag_elliot_alert_timeframes table")) {
+        if (!this.executeSql(sql, this.tableName + " table")) {
             return false;
         }
 
         sql = "CREATE INDEX IF NOT EXISTS ";
-        sql += "idx_zigzag_elliot_alert_timeframes_wave_lookup ";
-        sql += "ON zigzag_elliot_alert_timeframes(";
+        sql += "idx_" + this.tableName + "_wave_lookup ";
+        sql += "ON " + this.tableName + "(";
         sql += "time_frame, latest_elliot_label, is_wave_motive,";
         sql += " is_wave_uptrend)";
 
@@ -137,7 +152,7 @@ public:
 
         this.logger.info(
             __FUNCTION__,
-            "zigzag_elliot_alert_timeframes table and index are ready."
+            this.tableName + " table and index are ready."
         );
 
         return true;
@@ -196,6 +211,11 @@ public:
     }
 
 private:
+    /** 固定候補から選択した保存テーブル名。 */
+    string tableName;
+    /** 固定候補から選択した親テーブル名。 */
+    string parentTableName;
+
     /** データベースハンドル。 */
     int databaseHandle;
 
@@ -203,12 +223,21 @@ private:
     Logger logger;
 
     /**
+     * 補正後の時間足テーブルを使用しているか判定する。
+     *
+     * @return 補正後専用テーブルの場合true。
+     */
+    bool isCorrectedTable() {
+        return this.tableName == "zigzag_elliot_alert_corrected_timeframes";
+    }
+
+    /**
      * 時間足別分析INSERT文を生成する。
      *
      * @return パラメーター化したINSERT文。
      */
     string buildInsertSql() {
-        string sql = "INSERT INTO zigzag_elliot_alert_timeframes (";
+        string sql = "INSERT INTO " + this.tableName + " (";
         sql += "alert_id, time_frame, time_frame_text, time_frame_order,";
         sql += " is_current_time_frame, is_buy, buy_sell_label, wave_count,";
         sql += " latest_wave_index, is_wave_confirmed, is_wave_motive,";

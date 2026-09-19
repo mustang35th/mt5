@@ -51,6 +51,12 @@ public:
     /** ストキャスティクス、GMMA、EMA200、ATRの分析結果。 */
     Oscillator oscillator;
     
+    /** 現在足OHLCを取得したバー開始時刻。 */
+    datetime currentOhlcBarTime;
+
+    /** 1本前の確定足OHLCを取得したバー開始時刻。 */
+    datetime previousOhlcBarTime;
+
     /** 現在足のOHLC情報。 */
     OhlcInfo currentOhlcInfo;
 
@@ -99,6 +105,8 @@ public:
     void setMarketContext(MarketContext &fromMarketContext) {
         this.waveList.Clear();
         this.zigZagPointList.Clear();
+        this.currentOhlcBarTime = 0;
+        this.previousOhlcBarTime = 0;
         this.currentOhlcInfo.clear();
         this.previousOhlcInfo.clear();
         this.fiboExpansionPriceInfo.clear();
@@ -133,9 +141,11 @@ public:
         
         // 現在足 shift=0
         currentOhlcInfo.setDataByRates(rates[0]);
+        this.currentOhlcBarTime = rates[0].time;
         
         // 一本前の確定足 shift=1
         previousOhlcInfo.setDataByRates(rates[1]);
+        this.previousOhlcBarTime = rates[1].time;
 
         
         if (!this.setOscillator(oscillatorHandlePool)) {
@@ -145,45 +155,50 @@ public:
             return false;
         }
         
-        if (elliotHigher == NULL) { // 最上位足
-            ElliotHighest elliotHighest(this.marketContext, this.isBuy, this.buySellLabel);
-            
-            if (!elliotHighest.analyze()) {
-                this.logger.error(__FUNCTION__, "elliotHighest.analyze false");
-                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
-                
-                return false;
-            }
-            
-            WaveUtil::copyWaveList(elliotHighest.waveList, this.waveList);  // Listのコピー
-            
-        } else {
-            ElliotWithHigherAll elliotWithHigherAll(this.marketContext, this.isBuy, this.buySellLabel);
-            
-            if (!elliotWithHigherAll.analyze(elliotHigher)) {
-                this.logger.error(__FUNCTION__, "elliotWithHigherAll.analyze false");
-                
-                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
-                
-                return false;
-            }
-            
-            WaveUtil::copyWaveList(elliotWithHigherAll.waveList, this.waveList);
-            
-
-        }
-        
-        this.setCCompleted();
-        this.setFiboExpansionPriceInfo();
-        
-        this.setZigZagPointList();
-        LogUtil::printZigZagPointList(this.logger, __FUNCTION__, zigZagPointList);
-        
-        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
-        
-        return true;
+        bool isSucceeded = this.analyzeWaves(elliotHigher);
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, isSucceeded);
+        return isSucceeded;
     }
-    
+
+    /**
+     * 元分析のOHLCとOscillatorを保持し、指定方向で波動だけを再分析する。
+     *
+     * Oscillatorの実測方向は変更しない。波動内部の時系列参照は再取得されるため、
+     * 呼び出し側が分析前後の市場データの変化を確認する。
+     *
+     * @param fromOriginal 元の時間足分析。自身と同じインスタンスは指定しない。
+     * @param fromHigher 補正用分析の直上位足。最上位足の場合はNULL。
+     * @param fromIsBuy 波動分析に使用する方向。
+     * @return 波動再分析に成功した場合true。
+     */
+    bool analyzeFromSnapshot(
+        Elliot *fromOriginal,
+        Elliot *fromHigher,
+        const bool fromIsBuy
+    ) {
+        if (fromOriginal == NULL || fromOriginal == GetPointer(this)) {
+            return false;
+        }
+
+        this.setMarketContext(fromOriginal.marketContext);
+        LogUtil::printMethodStart(this.logger, __FUNCTION__);
+        this.currentOhlcBarTime = fromOriginal.currentOhlcBarTime;
+        this.previousOhlcBarTime = fromOriginal.previousOhlcBarTime;
+        this.currentOhlcInfo = fromOriginal.currentOhlcInfo;
+        this.previousOhlcInfo = fromOriginal.previousOhlcInfo;
+        this.oscillator.copySnapshotFrom(fromOriginal.oscillator);
+        this.isBuy = fromIsBuy;
+        this.buySellLabel = Constant::getBuySell(fromIsBuy);
+
+        bool isSucceeded = this.analyzeWaves(fromHigher);
+        if (isSucceeded && (this.getLatestWave() == NULL || this.getLatestPoint() == NULL)) {
+            this.logger.error(__FUNCTION__, "corrected wave result is incomplete.");
+            isSucceeded = false;
+        }
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, isSucceeded);
+        return isSucceeded;
+    }
+
     /**
      * 最新Waveの直近3基準点からフィボナッチエクスパンション価格情報を設定する。
      *
@@ -449,6 +464,51 @@ public:
     }
     
 private:
+    /**
+     * 設定済み方向と上位足から波動・FE・表示用ポイントを生成する。
+     *
+     * @param fromHigher 上位足分析結果。最上位足の場合はNULL。
+     * @return 波動分析に成功した場合true。
+     */
+    bool analyzeWaves(Elliot *fromHigher) {
+        LogUtil::printMethodStart(this.logger, __FUNCTION__);
+        if (fromHigher == NULL) { // 最上位足
+            ElliotHighest elliotHighest(this.marketContext, this.isBuy, this.buySellLabel);
+
+            if (!elliotHighest.analyze()) {
+                this.logger.error(__FUNCTION__, "elliotHighest.analyze false");
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
+
+            WaveUtil::copyWaveList(elliotHighest.waveList, this.waveList);  // Listのコピー
+
+        } else {
+            ElliotWithHigherAll elliotWithHigherAll(this.marketContext, this.isBuy, this.buySellLabel);
+
+            if (!elliotWithHigherAll.analyze(fromHigher)) {
+                this.logger.error(__FUNCTION__, "elliotWithHigherAll.analyze false");
+
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
+
+            WaveUtil::copyWaveList(elliotWithHigherAll.waveList, this.waveList);
+        }
+
+        this.setCCompleted();
+        this.setFiboExpansionPriceInfo();
+
+        this.setZigZagPointList();
+        LogUtil::printZigZagPointList(this.logger, __FUNCTION__, zigZagPointList);
+
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
+    }
+
     /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 

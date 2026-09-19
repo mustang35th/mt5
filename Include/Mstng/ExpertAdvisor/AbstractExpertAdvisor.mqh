@@ -148,11 +148,30 @@ public:
     void analyze(ElliotAll *fromElliotAll, SignalCount *fromSignalCount, int entryCount = 1) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
+        this.resetAnalysisReferences();
+        this.elliottWaveInfoList.Clear();
         this.resetStrategySpecificAnalysisOutcome();
         this.resetAnalysisOutcome(entryCount);
         this.analysisSignalCount = fromSignalCount;
-        
-        if (!this.setElliotAll(fromElliotAll)) {
+        this.sourceElliotAll = fromElliotAll;
+
+        if (fromElliotAll == NULL || !fromElliotAll.isAnalysisSucceeded
+                || fromElliotAll.elliotCurrent == NULL || fromSignalCount == NULL) {
+            return;
+        }
+        ZigZagPoint *sourceSignalPoint = fromElliotAll.elliotCurrent.getLatestPoint2();
+        if (sourceSignalPoint == NULL) {
+            return;
+        }
+        datetime sourceSignalTime = sourceSignalPoint.barTime;
+        bool sourceIsBuy = fromElliotAll.elliotCurrent.isBuy;
+
+        ElliotAll *judgmentElliotAll = this.selectJudgmentElliotAll(fromElliotAll);
+        if (judgmentElliotAll == NULL) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+            return;
+        }
+        if (!this.setElliotAll(judgmentElliotAll)) {
             this.logger.error(__FUNCTION__, StringFormat("%s setElliotAll returned false", this.name));
             
             return;
@@ -165,12 +184,12 @@ public:
         if (this.isJudgeMatched) {
             this.isAlert = true;
             
-            int count = fromSignalCount.addCount(this.pointElliotCurrent_2.barTime, this.isBuy);
+            int count = fromSignalCount.addCount(sourceSignalTime, sourceIsBuy);
             this.signalCountResult = count;
             
             if (count == entryCount) {
                 this.isEntryEvaluated = true;
-                this.elliotAll.mailTitile = StringFormat("【%s】", this.name);
+                this.sourceElliotAll.mailTitile = StringFormat("【%s】", this.name);
                 
                 this.setEntry();
             } else {
@@ -201,6 +220,7 @@ public:
      */
     bool isExit(ElliotAll *fromElliotAll, bool isBuyPosition) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+        this.sourceElliotAll = fromElliotAll;
         
         if (!this.setElliotAll(fromElliotAll)) {
             this.logger.error(__FUNCTION__, StringFormat("%s setElliotAll returned false", this.name));
@@ -269,8 +289,11 @@ protected:
     /** 派生EA固有のsetEntry()を実行した場合true。 */
     bool isEntryEvaluated;
 
-    /** 全時間足のElliott分析結果への非所有参照。 */
+    /** 判定用に採用した全時間足のElliott分析結果への非所有参照。 */
     ElliotAll *elliotAll;
+
+    /** 回数管理・比較表示・既存履歴に使用する元の分析結果への非所有参照。 */
+    ElliotAll *sourceElliotAll;
     
     //Elliot *elliotMN1;
     //Elliot *elliotW1;
@@ -332,6 +355,45 @@ protected:
      * 派生EAが保持する1回の分析固有結果を初期化する。
      */
     virtual void resetStrategySpecificAnalysisOutcome() {
+    }
+
+    /**
+     * チャート描画専用のアラート文字列を取得する。
+     *
+     * @return 画面へ表示する文字列。既定では既存のアラート文字列。
+     */
+    virtual string getChartAlertText() {
+        return this.alertText;
+    }
+
+    /**
+     * 元分析の送信設定を使用してアラートメールを生成する。
+     */
+    virtual void sendAlertMail() {
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        Mail::sendMail(sourceAnalysis, this.isSendMail);
+    }
+
+    /**
+     * 判定開始前に、全条件で参照する分析結果を選択する。
+     *
+     * @param fromOriginal 呼び出し元の分析結果。
+     * @return 判定に採用する分析への非所有参照。採用不能の場合NULL。
+     */
+    virtual ElliotAll *selectJudgmentElliotAll(ElliotAll *fromOriginal) {
+        return fromOriginal;
+    }
+
+    /**
+     * 回数管理・比較表示・既存履歴に使用する元の分析を取得する。
+     *
+     * @return 元の分析への非所有参照。未設定時は通常の判定用分析。
+     */
+    ElliotAll *getSourceElliotAll() {
+        if (this.sourceElliotAll != NULL) {
+            return this.sourceElliotAll;
+        }
+        return this.elliotAll;
     }
 
     /**
@@ -570,6 +632,16 @@ private:
      * Elliott分析結果への非所有参照と判定状態を初期化する。
      */
     void resetAnalysisReferences() {
+        this.clearJudgmentAnalysisReferences();
+        this.sourceElliotAll = NULL;
+        this.analysisSignalCount = NULL;
+        this.resetAnalysisOutcome(1);
+    }
+
+    /**
+     * 採用した分析への非所有参照をまとめて解除する。
+     */
+    void clearJudgmentAnalysisReferences() {
         this.elliotAll = NULL;
         this.elliotD1 = NULL;
         this.elliotH4 = NULL;
@@ -582,8 +654,6 @@ private:
         this.elliotCurrent = NULL;
         this.pointElliotCurrent_2 = NULL;
         this.pointElliotCurrent_1 = NULL;
-        this.analysisSignalCount = NULL;
-        this.resetAnalysisOutcome(1);
     }
 
     /**
@@ -633,13 +703,16 @@ private:
             this.expertAdvisorEma200 = NULL;
         }
         
-        this.elliotAll = fromElliotAll;
-        
-        if (!this.elliotAll.isAnalysisSucceeded) {
-            this.logger.error(__FUNCTION__, "elliotAll.isAnalysisSucceeded is false");
-            
+        this.clearJudgmentAnalysisReferences();
+        if (fromElliotAll == NULL || !fromElliotAll.isAnalysisSucceeded
+                || fromElliotAll.elliotCurrent == NULL
+                || fromElliotAll.elliotCurrent.getLatestWave() == NULL
+                || fromElliotAll.elliotCurrent.getLatestPoint2() == NULL
+                || fromElliotAll.elliotCurrent.getLatestPoint() == NULL) {
+            this.logger.error(__FUNCTION__, "judgment analysis is unavailable or incomplete");
             return false;
         }
+        this.elliotAll = fromElliotAll;
         
         //this.elliotMN1 = this.elliotAll.elliotMN1;
         //this.elliotW1 = this.elliotAll.elliotW1;
@@ -722,14 +795,15 @@ private:
                 double drawPrice = iOpen(this.marketContext.symbolName, this.marketContext.timeFrame, 0) /*+ common.getOffset(isBuy, offset)*/;
     
                 DrawUtil::setTextFixed("Text" + this.name  + IntegerToString((int)drawDatetime), "MS Gothic", fontColor, 
-                        this.fontSize, this.alertText, drawDatetime, drawPrice);
+                        this.fontSize, this.getChartAlertText(), drawDatetime, drawPrice);
                 
             } else {
                 DrawUtil::setArrow("Arrow" + this.name, fontColor, arrowCd, this.fontSize, 0, offset);
             }
             
-            if (this.elliotAll.isSendMail) {
-                Mail::sendMail(this.elliotAll, this.isSendMail);
+            ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+            if (sourceAnalysis.isSendMail) {
+                this.sendAlertMail();
             } else {
                 string text = "Alert";
                 
@@ -737,7 +811,7 @@ private:
                     text = "Entry";
                 }
                 
-                Print(StringFormat(",%s,%s", text, elliotAll.getCsv()));
+                Print(StringFormat(",%s,%s", text, sourceAnalysis.getCsv()));
             }
             
         }
@@ -753,7 +827,8 @@ private:
         
         this.elliottWaveInfoList.Clear();
         
-        CArrayObj *elliotList = &(this.elliotAll.elliotList);
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        CArrayObj *elliotList = &(sourceAnalysis.elliotList);
         
         for (int i = 0; i < elliotList.Total(); i++) {
             Elliot *elliot = elliotList.At(i);
@@ -765,6 +840,9 @@ private:
             }
         
             ZigZagPoint *zigZagPoint = latestWave.getLatestPoint();
+            if (zigZagPoint == NULL) {
+                return;
+            }
             
             //ElliottWaveInfo *elliottWaveInfo = new ElliottWaveInfo(elliot.marketContext.timeFrameLabel, elliot.buySellLabel, 
             //    StringUtil::addSign(elliot.oscillator.oscillatorCount), StringUtil::addSign(elliot.oscillator.gmmaCrossCount), zigZagPoint.getTextIndexInfo());
@@ -791,13 +869,14 @@ private:
     void setCsvText() {
         LogUtil::printMethodStart(logger, __FUNCTION__);
         
-        this.csvText = this.elliotAll.getCsv(true);
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        this.csvText = sourceAnalysis.getCsv(true);
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
 
     /**
-     * Elliott分析結果からロスカット価格を設定する。
+     * 判定に採用したElliott分析結果から新規エントリー用ロスカット価格を設定する。
      */
     void setStopLoss() {
         LogUtil::printMethodStart(logger, __FUNCTION__);

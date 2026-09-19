@@ -156,7 +156,40 @@ public:
 
         return result;
     }
-        
+
+    /**
+     * 直近のエントリー判定に採用した分析結果を取得する。
+     *
+     * 戻り値は変更・解放せず、次回分析・市場変更・本インスタンス破棄より前に
+     * 必要な値をスナップショットへコピーする。
+     *
+     * @return 採用した分析への非所有参照。未採用の場合はNULL。
+     */
+    ElliotAll *getJudgmentElliotAll() {
+        return this.elliotAll;
+    }
+
+    /**
+     * 直近の判定で分析方向を補正した時間足を取得する。
+     *
+     * @return 補正なしを表すPERIOD_CURRENT。補正戦略で上書きする。
+     */
+    virtual ENUM_TIMEFRAMES getCorrectionTimeFrame() {
+        return PERIOD_CURRENT;
+    }
+
+    /**
+     * 直近の判定に採用した分析からアラート文言を取得する。
+     *
+     * @return チャートと同じ文言。分析未採用の場合は空文字列。
+     */
+    string getJudgmentAlertText() {
+        if (this.elliotAll == NULL) {
+            return "";
+        }
+        return this.getChartAlertText();
+    }
+
 protected:
     /** H1エントリーのEMA200確認モード。 */
     H1Ema200ConfirmationMode h1Ema200ConfirmationMode;
@@ -245,7 +278,8 @@ protected:
         this.resetEntryValidation();
         this.alertText = this.buildAlertText();
         
-        this.elliotAll.mailTitile = StringFormat("【%s】", this.alertText);
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        sourceAnalysis.mailTitile = StringFormat("【%s】", this.alertText);
 
         //this.elliotAll.mailTitile += this.marketContext.timeFrameLabel;
         
@@ -253,9 +287,15 @@ protected:
             this.elliotAll.mailTitile = "*" + this.elliotAll.mailTitile;
         }*/
         
-        ZigZagPoint *latestPoint = this.elliotCurrent.getLatestPoint();
+        Elliot *entryWaveElliot = this.elliotCurrent;
+        if (entryWaveElliot == NULL || entryWaveElliot.getLatestPoint() == NULL) {
+            this.entryResult = "ELLIOT_LABEL_REJECTED";
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+            return;
+        }
+        ZigZagPoint *latestPoint = entryWaveElliot.getLatestPoint();
         this.currentElliotLabel = latestPoint.elliotLabel;
-        this.isEntryWaveResult = this.isEntryWave(this.elliotCurrent);
+        this.isEntryWaveResult = this.isEntryWave(entryWaveElliot);
         string timeFrameRejectReason = "";
         bool isTimeFrameEntryAllowed =
             this.isTimeFrameEntryConditionMatched(timeFrameRejectReason);
@@ -448,38 +488,59 @@ protected:
     }
 
     /**
-     * 上位1足と現在足の波動情報からアラート表示文字列を生成する。
+     * 元分析の上位1足と現在足の波動情報からアラート表示文字列を生成する。
      *
      * @return アラート表示文字列。
      */
     string getTwoTimeFrameAlertText() {
-        string text = "";
-        Wave *latestWaveHigher1 = this.elliotHigher1.getLatestWave();
-
-        text += latestWaveHigher1.trendLabel;
-        text += this.elliotHigher1.getLatestPointElliotLabel();
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        Elliot *sourceCurrent = sourceAnalysis.elliotCurrent;
+        Elliot *sourceHigher = sourceAnalysis.getElliot(this.marketContext.timeFrame, 1);
+        if (sourceCurrent == NULL || sourceHigher == NULL
+                || sourceHigher.getLatestWave() == NULL) {
+            return "";
+        }
+        Wave *latestWaveHigher = sourceHigher.getLatestWave();
+        string text = latestWaveHigher.trendLabel;
+        text += sourceHigher.getLatestPointElliotLabel();
         text += "-";
-        text += this.elliotCurrent.getLatestPointElliotLabel();
-
+        text += sourceCurrent.getLatestPointElliotLabel();
         return text;
     }
 
     /**
-     * 上位2足と現在足の波動情報からアラート表示文字列を生成する。
+     * 元分析の上位2足と現在足の波動情報からアラート表示文字列を生成する。
      *
      * @return アラート表示文字列。
      */
     string getThreeTimeFrameAlertText() {
-        string text = "";
-        Wave *latestWaveHigher2 = this.elliotHigher2.getLatestWave();
+        return this.getThreeTimeFrameAlertText(this.getSourceElliotAll());
+    }
 
-        text += latestWaveHigher2.trendLabel;
-        text += this.elliotHigher2.getLatestPointElliotLabel();
+    /**
+     * 指定した分析の上位2足と現在足からアラート表示文字列を生成する。
+     *
+     * @param fromAnalysis 表示に使用する分析結果。
+     * @return 上位2足の波動方向と3足の波動ラベル。分析が不足する場合は空文字列。
+     */
+    string getThreeTimeFrameAlertText(ElliotAll *fromAnalysis) {
+        if (fromAnalysis == NULL) {
+            return "";
+        }
+        Elliot *analysisCurrent = fromAnalysis.elliotCurrent;
+        Elliot *analysisHigher1 = fromAnalysis.getElliot(this.marketContext.timeFrame, 1);
+        Elliot *analysisHigher2 = fromAnalysis.getElliot(this.marketContext.timeFrame, 2);
+        if (analysisCurrent == NULL || analysisHigher1 == NULL || analysisHigher2 == NULL
+                || analysisHigher2.getLatestWave() == NULL) {
+            return "";
+        }
+        Wave *latestWaveHigher2 = analysisHigher2.getLatestWave();
+        string text = latestWaveHigher2.trendLabel;
+        text += analysisHigher2.getLatestPointElliotLabel();
         text += "-";
-        text += this.elliotHigher1.getLatestPointElliotLabel();
+        text += analysisHigher1.getLatestPointElliotLabel();
         text += "-";
-        text += this.elliotCurrent.getLatestPointElliotLabel();
-
+        text += analysisCurrent.getLatestPointElliotLabel();
         return text;
     }
     
@@ -616,7 +677,8 @@ private:
      * @return M5以外、またはH1表示波を新規登録できた場合true。
      */
     bool tryRegisterH1DisplayWaveEntry() {
-        if (!this.elliotAll.isH1DisplayWaveEntryLimitEnabled) {
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        if (!sourceAnalysis.isH1DisplayWaveEntryLimitEnabled) {
             return true;
         }
 
@@ -631,16 +693,17 @@ private:
             return false;
         }
 
-        if (this.elliotHigher2 == NULL) {
+        Elliot *sourceH1 = sourceAnalysis.getElliot(PERIOD_H1);
+        if (sourceH1 == NULL) {
             this.entryResult = "H1_DISPLAY_WAVE_INVALID";
             this.logger.error(__FUNCTION__, "elliotHigher2 is NULL");
 
             return false;
         }
 
-        Wave *latestWaveHigher2 = this.elliotHigher2.getLatestWave();
-        ZigZagPoint *latestPointHigher2 = this.elliotHigher2.getLatestPoint();
-        ZigZagPoint *waveStartPointHigher2 = this.elliotHigher2.getLatestPoint2();
+        Wave *latestWaveHigher2 = sourceH1.getLatestWave();
+        ZigZagPoint *latestPointHigher2 = sourceH1.getLatestPoint();
+        ZigZagPoint *waveStartPointHigher2 = sourceH1.getLatestPoint2();
 
         if (latestWaveHigher2 == NULL
                 || latestPointHigher2 == NULL
@@ -744,14 +807,15 @@ private:
      * @return M5第3波・C波以外、またはFEが許容上限以下の場合true。
      */
     bool isM5Elliot3OrCFibonacciExpansionWithin() {
-        if (this.elliotCurrent == NULL) {
+        Elliot *entryWaveElliot = this.elliotCurrent;
+        if (entryWaveElliot == NULL) {
             return false;
         }
-        if (this.elliotCurrent.marketContext.timeFrame != PERIOD_M5) {
+        if (entryWaveElliot.marketContext.timeFrame != PERIOD_M5) {
             return true;
         }
 
-        ZigZagPoint *latestPoint = this.elliotCurrent.getLatestPoint();
+        ZigZagPoint *latestPoint = entryWaveElliot.getLatestPoint();
 
         if (latestPoint == NULL) {
             return false;

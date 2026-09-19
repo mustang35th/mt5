@@ -23,32 +23,73 @@ public:
      * @param isSendMail 送信する場合true。
      */
     static void sendMail(ElliotAll *fromElliotAll, bool isSendMail = false) {
-        string title = getTitle(fromElliotAll);
-        string body = getBody(fromElliotAll);
-        
-        /*if (fromElliotAll.isTimer && fromElliotAll.marketContext.timeFrame == PERIOD_M1) {
-            Print(__FUNCTION__, " title = ", title);
-        } else {*/
-            Print(__FUNCTION__, " isSendMail = ", isSendMail);
-            Print(__FUNCTION__, " title = ", title);
-            Print(__FUNCTION__, " body = ", body);
-        //}
+        sendMail(fromElliotAll, isSendMail, NULL, PERIOD_CURRENT, "");
+    }
 
-        if (fromElliotAll.isMailValidationFileEnabled) {
+    /**
+     * 元分析の送信設定を使用し、必要な場合は補正前後の比較メールを送信する。
+     *
+     * 分析結果の所有権やメール設定は変更しない。検証ファイルにも同じ件名・本文を保存する。
+     * 補正情報が不整合な場合は、元分析への代替送信を行わない。
+     *
+     * @param fromSource 送信設定と共通情報を保持する元分析。
+     * @param fromIsSendMail 送信する場合true。
+     * @param fromJudgment 採用した補正分析。補正なしの場合はNULL。
+     * @param fromCorrectionTimeFrame 補正したH4またはH1。補正なしはPERIOD_CURRENT。
+     * @param fromAlertText 補正印を含むチャートと同じアラート文言。補正なしは空文字列。
+     */
+    static void sendMail(
+        ElliotAll *fromSource,
+        bool fromIsSendMail,
+        ElliotAll *fromJudgment,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame,
+        const string fromAlertText
+    ) {
+        if (fromSource == NULL || fromSource.elliotCurrent == NULL) {
+            Print(__FUNCTION__, " mail skipped: source analysis is unavailable.");
+            return;
+        }
+
+        bool hasCorrection = fromJudgment != NULL
+            || fromCorrectionTimeFrame != PERIOD_CURRENT || fromAlertText != "";
+        string title;
+        string body;
+        if (hasCorrection) {
+            if (!isCorrectionMailValid(
+                    fromSource, fromJudgment, fromCorrectionTimeFrame, fromAlertText)) {
+                Print(__FUNCTION__, " corrected mail skipped: correction analysis is invalid.");
+                return;
+            }
+            title = StringFormat("%s:%s:【%s】",
+                fromSource.marketContext.symbolName,
+                fromJudgment.elliotCurrent.buySellLabel,
+                fromAlertText
+            );
+            body = getCorrectionBody(fromSource, fromJudgment, fromCorrectionTimeFrame);
+        } else {
+            title = getTitle(fromSource);
+            body = getBody(fromSource);
+        }
+
+        Print(__FUNCTION__, " isSendMail = ", fromIsSendMail);
+        Print(__FUNCTION__, " title = ", title);
+        Print(__FUNCTION__, " body = ", body);
+
+        if (fromSource.isMailValidationFileEnabled) {
             MailValidationFileWriter::write(
-                fromElliotAll.tradeTimeInfo.jstTime,
-                fromElliotAll.tradeTimeInfo.serverTime,
-                fromElliotAll.marketContext.symbolName,
-                fromElliotAll.marketContext.timeFrame,
-                fromElliotAll.isTimer,
-                isSendMail,
+                fromSource.tradeTimeInfo.jstTime,
+                fromSource.tradeTimeInfo.serverTime,
+                fromSource.marketContext.symbolName,
+                fromSource.marketContext.timeFrame,
+                fromSource.isTimer,
+                fromIsSendMail,
                 title,
                 body
             );
         }
-        
-        if (isSendMail) {
-            if (fromElliotAll.isTimer) {
+
+        if (fromIsSendMail) {
+            if (fromSource.isTimer) {
                 SendMail(title, body);
             }
         }
@@ -76,39 +117,168 @@ private:
      * @return メール本文文字列。
      */
     static string getBody(ElliotAll *fromElliotAll) {
+        return getCommonBody(fromElliotAll) + getAnalysisBody(fromElliotAll);
+    }
+
+    /**
+     * 日時・レート・スプレッド・通貨強弱の共通部分を生成する。
+     *
+     * @param fromElliotAll 共通情報を保持する元分析。
+     * @return メール本文の共通部分。
+     */
+    static string getCommonBody(ElliotAll *fromElliotAll) {
         string text = "";
-        
+
         text += StringFormat("%s\n", TimeUtil::formatYyyymmddhhmiss(fromElliotAll.tradeTimeInfo.jstTime));
-        
+
         // レート。
         TodayRate todayRate = fromElliotAll.todayRate;
-        
+
         text += StringFormat("Bid:%s Ask:%s spread:%spips\n", todayRate.bidLabel, todayRate.askLabel, todayRate.spreadLabel);
         text += StringFormat("H:%s L:%s\n", todayRate.highLabel, todayRate.lowLabel);
         text += StringFormat("D:%spips", todayRate.diffLabel);
-        
+
         if (todayRate.diffJpy > 0) {
             text += StringFormat(" D Jpy:%spips", todayRate.diffJpyLabel);
         }
-        
+
         text += "\n\n";
-        
+
         text += StringFormat("GMT:%s\n\n", TimeUtil::formatYyyymmddhhmiss(fromElliotAll.tradeTimeInfo.serverTime));
 
         // 通貨強弱。
         text += getCurrencyStrengthText(fromElliotAll);
-        
+
+        return text;
+    }
+
+    /**
+     * 1つの分析結果から損切り候補と全時間足のElliott本文を生成する。
+     *
+     * @param fromElliotAll 表示する分析結果。
+     * @return 損切り候補とElliott本文。
+     */
+    static string getAnalysisBody(ElliotAll *fromElliotAll) {
+        string text = "";
         // ロスカット。
         text += StringFormat("%s\n", fromElliotAll.lossCut.getText());
-        
+
         // 市場分析。
         //text += StringFormat("%s\n\n", fromElliotAll.marketActivityAnalyzer.toString());
-        
+
         // エリオット。
         text += "エリオット\n";
         text += StringFormat("%s\n", fromElliotAll.getText());
-        
+
         return text;
+    }
+
+    /**
+     * 共通情報を1回だけ表示し、補正後全体と補正前全体を順に生成する。
+     *
+     * @param fromSource 補正前の元分析。
+     * @param fromJudgment 判定と損切りに採用した補正分析。
+     * @param fromCorrectionTimeFrame 方向を補正した時間足。
+     * @return 補正内容と前後比較を含むメール本文。
+     */
+    static string getCorrectionBody(
+        ElliotAll *fromSource,
+        ElliotAll *fromJudgment,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame
+    ) {
+        Elliot *sourceCorrection = fromSource.getElliot(fromCorrectionTimeFrame);
+        Elliot *judgmentCorrection = fromJudgment.getElliot(fromCorrectionTimeFrame);
+        string text = getCommonBody(fromSource);
+        text += "補正内容\n";
+        text += StringFormat("%s：%s → %s\n\n",
+            TimeUtil::convertTimeFrameToString(fromCorrectionTimeFrame),
+            sourceCorrection.buySellLabel,
+            judgmentCorrection.buySellLabel
+        );
+        text += "【補正後全体：判定・損切りに採用】\n";
+        text += getAnalysisBody(fromJudgment);
+        text += "\n【補正前全体：比較用】\n";
+        text += getAnalysisBody(fromSource);
+        return text;
+    }
+
+    /**
+     * 比較メールの元分析と補正分析が同じ対象・方向補正に対応するか確認する。
+     *
+     * @param fromSource 補正前の元分析。
+     * @param fromJudgment 採用した補正分析。
+     * @param fromCorrectionTimeFrame 方向を補正したH4またはH1。
+     * @param fromAlertText チャートと同じ件名用文言。
+     * @return 完全なM5分析で、指定した片足だけ方向を補正した場合true。
+     */
+    static bool isCorrectionMailValid(
+        ElliotAll *fromSource,
+        ElliotAll *fromJudgment,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame,
+        const string fromAlertText
+    ) {
+        if (fromSource == NULL || fromJudgment == NULL || fromSource == fromJudgment
+                || !fromSource.isAnalysisSucceeded || !fromJudgment.isAnalysisSucceeded
+                || fromSource.marketContext.timeFrame != PERIOD_M5
+                || fromJudgment.marketContext.timeFrame != PERIOD_M5
+                || fromSource.marketContext.symbolName == ""
+                || fromSource.marketContext.symbolName != fromJudgment.marketContext.symbolName
+                || fromSource.tradeTimeInfo.serverTime != fromJudgment.tradeTimeInfo.serverTime
+                || fromSource.tradeTimeInfo.jstTime != fromJudgment.tradeTimeInfo.jstTime
+                || fromAlertText == ""
+                || (fromCorrectionTimeFrame != PERIOD_H4
+                    && fromCorrectionTimeFrame != PERIOD_H1)) {
+            return false;
+        }
+
+        Elliot *sourceCurrent = fromSource.getElliot(PERIOD_M5);
+        Elliot *judgmentCurrent = fromJudgment.getElliot(PERIOD_M5);
+        if (sourceCurrent == NULL || judgmentCurrent == NULL
+                || sourceCurrent != fromSource.elliotCurrent
+                || judgmentCurrent != fromJudgment.elliotCurrent
+                || sourceCurrent.isBuy != judgmentCurrent.isBuy) {
+            return false;
+        }
+
+        ENUM_TIMEFRAMES timeFrames[] = {
+            PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4,
+            PERIOD_H1, PERIOD_M15, PERIOD_M5
+        };
+        if (fromSource.elliotList.Total() != ArraySize(timeFrames)
+                || fromJudgment.elliotList.Total() != ArraySize(timeFrames)) {
+            return false;
+        }
+        for (int i = 0; i < ArraySize(timeFrames); i++) {
+            Elliot *sourceElliot = fromSource.getElliot(timeFrames[i]);
+            Elliot *judgmentElliot = fromJudgment.getElliot(timeFrames[i]);
+            if (sourceElliot == NULL || judgmentElliot == NULL
+                    || sourceElliot.marketContext.symbolName != fromSource.marketContext.symbolName
+                    || judgmentElliot.marketContext.symbolName != fromSource.marketContext.symbolName
+                    || sourceElliot.marketContext.timeFrame != timeFrames[i]
+                    || judgmentElliot.marketContext.timeFrame != timeFrames[i]
+                    || sourceElliot.getLatestWave() == NULL || sourceElliot.getLatestPoint() == NULL
+                    || judgmentElliot.getLatestWave() == NULL || judgmentElliot.getLatestPoint() == NULL
+                    || sourceElliot.buySellLabel != Constant::getBuySell(sourceElliot.isBuy)
+                    || judgmentElliot.buySellLabel != Constant::getBuySell(judgmentElliot.isBuy)) {
+                return false;
+            }
+
+            if (timeFrames[i] == fromCorrectionTimeFrame) {
+                if (sourceElliot.isBuy == sourceCurrent.isBuy
+                        || judgmentElliot.isBuy != sourceCurrent.isBuy) {
+                    return false;
+                }
+            } else if (sourceElliot.isBuy != judgmentElliot.isBuy) {
+                return false;
+            }
+
+            if ((timeFrames[i] == PERIOD_H4 || timeFrames[i] == PERIOD_H1)
+                    && timeFrames[i] != fromCorrectionTimeFrame
+                    && sourceElliot.isBuy != sourceCurrent.isBuy) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

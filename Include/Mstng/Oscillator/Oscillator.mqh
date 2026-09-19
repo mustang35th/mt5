@@ -126,6 +126,32 @@ public:
     }
 
     /**
+     * インジケーターハンドルを共有せず、分析済みの値だけを複製する。
+     *
+     * @param fromOriginal 複製する分析済みOscillator状態。
+     */
+    void copySnapshotFrom(Oscillator &fromOriginal) {
+        if (GetPointer(fromOriginal) == GetPointer(this)) {
+            return;
+        }
+
+        this.initializeMarketContext(fromOriginal.marketContext);
+        this.stochasticShort = fromOriginal.stochasticShort;
+        this.stochasticMiddle = fromOriginal.stochasticMiddle;
+        this.stochasticLong = fromOriginal.stochasticLong;
+        this.gmmaTrendCount = fromOriginal.gmmaTrendCount;
+        this.gmmaCrossCount = fromOriginal.gmmaCrossCount;
+        this.ema30 = fromOriginal.ema30;
+        this.ema60 = fromOriginal.ema60;
+        this.ema30Ema60DiffPips = fromOriginal.ema30Ema60DiffPips;
+        this.ema200.copySnapshotFrom(fromOriginal.ema200);
+        this.atr14 = fromOriginal.atr14;
+        this.oscillatorCount = fromOriginal.oscillatorCount;
+        this.isBuy = fromOriginal.isBuy;
+        this.stochasticMainOrder = fromOriginal.stochasticMainOrder;
+    }
+
+    /**
      * ストキャス/GMMAを用いて売買方向フラグとoscillatorCountを設定する。
      */
     void setBuySell() {

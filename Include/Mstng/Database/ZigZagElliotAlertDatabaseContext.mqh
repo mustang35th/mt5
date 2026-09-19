@@ -9,6 +9,7 @@
 #ifndef MSTNG_DATABASE_ZIGZAG_ELLIOT_ALERT_DATABASE_CONTEXT_MQH
 #define MSTNG_DATABASE_ZIGZAG_ELLIOT_ALERT_DATABASE_CONTEXT_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotAlertCorrectionDao.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotAlertDao.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotAlertPointDao.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotAlertRunDao.mqh>
@@ -31,21 +32,27 @@ public:
      * @param fromFileName データベースファイル名
      * @param fromUseCommonFolder 共通フォルダを使用する場合true
      * @param fromObservationEnabled Elliott観測テーブルを準備する場合true
+     * @param fromCorrectionEnabled アラート補正比較テーブルを準備する場合true
      */
     ZigZagElliotAlertDatabaseContext(
         const string fromFileName,
         const bool fromUseCommonFolder,
-        const bool fromObservationEnabled = false
+        const bool fromObservationEnabled = false,
+        const bool fromCorrectionEnabled = false
     ) {
         this.fileName = fromFileName;
         this.useCommonFolder = fromUseCommonFolder;
         this.observationEnabled = fromObservationEnabled;
+        this.correctionEnabled = fromCorrectionEnabled;
         this.logger.setLevel(LOG_INFO);
         this.database = NULL;
         this.alertDao = NULL;
         this.pointDao = NULL;
         this.runDao = NULL;
         this.timeFrameDao = NULL;
+        this.correctionDao = NULL;
+        this.correctedTimeFrameDao = NULL;
+        this.correctedPointDao = NULL;
         this.observationDao = NULL;
         this.observationTimeFrameDao = NULL;
         this.persistenceService = NULL;
@@ -93,11 +100,19 @@ public:
         this.pointDao = new ZigZagElliotAlertPointDao(databaseHandle);
         this.runDao = new ZigZagElliotAlertRunDao(databaseHandle);
         this.timeFrameDao = new ZigZagElliotAlertTimeFrameDao(databaseHandle);
+        if (this.correctionEnabled) {
+            this.correctionDao = new ZigZagElliotAlertCorrectionDao(databaseHandle);
+            this.correctedTimeFrameDao = new ZigZagElliotAlertTimeFrameDao(databaseHandle, true);
+            this.correctedPointDao = new ZigZagElliotAlertPointDao(databaseHandle, true);
+        }
 
         if (this.alertDao == NULL
                 || this.pointDao == NULL
                 || this.runDao == NULL
-                || this.timeFrameDao == NULL) {
+                || this.timeFrameDao == NULL
+                || (this.correctionEnabled && (this.correctionDao == NULL
+                    || this.correctedTimeFrameDao == NULL
+                    || this.correctedPointDao == NULL))) {
             this.close();
 
             return false;
@@ -109,7 +124,10 @@ public:
                 this.alertDao,
                 this.pointDao,
                 this.runDao,
-                this.timeFrameDao
+                this.timeFrameDao,
+                this.correctionDao,
+                this.correctedTimeFrameDao,
+                this.correctedPointDao
             );
 
         if (this.persistenceService == NULL
@@ -135,6 +153,19 @@ public:
         if (this.persistenceService != NULL) {
             delete this.persistenceService;
             this.persistenceService = NULL;
+        }
+
+        if (this.correctedPointDao != NULL) {
+            delete this.correctedPointDao;
+            this.correctedPointDao = NULL;
+        }
+        if (this.correctedTimeFrameDao != NULL) {
+            delete this.correctedTimeFrameDao;
+            this.correctedTimeFrameDao = NULL;
+        }
+        if (this.correctionDao != NULL) {
+            delete this.correctionDao;
+            this.correctionDao = NULL;
         }
 
         if (this.timeFrameDao != NULL) {
@@ -200,6 +231,8 @@ private:
     bool useCommonFolder;
     /** Elliott観測テーブルを準備する場合true。 */
     bool observationEnabled;
+    /** アラート補正比較テーブルを準備する場合true。 */
+    bool correctionEnabled;
     /** データベース接続設定用ロガー。 */
     Logger logger;
     /** SQLite接続。 */
@@ -212,6 +245,12 @@ private:
     ZigZagElliotAlertRunDao *runDao;
     /** 時間足別分析DAO。 */
     ZigZagElliotAlertTimeFrameDao *timeFrameDao;
+    /** 補正比較情報DAO。 */
+    ZigZagElliotAlertCorrectionDao *correctionDao;
+    /** 補正後時間足DAO。 */
+    ZigZagElliotAlertTimeFrameDao *correctedTimeFrameDao;
+    /** 補正後ポイントDAO。 */
+    ZigZagElliotAlertPointDao *correctedPointDao;
     /** Elliott観測DAO。 */
     ZigZagElliotObservationDao *observationDao;
     /** Elliott時間足別観測DAO。 */

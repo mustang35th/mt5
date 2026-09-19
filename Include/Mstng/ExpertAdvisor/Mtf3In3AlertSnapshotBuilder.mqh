@@ -21,9 +21,98 @@
 class Mtf3In3AlertSnapshotBuilder {
 public:
     /**
+     * 補正のないアラートを生成する既存呼び出し用API。
+     *
+     * @return 本体・元分析・補正なし情報を生成できた場合true
+     */
+    static bool build(
+        ElliotAll *fromElliotAll,
+        Mtf3In3AlertResult &fromResult,
+        const string fromRunUid,
+        const string fromSource,
+        const ulong fromMagicNumber,
+        const string fromAlertText,
+        Mtf3In3AlertSnapshot &fromSnapshot
+    ) {
+        return build(
+            fromElliotAll, fromResult, fromRunUid, fromSource,
+            fromMagicNumber, fromAlertText, fromSnapshot,
+            fromElliotAll, PERIOD_CURRENT, fromAlertText
+        );
+    }
+
+    /**
+     * 同じ判定で使用した元分析・採用分析を保存用の値へ固定する。
+     *
+     * 分析を再実行せず、借用した分析ポインタをSnapshotに保持しない。
+     * 元分析のキーと子要素を維持し、補正後の基準点は別の分析基準点として保存する。
+     *
+     * @param fromElliotAll 元分析
+     * @param fromResult 採用分析によるアラート判定結果
+     * @param fromRunUid 実行UID
+     * @param fromSource 呼び出し元識別子
+     * @param fromMagicNumber マジックナンバー
+     * @param fromAlertText 既存の元分析表示文言
+     * @param fromSnapshot 値として固定する保存先
+     * @param fromJudgmentElliotAll 判定に採用した分析
+     * @param fromCorrectionTimeFrame 補正したH4/H1。補正なしはPERIOD_CURRENT
+     * @param fromJudgmentAlertText 画面と同じ採用分析表示文言
+     * @return 整合するスナップショットを生成できた場合true
+     */
+    static bool build(
+        ElliotAll *fromElliotAll,
+        Mtf3In3AlertResult &fromResult,
+        const string fromRunUid,
+        const string fromSource,
+        const ulong fromMagicNumber,
+        const string fromAlertText,
+        Mtf3In3AlertSnapshot &fromSnapshot,
+        ElliotAll *fromJudgmentElliotAll,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame,
+        const string fromJudgmentAlertText
+    ) {
+        fromSnapshot.clear();
+        if (!isJudgmentSnapshotValid(
+                fromElliotAll, fromJudgmentElliotAll, fromResult,
+                fromCorrectionTimeFrame, fromJudgmentAlertText
+            ) || !buildOriginal(
+                fromElliotAll, fromResult, fromRunUid, fromSource,
+                fromMagicNumber, fromAlertText, fromSnapshot
+            )) {
+            fromSnapshot.clear();
+            return false;
+        }
+
+        bool isCorrected = fromCorrectionTimeFrame != PERIOD_CURRENT;
+        if (isCorrected) {
+            Mtf3In3AlertSnapshot correctedSnapshot;
+            ZigZagPoint *correctedReferencePoint =
+                fromJudgmentElliotAll.elliotCurrent.getLatestPoint2();
+            if (correctedReferencePoint == NULL
+                    || !buildTimeFramesAndPoints(
+                        fromJudgmentElliotAll, correctedReferencePoint,
+                        fromSnapshot.alert.createdAt, correctedSnapshot
+                    ) || !isSignalReferenceValid(
+                        correctedReferencePoint, correctedSnapshot.points
+                    ) || !copyCorrectedAnalysis(correctedSnapshot, fromSnapshot)) {
+                fromSnapshot.clear();
+                return false;
+            }
+        }
+
+        buildCorrection(
+            fromElliotAll, fromJudgmentElliotAll, fromResult,
+            fromCorrectionTimeFrame, fromJudgmentAlertText, fromSnapshot
+        );
+        fromSnapshot.correction.comparisonHash = createComparisonHash(fromSnapshot);
+        return true;
+    }
+
+private:
+    /**
      * アラート本体、時間足別分析および最新Waveの全ポイントを生成する。
      *
-     * @param fromElliotAll 判定に使用した全時間足のElliott分析結果
+     * @param fromElliotAll 補正前の全時間足のElliott分析結果
      * @param fromResult MTF_3in3のアラート判定結果
      * @param fromRunUid プログラム実行を識別するUID
      * @param fromSource 呼び出し元識別子
@@ -32,7 +121,7 @@ public:
      * @param fromSnapshot 生成したスナップショットの格納先
      * @return 全項目を生成できた場合true
      */
-    static bool build(
+    static bool buildOriginal(
         ElliotAll *fromElliotAll,
         Mtf3In3AlertResult &fromResult,
         const string fromRunUid,
@@ -52,11 +141,8 @@ public:
             return false;
         }
 
-        datetime currentBarTime = iTime(
-            fromElliotAll.marketContext.symbolName,
-            fromElliotAll.marketContext.timeFrame,
-            0
-        );
+        // 保存時の相場を読み直さず、分析に使用したバー時刻を保持する。
+        datetime currentBarTime = fromElliotAll.elliotCurrent.currentOhlcBarTime;
 
         if (currentBarTime <= 0) {
             return false;
@@ -115,7 +201,171 @@ public:
         return true;
     }
 
-private:
+    /**
+     * 元分析と採用分析が同一判定のスナップショットであることを確認する。
+     *
+     * @return 補正なし、またはH4/H1の片足だけをM5方向へ補正した場合true
+     */
+    static bool isJudgmentSnapshotValid(
+        ElliotAll *fromOriginal,
+        ElliotAll *fromJudgment,
+        Mtf3In3AlertResult &fromResult,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame,
+        const string fromJudgmentAlertText
+    ) {
+        if (fromOriginal == NULL || fromJudgment == NULL
+                || !fromOriginal.isAnalysisSucceeded || !fromJudgment.isAnalysisSucceeded
+                || fromOriginal.elliotCurrent == NULL || fromJudgment.elliotCurrent == NULL
+                || !fromResult.isAlert || fromJudgmentAlertText == ""
+                || fromOriginal.elliotCurrent.isBuy != fromResult.isBuy
+                || fromJudgment.elliotCurrent.isBuy != fromResult.isBuy
+                || fromJudgment.elliotCurrent.getLatestPoint() == NULL
+                || fromJudgment.elliotCurrent.getLatestPoint().elliotLabel
+                    != fromResult.currentElliotLabel) {
+            return false;
+        }
+        if (fromCorrectionTimeFrame == PERIOD_CURRENT) {
+            return fromOriginal == fromJudgment;
+        }
+        if ((fromCorrectionTimeFrame != PERIOD_H4 && fromCorrectionTimeFrame != PERIOD_H1)
+                || fromOriginal == fromJudgment
+                || fromOriginal.marketContext.timeFrame != PERIOD_M5
+                || fromJudgment.marketContext.timeFrame != PERIOD_M5
+                || fromOriginal.marketContext.symbolName == ""
+                || fromOriginal.marketContext.symbolName != fromJudgment.marketContext.symbolName
+                || fromOriginal.tradeTimeInfo.serverTime != fromJudgment.tradeTimeInfo.serverTime
+                || fromOriginal.tradeTimeInfo.jstTime != fromJudgment.tradeTimeInfo.jstTime
+                || fromOriginal.todayRate.bid != fromJudgment.todayRate.bid
+                || fromOriginal.todayRate.ask != fromJudgment.todayRate.ask
+                || fromOriginal.getElliot(PERIOD_M5) != fromOriginal.elliotCurrent
+                || fromJudgment.getElliot(PERIOD_M5) != fromJudgment.elliotCurrent) {
+            return false;
+        }
+        ENUM_TIMEFRAMES timeFrames[] = {
+            PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4,
+            PERIOD_H1, PERIOD_M15, PERIOD_M5
+        };
+        if (fromOriginal.elliotList.Total() != ArraySize(timeFrames)
+                || fromJudgment.elliotList.Total() != ArraySize(timeFrames)) {
+            return false;
+        }
+        for (int i = 0; i < ArraySize(timeFrames); i++) {
+            Elliot *original = fromOriginal.getElliot(timeFrames[i]);
+            Elliot *judgment = fromJudgment.getElliot(timeFrames[i]);
+            if (original == NULL || judgment == NULL || original == judgment
+                    || original.marketContext.timeFrame != timeFrames[i]
+                    || judgment.marketContext.timeFrame != timeFrames[i]
+                    || original.marketContext.symbolName != fromOriginal.marketContext.symbolName
+                    || judgment.marketContext.symbolName != fromOriginal.marketContext.symbolName
+                    || original.currentOhlcBarTime <= 0
+                    || original.currentOhlcBarTime != judgment.currentOhlcBarTime
+                    || original.previousOhlcBarTime != judgment.previousOhlcBarTime
+                    || original.buySellLabel != getSide(original.isBuy)
+                    || judgment.buySellLabel != getSide(judgment.isBuy)
+                    || original.getLatestWave() == NULL || original.getLatestPoint() == NULL
+                    || judgment.getLatestWave() == NULL || judgment.getLatestPoint() == NULL) {
+                return false;
+            }
+            if (timeFrames[i] == fromCorrectionTimeFrame) {
+                if (original.isBuy == fromResult.isBuy || judgment.isBuy != fromResult.isBuy) {
+                    return false;
+                }
+            } else if (original.isBuy != judgment.isBuy) {
+                return false;
+            }
+            if ((timeFrames[i] == PERIOD_H4 || timeFrames[i] == PERIOD_H1)
+                    && timeFrames[i] != fromCorrectionTimeFrame
+                    && original.isBuy != fromResult.isBuy) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 補正後の配列を所有ポインタを残さず値としてコピーする。
+     *
+     * @return 全要素をコピーできた場合true
+     */
+    static bool copyCorrectedAnalysis(
+        Mtf3In3AlertSnapshot &fromCorrected,
+        Mtf3In3AlertSnapshot &fromSnapshot
+    ) {
+        int timeFrameCount = ArraySize(fromCorrected.timeFrames);
+        int pointCount = ArraySize(fromCorrected.points);
+        if (ArrayResize(fromSnapshot.correctedTimeFrames, timeFrameCount) != timeFrameCount
+                || ArrayResize(fromSnapshot.correctedPoints, pointCount) != pointCount) {
+            return false;
+        }
+        for (int i = 0; i < timeFrameCount; i++) {
+            fromSnapshot.correctedTimeFrames[i] = fromCorrected.timeFrames[i];
+        }
+        for (int i = 0; i < pointCount; i++) {
+            fromSnapshot.correctedPoints[i] = fromCorrected.points[i];
+        }
+        return true;
+    }
+
+    /**
+     * 補正内容と採用SL候補を、分析時の共通レートに基づいて保存する。
+     *
+     * 約定後にブローカー側で正規化された実SLではない。
+     */
+    static void buildCorrection(
+        ElliotAll *fromOriginal,
+        ElliotAll *fromJudgment,
+        Mtf3In3AlertResult &fromResult,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame,
+        const string fromJudgmentAlertText,
+        Mtf3In3AlertSnapshot &fromSnapshot
+    ) {
+        ZigZagElliotAlertCorrectionEntity correction;
+        ZeroMemory(correction);
+        correction.correctionStatus = "NONE";
+        correction.selectedAnalysis = "ORIGINAL";
+        correction.correctionTimeFrame = (int)fromCorrectionTimeFrame;
+        correction.selectedAlertText = normalizeText(fromJudgmentAlertText);
+        correction.selectedCurrentElliotLabel = normalizeText(fromResult.currentElliotLabel);
+        correction.selectedWaveSummaryText = fromSnapshot.alert.waveSummaryText;
+        correction.referencePrice = fromSnapshot.alert.referencePrice;
+        correction.selectedStopLoss = fromJudgment.lossCut.lc5;
+        correction.isSelectedStopLossAvailable = boolToInteger(
+            correction.referencePrice > 0.0 && correction.selectedStopLoss > 0.0
+        );
+        if (correction.isSelectedStopLossAvailable == 1) {
+            correction.selectedRiskPips = RateUtil::getDiffPips(
+                correction.referencePrice, correction.selectedStopLoss,
+                fromOriginal.marketContext
+            );
+        }
+        correction.originalLc0 = fromOriginal.lossCut.lc0;
+        correction.originalLc5 = fromOriginal.lossCut.lc5;
+        correction.originalLc10 = fromOriginal.lossCut.lc10;
+        correction.originalLc15 = fromOriginal.lossCut.lc15;
+        correction.originalLossCutDiffPips = fromOriginal.lossCut.diff;
+        correction.originalLossCutDiffJpy = fromOriginal.lossCut.diffJpy;
+        correction.originalAnalysisText = normalizeText(fromOriginal.getText());
+        correction.createdAt = fromSnapshot.alert.createdAt;
+        correction.createdAtText = fromSnapshot.alert.createdAtText;
+        if (fromCorrectionTimeFrame != PERIOD_CURRENT) {
+            correction.correctionStatus = "APPLIED";
+            correction.selectedAnalysis = "CORRECTED";
+            correction.originalDirection = getSide(fromOriginal.getElliot(fromCorrectionTimeFrame).isBuy);
+            correction.correctedDirection = getSide(fromJudgment.getElliot(fromCorrectionTimeFrame).isBuy);
+            correction.selectedWaveSummaryText = buildWaveSummaryText(fromSnapshot.correctedTimeFrames);
+            correction.correctedLc0 = fromJudgment.lossCut.lc0;
+            correction.correctedLc5 = fromJudgment.lossCut.lc5;
+            correction.correctedLc10 = fromJudgment.lossCut.lc10;
+            correction.correctedLc15 = fromJudgment.lossCut.lc15;
+            correction.correctedLossCutDiffPips = fromJudgment.lossCut.diff;
+            correction.correctedLossCutDiffJpy = fromJudgment.lossCut.diffJpy;
+            correction.correctedReferencePointTime = fromJudgment.elliotCurrent.getLatestPoint2().barTime;
+            correction.correctedAnalysisText = normalizeText(fromJudgment.getText());
+            correction.correctedElliotCsvText = normalizeText(fromJudgment.getCsv(true));
+        }
+        fromSnapshot.correction = correction;
+    }
+
     /**
      * アラート本体を生成する。
      *
@@ -928,17 +1178,209 @@ private:
             );
         }
 
+        return hashText(sourceText);
+    }
+
+    /**
+     * 保存内容を再読込時に比較するための安定ハッシュを計算する。
+     *
+     * @return 16進16桁の内容ハッシュ（暗号学的用途ではない）
+     */
+    static string hashText(const string fromText) {
         uint hash1 = 2166136261;
         uint hash2 = 5381;
-        int length = StringLen(sourceText);
+        int length = StringLen(fromText);
 
         for (int i = 0; i < length; i++) {
-            uint character = (uint)StringGetCharacter(sourceText, i);
+            uint character = (uint)StringGetCharacter(fromText, i);
             hash1 = (hash1 ^ character) * 16777619;
             hash2 = ((hash2 << 5) + hash2) ^ character;
         }
 
         return StringFormat("%08X%08X", hash1, hash2);
+    }
+
+    /**
+     * 比較情報と前後の全分析値から安定ハッシュを生成する。
+     *
+     * DB採番値と保存時刻を除き、値が同じ再試行は同じハッシュにする。
+     */
+    static string createComparisonHash(Mtf3In3AlertSnapshot &fromSnapshot) {
+        string sourceText = fromSnapshot.alert.snapshotHash;
+        appendCorrectionHashValues(fromSnapshot.correction, sourceText);
+        for (int i = 0; i < ArraySize(fromSnapshot.timeFrames); i++) {
+            appendTimeFrameHashValues(fromSnapshot.timeFrames[i], sourceText);
+        }
+        for (int i = 0; i < ArraySize(fromSnapshot.points); i++) {
+            appendPointHashValues(fromSnapshot.points[i], sourceText);
+        }
+        appendHashValue("CORRECTED", sourceText);
+        for (int i = 0; i < ArraySize(fromSnapshot.correctedTimeFrames); i++) {
+            appendTimeFrameHashValues(fromSnapshot.correctedTimeFrames[i], sourceText);
+        }
+        for (int i = 0; i < ArraySize(fromSnapshot.correctedPoints); i++) {
+            appendPointHashValues(fromSnapshot.correctedPoints[i], sourceText);
+        }
+        return hashText(sourceText);
+    }
+
+    /**
+     * 区切り文字を含む値も区別できるよう、文字数と値を連結する。
+     */
+    static void appendHashValue(const string fromValue, string &fromText) {
+        fromText += "|" + IntegerToString(StringLen(fromValue)) + ":" + fromValue;
+    }
+
+    /**
+     * 補正情報の値を比較ハッシュの入力へ連結する。
+     */
+    static void appendCorrectionHashValues(
+        ZigZagElliotAlertCorrectionEntity &fromEntity,
+        string &fromText
+    ) {
+        appendHashValue(fromEntity.correctionStatus, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.correctionTimeFrame), fromText);
+        appendHashValue(fromEntity.originalDirection, fromText);
+        appendHashValue(fromEntity.correctedDirection, fromText);
+        appendHashValue(fromEntity.selectedAnalysis, fromText);
+        appendHashValue(fromEntity.selectedAlertText, fromText);
+        appendHashValue(fromEntity.selectedCurrentElliotLabel, fromText);
+        appendHashValue(fromEntity.selectedWaveSummaryText, fromText);
+        appendHashValue(DoubleToString(fromEntity.referencePrice, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isSelectedStopLossAvailable), fromText);
+        appendHashValue(DoubleToString(fromEntity.selectedStopLoss, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.selectedRiskPips, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.originalLc0, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.originalLc5, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.originalLc10, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.originalLc15, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.originalLossCutDiffPips, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.originalLossCutDiffJpy, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.correctedLc0, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.correctedLc5, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.correctedLc10, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.correctedLc15, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.correctedLossCutDiffPips, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.correctedLossCutDiffJpy, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.correctedReferencePointTime), fromText);
+        appendHashValue(fromEntity.originalAnalysisText, fromText);
+        appendHashValue(fromEntity.correctedAnalysisText, fromText);
+        appendHashValue(fromEntity.correctedElliotCsvText, fromText);
+    }
+
+    /**
+     * 時間足分析の値を比較ハッシュの入力へ連結する。
+     */
+    static void appendTimeFrameHashValues(
+        ZigZagElliotAlertTimeFrameEntity &fromEntity,
+        string &fromText
+    ) {
+        appendHashValue(IntegerToString((long)fromEntity.timeFrame), fromText);
+        appendHashValue(fromEntity.timeFrameText, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.timeFrameOrder), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isCurrentTimeFrame), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isBuy), fromText);
+        appendHashValue(fromEntity.buySellLabel, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.waveCount), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.latestWaveIndex), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isWaveConfirmed), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isWaveMotive), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isWaveUptrend), fromText);
+        appendHashValue(fromEntity.waveTrendLabel, fromText);
+        appendHashValue(fromEntity.previousLastElliotLabel, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.pointCount), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.latestElliotIndex), fromText);
+        appendHashValue(fromEntity.latestElliotLabel, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.latestSubElliotIndex), fromText);
+        appendHashValue(fromEntity.latestSubElliotLabel, fromText);
+        appendHashValue(DoubleToString(fromEntity.previousOpen, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.previousHigh, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.previousLow, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.previousClose, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.currentOpen, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.currentHigh, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.currentLow, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.currentClose, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isFiboExpansionAvailable), fromText);
+        appendHashValue(DoubleToString(fromEntity.fe618Price, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.fe1000Price, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.fe1272Price, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.fe1618Price, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.fe2000Price, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.distanceToFe2000Pips, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.oscillatorCount), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isOscillatorBuy), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.stochasticMainOrder), fromText);
+        appendHashValue(fromEntity.stochasticMainOrderText, fromText);
+        appendHashValue(fromEntity.stochasticMainDirectionText, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.stochasticShortCount), fromText);
+        appendHashValue(DoubleToString(fromEntity.stochasticShortMain, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.stochasticShortSignal, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.stochasticMiddleCount), fromText);
+        appendHashValue(DoubleToString(fromEntity.stochasticMiddleMain, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.stochasticMiddleSignal, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.stochasticLongCount), fromText);
+        appendHashValue(DoubleToString(fromEntity.stochasticLongMain, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.stochasticLongSignal, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.gmmaTrendCount), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.gmmaCrossCount), fromText);
+        appendHashValue(DoubleToString(fromEntity.ema30, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.ema60, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.ema30Ema60DiffPips, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.atr14Pips, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.ema200Close1, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.ema200Shift1, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.ema200Compare, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.ema200SlopePips, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.ema200CloseDiffPips, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.ema200ClosePosition), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.ema200SlopeDirection), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.ema200UpCount), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.ema200DownCount), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.ema200TrendCount), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isEma200Buy), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isEma200Sell), fromText);
+        appendHashValue(fromEntity.rawCsvText, fromText);
+    }
+
+    /**
+     * 最新Waveポイントの値を比較ハッシュの入力へ連結する。
+     */
+    static void appendPointHashValues(
+        ZigZagElliotAlertPointEntity &fromEntity,
+        string &fromText
+    ) {
+        appendHashValue(IntegerToString((long)fromEntity.timeFrame), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.pointOrder), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isLatest), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isSignalReference), fromText);
+        appendHashValue(DoubleToString(fromEntity.rate, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.barIndex), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.barTime), fromText);
+        appendHashValue(fromEntity.barTimeText, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isBarTimeNextAvailable), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.barTimeNext), fromText);
+        appendHashValue(fromEntity.barTimeNextText, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.waveBarsFromStart), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isPeak), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isAddedPoint), fromText);
+        appendHashValue(DoubleToString(fromEntity.pipsDiff, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isFibonacciAvailable), fromText);
+        appendHashValue(DoubleToString(fromEntity.fibonacciPercent, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.fiboDepthZone), fromText);
+        appendHashValue(fromEntity.fiboDepthZoneLabel, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isFibonacciExpansionAvailable), fromText);
+        appendHashValue(DoubleToString(fromEntity.fibonacciExpansionPercent, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isElliotAlphabet), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.elliotIndex), fromText);
+        appendHashValue(fromEntity.elliotLabel, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isSubElliotAvailable), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.subElliotIndex), fromText);
+        appendHashValue(fromEntity.subElliotLabel, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isOriginalElliotAvailable), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.orgElliotIndex), fromText);
+        appendHashValue(fromEntity.orgElliotLabel, fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isCorrect), fromText);
     }
 
     /**
