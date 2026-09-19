@@ -53,13 +53,15 @@ public:
      * @param fromHigherCount 表示する上位足数。2または3。
      * @param fromShowPrices 参照価格・SL候補・M5 FE価格線の表示有無。
      * @param fromShowTable 7足の情報表の表示有無。
+     * @param fromPanelTop 保存情報パネルの上端座標。
      */
     void draw(
         ZigZagElliotAlertHistorySnapshot &fromSnapshot,
         const ZigZagElliotAlertHistoryView fromView,
         const int fromHigherCount,
         const bool fromShowPrices,
-        const bool fromShowTable
+        const bool fromShowTable,
+        const int fromPanelTop = 8
     ) {
         this.clear();
         this.hasDrawingError = false;
@@ -95,7 +97,7 @@ public:
             this.drawFixedPrices(fromSnapshot);
         }
         this.drawAlertLabels(fromSnapshot, showOriginal, showCorrected);
-        this.drawPanel(fromSnapshot, showOriginal, showCorrected, fromShowTable);
+        this.drawPanel(fromSnapshot, showOriginal, showCorrected, fromShowTable, fromPanelTop);
         ChartRedraw(this.chartId);
     }
 
@@ -866,13 +868,14 @@ private:
     }
 
     /**
-     * 情報表と保存判定を右側に配置する。狭いチャートでは1足を2段表示する。
+     * 情報表と保存判定を左側に配置する。狭いチャートでは1足を2段表示する。
      */
     void drawPanel(
         ZigZagElliotAlertHistorySnapshot &fromSnapshot,
         const bool fromShowOriginal,
         const bool fromShowCorrected,
-        const bool fromShowTable
+        const bool fromShowTable,
+        const int fromPanelTop
     ) {
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
@@ -881,7 +884,7 @@ private:
         if (compact) {
             panelWidth = (int)MathMax(280, chartWidth - 20);
         }
-        int panelX = (int)MathMax(10, chartWidth - panelWidth - 10);
+        int panelX = 10;
         int rowCount = 7;
         if (fromShowCorrected && fromShowOriginal) {
             rowCount = 14;
@@ -891,8 +894,8 @@ private:
             rowHeight = 34;
         }
         bool shortTable = fromShowTable && fromSnapshot.originalAvailable
-            && 205 + rowCount * rowHeight > chartHeight - 10;
-        bool summaryFits = chartHeight >= 184 + 7 * 18 + 10;
+            && fromPanelTop + 90 + rowCount * rowHeight > chartHeight - 10;
+        bool summaryFits = chartHeight >= fromPanelTop + 69 + 7 * 18 + 10;
         int panelHeight = 68;
         if (fromShowTable && fromSnapshot.originalAvailable) {
             if (shortTable) {
@@ -908,21 +911,21 @@ private:
         if (this.createObject(panelName, OBJ_RECTANGLE_LABEL)) {
             ObjectSetInteger(this.chartId, panelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
             ObjectSetInteger(this.chartId, panelName, OBJPROP_XDISTANCE, panelX - 5);
-            ObjectSetInteger(this.chartId, panelName, OBJPROP_YDISTANCE, 115);
+            ObjectSetInteger(this.chartId, panelName, OBJPROP_YDISTANCE, fromPanelTop);
             ObjectSetInteger(this.chartId, panelName, OBJPROP_XSIZE, panelWidth + 5);
-            ObjectSetInteger(this.chartId, panelName, OBJPROP_YSIZE, (int)MathMax(40, MathMin(panelHeight, chartHeight - 125)));
+            ObjectSetInteger(this.chartId, panelName, OBJPROP_YSIZE, (int)MathMax(40, MathMin(panelHeight, chartHeight - fromPanelTop - 10)));
             ObjectSetInteger(this.chartId, panelName, OBJPROP_BGCOLOR, clrBlack);
             ObjectSetInteger(this.chartId, panelName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
             ObjectSetInteger(this.chartId, panelName, OBJPROP_COLOR, clrDimGray);
         }
-        if (shortTable && chartHeight < 205) {
-            this.drawLabel("ResizeNotice", "チャートを縦に拡大してください", panelX, 120, 9, clrOrange,
+        if (shortTable && chartHeight < fromPanelTop + 90) {
+            this.drawLabel("ResizeNotice", "チャートを縦に拡大してください", panelX, fromPanelTop + 5, 9, clrOrange,
                 "7時間足の表示に必要な高さが不足しています。");
             return;
         }
         string decision = "保存判定 " + fromSnapshot.alert.entryResult + " / " + fromSnapshot.alert.side
             + " / Count " + IntegerToString(fromSnapshot.alert.signalCount);
-        this.drawLabel("Decision", decision, panelX, 120, 10, clrWhite, decision + "\n表示モードで再判定しません。");
+        this.drawLabel("Decision", decision, panelX, fromPanelTop + 5, 10, clrWhite, decision + "\n表示モードで再判定しません。");
         string selectedSL = "採用SL候補 —";
         if (fromSnapshot.correctionStatus == "INCOMPLETE" || !fromSnapshot.originalAvailable) {
             selectedSL = "採用SL候補 表示不可（保存データ不完全）";
@@ -932,7 +935,7 @@ private:
                     + " / " + this.pipsText(fromSnapshot.correction.selectedRiskPips);
             }
         }
-        this.drawLabel("SL", selectedSL, panelX, 140, 9, clrGold,
+        this.drawLabel("SL", selectedSL, panelX, fromPanelTop + 25, 9, clrGold,
             selectedSL + "\n判定時の分析値です。注文・ポジションの実SLではありません。"
             + "\n元SL候補（参考） " + this.priceText(fromSnapshot.alert.stopLoss)
             + " / " + this.pipsText(fromSnapshot.alert.riskPips));
@@ -945,23 +948,23 @@ private:
         } else if (shortTable && summaryFits) {
             legend = "7足要約 / 指標・確定状態は行ツールチップ";
         }
-        this.drawLabel("Legend", legend, panelX, 160, 8, clrSilver,
+        this.drawLabel("Legend", legend, panelX, fromPanelTop + 45, 8, clrSilver,
             legend + "\n" + fromSnapshot.originalReason + "\n" + fromSnapshot.correctionReason);
         if (!fromShowTable || !fromSnapshot.originalAvailable) {
             return;
         }
         if (shortTable) {
             if (summaryFits) {
-                this.drawSummaryTable(fromSnapshot, fromShowOriginal, fromShowCorrected, panelX, panelWidth);
+                this.drawSummaryTable(fromSnapshot, fromShowOriginal, fromShowCorrected, panelX, panelWidth, fromPanelTop + 69);
             } else {
-                this.drawLabel("ResizeNotice", "チャートを縦に拡大してください", panelX, 184, 9, clrOrange,
+                this.drawLabel("ResizeNotice", "チャートを縦に拡大してください", panelX, fromPanelTop + 69, 9, clrOrange,
                     "7時間足の表示に必要な高さが不足しています。");
             }
             return;
         }
-        this.drawTableHeader(panelX, 184, compact);
+        this.drawTableHeader(panelX, fromPanelTop + 69, compact);
         int timeFrames[] = { PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5 };
-        int rowY = 205;
+        int rowY = fromPanelTop + 90;
         for (int i = 0; i < ArraySize(timeFrames); i++) {
             if (fromShowCorrected) {
                 int rowIndex = this.findTimeFrame(fromSnapshot.correctedTimeFrames, timeFrames[i]);
@@ -990,7 +993,8 @@ private:
         const bool fromShowOriginal,
         const bool fromShowCorrected,
         const int fromX,
-        const int fromWidth
+        const int fromWidth,
+        const int fromY
     ) {
         int timeFrames[] = { PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5 };
         string labels[] = { "MN1", "W1", "D1", "H4", "H1", "M15", "M5" };
@@ -1018,7 +1022,7 @@ private:
             if (fromShowCorrected && timeFrames[i] == fromSnapshot.correction.correctionTimeFrame) {
                 frameLabel += "*";
             }
-            int rowY = 184 + i * 18;
+            int rowY = fromY + i * 18;
             this.drawLabel(key, frameLabel, fromX, rowY, 9, clrSilver, tooltip);
             if (fromShowCorrected && correctedIndex >= 0) {
                 this.drawLabel(key + "C", "後 " + fromSnapshot.correctedTimeFrames[correctedIndex].buySellLabel

@@ -376,8 +376,13 @@ private:
             return;
         }
         if (this.snapshotLoaded) {
+            int panelTop = 8;
+            int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
+            if (chartWidth < 1100) {
+                panelTop = 204;
+            }
             this.drawer.draw(this.snapshot, this.view, this.config.higherCount,
-                this.config.showPrices, this.config.showTable);
+                this.config.showPrices, this.config.showTable, panelTop);
         } else {
             this.drawer.clear();
         }
@@ -386,20 +391,28 @@ private:
     }
 
     /**
-     * 前後移動・表示モード・選択状態を画面上部へ配置する。
+     * 前後移動・表示モード・選択状態を画面右上へ配置する。
      */
     void drawControls() {
         color foreground = (color)ChartGetInteger(this.chartId, CHART_COLOR_FOREGROUND);
         color background = (color)ChartGetInteger(this.chartId, CHART_COLOR_BACKGROUND);
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
+        int panelWidth = (int)MathMin(372, MathMax(24, chartWidth - 20));
+        int panelX = (int)MathMax(10, chartWidth - panelWidth - 10);
+        int contentX = panelX + 12;
+        int contentWidth = panelWidth - 24;
+        int selectedWidth = (int)(contentWidth * 126.0 / 348.0);
+        int originalWidth = (int)(contentWidth * 100.0 / 348.0);
+        int comparisonX = contentX + selectedWidth + originalWidth + 12;
         string panelName = this.prefix + "Ui-Background";
         if (ObjectFind(this.chartId, panelName) < 0) {
             ObjectCreate(this.chartId, panelName, OBJ_RECTANGLE_LABEL, 0, 0, 0);
         }
-        ObjectSetInteger(this.chartId, panelName, OBJPROP_XDISTANCE, 0);
-        ObjectSetInteger(this.chartId, panelName, OBJPROP_YDISTANCE, 0);
-        ObjectSetInteger(this.chartId, panelName, OBJPROP_XSIZE, chartWidth);
-        ObjectSetInteger(this.chartId, panelName, OBJPROP_YSIZE, 112);
+        ObjectSetInteger(this.chartId, panelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+        ObjectSetInteger(this.chartId, panelName, OBJPROP_XDISTANCE, panelX);
+        ObjectSetInteger(this.chartId, panelName, OBJPROP_YDISTANCE, 8);
+        ObjectSetInteger(this.chartId, panelName, OBJPROP_XSIZE, panelWidth);
+        ObjectSetInteger(this.chartId, panelName, OBJPROP_YSIZE, 186);
         ObjectSetInteger(this.chartId, panelName, OBJPROP_BGCOLOR, background);
         ObjectSetInteger(this.chartId, panelName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
         ObjectSetInteger(this.chartId, panelName, OBJPROP_COLOR, background);
@@ -407,42 +420,47 @@ private:
         ObjectSetInteger(this.chartId, panelName, OBJPROP_HIDDEN, true);
         ObjectSetString(this.chartId, panelName, OBJPROP_TOOLTIP, "\n");
         int total = ArraySize(this.alertIds);
-        this.button("Previous", "← 前", 12, 8, 72, this.selectedIndex > 0, false);
-        this.button("Next", "次 →", 90, 8, 72,
+        this.button("Previous", "← 前", contentX, 14, 72, this.selectedIndex > 0, false);
+        this.button("Next", "次 →", contentX + 78, 14, 72,
             this.selectedIndex >= 0 && this.selectedIndex + 1 < total, false);
         this.label("Count", IntegerToString(this.selectedIndex + 1) + " / "
-            + IntegerToString(total) + "件", 174, 13, foreground, 110);
-        this.button("Refresh", "再読込", 290, 8, 75, true, false);
-        this.button("Locate", "発生位置へ", 371, 8, 105, this.snapshotLoaded, false);
+            + IntegerToString(total) + "件", contentX + 162, 19, foreground, contentWidth - 162);
+        this.button("Refresh", "再読込", contentX, 46, 75, true, false);
+        this.button("Locate", "発生位置へ", contentX + 81, 46, 105, this.snapshotLoaded, false);
         bool canCompare = this.snapshotLoaded && this.snapshot.correctionStatus == "APPLIED";
         bool canSelect = canCompare
             || (this.snapshotLoaded && this.snapshot.correctionStatus == "NONE");
-        this.button("Selected", "採用分析", 12, 40, 126, canSelect,
+        this.button("Selected", "採用分析", contentX, 78, selectedWidth, canSelect,
             this.view == ALERT_HISTORY_SELECTED);
         string originalLabel = "補正前";
         if (!canCompare) {
             originalLabel = "元分析";
         }
-        this.button("Original", originalLabel, 144, 40, 100,
+        this.button("Original", originalLabel, contentX + selectedWidth + 6, 78, originalWidth,
             this.snapshotLoaded && this.snapshot.originalAvailable,
             this.view == ALERT_HISTORY_ORIGINAL);
-        this.button("Comparison", "前後比較", 250, 40, 110, canCompare,
+        this.button("Comparison", "前後比較", comparisonX, 78,
+            (int)MathMax(1, contentX + contentWidth - comparisonX), canCompare,
             this.view == ALERT_HISTORY_COMPARISON);
         string runText = this.symbolName + " M5 | Run " + IntegerToString(this.resolvedRunId);
         if (this.snapshotLoaded) {
             runText += " | " + this.snapshot.run.sourceMode;
         }
-        this.label("Run", runText, 372, 46, foreground, chartWidth - 384);
+        this.label("Run", runText, contentX, 110, foreground, contentWidth);
         string selectedText = "指定期間の最初のアラートから日時順に表示";
         if (this.selectedIndex >= 0) {
             selectedText = "Alert " + IntegerToString(this.alertIds[this.selectedIndex]);
         }
         if (this.snapshotLoaded) {
-            selectedText += " | Server " + TimeToString(this.snapshot.alert.currentBarTime, TIME_DATE | TIME_SECONDS)
-                + " | " + this.snapshot.alert.side + " | ENTRY: " + this.snapshot.alert.entryResult;
-            selectedText += " | " + this.correctionLabel();
+            selectedText += " | Server " + TimeToString(this.snapshot.alert.currentBarTime, TIME_DATE | TIME_SECONDS);
         }
-        this.label("Selection", selectedText, 12, 73, foreground, chartWidth - 24);
+        this.label("Selection", selectedText, contentX, 130, foreground, contentWidth);
+        string correctionText = "";
+        if (this.snapshotLoaded) {
+            correctionText = this.snapshot.alert.side + " | ENTRY: "
+                + this.snapshot.alert.entryResult + " | " + this.correctionLabel();
+        }
+        this.label("Correction", correctionText, contentX, 150, foreground, contentWidth);
         string status = this.historyMessage;
         color statusColor = foreground;
         if (this.loadError != "") {
@@ -462,7 +480,7 @@ private:
                 statusColor = clrOrange;
             }
         }
-        this.label("Status", status, 12, 94, statusColor, chartWidth - 24);
+        this.label("Status", status, contentX, 170, statusColor, contentWidth);
     }
 
     /**
