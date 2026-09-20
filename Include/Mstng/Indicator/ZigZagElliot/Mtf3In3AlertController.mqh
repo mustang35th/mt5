@@ -9,6 +9,7 @@
 #ifndef MSTNG_INDICATOR_ZIGZAG_ELLIOT_MTF3_IN3_ALERT_CONTROLLER_MQH
 #define MSTNG_INDICATOR_ZIGZAG_ELLIOT_MTF3_IN3_ALERT_CONTROLLER_MQH
 
+#include <Arrays\ArrayString.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
@@ -122,6 +123,15 @@ public:
         }
 
         if (this.marketContext.timeFrame > PERIOD_H1) {
+            return;
+        }
+
+        if (!fromElliotAll.isAnalysisSucceeded || fromElliotAll.elliotCurrent == NULL) {
+            return;
+        }
+        ZigZagPoint *sourceSignalPoint = fromElliotAll.elliotCurrent.getLatestPoint2();
+        if (sourceSignalPoint == NULL || !this.restoreAlertSignalCount(
+                sourceSignalPoint.barTime, fromElliotAll.elliotCurrent.isBuy)) {
             return;
         }
 
@@ -239,6 +249,7 @@ public:
      */
     void destroy() {
         this.releaseDatabase();
+        this.checkedSignalKeys.Clear();
 
         if (this.expertAdvisorMtf3In3 != NULL) {
             delete this.expertAdvisorMtf3In3;
@@ -273,6 +284,8 @@ private:
     Logger logger;
     /** シグナル回数。 */
     SignalCount *signalCount;
+    /** DB照合と復元を完了した起点・方向。回数を繰り返し巻き戻さない。 */
+    CArrayString checkedSignalKeys;
     /** 検証CSVを出力する場合true。 */
     bool alertCsvEnabled;
     /** ZigZagElliot設定。 */
@@ -287,6 +300,60 @@ private:
     bool databaseSavePeriodReached;
     /** 保存開始日時以降の最初のAlert保存をログへ出力済みの場合true。 */
     bool databaseFirstSnapshotSaved;
+
+    /**
+     * 初めて判定する起点・方向のアラート済み状態をDBから復元する。
+     *
+     * テスターとDB保存無効時は従来どおり。照合失敗時はキャッシュせず、
+     * 次回のバー判定で再試行する。復元は分析・描画・メール処理より前に行う。
+     * @param fromReferenceTime 補正前のシグナル基準時刻。
+     * @param fromIsBuy 補正前の分析方向。
+     * @return 判定を継続できる場合true。
+     */
+    bool restoreAlertSignalCount(const datetime fromReferenceTime, const bool fromIsBuy) {
+        if (!this.config.mtf3In3AlertDatabaseEnabled
+                || MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION)
+                || (this.marketContext.timeFrame != PERIOD_M5
+                    && this.marketContext.timeFrame != PERIOD_H1)) {
+            return true;
+        }
+        if (fromReferenceTime <= 0 || this.signalCount == NULL) {
+            return false;
+        }
+        string signalKey = StringFormat("%I64d|%d", (long)fromReferenceTime, (int)fromIsBuy);
+        if (this.checkedSignalKeys.SearchLinear(signalKey) >= 0) {
+            return true;
+        }
+        if (!this.databaseReady && !this.initializeDatabase()) {
+            this.logger.error(__FUNCTION__, "signal history unavailable; alert judgment deferred");
+            return false;
+        }
+        ZigZagElliotAlertPersistenceService *persistenceService =
+            this.databaseContext.getPersistenceService();
+        int savedCount = 0;
+        if (persistenceService == NULL || !persistenceService.loadAlertSignalCount(
+                this.databaseRun.sourceServer, this.databaseRun.sourceLogin,
+                this.marketContext.symbolName, this.marketContext.timeFrame,
+                fromReferenceTime, fromIsBuy, TimeCurrent(), savedCount)) {
+            this.logger.error(__FUNCTION__, "signal history lookup failed; alert judgment deferred");
+            return false;
+        }
+        if (savedCount > 0 && !this.signalCount.restoreCount(
+                fromReferenceTime, fromIsBuy, savedCount)) {
+            this.logger.error(__FUNCTION__, "signal count restore failed; alert judgment deferred");
+            return false;
+        }
+        if (!this.checkedSignalKeys.Add(signalKey)) {
+            return false;
+        }
+        if (savedCount > 0) {
+            this.logger.info(__FUNCTION__, StringFormat(
+                "alert signal restored. referenceTime=%s isBuy=%s count=%d",
+                TimeToString(fromReferenceTime, TIME_DATE | TIME_SECONDS),
+                (string)fromIsBuy, savedCount));
+        }
+        return true;
+    }
 
     /**
      * 取得済みの対象足がテスターのDB保存開始日時に達したか判定する。
@@ -334,7 +401,7 @@ private:
     /**
      * ZigZagElliotデータベースを開き、実行情報を保存する。
      *
-     * 初期化に失敗した場合も既存アラート処理を継続できるよう、
+     * 初期化に失敗した場合は、
      * データベースだけを無効化する。
      *
      * @return 保存可能になった場合true
@@ -434,7 +501,7 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.48";
+        this.databaseRun.programVersion = "1.49";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_M5) {

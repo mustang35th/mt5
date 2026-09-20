@@ -211,6 +211,15 @@ public:
             return false;
         }
 
+        sql = "CREATE INDEX IF NOT EXISTS ";
+        sql += "idx_zigzag_elliot_alerts_signal_reference ";
+        sql += "ON zigzag_elliot_alerts(symbol_name, time_frame,";
+        sql += " signal_reference_point_time, side) WHERE is_alert=1";
+
+        if (!this.executeSql(sql, "zigzag elliot alert signal reference index")) {
+            return false;
+        }
+
         this.logger.info(
             __FUNCTION__,
             "zigzag_elliot_alerts table and indexes are ready."
@@ -269,6 +278,82 @@ public:
         }
 
         return this.getLastInsertId(fromEntity.id);
+    }
+
+    /**
+     * 同じ起点・方向で発生済みの通常版アラート回数をRun横断で取得する。
+     *
+     * ENTRY不成立も含める。未検出は0、DB失敗はfalseとして区別する。
+     * @param fromSourceServer 取引サーバー名。
+     * @param fromSourceLogin 口座番号。
+     * @param fromSymbolName 通貨名。
+     * @param fromTimeFrame 対象時間足。
+     * @param fromReferenceTime 補正前のシグナル基準時刻。
+     * @param fromIsBuy 補正前の分析方向。
+     * @param fromKnownTime 現在のサーバー時刻。未来の履歴は使用しない。
+     * @param fromCount 保存済み回数の最大値。
+     * @return 検索に成功した場合true。
+     */
+    bool loadAlertSignalCount(
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const string fromSymbolName,
+        const ENUM_TIMEFRAMES fromTimeFrame,
+        const datetime fromReferenceTime,
+        const bool fromIsBuy,
+        const datetime fromKnownTime,
+        int &fromCount
+    ) {
+        fromCount = 0;
+        if (!this.isDatabaseReady(__FUNCTION__)
+                || fromReferenceTime <= 0 || fromKnownTime <= 0
+                || (fromTimeFrame != PERIOD_M5 && fromTimeFrame != PERIOD_H1)) {
+            return false;
+        }
+
+        string side = "SELL";
+        if (fromIsBuy) {
+            side = "BUY";
+        }
+        string sql = "SELECT COALESCE(MAX(a.signal_count),0) ";
+        sql += "FROM zigzag_elliot_alerts a ";
+        sql += "JOIN zigzag_elliot_alert_runs r ON r.id=a.run_id ";
+        sql += "WHERE a.symbol_name=?1 AND a.time_frame=?2 ";
+        sql += "AND a.signal_reference_point_time=?3 AND a.side=?4 ";
+        sql += "AND a.is_alert=1 AND a.strategy='MTF_3in3' AND a.magic_number='0' ";
+        sql += "AND r.source_mode='LIVE' AND r.source='ZIGZAG_ELLIOT' ";
+        sql += "AND r.source_server=?5 AND r.source_login=?6 ";
+        sql += "AND a.server_time<=?7 AND a.current_bar_time<=?7";
+
+        ResetLastError();
+        int requestHandle = DatabasePrepare(this.databaseHandle, sql);
+        if (requestHandle == INVALID_HANDLE) {
+            this.logger.error(__FUNCTION__, StringFormat(
+                "signal history prepare failed. error=%d", GetLastError()));
+            return false;
+        }
+        bool isRead = DatabaseBind(requestHandle, 0, fromSymbolName)
+            && DatabaseBind(requestHandle, 1, (int)fromTimeFrame)
+            && DatabaseBind(requestHandle, 2, (long)fromReferenceTime)
+            && DatabaseBind(requestHandle, 3, side)
+            && DatabaseBind(requestHandle, 4, fromSourceServer)
+            && DatabaseBind(requestHandle, 5, fromSourceLogin)
+            && DatabaseBind(requestHandle, 6, (long)fromKnownTime)
+            && DatabaseRead(requestHandle);
+        long savedCount = 0;
+        if (isRead) {
+            isRead = DatabaseColumnLong(requestHandle, 0, savedCount);
+        }
+        int errorCode = GetLastError();
+        DatabaseFinalize(requestHandle);
+        if (!isRead || savedCount < 0 || savedCount >= INT_MAX) {
+            this.logger.error(__FUNCTION__, StringFormat(
+                "signal history read failed. error=%d count=%I64d",
+                errorCode, savedCount));
+            return false;
+        }
+        fromCount = (int)savedCount;
+        return true;
     }
 
     /**

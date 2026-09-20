@@ -97,6 +97,32 @@ public:
     }
 
     /**
+     * 再起動前を含む通常版アラートの保存済み回数を取得する。
+     *
+     * @param fromCount 未検出は0。DB失敗時は復元に使用しない。
+     * @return DB照合に成功した場合true。
+     */
+    bool loadAlertSignalCount(
+        const string fromSourceServer,
+        const long fromSourceLogin,
+        const string fromSymbolName,
+        const ENUM_TIMEFRAMES fromTimeFrame,
+        const datetime fromReferenceTime,
+        const bool fromIsBuy,
+        const datetime fromKnownTime,
+        int &fromCount
+    ) {
+        fromCount = 0;
+        if (!this.isReady(__FUNCTION__)) {
+            return false;
+        }
+        return this.alertDao.loadAlertSignalCount(
+            fromSourceServer, fromSourceLogin, fromSymbolName, fromTimeFrame,
+            fromReferenceTime, fromIsBuy, fromKnownTime, fromCount
+        );
+    }
+
+    /**
      * 実行情報を保存または取得する。
      *
      * 同一runUidが存在する場合は既存IDを設定し、新しい行を追加しない。
