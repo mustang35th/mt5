@@ -71,6 +71,12 @@ public:
             body = getBody(fromSource);
         }
 
+        // 通常版H1メールは、受信一覧の先頭で見分けられるようにする。
+        if (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot"
+                && fromSource.marketContext.timeFrame == PERIOD_H1) {
+            title = "★【H1】" + title;
+        }
+
         Print(__FUNCTION__, " isSendMail = ", fromIsSendMail);
         Print(__FUNCTION__, " title = ", title);
         Print(__FUNCTION__, " body = ", body);
