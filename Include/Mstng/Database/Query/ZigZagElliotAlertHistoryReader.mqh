@@ -132,12 +132,15 @@ public:
     /**
      * 同じ検索条件で全ラベルを一括取得する。波動ポイントや詳細分析は読み取らない。
      * 表示値が不足する行もIDを残し、前後移動による詳細確認を可能にする。
+     * 任意の実行モード・サーバー・既知時刻はRun選択前に適用する。空文字と0は制限なし。
      */
     bool selectMarkers(
         const string fromSymbol, const long fromRunId,
         const datetime fromStartTime, const datetime fromEndTime,
         const bool fromEntryOnly, long &fromResolvedRunId,
-        long &fromAlertIds[], ZigZagElliotAlertHistoryMarker &fromMarkers[], string &fromError
+        long &fromAlertIds[], ZigZagElliotAlertHistoryMarker &fromMarkers[], string &fromError,
+        const string fromSourceMode = "", const string fromSourceServer = "",
+        const datetime fromKnownTime = 0
     ) {
         ArrayFree(fromAlertIds);
         ArrayFree(fromMarkers);
@@ -146,7 +149,7 @@ public:
         if (!this.isOpen(fromError)) {
             return false;
         }
-        if (fromSymbol == "" || fromRunId < 0 || fromStartTime < 0 || fromEndTime < 0
+        if (fromSymbol == "" || fromRunId < 0 || fromStartTime < 0 || fromEndTime < 0 || fromKnownTime < 0
                 || (fromEndTime > 0 && fromEndTime <= fromStartTime)) {
             fromError = "通貨・Run・日時範囲の指定が不正です。";
             return false;
@@ -170,15 +173,50 @@ public:
                 correctionProjection = "'INCOMPLETE','',0,'','',''";
             }
         }
+        string originalFrames = "";
+        string correctedFrames = "";
+        if (!this.markerFrameSource("zigzag_elliot_alert_timeframes", false, originalFrames, fromError)
+                || !this.markerFrameSource("zigzag_elliot_alert_corrected_timeframes", true, correctedFrames, fromError)) {
+            return false;
+        }
+        string frameFilter = " WHERE alert_id IN (SELECT id FROM candidates WHERE run_id=(SELECT MAX(run_id) FROM candidates))";
+        if (originalFrames != "") {
+            originalFrames += frameFilter;
+        }
+        if (correctedFrames != "") {
+            correctedFrames += frameFilter;
+        }
+        string frameSource = originalFrames;
+        if (correctedFrames != "") {
+            if (frameSource != "") {
+                frameSource += " UNION ALL ";
+            }
+            frameSource += correctedFrames;
+        }
+        if (frameSource == "") {
+            frameSource = "SELECT NULL AS alert_id,0 AS corrected,NULL AS time_frame,NULL AS is_buy,"
+                + "NULL AS is_ema200_buy,NULL AS is_ema200_sell,NULL AS latest_elliot_label,"
+                + "NULL AS latest_sub_elliot_index,NULL AS latest_sub_elliot_label,NULL AS is_wave_confirmed WHERE 0";
+        }
+        string selectedFrameKind = "0";
+        if (correctionJoin != "") {
+            selectedFrameKind = "CASE WHEN c.correction_status='APPLIED' AND c.selected_analysis='CORRECTED' THEN 1 ELSE 0 END";
+        }
         string sql = "WITH candidates AS (SELECT id,run_id,current_bar_time,server_time,jst_time,side,is_entry,entry_result,alert_text FROM zigzag_elliot_alerts ";
         sql += "WHERE symbol_name=?1 AND time_frame=5 AND is_alert=1 ";
         sql += "AND (?2=0 OR run_id=?2) AND (?3=0 OR current_bar_time>=?3) ";
-        sql += "AND (?4=0 OR current_bar_time<?4) AND (?5=0 OR is_entry=1)) ";
+        sql += "AND (?4=0 OR current_bar_time<?4) AND (?5=0 OR is_entry=1) ";
+        sql += "AND (?6='' OR EXISTS(SELECT 1 FROM zigzag_elliot_alert_runs r WHERE r.id=run_id AND r.source_mode=?6)) ";
+        sql += "AND (?7='' OR EXISTS(SELECT 1 FROM zigzag_elliot_alert_runs r WHERE r.id=run_id AND r.source_server=?7)) ";
+        sql += "AND (?8=0 OR (current_bar_time<=?8 AND server_time<=?8))) ";
         sql += "SELECT a.id,a.run_id,a.current_bar_time,a.server_time,a.jst_time,a.side,a.is_entry,a.entry_result,a.alert_text,";
         sql += "(SELECT CASE WHEN COUNT(*)=1 THEN current_open ELSE NULL END ";
         sql += "FROM zigzag_elliot_alert_timeframes WHERE alert_id=a.id AND time_frame=5),";
-        sql += correctionProjection + " FROM candidates a" + correctionJoin;
-        sql += " WHERE a.run_id=(SELECT MAX(run_id) FROM candidates) ORDER BY a.current_bar_time,a.id";
+        sql += correctionProjection + ",tf.time_frame,tf.is_buy,tf.is_ema200_buy,tf.is_ema200_sell,"
+            + "tf.latest_elliot_label,tf.latest_sub_elliot_index,tf.latest_sub_elliot_label,tf.is_wave_confirmed";
+        sql += " FROM candidates a" + correctionJoin;
+        sql += " LEFT JOIN (" + frameSource + ") tf ON tf.alert_id=a.id AND tf.corrected=" + selectedFrameKind;
+        sql += " WHERE a.run_id=(SELECT MAX(run_id) FROM candidates) ORDER BY a.current_bar_time,a.id,tf.time_frame";
         int request = this.prepare(sql, fromError);
         if (request == INVALID_HANDLE) {
             return false;
@@ -186,7 +224,10 @@ public:
         if (!DatabaseBind(request, 0, fromSymbol) || !DatabaseBind(request, 1, fromRunId)
                 || !DatabaseBind(request, 2, (long)fromStartTime)
                 || !DatabaseBind(request, 3, (long)fromEndTime)
-                || !DatabaseBind(request, 4, (int)fromEntryOnly)) {
+                || !DatabaseBind(request, 4, (int)fromEntryOnly)
+                || !DatabaseBind(request, 5, fromSourceMode)
+                || !DatabaseBind(request, 6, fromSourceServer)
+                || !DatabaseBind(request, 7, (long)fromKnownTime)) {
             this.databaseError("bind alert filters", fromError);
             DatabaseFinalize(request);
             return false;
@@ -210,19 +251,19 @@ public:
                 break;
             }
             int count = ArraySize(fromAlertIds);
+            if (count > 0 && fromAlertIds[count - 1] == alertId) {
+                this.readMarkerWave(request, fromMarkers[count - 1]);
+                continue;
+            }
             if (ArrayResize(fromAlertIds, count + 1, 256) != count + 1
                     || ArrayResize(fromMarkers, count + 1, 256) != count + 1) {
                 fromError = "アラート一覧のメモリを確保できません。";
                 success = false;
                 break;
             }
-            if (count > 0 && fromAlertIds[count - 1] == alertId) {
-                fromError = "アラートの保存ラベルが重複しています。";
-                success = false;
-                break;
-            }
             fromAlertIds[count] = alertId;
             this.readMarker(request, alertId, fromMarkers[count]);
+            this.readMarkerWave(request, fromMarkers[count]);
             fromResolvedRunId = runId;
         }
         DatabaseFinalize(request);
@@ -278,7 +319,11 @@ private:
      */
     void readMarker(const int fromRequest, const long fromAlertId, ZigZagElliotAlertHistoryMarker &fromMarker) {
         ZeroMemory(fromMarker);
+        for (int i = 0; i < ArraySize(fromMarker.waves); i++) {
+            fromMarker.waves[i].clear();
+        }
         fromMarker.alertId = fromAlertId;
+        fromMarker.correctionStatus = "UNRECORDED";
         if (!this.readTimeValue(fromRequest, 2, fromMarker.barTime)
                 || !this.readTimeValue(fromRequest, 3, fromMarker.serverTime)
                 || !this.readTimeValue(fromRequest, 4, fromMarker.jstTime)
@@ -329,8 +374,94 @@ private:
         } else {
             return;
         }
+        fromMarker.correctionStatus = status;
         fromMarker.text = selectedText;
         fromMarker.available = true;
+    }
+
+    /**
+     * 全ラベル用の時間足概要を構成する。旧形式で欠けた列をSELLや未確定へ変換しない。
+     */
+    bool markerFrameSource(const string fromTable, const bool fromCorrected, string &fromSql, string &fromError) {
+        fromSql = "";
+        string columns = "";
+        if (!this.tableColumns(fromTable, columns, fromError)) {
+            return false;
+        }
+        if (StringFind(columns, ",alert_id,") < 0 || StringFind(columns, ",time_frame,") < 0) {
+            return true;
+        }
+        string fields[] = {"time_frame", "is_buy", "is_ema200_buy", "is_ema200_sell", "latest_elliot_label",
+            "latest_sub_elliot_index", "latest_sub_elliot_label", "is_wave_confirmed"};
+        fromSql = "SELECT alert_id," + IntegerToString((int)fromCorrected) + " AS corrected";
+        for (int i = 0; i < ArraySize(fields); i++) {
+            fromSql += ",";
+            if (StringFind(columns, "," + fields[i] + ",") >= 0) {
+                fromSql += fields[i];
+            } else {
+                fromSql += "NULL AS " + fields[i];
+            }
+        }
+        fromSql += " FROM " + fromTable;
+        return true;
+    }
+
+    /**
+     * 選択した元または補正テーブルの一行だけから概要を読む。
+     */
+    void readMarkerWave(const int fromRequest, ZigZagElliotAlertHistoryMarker &fromMarker) {
+        if (!fromMarker.available) {
+            return;
+        }
+        int timeFrame = 0;
+        if (!this.readIntValue(fromRequest, 16, timeFrame)) {
+            return;
+        }
+        int frames[] = {PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
+        int index = -1;
+        for (int i = 0; i < ArraySize(frames); i++) {
+            if (frames[i] == timeFrame) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            return;
+        }
+        if (fromMarker.waves[index].recorded) {
+            fromMarker.waves[index].clear();
+            fromMarker.waves[index].recorded = true;
+            return;
+        }
+        fromMarker.waves[index].recorded = true;
+        int flag = 0;
+        if (this.readIntValue(fromRequest, 17, flag, true)) {
+            fromMarker.waves[index].direction = "S";
+            if (flag == 1) {
+                fromMarker.waves[index].direction = "B";
+            }
+        }
+        int emaBuy = 0;
+        int emaSell = 0;
+        if (timeFrame != PERIOD_MN1 && this.readIntValue(fromRequest, 18, emaBuy, true)
+                && this.readIntValue(fromRequest, 19, emaSell, true)) {
+            if (emaBuy == 1 && emaSell == 0) {
+                fromMarker.waves[index].emaDirection = "B";
+            } else if (emaBuy == 0 && emaSell == 1) {
+                fromMarker.waves[index].emaDirection = "S";
+            }
+        }
+        this.readTextValue(fromRequest, 20, fromMarker.waves[index].wave);
+        int subIndex = 0;
+        if (this.readIntValue(fromRequest, 21, subIndex) && subIndex > 0) {
+            this.readTextValue(fromRequest, 22, fromMarker.waves[index].subWave);
+        }
+        if (this.readIntValue(fromRequest, 23, flag, true)) {
+            fromMarker.waves[index].state = "未";
+            if (flag == 1) {
+                fromMarker.waves[index].state = "確";
+            }
+        }
     }
 
     /**

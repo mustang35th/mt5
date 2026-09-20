@@ -17,7 +17,37 @@ enum ZigZagElliotAlertHistoryView {
 };
 
 /**
- * 全件表示に必要な保存ラベルだけを保持する。詳細分析は選択時に読み取る。
+ * ツールチップ用の一時間足の保存情報。不明な項目は空文字で保持する。
+ */
+struct ZigZagElliotAlertHistoryWaveSummary {
+    /** 重複行を不明として扱うための読取済みフラグ。 */
+    bool recorded;
+    /** isBuyに対応するBまたはS。 */
+    string direction;
+    /** EMA200のBまたはS。対象外・方向なしは空。 */
+    string emaDirection;
+    /** 主波ラベル。 */
+    string wave;
+    /** 副次波ラベル。 */
+    string subWave;
+    /** 確定は確、未確定は未。 */
+    string state;
+
+    /**
+     * 未取得の文字列をNULLではなく空文字へ初期化する。
+     */
+    void clear() {
+        this.recorded = false;
+        this.direction = "";
+        this.emaDirection = "";
+        this.wave = "";
+        this.subWave = "";
+        this.state = "";
+    }
+};
+
+/**
+ * 全件表示用の保存ラベルと7時間足の概要を保持する。詳細分析は選択時に読み取る。
  */
 struct ZigZagElliotAlertHistoryMarker {
     /** 保存アラートID。 */
@@ -40,6 +70,10 @@ struct ZigZagElliotAlertHistoryMarker {
     string text;
     /** 保存された補正内容の説明。 */
     string correctionText;
+    /** 採用分析を特定した保存状態。 */
+    string correctionStatus;
+    /** MN1・W1・D1・H4・H1・M15・M5の保存概要。 */
+    ZigZagElliotAlertHistoryWaveSummary waves[7];
     /** ラベル表示に必要な保存値を確認できた場合true。 */
     bool available;
 };

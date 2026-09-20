@@ -14,6 +14,7 @@
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Indicator\ZigZagElliot\CurrencyStrengthPairRankController.mqh>
+#include <Mstng\Indicator\ZigZagElliot\DatabaseAlertDisplayController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotAnalysisController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotChartController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\Mtf3In3AlertController.mqh>
@@ -36,6 +37,7 @@ public:
      */
     ZigZagElliotController() {
         this.currencyStrengthController = NULL;
+        this.databaseAlertDisplayController = NULL;
         this.analysisController = NULL;
         this.chartController = NULL;
         this.alertController = NULL;
@@ -196,6 +198,14 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
+        if (this.config.databaseAlertDisplayEnabled && this.marketContext.timeFrame == PERIOD_M5) {
+            this.databaseAlertDisplayController = new DatabaseAlertDisplayController();
+            if (this.databaseAlertDisplayController == NULL
+                    || !this.databaseAlertDisplayController.initialize(this.marketContext, this.config)) {
+                return INIT_PARAMETERS_INCORRECT;
+            }
+        }
+
         SymbolSelect(this.marketContext.symbolName, true);
 
         int analysisTimeFrameCount = ArraySize(this.analysisTimeFrames);
@@ -256,7 +266,7 @@ public:
             isRedrawn =
                 this.chartController.onChartChange(elliotAll);
 
-            if (isRedrawn) {
+            if (isRedrawn || this.databaseAlertDisplayController != NULL) {
                 this.completeRedraw();
             }
 
@@ -355,6 +365,11 @@ public:
     void destroy() {
         EventKillTimer();
 
+        if (this.databaseAlertDisplayController != NULL) {
+            delete this.databaseAlertDisplayController;
+            this.databaseAlertDisplayController = NULL;
+        }
+
         if (this.alertController != NULL) {
             delete this.alertController;
             this.alertController = NULL;
@@ -419,6 +434,8 @@ private:
     datetime lastProcessedBarTime;
     /** 最後に通知したテスター分析履歴の進捗率。 */
     int lastAnalysisWarmUpProgress;
+    /** 通常版の保存済みアラート表示。M5で有効時だけ保持する。 */
+    DatabaseAlertDisplayController *databaseAlertDisplayController;
     /** MN1から表示足までの分析対象時間足。 */
     ENUM_TIMEFRAMES analysisTimeFrames[];
     /** 分析対象足ごとに未同期系列を再要求済みの場合true。 */
@@ -736,9 +753,26 @@ private:
     }
 
     /**
+     * 通常の分析・アラート描画後にDBラベルを更新し、固定パネルを手前に保つ。
+     */
+    void updateDatabaseAlertDisplay(const datetime fromBarTime) {
+        if (this.databaseAlertDisplayController == NULL) {
+            return;
+        }
+        this.databaseAlertDisplayController.update(fromBarTime, TimeCurrent(), AccountInfoString(ACCOUNT_SERVER));
+        if (this.currencyStrengthController != NULL) {
+            this.currencyStrengthController.redrawOnTop();
+        }
+    }
+
+    /**
      * 固定パネルを最前面へ戻してチャートを再描画する。
      */
     void completeRedraw() {
+        if (this.databaseAlertDisplayController != NULL) {
+            this.databaseAlertDisplayController.redraw(TimeCurrent());
+        }
+
         if (this.currencyStrengthController != NULL) {
             this.currencyStrengthController.redrawOnTop();
         }
@@ -943,6 +977,7 @@ private:
         datetime currentBarTime = analysisEndBarTime;
 
         if (this.lastProcessedBarTime == currentBarTime) {
+            this.updateDatabaseAlertDisplay(currentBarTime);
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 
             return;
@@ -959,6 +994,7 @@ private:
         }
 
         this.lastProcessedBarTime = currentBarTime;
+        this.updateDatabaseAlertDisplay(currentBarTime);
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
 };

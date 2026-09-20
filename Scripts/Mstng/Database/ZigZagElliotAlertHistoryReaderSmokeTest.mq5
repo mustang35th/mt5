@@ -121,6 +121,13 @@ long saveRun(ZigZagElliotAlertPersistenceService &fromService, const int fromNum
     run.schemaVersion = 7;
     run.source = "ZigZagElliot";
     run.sourceMode = "TESTER";
+    run.sourceServer = "qa-server";
+    if (fromNumber == 1) {
+        run.sourceMode = "LIVE";
+    }
+    if (fromNumber == 3) {
+        run.sourceServer = "qa-other-server";
+    }
     run.strategy = "MTF_3in3";
     run.analysisVersion = "history-fixture";
     run.analysisInputText = "synthetic-only";
@@ -233,6 +240,9 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     alert.side = "BUY";
     alert.currentBarTime = fromBarTime;
     alert.serverTime = fromBarTime;
+    if (fromSerial == 1) {
+        alert.serverTime++;
+    }
     alert.jstTime = fromBarTime;
     alert.signalReferencePointTime = 502 + (fromSerial - 1) * 10;
     alert.alertText = "original " + IntegerToString(fromSerial);
@@ -387,7 +397,7 @@ void testMarkers(ZigZagElliotAlertHistoryReader &fromReader, const bool fromLega
         return;
     }
     expect(markers[0].available && markers[0].price == 150.125
-        && markers[0].barTime == 1000 && markers[0].serverTime == 1000 && markers[0].jstTime == 1000,
+        && markers[0].barTime == 1000 && markers[0].serverTime == 1001 && markers[0].jstTime == 1000,
         "marker uses saved original M5 open and separate dates");
     expect(markers[2].available && markers[2].text == "original 4 [元分析]",
         "missing correction row is explicitly original");
@@ -403,8 +413,80 @@ void testMarkers(ZigZagElliotAlertHistoryReader &fromReader, const bool fromLega
             "SELL H4 metadata retained");
         expect(markers[4].available, "saved label is independent of detailed corrected point completeness");
     }
+    string expectedWave = "3";
+    string expectedStatus = "APPLIED";
+    if (fromLegacy) {
+        expectedWave = "2";
+        expectedStatus = "UNRECORDED";
+    }
+    expect(markers[0].correctionStatus == expectedStatus, "tooltip identifies adopted or legacy analysis");
+    for (int i = 0; i < 7; i++) {
+        expect(markers[0].waves[i].recorded && markers[0].waves[i].wave == expectedWave
+            && markers[0].waves[i].state == "未" && markers[0].waves[i].subWave == "",
+            "all seven waves come from one adopted analysis " + IntegerToString(i));
+        string expectedEma = "B";
+        if (fromLegacy || i == 0) {
+            expectedEma = "";
+        }
+        expect(markers[0].waves[i].emaDirection == expectedEma,
+            "MN1 and absent legacy EMA flags stay unknown " + IntegerToString(i));
+        expect(markers[2].waves[i].wave == "2", "legacy row reads original waves " + IntegerToString(i));
+    }
+    if (!fromLegacy) {
+        expect(markers[0].waves[4].direction == "B" && markers[3].waves[3].direction == "S",
+            "corrected H1 BUY and H4 SELL directions adopted");
+        expect(markers[1].correctionStatus == "NONE" && markers[1].waves[4].wave == "2",
+            "NONE uses original summary");
+        expect(!markers[4].waves[0].recorded && markers[4].waves[0].direction == ""
+            && markers[4].waves[0].wave == "", "missing corrected frame never falls back to original");
+        expect(markers[4].waves[3].direction == "" && markers[4].waves[3].emaDirection == "",
+            "invalid direction and contradictory EMA flags stay unknown");
+        expect(markers[4].waves[1].emaDirection == "" && markers[4].waves[1].state == "",
+            "neutral EMA and invalid confirmation stay unknown");
+        expect(markers[4].waves[2].emaDirection == "S", "EMA SELL is independent of analysis BUY");
+        expect(markers[4].waves[4].subWave == "1" && markers[4].waves[4].state == "確",
+            "saved subwave and confirmed state read");
+    }
     expect(!fromReader.selectMarkers("TESTJPY", -1, 0, 0, false, runId, ids, markers, error)
         && ArraySize(markers) == 0 && ArraySize(ids) == 0, "invalid request clears bulk marker cache");
+}
+
+/**
+ * 通常版のモード・接続先・既知時刻をRun選択前に絞り、未来の判定を除く。
+ */
+void testDisplayFilters(ZigZagElliotAlertHistoryReader &fromReader) {
+    long runId = 0;
+    long ids[];
+    ZigZagElliotAlertHistoryMarker markers[];
+    string error = "";
+    bool success = fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
+        "LIVE", "qa-server", 2000);
+    expect(success && runId == 1 && ArraySize(ids) == 1 && ids[0] == 6,
+        "LIVE selects matching older Run instead of latest TESTER Run");
+    success = fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 2000);
+    expect(success && runId == 2 && ArraySize(ids) == 6,
+        "TESTER excludes newer other-server Run before MAX selection");
+    success = fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
+        "TESTER", "qa-other-server", 2000);
+    expect(success && runId == 3 && ArraySize(ids) == 1 && ids[0] == 7, "exact server filter");
+    success = fromReader.selectMarkers("TESTJPY", 2, 0, 0, false, runId, ids, markers, error,
+        "LIVE", "qa-server", 2000);
+    expect(success && ArraySize(ids) == 0, "explicit Run cannot bypass source mode");
+    success = fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 1000);
+    expect(success && runId == 0 && ArraySize(ids) == 0,
+        "current bar present but future judgment excluded");
+    success = fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 1001);
+    expect(success && runId == 2 && ArraySize(ids) == 1 && ids[0] == 1,
+        "judgment becomes visible exactly at saved server time");
+    success = fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 1100);
+    expect(success && ArraySize(ids) == 3 && ids[0] == 1 && ids[1] == 3 && ids[2] == 4,
+        "known-time cutoff preserves order and excludes later bars");
+    expect(!fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
+        "TESTER", "qa-server", -1) && ArraySize(markers) == 0, "negative known time rejected");
 }
 
 /**
@@ -535,6 +617,16 @@ void testFile(const string fromFileName, const bool fromLegacy) {
         "(SELECT id FROM zigzag_elliot_alert_timeframes WHERE alert_id=12 AND time_frame=5)");
     executeSql(databaseHandle, "UPDATE zigzag_elliot_alert_corrections SET selected_risk_pips='invalid' WHERE alert_id=13");
     executeSql(databaseHandle, "PRAGMA foreign_keys=OFF");
+    executeSql(databaseHandle, "PRAGMA ignore_check_constraints=ON");
+    executeSql(databaseHandle, "DELETE FROM zigzag_elliot_alert_corrected_timeframes WHERE alert_id=5 AND time_frame=49153");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alert_corrected_timeframes SET is_buy='invalid',is_ema200_sell=1 "
+        "WHERE alert_id=5 AND time_frame=16388");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alert_corrected_timeframes SET is_ema200_buy=0,is_wave_confirmed='invalid' "
+        "WHERE alert_id=5 AND time_frame=32769");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alert_corrected_timeframes SET is_ema200_buy=0,is_ema200_sell=1 "
+        "WHERE alert_id=5 AND time_frame=16408");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alert_corrected_timeframes SET latest_sub_elliot_index=1,"
+        "latest_sub_elliot_label='1',is_wave_confirmed=1 WHERE alert_id=5 AND time_frame=16385");
     executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET run_id=99999 WHERE id=14");
     executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET server_time='invalid' WHERE id=15");
     if (fromLegacy) {
@@ -561,6 +653,7 @@ void testFile(const string fromFileName, const bool fromLegacy) {
         expectSelection(reader, "TEST' OR 1=1 --", 0, 0, 0, false, latestRun, "10", "escaped exact symbol");
         expectSelection(reader, "UNKNOWN", 0, 0, 0, false, 0, "", "empty auto Run is successful");
         testMarkers(reader, fromLegacy);
+        testDisplayFilters(reader);
         if (fromLegacy) {
             ZigZagElliotAlertHistorySnapshot snapshot;
             bool isLoaded = reader.loadSnapshot(3, snapshot, error);
