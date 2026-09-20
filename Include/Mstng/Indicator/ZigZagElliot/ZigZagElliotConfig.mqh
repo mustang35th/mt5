@@ -18,6 +18,14 @@
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
 
 /**
+ * 通常チャートへ表示する保存Runの対象。
+ */
+enum ZigZagElliotDatabaseAlertRunScope {
+    DATABASE_ALERT_RUN_SELECTED = 0, // 指定Run／最新Run
+    DATABASE_ALERT_RUN_ALL = 1       // 期間内の全Run
+};
+
+/**
  * ZigZagElliotインジケータの設定を保持するクラス。
  */
 class ZigZagElliotConfig {
@@ -34,10 +42,12 @@ public:
     bool mtf3In3AlertDatabaseUseCommonFolder;
     /** テスターのAlert DB保存開始サーバー時刻。0は日時制限なし。 */
     datetime mtf3In3AlertTesterSaveStartTime;
-    /** M5に保存済みDBアラートを表示する場合true。 */
+    /** M5・H1に保存済みDBアラートを表示する場合true。 */
     bool databaseAlertDisplayEnabled;
     /** 表示対象Run。0は最初に一致した最新Runを保持する。 */
     long databaseAlertDisplayRunId;
+    /** 指定または最新の一Runか、期間内の全Runか。 */
+    ZigZagElliotDatabaseAlertRunScope databaseAlertDisplayRunScope;
     /** 表示開始サーバー日付。0は制限なし。 */
     datetime databaseAlertDisplayStartDate;
     /** 表示終了サーバー日付。当日を含み0は制限なし。 */
@@ -87,6 +97,7 @@ public:
         this.mtf3In3AlertTesterSaveStartTime = 0;
         this.databaseAlertDisplayEnabled = false;
         this.databaseAlertDisplayRunId = 0;
+        this.databaseAlertDisplayRunScope = DATABASE_ALERT_RUN_SELECTED;
         this.databaseAlertDisplayStartDate = 0;
         this.databaseAlertDisplayEndDate = 0;
         this.databaseAlertDisplayEntryOnly = false;

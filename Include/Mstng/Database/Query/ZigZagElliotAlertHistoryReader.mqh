@@ -6,7 +6,7 @@
 #include <Mstng\Log\Logger.mqh>
 
 /**
- * M5アラートと保存済み分析を読み取り専用で取得する。
+ * M5の保存済み分析と、M5・H1のアラートラベルを読み取り専用で取得する。
  * 元分析と補正分析は同じ読取トランザクションで検証する。
  */
 class ZigZagElliotAlertHistoryReader {
@@ -133,6 +133,7 @@ public:
      * 同じ検索条件で全ラベルを一括取得する。波動ポイントや詳細分析は読み取らない。
      * 表示値が不足する行もIDを残し、前後移動による詳細確認を可能にする。
      * 任意の実行モード・サーバー・既知時刻はRun選択前に適用する。空文字と0は制限なし。
+     * 全RunではRun ID指定を使わず、解決Run IDは0。H1は保存元分析を採用する。
      */
     bool selectMarkers(
         const string fromSymbol, const long fromRunId,
@@ -140,17 +141,23 @@ public:
         const bool fromEntryOnly, long &fromResolvedRunId,
         long &fromAlertIds[], ZigZagElliotAlertHistoryMarker &fromMarkers[], string &fromError,
         const string fromSourceMode = "", const string fromSourceServer = "",
-        const datetime fromKnownTime = 0
+        const datetime fromKnownTime = 0, const ENUM_TIMEFRAMES fromTimeFrame = PERIOD_M5,
+        const bool fromAllRuns = false
     ) {
         ArrayFree(fromAlertIds);
         ArrayFree(fromMarkers);
-        fromResolvedRunId = fromRunId;
+        long requestedRunId = fromRunId;
+        if (fromAllRuns) {
+            requestedRunId = 0;
+        }
+        fromResolvedRunId = requestedRunId;
         fromError = "";
         if (!this.isOpen(fromError)) {
             return false;
         }
         if (fromSymbol == "" || fromRunId < 0 || fromStartTime < 0 || fromEndTime < 0 || fromKnownTime < 0
-                || (fromEndTime > 0 && fromEndTime <= fromStartTime)) {
+                || (fromEndTime > 0 && fromEndTime <= fromStartTime)
+                || (fromTimeFrame != PERIOD_M5 && fromTimeFrame != PERIOD_H1)) {
             fromError = "通貨・Run・日時範囲の指定が不正です。";
             return false;
         }
@@ -160,7 +167,9 @@ public:
         }
         string correctionProjection = "NULL,'',0,'','',''";
         string correctionJoin = "";
-        if (correctionColumns != ",") {
+        if (fromTimeFrame == PERIOD_H1) {
+            correctionProjection = "'NONE',a.alert_text,0,'','','ORIGINAL'";
+        } else if (correctionColumns != ",") {
             string reason = "";
             if (this.projection("zigzag_elliot_alert_corrections",
                     "correction_status,selected_alert_text,correction_time_frame,original_direction,corrected_direction,selected_analysis",
@@ -176,10 +185,11 @@ public:
         string originalFrames = "";
         string correctedFrames = "";
         if (!this.markerFrameSource("zigzag_elliot_alert_timeframes", false, originalFrames, fromError)
-                || !this.markerFrameSource("zigzag_elliot_alert_corrected_timeframes", true, correctedFrames, fromError)) {
+                || (fromTimeFrame == PERIOD_M5
+                    && !this.markerFrameSource("zigzag_elliot_alert_corrected_timeframes", true, correctedFrames, fromError))) {
             return false;
         }
-        string frameFilter = " WHERE alert_id IN (SELECT id FROM candidates WHERE run_id=(SELECT MAX(run_id) FROM candidates))";
+        string frameFilter = " WHERE alert_id IN (SELECT id FROM selected)";
         if (originalFrames != "") {
             originalFrames += frameFilter;
         }
@@ -203,31 +213,34 @@ public:
             selectedFrameKind = "CASE WHEN c.correction_status='APPLIED' AND c.selected_analysis='CORRECTED' THEN 1 ELSE 0 END";
         }
         string sql = "WITH candidates AS (SELECT id,run_id,current_bar_time,server_time,jst_time,side,is_entry,entry_result,alert_text FROM zigzag_elliot_alerts ";
-        sql += "WHERE symbol_name=?1 AND time_frame=5 AND is_alert=1 ";
+        sql += "WHERE symbol_name=?1 AND time_frame=?9 AND is_alert=1 ";
         sql += "AND (?2=0 OR run_id=?2) AND (?3=0 OR current_bar_time>=?3) ";
         sql += "AND (?4=0 OR current_bar_time<?4) AND (?5=0 OR is_entry=1) ";
         sql += "AND (?6='' OR EXISTS(SELECT 1 FROM zigzag_elliot_alert_runs r WHERE r.id=run_id AND r.source_mode=?6)) ";
         sql += "AND (?7='' OR EXISTS(SELECT 1 FROM zigzag_elliot_alert_runs r WHERE r.id=run_id AND r.source_server=?7)) ";
         sql += "AND (?8=0 OR (current_bar_time<=?8 AND server_time<=?8))) ";
+        sql += ",selected AS (SELECT * FROM candidates WHERE ?10=1 OR run_id=(SELECT MAX(run_id) FROM candidates)) ";
         sql += "SELECT a.id,a.run_id,a.current_bar_time,a.server_time,a.jst_time,a.side,a.is_entry,a.entry_result,a.alert_text,";
         sql += "(SELECT CASE WHEN COUNT(*)=1 THEN current_open ELSE NULL END ";
-        sql += "FROM zigzag_elliot_alert_timeframes WHERE alert_id=a.id AND time_frame=5),";
+        sql += "FROM zigzag_elliot_alert_timeframes WHERE alert_id=a.id AND time_frame=?9),";
         sql += correctionProjection + ",tf.time_frame,tf.is_buy,tf.is_ema200_buy,tf.is_ema200_sell,"
             + "tf.latest_elliot_label,tf.latest_sub_elliot_index,tf.latest_sub_elliot_label,tf.is_wave_confirmed";
-        sql += " FROM candidates a" + correctionJoin;
+        sql += " FROM selected a" + correctionJoin;
         sql += " LEFT JOIN (" + frameSource + ") tf ON tf.alert_id=a.id AND tf.corrected=" + selectedFrameKind;
-        sql += " WHERE a.run_id=(SELECT MAX(run_id) FROM candidates) ORDER BY a.current_bar_time,a.id,tf.time_frame";
+        sql += " ORDER BY a.current_bar_time,a.id,tf.time_frame";
         int request = this.prepare(sql, fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
-        if (!DatabaseBind(request, 0, fromSymbol) || !DatabaseBind(request, 1, fromRunId)
+        if (!DatabaseBind(request, 0, fromSymbol) || !DatabaseBind(request, 1, requestedRunId)
                 || !DatabaseBind(request, 2, (long)fromStartTime)
                 || !DatabaseBind(request, 3, (long)fromEndTime)
                 || !DatabaseBind(request, 4, (int)fromEntryOnly)
                 || !DatabaseBind(request, 5, fromSourceMode)
                 || !DatabaseBind(request, 6, fromSourceServer)
-                || !DatabaseBind(request, 7, (long)fromKnownTime)) {
+                || !DatabaseBind(request, 7, (long)fromKnownTime)
+                || !DatabaseBind(request, 8, (int)fromTimeFrame)
+                || !DatabaseBind(request, 9, (int)fromAllRuns)) {
             this.databaseError("bind alert filters", fromError);
             DatabaseFinalize(request);
             return false;
@@ -262,9 +275,11 @@ public:
                 break;
             }
             fromAlertIds[count] = alertId;
-            this.readMarker(request, alertId, fromMarkers[count]);
+            this.readMarker(request, alertId, fromMarkers[count], fromTimeFrame);
             this.readMarkerWave(request, fromMarkers[count]);
-            fromResolvedRunId = runId;
+            if (!fromAllRuns) {
+                fromResolvedRunId = runId;
+            }
         }
         DatabaseFinalize(request);
         if (!success) {
@@ -317,12 +332,14 @@ private:
     /**
      * 一覧のラベル用保存値を検証する。採用文字が欠損した補正を元分析で代用しない。
      */
-    void readMarker(const int fromRequest, const long fromAlertId, ZigZagElliotAlertHistoryMarker &fromMarker) {
+    void readMarker(const int fromRequest, const long fromAlertId, ZigZagElliotAlertHistoryMarker &fromMarker,
+            const ENUM_TIMEFRAMES fromTimeFrame) {
         ZeroMemory(fromMarker);
         for (int i = 0; i < ArraySize(fromMarker.waves); i++) {
             fromMarker.waves[i].clear();
         }
         fromMarker.alertId = fromAlertId;
+        fromMarker.timeFrame = fromTimeFrame;
         fromMarker.correctionStatus = "UNRECORDED";
         if (!this.readTimeValue(fromRequest, 2, fromMarker.barTime)
                 || !this.readTimeValue(fromRequest, 3, fromMarker.serverTime)

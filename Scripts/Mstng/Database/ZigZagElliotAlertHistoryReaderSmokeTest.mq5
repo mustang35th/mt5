@@ -553,6 +553,63 @@ void testSnapshots(ZigZagElliotAlertHistoryReader &fromReader) {
 }
 
 /**
+ * H1元分析、同一条件の全Run、未来除外と時間足分離を実DBで確認する。
+ */
+void testRunScopes(ZigZagElliotAlertHistoryReader &fromReader) {
+    long runId = 0;
+    long ids[];
+    ZigZagElliotAlertHistoryMarker markers[];
+    string error = "";
+    bool success = fromReader.selectMarkers("TESTJPY", 0, 1000, 2000, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 2000, PERIOD_H1);
+    expect(success && runId == 4 && ArraySize(ids) == 1 && ids[0] == 20,
+        "H1 latest Run selected independently of M5");
+    if (success && ArraySize(markers) == 1) {
+        expect(markers[0].timeFrame == PERIOD_H1 && markers[0].available
+            && markers[0].price == 155.125 && markers[0].text == "original 20"
+            && markers[0].correctionStatus == "NONE" && markers[0].waves[4].wave == "2"
+            && !markers[0].waves[5].recorded && !markers[0].waves[6].recorded,
+            "H1 reads five original frames and H1 open without missing-correction suffix");
+    }
+    success = fromReader.selectMarkers("TESTJPY", 2, 1000, 2000, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 2000, PERIOD_H1, true);
+    expect(success && runId == 0 && ArraySize(ids) == 3 && ids[0] == 17 && ids[1] == 20 && ids[2] == 18,
+        "all H1 Runs ignore explicit Run and preserve distinct same-bar Alert IDs");
+    success = fromReader.selectMarkers("TESTJPY", 0, 1000, 2000, true, runId, ids, markers, error,
+        "TESTER", "qa-server", 2000, PERIOD_H1, true);
+    expect(success && ArraySize(ids) == 2 && ids[0] == 17 && ids[1] == 20,
+        "all H1 Runs obey entry-only filter");
+    success = fromReader.selectMarkers("TESTJPY", 2, 1000, 2000, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 2000, PERIOD_H1);
+    expect(success && runId == 2 && ArraySize(ids) == 2 && ids[0] == 17 && ids[1] == 18,
+        "explicit H1 Run remains isolated");
+    success = fromReader.selectMarkers("TESTJPY", 0, 1000, 2000, false, runId, ids, markers, error,
+        "LIVE", "qa-server", 2000, PERIOD_H1, true);
+    expect(success && ArraySize(ids) == 1 && ids[0] == 16, "all H1 Runs keep LIVE separate from TESTER");
+    success = fromReader.selectMarkers("TESTJPY", 0, 1000, 2000, false, runId, ids, markers, error,
+        "TESTER", "qa-other-server", 2000, PERIOD_H1, true);
+    expect(success && ArraySize(ids) == 2 && ids[0] == 9 && ids[1] == 19,
+        "all H1 Runs keep source server isolated");
+    success = fromReader.selectMarkers("TESTJPY", 0, 1000, 2000, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 1599, PERIOD_H1, true);
+    expect(success && runId == 0 && ArraySize(ids) == 0, "future H1 bars excluded across all Runs");
+    success = fromReader.selectMarkers("MULTIRUN", 0, 1700, 1701, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 1700, PERIOD_M5);
+    expect(success && runId == 2 && ArraySize(ids) == 1 && ids[0] == 21,
+        "future judgment filtered before latest M5 Run selection");
+    success = fromReader.selectMarkers("MULTIRUN", 0, 1700, 1701, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 1800, PERIOD_M5, true);
+    expect(success && runId == 0 && ArraySize(ids) == 2 && ids[0] == 21 && ids[1] == 22,
+        "all M5 Runs keep same-bar records in stable ID order");
+    success = fromReader.selectMarkers("MULTIRUN", 0, 1000, 1700, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 1800, PERIOD_M5, true);
+    expect(success && ArraySize(ids) == 0, "all Run end time remains exclusive");
+    expect(!fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
+        "TESTER", "qa-server", 2000, PERIOD_M15, true) && ArraySize(ids) == 0 && ArraySize(markers) == 0,
+        "unsupported frame rejected without stale data");
+}
+
+/**
  * current schemaと旧EMA列なしschemaを、書込側を閉じた後で読み取る。
  */
 void testFile(const string fromFileName, const bool fromLegacy) {
@@ -602,6 +659,21 @@ void testFile(const string fromFileName, const bool fromLegacy) {
         "missing Run id");
     expect(saveAlert(service, latestRun, 15, 1600, "UNRECORDED", true, PERIOD_H1, true, "BADTIME") == 15,
         "malformed timestamp id");
+    long extraRun = saveRun(service, 4);
+    expect(saveAlert(service, olderRun, 16, 1600, "UNRECORDED") == 16, "LIVE H1 fixture");
+    expect(saveAlert(service, latestRun, 17, 1600, "UNRECORDED") == 17, "older TESTER H1 fixture");
+    expect(saveAlert(service, latestRun, 18, 1700, "UNRECORDED", true, PERIOD_H1, false) == 18,
+        "non-entry H1 fixture");
+    expect(saveAlert(service, excludedRun, 19, 1600, "UNRECORDED") == 19, "other-server H1 fixture");
+    expect(saveAlert(service, extraRun, 20, 1600, "UNRECORDED") == 20, "latest TESTER H1 fixture");
+    expect(saveAlert(service, latestRun, 21, 1700, "NONE", true, PERIOD_H1, true, "MULTIRUN") == 21,
+        "older same-bar M5 fixture");
+    expect(saveAlert(service, extraRun, 22, 1700, "NONE", true, PERIOD_H1, true, "MULTIRUN") == 22,
+        "newer same-bar M5 fixture");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET time_frame=16385,time_frame_text='H1' WHERE id BETWEEN 16 AND 20");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET server_time=1800 WHERE id=22");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alert_timeframes SET current_open=155.125 WHERE (alert_id=9 OR alert_id BETWEEN 16 AND 20) AND time_frame=16385");
+    executeSql(databaseHandle, "DELETE FROM zigzag_elliot_alert_timeframes WHERE alert_id BETWEEN 16 AND 20 AND time_frame IN (5,15)");
     executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET is_alert=0 WHERE id=8");
     executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET time_frame=16385,time_frame_text='H1' WHERE id=9");
     executeSql(databaseHandle, "DELETE FROM zigzag_elliot_alert_corrected_points WHERE id IN "
@@ -654,6 +726,7 @@ void testFile(const string fromFileName, const bool fromLegacy) {
         expectSelection(reader, "UNKNOWN", 0, 0, 0, false, 0, "", "empty auto Run is successful");
         testMarkers(reader, fromLegacy);
         testDisplayFilters(reader);
+        testRunScopes(reader);
         if (fromLegacy) {
             ZigZagElliotAlertHistorySnapshot snapshot;
             bool isLoaded = reader.loadSnapshot(3, snapshot, error);

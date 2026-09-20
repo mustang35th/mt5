@@ -10,7 +10,7 @@
 #include <Mstng\Log\Logger.mqh>
 
 /**
- * 通常版M5の保存アラート表示を管理する。分析・判定・DB書込は行わない。
+ * 通常版M5・H1の保存アラート表示を管理する。分析・判定・DB書込は行わない。
  * 準備完了後の新バーでのみ読み取り、表示変更では保存済みキャッシュを使う。
  */
 class DatabaseAlertDisplayController {
@@ -45,13 +45,23 @@ public:
         this.marketContext = fromMarketContext;
         this.config.databaseFileName = fromConfig.mtf3In3AlertDatabaseFileName;
         this.config.useCommonFolder = fromConfig.mtf3In3AlertDatabaseUseCommonFolder;
+        this.allRuns = fromConfig.databaseAlertDisplayRunScope == DATABASE_ALERT_RUN_ALL;
         this.config.runId = fromConfig.databaseAlertDisplayRunId;
+        if (this.allRuns) {
+            this.config.runId = 0;
+        }
         this.config.startDate = fromConfig.databaseAlertDisplayStartDate;
         this.config.endDate = fromConfig.databaseAlertDisplayEndDate;
         this.config.entryOnly = fromConfig.databaseAlertDisplayEntryOnly;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
         string error = "";
+        if ((this.marketContext.timeFrame != PERIOD_M5 && this.marketContext.timeFrame != PERIOD_H1)
+                || (fromConfig.databaseAlertDisplayRunScope != DATABASE_ALERT_RUN_SELECTED
+                    && fromConfig.databaseAlertDisplayRunScope != DATABASE_ALERT_RUN_ALL)) {
+            this.reportError("DBアラート表示の時間足・Run対象を確認してください。");
+            return false;
+        }
         if (!this.config.getPeriod(this.startTime, this.endTime, error)) {
             this.reportError(error);
             return false;
@@ -66,7 +76,7 @@ public:
     }
 
     /**
-     * 準備済みM5バーで全ラベルを一括更新する。同じバーの重複読込は行わない。
+     * 準備済み表示足バーで全ラベルを一括更新する。同じバーの重複読込は行わない。
      * 実行モード・接続先・既知の判定時刻を、Run自動選択より先に絞り込む。
      */
     void update(const datetime fromBarTime, const datetime fromKnownTime, const string fromSourceServer) {
@@ -95,7 +105,7 @@ public:
         this.lastBarTime = fromBarTime;
         this.lastKnownTime = fromKnownTime;
         long runId = this.config.runId;
-        if (runId == 0 && this.resolvedRunId > 0) {
+        if (!this.allRuns && runId == 0 && this.resolvedRunId > 0) {
             runId = this.resolvedRunId;
         }
         long selectedRunId = 0;
@@ -105,7 +115,7 @@ public:
         bool success = this.reader.open(this.config.databaseFileName, this.config.useCommonFolder, error)
             && this.reader.selectMarkers(this.marketContext.symbolName, runId, this.startTime, this.endTime,
                 this.config.entryOnly, selectedRunId, alertIds, loadedMarkers, error,
-                this.sourceMode, this.sourceServer, fromKnownTime);
+                this.sourceMode, this.sourceServer, fromKnownTime, this.marketContext.timeFrame, this.allRuns);
         this.reader.close();
         if (!success) {
             this.reportError(error);
@@ -129,8 +139,9 @@ public:
         }
         if (this.lastError != "" || this.resolvedRunId != selectedRunId
                 || this.lastUnavailableCount != unavailableCount) {
-            this.logger.info(__FUNCTION__, StringFormat("DB alert display run=%I64d count=%d unavailable=%d mode=%s server=%s",
-                selectedRunId, ArraySize(this.markers), unavailableCount, this.sourceMode, this.sourceServer));
+            this.logger.info(__FUNCTION__, StringFormat("DB alert display run=%I64d allRuns=%d frame=%s count=%d unavailable=%d mode=%s server=%s",
+                selectedRunId, (int)this.allRuns, EnumToString(this.marketContext.timeFrame),
+                ArraySize(this.markers), unavailableCount, this.sourceMode, this.sourceServer));
         }
         this.lastError = "";
         this.lastUnavailableCount = unavailableCount;
@@ -167,12 +178,14 @@ private:
     datetime startTime;
     /** 表示終了日の翌日を含まない時刻。 */
     datetime endTime;
-    /** 最後にDB読込を試みたM5バー。 */
+    /** 最後にDB読込を試みた表示足バー。 */
     datetime lastBarTime;
     /** 最後にDB検索へ渡した既知時刻。 */
     datetime lastKnownTime;
     /** 自動選択後に保持するRun。 */
     long resolvedRunId;
+    /** 条件に一致する全Runを毎回読み取る場合true。 */
+    bool allRuns;
     /** LIVEまたはTESTER。 */
     string sourceMode;
     /** 検索対象サーバー。 */

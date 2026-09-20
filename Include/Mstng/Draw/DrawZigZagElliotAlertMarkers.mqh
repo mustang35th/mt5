@@ -262,13 +262,17 @@ private:
     }
 
     /**
-     * 採用分析の全7時間足を作る。欠損値は他の分析から補完しない。
+     * 採用分析のM5は7時間足、H1は5時間足を作る。欠損値は他の分析から補完しない。
      */
     string waveRows(const ZigZagElliotAlertHistoryMarker &fromMarker, const bool fromIncludeSub,
             const int fromMainLimit = 0) {
         string frames[] = {"MN1", "W1", "D1", "H4", "H1", "M15", "M5"};
         string text = "\n足 分析/EMA 波動";
-        for (int i = 0; i < ArraySize(frames); i++) {
+        int frameCount = ArraySize(frames);
+        if (fromMarker.timeFrame == PERIOD_H1) {
+            frameCount = 5;
+        }
+        for (int i = 0; i < frameCount; i++) {
             string wave = this.cellText(fromMarker.waves[i].wave, fromMainLimit);
             if (fromIncludeSub && wave != "—" && StringLen(fromMarker.waves[i].subWave) > 0) {
                 wave += "." + this.cellText(fromMarker.waves[i].subWave);

@@ -52,13 +52,15 @@ struct ZigZagElliotAlertHistoryWaveSummary {
 struct ZigZagElliotAlertHistoryMarker {
     /** 保存アラートID。 */
     long alertId;
+    /** アラートの表示時間足。 */
+    ENUM_TIMEFRAMES timeFrame;
     /** 発生足のサーバー時刻。 */
     datetime barTime;
     /** 判定サーバー時刻。 */
     datetime serverTime;
     /** 保存された判定JST。 */
     datetime jstTime;
-    /** 元分析M5の保存始値。 */
+    /** 元分析の対象時間足の保存始値。 */
     double price;
     /** 保存されたBUYまたはSELL。 */
     string side;

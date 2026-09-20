@@ -198,7 +198,8 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
-        if (this.config.databaseAlertDisplayEnabled && this.marketContext.timeFrame == PERIOD_M5) {
+        if (this.config.databaseAlertDisplayEnabled
+                && (this.marketContext.timeFrame == PERIOD_M5 || this.marketContext.timeFrame == PERIOD_H1)) {
             this.databaseAlertDisplayController = new DatabaseAlertDisplayController();
             if (this.databaseAlertDisplayController == NULL
                     || !this.databaseAlertDisplayController.initialize(this.marketContext, this.config)) {

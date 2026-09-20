@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.47"
+#property version   "1.48"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -102,12 +102,14 @@ ElliotHigherTimeFrameDisplayCount elliotHigherTimeFrameDisplayCount =
 #property indicator_type6   DRAW_LINE
 #property indicator_type7   DRAW_LINE
 
-input group "07. DBアラート表示（M5）"
+input group "07. DBアラート表示（M5／H1）"
 
-/** M5チャートへ保存済みアラートを重ねて表示する場合true。 */
+/** M5・H1チャートへ保存済みアラートを重ねて表示する場合true。 */
 input(name="DBアラートを表示") bool databaseAlertDisplayEnabled = false;
-/** 0は現在の通貨・実行モード・サーバーに一致する最新Run。 */
-input(name="表示Run ID（0=条件に一致する最新Run）") long databaseAlertDisplayRunId = 0;
+/** 一つのRunまたは期間内の全Runを表示する。 */
+input(name="表示Run対象") ZigZagElliotDatabaseAlertRunScope databaseAlertDisplayRunScope = DATABASE_ALERT_RUN_SELECTED;
+/** 指定Run／最新Runで使用。0は現在の条件に一致する最新Run。 */
+input(name="表示Run ID（全Runでは無効、0=最新Run）") long databaseAlertDisplayRunId = 0;
 /** 表示開始サーバー日付。時刻部分は使用しない。 */
 input(name="表示開始日（サーバー日付、0=制限なし）") datetime databaseAlertDisplayStartDate = 0;
 /** 表示終了サーバー日付。当日を含む。 */
@@ -135,6 +137,7 @@ int OnInit() {
         mtf3In3AlertTesterSaveStartTime;
     config.databaseAlertDisplayEnabled = databaseAlertDisplayEnabled;
     config.databaseAlertDisplayRunId = databaseAlertDisplayRunId;
+    config.databaseAlertDisplayRunScope = databaseAlertDisplayRunScope;
     config.databaseAlertDisplayStartDate = databaseAlertDisplayStartDate;
     config.databaseAlertDisplayEndDate = databaseAlertDisplayEndDate;
     config.databaseAlertDisplayEntryOnly = databaseAlertDisplayEntryOnly;
