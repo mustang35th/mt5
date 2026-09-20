@@ -53,3 +53,4 @@ desktop.ini
 
 # Codex / project rules should be committed
 !AGENTS.md
+/output/

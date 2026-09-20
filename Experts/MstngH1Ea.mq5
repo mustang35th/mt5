@@ -1,3 +1,15 @@
+//+------------------------------------------------------------------+
+//|                                                    MstngH1Ea.mq5 |
+//|                                            Copyright 2026, Mstng |
+//+------------------------------------------------------------------+
+/**
+ * Package: Experts
+ * File: MstngH1Ea.mq5
+ *
+ * H1専用のMTF_3in3戦略を実行するEA。
+ * ZigZagによる初期SL・トレーリングと、SQLiteによる状態の保存・復元を行う。
+ */
+
 #property copyright "Copyright 2026, Mstng"
 #property version "1.08"
 #property strict
