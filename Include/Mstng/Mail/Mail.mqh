@@ -71,10 +71,13 @@ public:
             body = getBody(fromSource);
         }
 
-        // 通常版H1メールは、受信一覧の先頭で見分けられるようにする。
-        if (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot"
-                && fromSource.marketContext.timeFrame == PERIOD_H1) {
-            title = "★ " + title;
+        // 通常版の対象時間足と、採用分析のW1 EMA200一致を件名で示す。
+        if (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
+            ElliotAll *selectedAnalysis = fromSource;
+            if (hasCorrection) {
+                selectedAnalysis = fromJudgment;
+            }
+            title = getTitlePrefix(selectedAnalysis) + title;
         }
 
         Print(__FUNCTION__, " isSendMail = ", fromIsSendMail);
@@ -102,6 +105,38 @@ public:
     }
 
 private:
+    /**
+     * H1の星と、H1・M5のW1 EMA200同方向を示す件名接頭辞を作る。
+     *
+     * 補正時は採用した分析を渡す。W1未取得・方向なし・両方向成立は一致扱いにしない。
+     * @param fromSelected 判定に採用した分析。
+     * @return 目印がある場合は末尾に半角スペースを含む接頭辞。
+     */
+    static string getTitlePrefix(ElliotAll *fromSelected) {
+        if (fromSelected == NULL || fromSelected.elliotCurrent == NULL
+                || (fromSelected.marketContext.timeFrame != PERIOD_H1
+                    && fromSelected.marketContext.timeFrame != PERIOD_M5)) {
+            return "";
+        }
+        string prefix = "";
+        if (fromSelected.marketContext.timeFrame == PERIOD_H1) {
+            prefix = "★";
+        }
+        Elliot *elliotW1 = fromSelected.getElliot(PERIOD_W1);
+        if (elliotW1 != NULL) {
+            bool emaBuy = elliotW1.oscillator.ema200.isBuy;
+            bool emaSell = elliotW1.oscillator.ema200.isSell;
+            bool isBuy = fromSelected.elliotCurrent.isBuy;
+            if ((isBuy && emaBuy && !emaSell) || (!isBuy && emaSell && !emaBuy)) {
+                prefix += "[WE✓]";
+            }
+        }
+        if (StringLen(prefix) > 0) {
+            prefix += " ";
+        }
+        return prefix;
+    }
+
     /**
      * メールタイトルを生成する。
      *
