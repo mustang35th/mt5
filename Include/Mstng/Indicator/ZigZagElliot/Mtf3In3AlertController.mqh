@@ -14,6 +14,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Database\ZigZagElliotAlertDatabaseContext.mqh>
+#include <Mstng\Draw\DrawZigZagElliotLiveAlertTooltip.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
@@ -170,6 +171,16 @@ public:
 
         Mtf3In3AlertResult alertResult =
             this.expertAdvisorMtf3In3.getAlertResult();
+
+        if (this.marketContext.timeFrame == PERIOD_M5 || this.marketContext.timeFrame == PERIOD_H1) {
+            string objectName = Constant::PREFIX_FIXED + "TextMTF_3in3"
+                + IntegerToString((int)fromElliotAll.elliotCurrent.currentOhlcBarTime);
+            if (!DrawZigZagElliotLiveAlertTooltip::apply(
+                    objectName, fromElliotAll, this.expertAdvisorMtf3In3.getJudgmentElliotAll(),
+                    alertResult, this.expertAdvisorMtf3In3.getCorrectionTimeFrame())) {
+                this.logger.error(__FUNCTION__, "normal alert tooltip update failed");
+            }
+        }
 
         if (isDatabaseSaveAllowed) {
             Mtf3In3AlertSnapshot snapshot;
@@ -501,7 +512,7 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.50";
+        this.databaseRun.programVersion = "1.51";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_M5) {

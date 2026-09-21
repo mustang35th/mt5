@@ -18,6 +18,16 @@ struct ZigZagElliotAlertTooltipOverride {
 class DrawZigZagElliotAlertMarkers {
 public:
     /**
+     * 通常アラートとDBアラートで共通のツールチップを生成する。
+     *
+     * @param fromMarker 判定時点の採用分析の概要。
+     * @return 表示文字数へ収めたツールチップ。
+     */
+    string formatTooltip(const ZigZagElliotAlertHistoryMarker &fromMarker) {
+        return this.tooltip(fromMarker);
+    }
+
+    /**
      * この履歴インスタンスの接頭辞を保持する。
      */
     DrawZigZagElliotAlertMarkers(const long fromChartId, const string fromPrefix) {
