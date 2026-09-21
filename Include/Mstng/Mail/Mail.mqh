@@ -71,7 +71,7 @@ public:
             body = getBody(fromSource);
         }
 
-        // 通常版の対象時間足と、採用分析のW1 EMA200一致を件名で示す。
+        // 通常版の対象時間足と、採用分析のW1 EMA200・MN1方向一致を件名で示す。
         if (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
             ElliotAll *selectedAnalysis = fromSource;
             if (hasCorrection) {
@@ -106,9 +106,10 @@ public:
 
 private:
     /**
-     * H1の星と、H1・M5のW1 EMA200同方向を示す件名接頭辞を作る。
+     * H1の星と、H1・M5のW1 EMA200・MN1同方向を示す件名接頭辞を作る。
      *
      * 補正時は採用した分析を渡す。W1未取得・方向なし・両方向成立は一致扱いにしない。
+     * MN1の目印はW1 EMA200一致時だけ追加し、単独では付けない。
      * @param fromSelected 判定に採用した分析。
      * @return 目印がある場合は末尾に半角スペースを含む接頭辞。
      */
@@ -128,7 +129,11 @@ private:
             bool emaSell = elliotW1.oscillator.ema200.isSell;
             bool isBuy = fromSelected.elliotCurrent.isBuy;
             if ((isBuy && emaBuy && !emaSell) || (!isBuy && emaSell && !emaBuy)) {
-                prefix += "[WE✓]";
+                prefix += "[WE]";
+                Elliot *elliotMn1 = fromSelected.getElliot(PERIOD_MN1);
+                if (elliotMn1 != NULL && elliotMn1.isBuy == isBuy) {
+                    prefix += "[M]";
+                }
             }
         }
         if (StringLen(prefix) > 0) {
