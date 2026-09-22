@@ -29,6 +29,16 @@ def decision_migration_sql():
     return current.replace(removed_text, ""), alter
 
 
+def run_migration_sql():
+    source = (DAO / "H1EaRunDao.mqh").read_text(encoding="utf-8-sig")
+    legacy = source.split("static string createLegacySql() {", 1)[1].split("return sql;", 1)[0]
+    removal = json.loads(re.search(r'StringReplace\(sql,\s*("(?:[^"\\]|\\.)*"),\s*""\)', legacy).group(1))
+    current = next(sql for sql in schema_statements() if sql.startswith("CREATE TABLE IF NOT EXISTS h1_ea_runs "))
+    assert current.count(removal) == 1
+    alter = source.split("static string addSessionColumnSql() {", 1)[1].split("}", 1)[0]
+    return current.replace(removal, ""), json.loads(re.search(r'return\s+("(?:[^"\\]|\\.)*")', alter).group(1))
+
+
 def schema_statements():
     for name in ("Run", "Decision", "Trade", "TradeEvent"):
         source = (DAO / f"H1Ea{name}Dao.mqh").read_text(encoding="utf-8-sig")
@@ -109,8 +119,85 @@ class DatabaseContractTest(unittest.TestCase):
         )
         return values | changes
 
+    def test_session_column_nullable_and_hash_constrained(self):
+        self.assertEqual(self.db.execute("PRAGMA table_info(h1_ea_runs)").fetchall()[-1],
+                         (23, "session_uid", "TEXT", 0, None, 0))
+        self.assertIsNone(self.db.execute("SELECT session_uid FROM h1_ea_runs").fetchone()[0])
+        for bad in ("", "a" * 63, "a" * 65, "G" * 64, "A" * 64, "~" * 64):
+            with self.subTest(value=bad), self.assertRaises(sqlite3.IntegrityError):
+                self.insert("runs", self.run_values(run_uid="new", context_key="other", session_uid=bad))
+
+    def test_28_runs_share_session_but_context_leases_still_exclusive(self):
+        for index in range(28):
+            self.insert("runs", self.run_values(run_uid=f"child{index}", context_key=f"ctx{index}",
+                        symbol_name=f"symbol{index}", session_uid="a" * 64))
+        self.assertEqual(self.db.execute("SELECT COUNT(*),COUNT(DISTINCT run_uid) FROM h1_ea_runs WHERE session_uid=?",
+                                        ("a" * 64,)).fetchone(), (28, 28))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.insert("runs", self.run_values(run_uid="next", context_key="ctx7", session_uid="b" * 64))
+        self.db.execute("UPDATE h1_ea_runs SET status='STOPPED' WHERE session_uid=?", ("a" * 64,))
+        self.assertEqual(self.db.execute("SELECT status FROM h1_ea_runs WHERE id=?", (self.run,)).fetchone()[0], "RUNNING")
+        self.insert("runs", self.run_values(run_uid="next", context_key="ctx7", session_uid="b" * 64))
+
+    def test_restart_with_new_session_preserves_consumed_signal(self):
+        self.insert("decisions", self.consumed_values(reason_code="H1_WAVE_REJECTED"))
+        self.db.execute("UPDATE h1_ea_runs SET status='STOPPED'")
+        self.run = self.insert("runs", self.run_values(run_uid="new", session_uid="a" * 64))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.insert("decisions", self.consumed_values())
+        self.assertEqual(self.db.execute("SELECT signal_count FROM h1_ea_decisions WHERE context_key='ctx'").fetchall(), [(1,)])
+
+    def test_v1_to_v3_additive_migration_preserves_rows_and_matches_fresh_schema(self):
+        expected = self.db.execute("SELECT sql FROM sqlite_schema WHERE name='h1_ea_runs'").fetchone()[0]
+        decision_alter = self.create_legacy_fixture()
+        self.insert("decisions", self.consumed_values())
+        previous_runs = self.db.execute("SELECT * FROM h1_ea_runs").fetchall()
+        previous_decisions = self.db.execute("SELECT * FROM h1_ea_decisions").fetchall()
+        legacy, run_alter = run_migration_sql()
+        self.db.execute("BEGIN IMMEDIATE")
+        self.db.execute(decision_alter)
+        self.db.execute("PRAGMA user_version=2")
+        self.db.execute(run_alter)
+        index = next(sql for sql in schema_statements() if "idx_h1_ea_runs_session_symbol" in sql)
+        self.db.execute(index)
+        self.db.execute("PRAGMA user_version=3")
+        self.db.execute("COMMIT")
+        self.assertEqual(self.db.execute("SELECT sql FROM sqlite_schema WHERE name='h1_ea_runs'").fetchone()[0], expected)
+        self.assertEqual(self.db.execute("SELECT * FROM h1_ea_runs").fetchall(), [row + (None,) for row in previous_runs])
+        self.assertEqual(self.db.execute("SELECT * FROM h1_ea_decisions").fetchall(), [row + (None,) for row in previous_decisions])
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 3)
+
+    def test_v2_to_v3_migration_preserves_pending_trade_and_rolls_back_ddl_failure(self):
+        decision_alter = self.create_legacy_fixture()
+        self.db.execute(decision_alter)
+        self.db.execute("PRAGMA user_version=2")
+        self.insert("trades", self.trade_values())
+        rows = self.db.execute("SELECT * FROM h1_ea_trades").fetchall()
+        previous_schema = self.db.execute("SELECT sql FROM sqlite_schema WHERE name='h1_ea_runs'").fetchone()[0]
+        _, alter = run_migration_sql()
+        self.db.execute("BEGIN IMMEDIATE")
+        self.db.execute(alter)
+        self.db.execute("PRAGMA user_version=3")
+        with self.assertRaises(sqlite3.OperationalError):
+            self.db.execute("CREATE INDEX idx_h1_ea_runs_session_symbol ON h1_ea_runs(missing_column)")
+        self.db.execute("ROLLBACK")
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(self.db.execute("SELECT sql FROM sqlite_schema WHERE name='h1_ea_runs'").fetchone()[0], previous_schema)
+        self.assertEqual(self.db.execute("SELECT * FROM h1_ea_trades").fetchall(), rows)
+        self.db.execute(alter)
+        self.assertEqual(self.db.execute("SELECT * FROM h1_ea_trades").fetchall(), rows)
+
+    def test_v3_migration_requires_initialization_and_no_live_old_run(self):
+        context = CONTEXT.read_text(encoding="utf-8-sig")
+        self.assertRegex(context, r'version == 2 && fromInitializeSchema\)\s*\{\s*success = this\.migrateSessionUid\(\);')
+        migration = context.split("bool migrateSessionUid() {", 1)[1].split("bool prepareSchema", 1)[0]
+        for guard in ("this.validateSchema(false, true)", "activeRuns != 0"):
+            self.assertLess(migration.index(guard), migration.index("H1EaRunDao::addSessionColumnSql()"))
+        self.assertNotIn("UPDATE h1_ea_", migration)
+        self.assertLess(migration.index("this.validateSchema()"), migration.index("PRAGMA user_version=3"))
+
     def test_exact_columns(self):
-        for table, count in (("runs", 23), ("decisions", 42), ("trades", 51), ("trade_events", 38)):
+        for table, count in (("runs", 24), ("decisions", 42), ("trades", 51), ("trade_events", 38)):
             self.assertEqual(len(self.db.execute(f"PRAGMA table_info(h1_ea_{table})").fetchall()), count)
 
     def test_d1_column_is_nullable_last_column_with_exclusive_known_values(self):
@@ -135,7 +222,7 @@ class DatabaseContractTest(unittest.TestCase):
             normalize = lambda text: text.replace("IF NOT EXISTS ", "").replace(";", "")
             self.assertEqual(normalize(actual), normalize(statement), name)
             count += 1
-        self.assertEqual(count, 28)
+        self.assertEqual(count, 29)
 
     def test_successor_run_distinguishes_expiry_from_snapshot_ownership_loss(self):
         query = "SELECT COUNT(*) FROM h1_ea_runs WHERE context_key=? AND id>?"
@@ -330,7 +417,12 @@ class DatabaseContractTest(unittest.TestCase):
         self.db = sqlite3.connect(":memory:", isolation_level=None)
         self.db.execute("PRAGMA foreign_keys=ON")
         legacy, alter = decision_migration_sql()
+        legacy_run, _ = run_migration_sql()
         for statement in schema_statements():
+            if "idx_h1_ea_runs_session_symbol" in statement:
+                continue
+            if statement.startswith("CREATE TABLE IF NOT EXISTS h1_ea_runs "):
+                statement = legacy_run
             if statement.startswith("CREATE TABLE IF NOT EXISTS h1_ea_decisions "):
                 statement = legacy
             self.db.execute(statement)
@@ -413,10 +505,10 @@ class DatabaseContractTest(unittest.TestCase):
     def test_migration_and_dao_guards_remain_wired_without_strategy_recalculation(self):
         # Static control-flow contracts complement, but do not execute, MQL.
         context = CONTEXT.read_text(encoding="utf-8-sig")
-        self.assertRegex(context, r'version == 1 && fromInitializeSchema\)\s*\{\s*success = this\.migrateD1Ema200Direction\(\);')
-        self.assertRegex(context, r'version == 2\)\s*\{\s*success = this\.validateSchema\(\);')
+        self.assertRegex(context, r'version == 1 && fromInitializeSchema\)\s*\{\s*success = this\.migrateD1Ema200Direction\(\) && this\.migrateSessionUid\(\);')
+        self.assertRegex(context, r'version == 3\)\s*\{\s*success = this\.validateSchema\(\);')
         migration = context.split("bool migrateD1Ema200Direction() {", 1)[1].split("bool prepareSchema", 1)[0]
-        for guard in ("this.validateSchema(true)", "activeRuns != 0", "triggers != 0"):
+        for guard in ("this.validateSchema(true, true)", "activeRuns != 0", "triggers != 0"):
             self.assertLess(migration.index(guard), migration.index("H1EaDecisionDao::addD1ColumnSql()"))
         self.assertLess(migration.index("this.backfillD1Ema200Direction()"), migration.index("PRAGMA user_version=2"))
         backfill = context.split("bool backfillD1Ema200Direction() {", 1)[1].split("bool migrateD1Ema200Direction", 1)[0]

@@ -54,7 +54,8 @@ public:
      * 期限切れRunの中断と新RunのLease取得を一括保存する。
      */
     bool acquireRun(H1EaRunEntity &fromRun) {
-        if (!H1EaSql::isHash(fromRun.runUid) || !H1EaSql::isHash(fromRun.configHash)
+        if ((fromRun.sessionUid != "" && !H1EaSql::isHash(fromRun.sessionUid))
+                || !H1EaSql::isHash(fromRun.runUid) || !H1EaSql::isHash(fromRun.configHash)
                 || !H1EaSql::isHash(fromRun.analysisInputHash)
                 || fromRun.configHash != H1EaSql::hash(fromRun.configText)
                 || fromRun.analysisInputHash != H1EaSql::hash(fromRun.analysisInputText)) {

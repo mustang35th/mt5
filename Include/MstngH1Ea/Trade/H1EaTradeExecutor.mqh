@@ -91,6 +91,40 @@ public:
     }
 
     /**
+     * 保存済み取引とpending SLを復元する。broker照合・注文・DB更新は行わない。
+     * @return 保存済み状態の読取が完了した場合true。brokerとの一致は未確認。
+     */
+    bool restoreFromDatabase() {
+        if (!this.initialized || this.persistence == NULL) {
+            return false;
+        }
+        if (!this.loaded) {
+            if (!this.persistence.loadActiveTrade(this.contextKey, this.trade, this.active)) {
+                return false;
+            }
+            this.loaded = true;
+            this.pendingStored = this.active;
+            // 再起動前の通知欠落も含め、後続のbroker照合で全約定を再確認する。
+            this.dealHistoryPending = this.active;
+        }
+        return true;
+    }
+
+    /**
+     * DBから復元した状態をコピーする。注文可否の判定には使用しない。
+     */
+    bool getRestoredTrade(H1EaTradeEntity &fromTrade, bool &fromActive) {
+        fromTrade.reset();
+        fromActive = false;
+        if (!this.loaded) {
+            return false;
+        }
+        fromTrade = this.trade;
+        fromActive = this.active;
+        return true;
+    }
+
+    /**
      * Controllerが確認したLockとLease安全期限だけを利用する。
      */
     void setManagementAuthority(const bool fromLockHeld, const datetime fromLeaseExpires) {
@@ -358,14 +392,8 @@ public:
         if (!this.initialized) {
             return;
         }
-        if (!this.loaded) {
-            if (!this.persistence.loadActiveTrade(this.contextKey, this.trade, this.active)) {
-                return;
-            }
-            this.loaded = true;
-            this.pendingStored = this.active;
-            // 再起動前の中間約定通知が失われていても、activeの全履歴を一度読み直す。
-            this.dealHistoryPending = this.active;
+        if (!this.restoreFromDatabase()) {
+            return;
         }
         this.reconcilePendingDealTickets();
         this.reconcileClosedDealAudit();

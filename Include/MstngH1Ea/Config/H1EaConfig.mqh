@@ -2,6 +2,7 @@
 #define MSTNGH1EA_CONFIG_CONFIG_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Database\Dao\H1EaSql.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\H1DirectionAlignmentMode.mqh>
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
@@ -43,6 +44,8 @@ public:
     string sourceMode;
     /** 再起動ごとの識別子。 */
     string runUid;
+    /** 複数通貨の共通起動ID。単一通貨では空文字。 */
+    string sessionUid;
     /** 再起動復元用の実行コンテキスト。 */
     string contextKey;
     /** OS排他ハンドルのscope。 */
@@ -56,8 +59,13 @@ public:
      * 安全設定と市場の価格単位を検証し、固定設定を組み立てる。
      */
     bool initialize(const string fromSymbol, const double fromLotSize,
-            const double fromMaxInitialStopLossPips, const datetime fromTesterTradeStartTime = 0) {
+            const double fromMaxInitialStopLossPips, const datetime fromTesterTradeStartTime = 0,
+            const string fromSessionUid = "") {
         this.lastError = "";
+        this.sessionUid = fromSessionUid;
+        if (this.sessionUid != "" && !H1EaSql::isHash(this.sessionUid)) {
+            return this.fail("INVALID_SESSION_UID");
+        }
         this.symbolName = fromSymbol;
         this.lotSize = NormalizeDouble(fromLotSize, 8);
         this.maxInitialStopLossPips = fromMaxInitialStopLossPips;
@@ -118,6 +126,10 @@ public:
         this.runUid = H1EaTextUtil::hash(this.sourceMode + "|" + identity + "|"
             + IntegerToString(ChartID()) + "|" + IntegerToString(TimeLocal()) + "|"
             + H1EaTextUtil::ticket(GetTickCount64()));
+        if (this.sessionUid != "") {
+            this.runUid = H1EaTextUtil::hash(this.sessionUid + "|" + this.symbolName
+                + "|H1|" + H1EaTextUtil::ticket(this.magicNumber));
+        }
         this.lockScope = this.sourceMode + "|" + identity + "|" + this.symbolName
             + "|H1|" + H1EaTextUtil::ticket(this.magicNumber);
         this.contextKey = "H1_EA_CONTEXT_V1|" + this.sourceMode + "|";
@@ -139,6 +151,11 @@ public:
         string analysisStartTimeFrame = EnumToString(Mtf3In3H1Policy::getAnalysisStartTimeFrame());
         StringReplace(analysisStartTimeFrame, "PERIOD_", "");
 
+        string operatingText = "";
+        if (this.sessionUid != "") {
+            operatingText = "|OPERATING_MODE=MULTI_SYMBOL_DB_PREPARATION"
+                + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_ROUND_ROBIN_V1|TRADING_ENABLED=0";
+        }
         return "H1_EA_CONFIG_V1|LOT_SIZE=" + DoubleToString(this.lotSize, 8)
             + "|MAX_INITIAL_SL_PIPS=" + DoubleToString(this.maxInitialStopLossPips, 1)
             + "|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME="
@@ -152,7 +169,7 @@ public:
             + "|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0"
             + "|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30"
             + "|TESTER_EVALUATION_TRIGGER=TICK"
-            + "|TESTER_TRADE_START_TIME=" + IntegerToString(this.testerTradeStartTime);
+            + "|TESTER_TRADE_START_TIME=" + IntegerToString(this.testerTradeStartTime) + operatingText;
     }
 
     /**
@@ -169,7 +186,7 @@ public:
     /**
      * プログラム世代を返す。
      */
-    static string getProgramVersion() { return "1.09"; }
+    static string getProgramVersion() { return "1.10"; }
 
     /**
      * Entry互換条件とトレイルを含む戦略世代を返す。

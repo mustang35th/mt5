@@ -409,10 +409,12 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
 
     def test_restart_active_trade_also_forces_full_deal_reaggregation(self):
         body = WIRING.code_only(WIRING.method(self.executor, "reconcile"))
-        initial = re.search(r"if\s*\(!this.loaded\)\s*\{", body)
+        self.assertIn("if (!this.restoreFromDatabase())", body)
+        restored = WIRING.code_only(WIRING.method(self.executor, "restoreFromDatabase"))
+        initial = re.search(r"if\s*\(!this.loaded\)\s*\{", restored)
         self.assertIsNotNone(initial)
-        end = WIRING.block_end(body, initial.end() - 1)
-        branch = body[initial.end():end]
+        end = WIRING.block_end(restored, initial.end() - 1)
+        branch = restored[initial.end():end]
         loaded = branch.index("this.loaded = true;")
         pending = branch.index("this.dealHistoryPending = this.active;")
         self.assertLess(branch.index("this.persistence.loadActiveTrade("), loaded)
@@ -529,7 +531,7 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
         ending = WIRING.block_end(body, opening)
         self.assertIn('status = "FAILED";', raw[opening:ending])
         self.assertIn("DEAL_AUDIT_PENDING", raw[opening:ending])
-        self.assertLess(ending, body.index("this.persistence.finishRun("))
+        self.assertLess(ending, body.index("this.persistence.finishRun(", ending))
 
     def test_closed_append_uses_event_insert_without_trade_snapshot_update(self):
         body = WIRING.code_only(WIRING.method(self.persistence, "appendClosedDealEvent"))

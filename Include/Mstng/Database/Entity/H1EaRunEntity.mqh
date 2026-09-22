@@ -10,6 +10,8 @@ struct H1EaRunEntity {
     long id;
     /** 起動ごとの一意ID。 */
     string runUid;
+    /** 複数通貨EAの共通起動ID。単一通貨・旧Runは空文字。 */
+    string sessionUid;
     /** 保存契約バージョン。 */
     int schemaVersion;
     /** LIVEまたはTESTER。 */
@@ -66,6 +68,7 @@ struct H1EaRunEntity {
     void reset() {
         this.id = 0;
         this.runUid = "";
+        this.sessionUid = "";
         this.schemaVersion = 1;
         this.sourceMode = "";
         this.contextKey = "";

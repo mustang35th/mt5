@@ -10,7 +10,7 @@
 class H1EaRunDao {
 public:
     /**
-     * 初版の列・整合制約を返す。
+     * 共通起動IDを含む列・整合制約を返す。
      */
     static string createSql() {
         string sql = "CREATE TABLE IF NOT EXISTS h1_ea_runs (";
@@ -37,6 +37,7 @@ public:
         sql += "lease_expires_at INTEGER NOT NULL,";
         sql += "status TEXT NOT NULL,";
         sql += "error_text TEXT NOT NULL,";
+        sql += " session_uid TEXT CHECK(session_uid IS NULL OR (length(session_uid)=64 AND session_uid NOT GLOB '*[^0-9a-f]*')),";
         sql += "CHECK(source_mode IN ('LIVE', 'TESTER')),";
         sql += "CHECK(status IN ('RUNNING', 'STOPPED', 'FAILED', 'INTERRUPTED')),";
         sql += "CHECK(heartbeat_at > 0),";
@@ -44,6 +45,22 @@ public:
         sql += "CHECK(schema_version = 1),";
         sql += "CHECK(time_frame = 16385))";
         return sql;
+    }
+
+    /**
+     * 物理schema v1・v2のRun定義を返す。
+     */
+    static string createLegacySql() {
+        string sql = H1EaRunDao::createSql();
+        StringReplace(sql, " session_uid TEXT CHECK(session_uid IS NULL OR (length(session_uid)=64 AND session_uid NOT GLOB '*[^0-9a-f]*')),", "");
+        return sql;
+    }
+
+    /**
+     * 既存RunをNULLのまま保持して起動ID列を追加する。
+     */
+    static string addSessionColumnSql() {
+        return "ALTER TABLE h1_ea_runs ADD COLUMN session_uid TEXT CHECK(session_uid IS NULL OR (length(session_uid)=64 AND session_uid NOT GLOB '*[^0-9a-f]*'))";
     }
 
     /**
@@ -65,6 +82,9 @@ public:
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_context_started ON h1_ea_runs(context_key, started_at, id);")) {
             return false;
         }
+        if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_session_symbol ON h1_ea_runs(session_uid, symbol_name, id);")) {
+            return false;
+        }
         return true;
     }
 
@@ -72,14 +92,14 @@ public:
      * 全列をSQLの固定順に列挙する。
      */
     static string columns() {
-        return "id,run_uid,schema_version,source_mode,context_key,account_server,account_login,symbol_name,time_frame,magic_number,program_version,strategy_version,analysis_version,analysis_input_text,analysis_input_hash,config_text,config_hash,started_at,ended_at,heartbeat_at,lease_expires_at,status,error_text";
+        return "id,run_uid,schema_version,source_mode,context_key,account_server,account_login,symbol_name,time_frame,magic_number,program_version,strategy_version,analysis_version,analysis_input_text,analysis_input_hash,config_text,config_hash,started_at,ended_at,heartbeat_at,lease_expires_at,status,error_text,session_uid";
     }
 
     /**
      * SQL NULLをEntityの未取得値へ変換するSELECT列を返す。
      */
     static string selectColumns() {
-        return "id,run_uid,schema_version,source_mode,context_key,account_server,account_login,symbol_name,time_frame,magic_number,program_version,strategy_version,analysis_version,analysis_input_text,analysis_input_hash,config_text,config_hash,started_at,COALESCE(ended_at,0),heartbeat_at,lease_expires_at,status,error_text";
+        return "id,run_uid,schema_version,source_mode,context_key,account_server,account_login,symbol_name,time_frame,magic_number,program_version,strategy_version,analysis_version,analysis_input_text,analysis_input_hash,config_text,config_hash,started_at,COALESCE(ended_at,0),heartbeat_at,lease_expires_at,status,error_text,COALESCE(session_uid,'')";
     }
 
     /**
@@ -110,6 +130,7 @@ public:
         values += "," + IntegerToString((long)fromEntity.leaseExpiresAt);
         values += "," + H1EaSql::text(fromEntity.status);
         values += "," + H1EaSql::text(fromEntity.errorText);
+        values += "," + H1EaSql::optionalText(fromEntity.sessionUid);
         return values;
     }
 
@@ -152,6 +173,7 @@ public:
         sql += ",lease_expires_at=" + IntegerToString((long)fromEntity.leaseExpiresAt);
         sql += ",status=" + H1EaSql::text(fromEntity.status);
         sql += ",error_text=" + H1EaSql::text(fromEntity.errorText);
+        sql += ",session_uid=" + H1EaSql::optionalText(fromEntity.sessionUid);
         sql += " WHERE id=" + IntegerToString(fromEntity.id);
         if (!H1EaSql::execute(fromHandle, sql)) {
             return false;
@@ -232,6 +254,9 @@ public:
             return false;
         }
         if (!DatabaseColumnText(fromRequest, 21, fromEntity.status)) {
+            return false;
+        }
+        if (!DatabaseColumnText(fromRequest, 23, fromEntity.sessionUid)) {
             return false;
         }
         if (!DatabaseColumnText(fromRequest, 22, fromEntity.errorText)) {

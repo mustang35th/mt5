@@ -11,6 +11,7 @@
 #include <MstngH1Ea\Runtime\H1EaInstanceLock.mqh>
 #include <MstngH1Ea\Runtime\H1EaOperationLogger.mqh>
 #include <MstngH1Ea\Runtime\H1EaPreparationState.mqh>
+#include <MstngH1Ea\Runtime\H1EaRestorationState.mqh>
 #include <MstngH1Ea\Strategy\H1EaInitialStopLossDecision.mqh>
 #include <MstngH1Ea\Strategy\H1EaStrategy.mqh>
 #include <MstngH1Ea\Trade\H1EaTradeExecutor.mqh>
@@ -27,6 +28,10 @@ public:
      */
     H1EaController() {
         this.started = false;
+        this.persistencePreparation = false;
+        this.restoredDecisionBar = 0;
+        this.restoredBlockedBar = 0;
+        this.restorationError = "";
         this.databaseReady = false;
         this.countsRestored = false;
         this.executorInitialized = false;
@@ -111,11 +116,125 @@ public:
     }
 
     /**
+     * 複数通貨準備用の設定とLockを確保する。DB接続は親のschema確認後に行う。
+     */
+    bool initializePersistencePreparation(const double fromLotSize,
+            const double fromMaxInitialStopLossPips, const datetime fromTesterTradeStartTime,
+            const string fromSessionUid) {
+        if (!this.preparationState.registered || this.started || this.persistencePreparation) {
+            return false;
+        }
+        this.persistencePreparation = true;
+        if (!this.config.initialize(this.preparationState.symbolName, fromLotSize,
+                fromMaxInitialStopLossPips, fromTesterTradeStartTime, fromSessionUid)) {
+            this.restorationError = this.config.lastError;
+            return false;
+        }
+        this.logger.initialize(this.config.symbolName, this.config.magicNumber, this.config.runUid);
+        if (!this.instanceLock.acquire(this.config.lockScope)) {
+            this.restorationError = "INSTANCE_ALREADY_LOCKED";
+            return false;
+        }
+        this.initializeRun();
+        this.run.programVersion = "1.01";
+        if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
+            this.restorationError = "CONFIG_HASH_UNAVAILABLE";
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 親が準備したDBへRunを登録する。初回DB復元失敗は全体の起動失敗とする。
+     * H1履歴の未取得だけでは起動を拒否しない。
+     */
+    bool startPersistencePreparation() {
+        if (!this.persistencePreparation || this.started || !this.instanceLock.isHeld()) {
+            return false;
+        }
+        this.lockAcquiredAt = TimeLocal();
+        this.started = true;
+        if (!this.connectAndRestore()) {
+            this.restorationError = this.persistence.getLastError();
+            return false;
+        }
+        this.nextMaintenanceTick = H1EaClock::milliseconds() + 5000;
+        this.logger.info(__FUNCTION__, "DB_PREPARATION session=" + this.run.sessionUid
+            + " context=" + this.config.contextKey + " trading=disabled");
+        return true;
+    }
+
+    /**
+     * 全通貨分を毎Timer確認する軽量DB保守。履歴・broker照合・発注を呼ばない。
+     */
+    void processPersistencePreparation() {
+        if (!this.started || !this.persistencePreparation) {
+            return;
+        }
+        this.maintainPersistence();
+    }
+
+    /**
+     * 履歴巡回で取得できた現在バーの判定済み状態を復元する。
+     * DB照会の失敗や途中のバー切替は次の巡回で再試行する。
+     */
+    void restorePreparedDecision() {
+        if (!this.started || !this.persistencePreparation || !this.databaseReady || this.leaseLost) {
+            return;
+        }
+        datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
+        if (barTime <= 0 || barTime == this.restoredDecisionBar) {
+            return;
+        }
+        H1EaDecisionEntity savedDecision;
+        bool found = false;
+        if (!this.persistence.loadDecision(this.config.contextKey, barTime, savedDecision, found)) {
+            this.databaseReady = false;
+            return;
+        }
+        if (barTime != iTime(this.config.symbolName, PERIOD_H1, 0)) {
+            return;
+        }
+        if (found) {
+            this.entryState.finalize(barTime);
+        }
+        this.restoredDecisionBar = barTime;
+    }
+
+    /**
+     * DB復元結果をコピーする。DB復元完了はbroker照合完了を意味しない。
+     */
+    void getRestorationState(H1EaRestorationState &fromState) {
+        fromState.reset();
+        fromState.run = this.run;
+        fromState.databaseReady = this.databaseReady;
+        fromState.countsRestored = this.countsRestored;
+        fromState.tradeRestored = this.executor.getRestoredTrade(fromState.trade, fromState.hasActiveTrade);
+        fromState.decisionBar = this.restoredDecisionBar;
+        fromState.blockedEntryBar = this.restoredBlockedBar;
+        fromState.reason = this.restorationError;
+        if (this.leaseLost) {
+            fromState.status = "LEASE_LOST";
+        } else if (!this.databaseReady) {
+            fromState.status = "WAIT_DB";
+            if (fromState.reason == "") {
+                fromState.reason = this.persistence.getLastError();
+            }
+        } else if (this.auditStateLost) {
+            fromState.status = "AUDIT_STATE_LOST";
+        } else if (this.restoredDecisionBar <= 0) {
+            fromState.status = "WAIT_H1";
+        } else {
+            fromState.status = "DB_RESTORED";
+        }
+    }
+
+    /**
      * この通貨の履歴を準備する。波動分析・Judge・SignalCountの更新は行わない。
      * 準備済みの同一H1は省略し、未準備なら次の巡回で再確認する。
      */
     void processPreparation() {
-        if (this.started || !this.preparationState.registered) {
+        if ((this.started && !this.persistencePreparation) || !this.preparationState.registered) {
             return;
         }
         datetime barTime = iTime(this.preparationState.symbolName, PERIOD_H1, 0);
@@ -159,7 +278,7 @@ public:
      * 起動時の状態に合わせてイベントタイマーを開始する。
      */
     bool startTimer() {
-        if (!this.started) {
+        if (!this.started || this.persistencePreparation) {
             return false;
         }
         return this.updateEventTimer(this.canUseFastTesterWarmup());
@@ -170,7 +289,7 @@ public:
      * リスクのないTester準備中は履歴確認と低頻度のLease維持だけを行う。
      */
     void onTick() {
-        if (!this.started) {
+        if (!this.started || this.persistencePreparation) {
             return;
         }
         bool fastWarmup = this.canUseFastTesterWarmup();
@@ -199,7 +318,7 @@ public:
      * LIVEの初回1秒・以降30秒評価は変更しない。
      */
     void onTimer() {
-        if (!this.started) {
+        if (!this.started || this.persistencePreparation) {
             return;
         }
         bool fastWarmup = this.canUseFastTesterWarmup();
@@ -227,7 +346,7 @@ public:
      * @param fromFastWarmup 高速保守を希望する場合true。安全条件を再確認する。
      */
     void processMaintenance(const bool fromFastWarmup = false) {
-        if (!this.started) {
+        if (!this.started || this.persistencePreparation) {
             return;
         }
         if (fromFastWarmup && this.canUseFastTesterWarmup()) {
@@ -241,7 +360,7 @@ public:
      * 通貨単位の管理権限を更新し、brokerの取引状態を照合する。
      */
     void processTradeReconciliation() {
-        if (!this.started || !this.executorInitialized) {
+        if (!this.started || this.persistencePreparation || !this.executorInitialized) {
             return;
         }
         this.updateManagementAuthority();
@@ -254,7 +373,7 @@ public:
      * @param fromBarTime この通貨で取得した現在H1バー。取得不能時は0。
      */
     void processProtection(const datetime fromBarTime) {
-        if (!this.started || !this.executorInitialized) {
+        if (!this.started || this.persistencePreparation || !this.executorInitialized) {
             return;
         }
         this.processTradeReconciliation();
@@ -267,7 +386,7 @@ public:
      * @param fromBarTime 保護処理と共通の、この通貨の現在H1バー。
      */
     void processTrail(const datetime fromBarTime) {
-        if (!this.started || !this.executorInitialized) {
+        if (!this.started || this.persistencePreparation || !this.executorInitialized) {
             return;
         }
         if (fromBarTime > 0 && fromBarTime != this.lastTrailObservedBar) {
@@ -290,7 +409,7 @@ public:
      * @param fromNormalTimerReady 呼び出し元の通常Timer設定が成功済みの場合true。
      */
     void processEntry(const bool fromNormalTimerReady) {
-        if (!this.started) {
+        if (!this.started || this.persistencePreparation) {
             return;
         }
         this.evaluateEntry(fromNormalTimerReady);
@@ -300,7 +419,7 @@ public:
      * Tester売買開始前の履歴準備を実行する。Judge回数は消費しない。
      */
     void processWarmup() {
-        if (!this.started || !this.config.isBeforeTesterTradeStart(TimeCurrent())) {
+        if (!this.started || this.persistencePreparation || !this.config.isBeforeTesterTradeStart(TimeCurrent())) {
             return;
         }
         this.processTesterWarmup();
@@ -311,7 +430,7 @@ public:
      * ポジション・注文の総数は他銘柄も含め、存在時は保守的に通常管理へ戻す。
      */
     bool canUseFastTesterWarmup() {
-        if (!this.started || !this.config.isBeforeTesterTradeStart(TimeCurrent())
+        if (!this.started || this.persistencePreparation || !this.config.isBeforeTesterTradeStart(TimeCurrent())
                 || !this.databaseReady || !this.countsRestored || !this.executorInitialized
                 || this.auditStateLost || this.leaseLost || !this.instanceLock.isHeld()
                 || this.run.id <= 0 || this.run.leaseExpiresAt <= TimeLocal()
@@ -327,7 +446,7 @@ public:
      */
     void onTradeTransaction(const MqlTradeTransaction &fromTransaction,
             const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
-        if (this.started && this.executorInitialized) {
+        if (this.started && !this.persistencePreparation && this.executorInitialized) {
             this.executor.onTradeTransaction(fromTransaction, fromRequest, fromResult);
         }
     }
@@ -336,6 +455,26 @@ public:
      * 保存を試みてLeaseとLockを解放する。保有ポジションは閉じない。
      */
     void shutdown(const int fromReason) {
+        if (this.persistencePreparation) {
+            // 第3段階はDB読取だけで、終了時もbroker照合・保護処理を開始しない。
+            string status = "STOPPED";
+            string errorText = "";
+            if (fromReason == REASON_INITFAILED) {
+                status = "FAILED";
+                errorText = "MULTI_SYMBOL_INITIALIZATION_FAILED";
+            }
+            if (this.run.id > 0 && !this.persistence.finishRun(this.run.id, status, errorText)) {
+                this.logger.error(__FUNCTION__, "RUN_END_UNSAVED " + this.persistence.getLastError());
+            }
+            this.started = false;
+            this.databaseReady = false;
+            this.persistence.close();
+            this.strategy.destroy();
+            this.instanceLock.release();
+            this.preparationState.reset();
+            this.persistencePreparation = false;
+            return;
+        }
         if (this.preparationState.registered) {
             this.strategy.destroy();
             this.preparationState.reset();
@@ -377,7 +516,15 @@ public:
     }
 
 private:
-    /** DB・取引を使用しない外部巡回用の通貨別準備状態。 */
+    /** DB復元専用の外部巡回モード。通常のイベント・発注経路を無効にする。 */
+    bool persistencePreparation;
+    /** 現在バーのDB照会が完了したH1。履歴未取得は0。 */
+    datetime restoredDecisionBar;
+    /** 再起動から復元した同一バー反転禁止。 */
+    datetime restoredBlockedBar;
+    /** DB準備初期化の拒否理由。 */
+    string restorationError;
+    /** 外部巡回用の通貨別履歴準備状態。 */
     H1EaPreparationState preparationState;
     /** 有効設定。 */
     H1EaConfig config;
@@ -464,6 +611,7 @@ private:
     void initializeRun() {
         this.run.reset();
         this.run.runUid = this.config.runUid;
+        this.run.sessionUid = this.config.sessionUid;
         this.run.sourceMode = this.config.sourceMode;
         this.run.contextKey = this.config.contextKey;
         this.run.accountServer = this.config.accountServer;
@@ -492,7 +640,7 @@ private:
             this.logger.error("H1EaController.connectAndRestore", "INITIAL_DB_RECOVERY_DEADLINE_EXPIRED");
             return false;
         }
-        if (!this.persistence.open(this.config.databaseFileName, this.run.id == 0)) {
+        if (!this.persistence.open(this.config.databaseFileName, this.run.id == 0 && !this.persistencePreparation)) {
             return false;
         }
         if (this.run.id == 0 && !this.persistence.acquireRun(this.run)) {
@@ -518,18 +666,20 @@ private:
                 return false;
             }
             this.auditStateLost = hasGap;
-            datetime currentBar = iTime(this.config.symbolName, PERIOD_H1, 0);
-            if (currentBar <= 0) {
-                return false;
-            }
-            H1EaDecisionEntity savedDecision;
-            bool found = false;
-            if (currentBar > 0 && !this.persistence.loadDecision(this.config.contextKey,
-                    currentBar, savedDecision, found)) {
-                return false;
-            }
-            if (found) {
-                this.entryState.finalize(currentBar);
+            if (!this.persistencePreparation) {
+                datetime currentBar = iTime(this.config.symbolName, PERIOD_H1, 0);
+                if (currentBar <= 0) {
+                    return false;
+                }
+                H1EaDecisionEntity savedDecision;
+                bool found = false;
+                if (currentBar > 0 && !this.persistence.loadDecision(this.config.contextKey,
+                        currentBar, savedDecision, found)) {
+                    return false;
+                }
+                if (found) {
+                    this.entryState.finalize(currentBar);
+                }
             }
             this.countsRestored = true;
         }
@@ -546,6 +696,11 @@ private:
             return false;
         }
         this.executor.setBlockedEntryBar(blockedBar);
+        this.restoredBlockedBar = blockedBar;
+        if (this.persistencePreparation) {
+            this.databaseReady = this.executor.restoreFromDatabase();
+            return this.databaseReady;
+        }
         this.databaseReady = true;
         this.updateManagementAuthority();
         this.executor.flushPendingEvents();
@@ -569,7 +724,7 @@ private:
             this.leaseLost = true;
             this.logger.error("H1EaController.maintainPersistence", "LEASE_EXPIRED: broker SL以外の操作を停止");
         }
-        bool heartbeatDue = this.databaseReady && !this.leaseLost
+        bool heartbeatDue = (this.databaseReady || (this.persistencePreparation && this.run.id > 0)) && !this.leaseLost
             && now >= this.run.heartbeatAt + heartbeatSeconds;
         if (heartbeatDue && !this.persistence.heartbeat(this.run, now)) {
             if (!this.persistence.hasLease(this.run.id, now)
@@ -587,6 +742,9 @@ private:
         if (!this.databaseReady && !this.leaseLost) {
             this.connectAndRestore();
         }
+        if (this.persistencePreparation) {
+            return;
+        }
         if (this.databaseReady) {
             this.flushDecisions();
             if (this.executorInitialized) {
@@ -603,7 +761,7 @@ private:
             return;
         }
         datetime expires = (datetime)this.run.leaseExpiresAt;
-        if (this.leaseLost) {
+        if (this.leaseLost || this.persistencePreparation) {
             expires = 0;
         }
         this.executor.setManagementAuthority(this.instanceLock.isHeld(), expires);

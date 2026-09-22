@@ -11,7 +11,7 @@
  */
 
 #property copyright "Copyright 2026, Mstng"
-#property version "1.09"
+#property version "1.10"
 #property strict
 #property description "H1専用MTF_3in3 / 必須ZigZag SL / H1 ZigZagトレイル / SQLite"
 

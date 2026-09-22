@@ -119,8 +119,12 @@ private:
     /**
      * 保存契約の全table/indexを検証する。
      */
-    bool validateSchema(const bool fromLegacyDecision = false) {
-        if (!this.matchesSchema("table", "h1_ea_runs", H1EaRunDao::createSql())) {
+    bool validateSchema(const bool fromLegacyDecision = false, const bool fromLegacyRun = false) {
+        string runSql = H1EaRunDao::createSql();
+        if (fromLegacyRun) {
+            runSql = H1EaRunDao::createLegacySql();
+        }
+        if (!this.matchesSchema("table", "h1_ea_runs", runSql)) {
             return false;
         }
         if (!this.matchesSchema("index", "idx_h1_ea_runs_run_uid", "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_runs_run_uid ON h1_ea_runs(run_uid);")) {
@@ -133,6 +137,10 @@ private:
             return false;
         }
         if (!this.matchesSchema("index", "idx_h1_ea_runs_context_started", "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_context_started ON h1_ea_runs(context_key, started_at, id);")) {
+            return false;
+        }
+        if (!fromLegacyRun && !this.matchesSchema("index", "idx_h1_ea_runs_session_symbol",
+                "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_session_symbol ON h1_ea_runs(session_uid, symbol_name, id);")) {
             return false;
         }
         string decisionSql = H1EaDecisionDao::createSql();
@@ -283,7 +291,7 @@ private:
         long activeRuns = 0;
         long triggers = 0;
         long now = (long)TimeLocal();
-        if (now <= 0 || !this.validateSchema(true)
+        if (now <= 0 || !this.validateSchema(true, true)
                 || !H1EaSql::scalar(handle, "SELECT COUNT(*) FROM h1_ea_runs WHERE status='RUNNING' AND lease_expires_at>"
                     + IntegerToString(now), activeRuns) || activeRuns != 0
                 || !H1EaSql::scalar(handle, "SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND tbl_name='h1_ea_decisions' COLLATE NOCASE", triggers)
@@ -292,8 +300,26 @@ private:
         }
         return H1EaSql::execute(handle, H1EaDecisionDao::addD1ColumnSql())
             && this.backfillD1Ema200Direction()
-            && this.validateSchema()
+            && this.validateSchema(false, true)
             && H1EaSql::execute(handle, "PRAGMA user_version=2");
+    }
+
+    /**
+     * 稼働中の旧EAがない場合にv2からv3へ移す。既存の保存値は更新しない。
+     */
+    bool migrateSessionUid() {
+        int handle = this.getHandle();
+        long activeRuns = 0;
+        long now = (long)TimeLocal();
+        if (now <= 0 || !this.validateSchema(false, true)
+                || !H1EaSql::scalar(handle, "SELECT COUNT(*) FROM h1_ea_runs WHERE status='RUNNING' AND lease_expires_at>"
+                    + IntegerToString(now), activeRuns) || activeRuns != 0) {
+            return false;
+        }
+        return H1EaSql::execute(handle, H1EaRunDao::addSessionColumnSql())
+            && H1EaRunDao::createTable(handle)
+            && this.validateSchema()
+            && H1EaSql::execute(handle, "PRAGMA user_version=3");
     }
 
     /**
@@ -313,11 +339,13 @@ private:
                 && H1EaTradeEventDao::createTable(handle);
             if (success) {
                 success = this.validateSchema()
-                    && H1EaSql::execute(handle, "PRAGMA user_version=2");
+                    && H1EaSql::execute(handle, "PRAGMA user_version=3");
             }
         } else if (success && version == 1 && fromInitializeSchema) {
-            success = this.migrateD1Ema200Direction();
-        } else if (success && version == 2) {
+            success = this.migrateD1Ema200Direction() && this.migrateSessionUid();
+        } else if (success && version == 2 && fromInitializeSchema) {
+            success = this.migrateSessionUid();
+        } else if (success && version == 3) {
             success = this.validateSchema();
         } else {
             success = false;

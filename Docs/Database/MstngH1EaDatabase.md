@@ -84,7 +84,7 @@ PRAGMA busy_timeout = 5000;
 - Viewerはread-onlyで接続し、migrationしません。
 - 複数Writerが同時起動しても、schema確認、DDLおよび`user_version`更新を単一transactionで行います。
 
-物理DB世代はEA 1.07から`PRAGMA user_version = 2`で管理します。各Runの`schema_version = 1`は保存契約V1を表し、変更しません。物理世代と実行データの世代を分離し、旧DBの移行条件は15章で定義します。
+物理DB世代は単一通貨EA 1.10・MstngH1EaAll 1.01から`PRAGMA user_version = 3`で管理します（EA 1.07〜1.09はv2）。各Runの`schema_version = 1`は保存契約V1を表し、変更しません。物理世代と実行データの世代を分離し、旧DBの移行条件は15章で定義します。
 
 ## 5. テーブル関係
 
@@ -132,7 +132,8 @@ EA起動1回につき1行を保存します。
 |---|---|---:|---|
 | `id` | INTEGER | Yes | 主キー |
 | `run_uid` | TEXT | Yes | 起動ごとの一意ID |
-| `schema_version` | INTEGER | Yes | 保存契約バージョン。物理v2でも1を維持 |
+| `session_uid` | TEXT | No | 複数通貨の共通起動ID。物理列は末尾。旧Run・単一版はNULL |
+| `schema_version` | INTEGER | Yes | 保存契約バージョン。物理v3でも1を維持 |
 | `source_mode` | TEXT | Yes | `LIVE`または`TESTER` |
 | `context_key` | TEXT | Yes | LIVEまたはTesterの実行コンテキストキー |
 | `account_server` | TEXT | Yes | 接続サーバー |
@@ -1266,3 +1267,19 @@ Scripts/Mstng/Database/test_h1_ea_database_contract.py
 接続管理は[SqliteDatabase.mqh](../../Include/Mstng/Database/SqliteDatabase.mqh)を再利用し、複数Writer向け設定は[ZigZagElliotAlertDatabaseContext.mqh](../../Include/Mstng/Database/ZigZagElliotAlertDatabaseContext.mqh)の方式を踏襲します。
 
 H1 ZigZagトレイル用の新テーブルは追加せず、`H1EaTradeEntity`、`H1EaTradeEventEntity`、各DAO、Persistence ServiceおよびDatabase SmokeTestの責務を拡張します。
+
+
+## 16. 複数通貨Runと物理schema v3（2026-09-23）
+
+`MstngH1EaAll` v1.01・単一版v1.10の共通schemaです。Runの保存契約`schema_version=1`、Decision・Trade・Eventの列と意味は維持します。
+
+- `h1_ea_runs`の末尾へnullableな`session_uid TEXT`を追加します。非NULL値は64桁小文字16進hashに限定します。Runは24列です。
+- 非一意索引`idx_h1_ea_runs_session_symbol(session_uid, symbol_name, id)`を追加します。既存のrun_uid一意・稼働context一意制約も維持します。
+- 新規DBはv3で作成します。旧v2はRun列と索引を追加し、既存行はNULLのまま保持します。旧v1は15章のD1移行に続けてv3へ移します。全工程を1つのtransactionに収め、失敗時は元の物理世代へrollbackします。
+- 旧schema原文を照合し、有効なRUNNING Leaseが1件でもある場合は移行を拒否します。v3への再接続ではDDLを実行しません。複数通貨版では親が移行を完了し、全ての子は`open(..., false)`で接続します。
+
+共通起動IDは`H1_EA_SESSION_V1|sourceMode|server|login|chartID|TimeLocal|GetTickCount64|GetMicrosecondCount`のSHA-256です。各RunUIDは`sessionUid|symbol|H1|magic`のSHA-256です。単一版のRunUID生成材料は従来どおりで、session_uidはNULLです。LIVE contextKeyとLock scopeにはsessionUidを加えず、単一版からのSignalCount・判定済みバー・未完了取引・pending SLを引き継ぎます。TESTER contextKeyは通貨別RunUIDを含めます。
+
+第3段階のAllはRun/Leaseの保存と既存状態の読取だけを行います。Runのconfig_textには`OPERATING_MODE=MULTI_SYMBOL_DB_PREPARATION|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_ROUND_ROBIN_V1|TRADING_ENABLED=0`を末尾に追記します。起動ID自体はconfig hashへ加えません。DBからのTrade読取とbroker照合を分離し、broker照合・発注・SL管理は次段階へ残します。
+
+物理v3を理解しない旧EAのバイナリは移行後のDBへ接続できません。同じDBを使うEAを正常終了し、新版へ揃えてから初回移行します。移行時に旧判定・シグナル消費・既存設定/hashを更新しません。

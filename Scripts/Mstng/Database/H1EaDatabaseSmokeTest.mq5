@@ -268,6 +268,10 @@ void verifyPersistence(H1EaPersistenceService &fromService) {
     H1EaRunEntity run;
     prepareRun(run, "SMOKE_RUN_1");
     verify(fromService.acquireRun(run) && run.id > 0, "acquire run");
+    H1EaRunEntity loadedRun;
+    bool runFound = false;
+    verify(H1EaRunDao::load(fromService.getHandle(), "id=" + IntegerToString(run.id), loadedRun, runFound)
+        && runFound && loadedRun.sessionUid == "", "single Run session NULL roundtrip");
     H1EaRunEntity duplicateRun;
     prepareRun(duplicateRun, "SMOKE_RUN_2");
     verify(!fromService.acquireRun(duplicateRun) && duplicateRun.id == 0, "active lease exclusive");
@@ -439,7 +443,10 @@ void verifyPersistence(H1EaPersistenceService &fromService) {
         + "|" + H1EaSql::hash(recovery.message);
     verify(recovery.eventUid == expectedUid, "recovery hash includes allocated ID");
     verify(fromService.finishRun(run.id, "STOPPED", ""), "normal Run stop");
+    duplicateRun.sessionUid = H1EaSql::hash("MULTI_SYMBOL_SMOKE_SESSION");
     verify(fromService.acquireRun(duplicateRun), "new Run inherits context");
+    verify(H1EaRunDao::load(fromService.getHandle(), "id=" + IntegerToString(duplicateRun.id), loadedRun, runFound)
+        && runFound && loadedRun.sessionUid == duplicateRun.sessionUid, "new session Run roundtrip");
     H1EaTradeEventEntity oldAudit;
     oldAudit.eventUid = "SMOKE_OLD_RUN_AUDIT";
     oldAudit.eventType = "ERROR";
@@ -498,7 +505,11 @@ bool prepareLegacyFixture(const string fromFileName, const string fromKind,
         return false;
     }
     int handle = database.getHandle();
-    bool success = H1EaRunDao::createTable(handle)
+    bool success = H1EaSql::execute(handle, H1EaRunDao::createLegacySql())
+        && H1EaSql::execute(handle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_runs_run_uid ON h1_ea_runs(run_uid);")
+        && H1EaSql::execute(handle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_runs_active_context ON h1_ea_runs(context_key) WHERE status = 'RUNNING';")
+        && H1EaSql::execute(handle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_source_started ON h1_ea_runs(source_mode, started_at, id);")
+        && H1EaSql::execute(handle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_context_started ON h1_ea_runs(context_key, started_at, id);")
         && H1EaSql::execute(handle, H1EaDecisionDao::createLegacySql())
         && H1EaDecisionDao::createTable(handle)
         && H1EaTradeDao::createTable(handle)
@@ -520,7 +531,12 @@ bool prepareLegacyFixture(const string fromFileName, const string fromKind,
         run.leaseExpiresAt = 1;
     }
     if (success) {
-        success = H1EaRunDao::insert(handle, run);
+        string columns = H1EaRunDao::columns();
+        StringReplace(columns, ",session_uid", "");
+        string values = H1EaRunDao::values(run);
+        values = StringSubstr(values, 0, StringLen(values) - StringLen(",NULL"));
+        success = H1EaSql::execute(handle, "INSERT INTO h1_ea_runs (" + columns + ") VALUES (" + values + ")")
+            && H1EaSql::scalar(handle, "SELECT last_insert_rowid()", run.id);
     }
     int fixtureCount = 5;
     if (fromKind == "BATCH" || fromKind == "BATCH_INVALID") {
@@ -618,8 +634,8 @@ void verifyLegacyMigration(const string fromKind, const bool fromExpectedSuccess
     verify(opened == fromExpectedSuccess, fromKind + " initialization migration result");
     if (opened) {
         long value = -1;
-        verify(H1EaSql::scalar(service.getHandle(), "PRAGMA user_version", value) && value == 2,
-            fromKind + " physical schema version 2");
+        verify(H1EaSql::scalar(service.getHandle(), "PRAGMA user_version", value) && value == 3,
+            fromKind + " physical schema version 3");
         verify(H1EaSql::scalar(service.getHandle(), "SELECT COUNT(*) FROM h1_ea_runs WHERE schema_version=1", value)
             && value == 1, fromKind + " original Run schema version preserved");
         verify(H1EaSql::scalar(service.getHandle(),
@@ -642,13 +658,13 @@ void verifyLegacyMigration(const string fromKind, const bool fromExpectedSuccess
         verify(H1EaSql::scalar(service.getHandle(), "PRAGMA schema_version", schemaCookie),
             fromKind + " migrated schema cookie");
         service.close();
-        verify(service.open(fileName), fromKind + " v2 initialization idempotent");
+        verify(service.open(fileName), fromKind + " v3 initialization idempotent");
         verify(H1EaSql::scalar(service.getHandle(), "PRAGMA schema_version", value) && value == schemaCookie,
-            fromKind + " v2 initialization no DDL");
+            fromKind + " v3 initialization no DDL");
         service.close();
-        verify(service.open(fileName, false), fromKind + " v2 reconnect");
+        verify(service.open(fileName, false), fromKind + " v3 reconnect");
         verify(H1EaSql::scalar(service.getHandle(), "PRAGMA schema_version", value) && value == schemaCookie,
-            fromKind + " v2 reconnect no DDL");
+            fromKind + " v3 reconnect no DDL");
     }
     service.close();
     if (!opened) {
