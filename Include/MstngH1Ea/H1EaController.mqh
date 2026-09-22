@@ -7,6 +7,7 @@
 #include <MstngH1Ea\Runtime\H1EaClock.mqh>
 #include <MstngH1Ea\Runtime\H1EaDecisionBuilder.mqh>
 #include <MstngH1Ea\Runtime\H1EaEntryState.mqh>
+#include <MstngH1Ea\Runtime\H1EaEventTimer.mqh>
 #include <MstngH1Ea\Runtime\H1EaInstanceLock.mqh>
 #include <MstngH1Ea\Runtime\H1EaOperationLogger.mqh>
 #include <MstngH1Ea\Strategy\H1EaInitialStopLossDecision.mqh>
@@ -15,7 +16,8 @@
 
 /**
  * 既存H1戦略の評価周期と、独立したZigZag保護SL管理を調停する。
- * LIVEではTimerだけがEntryを開始し、保護操作はTickだけが開始する。
+ * 単一通貨イベント入口はLIVEのTimer EntryとTick保護を維持する。
+ * 通貨別処理の入口はTimerを操作せず、外部スケジュールからも呼び出せる。
  */
 class H1EaController {
 public:
@@ -40,8 +42,6 @@ public:
         this.lastAnalysisErrorBar = 0;
         this.analysisRetryBar = 0;
         this.nextAnalysisRetryTime = 0;
-        this.timerSeconds = 0;
-        this.nextTimerRetryTick = 0;
     }
 
     /**
@@ -108,34 +108,19 @@ public:
             fastWarmup = false;
         }
         if (fastWarmup) {
-            this.maintainFastTesterWarmup();
+            this.processMaintenance(true);
             if (this.canUseFastTesterWarmup()) {
-                this.processTesterWarmup();
+                this.processWarmup();
                 return;
             }
             this.updateEventTimer(false);
         }
-        this.maintainPersistence();
+        this.processMaintenance();
         datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
-        if (this.executorInitialized) {
-            this.updateManagementAuthority();
-            this.executor.reconcile();
-            this.executor.processPending(barTime);
-            if (barTime > 0 && barTime != this.lastTrailObservedBar) {
-                this.lastTrailObservedBar = barTime;
-                if (this.executor.isTrailEligible(barTime)) {
-                    H1EaStrategySnapshot trailSnapshot;
-                    if (this.strategy.analyze(trailSnapshot)) {
-                        this.executor.evaluateTrail(barTime, this.strategy.getWave());
-                    } else {
-                        this.executor.evaluateTrail(barTime, NULL, this.strategy.getLastError());
-                    }
-                    this.executor.processPending(barTime);
-                }
-            }
-        }
+        this.processProtection(barTime);
+        this.processTrail(barTime);
         if (this.config.isTester) {
-            this.evaluateEntry();
+            this.processEntry(this.eventTimer.isNormalReady());
         }
     }
 
@@ -152,21 +137,119 @@ public:
             fastWarmup = false;
         }
         if (fastWarmup) {
-            this.maintainFastTesterWarmup();
+            this.processMaintenance(true);
             if (this.canUseFastTesterWarmup()) {
                 return;
             }
             this.updateEventTimer(false);
         }
-        this.maintainPersistence();
-        if (this.executorInitialized) {
-            this.updateManagementAuthority();
-            this.executor.reconcile();
-        }
+        this.processMaintenance();
+        this.processTradeReconciliation();
         if (!this.config.isTester && GetTickCount64() >= this.nextEntryTick) {
             this.nextEntryTick = GetTickCount64() + 30000;
-            this.evaluateEntry();
+            this.processEntry(this.eventTimer.isNormalReady());
         }
+    }
+
+    /**
+     * 通貨単位のDB・Lease保守を実行する。Timerは変更しない。
+     *
+     * @param fromFastWarmup 高速保守を希望する場合true。安全条件を再確認する。
+     */
+    void processMaintenance(const bool fromFastWarmup = false) {
+        if (!this.started) {
+            return;
+        }
+        if (fromFastWarmup && this.canUseFastTesterWarmup()) {
+            this.maintainFastTesterWarmup();
+            return;
+        }
+        this.maintainPersistence();
+    }
+
+    /**
+     * 通貨単位の管理権限を更新し、brokerの取引状態を照合する。
+     */
+    void processTradeReconciliation() {
+        if (!this.started || !this.executorInitialized) {
+            return;
+        }
+        this.updateManagementAuthority();
+        this.executor.reconcile();
+    }
+
+    /**
+     * 通貨単位の照合と保護SL・候補跨ぎ処理を実行する。波動分析は行わない。
+     *
+     * @param fromBarTime この通貨で取得した現在H1バー。取得不能時は0。
+     */
+    void processProtection(const datetime fromBarTime) {
+        if (!this.started || !this.executorInitialized) {
+            return;
+        }
+        this.processTradeReconciliation();
+        this.executor.processPending(fromBarTime);
+    }
+
+    /**
+     * 通貨単位のH1新規バーでトレイルを評価する。Entry状態は変更しない。
+     *
+     * @param fromBarTime 保護処理と共通の、この通貨の現在H1バー。
+     */
+    void processTrail(const datetime fromBarTime) {
+        if (!this.started || !this.executorInitialized) {
+            return;
+        }
+        if (fromBarTime > 0 && fromBarTime != this.lastTrailObservedBar) {
+            this.lastTrailObservedBar = fromBarTime;
+            if (this.executor.isTrailEligible(fromBarTime)) {
+                H1EaStrategySnapshot trailSnapshot;
+                if (this.strategy.analyze(trailSnapshot)) {
+                    this.executor.evaluateTrail(fromBarTime, this.strategy.getWave());
+                } else {
+                    this.executor.evaluateTrail(fromBarTime, NULL, this.strategy.getLastError());
+                }
+                this.executor.processPending(fromBarTime);
+            }
+        }
+    }
+
+    /**
+     * 外部スケジュールから通貨単位のEntry評価を実行する。Timerは変更しない。
+     *
+     * @param fromNormalTimerReady 呼び出し元の通常Timer設定が成功済みの場合true。
+     */
+    void processEntry(const bool fromNormalTimerReady) {
+        if (!this.started) {
+            return;
+        }
+        this.evaluateEntry(fromNormalTimerReady);
+    }
+
+    /**
+     * Tester売買開始前の履歴準備を実行する。Judge回数は消費しない。
+     */
+    void processWarmup() {
+        if (!this.started || !this.config.isBeforeTesterTradeStart(TimeCurrent())) {
+            return;
+        }
+        this.processTesterWarmup();
+    }
+
+    /**
+     * Tester売買開始前かつ、DB・排他・照合済み取引状態がすべて安全な場合だけ軽量化する。
+     * ポジション・注文の総数は他銘柄も含め、存在時は保守的に通常管理へ戻す。
+     */
+    bool canUseFastTesterWarmup() {
+        if (!this.started || !this.config.isBeforeTesterTradeStart(TimeCurrent())
+                || !this.databaseReady || !this.countsRestored || !this.executorInitialized
+                || this.auditStateLost || this.leaseLost || !this.instanceLock.isHeld()
+                || this.run.id <= 0 || this.run.leaseExpiresAt <= TimeLocal()
+                || ArraySize(this.decisionQueue) > 0) {
+            return false;
+        }
+        return this.executor.isIdleForTesterWarmup()
+            && PositionsTotal() == 0 && OrdersTotal() == 0;
     }
 
     /**
@@ -271,60 +354,21 @@ private:
     datetime analysisRetryBar;
     /** Tester内時刻での次回Entry分析時刻。成功時・H1切替時に解除する。 */
     datetime nextAnalysisRetryTime;
-    /** 設定成功を確認済みのTimer秒数。0は未設定または更新失敗。 */
-    int timerSeconds;
-    /** Timer設定失敗時の次回試行時刻。最短5秒で再試行する。 */
-    ulong nextTimerRetryTick;
-
-    /**
-     * Tester売買開始前かつ、DB・排他・照合済み取引状態がすべて安全な場合だけ軽量化する。
-     * ポジション・注文の総数は他銘柄も含め、存在時は保守的に通常管理へ戻す。
-     */
-    bool canUseFastTesterWarmup() {
-        if (!this.config.isBeforeTesterTradeStart(TimeCurrent())
-                || !this.databaseReady || !this.countsRestored || !this.executorInitialized
-                || this.auditStateLost || this.leaseLost || !this.instanceLock.isHeld()
-                || this.run.id <= 0 || this.run.leaseExpiresAt <= TimeLocal()
-                || ArraySize(this.decisionQueue) > 0) {
-            return false;
-        }
-        return this.executor.isIdleForTesterWarmup()
-            && PositionsTotal() == 0 && OrdersTotal() == 0;
-    }
+    /** 単一通貨イベント入口のTimer管理。通貨別処理からは操作しない。 */
+    H1EaEventTimer eventTimer;
 
     /**
      * 準備中30秒・通常1秒へ切り替える。更新失敗を成功扱いせず新規Entryを保留する。
      * 既存ポジションのTick起点の保護はTimer復旧待ちでも止めない。
      */
     bool updateEventTimer(const bool fromFastWarmup) {
-        int requiredSeconds = 1;
-        if (fromFastWarmup) {
-            requiredSeconds = 30;
-        }
-        if (this.timerSeconds == requiredSeconds) {
-            return true;
-        }
-        if (H1EaClock::milliseconds() < this.nextTimerRetryTick) {
-            return false;
-        }
-        if (requiredSeconds == 1) {
-            // 高速期間の30秒待ちをDB復旧・未保存イベント処理へ持ち込まない。
+        bool resetMaintenance = false;
+        bool updated = this.eventTimer.update(fromFastWarmup, this.logger, resetMaintenance);
+        if (resetMaintenance) {
+            // Timer設定失敗時も高速期間の保守待ちを解除する。
             this.nextMaintenanceTick = 0;
         }
-        ResetLastError();
-        if (!EventSetTimer(requiredSeconds)) {
-            int errorCode = GetLastError();
-            this.timerSeconds = 0;
-            this.nextTimerRetryTick = H1EaClock::milliseconds() + 5000;
-            this.logger.error("H1EaController.updateEventTimer", "TIMER_UPDATE_FAILED seconds="
-                + IntegerToString(requiredSeconds) + " error=" + IntegerToString(errorCode));
-            return false;
-        }
-        this.timerSeconds = requiredSeconds;
-        this.nextTimerRetryTick = 0;
-        this.logger.info("H1EaController.updateEventTimer", "TIMER_SECONDS="
-            + IntegerToString(this.timerSeconds));
-        return true;
+        return updated;
     }
 
     /**
@@ -491,7 +535,7 @@ private:
     /**
      * 対象バーの最初の分析成功時だけJudge・Entryを確定する。
      */
-    void evaluateEntry() {
+    void evaluateEntry(const bool fromNormalTimerReady) {
         if (this.config.isBeforeTesterTradeStart(TimeCurrent())) {
             this.processTesterWarmup();
             return;
@@ -502,7 +546,7 @@ private:
                 + TimeToString(this.config.testerTradeStartTime, TIME_DATE | TIME_SECONDS)
                 + " current=" + TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS));
         }
-        if (this.timerSeconds != 1) {
+        if (!fromNormalTimerReady) {
             return;
         }
         if (!this.countsRestored || this.run.id <= 0) {

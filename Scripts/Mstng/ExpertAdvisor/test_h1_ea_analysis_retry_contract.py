@@ -149,10 +149,9 @@ class AnalysisRetrySourceTests(unittest.TestCase):
         source = method(self.controller, "onTick")
         body = code_only(source)
         tester_start, _, tester = branch(source, r"this\.config\.isTester")
-        self.assertEqual(compact(tester), "this.evaluateEntry();")
-        for operation in ("this.maintainPersistence();", "this.updateManagementAuthority();",
-                          "this.executor.reconcile();", "this.executor.processPending(barTime);",
-                          "this.executor.evaluateTrail("):
+        self.assertEqual(compact(tester), "this.processEntry(this.eventTimer.isNormalReady());")
+        for operation in ("this.processMaintenance();", "this.processProtection(barTime);",
+                          "this.processTrail(barTime);"):
             self.assertLess(body.index(operation), tester_start, operation)
         self.assertNotIn("analysisRetryBar", body)
         self.assertNotIn("nextAnalysisRetryTime", body)
@@ -162,9 +161,9 @@ class AnalysisRetrySourceTests(unittest.TestCase):
         start, _, live = branch(
             source, r"!this\.config\.isTester\s*&&\s*GetTickCount64\(\)\s*>=\s*this\.nextEntryTick")
         self.assertEqual(compact(live),
-                         "this.nextEntryTick=GetTickCount64()+30000;this.evaluateEntry();")
+                         "this.nextEntryTick=GetTickCount64()+30000;this.processEntry(this.eventTimer.isNormalReady());")
         body = code_only(source)
-        self.assertLess(body.index("this.executor.reconcile();"), start)
+        self.assertLess(body.index("this.processTradeReconciliation();"), start)
         self.assertNotIn("analysisRetryBar", body)
         self.assertNotIn("nextAnalysisRetryTime", body)
 

@@ -20,6 +20,7 @@ CONTROLLER = ROOT / "Include/MstngH1Ea/H1EaController.mqh"
 EXPERT = ROOT / "Experts/MstngH1Ea.mq5"
 STRATEGY = ROOT / "Include/MstngH1Ea/Strategy/H1EaStrategy.mqh"
 EXECUTOR = ROOT / "Include/MstngH1Ea/Trade/H1EaTradeExecutor.mqh"
+EVENT_TIMER = ROOT / "Include/MstngH1Ea/Runtime/H1EaEventTimer.mqh"
 PERSISTENCE = ROOT / "Include/Mstng/Database/Service/H1EaPersistenceService.mqh"
 
 
@@ -65,14 +66,15 @@ class TesterWarmupWiringTests(unittest.TestCase):
     def setUpClass(cls):
         cls.config = CONFIG.read_text(encoding="utf-8-sig")
         cls.controller = CONTROLLER.read_text(encoding="utf-8-sig")
+        cls.event_timer = EVENT_TIMER.read_text(encoding="utf-8-sig")
         cls.expert = EXPERT.read_text(encoding="utf-8-sig")
         cls.strategy = STRATEGY.read_text(encoding="utf-8-sig")
         cls.executor = EXECUTOR.read_text(encoding="utf-8-sig")
         cls.persistence = PERSISTENCE.read_text(encoding="utf-8-sig")
 
     def test_program_version_changes_without_new_inputs(self):
-        self.assertRegex(self.expert, r'#property\s+version\s+"1\.08"')
-        self.assertIn('return "1.08";', method(self.config, "getProgramVersion"))
+        self.assertRegex(self.expert, r'#property\s+version\s+"1\.09"')
+        self.assertIn('return "1.09";', method(self.config, "getProgramVersion"))
         self.assertEqual(
             re.findall(r"(?m)^input\s+(?:double|datetime|int|bool|string)\s+(\w+)\s*=", self.expert),
             ["InpLotSize", "InpMaxInitialStopLossPips", "InpTesterTradeStartTime"],
@@ -207,22 +209,22 @@ class TesterWarmupWiringTests(unittest.TestCase):
                 self.assertIsNotNone(branch)
                 end = block_end(body, branch.end() - 1)
                 fast = body[branch.end():end]
-                self.assertLess(fast.index("this.maintainFastTesterWarmup();"),
+                self.assertLess(fast.index("this.processMaintenance(true);"),
                                 fast.index("if (this.canUseFastTesterWarmup())"))
                 self.assertIn("return;", fast)
                 self.assertIn("this.updateEventTimer(false);", fast)
-                self.assertLess(end, body.index("this.maintainPersistence();"))
-                self.assertLess(end, body.index("this.executor.reconcile();"))
+                self.assertLess(end, body.index("this.processMaintenance();"))
                 self.assertRegex(body[:branch.start()],
                     r"if\s*\(!this\.updateEventTimer\(fastWarmup\)\)\s*\{\s*fastWarmup\s*=\s*false;")
                 if name == "onTick":
-                    self.assertRegex(fast, r"this\.processTesterWarmup\(\);\s*return;")
-                    self.assertLess(end, body.index("this.executor.processPending(barTime);"))
+                    self.assertRegex(fast, r"this\.processWarmup\(\);\s*return;")
+                    self.assertLess(end, body.index("this.processProtection(barTime);"))
                 else:
-                    self.assertNotIn("processTesterWarmup", fast)
+                    self.assertNotIn("processWarmup", fast)
+                    self.assertLess(end, body.index("this.processTradeReconciliation();"))
 
     def test_timer_switches_30_to_1_and_failed_restore_blocks_entry_only(self):
-        timer = code_only(method(self.controller, "updateEventTimer"))
+        timer = code_only(method(self.event_timer, "update"))
         compact = re.sub(r"\s+", "", timer)
         self.assertIn("intrequiredSeconds=1;", compact)
         self.assertIn("if(fromFastWarmup){requiredSeconds=30;}", compact)
@@ -230,23 +232,63 @@ class TesterWarmupWiringTests(unittest.TestCase):
         self.assertIn("if(!EventSetTimer(requiredSeconds))", compact)
         self.assertIn("this.timerSeconds=0;", compact)
         entry = code_only(method(self.controller, "evaluateEntry"))
-        guard = re.search(r"if\s*\(this\.timerSeconds\s*!=\s*1\)\s*\{\s*return;", entry)
+        guard = re.search(r"if\s*\(!fromNormalTimerReady\)\s*\{\s*return;", entry)
         self.assertIsNotNone(guard)
         self.assertLess(guard.end(), entry.index("this.entryState.observe("))
-        self.assertIn("this.executor.processPending(barTime);", method(self.controller, "onTick"))
+        self.assertIn("this.processProtection(barTime);", method(self.controller, "onTick"))
+        self.assertIn("this.executor.processPending(fromBarTime);", method(self.controller, "processProtection"))
+        self.assertIn("return this.timerSeconds == 1;", method(self.event_timer, "isNormalReady"))
         self.assertIn("controller.startTimer()", method(self.expert, "OnInit"))
         self.assertNotIn("EventSetTimer(", code_only(method(self.expert, "OnInit")))
 
-    def test_normal_restore_drops_fast_maintenance_wait_before_timer_api(self):
-        timer = code_only(method(self.controller, "updateEventTimer"))
+    def test_normal_restore_drops_fast_maintenance_wait_even_if_timer_fails(self):
+        timer = code_only(method(self.event_timer, "update"))
         reset = re.search(
-            r"if\s*\(requiredSeconds\s*==\s*1\)\s*\{\s*this\.nextMaintenanceTick\s*=\s*0;\s*\}",
+            r"if\s*\(requiredSeconds\s*==\s*1\)\s*\{\s*fromResetMaintenance\s*=\s*true;\s*\}",
             timer,
         )
         self.assertIsNotNone(reset)
         self.assertLess(reset.end(), timer.index("EventSetTimer(requiredSeconds)"))
+        wrapper = code_only(method(self.controller, "updateEventTimer"))
+        self.assertRegex(wrapper, r"if\s*\(resetMaintenance\)\s*\{\s*this\.nextMaintenanceTick\s*=\s*0;")
+        self.assertLess(wrapper.index("this.nextMaintenanceTick = 0;"), wrapper.index("return updated;"))
         self.assertIn("this.updateEventTimer(this.canUseFastTesterWarmup())",
                       code_only(method(self.controller, "startTimer")))
+
+    def test_currency_phases_never_own_or_change_event_timer(self):
+        for name in ("processMaintenance", "processTradeReconciliation", "processProtection",
+                     "processTrail", "processEntry", "processWarmup"):
+            with self.subTest(phase=name):
+                body = code_only(method(self.controller, name))
+                self.assertIn("!this.started", body)
+                for forbidden in ("EventSetTimer", "EventKillTimer", "updateEventTimer", "this.eventTimer"):
+                    self.assertNotIn(forbidden, body)
+        self.assertNotIn("EventSetTimer(", code_only(self.controller))
+        self.assertNotIn("EventKillTimer(", code_only(self.controller))
+        self.assertIn("this.evaluateEntry(fromNormalTimerReady);", method(self.controller, "processEntry"))
+        self.assertIn("this.eventTimer.isNormalReady()", method(self.controller, "onTick"))
+        self.assertIn("this.eventTimer.isNormalReady()", method(self.controller, "onTimer"))
+
+    def test_protection_and_trail_keep_independent_responsibilities(self):
+        protection = code_only(method(self.controller, "processProtection"))
+        self.assertLess(protection.index("this.processTradeReconciliation();"),
+                        protection.index("this.executor.processPending(fromBarTime);"))
+        self.assertNotIn("strategy.analyze", protection)
+        reconciliation = code_only(method(self.controller, "processTradeReconciliation"))
+        self.assertLess(reconciliation.index("this.updateManagementAuthority();"),
+                        reconciliation.index("this.executor.reconcile();"))
+        trail = code_only(method(self.controller, "processTrail"))
+        self.assertIn("fromBarTime > 0 && fromBarTime != this.lastTrailObservedBar", trail)
+        self.assertLess(trail.index("this.lastTrailObservedBar = fromBarTime;"),
+                        trail.index("this.executor.isTrailEligible(fromBarTime)"))
+        self.assertIn("this.executor.evaluateTrail(fromBarTime, NULL, this.strategy.getLastError());", trail)
+        self.assertLess(trail.index("this.executor.evaluateTrail("),
+                        trail.index("this.executor.processPending(fromBarTime);"))
+        self.assertNotIn("entryState", trail)
+        maintenance = code_only(method(self.controller, "processMaintenance"))
+        self.assertIn("fromFastWarmup && this.canUseFastTesterWarmup()", maintenance)
+        self.assertRegex(maintenance, r"this\.maintainFastTesterWarmup\(\);\s*return;")
+        self.assertIn("this.maintainPersistence();", maintenance)
 
     def test_history_ready_message_does_not_claim_full_analysis_completed(self):
         body = method(self.controller, "clearAnalysisWait")
