@@ -10,6 +10,7 @@
 #include <MstngH1Ea\Runtime\H1EaEventTimer.mqh>
 #include <MstngH1Ea\Runtime\H1EaInstanceLock.mqh>
 #include <MstngH1Ea\Runtime\H1EaOperationLogger.mqh>
+#include <MstngH1Ea\Runtime\H1EaPreparationState.mqh>
 #include <MstngH1Ea\Strategy\H1EaInitialStopLossDecision.mqh>
 #include <MstngH1Ea\Strategy\H1EaStrategy.mqh>
 #include <MstngH1Ea\Trade\H1EaTradeExecutor.mqh>
@@ -49,6 +50,9 @@ public:
      */
     bool initialize(const string fromSymbol, const double fromLotSize,
             const double fromMaxInitialStopLossPips, const datetime fromTesterTradeStartTime = 0) {
+        if (this.preparationState.registered) {
+            return false;
+        }
         if (!this.config.initialize(fromSymbol, fromLotSize, fromMaxInitialStopLossPips,
                 fromTesterTradeStartTime)) {
             this.logger.error("H1EaController.initialize", this.config.lastError);
@@ -89,9 +93,75 @@ public:
     }
 
     /**
+     * 外部巡回用に通貨だけを登録する。DB・Lock・取引機能は初期化しない。
+     * 分析リソースの作成は最初の巡回に委ね、28通貨の同期作業をOnInitへ集中させない。
+     *
+     * @param fromSymbol 事前確認済みのbrokerシンボル名。
+     * @return 他の起動経路を使用しておらず、登録できた場合true。
+     */
+    bool initializePreparation(const string fromSymbol) {
+        if (this.started || this.preparationState.registered || fromSymbol == "") {
+            return false;
+        }
+        this.preparationState.reset();
+        this.preparationState.symbolName = fromSymbol;
+        this.preparationState.registered = true;
+        this.preparationState.status = "REGISTERED";
+        return true;
+    }
+
+    /**
+     * この通貨の履歴を準備する。波動分析・Judge・SignalCountの更新は行わない。
+     * 準備済みの同一H1は省略し、未準備なら次の巡回で再確認する。
+     */
+    void processPreparation() {
+        if (this.started || !this.preparationState.registered) {
+            return;
+        }
+        datetime barTime = iTime(this.preparationState.symbolName, PERIOD_H1, 0);
+        if (this.preparationState.historyReady && barTime > 0
+                && barTime == this.preparationState.h1BarTime) {
+            return;
+        }
+        this.preparationState.historyReady = false;
+        this.preparationState.h1BarTime = barTime;
+        if (!this.preparationState.resourcesInitialized) {
+            if (!this.strategy.initialize(this.preparationState.symbolName)) {
+                this.preparationState.status = "ERROR";
+                this.preparationState.reason = this.strategy.getLastError();
+                return;
+            }
+            this.preparationState.resourcesInitialized = true;
+        }
+        if (!this.strategy.prepareHistory()) {
+            this.preparationState.status = "WAIT_HISTORY";
+            this.preparationState.reason = this.strategy.getLastError();
+            return;
+        }
+        if (barTime <= 0 || barTime != iTime(this.preparationState.symbolName, PERIOD_H1, 0)) {
+            this.preparationState.status = "WAIT_HISTORY";
+            this.preparationState.reason = "H1_BAR_UNAVAILABLE_OR_CHANGED";
+            return;
+        }
+        this.preparationState.historyReady = true;
+        this.preparationState.status = "READY";
+        this.preparationState.reason = "";
+    }
+
+    /**
+     * 読み取り用の準備状態コピーを返す。呼び出し元から内部状態を変更できない。
+     */
+    void getPreparationState(H1EaPreparationState &fromState) {
+        fromState = this.preparationState;
+    }
+
+    /**
      * 起動時の状態に合わせてイベントタイマーを開始する。
      */
     bool startTimer() {
+        if (!this.started) {
+            return false;
+        }
         return this.updateEventTimer(this.canUseFastTesterWarmup());
     }
 
@@ -266,6 +336,11 @@ public:
      * 保存を試みてLeaseとLockを解放する。保有ポジションは閉じない。
      */
     void shutdown(const int fromReason) {
+        if (this.preparationState.registered) {
+            this.strategy.destroy();
+            this.preparationState.reset();
+            return;
+        }
         if (this.started) {
             this.flushDecisions();
             bool tradeQueueSaved = true;
@@ -302,6 +377,8 @@ public:
     }
 
 private:
+    /** DB・取引を使用しない外部巡回用の通貨別準備状態。 */
+    H1EaPreparationState preparationState;
     /** 有効設定。 */
     H1EaConfig config;
     /** DBに依存しない運用ログ。 */
