@@ -243,6 +243,8 @@ export function M5ObservationView({ active, styleNonce }: Props) {
             </div>
             <div className="m5-actions m5-search-actions">
               <button className="primary-button" type="submit" disabled={!available || applied.runId === null || loading}>検索</button>
+              <button className="secondary-button" type="button" disabled={!available || applied.runId === null || loading}
+                onClick={() => resetSelection(appliedRef.current.sourceMode, appliedRef.current.runId)}>クリア</button>
               <button className="secondary-button" type="button" disabled={!metadata?.range.last || loading} onClick={() => {
                 dirtyDraft.current = false; void load({ ...appliedRef.current, page: 1 }, "latest");
               }}>最新24時間</button>

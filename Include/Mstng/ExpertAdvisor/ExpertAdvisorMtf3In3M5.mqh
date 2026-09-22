@@ -56,6 +56,15 @@ public:
 
 protected:
     /**
+     * M5エントリーのスプレッドが全通貨共通の許容範囲内か判定する。
+     *
+     * @return スプレッドが5.0 pips以下の場合true。
+     */
+    virtual bool isSpread() override {
+        return this.elliotAll.todayRate.spread <= 5.0;
+    }
+
+    /**
      * 前回の補正分析を破棄し、今回の判定結果を初期化する。
      */
     virtual void resetStrategySpecificAnalysisOutcome() override {

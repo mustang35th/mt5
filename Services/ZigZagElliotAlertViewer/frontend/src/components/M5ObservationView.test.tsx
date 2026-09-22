@@ -81,6 +81,45 @@ describe("M5 observation independent view", () => {
     await waitFor(() => expect(m5Api.observations).toHaveBeenCalledTimes(2));
     expect(vi.mocked(m5Api.observations).mock.lastCall?.[0]).toMatchObject({ from: "2026-09-08T07:05", to: "2026-09-09T06:00", symbol: "GBPUSD", page: 1, followLatest: false });
   });
+  it.each(["TESTER", "LIVE"] as const)("clears %s filters without changing the selected Run or preferences", async (mode) => {
+    window.history.replaceState(null, "", `/react/?tab=m5&sourceMode=${mode}&runId=3&from=2026-09-08T06:00&to=2026-09-08T08:00&symbol=AUDUSD&jstTime=07:00&page=3&pageSize=100&sort=symbol_name&order=asc&followLatest=0`);
+    vi.mocked(m5Api.metadata).mockImplementation(async (sourceMode = mode, runId) => {
+      const info = metadata(sourceMode, "db-a", runId ?? 4);
+      info.runs = [metadata(sourceMode, "db-a", 4).runs[0], metadata(sourceMode, "db-a", 3).runs[0]];
+      if (runId !== 3) info.range.last = last + 86400;
+      return info;
+    });
+    render(<M5ObservationView active />);
+    await screen.findByText("Rows:10");
+    if (mode === "LIVE") fireEvent.change(screen.getByLabelText("自動更新間隔"), { target: { value: "30" } });
+    fireEvent.click(screen.getByText("Open row"));
+    fireEvent.change(screen.getByLabelText("M5開始JST"), { target: { value: "2026-09-10T06:00" } });
+    fireEvent.click(screen.getByRole("button", { name: /^検索$/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("終了JSTは開始JSTより後");
+    fireEvent.click(screen.getByRole("button", { name: "クリア" }));
+    await waitFor(() => expect(m5Api.observations).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(m5Api.observations).mock.lastCall?.[0]).toMatchObject({
+      sourceMode: mode, runId: 3, databaseKey: "db-a", symbol: "", jstTime: "",
+      from: "2026-09-08T06:00", to: "2026-09-09T06:00", page: 1, pageSize: 100,
+      sort: "anchor_jst_time", order: "desc", followLatest: mode === "LIVE",
+    });
+    expect(screen.getByLabelText("M5通貨")).toHaveValue("");
+    expect(screen.getByLabelText("M5 JST時刻")).toHaveValue("");
+    expect(screen.getByLabelText("M5開始JST")).toHaveValue("2026-09-08T06:00");
+    expect(screen.getByLabelText("M5終了JST")).toHaveValue("2026-09-09T06:00");
+    expect(screen.getByLabelText("M5 Run")).toHaveValue("3");
+    expect(screen.getByLabelText("M5ページ件数")).toHaveValue("100");
+    if (mode === "LIVE") expect(screen.getByLabelText("自動更新間隔")).toHaveValue("30");
+    expect(screen.getByTestId("m5-detail")).toHaveTextContent("closed");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get("runId")).toBe("3");
+    expect(params.get("sourceMode")).toBe(mode);
+    expect(params.get("page")).toBe("1");
+    expect(params.get("symbol")).toBeNull();
+    expect(params.get("jstTime")).toBeNull();
+    expect(params.get("followLatest")).toBe(mode === "LIVE" ? "1" : "0");
+  });
   it("resets filters/page/detail and latest range when source mode changes", async () => {
     render(<M5ObservationView active />);
     await screen.findByText("Rows:10");

@@ -78,9 +78,10 @@ export function M5ObservationTable({ items, databaseKey, loading, sort, order, s
           const slot = data && m5TimeFrameSlots(data.timeframes).slots.find((item) => item.id === frame.id);
           if (!slot?.timeFrame) return <span title={slot?.warning}>未記録</span>;
           const direction = m5Direction(slot.timeFrame.is_buy);
+          const emaLabel = m5EmaLabel(slot.timeFrame);
           return <div className="m5-timeframe-cell" title={slot.warning || undefined}>
             <span><span className={`m5-direction m5-${direction.toLowerCase()}`}>{direction}</span> {m5WaveLabel(slot.timeFrame)}{slot.warning ? " ⚠" : ""}</span>
-            <small>EMA {m5EmaLabel(slot.timeFrame)}</small>
+            <small>EMA <span className={emaLabel === "BUY" ? "m5-direction m5-buy" : emaLabel === "SELL" ? "m5-direction m5-sell" : undefined}>{emaLabel}</span></small>
           </div>;
         },
       })),
