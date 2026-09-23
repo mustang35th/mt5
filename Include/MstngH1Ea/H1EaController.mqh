@@ -58,6 +58,9 @@ public:
         this.lastAnalysisLogText = "";
         this.lastAnalysisLogTime = 0;
         this.lastAnalysisErrorBar = 0;
+        this.lastPreparationLogStatus = "";
+        this.lastPreparationLogText = "";
+        this.lastPreparationLogTime = 0;
         this.analysisRetryBar = 0;
         this.nextAnalysisRetryTime = 0;
     }
@@ -122,6 +125,9 @@ public:
         }
         this.preparationState.reset();
         this.preparationState.symbolName = fromSymbol;
+        this.lastPreparationLogStatus = "";
+        this.lastPreparationLogText = "";
+        this.lastPreparationLogTime = 0;
         this.preparationState.registered = true;
         this.preparationState.status = "REGISTERED";
         return true;
@@ -148,7 +154,7 @@ public:
             return false;
         }
         this.initializeRun();
-        this.run.programVersion = "1.06";
+        this.run.programVersion = "1.07";
         if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
             this.restorationError = "CONFIG_HASH_UNAVAILABLE";
             return false;
@@ -504,6 +510,7 @@ public:
             if (!this.strategy.initialize(this.preparationState.symbolName)) {
                 this.preparationState.status = "ERROR";
                 this.preparationState.reason = this.strategy.getLastError();
+                this.logPreparationHistory();
                 return;
             }
             this.preparationState.resourcesInitialized = true;
@@ -511,16 +518,19 @@ public:
         if (!this.strategy.prepareHistory()) {
             this.preparationState.status = "WAIT_HISTORY";
             this.preparationState.reason = this.strategy.getLastError();
+            this.logPreparationHistory();
             return;
         }
         if (barTime <= 0 || barTime != iTime(this.preparationState.symbolName, PERIOD_H1, 0)) {
             this.preparationState.status = "WAIT_HISTORY";
             this.preparationState.reason = "H1_BAR_UNAVAILABLE_OR_CHANGED";
+            this.logPreparationHistory();
             return;
         }
         this.preparationState.historyReady = true;
         this.preparationState.status = "READY";
         this.preparationState.reason = "";
+        this.logPreparationHistory();
     }
 
     /**
@@ -863,12 +873,58 @@ private:
     datetime lastAnalysisLogTime;
     /** 履歴待機以外の分析エラーを最後に出力したH1バー。 */
     datetime lastAnalysisErrorBar;
+    /** 全通貨Testerの履歴診断を最後に出した準備状態。分析待機状態とは共有しない。 */
+    string lastPreparationLogStatus;
+    /** 最後に出力した履歴診断。出力日時・H1時刻は比較対象に含めない。 */
+    string lastPreparationLogText;
+    /** 最後に履歴診断を出力したTester内サーバー時刻。 */
+    datetime lastPreparationLogTime;
     /** TesterのEntry分析に失敗したH1バー。トレイルやLIVEと共有しない。 */
     datetime analysisRetryBar;
     /** Tester内時刻での次回Entry分析時刻。成功時・H1切替時に解除する。 */
     datetime nextAnalysisRetryTime;
     /** 単一通貨イベント入口のTimer管理。通貨別処理からは操作しない。 */
     H1EaEventTimer eventTimer;
+
+    /**
+     * 全通貨Testerの準備診断を、既に取得済みのMN1～H1の本数・同期・開始日時と共に記録する。
+     * 初回と状態遷移は即時、待機中の変化は最短1時間、同一内容は1日間隔に抑える。
+     * READYの継続は再出力しない。履歴取得・判定・分析待機状態の変更は行わない。
+     */
+    void logPreparationHistory() {
+        if (!this.persistencePreparation || !this.config.isTester) {
+            return;
+        }
+        string status = this.preparationState.status;
+        string historyText = this.strategy.getHistoryStatusText();
+        if (historyText == "") {
+            historyText = "history=UNAVAILABLE";
+        }
+        string message = "state=" + status + " reason=" + this.preparationState.reason
+            + " " + historyText;
+        datetime now = TimeCurrent();
+        long elapsedSeconds = (long)(now - this.lastPreparationLogTime);
+        if (status == this.lastPreparationLogStatus && elapsedSeconds >= 0) {
+            if (status == "READY") {
+                return;
+            }
+            if (elapsedSeconds < 86400
+                    && (message == this.lastPreparationLogText || elapsedSeconds < 3600)) {
+                return;
+            }
+        }
+        string logText = "PREPARATION_HISTORY symbol=" + this.preparationState.symbolName
+            + " simulatedTime=" + TimeToString(now, TIME_DATE | TIME_SECONDS)
+            + " H1=" + IntegerToString(this.preparationState.h1BarTime) + " " + message;
+        if (status == "ERROR") {
+            this.logger.error("H1EaController.logPreparationHistory", logText);
+        } else {
+            this.logger.info("H1EaController.logPreparationHistory", logText);
+        }
+        this.lastPreparationLogStatus = status;
+        this.lastPreparationLogText = message;
+        this.lastPreparationLogTime = now;
+    }
 
     /**
      * 分析の実時間だけを記録する。判定周期に実時計の値を使わない。
