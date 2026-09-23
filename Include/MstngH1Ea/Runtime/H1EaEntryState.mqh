@@ -66,6 +66,11 @@ public:
     }
 
     /**
+     * 表示専用に、保存待ちを含む最後の確定H1を返す。
+     */
+    datetime getFinalizedBar() const { return this.finalizedBar; }
+
+    /**
      * 同一基準時刻・方向の既知回数を返す。
      */
     int getCount(const long fromReferenceTime, const string fromSide) const {

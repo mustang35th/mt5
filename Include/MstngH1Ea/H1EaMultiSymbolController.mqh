@@ -4,6 +4,7 @@
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <MstngH1Ea\H1EaController.mqh>
 #include <MstngH1Ea\Runtime\H1EaEventTimer.mqh>
+#include <MstngH1Ea\Runtime\H1EaMonitorState.mqh>
 #include <MstngH1Ea\Runtime\H1EaOperationLogger.mqh>
 #include <MstngH1Ea\Runtime\H1EaTradeTransactionRouter.mqh>
 
@@ -20,6 +21,7 @@ public:
         this.started = false;
         this.timerStarted = false;
         this.fastWarmupActive = false;
+        this.resetMonitorMetrics();
         this.testerTradeStartTime = 0;
         this.nextSymbolIndex = 0;
         this.nextTrailSymbolIndex = 0;
@@ -56,6 +58,7 @@ public:
         this.lastError = "";
         this.sessionUid = "";
         this.testerTradeStartTime = fromTesterTradeStartTime;
+        this.resetMonitorMetrics();
         if (_Period != PERIOD_H1) {
             return this.fail("H1_CHART_REQUIRED");
         }
@@ -174,9 +177,13 @@ public:
         if (!this.started || !this.timerStarted) {
             return;
         }
+        ulong timerStartedMicros = GetMicrosecondCount();
         this.fastWarmupActive = this.processFastTesterWarmup();
         if (this.fastWarmupActive) {
+            this.lastProtectionClock = 0;
+            this.lastProtectionGapMs = 0;
             this.processWarmupPreparation();
+            this.recordTimerDuration(timerStartedMicros);
             return;
         }
         // 履歴巡回の順番を待たず、全通貨のLeaseを毎イベント確認する。
@@ -184,6 +191,7 @@ public:
             this.controllers[i].processPersistencePreparation();
             this.logRestorationState(i);
         }
+        this.recordProtectionPass();
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             datetime barTime = iTime(this.controllers[i].getSymbolName(), PERIOD_H1, 0);
             this.controllers[i].processProtection(barTime);
@@ -255,6 +263,7 @@ public:
             this.logger.info(__FUNCTION__, currentState.symbolName + " " + currentState.status
                 + " H1=" + IntegerToString(currentState.h1BarTime) + " " + currentState.reason);
         }
+        this.recordTimerDuration(timerStartedMicros);
     }
 
     /**
@@ -267,10 +276,13 @@ public:
         bool wasFastWarmup = this.fastWarmupActive;
         this.fastWarmupActive = this.processFastTesterWarmup();
         if (this.fastWarmupActive) {
+            this.lastProtectionClock = 0;
+            this.lastProtectionGapMs = 0;
             return;
         }
         if (wasFastWarmup || !this.eventTimer.isNormalReady()) {
             // 高速終了・Timer復帰失敗時も、他通貨の保護を次のTimer待ちにしない。
+            this.recordProtectionPass();
             for (int i = 0; i < ArraySize(this.controllers); i++) {
                 this.controllers[i].processPersistencePreparation();
                 this.controllers[i].processProtection(iTime(this.controllers[i].getSymbolName(), PERIOD_H1, 0));
@@ -362,6 +374,56 @@ public:
     }
 
     /**
+     * 表示・定期ログ用の状態を集計する。新しいDB照会・broker照合・分析は行わない。
+     */
+    void getMonitorState(H1EaMonitorState &fromState) {
+        fromState.reset();
+        if (!this.started) {
+            return;
+        }
+        fromState.sessionUid = this.sessionUid;
+        if (MQLInfoInteger(MQL_TESTER)) {
+            fromState.sourceMode = "TESTER";
+        }
+        fromState.serverTime = TimeCurrent();
+        fromState.beforeTradeStart = this.isBeforeTesterTradeStart();
+        fromState.fastWarmup = this.fastWarmupActive;
+        fromState.timerSeconds = this.eventTimer.getSeconds();
+        fromState.timerCount = this.timerCount;
+        fromState.lastTimerMicros = this.lastTimerMicros;
+        fromState.maxTimerMicros = this.maxTimerMicros;
+        fromState.lastProtectionGapMs = this.lastProtectionGapMs;
+        fromState.maxProtectionGapMs = this.maxProtectionGapMs;
+        fromState.memoryMb = MQLInfoInteger(MQL_MEMORY_USED);
+        datetime currentBar = (datetime)((long)fromState.serverTime / 3600 * 3600);
+        ulong lastAnalysisFinished = 0;
+        for (int i = 0; i < ArraySize(this.controllers); i++) {
+            this.controllers[i].getMonitorState(fromState.symbols[i], fromState.beforeTradeStart,
+                this.eventTimer.isNormalReady() || (fromState.beforeTradeStart
+                    && fromState.fastWarmup && fromState.timerSeconds == 30), currentBar);
+            fromState.symbolCount++;
+            if (fromState.symbols[i].category == "STOPPED") {
+                fromState.stoppedCount++;
+            } else if (fromState.symbols[i].category == "PREPARING") {
+                fromState.preparingCount++;
+            } else {
+                fromState.watchingCount++;
+            }
+            if (fromState.symbols[i].activeTrade) {
+                fromState.activeTradeCount++;
+            }
+            fromState.analysisCount += fromState.symbols[i].analysisCount;
+            if (fromState.symbols[i].maxAnalysisMicros > fromState.maxAnalysisMicros) {
+                fromState.maxAnalysisMicros = fromState.symbols[i].maxAnalysisMicros;
+            }
+            if (fromState.symbols[i].analysisFinishedMicros > lastAnalysisFinished) {
+                lastAnalysisFinished = fromState.symbols[i].analysisFinishedMicros;
+                fromState.lastAnalysisMicros = fromState.symbols[i].lastAnalysisMicros;
+            }
+        }
+    }
+
+    /**
      * 全28通貨をまとめた起動IDを返す。
      */
     string getSessionUid() { return this.sessionUid; }
@@ -375,6 +437,9 @@ public:
      * 親のTimerを止め、作成済みの全通貨Controllerを一度ずつ解放する。
      */
     void shutdown(const int fromReason) {
+        if (this.started && this.timerCount > 0) {
+            this.logRuntimeMetrics(true);
+        }
         if (this.timerStarted) {
             EventKillTimer();
             this.timerStarted = false;
@@ -398,6 +463,20 @@ public:
     }
 
 private:
+    /** 表示・ログ専用のTimer処理回数。 */
+    ulong timerCount;
+    /** 直近のTimer実時間。 */
+    ulong lastTimerMicros;
+    /** 起動後の最大Timer実時間。 */
+    ulong maxTimerMicros;
+    /** 前回の通常保護巡回開始時計。高速準備では0へ戻す。 */
+    ulong lastProtectionClock;
+    /** 直近の全通貨保護巡回間隔。 */
+    ulong lastProtectionGapMs;
+    /** 起動後の最大保護巡回間隔。 */
+    ulong maxProtectionGapMs;
+    /** 次の定期計測ログを出せる巡回時計。 */
+    ulong nextMetricsLogTick;
     /** 固定28通貨それぞれが所有する独立したController。 */
     H1EaController *controllers[28];
     /** 全通貨の登録を完了したか。 */
@@ -432,6 +511,73 @@ private:
     string lastRestorationStatus[28];
     /** 全体の起動・状態変化ログ。 */
     Logger logger;
+
+    /**
+     * 計測値だけを初期化する。売買状態・巡回位置には触れない。
+     */
+    void resetMonitorMetrics() {
+        this.timerCount = 0;
+        this.lastTimerMicros = 0;
+        this.maxTimerMicros = 0;
+        this.lastProtectionClock = 0;
+        this.lastProtectionGapMs = 0;
+        this.maxProtectionGapMs = 0;
+        this.nextMetricsLogTick = 0;
+    }
+
+    /**
+     * 全通貨を保護する巡回の開始間隔を記録する。単一通貨Tick補助は含めない。
+     */
+    void recordProtectionPass() {
+        ulong now = H1EaClock::milliseconds();
+        if (this.lastProtectionClock > 0 && now >= this.lastProtectionClock) {
+            this.lastProtectionGapMs = now - this.lastProtectionClock;
+            if (this.lastProtectionGapMs > this.maxProtectionGapMs) {
+                this.maxProtectionGapMs = this.lastProtectionGapMs;
+            }
+        }
+        this.lastProtectionClock = now;
+    }
+
+    /**
+     * Timerの本処理だけを実時計で計測し、低頻度でログへ残す。
+     */
+    void recordTimerDuration(const ulong fromStarted) {
+        this.timerCount++;
+        this.lastTimerMicros = GetMicrosecondCount() - fromStarted;
+        if (this.lastTimerMicros > this.maxTimerMicros) {
+            this.maxTimerMicros = this.lastTimerMicros;
+        }
+        this.logRuntimeMetrics(false);
+    }
+
+    /**
+     * LIVEは最短1分、Testerはテスト内1時間で計測を記録する。終了時は必ず残す。
+     */
+    void logRuntimeMetrics(const bool fromForce) {
+        ulong now = H1EaClock::milliseconds();
+        if (!fromForce && now < this.nextMetricsLogTick) {
+            return;
+        }
+        this.nextMetricsLogTick = now + 60000;
+        if (MQLInfoInteger(MQL_TESTER)) {
+            this.nextMetricsLogTick = now + 3600000;
+        }
+        H1EaMonitorState state;
+        this.getMonitorState(state);
+        this.timerLogger.info(__FUNCTION__, "METRICS symbols=" + IntegerToString(state.symbolCount)
+            + " watch=" + IntegerToString(state.watchingCount) + " preparing=" + IntegerToString(state.preparingCount)
+            + " stopped=" + IntegerToString(state.stoppedCount) + " managedTrades=" + IntegerToString(state.activeTradeCount)
+            + " timerCount=" + H1EaTextUtil::ticket(state.timerCount)
+            + " timerMs=" + DoubleToString((double)state.lastTimerMicros / 1000.0, 2)
+            + " timerMaxMs=" + DoubleToString((double)state.maxTimerMicros / 1000.0, 2)
+            + " analysisCount=" + H1EaTextUtil::ticket(state.analysisCount)
+            + " analysisMs=" + DoubleToString((double)state.lastAnalysisMicros / 1000.0, 2)
+            + " analysisMaxMs=" + DoubleToString((double)state.maxAnalysisMicros / 1000.0, 2)
+            + " protectionGapMs=" + H1EaTextUtil::ticket(state.lastProtectionGapMs)
+            + " protectionMaxGapMs=" + H1EaTextUtil::ticket(state.maxProtectionGapMs)
+            + " memoryMb=" + IntegerToString(state.memoryMb));
+    }
 
     /**
      * Testerで明示された売買開始日時より前か返す。LIVEと0指定には適用しない。

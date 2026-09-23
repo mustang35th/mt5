@@ -97,7 +97,7 @@ class AnalysisRetrySourceTests(unittest.TestCase):
         between = compact(source[retry_end:failure_start])
         self.assertEqual(between,
                          "this.analysisRetryBar=0;this.nextAnalysisRetryTime=0;"
-                         "H1EaStrategySnapshotsnapshot;")
+                         "H1EaStrategySnapshotsnapshot;ulonganalysisStarted=GetMicrosecondCount();")
 
     def test_only_failed_tester_analysis_arms_one_second_server_time_retry(self):
         source = self.entry()

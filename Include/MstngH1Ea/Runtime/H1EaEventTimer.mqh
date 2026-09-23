@@ -69,6 +69,11 @@ public:
     }
 
     /**
+     * 表示専用に設定成功済みの周期を返す。未設定・失敗は0。
+     */
+    int getSeconds() const { return this.timerSeconds; }
+
+    /**
      * Entryを許可できる通常周期のTimer設定が成功済みか返す。
      */
     bool isNormalReady() const {

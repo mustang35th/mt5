@@ -62,7 +62,7 @@ class MultiSymbolWarmupTests(unittest.TestCase):
         for forbidden in ("restorePreparedDecision", "processScheduledEntry", "processScheduledTrail", "strategy.", "OrderSend"):
             self.assertNotIn(forbidden, body)
         timer = code_only(method(self.parent, "onTimer"))
-        self.assertRegex(timer, r"if \(this.fastWarmupActive\) \{\s*this.processWarmupPreparation\(\);\s*return;")
+        self.assertRegex(timer, r"if \(this.fastWarmupActive\) \{\s*this.lastProtectionClock = 0;\s*this.lastProtectionGapMs = 0;\s*this.processWarmupPreparation\(\);\s*this.recordTimerDuration\(timerStartedMicros\);\s*return;")
         self.assertLess(timer.index("this.processWarmupPreparation()"), timer.index(".processProtection(barTime)"))
         self.assertRegex(timer, r"if \(!this.isBeforeTesterTradeStart\(\)\) \{\s*this.controllers\[symbolIndex\].restorePreparedDecision\(\);")
 
@@ -109,11 +109,11 @@ class MultiSymbolWarmupTests(unittest.TestCase):
     def test_operating_config_identifies_fast_warmup_and_versions_match(self):
         config = (ROOT / "Include/MstngH1Ea/Config/H1EaConfig.mqh").read_text(encoding="utf-8-sig")
         self.assertIn("TESTER_FAST_WARMUP=ALL_IDLE_TIMER30_V1", method(config, "createCanonicalText"))
-        self.assertIn('this.run.programVersion = "1.04"', method(self.child, "initializePersistencePreparation"))
+        self.assertIn('this.run.programVersion = "1.05"', method(self.child, "initializePersistencePreparation"))
         expert = (ROOT / "Experts/MstngH1EaAll.mq5").read_text(encoding="utf-8-sig")
-        self.assertIn('#property version "1.04"', expert)
+        self.assertIn('#property version "1.05"', expert)
         self.assertEqual(re.findall(r"(?m)^input\s+(?:double|datetime|bool|int|string)\s+(\w+)\s*=", expert),
-                         ["InpLotSize", "InpMaxInitialStopLossPips", "InpTesterTradeStartTime"])
+                         ["InpLotSize", "InpMaxInitialStopLossPips", "InpTesterTradeStartTime", "InpShowStatusPanel"])
 
 
 if __name__ == "__main__":

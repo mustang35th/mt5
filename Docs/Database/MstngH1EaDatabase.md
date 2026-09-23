@@ -1306,3 +1306,9 @@ Allの新Runは設定canonicalへ`TESTER_FAST_WARMUP=ALL_IDLE_TIMER30_V1`を追�
 売買開始30秒より前で、全28通貨のDB・復元・Lock・Leaseが正常、取引・未保存・監査待ちがなく、口座全体の保有と注文が0の場合だけ、親Timerとheartbeatを30秒周期へ減らします。Lease期限60秒は延長せず、異常や開始境界では通常Timer 1秒・heartbeat 10秒へ戻します。復帰時は全通貨のDB保守待ちを解除し、Timer設定失敗中は新規Entryを保留します。
 
 開始前には現在バーのDecision照会と新規Decision生成を省きます。開始後、選ばれた通貨で現在H1の既存判定を照会してからEntryを評価します。親Timerログはsession UIDのファイル、通貨別ログはRun UIDのファイルへ分け、追加のDB列は設けません。
+
+### 16.4 第7段階の状態表示・計測（All v1.05 / 単一版v1.14）
+
+表示はController・EntryState・Executorが保持する状態のコピーだけを使用し、表示更新のためのDecision検索・価格取得・broker照合を追加しません。最終判定H1は保存待ちを含む確定済みバーで、現在H1のDB照会済みバーとは区別します。取引表示はDB復元または最後の照合値です。
+
+実行時間・分析回数・保護巡回間隔・メモリは親のsession UIDログへ`METRICS`として記録し、DB列は追加しません。表示inputは売買設定canonicalへ含めず、物理schema v3・復元キー・Magic・戦略V2を維持します。

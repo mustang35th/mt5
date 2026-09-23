@@ -46,7 +46,7 @@ void OnStart() {
         "1204050501", "magic code 12");
     H1EaConfig config;
     config.sessionUid = "";
-    assertEqual(H1EaConfig::getProgramVersion(), "1.13", "program version");
+    assertEqual(H1EaConfig::getProgramVersion(), "1.14", "program version");
     assertEqual(H1EaConfig::getStrategyVersion(),
         "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2", "three-timeframe strategy version");
     config.lotSize = 0.01;

@@ -9,6 +9,7 @@
 #include <MstngH1Ea\Runtime\H1EaEntryState.mqh>
 #include <MstngH1Ea\Runtime\H1EaEventTimer.mqh>
 #include <MstngH1Ea\Runtime\H1EaInstanceLock.mqh>
+#include <MstngH1Ea\Runtime\H1EaMonitorState.mqh>
 #include <MstngH1Ea\Runtime\H1EaOperationLogger.mqh>
 #include <MstngH1Ea\Runtime\H1EaPreparationState.mqh>
 #include <MstngH1Ea\Runtime\H1EaRestorationState.mqh>
@@ -27,6 +28,10 @@ public:
      * broker送信権限のない未初期化状態を作る。
      */
     H1EaController() {
+        this.analysisCount = 0;
+        this.lastAnalysisMicros = 0;
+        this.maxAnalysisMicros = 0;
+        this.analysisFinishedMicros = 0;
         this.started = false;
         this.persistencePreparation = false;
         this.protectionEnabled = false;
@@ -143,7 +148,7 @@ public:
             return false;
         }
         this.initializeRun();
-        this.run.programVersion = "1.04";
+        this.run.programVersion = "1.05";
         if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
             this.restorationError = "CONFIG_HASH_UNAVAILABLE";
             return false;
@@ -419,6 +424,68 @@ public:
     }
 
     /**
+     * 表示専用にメモリの状態をコピーする。DB照会・価格取得・判定は実行しない。
+     */
+    void getMonitorState(H1EaMonitorSymbolState &fromState, const bool fromBeforeTradeStart,
+            const bool fromTimerReady, const datetime fromCurrentBar) {
+        fromState.reset();
+        fromState.symbolName = this.preparationState.symbolName;
+        fromState.runId = this.run.id;
+        fromState.leaseExpiresAt = (datetime)this.run.leaseExpiresAt;
+        fromState.finalizedBar = this.entryState.getFinalizedBar();
+        fromState.digits = this.config.digits;
+        fromState.analysisCount = this.analysisCount;
+        fromState.lastAnalysisMicros = this.lastAnalysisMicros;
+        fromState.maxAnalysisMicros = this.maxAnalysisMicros;
+        fromState.analysisFinishedMicros = this.analysisFinishedMicros;
+        H1EaTradeEntity trade;
+        fromState.tradeKnown = this.executor.getRestoredTrade(trade, fromState.activeTrade);
+        fromState.tradeStatus = trade.status;
+        fromState.tradeSide = trade.side;
+        fromState.stopLoss = trade.currentStopLoss;
+        fromState.pendingStopLossKind = trade.pendingStopLossKind;
+        fromState.pendingStopLoss = trade.pendingStopLoss;
+        fromState.tradeError = trade.lastError;
+        fromState.category = "STOPPED";
+        if (!this.started || !this.entryEnabled || !this.protectionEnabled) {
+            fromState.status = "DISABLED";
+        } else if (this.leaseLost || this.run.leaseExpiresAt <= TimeLocal()) {
+            fromState.status = "LEASE_LOST";
+        } else if (!this.instanceLock.isHeld()) {
+            fromState.status = "LOCK_LOST";
+        } else if (this.auditStateLost) {
+            fromState.status = "AUDIT_STATE_LOST";
+        } else if (!this.databaseReady || !this.countsRestored || !this.executorInitialized) {
+            fromState.status = "WAIT_DB";
+            fromState.reason = this.persistence.getLastError();
+        } else if (ArraySize(this.decisionQueue) > 0 || this.executor.hasUnsavedEvents()) {
+            fromState.status = "SAVE_PENDING";
+        } else if (!fromTimerReady) {
+            fromState.status = "TIMER_WAIT";
+        } else if (this.preparationState.status == "ERROR") {
+            fromState.status = "RESOURCE_ERROR";
+            fromState.reason = this.preparationState.reason;
+        } else {
+            fromState.category = "PREPARING";
+            if (fromBeforeTradeStart) {
+                fromState.status = "WARMUP";
+                fromState.reason = this.preparationState.status + " " + this.preparationState.reason;
+            } else if (!this.preparationState.historyReady || this.preparationState.h1BarTime != fromCurrentBar) {
+                fromState.status = "WAIT_HISTORY";
+                fromState.reason = this.preparationState.reason;
+            } else if (this.restoredDecisionBar != fromCurrentBar) {
+                fromState.status = "WAIT_BAR_DB";
+            } else if (this.lastAnalysisLogText != "") {
+                fromState.status = "WAIT_ANALYSIS";
+                fromState.reason = this.lastAnalysisLogText;
+            } else {
+                fromState.category = "WATCH";
+                fromState.status = "WATCH";
+            }
+        }
+    }
+
+    /**
      * この通貨の履歴を準備する。波動分析・Judge・SignalCountの更新は行わない。
      * 準備済みの同一H1は省略し、未準備なら次の巡回で再確認する。
      */
@@ -582,13 +649,16 @@ public:
             this.lastTrailObservedBar = fromBarTime;
             if (this.executor.isTrailEligible(fromBarTime)) {
                 H1EaStrategySnapshot trailSnapshot;
+                ulong analysisStarted = GetMicrosecondCount();
                 if (this.strategy.analyze(trailSnapshot)) {
+                    this.recordAnalysisDuration(analysisStarted);
                     if (this.persistencePreparation && (trailSnapshot.h1BarTime != fromBarTime
                             || iTime(this.config.symbolName, PERIOD_H1, 0) != fromBarTime)) {
                         return;
                     }
                     this.executor.evaluateTrail(fromBarTime, this.strategy.getWave());
                 } else {
+                    this.recordAnalysisDuration(analysisStarted);
                     this.executor.evaluateTrail(fromBarTime, NULL, this.strategy.getLastError());
                 }
                 this.executor.processPending(fromBarTime);
@@ -713,6 +783,14 @@ public:
     }
 
 private:
+    /** 表示・計測専用の分析試行数。 */
+    ulong analysisCount;
+    /** 最後の分析実時間。 */
+    ulong lastAnalysisMicros;
+    /** 起動後の最大分析実時間。 */
+    ulong maxAnalysisMicros;
+    /** 最後の分析終了時の実時計。 */
+    ulong analysisFinishedMicros;
     /** 全通貨の起動成功と親Timer開始後に保護処理だけを許可する。 */
     bool protectionEnabled;
     /** 履歴待ちのトレイル再巡回を制限する対象バー。 */
@@ -791,6 +869,21 @@ private:
     datetime nextAnalysisRetryTime;
     /** 単一通貨イベント入口のTimer管理。通貨別処理からは操作しない。 */
     H1EaEventTimer eventTimer;
+
+    /**
+     * 分析の実時間だけを記録する。判定周期に実時計の値を使わない。
+     */
+    void recordAnalysisDuration(const ulong fromStarted) {
+        if (!this.persistencePreparation) {
+            return;
+        }
+        this.analysisFinishedMicros = GetMicrosecondCount();
+        this.lastAnalysisMicros = this.analysisFinishedMicros - fromStarted;
+        if (this.lastAnalysisMicros > this.maxAnalysisMicros) {
+            this.maxAnalysisMicros = this.lastAnalysisMicros;
+        }
+        this.analysisCount++;
+    }
 
     /**
      * 準備中30秒・通常1秒へ切り替える。更新失敗を成功扱いせず新規Entryを保留する。
@@ -1020,7 +1113,9 @@ private:
         this.analysisRetryBar = 0;
         this.nextAnalysisRetryTime = 0;
         H1EaStrategySnapshot snapshot;
+        ulong analysisStarted = GetMicrosecondCount();
         if (!this.strategy.analyze(snapshot)) {
+            this.recordAnalysisDuration(analysisStarted);
             // 未準備の同一H1だけ最短1秒で再試行し、判定回数はまだ消費しない。
             if (this.config.isTester) {
                 this.analysisRetryBar = barTime;
@@ -1029,6 +1124,7 @@ private:
             this.logAnalysisWait(barTime);
             return;
         }
+        this.recordAnalysisDuration(analysisStarted);
         this.clearAnalysisWait();
         if (snapshot.h1BarTime != barTime) {
             this.logger.error("H1EaController.evaluateEntry", "ANALYSIS_BAR_CHANGED: Judge未消費で再試行");
