@@ -156,7 +156,7 @@ public:
         if (this.sessionUid != "") {
             testerEvaluationTrigger = "TIMER";
             operatingText = "|OPERATING_MODE=MULTI_SYMBOL_ENTRY"
-                + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_TRAIL2_ENTRY1_HOUR_ROTATE_V1|ENTRY_ENABLED=1|PROTECTION_ENABLED=1|GLOBAL_POSITION_LIMIT=0";
+                + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_TRAIL2_ENTRY1_HOUR_ROTATE_V1|ENTRY_ENABLED=1|PROTECTION_ENABLED=1|GLOBAL_POSITION_LIMIT=0|TESTER_FAST_WARMUP=ALL_IDLE_TIMER30_V1";
         }
         return "H1_EA_CONFIG_V1|LOT_SIZE=" + DoubleToString(this.lotSize, 8)
             + "|MAX_INITIAL_SL_PIPS=" + DoubleToString(this.maxInitialStopLossPips, 1)
@@ -188,7 +188,7 @@ public:
     /**
      * プログラム世代を返す。
      */
-    static string getProgramVersion() { return "1.12"; }
+    static string getProgramVersion() { return "1.13"; }
 
     /**
      * Entry互換条件とトレイルを含む戦略世代を返す。

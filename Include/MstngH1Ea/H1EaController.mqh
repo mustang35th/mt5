@@ -143,7 +143,7 @@ public:
             return false;
         }
         this.initializeRun();
-        this.run.programVersion = "1.03";
+        this.run.programVersion = "1.04";
         if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
             this.restorationError = "CONFIG_HASH_UNAVAILABLE";
             return false;
@@ -325,11 +325,40 @@ public:
     /**
      * 全通貨分を毎Timer確認する軽量DB保守。履歴・broker照合・発注を呼ばない。
      */
-    void processPersistencePreparation() {
+    void processPersistencePreparation(const bool fromFastWarmup = false) {
         if (!this.started || !this.persistencePreparation) {
             return;
         }
+        if (fromFastWarmup && this.canUseScheduledFastTesterWarmup()) {
+            this.maintainFastTesterWarmup();
+            return;
+        }
         this.maintainPersistence();
+    }
+
+    /**
+     * 全通貨版の高速Tester準備可否をメモリで確認する。口座全体の注文数は親が確認する。
+     * 照合済みの空状態だけを許可し、履歴の準備完了とは区別する。
+     */
+    bool canUseScheduledFastTesterWarmup() {
+        if (!this.started || !this.persistencePreparation || !this.protectionEnabled || !this.entryEnabled
+                || !this.config.isBeforeTesterTradeStart(TimeCurrent())
+                || !this.databaseReady || !this.countsRestored || !this.executorInitialized
+                || this.auditStateLost || this.leaseLost || !this.instanceLock.isHeld()
+                || this.run.id <= 0 || this.run.leaseExpiresAt <= TimeLocal()
+                || ArraySize(this.decisionQueue) > 0) {
+            return false;
+        }
+        return this.executor.isIdleForTesterWarmup();
+    }
+
+    /**
+     * 通常周期へ戻る際、高速期間のDB保守待ちを持ち越さない。
+     */
+    void resetScheduledMaintenance() {
+        if (this.persistencePreparation) {
+            this.nextMaintenanceTick = 0;
+        }
     }
 
     /**

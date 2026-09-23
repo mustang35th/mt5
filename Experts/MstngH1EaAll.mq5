@@ -7,10 +7,10 @@
  * File: MstngH1EaAll.mq5
  *
  * M5観測と同じ28通貨をH1で管理するEAの入口。
- * 第5段階では通貨別DB復元・新規Entry・ポジション照合・保護SL・トレイルを管理する。
+ * 第6段階では28通貨のTester準備を安全条件付きで軽量化し、開始日時から通常巡回へ戻す。
  */
 #property copyright "Copyright 2026, Mstng"
-#property version "1.03"
+#property version "1.04"
 #property strict
 #property description "28通貨H1の新規Entry・ポジション・SL管理"
 

@@ -1,4 +1,4 @@
-"""Stage-five source contracts. These do not run MT5 or send orders."""
+"""Stage-six source contracts. These do not run MT5 or send orders."""
 
 from pathlib import Path
 import unittest
@@ -46,7 +46,8 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertIn("controller.onTick();", method(self.expert, "OnTick"))
         self.assertIn("controller.onTradeTransaction(", method(self.expert, "OnTradeTransaction"))
         self.assertIn("controller.onTimer();", method(self.expert, "OnTimer"))
-        self.assertEqual(code_only(self.parent).count("EventSetTimer("), 1)
+        self.assertNotIn("EventSetTimer(", code_only(self.parent))
+        self.assertIn("this.eventTimer.update(", method(self.parent, "updateEventTimer"))
 
     def test_waiting_or_failed_child_does_not_block_round_robin(self):
         body = code_only(method(self.parent, "onTimer"))
@@ -176,7 +177,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
 
     def test_protection_is_enabled_only_after_all_readiness_checks_and_timer_success(self):
         body = code_only(method(self.parent, "startTimer"))
-        self.assertLess(body.index(".canEnableProtection()"), body.index("EventSetTimer(1)"))
+        self.assertLess(body.index(".canEnableProtection()"), body.index("this.updateEventTimer(false)"))
         self.assertLess(body.index("this.timerStarted = true"), body.index(".enableProtection()"))
         for forbidden in ("reconcile", "processPending", "OrderSend"):
             self.assertNotIn(forbidden, method(self.child, "enableProtection"))
@@ -193,11 +194,12 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertIn("this.nextTrailSymbolIndex = (candidateIndex + 1)", body)
         self.assertIn("if (symbolIndex < 0)", body)
 
-    def test_tick_does_not_analyze_or_manage_other_symbols(self):
+    def test_tick_never_analyzes_and_resumes_all_protection_after_fast_warmup(self):
         body = code_only(method(self.parent, "onTick"))
         self.assertIn("this.controllers[this.chartSymbolIndex]", body)
         self.assertIn("this.chartSymbolIndex < 0", body)
-        for forbidden in ("for (", "processEntry", "processTrail", "processPreparation", "EventSetTimer"):
+        self.assertIn("wasFastWarmup || !this.eventTimer.isNormalReady()", body)
+        for forbidden in ("processEntry", "processTrail", "processPreparation", "EventSetTimer"):
             self.assertNotIn(forbidden, body)
 
     def test_trail_history_retry_and_bar_transition_are_checked(self):
@@ -245,7 +247,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
 
     def test_entry_activation_requires_protection_and_follows_timer_success(self):
         body = code_only(method(self.parent, "startTimer"))
-        self.assertLess(body.index("EventSetTimer(1)"), body.index(".enableEntry()"))
+        self.assertLess(body.index("this.updateEventTimer(false)"), body.index(".enableEntry()"))
         self.assertLess(body.index(".enableProtection()"), body.index(".enableEntry()"))
         body = code_only(method(self.child, "enableEntry"))
         self.assertIn("if (!this.protectionEnabled)", body)

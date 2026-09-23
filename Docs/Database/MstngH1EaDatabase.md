@@ -1298,3 +1298,11 @@ Allの新Runは`OPERATING_MODE=MULTI_SYMBOL_ENTRY`、`TESTER_EVALUATION_TRIGGER=
 現在H1の判定済み状態とSignalCountを通貨別に復元してから共通判定を行います。通常版と同じDecision・Trade・ENTRY_REQUESTの保存transactionが成功した場合だけ注文送信へ進み、結果をENTRY_RESULTへ保存します。Judge成立後の安全条件SKIPは回数消費を維持し、分析失敗や判定前の履歴・気配・現在バー復元待ちは消費しません。送信直前の気配確認に失敗した場合も、保存した要求に対して`OPEN_FAILED / ENTRY_QUOTE_UNAVAILABLE_BEFORE_SEND`を結果へ記録します。
 
 巡回待ち時間・分析時間は通貨別運用ログへ出力し、DB列は追加しません。旧Run・Decisionを再計算せず、全体ポジション上限の保存項目・入力もこの段階では追加しません。
+
+### 16.3 第6段階のTester高速準備（All v1.04 / 単一版v1.13）
+
+Allの新Runは設定canonicalへ`TESTER_FAST_WARMUP=ALL_IDLE_TIMER30_V1`を追加します。物理schema v3、復元キー、Magic、Run/sessionの関係、単一版の設定canonicalは維持します。
+
+売買開始30秒より前で、全28通貨のDB・復元・Lock・Leaseが正常、取引・未保存・監査待ちがなく、口座全体の保有と注文が0の場合だけ、親Timerとheartbeatを30秒周期へ減らします。Lease期限60秒は延長せず、異常や開始境界では通常Timer 1秒・heartbeat 10秒へ戻します。復帰時は全通貨のDB保守待ちを解除し、Timer設定失敗中は新規Entryを保留します。
+
+開始前には現在バーのDecision照会と新規Decision生成を省きます。開始後、選ばれた通貨で現在H1の既存判定を照会してからEntryを評価します。親Timerログはsession UIDのファイル、通貨別ログはRun UIDのファイルへ分け、追加のDB列は設けません。

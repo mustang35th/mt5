@@ -3,6 +3,8 @@
 
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <MstngH1Ea\H1EaController.mqh>
+#include <MstngH1Ea\Runtime\H1EaEventTimer.mqh>
+#include <MstngH1Ea\Runtime\H1EaOperationLogger.mqh>
 #include <MstngH1Ea\Runtime\H1EaTradeTransactionRouter.mqh>
 
 /**
@@ -17,6 +19,8 @@ public:
     H1EaMultiSymbolController() {
         this.started = false;
         this.timerStarted = false;
+        this.fastWarmupActive = false;
+        this.testerTradeStartTime = 0;
         this.nextSymbolIndex = 0;
         this.nextTrailSymbolIndex = 0;
         this.nextEntrySymbolIndex = 0;
@@ -51,6 +55,7 @@ public:
         }
         this.lastError = "";
         this.sessionUid = "";
+        this.testerTradeStartTime = fromTesterTradeStartTime;
         if (_Period != PERIOD_H1) {
             return this.fail("H1_CHART_REQUIRED");
         }
@@ -130,6 +135,7 @@ public:
             }
         }
         this.nextSymbolIndex = 0;
+        this.timerLogger.initialize(_Symbol, 0, this.sessionUid);
         this.started = true;
         this.logger.info(__FUNCTION__, "MULTI_SYMBOL_ENTRY symbols=28 timeFrame=H1 entry=waiting session=" + this.sessionUid);
         return true;
@@ -150,8 +156,7 @@ public:
                 return this.fail("PROTECTION_INITIALIZATION_NOT_READY: " + this.controllers[i].getSymbolName());
             }
         }
-        ResetLastError();
-        if (!EventSetTimer(1)) {
+        if (!this.updateEventTimer(false)) {
             return this.fail("TIMER_START_FAILED: " + IntegerToString(GetLastError()));
         }
         this.timerStarted = true;
@@ -167,6 +172,11 @@ public:
      */
     void onTimer() {
         if (!this.started || !this.timerStarted) {
+            return;
+        }
+        this.fastWarmupActive = this.processFastTesterWarmup();
+        if (this.fastWarmupActive) {
+            this.processWarmupPreparation();
             return;
         }
         // 履歴巡回の順番を待たず、全通貨のLeaseを毎イベント確認する。
@@ -231,11 +241,13 @@ public:
         H1EaPreparationState currentState;
         this.controllers[symbolIndex].getPreparationState(previousState);
         this.controllers[symbolIndex].processPreparation();
-        this.controllers[symbolIndex].restorePreparedDecision();
+        if (!this.isBeforeTesterTradeStart()) {
+            this.controllers[symbolIndex].restorePreparedDecision();
+        }
         if (trailBarTime > 0) {
             this.controllers[symbolIndex].processScheduledTrail(trailBarTime);
         } else if (entrySymbolIndex == symbolIndex && entryBarTime > 0) {
-            this.controllers[symbolIndex].processScheduledEntry(entryBarTime, this.timerStarted);
+            this.controllers[symbolIndex].processScheduledEntry(entryBarTime, this.eventTimer.isNormalReady());
         }
         this.logRestorationState(symbolIndex);
         this.controllers[symbolIndex].getPreparationState(currentState);
@@ -246,10 +258,26 @@ public:
     }
 
     /**
-     * チャート通貨だけTickで保護を補助する。分析・Entry・Timer変更は行わない。
+     * TickでTesterの周期復帰を確認し、チャート通貨の保護を補助する。分析・Entryは行わない。
      */
     void onTick() {
-        if (!this.started || !this.timerStarted || this.chartSymbolIndex < 0) {
+        if (!this.started || !this.timerStarted) {
+            return;
+        }
+        bool wasFastWarmup = this.fastWarmupActive;
+        this.fastWarmupActive = this.processFastTesterWarmup();
+        if (this.fastWarmupActive) {
+            return;
+        }
+        if (wasFastWarmup || !this.eventTimer.isNormalReady()) {
+            // 高速終了・Timer復帰失敗時も、他通貨の保護を次のTimer待ちにしない。
+            for (int i = 0; i < ArraySize(this.controllers); i++) {
+                this.controllers[i].processPersistencePreparation();
+                this.controllers[i].processProtection(iTime(this.controllers[i].getSymbolName(), PERIOD_H1, 0));
+            }
+            return;
+        }
+        if (this.chartSymbolIndex < 0) {
             return;
         }
         H1EaController *symbolController = this.controllers[this.chartSymbolIndex];
@@ -351,6 +379,8 @@ public:
             EventKillTimer();
             this.timerStarted = false;
         }
+        this.eventTimer.reset();
+        this.fastWarmupActive = false;
         this.started = false;
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             if (this.controllers[i] != NULL) {
@@ -374,6 +404,14 @@ private:
     bool started;
     /** この親がTimerを開始したか。 */
     bool timerStarted;
+    /** Testerの売買開始日時。0は準備期間なし。 */
+    datetime testerTradeStartTime;
+    /** 直前イベントで高速準備が安全に成立したか。 */
+    bool fastWarmupActive;
+    /** 親だけが操作するTimer設定状態。 */
+    H1EaEventTimer eventTimer;
+    /** session UID単位に記録する親Timerの運用ログ。 */
+    H1EaOperationLogger timerLogger;
     /** 次に巡回する通貨の添字。 */
     int nextSymbolIndex;
     /** 次に優先確認するトレイル対象の添字。 */
@@ -394,6 +432,87 @@ private:
     string lastRestorationStatus[28];
     /** 全体の起動・状態変化ログ。 */
     Logger logger;
+
+    /**
+     * Testerで明示された売買開始日時より前か返す。LIVEと0指定には適用しない。
+     */
+    bool isBeforeTesterTradeStart() {
+        return MQLInfoInteger(MQL_TESTER) && this.testerTradeStartTime > 0
+            && TimeCurrent() < this.testerTradeStartTime;
+    }
+
+    /**
+     * 全通貨の照合済み空状態と口座全体の無保有を確認してから高速化する。
+     * 売買開始の30秒前には通常周期へ戻し、開始境界の待ちを短くする。
+     */
+    bool canUseFastTesterWarmup() {
+        if (!this.started || !this.timerStarted || !this.isBeforeTesterTradeStart()
+                || TimeCurrent() + 30 >= this.testerTradeStartTime
+                || PositionsTotal() != 0 || OrdersTotal() != 0) {
+            return false;
+        }
+        for (int i = 0; i < ArraySize(this.controllers); i++) {
+            if (!this.controllers[i].canUseScheduledFastTesterWarmup()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 親Timerを更新する。通常周期の復帰失敗時も、全通貨のDB保守待ちを解除する。
+     */
+    bool updateEventTimer(const bool fromFastWarmup) {
+        bool resetMaintenance = false;
+        bool updated = this.eventTimer.update(fromFastWarmup, this.timerLogger, resetMaintenance);
+        if (resetMaintenance || (!fromFastWarmup && this.fastWarmupActive)) {
+            for (int i = 0; i < ArraySize(this.controllers); i++) {
+                if (this.controllers[i] != NULL) {
+                    this.controllers[i].resetScheduledMaintenance();
+                }
+            }
+        }
+        return updated;
+    }
+
+    /**
+     * 全通貨が安全な間だけ30秒保守を使用し、保守後も高速化条件を再確認する。
+     */
+    bool processFastTesterWarmup() {
+        bool fastWarmup = this.canUseFastTesterWarmup();
+        if (!this.updateEventTimer(fastWarmup)) {
+            return false;
+        }
+        if (!fastWarmup) {
+            return false;
+        }
+        for (int i = 0; i < ArraySize(this.controllers); i++) {
+            this.controllers[i].processPersistencePreparation(true);
+        }
+        if (this.canUseFastTesterWarmup()) {
+            return true;
+        }
+        this.updateEventTimer(false);
+        return false;
+    }
+
+    /**
+     * 安全な高速準備期間は、1イベントで1通貨の履歴だけを確認する。
+     * 波動分析・Judge・現在バーのDecision照会は行わない。
+     */
+    void processWarmupPreparation() {
+        int symbolIndex = this.nextSymbolIndex;
+        this.nextSymbolIndex = (this.nextSymbolIndex + 1) % ArraySize(this.controllers);
+        H1EaPreparationState previousState;
+        H1EaPreparationState currentState;
+        this.controllers[symbolIndex].getPreparationState(previousState);
+        this.controllers[symbolIndex].processPreparation();
+        this.controllers[symbolIndex].getPreparationState(currentState);
+        if (previousState.status != currentState.status || previousState.reason != currentState.reason) {
+            this.logger.info(__FUNCTION__, currentState.symbolName + " " + currentState.status
+                + " H1=" + IntegerToString(currentState.h1BarTime) + " " + currentState.reason);
+        }
+    }
 
     /**
      * 登録銘柄との完全一致だけで振り分ける。

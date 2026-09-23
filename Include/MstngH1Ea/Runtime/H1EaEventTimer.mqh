@@ -60,6 +60,15 @@ public:
     }
 
     /**
+     * 所有元がTimerを終了した後、再起動に備えて設定成功状態を破棄する。
+     * OSのTimerは操作しない。
+     */
+    void reset() {
+        this.timerSeconds = 0;
+        this.nextTimerRetryTick = 0;
+    }
+
+    /**
      * Entryを許可できる通常周期のTimer設定が成功済みか返す。
      */
     bool isNormalReady() const {

@@ -46,7 +46,7 @@ void OnStart() {
         "1204050501", "magic code 12");
     H1EaConfig config;
     config.sessionUid = "";
-    assertEqual(H1EaConfig::getProgramVersion(), "1.12", "program version");
+    assertEqual(H1EaConfig::getProgramVersion(), "1.13", "program version");
     assertEqual(H1EaConfig::getStrategyVersion(),
         "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2", "three-timeframe strategy version");
     config.lotSize = 0.01;
@@ -65,7 +65,7 @@ void OnStart() {
     string unrestrictedHash = H1EaTextUtil::hash(config.createCanonicalText());
     config.sessionUid = H1EaTextUtil::hash("SESSION_ONE");
     string multiExpected = expected + "|OPERATING_MODE=MULTI_SYMBOL_ENTRY"
-        + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_TRAIL2_ENTRY1_HOUR_ROTATE_V1|ENTRY_ENABLED=1|PROTECTION_ENABLED=1|GLOBAL_POSITION_LIMIT=0";
+        + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_TRAIL2_ENTRY1_HOUR_ROTATE_V1|ENTRY_ENABLED=1|PROTECTION_ENABLED=1|GLOBAL_POSITION_LIMIT=0|TESTER_FAST_WARMUP=ALL_IDLE_TIMER30_V1";
     check(StringReplace(multiExpected, "TESTER_EVALUATION_TRIGGER=TICK",
         "TESTER_EVALUATION_TRIGGER=TIMER") == 1, "multi Timer trigger");
     assertEqual(config.createCanonicalText(), multiExpected, "multi entry config");
