@@ -152,9 +152,11 @@ public:
         StringReplace(analysisStartTimeFrame, "PERIOD_", "");
 
         string operatingText = "";
+        string testerEvaluationTrigger = "TICK";
         if (this.sessionUid != "") {
-            operatingText = "|OPERATING_MODE=MULTI_SYMBOL_DB_PREPARATION"
-                + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_ROUND_ROBIN_V1|TRADING_ENABLED=0";
+            testerEvaluationTrigger = "TIMER";
+            operatingText = "|OPERATING_MODE=MULTI_SYMBOL_ENTRY"
+                + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_TRAIL2_ENTRY1_HOUR_ROTATE_V1|ENTRY_ENABLED=1|PROTECTION_ENABLED=1|GLOBAL_POSITION_LIMIT=0";
         }
         return "H1_EA_CONFIG_V1|LOT_SIZE=" + DoubleToString(this.lotSize, 8)
             + "|MAX_INITIAL_SL_PIPS=" + DoubleToString(this.maxInitialStopLossPips, 1)
@@ -168,7 +170,7 @@ public:
             + getH1Ema200ConfirmationModeText(Mtf3In3H1Policy::getEma200ConfirmationMode())
             + "|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=0"
             + "|ENTRY_COUNT=1|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30"
-            + "|TESTER_EVALUATION_TRIGGER=TICK"
+            + "|TESTER_EVALUATION_TRIGGER=" + testerEvaluationTrigger
             + "|TESTER_TRADE_START_TIME=" + IntegerToString(this.testerTradeStartTime) + operatingText;
     }
 
@@ -186,7 +188,7 @@ public:
     /**
      * プログラム世代を返す。
      */
-    static string getProgramVersion() { return "1.10"; }
+    static string getProgramVersion() { return "1.12"; }
 
     /**
      * Entry互換条件とトレイルを含む戦略世代を返す。

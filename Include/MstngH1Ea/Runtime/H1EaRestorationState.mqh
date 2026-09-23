@@ -10,10 +10,14 @@
 struct H1EaRestorationState {
     /** 今回の通貨別Run。 */
     H1EaRunEntity run;
-    /** DBから読み込んだ取引。保留SLも含む。 */
+    /** 最後に確認した取引。保留SLも含み、保護接続後はbroker照合結果を反映する。 */
     H1EaTradeEntity trade;
     /** DBへの接続と保存状態の復元が完了したか。 */
     bool databaseReady;
+    /** 外部巡回による保護処理が接続済みか。現在の送信可否とは別。 */
+    bool protectionEnabled;
+    /** 外部巡回によるEntry評価が接続済みか。発注の成立とは別。 */
+    bool entryEnabled;
     /** SignalCountの読取が完了したか。 */
     bool countsRestored;
     /** 取引の有無の読取が完了したか。 */
@@ -43,6 +47,8 @@ struct H1EaRestorationState {
         this.run.reset();
         this.trade.reset();
         this.databaseReady = false;
+        this.protectionEnabled = false;
+        this.entryEnabled = false;
         this.countsRestored = false;
         this.tradeRestored = false;
         this.hasActiveTrade = false;

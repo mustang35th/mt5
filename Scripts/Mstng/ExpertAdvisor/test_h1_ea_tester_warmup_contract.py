@@ -73,8 +73,8 @@ class TesterWarmupWiringTests(unittest.TestCase):
         cls.persistence = PERSISTENCE.read_text(encoding="utf-8-sig")
 
     def test_program_version_changes_without_new_inputs(self):
-        self.assertRegex(self.expert, r'#property\s+version\s+"1\.10"')
-        self.assertIn('return "1.10";', method(self.config, "getProgramVersion"))
+        self.assertRegex(self.expert, r'#property\s+version\s+"1\.12"')
+        self.assertIn('return "1.12";', method(self.config, "getProgramVersion"))
         self.assertEqual(
             re.findall(r"(?m)^input\s+(?:double|datetime|int|bool|string)\s+(\w+)\s*=", self.expert),
             ["InpLotSize", "InpMaxInitialStopLossPips", "InpTesterTradeStartTime"],
@@ -322,7 +322,7 @@ class TesterWarmupWiringTests(unittest.TestCase):
             body,
             r'"\|TESTER_TRADE_START_TIME="\s*\+\s*IntegerToString\(this\.testerTradeStartTime\)\s*\+\s*operatingText\s*;',
         )
-        self.assertLess(body.index("TESTER_EVALUATION_TRIGGER=TICK"), body.index("TESTER_TRADE_START_TIME="))
+        self.assertLess(body.index("TESTER_EVALUATION_TRIGGER="), body.index("TESTER_TRADE_START_TIME="))
         run = code_only(method(self.controller, "initializeRun"))
         self.assertIn("this.run.configText = this.config.createCanonicalText();", run)
         self.assertIn("this.run.configHash = H1EaTextUtil::hash(this.run.configText);", run)

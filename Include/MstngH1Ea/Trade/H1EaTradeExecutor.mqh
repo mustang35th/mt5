@@ -33,6 +33,7 @@ public:
         this.persistence = NULL;
         this.active = false;
         this.initialized = false;
+        this.requireCurrentQuote = false;
         this.loaded = false;
         this.idleReconciled = false;
         this.lockHeld = false;
@@ -130,6 +131,63 @@ public:
     void setManagementAuthority(const bool fromLockHeld, const datetime fromLeaseExpires) {
         this.lockHeld = fromLockHeld;
         this.knownLeaseExpires = fromLeaseExpires;
+    }
+
+    /**
+     * Timerから他通貨を保護するときは対象通貨の気配時刻も検証する。
+     */
+    void setRequireCurrentQuote(const bool fromRequired) {
+        this.requireCurrentQuote = fromRequired;
+    }
+
+    /**
+     * Entry分析の前後に、自通貨の現在バーと有効な気配が揃っているか確認する。
+     */
+    bool hasCurrentEntryQuote(const datetime fromBarTime) {
+        if (!this.initialized || fromBarTime <= 0 || fromBarTime > TimeCurrent()
+                || TimeCurrent() >= fromBarTime + PeriodSeconds(PERIOD_H1)
+                || iTime(this.symbolName, PERIOD_H1, 0) != fromBarTime) {
+            return false;
+        }
+        MqlTick marketTick;
+        return this.readTick(marketTick)
+            && iTime(this.symbolName, PERIOD_H1, 0) == fromBarTime;
+    }
+
+    /**
+     * 銘柄のない通知を保存済みticket・未完了request IDへ照合する。DBは読まない。
+     */
+    bool matchesTradeTransaction(const MqlTradeTransaction &fromTransaction,
+            const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
+        if (!this.initialized || !this.active) {
+            return false;
+        }
+        if (fromTransaction.type == TRADE_TRANSACTION_REQUEST) {
+            return (this.pendingModifyRequestId > 0 && fromResult.request_id == this.pendingModifyRequestId)
+                || this.matchesPositionTicket(fromRequest.position)
+                || this.matchesPositionTicket(fromRequest.position_by)
+                || this.matchesOrderTicket(fromRequest.order) || this.matchesOrderTicket(fromResult.order)
+                || this.matchesDealTicket(fromResult.deal);
+        }
+        return this.matchesPositionTicket(fromTransaction.position)
+            || this.matchesPositionTicket(fromTransaction.position_by)
+            || this.matchesOrderTicket(fromTransaction.order) || this.matchesDealTicket(fromTransaction.deal);
+    }
+
+    /**
+     * 帰属不明通知では後続の照合を予約するだけにし、イベント内で履歴全件を読まない。
+     */
+    void requestReconciliation() {
+        if (!this.initialized) {
+            return;
+        }
+        if (this.closedDealAuditChecked || !this.closedDealAuditFull) {
+            this.closedDealAuditAfterId = 0;
+        }
+        this.closedDealAuditChecked = false;
+        this.closedDealAuditFull = true;
+        this.nextClosedDealAuditTick = 0;
+        this.nextPendingDealAuditTick = 0;
     }
 
     /**
@@ -346,6 +404,9 @@ public:
             } else if (iTime(this.symbolName, PERIOD_H1, 0) != this.entryH1Bar) {
                 this.trade.status = "OPEN_FAILED";
                 this.trade.lastError = "ENTRY_BAR_EXPIRED";
+            } else if (this.requireCurrentQuote && !this.hasCurrentEntryQuote(this.entryH1Bar)) {
+                this.trade.status = "OPEN_FAILED";
+                this.trade.lastError = "ENTRY_QUOTE_UNAVAILABLE_BEFORE_SEND";
             } else {
                 bool sent = OrderSend(request, result);
                 this.trade.entryRetcode = (int)result.retcode;
@@ -554,7 +615,7 @@ public:
     }
 
     /**
-     * tick側だけから呼び、既存リスク低減を1秒以上の間隔で送信する。
+     * Tickまたは親Timerから呼び、既存リスク低減を1秒以上の間隔で送信する。
      */
     void processPending(const datetime fromH1Bar) {
         if (!this.active || this.trade.status == "RECOVERY_REQUIRED" || this.recoveryCommitPending
@@ -637,6 +698,15 @@ public:
      */
     void onTradeTransaction(const MqlTradeTransaction &fromTransaction,
             const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
+        this.observeTradeTransaction(fromTransaction, fromRequest, fromResult);
+        this.reconcile();
+    }
+
+    /**
+     * 通知の確定情報と約定ticketだけを受け取る。照合・DB保存・broker送信は後続へ委ねる。
+     */
+    void observeTradeTransaction(const MqlTradeTransaction &fromTransaction,
+            const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
         if (!this.initialized) {
             return;
         }
@@ -665,10 +735,11 @@ public:
             this.closedDealAuditAfterId = 0;
             this.nextClosedDealAuditTick = 0;
         }
-        this.reconcile();
     }
 
 private:
+    /** 他通貨Timerの保護では気配時刻を追加確認する。 */
+    bool requireCurrentQuote;
     /** DB。 */
     H1EaPersistenceService *persistence;
     /** DBと独立した運用ログ。 */
@@ -761,6 +832,35 @@ private:
     ulong nextPendingDealAuditTick;
 
     /**
+     * 0を未取得ticketと誤一致させない。
+     */
+    bool matchesPositionTicket(const ulong fromTicket) {
+        return fromTicket > 0 && H1EaTextUtil::ticket(fromTicket) == this.trade.positionTicket;
+    }
+
+    /**
+     * 保存済みEntry/Exit注文へ照合する。
+     */
+    bool matchesOrderTicket(const ulong fromTicket) {
+        if (fromTicket == 0) {
+            return false;
+        }
+        string ticket = H1EaTextUtil::ticket(fromTicket);
+        return ticket == this.trade.entryOrderTicket || ticket == this.trade.exitOrderTicket;
+    }
+
+    /**
+     * 保存済みEntry/Exit約定へ照合する。
+     */
+    bool matchesDealTicket(const ulong fromTicket) {
+        if (fromTicket == 0) {
+            return false;
+        }
+        string ticket = H1EaTextUtil::ticket(fromTicket);
+        return ticket == this.trade.entryDealTicket || ticket == this.trade.exitDealTicket;
+    }
+
+    /**
      * 非DBの送信権限を確認する。起動時未取得Leaseは許可しない。
      */
     bool hasManagementAuthority() {
@@ -781,8 +881,18 @@ private:
      * Bid/Ask未取得をゼロ価格と混同しない。
      */
     bool readTick(MqlTick &fromTick) {
-        return SymbolInfoTick(this.symbolName, fromTick) && fromTick.bid > 0.0
-            && fromTick.ask >= fromTick.bid && MathIsValidNumber(fromTick.ask);
+        if (!SymbolInfoTick(this.symbolName, fromTick) || fromTick.bid <= 0.0
+                || fromTick.ask < fromTick.bid || !MathIsValidNumber(fromTick.bid) || !MathIsValidNumber(fromTick.ask)) {
+            return false;
+        }
+        if (this.requireCurrentQuote) {
+            datetime barTime = iTime(this.symbolName, PERIOD_H1, 0);
+            if (fromTick.time_msc <= 0 || fromTick.time_msc > (long)TimeCurrent() * 1000 + 999
+                    || (barTime > 0 && fromTick.time_msc < (long)barTime * 1000)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

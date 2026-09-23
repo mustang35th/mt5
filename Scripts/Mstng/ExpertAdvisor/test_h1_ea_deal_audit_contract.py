@@ -432,10 +432,12 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
             self.assertIn(expected, body)
 
     def test_late_callback_enqueues_audit_without_requiring_an_active_trade(self):
-        body = WIRING.code_only(WIRING.method(self.executor, "onTradeTransaction"))
+        body = WIRING.code_only(WIRING.method(self.executor, "observeTradeTransaction"))
         enqueue = body.index("this.enqueueDealAudit(fromTransaction.deal);")
-        reconcile_call = body.index("this.reconcile();")
-        self.assertLess(enqueue, reconcile_call)
+        self.assertNotIn("this.reconcile();", body)
+        wrapper = WIRING.code_only(WIRING.method(self.executor, "onTradeTransaction"))
+        self.assertLess(wrapper.index("this.observeTradeTransaction("), wrapper.index("this.reconcile();"))
+        reconcile_call = len(body)
         for expected in (
             "this.closedDealAuditChecked = false;", "this.closedDealAuditAfterId = 0;",
             "this.nextClosedDealAuditTick = 0;",

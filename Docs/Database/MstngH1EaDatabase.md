@@ -1283,3 +1283,18 @@ H1 ZigZagトレイル用の新テーブルは追加せず、`H1EaTradeEntity`、
 第3段階のAllはRun/Leaseの保存と既存状態の読取だけを行います。Runのconfig_textには`OPERATING_MODE=MULTI_SYMBOL_DB_PREPARATION|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_ROUND_ROBIN_V1|TRADING_ENABLED=0`を末尾に追記します。起動ID自体はconfig hashへ加えません。DBからのTrade読取とbroker照合を分離し、broker照合・発注・SL管理は次段階へ残します。
 
 物理v3を理解しない旧EAのバイナリは移行後のDBへ接続できません。同じDBを使うEAを正常終了し、新版へ揃えてから初回移行します。移行時に旧判定・シグナル消費・既存設定/hashを更新しません。
+
+
+### 16.1 第4段階の保護接続（All v1.02 / 単一版v1.11）
+
+物理schema v3と復元キーを維持し、全通貨の照合・保護SL・トレイルによるTrade/Event更新を接続しました。Allの新Runは`OPERATING_MODE=MULTI_SYMBOL_PROTECTION_ONLY|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_PROTECTION_FIRST_V1|ENTRY_ENABLED=0|PROTECTION_ENABLED=1`を設定末尾へ記録します。設定hashは第3段階と区別されますが、旧RunとDecisionは変更しません。新規Entry用Decision・注文はまだ作成しません。
+
+通知内では要求結果と約定ticketを受付し、後続の通貨別照合で既存の保存順序・一意キー・監査キューを利用します。終了時は未保存Eventと約定監査の未完了も確認します。保護動作の具体的な範囲は[複数通貨仕様書の第4段階](../ExpertAdvisor/MstngH1EaAll.md#14-第4段階の実装2026-09-23)を参照してください。
+
+### 16.2 第5段階のEntry接続（All v1.03 / 単一版v1.12）
+
+Allの新Runは`OPERATING_MODE=MULTI_SYMBOL_ENTRY`、`TESTER_EVALUATION_TRIGGER=TIMER`、`SCHEDULE=TIMER_1S_TRAIL2_ENTRY1_HOUR_ROTATE_V1`、`ENTRY_ENABLED=1`、`PROTECTION_ENABLED=1`、`GLOBAL_POSITION_LIMIT=0`を設定へ記録します。単一版は従来の設定canonicalを維持します。物理schema v3、LIVE contextKey、Magic、Runとsessionの規則は変更しません。
+
+現在H1の判定済み状態とSignalCountを通貨別に復元してから共通判定を行います。通常版と同じDecision・Trade・ENTRY_REQUESTの保存transactionが成功した場合だけ注文送信へ進み、結果をENTRY_RESULTへ保存します。Judge成立後の安全条件SKIPは回数消費を維持し、分析失敗や判定前の履歴・気配・現在バー復元待ちは消費しません。送信直前の気配確認に失敗した場合も、保存した要求に対して`OPEN_FAILED / ENTRY_QUOTE_UNAVAILABLE_BEFORE_SEND`を結果へ記録します。
+
+巡回待ち時間・分析時間は通貨別運用ログへ出力し、DB列は追加しません。旧Run・Decisionを再計算せず、全体ポジション上限の保存項目・入力もこの段階では追加しません。

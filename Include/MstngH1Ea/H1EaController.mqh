@@ -29,6 +29,13 @@ public:
     H1EaController() {
         this.started = false;
         this.persistencePreparation = false;
+        this.protectionEnabled = false;
+        this.entryEnabled = false;
+        this.nextScheduledEntryTick = 0;
+        this.entryQueuedBar = 0;
+        this.entryQueuedTick = 0;
+        this.protectionAnalysisBar = 0;
+        this.nextProtectionAnalysisTick = 0;
         this.restoredDecisionBar = 0;
         this.restoredBlockedBar = 0;
         this.restorationError = "";
@@ -136,7 +143,7 @@ public:
             return false;
         }
         this.initializeRun();
-        this.run.programVersion = "1.01";
+        this.run.programVersion = "1.03";
         if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
             this.restorationError = "CONFIG_HASH_UNAVAILABLE";
             return false;
@@ -160,8 +167,159 @@ public:
         }
         this.nextMaintenanceTick = H1EaClock::milliseconds() + 5000;
         this.logger.info(__FUNCTION__, "DB_PREPARATION session=" + this.run.sessionUid
-            + " context=" + this.config.contextKey + " trading=disabled");
+            + " context=" + this.config.contextKey + " entry=disabled protection=waiting");
         return true;
+    }
+
+    /**
+     * 全通貨の起動成功後、親だけが保護処理の接続可否を確認する。
+     */
+    bool canEnableProtection() {
+        return this.started && this.persistencePreparation && this.databaseReady
+            && this.countsRestored && this.executorInitialized && !this.leaseLost
+            && this.instanceLock.isHeld() && this.run.id > 0 && this.run.leaseExpiresAt > TimeLocal();
+    }
+
+    /**
+     * 保護処理だけを有効にする。OnInitでは照合・注文・SL変更を行わない。
+     */
+    void enableProtection() {
+        this.protectionEnabled = true;
+        this.executor.setRequireCurrentQuote(true);
+        this.lastTrailObservedBar = iTime(this.config.symbolName, PERIOD_H1, 0);
+    }
+
+    /**
+     * 全通貨の起動確認と親Timer開始後、新規判定の巡回を接続する。ここでは発注しない。
+     */
+    void enableEntry() {
+        if (!this.protectionEnabled) {
+            return;
+        }
+        this.entryEnabled = true;
+        this.nextScheduledEntryTick = H1EaClock::milliseconds() + 1000;
+    }
+
+    /**
+     * 現在バーの未判定Entryを親へ渡す。保有やSpreadによる見送りはJudge後に行う。
+     * 初めて巡回対象となった時刻を保持し、分析までの待ち時間を記録する。
+     */
+    datetime getPendingEntryBar() {
+        if (!this.started || !this.persistencePreparation || !this.entryEnabled
+                || !this.protectionEnabled || !this.countsRestored || !this.executorInitialized
+                || this.run.id <= 0 || this.leaseLost || this.run.leaseExpiresAt <= TimeLocal()
+                || this.config.isBeforeTesterTradeStart(TimeCurrent())
+                || H1EaClock::milliseconds() < this.nextScheduledEntryTick) {
+            return 0;
+        }
+        datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
+        if (barTime <= 0 || this.entryState.isFinalized(barTime)) {
+            return 0;
+        }
+        if (this.entryQueuedBar != barTime) {
+            this.entryQueuedBar = barTime;
+            this.entryQueuedTick = H1EaClock::milliseconds();
+        }
+        return barTime;
+    }
+
+    /**
+     * 履歴・DB判定復元・自通貨の気配を確認し、共通のJudgeと発注処理へ進める。
+     * LIVE再試行は30秒、Testerはテスト内1秒以上空ける。過去バーは発注しない。
+     */
+    void processScheduledEntry(const datetime fromBarTime, const bool fromNormalTimerReady) {
+        if (!fromNormalTimerReady || fromBarTime <= 0 || fromBarTime != this.getPendingEntryBar()) {
+            return;
+        }
+        ulong startedTick = H1EaClock::milliseconds();
+        ulong queueWaitMilliseconds = startedTick - this.entryQueuedTick;
+        this.entryQueuedBar = 0;
+        this.nextScheduledEntryTick = startedTick + 30000;
+        if (this.config.isTester) {
+            this.nextScheduledEntryTick = startedTick + 1000;
+        }
+        if (!this.preparationState.resourcesInitialized || !this.preparationState.historyReady
+                || this.preparationState.h1BarTime != fromBarTime || this.restoredDecisionBar != fromBarTime
+                || !this.executor.hasCurrentEntryQuote(fromBarTime)) {
+            return;
+        }
+        this.logger.info(__FUNCTION__, "SCHEDULE_ENTRY H1=" + IntegerToString(fromBarTime)
+            + " queueWaitMs=" + H1EaTextUtil::ticket(queueWaitMilliseconds)
+            + " barDelaySeconds=" + IntegerToString(TimeCurrent() - fromBarTime));
+        this.evaluateEntry(fromNormalTimerReady);
+        this.logger.info(__FUNCTION__, "SCHEDULE_ENTRY_END H1=" + IntegerToString(fromBarTime)
+            + " elapsedMs=" + H1EaTextUtil::ticket(H1EaClock::milliseconds() - startedTick));
+    }
+
+    /**
+     * 親のTick振分けと通知補完に使う登録済み通貨を返す。
+     */
+    string getSymbolName() { return this.preparationState.symbolName; }
+
+    /**
+     * 親の優先巡回へ、現在バーの未処理トレイルを渡す。古いバーは持ち越さない。
+     */
+    datetime getPendingTrailBar() {
+        if (!this.started || !this.protectionEnabled || !this.executorInitialized
+                || this.leaseLost || this.run.leaseExpiresAt <= TimeLocal()) {
+            return 0;
+        }
+        datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
+        if (barTime <= 0 || barTime == this.lastTrailObservedBar || !this.executor.isTrailEligible(barTime)) {
+            return 0;
+        }
+        if (barTime == this.protectionAnalysisBar && H1EaClock::milliseconds() < this.nextProtectionAnalysisTick) {
+            return 0;
+        }
+        return barTime;
+    }
+
+    /**
+     * 履歴準備後に1通貨だけトレイルを分析する。履歴待ちは30秒以上空けて再巡回する。
+     */
+    void processScheduledTrail(const datetime fromBarTime) {
+        if (fromBarTime <= 0 || fromBarTime != this.getPendingTrailBar()) {
+            return;
+        }
+        this.protectionAnalysisBar = fromBarTime;
+        this.nextProtectionAnalysisTick = H1EaClock::milliseconds() + 30000;
+        if (!this.preparationState.resourcesInitialized || !this.preparationState.historyReady) {
+            return;
+        }
+        this.processTrail(fromBarTime);
+    }
+
+    /**
+     * 銘柄省略通知をこの通貨の保存済み識別子へ照合する。
+     */
+    bool matchesTradeTransaction(const MqlTradeTransaction &fromTransaction,
+            const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
+        return this.started && this.protectionEnabled && this.executorInitialized
+            && this.executor.matchesTradeTransaction(fromTransaction, fromRequest, fromResult);
+    }
+
+    /**
+     * 親が特定した通知を軽量受付する。重い照合は次のTimer/Tickへ委ねる。
+     */
+    void queueTradeTransaction(const MqlTradeTransaction &fromTransaction,
+            const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
+        if (!this.started || !this.protectionEnabled || !this.executorInitialized) {
+            return;
+        }
+        MqlTradeTransaction transaction = fromTransaction;
+        if (transaction.type != TRADE_TRANSACTION_REQUEST && transaction.symbol == "") {
+            transaction.symbol = this.config.symbolName;
+        }
+        this.executor.observeTradeTransaction(transaction, fromRequest, fromResult);
+    }
+
+    /**
+     * 帰属不明の通知は全通貨の照合予約だけに変換する。
+     */
+    void requestTradeReconciliation() {
+        if (this.started && this.protectionEnabled && this.executorInitialized) {
+            this.executor.requestReconciliation();
+        }
     }
 
     /**
@@ -208,6 +366,8 @@ public:
         fromState.reset();
         fromState.run = this.run;
         fromState.databaseReady = this.databaseReady;
+        fromState.protectionEnabled = this.protectionEnabled;
+        fromState.entryEnabled = this.entryEnabled;
         fromState.countsRestored = this.countsRestored;
         fromState.tradeRestored = this.executor.getRestoredTrade(fromState.trade, fromState.hasActiveTrade);
         fromState.decisionBar = this.restoredDecisionBar;
@@ -360,7 +520,7 @@ public:
      * 通貨単位の管理権限を更新し、brokerの取引状態を照合する。
      */
     void processTradeReconciliation() {
-        if (!this.started || this.persistencePreparation || !this.executorInitialized) {
+        if (!this.started || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
         this.updateManagementAuthority();
@@ -373,7 +533,7 @@ public:
      * @param fromBarTime この通貨で取得した現在H1バー。取得不能時は0。
      */
     void processProtection(const datetime fromBarTime) {
-        if (!this.started || this.persistencePreparation || !this.executorInitialized) {
+        if (!this.started || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
         this.processTradeReconciliation();
@@ -386,7 +546,7 @@ public:
      * @param fromBarTime 保護処理と共通の、この通貨の現在H1バー。
      */
     void processTrail(const datetime fromBarTime) {
-        if (!this.started || this.persistencePreparation || !this.executorInitialized) {
+        if (!this.started || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
         if (fromBarTime > 0 && fromBarTime != this.lastTrailObservedBar) {
@@ -394,6 +554,10 @@ public:
             if (this.executor.isTrailEligible(fromBarTime)) {
                 H1EaStrategySnapshot trailSnapshot;
                 if (this.strategy.analyze(trailSnapshot)) {
+                    if (this.persistencePreparation && (trailSnapshot.h1BarTime != fromBarTime
+                            || iTime(this.config.symbolName, PERIOD_H1, 0) != fromBarTime)) {
+                        return;
+                    }
                     this.executor.evaluateTrail(fromBarTime, this.strategy.getWave());
                 } else {
                     this.executor.evaluateTrail(fromBarTime, NULL, this.strategy.getLastError());
@@ -446,7 +610,7 @@ public:
      */
     void onTradeTransaction(const MqlTradeTransaction &fromTransaction,
             const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
-        if (this.started && !this.persistencePreparation && this.executorInitialized) {
+        if (this.started && (!this.persistencePreparation || this.protectionEnabled) && this.executorInitialized) {
             this.executor.onTradeTransaction(fromTransaction, fromRequest, fromResult);
         }
     }
@@ -455,8 +619,9 @@ public:
      * 保存を試みてLeaseとLockを解放する。保有ポジションは閉じない。
      */
     void shutdown(const int fromReason) {
-        if (this.persistencePreparation) {
-            // 第3段階はDB読取だけで、終了時もbroker照合・保護処理を開始しない。
+        this.entryEnabled = false;
+        if (this.persistencePreparation && !this.protectionEnabled) {
+            // 保護の有効化前に失敗した起動は、終了時もbroker照合を開始しない。
             string status = "STOPPED";
             string errorText = "";
             if (fromReason == REASON_INITFAILED) {
@@ -475,7 +640,7 @@ public:
             this.persistencePreparation = false;
             return;
         }
-        if (this.preparationState.registered) {
+        if (this.preparationState.registered && !this.protectionEnabled) {
             this.strategy.destroy();
             this.preparationState.reset();
             return;
@@ -513,10 +678,27 @@ public:
         this.persistence.close();
         this.strategy.destroy();
         this.instanceLock.release();
+        this.protectionEnabled = false;
+        this.persistencePreparation = false;
+        this.preparationState.reset();
     }
 
 private:
-    /** DB復元専用の外部巡回モード。通常のイベント・発注経路を無効にする。 */
+    /** 全通貨の起動成功と親Timer開始後に保護処理だけを許可する。 */
+    bool protectionEnabled;
+    /** 履歴待ちのトレイル再巡回を制限する対象バー。 */
+    datetime protectionAnalysisBar;
+    /** 次に履歴待ちトレイルを再巡回できる時刻。 */
+    ulong nextProtectionAnalysisTick;
+    /** 親Timerから専用入口で新規判定を開始できるか。 */
+    bool entryEnabled;
+    /** 外部巡回によるEntry再試行の最早時刻。 */
+    ulong nextScheduledEntryTick;
+    /** 親が最初に巡回対象として観測した未判定バー。 */
+    datetime entryQueuedBar;
+    /** 未判定バーを巡回対象として観測した時刻。 */
+    ulong entryQueuedTick;
+    /** 外部巡回モード。子のTimer・通常イベント・通常Entry入口を無効にする。 */
     bool persistencePreparation;
     /** 現在バーのDB照会が完了したH1。履歴未取得は0。 */
     datetime restoredDecisionBar;
@@ -742,7 +924,7 @@ private:
         if (!this.databaseReady && !this.leaseLost) {
             this.connectAndRestore();
         }
-        if (this.persistencePreparation) {
+        if (this.persistencePreparation && !this.protectionEnabled) {
             return;
         }
         if (this.databaseReady) {
@@ -761,7 +943,7 @@ private:
             return;
         }
         datetime expires = (datetime)this.run.leaseExpiresAt;
-        if (this.leaseLost || this.persistencePreparation) {
+        if (this.leaseLost || (this.persistencePreparation && !this.protectionEnabled)) {
             expires = 0;
         }
         this.executor.setManagementAuthority(this.instanceLock.isHeld(), expires);
@@ -821,6 +1003,11 @@ private:
         this.clearAnalysisWait();
         if (snapshot.h1BarTime != barTime) {
             this.logger.error("H1EaController.evaluateEntry", "ANALYSIS_BAR_CHANGED: Judge未消費で再試行");
+            return;
+        }
+        if (this.persistencePreparation && (!this.entryEnabled || this.restoredDecisionBar != barTime
+                || !this.executor.hasCurrentEntryQuote(barTime))) {
+            // 分析中のバー切替・気配欠落はJudge回数を消費せず、現在バーの巡回へ戻す。
             return;
         }
         int previousCount = this.entryState.getCount(snapshot.signalReferenceTime, snapshot.signalSide);

@@ -45,7 +45,8 @@ void OnStart() {
     assertEqual(H1EaTextUtil::ticket(MagicNumberUtil::build(12, marketContext, STRATEGY_TYPE_MTF_3IN3)),
         "1204050501", "magic code 12");
     H1EaConfig config;
-    assertEqual(H1EaConfig::getProgramVersion(), "1.10", "program version");
+    config.sessionUid = "";
+    assertEqual(H1EaConfig::getProgramVersion(), "1.12", "program version");
     assertEqual(H1EaConfig::getStrategyVersion(),
         "H1_MTF3IN3_EMA3_SPREAD5_ZIGZAG10_V2", "three-timeframe strategy version");
     config.lotSize = 0.01;
@@ -62,6 +63,15 @@ void OnStart() {
         "|TESTER_EVALUATION_TRIGGER=TICK|TESTER_TRADE_START_TIME=0";
     assertEqual(config.createCanonicalText(), expected, "canonical config");
     string unrestrictedHash = H1EaTextUtil::hash(config.createCanonicalText());
+    config.sessionUid = H1EaTextUtil::hash("SESSION_ONE");
+    string multiExpected = expected + "|OPERATING_MODE=MULTI_SYMBOL_ENTRY"
+        + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_TRAIL2_ENTRY1_HOUR_ROTATE_V1|ENTRY_ENABLED=1|PROTECTION_ENABLED=1|GLOBAL_POSITION_LIMIT=0";
+    check(StringReplace(multiExpected, "TESTER_EVALUATION_TRIGGER=TICK",
+        "TESTER_EVALUATION_TRIGGER=TIMER") == 1, "multi Timer trigger");
+    assertEqual(config.createCanonicalText(), multiExpected, "multi entry config");
+    config.sessionUid = H1EaTextUtil::hash("SESSION_TWO");
+    assertEqual(config.createCanonicalText(), multiExpected, "session identity excluded from config hash");
+    config.sessionUid = "";
     string previousCanonical = expected;
     check(StringReplace(previousCanonical,
         "H1_EMA200_CONFIRMATION_H1_AND_H4_AND_D1_REQUIRED",

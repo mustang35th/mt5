@@ -1,4 +1,4 @@
-"""Stage-three source contracts. These do not run MT5 or send orders."""
+"""Stage-five source contracts. These do not run MT5 or send orders."""
 
 from pathlib import Path
 import unittest
@@ -36,15 +36,15 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertIn("this.preparationState.registered", method(self.child, "initialize"))
         self.assertIn("if (!this.started || this.persistencePreparation)", method(self.child, "startTimer"))
 
-    def test_only_parent_starts_timer_and_only_preparation_is_dispatched(self):
+    def test_only_parent_starts_timer_and_uses_scheduled_entry(self):
         body = code_only(method(self.parent, "onTimer"))
         self.assertIn("!this.started || !this.timerStarted", body)
         self.assertEqual(body.count(".processPreparation();"), 1)
-        for forbidden in ("processEntry(", "processProtection(", "processTrail(",
+        for forbidden in ("processEntry(", "processTrail(",
                           ".onTick(", ".onTimer(", ".startTimer(", "OrderSend("):
             self.assertNotIn(forbidden, code_only(self.parent))
-        self.assertNotIn("void OnTick(", self.expert)
-        self.assertNotIn("void OnTradeTransaction(", self.expert)
+        self.assertIn("controller.onTick();", method(self.expert, "OnTick"))
+        self.assertIn("controller.onTradeTransaction(", method(self.expert, "OnTradeTransaction"))
         self.assertIn("controller.onTimer();", method(self.expert, "OnTimer"))
         self.assertEqual(code_only(self.parent).count("EventSetTimer("), 1)
 
@@ -80,7 +80,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertLess(shutdown.index(".shutdown(fromReason);"), shutdown.index("delete this.controllers[i];"))
         self.assertIn("this.controllers[i] = NULL;", shutdown)
         child = code_only(method(self.child, "shutdown"))
-        self.assertRegex(child, r"if\s*\(this.preparationState.registered\)\s*\{\s*"
+        self.assertRegex(child, r"if\s*\(this.preparationState.registered && !this.protectionEnabled\)\s*\{\s*"
                          r"this.strategy.destroy\(\);\s*this.preparationState.reset\(\);\s*return;")
 
     def test_status_is_copied_and_invalid_index_clears_output(self):
@@ -99,7 +99,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertIn("controller.shutdown(fromReason);", method(self.expert, "OnDeinit"))
         self.assertIn("input double InpLotSize = 0.01;", code_only(self.expert))
         self.assertIn("input double InpMaxInitialStopLossPips = 100.0;", code_only(self.expert))
-        self.assertIn("第3段階はDBへの設定記録のみ・売買は未接続", self.expert)
+        self.assertIn("28通貨のH1エントリー・保護管理", self.expert)
 
     def test_all_locks_precede_parent_schema_and_all_runs(self):
         body = code_only(method(self.parent, "initialize"))
@@ -128,7 +128,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
                      "processProtection", "processTrail", "processEntry", "processTradeReconciliation",
                      "processWarmup", "canUseFastTesterWarmup", "onTradeTransaction"):
             self.assertIn("this.persistencePreparation", method(self.child, name), name)
-        self.assertIn("this.leaseLost || this.persistencePreparation", method(self.child, "updateManagementAuthority"))
+        self.assertIn("this.leaseLost || (this.persistencePreparation && !this.protectionEnabled)", method(self.child, "updateManagementAuthority"))
         body = code_only(method(self.child, "connectAndRestore"))
         branch = body.split("if (this.persistencePreparation) {", 1)[1].split("}", 1)[0]
         self.assertIn("this.executor.restoreFromDatabase()", branch)
@@ -159,19 +159,172 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         scope = body.split('this.lockScope = ', 1)[1].split(';', 1)[0]
         self.assertNotIn("sessionUid", scope)
         canonical = method(config, "createCanonicalText")
-        self.assertIn("TRADING_ENABLED=0", canonical)
+        self.assertIn("ENTRY_ENABLED=1", canonical)
         self.assertNotIn("+ this.sessionUid", canonical)
         self.assertIn("this.run.sessionUid = this.config.sessionUid", method(self.child, "initializeRun"))
 
     def test_preparation_shutdown_finishes_own_run_without_trade_audit(self):
         body = code_only(method(self.child, "shutdown"))
-        branch = body.split("if (this.persistencePreparation) {", 1)[1].split("if (this.preparationState.registered)", 1)[0]
+        branch = body.split("if (this.persistencePreparation && !this.protectionEnabled) {", 1)[1].split("if (this.preparationState.registered", 1)[0]
         self.assertIn("this.persistence.finishRun(this.run.id, status, errorText)", branch)
         self.assertIn("this.instanceLock.release()", branch)
         self.assertIn("this.persistence.close()", branch)
         self.assertNotIn("executor.", branch)
         self.assertIn('status = "FAILED"', method(self.child, "shutdown"))
         self.assertIn("return;", branch)
+
+
+    def test_protection_is_enabled_only_after_all_readiness_checks_and_timer_success(self):
+        body = code_only(method(self.parent, "startTimer"))
+        self.assertLess(body.index(".canEnableProtection()"), body.index("EventSetTimer(1)"))
+        self.assertLess(body.index("this.timerStarted = true"), body.index(".enableProtection()"))
+        for forbidden in ("reconcile", "processPending", "OrderSend"):
+            self.assertNotIn(forbidden, method(self.child, "enableProtection"))
+        self.assertIn("this.run.leaseExpiresAt > TimeLocal()", method(self.child, "canEnableProtection"))
+        for name in ("onTick", "onTimer", "startTimer", "processEntry"):
+            self.assertIn("!this.started || this.persistencePreparation", method(self.child, name))
+
+    def test_all_protection_precedes_single_scheduled_analysis(self):
+        body = code_only(method(self.parent, "onTimer"))
+        self.assertLess(body.index(".processPersistencePreparation()"), body.index(".processProtection(barTime)"))
+        self.assertLess(body.index(".processProtection(barTime)"), body.index(".getPendingTrailBar()"))
+        self.assertLess(body.index(".getPendingTrailBar()"), body.index(".processPreparation()"))
+        self.assertEqual(body.count(".processScheduledTrail(trailBarTime)"), 1)
+        self.assertIn("this.nextTrailSymbolIndex = (candidateIndex + 1)", body)
+        self.assertIn("if (symbolIndex < 0)", body)
+
+    def test_tick_does_not_analyze_or_manage_other_symbols(self):
+        body = code_only(method(self.parent, "onTick"))
+        self.assertIn("this.controllers[this.chartSymbolIndex]", body)
+        self.assertIn("this.chartSymbolIndex < 0", body)
+        for forbidden in ("for (", "processEntry", "processTrail", "processPreparation", "EventSetTimer"):
+            self.assertNotIn(forbidden, body)
+
+    def test_trail_history_retry_and_bar_transition_are_checked(self):
+        pending = code_only(method(self.child, "getPendingTrailBar"))
+        self.assertIn("this.run.leaseExpiresAt <= TimeLocal()", pending)
+        self.assertIn("barTime == this.lastTrailObservedBar", pending)
+        scheduled = code_only(method(self.child, "processScheduledTrail"))
+        self.assertIn("fromBarTime != this.getPendingTrailBar()", scheduled)
+        self.assertIn("H1EaClock::milliseconds() + 30000", scheduled)
+        self.assertLess(scheduled.index("!this.preparationState.historyReady"), scheduled.index("this.processTrail(fromBarTime)"))
+        trail = code_only(method(self.child, "processTrail"))
+        self.assertIn("trailSnapshot.h1BarTime != fromBarTime", trail)
+        self.assertIn("iTime(this.config.symbolName, PERIOD_H1, 0) != fromBarTime", trail)
+
+    def test_routing_has_no_magic_filter_or_inline_broker_reconciliation(self):
+        body = code_only(method(self.parent, "onTradeTransaction"))
+        self.assertIn(".queueTradeTransaction(", body)
+        self.assertIn(".matchesTradeTransaction(", body)
+        self.assertIn("this.requestAllReconciliation();", body)
+        for forbidden in (".magic", ".reconcile(", ".processProtection(", ".processTrail(", "OrderSend"):
+            self.assertNotIn(forbidden, body)
+        queue = method(self.child, "queueTradeTransaction")
+        self.assertIn('transaction.type != TRADE_TRANSACTION_REQUEST && transaction.symbol == ""', queue)
+        self.assertIn("transaction.symbol = this.config.symbolName", queue)
+        self.assertIn("this.executor.observeTradeTransaction", queue)
+
+    def test_unknown_notification_schedules_full_deal_reconciliation(self):
+        executor = (ROOT / "Include/MstngH1Ea/Trade/H1EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        body = code_only(method(executor, "requestReconciliation"))
+        self.assertIn("this.closedDealAuditChecked || !this.closedDealAuditFull", body)
+        self.assertIn("this.closedDealAuditFull = true", body)
+        self.assertIn("this.nextPendingDealAuditTick = 0", body)
+        self.assertNotIn("this.reconcile()", body)
+        self.assertNotIn("History", body)
+
+    def test_multi_quote_validation_is_opt_in_and_uses_own_symbol(self):
+        executor = (ROOT / "Include/MstngH1Ea/Trade/H1EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        body = code_only(method(executor, "readTick"))
+        self.assertIn("if (this.requireCurrentQuote)", body)
+        self.assertIn("iTime(this.symbolName, PERIOD_H1, 0)", body)
+        self.assertIn("fromTick.time_msc > (long)TimeCurrent() * 1000 + 999", body)
+        self.assertIn("fromTick.time_msc < (long)barTime * 1000", body)
+        self.assertIn("this.executor.setRequireCurrentQuote(true)", method(self.child, "enableProtection"))
+
+
+    def test_entry_activation_requires_protection_and_follows_timer_success(self):
+        body = code_only(method(self.parent, "startTimer"))
+        self.assertLess(body.index("EventSetTimer(1)"), body.index(".enableEntry()"))
+        self.assertLess(body.index(".enableProtection()"), body.index(".enableEntry()"))
+        body = code_only(method(self.child, "enableEntry"))
+        self.assertIn("if (!this.protectionEnabled)", body)
+        self.assertIn("H1EaClock::milliseconds() + 1000", body)
+        self.assertNotIn("evaluateEntry", body)
+        self.assertIn("this.entryEnabled = false", method(self.child, "shutdown"))
+
+    def test_entry_waits_for_own_bar_restoration_history_and_quote(self):
+        body = code_only(method(self.child, "processScheduledEntry"))
+        for guard in ("!fromNormalTimerReady", "fromBarTime != this.getPendingEntryBar()",
+                      "!this.preparationState.historyReady", "this.restoredDecisionBar != fromBarTime",
+                      "this.preparationState.h1BarTime != fromBarTime", "!this.executor.hasCurrentEntryQuote(fromBarTime)"):
+            self.assertLess(body.index(guard), body.index("this.evaluateEntry("))
+        pending = code_only(method(self.child, "getPendingEntryBar"))
+        self.assertIn("this.entryState.isFinalized(barTime)", pending)
+        self.assertIn("this.config.isBeforeTesterTradeStart(TimeCurrent())", pending)
+        self.assertIn("this.run.leaseExpiresAt <= TimeLocal()", pending)
+        for forbidden in ("canEnter", "Spread", "hasPosition", "strategy.evaluate", "recordCount"):
+            self.assertNotIn(forbidden, pending + body)
+
+    def test_entry_and_trail_cannot_both_analyze_in_one_event(self):
+        body = code_only(method(self.parent, "onTimer"))
+        self.assertIn("else if (entrySymbolIndex == symbolIndex && entryBarTime > 0)", body)
+        self.assertEqual(body.count(".processScheduledEntry("), 1)
+        self.assertLess(body.index(".processProtection(barTime)"), body.index(".getPendingEntryBar()"))
+        self.assertLess(body.index(".restorePreparedDecision()"), body.index(".processScheduledEntry("))
+
+    def test_trail_cannot_starve_entry_and_hour_rotation_is_deterministic(self):
+        body = code_only(method(self.parent, "onTimer"))
+        self.assertIn("this.consecutiveTrailTasks < 2", body)
+        self.assertIn("this.consecutiveTrailTasks++", body)
+        self.assertIn("this.nextEntrySymbolIndex = (entrySymbolIndex + 1)", body)
+        self.assertIn("(long)TimeCurrent() / 3600", body)
+        self.assertIn("(long)scheduleHour % ArraySize(this.controllers)", body)
+        self.assertNotIn("GetTickCount", body)
+        self.assertNotIn("MathRand", body)
+        self.assertIn("!candidateState.resourcesInitialized || candidateState.h1BarTime <= 0", body)
+
+    def test_entry_retry_is_throttled_and_tester_uses_simulated_clock(self):
+        body = code_only(method(self.child, "processScheduledEntry"))
+        self.assertIn("this.nextScheduledEntryTick = startedTick + 30000", body)
+        self.assertIn("this.nextScheduledEntryTick = startedTick + 1000", body)
+        self.assertLess(body.index("this.nextScheduledEntryTick = startedTick + 30000"),
+                        body.index("!this.preparationState.historyReady"))
+        pending = method(self.child, "getPendingEntryBar")
+        self.assertIn("H1EaClock::milliseconds() < this.nextScheduledEntryTick", pending)
+        clock = (ROOT / "Include/MstngH1Ea/Runtime/H1EaClock.mqh").read_text(encoding="utf-8-sig")
+        self.assertIn("TimeCurrent()", clock)
+
+    def test_changed_or_stale_quote_cannot_consume_judge_after_analysis(self):
+        body = code_only(method(self.child, "evaluateEntry"))
+        self.assertLess(body.index("this.strategy.analyze(snapshot)"), body.index("!this.executor.hasCurrentEntryQuote(barTime)"))
+        self.assertLess(body.index("!this.executor.hasCurrentEntryQuote(barTime)"), body.index("this.strategy.evaluate(previousCount, snapshot)"))
+        executor = (ROOT / "Include/MstngH1Ea/Trade/H1EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        body = code_only(method(executor, "hasCurrentEntryQuote"))
+        self.assertIn("fromBarTime > TimeCurrent()", body)
+        self.assertIn("TimeCurrent() >= fromBarTime + PeriodSeconds(PERIOD_H1)", body)
+        self.assertIn("this.readTick(marketTick)", body)
+        self.assertIn("iTime(this.symbolName, PERIOD_H1, 0) == fromBarTime", body)
+        send = code_only(method(executor, "sendEntry"))
+        self.assertIn("this.requireCurrentQuote && !this.hasCurrentEntryQuote(this.entryH1Bar)", send)
+        self.assertLess(send.index("!this.hasCurrentEntryQuote(this.entryH1Bar)"), send.index("OrderSend(request, result)"))
+
+    def test_shared_judge_count_safety_and_save_before_send_order_remains(self):
+        body = code_only(method(self.child, "evaluateEntry"))
+        chain = ["this.strategy.evaluate(previousCount, snapshot)", "this.entryState.recordCount(",
+                 "this.entryState.finalize(barTime)", "this.applyEntrySafety(snapshot, decision)",
+                 "this.persistence.saveEntry(this.run.id, decision, trade, event)", "this.executor.sendEntry(trade, event)"]
+        self.assertEqual(sorted(body.index(part) for part in chain), [body.index(part) for part in chain])
+        self.assertEqual(body.count("this.strategy.evaluate("), 1)
+        self.assertIn("if (this.entryState.isFinalized(barTime))", body)
+
+    def test_multi_config_records_timer_entry_and_no_global_cap(self):
+        config = (ROOT / "Include/MstngH1Ea/Config/H1EaConfig.mqh").read_text(encoding="utf-8-sig")
+        body = method(config, "createCanonicalText")
+        for value in ('string testerEvaluationTrigger = "TICK"', 'testerEvaluationTrigger = "TIMER"',
+                      "MULTI_SYMBOL_ENTRY", "GLOBAL_POSITION_LIMIT=0", "TRAIL2_ENTRY1_HOUR_ROTATE_V1"):
+            self.assertIn(value, body)
+        self.assertNotIn("PositionsTotal", method(self.child, "getPendingEntryBar"))
 
 
 if __name__ == "__main__":

@@ -6,17 +6,17 @@
  * Package: Experts
  * File: MstngH1EaAll.mq5
  *
- * M5観測と同じ28通貨をH1で管理するEAの準備用入口。
- * 第3段階では通貨別DB復元・Run/Lease維持と履歴準備を行う。発注・SL管理は未接続。
+ * M5観測と同じ28通貨をH1で管理するEAの入口。
+ * 第5段階では通貨別DB復元・新規Entry・ポジション照合・保護SL・トレイルを管理する。
  */
 #property copyright "Copyright 2026, Mstng"
-#property version "1.01"
+#property version "1.03"
 #property strict
-#property description "28通貨H1のDB復元・履歴準備 / 発注・SL管理は未接続"
+#property description "28通貨H1の新規Entry・ポジション・SL管理"
 
 #include <MstngH1Ea\H1EaMultiSymbolController.mqh>
 
-input group "共通設定（第3段階はDBへの設定記録のみ・売買は未接続）"
+input group "共通設定（28通貨のH1エントリー・保護管理）"
 input double InpLotSize = 0.01; // 固定ロット
 input double InpMaxInitialStopLossPips = 100.0; // 最大初期SL幅(pips)・正の値必須
 
@@ -64,5 +64,24 @@ void OnDeinit(const int fromReason) {
 void OnTimer() {
     if (controller != NULL) {
         controller.onTimer();
+    }
+}
+
+/**
+ * 設置チャート通貨の保護をTickで補助する。
+ */
+void OnTick() {
+    if (controller != NULL) {
+        controller.onTick();
+    }
+}
+
+/**
+ * 対象通貨へ通知を振り分け、重い照合は後続イベントへ委ねる。
+ */
+void OnTradeTransaction(const MqlTradeTransaction &fromTransaction,
+        const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
+    if (controller != NULL) {
+        controller.onTradeTransaction(fromTransaction, fromRequest, fromResult);
     }
 }
