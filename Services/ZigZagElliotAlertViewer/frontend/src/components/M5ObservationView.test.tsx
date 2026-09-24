@@ -3,13 +3,14 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { M5ListResponse, M5Metadata, M5SearchState } from "../api/m5Types";
 import { m5Api } from "../api/m5Client";
+import { M5_DISPLAY_INTERVAL_KEY } from "../lib/m5ObservationPreferences";
 import { M5ObservationView } from "./M5ObservationView";
 
 vi.mock("../api/m5Client", () => ({ m5Api: { metadata: vi.fn(), observations: vi.fn() } }));
 vi.mock("./M5ObservationTable", () => ({ M5ObservationTable: (props: { items: { id: number }[]; toolbarStart?: ReactNode; onOpenDetail: (id: number, target: HTMLElement) => void; onSort: (key: string) => void }) =>
   <div data-testid="m5-table">{props.toolbarStart}Rows:{props.items.map((row) => row.id).join(",")}<button onClick={(event) => props.onOpenDetail(10, event.currentTarget)}>Open row</button><button onClick={() => props.onSort("symbol_name")}>Sort symbol</button></div> }));
-vi.mock("./M5ObservationDetailDrawer", () => ({ M5ObservationDetailDrawer: (props: { observationId: number | null; databaseKey: string }) =>
-  <div data-testid="m5-detail">{props.databaseKey}:{props.observationId ?? "closed"}</div> }));
+vi.mock("./M5ObservationDetailDrawer", () => ({ M5ObservationDetailDrawer: (props: { observationId: number | null; databaseKey: string; displayInterval: number }) =>
+  <div data-testid="m5-detail" data-interval={props.displayInterval}>{props.databaseKey}:{props.observationId ?? "closed"}</div> }));
 
 const first = Date.parse("2026-09-08T06:00:00Z") / 1000;
 const last = first + 86400 - 300;
@@ -32,6 +33,29 @@ describe("M5 observation independent view", () => {
     vi.mocked(m5Api.observations).mockImplementation(async (search) => rows(search));
   });
   afterEach(() => { vi.useRealTimers(); });
+  it("applies and remembers M15, resets the page, and uses it for detail and clear", async () => {
+    window.history.replaceState(null, "", "/react/?tab=m5&page=3&jstTime=06:05");
+    const view = render(<M5ObservationView active />);
+    await screen.findByText("Rows:10");
+    fireEvent.change(screen.getByLabelText("M5表示間隔"), { target: { value: "15" } });
+    expect(m5Api.observations).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("M5 JST時刻")).toHaveValue("");
+    expect(within(screen.getByLabelText("M5 JST時刻")).getAllByRole("option")).toHaveLength(97);
+    fireEvent.click(screen.getByRole("button", { name: /^検索$/ }));
+    await waitFor(() => expect(localStorage.getItem(M5_DISPLAY_INTERVAL_KEY)).toBe("15"));
+    expect(vi.mocked(m5Api.observations).mock.lastCall?.[0]).toMatchObject({ displayInterval: 15, page: 1 });
+    expect(new URLSearchParams(window.location.search).get("displayInterval")).toBe("15");
+    fireEvent.click(screen.getByText("Open row"));
+    expect(screen.getByTestId("m5-detail")).toHaveAttribute("data-interval", "15");
+    fireEvent.click(screen.getByRole("button", { name: "クリア" }));
+    await waitFor(() => expect(m5Api.observations).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(m5Api.observations).mock.lastCall?.[0].displayInterval).toBe(15);
+    view.unmount();
+    window.history.replaceState(null, "", "/react/?tab=m5");
+    render(<M5ObservationView active />);
+    await waitFor(() => expect(m5Api.observations).toHaveBeenCalledTimes(4));
+    expect(screen.getByLabelText("M5表示間隔")).toHaveValue("15");
+  });
   it("initializes TESTER/latest observed Run and latest24h, shows DB and no H1 filters", async () => {
     render(<M5ObservationView active />);
     await waitFor(() => expect(m5Api.observations).toHaveBeenCalledTimes(1));

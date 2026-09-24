@@ -1,9 +1,26 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { M5_DISPLAY_INTERVAL_KEY } from "./m5ObservationPreferences";
 import { DEFAULT_M5_SEARCH, M5_JST_TIMES, buildM5SearchParams, latestM5Range, m5DateTime,
   readM5Search, replaceM5SearchUrl, validM5DateTime, validateM5Search } from "./m5ObservationSearchState";
 
 describe("M5 observation search", () => {
-  beforeEach(() => window.history.replaceState(null, "", "/react/"));
+  beforeEach(() => { localStorage.clear(); window.history.replaceState(null, "", "/react/"); });
+  it("restores the saved interval with explicit URL precedence and compatible JST times", () => {
+    localStorage.setItem(M5_DISPLAY_INTERVAL_KEY, "15");
+    expect(readM5Search("?tab=m5").displayInterval).toBe(15);
+    expect(readM5Search("?tab=h1").displayInterval).toBe(15);
+    expect(readM5Search("?tab=m5&displayInterval=5").displayInterval).toBe(5);
+    expect(readM5Search("?tab=m5&displayInterval=10").displayInterval).toBe(5);
+    expect(readM5Search("?tab=m5&jstTime=12:05").jstTime).toBe("");
+    const search = { ...DEFAULT_M5_SEARCH, displayInterval: 15 as const, runId: 1,
+      from: "2026-09-08T06:00", to: "2026-09-09T06:00", jstTime: "12:15" };
+    replaceM5SearchUrl(search);
+    expect(readM5Search(window.location.search)).toEqual(search);
+    expect(buildM5SearchParams(search).get("displayInterval")).toBe("15");
+    expect(validateM5Search({ ...search, jstTime: "12:05" })).toContain("表示間隔");
+    localStorage.setItem(M5_DISPLAY_INTERVAL_KEY, "10");
+    expect(readM5Search("?tab=m5").displayInterval).toBe(5);
+  });
   it("does not inherit H1/alert Run, filters or page", () => {
     expect(readM5Search("?tab=h1&sourceMode=LIVE&runId=99&page=5&from=2026-09-08T06:00"))
       .toEqual(DEFAULT_M5_SEARCH);

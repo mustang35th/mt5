@@ -1,6 +1,6 @@
 import { type MouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { m5Api } from "../api/m5Client";
-import type { M5DetailResponse, M5NavigationItem } from "../api/m5Types";
+import type { M5DetailResponse, M5DisplayInterval, M5NavigationItem } from "../api/m5Types";
 import { m5Direction, m5Number, m5Text, m5TimeFrameSlots } from "../lib/m5TimeFrame";
 import { readM5Preference, writeM5Preference } from "../lib/m5ObservationPreferences";
 import { M5CurrencyStrengthPanel } from "./M5CurrencyStrengthPanel";
@@ -13,6 +13,7 @@ interface Props {
   observationId: number | null;
   databaseKey: string;
   databaseName?: string;
+  displayInterval?: M5DisplayInterval;
   active?: boolean;
   onClose: () => void;
   onNavigate: (id: number) => void;
@@ -63,22 +64,22 @@ function RecordInfo({ response, databaseName, expanded = false }: { response: M5
   </details></section>;
 }
 
-function NavigationButton({ target, label, shortLabel, busy, onNavigate }: { target: M5NavigationItem | null; label: string; shortLabel: string; busy: boolean; onNavigate: (id: number) => void }) {
+function NavigationButton({ target, label, shortLabel, busy, onNavigate, displayInterval }: { displayInterval: M5DisplayInterval; target: M5NavigationItem | null; label: string; shortLabel: string; busy: boolean; onNavigate: (id: number) => void }) {
   return <button className="secondary-button" type="button" disabled={busy || !target}
     aria-label={target ? `${label} JST ${target.anchor_jst_time_text}` : `${label}なし`}
-    title={`${target ? `${label} JST ${target.anchor_jst_time_text}` : `${label}なし`}。${NAVIGATION_HELP}`}
+    title={`${target ? `${label} JST ${target.anchor_jst_time_text}` : `${label}なし`}。表示間隔 M${displayInterval}。${NAVIGATION_HELP}`}
     onClick={() => { if (target && !busy) onNavigate(target.id); }}>
     {shortLabel}
   </button>;
 }
 
-function NavigationGap({ target, label }: { target: M5NavigationItem | null; label: string }) {
+function NavigationGap({ target, label, displayInterval }: { displayInterval: M5DisplayInterval; target: M5NavigationItem | null; label: string }) {
   const gap = target?.gap_seconds;
-  if (typeof gap !== "number" || !Number.isFinite(gap) || gap <= 300) return null;
+  if (typeof gap !== "number" || !Number.isFinite(gap) || gap <= displayInterval * 60) return null;
   return <p className="m5-note m5-navigation-gap">{label}：時刻差 {m5Number(gap, 0, "秒")}（休場・欠損は断定不可）</p>;
 }
 
-export function M5ObservationDetailDrawer({ observationId, databaseKey, databaseName, active = true, onClose, onNavigate, styleNonce }: Props) {
+export function M5ObservationDetailDrawer({ observationId, databaseKey, databaseName, displayInterval = 5, active = true, onClose, onNavigate, styleNonce }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -87,13 +88,14 @@ export function M5ObservationDetailDrawer({ observationId, databaseKey, database
   const [view, setView] = useState(() => readM5Preference<DetailView>(VIEW_KEY, "grid", (value): value is DetailView => value === "normal" || value === "grid"));
   const [gridExpanded, setGridExpanded] = useState(false);
   const [response, setResponse] = useState<M5DetailResponse | null>(null);
+  const [responseInterval, setResponseInterval] = useState<M5DisplayInterval | null>(null);
   const [lastReadAt, setLastReadAt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
   const isOpen = active && observationId !== null;
-  const requestKey = isOpen ? `${databaseKey}:${observationId}` : "";
+  const requestKey = isOpen ? `${databaseKey}:${observationId}:${displayInterval}` : "";
   const latestRequest = useRef(requestKey);
   latestRequest.current = requestKey;
 
@@ -134,13 +136,14 @@ export function M5ObservationDetailDrawer({ observationId, databaseKey, database
     let current = true;
     setLoading(true);
     setError("");
-    m5Api.detail(observationId, databaseKey, controller.signal).then((result) => {
+    m5Api.detail(observationId, databaseKey, controller.signal, displayInterval).then((result) => {
       if (!current || controller.signal.aborted || latestRequest.current !== requestKey) return;
       if (result.databaseKey !== databaseKey || result.observation?.id !== observationId
           || result.run?.id !== result.observation.run_id || !Array.isArray(result.timeframes)) {
         throw new Error("接続DBまたは観測IDが変わりました。一覧を更新して選択し直してください。");
       }
       setResponse(result);
+      setResponseInterval(displayInterval);
       setLastReadAt(new Date().toLocaleString("ja-JP"));
     }).catch((reason: unknown) => {
       if (!current || controller.signal.aborted || latestRequest.current !== requestKey) return;
@@ -149,9 +152,9 @@ export function M5ObservationDetailDrawer({ observationId, databaseKey, database
       if (current && !controller.signal.aborted && latestRequest.current === requestKey) setLoading(false);
     });
     return () => { current = false; controller.abort(); };
-  }, [databaseKey, isOpen, observationId, requestKey, retry, visible]);
+  }, [databaseKey, isOpen, observationId, requestKey, retry, visible, displayInterval]);
 
-  const shown = response?.databaseKey === databaseKey && response.observation.id === observationId ? response : null;
+  const shown = responseInterval === displayInterval && response?.databaseKey === databaseKey && response.observation.id === observationId ? response : null;
   const observation = shown?.observation;
   const anchor = shown ? m5TimeFrameSlots(shown.timeframes).slots.find((slot) => slot.id === 5)?.timeFrame : null;
   useLayoutEffect(() => {
@@ -188,19 +191,19 @@ export function M5ObservationDetailDrawer({ observationId, databaseKey, database
       {shown && observation && <>
         <div className="m5-detail-context">
           <nav className="m5-detail-navigation" aria-label="同一Run・通貨の前後観測" aria-description={NAVIGATION_HELP} title={NAVIGATION_HELP}>
-            <NavigationButton label="前の観測" shortLabel="← 前" target={shown.navigation.older} busy={loading} onNavigate={onNavigate} />
-            <NavigationButton label="次の観測" shortLabel="次 →" target={shown.navigation.newer} busy={loading} onNavigate={onNavigate} />
+            <NavigationButton displayInterval={displayInterval} label="前の観測" shortLabel="← 前" target={shown.navigation.older} busy={loading} onNavigate={onNavigate} />
+            <NavigationButton displayInterval={displayInterval} label="次の観測" shortLabel="次 →" target={shown.navigation.newer} busy={loading} onNavigate={onNavigate} />
           </nav>
           <div className="m5-detail-context-values">
             <span>M5開始 JST {m5Text(observation.anchor_jst_time_text)}</span>
             <span title={`Server ${m5Text(observation.anchor_bar_time_text)}`}>Server {serverTimeLabel(observation.anchor_bar_time_text, observation.anchor_jst_time_text)}</span>
             <span>M5分析方向 <b className={`badge ${m5Direction(anchor?.is_buy).toLowerCase()}`}>{m5Direction(anchor?.is_buy)}</b></span>
-            <span>Spread {m5Number(observation.spread_pips, 1, " pips")}</span><span>Run {observation.run_id}</span>
+            <span>Spread {m5Number(observation.spread_pips, 1, " pips")}</span><span>Run {observation.run_id}</span><span>表示間隔 M{displayInterval}</span>
           </div>
         </div>
         <M5CurrencyStrengthPanel snapshot={shown.currencyStrength} direction={m5Direction(anchor?.is_buy)} />
-        <NavigationGap label="前の観測" target={shown.navigation.older} />
-        <NavigationGap label="次の観測" target={shown.navigation.newer} />
+        <NavigationGap displayInterval={displayInterval} label="前の観測" target={shown.navigation.older} />
+        <NavigationGap displayInterval={displayInterval} label="次の観測" target={shown.navigation.newer} />
         {view === "grid" ? <M5TimeFrameSnapshotGrid timeFrames={shown.timeframes} expanded={gridExpanded} onExpandedChange={setGridExpanded} scrollPosition={gridScroll} />
           : <M5TimeFrameComparison timeFrames={shown.timeframes} styleNonce={styleNonce} />}
         <M5CaptureQuality observation={observation} metrics={shown.captureMetrics} state={shown.captureMetricsState} />

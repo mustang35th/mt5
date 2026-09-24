@@ -108,6 +108,14 @@ def _parameters(params: dict[str, list[str]], allowed: set[str]) -> dict[str, st
     return result
 
 
+def _display_interval(values: dict[str, str]) -> int:
+    """The display interval samples saved M5 observations without aggregation."""
+    value = values.get("displayInterval", "5")
+    if value not in {"5", "15"}:
+        raise M5RequestError("displayInterval must be 5 or 15")
+    return int(value)
+
+
 def _positive(value: str | None, name: str, default: int | None = None) -> int:
     """Parse a bounded positive integer without passing huge offsets to SQLite."""
 
@@ -420,8 +428,9 @@ class M5ObservationDatabase:
 
         values = _parameters(params, {
             "sourceMode", "runId", "symbol", "from", "to", "jstTime",
-            "page", "pageSize", "sort", "order", "databaseKey",
+            "page", "pageSize", "sort", "order", "databaseKey", "displayInterval",
         })
+        display_interval = _display_interval(values)
         mode = _source_mode(values)
         run_id = _positive(values.get("runId"), "runId")
         first = _date_boundary(values.get("from"), "from")
@@ -442,6 +451,8 @@ class M5ObservationDatabase:
             AND o.anchor_time_frame = 5 AND {M5_RUN_PREDICATE}
             AND o.anchor_jst_time >= :first AND o.anchor_jst_time < :last"""
         parameters: dict[str, Any] = {"run_id": run_id, "source_mode": mode, "first": first, "last": last}
+        if display_interval == 15:
+            where += " AND o.anchor_jst_time % 900 = 0"
         if values.get("symbol"):
             where += " AND o.symbol_name = :symbol"
             parameters["symbol"] = values["symbol"]
@@ -449,6 +460,8 @@ class M5ObservationDatabase:
             clock = values["jstTime"]
             if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5][05]", clock) is None:
                 raise M5RequestError("jstTime must use HH:mm at five-minute intervals")
+            if int(clock[-2:]) % display_interval != 0:
+                raise M5RequestError("jstTime must match displayInterval")
             where += " AND strftime('%H:%M', o.anchor_jst_time, 'unixepoch') = :clock"
             parameters["clock"] = clock
         source = f"FROM {OBSERVATION_TABLE} AS o INNER JOIN {RUN_TABLE} AS r ON r.id = o.run_id WHERE {where}"
@@ -479,7 +492,8 @@ class M5ObservationDatabase:
 
         if not isinstance(observation_id, int) or isinstance(observation_id, bool) or not 0 < observation_id <= MAX_SQLITE_INTEGER:
             raise M5RequestError("observation id must be a positive integer")
-        values = _parameters(params or {}, {"databaseKey"})
+        values = _parameters(params or {}, {"databaseKey", "displayInterval"})
+        display_interval = _display_interval(values)
         try:
             with self._snapshot() as (connection, info, columns):
                 self._check_database_key(values, info)
@@ -493,7 +507,7 @@ class M5ObservationDatabase:
                 observation = dict(row)
                 run = self._selected_run(connection, row["run_id"], row["source_mode"], columns[RUN_TABLE])
                 timeframes, metrics = self._children(connection, [observation_id], columns)
-                navigation = self._navigation(connection, observation)
+                navigation = self._navigation(connection, observation, display_interval)
                 # Account identity stays server-side; it is not exposed in the detail response.
                 source_login = None
                 if "source_login" in columns[RUN_TABLE]:
@@ -512,10 +526,12 @@ class M5ObservationDatabase:
             raise M5RequestError(str(error), 503) from error
 
     @staticmethod
-    def _navigation(connection: Connection, observation: dict[str, Any]) -> dict[str, Any]:
+    def _navigation(connection: Connection, observation: dict[str, Any], display_interval: int = 5) -> dict[str, Any]:
         stream_columns = ("run_id", "source_mode", "source_server", "symbol_name",
                           "capture_phase", "analysis_version", "analysis_input_hash")
         stream = " AND ".join(f"o.{name} = :{name}" for name in stream_columns)
+        if display_interval == 15:
+            stream += " AND o.anchor_jst_time % 900 = 0"
         result = {}
         for name, operator, direction in (("older", "<", "DESC"), ("newer", ">", "ASC")):
             row = connection.execute(text(f"""

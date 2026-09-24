@@ -1,4 +1,4 @@
-import type { M5DetailResponse, M5ListResponse, M5Metadata, M5SearchState, M5SourceMode } from "./m5Types";
+import type { M5DisplayInterval, M5DetailResponse, M5ListResponse, M5Metadata, M5SearchState, M5SourceMode } from "./m5Types";
 import { buildM5SearchParams } from "../lib/m5ObservationSearchState";
 
 export class M5ApiError extends Error {
@@ -23,7 +23,7 @@ export const m5Api = {
   observations(search: M5SearchState, signal?: AbortSignal): Promise<M5ListResponse> {
     return getJson(`/api/m5/observations?${buildM5SearchParams(search)}`, signal);
   },
-  detail(id: number, databaseKey: string, signal?: AbortSignal): Promise<M5DetailResponse> {
-    return getJson(`/api/m5/observations/${id}?${new URLSearchParams({ databaseKey })}`, signal);
+  detail(id: number, databaseKey: string, signal?: AbortSignal, displayInterval: M5DisplayInterval = 5): Promise<M5DetailResponse> {
+    return getJson(`/api/m5/observations/${id}?${new URLSearchParams({ databaseKey, displayInterval: String(displayInterval) })}`, signal);
   },
 };

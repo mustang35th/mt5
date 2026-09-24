@@ -148,6 +148,44 @@ class M5ObservationDatabaseTest(unittest.TestCase):
             function(*args)
         self.assertEqual(status, captured.exception.status)
 
+    def test_m15_filters_before_count_and_pagination_without_filling_gaps(self) -> None:
+        for minute in (5, 10, 15, 20, 30, 60):
+            add_observation(self.writer, BASE_TIME + minute * 60)
+        add_observation(self.writer, BASE_TIME + 15 * 60, symbol="EURUSD")
+        self.writer.commit()
+        before = self.path.read_bytes()
+        result = self.database.observations(query(displayInterval=15, symbol="GBPUSD", pageSize=2, page=2, order="asc"))
+        self.assertEqual((4, 2, 2), (result["total"], result["total_pages"], result["page"]))
+        self.assertEqual([BASE_TIME + 1800, BASE_TIME + 3600], [row["anchor_jst_time"] for row in result["items"]])
+        self.assertEqual(5, self.database.observations(query(displayInterval=15))["total"])
+        self.assertEqual(8, self.database.observations(query())["total"])
+        self.assertEqual(2, self.database.observations(query(displayInterval=15, jstTime="06:15"))["total"])
+        self.assertEqual(1, self.database.observations(query(displayInterval=15, to="2026-09-08T06:15"))["total"])
+        self.assertEqual(before, self.path.read_bytes())
+
+    def test_m15_navigation_keeps_stream_and_skips_non_boundary_observations(self) -> None:
+        nearby = add_observation(self.writer, BASE_TIME + 600)
+        middle = add_observation(self.writer, BASE_TIME + 900)
+        add_observation(self.writer, BASE_TIME + 1200)
+        later = add_observation(self.writer, BASE_TIME + 2700)
+        add_observation(self.writer, BASE_TIME + 1800, symbol="EURUSD")
+        add_run(self.writer, 2)
+        add_observation(self.writer, BASE_TIME + 1800, run_id=2)
+        self.writer.commit()
+        navigation = self.database.detail(middle, {"displayInterval": ["15"]})["navigation"]
+        self.assertEqual(self.identifier, navigation["older"]["id"])
+        self.assertEqual(later, navigation["newer"]["id"])
+        self.assertEqual(1800, navigation["newer"]["gap_seconds"])
+        self.assertEqual(nearby, self.database.detail(middle)["navigation"]["older"]["id"])
+        self.assertIsNone(self.database.detail(later, {"displayInterval": ["15"]})["navigation"]["newer"])
+
+    def test_display_interval_validation(self) -> None:
+        for value in ("", "0", "10", "15.0", "M15", "15 OR 1=1"):
+            self.assert_error(400, self.database.observations, query(displayInterval=value))
+            self.assert_error(400, self.database.detail, self.identifier, {"displayInterval": [value]})
+        self.assert_error(400, self.database.observations, query(displayInterval=15, jstTime="06:05"))
+        self.assert_error(400, self.database.detail, self.identifier, {"displayInterval": ["5", "15"]})
+
     def test_metadata_chooses_latest_nonempty_not_newer_empty_run(self) -> None:
         add_run(self.writer, 2)
         add_run(self.writer, 3, "LIVE")

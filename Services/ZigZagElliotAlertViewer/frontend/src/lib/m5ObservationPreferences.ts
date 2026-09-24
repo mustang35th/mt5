@@ -1,3 +1,4 @@
+export const M5_DISPLAY_INTERVAL_KEY = "m5Observation.displayInterval.v1";
 export const M5_LAYOUT_KEY = "m5Observation.gridLayout.v1";
 export const M5_DENSITY_KEY = "m5Observation.density.v1";
 export const M5_REFRESH_KEY = "m5Observation.refreshIntervalSeconds.v1";

@@ -38,6 +38,26 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+it("requests M15 navigation and treats a 15-minute step as normal", async () => {
+  const response = detail();
+  response.navigation.older!.gap_seconds = 900;
+  const request = vi.spyOn(m5Api, "detail").mockResolvedValue(response);
+  const view = render(<M5ObservationDetailDrawer {...props} displayInterval={15} />);
+  await screen.findByText("表示間隔 M15");
+  expect(request).toHaveBeenCalledWith(41, "m5-db-A", expect.any(AbortSignal), 15);
+  expect(screen.queryByText(/時刻差/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /前の観測 JST/ }));
+  expect(props.onNavigate).toHaveBeenCalledWith(40);
+  const pending = deferred<M5DetailResponse>();
+  request.mockReturnValueOnce(pending.promise);
+  view.rerender(<M5ObservationDetailDrawer {...props} displayInterval={5} />);
+  expect(screen.queryByRole("button", { name: /前の観測 JST/ })).not.toBeInTheDocument();
+  await act(async () => pending.resolve(response));
+  await screen.findByText("表示間隔 M5");
+  expect(request).toHaveBeenLastCalledWith(41, "m5-db-A", expect.any(AbortSignal), 5);
+  expect(screen.getByText(/900秒/)).toBeInTheDocument();
+});
+
 const props = { observationId: 41, databaseKey: "m5-db-A", databaseName: "m5-study.sqlite", onClose: vi.fn(), onNavigate: vi.fn() };
 
 beforeEach(() => { localStorage.clear(); localStorage.setItem("m5Observation.detailView.v1", JSON.stringify("normal")); vi.clearAllMocks(); });
@@ -48,7 +68,7 @@ describe("M5 observation detail", () => {
     const request = vi.spyOn(m5Api, "detail").mockResolvedValue(detail());
     render(<M5ObservationDetailDrawer {...props} />);
     await screen.findByText("TIMEFRAME COMPARISON");
-    expect(request).toHaveBeenCalledWith(41, "m5-db-A", expect.any(AbortSignal));
+    expect(request).toHaveBeenCalledWith(41, "m5-db-A", expect.any(AbortSignal), 5);
     const table = within(screen.getByRole("region", { name: "7時間足比較表" })).getByRole("table");
     expect(Array.from(table.querySelectorAll("tbody tr")).map((row) => row.getAttribute("data-timeframe"))).toEqual(["MN1", "W1", "D1", "H4", "H1", "M15", "M5"]);
     expect(within(table.querySelector('[data-timeframe="M5"]') as HTMLElement).getByText("SELL", { selector: ".badge" })).toBeInTheDocument();

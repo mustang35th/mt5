@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { m5Api } from "../api/m5Client";
-import type { M5ListResponse, M5Metadata, M5SearchState, M5Sort, M5SourceMode } from "../api/m5Types";
-import { DEFAULT_M5_SEARCH, M5_JST_TIMES, latestM5Range, m5DateTime, readM5Search,
+import type { M5DisplayInterval, M5ListResponse, M5Metadata, M5SearchState, M5Sort, M5SourceMode } from "../api/m5Types";
+import { DEFAULT_M5_SEARCH, m5JstTimes, latestM5Range, m5DateTime, readM5Search,
   replaceM5SearchUrl, validateM5Search } from "../lib/m5ObservationSearchState";
-import { M5_REFRESH_KEY, readM5Preference, writeM5Preference } from "../lib/m5ObservationPreferences";
+import { M5_DISPLAY_INTERVAL_KEY, M5_REFRESH_KEY, readM5Preference, writeM5Preference } from "../lib/m5ObservationPreferences";
 import { isRefreshIntervalSeconds, type RefreshIntervalSeconds } from "../lib/refreshSettings";
 import { AppliedConditionSummary } from "./AppliedConditionSummary";
 import { FilterVisibilityToggle } from "./FilterVisibilityToggle";
@@ -61,7 +61,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
         if (replaced) {
           setResult(null); setDisplayedSearch(null); setSelectedId(null);
           setNotice("接続DBが変更されたため、旧DBのRun・検索・詳細を解除しました。");
-          candidate = { ...DEFAULT_M5_SEARCH, sourceMode: candidate.sourceMode, pageSize: candidate.pageSize,
+          candidate = { ...DEFAULT_M5_SEARCH, sourceMode: candidate.sourceMode, pageSize: candidate.pageSize, displayInterval: candidate.displayInterval,
             followLatest: candidate.sourceMode === "LIVE" };
           kind = "reset";
           dirtyDraft.current = false;
@@ -98,7 +98,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
         if (rows.databaseKey !== key) {
           setResult(null); setDisplayedSearch(null); setSelectedId(null);
           setNotice("取得中に接続DBが変更されました。旧DBの選択を解除して再取得します。");
-          candidate = { ...DEFAULT_M5_SEARCH, sourceMode: next.sourceMode, pageSize: next.pageSize, databaseKey: key };
+          candidate = { ...DEFAULT_M5_SEARCH, sourceMode: next.sourceMode, pageSize: next.pageSize, displayInterval: next.displayInterval, databaseKey: key };
           kind = "reset"; dirtyDraft.current = false;
           continue;
         }
@@ -107,6 +107,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
         appliedRef.current = next; setApplied(next); replaceM5SearchUrl(next);
         if (kind !== "refresh" || !dirtyDraft.current) setDraft(next);
         setResult(rows); setDisplayedSearch(next);
+        writeM5Preference(M5_DISPLAY_INTERVAL_KEY, next.displayInterval);
         setLastChecked(new Date().toLocaleString("ja-JP"));
         return;
       }
@@ -142,7 +143,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
 
   function resetSelection(sourceMode: M5SourceMode, runId: number | null) {
     const next = { ...DEFAULT_M5_SEARCH, sourceMode, runId, databaseKey: databaseKey.current,
-      pageSize: appliedRef.current.pageSize, followLatest: sourceMode === "LIVE" };
+      pageSize: appliedRef.current.pageSize, displayInterval: appliedRef.current.displayInterval, followLatest: sourceMode === "LIVE" };
     dirtyDraft.current = false; setDraft(next); setApplied(next); appliedRef.current = next;
     setSelectedId(null); setResult(null); setDisplayedSearch(null); setNotice("");
     void load(next, "reset");
@@ -160,7 +161,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
     const invalid = validateM5Search(next);
     setValidation(invalid);
     if (invalid) return;
-    dirtyDraft.current = false; void load(next, "search");
+    dirtyDraft.current = false; setSelectedId(null); void load(next, "search");
   }
   const sortRows = useCallback((sort: M5Sort) => {
     const previous = appliedRef.current;
@@ -237,8 +238,12 @@ export function M5ObservationView({ active, styleNonce }: Props) {
               </select></label>
               <label>開始JST（含む）<input type="datetime-local" aria-label="M5開始JST" step={300} value={draft.from} onChange={(event) => editDraft({ from: event.target.value })} /></label>
               <label>終了JST（含まない）<input type="datetime-local" aria-label="M5終了JST" step={300} value={draft.to} onChange={(event) => editDraft({ to: event.target.value })} /></label>
+              <label>表示間隔<select aria-label="M5表示間隔" value={draft.displayInterval} onChange={(event) => {
+                const displayInterval = Number(event.target.value) as M5DisplayInterval;
+                editDraft({ displayInterval, jstTime: m5JstTimes(displayInterval).includes(draft.jstTime) ? draft.jstTime : "" });
+              }}><option value={5}>M5（5分）</option><option value={15}>M15（15分）</option></select></label>
               <label>JST時刻<select aria-label="M5 JST時刻" value={draft.jstTime} onChange={(event) => editDraft({ jstTime: event.target.value })}>
-                <option value="">すべての時刻</option>{M5_JST_TIMES.map((time) => <option key={time}>{time}</option>)}
+                <option value="">すべての時刻</option>{m5JstTimes(draft.displayInterval).map((time) => <option key={time}>{time}</option>)}
               </select></label>
             </div>
             <div className="m5-actions m5-search-actions">
@@ -260,7 +265,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
             <div className="m5-result-summary">
               <strong>{result?.total.toLocaleString() ?? "0"}件</strong>
               <AppliedConditionSummary hasUnappliedChanges={dirtyDraft.current}
-              summary={displayedSearch ? `表示中：${displayedSearch.sourceMode} / Run ${displayedSearch.runId} / ${displayedSearch.from.replace("T", " ")} ≤ JST < ${displayedSearch.to.replace("T", " ")} / 通貨 ${displayedSearch.symbol || "すべて"} / JST時刻 ${displayedSearch.jstTime || "すべて"} / ${displayedSearch.sort === "anchor_jst_time" ? "日時" : "通貨"}${displayedSearch.order === "asc" ? "昇順" : "降順"}` : "検索結果なし"} />
+              summary={displayedSearch ? `表示中：${displayedSearch.sourceMode} / Run ${displayedSearch.runId} / ${displayedSearch.from.replace("T", " ")} ≤ JST < ${displayedSearch.to.replace("T", " ")} / 通貨 ${displayedSearch.symbol || "すべて"} / 表示間隔 M${displayedSearch.displayInterval} / JST時刻 ${displayedSearch.jstTime || "すべて"} / ${displayedSearch.sort === "anchor_jst_time" ? "日時" : "通貨"}${displayedSearch.order === "asc" ? "昇順" : "降順"}` : "検索結果なし"} />
               {metadata?.range.last && <span className="m5-latest-observation"
                 title="選択Runの最新M5開始JSTです。稼働・収集完了を示すものではありません。">
                 最新観測JST：{m5DateTime(metadata.range.last).replace("T", " ")}
@@ -296,6 +301,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
       </div>
     </div>
     <M5ObservationDetailDrawer observationId={selectedId} databaseKey={databaseKey.current} databaseName={metadata?.database?.name}
+      displayInterval={displayedSearch?.displayInterval ?? applied.displayInterval}
       active={active} styleNonce={styleNonce} onNavigate={setSelectedId} onClose={() => {
         setSelectedId(null); if (detailTrigger.current?.isConnected) detailTrigger.current.focus();
       }} />

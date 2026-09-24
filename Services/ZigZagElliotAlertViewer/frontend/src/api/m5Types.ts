@@ -1,6 +1,7 @@
 import type { ObservationDetailTimeFrame, ObservationListItem, RunItem } from "./types";
 
 export type M5SourceMode = "TESTER" | "LIVE";
+export type M5DisplayInterval = 5 | 15;
 export type M5Sort = "anchor_jst_time" | "symbol_name";
 type NullableRaw<T> = { [K in keyof T]?: NonNullable<T[K]> extends boolean ? boolean | number | null : T[K] | null };
 export type M5TimeFrame = NullableRaw<ObservationDetailTimeFrame> & {
@@ -59,6 +60,7 @@ export interface M5SearchState {
   from: string;
   to: string;
   jstTime: string;
+  displayInterval: M5DisplayInterval;
   page: number;
   pageSize: 50 | 100 | 200;
   sort: M5Sort;
