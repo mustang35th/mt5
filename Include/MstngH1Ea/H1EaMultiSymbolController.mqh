@@ -402,6 +402,9 @@ public:
                 this.eventTimer.isNormalReady() || (fromState.beforeTradeStart
                     && fromState.fastWarmup && fromState.timerSeconds == 30), currentBar);
             fromState.symbolCount++;
+            if (fromState.symbols[i].historyReady) {
+                fromState.historyReadyCount++;
+            }
             if (fromState.symbols[i].category == "STOPPED") {
                 fromState.stoppedCount++;
             } else if (fromState.symbols[i].category == "PREPARING") {
@@ -566,6 +569,7 @@ private:
         H1EaMonitorState state;
         this.getMonitorState(state);
         this.timerLogger.info(__FUNCTION__, "METRICS symbols=" + IntegerToString(state.symbolCount)
+            + " historyReady=" + IntegerToString(state.historyReadyCount)
             + " watch=" + IntegerToString(state.watchingCount) + " preparing=" + IntegerToString(state.preparingCount)
             + " stopped=" + IntegerToString(state.stoppedCount) + " managedTrades=" + IntegerToString(state.activeTradeCount)
             + " timerCount=" + H1EaTextUtil::ticket(state.timerCount)

@@ -78,18 +78,18 @@ public:
         }
 
         this.panelWidth = 740;
-        this.summaryPanelHeight = 139;
-        this.detailPanelHeight = 275;
+        this.summaryPanelHeight = 157;
+        this.detailPanelHeight = 293;
         this.headerHeight = 26;
         this.summaryFirstYDistance = 35;
         this.summaryRowHeight = 18;
-        this.separatorYDistance = 128;
-        this.detailFirstYDistance = 139;
+        this.separatorYDistance = 146;
+        this.detailFirstYDistance = 157;
         this.detailRowHeight = 18;
         this.detailColumnWidth = 180;
         if (this.captureQualityVisible) {
             this.detailRowHeight = 36;
-            this.detailPanelHeight = 415;
+            this.detailPanelHeight = 433;
         }
         this.fontName = "MS Gothic";
         this.titleFontSize = 11;
@@ -180,7 +180,7 @@ public:
             changed = true;
         }
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             string summaryText = this.buildSummaryText(fromStatus, i);
             color summaryColor = this.getSummaryColor(fromStatus, i);
 
@@ -207,6 +207,13 @@ public:
                     this.lastDetailColors[i],
                     changed
                 );
+                string detailTooltip = this.buildDetailTooltip(fromStatus, i);
+                if (this.lastDetailTooltips[i] != detailTooltip) {
+                    ObjectSetString(this.chartId, this.getDetailObjectName(i),
+                        OBJPROP_TOOLTIP, detailTooltip);
+                    this.lastDetailTooltips[i] = detailTooltip;
+                    changed = true;
+                }
                 if (this.captureQualityVisible) {
                     this.updateCaptureQuality(fromStatus, i, changed);
                 }
@@ -421,16 +428,19 @@ private:
     color lastHeaderColor;
 
     /** 前回集約表示文字列。 */
-    string lastSummaryTexts[5];
+    string lastSummaryTexts[6];
 
     /** 前回集約表示文字色。 */
-    color lastSummaryColors[5];
+    color lastSummaryColors[6];
 
     /** 前回通貨別表示文字列。 */
     string lastDetailTexts[28];
 
     /** 前回通貨別表示文字色。 */
     color lastDetailColors[28];
+
+    /** 前回通貨別履歴準備・補足メッセージのツールチップ。 */
+    string lastDetailTooltips[28];
 
     /**
      * パネルを生成する。
@@ -489,7 +499,7 @@ private:
             return false;
         }
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             if (!this.createLabel(
                 this.getSummaryObjectName(i),
                 14,
@@ -754,7 +764,7 @@ private:
             }
 
             return StringFormat(
-                "%s | Writer %s | DB %s | Ready %d/%d",
+                "%s | Writer %s | DB %s | 観測準備 %d/%d",
                 fromStatus.sourceMode,
                 writerText,
                 databaseText,
@@ -798,6 +808,16 @@ private:
                 fromStatus.getStatusCount(h1ElliotObservationAllSymbolStatusError),
                 fromStatus.getStatusCount(h1ElliotObservationAllSymbolStatusGap)
             );
+        }
+
+        if (fromRowIndex == 4) {
+            string historyText = "履歴準備";
+            if (fromStatus.targetCount > 0
+                    && fromStatus.historyReadyCount == fromStatus.targetCount) {
+                historyText = "履歴準備完了";
+            }
+            return StringFormat("%s %d/%d", historyText,
+                fromStatus.historyReadyCount, fromStatus.targetCount);
         }
 
         if (fromStatus.message == "" && this.captureQualityVisible) {
@@ -847,6 +867,26 @@ private:
         }
 
         return detailText;
+    }
+
+    /**
+     * 通貨ごとの履歴準備状態を、保存・分析状態と分けて説明する。
+     *
+     * @param fromStatus 実行状態。
+     * @param fromIndex 通貨インデックス。
+     * @return 詳細表示用ツールチップ。
+     */
+    string buildDetailTooltip(
+        H1ElliotObservationAllStatus &fromStatus,
+        const int fromIndex
+    ) {
+        string historyText = "WAIT";
+        if (fromStatus.symbolHistoryReady[fromIndex]) {
+            historyText = "OK";
+        }
+        return fromStatus.symbolNames[fromIndex]
+            + "\n履歴準備: " + historyText
+            + "\n" + fromStatus.symbolMessages[fromIndex];
     }
 
     /**
@@ -1035,7 +1075,15 @@ private:
             return this.gapColor;
         }
 
-        if (fromRowIndex == 4 && fromStatus.message != "") {
+        if (fromRowIndex == 4) {
+            if (fromStatus.targetCount > 0
+                    && fromStatus.historyReadyCount == fromStatus.targetCount) {
+                return this.okColor;
+            }
+            return this.waitColor;
+        }
+
+        if (fromRowIndex == 5 && fromStatus.message != "") {
             return this.waitColor;
         }
 
@@ -1264,7 +1312,7 @@ private:
         this.lastHeaderText = "";
         this.lastHeaderColor = clrNONE;
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             this.lastSummaryTexts[i] = "";
             this.lastSummaryColors[i] = clrNONE;
         }
@@ -1272,6 +1320,7 @@ private:
         for (int i = 0; i < 28; i++) {
             this.lastDetailTexts[i] = "";
             this.lastDetailColors[i] = clrNONE;
+            this.lastDetailTooltips[i] = "";
             this.lastQualityTexts[i] = "";
             this.lastQualityTooltips[i] = "";
         }

@@ -65,7 +65,10 @@ public:
     /** 対象通貨数。 */
     int targetCount;
 
-    /** 初期化準備が完了した通貨数。 */
+    /** 必要な履歴の同期と本数確認が完了した通貨数。 */
+    int historyReadyCount;
+
+    /** 既存の観測準備ゲートを通過した通貨数。TESTERでは実分析成功を含む。 */
     int readyCount;
 
     /** 現在H1で新規足を検出した通貨数。 */
@@ -94,6 +97,9 @@ public:
 
     /** 通貨名。 */
     string symbolNames[28];
+
+    /** 通貨ごとの共通履歴準備完了状態。実分析の成功とは分離する。 */
+    bool symbolHistoryReady[28];
 
     /** 通貨ごとの処理状態。 */
     H1ElliotObservationAllSymbolStatus symbolStatuses[28];
@@ -136,6 +142,7 @@ public:
         this.currentH1JapanTime = 0;
         this.lastSavedJapanTime = 0;
         this.targetCount = 28;
+        this.historyReadyCount = 0;
         this.readyCount = 0;
         this.detectedCount = 0;
         this.analyzedCount = 0;
@@ -259,6 +266,7 @@ public:
         }
 
         this.symbolNames[fromIndex] = "";
+        this.symbolHistoryReady[fromIndex] = false;
         ZeroMemory(this.symbolCaptureMetrics[fromIndex]);
         this.symbolCaptureMetricsBarTimes[fromIndex] = 0;
         this.symbolStatuses[fromIndex] = h1ElliotObservationAllSymbolStatusBase;

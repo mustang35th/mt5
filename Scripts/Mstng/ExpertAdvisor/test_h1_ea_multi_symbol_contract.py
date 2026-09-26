@@ -57,13 +57,20 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertNotIn("while (", body)
         self.assertNotIn("Sleep(", body)
 
+    def test_same_h1_trade_start_boundary_does_not_reuse_warmup_history(self):
+        body = code_only(method(self.child, "processPreparation"))
+        self.assertIn("bool beforeTradeStart = this.config.isBeforeTesterTradeStart(TimeCurrent())", body)
+        self.assertIn("beforeTradeStart == this.preparationBeforeTradeStart", body)
+        self.assertLess(body.index("this.preparationBeforeTradeStart = beforeTradeStart"),
+                        body.index("this.strategy.prepareHistory(this.config.testerTradeStartTime)"))
+
     def test_history_retry_and_current_bar_validation_do_not_consume_signal(self):
         body = code_only(method(self.child, "processPreparation"))
-        self.assertIn("this.preparationState.historyReady && barTime > 0", body)
+        self.assertIn("this.preparationState.historyReady && this.strategy.isHistoryPrepared() && barTime > 0", body)
         self.assertIn("barTime == this.preparationState.h1BarTime", body)
         self.assertIn("if (!this.preparationState.resourcesInitialized)", body)
         self.assertIn("this.strategy.initialize(this.preparationState.symbolName)", body)
-        self.assertIn("this.strategy.prepareHistory()", body)
+        self.assertIn("this.strategy.prepareHistory(this.config.testerTradeStartTime)", body)
         self.assertLess(body.index("barTime <= 0 || barTime != iTime("),
                         body.index("this.preparationState.historyReady = true;"))
         for forbidden in ("strategy.analyze", "strategy.evaluate", "entryState.",
@@ -82,7 +89,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertIn("this.controllers[i] = NULL;", shutdown)
         child = code_only(method(self.child, "shutdown"))
         self.assertRegex(child, r"if\s*\(this.preparationState.registered && !this.protectionEnabled\)\s*\{\s*"
-                         r"this.strategy.destroy\(\);\s*this.preparationState.reset\(\);\s*return;")
+                         r"this.preparationBeforeTradeStart = false;\s*this.strategy.destroy\(\);\s*this.preparationState.reset\(\);\s*return;")
 
     def test_status_is_copied_and_invalid_index_clears_output(self):
         self.assertIn("fromState = this.preparationState;", method(self.child, "getPreparationState"))

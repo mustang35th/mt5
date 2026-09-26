@@ -4,8 +4,7 @@
 #include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
-#include <Mstng\Util\WarmUpSeriesUtil.mqh>
-#include <MstngH1Ea\Runtime\H1EaClock.mqh>
+#include <Mstng\Util\ElliotHistoryPreparation.mqh>
 #include <MstngH1Ea\Strategy\H1EaStrategyDecision.mqh>
 
 /**
@@ -23,7 +22,7 @@ public:
         this.isPrepared = false;
         this.lastError = "";
         this.historyStatusText = "";
-        this.nextHistoryRequestTick = 0;
+        this.historyPreparation.reset();
     }
 
     /**
@@ -43,8 +42,10 @@ public:
         this.destroy();
         MarketContext context(fromSymbol, PERIOD_H1);
         this.marketContext = context;
-        WarmUpSeriesUtil::warmUpFromMn1To(this.marketContext, 500);
-        this.nextHistoryRequestTick = H1EaClock::milliseconds() + 60000;
+        if (!this.historyPreparation.initialize(fromSymbol, PERIOD_H1, (bool)MQLInfoInteger(MQL_TESTER))) {
+            this.lastError = "ANALYSIS_HISTORY_CONFIGURATION_INVALID";
+            return false;
+        }
         this.handlePool = new OscillatorHandlePool(this.marketContext);
 
         if (this.handlePool == NULL) {
@@ -63,12 +64,13 @@ public:
      * 履歴準備だけを確認し、波動分析やJudge・Entry評価は行わない。
      * 成功してもevaluateは許可せず、通常のanalyzeを改めて必要とする。
      *
+     * @param fromWarmupEndTime TESTER売買開始時刻。0は開始前の履歴確認間引きなし。
      * @return ハンドルプールと必要な価格系列が準備済みの場合true。
      */
-    bool prepareHistory() {
+    bool prepareHistory(const datetime fromWarmupEndTime = 0) {
         this.isPrepared = false;
 
-        if (this.handlePool == NULL || !this.isHistoryReady()) {
+        if (this.handlePool == NULL || !this.isHistoryReady(fromWarmupEndTime)) {
             this.lastError = "ANALYSIS_HISTORY_UNAVAILABLE";
 
             return false;
@@ -185,6 +187,11 @@ public:
     string getLastError() { return this.lastError; }
 
     /**
+     * 最後に確認した価格履歴の準備結果だけを返す。市場参照・分析は行わない。
+     */
+    bool isHistoryPrepared() const { return this.historyPreparation.isReady(); }
+
+    /**
      * 全分析時間足の同期・可視本数・必要本数・最古日時を返す。
      * 現在時刻は含めず、呼び出し側で状態変化時のログ抑制に使用する。
      */
@@ -196,7 +203,7 @@ public:
     void destroy() {
         this.isPrepared = false;
         this.historyStatusText = "";
-        this.nextHistoryRequestTick = 0;
+        this.historyPreparation.reset();
 
         if (this.elliotAll != NULL) {
             delete this.elliotAll;
@@ -222,74 +229,16 @@ private:
     string lastError;
     /** 全時間足の直近履歴診断。TesterではEAから見える系列だけを示す。 */
     string historyStatusText;
-    /** 不足系列の再取得要求を最短60秒間隔に抑える経過時刻。 */
-    ulong nextHistoryRequestTick;
+    /** 観測版と共通の価格履歴準備。分析成功とは分けて管理する。 */
+    ElliotHistoryPreparation historyPreparation;
 
     /**
-     * 既存Controllerと同じ系列同期・Testerの履歴本数を確認する。
-     * 不足しても残り時間足の診断を収集し、取得再要求だけ間隔を制限する。
+     * 共通履歴準備へ委譲し、既存の時間足別診断を更新する。
      */
-    bool isHistoryReady() {
-        ENUM_TIMEFRAMES timeFrames[] = {
-            PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1
-        };
-        bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
-        bool isReady = true;
-        bool mayRequest = H1EaClock::milliseconds() >= this.nextHistoryRequestTick;
-        bool wasRequested = false;
-        this.historyStatusText = "";
-
-        for (int i = 0; i < ArraySize(timeFrames); i++) {
-            int requestBars = 206;
-            if (timeFrames[i] == PERIOD_MN1) {
-                requestBars = 61;
-            }
-            int requiredBars = 0;
-            if (isTester) {
-                requiredBars = requestBars;
-            }
-            bool isSynchronized = WarmUpSeriesUtil::isSeriesSynchronized(
-                this.marketContext.symbolName, timeFrames[i]
-            );
-            int availableBars = Bars(this.marketContext.symbolName, timeFrames[i]);
-            if ((!isSynchronized || availableBars < requiredBars) && mayRequest) {
-                MqlRates requestedRates[];
-                // Testerの可視履歴を必ず拡張できるとは扱わず、要求後も再確認する。
-                CopyRates(this.marketContext.symbolName, timeFrames[i], 0, requestBars, requestedRates);
-                wasRequested = true;
-                isSynchronized = WarmUpSeriesUtil::isSeriesSynchronized(
-                    this.marketContext.symbolName, timeFrames[i]
-                );
-                availableBars = Bars(this.marketContext.symbolName, timeFrames[i]);
-            }
-            bool isTimeFrameReady = isSynchronized && availableBars >= requiredBars;
-            if (!isTimeFrameReady) {
-                isReady = false;
-            }
-            long firstDate = 0;
-            string firstDateText = "UNAVAILABLE";
-            if (SeriesInfoInteger(this.marketContext.symbolName, timeFrames[i], SERIES_FIRSTDATE, firstDate)
-                    && firstDate > 0) {
-                firstDateText = TimeToString((datetime)firstDate, TIME_DATE | TIME_MINUTES);
-            }
-            string timeFrameText = EnumToString(timeFrames[i]);
-            StringReplace(timeFrameText, "PERIOD_", "");
-            string stateText = "WAIT";
-            if (isTimeFrameReady) {
-                stateText = "READY";
-            }
-            if (this.historyStatusText != "") {
-                this.historyStatusText += ", ";
-            }
-            this.historyStatusText += StringFormat(
-                "%s[%s,sync=%d,bars=%d,required=%d,first=%s]",
-                timeFrameText, stateText, (int)isSynchronized, availableBars, requiredBars, firstDateText
-            );
-        }
-        if (wasRequested) {
-            this.nextHistoryRequestTick = H1EaClock::milliseconds() + 60000;
-        }
-        return isReady;
+    bool isHistoryReady(const datetime fromWarmupEndTime) {
+        bool ready = this.historyPreparation.prepare(fromWarmupEndTime);
+        this.historyStatusText = this.historyPreparation.getStatusText();
+        return ready;
     }
 };
 

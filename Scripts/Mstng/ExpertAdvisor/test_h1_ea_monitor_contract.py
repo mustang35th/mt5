@@ -25,6 +25,21 @@ class MonitorTests(unittest.TestCase):
         self.assertIn("this.entryState.getFinalizedBar()", method(self.child, "getMonitorState"))
         self.assertNotIn("fromState.finalizedBar = this.restoredDecisionBar", method(self.child, "getMonitorState"))
 
+    def test_history_readiness_is_separate_from_analysis_and_trading_categories(self):
+        child = code_only(method(self.child, "getMonitorState"))
+        self.assertIn("fromState.historyReady = this.strategy.isHistoryPrepared()", child)
+        parent = code_only(method(self.parent, "getMonitorState"))
+        self.assertIn("if (fromState.symbols[i].historyReady)", parent)
+        self.assertIn("fromState.historyReadyCount++", parent)
+        monitor = (ROOT / "Include/MstngH1Ea/Runtime/H1EaMonitorState.mqh").read_text(encoding="utf-8-sig")
+        self.assertIn("this.historyReady = false", monitor)
+        self.assertIn("this.historyReadyCount = 0", monitor)
+        panel = method(self.panel, "draw")
+        self.assertIn("fromState.symbolCount > 0 && fromState.historyReadyCount == fromState.symbolCount", panel)
+        self.assertIn("履歴準備完了", panel)
+        for name in ("evaluateEntry", "applyEntrySafety", "processScheduledEntry"):
+            self.assertNotIn("historyReadyCount", method(self.child, name))
+
     def test_monitor_is_never_used_to_authorize_entries(self):
         for name in ("evaluateEntry", "applyEntrySafety", "processScheduledEntry", "getPendingEntryBar"):
             body = method(self.child, name)

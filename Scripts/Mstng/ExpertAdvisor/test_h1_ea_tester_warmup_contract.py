@@ -135,7 +135,7 @@ class TesterWarmupWiringTests(unittest.TestCase):
         self.assertIn("PERIOD_H1", body)
         self.assertRegex(body, r"barTime\s*==\s*this\.lastWarmupBar")
         assignment = body.index("this.lastWarmupBar = barTime;")
-        self.assertLess(assignment, body.index("this.strategy.prepareHistory()"))
+        self.assertLess(assignment, body.index("this.strategy.prepareHistory(this.config.testerTradeStartTime)"))
         self.assertEqual(body.count("this.strategy.prepareHistory("), 1)
         for forbidden in (
             "entryState", "strategy.evaluate", "persistence.", "executor.",
@@ -146,7 +146,7 @@ class TesterWarmupWiringTests(unittest.TestCase):
     def test_history_preparation_never_authorizes_stale_strategy_evaluation(self):
         prepare = code_only(method(self.strategy, "prepareHistory"))
         self.assertIn("this.isPrepared = false;", prepare)
-        self.assertIn("this.handlePool == NULL || !this.isHistoryReady()", prepare)
+        self.assertIn("this.handlePool == NULL || !this.isHistoryReady(fromWarmupEndTime)", prepare)
         for forbidden in ("isPrepared = true", "new ElliotAll", "elliotAll.analyze", ".evaluate("):
             self.assertNotIn(forbidden, prepare)
         analyze = code_only(method(self.strategy, "analyze"))
@@ -356,19 +356,22 @@ class TesterWarmupWiringTests(unittest.TestCase):
         self.assertIn("this.clearAnalysisWait(true);", method(self.controller, "processTesterWarmup"))
         self.assertIn("this.clearAnalysisWait();", method(self.controller, "evaluateEntry"))
 
-    def test_history_requirements_and_minute_request_throttle_remain_wired(self):
+    def test_history_requirements_delegate_to_shared_preparation_with_live_compatibility(self):
         body = code_only(method(self.strategy, "isHistoryReady"))
-        compact = re.sub(r"\s+", "", body)
-        self.assertIn("PERIOD_MN1,PERIOD_W1,PERIOD_D1,PERIOD_H4,PERIOD_H1", compact)
-        self.assertIn("intrequestBars=206;", compact)
-        self.assertIn("if(timeFrames[i]==PERIOD_MN1){requestBars=61;}", compact)
-        self.assertIn("if(isTester){requiredBars=requestBars;}", compact)
-        self.assertIn("mayRequest=H1EaClock::milliseconds()>=this.nextHistoryRequestTick", compact)
-        self.assertIn("(!isSynchronized||availableBars<requiredBars)&&mayRequest", compact)
-        self.assertIn("CopyRates(this.marketContext.symbolName,timeFrames[i],0,requestBars,requestedRates)", compact)
-        self.assertIn("if(wasRequested){this.nextHistoryRequestTick=H1EaClock::milliseconds()+60000;}", compact)
-        self.assertIn("SERIES_FIRSTDATE", body)
-        self.assertNotIn("TimeCurrent(", body)
+        self.assertIn("this.historyPreparation.prepare(fromWarmupEndTime)", body)
+        self.assertIn("this.historyPreparation.getStatusText()", body)
+        for forbidden in ("CopyRates", "Bars(", "SERIES_SYNCHRONIZED", "206", "61"):
+            self.assertNotIn(forbidden, body)
+        initialize = code_only(method(self.strategy, "initialize"))
+        self.assertIn("this.historyPreparation.initialize(fromSymbol, PERIOD_H1, (bool)MQLInfoInteger(MQL_TESTER))", initialize)
+        destroy = code_only(method(self.strategy, "destroy"))
+        self.assertIn("this.historyPreparation.reset()", destroy)
+        history = (ROOT / "Include/Mstng/Util/ElliotHistoryPreparation.mqh").read_text(encoding="utf-8-sig")
+        prepare = code_only(method(history, "prepare"))
+        self.assertIn("if (this.requireMinimumBars)", prepare)
+        self.assertIn("now >= this.nextRequestTick", prepare)
+        self.assertIn("this.nextRequestTick = now + 60000", prepare)
+        self.assertIn("SERIES_FIRSTDATE", code_only(method(history, "createStatusText")))
 
 
 class EmaConfigurationWiringTests(unittest.TestCase):

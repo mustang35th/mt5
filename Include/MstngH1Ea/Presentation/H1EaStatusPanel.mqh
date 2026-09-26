@@ -92,9 +92,9 @@ public:
         if (chartWidth >= 916) {
             columnCount = 2;
         }
-        int rowCount = (chartHeight - 180) / 18;
+        int rowCount = (chartHeight - 198) / 18;
         rowCount = MathMax(1, MathMin(14, rowCount));
-        bool smallChart = chartWidth < 456 || chartHeight < 200;
+        bool smallChart = chartWidth < 456 || chartHeight < 218;
         if (this.columns != columnCount || this.rows != rowCount || this.compact != smallChart) {
             this.clear();
             this.columns = columnCount;
@@ -123,38 +123,49 @@ public:
             + TimeToString(fromState.serverTime, TIME_DATE | TIME_SECONDS)
             + "\n稼働は巡回の準備状態です。発注条件の成立を意味しません。";
         ok = this.label(0, title, clrWhite, 16, 18, titleTip, changed) && ok;
+        string historyText = "履歴準備 ";
+        if (fromState.symbolCount > 0 && fromState.historyReadyCount == fromState.symbolCount) {
+            historyText = "履歴準備完了 ";
+        }
+        historyText += IntegerToString(fromState.historyReadyCount) + "/" + IntegerToString(fromState.symbolCount);
         string summary = "稼働 " + IntegerToString(fromState.watchingCount)
             + " / 準備 " + IntegerToString(fromState.preparingCount)
             + " / 停止 " + IntegerToString(fromState.stoppedCount)
             + " / 取引管理 " + IntegerToString(fromState.activeTradeCount);
         if (this.compact) {
-            summary = "一覧はチャートを拡大";
+            summary = historyText;
         }
         ok = this.label(1, summary, clrWhiteSmoke, 16, 42,
             "取引管理数は発注中・決済中・復旧待ちも含む最終確認値です。", changed) && ok;
+        string historyLine = historyText;
+        if (this.compact) {
+            historyLine = "";
+        }
+        ok = this.label(125, historyLine, clrWhiteSmoke, 16, 64,
+            "価格履歴の同期と必要本数を確認した通貨数です。分析成功や売買許可とは別です。", changed) && ok;
         string metrics = "分析ms " + this.milliseconds(fromState.lastAnalysisMicros) + " / 最大 "
             + this.milliseconds(fromState.maxAnalysisMicros) + "  Timerms " + this.milliseconds(fromState.lastTimerMicros)
             + " / " + this.milliseconds(fromState.maxTimerMicros);
         if (this.compact) {
             metrics = "";
         }
-        ok = this.label(2, metrics, clrSilver, 16, 64,
+        ok = this.label(2, metrics, clrSilver, 16, 82,
             "分析とTimer処理の実時間。失敗した分析も含みます。\nTimerは描画・定期ログの時間を含みません。", changed) && ok;
         string gaps = "保護間隔ms " + IntegerToString((long)fromState.lastProtectionGapMs) + " / 最大 "
             + IntegerToString((long)fromState.maxProtectionGapMs) + "  Memory " + IntegerToString(fromState.memoryMb) + " MB";
         if (this.compact) {
             gaps = "";
         }
-        ok = this.label(3, gaps, clrSilver, 16, 82,
+        ok = this.label(3, gaps, clrSilver, 16, 100,
             "全通貨保護の巡回開始間隔。Testerではテスト内時刻です。\n高速準備による意図的な休止は除外します。", changed) && ok;
         int usedLabels = 4;
         if (!this.compact) {
             for (int i = 0; i < this.columns; i++) {
                 int left = 16 + i * 444;
-                ok = this.label(4 + i * 4, "通貨", clrSilver, left, 104, "", changed) && ok;
-                ok = this.label(5 + i * 4, "状態", clrSilver, left + 64, 104, "理由は行のツールチップを参照。", changed) && ok;
-                ok = this.label(6 + i * 4, "最終判定H1", clrSilver, left + 142, 104, "サーバー時刻。保存待ちを含む確定済みH1。", changed) && ok;
-                ok = this.label(7 + i * 4, "取引(最終確認)", clrSilver, left + 254, 104, "現在値の再照会は行いません。", changed) && ok;
+                ok = this.label(4 + i * 4, "通貨", clrSilver, left, 122, "", changed) && ok;
+                ok = this.label(5 + i * 4, "状態", clrSilver, left + 64, 122, "理由は行のツールチップを参照。", changed) && ok;
+                ok = this.label(6 + i * 4, "最終判定H1", clrSilver, left + 142, 122, "サーバー時刻。保存待ちを含む確定済みH1。", changed) && ok;
+                ok = this.label(7 + i * 4, "取引(最終確認)", clrSilver, left + 254, 122, "現在値の再照会は行いません。", changed) && ok;
             }
             if (this.columns == 1) {
                 for (int i = 8; i < 12; i++) {
@@ -165,7 +176,7 @@ public:
             for (int i = 0; i < slots; i++) {
                 int symbolIndex = this.page * slots + i;
                 int left = 16 + (i / this.rows) * 444;
-                int top = 126 + (i % this.rows) * 18;
+                int top = 144 + (i % this.rows) * 18;
                 int offset = 12 + i * 4;
                 if (symbolIndex >= fromState.symbolCount) {
                     for (int j = 0; j < 4; j++) {
@@ -201,7 +212,7 @@ public:
         for (int i = usedLabels; i < 124; i++) {
             ok = this.label(i, "", clrSilver, 0, 0, "", changed) && ok;
         }
-        int footer = 134 + this.rows * 18;
+        int footer = 152 + this.rows * 18;
         int width = 444 * this.columns;
         int footerX = 90;
         string pageText = IntegerToString(this.page + 1) + " / " + IntegerToString(this.pageCount);
@@ -209,7 +220,7 @@ public:
             footer = 64;
             footerX = 16;
             width = MathMax(100, chartWidth - 24);
-            pageText = "目安: 456 x 200 px";
+            pageText = "目安: 456 x 218 px";
         }
         ok = this.label(124, pageText, clrSilver, footerX, footer, "表示だけのページ切り替えです。全28通貨の巡回は継続します。", changed) && ok;
         ok = ObjectSetInteger(this.chartId, this.objectPrefix + "Background", OBJPROP_XSIZE, width) && ok;
@@ -262,15 +273,15 @@ private:
     /** 描画エラーを記録する既存Logger。 */
     Logger logger;
     /** ラベル文字列の差分キャッシュ。 */
-    string lastTexts[125];
+    string lastTexts[126];
     /** ツールチップの差分キャッシュ。 */
-    string lastTooltips[125];
+    string lastTooltips[126];
     /** 色の差分キャッシュ。 */
-    color lastColors[125];
+    color lastColors[126];
     /** X位置の差分キャッシュ。 */
-    int lastX[125];
+    int lastX[126];
     /** Y位置の差分キャッシュ。 */
-    int lastY[125];
+    int lastY[126];
 
     /**
      * LIVEまたはビジュアルTesterで、表示指定がある場合だけ描画する。
@@ -420,7 +431,12 @@ private:
      * 行の詳細をツールチップへまとめる。
      */
     string buildTooltip(H1EaMonitorSymbolState &fromState) {
+        string historyText = "WAIT";
+        if (fromState.historyReady) {
+            historyText = "OK";
+        }
         string text = fromState.symbolName + "  " + fromState.status + "\n" + fromState.reason
+            + "\n履歴準備: " + historyText
             + "\nRun: " + IntegerToString(fromState.runId)
             + "\nLease: " + TimeToString(fromState.leaseExpiresAt, TIME_DATE | TIME_SECONDS)
             + "\nTrade: " + fromState.tradeStatus + " " + fromState.tradeSide

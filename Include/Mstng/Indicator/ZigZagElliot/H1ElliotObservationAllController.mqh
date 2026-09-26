@@ -23,9 +23,9 @@
 #include <Mstng\Indicator\ZigZagElliot\H1ElliotObservationQueueItem.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
+#include <Mstng\Util\ElliotHistoryPreparation.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
-#include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
  * 全28通貨の固定H1・M5新規足Elliott観測を一括記録するクラス。
@@ -458,6 +458,9 @@ private:
     /** 通貨ごとの初回分析履歴ゲート通過状態。 */
     bool analysisReadyFlags[];
 
+    /** 通貨ごとの共通履歴準備。実分析の成功状態とは分離する。 */
+    ElliotHistoryPreparation historyPreparations[28];
+
     /** 通貨ごとにTESTER事前分析が成功したH1バー開始時刻。 */
     datetime testerPreflightH1BarTimes[];
 
@@ -687,15 +690,17 @@ private:
         );
 
         if (currentH1BarTime <= 0) {
+            this.currentH1BarTimes[fromIndex] = 0;
+            if (this.isTesterSaveWindowEnabled() && !this.testerSaveGateOpen) {
+                this.analysisReadyFlags[fromIndex] = false;
+                this.testerPreflightH1BarTimes[fromIndex] = 0;
+            }
             this.symbolRetryCounts[fromIndex]++;
             this.setSymbolStatus(
                 fromIndex,
                 "RETRY",
                 "H1系列を取得待ち"
             );
-            if (this.observationProfile.isM5()) {
-                this.isM5AnalysisSeriesReady(fromIndex);
-            }
             this.warmUpSymbol(fromIndex);
 
             return;
@@ -736,8 +741,6 @@ private:
                     "RETRY",
                     "TESTER履歴を準備中"
                 );
-                this.warmUpSymbol(fromIndex);
-
                 return;
             }
 
@@ -830,6 +833,16 @@ private:
         const int fromIndex,
         const datetime fromCurrentH1BarTime
     ) {
+        if (!this.isAnalysisSeriesReady(fromIndex)) {
+            this.analysisReadyFlags[fromIndex] = false;
+            this.testerPreflightH1BarTimes[fromIndex] = 0;
+            this.lastDetectedH1BarTimes[fromIndex] = fromCurrentH1BarTime;
+            this.pendingAnalysisH1BarTimes[fromIndex] = 0;
+            this.setSymbolStatus(fromIndex, "RETRY", "TESTER履歴を準備中");
+
+            return;
+        }
+
         bool saveStartReached =
             fromCurrentH1BarTime
                 >= this.observationTesterSaveStartTime;
@@ -1125,8 +1138,6 @@ private:
                 "RETRY",
                 "MN1-H1系列を準備中"
             );
-            this.warmUpSymbol(fromIndex);
-
             return;
         }
 
@@ -1848,89 +1859,40 @@ private:
     }
 
     /**
-     * 全通貨のMN1、W1、D1、H4、H1系列を取得要求する。
+     * 全通貨の観測対象系列を共通の履歴準備へ登録する。
      */
     void warmUpTargetSymbols() {
         for (int i = 0; i < this.symbolNameInfoAll.size(); i++) {
-            this.warmUpSymbol(i);
+            this.historyPreparations[i].initialize(
+                this.symbolNames[i],
+                this.observationProfile.getAnchorTimeFrame()
+            );
         }
     }
 
     /**
-     * 指定通貨の観測対象系列を取得要求する。
+     * 指定通貨の履歴を共通間隔で再確認し、不足系列を取得要求する。
      *
      * @param fromIndex 対象通貨インデックス
      */
     void warmUpSymbol(const int fromIndex) {
-        ENUM_TIMEFRAMES timeFrames[];
-        int timeFrameCount =
-            this.observationProfile.getObservationTimeFrameCount();
-        ArrayResize(timeFrames, timeFrameCount);
-
-        for (int i = 0; i < timeFrameCount; i++) {
-            timeFrames[i] =
-                this.observationProfile.getObservationTimeFrame(i);
-        }
-
-        if (this.testerMode) {
-            for (int i = 0; i < timeFrameCount; i++) {
-                timeFrames[i] =
-                    this.observationProfile.getObservationTimeFrame(
-                        timeFrameCount - 1 - i
-                    );
-            }
-        }
-
-        MarketContext context(
-            this.symbolNames[fromIndex],
-            this.observationProfile.getAnchorTimeFrame()
-        );
-        WarmUpSeriesUtil::warmUp(context, timeFrames, 500);
+        this.isAnalysisSeriesReady(fromIndex);
     }
 
     /**
-     * 指定通貨の全観測対象系列が同期済みか確認する。
+     * 指定通貨の全観測対象系列の同期状態と必要本数を共通条件で確認する。
      *
      * @param fromIndex 対象通貨インデックス
-     * @return 全系列が同期済みの場合true
+     * @return 全系列が同期済みで必要本数を満たす場合true
      */
     bool isAnalysisSeriesReady(const int fromIndex) {
         if (this.observationProfile.isM5()) {
             return this.isM5AnalysisSeriesReady(fromIndex);
         }
 
-        ENUM_TIMEFRAMES timeFrames[];
-        int timeFrameCount =
-            this.observationProfile.getObservationTimeFrameCount();
-        ArrayResize(timeFrames, timeFrameCount);
-
-        for (int i = 0; i < timeFrameCount; i++) {
-            timeFrames[i] =
-                this.observationProfile.getObservationTimeFrame(i);
-        }
-        string symbolName = this.symbolNames[fromIndex];
-
-        for (int i = 0; i < ArraySize(timeFrames); i++) {
-            if (!WarmUpSeriesUtil::isSeriesSynchronized(
-                symbolName,
-                timeFrames[i]
-            )) {
-                return false;
-            }
-
-            int requiredBars = 206;
-
-            if (timeFrames[i]
-                    == this.observationProfile.getAnalysisStartTimeFrame()) {
-                requiredBars = 61;
-            }
-
-            if (Bars(symbolName, timeFrames[i]) < requiredBars) {
-                return false;
-            }
-        }
-
-        return true;
+        return this.historyPreparations[fromIndex].prepare(
+            this.observationTesterSaveStartTime
+        );
     }
 
     /**
@@ -1943,45 +1905,15 @@ private:
      * @return 全7系列が同期済みかつ必要本数を満たす場合true。
      */
     bool isM5AnalysisSeriesReady(const int fromIndex) {
-        string symbolName = this.symbolNames[fromIndex];
-        string historyText = "";
-        int total = this.observationProfile.getObservationTimeFrameCount();
+        bool historyReady = this.historyPreparations[fromIndex].prepare(
+            this.observationTesterSaveStartTime
+        );
+        this.logM5HistoryStatus(
+            fromIndex,
+            this.historyPreparations[fromIndex].getMissingStatusText()
+        );
 
-        for (int i = 0; i < total; i++) {
-            ENUM_TIMEFRAMES timeFrame =
-                this.observationProfile.getObservationTimeFrame(i);
-            int requiredBars = 206;
-            if (timeFrame == this.observationProfile.getAnalysisStartTimeFrame()) {
-                requiredBars = 61;
-            }
-            bool isSynchronized = WarmUpSeriesUtil::isSeriesSynchronized(
-                symbolName, timeFrame
-            );
-            int availableBars = Bars(symbolName, timeFrame);
-            if (isSynchronized && availableBars >= requiredBars) {
-                continue;
-            }
-
-            long firstDate = 0;
-            SeriesInfoInteger(symbolName, timeFrame, SERIES_FIRSTDATE, firstDate);
-            string timeFrameText = EnumToString(timeFrame);
-            StringReplace(timeFrameText, "PERIOD_", "");
-            string firstDateText = this.formatDateTime((datetime)firstDate);
-            if (firstDateText == "") {
-                firstDateText = "unavailable";
-            }
-            if (historyText != "") {
-                historyText += " ";
-            }
-            historyText += StringFormat(
-                "%s[bars=%d required=%d first=%s synced=%d]",
-                timeFrameText, availableBars, requiredBars, firstDateText,
-                (int)isSynchronized
-            );
-        }
-        this.logM5HistoryStatus(fromIndex, historyText);
-
-        return historyText == "";
+        return historyReady;
     }
 
     /**
@@ -2230,6 +2162,7 @@ private:
                 );
         }
         this.status.targetCount = ArraySize(this.symbolNames);
+        this.status.historyReadyCount = 0;
         this.status.readyCount = this.getReadyCount();
         this.status.detectedCount = this.getCurrentDetectedCount();
         this.status.analyzedCount = this.getCurrentAnalyzedCount();
@@ -2247,6 +2180,11 @@ private:
         }
 
         for (int i = 0; i < ArraySize(this.symbolNames); i++) {
+            this.status.symbolHistoryReady[i] = this.historyPreparations[i].isReady()
+                && this.currentH1BarTimes[i] > 0;
+            if (this.status.symbolHistoryReady[i]) {
+                this.status.historyReadyCount++;
+            }
             this.status.setSymbol(
                 i,
                 this.symbolNames[i],
@@ -2357,6 +2295,9 @@ private:
      * 通貨状態用の動的配列を解放する。
      */
     void clearStateArrays() {
+        for (int i = 0; i < requiredTargetSymbolCount; i++) {
+            this.historyPreparations[i].reset();
+        }
         ArrayResize(this.captureTargetBarTimes, 0);
         ArrayResize(this.captureDetectedTicks, 0);
         ArrayResize(this.captureAnalysisAttempts, 0);

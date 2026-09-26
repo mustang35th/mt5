@@ -11,7 +11,7 @@
 | 保存時間足 | MN1、W1、D1、H4、H1 |
 | 保存先 | MetaTrader 5組み込みSQLite |
 | 観測タイミング | `BAR_OPEN_FIRST_SUCCESS` |
-| 最終更新日 | 2026-08-29 |
+| 最終更新日 | 2026-09-26 |
 
 本書は、`ZigZagElliotH1ObservationAll`の収集対象、実行ライフサイクル、H1境界の扱い、分析内容、FIFO、DB保存、状態パネルおよび障害時の動作を定義します。
 
@@ -64,6 +64,7 @@ SQLite
 |---|---|
 | `ZigZagElliotH1ObservationAll.mq5` | 入力値、MT5イベント、状態パネルの生成と破棄 |
 | `H1ElliotObservationAllController` | 28通貨の境界検出、分析、FIFO、DB再接続、状態集約 |
+| `ElliotHistoryPreparation` | 通貨別の履歴取得、同期・最低本数の確認、再確認間隔の管理。M5観測・H1 EAと共用 |
 | `ZigZagElliotAnalysisProfile` | 分析パラメーターと固定時間足順序の正本 |
 | `ZigZagElliotObservationSnapshotBuilder` | `ElliotAll`を親1行・時間足別5行へ変換 |
 | `ZigZagElliotObservationPersistenceService` | 検証、トランザクション、重複制御、親子保存 |
@@ -137,7 +138,7 @@ SQLite
 3. 全通貨Controllerを生成する
 4. 入力値を検証する
 5. 28通貨の実シンボル名を解決し、Market Watchへ選択する
-6. MN1、W1、D1、H4、H1の履歴取得を要求する
+6. H1、H4、D1、W1、MN1の順に各500本の履歴取得を要求する
 7. 28通貨分のOscillatorハンドルプールを準備する
 8. 起動単位のDB Run情報を構築する
 9. LIVEではTimerを開始する
@@ -229,7 +230,7 @@ FIFOはメモリだけに存在します。終了時に未保存Snapshotをデ�
 
 ### 7.2 履歴準備条件
 
-各通貨について5時間足すべての系列同期を確認します。次の最低バー数は、通常分析とTESTER事前分析の両方で使用します。
+共通の`ElliotHistoryPreparation`で、各通貨について5時間足すべての系列同期と次の最低バー数を確認します。全対象足が両条件を満たした状態を「履歴準備完了」とします。通常分析とTESTER事前分析の両方で使用します。
 
 | 時間足 | 最低バー数 |
 |---|---:|
@@ -239,7 +240,18 @@ FIFOはメモリだけに存在します。終了時に未保存Snapshotをデ�
 | H4 | 206 |
 | H1 | 206 |
 
-最低バー数への到達は必要条件であり、それだけではTESTER事前分析成功になりません。系列同期、最低バー数および実際の`ElliotAll`分析成功をすべて確認します。`observationTesterSaveStartTime > 0`では、保存開始候補H1についてこの実分析が28通貨すべて成功した場合だけ全体ゲートを開きます。
+「履歴準備完了」は、指標取得・`ElliotAll`分析成功、保存開始日時到達、DB利用可能とは別に管理します。履歴だけが28/28でも保存は開始しません。`observationTesterSaveStartTime > 0`では、保存開始候補H1について実分析が28通貨すべて成功した場合だけ全体ゲートを開きます。
+
+履歴取得と再確認の間隔は、M5観測およびH1 EAのTESTERと共通です。
+
+| 期間 | 履歴処理 |
+|---|---|
+| 初期化 | 基準足H1から上位足へ順に各500本を要求する |
+| TESTER・指定保存開始前 | 初回に同期・本数を確認し、以後はテスト内時刻で最短3,600秒ごとに再確認。不足系列の取得もこの間隔に抑える |
+| 指定保存開始到達・時刻逆行 | 待機中の確認結果キャッシュを解除し、次の履歴確認で再評価する |
+| 保存開始後・保存開始0・LIVE | 履歴確認の呼び出しごとに同期・本数を再評価。不足系列への`CopyRates`再要求は最短60秒間隔 |
+
+開始到達のキャッシュ解除は基準H1の途中に指定した時刻でも行います。保存対象H1を決める規則は変えず、`18:30`指定なら最初の保存候補は`19:00`です。再確認間隔は履歴処理だけの規則で、事前分析の各H1最大1回、保存ゲート、DB再接続の周期は変えません。初期取得を基準足から始めることで、他通貨を最初に参照した足より下位を取得できない「始値のみ」の制約にも配慮しますが、この変更だけでモデル別の実動作を保証するものではありません。
 
 本数には次の異なる役割があります。
 
@@ -248,9 +260,11 @@ FIFOはメモリだけに存在します。終了時に未保存Snapshotをデ�
 | 61 | MN1の分析開始に必要な最低バー数 |
 | 206 | W1、D1、H4、H1の分析開始に必要な最低バー数 |
 | 300 | 最上位足ZigZagの最大計算範囲、および上位足Waveを取得できない場合の分析範囲 |
-| 500 | 初期の履歴取得で各系列へ要求するwarm-up本数 |
+| 500 | 初期の履歴取得で各系列へ要求する本数。履歴準備完了の必須本数ではない |
 
-`300`は全時間足に一律要求する履歴ゲート本数ではありません。反対に、61本または206本を満たしても実分析が失敗した場合は準備完了になりません。`300`の分析設定は`analysis_input_hash`へ含まれますが、今回追加する保存開始時刻は運用入力の`input_hash`へ含まれます。
+`300`は全時間足に一律要求する履歴ゲート本数ではありません。系列同期と61本または206本を満たせば履歴準備完了ですが、実分析が失敗した場合は分析成功にはなりません。`300`の分析設定は`analysis_input_hash`へ含まれ、保存開始時刻は運用入力の`input_hash`へ含まれます。履歴処理の共通化によって分析HashやDB形式は変更しません。
+
+本共通化は重複確認と取得要求を減らすもので、必要本数を緩和したり、テスターへ渡される長期履歴を拡張したりする変更ではありません。実MT5での短縮率と長期履歴取得への効果は未確認です。
 
 LIVEでpendingとなった観測は、履歴が不足または未同期の場合も同じH1内でTimerごとに再試行します。TESTERの初回処理および事前分析では挙動が異なるため、[19. 既知の制約](#19-既知の制約)を参照してください。
 
@@ -550,6 +564,7 @@ DB接続・保存および通貨別分析の再試行回数に上限はありま
 - LIVEまたはTESTER
 - Writer ACTIVE・PASSIVE
 - DB OK・WAIT
+- 履歴準備の通貨数。直近の履歴確認が完了した数を`履歴準備 n/28`、全通貨完了時は`履歴準備完了 28/28`と表示
 - Ready通貨数。LIVEでは系列準備済み、保存開始時刻が`0`のTESTERでは初回Snapshot生成済み、保存開始時刻が0より大きいTESTERでは事前分析成功済みの通貨数
 - 現在H1のJST
 - Detect、Analyze、Save件数
@@ -565,6 +580,7 @@ DB接続・保存および通貨別分析の再試行回数に上限はありま
 [ACTIVE]
 Writer ACTIVE
 DB OK
+履歴準備完了 28/28
 Ready 28/28
 Queue 0/672
 Gap 0
@@ -572,7 +588,7 @@ Gap 0
 
 H1境界直後は一時的に`ANALYZING`または`WAITING`になります。
 
-`observationTesterSaveStartTime > 0`で全体ゲートが閉じている間は、`Writer PASSIVE`、`DB WAIT`、`Run 0`、`Detect 0`、`Analyze 0`、`Save 0/0`、`Queue 0`および`Gap 0`が正常です。事前分析は実行しますが、`Analyze`はSnapshot生成数を表すためゲート前は0のままです。`Ready`だけが事前分析の進捗を示します。
+`observationTesterSaveStartTime > 0`で全体ゲートが閉じている間は、`Writer PASSIVE`、`DB WAIT`、`Run 0`、`Detect 0`、`Analyze 0`、`Save 0/0`、`Queue 0`および`Gap 0`が正常です。事前分析は実行しますが、`Analyze`はSnapshot生成数を表すためゲート前は0のままです。`Ready`が事前分析の進捗を示し、追加した「履歴準備」はその前提となるローソク足の準備だけを示します。両者は保存開始条件として自動的に置き換えません。
 
 保存開始候補H1では同じH1について全28通貨を再度確認するため、保存開始前に`Ready 28/28`へ到達していても再評価されます。候補H1で28/28がそろうとゲートが開き、WriterとDB保存処理が開始します。
 
@@ -590,6 +606,8 @@ H1境界直後は一時的に`ANALYZING`または`WAITING`になります。
 | `GAP` | 対象H1を保存できず欠損が確定した |
 
 通貨名の後ろに`Qn`がある場合はその通貨のQueue件数、`Rn`がある場合は再試行回数を表します。
+
+通貨別ツールチップには`履歴準備: OK / WAIT`と既存の状態メッセージを表示し、分析・保存の状態と分けて確認できます。
 
 ## 14. Viewerとの関係
 
@@ -663,6 +681,7 @@ MN1の最低61本には約5年1か月が必要です。休日、履歴配信範�
 
 | 表示・事象 | 主な原因 | 対応 |
 |---|---|---|
+| 履歴準備が28未満 | MN1～H1の履歴不足・同期待ち | 各時間足の本数と同期状態を確認する。分析・DBの状態とは分けて調べる |
 | `Ready`が28未満 | LIVEではMN1～H1履歴の不足・同期待ち。TESTERでは初回分析、事前分析またはSnapshot生成の未成功も含む | Terminal接続、各シンボルの履歴および詳細メッセージを確認する |
 | `DB WAIT` | DB接続、WAL、table作成またはRun保存待ち。保存開始ゲートが閉じている期間も正常に表示する | 保存ゲート中でなければDBファイル、権限、他プロセスのlockを確認する |
 | `RETRY` | H1系列、Server情報、Elliott分析またはSnapshot生成待ち | 詳細メッセージとExpertsログを確認する |
@@ -765,6 +784,7 @@ HAVING COUNT(time_frame.id) <> 5;
 
 - [ZigZagElliotH1ObservationAll.mq5](../../Indicators/ZigZagElliotH1ObservationAll.mq5)
 - [H1ElliotObservationAllController.mqh](../../Include/Mstng/Indicator/ZigZagElliot/H1ElliotObservationAllController.mqh)
+- [ElliotHistoryPreparation.mqh](../../Include/Mstng/Util/ElliotHistoryPreparation.mqh)
 - [H1ElliotObservationAllStatus.mqh](../../Include/Mstng/Indicator/ZigZagElliot/H1ElliotObservationAllStatus.mqh)
 - [DrawH1ElliotObservationAllStatus.mqh](../../Include/Mstng/Draw/DrawH1ElliotObservationAllStatus.mqh)
 - [ZigZagElliotAnalysisProfile.mqh](../../Include/Mstng/Elliot/ZigZagElliotAnalysisProfile.mqh)

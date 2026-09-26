@@ -34,6 +34,7 @@ public:
         this.analysisFinishedMicros = 0;
         this.started = false;
         this.persistencePreparation = false;
+        this.preparationBeforeTradeStart = false;
         this.protectionEnabled = false;
         this.entryEnabled = false;
         this.nextScheduledEntryTick = 0;
@@ -124,6 +125,7 @@ public:
             return false;
         }
         this.preparationState.reset();
+        this.preparationBeforeTradeStart = false;
         this.preparationState.symbolName = fromSymbol;
         this.lastPreparationLogStatus = "";
         this.lastPreparationLogText = "";
@@ -436,6 +438,7 @@ public:
             const bool fromTimerReady, const datetime fromCurrentBar) {
         fromState.reset();
         fromState.symbolName = this.preparationState.symbolName;
+        fromState.historyReady = this.strategy.isHistoryPrepared();
         fromState.runId = this.run.id;
         fromState.leaseExpiresAt = (datetime)this.run.leaseExpiresAt;
         fromState.finalizedBar = this.entryState.getFinalizedBar();
@@ -493,17 +496,20 @@ public:
 
     /**
      * この通貨の履歴を準備する。波動分析・Judge・SignalCountの更新は行わない。
-     * 準備済みの同一H1は省略し、未準備なら次の巡回で再確認する。
+     * 準備済みの同一H1は省略する。売買開始到達時は同じH1でも再確認する。
      */
     void processPreparation() {
         if ((this.started && !this.persistencePreparation) || !this.preparationState.registered) {
             return;
         }
         datetime barTime = iTime(this.preparationState.symbolName, PERIOD_H1, 0);
-        if (this.preparationState.historyReady && barTime > 0
-                && barTime == this.preparationState.h1BarTime) {
+        bool beforeTradeStart = this.config.isBeforeTesterTradeStart(TimeCurrent());
+        if (this.preparationState.historyReady && this.strategy.isHistoryPrepared() && barTime > 0
+                && barTime == this.preparationState.h1BarTime
+                && beforeTradeStart == this.preparationBeforeTradeStart) {
             return;
         }
+        this.preparationBeforeTradeStart = beforeTradeStart;
         this.preparationState.historyReady = false;
         this.preparationState.h1BarTime = barTime;
         if (!this.preparationState.resourcesInitialized) {
@@ -515,7 +521,7 @@ public:
             }
             this.preparationState.resourcesInitialized = true;
         }
-        if (!this.strategy.prepareHistory()) {
+        if (!this.strategy.prepareHistory(this.config.testerTradeStartTime)) {
             this.preparationState.status = "WAIT_HISTORY";
             this.preparationState.reason = this.strategy.getLastError();
             this.logPreparationHistory();
@@ -745,11 +751,13 @@ public:
             this.persistence.close();
             this.strategy.destroy();
             this.instanceLock.release();
+            this.preparationBeforeTradeStart = false;
             this.preparationState.reset();
             this.persistencePreparation = false;
             return;
         }
         if (this.preparationState.registered && !this.protectionEnabled) {
+            this.preparationBeforeTradeStart = false;
             this.strategy.destroy();
             this.preparationState.reset();
             return;
@@ -789,6 +797,7 @@ public:
         this.instanceLock.release();
         this.protectionEnabled = false;
         this.persistencePreparation = false;
+        this.preparationBeforeTradeStart = false;
         this.preparationState.reset();
     }
 
@@ -825,6 +834,8 @@ private:
     string restorationError;
     /** 外部巡回用の通貨別履歴準備状態。 */
     H1EaPreparationState preparationState;
+    /** 同一H1途中の売買開始到達でも履歴を再確認するための前回区分。 */
+    bool preparationBeforeTradeStart;
     /** 有効設定。 */
     H1EaConfig config;
     /** DBに依存しない運用ログ。 */
@@ -1246,7 +1257,7 @@ private:
             return;
         }
         this.lastWarmupBar = barTime;
-        if (!this.strategy.prepareHistory()) {
+        if (!this.strategy.prepareHistory(this.config.testerTradeStartTime)) {
             this.logAnalysisWait(barTime);
             return;
         }

@@ -7,6 +7,8 @@
 struct H1EaMonitorSymbolState {
     /** 登録済み通貨。 */
     string symbolName;
+    /** 最後に確認した価格履歴の準備結果。分析・売買許可とは別。 */
+    bool historyReady;
     /** WATCH・PREPARING・STOPPEDの排他的な分類。 */
     string category;
     /** 表示する状態コード。 */
@@ -51,6 +53,7 @@ struct H1EaMonitorSymbolState {
      */
     void reset() {
         this.symbolName = "";
+        this.historyReady = false;
         this.category = "PREPARING";
         this.status = "REGISTERED";
         this.reason = "";
@@ -93,6 +96,8 @@ struct H1EaMonitorState {
     int timerSeconds;
     /** 登録通貨数。 */
     int symbolCount;
+    /** 必要な価格履歴の準備が完了した通貨数。 */
+    int historyReadyCount;
     /** WATCH通貨数。発注条件の成立数ではない。 */
     int watchingCount;
     /** 準備・分析待ち通貨数。 */
@@ -134,6 +139,7 @@ struct H1EaMonitorState {
         this.fastWarmup = false;
         this.timerSeconds = 0;
         this.symbolCount = 0;
+        this.historyReadyCount = 0;
         this.watchingCount = 0;
         this.preparingCount = 0;
         this.stoppedCount = 0;
