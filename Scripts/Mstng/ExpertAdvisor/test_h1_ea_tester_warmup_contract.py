@@ -115,7 +115,8 @@ class TesterWarmupWiringTests(unittest.TestCase):
     def test_entry_gate_returns_before_any_entry_state_or_decision_work(self):
         body = code_only(method(self.controller, "evaluateEntry"))
         gate = re.search(
-            r"\A\s*if\s*\(this\.config\.isBeforeTesterTradeStart\(TimeCurrent\(\)\)\)\s*\{",
+            r"\A\s*if\s*\(this\.scheduledTickWarmup\)\s*\{\s*return;\s*\}\s*"
+            r"if\s*\(this\.config\.isBeforeTesterTradeStart\(TimeCurrent\(\)\)\)\s*\{",
             body,
         )
         self.assertIsNotNone(gate)
@@ -175,12 +176,17 @@ class TesterWarmupWiringTests(unittest.TestCase):
         compact = re.sub(r"\s+", "", body)
         for guard in (
             "!this.initialized", "!this.loaded", "!this.idleReconciled", "this.persistence==NULL",
-            "this.runId<=0", "!this.lockHeld", "this.knownLeaseExpires<=0", "this.active",
+            "this.runId<=0", "!this.lockHeld", "!authorityKnown", "this.active",
             "this.ownershipLost", "this.queueOverflow", "ArraySize(this.saveQueue)>0",
             "this.recoveryCommitPending", "this.orderReadFailed", "this.pendingStored",
             "this.trade.id!=0", "this.pendingModifyRequestId!=0",
         ):
             self.assertIn(guard, compact)
+        self.assertIn("isIdleForTesterWarmup(const bool fromAllowSuspendedAuthority = false)", self.executor)
+        self.assertIn("boolauthorityKnown=this.knownLeaseExpires>0;", compact)
+        self.assertIn("if(fromAllowSuspendedAuthority&&MQLInfoInteger(MQL_TESTER)"
+                      "&&this.knownLeaseExpires==0){authorityKnown=true;}", compact)
+        self.assertLess(compact.index("authorityKnown=true;"), compact.index("!authorityKnown"))
         for forbidden in ("OrderSend(", "Database", "this.reconcile(", "this.readPosition("):
             self.assertNotIn(forbidden, body)
 

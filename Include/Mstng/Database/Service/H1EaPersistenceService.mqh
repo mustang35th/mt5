@@ -119,6 +119,37 @@ public:
     }
 
     /**
+     * 全通貨Testerの空状態をOS排他Lock下で予約する期限を返す。
+     * 売買権限には使わず、通常Leaseへ戻した後だけbroker操作を許可する。
+     */
+    static datetime getTesterWarmupLeaseExpiresAt() {
+        return D'3000.12.31 23:59:59';
+    }
+
+    /**
+     * 未失効の全通貨Tester RunをTick起点の準備期間用に予約する。
+     */
+    bool beginTesterWarmupLease(H1EaRunEntity &fromRun, const datetime fromNow) {
+        return this.writeTesterWarmupLease(fromRun, fromNow, false,
+            H1EaPersistenceService::getTesterWarmupLeaseExpiresAt());
+    }
+
+    /**
+     * 同じ予約だけを維持し、Tickのない休日を通常Lease失効と誤認しない。
+     */
+    bool heartbeatTesterWarmupLease(H1EaRunEntity &fromRun, const datetime fromNow) {
+        return this.writeTesterWarmupLease(fromRun, fromNow, true,
+            H1EaPersistenceService::getTesterWarmupLeaseExpiresAt());
+    }
+
+    /**
+     * 今回Runの予約を通常60秒Leaseへ戻す。期限切れLeaseは復活させない。
+     */
+    bool endTesterWarmupLease(H1EaRunEntity &fromRun, const datetime fromNow) {
+        return this.writeTesterWarmupLease(fromRun, fromNow, true, fromNow + 60);
+    }
+
+    /**
      * 指定Runが現在もLeaseを所有しているかDBで確認する。
      */
     bool hasLease(const long fromRunId, const datetime fromNow) {
@@ -625,6 +656,46 @@ private:
         if (!H1EaSql::execute(this.getHandle(), "BEGIN IMMEDIATE")) {
             return this.fail("TRANSACTION_BEGIN_FAILED");
         }
+        return true;
+    }
+
+    /**
+     * 全通貨Testerの正確なRun・予約状態・未失効Leaseを同じtransactionで確認する。
+     * 呼出元はOS排他Lockを保持し、予約中のbroker権限を停止する。
+     */
+    bool writeTesterWarmupLease(H1EaRunEntity &fromRun, const datetime fromNow,
+            const bool fromRequireReservation, const datetime fromLeaseExpires) {
+        datetime reservedExpiry = H1EaPersistenceService::getTesterWarmupLeaseExpiresAt();
+        if (!MQLInfoInteger(MQL_TESTER) || fromRun.sourceMode != "TESTER"
+                || fromRun.id <= 0 || !H1EaSql::isHash(fromRun.runUid)
+                || !H1EaSql::isHash(fromRun.sessionUid)
+                || StringFind(fromRun.contextKey, "H1_EA_CONTEXT_V1|TESTER|" + fromRun.runUid + "|") != 0
+                || fromNow <= 0 || fromLeaseExpires <= fromNow
+                || fromRun.leaseExpiresAt <= (long)fromNow
+                || (fromRequireReservation && fromRun.leaseExpiresAt != (long)reservedExpiry)
+                || (!fromRequireReservation && fromRun.leaseExpiresAt == (long)reservedExpiry)) {
+            return this.fail("RUN_TESTER_WARMUP_SCOPE_OR_LEASE_INVALID");
+        }
+        if (!this.begin()) {
+            return false;
+        }
+        string sql = "UPDATE h1_ea_runs SET heartbeat_at=" + IntegerToString((long)fromNow)
+            + ",lease_expires_at=" + IntegerToString((long)fromLeaseExpires)
+            + " WHERE id=" + IntegerToString(fromRun.id)
+            + " AND run_uid=" + H1EaSql::text(fromRun.runUid)
+            + " AND session_uid=" + H1EaSql::text(fromRun.sessionUid)
+            + " AND context_key=" + H1EaSql::text(fromRun.contextKey)
+            + " AND source_mode='TESTER' AND status='RUNNING'"
+            + " AND lease_expires_at=" + IntegerToString(fromRun.leaseExpiresAt)
+            + " AND lease_expires_at>" + IntegerToString((long)fromNow);
+        long changed = 0;
+        bool success = H1EaSql::execute(this.getHandle(), sql)
+            && H1EaSql::scalar(this.getHandle(), "SELECT changes()", changed) && changed == 1;
+        if (!this.complete(success, "RUN_TESTER_WARMUP_LEASE_FAILED")) {
+            return false;
+        }
+        fromRun.heartbeatAt = (long)fromNow;
+        fromRun.leaseExpiresAt = (long)fromLeaseExpires;
         return true;
     }
 

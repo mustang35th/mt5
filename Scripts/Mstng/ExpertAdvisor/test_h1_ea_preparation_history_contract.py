@@ -42,7 +42,8 @@ def evaluate(expression, values):
     expression = re.sub(r"!(?!=)", " not ", expression).strip()
     comparisons = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt,
                    ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge}
-    operations = {ast.BitAnd: operator.and_, ast.LShift: operator.lshift,
+    operations = {ast.Add: operator.add, ast.Sub: operator.sub,
+                  ast.BitAnd: operator.and_, ast.LShift: operator.lshift,
                   ast.Div: operator.floordiv}
 
     def visit(node):
@@ -128,15 +129,16 @@ class PreparationHistoryContractTests(unittest.TestCase):
         for field in ("Status", "Reason", "MissingMask", "UnsynchronizedMask", "Time"):
             self.assertIn("this.lastPreparationLog" + field + " =", log)
 
-    def test_daily_summary_requires_tester_and_first_28_timer_events(self):
+    def test_daily_summary_requires_tester_and_a_complete_warmup_or_28_timer_events(self):
         log = method(self.parent, "logHistoryWaitSummary")
         guard = "if (!MQLInfoInteger(MQL_TESTER)"
         skip = condition(log, guard)
-        for tester, count, expected in ((False, 28, True), (True, 0, True),
-                                         (True, 27, True), (True, 28, False), (True, 29, False)):
-            with self.subTest(tester=tester, count=count):
+        for tester, count, warmups, expected in ((False, 28, 1, True), (True, 0, 0, True),
+                (True, 27, 0, True), (True, 28, 0, False), (True, 29, 0, False),
+                (True, 0, 1, False), (True, 1, 1, False)):
+            with self.subTest(tester=tester, count=count, warmups=warmups):
                 self.assertEqual(evaluate(skip, {"MQLInfoInteger(MQL_TESTER)": tester,
-                    "this.timerCount": count, "ArraySize(this.controllers)": 28}), expected)
+                    "this.timerCount": count, "this.warmupCount": warmups, "ArraySize(this.controllers)": 28}), expected)
         self.assertEqual(branch(log, guard), "return;")
         record = method(self.parent, "recordTimerDuration")
         self.assertLess(record.index("this.timerCount++"), record.index("this.logHistoryWaitSummary()"))
@@ -205,9 +207,11 @@ class PreparationHistoryContractTests(unittest.TestCase):
                     "persistence.", "Database", "executor.", "strategy.analyze", "strategy.evaluate",
                     "OrderSend", "entryState.", "decisionQueue", "EventSet", "Sleep("):
                 self.assertNotIn(forbidden, body, name)
-        for name in ("onTimer", "processWarmupPreparation"):
-            body = method(self.parent, name)
-            self.assertIn("if (!MQLInfoInteger(MQL_TESTER) && (previousState.status != currentState.status", body)
+        body = method(self.parent, "onTimer")
+        self.assertIn("if (!MQLInfoInteger(MQL_TESTER) && (previousState.status != currentState.status", body)
+        warmup = method(self.parent, "processWarmupPreparation")
+        self.assertNotIn("this.logger.", warmup)
+        self.assertIn("this.logHistoryWaitSummary()", warmup)
 
 
 if __name__ == "__main__":

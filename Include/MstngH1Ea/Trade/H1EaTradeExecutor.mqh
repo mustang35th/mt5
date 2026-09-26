@@ -225,10 +225,15 @@ public:
     /**
      * Tester準備中の軽量経路に使える、取引履歴を持たない空状態を確認する。
      * メモリだけを参照し、現在の全注文・全Position・Lease期限はControllerが別途確認する。
+     * 明示された全通貨Tester予約中だけ、停止済みのbroker権限を空状態として許可する。
      */
-    bool isIdleForTesterWarmup() const {
+    bool isIdleForTesterWarmup(const bool fromAllowSuspendedAuthority = false) const {
+        bool authorityKnown = this.knownLeaseExpires > 0;
+        if (fromAllowSuspendedAuthority && MQLInfoInteger(MQL_TESTER) && this.knownLeaseExpires == 0) {
+            authorityKnown = true;
+        }
         if (!this.initialized || !this.loaded || !this.idleReconciled || this.persistence == NULL
-                || this.runId <= 0 || !this.lockHeld || this.knownLeaseExpires <= 0
+                || this.runId <= 0 || !this.lockHeld || !authorityKnown
                 || this.active || this.ownershipLost || this.queueOverflow || ArraySize(this.saveQueue) > 0
                 || this.recoveryCommitPending || this.orderReadFailed || this.pendingStored
                 || this.dealHistoryPending || !this.closedDealAuditChecked

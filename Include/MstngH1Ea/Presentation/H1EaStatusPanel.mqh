@@ -114,8 +114,11 @@ public:
         if (fromState.beforeTradeStart) {
             mode = "売買開始前";
         }
-        string title = "H1 EA ALL  |  " + fromState.sourceMode + "  |  " + mode
-            + "  " + IntegerToString(fromState.timerSeconds) + "s";
+        string timing = IntegerToString(fromState.timerSeconds) + "s";
+        if (fromState.beforeTradeStart && fromState.fastWarmup && fromState.timerSeconds == 0) {
+            timing = "Tick / 1時間";
+        }
+        string title = "H1 EA ALL  |  " + fromState.sourceMode + "  |  " + mode + "  " + timing;
         if (this.compact) {
             title = "H1 EA ALL";
         }

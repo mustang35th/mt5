@@ -50,6 +50,7 @@ public:
         this.executorInitialized = false;
         this.auditStateLost = false;
         this.leaseLost = false;
+        this.scheduledTickWarmup = false;
         this.nextMaintenanceTick = 0;
         this.nextEntryTick = 0;
         this.lockAcquiredAt = 0;
@@ -160,7 +161,7 @@ public:
             return false;
         }
         this.initializeRun();
-        this.run.programVersion = "1.08";
+        this.run.programVersion = "1.09";
         if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
             this.restorationError = "CONFIG_HASH_UNAVAILABLE";
             return false;
@@ -194,7 +195,8 @@ public:
     bool canEnableProtection() {
         return this.started && this.persistencePreparation && this.databaseReady
             && this.countsRestored && this.executorInitialized && !this.leaseLost
-            && this.instanceLock.isHeld() && this.run.id > 0 && this.run.leaseExpiresAt > TimeLocal();
+            && !this.scheduledTickWarmup && this.instanceLock.isHeld()
+            && this.run.id > 0 && this.run.leaseExpiresAt > TimeLocal();
     }
 
     /**
@@ -224,7 +226,8 @@ public:
     datetime getPendingEntryBar() {
         if (!this.started || !this.persistencePreparation || !this.entryEnabled
                 || !this.protectionEnabled || !this.countsRestored || !this.executorInitialized
-                || this.run.id <= 0 || this.leaseLost || this.run.leaseExpiresAt <= TimeLocal()
+                || this.scheduledTickWarmup || this.run.id <= 0 || this.leaseLost
+                || this.run.leaseExpiresAt <= TimeLocal()
                 || this.config.isBeforeTesterTradeStart(TimeCurrent())
                 || H1EaClock::milliseconds() < this.nextScheduledEntryTick) {
             return 0;
@@ -278,7 +281,7 @@ public:
      */
     datetime getPendingTrailBar() {
         if (!this.started || !this.protectionEnabled || !this.executorInitialized
-                || this.leaseLost || this.run.leaseExpiresAt <= TimeLocal()) {
+                || this.scheduledTickWarmup || this.leaseLost || this.run.leaseExpiresAt <= TimeLocal()) {
             return 0;
         }
         datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
@@ -346,6 +349,9 @@ public:
         if (!this.started || !this.persistencePreparation) {
             return;
         }
+        if (this.scheduledTickWarmup && !this.endScheduledTickWarmup()) {
+            return;
+        }
         if (fromFastWarmup && this.canUseScheduledFastTesterWarmup()) {
             this.maintainFastTesterWarmup();
             return;
@@ -363,10 +369,88 @@ public:
                 || !this.databaseReady || !this.countsRestored || !this.executorInitialized
                 || this.auditStateLost || this.leaseLost || !this.instanceLock.isHeld()
                 || this.run.id <= 0 || this.run.leaseExpiresAt <= TimeLocal()
+                || this.preparationState.status == "ERROR"
                 || ArraySize(this.decisionQueue) > 0) {
             return false;
         }
-        return this.executor.isIdleForTesterWarmup();
+        return this.executor.isIdleForTesterWarmup(this.scheduledTickWarmup);
+    }
+
+    /**
+     * 空の全通貨Tester Runを予約し、親のTimer停止前にbroker権限を止める。
+     */
+    bool beginScheduledTickWarmup() {
+        if (this.scheduledTickWarmup) {
+            return this.canUseScheduledFastTesterWarmup();
+        }
+        if (!this.config.isTester || !this.persistencePreparation || this.run.sessionUid == ""
+                || !this.canUseScheduledFastTesterWarmup()) {
+            return false;
+        }
+        if (!this.persistence.beginTesterWarmupLease(this.run, TimeLocal())) {
+            this.databaseReady = false;
+            this.executor.setManagementAuthority(this.instanceLock.isHeld(), 0);
+            this.logger.error(__FUNCTION__, this.persistence.getLastError());
+            return false;
+        }
+        this.scheduledTickWarmup = true;
+        this.updateManagementAuthority();
+        return true;
+    }
+
+    /**
+     * 毎時のTickから予約だけを維持する。通常heartbeatや売買照合は行わない。
+     */
+    bool maintainScheduledTickWarmup() {
+        if (!this.scheduledTickWarmup || !this.canUseScheduledFastTesterWarmup()) {
+            return false;
+        }
+        datetime now = TimeLocal();
+        if ((long)now < this.run.heartbeatAt + 3600) {
+            return true;
+        }
+        if (!this.persistence.heartbeatTesterWarmupLease(this.run, now)) {
+            this.databaseReady = false;
+            this.updateManagementAuthority();
+            this.logger.error(__FUNCTION__, this.persistence.getLastError());
+            return false;
+        }
+        this.updateManagementAuthority();
+        return true;
+    }
+
+    /**
+     * 予約を通常60秒Leaseへ戻せた通貨だけbroker権限を復帰する。
+     * DB失敗中も予約フラグを保持し、親の通常Timerから再試行する。
+     */
+    bool endScheduledTickWarmup() {
+        if (!this.scheduledTickWarmup) {
+            return true;
+        }
+        if (!this.started || !this.persistencePreparation || !this.config.isTester
+                || this.leaseLost || !this.instanceLock.isHeld()) {
+            this.updateManagementAuthority();
+            return false;
+        }
+        if ((!this.databaseReady && !this.persistence.open(this.config.databaseFileName, false))
+                || !this.persistence.endTesterWarmupLease(this.run, TimeLocal())) {
+            this.databaseReady = false;
+            this.updateManagementAuthority();
+            this.logger.error(__FUNCTION__, this.persistence.getLastError());
+            return false;
+        }
+        this.scheduledTickWarmup = false;
+        this.databaseReady = true;
+        this.nextMaintenanceTick = 0;
+        this.updateManagementAuthority();
+        return true;
+    }
+
+    /**
+     * Tick起点の準備予約が未解除か返す。解除のDB失敗中もtrueを維持する。
+     */
+    bool isScheduledTickWarmup() const {
+        return this.scheduledTickWarmup;
     }
 
     /**
@@ -412,8 +496,8 @@ public:
         fromState.reset();
         fromState.run = this.run;
         fromState.databaseReady = this.databaseReady;
-        fromState.protectionEnabled = this.protectionEnabled;
-        fromState.entryEnabled = this.entryEnabled;
+        fromState.protectionEnabled = this.protectionEnabled && !this.scheduledTickWarmup;
+        fromState.entryEnabled = this.entryEnabled && !this.scheduledTickWarmup;
         fromState.countsRestored = this.countsRestored;
         fromState.tradeRestored = this.executor.getRestoredTrade(fromState.trade, fromState.hasActiveTrade);
         fromState.decisionBar = this.restoredDecisionBar;
@@ -473,6 +557,13 @@ public:
             fromState.reason = this.persistence.getLastError();
         } else if (ArraySize(this.decisionQueue) > 0 || this.executor.hasUnsavedEvents()) {
             fromState.status = "SAVE_PENDING";
+        } else if (this.scheduledTickWarmup) {
+            fromState.status = "WARMUP_LEASE_RESTORE_WAIT";
+            if (fromBeforeTradeStart) {
+                fromState.category = "PREPARING";
+                fromState.status = "WARMUP";
+                fromState.reason = this.preparationState.status + " " + this.preparationState.reason;
+            }
         } else if (!fromTimerReady) {
             fromState.status = "TIMER_WAIT";
         } else if (this.preparationState.status == "ERROR") {
@@ -641,7 +732,8 @@ public:
      * 通貨単位の管理権限を更新し、brokerの取引状態を照合する。
      */
     void processTradeReconciliation() {
-        if (!this.started || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
+        if (!this.started || this.scheduledTickWarmup
+                || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
         this.updateManagementAuthority();
@@ -654,7 +746,8 @@ public:
      * @param fromBarTime この通貨で取得した現在H1バー。取得不能時は0。
      */
     void processProtection(const datetime fromBarTime) {
-        if (!this.started || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
+        if (!this.started || this.scheduledTickWarmup
+                || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
         this.processTradeReconciliation();
@@ -667,7 +760,8 @@ public:
      * @param fromBarTime 保護処理と共通の、この通貨の現在H1バー。
      */
     void processTrail(const datetime fromBarTime) {
-        if (!this.started || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
+        if (!this.started || this.scheduledTickWarmup
+                || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
         if (fromBarTime > 0 && fromBarTime != this.lastTrailObservedBar) {
@@ -805,6 +899,7 @@ public:
         this.strategy.destroy();
         this.instanceLock.release();
         this.protectionEnabled = false;
+        this.scheduledTickWarmup = false;
         this.persistencePreparation = false;
         this.preparationBeforeTradeStart = false;
         this.preparationState.reset();
@@ -875,6 +970,8 @@ private:
     bool auditStateLost;
     /** 失効したLeaseを同じRunで復活させない。 */
     bool leaseLost;
+    /** 全通貨TesterのTick準備予約。通常Leaseへ戻るまでbroker権限を停止する。 */
+    bool scheduledTickWarmup;
     /** 次のDB再接続・キュー処理時刻。 */
     ulong nextMaintenanceTick;
     /** LIVE Entryの次回評価時刻。 */
@@ -1100,6 +1197,10 @@ private:
      * 通常のDB再試行は最短5秒間隔とする。
      */
     void maintainPersistence(const bool fromFastWarmup = false) {
+        if (this.scheduledTickWarmup) {
+            this.updateManagementAuthority();
+            return;
+        }
         int heartbeatSeconds = 10;
         ulong maintenanceMilliseconds = 5000;
         if (fromFastWarmup) {
@@ -1148,7 +1249,8 @@ private:
             return;
         }
         datetime expires = (datetime)this.run.leaseExpiresAt;
-        if (this.leaseLost || (this.persistencePreparation && !this.protectionEnabled)) {
+        if (this.leaseLost || this.scheduledTickWarmup
+                || (this.persistencePreparation && !this.protectionEnabled)) {
             expires = 0;
         }
         this.executor.setManagementAuthority(this.instanceLock.isHeld(), expires);
@@ -1158,6 +1260,9 @@ private:
      * 対象バーの最初の分析成功時だけJudge・Entryを確定する。
      */
     void evaluateEntry(const bool fromNormalTimerReady) {
+        if (this.scheduledTickWarmup) {
+            return;
+        }
         if (this.config.isBeforeTesterTradeStart(TimeCurrent())) {
             this.processTesterWarmup();
             return;

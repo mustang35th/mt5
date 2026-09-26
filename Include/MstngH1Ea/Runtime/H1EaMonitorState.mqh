@@ -112,6 +112,12 @@ struct H1EaMonitorState {
     ulong lastTimerMicros;
     /** 最大Timer処理実時間。 */
     ulong maxTimerMicros;
+    /** Tick起点の28通貨準備回数。 */
+    ulong warmupCount;
+    /** 直近の28通貨準備実時間。 */
+    ulong lastWarmupMicros;
+    /** 最大の28通貨準備実時間。 */
+    ulong maxWarmupMicros;
     /** 全通貨の分析回数。 */
     ulong analysisCount;
     /** 全通貨で最後の分析実時間。 */
@@ -147,6 +153,9 @@ struct H1EaMonitorState {
         this.timerCount = 0;
         this.lastTimerMicros = 0;
         this.maxTimerMicros = 0;
+        this.warmupCount = 0;
+        this.lastWarmupMicros = 0;
+        this.maxWarmupMicros = 0;
         this.analysisCount = 0;
         this.lastAnalysisMicros = 0;
         this.maxAnalysisMicros = 0;

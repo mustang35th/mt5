@@ -136,7 +136,9 @@ class MultiSymbolPreparationTests(unittest.TestCase):
                      "processProtection", "processTrail", "processEntry", "processTradeReconciliation",
                      "processWarmup", "canUseFastTesterWarmup", "onTradeTransaction"):
             self.assertIn("this.persistencePreparation", method(self.child, name), name)
-        self.assertIn("this.leaseLost || (this.persistencePreparation && !this.protectionEnabled)", method(self.child, "updateManagementAuthority"))
+        authority = code_only(method(self.child, "updateManagementAuthority"))
+        self.assertIn("this.leaseLost || this.scheduledTickWarmup", authority)
+        self.assertIn("(this.persistencePreparation && !this.protectionEnabled)", authority)
         body = code_only(method(self.child, "connectAndRestore"))
         branch = body.split("if (this.persistencePreparation) {", 1)[1].split("}", 1)[0]
         self.assertIn("this.executor.restoreFromDatabase()", branch)

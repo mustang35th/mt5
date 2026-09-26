@@ -2,6 +2,7 @@
 #define MSTNGH1EA_MULTISYMBOLCONTROLLER_MQH
 
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Database\SqliteDatabase.mqh>
 #include <MstngH1Ea\H1EaController.mqh>
 #include <MstngH1Ea\Runtime\H1EaEventTimer.mqh>
 #include <MstngH1Ea\Runtime\H1EaMonitorState.mqh>
@@ -9,7 +10,7 @@
 #include <MstngH1Ea\Runtime\H1EaTradeTransactionRouter.mqh>
 
 /**
- * 固定28通貨のControllerを所有し、1本のTimerで順番に履歴を準備する。
+ * 固定28通貨を通常はTimerで巡回し、Testerの空待機中はTickで毎時まとめて準備する。
  * 全通貨の保護を優先し、トレイルまたはEntryを1イベント1分析で巡回する。子Timerは開始しない。
  */
 class H1EaMultiSymbolController {
@@ -115,6 +116,9 @@ public:
                 return this.fail("SYMBOL_CONFIGURATION_OR_LOCK_FAILED: " + symbol.symbolName + " " + state.reason);
             }
         }
+        if (!this.cleanupTesterWarmupReservations(databaseFileName)) {
+            return this.fail("TESTER_WARMUP_CLEANUP_FAILED");
+        }
         // 全Lock取得後、親だけがschema移行を行う。子は既存schemaへ接続するだけ。
         H1EaDatabaseContext database;
         if (!database.open(databaseFileName, true)) {
@@ -174,7 +178,7 @@ public:
      * 全通貨の保護を先に実行し、重い履歴準備とトレイル/Entry分析は最大1通貨へ制限する。
      */
     void onTimer() {
-        if (!this.started || !this.timerStarted) {
+        if (!this.started || !this.timerStarted || this.fastWarmupActive) {
             return;
         }
         ulong timerStartedMicros = GetMicrosecondCount();
@@ -182,7 +186,6 @@ public:
         if (this.fastWarmupActive) {
             this.lastProtectionClock = 0;
             this.lastProtectionGapMs = 0;
-            this.processWarmupPreparation();
             this.recordTimerDuration(timerStartedMicros);
             return;
         }
@@ -307,6 +310,12 @@ public:
         if (!this.started || !this.timerStarted) {
             return;
         }
+        if (this.fastWarmupActive) {
+            // Tickが途絶えても通知キューを次のTimerで処理できるよう再開する。
+            this.updateEventTimer(false);
+            this.fastWarmupActive = false;
+            this.lastWarmupPreparationTime = 0;
+        }
         string symbol = H1EaTradeTransactionRouter::explicitSymbol(fromTransaction, fromRequest);
         if (symbol != "") {
             int symbolIndex = this.findSymbolIndex(symbol);
@@ -393,6 +402,9 @@ public:
         fromState.timerCount = this.timerCount;
         fromState.lastTimerMicros = this.lastTimerMicros;
         fromState.maxTimerMicros = this.maxTimerMicros;
+        fromState.warmupCount = this.warmupCount;
+        fromState.lastWarmupMicros = this.lastWarmupMicros;
+        fromState.maxWarmupMicros = this.maxWarmupMicros;
         fromState.lastProtectionGapMs = this.lastProtectionGapMs;
         fromState.maxProtectionGapMs = this.maxProtectionGapMs;
         fromState.memoryMb = MQLInfoInteger(MQL_MEMORY_USED);
@@ -401,7 +413,7 @@ public:
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             this.controllers[i].getMonitorState(fromState.symbols[i], fromState.beforeTradeStart,
                 this.eventTimer.isNormalReady() || (fromState.beforeTradeStart
-                    && fromState.fastWarmup && fromState.timerSeconds == 30), currentBar);
+                    && fromState.fastWarmup && fromState.timerSeconds == 0), currentBar);
             fromState.symbolCount++;
             if (fromState.symbols[i].historyReady) {
                 fromState.historyReadyCount++;
@@ -441,7 +453,7 @@ public:
      * 親のTimerを止め、作成済みの全通貨Controllerを一度ずつ解放する。
      */
     void shutdown(const int fromReason) {
-        if (this.started && this.timerCount > 0) {
+        if (this.started && (this.timerCount > 0 || this.warmupCount > 0)) {
             this.logRuntimeMetrics(true);
         }
         if (this.timerStarted) {
@@ -479,6 +491,16 @@ private:
     ulong lastProtectionGapMs;
     /** 起動後の最大保護巡回間隔。 */
     ulong maxProtectionGapMs;
+    /** 子に待機予約を設定済み、または予約解除の再試行が必要な場合true。 */
+    bool warmupReservationsPending;
+    /** Tick起点で28通貨を最後に準備したテスト内時刻。0は未実行。 */
+    datetime lastWarmupPreparationTime;
+    /** 待機中の28通貨一括準備回数。初回のTimer経由も含み、Timer回数とは区別する。 */
+    ulong warmupCount;
+    /** 直近の28通貨準備実時間。 */
+    ulong lastWarmupMicros;
+    /** 最大の28通貨準備実時間。 */
+    ulong maxWarmupMicros;
     /** 次の定期計測ログを出せる巡回時計。 */
     ulong nextMetricsLogTick;
     /** 待機中の計測ログを最後に出したTester内サーバー日。未出力は-1。 */
@@ -489,7 +511,7 @@ private:
     H1EaController *controllers[28];
     /** 全通貨の登録を完了したか。 */
     bool started;
-    /** この親がTimerを開始したか。 */
+    /** 親のイベント処理を開始済みか。待機中のTimer停止でもtrueを保持する。 */
     bool timerStarted;
     /** Testerの売買開始日時。0は準備期間なし。 */
     datetime testerTradeStartTime;
@@ -530,6 +552,11 @@ private:
         this.lastProtectionClock = 0;
         this.lastProtectionGapMs = 0;
         this.maxProtectionGapMs = 0;
+        this.warmupReservationsPending = false;
+        this.lastWarmupPreparationTime = 0;
+        this.warmupCount = 0;
+        this.lastWarmupMicros = 0;
+        this.maxWarmupMicros = 0;
         this.nextMetricsLogTick = 0;
         this.lastWaitingMetricsLogDay = -1;
         this.lastHistorySummaryDay = -1;
@@ -564,10 +591,11 @@ private:
 
     /**
      * Tester内のサーバー日ごとに、取得済み履歴状態だけで28通貨の待機を1行に集約する。
-     * 初回28イベントは通貨巡回を優先し、履歴の再取得や売買判定は行わない。
+     * 初回一括準備後、または通常巡回28イベント後に集計する。履歴取得や売買判定は行わない。
      */
     void logHistoryWaitSummary() {
-        if (!MQLInfoInteger(MQL_TESTER) || this.timerCount < (ulong)ArraySize(this.controllers)) {
+        if (!MQLInfoInteger(MQL_TESTER) || (this.warmupCount == 0
+                && this.timerCount < (ulong)ArraySize(this.controllers))) {
             return;
         }
         long currentDay = (long)TimeCurrent() / 86400;
@@ -647,6 +675,9 @@ private:
             + " timerCount=" + H1EaTextUtil::ticket(state.timerCount)
             + " timerMs=" + DoubleToString((double)state.lastTimerMicros / 1000.0, 2)
             + " timerMaxMs=" + DoubleToString((double)state.maxTimerMicros / 1000.0, 2)
+            + " warmupCount=" + H1EaTextUtil::ticket(state.warmupCount)
+            + " warmupMs=" + DoubleToString((double)state.lastWarmupMicros / 1000.0, 2)
+            + " warmupMaxMs=" + DoubleToString((double)state.maxWarmupMicros / 1000.0, 2)
             + " analysisCount=" + H1EaTextUtil::ticket(state.analysisCount)
             + " analysisMs=" + DoubleToString((double)state.lastAnalysisMicros / 1000.0, 2)
             + " analysisMaxMs=" + DoubleToString((double)state.maxAnalysisMicros / 1000.0, 2)
@@ -665,11 +696,10 @@ private:
 
     /**
      * 全通貨の照合済み空状態と口座全体の無保有を確認してから高速化する。
-     * 売買開始の30秒前には通常周期へ戻し、開始境界の待ちを短くする。
+     * 売買開始へ到達したイベントでは通常周期へ戻す。
      */
     bool canUseFastTesterWarmup() {
         if (!this.started || !this.timerStarted || !this.isBeforeTesterTradeStart()
-                || TimeCurrent() + 30 >= this.testerTradeStartTime
                 || PositionsTotal() != 0 || OrdersTotal() != 0) {
             return false;
         }
@@ -698,43 +728,145 @@ private:
     }
 
     /**
-     * 全通貨が安全な間だけ30秒保守を使用し、保守後も高速化条件を再確認する。
+     * 全通貨の空状態を確認し、Tester開始前だけTimerを止めてTickで準備する。
+     * 各Runの予約に成功してからTimerを停止し、通常処理への復帰は予約解除後に行う。
      */
     bool processFastTesterWarmup() {
-        bool fastWarmup = this.canUseFastTesterWarmup();
-        if (!this.updateEventTimer(fastWarmup)) {
+        if (!this.canUseFastTesterWarmup()) {
+            this.endFastTesterWarmup();
             return false;
         }
-        if (!fastWarmup) {
+        if (!this.fastWarmupActive) {
+            this.warmupReservationsPending = true;
+            for (int i = 0; i < ArraySize(this.controllers); i++) {
+                if (!this.controllers[i].beginScheduledTickWarmup()) {
+                    this.endFastTesterWarmup();
+                    return false;
+                }
+            }
+            EventKillTimer();
+            this.eventTimer.reset();
+            this.fastWarmupActive = true;
+            this.lastWarmupPreparationTime = 0;
+            this.timerLogger.info(__FUNCTION__, "TESTER_TICK_WARMUP START symbols=28 interval=3600 timer=OFF");
+        }
+        if (!this.processWarmupPreparation() || !this.canUseFastTesterWarmup()) {
+            this.endFastTesterWarmup();
             return false;
         }
-        for (int i = 0; i < ArraySize(this.controllers); i++) {
-            this.controllers[i].processPersistencePreparation(true);
-        }
-        if (this.canUseFastTesterWarmup()) {
-            return true;
-        }
-        this.updateEventTimer(false);
-        return false;
+        return true;
     }
 
     /**
-     * 安全な高速準備期間は、1イベントで1通貨の履歴だけを確認する。
-     * 波動分析・Judge・現在バーのDecision照会は行わない。
+     * 通常Timerを再開して全Runの予約解除を試みる。失敗した通貨は子側で操作を停止する。
      */
-    void processWarmupPreparation() {
-        int symbolIndex = this.nextSymbolIndex;
-        this.nextSymbolIndex = (this.nextSymbolIndex + 1) % ArraySize(this.controllers);
-        H1EaPreparationState previousState;
-        H1EaPreparationState currentState;
-        this.controllers[symbolIndex].getPreparationState(previousState);
-        this.controllers[symbolIndex].processPreparation();
-        this.controllers[symbolIndex].getPreparationState(currentState);
-        if (!MQLInfoInteger(MQL_TESTER) && (previousState.status != currentState.status
-                || previousState.reason != currentState.reason)) {
-            this.logger.info(__FUNCTION__, currentState.symbolName + " " + currentState.status
-                + " H1=" + IntegerToString(currentState.h1BarTime) + " " + currentState.reason);
+    void endFastTesterWarmup() {
+        bool wasActive = this.fastWarmupActive;
+        this.updateEventTimer(false);
+        if (!wasActive && !this.warmupReservationsPending) {
+            return;
         }
+        bool restored = true;
+        for (int i = 0; i < ArraySize(this.controllers); i++) {
+            if (this.controllers[i].isScheduledTickWarmup()) {
+                if (!this.controllers[i].endScheduledTickWarmup()) {
+                    restored = false;
+                }
+                this.logRestorationState(i);
+            }
+        }
+        this.warmupReservationsPending = !restored;
+        this.fastWarmupActive = false;
+        this.lastWarmupPreparationTime = 0;
+        if (wasActive) {
+            this.timerLogger.info(__FUNCTION__, "TESTER_TICK_WARMUP END timerSeconds=" + IntegerToString(this.eventTimer.getSeconds()));
+        }
+    }
+
+    /**
+     * 初回とテスト内1時間経過後のTickで、28通貨をまとめて準備する。
+     * Tick欠落分を繰り返し処理せず現在時刻で1回だけ確認し、分析・Judge・発注は行わない。
+     */
+    bool processWarmupPreparation() {
+        datetime now = TimeCurrent();
+        if (this.lastWarmupPreparationTime > 0 && now >= this.lastWarmupPreparationTime
+                && now - this.lastWarmupPreparationTime < 3600) {
+            return true;
+        }
+        this.lastWarmupPreparationTime = now;
+        ulong startedMicros = GetMicrosecondCount();
+        bool prepared = true;
+        for (int i = 0; i < ArraySize(this.controllers); i++) {
+            if (!this.controllers[i].maintainScheduledTickWarmup()) {
+                this.logRestorationState(i);
+                prepared = false;
+                break;
+            }
+            this.controllers[i].processPreparation();
+        }
+        this.warmupCount++;
+        this.lastWarmupMicros = GetMicrosecondCount() - startedMicros;
+        if (this.lastWarmupMicros > this.maxWarmupMicros) {
+            this.maxWarmupMicros = this.lastWarmupMicros;
+        }
+        this.logRuntimeMetrics(false);
+        this.logHistoryWaitSummary();
+        return prepared;
+    }
+
+    /**
+     * 全28通貨のOS Lock取得後に、同じ管理対象の異常終了したTester待機予約だけを整理する。
+     * schema移行より先に実行し、LIVE・通常Lease・別口座・別Magicは変更しない。
+     */
+    bool cleanupTesterWarmupReservations(const string fromFileName) {
+        if (!MQLInfoInteger(MQL_TESTER)) {
+            return true;
+        }
+        SqliteDatabase database(fromFileName, true);
+        if (!database.open()) {
+            return false;
+        }
+        int handle = database.getHandle();
+        long tableCount = 0;
+        if (!H1EaSql::scalar(handle, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name='h1_ea_runs'", tableCount)) {
+            return false;
+        }
+        if (tableCount == 0) {
+            return true;
+        }
+        long sessionColumnCount = 0;
+        if (!H1EaSql::scalar(handle, "SELECT COUNT(*) FROM pragma_table_info('h1_ea_runs') WHERE name='session_uid'", sessionColumnCount)) {
+            return false;
+        }
+        if (sessionColumnCount == 0) {
+            return true;
+        }
+        if (!H1EaSql::execute(handle, "PRAGMA busy_timeout=5000") || !H1EaSql::execute(handle, "BEGIN IMMEDIATE")) {
+            return false;
+        }
+        bool success = true;
+        for (int i = 0; i < ArraySize(this.controllers); i++) {
+            H1EaRestorationState state;
+            this.controllers[i].getRestorationState(state);
+            string sql = "UPDATE h1_ea_runs SET status='INTERRUPTED',ended_at=heartbeat_at,lease_expires_at=heartbeat_at"
+                + ",error_text=error_text||'|TESTER_WARMUP_ABANDONED' WHERE source_mode='TESTER' AND status='RUNNING'"
+                + " AND lease_expires_at=" + IntegerToString((long)H1EaPersistenceService::getTesterWarmupLeaseExpiresAt())
+                + " AND account_server=" + H1EaSql::text(state.run.accountServer)
+                + " AND account_login=" + IntegerToString(state.run.accountLogin)
+                + " AND symbol_name=" + H1EaSql::text(state.run.symbolName)
+                + " AND time_frame=" + IntegerToString(PERIOD_H1)
+                + " AND magic_number=" + H1EaSql::text(state.run.magicNumber)
+                + " AND session_uid IS NOT NULL AND session_uid<>" + H1EaSql::text(this.sessionUid);
+            if (!H1EaSql::execute(handle, sql)) {
+                success = false;
+                break;
+            }
+        }
+        if (success && H1EaSql::execute(handle, "COMMIT")) {
+            return true;
+        }
+        H1EaSql::execute(handle, "ROLLBACK");
+        return false;
     }
 
     /**

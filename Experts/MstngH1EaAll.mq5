@@ -10,7 +10,7 @@
  * 第8段階では全体上限なしの基準テスト用に、口座推移・保有リスク・約定履歴を出力する。
  */
 #property copyright "Copyright 2026, Mstng"
-#property version "1.08"
+#property version "1.09"
 #property strict
 #property description "28通貨H1の新規Entry・ポジション・SL管理"
 
@@ -44,6 +44,10 @@ H1EaMultiSymbolController *controller = NULL;
 int OnInit() {
     if (controller != NULL) {
         return INIT_FAILED;
+    }
+    if (MQLInfoInteger(MQL_TESTER)) {
+        // 分析用インジケーターの自動表示を抑止する。
+        TesterHideIndicators(true);
     }
     controller = new H1EaMultiSymbolController();
     if (controller == NULL) {
