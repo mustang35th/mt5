@@ -111,9 +111,20 @@ def _parameters(params: dict[str, list[str]], allowed: set[str]) -> dict[str, st
 def _display_interval(values: dict[str, str]) -> int:
     """The display interval samples saved M5 observations without aggregation."""
     value = values.get("displayInterval", "5")
-    if value not in {"5", "15"}:
-        raise M5RequestError("displayInterval must be 5 or 15")
+    if value not in {"5", "15", "60", "240", "1440"}:
+        raise M5RequestError("displayInterval must be 5, 15, 60, 240 or 1440")
     return int(value)
+
+
+def _interval_predicate(display_interval: int) -> str:
+    """Use server bar boundaries for hourly/daily sampling, preserving saved JST for display."""
+    return {
+        5: "",
+        15: " AND o.anchor_jst_time % 900 = 0",
+        60: " AND o.anchor_bar_time % 3600 = 0",
+        240: " AND o.anchor_bar_time % 14400 = 0",
+        1440: " AND o.anchor_bar_time % 86400 = 0",
+    }[display_interval]
 
 
 def _positive(value: str | None, name: str, default: int | None = None) -> int:
@@ -451,8 +462,7 @@ class M5ObservationDatabase:
             AND o.anchor_time_frame = 5 AND {M5_RUN_PREDICATE}
             AND o.anchor_jst_time >= :first AND o.anchor_jst_time < :last"""
         parameters: dict[str, Any] = {"run_id": run_id, "source_mode": mode, "first": first, "last": last}
-        if display_interval == 15:
-            where += " AND o.anchor_jst_time % 900 = 0"
+        where += _interval_predicate(display_interval)
         if values.get("symbol"):
             where += " AND o.symbol_name = :symbol"
             parameters["symbol"] = values["symbol"]
@@ -530,8 +540,7 @@ class M5ObservationDatabase:
         stream_columns = ("run_id", "source_mode", "source_server", "symbol_name",
                           "capture_phase", "analysis_version", "analysis_input_hash")
         stream = " AND ".join(f"o.{name} = :{name}" for name in stream_columns)
-        if display_interval == 15:
-            stream += " AND o.anchor_jst_time % 900 = 0"
+        stream += _interval_predicate(display_interval)
         result = {}
         for name, operator, direction in (("older", "<", "DESC"), ("newer", ">", "ASC")):
             row = connection.execute(text(f"""

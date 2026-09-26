@@ -5,7 +5,7 @@ import "./M5AlertSnapshot.css";
 
 type Analysis = "ORIGINAL" | "CORRECTED";
 type View = "selected" | "original" | "comparison";
-interface SnapshotRow { label: string; frame: number; analysis: Analysis; timeFrame: AlertTimeFrame | null; point: AlertPoint | null }
+interface SnapshotRow { label: string; frame: number; analysis: Analysis; timeFrame: AlertTimeFrame | null; point: AlertPoint | null; previousMotiveSub: string }
 interface Column {
   id: string;
   label: string;
@@ -55,6 +55,19 @@ function wave(row: SnapshotRow): string {
   if (row.timeFrame.latest_sub_elliot_label) suffix = "." + row.timeFrame.latest_sub_elliot_label;
   return symbol + text(row.timeFrame.latest_elliot_label) + suffix;
 }
+/** Read only the matching timeframe header from its own saved analysis. */
+function previousMotiveSub(analysisText: string | undefined, frameLabel: string): string {
+  if (!analysisText) return missing;
+  const headers = analysisText.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith(frameLabel + "/"));
+  if (headers.length !== 1) return missing;
+  const header = /^(?:BUY|SELL)\/(.+)$/.exec(headers[0].slice(frameLabel.length + 1));
+  if (!header || !header[1].trim()) return missing;
+  const body = header[1].trim();
+  const marker = /^\[([13])副\]\s+\S/.exec(body);
+  if (marker) return marker[1] + "波に副次波あり";
+  if (body.includes("副")) return missing;
+  return "記載なし";
+}
 function emaDirection(row: SnapshotRow): string {
   if (row.frame === 49153) return "対象外（MN1）";
   if (!row.timeFrame?.is_ema200_available) return missing;
@@ -96,6 +109,7 @@ function emaField(id: keyof AlertTimeFrame, label: string, digits = 0, signed = 
 }
 const columns: Column[] = [
   { id: "state", label: "Wave状態", summary: true, get: (row) => row.timeFrame?.is_wave_confirmed, display: (row) => flag(row.timeFrame?.is_wave_confirmed, "確定", "形成中") },
+  { id: "previous-motive-sub", label: "直前推進波の副次波", summary: true, get: (row) => row.previousMotiveSub },
   { id: "added", label: "最新点の取得種別", summary: true, get: (row) => row.point?.is_added_point, display: (row) => flag(row.point?.is_added_point, "補完", "通常") },
   { id: "fibonacci", label: "F / FE（元番号に対応）", summary: true, get: (row) => [row.point?.org_elliot_index, row.point?.is_fibonacci_available, row.point?.fibonacci_percent, row.point?.is_fibonacci_expansion_available, row.point?.fibonacci_expansion_percent], display: fibonacci },
   pointField("pips_diff", "pips差", 1, true), pointField("rate", "最新点価格", 5, true),
@@ -149,7 +163,7 @@ const keyColumns: Column[] = [
   { id: "ema-direction", label: "EMA200方向", get: (row) => [row.timeFrame?.is_ema200_available, row.timeFrame?.is_ema200_buy, row.timeFrame?.is_ema200_sell], display: emaDirection },
   { id: "wave", label: "Elliott / Sub", get: (row) => [row.timeFrame?.is_wave_uptrend, row.timeFrame?.latest_elliot_label, row.timeFrame?.latest_sub_elliot_label], display: wave, direction },
 ];
-function rowsFor(timeFrames: AlertTimeFrame[], points: AlertPoint[], analysis: Analysis): SnapshotRow[] {
+function rowsFor(timeFrames: AlertTimeFrame[], points: AlertPoint[], analysis: Analysis, analysisText?: string): SnapshotRow[] {
   return frames.map((frame) => {
     const matches = timeFrames.filter((row) => row.time_frame === frame.id);
     let timeFrame: AlertTimeFrame | null = null;
@@ -159,7 +173,7 @@ function rowsFor(timeFrames: AlertTimeFrame[], points: AlertPoint[], analysis: A
       const latest = points.filter((item) => item.alert_timeframe_id === timeFrame?.id && item.time_frame === frame.id && item.is_latest);
       if (latest.length === 1) point = latest[0];
     }
-    return { label: frame.label, frame: frame.id, analysis, timeFrame, point };
+    return { label: frame.label, frame: frame.id, analysis, timeFrame, point, previousMotiveSub: previousMotiveSub(analysisText, frame.label) };
   });
 }
 function hasDifference(column: Column, first: SnapshotRow, second: SnapshotRow): boolean {
@@ -235,8 +249,8 @@ function SnapshotContent({ detail, timeFrames, points }: M5AlertSnapshotProps) {
   const [view, setView] = useState<View>("selected");
   const [expanded, setExpanded] = useState(false);
   const [changedOnly, setChangedOnly] = useState(false);
-  const originalRows = useMemo(() => rowsFor(timeFrames, points, "ORIGINAL"), [timeFrames, points]);
-  const correctedRows = useMemo(() => rowsFor(detail.correction?.timeframes ?? [], detail.correction?.points ?? [], "CORRECTED"), [detail.correction]);
+  const originalRows = useMemo(() => rowsFor(timeFrames, points, "ORIGINAL", metadata?.original_analysis_text), [timeFrames, points, metadata?.original_analysis_text]);
+  const correctedRows = useMemo(() => rowsFor(detail.correction?.timeframes ?? [], detail.correction?.points ?? [], "CORRECTED", metadata?.corrected_analysis_text), [detail.correction, metadata?.corrected_analysis_text]);
   let selectedRows = originalRows;
   if (applied && view !== "original") selectedRows = correctedRows;
   let visibleRows = selectedRows;
@@ -299,7 +313,7 @@ function SnapshotContent({ detail, timeFrames, points }: M5AlertSnapshotProps) {
         </tr>;
       })}</tbody></table>
     </div>
-    <p className="m5-alert-note">金色は前後で異なる保存値です。BUYは青、SELLは赤。分析方向とWave方向は別項目です。直前推進波の副次波は保存本文で確認できます。</p>
+    <p className="m5-alert-note">金色は前後で異なる保存値です。BUYは青、SELLは赤。分析方向とWave方向は別項目です。直前推進波の副次波は保存本文の[1副]・[3副]を表示します。「記載なし」は本文に印がないことを示し、副次波なしとは断定しません。</p>
     <details className="m5-alert-extra"><summary>最新Waveの全ポイント</summary><div className="m5-alert-analysis-panels">{analyses.map((analysis) => {
       let rows = originalRows;
       let values = points;

@@ -52,6 +52,41 @@ function row(frame: string, analysis: string): HTMLElement {
 afterEach(cleanup);
 
 describe("M5 Alert corrected snapshots", () => {
+  it("shows previous motive subwaves in summary and compares each analysis independently", () => {
+    const data = fixture();
+    data.detail.correction!.metadata!.original_analysis_text = "H1/SELL/[1副] ▲3/\r\nEMA200/SELL/\r\nM5/BUY/▲3/";
+    data.detail.correction!.metadata!.corrected_analysis_text = "H1/BUY/[3副] ▲5/\nEMA200/BUY/\nM5/BUY/[1副] ▲3/";
+    render(<M5AlertSnapshot {...data} />);
+    expect(within(grid()).getByRole("columnheader", { name: "直前推進波の副次波" })).toBeInTheDocument();
+    const cell = (frame: string, analysis: string) => row(frame, analysis).querySelector('[data-column="previous-motive-sub"]');
+    expect(cell("H1", "CORRECTED")).toHaveTextContent("3波に副次波あり");
+    expect(cell("M5", "CORRECTED")).toHaveTextContent("1波に副次波あり");
+    expect(cell("M15", "CORRECTED")).toHaveTextContent("未記録");
+    fireEvent.click(screen.getByRole("button", { name: "前後比較" }));
+    expect(cell("H1", "ORIGINAL")).toHaveTextContent("1波に副次波あり");
+    expect(cell("M5", "ORIGINAL")).toHaveTextContent("記載なし");
+    expect(cell("H1", "CORRECTED")).toHaveClass("m5-alert-changed");
+    fireEvent.click(screen.getByRole("checkbox", { name: "差がある列のみ" }));
+    expect(cell("H1", "CORRECTED")).toHaveTextContent("3波に副次波あり");
+  });
+
+  it.each([undefined, "", "M15/BUY/[1副] ▲3/", "M5/BUY/[5副] ▲5/",
+    "M5/BUY/[1副] ▲3/\nM5/BUY/[3副] ▲5/", "M5/BUY/", "M5/UNKNOWN/[1副] ▲3/"])(
+    "does not infer a subwave from missing or ambiguous saved text: %s", (content) => {
+      const data = fixture();
+      data.detail.correction!.metadata!.corrected_analysis_text = content as string;
+      data.detail.correction!.metadata!.original_analysis_text = "M5/BUY/[1副] ▲3/";
+      render(<M5AlertSnapshot {...data} />);
+      expect(row("M5", "CORRECTED").querySelector('[data-column="previous-motive-sub"]')).toHaveTextContent("未記録");
+    });
+
+  it("shows markers from the original text when correction was not applied", () => {
+    const data = fixture();
+    data.detail.correction!.status = "NONE";
+    data.detail.correction!.metadata!.original_analysis_text = "M5/BUY/[1副] ▲3/";
+    render(<M5AlertSnapshot {...data} />);
+    expect(row("M5", "ORIGINAL").querySelector('[data-column="previous-motive-sub"]')).toHaveTextContent("1波に副次波あり");
+  });
   it("starts from adopted seven frames and keeps SL and entry result fixed when viewing originals", () => {
     const data = fixture();
     render(<M5AlertSnapshot {...data} />);

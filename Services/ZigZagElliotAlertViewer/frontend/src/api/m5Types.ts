@@ -1,7 +1,7 @@
 import type { ObservationDetailTimeFrame, ObservationListItem, RunItem } from "./types";
 
 export type M5SourceMode = "TESTER" | "LIVE";
-export type M5DisplayInterval = 5 | 15;
+export type M5DisplayInterval = 5 | 15 | 60 | 240 | 1440;
 export type M5Sort = "anchor_jst_time" | "symbol_name";
 type NullableRaw<T> = { [K in keyof T]?: NonNullable<T[K]> extends boolean ? boolean | number | null : T[K] | null };
 export type M5TimeFrame = NullableRaw<ObservationDetailTimeFrame> & {

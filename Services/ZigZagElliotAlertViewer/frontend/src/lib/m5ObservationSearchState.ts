@@ -8,8 +8,18 @@ export const DEFAULT_M5_SEARCH: M5SearchState = {
 export const M5_JST_TIMES = Array.from({ length: 288 }, (_, index) =>
   `${String(Math.floor(index / 12)).padStart(2, "0")}:${String(index % 12 * 5).padStart(2, "0")}`);
 
+export const M5_DISPLAY_INTERVALS = [
+  { value: 5, label: "M5", text: "M5（5分）" },
+  { value: 15, label: "M15", text: "M15（15分）" },
+  { value: 60, label: "H1", text: "H1（1時間）" },
+  { value: 240, label: "H4", text: "H4（4時間）" },
+  { value: 1440, label: "D1", text: "D1（1日）" },
+] as const;
+export function m5DisplayIntervalLabel(value: M5DisplayInterval): string {
+  return M5_DISPLAY_INTERVALS.find((interval) => interval.value === value)!.label;
+}
 export function validM5DisplayInterval(value: unknown): value is M5DisplayInterval {
-  return value === 5 || value === 15;
+  return M5_DISPLAY_INTERVALS.some((interval) => interval.value === value);
 }
 export function m5JstTimes(displayInterval: M5DisplayInterval): string[] {
   return M5_JST_TIMES.filter((time) => Number(time.slice(-2)) % displayInterval === 0);
@@ -36,7 +46,7 @@ export function validateM5Search(search: M5SearchState): string {
   if (!validM5DateTime(search.from) || !validM5DateTime(search.to)) return "開始・終了JSTを5分刻みで入力してください。";
   if (search.from >= search.to) return "終了JSTは開始JSTより後にしてください（終了は含まない）。";
   if (search.jstTime && !M5_JST_TIMES.includes(search.jstTime)) return "JST時刻は5分刻みで入力してください。";
-  if (!validM5DisplayInterval(search.displayInterval)) return "表示間隔はM5またはM15を選択してください。";
+  if (!validM5DisplayInterval(search.displayInterval)) return "表示間隔はM5・M15・H1・H4・D1から選択してください。";
   if (search.jstTime && !m5JstTimes(search.displayInterval).includes(search.jstTime)) return "JST時刻を表示間隔に合わせて選択してください。";
   return "";
 }
@@ -48,8 +58,9 @@ export function readM5Search(search: string): M5SearchState {
   const params = new URLSearchParams(search);
   const storedInterval = readM5Preference(M5_DISPLAY_INTERVAL_KEY, 5, validM5DisplayInterval);
   if (params.get("tab") !== "m5") return { ...DEFAULT_M5_SEARCH, displayInterval: storedInterval };
+  const requestedInterval = Number(params.get("displayInterval"));
   const displayInterval = params.has("displayInterval")
-    ? (params.get("displayInterval") === "15" ? 15 : 5) : storedInterval;
+    ? (validM5DisplayInterval(requestedInterval) ? requestedInterval : 5) : storedInterval;
   const pageSize = positive(params.get("pageSize"), 50);
   const from = params.get("from") || "";
   const to = params.get("to") || "";

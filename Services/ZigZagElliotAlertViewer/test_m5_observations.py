@@ -179,8 +179,47 @@ class M5ObservationDatabaseTest(unittest.TestCase):
         self.assertEqual(nearby, self.database.detail(middle)["navigation"]["older"]["id"])
         self.assertIsNone(self.database.detail(later, {"displayInterval": ["15"]})["navigation"]["newer"])
 
+    def test_hourly_and_daily_sampling_uses_server_boundaries_for_list_and_navigation(self) -> None:
+        # BASE_TIME is JST 06:00, server 00:00. Omit server 04:00 to verify gaps.
+        ids = {0: self.identifier}
+        for hour in range(1, 48):
+            if hour != 4:
+                ids[hour] = add_observation(self.writer, BASE_TIME + hour * 3600)
+        add_observation(self.writer, BASE_TIME + 900)
+        self.writer.commit()
+        before = self.path.read_bytes()
+        for interval, hours in ((60, [hour for hour in range(48) if hour != 4]),
+                                (240, [hour for hour in range(0, 48, 4) if hour != 4]),
+                                (1440, [0, 24])):
+            with self.subTest(interval=interval):
+                params = query(displayInterval=interval, to="2026-09-10T06:00", order="asc", pageSize=2)
+                result = self.database.observations(params)
+                self.assertEqual(len(hours), result["total"])
+                self.assertEqual((len(hours) + 1) // 2, result["total_pages"])
+                self.assertEqual([ids[hour] for hour in hours[:2]], [row["id"] for row in result["items"]])
+                detail = self.database.detail(ids[hours[1]], {"displayInterval": [str(interval)]})
+                self.assertEqual(ids[0], detail["navigation"]["older"]["id"])
+                if len(hours) > 2:
+                    self.assertEqual(ids[hours[2]], detail["navigation"]["newer"]["id"])
+                else:
+                    self.assertIsNone(detail["navigation"]["newer"])
+        self.assertEqual(0, self.database.observations(query(displayInterval=1440, jstTime="00:00"))["total"])
+        self.assertEqual(1, self.database.observations(query(displayInterval=1440, jstTime="06:00"))["total"])
+        self.assertEqual(before, self.path.read_bytes())
+
+    def test_daily_sampling_uses_each_saved_server_time_when_jst_offset_changes(self) -> None:
+        next_day = add_observation(self.writer, BASE_TIME + 25 * 3600)
+        self.writer.execute(f"UPDATE {OBSERVATION_TABLE} SET anchor_bar_time=?, anchor_bar_time_text=? WHERE id=?",
+                            (BASE_TIME - 6 * 3600 + 86400, "2026.09.09 00:00:00", next_day))
+        self.writer.commit()
+        rows = self.database.observations(query(displayInterval=1440, to="2026-09-10T06:00", order="asc"))
+        self.assertEqual([self.identifier, next_day], [row["id"] for row in rows["items"]])
+        navigation = self.database.detail(self.identifier, {"displayInterval": ["1440"]})["navigation"]
+        self.assertEqual(next_day, navigation["newer"]["id"])
+        self.assertEqual(25 * 3600, navigation["newer"]["gap_seconds"])
+
     def test_display_interval_validation(self) -> None:
-        for value in ("", "0", "10", "15.0", "M15", "15 OR 1=1"):
+        for value in ("", "0", "10", "30", "15.0", "H4", "M15", "15 OR 1=1"):
             self.assert_error(400, self.database.observations, query(displayInterval=value))
             self.assert_error(400, self.database.detail, self.identifier, {"displayInterval": [value]})
         self.assert_error(400, self.database.observations, query(displayInterval=15, jstTime="06:05"))

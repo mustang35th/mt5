@@ -58,6 +58,17 @@ it("requests M15 navigation and treats a 15-minute step as normal", async () => 
   expect(screen.getByText(/900秒/)).toBeInTheDocument();
 });
 
+it.each([[60, "H1"], [240, "H4"], [1440, "D1"]] as const)("uses %s for detail navigation and labels it %s", async (interval, label) => {
+  const response = detail();
+  response.navigation.older!.gap_seconds = interval * 60;
+  const request = vi.spyOn(m5Api, "detail").mockResolvedValue(response);
+  render(<M5ObservationDetailDrawer {...props} displayInterval={interval} />);
+  await screen.findByText(`表示間隔 ${label}`);
+  expect(request).toHaveBeenCalledWith(41, "m5-db-A", expect.any(AbortSignal), interval);
+  expect(screen.queryByText(/時刻差/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /前の観測 JST/ })).toHaveAttribute("title", expect.stringContaining(`表示間隔 ${label}`));
+});
+
 const props = { observationId: 41, databaseKey: "m5-db-A", databaseName: "m5-study.sqlite", onClose: vi.fn(), onNavigate: vi.fn() };
 
 beforeEach(() => { localStorage.clear(); localStorage.setItem("m5Observation.detailView.v1", JSON.stringify("normal")); vi.clearAllMocks(); });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { M5_DISPLAY_INTERVAL_KEY } from "./m5ObservationPreferences";
-import { DEFAULT_M5_SEARCH, M5_JST_TIMES, buildM5SearchParams, latestM5Range, m5DateTime,
+import { DEFAULT_M5_SEARCH, M5_JST_TIMES, m5DisplayIntervalLabel, m5JstTimes, buildM5SearchParams, latestM5Range, m5DateTime,
   readM5Search, replaceM5SearchUrl, validM5DateTime, validateM5Search } from "./m5ObservationSearchState";
 
 describe("M5 observation search", () => {
@@ -20,6 +20,17 @@ describe("M5 observation search", () => {
     expect(validateM5Search({ ...search, jstTime: "12:05" })).toContain("表示間隔");
     localStorage.setItem(M5_DISPLAY_INTERVAL_KEY, "10");
     expect(readM5Search("?tab=m5").displayInterval).toBe(5);
+  });
+  it.each([60, 240, 1440] as const)("restores and serializes interval %s with hourly JST choices", (interval) => {
+    localStorage.setItem(M5_DISPLAY_INTERVAL_KEY, String(interval));
+    expect(readM5Search("?tab=m5").displayInterval).toBe(interval);
+    const search = readM5Search(`?tab=m5&displayInterval=${interval}&jstTime=06:00`);
+    expect(search.displayInterval).toBe(interval);
+    expect(search.jstTime).toBe("06:00");
+    expect(m5JstTimes(interval)).toHaveLength(24);
+    expect(m5JstTimes(interval)).toContain("07:00");
+    expect(buildM5SearchParams(search).get("displayInterval")).toBe(String(interval));
+    expect(m5DisplayIntervalLabel(interval)).toBe({ 60: "H1", 240: "H4", 1440: "D1" }[interval]);
   });
   it("does not inherit H1/alert Run, filters or page", () => {
     expect(readM5Search("?tab=h1&sourceMode=LIVE&runId=99&page=5&from=2026-09-08T06:00"))

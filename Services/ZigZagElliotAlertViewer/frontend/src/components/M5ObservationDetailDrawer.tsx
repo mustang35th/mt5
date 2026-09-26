@@ -1,6 +1,7 @@
 import { type MouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { m5Api } from "../api/m5Client";
 import type { M5DetailResponse, M5DisplayInterval, M5NavigationItem } from "../api/m5Types";
+import { m5DisplayIntervalLabel } from "../lib/m5ObservationSearchState";
 import { m5Direction, m5Number, m5Text, m5TimeFrameSlots } from "../lib/m5TimeFrame";
 import { readM5Preference, writeM5Preference } from "../lib/m5ObservationPreferences";
 import { M5CurrencyStrengthPanel } from "./M5CurrencyStrengthPanel";
@@ -67,7 +68,7 @@ function RecordInfo({ response, databaseName, expanded = false }: { response: M5
 function NavigationButton({ target, label, shortLabel, busy, onNavigate, displayInterval }: { displayInterval: M5DisplayInterval; target: M5NavigationItem | null; label: string; shortLabel: string; busy: boolean; onNavigate: (id: number) => void }) {
   return <button className="secondary-button" type="button" disabled={busy || !target}
     aria-label={target ? `${label} JST ${target.anchor_jst_time_text}` : `${label}なし`}
-    title={`${target ? `${label} JST ${target.anchor_jst_time_text}` : `${label}なし`}。表示間隔 M${displayInterval}。${NAVIGATION_HELP}`}
+    title={`${target ? `${label} JST ${target.anchor_jst_time_text}` : `${label}なし`}。表示間隔 ${m5DisplayIntervalLabel(displayInterval)}。${NAVIGATION_HELP}`}
     onClick={() => { if (target && !busy) onNavigate(target.id); }}>
     {shortLabel}
   </button>;
@@ -198,7 +199,7 @@ export function M5ObservationDetailDrawer({ observationId, databaseKey, database
             <span>M5開始 JST {m5Text(observation.anchor_jst_time_text)}</span>
             <span title={`Server ${m5Text(observation.anchor_bar_time_text)}`}>Server {serverTimeLabel(observation.anchor_bar_time_text, observation.anchor_jst_time_text)}</span>
             <span>M5分析方向 <b className={`badge ${m5Direction(anchor?.is_buy).toLowerCase()}`}>{m5Direction(anchor?.is_buy)}</b></span>
-            <span>Spread {m5Number(observation.spread_pips, 1, " pips")}</span><span>Run {observation.run_id}</span><span>表示間隔 M{displayInterval}</span>
+            <span>Spread {m5Number(observation.spread_pips, 1, " pips")}</span><span>Run {observation.run_id}</span><span>表示間隔 {m5DisplayIntervalLabel(displayInterval)}</span>
           </div>
         </div>
         <M5CurrencyStrengthPanel snapshot={shown.currencyStrength} direction={m5Direction(anchor?.is_buy)} />

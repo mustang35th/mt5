@@ -56,6 +56,18 @@ describe("M5 observation independent view", () => {
     await waitFor(() => expect(m5Api.observations).toHaveBeenCalledTimes(4));
     expect(screen.getByLabelText("M5表示間隔")).toHaveValue("15");
   });
+  it.each([[60, "H1"], [240, "H4"], [1440, "D1"]] as const)("applies %s and displays %s in results and detail", async (interval, label) => {
+    render(<M5ObservationView active />);
+    await screen.findByText("Rows:10");
+    fireEvent.change(screen.getByLabelText("M5表示間隔"), { target: { value: String(interval) } });
+    expect(screen.getByText("Server時刻の足開始で抽出し、JSTで表示します。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^検索$/ }));
+    await waitFor(() => expect(localStorage.getItem(M5_DISPLAY_INTERVAL_KEY)).toBe(String(interval)));
+    expect(vi.mocked(m5Api.observations).mock.lastCall?.[0]).toMatchObject({ displayInterval: interval, page: 1 });
+    expect(screen.getByText(new RegExp(`表示中：.*表示間隔 ${label}`))).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Open row"));
+    expect(screen.getByTestId("m5-detail")).toHaveAttribute("data-interval", String(interval));
+  });
   it("initializes TESTER/latest observed Run and latest24h, shows DB and no H1 filters", async () => {
     render(<M5ObservationView active />);
     await waitFor(() => expect(m5Api.observations).toHaveBeenCalledTimes(1));

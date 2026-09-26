@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { m5Api } from "../api/m5Client";
 import type { M5DisplayInterval, M5ListResponse, M5Metadata, M5SearchState, M5Sort, M5SourceMode } from "../api/m5Types";
-import { DEFAULT_M5_SEARCH, m5JstTimes, latestM5Range, m5DateTime, readM5Search,
+import { DEFAULT_M5_SEARCH, M5_DISPLAY_INTERVALS, m5DisplayIntervalLabel, m5JstTimes, latestM5Range, m5DateTime, readM5Search,
   replaceM5SearchUrl, validateM5Search } from "../lib/m5ObservationSearchState";
 import { M5_DISPLAY_INTERVAL_KEY, M5_REFRESH_KEY, readM5Preference, writeM5Preference } from "../lib/m5ObservationPreferences";
 import { isRefreshIntervalSeconds, type RefreshIntervalSeconds } from "../lib/refreshSettings";
@@ -241,7 +241,8 @@ export function M5ObservationView({ active, styleNonce }: Props) {
               <label>表示間隔<select aria-label="M5表示間隔" value={draft.displayInterval} onChange={(event) => {
                 const displayInterval = Number(event.target.value) as M5DisplayInterval;
                 editDraft({ displayInterval, jstTime: m5JstTimes(displayInterval).includes(draft.jstTime) ? draft.jstTime : "" });
-              }}><option value={5}>M5（5分）</option><option value={15}>M15（15分）</option></select></label>
+              }}>{M5_DISPLAY_INTERVALS.map((interval) => <option key={interval.value} value={interval.value}>{interval.text}</option>)}</select></label>
+              {draft.displayInterval >= 60 && <p className="m5-muted">Server時刻の足開始で抽出し、JSTで表示します。</p>}
               <label>JST時刻<select aria-label="M5 JST時刻" value={draft.jstTime} onChange={(event) => editDraft({ jstTime: event.target.value })}>
                 <option value="">すべての時刻</option>{m5JstTimes(draft.displayInterval).map((time) => <option key={time}>{time}</option>)}
               </select></label>
@@ -265,7 +266,7 @@ export function M5ObservationView({ active, styleNonce }: Props) {
             <div className="m5-result-summary">
               <strong>{result?.total.toLocaleString() ?? "0"}件</strong>
               <AppliedConditionSummary hasUnappliedChanges={dirtyDraft.current}
-              summary={displayedSearch ? `表示中：${displayedSearch.sourceMode} / Run ${displayedSearch.runId} / ${displayedSearch.from.replace("T", " ")} ≤ JST < ${displayedSearch.to.replace("T", " ")} / 通貨 ${displayedSearch.symbol || "すべて"} / 表示間隔 M${displayedSearch.displayInterval} / JST時刻 ${displayedSearch.jstTime || "すべて"} / ${displayedSearch.sort === "anchor_jst_time" ? "日時" : "通貨"}${displayedSearch.order === "asc" ? "昇順" : "降順"}` : "検索結果なし"} />
+              summary={displayedSearch ? `表示中：${displayedSearch.sourceMode} / Run ${displayedSearch.runId} / ${displayedSearch.from.replace("T", " ")} ≤ JST < ${displayedSearch.to.replace("T", " ")} / 通貨 ${displayedSearch.symbol || "すべて"} / 表示間隔 ${m5DisplayIntervalLabel(displayedSearch.displayInterval)} / JST時刻 ${displayedSearch.jstTime || "すべて"} / ${displayedSearch.sort === "anchor_jst_time" ? "日時" : "通貨"}${displayedSearch.order === "asc" ? "昇順" : "降順"}` : "検索結果なし"} />
               {metadata?.range.last && <span className="m5-latest-observation"
                 title="選択Runの最新M5開始JSTです。稼働・収集完了を示すものではありません。">
                 最新観測JST：{m5DateTime(metadata.range.last).replace("T", " ")}
