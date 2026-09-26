@@ -29,6 +29,12 @@ struct H1EaMonitorSymbolState {
     string tradeStatus;
     /** 最後に確認した取引方向。 */
     string tradeSide;
+    /** 表示専用の評価損益・保有数を取得できたか。 */
+    bool floatingProfitKnown;
+    /** この通貨の評価損益とスワップの合計。手数料を除く口座通貨額。 */
+    double floatingProfit;
+    /** 評価損益取得時点の実保有ポジション数。 */
+    int positionCount;
     /** 最後に確認した保護SL。 */
     double stopLoss;
     /** 未反映のSL種別。 */
@@ -64,6 +70,9 @@ struct H1EaMonitorSymbolState {
         this.activeTrade = false;
         this.tradeStatus = "";
         this.tradeSide = "";
+        this.floatingProfitKnown = false;
+        this.floatingProfit = 0.0;
+        this.positionCount = 0;
         this.stopLoss = 0.0;
         this.pendingStopLossKind = "";
         this.pendingStopLoss = 0.0;
@@ -77,7 +86,7 @@ struct H1EaMonitorSymbolState {
 };
 
 /**
- * 全28通貨の画面と定期ログに渡す読取専用の状態。DBや市場を読み直さない。
+ * 全28通貨の画面と定期ログに渡す読取専用の状態。画面用コピーだけに評価損益を補う。
  */
 struct H1EaMonitorState {
     /** 固定リスト順の通貨別状態。 */
@@ -106,6 +115,18 @@ struct H1EaMonitorState {
     int stoppedCount;
     /** 管理対象取引数。実保有ポジション数とは異なる。 */
     int activeTradeCount;
+    /** 全対象の評価損益・実保有数を取得できたか。 */
+    bool floatingProfitKnown;
+    /** 全対象の評価損益とスワップの合計。手数料を除く口座通貨額。 */
+    double floatingProfit;
+    /** 評価損益取得時点の全対象の実保有ポジション数。 */
+    int positionCount;
+    /** 評価損益の口座通貨。 */
+    string accountCurrency;
+    /** 口座通貨の表示小数桁数。 */
+    int currencyDigits;
+    /** 評価損益を最後に取得したサーバー時刻。 */
+    datetime floatingProfitTime;
     /** 処理を終えたTimer回数。 */
     ulong timerCount;
     /** 最後のTimer処理実時間。描画・定期ログは含めない。 */
@@ -150,6 +171,12 @@ struct H1EaMonitorState {
         this.preparingCount = 0;
         this.stoppedCount = 0;
         this.activeTradeCount = 0;
+        this.floatingProfitKnown = false;
+        this.floatingProfit = 0.0;
+        this.positionCount = 0;
+        this.accountCurrency = "";
+        this.currencyDigits = 2;
+        this.floatingProfitTime = 0;
         this.timerCount = 0;
         this.lastTimerMicros = 0;
         this.maxTimerMicros = 0;

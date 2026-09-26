@@ -161,7 +161,7 @@ public:
             return false;
         }
         this.initializeRun();
-        this.run.programVersion = "1.09";
+        this.run.programVersion = "1.10";
         if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
             this.restorationError = "CONFIG_HASH_UNAVAILABLE";
             return false;

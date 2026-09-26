@@ -21,6 +21,7 @@ public:
         this.created = false;
         this.drawFailed = false;
         this.nextRefreshTick = 0;
+        this.forceRefresh = true;
         this.page = 0;
         this.pageCount = 1;
         this.columns = 0;
@@ -44,6 +45,7 @@ public:
         this.logger.setLevel(LOG_INFO);
         this.page = 0;
         this.nextRefreshTick = 0;
+        this.forceRefresh = true;
         if (this.canDraw()) {
             this.clear();
         }
@@ -53,7 +55,7 @@ public:
      * 表示更新が必要かを確認する。Tickごとの状態集計を避ける。
      */
     bool isRefreshDue() {
-        return this.canDraw() && H1EaClock::milliseconds() >= this.nextRefreshTick;
+        return this.canDraw() && (this.forceRefresh || H1EaClock::milliseconds() >= this.nextRefreshTick);
     }
 
     /**
@@ -64,7 +66,7 @@ public:
             return;
         }
         if (fromId == CHARTEVENT_CHART_CHANGE) {
-            this.nextRefreshTick = 0;
+            this.forceRefresh = true;
         } else if (fromId == CHARTEVENT_OBJECT_CLICK) {
             if (fromObjectName == this.objectPrefix + "Previous") {
                 this.page = (this.page + this.pageCount - 1) % this.pageCount;
@@ -74,27 +76,32 @@ public:
                 return;
             }
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
-            this.nextRefreshTick = 0;
+            this.forceRefresh = true;
         }
     }
 
     /**
-     * 最大5秒に1度、差分だけを描画する。生成失敗は売買処理へ伝播させない。
+     * 通常60秒に1度、差分だけを描画する。操作時の再描画で定期期限を延長しない。
+     * 生成失敗は売買処理へ伝播させない。
      */
     bool draw(H1EaMonitorState &fromState) {
         if (!this.canDraw()) {
             return true;
         }
-        this.nextRefreshTick = H1EaClock::milliseconds() + 5000;
+        ulong now = H1EaClock::milliseconds();
+        if (now >= this.nextRefreshTick) {
+            this.nextRefreshTick = now + 60000;
+        }
+        this.forceRefresh = false;
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
         int columnCount = 1;
-        if (chartWidth >= 916) {
+        if (chartWidth >= 1196) {
             columnCount = 2;
         }
-        int rowCount = (chartHeight - 198) / 18;
+        int rowCount = (chartHeight - 220) / 18;
         rowCount = MathMax(1, MathMin(14, rowCount));
-        bool smallChart = chartWidth < 456 || chartHeight < 218;
+        bool smallChart = chartWidth < 596 || chartHeight < 240;
         if (this.columns != columnCount || this.rows != rowCount || this.compact != smallChart) {
             this.clear();
             this.columns = columnCount;
@@ -126,6 +133,26 @@ public:
             + TimeToString(fromState.serverTime, TIME_DATE | TIME_SECONDS)
             + "\n稼働は巡回の準備状態です。発注条件の成立を意味しません。";
         ok = this.label(0, title, clrWhite, 16, 18, titleTip, changed) && ok;
+        string currency = fromState.accountCurrency;
+        if (currency == "") {
+            currency = "口座通貨未取得";
+        }
+        string positionText = "取得待ち";
+        if (fromState.floatingProfitKnown) {
+            positionText = IntegerToString(fromState.positionCount);
+        }
+        string profitText = this.formatFloatingProfit(fromState.floatingProfit,
+            fromState.floatingProfitKnown, fromState.currencyDigits);
+        string profitSummary = "EA評価損益 " + profitText + " " + currency + " ｜ 保有 " + positionText;
+        if (this.compact) {
+            profitSummary = "EA評価損益 " + profitText + " " + currency;
+        }
+        string profitTip = this.floatingProfitTooltip(fromState.floatingProfit,
+            fromState.floatingProfitKnown, fromState.positionCount, currency,
+            fromState.currencyDigits, fromState.floatingProfitTime);
+        ok = this.label(156, profitSummary,
+            this.floatingProfitColor(fromState.floatingProfit, fromState.floatingProfitKnown, fromState.currencyDigits),
+            16, 42, profitTip, changed) && ok;
         string historyText = "履歴準備 ";
         if (fromState.symbolCount > 0 && fromState.historyReadyCount == fromState.symbolCount) {
             historyText = "履歴準備完了 ";
@@ -136,15 +163,15 @@ public:
             + " / 停止 " + IntegerToString(fromState.stoppedCount)
             + " / 取引管理 " + IntegerToString(fromState.activeTradeCount);
         if (this.compact) {
-            summary = historyText;
+            summary = "保有 " + positionText + " ｜ " + historyText;
         }
-        ok = this.label(1, summary, clrWhiteSmoke, 16, 42,
+        ok = this.label(1, summary, clrWhiteSmoke, 16, 64,
             "取引管理数は発注中・決済中・復旧待ちも含む最終確認値です。", changed) && ok;
         string historyLine = historyText;
         if (this.compact) {
             historyLine = "";
         }
-        ok = this.label(125, historyLine, clrWhiteSmoke, 16, 64,
+        ok = this.label(155, historyLine, clrWhiteSmoke, 16, 86,
             "価格履歴の同期と必要本数を確認した通貨数です。分析成功や売買許可とは別です。", changed) && ok;
         string metrics = "分析ms " + this.milliseconds(fromState.lastAnalysisMicros) + " / 最大 "
             + this.milliseconds(fromState.maxAnalysisMicros) + "  Timerms " + this.milliseconds(fromState.lastTimerMicros)
@@ -152,43 +179,47 @@ public:
         if (this.compact) {
             metrics = "";
         }
-        ok = this.label(2, metrics, clrSilver, 16, 82,
+        ok = this.label(2, metrics, clrSilver, 16, 104,
             "分析とTimer処理の実時間。失敗した分析も含みます。\nTimerは描画・定期ログの時間を含みません。", changed) && ok;
         string gaps = "保護間隔ms " + IntegerToString((long)fromState.lastProtectionGapMs) + " / 最大 "
             + IntegerToString((long)fromState.maxProtectionGapMs) + "  Memory " + IntegerToString(fromState.memoryMb) + " MB";
         if (this.compact) {
             gaps = "";
         }
-        ok = this.label(3, gaps, clrSilver, 16, 100,
+        ok = this.label(3, gaps, clrSilver, 16, 122,
             "全通貨保護の巡回開始間隔。Testerではテスト内時刻です。\n高速準備による意図的な休止は除外します。", changed) && ok;
         int usedLabels = 4;
         if (!this.compact) {
             for (int i = 0; i < this.columns; i++) {
-                int left = 16 + i * 444;
-                ok = this.label(4 + i * 4, "通貨", clrSilver, left, 122, "", changed) && ok;
-                ok = this.label(5 + i * 4, "状態", clrSilver, left + 64, 122, "理由は行のツールチップを参照。", changed) && ok;
-                ok = this.label(6 + i * 4, "最終判定H1", clrSilver, left + 142, 122, "サーバー時刻。保存待ちを含む確定済みH1。", changed) && ok;
-                ok = this.label(7 + i * 4, "取引(最終確認)", clrSilver, left + 254, 122, "現在値の再照会は行いません。", changed) && ok;
+                int left = 16 + i * 584;
+                ok = this.label(4 + i * 5, "通貨", clrSilver, left, 144, "", changed) && ok;
+                ok = this.label(5 + i * 5, "状態", clrSilver, left + 64, 144, "理由は行のツールチップを参照。", changed) && ok;
+                ok = this.label(6 + i * 5, "最終判定H1", clrSilver, left + 142, 144, "サーバー時刻。保存待ちを含む確定済みH1。", changed) && ok;
+                ok = this.label(7 + i * 5, "取引(最終確認)", clrSilver, left + 254, 144, "現在値の再照会は行いません。", changed) && ok;
+                ok = this.label(8 + i * 5, "評価損益 (" + currency + ")", clrSilver,
+                    left + 564, 144, profitTip, changed, true) && ok;
             }
             if (this.columns == 1) {
-                for (int i = 8; i < 12; i++) {
+                for (int i = 9; i < 14; i++) {
                     ok = this.label(i, "", clrSilver, 0, 0, "", changed) && ok;
                 }
             }
             int slots = this.rows * this.columns;
             for (int i = 0; i < slots; i++) {
                 int symbolIndex = this.page * slots + i;
-                int left = 16 + (i / this.rows) * 444;
-                int top = 144 + (i % this.rows) * 18;
-                int offset = 12 + i * 4;
+                int left = 16 + (i / this.rows) * 584;
+                int top = 166 + (i % this.rows) * 18;
+                int offset = 14 + i * 5;
                 if (symbolIndex >= fromState.symbolCount) {
-                    for (int j = 0; j < 4; j++) {
+                    for (int j = 0; j < 5; j++) {
                         ok = this.label(offset + j, "", clrSilver, 0, 0, "", changed) && ok;
                     }
                     continue;
                 }
                 H1EaMonitorSymbolState state = fromState.symbols[symbolIndex];
-                string tooltip = this.buildTooltip(state);
+                string tooltip = this.buildTooltip(state) + "\n"
+                    + this.floatingProfitTooltip(state.floatingProfit, state.floatingProfitKnown,
+                        state.positionCount, currency, fromState.currencyDigits, fromState.floatingProfitTime);
                 color statusColor = clrLightSkyBlue;
                 if (state.category == "STOPPED") {
                     statusColor = clrTomato;
@@ -209,23 +240,27 @@ public:
                 ok = this.label(offset + 1, this.statusText(state.status), statusColor, left + 64, top, tooltip, changed) && ok;
                 ok = this.label(offset + 2, barText, clrSilver, left + 142, top, tooltip, changed) && ok;
                 ok = this.label(offset + 3, this.tradeText(state), tradeColor, left + 254, top, tooltip, changed) && ok;
+                ok = this.label(offset + 4,
+                    this.formatFloatingProfit(state.floatingProfit, state.floatingProfitKnown, fromState.currencyDigits),
+                    this.floatingProfitColor(state.floatingProfit, state.floatingProfitKnown, fromState.currencyDigits),
+                    left + 564, top, tooltip, changed, true) && ok;
             }
-            usedLabels = 12 + slots * 4;
+            usedLabels = 14 + slots * 5;
         }
-        for (int i = usedLabels; i < 124; i++) {
+        for (int i = usedLabels; i < 154; i++) {
             ok = this.label(i, "", clrSilver, 0, 0, "", changed) && ok;
         }
-        int footer = 152 + this.rows * 18;
-        int width = 444 * this.columns;
+        int footer = 174 + this.rows * 18;
+        int width = 584 * this.columns;
         int footerX = 90;
         string pageText = IntegerToString(this.page + 1) + " / " + IntegerToString(this.pageCount);
         if (this.compact) {
-            footer = 64;
+            footer = 86;
             footerX = 16;
             width = MathMax(100, chartWidth - 24);
-            pageText = "目安: 456 x 218 px";
+            pageText = "目安: 596 x 240 px";
         }
-        ok = this.label(124, pageText, clrSilver, footerX, footer, "表示だけのページ切り替えです。全28通貨の巡回は継続します。", changed) && ok;
+        ok = this.label(154, pageText, clrSilver, footerX, footer, "表示だけのページ切り替えです。全28通貨の巡回は継続します。", changed) && ok;
         ok = ObjectSetInteger(this.chartId, this.objectPrefix + "Background", OBJPROP_XSIZE, width) && ok;
         ok = ObjectSetInteger(this.chartId, this.objectPrefix + "Background", OBJPROP_YSIZE, footer + 12) && ok;
         ok = this.button("Previous", "前", 16, footer, !this.compact) && ok;
@@ -263,6 +298,8 @@ private:
     bool drawFailed;
     /** 次の表示更新時刻。 */
     ulong nextRefreshTick;
+    /** ページ・サイズ操作による即時再描画。定期更新の期限とは分ける。 */
+    bool forceRefresh;
     /** 表示中ページ。 */
     int page;
     /** ページ数。 */
@@ -276,15 +313,17 @@ private:
     /** 描画エラーを記録する既存Logger。 */
     Logger logger;
     /** ラベル文字列の差分キャッシュ。 */
-    string lastTexts[126];
+    string lastTexts[157];
     /** ツールチップの差分キャッシュ。 */
-    string lastTooltips[126];
+    string lastTooltips[157];
     /** 色の差分キャッシュ。 */
-    color lastColors[126];
+    color lastColors[157];
     /** X位置の差分キャッシュ。 */
-    int lastX[126];
+    int lastX[157];
     /** Y位置の差分キャッシュ。 */
-    int lastY[126];
+    int lastY[157];
+    /** 左揃え・右揃えの差分キャッシュ。 */
+    ENUM_ANCHOR_POINT lastAnchors[157];
 
     /**
      * LIVEまたはビジュアルTesterで、表示指定がある場合だけ描画する。
@@ -326,6 +365,7 @@ private:
             this.lastColors[i] = clrNONE;
             this.lastX[i] = -1;
             this.lastY[i] = -1;
+            this.lastAnchors[i] = ANCHOR_LEFT_UPPER;
         }
         if (!ObjectCreate(this.chartId, this.objectPrefix + "Previous", OBJ_BUTTON, 0, 0, 0)
                 || !ObjectCreate(this.chartId, this.objectPrefix + "Next", OBJ_BUTTON, 0, 0, 0)) {
@@ -339,13 +379,20 @@ private:
      * ラベルの変更箇所だけをキューへ送る。成功した値だけをキャッシュする。
      */
     bool label(const int fromIndex, const string fromText, const color fromColor,
-            const int fromX, const int fromY, const string fromTooltip, bool &fromChanged) {
+            const int fromX, const int fromY, const string fromTooltip, bool &fromChanged,
+            const bool fromRightAligned = false) {
         string name = this.objectPrefix + "Label" + IntegerToString(fromIndex);
+        ENUM_ANCHOR_POINT anchor = ANCHOR_LEFT_UPPER;
+        if (fromRightAligned) {
+            anchor = ANCHOR_RIGHT_UPPER;
+        }
         if (this.lastTexts[fromIndex] != fromText || this.lastTooltips[fromIndex] != fromTooltip
-                || this.lastColors[fromIndex] != fromColor || this.lastX[fromIndex] != fromX || this.lastY[fromIndex] != fromY) {
+                || this.lastColors[fromIndex] != fromColor || this.lastX[fromIndex] != fromX
+                || this.lastY[fromIndex] != fromY || this.lastAnchors[fromIndex] != anchor) {
             if (!ObjectSetString(this.chartId, name, OBJPROP_TEXT, fromText)
                     || !ObjectSetString(this.chartId, name, OBJPROP_TOOLTIP, fromTooltip)
                     || !ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, fromColor)
+                    || !ObjectSetInteger(this.chartId, name, OBJPROP_ANCHOR, anchor)
                     || !ObjectSetInteger(this.chartId, name, OBJPROP_XDISTANCE, fromX)
                     || !ObjectSetInteger(this.chartId, name, OBJPROP_YDISTANCE, fromY)) {
                 return false;
@@ -355,6 +402,7 @@ private:
             this.lastColors[fromIndex] = fromColor;
             this.lastX[fromIndex] = fromX;
             this.lastY[fromIndex] = fromY;
+            this.lastAnchors[fromIndex] = anchor;
             fromChanged = true;
         }
         return true;
@@ -394,6 +442,69 @@ private:
         this.drawFailed = true;
         this.clear();
         return false;
+    }
+
+    /**
+     * 口座通貨の桁数に丸め、符号と3桁区切りを付ける。丸めたゼロに符号を付けない。
+     */
+    string formatFloatingProfit(const double fromProfit, const bool fromKnown, const int fromDigits) {
+        if (!fromKnown || !MathIsValidNumber(fromProfit)) {
+            return "取得待ち";
+        }
+        int digits = MathMax(0, MathMin(16, fromDigits));
+        double rounded = StringToDouble(DoubleToString(fromProfit, digits));
+        string text = DoubleToString(MathAbs(rounded), digits);
+        int integerEnd = StringFind(text, ".");
+        if (integerEnd < 0) {
+            integerEnd = StringLen(text);
+        }
+        for (int i = integerEnd - 3; i > 0; i -= 3) {
+            text = StringSubstr(text, 0, i) + "," + StringSubstr(text, i);
+        }
+        if (rounded > 0.0) {
+            return "+" + text;
+        }
+        if (rounded < 0.0) {
+            return "-" + text;
+        }
+        return text;
+    }
+
+    /**
+     * 表示桁へ丸めた評価損益の正負で色分けする。未取得とゼロは灰色にする。
+     */
+    color floatingProfitColor(const double fromProfit, const bool fromKnown, const int fromDigits) {
+        if (!fromKnown || !MathIsValidNumber(fromProfit)) {
+            return clrSilver;
+        }
+        double rounded = StringToDouble(DoubleToString(fromProfit, MathMax(0, MathMin(16, fromDigits))));
+        if (rounded > 0.0) {
+            return clrDeepSkyBlue;
+        }
+        if (rounded < 0.0) {
+            return clrLightCoral;
+        }
+        return clrSilver;
+    }
+
+    /**
+     * 金額・保有数と同じ読取スナップショットの単位・確認時刻・集計定義を表示する。
+     */
+    string floatingProfitTooltip(const double fromProfit, const bool fromKnown, const int fromCount,
+            const string fromCurrency, const int fromDigits, const datetime fromTime) {
+        string countText = "取得待ち";
+        if (fromKnown) {
+            countText = IntegerToString(fromCount);
+        }
+        string timeText = "未確認";
+        if (fromTime > 0) {
+            timeText = TimeToString(fromTime, TIME_DATE | TIME_SECONDS);
+        }
+        return "EA評価損益: " + this.formatFloatingProfit(fromProfit, fromKnown, fromDigits)
+            + " " + fromCurrency + "\n保有: " + countText
+            + "\n確認時刻(Server): " + timeText
+            + "\nこのEAの対象通貨・Magicに一致するポジションだけを集計。"
+            + "\nSWAPを含み、手数料を除きます。通常60秒ごとの確認値です。";
     }
 
     /**

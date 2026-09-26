@@ -10,12 +10,13 @@
  * 第8段階では全体上限なしの基準テスト用に、口座推移・保有リスク・約定履歴を出力する。
  */
 #property copyright "Copyright 2026, Mstng"
-#property version "1.09"
+#property version "1.10"
 #property strict
 #property description "28通貨H1の新規Entry・ポジション・SL管理"
 
 #include <MstngH1Ea\Analysis\H1EaBaselineReport.mqh>
 #include <MstngH1Ea\H1EaMultiSymbolController.mqh>
+#include <MstngH1Ea\Presentation\H1EaFloatingProfitMonitor.mqh>
 #include <MstngH1Ea\Presentation\H1EaStatusPanel.mqh>
 
 input group "共通設定（28通貨のH1エントリー・保護管理）"
@@ -31,6 +32,9 @@ input bool InpShowStatusPanel = true; // 28通貨の状態パネルを表示
 
 /** 読取専用の状態パネル。 */
 H1EaStatusPanel statusPanel;
+
+/** 全通貨と通貨別の表示専用評価損益。 */
+H1EaFloatingProfitMonitor floatingProfitMonitor;
 
 /** テスター専用の読取・集計用CSV出力。 */
 H1EaBaselineReport baselineReport;
@@ -60,6 +64,7 @@ int OnInit() {
         controller = NULL;
         return INIT_FAILED;
     }
+    initializeFloatingProfitMonitor();
     statusPanel.initialize(ChartID(), InpShowStatusPanel);
     updateStatusPanel();
     initializeBaselineReport();
@@ -120,6 +125,7 @@ void updateStatusPanel() {
     }
     H1EaMonitorState state;
     controller.getMonitorState(state);
+    floatingProfitMonitor.updateAndCopy(state);
     statusPanel.draw(state);
 }
 
@@ -130,6 +136,24 @@ void OnChartEvent(const int fromId, const long &fromLongParam, const double &fro
         const string &fromStringParam) {
     statusPanel.onChartEvent(fromId, fromStringParam);
     updateStatusPanel();
+}
+
+/**
+ * 登録済みの通貨・Magicを表示専用集計へ渡す。DBやCSVは読み直さない。
+ */
+void initializeFloatingProfitMonitor() {
+    if (controller == NULL) {
+        return;
+    }
+    H1EaRunEntity runs[28];
+    for (int i = 0; i < 28; i++) {
+        H1EaRestorationState state;
+        if (!controller.getRestorationState(i, state)) {
+            return;
+        }
+        runs[i] = state.run;
+    }
+    floatingProfitMonitor.initialize(runs);
 }
 
 /**

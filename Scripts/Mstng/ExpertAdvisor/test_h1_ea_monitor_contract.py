@@ -101,7 +101,7 @@ class MonitorTests(unittest.TestCase):
         self.assertIn("ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1)", method(self.panel, "clear"))
 
     def test_panel_is_throttled_and_updated_after_trading_work(self):
-        self.assertIn("H1EaClock::milliseconds() + 5000", method(self.panel, "draw"))
+        self.assertIn("this.nextRefreshTick = now + 60000", method(self.panel, "draw"))
         body = method(self.expert, "updateStatusPanel")
         self.assertLess(body.index("!statusPanel.isRefreshDue()"), body.index("controller.getMonitorState(state)"))
         for name, dispatch in (("OnTick", "controller.onTick()"), ("OnTimer", "controller.onTimer()")):
