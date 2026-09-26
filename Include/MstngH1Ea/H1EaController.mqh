@@ -60,7 +60,9 @@ public:
         this.lastAnalysisLogTime = 0;
         this.lastAnalysisErrorBar = 0;
         this.lastPreparationLogStatus = "";
-        this.lastPreparationLogText = "";
+        this.lastPreparationLogReason = "";
+        this.lastPreparationLogMissingMask = 0;
+        this.lastPreparationLogUnsynchronizedMask = 0;
         this.lastPreparationLogTime = 0;
         this.analysisRetryBar = 0;
         this.nextAnalysisRetryTime = 0;
@@ -128,7 +130,9 @@ public:
         this.preparationBeforeTradeStart = false;
         this.preparationState.symbolName = fromSymbol;
         this.lastPreparationLogStatus = "";
-        this.lastPreparationLogText = "";
+        this.lastPreparationLogReason = "";
+        this.lastPreparationLogMissingMask = 0;
+        this.lastPreparationLogUnsynchronizedMask = 0;
         this.lastPreparationLogTime = 0;
         this.preparationState.registered = true;
         this.preparationState.status = "REGISTERED";
@@ -156,7 +160,7 @@ public:
             return false;
         }
         this.initializeRun();
-        this.run.programVersion = "1.07";
+        this.run.programVersion = "1.08";
         if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
             this.restorationError = "CONFIG_HASH_UNAVAILABLE";
             return false;
@@ -541,9 +545,14 @@ public:
 
     /**
      * 読み取り用の準備状態コピーを返す。呼び出し元から内部状態を変更できない。
+     * 履歴項目は最後の実確認結果を返し、市場参照・内部の売買ゲート更新は行わない。
      */
     void getPreparationState(H1EaPreparationState &fromState) {
         fromState = this.preparationState;
+        fromState.historyChecked = this.strategy.isHistoryChecked();
+        fromState.historyReady = this.strategy.isHistoryPrepared();
+        fromState.historyMissingMask = this.strategy.getHistoryMissingMask();
+        fromState.historyUnsynchronizedMask = this.strategy.getHistoryUnsynchronizedMask();
     }
 
     /**
@@ -886,8 +895,12 @@ private:
     datetime lastAnalysisErrorBar;
     /** 全通貨Testerの履歴診断を最後に出した準備状態。分析待機状態とは共有しない。 */
     string lastPreparationLogStatus;
-    /** 最後に出力した履歴診断。出力日時・H1時刻は比較対象に含めない。 */
-    string lastPreparationLogText;
+    /** 最後に出力した履歴準備の失敗理由。 */
+    string lastPreparationLogReason;
+    /** 最後に出力した不足足。本数・最古日時は比較対象に含めない。 */
+    int lastPreparationLogMissingMask;
+    /** 最後に出力した未同期足。不足足が同じ場合も同期変化は記録する。 */
+    int lastPreparationLogUnsynchronizedMask;
     /** 最後に履歴診断を出力したTester内サーバー時刻。 */
     datetime lastPreparationLogTime;
     /** TesterのEntry分析に失敗したH1バー。トレイルやLIVEと共有しない。 */
@@ -898,32 +911,33 @@ private:
     H1EaEventTimer eventTimer;
 
     /**
-     * 全通貨Testerの準備診断を、既に取得済みのMN1～H1の本数・同期・開始日時と共に記録する。
-     * 初回と状態遷移は即時、待機中の変化は最短1時間、同一内容は1日間隔に抑える。
-     * READYの継続は再出力しない。履歴取得・判定・分析待機状態の変更は行わない。
+     * 全通貨Testerの初回・状態/理由/不足足/同期変化だけを即時に記録する。
+     * 不足足の診断を使用し、本数・最古日時だけの変化やREADY継続では再出力しない。
+     * 同じ待機の日次集約は親に委ね、履歴取得・判定・分析待機状態は変更しない。
      */
     void logPreparationHistory() {
         if (!this.persistencePreparation || !this.config.isTester) {
             return;
         }
         string status = this.preparationState.status;
-        string historyText = this.strategy.getHistoryStatusText();
+        string reason = this.preparationState.reason;
+        int missingMask = this.strategy.getHistoryMissingMask();
+        int unsynchronizedMask = this.strategy.getHistoryUnsynchronizedMask();
+        datetime now = TimeCurrent();
+        if (now >= this.lastPreparationLogTime && status == this.lastPreparationLogStatus
+                && reason == this.lastPreparationLogReason
+                && missingMask == this.lastPreparationLogMissingMask
+                && unsynchronizedMask == this.lastPreparationLogUnsynchronizedMask) {
+            return;
+        }
+        string historyText = this.strategy.getHistoryMissingStatusText();
         if (historyText == "") {
             historyText = "history=UNAVAILABLE";
-        }
-        string message = "state=" + status + " reason=" + this.preparationState.reason
-            + " " + historyText;
-        datetime now = TimeCurrent();
-        long elapsedSeconds = (long)(now - this.lastPreparationLogTime);
-        if (status == this.lastPreparationLogStatus && elapsedSeconds >= 0) {
-            if (status == "READY") {
-                return;
-            }
-            if (elapsedSeconds < 86400
-                    && (message == this.lastPreparationLogText || elapsedSeconds < 3600)) {
-                return;
+            if (this.strategy.isHistoryPrepared()) {
+                historyText = "history=READY";
             }
         }
+        string message = "state=" + status + " reason=" + reason + " " + historyText;
         string logText = "PREPARATION_HISTORY symbol=" + this.preparationState.symbolName
             + " simulatedTime=" + TimeToString(now, TIME_DATE | TIME_SECONDS)
             + " H1=" + IntegerToString(this.preparationState.h1BarTime) + " " + message;
@@ -933,7 +947,9 @@ private:
             this.logger.info("H1EaController.logPreparationHistory", logText);
         }
         this.lastPreparationLogStatus = status;
-        this.lastPreparationLogText = message;
+        this.lastPreparationLogReason = reason;
+        this.lastPreparationLogMissingMask = missingMask;
+        this.lastPreparationLogUnsynchronizedMask = unsynchronizedMask;
         this.lastPreparationLogTime = now;
     }
 

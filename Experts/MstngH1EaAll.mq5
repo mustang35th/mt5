@@ -10,7 +10,7 @@
  * 第8段階では全体上限なしの基準テスト用に、口座推移・保有リスク・約定履歴を出力する。
  */
 #property copyright "Copyright 2026, Mstng"
-#property version "1.07"
+#property version "1.08"
 #property strict
 #property description "28通貨H1の新規Entry・ポジション・SL管理"
 

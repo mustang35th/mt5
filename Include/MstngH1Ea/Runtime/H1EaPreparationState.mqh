@@ -12,8 +12,14 @@ struct H1EaPreparationState {
     bool registered;
     /** この通貨の分析リソースを初期化したか。 */
     bool resourcesInitialized;
+    /** 価格履歴を実際に確認済みか。未確認時は不足足を判定しない。 */
+    bool historyChecked;
     /** 直近の履歴確認が成功したか。指標計算・波動分析の成功とは別。 */
     bool historyReady;
+    /** 直近の不足足。bit 0からMN1・W1・D1・H4・H1・M15・M5の順。 */
+    int historyMissingMask;
+    /** 直近の未同期足。不足足と同じビット順。 */
+    int historyUnsynchronizedMask;
     /** 直近の履歴確認対象H1バー。取得不能時は0。 */
     datetime h1BarTime;
     /** 未登録・登録済み・履歴待ち・準備済み・エラー。 */
@@ -35,7 +41,10 @@ struct H1EaPreparationState {
         this.symbolName = "";
         this.registered = false;
         this.resourcesInitialized = false;
+        this.historyChecked = false;
         this.historyReady = false;
+        this.historyMissingMask = 0;
+        this.historyUnsynchronizedMask = 0;
         this.h1BarTime = 0;
         this.status = "UNREGISTERED";
         this.reason = "";

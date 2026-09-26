@@ -192,6 +192,26 @@ public:
     bool isHistoryPrepared() const { return this.historyPreparation.isReady(); }
 
     /**
+     * 価格履歴を実際に確認済みかを返す。市場参照・分析は行わない。
+     */
+    bool isHistoryChecked() const { return this.historyPreparation.isChecked(); }
+
+    /**
+     * 直近の不足足を返す。bit 0からMN1・W1・D1・H4・H1の順。
+     */
+    int getHistoryMissingMask() const { return this.historyPreparation.getMissingMask(); }
+
+    /**
+     * 直近の未同期足を返す。不足足と同じビット順で、市場参照は行わない。
+     */
+    int getHistoryUnsynchronizedMask() const { return this.historyPreparation.getUnsynchronizedMask(); }
+
+    /**
+     * 直近の不足足だけの診断を返す。市場参照・分析は行わない。
+     */
+    string getHistoryMissingStatusText() const { return this.historyPreparation.getMissingStatusText(); }
+
+    /**
      * 全分析時間足の同期・可視本数・必要本数・最古日時を返す。
      * 現在時刻は含めず、呼び出し側で状態変化時のログ抑制に使用する。
      */

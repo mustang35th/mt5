@@ -259,7 +259,8 @@ public:
         }
         this.logRestorationState(symbolIndex);
         this.controllers[symbolIndex].getPreparationState(currentState);
-        if (previousState.status != currentState.status || previousState.reason != currentState.reason) {
+        if (!MQLInfoInteger(MQL_TESTER) && (previousState.status != currentState.status
+                || previousState.reason != currentState.reason)) {
             this.logger.info(__FUNCTION__, currentState.symbolName + " " + currentState.status
                 + " H1=" + IntegerToString(currentState.h1BarTime) + " " + currentState.reason);
         }
@@ -480,6 +481,10 @@ private:
     ulong maxProtectionGapMs;
     /** 次の定期計測ログを出せる巡回時計。 */
     ulong nextMetricsLogTick;
+    /** 待機中の計測ログを最後に出したTester内サーバー日。未出力は-1。 */
+    long lastWaitingMetricsLogDay;
+    /** 履歴待機の全体集約を最後に確認したTester内サーバー日。未確認は-1。 */
+    long lastHistorySummaryDay;
     /** 固定28通貨それぞれが所有する独立したController。 */
     H1EaController *controllers[28];
     /** 全通貨の登録を完了したか。 */
@@ -526,6 +531,8 @@ private:
         this.lastProtectionGapMs = 0;
         this.maxProtectionGapMs = 0;
         this.nextMetricsLogTick = 0;
+        this.lastWaitingMetricsLogDay = -1;
+        this.lastHistorySummaryDay = -1;
     }
 
     /**
@@ -552,10 +559,67 @@ private:
             this.maxTimerMicros = this.lastTimerMicros;
         }
         this.logRuntimeMetrics(false);
+        this.logHistoryWaitSummary();
     }
 
     /**
-     * LIVEは最短1分、Testerはテスト内1時間で計測を記録する。終了時は必ず残す。
+     * Tester内のサーバー日ごとに、取得済み履歴状態だけで28通貨の待機を1行に集約する。
+     * 初回28イベントは通貨巡回を優先し、履歴の再取得や売買判定は行わない。
+     */
+    void logHistoryWaitSummary() {
+        if (!MQLInfoInteger(MQL_TESTER) || this.timerCount < (ulong)ArraySize(this.controllers)) {
+            return;
+        }
+        long currentDay = (long)TimeCurrent() / 86400;
+        if (currentDay == this.lastHistorySummaryDay) {
+            return;
+        }
+        this.lastHistorySummaryDay = currentDay;
+        int readyCount = 0;
+        int pendingCount = 0;
+        int errorCount = 0;
+        int missingCounts[5] = {0, 0, 0, 0, 0};
+        for (int i = 0; i < ArraySize(this.controllers); i++) {
+            H1EaPreparationState state;
+            this.controllers[i].getPreparationState(state);
+            if (state.historyChecked && state.historyReady) {
+                readyCount++;
+            }
+            if (!state.historyChecked) {
+                pendingCount++;
+            }
+            if (state.status == "ERROR") {
+                errorCount++;
+            }
+            for (int j = 0; j < ArraySize(missingCounts); j++) {
+                if (state.historyChecked && (state.historyMissingMask & (1 << j)) != 0) {
+                    missingCounts[j]++;
+                }
+            }
+        }
+        if (readyCount == ArraySize(this.controllers)) {
+            return;
+        }
+        string message = "HISTORY_WAIT ready=" + IntegerToString(readyCount)
+            + "/" + IntegerToString(ArraySize(this.controllers));
+        string timeFrames[5] = {"MN1", "W1", "D1", "H4", "H1"};
+        for (int i = 0; i < ArraySize(missingCounts); i++) {
+            if (missingCounts[i] > 0) {
+                message += " " + timeFrames[i] + "不足=" + IntegerToString(missingCounts[i]);
+            }
+        }
+        if (pendingCount > 0) {
+            message += " pending=" + IntegerToString(pendingCount);
+        }
+        if (errorCount > 0) {
+            message += " error=" + IntegerToString(errorCount);
+        }
+        this.timerLogger.info(__FUNCTION__, message);
+    }
+
+    /**
+     * LIVEは最短1分、Testerはテスト内1時間で状態を確認する。
+     * Testerの全通貨準備中・管理取引なしでは日次出力に抑える。終了時は必ず残す。
      */
     void logRuntimeMetrics(const bool fromForce) {
         ulong now = H1EaClock::milliseconds();
@@ -568,6 +632,14 @@ private:
         }
         H1EaMonitorState state;
         this.getMonitorState(state);
+        if (MQLInfoInteger(MQL_TESTER) && state.symbolCount > 0
+                && state.preparingCount == state.symbolCount && state.activeTradeCount == 0) {
+            long currentDay = (long)state.serverTime / 86400;
+            if (!fromForce && currentDay == this.lastWaitingMetricsLogDay) {
+                return;
+            }
+            this.lastWaitingMetricsLogDay = currentDay;
+        }
         this.timerLogger.info(__FUNCTION__, "METRICS symbols=" + IntegerToString(state.symbolCount)
             + " historyReady=" + IntegerToString(state.historyReadyCount)
             + " watch=" + IntegerToString(state.watchingCount) + " preparing=" + IntegerToString(state.preparingCount)
@@ -658,7 +730,8 @@ private:
         this.controllers[symbolIndex].getPreparationState(previousState);
         this.controllers[symbolIndex].processPreparation();
         this.controllers[symbolIndex].getPreparationState(currentState);
-        if (previousState.status != currentState.status || previousState.reason != currentState.reason) {
+        if (!MQLInfoInteger(MQL_TESTER) && (previousState.status != currentState.status
+                || previousState.reason != currentState.reason)) {
             this.logger.info(__FUNCTION__, currentState.symbolName + " " + currentState.status
                 + " H1=" + IntegerToString(currentState.h1BarTime) + " " + currentState.reason);
         }

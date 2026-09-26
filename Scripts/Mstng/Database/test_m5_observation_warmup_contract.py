@@ -206,6 +206,28 @@ class ObservationWarmupContractTest(unittest.TestCase):
         self.assertIn("return (ulong)TimeCurrent() * 1000", clock)
         self.assertIn("return GetTickCount64()", clock)
 
+    def test_common_missing_and_sync_masks_are_cached_read_only_results(self):
+        for signature, field in (("bool isChecked() const", "checked"),
+                                 ("int getMissingMask() const", "missingMask"),
+                                 ("int getUnsynchronizedMask() const", "unsynchronizedMask")):
+            self.assertEqual(body(self.history, signature).strip(), f"return this.{field};")
+        reset = body(self.history, "void reset()")
+        self.assertIn("this.checked = false", reset)
+        prepare = body(self.history, "bool prepare(")
+        cache = "if (this.checked && isBeforeStart"
+        self.assertEqual(body(prepare, cache).strip(), "return this.ready;")
+        for field in ("missingMask", "unsynchronizedMask"):
+            assignment = f"this.{field} = 0;"
+            self.assertIn(assignment, reset)
+            self.assertLess(prepare.index(cache), prepare.index(assignment))
+            self.assertLess(prepare.index(assignment), prepare.index("for (int i = 0;"))
+        self.assertEqual(body(prepare, "if (!synchronized)").strip(),
+                         "this.unsynchronizedMask |= 1 << i;")
+        self.assertIn("this.missingMask |= 1 << i;", body(prepare, "if (!timeFrameReady)"))
+        self.assertLess(prepare.index("availableBars = Bars(this.symbolName, timeFrame);",
+                                     prepare.index("CopyRates(")),
+                        prepare.index("this.unsynchronizedMask |= 1 << i;"))
+
     def test_history_status_refresh_is_read_only_and_independent_from_gate(self):
         refresh = body(self.source, "void refreshStatus()")
         self.assertIn("this.status.historyReadyCount = 0", refresh)

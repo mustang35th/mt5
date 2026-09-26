@@ -26,6 +26,8 @@ public:
         this.initialized = false;
         this.checked = false;
         this.ready = false;
+        this.missingMask = 0;
+        this.unsynchronizedMask = 0;
         this.beforeStart = false;
         this.lastWarmupEndTime = 0;
         this.lastCheckTick = 0;
@@ -97,6 +99,8 @@ public:
         this.lastWarmupEndTime = fromWarmupEndTime;
         this.lastCheckTick = now;
         this.ready = true;
+        this.missingMask = 0;
+        this.unsynchronizedMask = 0;
         this.statusText = "";
         this.missingStatusText = "";
         bool mayRequest = now >= this.nextRequestTick;
@@ -119,6 +123,9 @@ public:
                 availableBars = Bars(this.symbolName, timeFrame);
             }
             bool timeFrameReady = synchronized && availableBars >= requiredBars;
+            if (!synchronized) {
+                this.unsynchronizedMask |= 1 << i;
+            }
             string detail = this.createStatusText(timeFrame, synchronized, availableBars,
                 requiredBars, timeFrameReady);
             if (this.statusText != "") {
@@ -127,6 +134,7 @@ public:
             this.statusText += detail;
             if (!timeFrameReady) {
                 this.ready = false;
+                this.missingMask |= 1 << i;
                 if (this.missingStatusText != "") {
                     this.missingStatusText += ", ";
                 }
@@ -143,6 +151,21 @@ public:
      * 最後に確認した履歴準備結果を返す。追加の市場参照は行わない。
      */
     bool isReady() const { return this.checked && this.ready; }
+
+    /**
+     * 履歴を実際に確認済みかを返す。追加の市場参照は行わない。
+     */
+    bool isChecked() const { return this.checked; }
+
+    /**
+     * 不足足のビット列を返す。bit 0からMN1・W1・D1・H4・H1・M15・M5の順。
+     */
+    int getMissingMask() const { return this.missingMask; }
+
+    /**
+     * 未同期足のビット列を返す。不足足と同じ時間足順で、追加の市場参照は行わない。
+     */
+    int getUnsynchronizedMask() const { return this.unsynchronizedMask; }
 
     /**
      * 全対象足の同期・本数・最古日時を返す。
@@ -167,6 +190,10 @@ private:
     bool checked;
     /** 全対象足の直近の履歴準備結果。 */
     bool ready;
+    /** 直近の実確認で不足した足。bit 0からMN1・W1・D1・H4・H1・M15・M5の順。 */
+    int missingMask;
+    /** 直近の実確認で未同期だった足。不足足と同じビット順。 */
+    int unsynchronizedMask;
     /** 前回確認時に指定開始前だった場合true。 */
     bool beforeStart;
     /** 前回指定された開始時刻。 */
