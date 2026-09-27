@@ -349,6 +349,9 @@ describe("App", () => {
       if (path === "/api/alerts/74/timeframes" || path === "/api/alerts/74/points") {
         return jsonResponse({ items: [], count: 0 });
       }
+      if (path.startsWith("/api/alerts/74/navigation?")) {
+        return jsonResponse({ alert_id: 74, matched: true, previous: null, next: null });
+      }
       if (path.startsWith("/api/alerts?")) {
         return jsonResponse({
           total: 1,
@@ -1272,6 +1275,109 @@ describe("App", () => {
 
     fireEvent(dialog, new Event("cancel", { bubbles: false, cancelable: true }));
     await waitFor(() => expect(comparisonButton).toHaveFocus());
+  });
+
+  it("navigates beyond the loaded alert page using applied filters and returns focus to the original trigger", async () => {
+    window.history.replaceState(null, "", "/?sourceMode=LIVE&runId=4&q=applied&symbol=AUDUSD&timeFrame=H1&timeFrame=M5&side=BUY&from=2026-07-01&to=2026-07-31&page=2&pageSize=25&sort=symbol_name&order=asc");
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (/^\/api\/alerts\/(74|75)\/navigation\?/.test(path)) {
+        const alertId = Number(path.split("/")[3]);
+        const adjacent = {
+          id: 75, run_id: 4, symbol_name: "AUDUSD", side: "BUY",
+          jst_time_text: "2026.07.31 02:00:00", server_time_text: "2026.07.30 20:00:00",
+          time_frame_text: "H1",
+        };
+        return jsonResponse({
+          alert_id: alertId, matched: true,
+          previous: alertId === 75 ? { ...adjacent, id: 74 } : null,
+          next: alertId === 74 ? adjacent : null,
+        });
+      }
+      if (path === "/api/alerts/75") {
+        const response = await originalFetch("/api/alerts/74", init);
+        const payload = await response.json();
+        return jsonResponse({
+          ...payload,
+          alert: { ...payload.alert, id: 75, current_bar_time_text: "2026.07.30 20:00:00" },
+        });
+      }
+      if (path === "/api/alerts/75/timeframes" || path === "/api/alerts/75/points") {
+        return jsonResponse({ items: [], count: 0 });
+      }
+      const response = await originalFetch(input, init);
+      if (path.startsWith("/api/alerts?")) {
+        return jsonResponse({ ...await response.json(), total: 75, page: 2, page_size: 25, page_count: 3 });
+      }
+      return response;
+    });
+    render(<App />);
+    const trigger = await screen.findByRole("button", {
+      name: "AUDUSD BUY 2026.07.31 01:00:00 のTIMEFRAME COMPARISONを表示",
+    });
+    fireEvent.change(screen.getByRole("searchbox", { name: "キーワード" }), { target: { value: "unapplied" } });
+    const listRequests = vi.mocked(fetch).mock.calls.filter(([path]) => String(path).startsWith("/api/alerts?")).length;
+    const originalUrl = window.location.search;
+    trigger.focus();
+    fireEvent.click(trigger);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    fireEvent.click(screen.getByRole("button", { name: "次のアラート（検索結果順）" }));
+    await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 20:00:00" });
+    expect(screen.getByRole("button", { name: "TF比較" })).toHaveAttribute("aria-pressed", "true");
+    const navigationRequests = vi.mocked(fetch).mock.calls
+      .map(([path]) => new URL(String(path), "http://localhost"))
+      .filter((url) => url.pathname.endsWith("/navigation"));
+    expect(navigationRequests.map((url) => url.pathname)).toEqual([
+      "/api/alerts/74/navigation", "/api/alerts/75/navigation",
+    ]);
+    for (const request of navigationRequests) {
+      for (const [key, value] of new URLSearchParams(originalUrl)) {
+        if (key !== "timeFrame") {
+          expect(request.searchParams.get(key)).toBe(value);
+        }
+      }
+      expect(request.searchParams.getAll("timeFrame")).toEqual(["H1", "M5"]);
+      expect(request.searchParams.get("q")).toBe("applied");
+    }
+    expect(window.location.search).toBe(originalUrl);
+    expect(vi.mocked(fetch).mock.calls.filter(([path]) => String(path).startsWith("/api/alerts?"))).toHaveLength(listRequests);
+    fireEvent.click(screen.getByRole("button", { name: "TIMEFRAME COMPARISONを閉じる" }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("uses the displayed results' search when a subsequent search fails", async () => {
+    window.history.replaceState(null, "", "/?q=displayed&sort=symbol_name&order=asc");
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const request = new URL(String(input), "http://localhost");
+      if (request.pathname === "/api/alerts" && request.searchParams.get("q") === "failed") {
+        return {
+          ...jsonResponse({ error: "次の検索に失敗しました" }),
+          ok: false,
+          status: 500,
+        } as Response;
+      }
+      return originalFetch(input, init);
+    });
+    render(<App />);
+    await screen.findByRole("button", {
+      name: "AUDUSD BUY 2026.07.31 01:00:00 のTIMEFRAME COMPARISONを表示",
+    });
+    fireEvent.change(screen.getByRole("searchbox", { name: "キーワード" }), { target: { value: "failed" } });
+    fireEvent.click(screen.getByRole("button", { name: "検索" }));
+    await screen.findByText("次の検索に失敗しました");
+    fireEvent.click(screen.getByRole("button", {
+      name: "AUDUSD BUY 2026.07.31 01:00:00 のTIMEFRAME COMPARISONを表示",
+    }));
+    await screen.findByText("TIMEFRAME COMPARISON");
+    const request = vi.mocked(fetch).mock.calls
+      .map(([path]) => new URL(String(path), "http://localhost"))
+      .find((url) => url.pathname === "/api/alerts/74/navigation");
+    expect(request).toBeDefined();
+    expect(request!.searchParams.get("q")).toBe("displayed");
+    expect(request!.searchParams.get("sort")).toBe("symbol_name");
+    expect(request!.searchParams.get("order")).toBe("asc");
   });
 
   it("uses a grid header to request whole-result server sorting", async () => {

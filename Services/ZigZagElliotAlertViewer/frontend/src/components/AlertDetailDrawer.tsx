@@ -7,17 +7,21 @@ import {
   RowStyleModule,
   themeQuartz,
   type ColDef,
+  type GridState,
   type RowClassParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type {
   AlertDetailResponse,
+  AlertNavigationItem,
+  AlertNavigationResponse,
   AlertPoint,
   AlertTimeFrame,
   ObservationDetailTimeFrame,
   PointsResponse,
+  SearchState,
   TimeFramesResponse,
 } from "../api/types";
 import {
@@ -49,6 +53,8 @@ export type AlertDetailView = "detail" | "comparison";
 interface AlertDetailDrawerProps {
   alertId: number | null;
   initialView?: AlertDetailView;
+  navigationSearch?: SearchState;
+  onNavigate?: (alertId: number) => void;
   onClose: () => void;
   styleNonce?: string;
 }
@@ -708,8 +714,63 @@ function comparisonTimeFrames(bundle: DetailBundle): ObservationDetailTimeFrame[
   });
 }
 
-function ComparisonContent({ bundle, styleNonce }: {
+/**
+ * 一覧の検索結果順で前後へ移動する操作を表示します。
+ */
+function AlertNavigation({ navigation, busy, error, onNavigate }: {
+  navigation: AlertNavigationResponse | null;
+  busy: boolean;
+  error: string;
+  onNavigate: (target: AlertNavigationItem) => void;
+}) {
+  function targetTitle(label: string, target: AlertNavigationItem | null | undefined) {
+    if (target) {
+      return `${label}（検索結果順）\n${displayValue(target.symbol_name)} ${displayValue(target.side)} ${displayValue(target.time_frame_text)}\nJST ${displayValue(target.jst_time_text)}`;
+    }
+    return `${label}はありません`;
+  }
+
+  return (
+    <div className="observation-snapshot-grid-navigation-area">
+      <nav aria-label="アラートを検索結果順で移動" className="alert-snapshot-navigation">
+        <button
+          aria-label="前のアラート（検索結果順）"
+          className="secondary-button"
+          disabled={busy || !navigation?.previous}
+          title={targetTitle("前のアラート", navigation?.previous)}
+          type="button"
+          onClick={() => {
+            if (navigation?.previous) onNavigate(navigation.previous);
+          }}
+        >
+          ← 前
+        </button>
+        <button
+          aria-label="次のアラート（検索結果順）"
+          className="secondary-button"
+          disabled={busy || !navigation?.next}
+          title={targetTitle("次のアラート", navigation?.next)}
+          type="button"
+          onClick={() => {
+            if (navigation?.next) onNavigate(navigation.next);
+          }}
+        >
+          次 →
+        </button>
+        <span className="observation-snapshot-grid-navigation-status">{busy ? "読み込み中…" : "検索結果順"}</span>
+      </nav>
+      {error && <p className="observation-snapshot-grid-navigation-error" role="alert">{error}</p>}
+      {!error && navigation && !navigation.matched && (
+        <p className="observation-snapshot-grid-navigation-status">現在のアラートは検索結果に含まれていません</p>
+      )}
+    </div>
+  );
+}
+
+function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce }: {
   bundle: DetailBundle;
+  gridStateRef: RefObject<GridState | undefined>;
+  navigation?: ReactNode;
   styleNonce?: string;
 }) {
   const alert = bundle.detail.alert;
@@ -730,6 +791,7 @@ function ComparisonContent({ bundle, styleNonce }: {
             <GmoTargetBadge isTarget={alert.is_gmo_target} />
           </div>
         </div>
+        {navigation}
         <div className="observation-snapshot-grid-context-values">
           <span>{alert.side}</span>
           <span>JST {displayValue(alert.jst_time_text)}</span>
@@ -747,6 +809,7 @@ function ComparisonContent({ bundle, styleNonce }: {
       />
       <ObservationTimeFrameSnapshotGrid
         ariaLabel="アラート時間足比較スナップショットグリッド"
+        stateRef={gridStateRef}
         styleNonce={styleNonce}
         timeFrames={timeFrames}
       />
@@ -757,11 +820,19 @@ function ComparisonContent({ bundle, styleNonce }: {
 export function AlertDetailDrawer({
   alertId,
   initialView = "detail",
+  navigationSearch,
   onClose,
+  onNavigate,
   styleNonce,
 }: AlertDetailDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const bundleRef = useRef<DetailBundle | null>(null);
+  const comparisonGridStateRef = useRef<GridState | undefined>(undefined);
+  const onNavigateRef = useRef(onNavigate);
+  const [navigation, setNavigation] = useState<AlertNavigationResponse | null>(null);
+  const [navigationError, setNavigationError] = useState("");
+  const [announcement, setAnnouncement] = useState("");
   const [bundle, setBundle] = useState<DetailBundle | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -770,7 +841,11 @@ export function AlertDetailDrawer({
 
   useEffect(() => {
     setView(initialView);
-  }, [alertId, initialView]);
+  }, [isOpen, initialView]);
+
+  useEffect(() => {
+    onNavigateRef.current = onNavigate;
+  }, [onNavigate]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -789,28 +864,69 @@ export function AlertDetailDrawer({
 
   useEffect(() => {
     if (alertId === null) {
+      bundleRef.current = null;
       setBundle(null);
+      setNavigation(null);
+      setNavigationError("");
+      setAnnouncement("");
       setLoading(false);
       setError("");
       return;
     }
+    let displayedBundle: DetailBundle | null = null;
+    if (navigationSearch && onNavigateRef.current) {
+      displayedBundle = bundleRef.current;
+    }
+    if (displayedBundle?.detail.alert.id === alertId) {
+      setLoading(false);
+      return;
+    }
     const controller = new AbortController();
     let active = true;
-    setBundle(null);
     setLoading(true);
     setError("");
+    if (!displayedBundle) {
+      setBundle(null);
+      setAnnouncement("");
+    }
+    const navigationRequest = navigationSearch
+      ? api.alertNavigation(alertId, navigationSearch, controller.signal)
+        .then((value) => {
+          if (value.alert_id !== alertId) throw new Error("前後アラートの応答が不正です");
+          return { navigation: value, error: "" };
+        })
+        .catch((reason: unknown) => {
+          if (isAbortError(reason)) throw reason;
+          const message = reason instanceof Error ? reason.message : "前後アラートの取得に失敗しました";
+          return { navigation: null, error: message };
+        })
+      : Promise.resolve({ navigation: null, error: "" });
     Promise.all([
       api.alertDetail(alertId, controller.signal),
       api.alertTimeFrames(alertId, controller.signal),
       api.alertPoints(alertId, controller.signal),
+      navigationRequest,
     ])
-      .then(([detail, timeFrames, points]) => {
-        if (active && !controller.signal.aborted) setBundle({ detail, timeFrames, points });
+      .then(([detail, timeFrames, points, navigationResult]) => {
+        if (!active || controller.signal.aborted) return;
+        if (detail.alert.id !== alertId) throw new Error("アラート詳細の応答が不正です");
+        const value = { detail, timeFrames, points };
+        bundleRef.current = value;
+        setBundle(value);
+        setNavigation(navigationResult.navigation);
+        setNavigationError(navigationResult.error);
+        setAnnouncement(`${detail.alert.symbol_name} ${detail.alert.side} JST ${detail.alert.jst_time_text}を表示しました`);
       })
       .catch((reason: unknown) => {
-        if (active && !controller.signal.aborted && !isAbortError(reason)) {
-          setError(reason instanceof Error ? reason.message : "詳細の読み込みに失敗しました");
+        if (!active || controller.signal.aborted || isAbortError(reason)) return;
+        const message = reason instanceof Error ? reason.message : "詳細の読み込みに失敗しました";
+        if (displayedBundle && onNavigateRef.current) {
+          setError(`${message}。現在のアラートを表示しています`);
+          onNavigateRef.current(displayedBundle.detail.alert.id);
+        } else {
+          setError(message);
         }
+        setAnnouncement("");
       })
       .finally(() => {
         if (active && !controller.signal.aborted) setLoading(false);
@@ -819,7 +935,15 @@ export function AlertDetailDrawer({
       active = false;
       controller.abort();
     };
-  }, [alertId]);
+  }, [alertId, navigationSearch]);
+
+  function navigateTo(target: AlertNavigationItem) {
+    if (loading || !onNavigate || navigation?.alert_id !== bundle?.detail.alert.id) return;
+    setLoading(true);
+    setError("");
+    setAnnouncement(`${target.symbol_name} ${target.side} JST ${target.jst_time_text}を読み込んでいます`);
+    onNavigate(target.id);
+  }
 
   function handleBackdropClick(event: MouseEvent<HTMLDialogElement>) {
     if (event.target !== event.currentTarget || event.detail === 0) return;
@@ -831,10 +955,11 @@ export function AlertDetailDrawer({
     if (isOutside) onClose();
   }
 
-  const isCurrentBundle = bundle !== null && bundle.detail.alert.id === alertId;
+  const hasDisplayedBundle = isOpen && bundle !== null
+    && (bundle.detail.alert.id === alertId || Boolean(navigationSearch && onNavigate));
   let isM5Alert = false;
   let title = "アラート詳細";
-  if (isCurrentBundle && bundle) {
+  if (hasDisplayedBundle && bundle) {
     const alert = bundle.detail.alert;
     isM5Alert = alert.time_frame === 5 || alert.time_frame_text === "M5"
       || bundle.timeFrames.items.some((timeFrame) => (
@@ -846,6 +971,15 @@ export function AlertDetailDrawer({
   if (isM5Alert || view === "comparison") {
     dialogClassName += " observation-grid-mode";
   }
+  const navigationControls = navigationSearch && onNavigate && hasDisplayedBundle && (
+    <AlertNavigation
+      busy={loading}
+      error={error || navigationError}
+      navigation={navigation}
+      onNavigate={navigateTo}
+    />
+  );
+
   let closeLabel = "詳細を閉じる";
   if (isM5Alert) {
     dialogClassName += " m5-alert-dialog";
@@ -871,7 +1005,7 @@ export function AlertDetailDrawer({
           <h2 id="reactDetailTitle">{title}</h2>
         </div>
         <div className="observation-detail-header-actions">
-          {isCurrentBundle && bundle && !isM5Alert && (
+          {hasDisplayedBundle && bundle && !isM5Alert && (
             <div
               aria-label="アラートスナップショット表示"
               className="observation-detail-view-toggle"
@@ -907,9 +1041,11 @@ export function AlertDetailDrawer({
         </div>
       </div>
       <div aria-busy={loading} className="drawer-body">
-        {loading && <p className="loading-message" role="status" aria-live="polite">詳細を読み込んでいます…</p>}
-        {error && <p className="loading-message" role="alert">{error}</p>}
-        {!loading && !error && isCurrentBundle && bundle && isM5Alert && (
+        {announcement && <span className="visually-hidden" role="status" aria-live="polite">{announcement}</span>}
+        {loading && !hasDisplayedBundle && <p className="loading-message" role="status" aria-live="polite">詳細を読み込んでいます…</p>}
+        {error && !navigationControls && <p className="loading-message" role="alert">{error}</p>}
+        {(isM5Alert || view === "detail") && navigationControls}
+        {hasDisplayedBundle && bundle && isM5Alert && (
           <M5AlertSnapshot
             key={bundle.detail.alert.id}
             detail={bundle.detail}
@@ -917,11 +1053,11 @@ export function AlertDetailDrawer({
             points={bundle.points.items}
           />
         )}
-        {!loading && !error && isCurrentBundle && bundle && !isM5Alert && view === "detail" && (
+        {hasDisplayedBundle && bundle && !isM5Alert && view === "detail" && (
           <DetailContent bundle={bundle} styleNonce={styleNonce} />
         )}
-        {!loading && !error && isCurrentBundle && bundle && !isM5Alert && view === "comparison" && (
-          <ComparisonContent bundle={bundle} styleNonce={styleNonce} />
+        {hasDisplayedBundle && bundle && !isM5Alert && view === "comparison" && (
+          <ComparisonContent bundle={bundle} gridStateRef={comparisonGridStateRef} navigation={navigationControls} styleNonce={styleNonce} />
         )}
       </div>
     </dialog>

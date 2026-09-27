@@ -5,6 +5,8 @@ import {
   type ColumnGroupOpenedEvent,
   type GridApi,
   type GridReadyEvent,
+  type GridState,
+  GridStateModule,
   RenderApiModule,
   RowStyleModule,
   ScrollApiModule,
@@ -17,7 +19,7 @@ import {
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ObservationDetailTimeFrame } from "../api/types";
 import {
   displayValue,
@@ -41,6 +43,7 @@ import { Ema200SignalBadge } from "./Ema200SignalBadge";
 export interface ObservationTimeFrameSnapshotGridProps {
   ariaLabel?: string;
   showLatestPointDetails?: boolean;
+  stateRef?: RefObject<GridState | undefined>;
   timeFrames: readonly ObservationDetailTimeFrame[];
   styleNonce?: string;
 }
@@ -51,6 +54,7 @@ export const OBSERVATION_TIME_FRAME_SNAPSHOT_ANCHOR_ROW_CLASS =
 const GRID_MODULES = [
   ClientSideRowModelModule,
   ColumnApiModule,
+  GridStateModule,
   RenderApiModule,
   RowStyleModule,
   ScrollApiModule,
@@ -1145,10 +1149,12 @@ function EmptySnapshotOverlay() {
 export function ObservationTimeFrameSnapshotGrid({
   ariaLabel = "時間足別 H1新規足スナップショットグリッド",
   showLatestPointDetails = false,
+  stateRef,
   timeFrames,
   styleNonce,
 }: ObservationTimeFrameSnapshotGridProps) {
   const gridApiRef = useRef<GridApi<ObservationDetailTimeFrame> | null>(null);
+  const [initialGridState] = useState(() => stateRef?.current);
   const wideLayout = useMediaQuery("(min-width: 761px)");
   const [gridReady, setGridReady] = useState(false);
   const [columnGroupStateValue, setColumnGroupStateValue] = useState(
@@ -1323,16 +1329,24 @@ export function ObservationTimeFrameSnapshotGrid({
           getRowStyle={snapshotRowStyle}
           groupHeaderHeight={32}
           headerHeight={36}
+          initialState={initialGridState}
           maintainColumnOrder
           modules={GRID_MODULES}
           noRowsOverlayComponent={EmptySnapshotOverlay}
           onColumnGroupOpened={handleColumnGroupOpened}
           onGridReady={handleGridReady}
+          onGridPreDestroyed={(event) => {
+            if (stateRef) stateRef.current = event.state;
+          }}
+          onStateUpdated={(event) => {
+            if (stateRef) stateRef.current = event.state;
+          }}
           pagination={false}
           rowData={rowData}
           rowHeight={44}
           styleNonce={styleNonce}
           suppressColumnVirtualisation
+          suppressScrollOnNewData
           theme={snapshotGridTheme}
         />
       </div>

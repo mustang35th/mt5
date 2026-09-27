@@ -1,5 +1,6 @@
 import type {
   AlertDetailResponse,
+  AlertNavigationResponse,
   AlertsResponse,
   ApiErrorResponse,
   HealthResponse,
@@ -56,6 +57,16 @@ export const api = {
   },
   alertDetail(alertId: number, signal?: AbortSignal): Promise<AlertDetailResponse> {
     return fetchJson<AlertDetailResponse>(`/api/alerts/${alertId}`, signal);
+  },
+  alertNavigation(
+    alertId: number,
+    search: SearchState,
+    signal?: AbortSignal,
+  ): Promise<AlertNavigationResponse> {
+    return fetchJson<AlertNavigationResponse>(
+      `/api/alerts/${alertId}/navigation?${buildSearchParams(search)}`,
+      signal,
+    );
   },
   alertTimeFrames(alertId: number, signal?: AbortSignal): Promise<TimeFramesResponse> {
     return fetchJson<TimeFramesResponse>(`/api/alerts/${alertId}/timeframes`, signal);

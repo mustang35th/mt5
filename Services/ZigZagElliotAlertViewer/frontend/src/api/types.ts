@@ -221,6 +221,23 @@ export interface AlertsResponse {
   page_count: number;
 }
 
+export interface AlertNavigationItem {
+  id: number;
+  run_id: number;
+  symbol_name: string;
+  side: AlertSide;
+  jst_time_text: string | null;
+  server_time_text: string | null;
+  time_frame_text: string | null;
+}
+
+export interface AlertNavigationResponse {
+  alert_id: number;
+  matched: boolean;
+  previous: AlertNavigationItem | null;
+  next: AlertNavigationItem | null;
+}
+
 export interface SummaryResponse {
   total_count: number;
   database_total_count: number;

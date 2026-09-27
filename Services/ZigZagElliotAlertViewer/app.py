@@ -3150,6 +3150,53 @@ class AlertDatabase:
             "page_count": page_count,
         }
 
+    def alert_navigation(
+        self,
+        alert_id: int,
+        query: dict[str, list[str]],
+    ) -> dict[str, Any]:
+        """Return adjacent alerts in the full filtered list, regardless of page."""
+
+        filters = self.parse_filters(query)
+        sql = self.alert_rows_cte(filters) + f"""
+            , ordered_alerts AS (
+                SELECT id, run_id, symbol_name, side, jst_time_text,
+                       server_time_text, time_frame_text,
+                       ROW_NUMBER() OVER (
+                           ORDER BY {filters.sort_sql} {filters.order_sql}, id DESC
+                       ) AS result_position
+                FROM alert_rows {self.outer_where(filters)}
+            ), selected_alert AS (
+                SELECT result_position AS selected_position
+                FROM ordered_alerts
+                WHERE id = :navigation_alert_id
+            )
+            SELECT ordered_alerts.*, selected_alert.selected_position
+            FROM ordered_alerts CROSS JOIN selected_alert
+            WHERE result_position BETWEEN selected_position - 1
+                                      AND selected_position + 1
+            ORDER BY result_position
+        """
+        parameters = dict(filters.parameters)
+        parameters["navigation_alert_id"] = alert_id
+        with self.connect() as connection:
+            rows = connection.execute(text(sql), parameters).mappings().all()
+        result: dict[str, Any] = {
+            "alert_id": alert_id,
+            "matched": bool(rows),
+            "previous": None,
+            "next": None,
+        }
+        for row in rows:
+            item = row_to_dict(row) or {}
+            position = item.pop("result_position")
+            selected_position = item.pop("selected_position")
+            if position < selected_position:
+                result["previous"] = item
+            elif position > selected_position:
+                result["next"] = item
+        return result
+
     def summary(self, query: dict[str, list[str]]) -> dict[str, Any]:
         """Return counts for the same filters used by the alert list."""
 
@@ -3525,6 +3572,11 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                     raise RequestError("alert id must be greater than zero")
                 if len(path_parts) == 3:
                     self.send_json(self.viewer_server.database.alert_detail(alert_id))
+                    return
+                if len(path_parts) == 4 and path_parts[3] == "navigation":
+                    self.send_json(
+                        self.viewer_server.database.alert_navigation(alert_id, query)
+                    )
                     return
                 if len(path_parts) == 4 and path_parts[3] == "timeframes":
                     self.send_json(self.viewer_server.database.timeframes(alert_id))

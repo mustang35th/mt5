@@ -113,6 +113,7 @@ export default function App({ styleNonce }: AppProps) {
   const [runs, setRuns] = useState<RunsResponse>({ items: [], count: 0 });
   const [options, setOptions] = useState<OptionsResponse>(EMPTY_OPTIONS);
   const [alerts, setAlerts] = useState<AlertsResponse | null>(null);
+  const [alertsSearch, setAlertsSearch] = useState<SearchState | undefined>();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -134,6 +135,7 @@ export default function App({ styleNonce }: AppProps) {
   );
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(null);
   const [selectedAlertView, setSelectedAlertView] = useState<AlertDetailView>("detail");
+  const [selectedAlertSearch, setSelectedAlertSearch] = useState<SearchState | undefined>();
   const alertTriggerRef = useRef<HTMLButtonElement | null>(null);
   const activeResultControllerRef = useRef<AbortController | null>(null);
   const refreshQueuedRef = useRef(false);
@@ -244,6 +246,7 @@ export default function App({ styleNonce }: AppProps) {
 
         alertsRef.current = alertValue;
         setAlerts(alertValue);
+        setAlertsSearch({ ...applied, page: alertValue.page });
         setSummary(summaryValue);
         setPendingNewAlertCount(0);
         setLastCheckedAt(new Date());
@@ -413,15 +416,17 @@ export default function App({ styleNonce }: AppProps) {
 
   const openDetail = useCallback((alertId: number, fromTrigger: HTMLButtonElement) => {
     alertTriggerRef.current = fromTrigger;
+    setSelectedAlertSearch(alertsSearch ?? applied);
     setSelectedAlertView("detail");
     setSelectedAlertId(alertId);
-  }, []);
+  }, [alertsSearch, applied]);
 
   const openComparison = useCallback((alertId: number, fromTrigger: HTMLButtonElement) => {
     alertTriggerRef.current = fromTrigger;
+    setSelectedAlertSearch(alertsSearch ?? applied);
     setSelectedAlertView("comparison");
     setSelectedAlertId(alertId);
-  }, []);
+  }, [alertsSearch, applied]);
 
   const closeDetail = useCallback(() => {
     const trigger = alertTriggerRef.current;
@@ -640,7 +645,9 @@ export default function App({ styleNonce }: AppProps) {
       <AlertDetailDrawer
         alertId={selectedAlertId}
         initialView={selectedAlertView}
+        navigationSearch={selectedAlertSearch}
         onClose={closeDetail}
+        onNavigate={setSelectedAlertId}
         styleNonce={styleNonce}
       />
     </>
