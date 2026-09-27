@@ -258,15 +258,15 @@ public:
     }
 
     /**
-     * 元分析の入力値を保持した別インスタンスへM5用の補正波動を構築する。
+     * 元分析の入力値を保持した別インスタンスへH1またはM5用の補正波動を構築する。
      *
-     * MN1からM5まで独立したElliotを生成し、指定したH4またはH1の分析方向だけを
-     * 変更する。下位足は補正済みの親波動で再分析する。元の分析結果は変更しない。
+     * MN1から現在足まで独立したElliotを生成する。H1はD1またはH4、M5はH4またはH1の
+     * 分析方向だけを変更し、下位足を補正済みの親波動で再分析する。元分析は変更しない。
      * 波動内部は時系列を再取得するため、前後の直近2足OHLCとバー時刻を確認する。
      * 過去の全履歴を固定した再計算ではない。
      *
-     * @param fromOriginal 分析成功済みの元M5分析。
-     * @param fromCorrectionTimeFrame 方向を補正するH4またはH1。
+     * @param fromOriginal 分析成功済みの元H1またはM5分析。
+     * @param fromCorrectionTimeFrame H1分析はD1またはH4、M5分析はH4またはH1。
      * @param fromIsBuy 指定時間足の補正後方向。
      * @return 全時間足の再分析と入力確認に成功した場合true。
      */
@@ -280,10 +280,14 @@ public:
         }
 
         this.isAnalysisSucceeded = false;
-        if (!fromOriginal.isAnalysisSucceeded
-                || fromOriginal.marketContext.timeFrame != PERIOD_M5
-                || (fromCorrectionTimeFrame != PERIOD_H4
-                    && fromCorrectionTimeFrame != PERIOD_H1)) {
+        ENUM_TIMEFRAMES currentTimeFrame = fromOriginal.marketContext.timeFrame;
+        bool isCorrectionSupported = currentTimeFrame == PERIOD_M5
+            && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
+        if (currentTimeFrame == PERIOD_H1) {
+            isCorrectionSupported = fromCorrectionTimeFrame == PERIOD_D1
+                || fromCorrectionTimeFrame == PERIOD_H4;
+        }
+        if (!fromOriginal.isAnalysisSucceeded || !isCorrectionSupported) {
             return false;
         }
 
@@ -301,12 +305,20 @@ public:
         this.isMailValidationFileEnabled = false;
         this.mailTitile = "";
         this.setAnalysisStartTimeFrame(PERIOD_MN1);
-        this.setTimeFrame(PERIOD_M5);
+        this.setTimeFrame(currentTimeFrame);
 
-        ENUM_TIMEFRAMES timeFrames[] = {
-            PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4,
-            PERIOD_H1, PERIOD_M15, PERIOD_M5
-        };
+        ENUM_TIMEFRAMES timeFrames[];
+        ArrayResize(timeFrames, 7);
+        timeFrames[0] = PERIOD_MN1;
+        timeFrames[1] = PERIOD_W1;
+        timeFrames[2] = PERIOD_D1;
+        timeFrames[3] = PERIOD_H4;
+        timeFrames[4] = PERIOD_H1;
+        timeFrames[5] = PERIOD_M15;
+        timeFrames[6] = PERIOD_M5;
+        if (currentTimeFrame == PERIOD_H1) {
+            ArrayResize(timeFrames, 5);
+        }
         bool isSucceeded = this.areOriginalRatesUnchanged(
             fromOriginal, timeFrames
         );
@@ -356,7 +368,7 @@ public:
         }
 
         if (isSucceeded) {
-            this.elliotCurrent = this.getElliot(PERIOD_M5);
+            this.elliotCurrent = this.getElliot(currentTimeFrame);
             isSucceeded = this.elliotCurrent != NULL;
         }
 

@@ -35,7 +35,7 @@ public:
      * @param fromSource 送信設定と共通情報を保持する元分析。
      * @param fromIsSendMail 送信する場合true。
      * @param fromJudgment 採用した補正分析。補正なしの場合はNULL。
-     * @param fromCorrectionTimeFrame 補正したH4またはH1。補正なしはPERIOD_CURRENT。
+     * @param fromCorrectionTimeFrame 補正したD1・H4・H1のいずれか。補正なしはPERIOD_CURRENT。
      * @param fromAlertText 補正印を含むチャートと同じアラート文言。補正なしは空文字列。
      */
     static void sendMail(
@@ -253,9 +253,9 @@ private:
      *
      * @param fromSource 補正前の元分析。
      * @param fromJudgment 採用した補正分析。
-     * @param fromCorrectionTimeFrame 方向を補正したH4またはH1。
+     * @param fromCorrectionTimeFrame 方向を補正したD1・H4・H1のいずれか。
      * @param fromAlertText チャートと同じ件名用文言。
-     * @return 完全なM5分析で、指定した片足だけ方向を補正した場合true。
+     * @return 完全なH1またはM5分析で、対象上位2足の片方だけ方向を補正した場合true。
      */
     static bool isCorrectionMailValid(
         ElliotAll *fromSource,
@@ -265,20 +265,33 @@ private:
     ) {
         if (fromSource == NULL || fromJudgment == NULL || fromSource == fromJudgment
                 || !fromSource.isAnalysisSucceeded || !fromJudgment.isAnalysisSucceeded
-                || fromSource.marketContext.timeFrame != PERIOD_M5
-                || fromJudgment.marketContext.timeFrame != PERIOD_M5
+                || (fromSource.marketContext.timeFrame != PERIOD_M5
+                    && fromSource.marketContext.timeFrame != PERIOD_H1)
+                || fromJudgment.marketContext.timeFrame != fromSource.marketContext.timeFrame
                 || fromSource.marketContext.symbolName == ""
                 || fromSource.marketContext.symbolName != fromJudgment.marketContext.symbolName
                 || fromSource.tradeTimeInfo.serverTime != fromJudgment.tradeTimeInfo.serverTime
                 || fromSource.tradeTimeInfo.jstTime != fromJudgment.tradeTimeInfo.jstTime
-                || fromAlertText == ""
-                || (fromCorrectionTimeFrame != PERIOD_H4
-                    && fromCorrectionTimeFrame != PERIOD_H1)) {
+                || fromAlertText == "") {
             return false;
         }
 
-        Elliot *sourceCurrent = fromSource.getElliot(PERIOD_M5);
-        Elliot *judgmentCurrent = fromJudgment.getElliot(PERIOD_M5);
+        ENUM_TIMEFRAMES currentTimeFrame = fromSource.marketContext.timeFrame;
+        ENUM_TIMEFRAMES higherTimeFrame = PERIOD_H4;
+        ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
+        int expectedCount = 7;
+        if (currentTimeFrame == PERIOD_H1) {
+            higherTimeFrame = PERIOD_D1;
+            lowerTimeFrame = PERIOD_H4;
+            expectedCount = 5;
+        }
+        if (fromCorrectionTimeFrame != higherTimeFrame
+                && fromCorrectionTimeFrame != lowerTimeFrame) {
+            return false;
+        }
+
+        Elliot *sourceCurrent = fromSource.getElliot(currentTimeFrame);
+        Elliot *judgmentCurrent = fromJudgment.getElliot(currentTimeFrame);
         if (sourceCurrent == NULL || judgmentCurrent == NULL
                 || sourceCurrent != fromSource.elliotCurrent
                 || judgmentCurrent != fromJudgment.elliotCurrent
@@ -290,11 +303,11 @@ private:
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4,
             PERIOD_H1, PERIOD_M15, PERIOD_M5
         };
-        if (fromSource.elliotList.Total() != ArraySize(timeFrames)
-                || fromJudgment.elliotList.Total() != ArraySize(timeFrames)) {
+        if (fromSource.elliotList.Total() != expectedCount
+                || fromJudgment.elliotList.Total() != expectedCount) {
             return false;
         }
-        for (int i = 0; i < ArraySize(timeFrames); i++) {
+        for (int i = 0; i < expectedCount; i++) {
             Elliot *sourceElliot = fromSource.getElliot(timeFrames[i]);
             Elliot *judgmentElliot = fromJudgment.getElliot(timeFrames[i]);
             if (sourceElliot == NULL || judgmentElliot == NULL
@@ -318,7 +331,7 @@ private:
                 return false;
             }
 
-            if ((timeFrames[i] == PERIOD_H4 || timeFrames[i] == PERIOD_H1)
+            if ((timeFrames[i] == higherTimeFrame || timeFrames[i] == lowerTimeFrame)
                     && timeFrames[i] != fromCorrectionTimeFrame
                     && sourceElliot.isBuy != sourceCurrent.isBuy) {
                 return false;

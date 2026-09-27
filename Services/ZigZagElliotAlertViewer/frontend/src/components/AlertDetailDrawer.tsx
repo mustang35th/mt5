@@ -40,7 +40,7 @@ import {
   h1DirectionAlignmentStateDescription,
 } from "./H1DirectionAlignmentBadge";
 import { H1EntryCheckPanel } from "./H1EntryCheckPanel";
-import { M5AlertSnapshot } from "./M5AlertSnapshot";
+import { AlertCorrectionSnapshot, M5AlertSnapshot } from "./M5AlertSnapshot";
 import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 import {
   W1ConfirmationBadge,
@@ -767,19 +767,35 @@ function AlertNavigation({ navigation, busy, error, onNavigate }: {
   );
 }
 
-function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce }: {
+function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce, showCorrection = false }: {
   bundle: DetailBundle;
   gridStateRef: RefObject<GridState | undefined>;
   navigation?: ReactNode;
   styleNonce?: string;
+  showCorrection?: boolean;
 }) {
   const alert = bundle.detail.alert;
   const run = bundle.detail.run;
-  const timeFrames = useMemo(() => comparisonTimeFrames(bundle), [bundle]);
+  const timeFrames = useMemo(() => {
+    if (showCorrection && bundle.detail.correction?.status === "APPLIED") {
+      return comparisonTimeFrames({ ...bundle, timeFrames: {
+        ...bundle.timeFrames, items: bundle.detail.correction.timeframes,
+      }, points: {
+        ...bundle.points, items: bundle.detail.correction.points,
+      } });
+    }
+    return comparisonTimeFrames(bundle);
+  }, [bundle, showCorrection]);
   const savedH1Decision = timeFrames.some((timeFrame) => (
     timeFrame.is_anchor_time_frame
     && timeFrame.time_frame_text.trim().toUpperCase() === "H1"
   )) ? alert : null;
+  const comparisonGrid = <ObservationTimeFrameSnapshotGrid
+    ariaLabel="アラート時間足比較スナップショットグリッド"
+    stateRef={gridStateRef}
+    styleNonce={styleNonce}
+    timeFrames={timeFrames}
+  />;
 
   return (
     <section className="observation-snapshot-grid-content">
@@ -800,19 +816,24 @@ function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce }: {
           <span>Run {run?.id ?? "—"}</span>
         </div>
       </div>
-      <CurrencyStrengthSnapshotPanel alert={alert} />
-      <H1EntryCheckPanel
+      {showCorrection && <AlertCorrectionSnapshot
+        detail={bundle.detail}
+        timeFrames={bundle.timeFrames.items}
+        points={bundle.points.items}
+        currentTimeFrame="H1"
+      />}
+      {!showCorrection && <CurrencyStrengthSnapshotPanel alert={alert} />}
+      {!showCorrection && <H1EntryCheckPanel
         savedDecision={savedH1Decision}
         savedRunInputText={run?.input_text}
         spreadPips={alert.spread_pips}
         timeFrames={timeFrames}
-      />
-      <ObservationTimeFrameSnapshotGrid
-        ariaLabel="アラート時間足比較スナップショットグリッド"
-        stateRef={gridStateRef}
-        styleNonce={styleNonce}
-        timeFrames={timeFrames}
-      />
+      />}
+      {showCorrection ? <details className="m5-alert-extra">
+        <summary>{bundle.detail.correction?.status === "APPLIED" ? "採用分析のTF比較" : "元の保存分析のTF比較（比較用）"}</summary>
+        <p className="m5-alert-note">この表は{bundle.detail.correction?.status === "APPLIED" ? "補正後の採用分析" : "元の保存分析（比較用）"}を固定表示します。上の補正前後切替とは独立し、保存済みエントリー判定は再計算しません。</p>
+        {comparisonGrid}
+      </details> : comparisonGrid}
     </section>
   );
 }
@@ -958,6 +979,7 @@ export function AlertDetailDrawer({
   const hasDisplayedBundle = isOpen && bundle !== null
     && (bundle.detail.alert.id === alertId || Boolean(navigationSearch && onNavigate));
   let isM5Alert = false;
+  let hasH1Correction = false;
   let title = "アラート詳細";
   if (hasDisplayedBundle && bundle) {
     const alert = bundle.detail.alert;
@@ -965,10 +987,16 @@ export function AlertDetailDrawer({
       || bundle.timeFrames.items.some((timeFrame) => (
         timeFrame.is_current_time_frame && timeFrame.time_frame_text === "M5"
       ));
+    const isH1Alert = !isM5Alert && (alert.time_frame === 16385 || alert.time_frame_text === "H1"
+      || bundle.timeFrames.items.some((timeFrame) => (
+        timeFrame.is_current_time_frame && timeFrame.time_frame_text === "H1"
+      )));
+    hasH1Correction = isH1Alert && (bundle.detail.correction?.status === "APPLIED"
+      || bundle.detail.correction?.status === "INCOMPLETE");
     title = `${alert.symbol_name} ${alert.side} / ${alert.current_bar_time_text}`;
   }
   let dialogClassName = "react-detail-dialog";
-  if (isM5Alert || view === "comparison") {
+  if (isM5Alert || hasH1Correction || view === "comparison") {
     dialogClassName += " observation-grid-mode";
   }
   const navigationControls = navigationSearch && onNavigate && hasDisplayedBundle && (
@@ -981,8 +1009,10 @@ export function AlertDetailDrawer({
   );
 
   let closeLabel = "詳細を閉じる";
-  if (isM5Alert) {
+  if (isM5Alert || hasH1Correction) {
     dialogClassName += " m5-alert-dialog";
+  }
+  if (isM5Alert) {
     closeLabel = "M5アラート詳細を閉じる";
   } else if (view === "comparison") {
     closeLabel = "TIMEFRAME COMPARISONを閉じる";
@@ -1054,10 +1084,15 @@ export function AlertDetailDrawer({
           />
         )}
         {hasDisplayedBundle && bundle && !isM5Alert && view === "detail" && (
-          <DetailContent bundle={bundle} styleNonce={styleNonce} />
+          hasH1Correction ? <AlertCorrectionSnapshot
+            detail={bundle.detail}
+            timeFrames={bundle.timeFrames.items}
+            points={bundle.points.items}
+            currentTimeFrame="H1"
+          /> : <DetailContent bundle={bundle} styleNonce={styleNonce} />
         )}
         {hasDisplayedBundle && bundle && !isM5Alert && view === "comparison" && (
-          <ComparisonContent bundle={bundle} gridStateRef={comparisonGridStateRef} navigation={navigationControls} styleNonce={styleNonce} />
+          <ComparisonContent bundle={bundle} gridStateRef={comparisonGridStateRef} navigation={navigationControls} styleNonce={styleNonce} showCorrection={hasH1Correction} />
         )}
       </div>
     </dialog>

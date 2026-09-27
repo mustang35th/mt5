@@ -1,6 +1,7 @@
 ﻿#ifndef MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_CORRECTION_DAO_MQH
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_CORRECTION_DAO_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotAlertCorrectionTimeFrameMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertCorrectionEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -30,7 +31,7 @@ public:
         string sql = "CREATE TABLE IF NOT EXISTS zigzag_elliot_alert_corrections (";
         sql += "alert_id INTEGER PRIMARY KEY CHECK(alert_id > 0),";
         sql += "correction_status TEXT NOT NULL CHECK(correction_status IN ('NONE', 'APPLIED')),";
-        sql += "correction_time_frame INTEGER NOT NULL CHECK(correction_time_frame IN (0, 16385, 16388)),";
+        sql += "correction_time_frame INTEGER NOT NULL CHECK(correction_time_frame IN (0, 16385, 16388, 16408)),";
         sql += "original_direction TEXT NOT NULL CHECK(original_direction IN ('', 'BUY', 'SELL')),";
         sql += "corrected_direction TEXT NOT NULL CHECK(corrected_direction IN ('', 'BUY', 'SELL')),";
         sql += "selected_analysis TEXT NOT NULL CHECK(selected_analysis IN ('ORIGINAL', 'CORRECTED')),";
@@ -68,7 +69,7 @@ public:
         sql += "AND corrected_lc15 = 0 AND corrected_loss_cut_diff_pips = 0 ";
         sql += "AND corrected_loss_cut_diff_jpy = 0 AND corrected_reference_point_time = 0 ";
         sql += "AND corrected_analysis_text = '' AND corrected_elliot_csv_text = '') ";
-        sql += "OR (correction_status = 'APPLIED' AND correction_time_frame IN (16385, 16388) ";
+        sql += "OR (correction_status = 'APPLIED' AND correction_time_frame IN (16385, 16388, 16408) ";
         sql += "AND original_direction IN ('BUY', 'SELL') AND corrected_direction IN ('BUY', 'SELL') ";
         sql += "AND original_direction <> corrected_direction AND selected_analysis = 'CORRECTED' ";
         sql += "AND selected_stop_loss = corrected_lc5 AND corrected_reference_point_time > 0))";
@@ -83,7 +84,7 @@ public:
             ));
             return false;
         }
-        return true;
+        return ZigZagElliotAlertCorrectionTimeFrameMigration::execute(this.databaseHandle);
     }
 
     /**

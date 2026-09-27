@@ -45,16 +45,23 @@ public:
      * MN1一致時も、従来のH1と同じくW1 EMA200の整合性を必須とする。
      *
      * @param fromRejectReason 不成立理由。通過時は空文字。
+     * @param fromOriginalD1 D1補正を明示検証した場合だけ渡す元D1。それ以外はNULL。
      * @return 上位足の方向条件を満たす場合true。
      */
     bool evaluateDirection(const bool fromIsBuy, Elliot *fromMn1, Elliot *fromW1,
-            Elliot *fromD1, string &fromRejectReason) {
+            Elliot *fromD1, string &fromRejectReason, Elliot *fromOriginalD1 = NULL) {
         fromRejectReason = "";
+        bool isD1Valid = this.isDirectionStateValid(fromD1, PERIOD_D1);
+        if (fromOriginalD1 != NULL) {
+            isD1Valid = this.isCorrectedDirectionStateValid(
+                fromD1, fromOriginalD1, PERIOD_D1, fromIsBuy
+            );
+        }
         if (fromMn1 == NULL || fromW1 == NULL || fromD1 == NULL) {
             fromRejectReason = "HIGHER_TIMEFRAME_UNAVAILABLE";
         } else if (!this.isDirectionStateValid(fromMn1, PERIOD_MN1)
                 || !this.isDirectionStateValid(fromW1, PERIOD_W1)
-                || !this.isDirectionStateValid(fromD1, PERIOD_D1)) {
+                || !isD1Valid) {
             fromRejectReason = "HIGHER_DIRECTION_INVALID";
         } else if (!this.isEma200StateValid(fromW1, PERIOD_W1)) {
             fromRejectReason = "W1_EMA200_INVALID";
@@ -100,6 +107,39 @@ public:
             return false;
         }
         if (fromElliot.isBuy) {
+            return fromElliot.buySellLabel == "BUY";
+        }
+        return fromElliot.buySellLabel == "SELL";
+    }
+
+    /**
+     * 明示補正した1足だけ、元Oscillator方向と異なる波動分析方向を許可する。
+     *
+     * 元分析の方向整合を必須とし、補正後のOscillatorは元の実測方向を保持する。
+     * 通常の方向整合チェックを置き換えず、補正対象を検証した呼び出し元で使用する。
+     *
+     * @param fromElliot 補正後の対象時間足。
+     * @param fromOriginal 補正前の同じ時間足。
+     * @param fromTimeFrame 明示された補正時間足。
+     * @param fromIsBuy 現在足を基準に指定した補正後方向。
+     * @return 元方向と補正後方向が指定どおり整合する場合true。
+     */
+    bool isCorrectedDirectionStateValid(
+        Elliot *fromElliot,
+        Elliot *fromOriginal,
+        const ENUM_TIMEFRAMES fromTimeFrame,
+        const bool fromIsBuy
+    ) {
+        if (!this.isDirectionStateValid(fromOriginal, fromTimeFrame)
+                || fromElliot == NULL || fromElliot == fromOriginal
+                || fromElliot.marketContext.timeFrame != fromTimeFrame
+                || fromElliot.oscillator.marketContext.timeFrame != fromTimeFrame
+                || fromElliot.marketContext.symbolName != fromOriginal.marketContext.symbolName
+                || fromElliot.oscillator.isBuy != fromOriginal.oscillator.isBuy
+                || fromElliot.isBuy != fromIsBuy || fromOriginal.isBuy == fromIsBuy) {
+            return false;
+        }
+        if (fromIsBuy) {
             return fromElliot.buySellLabel == "BUY";
         }
         return fromElliot.buySellLabel == "SELL";

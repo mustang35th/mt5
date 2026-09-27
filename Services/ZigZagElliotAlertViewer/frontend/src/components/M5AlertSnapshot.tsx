@@ -18,11 +18,13 @@ interface Column {
   direction?: (row: SnapshotRow) => string;
 }
 export interface M5AlertSnapshotProps { detail: AlertDetailResponse; timeFrames: AlertTimeFrame[]; points: AlertPoint[] }
+interface AlertCorrectionSnapshotProps extends M5AlertSnapshotProps { currentTimeFrame: "M5" | "H1" }
 
 const frames = [
   { id: 49153, label: "MN1" }, { id: 32769, label: "W1" }, { id: 16408, label: "D1" },
   { id: 16388, label: "H4" }, { id: 16385, label: "H1" }, { id: 15, label: "M15" }, { id: 5, label: "M5" },
 ];
+const h1Frames = frames.slice(0, 5);
 const missing = "未記録";
 
 function text(value: unknown): string {
@@ -163,8 +165,8 @@ const keyColumns: Column[] = [
   { id: "ema-direction", label: "EMA200方向", get: (row) => [row.timeFrame?.is_ema200_available, row.timeFrame?.is_ema200_buy, row.timeFrame?.is_ema200_sell], display: emaDirection },
   { id: "wave", label: "Elliott / Sub", get: (row) => [row.timeFrame?.is_wave_uptrend, row.timeFrame?.latest_elliot_label, row.timeFrame?.latest_sub_elliot_label], display: wave, direction },
 ];
-function rowsFor(timeFrames: AlertTimeFrame[], points: AlertPoint[], analysis: Analysis, analysisText?: string): SnapshotRow[] {
-  return frames.map((frame) => {
+function rowsFor(timeFrames: AlertTimeFrame[], points: AlertPoint[], analysis: Analysis, snapshotFrames: typeof frames, analysisText?: string): SnapshotRow[] {
+  return snapshotFrames.map((frame) => {
     const matches = timeFrames.filter((row) => row.time_frame === frame.id);
     let timeFrame: AlertTimeFrame | null = null;
     let point: AlertPoint | null = null;
@@ -239,23 +241,29 @@ function WavePoints({ rows, points, label }: { rows: SnapshotRow[]; points: Aler
 }
 
 export function M5AlertSnapshot({ detail, timeFrames, points }: M5AlertSnapshotProps) {
-  return <SnapshotContent key={`${detail.alert.id}-${correctionStatus(detail.correction)}`} detail={detail} timeFrames={timeFrames} points={points} />;
+  return <AlertCorrectionSnapshot detail={detail} timeFrames={timeFrames} points={points} currentTimeFrame="M5" />;
 }
 
-function SnapshotContent({ detail, timeFrames, points }: M5AlertSnapshotProps) {
+export function AlertCorrectionSnapshot(props: AlertCorrectionSnapshotProps) {
+  return <SnapshotContent key={`${props.detail.alert.id}-${props.currentTimeFrame}-${correctionStatus(props.detail.correction)}`} {...props} />;
+}
+
+function SnapshotContent({ detail, timeFrames, points, currentTimeFrame }: AlertCorrectionSnapshotProps) {
   const status = correctionStatus(detail.correction);
   const applied = status === "APPLIED";
   const metadata: AlertCorrectionMetadata | null = detail.correction?.metadata ?? null;
   const [view, setView] = useState<View>("selected");
   const [expanded, setExpanded] = useState(false);
   const [changedOnly, setChangedOnly] = useState(false);
-  const originalRows = useMemo(() => rowsFor(timeFrames, points, "ORIGINAL", metadata?.original_analysis_text), [timeFrames, points, metadata?.original_analysis_text]);
-  const correctedRows = useMemo(() => rowsFor(detail.correction?.timeframes ?? [], detail.correction?.points ?? [], "CORRECTED", metadata?.corrected_analysis_text), [detail.correction, metadata?.corrected_analysis_text]);
+  const snapshotFrames = currentTimeFrame === "H1" ? h1Frames : frames;
+  const currentFrame = snapshotFrames[snapshotFrames.length - 1].id;
+  const originalRows = useMemo(() => rowsFor(timeFrames, points, "ORIGINAL", snapshotFrames, metadata?.original_analysis_text), [timeFrames, points, snapshotFrames, metadata?.original_analysis_text]);
+  const correctedRows = useMemo(() => rowsFor(detail.correction?.timeframes ?? [], detail.correction?.points ?? [], "CORRECTED", snapshotFrames, metadata?.corrected_analysis_text), [detail.correction, snapshotFrames, metadata?.corrected_analysis_text]);
   let selectedRows = originalRows;
   if (applied && view !== "original") selectedRows = correctedRows;
   let visibleRows = selectedRows;
   const comparison = applied && view === "comparison";
-  if (comparison) visibleRows = frames.flatMap((_frame, index) => [correctedRows[index], originalRows[index]]);
+  if (comparison) visibleRows = snapshotFrames.flatMap((_frame, index) => [correctedRows[index], originalRows[index]]);
   let shownColumns = columns.filter((column) => expanded || column.summary);
   if (comparison && changedOnly) shownColumns = shownColumns.filter((column) => originalRows.some((row, index) => hasDifference(column, row, correctedRows[index])));
   let primaryLabel = "元の保存分析";
@@ -266,8 +274,8 @@ function SnapshotContent({ detail, timeFrames, points }: M5AlertSnapshotProps) {
   const analyses: Analysis[] = [];
   if (comparison || (applied && view === "selected")) analyses.push("CORRECTED");
   if (comparison || !applied || view === "original") analyses.push("ORIGINAL");
-  return <section className="m5-alert-snapshot" aria-label="M5アラート補正スナップショット">
-    <div className="m5-alert-context"><strong>M5 ALERT SNAPSHOT</strong><span>JST {text(detail.alert.jst_time_text)}</span><span>Server {text(detail.alert.server_time_text)}</span><span>Spread {number(detail.alert.spread_pips, 1)} pips</span><span>Alert {detail.alert.id} / Run {detail.run?.id}</span></div>
+  return <section className="m5-alert-snapshot" aria-label={`${currentTimeFrame}アラート補正スナップショット`}>
+    <div className="m5-alert-context"><strong>{currentTimeFrame} ALERT SNAPSHOT</strong><span>JST {text(detail.alert.jst_time_text)}</span><span>Server {text(detail.alert.server_time_text)}</span><span>Spread {number(detail.alert.spread_pips, 1)} pips</span><span>Alert {detail.alert.id} / Run {detail.run?.id}</span></div>
     <div className="m5-alert-status" data-status={status} role="status"><strong>{statusMessage(status)}</strong>
       {applied && metadata && <span className="m5-alert-correction-badge">{frames.find((frame) => frame.id === metadata.correction_time_frame)?.label}方向補正：<span className={sideClass(metadata.original_direction)}>{metadata.original_direction}</span> → <span className={sideClass(metadata.corrected_direction)}>{metadata.corrected_direction}</span></span>}
       {detail.correction?.reason && <small>{detail.correction.reason}</small>}
@@ -284,20 +292,20 @@ function SnapshotContent({ detail, timeFrames, points }: M5AlertSnapshotProps) {
       <button type="button" className="secondary-button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded && "要点のみ"}{!expanded && "すべて表示"}</button>
     </div></div>
     {comparison && changedOnly && shownColumns.length === 0 && <p className="m5-alert-note">表示中の項目に差はありません。比較キーは常に表示します。</p>}
-    <div className="m5-alert-grid-scroll" role="region" aria-label="M5アラート全画面グリッド" tabIndex={0}>
-      <table className="m5-alert-grid" aria-label="M5アラート7時間足比較"><thead><tr><th className="m5-alert-key-0" scope="col">時間足</th><th className="m5-alert-key-1" scope="col">分析</th>{[...keyColumns, ...shownColumns].map((column, index) => {
+    <div className="m5-alert-grid-scroll" role="region" aria-label={`${currentTimeFrame}アラート全画面グリッド`} tabIndex={0}>
+      <table className="m5-alert-grid" aria-label={`${currentTimeFrame}アラート${snapshotFrames.length}時間足比較`}><thead><tr><th className="m5-alert-key-0" scope="col">時間足</th><th className="m5-alert-key-1" scope="col">分析</th>{[...keyColumns, ...shownColumns].map((column, index) => {
         let className = "";
         if (index < keyColumns.length) className = `m5-alert-key-${index + 2}`;
         return <th scope="col" key={column.id} className={className} title={column.label}>{column.label}</th>;
       })}</tr></thead><tbody>{visibleRows.map((row) => {
-        const frameIndex = frames.findIndex((frame) => frame.id === row.frame);
+        const frameIndex = snapshotFrames.findIndex((frame) => frame.id === row.frame);
         const other = originalRows[frameIndex];
         let pair = correctedRows[frameIndex];
         if (row.analysis === "CORRECTED") pair = other;
         let rowClass = "";
-        if (row.frame === 5) rowClass = "m5-alert-current";
+        if (row.frame === currentFrame) rowClass = "m5-alert-current";
         return <tr key={`${row.analysis}-${row.frame}`} data-timeframe={row.label} data-analysis={row.analysis} className={rowClass}>
-          <th scope="row" className="m5-alert-key-0">{row.label}{row.frame === 5 && <small>現在足</small>}{row.analysis === "CORRECTED" && metadata?.correction_time_frame === row.frame && <small className="m5-alert-force">方向補正</small>}</th>
+          <th scope="row" className="m5-alert-key-0">{row.label}{row.frame === currentFrame && <small>現在足</small>}{row.analysis === "CORRECTED" && metadata?.correction_time_frame === row.frame && <small className="m5-alert-force">方向補正</small>}</th>
           <td className="m5-alert-key-1">{analysisLabel(row.analysis, status)}</td>
           {[...keyColumns, ...shownColumns].map((column, index) => {
             const value = cellText(column, row);

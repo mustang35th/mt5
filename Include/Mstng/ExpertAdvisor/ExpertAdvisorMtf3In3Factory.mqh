@@ -32,6 +32,7 @@ public:
      * @param fromH1W1ConfirmationMode H1以外の互換経路へ渡すW1確認モード。
      * @param fromH1DirectionAlignmentMode H1以外の互換経路へ渡す方向一致モード。
      * @param fromH1Ema200ConfirmationMode H1以外の互換経路へ渡すEMA200確認モード。
+     * @param fromH1DirectionCorrectionEnabled H1でD1・H4の片足方向補正を使用する場合true。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */
     static ExpertAdvisorMTF_3in3 *create(
@@ -42,12 +43,14 @@ public:
         H1DirectionAlignmentMode fromH1DirectionAlignmentMode =
             H1_DIRECTION_ALIGNMENT_D1_TO_H1,
         H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
-            H1_EMA200_CONFIRMATION_H1_ONLY
+            H1_EMA200_CONFIRMATION_H1_ONLY,
+        bool fromH1DirectionCorrectionEnabled = false
     ) {
         if (fromMarketContext.timeFrame == PERIOD_H1) {
             return new ExpertAdvisorMtf3In3H1(
                 fromMarketContext,
-                fromIsDrawArrow
+                fromIsDrawArrow,
+                fromH1DirectionCorrectionEnabled
             );
         }
 

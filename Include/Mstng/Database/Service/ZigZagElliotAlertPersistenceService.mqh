@@ -632,21 +632,25 @@ private:
                 && fromCorrection.correctedElliotCsvText == ""
                 && ArraySize(fromCorrectedTimeFrames) == 0 && ArraySize(fromCorrectedPoints) == 0;
         }
-        if (fromCorrection.correctionStatus != "APPLIED" || fromAlert.timeFrame != PERIOD_M5
+        bool isCorrectionTimeFrameValid = fromAlert.timeFrame == PERIOD_M5
+            && (fromCorrection.correctionTimeFrame == PERIOD_H4 || fromCorrection.correctionTimeFrame == PERIOD_H1);
+        if (fromAlert.timeFrame == PERIOD_H1) {
+            isCorrectionTimeFrameValid = fromCorrection.correctionTimeFrame == PERIOD_D1
+                || fromCorrection.correctionTimeFrame == PERIOD_H4;
+        }
+        if (fromCorrection.correctionStatus != "APPLIED" || !isCorrectionTimeFrameValid
                 || fromCorrection.selectedAnalysis != "CORRECTED"
-                || (fromCorrection.correctionTimeFrame != PERIOD_H4
-                    && fromCorrection.correctionTimeFrame != PERIOD_H1)
                 || fromCorrection.selectedStopLoss != fromCorrection.correctedLc5
                 || fromCorrection.correctedReferencePointTime <= 0
                 || fromCorrection.correctedAnalysisText == ""
                 || fromCorrection.correctedElliotCsvText == ""
                 || !this.isAnalysisStructureValid(
-                    fromCorrectedTimeFrames, fromCorrectedPoints, PERIOD_M5,
+                    fromCorrectedTimeFrames, fromCorrectedPoints, fromAlert.timeFrame,
                     fromCorrection.correctedReferencePointTime, fromCorrection.correctedLc0)) {
             return false;
         }
         return this.isAppliedDirectionValid(
-            fromOriginalTimeFrames, fromCorrectedTimeFrames, fromCorrection
+            fromOriginalTimeFrames, fromCorrectedTimeFrames, fromCorrection, fromAlert.timeFrame
         );
     }
 
@@ -748,22 +752,31 @@ private:
     }
 
     /**
-     * 補正採用時の7足構成とH4またはH1だけの方向変更を確認する。
+     * M5は7足・H4/H1、H1は5足・D1/H4の指定片足だけの方向変更を確認する。
      */
     bool isAppliedDirectionValid(
         ZigZagElliotAlertTimeFrameEntity &fromOriginal[],
         ZigZagElliotAlertTimeFrameEntity &fromCorrected[],
-        ZigZagElliotAlertCorrectionEntity &fromCorrection
+        ZigZagElliotAlertCorrectionEntity &fromCorrection,
+        const int fromCurrentTimeFrame
     ) {
         ENUM_TIMEFRAMES timeFrames[] = {
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5
         };
-        if (ArraySize(fromOriginal) != ArraySize(timeFrames)
-                || ArraySize(fromCorrected) != ArraySize(timeFrames)) {
+        int timeFrameCount = 7;
+        ENUM_TIMEFRAMES upperTimeFrame = PERIOD_H4;
+        ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
+        if (fromCurrentTimeFrame == PERIOD_H1) {
+            timeFrameCount = 5;
+            upperTimeFrame = PERIOD_D1;
+            lowerTimeFrame = PERIOD_H4;
+        }
+        if (ArraySize(fromOriginal) != timeFrameCount
+                || ArraySize(fromCorrected) != timeFrameCount) {
             return false;
         }
-        int currentIsBuy = fromOriginal[6].isBuy;
-        for (int i = 0; i < ArraySize(timeFrames); i++) {
+        int currentIsBuy = fromOriginal[timeFrameCount - 1].isBuy;
+        for (int i = 0; i < timeFrameCount; i++) {
             if (fromOriginal[i].timeFrame != timeFrames[i] || fromCorrected[i].timeFrame != timeFrames[i]
                     || fromOriginal[i].timeFrameOrder != i || fromCorrected[i].timeFrameOrder != i) {
                 return false;
@@ -777,13 +790,13 @@ private:
             } else if (fromOriginal[i].isBuy != fromCorrected[i].isBuy) {
                 return false;
             }
-            if ((timeFrames[i] == PERIOD_H4 || timeFrames[i] == PERIOD_H1)
+            if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame)
                     && timeFrames[i] != fromCorrection.correctionTimeFrame
                     && fromOriginal[i].isBuy != currentIsBuy) {
                 return false;
             }
         }
-        return fromCorrection.selectedCurrentElliotLabel == fromCorrected[6].latestElliotLabel;
+        return fromCorrection.selectedCurrentElliotLabel == fromCorrected[timeFrameCount - 1].latestElliotLabel;
     }
 
     /**

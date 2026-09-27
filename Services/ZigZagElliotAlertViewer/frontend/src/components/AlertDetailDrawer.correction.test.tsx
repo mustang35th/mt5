@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { getGridApi } from "ag-grid-community";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AlertCorrectionMetadata, AlertCorrectionResponse, AlertDetailResponse, AlertTimeFrame } from "../api/types";
 import { AlertDetailDrawer } from "./AlertDetailDrawer";
+import { DEFAULT_SEARCH_STATE } from "../lib/searchState";
 
 function jsonResponse(payload: unknown): Response {
   return {
@@ -284,6 +287,37 @@ function fixture(status: AlertCorrectionResponse["status"] | null = "APPLIED", a
 }
 
 type Fixture = ReturnType<typeof fixture>;
+function h1Fixture(target = 16408, side: "BUY" | "SELL" = "BUY", status: AlertCorrectionResponse["status"] | null = "APPLIED", alertId = 74): Fixture {
+  const data = fixture(status, alertId);
+  data.detail.alert.time_frame = 16385;
+  data.detail.alert.time_frame_text = "H1";
+  data.detail.alert.side = side;
+  const isBuy = side === "BUY";
+  const hasCorrection = status === "APPLIED" || status === "INCOMPLETE";
+  data.timeFrames = data.timeFrames.slice(0, 5).map((row) => ({ ...row,
+    is_current_time_frame: row.time_frame === 16385,
+    is_buy: hasCorrection && row.time_frame === target ? !isBuy : isBuy,
+    buy_sell_label: hasCorrection && row.time_frame === target ? (isBuy ? "SELL" : "BUY") : side,
+  }));
+  data.points = data.points.filter((row) => row.time_frame_order < 5).map((row) => ({ ...row,
+    is_signal_reference: row.time_frame === 16385 && row.point_order === 0,
+  }));
+  if (data.detail.correction?.metadata) {
+    Object.assign(data.detail.correction.metadata, {
+      correction_time_frame: hasCorrection ? target : 0,
+      original_direction: hasCorrection ? (isBuy ? "SELL" : "BUY") : "",
+      corrected_direction: hasCorrection ? side : "",
+      selected_wave_summary_text: "D1 3 / H4 3 / H1 3",
+    });
+    data.detail.correction.timeframes = data.detail.correction.timeframes.slice(0, 5).map((row) => ({ ...row,
+      is_current_time_frame: row.time_frame === 16385, is_buy: isBuy, buy_sell_label: side,
+    }));
+    data.detail.correction.points = data.detail.correction.points.filter((row) => row.time_frame_order < 5).map((row) => ({ ...row,
+      is_signal_reference: row.time_frame === 16385 && row.point_order === 0, rate: 1.23456,
+    }));
+  }
+  return data;
+}
 function responseFor(data: Fixture, path: string): Response {
   if (path === `/api/alerts/${data.detail.alert.id}`) return jsonResponse(data.detail);
   if (path === `/api/alerts/${data.detail.alert.id}/timeframes`) {
@@ -316,6 +350,99 @@ afterEach(() => {
 });
 
 describe("AlertDetailDrawer correction integration", () => {
+  it.each([[16408, "BUY"], [16408, "SELL"], [16388, "BUY"], [16388, "SELL"]] as const)(
+    "shows H1 %s correction toward the original %s direction with fixed adopted SL",
+    async (target, side) => {
+      serve(h1Fixture(target, side));
+      render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+      const snapshot = await screen.findByRole("region", { name: "H1アラート補正スナップショット" });
+      const table = within(snapshot).getByRole("table", { name: "H1アラート5時間足比較" });
+      expect(Array.from(table.querySelectorAll("tbody tr")).map((row) => row.getAttribute("data-timeframe")))
+        .toEqual(["MN1", "W1", "D1", "H4", "H1"]);
+      expect(snapshot).toHaveTextContent(`${target === 16408 ? "D1" : "H4"}方向補正`);
+      expect(table.querySelector('tr[data-timeframe="H1"]')).toHaveClass("m5-alert-current");
+      const sl = within(snapshot).getByRole("region", { name: "判定時の損切り候補" });
+      expect(sl).toHaveTextContent("1.20000");
+      const savedSl = sl.textContent;
+      fireEvent.click(within(snapshot).getByRole("button", { name: "補正前" }));
+      expect(table.querySelectorAll('tr[data-analysis="ORIGINAL"]')).toHaveLength(5);
+      expect(table.querySelector('tr[data-timeframe="H1"] [data-column="direction"]')).toHaveTextContent(side);
+      fireEvent.click(within(snapshot).getByRole("button", { name: "前後比較" }));
+      expect(table.querySelectorAll("tbody tr")).toHaveLength(10);
+      expect(sl.textContent).toBe(savedSl);
+      expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "TF比較" })).toBeInTheDocument();
+    },
+  );
+
+  it("uses corrected H1 timeframe rows and points in TF comparison without re-evaluating original directions", async () => {
+    serve(h1Fixture());
+    render(<AlertDetailDrawer alertId={74} initialView="comparison" onClose={vi.fn()} />);
+    await screen.findByRole("region", { name: "H1アラート補正スナップショット" });
+    fireEvent.click(screen.getByText("採用分析のTF比較"));
+    const grid = await screen.findByRole("grid", { name: "アラート時間足比較スナップショットグリッド" });
+    await waitFor(() => {
+      const api = getGridApi(grid)!;
+      const rows = api.getGridOption("rowData") as { time_frame: number; is_buy: boolean; latest_point_rate: number }[];
+      expect(rows).toHaveLength(5);
+      expect(rows.find((row) => row.time_frame === 16408)?.is_buy).toBe(true);
+      expect(rows.find((row) => row.time_frame === 16385)?.latest_point_rate).toBe(1.23456);
+    });
+    expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "詳細" }));
+    expect(screen.getByRole("region", { name: "H1アラート補正スナップショット" })).toBeInTheDocument();
+  });
+
+  it("shows incomplete H1 data only as original comparison and does not invent selected SL", async () => {
+    serve(h1Fixture(16408, "BUY", "INCOMPLETE"));
+    render(<AlertDetailDrawer alertId={74} initialView="comparison" onClose={vi.fn()} />);
+    const snapshot = await screen.findByRole("region", { name: "H1アラート補正スナップショット" });
+    expect(within(snapshot).getByRole("button", { name: "前後比較" })).toBeDisabled();
+    expect(snapshot.querySelectorAll('tr[data-analysis="ORIGINAL"]')).toHaveLength(5);
+    expect(within(snapshot).getByRole("region", { name: "判定時の損切り候補" })).toHaveTextContent("表示不可");
+    expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
+  });
+
+  it.each(["NONE", "UNRECORDED", null] as const)("keeps normal H1 %s on the existing views", async (status) => {
+    serve(h1Fixture(16408, "BUY", status));
+    render(<AlertDetailDrawer alertId={74} initialView="comparison" onClose={vi.fn()} />);
+    expect(await screen.findByRole("region", { name: h1PanelName })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "H1アラート補正スナップショット" })).not.toBeInTheDocument();
+  });
+
+  it("navigates from corrected H1 to normal H1 and back with TF comparison retained", async () => {
+    const before = h1Fixture();
+    const after = h1Fixture(16388, "BUY", "NONE", 75);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      const data = path.startsWith("/api/alerts/74") ? before : after;
+      if (path.includes("/navigation")) {
+        const neighbor = { id: data === before ? 75 : 74, run_id: 3, symbol_name: "EURUSD", side: "BUY",
+          time_frame_text: "H1", jst_time_text: "2026.09.19 18:00:00", server_time_text: "2026.09.19 12:00:00" };
+        return jsonResponse({ alert_id: data.detail.alert.id, matched: true,
+          previous: data === after ? neighbor : null, next: data === before ? neighbor : null });
+      }
+      return responseFor(data, path);
+    }));
+    function Harness() {
+      const [alertId, setAlertId] = useState(74);
+      return <AlertDetailDrawer alertId={alertId} initialView="comparison" navigationSearch={DEFAULT_SEARCH_STATE}
+        onNavigate={setAlertId} onClose={vi.fn()} />;
+    }
+    render(<Harness />);
+    await screen.findByRole("region", { name: "H1アラート補正スナップショット" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "次のアラート（検索結果順）" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "次のアラート（検索結果順）" }));
+    await screen.findByRole("region", { name: h1PanelName });
+    expect(screen.getByText("TIMEFRAME COMPARISON")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "H1アラート補正スナップショット" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "前のアラート（検索結果順）" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "前のアラート（検索結果順）" }));
+    const snapshot = await screen.findByRole("region", { name: "H1アラート補正スナップショット" });
+    expect(within(snapshot).getByRole("button", { name: "補正後（採用）" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("TIMEFRAME COMPARISON")).toBeInTheDocument();
+  });
+
   it.each(["detail", "comparison"] as const)(
     "opens %s in the adopted M5 analysis and keeps the saved decision when browsing both analyses",
     async (initialView) => {

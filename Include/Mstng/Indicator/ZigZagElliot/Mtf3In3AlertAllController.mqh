@@ -1446,7 +1446,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 7;
+        this.databaseRun.schemaVersion = 8;
         this.databaseRun.sourceMode = "TESTER";
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);

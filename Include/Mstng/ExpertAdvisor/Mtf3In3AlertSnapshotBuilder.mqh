@@ -55,7 +55,7 @@ public:
      * @param fromAlertText 既存の元分析表示文言
      * @param fromSnapshot 値として固定する保存先
      * @param fromJudgmentElliotAll 判定に採用した分析
-     * @param fromCorrectionTimeFrame 補正したH4/H1。補正なしはPERIOD_CURRENT
+     * @param fromCorrectionTimeFrame M5はH4/H1、H1はD1/H4の補正足。補正なしはPERIOD_CURRENT
      * @param fromJudgmentAlertText 画面と同じ採用分析表示文言
      * @return 整合するスナップショットを生成できた場合true
      */
@@ -204,7 +204,7 @@ private:
     /**
      * 元分析と採用分析が同一判定のスナップショットであることを確認する。
      *
-     * @return 補正なし、またはH4/H1の片足だけをM5方向へ補正した場合true
+     * @return 補正なし、または対象の片足だけを現在足方向へ補正した場合true
      */
     static bool isJudgmentSnapshotValid(
         ElliotAll *fromOriginal,
@@ -227,29 +227,38 @@ private:
         if (fromCorrectionTimeFrame == PERIOD_CURRENT) {
             return fromOriginal == fromJudgment;
         }
-        if ((fromCorrectionTimeFrame != PERIOD_H4 && fromCorrectionTimeFrame != PERIOD_H1)
+        ENUM_TIMEFRAMES currentTimeFrame = fromOriginal.marketContext.timeFrame;
+        ENUM_TIMEFRAMES upperTimeFrame = PERIOD_H4;
+        ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
+        int timeFrameCount = 7;
+        if (currentTimeFrame == PERIOD_H1) {
+            upperTimeFrame = PERIOD_D1;
+            lowerTimeFrame = PERIOD_H4;
+            timeFrameCount = 5;
+        }
+        if ((currentTimeFrame != PERIOD_M5 && currentTimeFrame != PERIOD_H1)
+                || (fromCorrectionTimeFrame != upperTimeFrame && fromCorrectionTimeFrame != lowerTimeFrame)
                 || fromOriginal == fromJudgment
-                || fromOriginal.marketContext.timeFrame != PERIOD_M5
-                || fromJudgment.marketContext.timeFrame != PERIOD_M5
+                || fromJudgment.marketContext.timeFrame != currentTimeFrame
                 || fromOriginal.marketContext.symbolName == ""
                 || fromOriginal.marketContext.symbolName != fromJudgment.marketContext.symbolName
                 || fromOriginal.tradeTimeInfo.serverTime != fromJudgment.tradeTimeInfo.serverTime
                 || fromOriginal.tradeTimeInfo.jstTime != fromJudgment.tradeTimeInfo.jstTime
                 || fromOriginal.todayRate.bid != fromJudgment.todayRate.bid
                 || fromOriginal.todayRate.ask != fromJudgment.todayRate.ask
-                || fromOriginal.getElliot(PERIOD_M5) != fromOriginal.elliotCurrent
-                || fromJudgment.getElliot(PERIOD_M5) != fromJudgment.elliotCurrent) {
+                || fromOriginal.getElliot(currentTimeFrame) != fromOriginal.elliotCurrent
+                || fromJudgment.getElliot(currentTimeFrame) != fromJudgment.elliotCurrent) {
             return false;
         }
         ENUM_TIMEFRAMES timeFrames[] = {
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4,
             PERIOD_H1, PERIOD_M15, PERIOD_M5
         };
-        if (fromOriginal.elliotList.Total() != ArraySize(timeFrames)
-                || fromJudgment.elliotList.Total() != ArraySize(timeFrames)) {
+        if (fromOriginal.elliotList.Total() != timeFrameCount
+                || fromJudgment.elliotList.Total() != timeFrameCount) {
             return false;
         }
-        for (int i = 0; i < ArraySize(timeFrames); i++) {
+        for (int i = 0; i < timeFrameCount; i++) {
             Elliot *original = fromOriginal.getElliot(timeFrames[i]);
             Elliot *judgment = fromJudgment.getElliot(timeFrames[i]);
             if (original == NULL || judgment == NULL || original == judgment
@@ -273,7 +282,7 @@ private:
             } else if (original.isBuy != judgment.isBuy) {
                 return false;
             }
-            if ((timeFrames[i] == PERIOD_H4 || timeFrames[i] == PERIOD_H1)
+            if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame)
                     && timeFrames[i] != fromCorrectionTimeFrame
                     && original.isBuy != fromResult.isBuy) {
                 return false;

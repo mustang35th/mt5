@@ -18,6 +18,8 @@ ORIGINAL_TIME_FRAME_TABLE = "zigzag_elliot_alert_timeframes"
 ORIGINAL_POINT_TABLE = "zigzag_elliot_alert_points"
 TIME_FRAMES = ((49153, "MN1"), (32769, "W1"), (16408, "D1"),
                (16388, "H4"), (16385, "H1"), (15, "M15"), (5, "M5"))
+CORRECTION_TARGETS = {5: {16388, 16385}, 16385: {16408, 16388}}
+ANALYSIS_TIME_FRAMES = {5: TIME_FRAMES, 16385: TIME_FRAMES[:5]}
 
 METADATA_COLUMNS = """
 alert_id correction_status correction_time_frame original_direction corrected_direction
@@ -132,9 +134,10 @@ def _metadata_reason(metadata: Mapping[str, Any], alert: Mapping[str, Any]) -> s
                 or not _equal(metadata["selected_stop_loss"], metadata["original_lc5"])
                 or not _equal(metadata["selected_risk_pips"], alert.get("risk_pips"))):
             return "補正なしの記録に補正後の値が混在しています。"
-    elif (alert.get("time_frame") != 5 or alert.get("time_frame_text") != "M5"
+    elif (alert.get("time_frame") not in ANALYSIS_TIME_FRAMES
+            or alert.get("time_frame_text") != dict(TIME_FRAMES).get(alert.get("time_frame"))
             or metadata["selected_analysis"] != "CORRECTED"
-            or metadata["correction_time_frame"] not in {16385, 16388}
+            or metadata["correction_time_frame"] not in CORRECTION_TARGETS.get(alert.get("time_frame"), set())
             or metadata["original_direction"] not in {"BUY", "SELL"}
             or metadata["corrected_direction"] not in {"BUY", "SELL"}
             or metadata["original_direction"] == metadata["corrected_direction"]
@@ -164,7 +167,7 @@ def _read_analysis(session: Session, timeframe_table: str, point_table: str,
 
 def _analysis_reason(timeframes: list[dict[str, Any]], points: list[dict[str, Any]],
                      alert: Mapping[str, Any], reference_time: int, reference_rate: float,
-                     require_seven: bool) -> str | None:
+                     require_complete: bool) -> str | None:
     if not timeframes or not points:
         return "時間足または波動ポイントが保存されていません。"
     for row in [*timeframes, *points]:
@@ -175,8 +178,9 @@ def _analysis_reason(timeframes: list[dict[str, Any]], points: list[dict[str, An
                 return "分析値に無効な数値があります。"
             if name.startswith("is_") and value not in (None, 0, 1):
                 return "分析値の状態フラグが不正です。"
-    if require_seven and [(row["time_frame"], row["time_frame_text"]) for row in timeframes] != list(TIME_FRAMES):
-        return "MN1からM5までの7時間足が揃っていません。"
+    expected_frames = ANALYSIS_TIME_FRAMES.get(alert["time_frame"], ())
+    if require_complete and [(row["time_frame"], row["time_frame_text"]) for row in timeframes] != list(expected_frames):
+        return f"MN1から{alert['time_frame_text']}までの{len(expected_frames)}時間足が揃っていません。"
     ids = [row["id"] for row in timeframes]
     frames = [row["time_frame"] for row in timeframes]
     if (any(not _integer(value) or value <= 0 for value in ids + frames)
@@ -292,12 +296,12 @@ def _load_alert_correction(session: Session, alert: Mapping[str, Any],
                      and after["buy_sell_label"] == metadata["corrected_direction"])
         else:
             valid = before["is_buy"] == after["is_buy"]
-            if before["time_frame"] in {16385, 16388}:
+            if before["time_frame"] in CORRECTION_TARGETS[alert["time_frame"]]:
                 valid = valid and before["buy_sell_label"] == alert["side"]
         if not valid:
-            return _response("INCOMPLETE", "指定したH4またはH1以外にも方向変更があります。", rendered)
+            return _response("INCOMPLETE", "指定した補正時間足以外にも方向変更または方向不一致があります。", rendered)
     if corrected[-1]["latest_elliot_label"] != metadata["selected_current_elliot_label"]:
-        return _response("INCOMPLETE", "採用したM5波動ラベルが一致しません。", rendered)
+        return _response("INCOMPLETE", "採用した現在足の波動ラベルが一致しません。", rendered)
     added = {row["alert_timeframe_id"]: row.get("is_added_point")
              for row in corrected_points if row["is_latest"] == 1}
     normalized_frames = []

@@ -41,7 +41,14 @@ public:
         marker.entryResult = fromResult.entryResult;
         marker.correctionStatus = "NONE";
         marker.correctionText = "";
-        if (fromCorrectionTimeFrame == PERIOD_H1 || fromCorrectionTimeFrame == PERIOD_H4) {
+        if (fromCorrectionTimeFrame != PERIOD_CURRENT) {
+            bool isM5Correction = marker.timeFrame == PERIOD_M5
+                && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
+            bool isH1Correction = marker.timeFrame == PERIOD_H1
+                && (fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4);
+            if (!isM5Correction && !isH1Correction) {
+                return false;
+            }
             Elliot *original = fromSource.getElliot(fromCorrectionTimeFrame);
             Elliot *corrected = fromJudgment.getElliot(fromCorrectionTimeFrame);
             if (original == NULL || corrected == NULL || fromJudgment == fromSource) {
@@ -51,6 +58,8 @@ public:
             string frameLabel = "H1";
             if (fromCorrectionTimeFrame == PERIOD_H4) {
                 frameLabel = "H4";
+            } else if (fromCorrectionTimeFrame == PERIOD_D1) {
+                frameLabel = "D1";
             }
             marker.correctionText = frameLabel + " " + direction(original.isBuy)
                 + "→" + direction(corrected.isBuy);

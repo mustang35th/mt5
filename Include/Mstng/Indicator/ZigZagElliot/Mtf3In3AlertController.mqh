@@ -90,7 +90,8 @@ public:
             true,
             this.config.h1W1ConfirmationMode,
             this.config.h1DirectionAlignmentMode,
-            this.config.h1Ema200ConfirmationMode
+            this.config.h1Ema200ConfirmationMode,
+            this.config.h1DirectionCorrectionEnabled
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -503,7 +504,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 7;
+        this.databaseRun.schemaVersion = 8;
         this.databaseRun.sourceMode = "LIVE";
 
         if (Util::isStrategyTester()) {
@@ -512,9 +513,13 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.54";
+        this.databaseRun.programVersion = "1.55";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
+        if (this.marketContext.timeFrame == PERIOD_H1
+                && this.config.h1DirectionCorrectionEnabled) {
+            this.databaseRun.strategyVersion = "MTF3IN3_H1_CORRECTED_WAVES_V14";
+        }
         if (this.marketContext.timeFrame == PERIOD_M5) {
             this.databaseRun.strategyVersion = "MTF3IN3_M5_SPREAD5_V13";
         }
@@ -554,6 +559,8 @@ private:
         string inputText = "";
         inputText += "h1DisplayWaveEntryLimitEnabled="
             + (string)this.config.h1DisplayWaveEntryLimitEnabled;
+        inputText += "|h1DirectionCorrectionEnabled="
+            + (string)this.config.h1DirectionCorrectionEnabled;
         inputText += "|h1W1ConfirmationMode="
             + getH1W1ConfirmationModeText(
                 this.config.h1W1ConfirmationMode

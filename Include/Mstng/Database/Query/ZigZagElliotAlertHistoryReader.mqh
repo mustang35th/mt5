@@ -6,7 +6,7 @@
 #include <Mstng\Log\Logger.mqh>
 
 /**
- * M5の保存済み分析と、M5・H1のアラートラベルを読み取り専用で取得する。
+ * M5・H1の保存済み分析とアラートラベルを読み取り専用で取得する。
  * 元分析と補正分析は同じ読取トランザクションで検証する。
  */
 class ZigZagElliotAlertHistoryReader {
@@ -133,7 +133,7 @@ public:
      * 同じ検索条件で全ラベルを一括取得する。波動ポイントや詳細分析は読み取らない。
      * 表示値が不足する行もIDを残し、前後移動による詳細確認を可能にする。
      * 任意の実行モード・サーバー・既知時刻はRun選択前に適用する。空文字と0は制限なし。
-     * 全RunではRun ID指定を使わず、解決Run IDは0。H1は保存元分析を採用する。
+     * 全RunではRun ID指定を使わず、解決Run IDは0。M5/H1とも保存された採用分析を使用する。
      */
     bool selectMarkers(
         const string fromSymbol, const long fromRunId,
@@ -167,9 +167,7 @@ public:
         }
         string correctionProjection = "NULL,'',0,'','',''";
         string correctionJoin = "";
-        if (fromTimeFrame == PERIOD_H1) {
-            correctionProjection = "'NONE',a.alert_text,0,'','','ORIGINAL'";
-        } else if (correctionColumns != ",") {
+        if (correctionColumns != ",") {
             string reason = "";
             if (this.projection("zigzag_elliot_alert_corrections",
                     "correction_status,selected_alert_text,correction_time_frame,original_direction,corrected_direction,selected_analysis",
@@ -185,8 +183,7 @@ public:
         string originalFrames = "";
         string correctedFrames = "";
         if (!this.markerFrameSource("zigzag_elliot_alert_timeframes", false, originalFrames, fromError)
-                || (fromTimeFrame == PERIOD_M5
-                    && !this.markerFrameSource("zigzag_elliot_alert_corrected_timeframes", true, correctedFrames, fromError))) {
+                || !this.markerFrameSource("zigzag_elliot_alert_corrected_timeframes", true, correctedFrames, fromError)) {
             return false;
         }
         string frameFilter = " WHERE alert_id IN (SELECT id FROM selected)";
@@ -355,6 +352,12 @@ private:
             return;
         }
         if (DatabaseColumnType(fromRequest, 10) == DATABASE_FIELD_TYPE_NULL) {
+            if (fromTimeFrame == PERIOD_H1) {
+                fromMarker.correctionStatus = "NONE";
+                fromMarker.correctionText = "補正なし・元分析採用";
+                fromMarker.available = fromMarker.text != "";
+                return;
+            }
             fromMarker.correctionText = "補正情報未記録・元分析";
             if (fromMarker.text != "") {
                 fromMarker.text += " [元分析]";
@@ -380,12 +383,14 @@ private:
                 && originalDirection == "" && correctedDirection == "") {
             fromMarker.correctionText = "補正なし・元分析採用";
         } else if (status == "APPLIED" && selectedAnalysis == "CORRECTED"
-                && (correctionTimeFrame == PERIOD_H1 || correctionTimeFrame == PERIOD_H4)
+                && this.isCorrectionTimeFrameValid(fromTimeFrame, correctionTimeFrame)
                 && (originalDirection == "BUY" || originalDirection == "SELL")
                 && originalDirection != correctedDirection && correctedDirection == fromMarker.side) {
             string frame = "H1";
             if (correctionTimeFrame == PERIOD_H4) {
                 frame = "H4";
+            } else if (correctionTimeFrame == PERIOD_D1) {
+                frame = "D1";
             }
             fromMarker.correctionText = frame + " " + originalDirection + "→" + correctedDirection;
         } else {
@@ -687,8 +692,12 @@ private:
         if (!success) {
             return false;
         }
-        if (fromSnapshot.alert.id != fromAlertId || fromSnapshot.alert.runId <= 0
-                || fromSnapshot.alert.timeFrame != PERIOD_M5 || fromSnapshot.alert.timeFrameText != "M5"
+        bool isTimeFrameValid = fromSnapshot.alert.timeFrame == PERIOD_M5
+            && fromSnapshot.alert.timeFrameText == "M5";
+        if (fromSnapshot.alert.timeFrame == PERIOD_H1) {
+            isTimeFrameValid = fromSnapshot.alert.timeFrameText == "H1";
+        }
+        if (fromSnapshot.alert.id != fromAlertId || fromSnapshot.alert.runId <= 0 || !isTimeFrameValid
                 || fromSnapshot.alert.isAlert != 1 || fromSnapshot.alert.symbolName == ""
                 || (fromSnapshot.alert.side != "BUY" && fromSnapshot.alert.side != "SELL")
                 || fromSnapshot.alert.currentBarTime <= 0 || fromSnapshot.alert.serverTime <= 0
@@ -809,7 +818,7 @@ private:
     }
 
     /**
-     * 7足・ポイントの所属・最新点・SL基準点を検証する。
+     * M5は7足、H1は5足の所属・最新点・SL基準点を検証する。
      */
     bool validateAnalysis(ZigZagElliotAlertEntity &fromAlert,
                           ZigZagElliotAlertTimeFrameEntity &fromTimeFrames[], ZigZagElliotAlertPointEntity &fromPoints[],
@@ -817,13 +826,17 @@ private:
                           const bool fromCheckReferenceRate, string &fromReason) {
         int frames[] = {49153, 32769, 16408, 16388, 16385, 15, 5};
         string labels[] = {"MN1", "W1", "D1", "H4", "H1", "M15", "M5"};
-        if (ArraySize(fromTimeFrames) != 7) {
-            fromReason = "MN1からM5までの7時間足が揃っていません。";
+        int frameCount = 7;
+        if (fromAlert.timeFrame == PERIOD_H1) {
+            frameCount = 5;
+        }
+        if (ArraySize(fromTimeFrames) != frameCount) {
+            fromReason = "MN1から現在足までの時間足が揃っていません。";
             return false;
         }
         int pointIndex = 0;
         int references = 0;
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < frameCount; i++) {
             ZigZagElliotAlertTimeFrameEntity frame = fromTimeFrames[i];
             string direction = "SELL";
             if (frame.isBuy == 1) {
@@ -831,8 +844,8 @@ private:
             }
             if (frame.id <= 0 || frame.alertId != fromAlert.id || frame.timeFrame != frames[i]
                     || frame.timeFrameText != labels[i] || frame.timeFrameOrder != i
-                    || frame.isCurrentTimeFrame != (int)(i == 6) || frame.buySellLabel != direction
-                    || (i == 6 && direction != fromAlert.side) || frame.pointCount <= 0) {
+                    || frame.isCurrentTimeFrame != (int)(i == frameCount - 1) || frame.buySellLabel != direction
+                    || (i == frameCount - 1 && direction != fromAlert.side) || frame.pointCount <= 0) {
                 fromReason = "時間足の識別子・方向・ポイント数が不整合です。";
                 return false;
             }
@@ -872,7 +885,7 @@ private:
                 }
                 if (point.isSignalReference == 1) {
                     references++;
-                    if (i != 6 || point.barTime != fromReferenceTime
+                    if (i != frameCount - 1 || point.barTime != fromReferenceTime
                             || (fromCheckReferenceRate && !this.samePrice(point.rate, fromReferenceRate))) {
                         fromReason = "損切り基準ポイントが保存値と一致しません。";
                         return false;
@@ -897,6 +910,17 @@ private:
      */
     bool samePrice(const double fromLeft, const double fromRight) {
         return MathAbs(fromLeft - fromRight) <= MathMax(1.0e-10, MathMax(MathAbs(fromLeft), MathAbs(fromRight)) * 1.0e-12);
+    }
+
+    /**
+     * 現在足ごとに許可した上位の片足かを確認する。
+     */
+    bool isCorrectionTimeFrameValid(const int fromCurrentTimeFrame, const int fromCorrectionTimeFrame) {
+        if (fromCurrentTimeFrame == PERIOD_H1) {
+            return fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4;
+        }
+        return fromCurrentTimeFrame == PERIOD_M5
+            && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
     }
 
     /**
@@ -974,7 +998,7 @@ private:
             return true;
         }
         if (correction.selectedAnalysis != "CORRECTED"
-                || (correction.correctionTimeFrame != PERIOD_H1 && correction.correctionTimeFrame != PERIOD_H4)
+                || !this.isCorrectionTimeFrameValid(alert.timeFrame, correction.correctionTimeFrame)
                 || (correction.originalDirection != "BUY" && correction.originalDirection != "SELL")
                 || correction.originalDirection == correction.correctedDirection || correction.correctedDirection != alert.side
                 || !this.samePrice(correction.selectedStopLoss, correction.correctedLc5)
@@ -1029,10 +1053,10 @@ private:
                     fromSnapshot.correctionStatus = "INCOMPLETE";
                 } else if (fromSnapshot.correctionStatus == "NONE") {
                     if (fromSnapshot.originalAvailable
-                            && fromSnapshot.originalTimeFrames[6].latestElliotLabel
+                            && fromSnapshot.originalTimeFrames[ArraySize(fromSnapshot.originalTimeFrames) - 1].latestElliotLabel
                                 != fromSnapshot.correction.selectedCurrentElliotLabel) {
                         fromSnapshot.correctionStatus = "INCOMPLETE";
-                        fromSnapshot.correctionReason = "採用したM5波動ラベルが元分析と一致しません。";
+                        fromSnapshot.correctionReason = "採用した現在足の波動ラベルが元分析と一致しません。";
                     } else if (ArraySize(fromSnapshot.correctedTimeFrames) > 0 || ArraySize(fromSnapshot.correctedPoints) > 0) {
                         fromSnapshot.correctionStatus = "INCOMPLETE";
                         fromSnapshot.correctionReason = "補正なしの記録に補正後の分析が混在しています。";
@@ -1054,7 +1078,7 @@ private:
     }
 
     /**
-     * 元分析と補正分析を検証し、H4/H1の指定片足だけの方向変更を確認する。
+     * 元分析と補正分析を検証し、現在足ごとの指定片足だけの方向変更を確認する。
      */
     void validateComparison(ZigZagElliotAlertHistorySnapshot &fromSnapshot) {
         fromSnapshot.correctionStatus = "INCOMPLETE";
@@ -1075,23 +1099,24 @@ private:
             fromSnapshot.correctionReason = "補正後: " + reason;
             return;
         }
-        for (int i = 0; i < 7; i++) {
+        int frameCount = ArraySize(fromSnapshot.originalTimeFrames);
+        for (int i = 0; i < frameCount; i++) {
             ZigZagElliotAlertTimeFrameEntity original = fromSnapshot.originalTimeFrames[i];
             ZigZagElliotAlertTimeFrameEntity corrected = fromSnapshot.correctedTimeFrames[i];
             bool valid = original.isBuy == corrected.isBuy;
             if (original.timeFrame == fromSnapshot.correction.correctionTimeFrame) {
                 valid = original.buySellLabel == fromSnapshot.correction.originalDirection
                     && corrected.buySellLabel == fromSnapshot.correction.correctedDirection;
-            } else if (original.timeFrame == PERIOD_H4 || original.timeFrame == PERIOD_H1) {
+            } else if (this.isCorrectionTimeFrameValid(fromSnapshot.alert.timeFrame, original.timeFrame)) {
                 valid = valid && original.buySellLabel == fromSnapshot.alert.side;
             }
             if (!valid) {
-                fromSnapshot.correctionReason = "指定したH4またはH1以外にも方向変更があります。";
+                fromSnapshot.correctionReason = "指定した補正足以外にも方向変更があります。";
                 return;
             }
         }
-        if (fromSnapshot.correctedTimeFrames[6].latestElliotLabel != fromSnapshot.correction.selectedCurrentElliotLabel) {
-            fromSnapshot.correctionReason = "採用したM5波動ラベルが一致しません。";
+        if (fromSnapshot.correctedTimeFrames[frameCount - 1].latestElliotLabel != fromSnapshot.correction.selectedCurrentElliotLabel) {
+            fromSnapshot.correctionReason = "採用した現在足の波動ラベルが一致しません。";
             return;
         }
         fromSnapshot.correctionStatus = "APPLIED";

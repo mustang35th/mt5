@@ -58,7 +58,7 @@ def insert_row(connection: sqlite3.Connection, table: str, row: dict[str, object
 
 
 def create_correction_database(path: Path, include_corrections: bool = True) -> None:
-    """Build six synthetic alert variants, suitable for the full viewer and browser QA."""
+    """Build M5 and H1 alert variants, suitable for the full viewer and browser QA."""
     columns = {table: production_columns(dao) for table, dao in TABLE_DAOS.items()}
     with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute("PRAGMA journal_mode=WAL")
@@ -84,12 +84,14 @@ def create_correction_database(path: Path, include_corrections: bool = True) -> 
             (1, "APPLIED", "BUY", 16385), (2, "APPLIED", "SELL", 16388),
             (3, "NONE", "BUY", 0), (4, "UNRECORDED", "BUY", 0),
             (5, "INCOMPLETE", "BUY", 16385), (6, "NONE", "SELL", 0),
+            (7, "APPLIED", "BUY", 16408), (8, "APPLIED", "SELL", 16408),
+            (9, "APPLIED", "BUY", 16388), (10, "APPLIED", "SELL", 16388),
         ):
             is_buy = int(side == "BUY")
             is_applied = state in {"APPLIED", "INCOMPLETE"}
             current_frame = 5
             frame_list = TIME_FRAMES
-            if alert_id == 6:
+            if alert_id >= 6:
                 current_frame = 16385
                 frame_list = TIME_FRAMES[:5]
             reference_time = 1789819200 + alert_id * 300
@@ -240,6 +242,52 @@ class AlertCorrectionsTest(unittest.TestCase):
                 self.assertEqual([], result["points"])
         self.assertIsNone(self.correction(4)["metadata"])
         self.assertIn("7時間足", self.correction(5)["reason"])
+
+    def test_h1_applied_uses_five_frames_and_keeps_original_h1_direction(self) -> None:
+        for alert_id, side, target in ((7, "BUY", 16408), (8, "SELL", 16408),
+                                      (9, "BUY", 16388), (10, "SELL", 16388)):
+            with self.subTest(side=side, target=target):
+                original = self.database.timeframes(alert_id)["items"]
+                result = self.correction(alert_id)
+                self.assertEqual("APPLIED", result["status"], result["reason"])
+                self.assertEqual(list(TIME_FRAMES[:5]), [
+                    (row["time_frame"], row["time_frame_text"]) for row in result["timeframes"]])
+                self.assertEqual(10, len(result["points"]))
+                self.assertEqual(target, result["metadata"]["correction_time_frame"])
+                self.assertEqual(side, original[-1]["buy_sell_label"])
+                self.assertEqual(side, result["timeframes"][-1]["buy_sell_label"])
+                self.assertEqual(result["metadata"]["corrected_lc5"], result["metadata"]["selected_stop_loss"])
+                self.assertNotEqual(result["metadata"]["original_lc5"], result["metadata"]["selected_stop_loss"])
+                self.assertEqual(original, self.database.timeframes(alert_id)["items"])
+
+    def test_h1_rejects_other_targets_both_opposite_and_incomplete_snapshots(self) -> None:
+        mutations = (
+            f"UPDATE {CORRECTION_TABLE} SET correction_time_frame=16385 WHERE alert_id=7",
+            f"UPDATE {CORRECTION_TABLE} SET correction_time_frame=5 WHERE alert_id=7",
+            f"UPDATE {ORIGINAL_TIME_FRAME_TABLE} SET is_buy=0,buy_sell_label='SELL' WHERE alert_id=7 AND time_frame=16388",
+            f"UPDATE {TIME_FRAME_TABLE} SET is_buy=0,buy_sell_label='SELL' WHERE alert_id=7 AND time_frame=16385",
+            f"UPDATE {ORIGINAL_TIME_FRAME_TABLE} SET is_buy=0,buy_sell_label='SELL' WHERE alert_id=7 AND time_frame=16385",
+            f"UPDATE {TIME_FRAME_TABLE} SET is_buy=0,buy_sell_label='SELL' WHERE alert_id=7 AND time_frame=32769",
+            f"DELETE FROM {TIME_FRAME_TABLE} WHERE alert_id=7 AND time_frame=32769",
+            f"DELETE FROM {POINT_TABLE} WHERE alert_timeframe_id=705",
+            f"UPDATE {CORRECTION_TABLE} SET selected_stop_loss=9 WHERE alert_id=7",
+        )
+        for index, sql in enumerate(mutations):
+            with self.subTest(sql=sql):
+                path = Path(self.temporary.name) / f"h1-mutated-{index}.sqlite"
+                create_correction_database(path)
+                with closing(sqlite3.connect(path)) as connection, connection:
+                    connection.execute(sql)
+                database = AlertDatabase(path)
+                try:
+                    database.validate()
+                    result = database.alert_detail(7)["correction"]
+                    self.assertEqual("INCOMPLETE", result["status"])
+                    self.assertTrue(result["reason"])
+                    self.assertEqual([], result["timeframes"])
+                    self.assertEqual([], result["points"])
+                finally:
+                    database.close()
 
     def test_old_database_without_optional_tables_is_unchanged(self) -> None:
         path = Path(self.temporary.name) / "legacy.sqlite"

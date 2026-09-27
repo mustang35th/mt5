@@ -1,4 +1,4 @@
-#property copyright "Copyright 2026, MetaQuotes Ltd."
+﻿#property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
 #property version "1.00"
 #property strict
@@ -118,7 +118,7 @@ long saveRun(ZigZagElliotAlertPersistenceService &fromService, const int fromNum
     ZigZagElliotAlertRunEntity run;
     ZeroMemory(run);
     run.runUid = "history-fixture-run-" + IntegerToString(fromNumber);
-    run.schemaVersion = 7;
+    run.schemaVersion = 8;
     run.source = "ZigZagElliot";
     run.sourceMode = "TESTER";
     run.sourceServer = "qa-server";
@@ -142,13 +142,17 @@ long saveRun(ZigZagElliotAlertPersistenceService &fromService, const int fromNum
 }
 
 /**
- * 7時間足と各最新Waveの4ポイントを作る。元と補正の価格・ラベルを明確に変える。
+ * 現在足までの時間足と各最新Waveの4ポイントを作る。元と補正の価格・ラベルを明確に変える。
  */
 void initializeAnalysis(const bool fromCorrected, const bool fromApplied, const bool fromBuy,
     const int fromCorrectionTimeFrame, ZigZagElliotAlertTimeFrameEntity &fromTimeFrames[],
-    ZigZagElliotAlertPointEntity &fromPoints[]) {
-    ArrayResize(fromTimeFrames, 7);
-    ArrayResize(fromPoints, 28);
+    ZigZagElliotAlertPointEntity &fromPoints[], const int fromCurrentTimeFrame = PERIOD_M5) {
+    int frameCount = 7;
+    if (fromCurrentTimeFrame == PERIOD_H1) {
+        frameCount = 5;
+    }
+    ArrayResize(fromTimeFrames, frameCount);
+    ArrayResize(fromPoints, frameCount * 4);
     int timeFrames[] = {PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
     string labels[] = {"MN1", "W1", "D1", "H4", "H1", "M15", "M5"};
     string elliotLabel = "2";
@@ -167,7 +171,7 @@ void initializeAnalysis(const bool fromCorrected, const bool fromApplied, const 
             pointRate = 150.5;
         }
     }
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < frameCount; i++) {
         ZeroMemory(fromTimeFrames[i]);
         bool isBuy = fromBuy;
         if (!fromCorrected && fromApplied && timeFrames[i] == fromCorrectionTimeFrame) {
@@ -191,7 +195,7 @@ void initializeAnalysis(const bool fromCorrected, const bool fromApplied, const 
         fromTimeFrames[i].ema200Shift1 = 150.0;
         fromTimeFrames[i].isEma200Buy = 1;
         fromTimeFrames[i].createdAt = 2200;
-        if (timeFrames[i] == PERIOD_M5) {
+        if (timeFrames[i] == fromCurrentTimeFrame) {
             fromTimeFrames[i].isCurrentTimeFrame = 1;
         }
         for (int j = 0; j < 4; j++) {
@@ -206,7 +210,7 @@ void initializeAnalysis(const bool fromCorrected, const bool fromApplied, const 
             if (j == 3) {
                 fromPoints[pointIndex].isLatest = 1;
             }
-            if (timeFrames[i] == PERIOD_M5 && j == 2) {
+            if (timeFrames[i] == fromCurrentTimeFrame && j == 2) {
                 fromPoints[pointIndex].isSignalReference = 1;
                 fromPoints[pointIndex].rate = pointRate + 0.05;
                 if (!fromBuy) {
@@ -224,7 +228,8 @@ void initializeAnalysis(const bool fromCorrected, const bool fromApplied, const 
 long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long fromRunId,
     const int fromSerial, const datetime fromBarTime, const string fromStatus,
     const bool fromBuy = true, const int fromCorrectionTimeFrame = PERIOD_H1,
-    const bool fromEntry = true, const string fromSymbol = "TESTJPY") {
+    const bool fromEntry = true, const string fromSymbol = "TESTJPY",
+    const int fromCurrentTimeFrame = PERIOD_M5) {
     bool isApplied = fromStatus == "APPLIED";
     ZigZagElliotAlertEntity alert;
     ZeroMemory(alert);
@@ -233,8 +238,11 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     alert.marketSignalKey = "history-market-" + IntegerToString(fromSerial);
     alert.snapshotHash = "aaaaaaaaaaaaaaaa";
     alert.symbolName = fromSymbol;
-    alert.timeFrame = PERIOD_M5;
+    alert.timeFrame = fromCurrentTimeFrame;
     alert.timeFrameText = "M5";
+    if (fromCurrentTimeFrame == PERIOD_H1) {
+        alert.timeFrameText = "H1";
+    }
     alert.strategy = "MTF_3in3";
     alert.magicNumber = "0";
     alert.side = "BUY";
@@ -281,9 +289,11 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     ZigZagElliotAlertPointEntity points[];
     ZigZagElliotAlertTimeFrameEntity correctedTimeFrames[];
     ZigZagElliotAlertPointEntity correctedPoints[];
-    initializeAnalysis(false, isApplied, fromBuy, fromCorrectionTimeFrame, timeFrames, points);
+    initializeAnalysis(false, isApplied, fromBuy, fromCorrectionTimeFrame, timeFrames, points, fromCurrentTimeFrame);
+    int currentIndex = ArraySize(timeFrames) - 1;
+    int referenceIndex = currentIndex * 4 + 2;
     if (fromSerial != 11) {
-        timeFrames[6].currentOpen = 150.125;
+        timeFrames[currentIndex].currentOpen = 150.125;
     }
     for (int i = 0; i < ArraySize(points); i++) {
         points[i].barTime += (fromSerial - 1) * 10;
@@ -305,7 +315,7 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     correction.isSelectedStopLossAvailable = 1;
     correction.selectedStopLoss = alert.stopLoss;
     correction.selectedRiskPips = alert.riskPips;
-    correction.originalLc0 = points[26].rate;
+    correction.originalLc0 = points[referenceIndex].rate;
     correction.originalLc5 = alert.stopLoss;
     correction.originalLc10 = alert.stopLoss;
     correction.originalLc15 = alert.stopLoss;
@@ -316,7 +326,7 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     correction.createdAt = 2200;
     correction.createdAtText = "1970.01.01 00:36:40";
     if (isApplied) {
-        initializeAnalysis(true, true, fromBuy, fromCorrectionTimeFrame, correctedTimeFrames, correctedPoints);
+        initializeAnalysis(true, true, fromBuy, fromCorrectionTimeFrame, correctedTimeFrames, correctedPoints, fromCurrentTimeFrame);
         for (int i = 0; i < ArraySize(correctedPoints); i++) {
             correctedPoints[i].barTime += (fromSerial - 1) * 10;
         }
@@ -332,7 +342,7 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
             correction.selectedStopLoss = 150.5;
         }
         correction.selectedRiskPips = 50.0;
-        correction.correctedLc0 = correctedPoints[26].rate;
+        correction.correctedLc0 = correctedPoints[referenceIndex].rate;
         correction.correctedLc5 = correction.selectedStopLoss;
         correction.correctedLc10 = correction.selectedStopLoss;
         correction.correctedLc15 = correction.selectedStopLoss;
@@ -787,6 +797,106 @@ void testPeriods() {
 }
 
 /**
+ * 専用一時DBで旧補正制約の移行とH1のD1/H4補正保存・採用表示を検証する。
+ */
+void testH1Corrections(const string fromFileName) {
+    if (!expect(isUnusedFixtureName(fromFileName), "unused H1 correction fixture path")) {
+        return;
+    }
+    SqliteDatabase database(fromFileName, false);
+    if (!expect(database.open(), "H1 correction fixture open")) {
+        return;
+    }
+    int databaseHandle = database.getHandle();
+    ZigZagElliotAlertDao alertDao(databaseHandle);
+    ZigZagElliotAlertPointDao pointDao(databaseHandle);
+    ZigZagElliotAlertRunDao runDao(databaseHandle);
+    ZigZagElliotAlertTimeFrameDao timeFrameDao(databaseHandle);
+    ZigZagElliotAlertCorrectionDao correctionDao(databaseHandle);
+    ZigZagElliotAlertTimeFrameDao correctedTimeFrameDao(databaseHandle, true);
+    ZigZagElliotAlertPointDao correctedPointDao(databaseHandle, true);
+    ZigZagElliotAlertPersistenceService service(databaseHandle, GetPointer(alertDao), GetPointer(pointDao),
+        GetPointer(runDao), GetPointer(timeFrameDao), GetPointer(correctionDao),
+        GetPointer(correctedTimeFrameDao), GetPointer(correctedPointDao));
+    if (!expect(service.createTables(), "H1 correction current DDL")) {
+        database.close();
+        removeFixture(fromFileName, true);
+        return;
+    }
+    int request = DatabasePrepare(databaseHandle,
+        "SELECT sql FROM sqlite_master WHERE name='zigzag_elliot_alert_corrections'");
+    string legacySql = "";
+    bool read = request != INVALID_HANDLE && DatabaseRead(request) && DatabaseColumnText(request, 0, legacySql);
+    if (request != INVALID_HANDLE) {
+        DatabaseFinalize(request);
+    }
+    if (expect(read, "read correction DDL for isolated legacy fixture")) {
+        StringReplace(legacySql, "(0, 16385, 16388, 16408)", "(0, 16385, 16388)");
+        StringReplace(legacySql, "(16385, 16388, 16408)", "(16385, 16388)");
+        executeSql(databaseHandle, "PRAGMA foreign_keys=OFF");
+        executeSql(databaseHandle, "DROP TABLE zigzag_elliot_alert_corrections");
+        executeSql(databaseHandle, legacySql);
+        executeSql(databaseHandle, "PRAGMA foreign_keys=ON");
+    }
+    long runId = saveRun(service, 1);
+    expect(saveAlert(service, runId, 1, 1000, "APPLIED") == 1, "legacy M5 correction before migration");
+    executeSql(databaseHandle, "CREATE INDEX correction_fixture_index ON zigzag_elliot_alert_corrections(selected_analysis)");
+    executeSql(databaseHandle, "CREATE TABLE correction_fixture_audit (alert_id INTEGER)");
+    executeSql(databaseHandle, "CREATE TRIGGER correction_fixture_trigger AFTER UPDATE ON zigzag_elliot_alert_corrections "
+        "BEGIN INSERT INTO correction_fixture_audit VALUES(NEW.alert_id); END");
+    expect(correctionDao.createTable() && correctionDao.createTable(), "D1 migration and idempotent reopen");
+    expectText(databaseHandle, "PRAGMA foreign_keys", "1");
+    expectText(databaseHandle, "SELECT COUNT(*) FROM zigzag_elliot_alert_corrected_timeframes WHERE alert_id=1", "7");
+    expectText(databaseHandle, "SELECT COUNT(*) FROM zigzag_elliot_alert_corrected_points", "28");
+    expectText(databaseHandle, "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('correction_fixture_index','correction_fixture_trigger')", "2");
+    expectText(databaseHandle, "SELECT COUNT(*) FROM pragma_foreign_key_check", "0");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alert_corrections SET selected_alert_text=selected_alert_text WHERE alert_id=1");
+    expectText(databaseHandle, "SELECT COUNT(*) FROM correction_fixture_audit", "1");
+    for (int i = 0; i < 4; i++) {
+        int correctionTimeFrame = PERIOD_D1;
+        if (i >= 2) {
+            correctionTimeFrame = PERIOD_H4;
+        }
+        bool isBuy = i % 2 == 0;
+        expect(saveAlert(service, runId, i + 2, 1100 + i * 100, "APPLIED", isBuy,
+            correctionTimeFrame, true, "H1CORRECTION", PERIOD_H1) == i + 2, "save H1 selected analysis");
+    }
+    expect(saveAlert(service, runId, 6, 1500, "NONE", true, PERIOD_D1, true,
+        "H1CORRECTION", PERIOD_H1) == 6, "save H1 without correction");
+    database.close();
+    ZigZagElliotAlertHistoryReader reader;
+    string error = "";
+    if (expect(reader.open(fromFileName, false, error), "H1 correction reader open " + error)) {
+        for (int i = 0; i < 4; i++) {
+            ZigZagElliotAlertHistorySnapshot snapshot;
+            bool loaded = reader.loadSnapshot(i + 2, snapshot, error);
+            expect(loaded && snapshot.originalAvailable && snapshot.correctionStatus == "APPLIED"
+                && ArraySize(snapshot.originalTimeFrames) == 5 && ArraySize(snapshot.correctedTimeFrames) == 5
+                && snapshot.alert.signalCount == 1 && snapshot.alert.signalReferencePointTime == 502 + (i + 1) * 10
+                && snapshot.alert.stopLoss != snapshot.correction.selectedStopLoss,
+                "H1 five-frame original/selected snapshot and original SignalCount retained " + error);
+        }
+        long resolvedRun = 0;
+        long ids[];
+        ZigZagElliotAlertHistoryMarker markers[];
+        bool selected = reader.selectMarkers("H1CORRECTION", runId, 0, 0, false, resolvedRun,
+            ids, markers, error, "", "", 0, PERIOD_H1);
+        if (expect(selected && ArraySize(markers) == 5, "H1 corrected marker count " + error)) {
+            expect(markers[0].available && markers[0].text == "synthetic APPLIED"
+                && markers[0].correctionText == "D1 SELL→BUY" && markers[0].waves[2].direction == "B"
+                && markers[0].waves[4].wave == "3" && !markers[0].waves[5].recorded,
+                "H1 D1 correction marker uses selected five-frame analysis");
+            expect(markers[3].available && markers[3].correctionText == "H4 BUY→SELL"
+                && markers[3].waves[3].direction == "S", "H1 H4 SELL correction marker");
+            expect(markers[4].available && markers[4].correctionStatus == "NONE"
+                && markers[4].waves[4].wave == "2", "H1 uncorrected marker retains original analysis");
+        }
+    }
+    reader.close();
+    removeFixture(fromFileName, true);
+}
+
+/**
  * 独自ローカルDBだけでReaderを検証する。接続・注文・メールやCommonファイルを操作しない。
  */
 void OnStart() {
@@ -805,6 +915,7 @@ void OnStart() {
     }
     testFile(prefix + "-current.sqlite", false);
     testFile(prefix + "-legacy.sqlite", true);
+    testH1Corrections(prefix + "-h1-correction.sqlite");
     testLogger.info(__FUNCTION__, "ALERT_HISTORY_SMOKE_RESULT checked=" + IntegerToString(checkedCount)
         + " failed=" + IntegerToString(failedCount));
 }

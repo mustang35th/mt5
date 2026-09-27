@@ -54,6 +54,8 @@ public:
     datetime databaseAlertDisplayEndDate;
     /** DB表示をENTRY成立だけに絞る場合true。 */
     bool databaseAlertDisplayEntryOnly;
+    /** H1判定でD1・H4の片足方向補正を使用する場合true。 */
+    bool h1DirectionCorrectionEnabled;
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
     /** H1エントリーで使用するW1確認モード。 */
@@ -101,6 +103,7 @@ public:
         this.databaseAlertDisplayStartDate = 0;
         this.databaseAlertDisplayEndDate = 0;
         this.databaseAlertDisplayEntryOnly = false;
+        this.h1DirectionCorrectionEnabled = false;
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.applyH1EntryPolicy();
         this.currencyStrengthEnabled = true;

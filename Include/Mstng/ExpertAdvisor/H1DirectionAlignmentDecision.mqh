@@ -28,12 +28,16 @@ public:
      * @param fromMode H1方向一致モード。
      * @param fromElliotAll 複数時間足Elliott分析結果。
      * @param fromResult 診断結果の格納先。
+     * @param fromOriginal 補正を採用した場合の元分析。それ以外はNULL。
+     * @param fromCorrectionTimeFrame 補正したD1またはH4。補正なしはPERIOD_CURRENT。
      * @return エントリー判定を継続する場合true。
      */
     bool evaluate(
         const H1DirectionAlignmentMode fromMode,
         ElliotAll *fromElliotAll,
-        H1DirectionAlignmentResult &fromResult
+        H1DirectionAlignmentResult &fromResult,
+        ElliotAll *fromOriginal = NULL,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame = PERIOD_CURRENT
     ) {
         fromResult.reset();
 
@@ -91,13 +95,21 @@ public:
         fromResult.isAvailable = true;
         fromResult.direction = this.getDirection(elliotH1);
 
+        bool isCorrectionValid = this.isCorrectionContextValid(
+            fromElliotAll, fromOriginal, fromCorrectionTimeFrame
+        );
         if (fromElliotAll.elliotCurrent != elliotH1
-                || !fromElliotAll.isAnalysisSucceeded
-                || !this.isDirectionStateValid(elliotMn1, PERIOD_MN1)
-                || !this.isDirectionStateValid(elliotW1, PERIOD_W1)
-                || !this.isDirectionStateValid(elliotD1, PERIOD_D1)
-                || !this.isDirectionStateValid(elliotH4, PERIOD_H4)
-                || !this.isDirectionStateValid(elliotH1, PERIOD_H1)) {
+                || !fromElliotAll.isAnalysisSucceeded || !isCorrectionValid
+                || !this.isDirectionStateValid(elliotMn1, PERIOD_MN1,
+                    fromOriginal, fromCorrectionTimeFrame, elliotH1.isBuy)
+                || !this.isDirectionStateValid(elliotW1, PERIOD_W1,
+                    fromOriginal, fromCorrectionTimeFrame, elliotH1.isBuy)
+                || !this.isDirectionStateValid(elliotD1, PERIOD_D1,
+                    fromOriginal, fromCorrectionTimeFrame, elliotH1.isBuy)
+                || !this.isDirectionStateValid(elliotH4, PERIOD_H4,
+                    fromOriginal, fromCorrectionTimeFrame, elliotH1.isBuy)
+                || !this.isDirectionStateValid(elliotH1, PERIOD_H1,
+                    fromOriginal, fromCorrectionTimeFrame, elliotH1.isBuy)) {
             fromResult.state = "INVALID";
 
             return this.isObserveMode(fromMode);
@@ -129,8 +141,12 @@ public:
                 == H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED) {
             Mtf3In3HigherTimeFrameDecision decision;
             string rejectReason;
+            Elliot *originalD1 = NULL;
+            if (fromCorrectionTimeFrame == PERIOD_D1) {
+                originalD1 = fromOriginal.getElliot(PERIOD_D1);
+            }
             fromResult.isPassed = decision.evaluateDirection(
-                isH1Buy, elliotMn1, elliotW1, elliotD1, rejectReason
+                isH1Buy, elliotMn1, elliotW1, elliotD1, rejectReason, originalD1
             );
             this.setMn1OrW1Ema200State(
                 isH1Buy,
@@ -168,14 +184,69 @@ private:
      *
      * @param fromElliot 判定対象。
      * @param fromTimeFrame 期待する時間足。
+     * @param fromOriginal 明示補正時の元分析。通常判定はNULL。
+     * @param fromCorrectionTimeFrame 方向差を許容する1足。
+     * @param fromIsBuy 元H1を基準とする補正後方向。
      * @return 方向値が判定可能な場合true。
      */
     bool isDirectionStateValid(
         Elliot *fromElliot,
-        const ENUM_TIMEFRAMES fromTimeFrame
+        const ENUM_TIMEFRAMES fromTimeFrame,
+        ElliotAll *fromOriginal,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame,
+        const bool fromIsBuy
     ) {
         Mtf3In3HigherTimeFrameDecision decision;
-        return decision.isDirectionStateValid(fromElliot, fromTimeFrame);
+        if (fromOriginal == NULL) {
+            return decision.isDirectionStateValid(fromElliot, fromTimeFrame);
+        }
+        Elliot *originalElliot = fromOriginal.getElliot(fromTimeFrame);
+        if (fromTimeFrame == fromCorrectionTimeFrame) {
+            return decision.isCorrectedDirectionStateValid(
+                fromElliot, originalElliot, fromTimeFrame, fromIsBuy
+            );
+        }
+        return decision.isDirectionStateValid(originalElliot, fromTimeFrame)
+            && decision.isDirectionStateValid(fromElliot, fromTimeFrame)
+            && fromElliot.marketContext.symbolName == originalElliot.marketContext.symbolName
+            && fromElliot.isBuy == originalElliot.isBuy;
+    }
+
+    /**
+     * H1方向を維持し、D1・H4の片足だけを補正した明示的な入力か確認する。
+     *
+     * @return 補正なし、または指定した1足だけが元H1と逆方向の場合true。
+     */
+    bool isCorrectionContextValid(
+        ElliotAll *fromSelected,
+        ElliotAll *fromOriginal,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame
+    ) {
+        if (fromCorrectionTimeFrame == PERIOD_CURRENT) {
+            return fromOriginal == NULL;
+        }
+        if (fromOriginal == NULL || fromSelected == NULL || fromOriginal == fromSelected
+                || !fromOriginal.isAnalysisSucceeded
+                || fromOriginal.marketContext.timeFrame != PERIOD_H1
+                || fromSelected.marketContext.timeFrame != PERIOD_H1
+                || fromOriginal.marketContext.symbolName != fromSelected.marketContext.symbolName
+                || (fromCorrectionTimeFrame != PERIOD_D1 && fromCorrectionTimeFrame != PERIOD_H4)) {
+            return false;
+        }
+        Elliot *originalD1 = fromOriginal.getElliot(PERIOD_D1);
+        Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
+        Elliot *originalH1 = fromOriginal.getElliot(PERIOD_H1);
+        Mtf3In3HigherTimeFrameDecision decision;
+        if (!decision.isDirectionStateValid(originalD1, PERIOD_D1)
+                || !decision.isDirectionStateValid(originalH4, PERIOD_H4)
+                || !decision.isDirectionStateValid(originalH1, PERIOD_H1)
+                || fromOriginal.elliotCurrent != originalH1) {
+            return false;
+        }
+        if (fromCorrectionTimeFrame == PERIOD_D1) {
+            return originalD1.isBuy != originalH1.isBuy && originalH4.isBuy == originalH1.isBuy;
+        }
+        return originalH4.isBuy != originalH1.isBuy && originalD1.isBuy == originalH1.isBuy;
     }
 
     /**
