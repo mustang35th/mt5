@@ -4,6 +4,7 @@ import Tabs from "@mui/material/Tabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
 import { m5Api } from "./api/m5Client";
+import { eaApi } from "./api/eaClient";
 import type {
   AlertsResponse,
   AlertSort,
@@ -29,6 +30,7 @@ import {
 } from "./components/FilterPanel";
 import { FilterVisibilityToggle } from "./components/FilterVisibilityToggle";
 import { H1ObservationView } from "./components/H1ObservationView";
+import { H1EaResultsView } from "./components/H1EaResultsView";
 import { M5ObservationView } from "./components/M5ObservationView";
 import { Pagination } from "./components/Pagination";
 import { RefreshControls } from "./components/RefreshControls";
@@ -93,7 +95,7 @@ function runSourceMode(run: RunItem | undefined): Exclude<SourceMode, "all"> | n
 
 export default function App({ styleNonce }: AppProps) {
   const initialSearch = useMemo(() => readSearchState(
-    readViewerTab(window.location.search) === "m5" ? "" : window.location.search,
+    ["m5", "ea"].includes(readViewerTab(window.location.search)) ? "" : window.location.search,
   ), []);
   const initialTab = useMemo(() => readViewerTab(window.location.search), []);
   const hasInitialRunParameter = useMemo(
@@ -144,7 +146,7 @@ export default function App({ styleNonce }: AppProps) {
   const highlightTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (activeTab === "m5" || ready) return;
+    if (activeTab === "m5" || activeTab === "ea" || ready) return;
     let disposed = false;
     const controller = new AbortController();
     setFatalError("");
@@ -183,11 +185,22 @@ export default function App({ styleNonce }: AppProps) {
         if (!new URLSearchParams(window.location.search).has("tab")) {
           try {
             const m5Metadata = await m5Api.metadata("TESTER", null, controller.signal);
-            if (disposed || controller.signal.aborted || !m5Metadata.available) return;
-            window.history.replaceState(null, "", `${window.location.pathname}?tab=m5`);
-            setActiveTab("m5");
+            if (disposed || controller.signal.aborted) return;
+            if (m5Metadata.available) {
+              window.history.replaceState(null, "", `${window.location.pathname}?tab=m5`);
+              setActiveTab("m5");
+              return;
+            }
           } catch {
             // The primary error remains visible; M5 has its own connection state.
+          }
+          try {
+            const eaMetadata = await eaApi.metadata(controller.signal);
+            if (disposed || controller.signal.aborted || !eaMetadata.available) return;
+            window.history.replaceState(null, "", `${window.location.pathname}?tab=ea`);
+            setActiveTab("ea");
+          } catch {
+            // Explicit tabs and unavailable sources retain the original connection error.
           }
         }
       });
@@ -443,7 +456,7 @@ export default function App({ styleNonce }: AppProps) {
       replaceSearchUrl(applied);
     } else {
       const params = new URLSearchParams(
-        nextTab === "m5" || activeTab === "m5" ? "" : window.location.search,
+        ["m5", "ea"].includes(nextTab) || ["m5", "ea"].includes(activeTab) ? "" : window.location.search,
       );
       params.set("tab", nextTab);
       window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
@@ -475,6 +488,7 @@ export default function App({ styleNonce }: AppProps) {
     connectionText = `接続済み・${sourceModeLabel} ${formatInteger(summary.total_count)}件`;
   } else if (health) connectionText = `接続済み・${sourceModeLabel}確認中`;
   if (activeTab === "m5") connectionText = "M5専用DB・接続状態は画面内に表示";
+  if (activeTab === "ea") connectionText = "H1 EA結果DB・接続状態は画面内に表示";
 
   return (
     <>
@@ -515,15 +529,16 @@ export default function App({ styleNonce }: AppProps) {
               label="M5推移"
               value="m5"
             />
+            <Tab id="viewer-tab-ea" aria-controls="viewer-tabpanel-ea" label="H1 EA結果" value="ea" />
           </Tabs>
         </Box>
         <div className="app-brand">
           <p className="eyebrow">ELLIOTT SIGNAL ARCHIVE</p>
           <h1>ZigZagElliot Alert Viewer</h1>
-          <p className="subtitle">アラートとH1・M5の観測を、それぞれのDB・Run単位で検索・比較します。</p>
+          <p className="subtitle">アラート・H1/M5観測・H1 EA結果を、それぞれのDBとテスト単位で参照します。</p>
         </div>
         <div className="header-actions">
-          <div className={`connection${activeTab === "m5" ? "" : fatalError ? " error" : health ? " ready" : ""}`} role="status" aria-live="polite">
+          <div className={`connection${activeTab === "m5" || activeTab === "ea" ? "" : fatalError ? " error" : health ? " ready" : ""}`} role="status" aria-live="polite">
             <span className="status-dot" />
             <span>{connectionText}</span>
           </div>
@@ -635,9 +650,10 @@ export default function App({ styleNonce }: AppProps) {
           onRefreshIntervalChange={changeRefreshInterval}
         />
         <M5ObservationView active={activeTab === "m5"} styleNonce={styleNonce} />
+        <H1EaResultsView active={activeTab === "ea"} />
       </main>
 
-      {activeTab !== "m5" && (fatalError || (activeTab === "alerts" && loadError)) && (
+      {activeTab !== "m5" && activeTab !== "ea" && (fatalError || (activeTab === "alerts" && loadError)) && (
         <div className="toast" role="alert" aria-live="assertive">
           {fatalError || loadError}
         </div>

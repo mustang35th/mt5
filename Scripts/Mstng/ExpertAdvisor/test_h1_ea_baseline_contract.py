@@ -28,7 +28,7 @@ class BaselineContractTests(unittest.TestCase):
             body = method(self.expert, name)
             self.assertLess(body.index(controllerCall), body.index("baselineReport.sample()"))
         self.assertNotIn("baselineReport", method(self.expert, "OnTradeTransaction"))
-        self.assertRegex(self.expert, r"double OnTester\(\)\s*\{\s*baselineReport.finish\(\);\s*return 0.0;")
+        self.assertRegex(self.expert, r"double OnTester\(\)\s*\{\s*baselineReport.finish\(\);\s*resultRecorder.finish\(\);\s*return 0.0;")
         self.assertIn("baselineReport.close()", method(self.expert, "OnDeinit"))
 
     def test_sampling_guard_precedes_portfolio_reads(self):

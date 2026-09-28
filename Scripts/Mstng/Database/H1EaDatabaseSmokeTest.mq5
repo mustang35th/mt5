@@ -634,8 +634,8 @@ void verifyLegacyMigration(const string fromKind, const bool fromExpectedSuccess
     verify(opened == fromExpectedSuccess, fromKind + " initialization migration result");
     if (opened) {
         long value = -1;
-        verify(H1EaSql::scalar(service.getHandle(), "PRAGMA user_version", value) && value == 3,
-            fromKind + " physical schema version 3");
+        verify(H1EaSql::scalar(service.getHandle(), "PRAGMA user_version", value) && value == 4,
+            fromKind + " physical schema version 4");
         verify(H1EaSql::scalar(service.getHandle(), "SELECT COUNT(*) FROM h1_ea_runs WHERE schema_version=1", value)
             && value == 1, fromKind + " original Run schema version preserved");
         verify(H1EaSql::scalar(service.getHandle(),
@@ -658,18 +658,94 @@ void verifyLegacyMigration(const string fromKind, const bool fromExpectedSuccess
         verify(H1EaSql::scalar(service.getHandle(), "PRAGMA schema_version", schemaCookie),
             fromKind + " migrated schema cookie");
         service.close();
-        verify(service.open(fileName), fromKind + " v3 initialization idempotent");
+        verify(service.open(fileName), fromKind + " v4 initialization idempotent");
         verify(H1EaSql::scalar(service.getHandle(), "PRAGMA schema_version", value) && value == schemaCookie,
-            fromKind + " v3 initialization no DDL");
+            fromKind + " v4 initialization no DDL");
         service.close();
-        verify(service.open(fileName, false), fromKind + " v3 reconnect");
+        verify(service.open(fileName, false), fromKind + " v4 reconnect");
         verify(H1EaSql::scalar(service.getHandle(), "PRAGMA schema_version", value) && value == schemaCookie,
-            fromKind + " v3 reconnect no DDL");
+            fromKind + " v4 reconnect no DDL");
     }
     service.close();
     if (!opened) {
         verifyLegacyUnchanged(fileName, expected, fromKind + " failed migration");
     }
+    cleanupSmokeFile(fileName);
+}
+
+/**
+ * v3への追加移行・異常定義のrollback・既定と待機なし接続を実DBで確認する。
+ */
+void verifyResultSchemaMigration(const bool fromCorruptSchema) {
+    string purpose = "result-valid";
+    if (fromCorruptSchema) {
+        purpose = "result-corrupt";
+    }
+    string fileName = newSmokeFileName(purpose);
+    if (fileName == "") {
+        return;
+    }
+    SqliteDatabase fixture(fileName, true);
+    bool prepared = fixture.open();
+    int handle = fixture.getHandle();
+    if (prepared) {
+        prepared = H1EaRunDao::createTable(handle)
+            && H1EaDecisionDao::createTable(handle)
+            && H1EaTradeDao::createTable(handle)
+            && H1EaTradeEventDao::createTable(handle)
+            && H1EaSql::execute(handle, "PRAGMA user_version=3");
+    }
+    H1EaRunEntity activeRun;
+    prepareRun(activeRun, purpose);
+    activeRun.startedAt = (long)TimeLocal();
+    activeRun.heartbeatAt = activeRun.startedAt;
+    activeRun.leaseExpiresAt = activeRun.startedAt + 3600;
+    activeRun.status = "RUNNING";
+    if (prepared) {
+        prepared = H1EaRunDao::insert(handle, activeRun);
+    }
+    if (prepared && fromCorruptSchema) {
+        string invalidSql = H1EaResultDao::createSessionSql();
+        StringReplace(invalidSql, "CHECK(source_mode IN ('LIVE', 'TESTER')),", "");
+        prepared = H1EaSql::execute(handle, invalidSql);
+    }
+    fixture.close();
+    verify(prepared, purpose + " v3 fixture with active Run");
+    if (!prepared) {
+        cleanupSmokeFile(fileName);
+        return;
+    }
+    H1EaDatabaseContext context;
+    verify(!context.open(fileName, false, 0), purpose + " reconnect cannot migrate v3");
+    bool opened = context.open(fileName, true, 0);
+    verify(opened != fromCorruptSchema, purpose + " initialization result");
+    long value = -1;
+    if (opened) {
+        verify(H1EaSql::scalar(context.getHandle(), "PRAGMA busy_timeout", value) && value == 0,
+            purpose + " recorder connection does not wait for locks");
+        verify(H1EaSql::scalar(context.getHandle(), "PRAGMA user_version", value) && value == 4,
+            purpose + " version 4");
+        verify(H1EaSql::scalar(context.getHandle(), "SELECT COUNT(*) FROM h1_ea_runs WHERE status='RUNNING'", value)
+            && value == 1, purpose + " active Run preserved");
+        long schemaCookie = -1;
+        verify(H1EaSql::scalar(context.getHandle(), "PRAGMA schema_version", schemaCookie),
+            purpose + " migrated schema cookie");
+        context.close();
+        verify(context.open(fileName, false), purpose + " default reconnect");
+        verify(H1EaSql::scalar(context.getHandle(), "PRAGMA busy_timeout", value) && value == 5000,
+            purpose + " default timeout preserved");
+        verify(H1EaSql::scalar(context.getHandle(), "PRAGMA schema_version", value) && value == schemaCookie,
+            purpose + " reconnect no DDL");
+    }
+    context.close();
+    if (fromCorruptSchema && fixture.openReadOnly()) {
+        verify(H1EaSql::scalar(fixture.getHandle(), "PRAGMA user_version", value) && value == 3,
+            purpose + " rollback preserves version 3");
+        verify(H1EaSql::scalar(fixture.getHandle(),
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name IN ('h1_ea_account_samples','h1_ea_deals')", value)
+            && value == 0, purpose + " rollback removes incomplete new tables");
+    }
+    fixture.close();
     cleanupSmokeFile(fileName);
 }
 
@@ -705,5 +781,7 @@ void OnStart() {
     verifyLegacyMigration("INVALID", false);
     verifyLegacyMigration("BATCH_INVALID", false);
     verifyLegacyMigration("MISSING", false);
+    verifyResultSchemaMigration(false);
+    verifyResultSchemaMigration(true);
     Print("INFO H1EaDatabaseSmokeTest completed passed=", passedCount, " failed=", failedCount);
 }

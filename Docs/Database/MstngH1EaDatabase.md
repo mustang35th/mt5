@@ -4,13 +4,13 @@
 
 | 項目 | 内容 |
 |---|---|
-| 対象機能 | H1専用EA `MstngH1Ea`の判定・取引永続化 |
+| 対象機能 | `MstngH1Ea` / `MstngH1EaAll`の判定・取引永続化、All版のテスター結果記録 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| 物理スキーマバージョン | 2（EA 1.07以降） |
+| 物理スキーマバージョン | 4（MstngH1EaAll 1.11で結果記録3表を追加） |
 | Run保存契約バージョン | 1（変更なし） |
-| 保存単位 | EA起動、H1判定、H1 ZigZagトレイル、取引ライフサイクル |
-| 文書状態 | 初版実装・テスター受入確認前 |
-| 最終更新日 | 2026-09-06 |
+| 保存単位 | EA起動、H1判定、H1 ZigZagトレイル、取引ライフサイクル、28通貨sessionのテスター結果 |
+| 文書状態 | 物理v4・結果記録実装済み。追加機能の実MT5バックテスト受入は未実施 |
+| 最終更新日 | 2026-09-28 |
 
 本書は、`MstngH1Ea`がH1判定、発注、約定および決済を保存し、再起動後にbroker状態と整合するためのSQLite構造を定義します。EA全体の動作は[MstngH1Ea基本設計書](../ExpertAdvisor/MstngH1Ea.md)を参照してください。
 
@@ -28,6 +28,8 @@
 - brokerで確認した現在SL、SL設定元およびEA側の決済分類
 - 確定損益、commission、swapおよびfee
 - 再起動時の回復状態
+
+All版1.11では、TESTERの28通貨をまとめるsession、口座サンプル、対象EAの約定を追加保存します。追加3表と記録処理は19章に定義します。単一通貨EAには共通schema v4への対応だけを適用し、結果Recorderは追加しません。
 
 次は初版の対象外です。
 
@@ -76,15 +78,16 @@ PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 ```
 
-- 1 EAインスタンスにつき1接続を保持します。
+- 既存の取引永続化Contextは各インスタンスで接続を保持します。All版の結果Recorderは、28通貨の共通sessionにつき別の1接続を保持します。
 - schema作成およびmigrationはRun登録前の初期接続フェーズ（失敗時の再試行を含む）だけ実行します。Run登録後の再接続では既存schemaの確認だけを行い、DDLやmigrationを実行しません。
 - DDLは再実行可能にします。
 - 通常のtickではDDL、migrationおよび長い集計を行いません。
 - 保存は1イベント単位の短いtransactionとします。
 - Viewerはread-onlyで接続し、migrationしません。
+- All版の結果Recorderは`busy_timeout = 0`で接続し、DBロック待ちで売買処理を長く止めません。既存の取引永続化は既定の5,000msを維持します。
 - 複数Writerが同時起動しても、schema確認、DDLおよび`user_version`更新を単一transactionで行います。
 
-物理DB世代は単一通貨EA 1.10・MstngH1EaAll 1.01から`PRAGMA user_version = 3`で管理します（EA 1.07〜1.09はv2）。各Runの`schema_version = 1`は保存契約V1を表し、変更しません。物理世代と実行データの世代を分離し、旧DBの移行条件は15章で定義します。
+現在の物理DB世代は`PRAGMA user_version = 4`です。v2ではD1 EMA200列、v3では複数通貨Run情報、v4では結果記録3表を追加します。各Runの`schema_version = 1`は保存契約V1を表し、変更しません。物理世代と実行データの世代を分離し、旧DBの移行条件は15章で定義します。
 
 ## 5. テーブル関係
 
@@ -133,7 +136,7 @@ EA起動1回につき1行を保存します。
 | `id` | INTEGER | Yes | 主キー |
 | `run_uid` | TEXT | Yes | 起動ごとの一意ID |
 | `session_uid` | TEXT | No | 複数通貨の共通起動ID。物理列は末尾。旧Run・単一版はNULL |
-| `schema_version` | INTEGER | Yes | 保存契約バージョン。物理v3でも1を維持 |
+| `schema_version` | INTEGER | Yes | 保存契約バージョン。物理v4でも1を維持 |
 | `source_mode` | TEXT | Yes | `LIVE`または`TESTER` |
 | `context_key` | TEXT | Yes | LIVEまたはTesterの実行コンテキストキー |
 | `account_server` | TEXT | Yes | 接続サーバー |
@@ -971,7 +974,7 @@ recovery_issue_code, quarantined_pending_text
 
 ### 11.1 起動
 
-1. DB初期接続とスキーマを確認し、必要なら15章の条件を満たす物理v1→v2移行を完了する
+1. DB初期接続とスキーマを確認し、必要なら15章の条件を満たす物理v1/v2/v3→v4移行を完了する
 2. 単一transactionで同一コンテキストのLeaseを確認する
 3. 同じtransactionで期限切れRunだけを`INTERRUPTED`へ更新し、今回Runを`RUNNING`で追加してLeaseを取得する
 4. brokerとactive取引をPosition Ticket単位で照合する
@@ -1150,23 +1153,29 @@ broker SLはDB・Lease状態にかかわらず継続する。
 
 ## 15. スキーマ移行
 
+現在の新規DBは物理v4で作成します。既存v1/v2/v3は、必要な段階を順に適用してv4へ移行します。schema確認、DDL、各段階の検証と`user_version`更新は初期接続の同一transaction内で行い、失敗時は全体をrollbackします。
+
+v3→v4は既存4表を変更せず、19章の3表とindexを追加します。v1→v2、v2→v3で必要な既存表の変更には従来のactive Lease検査を適用します。v3→v4の3表追加だけではactive Runの停止を要求しません。
+
+以下はv1→v2で導入した列追加・補完の規則です。v2→v3のRun拡張は末尾の「複数通貨Runと物理schema v3」を参照してください。
+
 - EA 1.06までの初版は物理`user_version = 1`です。EA 1.07の新規DBは物理v2として作成し、既存の物理v1 DBはRun登録前の初期接続フェーズ（失敗時の再試行を含む）だけv2へ自動移行します。
 - 物理v2では`h1_ea_decisions`の末尾42列目に`d1_ema200_direction TEXT`を追加します。許可値はNULL、`BUY`、`SELL`、`NONE`です。既存41列の順序は変更しません。
 - 旧`analysis_snapshot_text`に正しい追加診断がある行は、そのD1値だけを新列へ補完します。未記録または`~`はNULLのままです。重複キー・片方だけの診断・不正値などを検出した場合は、列追加と補完を含む移行全体をrollbackします。
 - 旧`analysis_snapshot_text`、`snapshot_hash`、Judge・Signal Count・Entry判定とRun行は書き換えません。保存契約V1であるRunの`schema_version = 1`、戦略V2、設定・分析・Decision hashの定義を維持します。
 - migrationは初期接続フェーズにtransactionで書込み権を取得したWriterだけが実行します。DB内の全コンテキストを対象に、未失効Leaseを持つ`RUNNING`行が0件であり、`h1_ea_decisions`に独自triggerが存在しないことを必須とします。移行のために稼働中Runを強制終了しません。
-- `sqlite_schema`の定義で列順・制約を変更前後に厳密確認します。同名の不正なD1列、想定外・破損したschema、対応不能な世代は拒否し、推測で修復しません。DDL・補完・検証のすべてが成功した後だけ`user_version`を2へ更新してcommitします。
-- Run登録後の再接続では物理v2のschema確認だけを行い、DDLやmigrationを実行しません。
+- `sqlite_schema`の定義で列順・制約を変更前後に厳密確認します。同名の不正なD1列、想定外・破損したschema、対応不能な世代は拒否し、推測で修復しません。この段階のDDL・補完・検証が成功した後だけ`user_version`を2へ進めます。現在版では後続のv3・v4への移行と検証まで成功してからcommitします。
+- Run登録後の再接続では現在の物理v4のschema確認だけを行い、DDLやmigrationを実行しません。結果Recorderもschema初期化を無効にして接続します。
 - Viewerは古い・新しいスキーマを検出するだけで変更しません。
 - 対応不能な新しいスキーマでは新規取引を停止します。
 
-これは新版EAの起動時に適用する処理です。今回の実装作業で運用DB・Tester DBを直接変更するものではありません。既存DBを更新する際は、同じDBを使う旧版EA・テスターをすべて停止し、未失効の`RUNNING` Leaseがない状態で新版を起動します。TesterのLeaseはテスト内時刻であり、異なるテスト期間間のWriter停止をLease比較だけでは保証しません。移行失敗時もDBを削除・再作成しません。
+これは新版EAの起動時に適用する処理です。今回の実装作業で運用DB・Tester DBを直接変更するものではありません。既存DBを更新する際は、同じDBを使う旧版EA・テスターを停止して更新をそろえます。v1/v2からの移行では未失効の`RUNNING` Leaseがないことも必要です。TesterのLeaseはテスト内時刻であり、異なるテスト期間間のWriter停止をLease比較だけでは保証しません。移行失敗時もDBを削除・再作成しません。
 
-物理v2のDBは旧版EAでは開けないため、旧版EA・テスターの停止後、新版を起動する前にDBのバックアップを取ってください。
+物理v4非対応の旧版ex5は移行後のDBを開けません。移行するDBを共有するAll版・単一通貨版は、更新後の共通Contextで再コンパイルした版へそろえてください。LIVE用とTESTER用は別DBなので、片方の移行で他方の物理世代は変わりません。移行前にはDBをバックアップします。schema不一致や移行失敗を理由にDBを自動削除・再作成しません。
 
 ## 16. Viewer連携
 
-Viewer連携はEA初版の対象外です。将来設計では、少なくとも次を維持します。
+All版1.11の結果は、CSVを介さずDBを読むViewerで参照できます。起動と画面の使い方は[Viewer README](../../Services/ZigZagElliotAlertViewer/README.md)を参照してください。接続時は次を維持します。
 
 - EA DBはread-onlyで参照する
 - ViewerはDDLおよびmigrationを実行しない
@@ -1178,7 +1187,7 @@ Viewer連携はEA初版の対象外です。将来設計では、少なくとも
 
 専用Database SmokeTestで最低限、次を確認します。
 
-1. 新規DBと4テーブルを作成できる
+1. 新規の物理v4 DBを作成できる（既存4テーブルと結果記録3テーブル）
 2. `foreign_keys`、WALおよび`busy_timeout`が有効
 3. Run、SKIP Decision、Entry DecisionおよびTradeを保存できる
 4. 同じH1バーを重複保存できない
@@ -1312,3 +1321,103 @@ Allの新Runは設定canonicalへ`TESTER_FAST_WARMUP=ALL_IDLE_TIMER30_V1`を追�
 表示はController・EntryState・Executorが保持する状態のコピーだけを使用し、表示更新のためのDecision検索・価格取得・broker照合を追加しません。最終判定H1は保存待ちを含む確定済みバーで、現在H1のDB照会済みバーとは区別します。取引表示はDB復元または最後の照合値です。
 
 実行時間・分析回数・保護巡回間隔・メモリは親のsession UIDログへ`METRICS`として記録し、DB列は追加しません。表示inputは売買設定canonicalへ含めず、物理schema v3・復元キー・Magic・戦略V2を維持します。
+
+## 19. All版のテスター結果記録（物理v4 / 2026-09-28）
+
+### 19.1 対象と既存処理との関係
+
+`MstngH1EaAll` 1.11は、TESTERかつ最適化でない実行で`H1EaResultRecorder`を使用します。同じ`session_uid`を持つ28通貨のRunを1回のテストとして扱い、共通の`program_version`、重複しないsymbol/Run ID、各Magicを確認してから記録を開始します。保存先は既存の`mstng-h1-ea-tester.sqlite`です。LIVEと単一通貨EAは新3表へ結果を記録しません。
+
+既存のRun・Decision・Trade・Event、判定、発注、SL管理は変更しません。`InpExportBaselineReport=false`でもDB結果記録は動作します。CSVの出力形式・対象・集計方法は[基準バックテスト手順](../ExpertAdvisor/MstngH1EaAllBaseline.md)を維持します。
+
+### 19.2 追加テーブル
+
+DDLの正本は[H1EaResultDao.mqh](../../Include/Mstng/Database/Dao/H1EaResultDao.mqh)です。既存4表の列・Run保存契約V1・戦略V2は変更しません。
+
+**`h1_ea_sessions`：テスト単位の環境・標準統計・記録状態**
+
+| 列 | 型・意味 |
+|---|---|
+| `session_uid` | TEXT主キー。64文字の小文字16進数。28 Runの同名列と対応 |
+| `source_mode` | TEXT。`LIVE` / `TESTER`。現在のRecorderは`TESTER`のみ |
+| `account_currency`, `account_server` | 空文字不可のTEXT。口座通貨・サーバー |
+| `leverage`, `program_version` | INTEGER / TEXT。レバレッジ・All版EAバージョン |
+| `started_server_time`, `trade_start_time`, `ended_server_time` | INTEGER。初期化時刻、設定された売買開始時刻、終了時刻。開始制限なしは`trade_start_time=0`、終了前は`ended_server_time=NULL` |
+| `initial_balance`, `sample_interval_seconds` | REAL / INTEGER。初期化時の口座残高、通常サンプル間隔60秒 |
+| `recording_state` | TEXT。`RECORDING` / `RECORDED` / `FAILED` / `INTERRUPTED` |
+| `statistics_available`, `deals_complete` | INTEGERの0/1。標準統計・対象約定の保存確認 |
+| `initial_deposit`, `net_profit` | nullable REAL。MT5標準統計の初期証拠金・純損益 |
+| `equity_drawdown`, `equity_drawdown_percent` | nullable REAL。MT5標準統計のEquity最大DD金額・最大相対DD率。最大となる時点は同一とは限らない |
+| `mt5_trades` | nullable INTEGER。MT5標準統計の取引数 |
+| `error_text` | nullable TEXT。最初の記録エラー |
+| `recorded_at`, `finished_at` | INTEGER。ローカル時刻の記録開始・終了。終了前は`finished_at=NULL` |
+
+統計未取得時はNULLを保持します。主なCHECKは、時刻・間隔の正数、開始制限時刻とレバレッジの非負、終了時刻の前後関係、DDと取引数の非負、状態・フラグの許可値です。`RECORDED`には両フラグが1で、終了時刻と`finished_at`があることを要求します。Recorderは統計値の取得成功も確認してから状態を更新します。
+
+**`h1_ea_account_samples`：時系列サンプル**
+
+| 列 | 型・意味 |
+|---|---|
+| `session_uid`, `sequence` | 複合主キー。sequenceは1以上。sessionへ外部キー |
+| `server_time`, `reason` | INTEGER / TEXT。サーバー時刻、`START` / `INTERVAL` / `POSITION_CHANGE` / `END` |
+| `balance`, `equity`, `margin`, `free_margin`, `margin_level` | REAL。口座全体の残高・Equity・証拠金・余剰証拠金・証拠金維持率 |
+| `open_profit` | REAL。対象EAの28通貨・Magicに一致する保有の`POSITION_PROFIT + POSITION_SWAP`。commissionは含めない |
+| `positions`, `pending_orders` | 非負INTEGER。対象EAの保有・待機注文数 |
+| `foreign_positions`, `foreign_orders` | 非負INTEGER。対象外の保有・待機注文数 |
+
+各数値はNOT NULLです。時刻・sequenceは正数、margin・margin level・各件数は非負を要求します。取得失敗・非有限値・`EMPTY_VALUE`を正常な0へ置き換えません。
+
+**`h1_ea_deals`：対象EAの約定**
+
+| 列 | 型・意味 |
+|---|---|
+| `session_uid`, `ticket` | 複合主キー。sessionへ外部キー。ticketは数字文字列のTEXT |
+| `time_msc`, `position_identifier` | INTEGER / 数字文字列TEXT。約定時刻（ms）・position ID |
+| `symbol`, `magic_number` | TEXT。銘柄・数字文字列のMagic |
+| `deal_type`, `entry_type`, `reason` | 非負INTEGER。MT5の約定種別・Entry種別・約定理由 |
+| `volume`, `price` | 非負REAL。数量・価格 |
+| `profit`, `commission`, `swap`, `fee` | REAL。約定の損益・各費用 |
+
+全列NOT NULLです。ticket・position ID・MagicをTEXTにしてulongの上限値を保持します。約定時刻は正数を要求します。3表にはsessionの開始時刻、サンプルの時刻・連番、約定の時刻・ticketで参照するindexを設けます。
+
+`h1_ea_runs.session_uid`とsessionは同じ値で結びますが、Run側への新しい外部キーは追加しません。結果Recorderの開始・終了監査で28 Runの対応を検証します。
+
+### 19.3 記録タイミングと範囲
+
+| 時点 | 記録内容 |
+|---|---|
+| 初期化後 | sessionを`RECORDING`で登録。口座通貨・サーバー・レバレッジ・初期残高を取得 |
+| 売買開始時刻以降の最初の観測 | `START`サンプル |
+| 通常のTimer / Tick | 売買処理後に観測。直前の保存から60秒以上で`INTERVAL` |
+| 保有・待機注文の変化 | ID・ticket・数量の変化を検出して`POSITION_CHANGE`。取引通知でも売買処理後に確認 |
+| `OnTester` | `END`サンプル、MT5標準統計、対象EAの全約定を保存 |
+| `OnDeinit` | 子Controllerのshutdown後にRun・約定を最終監査し、終了状態を書き込む。`OnTester`未到達なら`END`サンプルも試みる |
+
+サンプルはテスト内のサーバー時刻を使います。通常観測は同じ秒の重複処理を抑え、取引通知は同じ秒の変化も確認します。イベントがない間の値は補間・遡及保存しません。変化による保存も60秒間隔の起点を更新します。売買開始前は口座・保有サンプルを取得しません。
+
+口座残高・Equity・証拠金とMT5標準統計は**口座全体**です。`open_profit`・保有数・待機注文数は**対象EA**です。約定は対象symbol/Magicの約定からposition IDを特定し、そのposition IDに属する約定も含めます。このため、決済時のMagicが異なる約定も保持できます。対象外ポジションの約定を口座履歴全体として保存する仕様ではありません。
+
+### 19.4 記録完了の判定と障害
+
+| `recording_state` | 意味 |
+|---|---|
+| `RECORDING` | 記録中。`OnTester`で統計・約定を保存しただけでは完了へ変更しない |
+| `RECORDED` | `OnTester`到達、統計保存・約定保存成功、終了後の監査成功、記録エラーなし |
+| `FAILED` | 取得・保存・監査のいずれかが失敗。最初のエラーを保持し、後の成功で完了へ戻さない |
+| `INTERRUPTED` | `OnTester`未到達で終了し、Run終了監査は成功。統計・約定の完備を示さない |
+
+初期口座情報は取得エラーを直後に確認します。残高の有効性、口座通貨・サーバーの非空、正のレバレッジを確認できない場合は、session登録前に`RESULT_ACCOUNT_INVALID`をログへ記録します。この場合、架空の初期残高0や不完全なsessionを保存せず、結果記録を開始しません。
+
+約定取得では、履歴選択・各値取得・最初と最後の`HistoryDealsTotal()`のエラーを確認します。取得中の件数変化、DBに保存した件数の不一致を拒否し、約定行と`deals_complete=1`は同一transactionで確定します。
+
+最終監査は、sessionのRunが28件で、開始時の各Runが`STOPPED`、終了時刻あり、エラーなしであることを確認します。`OnTester`到達時はさらに、保存したBUY/SELL約定から既存`DEAL_ADD`への照合と、既存`DEAL_ADD`から保存約定への逆照合を行います。session・ticket・position IDが一致することを要求し、片側だけの欠落を記録完了にしません。`OnTester`未到達時は約定保存を前提にせず、Run終了監査で`INTERRUPTED`を判断します。
+
+記録障害で売買を停止しません。記録エラーを明示し、長いロック待ちやSleepによる再試行は行わず、失敗状態の再保存は原則テスト内60秒間隔と終了時に試みます。強制終了などで終了処理自体が動かなければ`RECORDING`が残る可能性があります。
+
+`RECORDED`はDB記録の完了であり、予定したテスト期間の完走を保証しません。`OnTester`到達・取引0件・サンプルなしだけで、予定期間の到達や戦略の有効性を判断しません。期間・データ品質はMT5設定・標準レポート・ログで別途確認します。
+
+### 19.5 実装・検証
+
+追加実装は[H1EaResultRecorder.mqh](../../Include/MstngH1Ea/Analysis/H1EaResultRecorder.mqh)と[H1EaResultDao.mqh](../../Include/Mstng/Database/Dao/H1EaResultDao.mqh)です。共通Contextに物理v4の作成・v1/v2/v3からの移行を追加しています。
+
+関連Expertテスト179件とSQLiteテスト49件が成功しました。新規3表の制約・移行rollback、初期口座取得失敗、約定件数取得失敗、双方向監査を確認しています。All版・単一通貨版・Database SmokeTestは隔離出力へのMetaEditorコンパイルでエラー0・警告0です。実MT5バックテストとSmokeTestのネイティブ実行は未実施です。

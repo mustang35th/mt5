@@ -167,6 +167,7 @@ export function readSearchState(search: string): SearchState {
 export function readViewerTab(search: string): ViewerTab {
   const tab = new URLSearchParams(search).get("tab");
   if (tab === "m5") return "m5";
+  if (tab === "ea") return "ea";
   return tab === "h1" ? "h1" : "alerts";
 }
 

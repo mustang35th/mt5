@@ -512,7 +512,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
         strategy = code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3H1.mqh"))
         compact = re.sub(r"\s+", "", strategy)
         self.assertIn(
-            "ExpertAdvisorMtf3In3H1(MarketContext&fromMarketContext,boolfromIsDrawArrow=true)"
+            "ExpertAdvisorMtf3In3H1(MarketContext&fromMarketContext,boolfromIsDrawArrow=true,boolfromDirectionCorrectionEnabled=false)"
             ":ExpertAdvisorMTF_3in3(fromMarketContext,fromIsDrawArrow,"
             "Mtf3In3H1Policy::getW1ConfirmationMode(),Mtf3In3H1Policy::getDirectionAlignmentMode(),"
             "Mtf3In3H1Policy::getEma200ConfirmationMode())", compact,
@@ -520,8 +520,9 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
         factory = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh")))
         self.assertIn(
             "if(fromMarketContext.timeFrame==PERIOD_H1){"
-            "returnnewExpertAdvisorMtf3In3H1(fromMarketContext,fromIsDrawArrow);}", factory,
+            "returnnewExpertAdvisorMtf3In3H1(fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled);}", factory,
         )
+        self.assertIn("boolfromH1DirectionCorrectionEnabled=false", factory)
         # The other-timeframe compatibility signature is intentionally retained.
         for argument in ("fromH1W1ConfirmationMode", "fromH1DirectionAlignmentMode", "fromH1Ema200ConfirmationMode"):
             self.assertIn(argument, factory)

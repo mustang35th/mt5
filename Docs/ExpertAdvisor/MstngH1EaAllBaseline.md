@@ -1,12 +1,14 @@
 # MstngH1EaAll 基準バックテスト手順
 
-第8段階の記録・集計機能と、EA v1.07の履歴準備診断です。28通貨を全体上限なしで測定し、後続の上限候補比較に使います。実測結果と推奨上限はまだありません。
+第8段階で追加したCSV記録・集計機能と、v1.07で導入した履歴準備診断の手順です。現在の対象EAはv1.11です。28通貨を全体上限なしで測定し、後続の上限候補比較に使います。実測結果と推奨上限はまだありません。
+
+v1.11ではCSVとは独立してDBへテスター結果を記録します。CSVを使わず結果を参照する場合は[Viewer README](../../Services/ZigZagElliotAlertViewer/README.md)を参照してください。本書のCSV形式・集計コマンドは変更しません。
 
 ## 1. テスター設定
 
 | 項目 | 設定 |
 |---|---|
-| EA | `MstngH1EaAll` v1.07 |
+| EA | `MstngH1EaAll` v1.11 |
 | チャート銘柄 | 対象28通貨のうち1つ。比較テストでは固定する |
 | 時間足 | H1 |
 | モデル | リアルティックに基づいた全ティック |
@@ -111,3 +113,20 @@ python -X utf8 -B Scripts/Mstng/Analysis/h1_ea_baseline_report.py $baselineFolde
 - 終了イベント: [MQL5 OnTester](https://www.mql5.com/en/docs/event_handlers/ontester)
 
 集計テスト17件、EAの静的契約テスト140件、実装をC#へ構文変換して外部APIをfixtureへ置き換えた観測クラス20項目を確認しました。fixtureが出力したCSVを同じ集計コマンドへ渡してMarkdown生成まで確認しています。通常版・全通貨版のMetaEditorコンパイルはエラー0・警告0です。これは実MT5の市場データによるバックテストではありません。稼働用ex5・運用DBは変更していません。
+
+## 7. DB記録とCSV集計の使い分け（v1.11）
+
+DBだけでViewerを利用する場合は`InpExportBaselineReport=false`にできます。TESTERのDB結果記録はこの設定と独立して動作します。本書のCSV集計コマンドを使う場合は、従来どおりtrueにします。
+
+| 項目 | 既存CSV | 追加DB記録 |
+|---|---|---|
+| 保存先 | `MstngH1Ea/Backtests/<sessionUid>/` | `mstng-h1-ea-tester.sqlite`の結果3表 |
+| サンプル | Timer/Tickで最短1秒観測。同じ内容を60秒ごとへ圧縮 | 売買開始から60秒間隔、保有・待機注文のID/数量変化、開始・終了 |
+| 約定 | 口座全体の履歴 | 対象28通貨・Magicのpositionに属する約定 |
+| 口座残高・Equity・標準統計 | 口座全体 | 口座全体 |
+| 追加分析情報 | SL追加損失見積り・通貨別買売件数も保存 | 新3表にはこの2項目を保存しない |
+| 完了確認 | `status.csv`の`exportState=EXPORTED` | `recording_state=RECORDED`。統計・約定保存と終了後監査が必要 |
+
+CSVの完了とDBの記録状態は別に確認します。どちらも`OnTester`到達だけで予定期間の完走を保証しません。DBに`FAILED`・`INTERRUPTED`・`RECORDING`が残る場合や、初期口座情報の取得失敗でsessionが作られない場合は、ログとMT5標準レポートを確認します。
+
+DBの保存仕様・単一通貨EAとのschema互換性は[All版仕様21章](MstngH1EaAll.md)と[データベース設計書](../Database/MstngH1EaDatabase.md)、Viewerの起動・画面操作は[Viewer README](../../Services/ZigZagElliotAlertViewer/README.md)を参照してください。

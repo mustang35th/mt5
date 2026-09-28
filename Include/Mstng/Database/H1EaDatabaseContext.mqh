@@ -2,6 +2,7 @@
 #define MSTNG_DATABASE_H1_EA_DATABASE_CONTEXT_MQH
 
 #include <Mstng\Database\Dao\H1EaDecisionDao.mqh>
+#include <Mstng\Database\Dao\H1EaResultDao.mqh>
 #include <Mstng\Database\Dao\H1EaRunDao.mqh>
 #include <Mstng\Database\Dao\H1EaTradeDao.mqh>
 #include <Mstng\Database\Dao\H1EaTradeEventDao.mqh>
@@ -30,8 +31,12 @@ public:
      * Common DBを開く。Run登録前の初期接続・再試行ではschemaを準備する。
      * Run登録後の再接続ではfromInitializeSchema=falseでDDLを禁止する。
      */
-    bool open(const string fromFileName, const bool fromInitializeSchema = true) {
+    bool open(const string fromFileName, const bool fromInitializeSchema = true,
+            const int fromBusyTimeoutMilliseconds = 5000) {
         this.close();
+        if (fromBusyTimeoutMilliseconds < 0) {
+            return false;
+        }
         this.database = new SqliteDatabase(fromFileName, true);
         if (this.database == NULL || !this.database.open()) {
             this.close();
@@ -39,7 +44,7 @@ public:
         }
         int handle = this.getHandle();
         if (!H1EaSql::execute(handle, "PRAGMA foreign_keys=ON")
-                || !H1EaSql::execute(handle, "PRAGMA busy_timeout=5000")
+                || !H1EaSql::execute(handle, "PRAGMA busy_timeout=" + IntegerToString(fromBusyTimeoutMilliseconds))
                 || !H1EaSql::execute(handle, "PRAGMA journal_mode=WAL")) {
             this.close();
             return false;
@@ -50,7 +55,7 @@ public:
         if (!H1EaSql::scalar(handle, "PRAGMA foreign_keys", foreignKeys)
                 || !H1EaSql::scalar(handle, "PRAGMA busy_timeout", timeout)
                 || !this.readText("PRAGMA journal_mode", journalMode)
-                || foreignKeys != 1 || timeout != 5000 || journalMode != "wal") {
+                || foreignKeys != 1 || timeout != fromBusyTimeoutMilliseconds || journalMode != "wal") {
             this.close();
             return false;
         }
@@ -119,7 +124,8 @@ private:
     /**
      * 保存契約の全table/indexを検証する。
      */
-    bool validateSchema(const bool fromLegacyDecision = false, const bool fromLegacyRun = false) {
+    bool validateSchema(const bool fromLegacyDecision = false, const bool fromLegacyRun = false,
+            const bool fromLegacyResult = false) {
         string runSql = H1EaRunDao::createSql();
         if (fromLegacyRun) {
             runSql = H1EaRunDao::createLegacySql();
@@ -216,7 +222,25 @@ private:
         if (!this.matchesSchema("index", "idx_h1_ea_trade_events_run_recorded", "CREATE INDEX IF NOT EXISTS idx_h1_ea_trade_events_run_recorded ON h1_ea_trade_events(run_id, recorded_at, id);")) {
             return false;
         }
+        if (!fromLegacyResult && !this.validateResultSchema()) {
+            return false;
+        }
         return true;
+    }
+
+    /**
+     * 口座推移・テスター結果の全table/indexを既存契約と同じ原文比較で検証する。
+     */
+    bool validateResultSchema() {
+        return this.matchesSchema("table", "h1_ea_sessions", H1EaResultDao::createSessionSql())
+            && this.matchesSchema("table", "h1_ea_account_samples", H1EaResultDao::createSampleSql())
+            && this.matchesSchema("table", "h1_ea_deals", H1EaResultDao::createDealSql())
+            && this.matchesSchema("index", "idx_h1_ea_sessions_source_started",
+                "CREATE INDEX IF NOT EXISTS idx_h1_ea_sessions_source_started ON h1_ea_sessions(source_mode,started_server_time,session_uid);")
+            && this.matchesSchema("index", "idx_h1_ea_account_samples_time",
+                "CREATE INDEX IF NOT EXISTS idx_h1_ea_account_samples_time ON h1_ea_account_samples(session_uid,server_time,sequence);")
+            && this.matchesSchema("index", "idx_h1_ea_deals_time",
+                "CREATE INDEX IF NOT EXISTS idx_h1_ea_deals_time ON h1_ea_deals(session_uid,time_msc,ticket);");
     }
 
     /**
@@ -291,7 +315,7 @@ private:
         long activeRuns = 0;
         long triggers = 0;
         long now = (long)TimeLocal();
-        if (now <= 0 || !this.validateSchema(true, true)
+        if (now <= 0 || !this.validateSchema(true, true, true)
                 || !H1EaSql::scalar(handle, "SELECT COUNT(*) FROM h1_ea_runs WHERE status='RUNNING' AND lease_expires_at>"
                     + IntegerToString(now), activeRuns) || activeRuns != 0
                 || !H1EaSql::scalar(handle, "SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND tbl_name='h1_ea_decisions' COLLATE NOCASE", triggers)
@@ -300,7 +324,7 @@ private:
         }
         return H1EaSql::execute(handle, H1EaDecisionDao::addD1ColumnSql())
             && this.backfillD1Ema200Direction()
-            && this.validateSchema(false, true)
+            && this.validateSchema(false, true, true)
             && H1EaSql::execute(handle, "PRAGMA user_version=2");
     }
 
@@ -311,15 +335,26 @@ private:
         int handle = this.getHandle();
         long activeRuns = 0;
         long now = (long)TimeLocal();
-        if (now <= 0 || !this.validateSchema(false, true)
+        if (now <= 0 || !this.validateSchema(false, true, true)
                 || !H1EaSql::scalar(handle, "SELECT COUNT(*) FROM h1_ea_runs WHERE status='RUNNING' AND lease_expires_at>"
                     + IntegerToString(now), activeRuns) || activeRuns != 0) {
             return false;
         }
         return H1EaSql::execute(handle, H1EaRunDao::addSessionColumnSql())
             && H1EaRunDao::createTable(handle)
-            && this.validateSchema()
+            && this.validateSchema(false, false, true)
             && H1EaSql::execute(handle, "PRAGMA user_version=3");
+    }
+
+    /**
+     * v3の既存値・制約を維持し、起動結果用のテーブルだけをv4で追加する。
+     */
+    bool migrateResultTables() {
+        int handle = this.getHandle();
+        return this.validateSchema(false, false, true)
+            && H1EaResultDao::createTables(handle)
+            && this.validateSchema()
+            && H1EaSql::execute(handle, "PRAGMA user_version=4");
     }
 
     /**
@@ -336,16 +371,20 @@ private:
             success = H1EaRunDao::createTable(handle)
                 && H1EaDecisionDao::createTable(handle)
                 && H1EaTradeDao::createTable(handle)
-                && H1EaTradeEventDao::createTable(handle);
+                && H1EaTradeEventDao::createTable(handle)
+                && H1EaResultDao::createTables(handle);
             if (success) {
                 success = this.validateSchema()
-                    && H1EaSql::execute(handle, "PRAGMA user_version=3");
+                    && H1EaSql::execute(handle, "PRAGMA user_version=4");
             }
         } else if (success && version == 1 && fromInitializeSchema) {
-            success = this.migrateD1Ema200Direction() && this.migrateSessionUid();
+            success = this.migrateD1Ema200Direction() && this.migrateSessionUid()
+                && this.migrateResultTables();
         } else if (success && version == 2 && fromInitializeSchema) {
-            success = this.migrateSessionUid();
-        } else if (success && version == 3) {
+            success = this.migrateSessionUid() && this.migrateResultTables();
+        } else if (success && version == 3 && fromInitializeSchema) {
+            success = this.migrateResultTables();
+        } else if (success && version == 4) {
             success = this.validateSchema();
         } else {
             success = false;

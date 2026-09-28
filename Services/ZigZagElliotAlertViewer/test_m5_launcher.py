@@ -55,9 +55,12 @@ class InitialTabTest(unittest.TestCase):
             }
             m5 = Mock()
             m5.metadata.return_value = {"available": True}
+            ea = Mock()
+            ea.metadata.return_value = {"available": False}
             with patch("sys.argv", ["app.py", "--database", str(primary_path), *options]), \
                     patch.object(app, "AlertDatabase", return_value=primary), \
                     patch.object(app, "M5ObservationDatabase", return_value=m5), \
+                    patch.object(app, "H1EaResultsDatabase", return_value=ea), \
                     patch.object(app, "ViewerServer", return_value=Mock()), \
                     patch.object(app.threading, "Timer") as timer, \
                     patch.object(app.webbrowser, "open") as browser, \

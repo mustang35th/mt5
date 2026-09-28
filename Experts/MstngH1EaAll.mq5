@@ -7,14 +7,15 @@
  * File: MstngH1EaAll.mq5
  *
  * M5観測と同じ28通貨をH1で管理するEAの入口。
- * 第8段階では全体上限なしの基準テスト用に、口座推移・保有リスク・約定履歴を出力する。
+ * テスターでは口座推移・標準統計・対象約定をDBに記録し、任意で既存の基準CSVも出力する。
  */
 #property copyright "Copyright 2026, Mstng"
-#property version "1.10"
+#property version "1.11"
 #property strict
 #property description "28通貨H1の新規Entry・ポジション・SL管理"
 
 #include <MstngH1Ea\Analysis\H1EaBaselineReport.mqh>
+#include <MstngH1Ea\Analysis\H1EaResultRecorder.mqh>
 #include <MstngH1Ea\H1EaMultiSymbolController.mqh>
 #include <MstngH1Ea\Presentation\H1EaFloatingProfitMonitor.mqh>
 #include <MstngH1Ea\Presentation\H1EaStatusPanel.mqh>
@@ -38,6 +39,9 @@ H1EaFloatingProfitMonitor floatingProfitMonitor;
 
 /** テスター専用の読取・集計用CSV出力。 */
 H1EaBaselineReport baselineReport;
+
+/** CSV設定と独立したテスター結果のDB記録。 */
+H1EaResultRecorder resultRecorder;
 
 /** 固定28通貨の全体管理。 */
 H1EaMultiSymbolController *controller = NULL;
@@ -68,6 +72,7 @@ int OnInit() {
     statusPanel.initialize(ChartID(), InpShowStatusPanel);
     updateStatusPanel();
     initializeBaselineReport();
+    initializeResultRecorder();
     return INIT_SUCCEEDED;
 }
 
@@ -82,6 +87,8 @@ void OnDeinit(const int fromReason) {
         delete controller;
         controller = NULL;
     }
+    // 子Runと約定監査の終了保存が済んでから記録状態を確定する。
+    resultRecorder.close(fromReason);
 }
 
 /**
@@ -91,6 +98,7 @@ void OnTimer() {
     if (controller != NULL) {
         controller.onTimer();
         baselineReport.sample();
+        resultRecorder.sample();
         updateStatusPanel();
     }
 }
@@ -102,6 +110,7 @@ void OnTick() {
     if (controller != NULL) {
         controller.onTick();
         baselineReport.sample();
+        resultRecorder.sample();
         updateStatusPanel();
     }
 }
@@ -113,6 +122,7 @@ void OnTradeTransaction(const MqlTradeTransaction &fromTransaction,
         const MqlTradeRequest &fromRequest, const MqlTradeResult &fromResult) {
     if (controller != NULL) {
         controller.onTradeTransaction(fromTransaction, fromRequest, fromResult);
+        resultRecorder.sample(true);
     }
 }
 
@@ -179,5 +189,27 @@ void initializeBaselineReport() {
  */
 double OnTester() {
     baselineReport.finish();
+    resultRecorder.finish();
     return 0.0;
+}
+
+/**
+ * CSV出力を無効にした場合も28 Runの結果をDBへ記録する。
+ */
+void initializeResultRecorder() {
+    if (!MQLInfoInteger(MQL_TESTER) || controller == NULL) {
+        return;
+    }
+    H1EaRunEntity runs[28];
+    for (int i = 0; i < 28; i++) {
+        H1EaRestorationState state;
+        if (!controller.getRestorationState(i, state)) {
+            Logger logger;
+            logger.setSymbolNameAndTimeFrame(_Symbol, PERIOD_H1);
+            logger.error(__FUNCTION__, "RESULT_RUN_STATE_UNAVAILABLE");
+            return;
+        }
+        runs[i] = state.run;
+    }
+    resultRecorder.initialize(runs, InpTesterTradeStartTime);
 }

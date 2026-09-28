@@ -98,6 +98,14 @@ class M5RouteTest(unittest.TestCase):
 
 
 class M5StartupTest(unittest.TestCase):
+    def setUp(self):
+        # Optional EA discovery must never open a user's Common Files in startup tests.
+        ea = Mock()
+        ea.metadata.return_value = {"available": False, "reason": "fixture EA unavailable"}
+        source = patch.object(app, "H1EaResultsDatabase", return_value=ea)
+        source.start()
+        self.addCleanup(source.stop)
+
     def test_command_line_preserves_primary_and_adds_optional_m5(self):
         with patch("sys.argv", ["app.py", "--database", "primary.sqlite", "--m5-database", "m5.sqlite"]):
             arguments = app.parse_arguments()

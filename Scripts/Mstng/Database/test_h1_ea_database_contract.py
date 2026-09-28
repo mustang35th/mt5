@@ -189,12 +189,12 @@ class DatabaseContractTest(unittest.TestCase):
 
     def test_v3_migration_requires_initialization_and_no_live_old_run(self):
         context = CONTEXT.read_text(encoding="utf-8-sig")
-        self.assertRegex(context, r'version == 2 && fromInitializeSchema\)\s*\{\s*success = this\.migrateSessionUid\(\);')
-        migration = context.split("bool migrateSessionUid() {", 1)[1].split("bool prepareSchema", 1)[0]
-        for guard in ("this.validateSchema(false, true)", "activeRuns != 0"):
+        self.assertRegex(context, r'version == 2 && fromInitializeSchema\)\s*\{\s*success = this\.migrateSessionUid\(\) && this\.migrateResultTables\(\);')
+        migration = context.split("bool migrateSessionUid() {", 1)[1].split("bool migrateResultTables", 1)[0]
+        for guard in ("this.validateSchema(false, true, true)", "activeRuns != 0"):
             self.assertLess(migration.index(guard), migration.index("H1EaRunDao::addSessionColumnSql()"))
         self.assertNotIn("UPDATE h1_ea_", migration)
-        self.assertLess(migration.index("this.validateSchema()"), migration.index("PRAGMA user_version=3"))
+        self.assertLess(migration.index("this.validateSchema(false, false, true)"), migration.index("PRAGMA user_version=3"))
 
     def test_exact_columns(self):
         for table, count in (("runs", 24), ("decisions", 42), ("trades", 51), ("trade_events", 38)):
@@ -505,10 +505,10 @@ class DatabaseContractTest(unittest.TestCase):
     def test_migration_and_dao_guards_remain_wired_without_strategy_recalculation(self):
         # Static control-flow contracts complement, but do not execute, MQL.
         context = CONTEXT.read_text(encoding="utf-8-sig")
-        self.assertRegex(context, r'version == 1 && fromInitializeSchema\)\s*\{\s*success = this\.migrateD1Ema200Direction\(\) && this\.migrateSessionUid\(\);')
-        self.assertRegex(context, r'version == 3\)\s*\{\s*success = this\.validateSchema\(\);')
+        self.assertRegex(context, r'version == 1 && fromInitializeSchema\)\s*\{\s*success = this\.migrateD1Ema200Direction\(\) && this\.migrateSessionUid\(\)\s*&& this\.migrateResultTables\(\);')
+        self.assertRegex(context, r'version == 4\)\s*\{\s*success = this\.validateSchema\(\);')
         migration = context.split("bool migrateD1Ema200Direction() {", 1)[1].split("bool prepareSchema", 1)[0]
-        for guard in ("this.validateSchema(true, true)", "activeRuns != 0", "triggers != 0"):
+        for guard in ("this.validateSchema(true, true, true)", "activeRuns != 0", "triggers != 0"):
             self.assertLess(migration.index(guard), migration.index("H1EaDecisionDao::addD1ColumnSql()"))
         self.assertLess(migration.index("this.backfillD1Ema200Direction()"), migration.index("PRAGMA user_version=2"))
         backfill = context.split("bool backfillD1Ema200Direction() {", 1)[1].split("bool migrateD1Ema200Direction", 1)[0]

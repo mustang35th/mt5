@@ -38,6 +38,7 @@ except ModuleNotFoundError as error:
     raise SystemExit(2) from error
 
 from alert_corrections import load_alert_correction
+from h1_ea_results import EaRequestError, H1EaResultsDatabase
 from m5_observations import M5ObservationDatabase, M5RequestError
 
 
@@ -3498,6 +3499,31 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(HTTPStatus.NO_CONTENT)
                 self.end_headers()
                 return
+            if parsed.path.startswith("/api/ea/"):
+                ea_query = parse_qs(parsed.query, keep_blank_values=True)
+                ea_database = self.viewer_server.ea_database
+                if parsed.path == "/api/ea/metadata":
+                    self.send_json(ea_database.metadata(ea_query))
+                    return
+                if parsed.path == "/api/ea/sessions":
+                    self.send_json(ea_database.sessions(ea_query))
+                    return
+                ea_parts = parsed.path.split("/")
+                if len(ea_parts) == 6 and ea_parts[1:4] == ["api", "ea", "sessions"]:
+                    session_key = unquote(ea_parts[4])
+                    endpoint = {"summary": ea_database.summary, "samples": ea_database.samples,
+                                "trades": ea_database.trades}.get(ea_parts[5])
+                    if endpoint is not None:
+                        self.send_json(endpoint(session_key, ea_query))
+                        return
+                if len(ea_parts) == 5 and ea_parts[1:4] == ["api", "ea", "trades"]:
+                    try:
+                        trade_id = int(ea_parts[4])
+                    except ValueError as error:
+                        raise RequestError("trade id must be an integer") from error
+                    self.send_json(ea_database.detail(trade_id, ea_query))
+                    return
+                raise RequestError("resource was not found", HTTPStatus.NOT_FOUND)
             if parsed.path.startswith("/api/m5/"):
                 m5_query = parse_qs(parsed.query, keep_blank_values=True)
                 m5_database = self.viewer_server.m5_database
@@ -3587,7 +3613,7 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                     self.send_json(self.viewer_server.database.points(alert_id, time_frame))
                     return
             raise RequestError("resource was not found", HTTPStatus.NOT_FOUND)
-        except (RequestError, M5RequestError) as error:
+        except (RequestError, M5RequestError, EaRequestError) as error:
             self.send_json({"error": str(error)}, error.status)
         except SQLAlchemyError as error:
             print(f"Database error: {error}", file=sys.stderr)
@@ -3736,6 +3762,7 @@ class ViewerServer(ThreadingHTTPServer):
         *,
         allowed_hosts: Collection[str] | None = None,
         m5_database: M5ObservationDatabase | None = None,
+        ea_database: H1EaResultsDatabase | None = None,
         primary_database_error: str = "",
     ):
         configured_allowed_hosts = {
@@ -3762,6 +3789,7 @@ class ViewerServer(ThreadingHTTPServer):
         )
         self.database = database
         self.m5_database = m5_database if m5_database is not None else M5ObservationDatabase(None)
+        self.ea_database = ea_database if ea_database is not None else H1EaResultsDatabase()
         self.primary_database_error = primary_database_error
         self.static_path = static_path
 
@@ -3859,6 +3887,10 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
+        "--ea-database", default=None,
+        help="optional H1 EA SQLite path (read-only; default: Common Files/mstng-h1-ea-tester.sqlite)",
+    )
+    parser.add_argument(
         "--currency-strength-database", default=None,
         help="optional currency strength SQLite path; default: yearly file beside M5 database",
     )
@@ -3876,7 +3908,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--open-browser", action="store_true")
     parser.add_argument(
-        "--open-tab", choices=("alerts", "h1", "m5"), default=None,
+        "--open-tab", choices=("alerts", "h1", "m5", "ea"), default=None,
         help="initial browser tab (used with --open-browser; default: existing automatic selection)",
     )
     parser.add_argument(
@@ -3912,8 +3944,6 @@ def main() -> int:
         if database is not None:
             database.close()
         database = None
-        if not arguments.m5_database:
-            return 2
 
     m5_database: M5ObservationDatabase | None = None
     try:
@@ -3933,9 +3963,13 @@ def main() -> int:
             )
         m5_metadata = {"available": False, "reason": str(error), "database": None}
     assert m5_database is not None
-    if database is None and not m5_metadata.get("available"):
+    ea_database = H1EaResultsDatabase(getattr(arguments, "ea_database", None))
+    ea_metadata = ea_database.metadata()
+    if database is None and not m5_metadata.get("available") and not ea_metadata.get("available"):
         print(f"M5 database could not be opened: {m5_metadata.get('reason')}", file=sys.stderr)
+        print(f"H1 EA database could not be opened: {ea_metadata.get('reason')}", file=sys.stderr)
         m5_database.close()
+        ea_database.close()
         return 2
 
     static_path = Path(__file__).resolve().parent / "static"
@@ -3946,6 +3980,7 @@ def main() -> int:
             static_path,
             allowed_hosts=arguments.allowed_host,
             m5_database=m5_database,
+            ea_database=ea_database,
             primary_database_error=primary_database_error,
         )
     except OSError as error:
@@ -3956,6 +3991,7 @@ def main() -> int:
         if database is not None:
             database.close()
         m5_database.close()
+        ea_database.close()
         return 2
     url = f"http://{DEFAULT_HOST}:{arguments.port}"
     open_query = {}
@@ -3976,6 +4012,10 @@ def main() -> int:
             print(f"M5 unavailable: {m5_metadata.get('reason')}")
     if arguments.allowed_host:
         print(f"Allowed proxy Host: {', '.join(arguments.allowed_host)}")
+    if ea_metadata.get("available") or getattr(arguments, "ea_database", None):
+        print(f"H1 EA Database: {(ea_metadata.get('database') or {}).get('path', '')}")
+        if not ea_metadata.get("available"):
+            print(f"H1 EA unavailable: {ea_metadata.get('reason')}")
     print(f"Open: {url}")
     print("Close this window or press Ctrl+C to stop.")
     if arguments.open_browser:
@@ -3989,6 +4029,7 @@ def main() -> int:
         if database is not None:
             database.close()
         m5_database.close()
+        ea_database.close()
     return 0
 
 
