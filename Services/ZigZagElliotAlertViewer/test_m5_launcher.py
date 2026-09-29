@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -104,6 +105,29 @@ class InitialTabTest(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "Windows batch launcher")
 class M5BatchLauncherTest(unittest.TestCase):
+    def test_real_launchers_reach_help_without_starting_a_server(self):
+        root = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory(prefix="viewer-launcher-help-") as directory:
+            environment = {
+                **os.environ,
+                "APPDATA": str(Path(directory) / "app data"),
+                "LOCALAPPDATA": str(Path(directory) / "local app data"),
+                "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""),
+            }
+            for name in ("start-viewer.cmd", "start-m5-viewer.cmd", "start-ea-viewer.cmd"):
+                with self.subTest(launcher=name):
+                    result = subprocess.run(
+                        [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", "call",
+                         str(root / name), "--help"],
+                        cwd=directory, env=environment, stdin=subprocess.DEVNULL,
+                        capture_output=True, text=True, encoding="utf-8", errors="replace",
+                        timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
+                    )
+                    self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                    self.assertIn("usage:", result.stdout)
+                    self.assertIn("--m5-database", result.stdout)
+                    self.assertIn("--ea-database", result.stdout)
+
     def test_wrapper_passes_the_live_database_mode_tab_and_extra_arguments(self):
         source = Path(__file__).parent / "start-m5-viewer.cmd"
         with tempfile.TemporaryDirectory(prefix="m5-launcher-batch-") as directory:
