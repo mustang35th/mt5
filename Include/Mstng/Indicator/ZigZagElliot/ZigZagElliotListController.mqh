@@ -10,6 +10,7 @@
 #define MSTNG_INDICATOR_ZIGZAG_ELLIOT_LIST_CONTROLLER_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Draw\DrawAlignedElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
@@ -45,6 +46,7 @@ public:
         this.alertAllController = NULL;
         this.initialized = false;
         this.executing = false;
+        this.initialPanelCleanupAttempted = false;
         this.timerEnabled = false;
         this.isTester = false;
         this.testerHistoryWarmUpEnabled = false;
@@ -474,6 +476,9 @@ private:
 
     /** 分析実行中の場合true。 */
     bool executing;
+
+    /** 初回描画前の旧パネル除去を試行済みの場合true。 */
+    bool initialPanelCleanupAttempted;
 
     /** 再試行用タイマーを開始した場合true。 */
     bool timerEnabled;
@@ -961,6 +966,8 @@ private:
             this.hasPendingAnalysis = listAnalysisPending;
         }
 
+        this.cleanupOrphanedPanelObjects();
+
         int m5PanelYDistance = 12;
 
         if (this.h1M5IndependentModeEnabled) {
@@ -1016,6 +1023,58 @@ private:
 
         this.lastProcessedBarTime = currentBarTime;
         this.executing = false;
+    }
+
+    /**
+     * 初回描画前にチャートへ保存された旧インスタンスの一覧を除去する。
+     *
+     * 同じ一覧が複数稼働している場合や指標の列挙に失敗した場合は、
+     * 他インスタンスの描画を保護するため除去しない。
+     */
+    void cleanupOrphanedPanelObjects() {
+        if (this.initialPanelCleanupAttempted) {
+            return;
+        }
+
+        this.initialPanelCleanupAttempted = true;
+        ResetLastError();
+        int indicatorCount = ChartIndicatorsTotal(0, 0);
+
+        if (GetLastError() != 0 || indicatorCount < 1) {
+            return;
+        }
+
+        int listIndicatorCount = 0;
+
+        for (int i = 0; i < indicatorCount; i++) {
+            ResetLastError();
+            string indicatorName = ChartIndicatorName(0, 0, i);
+
+            if (GetLastError() != 0 || indicatorName == "") {
+                return;
+            }
+
+            if (StringFind(indicatorName, "ZigZag Elliott List ALL ") == 0
+                    || indicatorName == "ZigZagElliotList") {
+                listIndicatorCount++;
+            }
+        }
+
+        if (listIndicatorCount != 1) {
+            return;
+        }
+
+        ResetLastError();
+        ObjectsDeleteAll(0, Constant::PREFIX_FIXED + "ZzElList_", 0, -1);
+        int cleanupError = GetLastError();
+
+        if (cleanupError != 0) {
+            this.logger.error(
+                __FUNCTION__,
+                "failed to remove orphaned Elliot list panels error="
+                    + IntegerToString(cleanupError)
+            );
+        }
     }
 
     /**
@@ -1259,6 +1318,7 @@ private:
 
         this.initialized = false;
         this.executing = false;
+        this.initialPanelCleanupAttempted = false;
         this.testerHistoryWarmUpEnabled = false;
         this.hasPendingAnalysis = false;
         this.h1M5IndependentModeEnabled = false;
