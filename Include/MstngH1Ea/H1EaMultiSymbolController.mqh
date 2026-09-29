@@ -182,7 +182,9 @@ public:
             return;
         }
         ulong timerStartedMicros = GetMicrosecondCount();
+        ulong operationStartedMicros = GetMicrosecondCount();
         this.fastWarmupActive = this.processFastTesterWarmup();
+        this.logSlowOperation("ALL", "onTimer.processFastTesterWarmup", operationStartedMicros);
         if (this.fastWarmupActive) {
             this.lastProtectionClock = 0;
             this.lastProtectionGapMs = 0;
@@ -191,13 +193,25 @@ public:
         }
         // 履歴巡回の順番を待たず、全通貨のLeaseを毎イベント確認する。
         for (int i = 0; i < ArraySize(this.controllers); i++) {
+            operationStartedMicros = GetMicrosecondCount();
             this.controllers[i].processPersistencePreparation();
+            this.logSlowOperation(this.controllers[i].getSymbolName(),
+                "onTimer.processPersistencePreparation", operationStartedMicros);
+            operationStartedMicros = GetMicrosecondCount();
             this.logRestorationState(i);
+            this.logSlowOperation(this.controllers[i].getSymbolName(),
+                "onTimer.logRestorationState", operationStartedMicros);
         }
         this.recordProtectionPass();
         for (int i = 0; i < ArraySize(this.controllers); i++) {
+            operationStartedMicros = GetMicrosecondCount();
             datetime barTime = iTime(this.controllers[i].getSymbolName(), PERIOD_H1, 0);
+            this.logSlowOperation(this.controllers[i].getSymbolName(),
+                "onTimer.protection.iTime", operationStartedMicros);
+            operationStartedMicros = GetMicrosecondCount();
             this.controllers[i].processProtection(barTime);
+            this.logSlowOperation(this.controllers[i].getSymbolName(),
+                "onTimer.processProtection", operationStartedMicros);
         }
         // 毎時の開始通貨はサーバー時刻で決め、再テストでも同じ順序にする。
         datetime scheduleHour = (datetime)((long)TimeCurrent() / 3600);
@@ -209,7 +223,10 @@ public:
         datetime entryBarTime = 0;
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             int candidateIndex = (this.nextEntrySymbolIndex + i) % ArraySize(this.controllers);
+            operationStartedMicros = GetMicrosecondCount();
             datetime candidateBar = this.controllers[candidateIndex].getPendingEntryBar();
+            this.logSlowOperation(this.controllers[candidateIndex].getSymbolName(),
+                "onTimer.getPendingEntryBar", operationStartedMicros);
             H1EaPreparationState candidateState;
             this.controllers[candidateIndex].getPreparationState(candidateState);
             // H1未取得通貨の準備も同じ巡回へ含め、Entry待ちが多いときの放置を防ぐ。
@@ -225,7 +242,10 @@ public:
         if (this.consecutiveTrailTasks < 2) {
             for (int i = 0; i < ArraySize(this.controllers); i++) {
                 int candidateIndex = (this.nextTrailSymbolIndex + i) % ArraySize(this.controllers);
+                operationStartedMicros = GetMicrosecondCount();
                 trailBarTime = this.controllers[candidateIndex].getPendingTrailBar();
+                this.logSlowOperation(this.controllers[candidateIndex].getSymbolName(),
+                    "onTimer.getPendingTrailBar", operationStartedMicros);
                 if (trailBarTime > 0) {
                     symbolIndex = candidateIndex;
                     this.nextTrailSymbolIndex = (candidateIndex + 1) % ArraySize(this.controllers);
@@ -251,16 +271,31 @@ public:
         H1EaPreparationState previousState;
         H1EaPreparationState currentState;
         this.controllers[symbolIndex].getPreparationState(previousState);
+        operationStartedMicros = GetMicrosecondCount();
         this.controllers[symbolIndex].processPreparation();
+        this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
+            "onTimer.processPreparation", operationStartedMicros);
         if (!this.isBeforeTesterTradeStart()) {
+            operationStartedMicros = GetMicrosecondCount();
             this.controllers[symbolIndex].restorePreparedDecision();
+            this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
+                "onTimer.restorePreparedDecision", operationStartedMicros);
         }
         if (trailBarTime > 0) {
+            operationStartedMicros = GetMicrosecondCount();
             this.controllers[symbolIndex].processScheduledTrail(trailBarTime);
+            this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
+                "onTimer.processScheduledTrail", operationStartedMicros);
         } else if (entrySymbolIndex == symbolIndex && entryBarTime > 0) {
+            operationStartedMicros = GetMicrosecondCount();
             this.controllers[symbolIndex].processScheduledEntry(entryBarTime, this.eventTimer.isNormalReady());
+            this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
+                "onTimer.processScheduledEntry", operationStartedMicros);
         }
+        operationStartedMicros = GetMicrosecondCount();
         this.logRestorationState(symbolIndex);
+        this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
+            "onTimer.logRestorationState", operationStartedMicros);
         this.controllers[symbolIndex].getPreparationState(currentState);
         if (!MQLInfoInteger(MQL_TESTER) && (previousState.status != currentState.status
                 || previousState.reason != currentState.reason)) {
@@ -574,6 +609,24 @@ private:
             }
         }
         this.lastProtectionClock = now;
+    }
+
+    /**
+     * 1秒以上かかったTimer内の処理だけを、対象通貨とともに記録する。
+     * 通常時は文字列整形・ログ出力をせず、診断用の市場・DB照会も行わない。
+     *
+     * @param fromSymbol 対象通貨。全体処理の場合はALL。
+     * @param fromOperation 計測対象の処理名。
+     * @param fromStarted 処理直前の実時計マイクロ秒。
+     */
+    void logSlowOperation(const string fromSymbol, const string fromOperation, const ulong fromStarted) {
+        ulong elapsedMicros = GetMicrosecondCount() - fromStarted;
+        if (elapsedMicros < 1000000) {
+            return;
+        }
+        this.timerLogger.info("H1EaMultiSymbolController.logSlowOperation",
+            "SLOW_OPERATION symbol=" + fromSymbol + " operation=" + fromOperation
+            + " elapsedMs=" + DoubleToString((double)elapsedMicros / 1000.0, 2) + " thresholdMs=1000");
     }
 
     /**

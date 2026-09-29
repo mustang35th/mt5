@@ -99,7 +99,9 @@ class MultiSymbolWarmupTests(unittest.TestCase):
             self.assertNotIn(forbidden, body)
         timer = code_only(method(self.parent, "onTimer"))
         self.assertNotIn("this.processWarmupPreparation()", timer)
-        self.assertRegex(timer, r"if \(!this.isBeforeTesterTradeStart\(\)\) \{\s*this.controllers\[symbolIndex\].restorePreparedDecision\(\);")
+        restore_branch = timer.split("if (!this.isBeforeTesterTradeStart()) {", 1)[1].split("}", 1)[0]
+        self.assertIn("this.controllers[symbolIndex].restorePreparedDecision();", restore_branch)
+        self.assertEqual(1, timer.count(".restorePreparedDecision();"))
 
     def test_first_hourly_and_sparse_tick_boundaries_use_simulated_elapsed_time(self):
         body = code_only(method(self.parent, "processWarmupPreparation"))

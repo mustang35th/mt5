@@ -539,13 +539,29 @@ Lease・Lock・DB・監査・保存待ちの異常を開始前表示より優先
 
 分析msは`strategy.analyze()`呼び出し前後の実経過時間です。Entry・トレイル双方と分析失敗を含み、履歴だけの準備、後段のJudge・DB保存・注文送信は含みません。実時計には`GetMicrosecondCount()`を使用します。これはCPU専有時間ではありません。[MQL5実時計仕様](https://www.mql5.com/en/docs/common/getmicrosecondcount)
 
-Timer msは親のTimer本処理の実経過時間です。DB保守・保護・履歴準備・その回の分析や発注を含み、末尾の定期計測ログと画面描画は除きます。
+Timer msは親のTimer本処理の実経過時間です。DB保守・保護・履歴準備・その回の分析や発注を含み、末尾の定期計測ログと画面描画は除きます。処理途中に出力する下記の遅延診断ログのI/O時間は含みます。
 
 保護間隔msは全28通貨の保護巡回の開始間隔で、チャート通貨だけのTick補助は含めません。LIVEは単調時計、Testerはテスト内時刻で測ります。高速準備の間は基準を解除して、意図的な30秒休止を遅延として数えません。復帰後の最大間隔はそれまでの最大値と比較し続けます。値は巡回の観測値で、Tickの一時的な価格跨ぎをすべて捕捉できた保証ではありません。
 
 Memory MBは`MQL_MEMORY_USED`による当該EAの現在使用量です。端末全体の使用量や最大値ではありません。[MQL5メモリ計測仕様](https://www.mql5.com/en/book/common/environment/env_resources)
 
 親の`Common/Files/MstngH1Ea/Logs/<sessionUid>.log`へ`METRICS`を記録します。最初のTimer、以後LIVEでは最短1分、Testerではテスト内1時間ごとに状態を確認します。Testerで全28通貨が準備中（WARMUP・WAIT_HISTORY・WAIT_BAR_DB・WAIT_ANALYSIS）かつ管理対象取引が0件の場合は、テスト内サーバー日付ごとに最大1回の出力に抑えます。監視中・停止中の通貨や管理対象取引がある場合は、次の1時間間隔の確認から通常出力へ戻ります。同日に待機へ戻っても待機分は再出力しません。終了時は日次抑制にかかわらず必ず記録します。表示OFF・非ビジュアルTesterでも計測ログは継続します。回数と最大値は起動単位で、DB列は追加しません。
+
+**処理単位の遅延診断（2026-09-29追加）**
+
+親の`onTimer()`内を`GetMicrosecondCount()`で処理単位に計測し、1,000,000µs以上（1秒以上）の場合だけINFOの`SLOW_OPERATION`を出力します。閾値は固定です。通貨名・処理名・所要msを既存の`timerLogger`でターミナルのExpertsログと`Common/Files/MstngH1Ea/Logs/<sessionUid>.log`へ記録します。
+
+対象はDB保守（`processPersistencePreparation`）、状態ログ（`logRestorationState`）、保護用`iTime`、保護照合（`processProtection`）、Entry/Trail候補取得（`getPendingEntryBar` / `getPendingTrailBar`）、履歴準備（`processPreparation`）、判定DB復元（`restorePreparedDecision`）、選択したトレイル/Entry処理（`processScheduledTrail` / `processScheduledEntry`）です。`processFastTesterWarmup`だけは親全体の処理として`symbol=ALL`で記録します。
+
+以下は形式を示す架空の例です。
+
+```text
+[INFO] SLOW_OPERATION symbol=EURJPY operation=onTimer.protection.iTime elapsedMs=1234.56 thresholdMs=1000
+```
+
+各処理から戻った直後に出力するため、その処理が停止中の間は出せません。1秒未満では、この診断のログ出力・ファイルオープンを行いません。ログのための追加の市場・DB照会は行わず、次の処理の計測は前のログ出力後に開始します。このため、個別の所要時間には前の診断ログのI/Oを含めません。
+
+診断値を売買・DB・Leaseの判定に使わず、Tick処理、EAバージョン、DB schemaも変更しません。
 
 ### 17.5 実装の分離
 
