@@ -409,7 +409,7 @@ public:
                 fontColor = clrWhite;
             }
 
-            string elliotText = zigZagPoint.getTextIndexInfo();
+            string elliotText = this.getPointInfoText(zigZagPoint);
 
             if (!latestWave.isConfirmed) {
                 elliotText = latestWave.getConfirmedLabel() + elliotText;
@@ -677,7 +677,7 @@ protected:
                     timeFrameLabel = zigZagPoint.marketContext.timeFrameLabel + " ";
                 }
                 
-                string text = timeFrameLabel + zigZagPoint.getTextIndexInfo();
+                string text = timeFrameLabel + this.getPointInfoText(zigZagPoint);
 
                 if (wave.index == 0 && i == total - 1 && !wave.isConfirmed) {
                     text = wave.getConfirmedLabel() + text;
@@ -876,6 +876,26 @@ protected:
     }
 
 private:
+    /**
+     * 情報表とチャート用に再カウント前の主波ラベルを含むポイント情報を取得する。
+     *
+     * @param fromPoint 表示対象ポイント
+     * @return 主波ラベルが変わった場合だけ元ラベルを併記した表示文字列
+     */
+    string getPointInfoText(ZigZagPoint *fromPoint) {
+        string text = fromPoint.getTextSimple();
+
+        if (!StringUtil::isEmpty(fromPoint.orgElliotLabel)
+                && fromPoint.orgElliotLabel != fromPoint.elliotLabel) {
+            text += "[" + fromPoint.orgElliotLabel + "]";
+        }
+        text += fromPoint.getTextFibonacci();
+        text += fromPoint.getTextPipsDiff();
+        text += fromPoint.getTextRate();
+
+        return text;
+    }
+
     /**
      * 現在足で使用する波動ラベルの上位時間足数を取得する。
      *
