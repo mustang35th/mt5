@@ -1,5 +1,6 @@
 #property strict
 
+#include <Mstng\ExpertAdvisor\Runtime\EaEntryState.mqh>
 #include <MstngH1Ea\Config\H1EaConfig.mqh>
 #include <MstngH1Ea\Runtime\H1EaDecisionBuilder.mqh>
 #include <MstngH1Ea\Runtime\H1EaEntryState.mqh>
@@ -68,10 +69,51 @@ void checkTesterWarmupState() {
 }
 
 /**
+ * H1とM15で共通処理を使い、バー状態と同一キーの回数を独立して保持する。
+ */
+void checkSharedEntryState() {
+    EaEntryState h1State;
+    EaEntryState m15State;
+    check(h1State.observe(3600) == 0 && m15State.observe(3600) == 0,
+        "shared states start independently at the same bar");
+    check(h1State.recordCount(100, "BUY", 2) && m15State.recordCount(100, "BUY", 1),
+        "each timeframe records its own count for the same signal");
+    check(h1State.getCount(100, "BUY") == 2 && m15State.getCount(100, "BUY") == 1,
+        "same signal counts are isolated between H1 and M15");
+    check(m15State.observe(4500) == 3600 && h1State.observe(3600) == 0,
+        "M15 expires its failed bar after 900 seconds without advancing H1");
+    m15State.finalize(4500);
+    check(m15State.isFinalized(4500) && !h1State.isFinalized(4500)
+        && h1State.getFinalizedBar() == 0, "M15 finalization does not finalize H1");
+    check(m15State.observe(5400) == 0 && !m15State.isFinalized(5400),
+        "next M15 bar remains eligible after a finalized bar");
+    check(h1State.observe(7200) == 3600, "H1 retains its own pending bar");
+    check(m15State.recordCount(100, "SELL", 3)
+        && m15State.getCount(100, "BUY") == 1 && m15State.getCount(100, "SELL") == 3,
+        "BUY and SELL counts stay independent at the same reference time");
+
+    EaEntryState restoredState;
+    long times[] = {100, 100};
+    string sides[] = {"BUY", "SELL"};
+    int counts[2];
+    counts[0] = m15State.getCount(100, "BUY");
+    counts[1] = m15State.getCount(100, "SELL");
+    check(restoredState.restore(times, sides, counts), "restore shared M15 signal counts");
+    check(restoredState.getCount(100, "BUY") == 1 && restoredState.getCount(100, "SELL") == 3,
+        "restored signals remain consumed for both sides");
+    check(restoredState.recordCount(100, "BUY", 1) && !restoredState.recordCount(100, "SELL", 1)
+        && restoredState.getCount(100, "BUY") == 1 && restoredState.getCount(100, "SELL") == 3,
+        "duplicate records do not increment or reset restored counts");
+    check(restoredState.recordCount(100, "BUY", 2) && m15State.getCount(100, "BUY") == 1,
+        "restored instance advances without mutating the source state");
+}
+
+/**
  * 分析再試行・回数復元・保存待ちの非再評価を確認する。
  */
 void OnStart() {
     checkTesterWarmupState();
+    checkSharedEntryState();
     H1EaEntryState state;
     long times[] = {100};
     string sides[] = {"BUY"};

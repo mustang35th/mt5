@@ -451,12 +451,16 @@ class EmaConfigurationWiringTests(unittest.TestCase):
 
     def test_initial_stop_and_zigzag_trail_still_use_ten_pips_without_ema_gate(self):
         initial = re.sub(r"\s+", "", code_only(method(self.initial_stop, "evaluate")))
-        self.assertIn("rawStopLoss=fromPivotPrice+10.0*fromPipSize;", initial)
-        self.assertIn("rawStopLoss=fromPivotPrice-10.0*fromPipSize;", initial)
+        self.assertIn("EaInitialStopLossDecisiondecision;", initial)
+        self.assertIn("fromMaxRiskPips,10.0,fromResult);", initial)
+        common_source = (ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaInitialStopLossDecision.mqh").read_text(encoding="utf-8-sig")
+        common_initial = re.sub(r"\s+", "", code_only(method(common_source, "evaluate")))
+        self.assertIn("rawStopLoss=fromPivotPrice+fromBufferPips*fromPipSize;", common_initial)
+        self.assertIn("rawStopLoss=fromPivotPrice-fromBufferPips*fromPipSize;", common_initial)
         trail = re.sub(r"\s+", "", code_only(method(self.executor, "evaluateTrail")))
         self.assertIn("H1ZigZagTrailDecisiondecision;", trail)
         self.assertIn("decision.evaluate(position,fromWave,10.0,this.pipSize,this.tickSize,result)", trail)
-        for body in (initial, trail):
+        for body in (initial, common_initial, trail):
             self.assertNotIn("H1Ema200Confirmation", body)
             self.assertNotIn("isEma200ConfirmationPassed", body)
 

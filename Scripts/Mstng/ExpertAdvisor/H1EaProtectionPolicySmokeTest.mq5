@@ -35,7 +35,14 @@ void OnStart() {
     verify(H1EaProtectionPolicy::canResolveModify(false, 1.1, 1.1, 0.00001), "target reflected");
     verify(H1EaProtectionPolicy::canResolveModify(true, 0.0, 1.1, 0.00001), "terminal absent SL");
     verify(!H1EaProtectionPolicy::isTerminalOrder(ORDER_STATE_PARTIAL), "partial not terminal");
+    verify(EaProtectionPolicy::isAcceptedRetcode(TRADE_RETCODE_DONE_PARTIAL), "shared partial accepted");
+    verify(!EaProtectionPolicy::isAcceptedRetcode(TRADE_RETCODE_REJECT), "shared rejection not accepted");
+    verify(!EaProtectionPolicy::isUnknownRetcode(TRADE_RETCODE_REJECT), "shared rejection is known");
+    verify(EaProtectionPolicy::isTerminalOrder(ORDER_STATE_CANCELED), "shared canceled order terminal");
     verify(H1EaProtectionPolicy::closeReason("", "UNKNOWN", "SL") == "UNKNOWN_STOP_LOSS", "unknown source");
     verify(H1EaProtectionPolicy::closeReason("H1_ZIGZAG_TRAIL_CROSSED", "INITIAL_STOP_LOSS", "SL") == "H1_ZIGZAG_TRAIL_CROSSED", "intent priority");
+    verify(H1EaProtectionPolicy::closeReason("", "H1_ZIGZAG_TRAIL", "SL") == "H1_ZIGZAG_TRAIL", "H1 trail reason retained");
+    verify(H1EaProtectionPolicy::closeReason("", "EXTERNAL", "SL") == "EXTERNAL_STOP_LOSS", "external SL reason retained");
+    verify(H1EaProtectionPolicy::closeReason("", "H1_ZIGZAG_TRAIL", "CLIENT") == "EXTERNAL_CLOSE", "manual close reason retained");
     Print("INFO H1EaProtectionPolicySmokeTest failures=", failureCount);
 }
