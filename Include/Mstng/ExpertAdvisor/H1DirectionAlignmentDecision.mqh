@@ -21,6 +21,7 @@ class H1DirectionAlignmentDecision {
 public:
     /**
      * H1方向一致の診断状態とモード別通過結果を生成する。
+     * M15分析でもH1を基準とし、現在のM15方向がH1と一致することを必須とする。
      *
      * OBSERVEでは診断結果を保持しつつ、エントリーゲートは常に
      * 通過させる。REQUIREDでは取得不能と不正値をfail-closeする。
@@ -98,7 +99,8 @@ public:
         bool isCorrectionValid = this.isCorrectionContextValid(
             fromElliotAll, fromOriginal, fromCorrectionTimeFrame
         );
-        if (fromElliotAll.elliotCurrent != elliotH1
+        if (!this.isCurrentContextValid(fromElliotAll, elliotH1,
+                    fromOriginal, fromCorrectionTimeFrame)
                 || !fromElliotAll.isAnalysisSucceeded || !isCorrectionValid
                 || !this.isDirectionStateValid(elliotMn1, PERIOD_MN1,
                     fromOriginal, fromCorrectionTimeFrame, elliotH1.isBuy)
@@ -170,6 +172,31 @@ public:
 
 private:
     /**
+     * H1またはM15の現在足が分析コンテキストとH1方向に一致するか確認する。
+     *
+     * @return 現在足の参照・通貨・方向が整合する場合true。
+     */
+    bool isCurrentContextValid(
+        ElliotAll *fromSelected,
+        Elliot *fromH1,
+        ElliotAll *fromOriginal,
+        const ENUM_TIMEFRAMES fromCorrectionTimeFrame
+    ) {
+        ENUM_TIMEFRAMES currentTimeFrame = fromSelected.marketContext.timeFrame;
+        if (currentTimeFrame != PERIOD_H1 && currentTimeFrame != PERIOD_M15) {
+            return false;
+        }
+        Elliot *elliotCurrent = fromSelected.getElliot(currentTimeFrame);
+        if (elliotCurrent == NULL || fromSelected.elliotCurrent != elliotCurrent
+                || elliotCurrent.marketContext.symbolName != fromSelected.marketContext.symbolName
+                || elliotCurrent.isBuy != fromH1.isBuy) {
+            return false;
+        }
+        return this.isDirectionStateValid(elliotCurrent, currentTimeFrame,
+            fromOriginal, fromCorrectionTimeFrame, fromH1.isBuy);
+    }
+
+    /**
      * 指定モードが観測専用か判定する。
      *
      * @param fromMode 判定対象モード。
@@ -227,8 +254,9 @@ private:
         }
         if (fromOriginal == NULL || fromSelected == NULL || fromOriginal == fromSelected
                 || !fromOriginal.isAnalysisSucceeded
-                || fromOriginal.marketContext.timeFrame != PERIOD_H1
-                || fromSelected.marketContext.timeFrame != PERIOD_H1
+                || (fromSelected.marketContext.timeFrame != PERIOD_H1
+                    && fromSelected.marketContext.timeFrame != PERIOD_M15)
+                || fromOriginal.marketContext.timeFrame != fromSelected.marketContext.timeFrame
                 || fromOriginal.marketContext.symbolName != fromSelected.marketContext.symbolName
                 || (fromCorrectionTimeFrame != PERIOD_D1 && fromCorrectionTimeFrame != PERIOD_H4)) {
             return false;
@@ -240,7 +268,8 @@ private:
         if (!decision.isDirectionStateValid(originalD1, PERIOD_D1)
                 || !decision.isDirectionStateValid(originalH4, PERIOD_H4)
                 || !decision.isDirectionStateValid(originalH1, PERIOD_H1)
-                || fromOriginal.elliotCurrent != originalH1) {
+                || !this.isCurrentContextValid(
+                    fromOriginal, originalH1, NULL, PERIOD_CURRENT)) {
             return false;
         }
         if (fromCorrectionTimeFrame == PERIOD_D1) {

@@ -55,7 +55,7 @@ public:
      * @param fromAlertText 既存の元分析表示文言
      * @param fromSnapshot 値として固定する保存先
      * @param fromJudgmentElliotAll 判定に採用した分析
-     * @param fromCorrectionTimeFrame M5はH4/H1、H1はD1/H4の補正足。補正なしはPERIOD_CURRENT
+     * @param fromCorrectionTimeFrame M5はH4/H1、H1・M15はD1/H4の補正足。補正なしはPERIOD_CURRENT
      * @param fromJudgmentAlertText 画面と同じ採用分析表示文言
      * @return 整合するスナップショットを生成できた場合true
      */
@@ -231,12 +231,16 @@ private:
         ENUM_TIMEFRAMES upperTimeFrame = PERIOD_H4;
         ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
         int timeFrameCount = 7;
-        if (currentTimeFrame == PERIOD_H1) {
+        if (currentTimeFrame == PERIOD_H1 || currentTimeFrame == PERIOD_M15) {
             upperTimeFrame = PERIOD_D1;
             lowerTimeFrame = PERIOD_H4;
             timeFrameCount = 5;
+            if (currentTimeFrame == PERIOD_M15) {
+                timeFrameCount = 6;
+            }
         }
-        if ((currentTimeFrame != PERIOD_M5 && currentTimeFrame != PERIOD_H1)
+        if ((currentTimeFrame != PERIOD_M5 && currentTimeFrame != PERIOD_M15
+                    && currentTimeFrame != PERIOD_H1)
                 || (fromCorrectionTimeFrame != upperTimeFrame && fromCorrectionTimeFrame != lowerTimeFrame)
                 || fromOriginal == fromJudgment
                 || fromJudgment.marketContext.timeFrame != currentTimeFrame
@@ -282,7 +286,8 @@ private:
             } else if (original.isBuy != judgment.isBuy) {
                 return false;
             }
-            if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame)
+            if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame
+                    || (currentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1))
                     && timeFrames[i] != fromCorrectionTimeFrame
                     && original.isBuy != fromResult.isBuy) {
                 return false;

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.55"
+#property version   "1.57"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -41,10 +41,10 @@ bool mtf3In3AlertDatabaseUseCommonFolder = true;
 input(name="テスターDB保存開始日時（サーバー時刻、0=制限なし）")
 datetime mtf3In3AlertTesterSaveStartTime = 0;
 
-input group "03. H1エントリー追加条件"
+input group "03. H1・M15エントリー追加条件"
 
-/** H1方向を基準にD1・H4の片方が逆の場合、補正分析で判定する。 */
-input(name="H1のD1・H4片足方向補正")
+/** H1・M15でH1方向を基準にD1・H4の片方が逆の場合、補正分析で判定する。 */
+input(name="H1・M15のD1・H4片足方向補正")
 bool h1DirectionCorrectionEnabled = true;
 
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */

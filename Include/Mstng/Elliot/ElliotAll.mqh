@@ -258,15 +258,15 @@ public:
     }
 
     /**
-     * 元分析の入力値を保持した別インスタンスへH1またはM5用の補正波動を構築する。
+     * 元分析の入力値を保持した別インスタンスへH1・M15・M5用の補正波動を構築する。
      *
-     * MN1から現在足まで独立したElliotを生成する。H1はD1またはH4、M5はH4またはH1の
+     * MN1から現在足まで独立したElliotを生成する。H1・M15はD1またはH4、M5はH4またはH1の
      * 分析方向だけを変更し、下位足を補正済みの親波動で再分析する。元分析は変更しない。
      * 波動内部は時系列を再取得するため、前後の直近2足OHLCとバー時刻を確認する。
      * 過去の全履歴を固定した再計算ではない。
      *
-     * @param fromOriginal 分析成功済みの元H1またはM5分析。
-     * @param fromCorrectionTimeFrame H1分析はD1またはH4、M5分析はH4またはH1。
+     * @param fromOriginal 分析成功済みの元H1・M15・M5分析。
+     * @param fromCorrectionTimeFrame H1・M15分析はD1またはH4、M5分析はH4またはH1。
      * @param fromIsBuy 指定時間足の補正後方向。
      * @return 全時間足の再分析と入力確認に成功した場合true。
      */
@@ -283,7 +283,7 @@ public:
         ENUM_TIMEFRAMES currentTimeFrame = fromOriginal.marketContext.timeFrame;
         bool isCorrectionSupported = currentTimeFrame == PERIOD_M5
             && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
-        if (currentTimeFrame == PERIOD_H1) {
+        if (currentTimeFrame == PERIOD_H1 || currentTimeFrame == PERIOD_M15) {
             isCorrectionSupported = fromCorrectionTimeFrame == PERIOD_D1
                 || fromCorrectionTimeFrame == PERIOD_H4;
         }
@@ -318,6 +318,8 @@ public:
         timeFrames[6] = PERIOD_M5;
         if (currentTimeFrame == PERIOD_H1) {
             ArrayResize(timeFrames, 5);
+        } else if (currentTimeFrame == PERIOD_M15) {
+            ArrayResize(timeFrames, 6);
         }
         bool isSucceeded = this.areOriginalRatesUnchanged(
             fromOriginal, timeFrames

@@ -767,12 +767,13 @@ function AlertNavigation({ navigation, busy, error, onNavigate }: {
   );
 }
 
-function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce, showCorrection = false }: {
+function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce, showCorrection = false, correctionTimeFrame = "H1" }: {
   bundle: DetailBundle;
   gridStateRef: RefObject<GridState | undefined>;
   navigation?: ReactNode;
   styleNonce?: string;
   showCorrection?: boolean;
+  correctionTimeFrame?: "H1" | "M15";
 }) {
   const alert = bundle.detail.alert;
   const run = bundle.detail.run;
@@ -820,7 +821,7 @@ function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce, showC
         detail={bundle.detail}
         timeFrames={bundle.timeFrames.items}
         points={bundle.points.items}
-        currentTimeFrame="H1"
+        currentTimeFrame={correctionTimeFrame}
       />}
       {!showCorrection && <CurrencyStrengthSnapshotPanel alert={alert} />}
       {!showCorrection && <H1EntryCheckPanel
@@ -979,7 +980,8 @@ export function AlertDetailDrawer({
   const hasDisplayedBundle = isOpen && bundle !== null
     && (bundle.detail.alert.id === alertId || Boolean(navigationSearch && onNavigate));
   let isM5Alert = false;
-  let hasH1Correction = false;
+  let hasUpperCorrection = false;
+  let correctionTimeFrame: "H1" | "M15" = "H1";
   let title = "アラート詳細";
   if (hasDisplayedBundle && bundle) {
     const alert = bundle.detail.alert;
@@ -991,12 +993,17 @@ export function AlertDetailDrawer({
       || bundle.timeFrames.items.some((timeFrame) => (
         timeFrame.is_current_time_frame && timeFrame.time_frame_text === "H1"
       )));
-    hasH1Correction = isH1Alert && (bundle.detail.correction?.status === "APPLIED"
+    const isM15Alert = !isM5Alert && (alert.time_frame === 15 || alert.time_frame_text === "M15"
+      || bundle.timeFrames.items.some((timeFrame) => (
+        timeFrame.is_current_time_frame && timeFrame.time_frame_text === "M15"
+      )));
+    if (isM15Alert) correctionTimeFrame = "M15";
+    hasUpperCorrection = (isH1Alert || isM15Alert) && (bundle.detail.correction?.status === "APPLIED"
       || bundle.detail.correction?.status === "INCOMPLETE");
     title = `${alert.symbol_name} ${alert.side} / ${alert.current_bar_time_text}`;
   }
   let dialogClassName = "react-detail-dialog";
-  if (isM5Alert || hasH1Correction || view === "comparison") {
+  if (isM5Alert || hasUpperCorrection || view === "comparison") {
     dialogClassName += " observation-grid-mode";
   }
   const navigationControls = navigationSearch && onNavigate && hasDisplayedBundle && (
@@ -1009,7 +1016,7 @@ export function AlertDetailDrawer({
   );
 
   let closeLabel = "詳細を閉じる";
-  if (isM5Alert || hasH1Correction) {
+  if (isM5Alert || hasUpperCorrection) {
     dialogClassName += " m5-alert-dialog";
   }
   if (isM5Alert) {
@@ -1084,15 +1091,15 @@ export function AlertDetailDrawer({
           />
         )}
         {hasDisplayedBundle && bundle && !isM5Alert && view === "detail" && (
-          hasH1Correction ? <AlertCorrectionSnapshot
+          hasUpperCorrection ? <AlertCorrectionSnapshot
             detail={bundle.detail}
             timeFrames={bundle.timeFrames.items}
             points={bundle.points.items}
-            currentTimeFrame="H1"
+            currentTimeFrame={correctionTimeFrame}
           /> : <DetailContent bundle={bundle} styleNonce={styleNonce} />
         )}
         {hasDisplayedBundle && bundle && !isM5Alert && view === "comparison" && (
-          <ComparisonContent bundle={bundle} gridStateRef={comparisonGridStateRef} navigation={navigationControls} styleNonce={styleNonce} showCorrection={hasH1Correction} />
+          <ComparisonContent bundle={bundle} gridStateRef={comparisonGridStateRef} navigation={navigationControls} styleNonce={styleNonce} showCorrection={hasUpperCorrection} correctionTimeFrame={correctionTimeFrame} />
         )}
       </div>
     </dialog>

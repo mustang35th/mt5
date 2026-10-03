@@ -208,7 +208,7 @@ class DirectionContractTests(unittest.TestCase):
             "fromCurrentTimeFrame, fromCorrectionTimeFrame"))
 
     def fixture(self, current, correction, buy):
-        count = 5 if current == CONSTANTS["PERIOD_H1"] else 7
+        count = {CONSTANTS["PERIOD_H1"]: 5, CONSTANTS["PERIOD_M15"]: 6}.get(current, 7)
         def frame(index, side):
             return SimpleNamespace(timeFrame=FRAMES[index], timeFrameOrder=index, isBuy=int(side),
                                    buySellLabel="BUY" if side else "SELL", latestElliotLabel="3")
@@ -218,8 +218,9 @@ class DirectionContractTests(unittest.TestCase):
                                    correctedDirection="BUY" if buy else "SELL", selectedCurrentElliotLabel="3")
         return original, corrected, metadata
 
-    def test_m5_and_h1_both_sides_and_allowed_single_corrections(self):
+    def test_m5_m15_and_h1_both_sides_and_allowed_single_corrections(self):
         for current, corrections in ((CONSTANTS["PERIOD_M5"], ("PERIOD_H4", "PERIOD_H1")),
+                                     (CONSTANTS["PERIOD_M15"], ("PERIOD_D1", "PERIOD_H4")),
                                      (CONSTANTS["PERIOD_H1"], ("PERIOD_D1", "PERIOD_H4"))):
             for correction in corrections:
                 for buy in (False, True):
@@ -229,6 +230,7 @@ class DirectionContractTests(unittest.TestCase):
 
     def test_reject_two_opposing_legs_and_incorrect_shape(self):
         for current, correction, other in ((5, CONSTANTS["PERIOD_H4"], 4),
+                                            (15, CONSTANTS["PERIOD_D1"], 3),
                                             (CONSTANTS["PERIOD_H1"], CONSTANTS["PERIOD_D1"], 3)):
             original, corrected, metadata = self.fixture(current, correction, True)
             original[other].isBuy = 0
@@ -242,7 +244,18 @@ class DirectionContractTests(unittest.TestCase):
     def test_cross_profile_corrections_are_rejected(self):
         self.assertFalse(self.profile(CONSTANTS["PERIOD_H1"], CONSTANTS["PERIOD_H1"]))
         self.assertFalse(self.profile(CONSTANTS["PERIOD_M5"], CONSTANTS["PERIOD_D1"]))
-        self.assertFalse(self.profile(CONSTANTS["PERIOD_M15"], CONSTANTS["PERIOD_H4"]))
+        self.assertFalse(self.profile(CONSTANTS["PERIOD_M15"], CONSTANTS["PERIOD_H1"]))
+        self.assertFalse(self.profile(CONSTANTS["PERIOD_M15"], CONSTANTS["PERIOD_M15"]))
+
+    def test_m15_rejects_h1_direction_changed_or_opposing_entry(self):
+        for buy in (False, True):
+            original, corrected, metadata = self.fixture(15, CONSTANTS["PERIOD_D1"], buy)
+            corrected[4].isBuy = int(not buy)
+            corrected[4].buySellLabel = "SELL" if buy else "BUY"
+            self.assertFalse(self.direction(original, corrected, metadata, 15))
+            original[4].isBuy = corrected[4].isBuy
+            original[4].buySellLabel = corrected[4].buySellLabel
+            self.assertFalse(self.direction(original, corrected, metadata, 15))
 
     def test_source_wiring_uses_current_frame_and_selected_history(self):
         valid = method(SERVICE, "isCorrectionSnapshotValid")

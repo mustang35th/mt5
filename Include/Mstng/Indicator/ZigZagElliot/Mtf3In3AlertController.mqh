@@ -68,7 +68,8 @@ public:
 
         this.marketContext = fromMarketContext;
         this.config = fromConfig;
-        if (this.marketContext.timeFrame == PERIOD_H1) {
+        if (this.marketContext.timeFrame == PERIOD_H1
+                || this.marketContext.timeFrame == PERIOD_M15) {
             this.config.applyH1EntryPolicy();
         }
         this.alertCsvEnabled = fromConfig.mtf3In3AlertCsvEnabled;
@@ -513,7 +514,7 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.55";
+        this.databaseRun.programVersion = "1.57";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_H1
@@ -522,6 +523,9 @@ private:
         }
         if (this.marketContext.timeFrame == PERIOD_M5) {
             this.databaseRun.strategyVersion = "MTF3IN3_M5_SPREAD5_V13";
+        }
+        if (this.marketContext.timeFrame == PERIOD_M15) {
+            this.databaseRun.strategyVersion = "MTF3IN3_M15_GMMA_CURRENT_ONLY_V16";
         }
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();

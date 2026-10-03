@@ -18,13 +18,14 @@ interface Column {
   direction?: (row: SnapshotRow) => string;
 }
 export interface M5AlertSnapshotProps { detail: AlertDetailResponse; timeFrames: AlertTimeFrame[]; points: AlertPoint[] }
-interface AlertCorrectionSnapshotProps extends M5AlertSnapshotProps { currentTimeFrame: "M5" | "H1" }
+interface AlertCorrectionSnapshotProps extends M5AlertSnapshotProps { currentTimeFrame: "M5" | "M15" | "H1" }
 
 const frames = [
   { id: 49153, label: "MN1" }, { id: 32769, label: "W1" }, { id: 16408, label: "D1" },
   { id: 16388, label: "H4" }, { id: 16385, label: "H1" }, { id: 15, label: "M15" }, { id: 5, label: "M5" },
 ];
 const h1Frames = frames.slice(0, 5);
+const m15Frames = frames.slice(0, 6);
 const missing = "未記録";
 
 function text(value: unknown): string {
@@ -255,7 +256,9 @@ function SnapshotContent({ detail, timeFrames, points, currentTimeFrame }: Alert
   const [view, setView] = useState<View>("selected");
   const [expanded, setExpanded] = useState(false);
   const [changedOnly, setChangedOnly] = useState(false);
-  const snapshotFrames = currentTimeFrame === "H1" ? h1Frames : frames;
+  let snapshotFrames = frames;
+  if (currentTimeFrame === "H1") snapshotFrames = h1Frames;
+  if (currentTimeFrame === "M15") snapshotFrames = m15Frames;
   const currentFrame = snapshotFrames[snapshotFrames.length - 1].id;
   const originalRows = useMemo(() => rowsFor(timeFrames, points, "ORIGINAL", snapshotFrames, metadata?.original_analysis_text), [timeFrames, points, snapshotFrames, metadata?.original_analysis_text]);
   const correctedRows = useMemo(() => rowsFor(detail.correction?.timeframes ?? [], detail.correction?.points ?? [], "CORRECTED", snapshotFrames, metadata?.corrected_analysis_text), [detail.correction, snapshotFrames, metadata?.corrected_analysis_text]);

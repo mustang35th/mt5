@@ -287,20 +287,21 @@ function fixture(status: AlertCorrectionResponse["status"] | null = "APPLIED", a
 }
 
 type Fixture = ReturnType<typeof fixture>;
-function h1Fixture(target = 16408, side: "BUY" | "SELL" = "BUY", status: AlertCorrectionResponse["status"] | null = "APPLIED", alertId = 74): Fixture {
+function h1Fixture(target = 16408, side: "BUY" | "SELL" = "BUY", status: AlertCorrectionResponse["status"] | null = "APPLIED", alertId = 74, currentFrame = 16385): Fixture {
   const data = fixture(status, alertId);
-  data.detail.alert.time_frame = 16385;
-  data.detail.alert.time_frame_text = "H1";
+  const frameCount = currentFrame === 15 ? 6 : 5;
+  data.detail.alert.time_frame = currentFrame;
+  data.detail.alert.time_frame_text = currentFrame === 15 ? "M15" : "H1";
   data.detail.alert.side = side;
   const isBuy = side === "BUY";
   const hasCorrection = status === "APPLIED" || status === "INCOMPLETE";
-  data.timeFrames = data.timeFrames.slice(0, 5).map((row) => ({ ...row,
-    is_current_time_frame: row.time_frame === 16385,
+  data.timeFrames = data.timeFrames.slice(0, frameCount).map((row) => ({ ...row,
+    is_current_time_frame: row.time_frame === currentFrame,
     is_buy: hasCorrection && row.time_frame === target ? !isBuy : isBuy,
     buy_sell_label: hasCorrection && row.time_frame === target ? (isBuy ? "SELL" : "BUY") : side,
   }));
-  data.points = data.points.filter((row) => row.time_frame_order < 5).map((row) => ({ ...row,
-    is_signal_reference: row.time_frame === 16385 && row.point_order === 0,
+  data.points = data.points.filter((row) => row.time_frame_order < frameCount).map((row) => ({ ...row,
+    is_signal_reference: row.time_frame === currentFrame && row.point_order === 0,
   }));
   if (data.detail.correction?.metadata) {
     Object.assign(data.detail.correction.metadata, {
@@ -309,11 +310,11 @@ function h1Fixture(target = 16408, side: "BUY" | "SELL" = "BUY", status: AlertCo
       corrected_direction: hasCorrection ? side : "",
       selected_wave_summary_text: "D1 3 / H4 3 / H1 3",
     });
-    data.detail.correction.timeframes = data.detail.correction.timeframes.slice(0, 5).map((row) => ({ ...row,
-      is_current_time_frame: row.time_frame === 16385, is_buy: isBuy, buy_sell_label: side,
+    data.detail.correction.timeframes = data.detail.correction.timeframes.slice(0, frameCount).map((row) => ({ ...row,
+      is_current_time_frame: row.time_frame === currentFrame, is_buy: isBuy, buy_sell_label: side,
     }));
-    data.detail.correction.points = data.detail.correction.points.filter((row) => row.time_frame_order < 5).map((row) => ({ ...row,
-      is_signal_reference: row.time_frame === 16385 && row.point_order === 0, rate: 1.23456,
+    data.detail.correction.points = data.detail.correction.points.filter((row) => row.time_frame_order < frameCount).map((row) => ({ ...row,
+      is_signal_reference: row.time_frame === currentFrame && row.point_order === 0, rate: 1.23456,
     }));
   }
   return data;
@@ -350,6 +351,23 @@ afterEach(() => {
 });
 
 describe("AlertDetailDrawer correction integration", () => {
+  it.each(["detail", "comparison"] as const)("shows the adopted M15 six-frame snapshot in %s", async (initialView) => {
+    serve(h1Fixture(16408, "BUY", "APPLIED", 74, 15));
+    render(<AlertDetailDrawer alertId={74} initialView={initialView} onClose={vi.fn()} />);
+    const snapshot = await screen.findByRole("region", { name: "M15アラート補正スナップショット" });
+    const table = within(snapshot).getByRole("table", { name: "M15アラート6時間足比較" });
+    expect(Array.from(table.querySelectorAll("tbody tr")).map((row) => row.getAttribute("data-timeframe")))
+      .toEqual(["MN1", "W1", "D1", "H4", "H1", "M15"]);
+    expect(table.querySelector('tr[data-timeframe="M15"]')).toHaveClass("m5-alert-current");
+    expect(table.querySelectorAll('tr[data-analysis="CORRECTED"]')).toHaveLength(6);
+    expect(snapshot).toHaveTextContent("D1方向補正");
+    const savedSl = within(snapshot).getByRole("region", { name: "判定時の損切り候補" }).textContent;
+    fireEvent.click(within(snapshot).getByRole("button", { name: "前後比較" }));
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(12);
+    expect(within(snapshot).getByRole("region", { name: "判定時の損切り候補" }).textContent).toBe(savedSl);
+    expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
+  });
+
   it.each([[16408, "BUY"], [16408, "SELL"], [16388, "BUY"], [16388, "SELL"]] as const)(
     "shows H1 %s correction toward the original %s direction with fixed adopted SL",
     async (target, side) => {

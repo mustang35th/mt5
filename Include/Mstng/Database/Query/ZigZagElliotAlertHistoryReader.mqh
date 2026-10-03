@@ -694,6 +694,9 @@ private:
         }
         bool isTimeFrameValid = fromSnapshot.alert.timeFrame == PERIOD_M5
             && fromSnapshot.alert.timeFrameText == "M5";
+        if (fromSnapshot.alert.timeFrame == PERIOD_M15) {
+            isTimeFrameValid = fromSnapshot.alert.timeFrameText == "M15";
+        }
         if (fromSnapshot.alert.timeFrame == PERIOD_H1) {
             isTimeFrameValid = fromSnapshot.alert.timeFrameText == "H1";
         }
@@ -818,7 +821,7 @@ private:
     }
 
     /**
-     * M5は7足、H1は5足の所属・最新点・SL基準点を検証する。
+     * M5は7足、M15は6足、H1は5足の所属・最新点・SL基準点を検証する。
      */
     bool validateAnalysis(ZigZagElliotAlertEntity &fromAlert,
                           ZigZagElliotAlertTimeFrameEntity &fromTimeFrames[], ZigZagElliotAlertPointEntity &fromPoints[],
@@ -827,6 +830,9 @@ private:
         int frames[] = {49153, 32769, 16408, 16388, 16385, 15, 5};
         string labels[] = {"MN1", "W1", "D1", "H4", "H1", "M15", "M5"};
         int frameCount = 7;
+        if (fromAlert.timeFrame == PERIOD_M15) {
+            frameCount = 6;
+        }
         if (fromAlert.timeFrame == PERIOD_H1) {
             frameCount = 5;
         }
@@ -916,7 +922,7 @@ private:
      * 現在足ごとに許可した上位の片足かを確認する。
      */
     bool isCorrectionTimeFrameValid(const int fromCurrentTimeFrame, const int fromCorrectionTimeFrame) {
-        if (fromCurrentTimeFrame == PERIOD_H1) {
+        if (fromCurrentTimeFrame == PERIOD_H1 || fromCurrentTimeFrame == PERIOD_M15) {
             return fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4;
         }
         return fromCurrentTimeFrame == PERIOD_M5
@@ -1107,7 +1113,8 @@ private:
             if (original.timeFrame == fromSnapshot.correction.correctionTimeFrame) {
                 valid = original.buySellLabel == fromSnapshot.correction.originalDirection
                     && corrected.buySellLabel == fromSnapshot.correction.correctedDirection;
-            } else if (this.isCorrectionTimeFrameValid(fromSnapshot.alert.timeFrame, original.timeFrame)) {
+            } else if (this.isCorrectionTimeFrameValid(fromSnapshot.alert.timeFrame, original.timeFrame)
+                    || (fromSnapshot.alert.timeFrame == PERIOD_M15 && original.timeFrame == PERIOD_H1)) {
                 valid = valid && original.buySellLabel == fromSnapshot.alert.side;
             }
             if (!valid) {

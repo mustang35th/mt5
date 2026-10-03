@@ -54,7 +54,7 @@ public:
     datetime databaseAlertDisplayEndDate;
     /** DB表示をENTRY成立だけに絞る場合true。 */
     bool databaseAlertDisplayEntryOnly;
-    /** H1判定でD1・H4の片足方向補正を使用する場合true。 */
+    /** H1・M15判定でD1・H4の片足方向補正を使用する場合true。 */
     bool h1DirectionCorrectionEnabled;
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
@@ -124,7 +124,7 @@ public:
     }
 
     /**
-     * H1の判定とRun設定が一致するように共通の固定条件を適用する。
+     * H1・M15の判定とRun設定が一致するように共通の固定条件を適用する。
      */
     void applyH1EntryPolicy() {
         this.h1W1ConfirmationMode = Mtf3In3H1Policy::getW1ConfirmationMode();

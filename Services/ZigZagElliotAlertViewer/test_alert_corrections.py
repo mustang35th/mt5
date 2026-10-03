@@ -86,6 +86,9 @@ def create_correction_database(path: Path, include_corrections: bool = True) -> 
             (5, "INCOMPLETE", "BUY", 16385), (6, "NONE", "SELL", 0),
             (7, "APPLIED", "BUY", 16408), (8, "APPLIED", "SELL", 16408),
             (9, "APPLIED", "BUY", 16388), (10, "APPLIED", "SELL", 16388),
+            (11, "APPLIED", "BUY", 16408), (12, "APPLIED", "SELL", 16408),
+            (13, "APPLIED", "BUY", 16388), (14, "APPLIED", "SELL", 16388),
+            (15, "NONE", "BUY", 0),
         ):
             is_buy = int(side == "BUY")
             is_applied = state in {"APPLIED", "INCOMPLETE"}
@@ -94,6 +97,9 @@ def create_correction_database(path: Path, include_corrections: bool = True) -> 
             if alert_id >= 6:
                 current_frame = 16385
                 frame_list = TIME_FRAMES[:5]
+            if alert_id >= 11:
+                current_frame = 15
+                frame_list = TIME_FRAMES[:6]
             reference_time = 1789819200 + alert_id * 300
             original_lc0 = 1.08
             original_lc5 = 1.0795
@@ -288,6 +294,32 @@ class AlertCorrectionsTest(unittest.TestCase):
                     self.assertEqual([], result["points"])
                 finally:
                     database.close()
+
+    def test_m15_corrections_keep_six_frames_and_original_h1_direction(self) -> None:
+        for alert_id, side, target in ((11, "BUY", 16408), (12, "SELL", 16408),
+                                      (13, "BUY", 16388), (14, "SELL", 16388)):
+            with self.subTest(side=side, target=target):
+                original = self.database.timeframes(alert_id)["items"]
+                result = self.correction(alert_id)
+                self.assertEqual("APPLIED", result["status"], result["reason"])
+                self.assertEqual(list(TIME_FRAMES[:6]), [
+                    (row["time_frame"], row["time_frame_text"]) for row in result["timeframes"]])
+                self.assertEqual(12, len(result["points"]))
+                self.assertEqual(target, result["metadata"]["correction_time_frame"])
+                self.assertEqual(side, original[4]["buy_sell_label"])
+                self.assertEqual(side, result["timeframes"][4]["buy_sell_label"])
+                self.assertEqual(side, result["timeframes"][5]["buy_sell_label"])
+                self.assertEqual(original, self.database.timeframes(alert_id)["items"])
+        self.assertEqual("NONE", self.correction(15)["status"])
+        self.assertEqual(6, self.database.timeframes(15)["count"])
+
+    def test_m15_rejects_changed_or_opposing_original_h1(self) -> None:
+        self.update(f"UPDATE {TIME_FRAME_TABLE} SET is_buy=0,buy_sell_label='SELL' "
+                    "WHERE alert_id=11 AND time_frame=16385")
+        self.assertEqual("INCOMPLETE", self.correction(11)["status"])
+        self.update(f"UPDATE {ORIGINAL_TIME_FRAME_TABLE} SET is_buy=0,buy_sell_label='SELL' "
+                    "WHERE alert_id=11 AND time_frame=16385")
+        self.assertEqual("INCOMPLETE", self.correction(11)["status"])
 
     def test_old_database_without_optional_tables_is_unchanged(self) -> None:
         path = Path(self.temporary.name) / "legacy.sqlite"

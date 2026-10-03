@@ -18,8 +18,8 @@ ORIGINAL_TIME_FRAME_TABLE = "zigzag_elliot_alert_timeframes"
 ORIGINAL_POINT_TABLE = "zigzag_elliot_alert_points"
 TIME_FRAMES = ((49153, "MN1"), (32769, "W1"), (16408, "D1"),
                (16388, "H4"), (16385, "H1"), (15, "M15"), (5, "M5"))
-CORRECTION_TARGETS = {5: {16388, 16385}, 16385: {16408, 16388}}
-ANALYSIS_TIME_FRAMES = {5: TIME_FRAMES, 16385: TIME_FRAMES[:5]}
+CORRECTION_TARGETS = {5: {16388, 16385}, 15: {16408, 16388}, 16385: {16408, 16388}}
+ANALYSIS_TIME_FRAMES = {5: TIME_FRAMES, 15: TIME_FRAMES[:6], 16385: TIME_FRAMES[:5]}
 
 METADATA_COLUMNS = """
 alert_id correction_status correction_time_frame original_direction corrected_direction
@@ -296,7 +296,8 @@ def _load_alert_correction(session: Session, alert: Mapping[str, Any],
                      and after["buy_sell_label"] == metadata["corrected_direction"])
         else:
             valid = before["is_buy"] == after["is_buy"]
-            if before["time_frame"] in CORRECTION_TARGETS[alert["time_frame"]]:
+            if (before["time_frame"] in CORRECTION_TARGETS[alert["time_frame"]]
+                    or (alert["time_frame"] == 15 and before["time_frame"] == 16385)):
                 valid = valid and before["buy_sell_label"] == alert["side"]
         if not valid:
             return _response("INCOMPLETE", "指定した補正時間足以外にも方向変更または方向不一致があります。", rendered)

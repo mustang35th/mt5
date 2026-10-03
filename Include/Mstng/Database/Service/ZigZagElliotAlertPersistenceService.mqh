@@ -634,7 +634,7 @@ private:
         }
         bool isCorrectionTimeFrameValid = fromAlert.timeFrame == PERIOD_M5
             && (fromCorrection.correctionTimeFrame == PERIOD_H4 || fromCorrection.correctionTimeFrame == PERIOD_H1);
-        if (fromAlert.timeFrame == PERIOD_H1) {
+        if (fromAlert.timeFrame == PERIOD_H1 || fromAlert.timeFrame == PERIOD_M15) {
             isCorrectionTimeFrameValid = fromCorrection.correctionTimeFrame == PERIOD_D1
                 || fromCorrection.correctionTimeFrame == PERIOD_H4;
         }
@@ -752,7 +752,7 @@ private:
     }
 
     /**
-     * M5は7足・H4/H1、H1は5足・D1/H4の指定片足だけの方向変更を確認する。
+     * M5は7足・H4/H1、H1は5足・M15は6足・D1/H4の指定片足だけの方向変更を確認する。
      */
     bool isAppliedDirectionValid(
         ZigZagElliotAlertTimeFrameEntity &fromOriginal[],
@@ -766,8 +766,11 @@ private:
         int timeFrameCount = 7;
         ENUM_TIMEFRAMES upperTimeFrame = PERIOD_H4;
         ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
-        if (fromCurrentTimeFrame == PERIOD_H1) {
+        if (fromCurrentTimeFrame == PERIOD_H1 || fromCurrentTimeFrame == PERIOD_M15) {
             timeFrameCount = 5;
+            if (fromCurrentTimeFrame == PERIOD_M15) {
+                timeFrameCount = 6;
+            }
             upperTimeFrame = PERIOD_D1;
             lowerTimeFrame = PERIOD_H4;
         }
@@ -790,7 +793,8 @@ private:
             } else if (fromOriginal[i].isBuy != fromCorrected[i].isBuy) {
                 return false;
             }
-            if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame)
+            if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame
+                    || (fromCurrentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1))
                     && timeFrames[i] != fromCorrection.correctionTimeFrame
                     && fromOriginal[i].isBuy != currentIsBuy) {
                 return false;

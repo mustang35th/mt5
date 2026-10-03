@@ -16,8 +16,8 @@
 /**
  * 現在時間足に対応するMTF_3in3判定クラスを生成する。
  *
- * H1は共通ポリシーに固定し、確認モード引数による上書きを受け付けない。
- * 確認モード引数はH1以外の従来互換経路のために維持する。
+ * H1・M15はH1共通ポリシーに固定し、確認モード引数による上書きを受け付けない。
+ * 確認モード引数はその他の従来互換経路のために維持する。
  * 呼び出し元のH1設定記録も共通ポリシーから生成すること。
  *
  * H1、M15およびM5以外は、従来互換の共通クラスを生成する。
@@ -32,7 +32,7 @@ public:
      * @param fromH1W1ConfirmationMode H1以外の互換経路へ渡すW1確認モード。
      * @param fromH1DirectionAlignmentMode H1以外の互換経路へ渡す方向一致モード。
      * @param fromH1Ema200ConfirmationMode H1以外の互換経路へ渡すEMA200確認モード。
-     * @param fromH1DirectionCorrectionEnabled H1でD1・H4の片足方向補正を使用する場合true。
+     * @param fromH1DirectionCorrectionEnabled H1・M15でD1・H4の片足方向補正を使用する場合true。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */
     static ExpertAdvisorMTF_3in3 *create(
@@ -57,7 +57,8 @@ public:
         if (fromMarketContext.timeFrame == PERIOD_M15) {
             return new ExpertAdvisorMtf3In3M15(
                 fromMarketContext,
-                fromIsDrawArrow
+                fromIsDrawArrow,
+                fromH1DirectionCorrectionEnabled
             );
         }
 
