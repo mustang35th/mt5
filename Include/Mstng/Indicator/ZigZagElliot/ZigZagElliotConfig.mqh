@@ -58,6 +58,10 @@ public:
     bool h1DirectionCorrectionEnabled;
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
+    /** M15エントリーで使用するH4のFE上限（%）。0は制限なし。 */
+    double m15H4MaxFibonacciExpansionPercent;
+    /** M15エントリーで使用するH1のFE上限（%）。0は制限なし。 */
+    double m15H1MaxFibonacciExpansionPercent;
     /** H1エントリーで使用するW1確認モード。 */
     H1W1ConfirmationMode h1W1ConfirmationMode;
     /** H1エントリーで使用する方向一致モード。 */
@@ -105,6 +109,8 @@ public:
         this.databaseAlertDisplayEntryOnly = false;
         this.h1DirectionCorrectionEnabled = false;
         this.h1DisplayWaveEntryLimitEnabled = false;
+        this.m15H4MaxFibonacciExpansionPercent = 161.8;
+        this.m15H1MaxFibonacciExpansionPercent = 161.8;
         this.applyH1EntryPolicy();
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;

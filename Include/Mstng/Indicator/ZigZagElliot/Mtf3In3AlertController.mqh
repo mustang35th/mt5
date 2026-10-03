@@ -92,7 +92,9 @@ public:
             this.config.h1W1ConfirmationMode,
             this.config.h1DirectionAlignmentMode,
             this.config.h1Ema200ConfirmationMode,
-            this.config.h1DirectionCorrectionEnabled
+            this.config.h1DirectionCorrectionEnabled,
+            this.config.m15H4MaxFibonacciExpansionPercent,
+            this.config.m15H1MaxFibonacciExpansionPercent
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -514,7 +516,7 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.61";
+        this.databaseRun.programVersion = "1.62";
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_H1
@@ -525,7 +527,7 @@ private:
             this.databaseRun.strategyVersion = "MTF3IN3_M5_SPREAD5_V13";
         }
         if (this.marketContext.timeFrame == PERIOD_M15) {
-            this.databaseRun.strategyVersion = "MTF3IN3_M15_H1_CORRECTION_V17";
+            this.databaseRun.strategyVersion = "MTF3IN3_M15_HIGHER_FE_V18";
         }
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();
@@ -577,6 +579,12 @@ private:
             + getH1Ema200ConfirmationModeText(
                 this.config.h1Ema200ConfirmationMode
             );
+        if (this.marketContext.timeFrame == PERIOD_M15) {
+            inputText += "|m15H4MaxFibonacciExpansionPercent="
+                + DoubleToString(this.config.m15H4MaxFibonacciExpansionPercent, 1);
+            inputText += "|m15H1MaxFibonacciExpansionPercent="
+                + DoubleToString(this.config.m15H1MaxFibonacciExpansionPercent, 1);
+        }
         inputText += "|currencyStrengthEnabled="
             + (string)this.config.currencyStrengthEnabled;
         inputText += "|currencyStrengthEntryFilterEnabled="

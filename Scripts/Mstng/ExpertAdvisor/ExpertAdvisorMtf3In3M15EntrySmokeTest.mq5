@@ -7,7 +7,7 @@
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 
-#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3M15.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 
 /** 失敗した検証項目数。 */
 int gFailureCount = 0;
@@ -21,8 +21,15 @@ public:
     /**
      * 判定用fixtureと方向補正を有効にした戦略を初期化する。
      */
-    M15CorrectionFixtureExpertAdvisor(MarketContext &fromMarketContext, ElliotAll *fromJudgment)
-        : ExpertAdvisorMtf3In3M15(fromMarketContext, false, true) {
+    M15CorrectionFixtureExpertAdvisor(
+        MarketContext &fromMarketContext,
+        ElliotAll *fromJudgment,
+        double fromH4MaxFibonacciExpansionPercent = 0.0,
+        double fromH1MaxFibonacciExpansionPercent = 0.0
+    ) : ExpertAdvisorMtf3In3M15(
+        fromMarketContext, false, true,
+        fromH4MaxFibonacciExpansionPercent, fromH1MaxFibonacciExpansionPercent
+    ) {
         this.judgmentFixture = fromJudgment;
     }
 
@@ -552,6 +559,269 @@ void validateSignalIdentity() {
 }
 
 /**
+ * 対象時間足の再カウント前番号とFEを設定する。
+ *
+ * @param fromAnalysis 変更する分析結果。
+ * @param fromTimeFrame 対象時間足。
+ * @param fromOriginalIndex 再カウント前の波動番号。
+ * @param fromPercent FE値。
+ */
+void setFibonacciFixture(
+    ElliotAll *fromAnalysis,
+    const ENUM_TIMEFRAMES fromTimeFrame,
+    const int fromOriginalIndex,
+    const double fromPercent
+) {
+    ZigZagPoint *point = fromAnalysis.getElliot(fromTimeFrame).getLatestPoint();
+    point.orgElliotIndex = fromOriginalIndex;
+    point.orgElliotLabel = IntegerToString(fromOriginalIndex);
+    point.fibonacciExpansionPercent = fromPercent;
+}
+
+/**
+ * H4・H1のFEを満たし、判定対象外のM15 FEが不正な分析を生成する。
+ *
+ * @param fromIsBuy BUY方向の場合true。
+ * @return 呼び出し側が所有する分析結果。生成失敗時NULL。
+ */
+ElliotAll *createFibonacciAnalysis(const bool fromIsBuy) {
+    ElliotAll *analysis = createAnalysis(fromIsBuy, 3);
+    if (analysis != NULL) {
+        setFibonacciFixture(analysis, PERIOD_H4, 3, 140.0);
+        setFibonacciFixture(analysis, PERIOD_H1, 3, 140.0);
+        setFibonacciFixture(analysis, PERIOD_M15, 3, EMPTY_VALUE);
+    }
+    return analysis;
+}
+
+/**
+ * H4・H1の上限境界、表示丸め、待機後の初回ENTRYをBUY・SELLで検証する。
+ */
+void validateFibonacciBoundaryWaitAndRetry() {
+    ENUM_TIMEFRAMES timeFrames[] = { PERIOD_H4, PERIOD_H1 };
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < ArraySize(timeFrames); j++) {
+            string caseName = "FE boundary " + EnumToString(timeFrames[j])
+                + " buy=" + (string)(i == 0);
+            ElliotAll *analysis = createFibonacciAnalysis(i == 0);
+            if (analysis == NULL) {
+                assertCondition(caseName + " fixture", false);
+                continue;
+            }
+            MarketContext context("EURUSD", PERIOD_M15);
+            SignalCount signalCount(context);
+            ExpertAdvisorMtf3In3M15 expertAdvisor(context, false, false, 161.8, 161.8);
+            setFibonacciFixture(analysis, timeFrames[j], 3, 161.86);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertCondition(caseName + " over limit", !expertAdvisor.isEntry);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertCondition(caseName + " repeat wait", !expertAdvisor.isEntry);
+            setFibonacciFixture(analysis, timeFrames[j], 3, 161.84);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertFirstEntry(caseName + " rounded retry", expertAdvisor);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertCondition(caseName + " duplicate", !expertAdvisor.isEntry);
+            analysis.elliotCurrent.getLatestPoint2().barTime += 900;
+            setFibonacciFixture(analysis, timeFrames[j], 3, 161.8);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertFirstEntry(caseName + " exact limit", expertAdvisor);
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * 現在1波でも元3・5・7波のFEを判定し、不正値・不明な元番号を拒否する。
+ * 元1波はFEがなくても免除し、各時間足で同じ判定になることを確認する。
+ */
+void validateFibonacciOriginalWaveCases() {
+    ENUM_TIMEFRAMES timeFrames[] = { PERIOD_H4, PERIOD_H1 };
+    int originalIndices[] = { 1, 0, 2, -1, 3, 3, 3, 3, 3, 3, 5, 5, 7, 7 };
+    double percentages[] = {
+        EMPTY_VALUE, 140.0, 140.0, 140.0, 0.0, -1.0, EMPTY_VALUE,
+        0.0, 140.0, 200.0, 140.0, 200.0, 140.0, 200.0
+    };
+    bool expectedEntries[] = {
+        true, false, false, false, false, false, false,
+        false, true, false, true, false, true, false
+    };
+    percentages[7] = MathArcsin(2.0);
+    assertCondition("FE NaN fixture", !MathIsValidNumber(percentages[7]));
+    for (int i = 0; i < ArraySize(timeFrames); i++) {
+        for (int j = 0; j < ArraySize(originalIndices); j++) {
+            string caseName = "FE original wave " + EnumToString(timeFrames[i])
+                + " case=" + IntegerToString(j);
+            ElliotAll *analysis = createFibonacciAnalysis(true);
+            if (analysis == NULL) {
+                assertCondition(caseName + " fixture", false);
+                continue;
+            }
+            setFibonacciFixture(analysis, timeFrames[i], originalIndices[j], percentages[j]);
+            ZigZagPoint *point = analysis.getElliot(timeFrames[i]).getLatestPoint();
+            point.elliotIndex = 1;
+            point.setElliotLabel();
+            point.subElliotIndex = 3;
+            point.subElliotLabel = "iii";
+            MarketContext context("EURUSD", PERIOD_M15);
+            SignalCount signalCount(context);
+            ExpertAdvisorMtf3In3M15 expertAdvisor(context, false, false, 161.8, 161.8);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            if (expectedEntries[j]) {
+                assertFirstEntry(caseName, expertAdvisor);
+            } else {
+                assertCondition(caseName + " rejected", !expertAdvisor.isEntry);
+            }
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * 0を設定した時間足だけを無効化し、もう片足の設定上限を維持する。
+ */
+void validateFibonacciDisabledTimeFrame() {
+    ENUM_TIMEFRAMES timeFrames[] = { PERIOD_H4, PERIOD_H1 };
+    for (int i = 0; i < ArraySize(timeFrames); i++) {
+        string caseName = "FE disabled " + EnumToString(timeFrames[i]);
+        ElliotAll *analysis = createFibonacciAnalysis(true);
+        if (analysis == NULL) {
+            assertCondition(caseName + " fixture", false);
+            continue;
+        }
+        setFibonacciFixture(analysis, timeFrames[i], 0, EMPTY_VALUE);
+        double h4Limit = 0.0;
+        double h1Limit = 100.06;
+        if (i == 1) {
+            h4Limit = 100.06;
+            h1Limit = 0.0;
+        }
+        MarketContext context("EURUSD", PERIOD_M15);
+        SignalCount signalCount(context);
+        ExpertAdvisorMtf3In3M15 expertAdvisor(context, false, false, h4Limit, h1Limit);
+        expertAdvisor.analyze(analysis, GetPointer(signalCount));
+        assertCondition(caseName + " other frame active", !expertAdvisor.isEntry);
+        setFibonacciFixture(analysis, timeFrames[1 - i], 3, 100.14);
+        expertAdvisor.analyze(analysis, GetPointer(signalCount));
+        assertFirstEntry(caseName + " rounded configured limit", expertAdvisor);
+        delete analysis;
+    }
+}
+
+/**
+ * 不正な上限を0による無効化と区別し、元1波の場合も拒否する。
+ */
+void validateInvalidFibonacciLimits() {
+    double invalidLimits[] = { -1.0, EMPTY_VALUE, 0.01, 0.0 };
+    invalidLimits[3] = MathArcsin(2.0);
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < ArraySize(invalidLimits); j++) {
+            string caseName = "FE invalid limit frame=" + IntegerToString(i)
+                + " case=" + IntegerToString(j);
+            ElliotAll *analysis = createFibonacciAnalysis(true);
+            if (analysis == NULL) {
+                assertCondition(caseName + " fixture", false);
+                continue;
+            }
+            setFibonacciFixture(analysis, PERIOD_H4, 1, EMPTY_VALUE);
+            setFibonacciFixture(analysis, PERIOD_H1, 1, EMPTY_VALUE);
+            double h4Limit = invalidLimits[j];
+            double h1Limit = 161.8;
+            if (i == 1) {
+                h4Limit = 161.8;
+                h1Limit = invalidLimits[j];
+            }
+            MarketContext context("EURUSD", PERIOD_M15);
+            SignalCount signalCount(context);
+            ExpertAdvisorMtf3In3M15 expertAdvisor(context, false, false, h4Limit, h1Limit);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertCondition(caseName + " rejected", !expertAdvisor.isEntry);
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * 補正後のH4・H1 FEだけを使用し、元分析のFEと混在させないことを検証する。
+ */
+void validateCorrectedFibonacciSelection() {
+    ENUM_TIMEFRAMES timeFrames[] = { PERIOD_H4, PERIOD_H1 };
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < ArraySize(timeFrames); j++) {
+            string caseName = "FE corrected " + EnumToString(timeFrames[j])
+                + " buy=" + (string)(i == 0);
+            ElliotAll *original = createFibonacciAnalysis(i == 0);
+            ElliotAll *selected = createFibonacciAnalysis(i == 0);
+            if (original == NULL || selected == NULL) {
+                assertCondition(caseName + " fixture", false);
+                delete original;
+                delete selected;
+                continue;
+            }
+            setDirection(original.getElliot(PERIOD_H1), i != 0);
+            original.getElliot(PERIOD_H1).getLatestWave().isUptrend = i != 0;
+            selected.getElliot(PERIOD_H1).oscillator.isBuy = i != 0;
+            setFibonacciFixture(selected, timeFrames[j], 3, 200.0);
+            MarketContext context("EURUSD", PERIOD_M15);
+            SignalCount signalCount(context);
+            M15CorrectionFixtureExpertAdvisor expertAdvisor(context, selected, 161.8, 161.8);
+            expertAdvisor.analyze(original, GetPointer(signalCount));
+            assertCondition(caseName + " selected over limit", !expertAdvisor.isEntry);
+            setFibonacciFixture(selected, timeFrames[j], 3, 140.0);
+            setFibonacciFixture(original, timeFrames[j], 3, 200.0);
+            expertAdvisor.analyze(original, GetPointer(signalCount));
+            assertFirstEntry(caseName + " selected restored", expertAdvisor);
+            assertCondition(caseName + " selected analysis",
+                expertAdvisor.getJudgmentElliotAll() == selected);
+            delete original;
+            delete selected;
+        }
+    }
+}
+
+/**
+ * FactoryがH4・H1の異なるFE上限をM15戦略へ正しい順番で渡すことを確認する。
+ */
+void validateFactoryFibonacciSettings() {
+    ENUM_TIMEFRAMES timeFrames[] = { PERIOD_H4, PERIOD_H1 };
+    for (int i = 0; i < ArraySize(timeFrames); i++) {
+        string caseName = "FE factory lower limit " + EnumToString(timeFrames[i]);
+        ElliotAll *analysis = createFibonacciAnalysis(true);
+        if (analysis == NULL) {
+            assertCondition(caseName + " fixture", false);
+            continue;
+        }
+        double h4Limit = 100.0;
+        double h1Limit = 200.0;
+        if (i == 1) {
+            h4Limit = 200.0;
+            h1Limit = 100.0;
+        }
+        MarketContext context("EURUSD", PERIOD_M15);
+        SignalCount signalCount(context);
+        ExpertAdvisorMTF_3in3 *expertAdvisor = ExpertAdvisorMtf3In3Factory::create(
+            context, false,
+            Mtf3In3H1Policy::getW1ConfirmationMode(),
+            Mtf3In3H1Policy::getDirectionAlignmentMode(),
+            Mtf3In3H1Policy::getEma200ConfirmationMode(),
+            false, h4Limit, h1Limit
+        );
+        if (expertAdvisor == NULL) {
+            assertCondition(caseName + " strategy", false);
+            delete analysis;
+            continue;
+        }
+        expertAdvisor.analyze(analysis, GetPointer(signalCount));
+        assertCondition(caseName + " rejected", !expertAdvisor.isEntry);
+        setFibonacciFixture(analysis, timeFrames[i], 3, 90.0);
+        expertAdvisor.analyze(analysis, GetPointer(signalCount));
+        Mtf3In3AlertResult result = expertAdvisor.getAlertResult();
+        assertCondition(caseName + " first entry", result.isEntry && result.signalCount == 1);
+        delete expertAdvisor;
+        delete analysis;
+    }
+}
+
+/**
  * 実送信と共有ファイル出力を無効にしてM15メール本文の検証用ログを生成する。
  * MAIL_CASE_BEGIN/END間の件名・本文・拒否ログを実行側で確認する。
  */
@@ -631,6 +901,12 @@ void OnStart() {
     validateCorrectionSelection();
     validateH1CorrectionWaitAndRetry();
     validateSignalIdentity();
+    validateFibonacciBoundaryWaitAndRetry();
+    validateFibonacciOriginalWaveCases();
+    validateFibonacciDisabledTimeFrame();
+    validateInvalidFibonacciLimits();
+    validateCorrectedFibonacciSelection();
+    validateFactoryFibonacciSettings();
 
     ENUM_TIMEFRAMES directionFrames[] = { PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15 };
     ENUM_TIMEFRAMES emaFrames[] = { PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15 };

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.61"
+#property version   "1.62"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -14,6 +14,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotController.mqh>
+#include <Mstng\Log\Logger.mqh>
 
 input group "01. Alert出力"
 
@@ -50,6 +51,14 @@ bool h1DirectionCorrectionEnabled = true;
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
 input(name="H1表示波の回数制限")
 bool h1DisplayWaveEntryLimitEnabled = false;
+
+/** M15エントリーで使用するH4のFE上限（%）。0は制限なし。 */
+input(name="M15のH4 FE上限（%、0=制限なし）")
+double m15H4MaxFibonacciExpansionPercent = 161.8;
+
+/** M15エントリーで使用するH1のFE上限（%）。0は制限なし。 */
+input(name="M15のH1 FE上限（%、0=制限なし）")
+double m15H1MaxFibonacciExpansionPercent = 161.8;
 
 input group "04. 通貨強弱"
 
@@ -130,6 +139,28 @@ ZigZagElliotController *gController = NULL;
  * @return 初期化結果
  */
 int OnInit() {
+    if (_Period == PERIOD_M15) {
+        Logger logger(LOG_ERROR);
+        if (!MathIsValidNumber(m15H4MaxFibonacciExpansionPercent)
+                || m15H4MaxFibonacciExpansionPercent == EMPTY_VALUE
+                || m15H4MaxFibonacciExpansionPercent < 0.0
+                || (m15H4MaxFibonacciExpansionPercent > 0.0
+                    && NormalizeDouble(m15H4MaxFibonacciExpansionPercent, 1) <= 0.0)) {
+            logger.error(__FUNCTION__,
+                "invalid M15 H4 FE limit: use 0 (disabled) or a finite positive value rounded to at least 0.1");
+            return INIT_PARAMETERS_INCORRECT;
+        }
+        if (!MathIsValidNumber(m15H1MaxFibonacciExpansionPercent)
+                || m15H1MaxFibonacciExpansionPercent == EMPTY_VALUE
+                || m15H1MaxFibonacciExpansionPercent < 0.0
+                || (m15H1MaxFibonacciExpansionPercent > 0.0
+                    && NormalizeDouble(m15H1MaxFibonacciExpansionPercent, 1) <= 0.0)) {
+            logger.error(__FUNCTION__,
+                "invalid M15 H1 FE limit: use 0 (disabled) or a finite positive value rounded to at least 0.1");
+            return INIT_PARAMETERS_INCORRECT;
+        }
+    }
+
     ZigZagElliotConfig config;
     config.mailValidationFileEnabled = mailValidationFileEnabled;
     config.mtf3In3AlertCsvEnabled = mtf3In3AlertCsvEnabled;
@@ -146,6 +177,8 @@ int OnInit() {
     config.databaseAlertDisplayEndDate = databaseAlertDisplayEndDate;
     config.databaseAlertDisplayEntryOnly = databaseAlertDisplayEntryOnly;
     config.h1DirectionCorrectionEnabled = h1DirectionCorrectionEnabled;
+    config.m15H4MaxFibonacciExpansionPercent = m15H4MaxFibonacciExpansionPercent;
+    config.m15H1MaxFibonacciExpansionPercent = m15H1MaxFibonacciExpansionPercent;
     config.h1DisplayWaveEntryLimitEnabled =
         h1DisplayWaveEntryLimitEnabled;
     config.applyH1EntryPolicy();

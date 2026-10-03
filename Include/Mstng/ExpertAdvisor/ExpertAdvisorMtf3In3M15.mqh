@@ -23,6 +23,7 @@
  * 最新ZigZagポイントの確定条件を追加する。全条件が成立するまで
  * シグナル回数を消費せず、D1・H4・H1の片足補正はM15まで再分析する。
  * GMMAはM15だけを判定し、H1のGMMAは条件に使用しない。
+ * 設定時はH4・H1の再カウント前の進行波FE上限も回数加算前に判定する。
  */
 class ExpertAdvisorMtf3In3M15 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -32,11 +33,15 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromDirectionCorrectionEnabled D1・H4・H1の片足方向補正を使用する場合true。
+     * @param fromH4MaxFibonacciExpansionPercent H4のFE上限。0は判定無効。
+     * @param fromH1MaxFibonacciExpansionPercent H1のFE上限。0は判定無効。
      */
     ExpertAdvisorMtf3In3M15(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow = true,
-        bool fromDirectionCorrectionEnabled = false
+        bool fromDirectionCorrectionEnabled = false,
+        double fromH4MaxFibonacciExpansionPercent = 0.0,
+        double fromH1MaxFibonacciExpansionPercent = 0.0
     ) : ExpertAdvisorMTF_3in3(
         fromMarketContext,
         fromIsDrawArrow,
@@ -45,6 +50,8 @@ public:
         Mtf3In3H1Policy::getEma200ConfirmationMode()
     ) {
         this.isDirectionCorrectionEnabled = fromDirectionCorrectionEnabled;
+        this.h4MaxFibonacciExpansionPercent = fromH4MaxFibonacciExpansionPercent;
+        this.h1MaxFibonacciExpansionPercent = fromH1MaxFibonacciExpansionPercent;
         this.correctedElliotAll = NULL;
         this.correctedTimeFrame = PERIOD_CURRENT;
     }
@@ -168,7 +175,7 @@ protected:
     }
 
     /**
-     * 回数加算前にH4・H1・M15の第1波、第3波または有効な第5波を判定する。
+     * 回数加算前にH4・H1・M15の波動条件と、H4・H1のFE上限を判定する。
      *
      * @return M15用の波動条件を満たす場合true。
      */
@@ -179,7 +186,11 @@ protected:
 
         return this.isEntryWave(this.elliotHigher2)
             && this.isEntryWave(this.elliotHigher1)
-            && this.isEntryWave(this.elliotCurrent);
+            && this.isEntryWave(this.elliotCurrent)
+            && this.isHigherFibonacciExpansionWithin(
+                this.elliotHigher2, PERIOD_H4, this.h4MaxFibonacciExpansionPercent)
+            && this.isHigherFibonacciExpansionWithin(
+                this.elliotHigher1, PERIOD_H1, this.h1MaxFibonacciExpansionPercent);
     }
 
     /**
@@ -288,6 +299,12 @@ protected:
     }
 
 private:
+    /** H4のFE上限。0は判定無効。 */
+    double h4MaxFibonacciExpansionPercent;
+
+    /** H1のFE上限。0は判定無効。 */
+    double h1MaxFibonacciExpansionPercent;
+
     /** D1・H4・H1の片足方向補正を使用する場合true。 */
     bool isDirectionCorrectionEnabled;
 
@@ -296,6 +313,65 @@ private:
 
     /** 補正した時間足。補正なしはPERIOD_CURRENT。 */
     ENUM_TIMEFRAMES correctedTimeFrame;
+
+    /**
+     * 採用分析の元波番号とFEを使用し、上位足の伸び過ぎを判定する。
+     *
+     * 元1波は対象外とし、元3波以降の奇数波は有効な正のFEを要求する。
+     * 表示に合わせ、FEと上限を小数1桁へ丸めて比較する。
+     *
+     * @param fromElliot 判定に採用した上位足分析。
+     * @param fromTimeFrame 判定対象として期待する時間足。
+     * @param fromMaxPercent FE上限。0は判定無効。
+     * @return 無効、元1波、または有効なFEが上限以下の場合true。
+     */
+    bool isHigherFibonacciExpansionWithin(
+        Elliot *fromElliot,
+        const ENUM_TIMEFRAMES fromTimeFrame,
+        const double fromMaxPercent
+    ) {
+        if (fromMaxPercent == 0.0) {
+            return true;
+        }
+        string timeFrameLabel = TimeUtil::convertTimeFrameToString(fromTimeFrame);
+        if (!MathIsValidNumber(fromMaxPercent) || fromMaxPercent == EMPTY_VALUE
+                || fromMaxPercent < 0.0 || NormalizeDouble(fromMaxPercent, 1) <= 0.0) {
+            this.logger.error(__FUNCTION__, "invalid M15 " + timeFrameLabel + " FE limit");
+            return false;
+        }
+        if (fromElliot == NULL || fromElliot.marketContext.timeFrame != fromTimeFrame
+                || fromElliot.getLatestPoint() == NULL) {
+            this.logger.error(__FUNCTION__, "M15 " + timeFrameLabel + " FE point unavailable");
+            return false;
+        }
+        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
+        int originalIndex = latestPoint.orgElliotIndex;
+        if (originalIndex == 1) {
+            return true;
+        }
+        if (originalIndex < 3 || originalIndex % 2 == 0) {
+            this.logger.error(__FUNCTION__, StringFormat(
+                "M15 %s FE original wave invalid: %d", timeFrameLabel, originalIndex));
+            return false;
+        }
+        double expansionPercent = latestPoint.fibonacciExpansionPercent;
+        if (!MathIsValidNumber(expansionPercent) || expansionPercent == EMPTY_VALUE
+                || expansionPercent <= 0.0) {
+            this.logger.error(__FUNCTION__, StringFormat(
+                "M15 %s FE invalid: %f (original wave %d)",
+                timeFrameLabel, expansionPercent, originalIndex));
+            return false;
+        }
+        expansionPercent = NormalizeDouble(expansionPercent, 1);
+        double maxPercent = NormalizeDouble(fromMaxPercent, 1);
+        if (expansionPercent > maxPercent) {
+            this.logger.info(__FUNCTION__, StringFormat(
+                "M15 %s FE %.1f > %.1f (original wave %d)",
+                timeFrameLabel, expansionPercent, maxPercent, originalIndex));
+            return false;
+        }
+        return true;
+    }
 
     /**
      * 所有する補正分析を解放し、次回への持ち越しを防止する。

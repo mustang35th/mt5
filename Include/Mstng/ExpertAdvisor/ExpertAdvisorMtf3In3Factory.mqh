@@ -33,6 +33,8 @@ public:
      * @param fromH1DirectionAlignmentMode H1以外の互換経路へ渡す方向一致モード。
      * @param fromH1Ema200ConfirmationMode H1以外の互換経路へ渡すEMA200確認モード。
      * @param fromH1DirectionCorrectionEnabled H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。
+     * @param fromM15H4MaxFibonacciExpansionPercent M15で使用するH4のFE上限（%）。0は制限なし。
+     * @param fromM15H1MaxFibonacciExpansionPercent M15で使用するH1のFE上限（%）。0は制限なし。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */
     static ExpertAdvisorMTF_3in3 *create(
@@ -44,7 +46,9 @@ public:
             H1_DIRECTION_ALIGNMENT_D1_TO_H1,
         H1Ema200ConfirmationMode fromH1Ema200ConfirmationMode =
             H1_EMA200_CONFIRMATION_H1_ONLY,
-        bool fromH1DirectionCorrectionEnabled = false
+        bool fromH1DirectionCorrectionEnabled = false,
+        double fromM15H4MaxFibonacciExpansionPercent = 0.0,
+        double fromM15H1MaxFibonacciExpansionPercent = 0.0
     ) {
         if (fromMarketContext.timeFrame == PERIOD_H1) {
             return new ExpertAdvisorMtf3In3H1(
@@ -58,7 +62,9 @@ public:
             return new ExpertAdvisorMtf3In3M15(
                 fromMarketContext,
                 fromIsDrawArrow,
-                fromH1DirectionCorrectionEnabled
+                fromH1DirectionCorrectionEnabled,
+                fromM15H4MaxFibonacciExpansionPercent,
+                fromM15H1MaxFibonacciExpansionPercent
             );
         }
 
