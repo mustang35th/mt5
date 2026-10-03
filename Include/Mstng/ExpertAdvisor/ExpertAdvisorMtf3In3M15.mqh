@@ -242,6 +242,15 @@ protected:
     }
 
     /**
+     * 通常版ZigZagElliotのM15エントリー成立時にメールを送信する。
+     *
+     * @return 通常版ZigZagElliotの場合true。
+     */
+    virtual bool shouldSendMail() override {
+        return MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot";
+    }
+
+    /**
      * H4、H1およびM15の波動情報からアラート表示文字列を生成する。
      *
      * @return アラート表示文字列。
@@ -262,6 +271,20 @@ protected:
             chartAlertText += " [" + TimeUtil::convertTimeFrameToString(correctionTimeFrame) + "補正]";
         }
         return chartAlertText;
+    }
+
+    /**
+     * 補正採用時は画面と同じ件名、および補正前後の6時間足分析をメールへ渡す。
+     */
+    virtual void sendAlertMail() override {
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        ENUM_TIMEFRAMES correctionTimeFrame = this.getCorrectionTimeFrame();
+        if (correctionTimeFrame != PERIOD_CURRENT) {
+            Mail::sendMail(sourceAnalysis, this.isSendMail, this.elliotAll,
+                correctionTimeFrame, this.getChartAlertText());
+            return;
+        }
+        Mail::sendMail(sourceAnalysis, this.isSendMail);
     }
 
 private:

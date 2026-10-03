@@ -25,7 +25,7 @@
  * 方向一致、W1追加診断およびEMA200確認はMtf3In3H1Policyの固定設定を使い、
  * 明示的に有効化した場合だけ、D1・H4の片足逆方向を元H1方向へ補正する。
  * H1の最新ZigZagポイントは確定・未確定を問わず、
- * エントリー成立時はメール送信対象とする。
+ * 通常版ZigZagElliot以外ではエントリー成立時にメール送信対象とする。
  */
 class ExpertAdvisorMtf3In3H1 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -330,10 +330,10 @@ protected:
     /**
      * H1エントリー成立時にメールを送信するか判定する。
      *
-     * @return 常にtrue。
+     * @return 通常版ZigZagElliot以外の場合true。
      */
     virtual bool shouldSendMail() override {
-        return true;
+        return MQLInfoString(MQL_PROGRAM_NAME) != "ZigZagElliot";
     }
 
     /**

@@ -255,7 +255,7 @@ private:
      * @param fromJudgment 採用した補正分析。
      * @param fromCorrectionTimeFrame 方向を補正したD1・H4・H1のいずれか。
      * @param fromAlertText チャートと同じ件名用文言。
-     * @return 完全なH1またはM5分析で、対象上位2足の片方だけ方向を補正した場合true。
+     * @return 完全なH1・M15・M5分析で、対象上位足の1足だけ現在足方向へ補正した場合true。
      */
     static bool isCorrectionMailValid(
         ElliotAll *fromSource,
@@ -266,6 +266,7 @@ private:
         if (fromSource == NULL || fromJudgment == NULL || fromSource == fromJudgment
                 || !fromSource.isAnalysisSucceeded || !fromJudgment.isAnalysisSucceeded
                 || (fromSource.marketContext.timeFrame != PERIOD_M5
+                    && fromSource.marketContext.timeFrame != PERIOD_M15
                     && fromSource.marketContext.timeFrame != PERIOD_H1)
                 || fromJudgment.marketContext.timeFrame != fromSource.marketContext.timeFrame
                 || fromSource.marketContext.symbolName == ""
@@ -280,13 +281,17 @@ private:
         ENUM_TIMEFRAMES higherTimeFrame = PERIOD_H4;
         ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
         int expectedCount = 7;
-        if (currentTimeFrame == PERIOD_H1) {
+        if (currentTimeFrame == PERIOD_H1 || currentTimeFrame == PERIOD_M15) {
             higherTimeFrame = PERIOD_D1;
             lowerTimeFrame = PERIOD_H4;
             expectedCount = 5;
+            if (currentTimeFrame == PERIOD_M15) {
+                expectedCount = 6;
+            }
         }
         if (fromCorrectionTimeFrame != higherTimeFrame
-                && fromCorrectionTimeFrame != lowerTimeFrame) {
+                && fromCorrectionTimeFrame != lowerTimeFrame
+                && (currentTimeFrame != PERIOD_M15 || fromCorrectionTimeFrame != PERIOD_H1)) {
             return false;
         }
 
@@ -331,7 +336,8 @@ private:
                 return false;
             }
 
-            if ((timeFrames[i] == higherTimeFrame || timeFrames[i] == lowerTimeFrame)
+            if ((timeFrames[i] == higherTimeFrame || timeFrames[i] == lowerTimeFrame
+                    || (currentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1))
                     && timeFrames[i] != fromCorrectionTimeFrame
                     && sourceElliot.isBuy != sourceCurrent.isBuy) {
                 return false;

@@ -34,6 +34,22 @@ public:
     }
 
     /**
+     * 実送信と共有ファイル出力を無効にして、本番のメール引数受け渡しを検証する。
+     */
+    void emitMailWithoutSending() {
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        if (sourceAnalysis == NULL) {
+            return;
+        }
+        sourceAnalysis.isTimer = false;
+        sourceAnalysis.isMailValidationFileEnabled = false;
+        bool wasMailEligible = this.isSendMail;
+        this.isSendMail = false;
+        this.sendAlertMail();
+        this.isSendMail = wasMailEligible;
+    }
+
+    /**
      * 合成した判定分析を使用した場合だけH1補正として扱う。
      */
     virtual ENUM_TIMEFRAMES getCorrectionTimeFrame() override {
@@ -197,6 +213,8 @@ void assertFirstEntry(
     assertCondition(fromCaseName + " ENTRY", result.isEntry && result.isAlert
         && result.isEntryEvaluated && result.entryResult == "ENTRY");
     assertCondition(fromCaseName + " first count", result.signalCount == 1);
+    assertCondition(fromCaseName + " mail eligibility", result.isSendMail
+        == (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot"));
 }
 
 /**
@@ -534,7 +552,76 @@ void validateSignalIdentity() {
 }
 
 /**
- * H1条件にM15確定条件を加えた公開ENTRY経路の回帰検証を実行する。
+ * 実送信と共有ファイル出力を無効にしてM15メール本文の検証用ログを生成する。
+ * MAIL_CASE_BEGIN/END間の件名・本文・拒否ログを実行側で確認する。
+ */
+void emitMailBodyFixtures() {
+    ENUM_TIMEFRAMES correctionFrames[] = { PERIOD_D1, PERIOD_H4, PERIOD_H1 };
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        ElliotAll *original = createAnalysis(isBuy);
+        ElliotAll *selected = createAnalysis(isBuy);
+        if (original == NULL || selected == NULL) {
+            assertCondition("mail body fixture", false);
+            delete original;
+            delete selected;
+            continue;
+        }
+        original.isTimer = false;
+        original.isMailValidationFileEnabled = false;
+        original.tradeTimeInfo.serverTime = D'2026.09.01 00:00';
+        original.tradeTimeInfo.jstTime = D'2026.09.01 09:00';
+        selected.tradeTimeInfo.serverTime = original.tradeTimeInfo.serverTime;
+        selected.tradeTimeInfo.jstTime = original.tradeTimeInfo.jstTime;
+        original.mailTitile = "M15_NO_CORRECTION";
+        string direction = Constant::getBuySell(isBuy);
+        MarketContext context("EURUSD", PERIOD_M15);
+        SignalCount originalSignalCount(context);
+        M15CorrectionFixtureExpertAdvisor originalExpertAdvisor(context, NULL);
+        originalExpertAdvisor.analyze(original, GetPointer(originalSignalCount));
+        assertFirstEntry("original mail " + direction, originalExpertAdvisor);
+        original.mailTitile = "M15_NO_CORRECTION";
+        Print("MAIL_CASE_BEGIN ORIGINAL_", direction);
+        originalExpertAdvisor.emitMailWithoutSending();
+        Print("MAIL_CASE_END ORIGINAL_", direction);
+
+        for (int j = 0; j < ArraySize(correctionFrames); j++) {
+            ENUM_TIMEFRAMES correctionTimeFrame = correctionFrames[j];
+            string correctionLabel = TimeUtil::convertTimeFrameToString(correctionTimeFrame);
+            Elliot *originalCorrection = original.getElliot(correctionTimeFrame);
+            setDirection(originalCorrection, !isBuy);
+            string alertText = "M15_MAIL[" + correctionLabel + "補正]";
+            if (correctionTimeFrame == PERIOD_H1) {
+                selected.getElliot(PERIOD_H1).oscillator.isBuy = !isBuy;
+                SignalCount correctedSignalCount(context);
+                M15CorrectionFixtureExpertAdvisor correctedExpertAdvisor(context, selected);
+                correctedExpertAdvisor.analyze(original, GetPointer(correctedSignalCount));
+                assertFirstEntry("H1 corrected mail " + direction, correctedExpertAdvisor);
+                Print("MAIL_CASE_BEGIN CORRECTED_", correctionLabel, "_", direction);
+                correctedExpertAdvisor.emitMailWithoutSending();
+                Print("MAIL_CASE_END CORRECTED_", correctionLabel, "_", direction);
+                selected.getElliot(PERIOD_H1).oscillator.isBuy = isBuy;
+            } else {
+                Print("MAIL_CASE_BEGIN CORRECTED_", correctionLabel, "_", direction);
+                Mail::sendMail(original, false, selected, correctionTimeFrame, alertText);
+                Print("MAIL_CASE_END CORRECTED_", correctionLabel, "_", direction);
+            }
+            setDirection(originalCorrection, isBuy);
+        }
+
+        setDirection(original.getElliot(PERIOD_H1), !isBuy);
+        setDirection(original.getElliot(PERIOD_H4), !isBuy);
+        setDirection(selected.getElliot(PERIOD_H4), !isBuy);
+        Print("MAIL_CASE_BEGIN REJECT_TWO_OPPOSITE_", direction);
+        Mail::sendMail(original, false, selected, PERIOD_H1, "M15_MAIL[H1補正]");
+        Print("MAIL_CASE_END REJECT_TWO_OPPOSITE_", direction);
+        delete original;
+        delete selected;
+    }
+}
+
+/**
+ * H1条件にM15確定条件を加えた公開ENTRY経路と送信せずメール生成を検証する。
  */
 void OnStart() {
     gFailureCount = 0;
@@ -575,6 +662,7 @@ void OnStart() {
         validateWaitAndRetry(PERIOD_M15, "SPREAD", isBuy);
         validateWaitAndRetry(PERIOD_MN1, "MN1_AND_W1_EMA200", isBuy);
     }
+    emitMailBodyFixtures();
     if (gFailureCount == 0) {
         Print("ExpertAdvisorMtf3In3M15EntrySmokeTest PASS");
         return;

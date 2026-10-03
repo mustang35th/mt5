@@ -254,10 +254,10 @@ protected:
     /**
      * M5エントリー成立時にメールを送信するか判定する。
      *
-     * @return 常にtrue。
+     * @return 通常版ZigZagElliot以外の場合true。
      */
     virtual bool shouldSendMail() override {
-        return true;
+        return MQLInfoString(MQL_PROGRAM_NAME) != "ZigZagElliot";
     }
 
     /**
