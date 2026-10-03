@@ -220,7 +220,7 @@ class DirectionContractTests(unittest.TestCase):
 
     def test_m5_m15_and_h1_both_sides_and_allowed_single_corrections(self):
         for current, corrections in ((CONSTANTS["PERIOD_M5"], ("PERIOD_H4", "PERIOD_H1")),
-                                     (CONSTANTS["PERIOD_M15"], ("PERIOD_D1", "PERIOD_H4")),
+                                     (CONSTANTS["PERIOD_M15"], ("PERIOD_D1", "PERIOD_H4", "PERIOD_H1")),
                                      (CONSTANTS["PERIOD_H1"], ("PERIOD_D1", "PERIOD_H4"))):
             for correction in corrections:
                 for buy in (False, True):
@@ -244,8 +244,29 @@ class DirectionContractTests(unittest.TestCase):
     def test_cross_profile_corrections_are_rejected(self):
         self.assertFalse(self.profile(CONSTANTS["PERIOD_H1"], CONSTANTS["PERIOD_H1"]))
         self.assertFalse(self.profile(CONSTANTS["PERIOD_M5"], CONSTANTS["PERIOD_D1"]))
-        self.assertFalse(self.profile(CONSTANTS["PERIOD_M15"], CONSTANTS["PERIOD_H1"]))
         self.assertFalse(self.profile(CONSTANTS["PERIOD_M15"], CONSTANTS["PERIOD_M15"]))
+
+    def test_m15_rejects_second_opposing_leg_for_every_correction(self):
+        targets = (CONSTANTS["PERIOD_D1"], CONSTANTS["PERIOD_H4"], CONSTANTS["PERIOD_H1"])
+        for target in targets:
+            for other in targets:
+                if other == target:
+                    continue
+                for buy in (False, True):
+                    with self.subTest(target=target, other=other, buy=buy):
+                        original, corrected, metadata = self.fixture(15, target, buy)
+                        index = FRAMES.index(other)
+                        for rows in (original, corrected):
+                            rows[index].isBuy = int(not buy)
+                            rows[index].buySellLabel = "SELL" if buy else "BUY"
+                        self.assertFalse(self.direction(original, corrected, metadata, 15))
+
+    def test_m15_h1_correction_preserves_current_direction(self):
+        for buy in (False, True):
+            original, corrected, metadata = self.fixture(15, CONSTANTS["PERIOD_H1"], buy)
+            corrected[-1].isBuy = int(not buy)
+            corrected[-1].buySellLabel = "SELL" if buy else "BUY"
+            self.assertFalse(self.direction(original, corrected, metadata, 15))
 
     def test_m15_rejects_h1_direction_changed_or_opposing_entry(self):
         for buy in (False, True):

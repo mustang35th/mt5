@@ -21,7 +21,7 @@
  *
  * H1と同じ上位足条件に、M15の方向・波動・GMMA・EMA200および
  * 最新ZigZagポイントの確定条件を追加する。全条件が成立するまで
- * シグナル回数を消費せず、D1・H4の片足補正はM15まで再分析する。
+ * シグナル回数を消費せず、D1・H4・H1の片足補正はM15まで再分析する。
  * GMMAはM15だけを判定し、H1のGMMAは条件に使用しない。
  */
 class ExpertAdvisorMtf3In3M15 : public ExpertAdvisorMTF_3in3 {
@@ -31,7 +31,7 @@ public:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
-     * @param fromDirectionCorrectionEnabled D1・H4の片足方向補正を使用する場合true。
+     * @param fromDirectionCorrectionEnabled D1・H4・H1の片足方向補正を使用する場合true。
      */
     ExpertAdvisorMtf3In3M15(
         MarketContext &fromMarketContext,
@@ -59,7 +59,7 @@ public:
     /**
      * 判定に採用した方向補正の時間足を取得する。
      *
-     * @return 補正時はD1またはH4、補正なしはPERIOD_CURRENT。
+     * @return 補正時はD1、H4またはH1、補正なしはPERIOD_CURRENT。
      */
     virtual ENUM_TIMEFRAMES getCorrectionTimeFrame() override {
         if (this.correctedElliotAll != NULL && this.elliotAll == this.correctedElliotAll) {
@@ -78,10 +78,10 @@ protected:
     }
 
     /**
-     * 元H1方向を基準にD1・H4の片足を補正し、M15まで再分析する。
+     * 元M15方向を基準にD1・H4・H1の片足を補正し、M15まで再分析する。
      *
      * @param fromOriginal 元のM15分析。所有権は呼び出し元が保持する。
-     * @return 全条件で参照する分析。分析不正または両上位足逆方向はNULL。
+     * @return 全条件で参照する分析。分析不正または2足以上逆方向はNULL。
      */
     virtual ElliotAll *selectJudgmentElliotAll(ElliotAll *fromOriginal) override {
         if (this.marketContext.timeFrame != PERIOD_M15
@@ -99,29 +99,36 @@ protected:
                 || !decision.isDirectionStateValid(originalH4, PERIOD_H4)
                 || !decision.isDirectionStateValid(originalH1, PERIOD_H1)
                 || !decision.isDirectionStateValid(originalM15, PERIOD_M15)
-                || fromOriginal.elliotCurrent != originalM15
-                || originalM15.isBuy != originalH1.isBuy) {
+                || fromOriginal.elliotCurrent != originalM15) {
             return NULL;
         }
         if (!this.isDirectionCorrectionEnabled) {
             return fromOriginal;
         }
-        bool isD1Matched = originalD1.isBuy == originalH1.isBuy;
-        bool isH4Matched = originalH4.isBuy == originalH1.isBuy;
-        if (isD1Matched && isH4Matched) {
+        int mismatchCount = 0;
+        ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_CURRENT;
+        if (originalD1.isBuy != originalM15.isBuy) {
+            mismatchCount++;
+            correctionTimeFrame = PERIOD_D1;
+        }
+        if (originalH4.isBuy != originalM15.isBuy) {
+            mismatchCount++;
+            correctionTimeFrame = PERIOD_H4;
+        }
+        if (originalH1.isBuy != originalM15.isBuy) {
+            mismatchCount++;
+            correctionTimeFrame = PERIOD_H1;
+        }
+        if (mismatchCount == 0) {
             return fromOriginal;
         }
-        if (!isD1Matched && !isH4Matched) {
+        if (mismatchCount > 1) {
             return NULL;
-        }
-        ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_H4;
-        if (!isD1Matched) {
-            correctionTimeFrame = PERIOD_D1;
         }
         this.correctedElliotAll = new ElliotAll(this.marketContext);
         if (this.correctedElliotAll == NULL
                 || !this.correctedElliotAll.analyzeWithDirectionCorrection(
-                    fromOriginal, correctionTimeFrame, originalH1.isBuy)) {
+                    fromOriginal, correctionTimeFrame, originalM15.isBuy)) {
             this.logger.error(__FUNCTION__, "M15 corrected analysis failed");
             this.releaseCorrectedElliotAll();
             return NULL;
@@ -258,7 +265,7 @@ protected:
     }
 
 private:
-    /** D1・H4の片足方向補正を使用する場合true。 */
+    /** D1・H4・H1の片足方向補正を使用する場合true。 */
     bool isDirectionCorrectionEnabled;
 
     /** 全条件の判定に採用する補正分析。本クラスが所有する。 */

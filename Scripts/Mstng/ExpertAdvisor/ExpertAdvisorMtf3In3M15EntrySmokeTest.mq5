@@ -13,6 +13,53 @@
 int gFailureCount = 0;
 
 /**
+ * 相場依存の再分析生成だけを置き換え、補正後の公開ENTRY経路を検証する。
+ * 補正fixtureの所有権は保持せず、NULLの場合は実際の分析選択を使用する。
+ */
+class M15CorrectionFixtureExpertAdvisor : public ExpertAdvisorMtf3In3M15 {
+public:
+    /**
+     * 判定用fixtureと方向補正を有効にした戦略を初期化する。
+     */
+    M15CorrectionFixtureExpertAdvisor(MarketContext &fromMarketContext, ElliotAll *fromJudgment)
+        : ExpertAdvisorMtf3In3M15(fromMarketContext, false, true) {
+        this.judgmentFixture = fromJudgment;
+    }
+
+    /**
+     * 実際の分析選択を呼び出し、再分析不要の分岐を検証する。
+     */
+    ElliotAll *selectOriginalAnalysis(ElliotAll *fromOriginal) {
+        return ExpertAdvisorMtf3In3M15::selectJudgmentElliotAll(fromOriginal);
+    }
+
+    /**
+     * 合成した判定分析を使用した場合だけH1補正として扱う。
+     */
+    virtual ENUM_TIMEFRAMES getCorrectionTimeFrame() override {
+        if (this.judgmentFixture != NULL && this.elliotAll == this.judgmentFixture) {
+            return PERIOD_H1;
+        }
+        return ExpertAdvisorMtf3In3M15::getCorrectionTimeFrame();
+    }
+
+protected:
+    /**
+     * 指定済みfixtureを返し、実際の方向・波動・オシレーター条件へ渡す。
+     */
+    virtual ElliotAll *selectJudgmentElliotAll(ElliotAll *fromOriginal) override {
+        if (this.judgmentFixture != NULL) {
+            return this.judgmentFixture;
+        }
+        return ExpertAdvisorMtf3In3M15::selectJudgmentElliotAll(fromOriginal);
+    }
+
+private:
+    /** 呼び出し側が所有するH1補正後の合成分析。 */
+    ElliotAll *judgmentFixture;
+};
+
+/**
  * 条件を検証し、失敗した項目を記録する。
  *
  * @param fromCaseName 検証名。
@@ -337,6 +384,127 @@ void validateHigherConditionWhileWaiting() {
 }
 
 /**
+ * 逆方向0足では元分析を採用し、2足以上では回数を消費せず拒否する。
+ * 1足補正の再分析生成は相場データが必要なため、このfixtureでは実行しない。
+ */
+void validateCorrectionSelection() {
+    int oppositeMasks[] = { 0, 3, 5, 6, 7 };
+    ENUM_TIMEFRAMES timeFrames[] = { PERIOD_D1, PERIOD_H4, PERIOD_H1 };
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        for (int j = 0; j < ArraySize(oppositeMasks); j++) {
+            ElliotAll *analysis = createAnalysis(isBuy);
+            if (analysis == NULL) {
+                assertCondition("correction selection fixture", false);
+                continue;
+            }
+            for (int k = 0; k < ArraySize(timeFrames); k++) {
+                if ((oppositeMasks[j] & (1 << k)) != 0) {
+                    setDirection(analysis.getElliot(timeFrames[k]), !isBuy);
+                }
+            }
+            string caseName = "correction selection mask=" + IntegerToString(oppositeMasks[j])
+                + " buy=" + (string)isBuy;
+            MarketContext context("EURUSD", PERIOD_M15);
+            SignalCount signalCount(context);
+            M15CorrectionFixtureExpertAdvisor expertAdvisor(context, NULL);
+            ElliotAll *selected = expertAdvisor.selectOriginalAnalysis(analysis);
+            if (oppositeMasks[j] == 0) {
+                assertCondition(caseName + " original", selected == analysis);
+            } else {
+                assertCondition(caseName + " rejected", selected == NULL);
+                expertAdvisor.analyze(analysis, GetPointer(signalCount));
+                assertCondition(caseName + " no entry", !expertAdvisor.isEntry);
+                for (int k = 0; k < ArraySize(timeFrames); k++) {
+                    setDirection(analysis.getElliot(timeFrames[k]), isBuy);
+                }
+            }
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertFirstEntry(caseName + " aligned", expertAdvisor);
+            assertCondition(caseName + " no correction",
+                expertAdvisor.getCorrectionTimeFrame() == PERIOD_CURRENT);
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * H1補正後も確定・EMA200・Wave方向・M15 GMMAを再確認する。
+ * 元H1の実測方向を保持した合成snapshotで、待機後の初回ENTRYを検証する。
+ */
+void validateH1CorrectionWaitAndRetry() {
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        string caseName = "H1 corrected buy=" + (string)isBuy;
+        ElliotAll *original = createAnalysis(isBuy);
+        ElliotAll *selected = createAnalysis(isBuy);
+        if (original == NULL || selected == NULL) {
+            assertCondition(caseName + " fixture", false);
+            delete original;
+            delete selected;
+            continue;
+        }
+        Elliot *originalH1 = original.getElliot(PERIOD_H1);
+        Elliot *selectedH1 = selected.getElliot(PERIOD_H1);
+        setDirection(originalH1, !isBuy);
+        originalH1.getLatestWave().isUptrend = !isBuy;
+        selectedH1.oscillator.isBuy = !isBuy;
+        originalH1.oscillator.gmmaTrendCount = 0;
+        originalH1.oscillator.gmmaCrossCount = 0;
+        selectedH1.oscillator.gmmaTrendCount = 0;
+        selectedH1.oscillator.gmmaCrossCount = 0;
+        ZigZagPoint *originalPoint = original.elliotCurrent.getLatestPoint();
+        ZigZagPoint *selectedPoint = selected.elliotCurrent.getLatestPoint();
+        originalPoint.isAddedPoint = true;
+        selectedPoint.isAddedPoint = true;
+        MarketContext context("EURUSD", PERIOD_M15);
+        SignalCount signalCount(context);
+        M15CorrectionFixtureExpertAdvisor expertAdvisor(context, selected);
+        expertAdvisor.analyze(original, GetPointer(signalCount));
+        assertCondition(caseName + " M15 pending", !expertAdvisor.isEntry);
+
+        originalPoint.isAddedPoint = false;
+        selectedPoint.isAddedPoint = false;
+        setEma200Direction(originalH1, !isBuy);
+        setEma200Direction(selectedH1, !isBuy);
+        expertAdvisor.analyze(original, GetPointer(signalCount));
+        assertCondition(caseName + " actual H1 EMA200 opposite", !expertAdvisor.isEntry);
+
+        setEma200Direction(originalH1, isBuy);
+        setEma200Direction(selectedH1, isBuy);
+        selectedH1.getLatestWave().isUptrend = !isBuy;
+        expertAdvisor.analyze(original, GetPointer(signalCount));
+        assertCondition(caseName + " corrected H1 wave opposite", !expertAdvisor.isEntry);
+
+        selectedH1.getLatestWave().isUptrend = isBuy;
+        original.elliotCurrent.oscillator.gmmaTrendCount = 0;
+        selected.elliotCurrent.oscillator.gmmaTrendCount = 0;
+        expertAdvisor.analyze(original, GetPointer(signalCount));
+        assertCondition(caseName + " M15 GMMA pending", !expertAdvisor.isEntry);
+
+        int gmmaTrendCount = -2;
+        if (isBuy) {
+            gmmaTrendCount = 2;
+        }
+        original.elliotCurrent.oscillator.gmmaTrendCount = gmmaTrendCount;
+        selected.elliotCurrent.oscillator.gmmaTrendCount = gmmaTrendCount;
+        expertAdvisor.analyze(original, GetPointer(signalCount));
+        assertFirstEntry(caseName + " restored", expertAdvisor);
+        assertCondition(caseName + " M15 direction preserved", expertAdvisor.isBuy == isBuy);
+        assertCondition(caseName + " H1 metadata", expertAdvisor.getCorrectionTimeFrame() == PERIOD_H1);
+
+        selected.elliotCurrent.getLatestPoint2().barTime += 900;
+        expertAdvisor.analyze(original, GetPointer(signalCount));
+        assertCondition(caseName + " corrected origin remains duplicate", !expertAdvisor.isEntry);
+        original.elliotCurrent.getLatestPoint2().barTime += 900;
+        expertAdvisor.analyze(original, GetPointer(signalCount));
+        assertFirstEntry(caseName + " new original M15 origin", expertAdvisor);
+        delete original;
+        delete selected;
+    }
+}
+
+/**
  * 同じ起点の重複を拒否し、新起点または反対方向を別シグナルとして扱う。
  */
 void validateSignalIdentity() {
@@ -373,6 +541,8 @@ void OnStart() {
     validateAcceptedCases();
     validateH1GmmaIgnored();
     validateHigherConditionWhileWaiting();
+    validateCorrectionSelection();
+    validateH1CorrectionWaitAndRetry();
     validateSignalIdentity();
 
     ENUM_TIMEFRAMES directionFrames[] = { PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15 };

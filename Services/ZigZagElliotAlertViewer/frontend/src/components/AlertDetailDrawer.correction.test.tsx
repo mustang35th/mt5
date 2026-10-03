@@ -368,6 +368,21 @@ describe("AlertDetailDrawer correction integration", () => {
     expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
   });
 
+  it.each(["BUY", "SELL"] as const)("shows M15 H1 correction toward original %s and retains M15 direction", async (side) => {
+    serve(h1Fixture(16385, side, "APPLIED", 74, 15));
+    render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+    const snapshot = await screen.findByRole("region", { name: "M15アラート補正スナップショット" });
+    const table = within(snapshot).getByRole("table", { name: "M15アラート6時間足比較" });
+    expect(snapshot).toHaveTextContent("H1方向補正");
+    expect(table.querySelector('tr[data-timeframe="H1"] [data-column="direction"]')).toHaveTextContent(side);
+    expect(table.querySelector('tr[data-timeframe="M15"] [data-column="direction"]')).toHaveTextContent(side);
+    const savedSl = within(snapshot).getByRole("region", { name: "判定時の損切り候補" }).textContent;
+    fireEvent.click(within(snapshot).getByRole("button", { name: "補正前" }));
+    expect(table.querySelector('tr[data-timeframe="H1"] [data-column="direction"]')).toHaveTextContent(side === "BUY" ? "SELL" : "BUY");
+    expect(table.querySelector('tr[data-timeframe="M15"] [data-column="direction"]')).toHaveTextContent(side);
+    expect(within(snapshot).getByRole("region", { name: "判定時の損切り候補" }).textContent).toBe(savedSl);
+  });
+
   it.each([[16408, "BUY"], [16408, "SELL"], [16388, "BUY"], [16388, "SELL"]] as const)(
     "shows H1 %s correction toward the original %s direction with fixed adopted SL",
     async (target, side) => {

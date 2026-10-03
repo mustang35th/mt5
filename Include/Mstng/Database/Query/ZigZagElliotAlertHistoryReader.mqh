@@ -923,7 +923,8 @@ private:
      */
     bool isCorrectionTimeFrameValid(const int fromCurrentTimeFrame, const int fromCorrectionTimeFrame) {
         if (fromCurrentTimeFrame == PERIOD_H1 || fromCurrentTimeFrame == PERIOD_M15) {
-            return fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4;
+            return fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4
+                || (fromCurrentTimeFrame == PERIOD_M15 && fromCorrectionTimeFrame == PERIOD_H1);
         }
         return fromCurrentTimeFrame == PERIOD_M5
             && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);

@@ -55,7 +55,7 @@ public:
      * @param fromAlertText 既存の元分析表示文言
      * @param fromSnapshot 値として固定する保存先
      * @param fromJudgmentElliotAll 判定に採用した分析
-     * @param fromCorrectionTimeFrame M5はH4/H1、H1・M15はD1/H4の補正足。補正なしはPERIOD_CURRENT
+     * @param fromCorrectionTimeFrame M5はH4/H1、H1はD1/H4、M15はD1/H4/H1の補正足。補正なしはPERIOD_CURRENT
      * @param fromJudgmentAlertText 画面と同じ採用分析表示文言
      * @return 整合するスナップショットを生成できた場合true
      */
@@ -241,7 +241,8 @@ private:
         }
         if ((currentTimeFrame != PERIOD_M5 && currentTimeFrame != PERIOD_M15
                     && currentTimeFrame != PERIOD_H1)
-                || (fromCorrectionTimeFrame != upperTimeFrame && fromCorrectionTimeFrame != lowerTimeFrame)
+                || (fromCorrectionTimeFrame != upperTimeFrame && fromCorrectionTimeFrame != lowerTimeFrame
+                    && (currentTimeFrame != PERIOD_M15 || fromCorrectionTimeFrame != PERIOD_H1))
                 || fromOriginal == fromJudgment
                 || fromJudgment.marketContext.timeFrame != currentTimeFrame
                 || fromOriginal.marketContext.symbolName == ""

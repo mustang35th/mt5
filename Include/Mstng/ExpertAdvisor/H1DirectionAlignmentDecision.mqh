@@ -21,7 +21,7 @@ class H1DirectionAlignmentDecision {
 public:
     /**
      * H1方向一致の診断状態とモード別通過結果を生成する。
-     * M15分析でもH1を基準とし、現在のM15方向がH1と一致することを必須とする。
+     * M15分析では元M15方向を維持し、補正後を含むH1方向との一致を必須とする。
      *
      * OBSERVEでは診断結果を保持しつつ、エントリーゲートは常に
      * 通過させる。REQUIREDでは取得不能と不正値をfail-closeする。
@@ -30,7 +30,7 @@ public:
      * @param fromElliotAll 複数時間足Elliott分析結果。
      * @param fromResult 診断結果の格納先。
      * @param fromOriginal 補正を採用した場合の元分析。それ以外はNULL。
-     * @param fromCorrectionTimeFrame 補正したD1またはH4。補正なしはPERIOD_CURRENT。
+     * @param fromCorrectionTimeFrame 補正したD1またはH4。M15分析ではH1も許可。補正なしはPERIOD_CURRENT。
      * @return エントリー判定を継続する場合true。
      */
     bool evaluate(
@@ -99,7 +99,7 @@ public:
         bool isCorrectionValid = this.isCorrectionContextValid(
             fromElliotAll, fromOriginal, fromCorrectionTimeFrame
         );
-        if (!this.isCurrentContextValid(fromElliotAll, elliotH1,
+        if (!this.isCurrentContextValid(fromElliotAll, elliotH1.isBuy,
                     fromOriginal, fromCorrectionTimeFrame)
                 || !fromElliotAll.isAnalysisSucceeded || !isCorrectionValid
                 || !this.isDirectionStateValid(elliotMn1, PERIOD_MN1,
@@ -172,13 +172,13 @@ public:
 
 private:
     /**
-     * H1またはM15の現在足が分析コンテキストとH1方向に一致するか確認する。
+     * H1またはM15の現在足が分析コンテキストと指定方向に一致するか確認する。
      *
      * @return 現在足の参照・通貨・方向が整合する場合true。
      */
     bool isCurrentContextValid(
         ElliotAll *fromSelected,
-        Elliot *fromH1,
+        const bool fromIsBuy,
         ElliotAll *fromOriginal,
         const ENUM_TIMEFRAMES fromCorrectionTimeFrame
     ) {
@@ -189,11 +189,11 @@ private:
         Elliot *elliotCurrent = fromSelected.getElliot(currentTimeFrame);
         if (elliotCurrent == NULL || fromSelected.elliotCurrent != elliotCurrent
                 || elliotCurrent.marketContext.symbolName != fromSelected.marketContext.symbolName
-                || elliotCurrent.isBuy != fromH1.isBuy) {
+                || elliotCurrent.isBuy != fromIsBuy) {
             return false;
         }
         return this.isDirectionStateValid(elliotCurrent, currentTimeFrame,
-            fromOriginal, fromCorrectionTimeFrame, fromH1.isBuy);
+            fromOriginal, fromCorrectionTimeFrame, fromIsBuy);
     }
 
     /**
@@ -213,7 +213,7 @@ private:
      * @param fromTimeFrame 期待する時間足。
      * @param fromOriginal 明示補正時の元分析。通常判定はNULL。
      * @param fromCorrectionTimeFrame 方向差を許容する1足。
-     * @param fromIsBuy 元H1を基準とする補正後方向。
+     * @param fromIsBuy 元の現在足を基準とする補正後方向。
      * @return 方向値が判定可能な場合true。
      */
     bool isDirectionStateValid(
@@ -240,9 +240,9 @@ private:
     }
 
     /**
-     * H1方向を維持し、D1・H4の片足だけを補正した明示的な入力か確認する。
+     * 元の現在足方向を維持し、対象となる上位足の片足だけを補正した入力か確認する。
      *
-     * @return 補正なし、または指定した1足だけが元H1と逆方向の場合true。
+     * @return 補正なし、または指定した1足だけが元の現在足と逆方向の場合true。
      */
     bool isCorrectionContextValid(
         ElliotAll *fromSelected,
@@ -258,24 +258,35 @@ private:
                     && fromSelected.marketContext.timeFrame != PERIOD_M15)
                 || fromOriginal.marketContext.timeFrame != fromSelected.marketContext.timeFrame
                 || fromOriginal.marketContext.symbolName != fromSelected.marketContext.symbolName
-                || (fromCorrectionTimeFrame != PERIOD_D1 && fromCorrectionTimeFrame != PERIOD_H4)) {
+                || (fromCorrectionTimeFrame != PERIOD_D1 && fromCorrectionTimeFrame != PERIOD_H4
+                    && (fromSelected.marketContext.timeFrame != PERIOD_M15
+                        || fromCorrectionTimeFrame != PERIOD_H1))) {
             return false;
         }
         Elliot *originalD1 = fromOriginal.getElliot(PERIOD_D1);
         Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
         Elliot *originalH1 = fromOriginal.getElliot(PERIOD_H1);
+        Elliot *originalCurrent = fromOriginal.getElliot(fromOriginal.marketContext.timeFrame);
         Mtf3In3HigherTimeFrameDecision decision;
         if (!decision.isDirectionStateValid(originalD1, PERIOD_D1)
                 || !decision.isDirectionStateValid(originalH4, PERIOD_H4)
                 || !decision.isDirectionStateValid(originalH1, PERIOD_H1)
+                || originalCurrent == NULL
                 || !this.isCurrentContextValid(
-                    fromOriginal, originalH1, NULL, PERIOD_CURRENT)) {
+                    fromOriginal, originalCurrent.isBuy, NULL, PERIOD_CURRENT)) {
             return false;
         }
+        bool originalIsBuy = originalCurrent.isBuy;
         if (fromCorrectionTimeFrame == PERIOD_D1) {
-            return originalD1.isBuy != originalH1.isBuy && originalH4.isBuy == originalH1.isBuy;
+            return originalD1.isBuy != originalIsBuy && originalH4.isBuy == originalIsBuy
+                && originalH1.isBuy == originalIsBuy;
         }
-        return originalH4.isBuy != originalH1.isBuy && originalD1.isBuy == originalH1.isBuy;
+        if (fromCorrectionTimeFrame == PERIOD_H4) {
+            return originalH4.isBuy != originalIsBuy && originalD1.isBuy == originalIsBuy
+                && originalH1.isBuy == originalIsBuy;
+        }
+        return originalH1.isBuy != originalIsBuy && originalD1.isBuy == originalIsBuy
+            && originalH4.isBuy == originalIsBuy;
     }
 
     /**

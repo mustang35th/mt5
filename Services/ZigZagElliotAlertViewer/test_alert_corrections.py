@@ -58,7 +58,7 @@ def insert_row(connection: sqlite3.Connection, table: str, row: dict[str, object
 
 
 def create_correction_database(path: Path, include_corrections: bool = True) -> None:
-    """Build M5 and H1 alert variants, suitable for the full viewer and browser QA."""
+    """Build M5, M15 and H1 alert variants for the viewer and browser QA."""
     columns = {table: production_columns(dao) for table, dao in TABLE_DAOS.items()}
     with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute("PRAGMA journal_mode=WAL")
@@ -89,6 +89,7 @@ def create_correction_database(path: Path, include_corrections: bool = True) -> 
             (11, "APPLIED", "BUY", 16408), (12, "APPLIED", "SELL", 16408),
             (13, "APPLIED", "BUY", 16388), (14, "APPLIED", "SELL", 16388),
             (15, "NONE", "BUY", 0),
+            (16, "APPLIED", "BUY", 16385), (17, "APPLIED", "SELL", 16385),
         ):
             is_buy = int(side == "BUY")
             is_applied = state in {"APPLIED", "INCOMPLETE"}
@@ -295,9 +296,10 @@ class AlertCorrectionsTest(unittest.TestCase):
                 finally:
                     database.close()
 
-    def test_m15_corrections_keep_six_frames_and_original_h1_direction(self) -> None:
+    def test_m15_corrections_keep_six_frames_and_original_m15_direction(self) -> None:
         for alert_id, side, target in ((11, "BUY", 16408), (12, "SELL", 16408),
-                                      (13, "BUY", 16388), (14, "SELL", 16388)):
+                                      (13, "BUY", 16388), (14, "SELL", 16388),
+                                      (16, "BUY", 16385), (17, "SELL", 16385)):
             with self.subTest(side=side, target=target):
                 original = self.database.timeframes(alert_id)["items"]
                 result = self.correction(alert_id)
@@ -306,7 +308,11 @@ class AlertCorrectionsTest(unittest.TestCase):
                     (row["time_frame"], row["time_frame_text"]) for row in result["timeframes"]])
                 self.assertEqual(12, len(result["points"]))
                 self.assertEqual(target, result["metadata"]["correction_time_frame"])
-                self.assertEqual(side, original[4]["buy_sell_label"])
+                self.assertEqual(side, original[5]["buy_sell_label"])
+                expected_original_h1 = side
+                if target == 16385:
+                    expected_original_h1 = "SELL" if side == "BUY" else "BUY"
+                self.assertEqual(expected_original_h1, original[4]["buy_sell_label"])
                 self.assertEqual(side, result["timeframes"][4]["buy_sell_label"])
                 self.assertEqual(side, result["timeframes"][5]["buy_sell_label"])
                 self.assertEqual(original, self.database.timeframes(alert_id)["items"])
@@ -320,6 +326,37 @@ class AlertCorrectionsTest(unittest.TestCase):
         self.update(f"UPDATE {ORIGINAL_TIME_FRAME_TABLE} SET is_buy=0,buy_sell_label='SELL' "
                     "WHERE alert_id=11 AND time_frame=16385")
         self.assertEqual("INCOMPLETE", self.correction(11)["status"])
+
+    def test_m15_h1_correction_rejects_second_opposite_leg_and_changed_current(self) -> None:
+        for alert_id, side in ((16, "BUY"), (17, "SELL")):
+            opposite = "SELL" if side == "BUY" else "BUY"
+            is_buy = int(opposite == "BUY")
+            mutations = (
+                ((ORIGINAL_TIME_FRAME_TABLE, TIME_FRAME_TABLE), 16408),
+                ((ORIGINAL_TIME_FRAME_TABLE, TIME_FRAME_TABLE), 16388),
+                ((TIME_FRAME_TABLE,), 15),
+                ((ORIGINAL_TIME_FRAME_TABLE,), 15),
+                ((ORIGINAL_TIME_FRAME_TABLE, TIME_FRAME_TABLE), 15),
+            )
+            for index, (tables, time_frame) in enumerate(mutations):
+                with self.subTest(side=side, time_frame=time_frame, tables=tables):
+                    path = Path(self.temporary.name) / f"m15-mutated-{alert_id}-{index}.sqlite"
+                    create_correction_database(path)
+                    with closing(sqlite3.connect(path)) as connection, connection:
+                        for table in tables:
+                            connection.execute(f"UPDATE {table} SET is_buy=?,buy_sell_label=? "
+                                               "WHERE alert_id=? AND time_frame=?",
+                                               (is_buy, opposite, alert_id, time_frame))
+                    database = AlertDatabase(path)
+                    try:
+                        database.validate()
+                        result = database.alert_detail(alert_id)["correction"]
+                        self.assertEqual("INCOMPLETE", result["status"])
+                        self.assertTrue(result["reason"])
+                        self.assertEqual([], result["timeframes"])
+                        self.assertEqual([], result["points"])
+                    finally:
+                        database.close()
 
     def test_old_database_without_optional_tables_is_unchanged(self) -> None:
         path = Path(self.temporary.name) / "legacy.sqlite"

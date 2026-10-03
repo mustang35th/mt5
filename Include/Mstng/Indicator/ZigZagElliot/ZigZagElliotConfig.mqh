@@ -54,7 +54,7 @@ public:
     datetime databaseAlertDisplayEndDate;
     /** DB表示をENTRY成立だけに絞る場合true。 */
     bool databaseAlertDisplayEntryOnly;
-    /** H1・M15判定でD1・H4の片足方向補正を使用する場合true。 */
+    /** H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。 */
     bool h1DirectionCorrectionEnabled;
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;

@@ -15,7 +15,8 @@
  */
 ElliotAll *createAnalysis(const bool fromIsBuy, const bool fromD1Matched,
         const bool fromH4Matched, const bool fromCorrected,
-        const ENUM_TIMEFRAMES fromTimeFrame = PERIOD_H1) {
+        const ENUM_TIMEFRAMES fromTimeFrame = PERIOD_H1,
+        const bool fromH1Matched = true) {
     ElliotAll *analysis = new ElliotAll("EURUSD", fromTimeFrame);
     ENUM_TIMEFRAMES timeFrames[] = {
         PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15
@@ -28,7 +29,8 @@ ElliotAll *createAnalysis(const bool fromIsBuy, const bool fromD1Matched,
         Elliot *elliot = new Elliot("EURUSD", timeFrames[i]);
         bool originalIsBuy = fromIsBuy;
         if ((timeFrames[i] == PERIOD_D1 && !fromD1Matched)
-                || (timeFrames[i] == PERIOD_H4 && !fromH4Matched)) {
+                || (timeFrames[i] == PERIOD_H4 && !fromH4Matched)
+                || (timeFrames[i] == PERIOD_H1 && !fromH1Matched)) {
             originalIsBuy = !fromIsBuy;
         }
         elliot.oscillator.isBuy = originalIsBuy;
@@ -66,34 +68,45 @@ bool checkDirection(const string fromName, ElliotAll *fromSelected,
 }
 
 /**
- * BUY・SELLのD1/H4全組み合わせと、指定された補正足だけの許容を確認する。
+ * BUY・SELLのH1用D1/H4、M15用D1/H4/H1全組み合わせと補正足の限定を確認する。
  */
 bool validateDirectionMatrix(const ENUM_TIMEFRAMES fromTimeFrame) {
     bool isSucceeded = true;
+    int combinationCount = 4;
+    if (fromTimeFrame == PERIOD_M15) {
+        combinationCount = 8;
+    }
     for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 4; j++) {
+        for (int j = 0; j < combinationCount; j++) {
             bool isBuy = i == 0;
             bool isD1Matched = (j & 1) != 0;
             bool isH4Matched = (j & 2) != 0;
-            ElliotAll *original = createAnalysis(isBuy, isD1Matched, isH4Matched, false, fromTimeFrame);
-            ElliotAll *selected = createAnalysis(isBuy, isD1Matched, isH4Matched, true, fromTimeFrame);
+            bool isH1Matched = fromTimeFrame == PERIOD_H1 || (j & 4) != 0;
+            ElliotAll *original = createAnalysis(isBuy, isD1Matched, isH4Matched,
+                false, fromTimeFrame, isH1Matched);
+            ElliotAll *selected = createAnalysis(isBuy, isD1Matched, isH4Matched,
+                true, fromTimeFrame, isH1Matched);
             if (!checkDirection("original", original, NULL, PERIOD_CURRENT,
-                    isD1Matched && isH4Matched)) {
+                    isD1Matched && isH4Matched && isH1Matched)) {
                 isSucceeded = false;
             }
             if (!checkDirection("D1 explicit correction", selected, original, PERIOD_D1,
-                    !isD1Matched && isH4Matched)) {
+                    !isD1Matched && isH4Matched && isH1Matched)) {
                 isSucceeded = false;
             }
             if (!checkDirection("H4 explicit correction", selected, original, PERIOD_H4,
-                    isD1Matched && !isH4Matched)) {
+                    isD1Matched && !isH4Matched && isH1Matched)) {
                 isSucceeded = false;
             }
             if (!checkDirection("missing correction metadata", selected, NULL, PERIOD_CURRENT,
-                    isD1Matched && isH4Matched)) {
+                    isD1Matched && isH4Matched && isH1Matched)) {
                 isSucceeded = false;
             }
-            if (!checkDirection("wrong correction timeframe", selected, original, PERIOD_H1, false)) {
+            if (!checkDirection("H1 explicit correction", selected, original, PERIOD_H1,
+                    fromTimeFrame == PERIOD_M15 && isD1Matched && isH4Matched && !isH1Matched)) {
+                isSucceeded = false;
+            }
+            if (!checkDirection("current M15 correction prohibited", selected, original, PERIOD_M15, false)) {
                 isSucceeded = false;
             }
             delete selected;
@@ -108,17 +121,26 @@ bool validateDirectionMatrix(const ENUM_TIMEFRAMES fromTimeFrame) {
  */
 bool validateInvalidInputs(const ENUM_TIMEFRAMES fromTimeFrame) {
     bool isSucceeded = true;
+    int correctionCount = 2;
+    if (fromTimeFrame == PERIOD_M15) {
+        correctionCount = 3;
+    }
     for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
+        for (int j = 0; j < correctionCount; j++) {
             bool isBuy = i == 0;
-            bool isD1Matched = j == 1;
-            bool isH4Matched = j == 0;
+            bool isD1Matched = j != 0;
+            bool isH4Matched = j != 1;
+            bool isH1Matched = j != 2;
             ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_D1;
-            if (isD1Matched) {
+            if (!isH4Matched) {
                 correctionTimeFrame = PERIOD_H4;
+            } else if (!isH1Matched) {
+                correctionTimeFrame = PERIOD_H1;
             }
-            ElliotAll *original = createAnalysis(isBuy, isD1Matched, isH4Matched, false, fromTimeFrame);
-            ElliotAll *selected = createAnalysis(isBuy, isD1Matched, isH4Matched, true, fromTimeFrame);
+            ElliotAll *original = createAnalysis(isBuy, isD1Matched, isH4Matched,
+                false, fromTimeFrame, isH1Matched);
+            ElliotAll *selected = createAnalysis(isBuy, isD1Matched, isH4Matched,
+                true, fromTimeFrame, isH1Matched);
             Elliot *target = selected.getElliot(correctionTimeFrame);
             Elliot *originalTarget = original.getElliot(correctionTimeFrame);
             if (!checkDirection("missing original", selected, NULL, correctionTimeFrame, false)) {
@@ -170,57 +192,61 @@ bool validateInvalidInputs(const ENUM_TIMEFRAMES fromTimeFrame) {
 /**
  * M15の方向・参照・元分析の現在足が不整合な入力を除外する。
  */
-bool validateM15CurrentContext() {
+bool validateM15CurrentContext(const ENUM_TIMEFRAMES fromCorrectionTimeFrame) {
     bool isSucceeded = true;
     for (int i = 0; i < 2; i++) {
         bool isBuy = i == 0;
-        ElliotAll *original = createAnalysis(isBuy, false, true, false, PERIOD_M15);
-        ElliotAll *selected = createAnalysis(isBuy, false, true, true, PERIOD_M15);
+        ElliotAll *original = createAnalysis(isBuy, fromCorrectionTimeFrame != PERIOD_D1,
+            fromCorrectionTimeFrame != PERIOD_H4, false, PERIOD_M15,
+            fromCorrectionTimeFrame != PERIOD_H1);
+        ElliotAll *selected = createAnalysis(isBuy, fromCorrectionTimeFrame != PERIOD_D1,
+            fromCorrectionTimeFrame != PERIOD_H4, true, PERIOD_M15,
+            fromCorrectionTimeFrame != PERIOD_H1);
         Elliot *selectedM15 = selected.getElliot(PERIOD_M15);
         Elliot *originalM15 = original.getElliot(PERIOD_M15);
         selectedM15.isBuy = !isBuy;
         selectedM15.oscillator.isBuy = !isBuy;
         selectedM15.buySellLabel = Constant::getBuySell(!isBuy);
-        if (!checkDirection("M15 direction mismatch", selected, original, PERIOD_D1, false)) {
+        if (!checkDirection("M15 direction mismatch", selected, original, fromCorrectionTimeFrame, false)) {
             isSucceeded = false;
         }
         selectedM15.isBuy = isBuy;
         selectedM15.oscillator.isBuy = isBuy;
         selectedM15.buySellLabel = "INVALID";
-        if (!checkDirection("M15 invalid direction label", selected, original, PERIOD_D1, false)) {
+        if (!checkDirection("M15 invalid direction label", selected, original, fromCorrectionTimeFrame, false)) {
             isSucceeded = false;
         }
         selectedM15.buySellLabel = Constant::getBuySell(isBuy);
         selected.elliotCurrent = selected.getElliot(PERIOD_H1);
-        if (!checkDirection("M15 wrong current reference", selected, original, PERIOD_D1, false)) {
+        if (!checkDirection("M15 wrong current reference", selected, original, fromCorrectionTimeFrame, false)) {
             isSucceeded = false;
         }
         selected.elliotCurrent = selectedM15;
         selectedM15.marketContext.symbolName = "USDJPY";
-        if (!checkDirection("M15 wrong symbol", selected, original, PERIOD_D1, false)) {
+        if (!checkDirection("M15 wrong symbol", selected, original, fromCorrectionTimeFrame, false)) {
             isSucceeded = false;
         }
         selectedM15.marketContext.symbolName = "EURUSD";
         original.elliotCurrent = original.getElliot(PERIOD_H1);
-        if (!checkDirection("M15 wrong original current", selected, original, PERIOD_D1, false)) {
+        if (!checkDirection("M15 wrong original current", selected, original, fromCorrectionTimeFrame, false)) {
             isSucceeded = false;
         }
         original.elliotCurrent = originalM15;
         original.marketContext.timeFrame = PERIOD_H1;
-        if (!checkDirection("M15 wrong original context", selected, original, PERIOD_D1, false)) {
+        if (!checkDirection("M15 wrong original context", selected, original, fromCorrectionTimeFrame, false)) {
             isSucceeded = false;
         }
         original.marketContext.timeFrame = PERIOD_M15;
         originalM15.isBuy = !isBuy;
         originalM15.oscillator.isBuy = !isBuy;
         originalM15.buySellLabel = Constant::getBuySell(!isBuy);
-        if (!checkDirection("M15 original direction mismatch", selected, original, PERIOD_D1, false)) {
+        if (!checkDirection("M15 original direction mismatch", selected, original, fromCorrectionTimeFrame, false)) {
             isSucceeded = false;
         }
         originalM15.isBuy = isBuy;
         originalM15.oscillator.isBuy = isBuy;
         originalM15.buySellLabel = Constant::getBuySell(isBuy);
-        if (!checkDirection("M15 restored current context", selected, original, PERIOD_D1, true)) {
+        if (!checkDirection("M15 restored current context", selected, original, fromCorrectionTimeFrame, true)) {
             isSucceeded = false;
         }
         delete selected;
@@ -237,9 +263,12 @@ void OnStart() {
     bool isInvalidSucceeded = validateInvalidInputs(PERIOD_H1);
     bool isM15MatrixSucceeded = validateDirectionMatrix(PERIOD_M15);
     bool isM15InvalidSucceeded = validateInvalidInputs(PERIOD_M15);
-    bool isM15CurrentSucceeded = validateM15CurrentContext();
+    bool isM15D1CurrentSucceeded = validateM15CurrentContext(PERIOD_D1);
+    bool isM15H4CurrentSucceeded = validateM15CurrentContext(PERIOD_H4);
+    bool isM15H1CurrentSucceeded = validateM15CurrentContext(PERIOD_H1);
     if (isMatrixSucceeded && isInvalidSucceeded && isM15MatrixSucceeded
-            && isM15InvalidSucceeded && isM15CurrentSucceeded) {
+            && isM15InvalidSucceeded && isM15D1CurrentSucceeded
+            && isM15H4CurrentSucceeded && isM15H1CurrentSucceeded) {
         Print("PASS H1DirectionCorrectionSmokeTest");
     } else {
         Print("FAIL H1DirectionCorrectionSmokeTest");

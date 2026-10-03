@@ -636,7 +636,8 @@ private:
             && (fromCorrection.correctionTimeFrame == PERIOD_H4 || fromCorrection.correctionTimeFrame == PERIOD_H1);
         if (fromAlert.timeFrame == PERIOD_H1 || fromAlert.timeFrame == PERIOD_M15) {
             isCorrectionTimeFrameValid = fromCorrection.correctionTimeFrame == PERIOD_D1
-                || fromCorrection.correctionTimeFrame == PERIOD_H4;
+                || fromCorrection.correctionTimeFrame == PERIOD_H4
+                || (fromAlert.timeFrame == PERIOD_M15 && fromCorrection.correctionTimeFrame == PERIOD_H1);
         }
         if (fromCorrection.correctionStatus != "APPLIED" || !isCorrectionTimeFrameValid
                 || fromCorrection.selectedAnalysis != "CORRECTED"
@@ -752,7 +753,7 @@ private:
     }
 
     /**
-     * M5は7足・H4/H1、H1は5足・M15は6足・D1/H4の指定片足だけの方向変更を確認する。
+     * M5は7足・H4/H1、H1は5足・D1/H4、M15は6足・D1/H4/H1の指定片足だけの方向変更を確認する。
      */
     bool isAppliedDirectionValid(
         ZigZagElliotAlertTimeFrameEntity &fromOriginal[],
