@@ -1,4 +1,5 @@
 import type { M5TimeFrame } from "../api/m5Types";
+import { formatElliottLabel } from "./format";
 
 export const M5_TIME_FRAMES = [
   { id: 49153, label: "MN1" }, { id: 32769, label: "W1" },
@@ -46,9 +47,8 @@ export function m5PreviousMotiveSubLabel(value: unknown): string {
 export function m5WaveLabel(timeFrame: M5TimeFrame): string {
   const direction = m5Boolean(timeFrame.is_wave_uptrend);
   const arrow = direction === null ? "? " : direction ? "▲" : "▼";
-  const main = m5Text(timeFrame.latest_elliot_label);
-  const sub = timeFrame.latest_sub_elliot_label;
-  return `${arrow}${main}${typeof sub === "string" && sub.trim() ? `.${sub}` : ""}`;
+  return `${arrow}${formatElliottLabel(timeFrame.latest_elliot_label,
+    timeFrame.latest_sub_elliot_label, timeFrame.latest_point_org_elliot_label, "未記録")}`;
 }
 
 export function m5EmaLabel(timeFrame: M5TimeFrame): string {

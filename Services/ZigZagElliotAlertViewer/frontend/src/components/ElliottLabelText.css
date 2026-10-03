@@ -1,0 +1,14 @@
+.elliott-label-text,
+.timeframe-values .elliott-label-text {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+  white-space: nowrap;
+}
+
+.elliott-label-text .elliott-original-label {
+  display: inline;
+  color: var(--muted);
+  font-size: inherit;
+  font-weight: 400;
+}

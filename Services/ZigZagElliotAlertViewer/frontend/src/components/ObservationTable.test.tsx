@@ -90,6 +90,36 @@ function observation(
 }
 
 describe("ObservationTable", () => {
+  it("shows saved pre-recount labels only when the current main label differs", async () => {
+    const cases = [
+      { main: "1", original: "3", up: true, label: "▲1.iii[3]" },
+      { main: "A", original: "C", up: false, label: "▼A.iii[C]" },
+      { main: "3", original: "3", up: true, label: "▲3.iii" },
+      { main: "1", original: null, up: true, label: "▲1.iii" },
+    ];
+    render(<ObservationTable
+      available grouped={false} loading={false} sort="anchor_jst_time" order="desc"
+      onSort={vi.fn()} onOpenDetail={vi.fn()}
+      items={cases.map((item, index) => observation(index + 1, "USDJPY", false, [{
+        ...timeFrame("H1", 4, true, false),
+        latest_elliot_label: item.main,
+        latest_sub_elliot_label: "iii",
+        latest_point_org_elliot_label: item.original,
+        is_wave_uptrend: item.up,
+      }]))}
+    />);
+    for (const item of cases) {
+      const label = await screen.findByLabelText(item.label);
+      expect(label).toHaveTextContent(item.label);
+      const suffix = label.querySelector(".elliott-original-label");
+      if (item.original && item.original !== item.main) {
+        expect(suffix).toHaveTextContent(`[${item.original}]`);
+      } else {
+        expect(suffix).toBeNull();
+      }
+    }
+  });
+
   it("shows recorded, legacy, and zero spread values", async () => {
     render(
       <ObservationTable

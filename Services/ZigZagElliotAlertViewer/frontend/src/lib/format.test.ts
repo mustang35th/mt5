@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   elliottDirectionSymbol,
   formatElliottDirection,
+  formatElliottLabel,
   formatNumber,
   formatSignedNumber,
 } from "./format";
@@ -28,5 +29,23 @@ describe("formatElliottDirection", () => {
     expect(elliottDirectionSymbol(false)).toBe("▼");
     expect(formatElliottDirection(true)).toBe("▲ 上昇");
     expect(formatElliottDirection(false)).toBe("▼ 下降");
+  });
+});
+
+describe("formatElliottLabel", () => {
+  it("appends the saved pre-recount label only to a changed main label", () => {
+    expect(formatElliottLabel("1", "iii", "3")).toBe("1.iii[3]");
+    expect(formatElliottLabel("A", "iii", "C")).toBe("A.iii[C]");
+    expect(formatElliottLabel("3", "iii", "3")).toBe("3.iii");
+    expect(formatElliottLabel("1", "", "3")).toBe("1[3]");
+    expect(formatElliottLabel(" 3 ", " i ", "3")).toBe("3.i");
+  });
+
+  it("never infers original labels or appends them to missing main labels", () => {
+    for (const original of [null, undefined, "", "   "]) {
+      expect(formatElliottLabel("1", "iii", original)).toBe("1.iii");
+    }
+    expect(formatElliottLabel(null, "iii", "3")).toBe("—.iii");
+    expect(formatElliottLabel("", "iii", "3", "未記録")).toBe("未記録.iii");
   });
 });

@@ -441,8 +441,13 @@ describe("ObservationDetailDrawer", () => {
     expect(screen.getByLabelText("GMO取引 対象")).toBeInTheDocument();
     expect(screen.getAllByText("▲ 上昇")).toHaveLength(1);
     expect(screen.getAllByText("▼ 下降")).toHaveLength(4);
-    expect(screen.getAllByText("▲3 [3] / i [1]")).toHaveLength(1);
-    expect(screen.getAllByText("▼3 [3] / i [1]")).toHaveLength(4);
+    for (const label of ["▲3.i[2]", "▼3.i", "▼3.i[4]", "▼3.i[A]", "▼3.i[B]"]) {
+      expect(screen.getByLabelText(label)).toHaveTextContent(label);
+    }
+    expect(screen.getByLabelText("▲3.i[2]").querySelector(".elliott-original-label"))
+      .toHaveTextContent("[2]");
+    expect(screen.getByLabelText("▼3.i").querySelector(".elliott-original-label")).toBeNull();
+    expect(screen.getAllByText("主波index / 副波index")).toHaveLength(5);
     expect(screen.queryByText("Бе")).not.toBeInTheDocument();
     expect(screen.getAllByText(/O 105\.10000 \/ H 105\.30000/)).toHaveLength(5);
     expect(screen.getAllByText("105.50000 / 105.70000")).toHaveLength(5);
@@ -521,8 +526,8 @@ describe("ObservationDetailDrawer", () => {
         grid.querySelectorAll<HTMLElement>(`.ag-cell[col-id="${columnId}"]`),
       ).some((cell) => cell.textContent?.includes(expected));
       expect(hasValue("oscillator", "BUY / count +2")).toBe(true);
-      expect(hasValue("elliott_sub", "▲3 [3] / i [1]")).toBe(true);
-      expect(hasValue("elliott_sub", "▼3 [3] / i [1]")).toBe(true);
+      expect(hasValue("elliott_sub", "▲3.i[2]")).toBe(true);
+      expect(hasValue("elliott_sub", "▼3.i[B]")).toBe(true);
       expect(hasValue("wave_direction", "▲ 上昇")).toBe(true);
       expect(hasValue("wave_direction", "▼ 下降")).toBe(true);
       expect(hasValue("latest_point_summary", "Peak / 10本 / +8.5 pips")).toBe(true);
@@ -817,9 +822,9 @@ describe("ObservationDetailDrawer", () => {
     };
 
     await waitFor(() => {
-      expectWaveTone("MN1", "elliott_sub", "▲3 [3] / i [1]", "uptrend");
+      expectWaveTone("MN1", "elliott_sub", "▲3.i[2]", "uptrend");
       expectWaveTone("MN1", "wave_direction", "▲ 上昇", "uptrend");
-      expectWaveTone("H1", "elliott_sub", "▼3 [3] / i [1]", "downtrend");
+      expectWaveTone("H1", "elliott_sub", "▼3.i[B]", "downtrend");
       expectWaveTone("H1", "wave_direction", "▼ 下降", "downtrend");
 
       const mn1Analysis = cellAtTimeFrame("MN1", "buy_sell_label");

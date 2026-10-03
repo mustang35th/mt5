@@ -559,8 +559,8 @@ describe("App", () => {
     }
     expect(screen.getAllByLabelText(/^(▲ 上昇|▼ 下降)、/)).toHaveLength(5);
     expect(screen.getAllByText(/^[▲▼]・/)).toHaveLength(5);
-    expect(screen.getAllByText(/Elliott ▲3 \/ 3-1/)).toHaveLength(3);
-    expect(screen.getAllByText(/Elliott ▼3 \/ 3-1/)).toHaveLength(2);
+    expect(screen.getAllByLabelText("▲3.3-1")).toHaveLength(3);
+    expect(screen.getAllByLabelText("▼3.3-1")).toHaveLength(2);
     expect(screen.getAllByText(/GMMA T\+3\/C0/)).toHaveLength(5);
     expect(screen.getByLabelText("EMA200判定 対象外。MN1は計算を省略"))
       .toHaveTextContent("EMA200 SKIP");

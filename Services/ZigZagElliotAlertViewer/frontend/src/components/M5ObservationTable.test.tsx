@@ -50,6 +50,35 @@ describe("M5ObservationTable with AG Grid", () => {
     expect(screen.queryByText(/FULL BUY|FULL SELL|ENTRY|通貨強弱/)).not.toBeInTheDocument();
   });
 
+  it("shows changed original Elliott labels without guessing missing saved labels", async () => {
+    const item = observation();
+    Object.assign(item.timeframes.find((row) => row.time_frame === 5)!, {
+      latest_elliot_label: "1", latest_point_org_elliot_label: "3",
+    });
+    Object.assign(item.timeframes.find((row) => row.time_frame === 16385)!, {
+      latest_elliot_label: "A", latest_point_org_elliot_label: "C", is_wave_uptrend: 0,
+    });
+    item.timeframes.find((row) => row.time_frame === 16388)!.latest_point_org_elliot_label = "3";
+    item.timeframes.find((row) => row.time_frame === 15)!.latest_point_org_elliot_label = null;
+    Object.assign(item.timeframes.find((row) => row.time_frame === 16408)!, {
+      latest_elliot_label: null, latest_sub_elliot_label: null, latest_point_org_elliot_label: "3",
+    });
+    const { container } = render(<M5ObservationTable {...props} items={[item]} />);
+    await screen.findByRole("button", { name: /EURUSD .* の詳細/ });
+    await waitFor(() => expect(cell(container, 1, "tf_M5")).toHaveTextContent("▲1.iii[3]"));
+    expect(cell(container, 1, "tf_H1")).toHaveTextContent("▼A.iii[C]");
+    expect(cell(container, 1, "m5_direction")).toHaveTextContent("SELL");
+    expect(cell(container, 1, "tf_M5")?.querySelector(".elliott-original-label")).toHaveTextContent("[3]");
+    expect(cell(container, 1, "tf_H1")?.querySelector(".elliott-original-label")).toHaveTextContent("[C]");
+    for (const frame of ["H4", "M15", "D1", "W1"]) {
+      expect(cell(container, 1, `tf_${frame}`)?.querySelector(".elliott-original-label")).toBeNull();
+    }
+    expect(cell(container, 1, "tf_D1")).toHaveTextContent("▲未記録");
+    expect(cell(container, 1, "tf_H4")).toHaveTextContent("▲3.iii");
+    fireEvent.click(screen.getByText("表示設定"));
+    expect(screen.getByText(/\[ \]＝再カウント前の主波ラベル/)).toBeInTheDocument();
+  });
+
   it("delegates global sorting and details without sorting current page rows locally", async () => {
     const { container } = render(<M5ObservationTable {...props} items={[observation(1, "EURUSD"), observation(2, "AUDUSD")]} />);
     await screen.findByRole("button", { name: /AUDUSD .* の詳細/ });

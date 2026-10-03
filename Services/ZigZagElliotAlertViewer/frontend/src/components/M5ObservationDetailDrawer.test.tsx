@@ -75,6 +75,38 @@ beforeEach(() => { localStorage.clear(); localStorage.setItem("m5Observation.det
 afterEach(() => { cleanup(); vi.restoreAllMocks(); document.body.classList.remove("drawer-open"); });
 
 describe("M5 observation detail", () => {
+  it("keeps original Elliott label suffixes consistent in normal and full-screen details", async () => {
+    const value = detail();
+    Object.assign(value.timeframes.find((row) => row.time_frame === 5)!, {
+      latest_elliot_label: "1", latest_point_org_elliot_label: "3",
+    });
+    Object.assign(value.timeframes.find((row) => row.time_frame === 16385)!, {
+      latest_elliot_label: "A", latest_point_org_elliot_label: "C", is_wave_uptrend: 0,
+    });
+    value.timeframes.find((row) => row.time_frame === 15)!.latest_point_org_elliot_label = null;
+    vi.spyOn(m5Api, "detail").mockResolvedValue(value);
+    render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    for (const mode of ["通常表示", "全画面グリッド"]) {
+      fireEvent.click(screen.getByRole("button", { name: mode }));
+      const table = mode === "通常表示"
+        ? within(screen.getByRole("region", { name: "7時間足比較表" })).getByRole("table")
+        : screen.getByRole("table", { name: "M5詳細7時間足比較" });
+      const m5 = table.querySelector('[data-timeframe="M5"]')!;
+      const h1 = table.querySelector('[data-timeframe="H1"]')!;
+      expect(m5.querySelector(".elliott-label-text")).toHaveTextContent("▲1.iii[3]");
+      expect(h1.querySelector(".elliott-label-text")).toHaveTextContent("▼A.iii[C]");
+      expect(m5.querySelector(".elliott-original-label")).toHaveTextContent("[3]");
+      expect(h1.querySelector(".elliott-original-label")).toHaveTextContent("[C]");
+      for (const frame of ["H4", "M15"]) {
+        const row = table.querySelector(`[data-timeframe="${frame}"]`)!;
+        expect(row.querySelector(".elliott-label-text")).toHaveTextContent("▲3.iii");
+        expect(row.querySelector(".elliott-original-label")).toBeNull();
+      }
+      expect(screen.getByText(/\[ \]＝再カウント前の主波ラベル/)).toBeInTheDocument();
+    }
+  });
+
   it("opens comparison first, keeps seven ordered rows, shows independent SELL and zero quality", async () => {
     const request = vi.spyOn(m5Api, "detail").mockResolvedValue(detail());
     render(<M5ObservationDetailDrawer {...props} />);

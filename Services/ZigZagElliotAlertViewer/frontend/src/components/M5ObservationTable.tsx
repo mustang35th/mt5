@@ -9,6 +9,7 @@ import { M5_TIME_FRAMES, m5Direction, m5EmaLabel, m5Number, m5TimeFrameSlots, m5
 import { M5_DENSITY_KEY, M5_LAYOUT_KEY, readM5Preference, validM5Layout, writeM5Preference,
   type M5ColumnLayout } from "../lib/m5ObservationPreferences";
 import { m5DateTime } from "../lib/m5ObservationSearchState";
+import { ElliottLabelText } from "./ElliottLabelText";
 import "./M5Observation.css";
 
 interface Props {
@@ -80,7 +81,8 @@ export function M5ObservationTable({ items, databaseKey, loading, sort, order, s
           const direction = m5Direction(slot.timeFrame.is_buy);
           const emaLabel = m5EmaLabel(slot.timeFrame);
           return <div className="m5-timeframe-cell" title={slot.warning || undefined}>
-            <span><span className={`m5-direction m5-${direction.toLowerCase()}`}>{direction}</span> {m5WaveLabel(slot.timeFrame)}{slot.warning ? " ⚠" : ""}</span>
+            <span><span className={`m5-direction m5-${direction.toLowerCase()}`}>{direction}</span> <ElliottLabelText label={m5WaveLabel(slot.timeFrame)}
+              mainLabel={slot.timeFrame.latest_elliot_label} originalLabel={slot.timeFrame.latest_point_org_elliot_label} />{slot.warning ? " ⚠" : ""}</span>
             <small>EMA <span className={emaLabel === "BUY" ? "m5-direction m5-buy" : emaLabel === "SELL" ? "m5-direction m5-sell" : undefined}>{emaLabel}</span></small>
           </div>;
         },
@@ -103,7 +105,7 @@ export function M5ObservationTable({ items, databaseKey, loading, sort, order, s
         setDensity(event.target.value); writeM5Preference(M5_DENSITY_KEY, event.target.value);
       }}><option value="compact">コンパクト</option><option value="comfortable">ゆったり</option></select></label>
       <details className="m5-column-settings"><summary>表示設定</summary><div>
-        <p className="m5-muted">各足：分析方向 / 波動（▲上昇・▼下降） / EMA200。M5はH1から独立した保存値です。</p>
+        <p className="m5-muted">各足：分析方向 / 波動（▲上昇・▼下降） / EMA200。[ ]＝再カウント前の主波ラベル。M5はH1から独立した保存値です。</p>
         {columnLabels.map((column) => <label key={column.id}><input type="checkbox" checked={!layout.find((item) => item.colId === column.id)?.hide}
           onChange={(event) => { grid.current?.setColumnsVisible([column.id], event.target.checked); saveLayout(); }} />{column.label}</label>)}
       </div></details>

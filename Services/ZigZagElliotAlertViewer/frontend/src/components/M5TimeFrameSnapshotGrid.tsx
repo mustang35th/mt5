@@ -1,10 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { M5TimeFrame } from "../api/m5Types";
 import { m5StoredServerTime } from "../lib/m5CaptureQuality";
 import { m5Boolean, m5DepthLabel, m5Direction, m5EmaLabel, m5FibonacciLabel, m5FlagLabel, m5Number, m5PreviousMotiveSubLabel, m5Text, m5TimeFrameSlots, m5WaveLabel } from "../lib/m5TimeFrame";
+import { ElliottLabelText } from "./ElliottLabelText";
 import "./M5TimeFrameSnapshotGrid.css";
 
-interface Column { label: string; tooltip?: string; summary?: boolean; minWidth?: number; numeric?: boolean; signed?: boolean; colorValue?: (row: M5TimeFrame) => string; value: (row: M5TimeFrame) => string }
+interface Column { label: string; tooltip?: string; summary?: boolean; minWidth?: number; numeric?: boolean; signed?: boolean; colorValue?: (row: M5TimeFrame) => string; value: (row: M5TimeFrame) => string; render?: (row: M5TimeFrame, value: string) => ReactNode }
 interface Group { id: string; label: string; columns: Column[] }
 export interface M5GridScroll { left: number; top: number }
 
@@ -50,7 +51,8 @@ const groups: Group[] = [
     textColumn("時間足", "time_frame_text"),
     { label: "分析方向", value: (row) => m5Direction(row.is_buy) },
     { label: "EMA200方向", value: m5EmaLabel },
-    { label: "Elliott / Sub", value: m5WaveLabel, colorValue: (row) => m5Direction(row.is_buy) },
+    { label: "Elliott / Sub", value: m5WaveLabel, colorValue: (row) => m5Direction(row.is_buy),
+      render: (row, value) => <ElliottLabelText label={value} mainLabel={row.latest_elliot_label} originalLabel={row.latest_point_org_elliot_label} /> },
   ] },
   { id: "wave", label: "波動", columns: [
     { ...flagColumn("Wave状態", "is_wave_confirmed", "確定", "形成中"), summary: true, minWidth: 90,
@@ -162,13 +164,13 @@ export function M5TimeFrameSnapshotGrid({ timeFrames, expanded, onExpandedChange
             const value = groupIndex === 0 && index === 0 ? slot.label : slot.timeFrame ? column.value(slot.timeFrame) : "未記録・足構成を要確認";
             return <td key={`${group.id}-${index}`} className={groupIndex === 0 ? `m5-snapshot-key-${index}` : column.numeric ? "m5-snapshot-number" : undefined}
               style={{ minWidth: column.minWidth ?? (column.summary ? 110 : undefined) }}>
-              <span className={cellColor(column, value, slot.timeFrame)}>{value}</span>
+              <span className={cellColor(column, value, slot.timeFrame)}>{slot.timeFrame && column.render ? column.render(slot.timeFrame, value) : value}</span>
               {groupIndex === 0 && index === 0 && <>{slot.id === 5 && <small>基準足</small>}{slot.warning && <small className="m5-warning">要確認</small>}</>}
             </td>;
           }))}
         </tr>)}</tbody>
       </table>
     </div>
-    <p className="m5-note">7時間足・M5基準。分析方向とWave方向は別項目です。形成中足のOHLCは取得時点の保存値です。</p>
+    <p className="m5-note">7時間足・M5基準。[ ]＝再カウント前の主波ラベル。分析方向とWave方向は別項目です。形成中足のOHLCは取得時点の保存値です。</p>
   </section>;
 }

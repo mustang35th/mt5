@@ -11,10 +11,12 @@ import {
   displayValue,
   elliottDirectionSymbol,
   formatElliottDirection,
+  formatElliottLabel,
   formatNumber,
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { ElliottLabelText } from "./ElliottLabelText";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import { H1EntryCheckPanel } from "./H1EntryCheckPanel";
@@ -72,9 +74,11 @@ function TimeFrameValue({ label, value }: { label: string; value: unknown }) {
 }
 
 function waveLabel(timeFrame: ObservationDetailTimeFrame): string {
-  const main = displayValue(timeFrame.latest_elliot_label);
-  const sub = displayValue(timeFrame.latest_sub_elliot_label);
-  return `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)}${main} [${timeFrame.latest_elliot_index}] / ${sub} [${timeFrame.latest_sub_elliot_index}]`;
+  return `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)}${formatElliottLabel(
+    timeFrame.latest_elliot_label,
+    timeFrame.latest_sub_elliot_label,
+    timeFrame.latest_point_org_elliot_label,
+  )}`;
 }
 
 function ohlcLabel(
@@ -176,7 +180,18 @@ function TimeFrameCard({ timeFrame }: { timeFrame: ObservationDetailTimeFrame })
           label="Wave数 / 最新index"
           value={`${formatNumber(timeFrame.wave_count, 0)} / ${formatNumber(timeFrame.latest_wave_index, 0)}`}
         />
-        <TimeFrameValue label="Elliott / Sub" value={waveLabel(timeFrame)} />
+        <div>
+          <span>Elliott / Sub</span>
+          <b><ElliottLabelText
+            label={waveLabel(timeFrame)}
+            mainLabel={timeFrame.latest_elliot_label}
+            originalLabel={timeFrame.latest_point_org_elliot_label}
+          /></b>
+        </div>
+        <TimeFrameValue
+          label="主波index / 副波index"
+          value={`${displayValue(timeFrame.latest_elliot_index)} / ${displayValue(timeFrame.latest_sub_elliot_index)}`}
+        />
         <TimeFrameValue label="前回Wave最終" value={timeFrame.previous_last_elliot_label} />
         <TimeFrameValue label="保存ポイント数" value={formatNumber(timeFrame.point_count, 0)} />
         <TimeFrameValue label="最新点 JST" value={timeFrame.latest_point_jst_time_text} />
@@ -477,6 +492,7 @@ function DetailContent({
           timeFrames={timeFrames}
         />
         <ObservationTimeFrameSnapshotGrid
+          showOriginalElliottLabel
           showLatestPointDetails
           styleNonce={styleNonce}
           timeFrames={timeFrames}
@@ -532,6 +548,7 @@ function DetailContent({
 
       <section className="detail-section">
         <h3>時間足別 H1新規足スナップショット</h3>
+        <p className="muted">[ ]＝再カウント前の主波ラベル</p>
         <div className="timeframe-grid">
           {timeFrames.map((timeFrame) => (
             <TimeFrameCard key={timeFrame.id} timeFrame={timeFrame} />

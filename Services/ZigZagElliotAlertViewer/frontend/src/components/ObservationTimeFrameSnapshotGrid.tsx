@@ -25,6 +25,7 @@ import {
   displayValue,
   elliottDirectionSymbol,
   formatElliottDirection,
+  formatElliottLabel,
   formatNumber,
   formatSignedNumber,
   sideClass,
@@ -38,11 +39,13 @@ import {
   type TimeFrameComparisonColumnGroupState,
   writeTimeFrameComparisonColumnGroupState,
 } from "../lib/timeFrameComparisonPreferences";
+import { ElliottLabelText } from "./ElliottLabelText";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 
 export interface ObservationTimeFrameSnapshotGridProps {
   ariaLabel?: string;
   showLatestPointDetails?: boolean;
+  showOriginalElliottLabel?: boolean;
   stateRef?: RefObject<GridState | undefined>;
   timeFrames: readonly ObservationDetailTimeFrame[];
   styleNonce?: string;
@@ -244,6 +247,15 @@ function waveLabel(timeFrame: ObservationDetailTimeFrame): string {
   const main = displayValue(timeFrame.latest_elliot_label);
   const sub = displayValue(timeFrame.latest_sub_elliot_label);
   return `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)}${main} [${timeFrame.latest_elliot_index}] / ${sub} [${timeFrame.latest_sub_elliot_index}]`;
+}
+
+function observationWaveLabel(timeFrame: ObservationDetailTimeFrame): string {
+  if (typeof timeFrame.is_wave_uptrend !== "boolean") return "—";
+  return `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)}${formatElliottLabel(
+    timeFrame.latest_elliot_label,
+    timeFrame.latest_sub_elliot_label,
+    timeFrame.latest_point_org_elliot_label,
+  )}`;
 }
 
 function booleanLabel(
@@ -595,7 +607,7 @@ function Ema200DirectionCell(
 }
 
 function ElliottWaveDirectionCell(
-  params: ICellRendererParams<ObservationDetailTimeFrame, string>,
+  params: ICellRendererParams<ObservationDetailTimeFrame, string> & { showOriginalLabel?: boolean },
 ) {
   const timeFrame = params.data;
   if (!timeFrame) return null;
@@ -609,7 +621,12 @@ function ElliottWaveDirectionCell(
   }
   return (
     <span className={`snapshot-elliott-wave-value${directionClass}`}>
-      {displayValue(params.value)}
+      {params.showOriginalLabel ? <ElliottLabelText
+        label={displayValue(params.value)}
+        mainLabel={timeFrame.latest_elliot_label}
+        originalLabel={timeFrame.latest_point_org_elliot_label}
+        description={`主波index: ${displayValue(timeFrame.latest_elliot_index)} / 副波index: ${displayValue(timeFrame.latest_sub_elliot_index)}`}
+      /> : displayValue(params.value)}
     </span>
   );
 }
@@ -1100,14 +1117,29 @@ const COLUMN_DEFS: Array<
 
 function columnDefs(
   showLatestPointDetails: boolean,
+  showOriginalElliottLabel: boolean,
 ): Array<ColDef<ObservationDetailTimeFrame> | ColGroupDef<ObservationDetailTimeFrame>> {
-  if (!showLatestPointDetails) return COLUMN_DEFS;
-  return [
+  const columns = showLatestPointDetails ? [
     COLUMN_DEFS[0],
     COLUMN_DEFS[1],
     latestZigZagPointColumnGroup,
     ...COLUMN_DEFS.slice(2),
-  ];
+  ] : COLUMN_DEFS;
+  if (!showOriginalElliottLabel) return columns;
+  return columns.map((group) => {
+    if (!("children" in group) || group.groupId !== "comparison_key") return group;
+    return {
+      ...group,
+      children: group.children.map((column) => {
+        if (!("colId" in column) || column.colId !== "elliott_sub") return column;
+        return {
+          ...column,
+          valueGetter: ({ data }) => data ? observationWaveLabel(data) : "—",
+          cellRendererParams: { showOriginalLabel: true },
+        } satisfies ColDef<ObservationDetailTimeFrame>;
+      }),
+    };
+  });
 }
 
 function orderedTimeFrames(
@@ -1149,6 +1181,7 @@ function EmptySnapshotOverlay() {
 export function ObservationTimeFrameSnapshotGrid({
   ariaLabel = "時間足別 H1新規足スナップショットグリッド",
   showLatestPointDetails = false,
+  showOriginalElliottLabel = false,
   stateRef,
   timeFrames,
   styleNonce,
@@ -1173,8 +1206,8 @@ export function ObservationTimeFrameSnapshotGrid({
     [showLatestPointDetails],
   );
   const gridColumnDefs = useMemo(
-    () => columnDefs(showLatestPointDetails),
-    [showLatestPointDetails],
+    () => columnDefs(showLatestPointDetails, showOriginalElliottLabel),
+    [showLatestPointDetails, showOriginalElliottLabel],
   );
   const rowData = useMemo(() => orderedTimeFrames(timeFrames), [timeFrames]);
   const activePresetId = useMemo(
@@ -1266,6 +1299,7 @@ export function ObservationTimeFrameSnapshotGrid({
         role="group"
       >
         <span className="observation-timeframe-column-toolbar-label">列表示</span>
+        {showOriginalElliottLabel && <span className="muted">[ ]＝再カウント前の主波ラベル</span>}
         {wideLayout ? (
           <div className="observation-timeframe-column-presets">
             {availablePresets.map((preset) => (

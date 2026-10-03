@@ -24,11 +24,13 @@ import {
   displayValue,
   elliottDirectionSymbol,
   formatElliottDirection,
+  formatElliottLabel,
   formatInteger,
   formatNumber,
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { ElliottLabelText } from "./ElliottLabelText";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 
@@ -294,10 +296,12 @@ function timeFrameFrom(
 }
 
 function waveLabel(timeFrame: ObservationTimeFrame): string {
-  const elliot = displayValue(timeFrame.latest_elliot_label);
-  const sub = displayValue(timeFrame.latest_sub_elliot_label, "");
   const direction = elliottDirectionSymbol(timeFrame.is_wave_uptrend);
-  return sub ? `${direction}${elliot} / ${sub}` : `${direction}${elliot}`;
+  return `${direction}${formatElliottLabel(
+    timeFrame.latest_elliot_label,
+    timeFrame.latest_sub_elliot_label,
+    timeFrame.latest_point_org_elliot_label,
+  )}`;
 }
 
 function TimeFrameSnapshot({ timeFrame }: { timeFrame: ObservationTimeFrame | undefined }) {
@@ -330,7 +334,11 @@ function TimeFrameSnapshot({ timeFrame }: { timeFrame: ObservationTimeFrame | un
           title={`Elliott ${waveLabel(timeFrame)}`}
           sx={{ fontSize: "0.72rem", fontWeight: 800, minWidth: 0 }}
         >
-          Elliott {waveLabel(timeFrame)}
+          Elliott <ElliottLabelText
+            label={waveLabel(timeFrame)}
+            mainLabel={timeFrame.latest_elliot_label}
+            originalLabel={timeFrame.latest_point_org_elliot_label}
+          />
         </Typography>
       </Stack>
       <Stack
@@ -495,6 +503,7 @@ export function ObservationTable({
       <Box sx={{ px: 1.5, pb: 0.75, color: "text.secondary", fontSize: "0.68rem" }}>
         {grouped && "連続FULL：同一通貨・同一方向で連続する市場H1を1シグナルに集約 / "}
         各時間足：BUY/SELL / Elliott（主波・下位波） / 波方向（▲上昇・▼下降）・状態 / EMA200 / GMMA（Trend・Cross）
+        <br />[ ]＝再カウント前の主波ラベル
       </Box>
       <div className="alert-grid density-compact">
         <AgGridReact<ObservationListItem>

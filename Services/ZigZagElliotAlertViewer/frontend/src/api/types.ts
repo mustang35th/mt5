@@ -492,6 +492,8 @@ export interface ObservationTimeFrame {
   latest_elliot_label: string;
   latest_sub_elliot_index: number;
   latest_sub_elliot_label: string;
+  latest_point_org_elliot_index?: number | null;
+  latest_point_org_elliot_label?: string | null;
   latest_point_time: number;
   latest_point_time_text: string;
   latest_point_jst_time: number;
@@ -573,8 +575,6 @@ export interface ObservationDetailTimeFrame extends ObservationTimeFrame {
   latest_point_fibo_depth_zone_label?: string | null;
   latest_point_fibonacci_expansion_percent?: number | null;
   latest_point_is_elliot_alphabet?: boolean | null;
-  latest_point_org_elliot_index?: number | null;
-  latest_point_org_elliot_label?: string | null;
   latest_point_is_correct?: boolean | null;
   previous_open: number;
   previous_high: number;

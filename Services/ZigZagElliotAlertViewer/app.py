@@ -2362,6 +2362,16 @@ class AlertDatabase:
         latest_point_added_column = "NULL AS latest_point_is_added,"
         if AlertDatabase.observation_latest_point_added_available(connection):
             latest_point_added_column = "latest_point_is_added,"
+        actual_columns = AlertDatabase.table_columns(
+            connection, "zigzag_elliot_observation_timeframes"
+        )
+        original_point_columns = ", ".join(
+            column if column in actual_columns else f"NULL AS {column}"
+            for column in (
+                "latest_point_org_elliot_label",
+                "latest_point_org_elliot_index",
+            )
+        )
         sql = f"""
             SELECT id, observation_id, time_frame, time_frame_text,
                    time_frame_order, is_anchor_time_frame,
@@ -2370,6 +2380,7 @@ class AlertDatabase:
                    wave_trend_label, previous_last_elliot_label,
                    point_count, latest_elliot_index, latest_elliot_label,
                    latest_sub_elliot_index, latest_sub_elliot_label,
+                   {original_point_columns},
                    latest_point_time, latest_point_time_text,
                    latest_point_jst_time, latest_point_jst_time_text,
                    latest_point_rate, {latest_point_added_column}

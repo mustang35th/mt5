@@ -2244,6 +2244,9 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIsNone(
             page["items"][0]["time_frames"][4]["latest_point_is_added"]
         )
+        for time_frame in page["items"][0]["time_frames"]:
+            self.assertIsNone(time_frame["latest_point_org_elliot_label"])
+            self.assertIsNone(time_frame["latest_point_org_elliot_index"])
         self.assertEqual(1, date_page["total"])
         self.assertEqual("EURUSD", date_page["items"][0]["symbol_name"])
         self.assertEqual(3, summary["total_count"])
@@ -2404,6 +2407,67 @@ class ObservationDatabaseTest(unittest.TestCase):
         self.assertIs(detail_time_frames["H4"]["latest_point_is_added"], False)
         self.assertIs(detail_time_frames["H1"]["latest_point_is_added"], True)
         self.assertIsNone(detail_time_frames["MN1"]["latest_point_is_added"])
+
+    def test_optional_original_point_labels_are_returned_by_list_and_detail(
+        self,
+    ) -> None:
+        """Expose saved original labels and indices while preserving missing values."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "alerts.sqlite"
+            create_observation_database(database_path)
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_observation_timeframes "
+                    "ADD COLUMN latest_point_org_elliot_label TEXT"
+                )
+                connection.execute(
+                    "ALTER TABLE zigzag_elliot_observation_timeframes "
+                    "ADD COLUMN latest_point_org_elliot_index INTEGER"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET latest_elliot_label = '1', latest_sub_elliot_label = 'iii', "
+                    "latest_point_org_elliot_label = '3', "
+                    "latest_point_org_elliot_index = 3 "
+                    "WHERE observation_id = 1 AND time_frame_text = 'H1'"
+                )
+                connection.execute(
+                    "UPDATE zigzag_elliot_observation_timeframes "
+                    "SET latest_elliot_label = 'A', "
+                    "latest_point_org_elliot_label = 'C', "
+                    "latest_point_org_elliot_index = 3 "
+                    "WHERE observation_id = 1 AND time_frame_text = 'H4'"
+                )
+            connection.close()
+            database = AlertDatabase(database_path)
+            try:
+                page = database.observations(
+                    {
+                        "sourceMode": ["LIVE"],
+                        "pageSize": ["1"],
+                        "sort": ["anchor_bar_time"],
+                        "order": ["asc"],
+                    }
+                )
+                detail = database.observation_detail(1)
+            finally:
+                database.close()
+
+        for source, time_frames in (
+            ("list", page["items"][0]["time_frames"]),
+            ("detail", detail["time_frames"]),
+        ):
+            with self.subTest(source=source):
+                frames_by_name = {item["time_frame_text"]: item for item in time_frames}
+                self.assertEqual("1", frames_by_name["H1"]["latest_elliot_label"])
+                self.assertEqual("iii", frames_by_name["H1"]["latest_sub_elliot_label"])
+                self.assertEqual("3", frames_by_name["H1"]["latest_point_org_elliot_label"])
+                self.assertEqual(3, frames_by_name["H1"]["latest_point_org_elliot_index"])
+                self.assertEqual("C", frames_by_name["H4"]["latest_point_org_elliot_label"])
+                self.assertEqual(3, frames_by_name["H4"]["latest_point_org_elliot_index"])
+                self.assertIsNone(frames_by_name["MN1"]["latest_point_org_elliot_label"])
+                self.assertIsNone(frames_by_name["MN1"]["latest_point_org_elliot_index"])
 
     def test_optional_point_detail_booleans_are_normalized_in_detail(
         self,

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { M5TimeFrame } from "../api/m5Types";
 import { m5StoredServerTime } from "../lib/m5CaptureQuality";
 import { m5Boolean, m5DepthLabel, m5Direction, m5EmaLabel, m5FibonacciLabel, m5FlagLabel, m5Number, m5Text, m5TimeFrameSlots, m5WaveLabel } from "../lib/m5TimeFrame";
+import { ElliottLabelText } from "./ElliottLabelText";
 
 const STORAGE_KEY = "m5Observation.comparisonSections.v1";
 type Section = "point" | "ohlc" | "indicators";
@@ -90,7 +91,8 @@ export function M5TimeFrameComparison({ timeFrames }: { timeFrames: readonly M5T
           <th scope="row">{label}{id === 5 && <small>基準足</small>}{warning && <small className="m5-warning" title={warning}>要確認</small>}</th>
           {!row ? <td colSpan={9}>{warning.includes("重複") ? "複数記録・要確認" : "未記録"}</td> : <>
             <td><span className={`badge ${m5Direction(row.is_buy).toLowerCase()}`}>{m5Direction(row.is_buy)}</span></td>
-            <td>{m5WaveLabel(row)}</td><td>{m5FlagLabel(row.is_wave_uptrend, "▲ 上昇", "▼ 下降")}</td>
+            <td><ElliottLabelText label={m5WaveLabel(row)} mainLabel={row.latest_elliot_label}
+              originalLabel={row.latest_point_org_elliot_label} /></td><td>{m5FlagLabel(row.is_wave_uptrend, "▲ 上昇", "▼ 下降")}</td>
             <td>{m5FlagLabel(row.is_wave_confirmed, "確定", "形成中")} / {m5FlagLabel(row.is_wave_motive, "推進波", "修正波")}</td>
             <td>{m5FlagLabel(row.latest_point_is_added, "追加ポイント", "通常")}</td><td>{m5EmaLabel(row)}</td>
             <td>{m5Number(row.gmma_trend_count, 0)} / {m5Number(row.gmma_cross_count, 0)}</td>
@@ -98,7 +100,7 @@ export function M5TimeFrameComparison({ timeFrames }: { timeFrames: readonly M5T
           </>}
         </tr>)}</tbody></table>
     </div>
-    <p className="m5-note">分析方向（is_buy）とWave方向は別項目です。Waveの確定は保存時点の状態で、将来の再分析による変化を保証しません。</p>
+    <p className="m5-note">[ ]＝再カウント前の主波ラベル。分析方向（is_buy）とWave方向は別項目です。Waveの確定は保存時点の状態で、将来の再分析による変化を保証しません。</p>
     <div className="m5-comparison-options" role="group" aria-label="M5比較の詳細項目">
       {(Object.keys(SECTION_LABELS) as Section[]).map((section) => <button key={section} type="button" className="secondary-button" aria-pressed={sections[section]} onClick={() => toggle(section)}>{SECTION_LABELS[section]}</button>)}
     </div>
