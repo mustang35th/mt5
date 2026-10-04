@@ -132,6 +132,7 @@ public:
         fromScope.started = false;
         fromScope.wasActive = false;
         fromScope.previousKey = "";
+
         if (!Util::isStrategyTester() || fromSymbol == "" || fromH1BarTime <= 0) {
             return;
         }
@@ -141,6 +142,7 @@ public:
         fromScope.started = true;
         Logger::repeatScopeActive = true;
         Logger::repeatScopeKey = fromSymbol + "|" + IntegerToString((long)fromH1BarTime);
+
         if (Logger::repeatCacheKey != Logger::repeatScopeKey) {
             Logger::clearRepeatCache();
             Logger::repeatCacheKey = Logger::repeatScopeKey;
@@ -158,9 +160,11 @@ public:
         if (!fromScope.started) {
             return;
         }
+
         if (fromSucceeded) {
             Logger::clearRepeatCache();
         }
+
         Logger::repeatScopeActive = fromScope.wasActive;
         Logger::repeatScopeKey = fromScope.previousKey;
         fromScope.started = false;
@@ -278,6 +282,7 @@ private:
         for (int i = 0; i < Logger::repeatedOutputCount; i++) {
             Logger::repeatedOutputs[i] = "";
         }
+
         Logger::repeatCacheKey = "";
         Logger::repeatedOutputCount = 0;
         Logger::nextRepeatedOutputIndex = 0;
@@ -291,15 +296,18 @@ private:
         if (!Logger::repeatScopeActive || (fromLevel != LOG_INFO && fromLevel != LOG_ERROR)) {
             return false;
         }
+
         if (Logger::repeatCacheKey != Logger::repeatScopeKey) {
             Logger::clearRepeatCache();
             Logger::repeatCacheKey = Logger::repeatScopeKey;
         }
+
         for (int i = 0; i < Logger::repeatedOutputCount; i++) {
             if (Logger::repeatedOutputs[i] == fromOutput) {
                 return true;
             }
         }
+
         Logger::repeatedOutputs[Logger::nextRepeatedOutputIndex] = fromOutput;
         Logger::nextRepeatedOutputIndex++;
         if (Logger::nextRepeatedOutputIndex >= ArraySize(Logger::repeatedOutputs)) {
@@ -308,6 +316,7 @@ private:
         if (Logger::repeatedOutputCount < ArraySize(Logger::repeatedOutputs)) {
             Logger::repeatedOutputCount++;
         }
+
         return false;
     }
 
@@ -337,6 +346,7 @@ private:
         case LOG_ERROR:
             return "ERROR";
         }
+
         return "UNKNOWN";
     }
 

@@ -49,13 +49,16 @@ public:
     bool initialize(const string fromSymbol, const ENUM_TIMEFRAMES fromAnchorTimeFrame,
             const bool fromRequireMinimumBars = true) {
         this.reset();
+
         if (fromSymbol == "" || (fromAnchorTimeFrame != PERIOD_H1
                 && fromAnchorTimeFrame != PERIOD_M15 && fromAnchorTimeFrame != PERIOD_M5)) {
             return false;
         }
+
         this.symbolName = fromSymbol;
         this.anchorTimeFrame = fromAnchorTimeFrame;
         this.requireMinimumBars = fromRequireMinimumBars;
+
         ENUM_TIMEFRAMES timeFrames[];
         int total = this.getTimeFrameCount();
         ArrayResize(timeFrames, total);
@@ -63,9 +66,12 @@ public:
             // 始値のみの他通貨でも、最初に参照する足を基準足にする。
             timeFrames[i] = this.getTimeFrame(total - 1 - i);
         }
+
         WarmUpSeriesUtil::warmUp(this.symbolName, timeFrames, 500);
+
         this.nextRequestTick = this.getClock() + 60000;
         this.initialized = true;
+
         return true;
     }
 
@@ -81,12 +87,14 @@ public:
         if (!this.initialized) {
             return false;
         }
+
         ulong now = this.getClock();
         bool isBeforeStart = Util::isStrategyTester() && fromWarmupEndTime > 0
             && TimeCurrent() < fromWarmupEndTime;
         bool clockReversed = this.checked && now < this.lastCheckTick;
         bool phaseChanged = this.checked && (isBeforeStart != this.beforeStart
             || fromWarmupEndTime != this.lastWarmupEndTime);
+
         // 開始後に呼出側が0/指定日時を切り替えても、取得間隔は解除しない。
         if (clockReversed || (this.checked && isBeforeStart != this.beforeStart)) {
             this.nextRequestTick = 0;
@@ -95,6 +103,7 @@ public:
                 && !clockReversed && now - this.lastCheckTick < 3600000) {
             return this.ready;
         }
+
         this.checked = true;
         this.beforeStart = isBeforeStart;
         this.lastWarmupEndTime = fromWarmupEndTime;
@@ -104,6 +113,7 @@ public:
         this.unsynchronizedMask = 0;
         this.statusText = "";
         this.missingStatusText = "";
+
         bool mayRequest = now >= this.nextRequestTick;
         bool requested = false;
         for (int i = 0; i < this.getTimeFrameCount(); i++) {
@@ -113,6 +123,7 @@ public:
             if (this.requireMinimumBars) {
                 requiredBars = requestBars;
             }
+
             bool synchronized = WarmUpSeriesUtil::isSeriesSynchronized(this.symbolName, timeFrame);
             int availableBars = Bars(this.symbolName, timeFrame);
             if ((!synchronized || availableBars < requiredBars) && mayRequest) {
@@ -123,10 +134,12 @@ public:
                 synchronized = WarmUpSeriesUtil::isSeriesSynchronized(this.symbolName, timeFrame);
                 availableBars = Bars(this.symbolName, timeFrame);
             }
+
             bool timeFrameReady = synchronized && availableBars >= requiredBars;
             if (!synchronized) {
                 this.unsynchronizedMask |= 1 << i;
             }
+
             string detail = this.createStatusText(timeFrame, synchronized, availableBars,
                 requiredBars, timeFrameReady);
             if (this.statusText != "") {
@@ -142,9 +155,11 @@ public:
                 this.missingStatusText += detail;
             }
         }
+
         if (requested) {
             this.nextRequestTick = now + 60000;
         }
+
         return this.ready;
     }
 
@@ -228,6 +243,7 @@ private:
         if (Util::isStrategyTester()) {
             return (ulong)TimeCurrent() * 1000;
         }
+
         return GetTickCount64();
     }
 
@@ -238,9 +254,11 @@ private:
         if (this.anchorTimeFrame == PERIOD_M5) {
             return 7;
         }
+
         if (this.anchorTimeFrame == PERIOD_M15) {
             return 6;
         }
+
         return 5;
     }
 
@@ -251,6 +269,7 @@ private:
         ENUM_TIMEFRAMES timeFrames[] = {
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5
         };
+
         return timeFrames[fromIndex];
     }
 
@@ -261,6 +280,7 @@ private:
         if (fromTimeFrame == PERIOD_MN1) {
             return 61;
         }
+
         return 206;
     }
 
@@ -275,12 +295,14 @@ private:
                 && firstDate > 0) {
             firstDateText = TimeToString((datetime)firstDate, TIME_DATE | TIME_MINUTES);
         }
+
         string timeFrameText = EnumToString(fromTimeFrame);
         StringReplace(timeFrameText, "PERIOD_", "");
         string stateText = "WAIT";
         if (fromReady) {
             stateText = "READY";
         }
+
         return StringFormat("%s[%s,sync=%d,bars=%d,required=%d,first=%s]", timeFrameText,
             stateText, (int)fromSynchronized, fromAvailableBars, fromRequiredBars, firstDateText);
     }

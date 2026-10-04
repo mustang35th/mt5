@@ -87,6 +87,7 @@ public:
      */
     TodayRate(MarketContext &fromMarketContext) {
         this.initializeValues();
+
         this.update(fromMarketContext);
     }
 
@@ -117,6 +118,7 @@ public:
      */
     void update(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
+
         this.updateValues();
     }
 
@@ -169,7 +171,9 @@ public:
         this.bid = fromQuoteTick.bid;
         this.ask = fromQuoteTick.ask;
         this.spread = spreadPips;
+
         this.updateDailyRangeAndLabels(this.marketContext.digits);
+
         return true;
     }
 

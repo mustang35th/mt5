@@ -151,6 +151,7 @@ public:
      */
     void setFolderName(const string folderNameValue) {
         this.close();
+
         this.folderName = folderNameValue;
         this.isOverwriteExecuted = false;
     }
@@ -162,6 +163,7 @@ public:
      */
     void setFileName(const string fileNameValue) {
         this.close();
+
         this.fileName = fileNameValue;
         this.isOverwriteExecuted = false;
     }
@@ -173,6 +175,7 @@ public:
      */
     void setWriteMode(const ENUM_CSV_FILE_WRITE_MODE writeModeValue) {
         this.close();
+
         this.writeMode = writeModeValue;
         this.isOverwriteExecuted = false;
     }

@@ -98,6 +98,7 @@ public:
         }
 
         double priceDiff = fromPips * RateUtil::getPipInPoints(fromMarketContext) * point;
+
         return NormalizeDouble(priceDiff, RateUtil::getDigits(fromMarketContext));
     }
 
@@ -129,6 +130,7 @@ public:
         }
 
         double pips = fromPriceDiff / (RateUtil::getPipInPoints(fromMarketContext) * point);
+
         return NormalizeDouble(
             pips,
             ZigZagElliotAnalysisProfile::getPipsResultDigits()

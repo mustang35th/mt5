@@ -150,6 +150,7 @@ private:
             for (int i = 0; i < ArraySize(all); i++) {
                 outTimeFrames[i] = all[i];
             }
+
             return;
         }
 
