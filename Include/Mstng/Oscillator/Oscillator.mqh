@@ -200,6 +200,7 @@ public:
         }
 
         this.logger.debug(__FUNCTION__, StringFormat("result=%s", this.convertBuySellLabel(isBuy)));
+
         if (this.isBuy) {
             this.oscillatorCount = plusCount;
         } else {
@@ -301,22 +302,27 @@ public:
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return false;
         }
+
         if (!this.setStochasticShort(oscillatorHandlePool)) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return false;
         }
+
         if (!this.setStochasticMiddle(oscillatorHandlePool)) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return false;
         }
+
         if (!this.setStochasticLong(oscillatorHandlePool)) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return false;
         }
+
         if (!this.setGmma(oscillatorHandlePool)) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return false;
         }
+
         if (!this.setEma200(oscillatorHandlePool)) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return false;
@@ -330,6 +336,7 @@ public:
         uint elapsed = GetTickCount() - startTick;
         this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
         return true;
     }
 
@@ -784,15 +791,18 @@ private:
      */
     bool setGmma(OscillatorHandlePool *oscillatorHandlePool) {
         uint startTick = GetTickCount();
+
         if (oscillatorHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "oscillatorHandlePool is NULL.");
             return false;
         }
+
         GmmaHandlePool *gmmaHandlePool = oscillatorHandlePool.getGmmaHandlePool();
         if (gmmaHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "gmmaHandlePool is NULL.");
             return false;
         }
+
         Gmma gmma(this.marketContext, gmmaHandlePool);
         int trendCount = 0;
         int crossCount = 0;
@@ -1104,10 +1114,12 @@ private:
                              StochasticStatus &outStatus,
                              string label) {
         uint startTick = GetTickCount();
+
         if (stochasticHandlePool == NULL) {
             this.logger.error(__FUNCTION__, StringFormat("stochasticHandlePool[%s] is NULL.", label));
             return false;
         }
+
         Stochastic stochastic(this.marketContext, stochasticHandlePool);
         int count = 0;
         if (!stochastic.getCrossCount(
@@ -1118,12 +1130,15 @@ private:
             this.logger.error(__FUNCTION__, StringFormat("stochastic.getCrossCount failed. label=%s", label));
             return false;
         }
+
         outStatus.count = count;
         outStatus.main0 = stochastic.main0;
         outStatus.signal0 = stochastic.signal0;
+
         uint elapsed = GetTickCount() - startTick;
         this.logger.debug(__FUNCTION__, StringFormat("elapsed=%d ms symbol=%s timeFrame=%s label=%s stochasticCount=%d",
                                                      elapsed, this.marketContext.symbolName, this.marketContext.timeFrameLabel, label, outStatus.count));
+
         return true;
     }
 
@@ -1295,6 +1310,7 @@ private:
         if (isPlus) {
             return "PLUS";
         }
+
         return "MINUS";
     }
 
@@ -1308,6 +1324,7 @@ private:
         if (value) {
             return "true";
         }
+
         return "false";
     }
 
@@ -1321,6 +1338,7 @@ private:
         if (isBuyValue) {
             return "BUY";
         }
+
         return "SELL";
     }
 };

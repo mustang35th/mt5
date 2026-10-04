@@ -63,9 +63,11 @@ public:
         if (!this.isValid()) {
             return 0;
         }
+
         if (this.isM5()) {
             return 7;
         }
+
         return ZigZagElliotAnalysisProfile::getObservationTimeFrameCount();
     }
 
@@ -79,12 +81,15 @@ public:
         if (fromIndex < 0 || fromIndex >= this.getObservationTimeFrameCount()) {
             return PERIOD_CURRENT;
         }
+
         if (fromIndex == 5) {
             return PERIOD_M15;
         }
+
         if (fromIndex == 6) {
             return PERIOD_M5;
         }
+
         return ZigZagElliotAnalysisProfile::getObservationTimeFrame(fromIndex);
     }
 
@@ -99,6 +104,7 @@ public:
             }
             text += IntegerToString((int)this.getObservationTimeFrame(i));
         }
+
         return text;
     }
 
@@ -109,6 +115,7 @@ public:
         if (this.isM5()) {
             return "M5_OBSERVATION_ALL";
         }
+
         return "H1_OBSERVATION_ALL";
     }
 
@@ -119,6 +126,7 @@ public:
         if (this.isM5()) {
             return "M5_OBSERVATION_ALL_V1";
         }
+
         return "H1_OBSERVATION_ALL_V5";
     }
 
@@ -129,6 +137,7 @@ public:
         if (this.isM5()) {
             return 1;
         }
+
         return 6;
     }
 
@@ -146,6 +155,7 @@ public:
         if (this.isM5()) {
             return "M5_OBSERVATION_PROFILE_V1";
         }
+
         return ZigZagElliotAnalysisProfile::getProfileVersion();
     }
 
@@ -156,6 +166,7 @@ public:
         if (this.isM5()) {
             return "M5_OBSERVATION_V2";
         }
+
         return "H1_OBSERVATION_V5";
     }
 
@@ -178,9 +189,11 @@ public:
         if (!this.isValid()) {
             return "";
         }
+
         if (!this.isM5()) {
             return ZigZagElliotAnalysisProfile::createCanonicalText();
         }
+
         string text = ZigZagElliotAnalysisProfile::createCanonicalText(
             this.getProfileVersion(),
             this.getAnchorTimeFrame(),
@@ -190,6 +203,7 @@ public:
         );
         text += "|CAPTURE_PHASE=" + this.getCapturePhase();
         text += "|SPREAD_QUOTE_RULE=SINGLE_MQL_TICK_AT_ANALYSIS_START";
+
         return text;
     }
 
@@ -200,6 +214,7 @@ public:
         if (!this.isValid()) {
             return "";
         }
+
         return ZigZagElliotAnalysisProfile::createHash(this.createCanonicalText());
     }
 

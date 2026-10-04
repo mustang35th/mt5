@@ -32,6 +32,7 @@ public:
      */
     static int getBars(Logger &logger, Elliot &elliotHigher, string symbolName, ENUM_TIMEFRAMES timeFrame) {
         MarketContext context(symbolName, timeFrame);
+
         return getBars(logger, elliotHigher, context);
     }
 

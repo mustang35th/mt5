@@ -72,6 +72,7 @@ public:
         const string fromJudgmentAlertText
     ) {
         fromSnapshot.clear();
+
         if (!isJudgmentSnapshotValid(
                 fromElliotAll, fromJudgmentElliotAll, fromResult,
                 fromCorrectionTimeFrame, fromJudgmentAlertText
@@ -105,6 +106,7 @@ public:
             fromCorrectionTimeFrame, fromJudgmentAlertText, fromSnapshot
         );
         fromSnapshot.correction.comparisonHash = createComparisonHash(fromSnapshot);
+
         return true;
     }
 
@@ -224,9 +226,11 @@ private:
                     != fromResult.currentElliotLabel) {
             return false;
         }
+
         if (fromCorrectionTimeFrame == PERIOD_CURRENT) {
             return fromOriginal == fromJudgment;
         }
+
         ENUM_TIMEFRAMES currentTimeFrame = fromOriginal.marketContext.timeFrame;
         ENUM_TIMEFRAMES upperTimeFrame = PERIOD_H4;
         ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
@@ -239,6 +243,7 @@ private:
                 timeFrameCount = 6;
             }
         }
+
         if ((currentTimeFrame != PERIOD_M5 && currentTimeFrame != PERIOD_M15
                     && currentTimeFrame != PERIOD_H1)
                 || (fromCorrectionTimeFrame != upperTimeFrame && fromCorrectionTimeFrame != lowerTimeFrame
@@ -255,6 +260,7 @@ private:
                 || fromJudgment.getElliot(currentTimeFrame) != fromJudgment.elliotCurrent) {
             return false;
         }
+
         ENUM_TIMEFRAMES timeFrames[] = {
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4,
             PERIOD_H1, PERIOD_M15, PERIOD_M5
@@ -263,6 +269,7 @@ private:
                 || fromJudgment.elliotList.Total() != timeFrameCount) {
             return false;
         }
+
         for (int i = 0; i < timeFrameCount; i++) {
             Elliot *original = fromOriginal.getElliot(timeFrames[i]);
             Elliot *judgment = fromJudgment.getElliot(timeFrames[i]);
@@ -280,6 +287,7 @@ private:
                     || judgment.getLatestWave() == NULL || judgment.getLatestPoint() == NULL) {
                 return false;
             }
+
             if (timeFrames[i] == fromCorrectionTimeFrame) {
                 if (original.isBuy == fromResult.isBuy || judgment.isBuy != fromResult.isBuy) {
                     return false;
@@ -287,6 +295,7 @@ private:
             } else if (original.isBuy != judgment.isBuy) {
                 return false;
             }
+
             if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame
                     || (currentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1))
                     && timeFrames[i] != fromCorrectionTimeFrame
@@ -294,6 +303,7 @@ private:
                 return false;
             }
         }
+
         return true;
     }
 
@@ -312,12 +322,15 @@ private:
                 || ArrayResize(fromSnapshot.correctedPoints, pointCount) != pointCount) {
             return false;
         }
+
         for (int i = 0; i < timeFrameCount; i++) {
             fromSnapshot.correctedTimeFrames[i] = fromCorrected.timeFrames[i];
         }
+
         for (int i = 0; i < pointCount; i++) {
             fromSnapshot.correctedPoints[i] = fromCorrected.points[i];
         }
+
         return true;
     }
 
@@ -378,6 +391,7 @@ private:
             correction.correctedAnalysisText = normalizeText(fromJudgment.getText());
             correction.correctedElliotCsvText = normalizeText(fromJudgment.getCsv(true));
         }
+
         fromSnapshot.correction = correction;
     }
 
@@ -414,6 +428,7 @@ private:
             fromElliotAll.currencyStrengthExecutionInfo;
         CurrencyStrengthPairRankInfo pairRankInfo =
             executionInfo.pairRankInfo;
+
         Mtf3In3H1ElliotStructureDecision structureDecision;
         Mtf3In3H1ElliotStructureResult structureResult;
         structureDecision.evaluate(fromElliotAll, structureResult);
@@ -425,6 +440,7 @@ private:
             fromSignalReferencePointTime,
             side
         );
+
         double referencePrice = fromElliotAll.todayRate.bid;
 
         if (fromResult.isBuy) {
@@ -1226,16 +1242,20 @@ private:
         for (int i = 0; i < ArraySize(fromSnapshot.timeFrames); i++) {
             appendTimeFrameHashValues(fromSnapshot.timeFrames[i], sourceText);
         }
+
         for (int i = 0; i < ArraySize(fromSnapshot.points); i++) {
             appendPointHashValues(fromSnapshot.points[i], sourceText);
         }
+
         appendHashValue("CORRECTED", sourceText);
         for (int i = 0; i < ArraySize(fromSnapshot.correctedTimeFrames); i++) {
             appendTimeFrameHashValues(fromSnapshot.correctedTimeFrames[i], sourceText);
         }
+
         for (int i = 0; i < ArraySize(fromSnapshot.correctedPoints); i++) {
             appendPointHashValues(fromSnapshot.correctedPoints[i], sourceText);
         }
+
         return hashText(sourceText);
     }
 

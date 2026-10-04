@@ -398,6 +398,7 @@ private:
      */
     bool inspectRunStatusColumn() {
         this.hasRunStatusColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,

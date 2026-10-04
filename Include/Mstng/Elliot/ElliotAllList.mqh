@@ -74,6 +74,7 @@ public:
         this.clearElliotAllList();
         this.marketContext = fromMarketContext;
         this.targetCount = 0;
+
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
     }
@@ -133,6 +134,7 @@ public:
         long startTime = GetTickCount();
         
         this.logger.debug(__FUNCTION__, StringFormat("setList:Start Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), startTime));
+
         const int total = fromSymbolNameInfoAll.size();
 
         for (int i = 0; i < total; i++) {

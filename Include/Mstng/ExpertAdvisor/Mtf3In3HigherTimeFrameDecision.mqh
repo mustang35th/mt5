@@ -19,6 +19,7 @@ public:
      */
     bool evaluate(ElliotAll *fromElliotAll, const bool fromIsBuy, string &fromRejectReason) {
         fromRejectReason = "HIGHER_ANALYSIS_UNAVAILABLE";
+
         if (fromElliotAll == NULL || !fromElliotAll.isAnalysisSucceeded) {
             return false;
         }
@@ -37,6 +38,7 @@ public:
                 fromElliotAll.getElliot(PERIOD_W1), elliotD1, fromRejectReason)) {
             return false;
         }
+
         return this.evaluateD1Ema200(fromIsBuy, elliotD1, fromRejectReason);
     }
 
@@ -51,12 +53,14 @@ public:
     bool evaluateDirection(const bool fromIsBuy, Elliot *fromMn1, Elliot *fromW1,
             Elliot *fromD1, string &fromRejectReason, Elliot *fromOriginalD1 = NULL) {
         fromRejectReason = "";
+
         bool isD1Valid = this.isDirectionStateValid(fromD1, PERIOD_D1);
         if (fromOriginalD1 != NULL) {
             isD1Valid = this.isCorrectedDirectionStateValid(
                 fromD1, fromOriginalD1, PERIOD_D1, fromIsBuy
             );
         }
+
         if (fromMn1 == NULL || fromW1 == NULL || fromD1 == NULL) {
             fromRejectReason = "HIGHER_TIMEFRAME_UNAVAILABLE";
         } else if (!this.isDirectionStateValid(fromMn1, PERIOD_MN1)
@@ -73,6 +77,7 @@ public:
                 && !this.isEma200DirectionMatched(fromW1, PERIOD_W1, fromIsBuy)) {
             fromRejectReason = "MN1_OR_W1_EMA200_MISMATCH";
         }
+
         return fromRejectReason == "";
     }
 
@@ -84,6 +89,7 @@ public:
      */
     bool evaluateD1Ema200(const bool fromIsBuy, Elliot *fromD1, string &fromRejectReason) {
         fromRejectReason = "";
+
         if (fromD1 == NULL) {
             fromRejectReason = "D1_EMA200_UNAVAILABLE";
         } else if (!this.isEma200StateValid(fromD1, PERIOD_D1)) {
@@ -91,6 +97,7 @@ public:
         } else if (!this.isEma200DirectionMatched(fromD1, PERIOD_D1, fromIsBuy)) {
             fromRejectReason = "D1_EMA200_MISMATCH";
         }
+
         return fromRejectReason == "";
     }
 
@@ -106,9 +113,11 @@ public:
                 || fromElliot.isBuy != fromElliot.oscillator.isBuy) {
             return false;
         }
+
         if (fromElliot.isBuy) {
             return fromElliot.buySellLabel == "BUY";
         }
+
         return fromElliot.buySellLabel == "SELL";
     }
 
@@ -139,9 +148,11 @@ public:
                 || fromElliot.isBuy != fromIsBuy || fromOriginal.isBuy == fromIsBuy) {
             return false;
         }
+
         if (fromIsBuy) {
             return fromElliot.buySellLabel == "BUY";
         }
+
         return fromElliot.buySellLabel == "SELL";
     }
 
@@ -157,18 +168,22 @@ public:
                 || fromElliot.oscillator.ema200.marketContext.timeFrame != fromTimeFrame) {
             return false;
         }
+
         bool isBuy = fromElliot.oscillator.ema200.isBuy;
         bool isSell = fromElliot.oscillator.ema200.isSell;
         string direction = fromElliot.oscillator.ema200.getBuySellLabel();
         if (isBuy && !isSell) {
             return direction == "BUY";
         }
+
         if (!isBuy && isSell) {
             return direction == "SELL";
         }
+
         if (!isBuy && !isSell) {
             return direction == "NONE";
         }
+
         return false;
     }
 
@@ -182,9 +197,11 @@ public:
         if (!this.isEma200StateValid(fromElliot, fromTimeFrame)) {
             return false;
         }
+
         if (fromIsBuy) {
             return fromElliot.oscillator.ema200.isBuy;
         }
+
         return fromElliot.oscillator.ema200.isSell;
     }
 };

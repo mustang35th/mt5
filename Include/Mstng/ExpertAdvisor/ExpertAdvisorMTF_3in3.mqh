@@ -187,6 +187,7 @@ public:
         if (this.elliotAll == NULL) {
             return "";
         }
+
         return this.getChartAlertText();
     }
 
@@ -293,12 +294,14 @@ protected:
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return;
         }
+
         ZigZagPoint *latestPoint = entryWaveElliot.getLatestPoint();
         this.currentElliotLabel = latestPoint.elliotLabel;
         this.isEntryWaveResult = this.isEntryWave(entryWaveElliot);
         string timeFrameRejectReason = "";
         bool isTimeFrameEntryAllowed =
             this.isTimeFrameEntryConditionMatched(timeFrameRejectReason);
+
         Mtf3In3Ema200DistancePolicy ema200DistancePolicy;
         double closeEma200DiffPips =
             this.elliotCurrent.oscillator.ema200.closeEma200DiffPips;
@@ -500,11 +503,13 @@ protected:
                 || sourceHigher.getLatestWave() == NULL) {
             return "";
         }
+
         Wave *latestWaveHigher = sourceHigher.getLatestWave();
         string text = latestWaveHigher.trendLabel;
         text += sourceHigher.getLatestPointElliotLabel();
         text += "-";
         text += sourceCurrent.getLatestPointElliotLabel();
+
         return text;
     }
 
@@ -527,6 +532,7 @@ protected:
         if (fromAnalysis == NULL) {
             return "";
         }
+
         Elliot *analysisCurrent = fromAnalysis.elliotCurrent;
         Elliot *analysisHigher1 = fromAnalysis.getElliot(this.marketContext.timeFrame, 1);
         Elliot *analysisHigher2 = fromAnalysis.getElliot(this.marketContext.timeFrame, 2);
@@ -534,6 +540,7 @@ protected:
                 || analysisHigher2.getLatestWave() == NULL) {
             return "";
         }
+
         Wave *latestWaveHigher2 = analysisHigher2.getLatestWave();
         string text = latestWaveHigher2.trendLabel;
         text += analysisHigher2.getLatestPointElliotLabel();
@@ -541,6 +548,7 @@ protected:
         text += analysisHigher1.getLatestPointElliotLabel();
         text += "-";
         text += analysisCurrent.getLatestPointElliotLabel();
+
         return text;
     }
     
@@ -811,6 +819,7 @@ private:
         if (entryWaveElliot == NULL) {
             return false;
         }
+
         if (entryWaveElliot.marketContext.timeFrame != PERIOD_M5) {
             return true;
         }

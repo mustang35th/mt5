@@ -66,6 +66,7 @@ public:
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.releaseAll();
+
         this.initializeMarketContext(fromMarketContext);
     }
 

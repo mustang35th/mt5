@@ -133,6 +133,7 @@ public:
         if (!this.getCrossCount(symbol, period, start, count)) {
             return 0;
         }
+
         return count;
     }
 
@@ -218,9 +219,11 @@ public:
                 break;
             }
         }
+
         if (!isPlus0) count = 0 - count;
 
         this.logger.debug(__FUNCTION__, StringFormat("count=%s elapsed=%d ms", StringUtil::addSign(count), GetTickCount() - startCount));
+
         return true;
     }
 
@@ -303,10 +306,12 @@ private:
      */
     bool getMain(MarketContext &fromMarketContext, int shift, double &value) {
         value = 0.0;
+
         if (!this.ensureInitialized(fromMarketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize stochastic handle in getMain");
             return false;
         }
+
         double buffer[];
         ArraySetAsSeries(buffer, true);
         ResetLastError();
@@ -320,7 +325,9 @@ private:
             this.logger.error(__FUNCTION__, "CopyBuffer(main) returned invalid value");
             return false;
         }
+
         value = buffer[0];
+
         this.logger.debug(
             __FUNCTION__,
             StringFormat(
@@ -331,6 +338,7 @@ private:
                 value
             )
         );
+
         return true;
     }
 
@@ -344,10 +352,12 @@ private:
      */
     bool getSignal(MarketContext &fromMarketContext, int shift, double &value) {
         value = 0.0;
+
         if (!this.ensureInitialized(fromMarketContext)) {
             this.logger.error(__FUNCTION__, "failed to initialize stochastic handle in getSignal");
             return false;
         }
+
         double buffer[];
         ArraySetAsSeries(buffer, true);
         ResetLastError();
@@ -361,7 +371,9 @@ private:
             this.logger.error(__FUNCTION__, "CopyBuffer(signal) returned invalid value");
             return false;
         }
+
         value = buffer[0];
+
         this.logger.debug(
             __FUNCTION__,
             StringFormat(
@@ -372,6 +384,7 @@ private:
                 value
             )
         );
+
         return true;
     }
 
@@ -399,13 +412,17 @@ private:
             this.logger.error(__FUNCTION__, "stochasticHandlePool is NULL");
             return false;
         }
+
         int pooledHandle = this.stochasticHandlePool.getHandle(fromMarketContext.timeFrame);
         if (pooledHandle == INVALID_HANDLE) {
             this.logger.error(__FUNCTION__, StringFormat("failed to get handle from pool. symbol=%s period=%d code=%d", fromMarketContext.symbolName, (int)fromMarketContext.timeFrame, GetLastError()));
             return false;
         }
+
         this.handle = pooledHandle;
+
         this.logger.debug(__FUNCTION__, StringFormat("initialized from pool. symbol=%s period=%d handle=%d", fromMarketContext.symbolName, (int)fromMarketContext.timeFrame, this.handle));
+
         return true;
     }
 
@@ -418,11 +435,14 @@ private:
      */
     bool isPlus(double main, double signal) {
         this.logger.debug(__FUNCTION__, StringFormat("main=%.5f signal=%.5f", main, signal));
+
         bool plus = ZigZagElliotAnalysisProfile::isStochasticBuyDirection(
             main,
             signal
         );
+
         this.logger.debug(__FUNCTION__, StringFormat("plus=%s", plus ? "true" : "false"));
+
         return plus;
     }
 };

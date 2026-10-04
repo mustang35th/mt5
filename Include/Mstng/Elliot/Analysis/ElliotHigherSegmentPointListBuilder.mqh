@@ -1477,6 +1477,7 @@ private:
             fromLeftIndex,
             fromIsUptrend
         );
+
         this.errorMessage = oldErrorMessage;
 
         return isValid;
@@ -1700,6 +1701,7 @@ private:
      */
     bool fail(string fromMessage) {
         this.errorMessage = fromMessage;
+
         return false;
     }
 };

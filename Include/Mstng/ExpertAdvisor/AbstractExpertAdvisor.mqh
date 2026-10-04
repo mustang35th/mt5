@@ -132,6 +132,7 @@ public:
         this.releaseExpertAdvisorHelpers();
         this.elliottWaveInfoList.Clear();
         this.resetAnalysisReferences();
+
         this.initializeMarketContext(fromMarketContext);
 
         this.expertAdvisorElliot = new ExpertAdvisorElliot(this.marketContext);
@@ -159,10 +160,12 @@ public:
                 || fromElliotAll.elliotCurrent == NULL || fromSignalCount == NULL) {
             return;
         }
+
         ZigZagPoint *sourceSignalPoint = fromElliotAll.elliotCurrent.getLatestPoint2();
         if (sourceSignalPoint == NULL) {
             return;
         }
+
         datetime sourceSignalTime = sourceSignalPoint.barTime;
         bool sourceIsBuy = fromElliotAll.elliotCurrent.isBuy;
 
@@ -171,6 +174,7 @@ public:
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return;
         }
+
         if (!this.setElliotAll(judgmentElliotAll)) {
             this.logger.error(__FUNCTION__, StringFormat("%s setElliotAll returned false", this.name));
             
@@ -220,6 +224,7 @@ public:
      */
     bool isExit(ElliotAll *fromElliotAll, bool isBuyPosition) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
         this.sourceElliotAll = fromElliotAll;
         
         if (!this.setElliotAll(fromElliotAll)) {
@@ -392,6 +397,7 @@ protected:
         if (this.sourceElliotAll != NULL) {
             return this.sourceElliotAll;
         }
+
         return this.elliotAll;
     }
 
@@ -703,6 +709,7 @@ private:
         }
         
         this.clearJudgmentAnalysisReferences();
+
         if (fromElliotAll == NULL || !fromElliotAll.isAnalysisSucceeded
                 || fromElliotAll.elliotCurrent == NULL
                 || fromElliotAll.elliotCurrent.getLatestWave() == NULL
@@ -711,6 +718,7 @@ private:
             this.logger.error(__FUNCTION__, "judgment analysis is unavailable or incomplete");
             return false;
         }
+
         this.elliotAll = fromElliotAll;
         
         //this.elliotMN1 = this.elliotAll.elliotMN1;

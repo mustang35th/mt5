@@ -232,6 +232,7 @@ public:
      */
     bool analyze(const MqlTick &fromQuoteTick) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
         uint startCount = GetTickCount();
         this.isAnalysisSucceeded = false;
         this.tradeTimeInfo.setData(TimeCurrent());
@@ -245,15 +246,19 @@ public:
 
         this.setTimeFrame(this.marketContext.timeFrame);
         this.setElliotAll();
+
         this.setTrendAlignDecision();
         this.setHigherStochasticMainOrderDecision();
+
         if (this.elliotCurrent != NULL) {
             this.lossCut.setData(this.elliotCurrent, this.todayRate);
         }
+
         this.logger.debug(__FUNCTION__, this.getCsv());
         this.execTime = GetTickCount() - startCount;
         this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", this.execTime));
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, this.isAnalysisSucceeded);
+
         return this.isAnalysisSucceeded;
     }
 
@@ -280,6 +285,7 @@ public:
         }
 
         this.isAnalysisSucceeded = false;
+
         ENUM_TIMEFRAMES currentTimeFrame = fromOriginal.marketContext.timeFrame;
         bool isCorrectionSupported = currentTimeFrame == PERIOD_M5
             && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
@@ -297,6 +303,7 @@ public:
         this.setMarketContext(fromOriginal.marketContext);
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         uint startCount = GetTickCount();
+
         this.isTimer = fromOriginal.isTimer;
         this.timerSeconds = fromOriginal.timerSeconds;
         this.tradeTimeInfo = fromOriginal.tradeTimeInfo;
@@ -324,6 +331,7 @@ public:
         } else if (currentTimeFrame == PERIOD_M15) {
             ArrayResize(timeFrames, 6);
         }
+
         bool isSucceeded = this.areOriginalRatesUnchanged(
             fromOriginal, timeFrames
         );
@@ -385,9 +393,12 @@ public:
             this.elliotList.Clear();
             this.elliotCurrent = NULL;
         }
+
         this.isAnalysisSucceeded = isSucceeded;
         this.execTime = GetTickCount() - startCount;
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, isSucceeded);
+
         return isSucceeded;
     }
 
@@ -751,6 +762,7 @@ private:
                 return false;
             }
         }
+
         return true;
     }
 

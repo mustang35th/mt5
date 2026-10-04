@@ -119,6 +119,7 @@ public:
         ZigZagElliotEntryOutcomeResult &fromResult
     ) {
         fromResult.reset();
+
         bool isBuy = false;
         string validationStatus = validateInput(
             fromSide,
@@ -145,6 +146,7 @@ public:
             fromResult.riskPrice,
             fromPipSize
         );
+
         double maximumFavorablePrice = 0.0;
         double maximumAdversePrice = 0.0;
         int rateCount = ArraySize(fromRates);
@@ -185,6 +187,7 @@ public:
                     maximumAdversePrice,
                     adversePrice
                 );
+
                 setExitResult(
                     isBuy,
                     fromEntryPrice,
@@ -218,6 +221,7 @@ public:
                     maximumAdversePrice,
                     adversePrice
                 );
+
                 setExitResult(
                     isBuy,
                     fromEntryPrice,

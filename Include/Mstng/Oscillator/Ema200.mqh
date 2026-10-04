@@ -344,6 +344,7 @@ public:
         );
         this.trendCount = this.determineTrendCount(this.upCount, this.downCount);
         this.setBuySell();
+
         this.setTextLabels();
 
         this.logger.debug(
@@ -951,6 +952,7 @@ private:
         }
 
         this.releaseHandle();
+
         this.ema200Handle = iMA(
             fromMarketContext.symbolName,
             fromMarketContext.timeFrame,

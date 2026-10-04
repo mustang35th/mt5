@@ -69,6 +69,7 @@ public:
 
         Mtf3In3HigherTimeFrameDecision decision;
         string rejectReason;
+
         return decision.evaluateD1Ema200(fromIsBuy, fromElliotD1, rejectReason);
     }
 

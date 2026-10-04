@@ -41,6 +41,7 @@ public:
         ZigZagElliotObservationSnapshot &fromSnapshot
     ) {
         ZigZagElliotObservationProfile profile;
+
         return build(
             fromElliotAll,
             fromRunEntity,
@@ -68,12 +69,14 @@ public:
         const ZigZagElliotObservationProfile &fromProfile
     ) {
         fromSnapshot.clear();
+
         if (!fromProfile.isValid()
                 || fromProfile.requiresCaptureMetrics()
                 || fromElliotAll == NULL
                 || !isSpreadValid(fromElliotAll)) {
             return false;
         }
+
         return buildSnapshot(
             fromElliotAll,
             fromRunEntity,
@@ -111,6 +114,7 @@ public:
         ZigZagElliotObservationCaptureMetricsEntity captureMetrics;
         captureMetrics = fromCaptureMetrics;
         fromSnapshot.clear();
+
         if (!fromProfile.isValid()
                 || !fromProfile.isM5()
                 || fromElliotAll == NULL
@@ -125,6 +129,7 @@ public:
         if (captureMetrics.hasQuoteTickTimeMsc) {
             captureMetrics.quoteTickTimeMsc = fromQuoteTick.time_msc;
         }
+
         if (!captureMetrics.isValid()) {
             return false;
         }
@@ -146,6 +151,7 @@ public:
 
         fromSnapshot.hasCaptureMetrics = true;
         fromSnapshot.captureMetrics = captureMetrics;
+
         return true;
     }
 

@@ -68,6 +68,7 @@ public:
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.clear();
+
         this.initialize(fromMarketContext);
     }
 
@@ -110,6 +111,7 @@ public:
         if (index < 0 || index >= this.poolList.Total()) {
             return NULL;
         }
+
         return (OscillatorHandlePool*)this.poolList.At(index);
     }
 
@@ -199,6 +201,7 @@ public:
             if (pool == NULL) {
                 continue;
             }
+
             pool.setTimeframesFromMn1To();
         }
     }
@@ -213,6 +216,7 @@ public:
             if (pool == NULL) {
                 continue;
             }
+
             pool.setTimeframesFromD1To();
         }
     }
@@ -229,6 +233,7 @@ public:
             if (pool == NULL) {
                 continue;
             }
+
             pool.releaseAll();
         }
     }
@@ -244,6 +249,7 @@ public:
                 delete obj;
             }
         }
+
         this.poolList.Clear();
     }
 
@@ -261,6 +267,7 @@ private:
      */
     void initialize(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
+
         this.buildPools();
     }
 

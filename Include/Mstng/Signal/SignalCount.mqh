@@ -59,6 +59,7 @@ public:
     void setMarketContext(MarketContext &fromMarketContext) {
         this.signalInfoList.Clear();
         this.usedEntryWaveKeyList.Clear();
+
         this.initializeMarketContext(fromMarketContext);
     }
 

@@ -147,6 +147,7 @@ public:
             if (fromCorrectionTimeFrame == PERIOD_D1) {
                 originalD1 = fromOriginal.getElliot(PERIOD_D1);
             }
+
             fromResult.isPassed = decision.evaluateDirection(
                 isH1Buy, elliotMn1, elliotW1, elliotD1, rejectReason, originalD1
             );
@@ -186,12 +187,14 @@ private:
         if (currentTimeFrame != PERIOD_H1 && currentTimeFrame != PERIOD_M15) {
             return false;
         }
+
         Elliot *elliotCurrent = fromSelected.getElliot(currentTimeFrame);
         if (elliotCurrent == NULL || fromSelected.elliotCurrent != elliotCurrent
                 || elliotCurrent.marketContext.symbolName != fromSelected.marketContext.symbolName
                 || elliotCurrent.isBuy != fromIsBuy) {
             return false;
         }
+
         return this.isDirectionStateValid(elliotCurrent, currentTimeFrame,
             fromOriginal, fromCorrectionTimeFrame, fromIsBuy);
     }
@@ -227,12 +230,14 @@ private:
         if (fromOriginal == NULL) {
             return decision.isDirectionStateValid(fromElliot, fromTimeFrame);
         }
+
         Elliot *originalElliot = fromOriginal.getElliot(fromTimeFrame);
         if (fromTimeFrame == fromCorrectionTimeFrame) {
             return decision.isCorrectedDirectionStateValid(
                 fromElliot, originalElliot, fromTimeFrame, fromIsBuy
             );
         }
+
         return decision.isDirectionStateValid(originalElliot, fromTimeFrame)
             && decision.isDirectionStateValid(fromElliot, fromTimeFrame)
             && fromElliot.marketContext.symbolName == originalElliot.marketContext.symbolName
@@ -252,6 +257,7 @@ private:
         if (fromCorrectionTimeFrame == PERIOD_CURRENT) {
             return fromOriginal == NULL;
         }
+
         if (fromOriginal == NULL || fromSelected == NULL || fromOriginal == fromSelected
                 || !fromOriginal.isAnalysisSucceeded
                 || (fromSelected.marketContext.timeFrame != PERIOD_H1
@@ -263,6 +269,7 @@ private:
                         || fromCorrectionTimeFrame != PERIOD_H1))) {
             return false;
         }
+
         Elliot *originalD1 = fromOriginal.getElliot(PERIOD_D1);
         Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
         Elliot *originalH1 = fromOriginal.getElliot(PERIOD_H1);
@@ -276,15 +283,18 @@ private:
                     fromOriginal, originalCurrent.isBuy, NULL, PERIOD_CURRENT)) {
             return false;
         }
+
         bool originalIsBuy = originalCurrent.isBuy;
         if (fromCorrectionTimeFrame == PERIOD_D1) {
             return originalD1.isBuy != originalIsBuy && originalH4.isBuy == originalIsBuy
                 && originalH1.isBuy == originalIsBuy;
         }
+
         if (fromCorrectionTimeFrame == PERIOD_H4) {
             return originalH4.isBuy != originalIsBuy && originalD1.isBuy == originalIsBuy
                 && originalH1.isBuy == originalIsBuy;
         }
+
         return originalH1.isBuy != originalIsBuy && originalD1.isBuy == originalIsBuy
             && originalH4.isBuy == originalIsBuy;
     }
@@ -297,6 +307,7 @@ private:
      */
     bool isW1Ema200StateValid(Elliot *fromElliotW1) {
         Mtf3In3HigherTimeFrameDecision decision;
+
         return decision.isEma200StateValid(fromElliotW1, PERIOD_W1);
     }
 

@@ -147,6 +147,7 @@ private:
         ZigZagCorrector zigZagCorrector(this.marketContext);
         
         zigZagCorrector.correct(elliotHigher, this.zigZagPointList);
+
         ZigZagPointUtil::copyZigZagPointList(zigZagCorrector.orgZigZagPointList, this.zigZagPointList);
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);

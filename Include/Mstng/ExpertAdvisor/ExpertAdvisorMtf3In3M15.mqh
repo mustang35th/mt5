@@ -72,6 +72,7 @@ public:
         if (this.correctedElliotAll != NULL && this.elliotAll == this.correctedElliotAll) {
             return this.correctedTimeFrame;
         }
+
         return PERIOD_CURRENT;
     }
 
@@ -97,6 +98,7 @@ protected:
                 || fromOriginal.marketContext.symbolName != this.marketContext.symbolName) {
             return NULL;
         }
+
         Elliot *originalD1 = fromOriginal.getElliot(PERIOD_D1);
         Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
         Elliot *originalH1 = fromOriginal.getElliot(PERIOD_H1);
@@ -109,9 +111,11 @@ protected:
                 || fromOriginal.elliotCurrent != originalM15) {
             return NULL;
         }
+
         if (!this.isDirectionCorrectionEnabled) {
             return fromOriginal;
         }
+
         int mismatchCount = 0;
         ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_CURRENT;
         if (originalD1.isBuy != originalM15.isBuy) {
@@ -126,12 +130,15 @@ protected:
             mismatchCount++;
             correctionTimeFrame = PERIOD_H1;
         }
+
         if (mismatchCount == 0) {
             return fromOriginal;
         }
+
         if (mismatchCount > 1) {
             return NULL;
         }
+
         this.correctedElliotAll = new ElliotAll(this.marketContext);
         if (this.correctedElliotAll == NULL
                 || !this.correctedElliotAll.analyzeWithDirectionCorrection(
@@ -140,7 +147,9 @@ protected:
             this.releaseCorrectedElliotAll();
             return NULL;
         }
+
         this.correctedTimeFrame = correctionTimeFrame;
+
         return this.correctedElliotAll;
     }
 
@@ -165,6 +174,7 @@ protected:
         if (correctionTimeFrame != PERIOD_CURRENT) {
             originalAnalysis = this.getSourceElliotAll();
         }
+
         return decision.evaluate(
             this.h1DirectionAlignmentMode,
             this.elliotAll,
@@ -203,12 +213,15 @@ protected:
         if (fromElliot == NULL) {
             return false;
         }
+
         ENUM_TIMEFRAMES timeFrame = fromElliot.marketContext.timeFrame;
         if (timeFrame != PERIOD_H4 && timeFrame != PERIOD_H1 && timeFrame != PERIOD_M15) {
             return false;
         }
+
         H1EntryWaveDecision decision;
         H1EntryWaveResult result;
+
         return decision.evaluate(fromElliot, timeFrame, result);
     }
 
@@ -220,6 +233,7 @@ protected:
     virtual bool isTimeFrameEma200ConditionMatched() override {
         H1Ema200ConfirmationDecision h1Decision;
         Mtf3In3HigherTimeFrameDecision decision;
+
         return h1Decision.evaluate(
             this.h1Ema200ConfirmationMode, this.isBuy,
             this.elliotH1, this.elliotH4, this.elliotD1
@@ -236,7 +250,9 @@ protected:
                 || this.elliotH1.isUptrend() != this.isBuy) {
             return false;
         }
+
         H1W1ConfirmationDecision decision;
+
         return decision.evaluate(
             this.h1W1ConfirmationMode, this.isBuy,
             this.elliotAll.getElliot(PERIOD_W1), this.w1ConfirmationResult
@@ -281,6 +297,7 @@ protected:
         if (chartAlertText != "" && correctionTimeFrame != PERIOD_CURRENT) {
             chartAlertText += " [" + TimeUtil::convertTimeFrameToString(correctionTimeFrame) + "補正]";
         }
+
         return chartAlertText;
     }
 
@@ -295,6 +312,7 @@ protected:
                 correctionTimeFrame, this.getChartAlertText());
             return;
         }
+
         Mail::sendMail(sourceAnalysis, this.isSendMail);
     }
 
@@ -333,27 +351,32 @@ private:
         if (fromMaxPercent == 0.0) {
             return true;
         }
+
         string timeFrameLabel = TimeUtil::convertTimeFrameToString(fromTimeFrame);
         if (!MathIsValidNumber(fromMaxPercent) || fromMaxPercent == EMPTY_VALUE
                 || fromMaxPercent < 0.0 || NormalizeDouble(fromMaxPercent, 1) <= 0.0) {
             this.logger.error(__FUNCTION__, "invalid M15 " + timeFrameLabel + " FE limit");
             return false;
         }
+
         if (fromElliot == NULL || fromElliot.marketContext.timeFrame != fromTimeFrame
                 || fromElliot.getLatestPoint() == NULL) {
             this.logger.error(__FUNCTION__, "M15 " + timeFrameLabel + " FE point unavailable");
             return false;
         }
+
         ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
         int originalIndex = latestPoint.orgElliotIndex;
         if (originalIndex == 1) {
             return true;
         }
+
         if (originalIndex < 3 || originalIndex % 2 == 0) {
             this.logger.error(__FUNCTION__, StringFormat(
                 "M15 %s FE original wave invalid: %d", timeFrameLabel, originalIndex));
             return false;
         }
+
         double expansionPercent = latestPoint.fibonacciExpansionPercent;
         if (!MathIsValidNumber(expansionPercent) || expansionPercent == EMPTY_VALUE
                 || expansionPercent <= 0.0) {
@@ -362,6 +385,7 @@ private:
                 timeFrameLabel, expansionPercent, originalIndex));
             return false;
         }
+
         expansionPercent = NormalizeDouble(expansionPercent, 1);
         double maxPercent = NormalizeDouble(fromMaxPercent, 1);
         if (expansionPercent > maxPercent) {
@@ -370,6 +394,7 @@ private:
                 timeFrameLabel, expansionPercent, maxPercent, originalIndex));
             return false;
         }
+
         return true;
     }
 

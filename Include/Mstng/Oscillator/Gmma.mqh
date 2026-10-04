@@ -121,6 +121,7 @@ public:
         if (!this.getCrossCount(fromSymbolName, fromTimeFrame, count)) {
             return 0;
         }
+
         return count;
     }
 
@@ -354,6 +355,7 @@ public:
         count = 0;
 
         this.logger.debug(__FUNCTION__, StringFormat("symbol=%s timeFrame=%d", this.marketContext.symbolName, this.marketContext.timeFrame));
+
         if (!this.ensureInitialized(this.marketContext)) {
             this.logger.error(__FUNCTION__, "initialize failed.");
             return false;
@@ -422,6 +424,7 @@ public:
                 break;
             }
         }
+
         if (!isPlus0) {
             count = 0 - count;
         }
@@ -429,6 +432,7 @@ public:
         uint elapsed = GetTickCount() - startCount;
         string direction = (count < 0 ? "MINUS" : "PLUS");
         this.logger.debug(__FUNCTION__, StringFormat("count=%s direction=%s elapsed=%d ms", StringUtil::addSign(count), direction, elapsed));
+
         return true;
     }
 
@@ -589,6 +593,7 @@ private:
                 this.isInitialized = false;
                 return false;
             }
+
             this.ema30Handle = poolEma30Handle;
             this.ema60Handle = poolEma60Handle;
             this.handleMarketContext = fromMarketContext;
@@ -608,6 +613,7 @@ private:
 
         this.logger.debug(__FUNCTION__, StringFormat("recreate. symbol=%s timeFrame=%d", fromMarketContext.symbolName, fromMarketContext.timeFrame));
         this.releaseHandles();
+
         this.ema30Handle = iMA(
             fromMarketContext.symbolName,
             fromMarketContext.timeFrame,
@@ -630,9 +636,12 @@ private:
             this.isInitialized = false;
             return false;
         }
+
         this.handleMarketContext = fromMarketContext;
         this.isInitialized = true;
+
         this.logger.debug(__FUNCTION__, StringFormat("initialized. ema30Handle=%d ema60Handle=%d", this.ema30Handle, this.ema60Handle));
+
         return true;
     }
 
@@ -645,6 +654,7 @@ private:
             this.ema60Handle = INVALID_HANDLE;
             return;
         }
+
         if (this.ema30Handle != INVALID_HANDLE) {
             IndicatorRelease(this.ema30Handle);
             this.ema30Handle = INVALID_HANDLE;

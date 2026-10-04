@@ -79,6 +79,7 @@ public:
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.clearPoints();
+
         this.marketContext = fromMarketContext;
         this.logger.setMarketContext(this.marketContext);
     }

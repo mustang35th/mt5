@@ -112,6 +112,7 @@ public:
         this.fiboExpansionPriceInfo.clear();
         this.isBuy = false;
         this.buySellLabel = "";
+
         this.initializeMarketContext(fromMarketContext);
     }
 
@@ -156,7 +157,9 @@ public:
         }
         
         bool isSucceeded = this.analyzeWaves(elliotHigher);
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, isSucceeded);
+
         return isSucceeded;
     }
 
@@ -182,6 +185,7 @@ public:
 
         this.setMarketContext(fromOriginal.marketContext);
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
         this.currentOhlcBarTime = fromOriginal.currentOhlcBarTime;
         this.previousOhlcBarTime = fromOriginal.previousOhlcBarTime;
         this.currentOhlcInfo = fromOriginal.currentOhlcInfo;
@@ -195,7 +199,9 @@ public:
             this.logger.error(__FUNCTION__, "corrected wave result is incomplete.");
             isSucceeded = false;
         }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, isSucceeded);
+
         return isSucceeded;
     }
 
@@ -472,6 +478,7 @@ private:
      */
     bool analyzeWaves(Elliot *fromHigher) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
         if (fromHigher == NULL) { // 最上位足
             ElliotHighest elliotHighest(this.marketContext, this.isBuy, this.buySellLabel);
 

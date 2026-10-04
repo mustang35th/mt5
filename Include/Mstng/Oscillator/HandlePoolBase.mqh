@@ -209,6 +209,7 @@ protected:
         }
 
         this.releaseAll();
+
         this.marketContext = fromMarketContext;
     }
 

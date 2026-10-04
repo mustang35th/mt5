@@ -248,9 +248,11 @@ private:
         CurrencyStrengthExecutionInfo executionInfo =
             fromElliotAll.currencyStrengthExecutionInfo;
         CurrencyStrengthPairRankInfo pairRankInfo = executionInfo.pairRankInfo;
+
         Mtf3In3H1ElliotStructureDecision structureDecision;
         Mtf3In3H1ElliotStructureResult structureResult;
         structureDecision.evaluate(fromElliotAll, structureResult);
+
         string side = getSide(fromResult.isBuy);
         double referencePrice = fromElliotAll.todayRate.bid;
 

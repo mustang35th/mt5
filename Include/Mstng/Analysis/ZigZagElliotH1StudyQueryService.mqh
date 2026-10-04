@@ -61,6 +61,7 @@ public:
         sql += "SELECT 1 FROM zigzag_elliot_observations AS observations ";
         sql += "WHERE observations.run_id = runs.id";
         sql += ") ORDER BY runs.id DESC";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -142,6 +143,7 @@ public:
         sql += "SELECT 1 FROM zigzag_elliot_observations AS observations ";
         sql += "WHERE observations.run_id = runs.id";
         sql += ") ORDER BY runs.id DESC LIMIT 1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -226,6 +228,7 @@ public:
         sql += " observations.anchor_time_frame, observations.capture_phase,";
         sql += " observations.analysis_version,";
         sql += " observations.analysis_input_hash";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -334,6 +337,7 @@ public:
         sql += "AND observations.analysis_input_hash = ?8 ";
         sql += "ORDER BY observations.anchor_bar_time ASC,";
         sql += " observations.id ASC";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -459,6 +463,7 @@ private:
         bool &fromHasColumn
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,

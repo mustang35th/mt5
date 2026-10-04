@@ -84,6 +84,7 @@ public:
     void setMarketContext(MarketContext &fromMarketContext) {
         this.marketContext = fromMarketContext;
         this.logger.setMarketContext(this.marketContext);
+
         this.rank = EXPERT_ADVISOR_ENTRY_RANK_NON;
         this.rankLabel = ExpertAdvisorBuySell::convertEntryRankToString(this.rank);
         this.isBuy = false;

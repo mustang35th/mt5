@@ -139,6 +139,7 @@ public:
     void setMarketContext(MarketContext &fromMarketContext) {
         this.zigZagPointList.Clear();
         this.waveList.Clear();
+
         this.initializeMarketContext(fromMarketContext);
     }
 

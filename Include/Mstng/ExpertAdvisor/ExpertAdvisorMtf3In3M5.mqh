@@ -51,6 +51,7 @@ public:
                 && this.elliotAll == this.correctedElliotAll) {
             return this.correctedTimeFrame;
         }
+
         return PERIOD_CURRENT;
     }
 
@@ -104,6 +105,7 @@ protected:
         if (isH4Matched && isH1Matched) {
             return fromOriginal;
         }
+
         if (!isH4Matched && !isH1Matched) {
             return NULL;
         }
@@ -112,6 +114,7 @@ protected:
         if (!isH4Matched) {
             correctionTimeFrame = PERIOD_H4;
         }
+
         this.correctedElliotAll = new ElliotAll(this.marketContext);
         if (this.correctedElliotAll == NULL
                 || !this.correctedElliotAll.analyzeWithDirectionCorrection(
@@ -120,7 +123,9 @@ protected:
             this.releaseCorrectedElliotAll();
             return NULL;
         }
+
         this.correctedTimeFrame = correctionTimeFrame;
+
         return this.correctedElliotAll;
     }
 
@@ -142,6 +147,7 @@ protected:
         if (this.marketContext.timeFrame != PERIOD_M5 || this.elliotAll == NULL) {
             return false;
         }
+
         Mtf3In3HigherTimeFrameDecision decision;
         ENUM_TIMEFRAMES timeFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
         for (int i = 0; i < ArraySize(timeFrames); i++) {
@@ -150,6 +156,7 @@ protected:
                 return false;
             }
         }
+
         return true;
     }
 
@@ -163,6 +170,7 @@ protected:
         if (this.marketContext.timeFrame != PERIOD_M5 || this.elliotAll == NULL) {
             return false;
         }
+
         return this.elliotAll.isBuySellH4OrH1AndM15();
     }
 
@@ -175,12 +183,14 @@ protected:
         if (this.marketContext.timeFrame != PERIOD_M5) {
             return false;
         }
+
         Mtf3In3HigherTimeFrameDecision decision;
         string rejectReason;
         bool isPassed = decision.evaluate(this.elliotAll, this.isBuy, rejectReason);
         if (!isPassed) {
             this.logger.debug(__FUNCTION__, "higher timeframe rejected: " + rejectReason);
         }
+
         return isPassed;
     }
 
@@ -207,11 +217,14 @@ protected:
         if (fromElliot == NULL || fromElliot.marketContext.timeFrame != PERIOD_M5) {
             return false;
         }
+
         ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
         if (latestPoint == NULL) {
             return false;
         }
+
         string elliotLabel = latestPoint.elliotLabel;
+
         return elliotLabel == "1" || elliotLabel == "3"
             || elliotLabel == "A" || elliotLabel == "C";
     }
@@ -280,11 +293,13 @@ protected:
                 || this.elliotAll != this.correctedElliotAll) {
             return chartAlertText;
         }
+
         if (this.correctedTimeFrame == PERIOD_H1) {
             chartAlertText += " [H1補正]";
         } else if (this.correctedTimeFrame == PERIOD_H4) {
             chartAlertText += " [H4補正]";
         }
+
         return chartAlertText;
     }
 
@@ -306,6 +321,7 @@ protected:
             );
             return;
         }
+
         Mail::sendMail(sourceAnalysis, this.isSendMail);
     }
 

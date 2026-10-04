@@ -182,6 +182,7 @@ private:
             
             ZigZagPointUtil::addPoint(analyzedZigZagPointList, zigZagPoint);
         }
+
         CArrayObj waveListNew;  // 再構築用Wave一覧。
         
         // 右側Waveをコピーする。

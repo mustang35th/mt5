@@ -57,6 +57,7 @@ public:
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.orgZigZagPointList.Clear();
+
         this.initializeMarketContext(fromMarketContext);
     }
     
@@ -256,6 +257,7 @@ private:
         if (index < 0) {
             return -1;
         }
+
         ZigZagPoint *zigZagPoint =
             this.orgZigZagPointList.At(index);
 

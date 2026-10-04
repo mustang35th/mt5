@@ -205,15 +205,19 @@ public:
         if (fromIndex == 0) {
             return PERIOD_MN1;
         }
+
         if (fromIndex == 1) {
             return PERIOD_W1;
         }
+
         if (fromIndex == 2) {
             return PERIOD_D1;
         }
+
         if (fromIndex == 3) {
             return PERIOD_H4;
         }
+
         if (fromIndex == 4) {
             return PERIOD_H1;
         }

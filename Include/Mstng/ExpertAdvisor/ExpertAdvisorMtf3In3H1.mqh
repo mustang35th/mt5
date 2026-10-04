@@ -68,6 +68,7 @@ public:
         if (this.correctedElliotAll != NULL && this.elliotAll == this.correctedElliotAll) {
             return this.correctedTimeFrame;
         }
+
         return PERIOD_CURRENT;
     }
 
@@ -94,12 +95,14 @@ protected:
         if (!this.isDirectionCorrectionEnabled) {
             return fromOriginal;
         }
+
         if (this.marketContext.timeFrame != PERIOD_H1
                 || fromOriginal == NULL || !fromOriginal.isAnalysisSucceeded
                 || fromOriginal.marketContext.timeFrame != PERIOD_H1
                 || fromOriginal.marketContext.symbolName != this.marketContext.symbolName) {
             return NULL;
         }
+
         Elliot *originalD1 = fromOriginal.getElliot(PERIOD_D1);
         Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
         Elliot *originalH1 = fromOriginal.getElliot(PERIOD_H1);
@@ -110,18 +113,22 @@ protected:
                 || fromOriginal.elliotCurrent != originalH1) {
             return NULL;
         }
+
         bool isD1Matched = originalD1.isBuy == originalH1.isBuy;
         bool isH4Matched = originalH4.isBuy == originalH1.isBuy;
         if (isD1Matched && isH4Matched) {
             return fromOriginal;
         }
+
         if (!isD1Matched && !isH4Matched) {
             return NULL;
         }
+
         ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_H4;
         if (!isD1Matched) {
             correctionTimeFrame = PERIOD_D1;
         }
+
         this.correctedElliotAll = new ElliotAll(this.marketContext);
         if (this.correctedElliotAll == NULL
                 || !this.correctedElliotAll.analyzeWithDirectionCorrection(
@@ -130,7 +137,9 @@ protected:
             this.releaseCorrectedElliotAll();
             return NULL;
         }
+
         this.correctedTimeFrame = correctionTimeFrame;
+
         return this.correctedElliotAll;
     }
 
@@ -164,6 +173,7 @@ protected:
         if (correctionTimeFrame != PERIOD_CURRENT) {
             originalAnalysis = this.getSourceElliotAll();
         }
+
         return decision.evaluate(
             this.h1DirectionAlignmentMode,
             this.elliotAll,
@@ -356,6 +366,7 @@ protected:
         if (chartAlertText != "" && correctionTimeFrame != PERIOD_CURRENT) {
             chartAlertText += " [" + TimeUtil::convertTimeFrameToString(correctionTimeFrame) + "補正]";
         }
+
         return chartAlertText;
     }
 
@@ -370,6 +381,7 @@ protected:
                 correctionTimeFrame, this.getChartAlertText());
             return;
         }
+
         Mail::sendMail(sourceAnalysis, this.isSendMail);
     }
 
@@ -393,9 +405,11 @@ private:
         if (fromAnalysis == NULL) {
             return "";
         }
+
         Mtf3In3H1ElliotStructureDecision structureDecision;
         Mtf3In3H1ElliotStructureResult structureResult;
         structureDecision.evaluate(fromAnalysis, structureResult);
+
         return "H1[" + structureResult.getDisplayLabel()
             + "] " + this.getThreeTimeFrameAlertText(fromAnalysis);
     }
