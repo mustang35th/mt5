@@ -75,6 +75,7 @@ public:
         signalDecision.mtf3In3AlertResult.reset();
 
         this.expertAdvisorMtf3In3BuySellD1.analyze(elliotAllValue, this.signalCount);
+
         this.updateElliottInfoText();
         signalDecision.isEntry = this.expertAdvisorMtf3In3BuySellD1.isEntry;
         signalDecision.isBuy = this.expertAdvisorMtf3In3BuySellD1.isBuy;
@@ -103,6 +104,7 @@ public:
             elliotAllValue,
             isBuyPositionValue
         );
+
         this.updateElliottInfoText();
         exitDecision.reason = this.expertAdvisorMtf3In3BuySellD1.name;
 

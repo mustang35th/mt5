@@ -85,6 +85,7 @@ public:
         ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, false);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false);
+
         ChartRedraw(this.chartId);
     }
 

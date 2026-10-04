@@ -140,6 +140,7 @@ private:
         this.marketContext = fromMarketContext;
         this.symbolName = fromMarketContext.symbolName;
         this.magicNumber = fromMagicNumber;
+
         this.refresh();
     }
 

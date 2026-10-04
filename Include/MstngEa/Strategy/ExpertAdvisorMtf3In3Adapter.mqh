@@ -46,6 +46,7 @@ public:
     ) {
         this.expertAdvisorMtf3In3 = NULL;
         this.signalCount = NULL;
+
         MarketContext context(symbolNameValue, timeFrameValue);
         this.initialize(
             context,
@@ -73,6 +74,7 @@ public:
     ) {
         this.expertAdvisorMtf3In3 = NULL;
         this.signalCount = NULL;
+
         this.initialize(
             fromMarketContext,
             fromSignalCount,
@@ -116,6 +118,7 @@ public:
 
         // 外部戦略で判定
         this.expertAdvisorMtf3In3.analyze(elliotAllValue, this.signalCount);
+
         this.updateElliottInfoText();
         signalDecision.isEntry = this.expertAdvisorMtf3In3.isEntry;
         signalDecision.isBuy = this.expertAdvisorMtf3In3.isBuy;
@@ -151,6 +154,7 @@ public:
             elliotAllValue,
             isBuyPositionValue
         );
+
         this.updateElliottInfoText();
         exitDecision.reason = this.expertAdvisorMtf3In3.name;
 

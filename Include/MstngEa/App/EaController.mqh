@@ -379,6 +379,7 @@ private:
             executionTime,
             executionInfo
         );
+
         elliotAllValue.setCurrencyStrengthExecutionInfo(executionInfo);
     }
 
@@ -498,7 +499,9 @@ private:
         this.pendingCurrencyStrengthElliotAll = NULL;
         this.pendingCurrencyStrengthEntryChartBarTime = 0;
         this.pendingCurrencyStrengthM5BarTime = 0;
+
         this.tryEntry(elliotAll);
+
         this.renderStatus();
         this.renderElliottInfo();
 
@@ -803,6 +806,7 @@ private:
                 this.eaContext.profitRetracementState.copyFrom(restoredState);
                 this.eaContext.profitRetracementState.isInitialStatePersisted = true;
                 this.isProfitRetracementStateSynchronized = true;
+
                 this.reconcileRestoredProfitRetracementState(positionSnapshot);
 
                 if (this.eaContext.operationLogger != NULL) {
@@ -969,6 +973,7 @@ private:
         state.configuredStartR = this.eaContext.eaConfig.profitRetracementStartR;
         state.configuredRetracementRate =
             this.eaContext.eaConfig.profitRetracementRate;
+
         this.updateProfitRetracementState(fromPositionSnapshot);
 
         if (isForceSaveRequired) {
@@ -1045,6 +1050,7 @@ private:
         }
 
         this.clearProfitRetracementPersistenceError();
+
         return true;
     }
 
@@ -1345,6 +1351,7 @@ private:
         }
 
         triggerPrice -= triggerDistance;
+
         return fromPrice <= triggerPrice;
     }
 
@@ -1605,6 +1612,7 @@ private:
             this.eaContext.lastError = "";
             this.pendingH1ZigZagTrailRetryAtMilliseconds =
                 currentMilliseconds + 1000;
+
             this.eaContext.positionService.refresh();
 
             if (!this.eaContext.positionService.hasPosition()) {
@@ -1649,6 +1657,7 @@ private:
 
         this.eaContext.lastAction = "H1 ZIGZAG TRAIL";
         this.eaContext.lastError = "";
+
         this.eaContext.positionService.refresh();
 
         PositionSnapshot refreshedPositionSnapshot =
@@ -1779,6 +1788,7 @@ private:
             SYMBOL_TRADE_FREEZE_LEVEL,
             freezeLevel
         );
+
         long minimumLevel = stopsLevel;
 
         if (freezeLevel > minimumLevel) {
@@ -2631,6 +2641,7 @@ private:
         datetime firstDay = StructToTime(dateTime);
         MqlDateTime firstDayStruct;
         TimeToStruct(firstDay, firstDayStruct);
+
         int firstWeekDay = firstDayStruct.day_of_week;
         int offsetDays = dayOfWeekValue - firstWeekDay;
 
@@ -2653,6 +2664,7 @@ private:
     string formatDateTime(datetime dateTimeValue) {
         MqlDateTime dateTime;
         TimeToStruct(dateTimeValue, dateTime);
+
         string text = IntegerToString(dateTime.year);
         text += "." + this.padLeft(dateTime.mon);
         text += "." + this.padLeft(dateTime.day);

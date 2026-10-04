@@ -48,6 +48,7 @@ public:
             H1_EMA200_CONFIRMATION_H1_ONLY
     ) {
         MarketContext context(symbolNameValue, timeFrameValue);
+
         return StrategyFactory::create(
             strategyTypeValue,
             context,

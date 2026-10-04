@@ -129,6 +129,7 @@ public:
         this.lastSavedText = this.buildStateText(fromState);
         this.lastSaveMilliseconds = GetTickCount64();
         this.isKnownEmpty = false;
+
         return true;
     }
 
@@ -183,6 +184,7 @@ public:
         persistedText += "updated_server_time="
             + (string)((long)TimeCurrent())
             + "\r\n";
+
         uint writtenSize = FileWriteString(fileHandle, persistedText);
         FileFlush(fileHandle);
         FileClose(fileHandle);
@@ -215,6 +217,7 @@ public:
         this.lastSavedText = stateText;
         this.lastSaveMilliseconds = currentMilliseconds;
         this.isKnownEmpty = false;
+
         return true;
     }
 
@@ -447,6 +450,7 @@ private:
             this.lastErrorMessage = "Profit retracement side is invalid";
             return false;
         }
+
         fromState.isBuy = boolValue;
 
         if (!this.getLineValue(fromLines[11], "open_price", value)
@@ -490,6 +494,7 @@ private:
             this.lastErrorMessage = "Profit retracement initial risk availability is invalid";
             return false;
         }
+
         fromState.isInitialRiskAvailable = boolValue;
 
         if (!this.getLineValue(fromLines[18], "activated", value)
@@ -497,6 +502,7 @@ private:
             this.lastErrorMessage = "Profit retracement activation is invalid";
             return false;
         }
+
         fromState.activated = boolValue;
 
         if (!this.getLineValue(fromLines[19], "configured_start_r", value)
@@ -646,6 +652,7 @@ private:
         stateText += "activated=" + activatedText + "\r\n";
         stateText += "configured_start_r=" + DoubleToString(fromState.configuredStartR, 16) + "\r\n";
         stateText += "configured_rate=" + DoubleToString(fromState.configuredRetracementRate, 16) + "\r\n";
+
         return stateText;
     }
 
@@ -665,6 +672,7 @@ private:
         }
 
         fromValue = StringSubstr(fromLine, StringLen(prefix));
+
         return true;
     }
 
@@ -681,6 +689,7 @@ private:
         }
 
         fromValue = StringToInteger(fromText);
+
         return true;
     }
 
@@ -703,6 +712,7 @@ private:
         }
 
         fromValue = (ulong)signedValue;
+
         return true;
     }
 
@@ -754,6 +764,7 @@ private:
         }
 
         fromValue = StringToDouble(fromText);
+
         return MathIsValidNumber(fromValue);
     }
 
@@ -835,6 +846,7 @@ private:
         filePathValue += "_" + (string)((long)this.marketContext.timeFrame);
         filePathValue += "_" + (string)this.magicNumber;
         filePathValue += "_profitRetracementV1.state";
+
         return filePathValue;
     }
 
@@ -869,6 +881,7 @@ private:
         StringReplace(value, "<", "_");
         StringReplace(value, ">", "_");
         StringReplace(value, "|", "_");
+
         return value;
     }
 
