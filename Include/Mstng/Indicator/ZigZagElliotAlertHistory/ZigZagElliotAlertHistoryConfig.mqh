@@ -69,24 +69,29 @@ public:
         fromStartTime = 0;
         fromEndTime = 0;
         fromError = "";
+
         if (this.databaseFileName == "" || this.runId < 0
                 || this.startDate < 0 || this.endDate < 0
                 || (this.higherCount != 2 && this.higherCount != 3)) {
             fromError = "DBファイル名・Run・日付・上位足数の設定を確認してください。";
             return false;
         }
+
         if (!this.getDayStart(this.startDate, fromStartTime)
                 || !this.getDayStart(this.endDate, fromEndTime)) {
             fromError = "表示期間の日付を読み取れません。";
             return false;
         }
+
         if (fromStartTime > 0 && fromEndTime > 0 && fromStartTime > fromEndTime) {
             fromError = "表示開始日を表示終了日以前にしてください。";
             return false;
         }
+
         if (fromEndTime > 0) {
             fromEndTime += 86400;
         }
+
         return true;
     }
 
@@ -96,17 +101,21 @@ private:
      */
     bool getDayStart(const datetime fromDate, datetime &fromDayStart) {
         fromDayStart = 0;
+
         if (fromDate == 0) {
             return true;
         }
+
         MqlDateTime dateParts;
         if (!TimeToStruct(fromDate, dateParts)) {
             return false;
         }
+
         dateParts.hour = 0;
         dateParts.min = 0;
         dateParts.sec = 0;
         fromDayStart = StructToTime(dateParts);
+
         return fromDayStart > 0;
     }
 };

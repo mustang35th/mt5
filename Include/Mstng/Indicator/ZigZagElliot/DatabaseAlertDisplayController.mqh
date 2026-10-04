@@ -32,6 +32,7 @@ public:
      */
     ~DatabaseAlertDisplayController() {
         this.reader.close();
+
         if (this.drawer != NULL) {
             this.drawer.clear();
             delete this.drawer;
@@ -56,6 +57,7 @@ public:
         this.config.entryOnly = fromConfig.databaseAlertDisplayEntryOnly;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
+
         string error = "";
         if ((this.marketContext.timeFrame != PERIOD_M5 && this.marketContext.timeFrame != PERIOD_H1)
                 || (fromConfig.databaseAlertDisplayRunScope != DATABASE_ALERT_RUN_SELECTED
@@ -63,16 +65,20 @@ public:
             this.reportError("DBアラート表示の時間足・Run対象を確認してください。");
             return false;
         }
+
         if (!this.config.getPeriod(this.startTime, this.endTime, error)) {
             this.reportError(error);
             return false;
         }
+
         this.sourceMode = "LIVE";
         if (Util::isStrategyTester()) {
             this.sourceMode = "TESTER";
         }
+
         string prefix = "ZzeDbAlert-" + IntegerToString((long)GetMicrosecondCount()) + "-";
         this.drawer = new DrawZigZagElliotAlertMarkers(ChartID(), prefix);
+
         return this.drawer != NULL;
     }
 
@@ -84,6 +90,7 @@ public:
         if (this.drawer == NULL) {
             return;
         }
+
         if (fromBarTime <= 0 || fromKnownTime <= 0 || fromSourceServer == "") {
             ArrayFree(this.markers);
             this.resolvedRunId = 0;
@@ -93,10 +100,12 @@ public:
             this.reportError("DBアラート表示はサーバー名・現在時刻の取得待ちです。");
             return;
         }
+
         bool contextChanged = this.sourceServer != fromSourceServer || fromKnownTime < this.lastKnownTime;
         if (!contextChanged && this.lastBarTime == fromBarTime) {
             return;
         }
+
         if (contextChanged) {
             ArrayFree(this.markers);
             this.resolvedRunId = 0;
@@ -105,6 +114,7 @@ public:
         this.sourceServer = fromSourceServer;
         this.lastBarTime = fromBarTime;
         this.lastKnownTime = fromKnownTime;
+
         long runId = this.config.runId;
         if (!this.allRuns && runId == 0 && this.resolvedRunId > 0) {
             runId = this.resolvedRunId;
@@ -123,27 +133,32 @@ public:
             this.redraw(fromKnownTime);
             return;
         }
+
         if (ArrayResize(this.markers, ArraySize(loadedMarkers)) != ArraySize(loadedMarkers)) {
             ArrayFree(this.markers);
             this.reportError("DBアラート表示のメモリを確保できません。");
             this.redraw(fromKnownTime);
             return;
         }
+
         for (int i = 0; i < ArraySize(loadedMarkers); i++) {
             this.markers[i] = loadedMarkers[i];
         }
+
         int unavailableCount = 0;
         for (int i = 0; i < ArraySize(this.markers); i++) {
             if (!this.markers[i].available) {
                 unavailableCount++;
             }
         }
+
         if (this.lastError != "" || this.resolvedRunId != selectedRunId
                 || this.lastUnavailableCount != unavailableCount) {
             this.logger.info(__FUNCTION__, StringFormat("DB alert display run=%I64d allRuns=%d frame=%s count=%d unavailable=%d mode=%s server=%s",
                 selectedRunId, (int)this.allRuns, EnumToString(this.marketContext.timeFrame),
                 ArraySize(this.markers), unavailableCount, this.sourceMode, this.sourceServer));
         }
+
         this.lastError = "";
         this.lastUnavailableCount = unavailableCount;
         this.resolvedRunId = selectedRunId;
@@ -157,10 +172,12 @@ public:
         if (this.drawer == NULL) {
             return;
         }
+
         if (fromKnownTime <= 0) {
             this.drawer.clear();
             return;
         }
+
         this.drawer.draw(this.markers, Constant::PREFIX_FIXED + "TextMTF_3in3", fromKnownTime);
     }
 

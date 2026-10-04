@@ -392,6 +392,7 @@ public:
         }
 
         this.cleanupOrphanedObjects();
+
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
         this.lastProcessedBarTime = 0;
@@ -776,6 +777,7 @@ private:
         if (this.databaseAlertDisplayController == NULL) {
             return;
         }
+
         this.databaseAlertDisplayController.update(fromBarTime, TimeCurrent(), AccountInfoString(ACCOUNT_SERVER));
         if (this.currencyStrengthController != NULL) {
             this.currencyStrengthController.redrawOnTop();

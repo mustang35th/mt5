@@ -547,6 +547,7 @@ private:
 
                     return false;
                 }
+
                 if (this.captureQualityVisible && !this.createLabel(
                     this.getQualityObjectName(i),
                     14 + (columnIndex * this.detailColumnWidth),
@@ -885,6 +886,7 @@ private:
         if (fromStatus.symbolHistoryReady[fromIndex]) {
             historyText = "OK";
         }
+
         return fromStatus.symbolNames[fromIndex]
             + "\n履歴準備: " + historyText
             + "\n" + fromStatus.symbolMessages[fromIndex];
@@ -929,6 +931,7 @@ private:
             }
             tooltip += "\nCaptured values; DB Save status is shown separately.";
         }
+
         string objectName = this.getQualityObjectName(fromIndex);
         if (this.lastQualityTexts[fromIndex] != text) {
             ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, text);
@@ -949,6 +952,7 @@ private:
         if (!fromAvailable) {
             return "-";
         }
+
         return IntegerToString(fromValue);
     }
 
@@ -959,15 +963,19 @@ private:
         if (!fromAvailable) {
             return "-";
         }
+
         if (fromMilliseconds < 1000) {
             return IntegerToString(fromMilliseconds) + "ms";
         }
+
         if (fromMilliseconds < 60000) {
             return DoubleToString((double)fromMilliseconds / 1000.0, 1) + "s";
         }
+
         if (fromMilliseconds < 3600000) {
             return DoubleToString((double)fromMilliseconds / 60000.0, 1) + "m";
         }
+
         return DoubleToString((double)fromMilliseconds / 3600000.0, 1) + "h";
     }
 
@@ -1081,6 +1089,7 @@ private:
                     && fromStatus.historyReadyCount == fromStatus.targetCount) {
                 return this.okColor;
             }
+
             return this.waitColor;
         }
 
@@ -1301,6 +1310,7 @@ private:
      */
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
+
         this.created = false;
         this.createdDetailVisible = false;
         this.resetCache();

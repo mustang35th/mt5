@@ -106,6 +106,7 @@ public:
         }
 
         this.updateTitle(fromCandidateList);
+
         int candidateCount = fromCandidateList.size();
 
         for (int i = 0; i < this.maximumCount; i++) {
@@ -223,6 +224,7 @@ private:
      */
     bool create() {
         this.destroyObjects();
+
         int panelHeight = this.firstRowYDistance
             + this.maximumCount * this.rowHeight
             + this.bottomPadding;

@@ -159,6 +159,7 @@ public:
         );
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(allContext);
+
         this.symbolNameInfoAll = new SymbolNameInfoAll();
 
         if (this.symbolNameInfoAll == NULL) {
@@ -195,6 +196,7 @@ public:
         }
 
         this.oscillatorHandleManager.setTimeframesFromMn1ToAll();
+
         this.setDatabaseRun();
         this.nextDatabaseRetryTime =
             TimeLocal() + this.databaseRetrySeconds;
@@ -219,6 +221,7 @@ public:
         }
 
         this.initialized = true;
+
         this.execute();
         this.refreshStatus();
 
@@ -549,6 +552,7 @@ private:
                     "全通貨のTESTER事前分析成功待ち";
             }
         }
+
         ulong elapsed = GetTickCount64() - startTick;
         this.lastExecutionMilliseconds = (int)elapsed;
         this.executing = false;
@@ -575,6 +579,7 @@ private:
         if (currentTime <= 0) {
             return false;
         }
+
         if (currentTime >= this.observationTesterSaveStartTime) {
             if (this.testerWarmupActive) {
                 this.logger.info(__FUNCTION__,
@@ -599,6 +604,7 @@ private:
                 && elapsedSeconds < 3600) {
             return true;
         }
+
         this.lastTesterWarmupTime = currentTime;
 
         return false;
@@ -657,18 +663,22 @@ private:
         if (this.competingWriterDetected || this.databaseRejected) {
             return "STOPPED";
         }
+
         if (this.databaseRun.sourceServer == ""
                 || this.lastDatabaseMessage == "取引サーバー情報を取得待ち") {
             return "SOURCE_WAIT";
         }
+
         if (this.isTesterSaveWindowEnabled()) {
             if (fromCurrentTime < this.observationTesterSaveStartTime) {
                 return "WARMUP";
             }
+
             if (!this.testerSaveGateOpen) {
                 return "WAIT_GATE";
             }
         }
+
         if (!this.databaseReady) {
             return "DB_WAIT";
         }
@@ -747,6 +757,7 @@ private:
 
             this.pendingAnalysisH1BarTimes[fromIndex] = currentH1BarTime;
             this.symbolRetryCounts[fromIndex] = 0;
+
             this.capturePendingObservation(fromIndex);
 
             return;
@@ -911,6 +922,7 @@ private:
         }
         this.testerPreflightAttemptH1BarTimes[fromIndex] =
             fromCurrentH1BarTime;
+
         this.capturePendingObservation(fromIndex, true);
     }
 
@@ -970,6 +982,7 @@ private:
                         != this.currentH1BarTimes[i]) {
                 return false;
             }
+
             if (this.observationProfile.isM5()
                     && iTime(this.symbolNames[i], PERIOD_M5, 0)
                         != this.currentBatchH1BarTime) {
@@ -993,6 +1006,7 @@ private:
                 "TESTER観測保存を開始"
             );
         }
+
         this.logger.info(
             __FUNCTION__,
             StringFormat(
@@ -1160,6 +1174,7 @@ private:
 
                 return;
             }
+
             this.handleBoundaryChangedDuringAnalysis(
                 fromIndex,
                 targetH1BarTime,
@@ -1178,6 +1193,7 @@ private:
         } else {
             this.setSymbolStatus(fromIndex, "RUN", "Elliott分析中");
         }
+
         MarketContext marketContext(
             symbolName,
             this.observationProfile.getAnchorTimeFrame()
@@ -1215,6 +1231,7 @@ private:
             this.observationProfile.getAnalysisStartTimeFrame()
         );
         elliotAll.setOscillatorHandlePool(handlePool);
+
         MqlTick quoteTick;
         ZeroMemory(quoteTick);
 
@@ -1261,6 +1278,7 @@ private:
             elliotAll.analyze();
         }
         ulong analysisElapsed = GetTickCount64() - analysisStartedTick;
+
         datetime afterH1BarTime = iTime(
             symbolName,
             this.observationProfile.getAnchorTimeFrame(),
@@ -1278,6 +1296,7 @@ private:
 
                 return;
             }
+
             this.handleBoundaryChangedDuringAnalysis(
                 fromIndex,
                 targetH1BarTime,
@@ -1345,6 +1364,7 @@ private:
             captureMetrics.analysisElapsedMs = (long)analysisElapsed;
             captureMetrics.hasAnalysisAttemptCount = true;
             captureMetrics.analysisAttemptCount = this.captureAnalysisAttempts[fromIndex];
+
             isBuilt = ZigZagElliotObservationSnapshotBuilder::build(
                 elliotAll,
                 snapshotRun,
@@ -1362,6 +1382,7 @@ private:
                 queueItem.snapshot
             );
         }
+
         delete elliotAll;
 
         if (!isBuilt) {
@@ -1387,6 +1408,7 @@ private:
 
                 return;
             }
+
             long captureMarketTime = (long)TimeCurrent();
             ulong captureFinishedTick = GetTickCount64();
             queueItem.snapshot.captureMetrics.hasCaptureMarketTime =
@@ -1456,6 +1478,7 @@ private:
                 );
                 this.observeCaptureBoundary(fromIndex, fromCurrentH1BarTime);
             }
+
             this.lastDetectedH1BarTimes[fromIndex] = fromCurrentH1BarTime;
             this.pendingAnalysisH1BarTimes[fromIndex] =
                 fromCurrentH1BarTime;
@@ -1511,6 +1534,7 @@ private:
 
             long expectedRunId = this.databaseRun.id;
             queueItem.snapshot.observation.runId = expectedRunId;
+
             bool isSaved = false;
             if (this.observationProfile.isM5()) {
                 isSaved = this.observationPersistenceService.saveSnapshot(queueItem.snapshot);
@@ -1641,9 +1665,11 @@ private:
      */
     bool tryInitializeDatabase() {
         this.releaseDatabase(false);
+
         if (this.observationProfile.isM5()) {
             return this.tryInitializeM5Database();
         }
+
         this.databaseRun.sourceServer =
             AccountInfoString(ACCOUNT_SERVER);
         this.databaseRun.sourceLogin =
@@ -1718,6 +1744,7 @@ private:
             delete this.m5DatabaseContext;
             this.m5DatabaseContext = NULL;
         }
+
         if (fromClearRun) {
             ZeroMemory(this.databaseRun);
         }
@@ -1909,6 +1936,7 @@ private:
         bool historyReady = this.historyPreparations[fromIndex].prepare(
             this.observationTesterSaveStartTime
         );
+
         this.logM5HistoryStatus(
             fromIndex,
             this.historyPreparations[fromIndex].getMissingStatusText()
@@ -1946,6 +1974,7 @@ private:
                     || elapsedSeconds < 3600)) {
             return;
         }
+
         this.logger.info(__FUNCTION__,
             "ANALYSIS_HISTORY_UNAVAILABLE symbol=" + this.symbolNames[fromIndex]
                 + " " + fromHistoryText);
@@ -2227,6 +2256,7 @@ private:
                 && !this.testerSaveGateOpen) {
             return 0;
         }
+
         int count = 0;
 
         for (int i = 0; i < ArraySize(this.currentH1BarTimes); i++) {
@@ -2256,6 +2286,7 @@ private:
                 && !this.testerSaveGateOpen) {
             return 0;
         }
+
         int count = 0;
 
         for (int i = 0; i < ArraySize(this.lastCapturedH1BarTimes); i++) {
@@ -2279,6 +2310,7 @@ private:
                 && !this.testerSaveGateOpen) {
             return 0;
         }
+
         int count = 0;
 
         for (int i = 0; i < ArraySize(this.lastSavedH1BarTimes); i++) {
@@ -2299,6 +2331,7 @@ private:
         for (int i = 0; i < requiredTargetSymbolCount; i++) {
             this.historyPreparations[i].reset();
         }
+
         ArrayResize(this.captureTargetBarTimes, 0);
         ArrayResize(this.captureDetectedTicks, 0);
         ArrayResize(this.captureAnalysisAttempts, 0);
@@ -2331,6 +2364,7 @@ private:
                 || this.captureTargetBarTimes[fromIndex] == fromBarTime) {
             return;
         }
+
         this.captureTargetBarTimes[fromIndex] = fromBarTime;
         this.captureDetectedTicks[fromIndex] = GetTickCount64();
         this.captureAnalysisAttempts[fromIndex] = 0;
@@ -2373,6 +2407,7 @@ private:
 
             return false;
         }
+
         this.databaseReady = true;
         this.nextDatabaseRetryTime = 0;
         this.lastDatabaseMessage = "";
@@ -2393,6 +2428,7 @@ private:
         if (!this.observationProfile.isM5()) {
             return true;
         }
+
         string sourceServer = AccountInfoString(ACCOUNT_SERVER);
         long sourceLogin = (long)AccountInfoInteger(ACCOUNT_LOGIN);
         if (sourceServer == "") {
@@ -2400,12 +2436,14 @@ private:
 
             return false;
         }
+
         if (this.databaseRun.sourceServer == "") {
             this.databaseRun.sourceServer = sourceServer;
             this.databaseRun.sourceLogin = sourceLogin;
 
             return true;
         }
+
         if (this.databaseRun.sourceServer != sourceServer
                 || this.databaseRun.sourceLogin != sourceLogin) {
             this.databaseRejected = true;
@@ -2417,9 +2455,11 @@ private:
 
             return false;
         }
+
         if (this.lastDatabaseMessage == "取引サーバー情報を取得待ち") {
             this.lastDatabaseMessage = "";
         }
+
         return true;
     }
 
@@ -2430,6 +2470,7 @@ private:
         if (this.observationProfile.isM5()) {
             return "M5";
         }
+
         return "H1";
     }
 

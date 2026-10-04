@@ -119,6 +119,7 @@ public:
 
         int displayOrder[];
         this.buildDisplayOrder(fromCalculator, displayOrder);
+
         this.updateTitle(fromCalculator);
         bool isRankingValid = fromCalculator.validPairCount
             == fromCalculator.getExpectedPairCount();

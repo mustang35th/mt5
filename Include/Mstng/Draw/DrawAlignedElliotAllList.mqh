@@ -1237,6 +1237,7 @@ private:
         )) {
             return false;
         }
+
         int legendCount = ArraySize(legendTexts);
         int legendColumnWidth = legendWidth / legendCount;
 
@@ -1485,6 +1486,7 @@ private:
 
         ArrayResize(fromDisplayIndexes, displayCount);
         ArrayResize(fromRunnerUpResults, displayCount);
+
         this.sortH1RunnerUpOrder(fromDisplayIndexes, fromRunnerUpResults);
 
         return displayCount;
@@ -1882,6 +1884,7 @@ private:
                 priorityTimeFrame,
                 priorityResult
             );
+
             D1ElliotEmaSortResult d1SortResult;
             d1SortResult.reset();
             H1D1EntrySortResult h1D1SortResult;
@@ -1924,6 +1927,7 @@ private:
         ArrayResize(fromD1SortResults, displayCount);
         ArrayResize(fromH1D1SortResults, displayCount);
         ArrayResize(fromM15SortResults, displayCount);
+
         this.sortDisplayOrder(
             fromCurrentTimeFrame,
             fromDisplayIndexes,
@@ -2216,6 +2220,7 @@ private:
             this.getSymbolText(fromElliotAll.marketContext.symbolName),
             symbolColor
         );
+
         string emaReferenceText = "EMA200";
         color emaReferenceColor = this.headerColor;
 
@@ -2250,6 +2255,7 @@ private:
             emaReferenceText,
             emaReferenceColor
         );
+
         string entryText = this.getEntryPriorityText(
             fromPriorityResult.rank
         );

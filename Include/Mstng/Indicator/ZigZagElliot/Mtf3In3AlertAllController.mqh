@@ -96,6 +96,7 @@ public:
         ZigZagElliotConfig &fromConfig
     ) {
         this.destroy();
+
         this.symbolName = fromSymbolName;
         MarketContext context(this.symbolName, PERIOD_H1);
         this.expertAdvisor = ExpertAdvisorMtf3In3Factory::create(
@@ -215,6 +216,7 @@ public:
         const bool fromOneMinuteOhlcConfirmed
     ) {
         this.destroy();
+
         this.config = fromConfig;
         this.config.applyH1EntryPolicy();
         this.testerMode = Util::isStrategyTester();
@@ -598,6 +600,7 @@ public:
             elliotAll.isH1DisplayWaveEntryLimitEnabled =
                 this.config.h1DisplayWaveEntryLimitEnabled;
             elliotAll.isCurrencyStrengthEntryFilterEnabled = false;
+
             state.expertAdvisor.analyze(
                 elliotAll,
                 state.signalCount
@@ -1647,6 +1650,7 @@ private:
             this.lastCompletedH1BarTime;
         this.databaseRun.evaluatedH1Count = this.evaluatedH1Count;
         this.databaseRun.savedAlertCount = this.totalSavedCount;
+
         bool isPersisted = this.persistRunProgress();
         string summary = StringFormat(
             "all-symbol Alert Run finalized. runId=%I64d status=%s evaluationStart=%s lastCompleted=%s expectedLast=%s evaluated=%d saved=%d pending=%d persisted=%d",

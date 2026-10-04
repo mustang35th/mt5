@@ -81,6 +81,7 @@ public:
         this.errorColor = clrTomato;
         this.rankGridColor = C'45,45,45';
         this.rankGridBoundaryColor = C'90,90,90';
+
         this.calculateYDistance();
     }
 
@@ -229,6 +230,7 @@ public:
             0
         );
         this.setLabelText("M5BarTime", "M5 -", this.mutedColor);
+
         this.hasRankData = false;
         this.lastExecutionInfo.reset();
         this.lastBaseCurrency = fromBaseCurrency;
@@ -447,6 +449,7 @@ private:
      */
     bool create() {
         this.destroyObjects();
+
         this.calculateYDistance();
 
         if (!this.createRankGrid()) {

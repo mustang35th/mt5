@@ -190,6 +190,7 @@ private:
      */
     string createObjectName(double price, bool is100PipsLine) {
         string prefix = is100PipsLine ? "ROUND_100_" : "ROUND_050_";
+
         return prefix + IntegerToString((int)MathRound(price / this.marketContext.getPoint()));
     }
 };

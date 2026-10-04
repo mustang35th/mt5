@@ -194,6 +194,7 @@ public:
             0,
             -1
         );
+
         this.resetState();
     }
 

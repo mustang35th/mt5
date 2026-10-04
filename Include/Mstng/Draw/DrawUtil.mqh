@@ -43,6 +43,7 @@ public:
         double drawPrice = iOpen(NULL, NULL, position) + offset;
         
         ObjectCreate(chartId, objectName, OBJ_ARROW, 0, drawDatetime, drawPrice);
+
         ObjectSetInteger(chartId, objectName, OBJPROP_COLOR, fontColor);
         ObjectSetInteger(chartId, objectName, OBJPROP_ARROWCODE, arrowCode);
         ObjectSetInteger(chartId, objectName, OBJPROP_WIDTH, arrowWidth);

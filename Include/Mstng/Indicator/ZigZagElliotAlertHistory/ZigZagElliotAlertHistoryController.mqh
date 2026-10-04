@@ -48,42 +48,53 @@ public:
         this.config = fromConfig;
         this.chartId = ChartID();
         this.symbolName = ChartSymbol(this.chartId);
+
         if (ChartPeriod(this.chartId) != PERIOD_M5) {
             this.logger.error(__FUNCTION__, "履歴表示はM5チャートで使用してください。");
             return INIT_PARAMETERS_INCORRECT;
         }
+
         if (!this.config.getPeriod(this.startTime, this.endTime, this.loadError)) {
             this.logger.error(__FUNCTION__, this.loadError);
             return INIT_PARAMETERS_INCORRECT;
         }
+
         if (ObjectFind(this.chartId, "ZzeHistoryOwner") >= 0) {
             this.logger.error(__FUNCTION__, "同じチャートには履歴表示を一つだけ追加してください。");
             return INIT_FAILED;
         }
+
         this.ownsMarker = ObjectCreate(this.chartId, "ZzeHistoryOwner", OBJ_LABEL, 0, 0, 0);
         if (!this.ownsMarker) {
             return INIT_FAILED;
         }
+
         // オブジェクト名の63文字制限内に収め、重複起動時は既存の接頭辞を所有しない。
         this.prefix = "ZzeHistory-" + IntegerToString((long)GetMicrosecondCount()) + "-";
         ObjectSetInteger(this.chartId, "ZzeHistoryOwner", OBJPROP_HIDDEN, true);
         ObjectSetString(this.chartId, "ZzeHistoryOwner", OBJPROP_TEXT, "");
+
         this.drawer = new DrawZigZagElliotAlertHistory(this.chartId, this.prefix + "Wave-");
         if (this.drawer == NULL) {
             return INIT_FAILED;
         }
+
         this.markerDrawer = new DrawZigZagElliotAlertMarkers(this.chartId, this.prefix);
         if (this.markerDrawer == NULL) {
             return INIT_FAILED;
         }
+
         this.originalAutoScroll = (bool)ChartGetInteger(this.chartId, CHART_AUTOSCROLL);
         this.autoScrollCaptured = true;
+
         if (!EventSetTimer(1)) {
             this.logger.error(__FUNCTION__, "履歴表示タイマーを開始できません。");
             return INIT_FAILED;
         }
+
         IndicatorSetString(INDICATOR_SHORTNAME, "ZigZagElliot Alert History");
         this.reload();
+
         return INIT_SUCCEEDED;
     }
 
@@ -95,6 +106,7 @@ public:
             this.needsRedraw = true;
             return;
         }
+
         if (fromEventId == CHARTEVENT_OBJECT_CLICK
                 && StringFind(fromObjectName, this.prefix + "Marker-") == 0) {
             for (int i = 0; i < ArraySize(this.alertIds); i++) {
@@ -103,12 +115,15 @@ public:
                     return;
                 }
             }
+
             return;
         }
+
         if (fromEventId != CHARTEVENT_OBJECT_CLICK
                 || StringFind(fromObjectName, this.prefix + "Ui-") != 0) {
             return;
         }
+
         ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
         string action = StringSubstr(fromObjectName, StringLen(this.prefix + "Ui-"));
         if (action == "Previous" && this.selectedIndex > 0) {
@@ -129,6 +144,7 @@ public:
                 this.view = ALERT_HISTORY_COMPARISON;
             }
         }
+
         this.render();
     }
 
@@ -140,6 +156,7 @@ public:
             this.prepareHistory();
             this.needsRedraw = true;
         }
+
         if (this.needsRedraw) {
             this.render();
         }
@@ -167,6 +184,7 @@ public:
             ObjectDelete(this.chartId, "ZzeHistoryOwner");
             this.ownsMarker = false;
         }
+
         if (this.autoScrollCaptured) {
             ChartSetInteger(this.chartId, CHART_AUTOSCROLL, this.originalAutoScroll);
             this.autoScrollCaptured = false;
@@ -266,6 +284,7 @@ private:
         if (this.selectedIndex >= 0 && this.selectedIndex < ArraySize(this.alertIds)) {
             previousId = this.alertIds[this.selectedIndex];
         }
+
         this.reader.close();
         this.snapshot.clear();
         this.snapshotLoaded = false;
@@ -277,6 +296,7 @@ private:
         ArrayFree(this.markers);
         this.drawer.clear();
         this.markerDrawer.clear();
+
         if (!this.reader.open(this.config.databaseFileName, this.config.useCommonFolder, this.loadError)
                 || !this.reader.selectMarkers(this.symbolName, this.config.runId,
                     this.startTime, this.endTime, this.config.entryOnly,
@@ -285,11 +305,13 @@ private:
             this.render();
             return;
         }
+
         if (ArraySize(this.alertIds) == 0) {
             this.loadError = "指定した通貨・Run・期間に一致するM5アラートがありません。";
             this.render();
             return;
         }
+
         int initialIndex = 0;
         for (int i = 0; i < ArraySize(this.alertIds); i++) {
             if (this.alertIds[i] == previousId) {
@@ -297,6 +319,7 @@ private:
                 break;
             }
         }
+
         this.select(initialIndex);
     }
 
@@ -307,6 +330,7 @@ private:
         if (fromIndex < 0 || fromIndex >= ArraySize(this.alertIds)) {
             return;
         }
+
         this.drawer.clear();
         this.snapshot.clear();
         this.snapshotLoaded = false;
@@ -315,11 +339,13 @@ private:
         this.loadError = "";
         this.selectedIndex = fromIndex;
         this.view = ALERT_HISTORY_SELECTED;
+
         if (!this.reader.loadSnapshot(this.alertIds[fromIndex], this.snapshot, this.loadError)) {
             this.logger.error(__FUNCTION__, this.loadError);
             this.render();
             return;
         }
+
         if (this.snapshot.alert.symbolName != this.symbolName
                 || this.snapshot.alert.timeFrame != PERIOD_M5
                 || this.snapshot.alert.runId != this.resolvedRunId) {
@@ -328,11 +354,13 @@ private:
             this.render();
             return;
         }
+
         this.snapshotLoaded = true;
         if (this.snapshot.correctionStatus == "UNRECORDED"
                 || this.snapshot.correctionStatus == "INCOMPLETE") {
             this.view = ALERT_HISTORY_ORIGINAL;
         }
+
         this.beginHistory();
         this.render();
     }
@@ -354,10 +382,12 @@ private:
                 this.historyEndTime = this.markers[i].barTime;
             }
         }
+
         this.findHistoryStart(this.snapshot.originalPoints);
         if (this.snapshot.correctionStatus == "APPLIED") {
             this.findHistoryStart(this.snapshot.correctedPoints);
         }
+
         this.historyPending = true;
         this.historyAttempts = 0;
         this.historyMessage = "価格履歴を確認しています。";
@@ -394,6 +424,7 @@ private:
         datetime firstDate = (datetime)SeriesInfoInteger(this.symbolName, PERIOD_M5, SERIES_FIRSTDATE);
         bool hasWaveHistory = firstDate > 0 && firstDate <= this.historyStartTime;
         bool hasAlertHistoryEnd = iBarShift(this.symbolName, PERIOD_M5, this.historyEndTime, true) >= 0;
+
         if (barIndex >= 0 && hasWaveHistory && hasAlertHistoryEnd) {
             this.historyPending = false;
             this.historyMessage = "保存時点の最新Waveを表示しています。";
@@ -402,6 +433,7 @@ private:
             }
             return;
         }
+
         if (this.historyAttempts >= 15) {
             this.historyPending = false;
             this.historyMessage = "価格履歴不足：接続先・履歴・最大バー数を確認し「発生位置へ」で再試行してください。";
@@ -411,6 +443,7 @@ private:
             this.logger.info(__FUNCTION__, this.historyMessage);
             return;
         }
+
         this.historyMessage = "価格履歴を準備中（" + IntegerToString(this.historyAttempts)
             + "/15）。保存波動の日時・価格は変更しません。";
     }
@@ -424,15 +457,19 @@ private:
         if (totalBars <= 0 || visibleBars <= 0) {
             return false;
         }
+
         int firstVisible = fromBarIndex + (int)((double)visibleBars * 0.6);
         if (firstVisible >= totalBars) {
             firstVisible = totalBars - 1;
         }
+
         if (!ChartSetInteger(this.chartId, CHART_AUTOSCROLL, false)
                 || !ChartNavigate(this.chartId, CHART_BEGIN, totalBars - 1 - firstVisible)) {
             return false;
         }
+
         ChartRedraw(this.chartId);
+
         return true;
     }
 
@@ -444,21 +481,25 @@ private:
         if (this.drawer == NULL) {
             return;
         }
+
         if (this.snapshotLoaded) {
             int panelTop = 8;
             int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
             if (chartWidth < 1100) {
                 panelTop = 204;
             }
+
             this.drawer.draw(this.snapshot, this.view, this.config.higherCount,
                 this.config.showPrices, this.config.showTable, panelTop, false);
         } else {
             this.drawer.clear();
         }
+
         this.drawControls();
         if (this.markerDrawer != NULL) {
             this.markerDrawer.draw(this.markers);
         }
+
         ChartRedraw(this.chartId);
     }
 
@@ -476,6 +517,7 @@ private:
         int selectedWidth = (int)(contentWidth * 126.0 / 348.0);
         int originalWidth = (int)(contentWidth * 100.0 / 348.0);
         int comparisonX = contentX + selectedWidth + originalWidth + 12;
+
         string panelName = this.prefix + "Ui-Background";
         if (ObjectFind(this.chartId, panelName) < 0) {
             ObjectCreate(this.chartId, panelName, OBJ_RECTANGLE_LABEL, 0, 0, 0);
@@ -491,6 +533,7 @@ private:
         ObjectSetInteger(this.chartId, panelName, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(this.chartId, panelName, OBJPROP_HIDDEN, true);
         ObjectSetString(this.chartId, panelName, OBJPROP_TOOLTIP, "\n");
+
         int total = ArraySize(this.alertIds);
         this.button("Previous", "← 前", contentX, 14, 72, this.selectedIndex > 0, false);
         this.button("Next", "次 →", contentX + 78, 14, 72,
@@ -499,6 +542,7 @@ private:
             + IntegerToString(total) + "件", contentX + 162, 19, foreground, contentWidth - 162);
         this.button("Refresh", "再読込", contentX, 46, 75, true, false);
         this.button("Locate", "発生位置へ", contentX + 81, 46, 105, this.snapshotLoaded, false);
+
         bool canCompare = this.snapshotLoaded && this.snapshot.correctionStatus == "APPLIED";
         bool canSelect = canCompare
             || (this.snapshotLoaded && this.snapshot.correctionStatus == "NONE");
@@ -514,6 +558,7 @@ private:
         this.button("Comparison", "前後比較", comparisonX, 78,
             (int)MathMax(1, contentX + contentWidth - comparisonX), canCompare,
             this.view == ALERT_HISTORY_COMPARISON);
+
         string runText = this.symbolName + " M5 | Run " + IntegerToString(this.resolvedRunId);
         if (this.snapshotLoaded) {
             runText += " | " + this.snapshot.run.sourceMode;
@@ -533,6 +578,7 @@ private:
                 + this.snapshot.alert.entryResult + " | " + this.correctionLabel();
         }
         this.label("Correction", correctionText, contentX, 150, foreground, contentWidth);
+
         string status = this.historyMessage;
         color statusColor = foreground;
         if (this.loadError != "") {
@@ -558,10 +604,12 @@ private:
                 unavailableCount++;
             }
         }
+
         if (unavailableCount > 0) {
             status = "ラベル保存値不足 " + IntegerToString(unavailableCount) + "件 | " + status;
             statusColor = clrOrange;
         }
+
         this.label("Status", status, contentX, 170, statusColor, contentWidth);
     }
 
@@ -577,12 +625,15 @@ private:
             return timeFrame + "補正 " + this.snapshot.correction.originalDirection
                 + "→" + this.snapshot.correction.correctedDirection;
         }
+
         if (this.snapshot.correctionStatus == "NONE") {
             return "補正なし・元分析を採用";
         }
+
         if (this.snapshot.correctionStatus == "INCOMPLETE") {
             return "補正データ不完全・元分析は比較用";
         }
+
         return "補正情報未記録";
     }
 
@@ -604,6 +655,7 @@ private:
         } else if (fromSelected) {
             background = C'30,85,140';
         }
+
         ObjectSetInteger(this.chartId, name, OBJPROP_XDISTANCE, fromX);
         ObjectSetInteger(this.chartId, name, OBJPROP_YDISTANCE, fromY);
         ObjectSetInteger(this.chartId, name, OBJPROP_XSIZE, fromWidth);
@@ -630,6 +682,7 @@ private:
         if (ObjectFind(this.chartId, name) < 0) {
             ObjectCreate(this.chartId, name, OBJ_LABEL, 0, 0, 0);
         }
+
         string displayText = fromText;
         if (fromWidth < 20) {
             displayText = "";
@@ -642,10 +695,12 @@ private:
                 displayText = StringSubstr(displayText, 0, StringLen(displayText) - 1);
                 TextGetSize(displayText + "…", textWidth, textHeight);
             }
+
             if (displayText != fromText) {
                 displayText += "…";
             }
         }
+
         ObjectSetInteger(this.chartId, name, OBJPROP_XDISTANCE, fromX);
         ObjectSetInteger(this.chartId, name, OBJPROP_YDISTANCE, fromY);
         ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, fromColor);

@@ -52,6 +52,7 @@ public:
      */
     void setMarketContext(MarketContext &fromMarketContext) {
         this.deinit();
+
         this.initializeMarketContext(fromMarketContext);
     }
 

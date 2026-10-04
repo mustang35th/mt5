@@ -31,6 +31,7 @@ public:
                 || ObjectFind(0, fromObjectName) < 0) {
             return false;
         }
+
         ZigZagElliotAlertHistoryMarker marker;
         ZeroMemory(marker);
         marker.timeFrame = fromSource.marketContext.timeFrame;
@@ -49,11 +50,13 @@ public:
             if (!isM5Correction && !isH1Correction) {
                 return false;
             }
+
             Elliot *original = fromSource.getElliot(fromCorrectionTimeFrame);
             Elliot *corrected = fromJudgment.getElliot(fromCorrectionTimeFrame);
             if (original == NULL || corrected == NULL || fromJudgment == fromSource) {
                 return false;
             }
+
             marker.correctionStatus = "APPLIED";
             string frameLabel = "H1";
             if (fromCorrectionTimeFrame == PERIOD_H4) {
@@ -64,6 +67,7 @@ public:
             marker.correctionText = frameLabel + " " + direction(original.isBuy)
                 + "→" + direction(corrected.isBuy);
         }
+
         ENUM_TIMEFRAMES frames[] = {
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5
         };
@@ -76,6 +80,7 @@ public:
             if (elliot == NULL) {
                 continue;
             }
+
             marker.waves[i].direction = "S";
             if (elliot.isBuy) {
                 marker.waves[i].direction = "B";
@@ -102,7 +107,9 @@ public:
                 }
             }
         }
+
         DrawZigZagElliotAlertMarkers formatter(0, "");
+
         return ObjectSetString(0, fromObjectName, OBJPROP_TOOLTIP, formatter.formatTooltip(marker));
     }
 
@@ -114,6 +121,7 @@ private:
         if (fromIsBuy) {
             return "BUY";
         }
+
         return "SELL";
     }
 };

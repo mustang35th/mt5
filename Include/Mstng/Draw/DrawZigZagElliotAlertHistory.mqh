@@ -67,6 +67,7 @@ public:
     ) {
         this.clear();
         this.hasDrawingError = false;
+
         int higherCount = 2;
         if (fromHigherCount == 3) {
             higherCount = 3;
@@ -95,6 +96,7 @@ public:
                 );
             }
         }
+
         if (fromShowPrices) {
             this.drawFixedPrices(fromSnapshot);
         }
@@ -102,6 +104,7 @@ public:
             this.drawAlertLabels(fromSnapshot, showOriginal, showCorrected);
         }
         this.drawPanel(fromSnapshot, showOriginal, showCorrected, fromShowTable, fromPanelTop);
+
         ChartRedraw(this.chartId);
     }
 
@@ -125,9 +128,11 @@ private:
         if (fromStatus == "NONE") {
             return "元分析（採用）";
         }
+
         if (fromStatus == "APPLIED") {
             return "補正前（比較用）";
         }
+
         return "元の保存分析（参考）";
     }
 
@@ -145,6 +150,7 @@ private:
         if (!this.isPriceValid(fromPrice)) {
             return "—";
         }
+
         return DoubleToString(fromPrice, this.priceDigits());
     }
 
@@ -157,6 +163,7 @@ private:
                 && symbolDigits >= 0 && symbolDigits <= 16) {
             return (int)symbolDigits;
         }
+
         return 5;
     }
 
@@ -167,10 +174,12 @@ private:
         if (!MathIsValidNumber(fromPips) || fromPips == EMPTY_VALUE) {
             return "—";
         }
+
         string text = DoubleToString(fromPips, 1);
         if (fromPips > 0.0) {
             text = "+" + text;
         }
+
         return text + " pips";
     }
 
@@ -182,6 +191,7 @@ private:
         if (fromCount > 0) {
             text = "+" + text;
         }
+
         return text;
     }
 
@@ -193,14 +203,18 @@ private:
             if (!fromConfirmed) {
                 return clrDodgerBlue;
             }
+
             return clrAqua;
         }
+
         if (fromIsBuy == 0) {
             if (!fromConfirmed) {
                 return clrMagenta;
             }
+
             return clrHotPink;
         }
+
         return clrSilver;
     }
 
@@ -212,11 +226,14 @@ private:
             if (fromIsHigher) {
                 return clrBlue;
             }
+
             return clrDodgerBlue;
         }
+
         if (fromIsHigher) {
             return clrRed;
         }
+
         return clrMagenta;
     }
 
@@ -227,9 +244,11 @@ private:
         if (fromCount > 0) {
             return clrAqua;
         }
+
         if (fromCount < 0) {
             return clrHotPink;
         }
+
         return clrSilver;
     }
 
@@ -240,6 +259,7 @@ private:
         if (fromTime <= 0) {
             return "—";
         }
+
         return TimeToString(fromTime, TIME_DATE | TIME_SECONDS);
     }
 
@@ -270,9 +290,11 @@ private:
             }
             return false;
         }
+
         ObjectSetInteger(this.chartId, fromName, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(this.chartId, fromName, OBJPROP_SELECTED, false);
         ObjectSetInteger(this.chartId, fromName, OBJPROP_HIDDEN, true);
+
         return true;
     }
 
@@ -293,10 +315,12 @@ private:
         if (fromY < 0 || fromY + fromSize + 4 > chartHeight) {
             return;
         }
+
         string name = this.prefix + fromKey;
         if (!this.createObject(name, OBJ_LABEL)) {
             return;
         }
+
         ObjectSetInteger(this.chartId, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
         ObjectSetInteger(this.chartId, name, OBJPROP_ANCHOR, fromAnchor);
         ObjectSetInteger(this.chartId, name, OBJPROP_XDISTANCE, fromX);
@@ -316,10 +340,12 @@ private:
         if (fromSnapshot.alert.currentBarTime <= 0) {
             return;
         }
+
         string name = this.prefix + "Event";
         if (!this.createObject(name, OBJ_VLINE, fromSnapshot.alert.currentBarTime)) {
             return;
         }
+
         ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, clrGold);
         ObjectSetInteger(this.chartId, name, OBJPROP_STYLE, STYLE_DOT);
         ObjectSetInteger(this.chartId, name, OBJPROP_WIDTH, 1);
@@ -351,6 +377,7 @@ private:
             selectedSL = this.priceText(fromSnapshot.correction.selectedStopLoss)
                 + " / " + this.pipsText(fromSnapshot.correction.selectedRiskPips);
         }
+
         string tooltip = "アラート発生足 Server " + this.timeText(fromSnapshot.alert.currentBarTime)
             + "\n判定日時 Server " + this.timeText(fromSnapshot.alert.serverTime)
             + "\n保存判定 " + fromSnapshot.alert.entryResult + " / " + fromSnapshot.alert.side
@@ -359,6 +386,7 @@ private:
             + "\n採用SL候補 " + selectedSL + "（実SLではありません）"
             + "\nAlert " + IntegerToString(fromSnapshot.alert.id)
             + " / Run " + IntegerToString(fromSnapshot.alert.runId);
+
         return tooltip;
     }
 
@@ -370,14 +398,18 @@ private:
             if (fromSnapshot.alert.isEntry == 1) {
                 return clrDodgerBlue;
             }
+
             return clrBlue;
         }
+
         if (fromSnapshot.alert.side == "SELL") {
             if (fromSnapshot.alert.isEntry == 1) {
                 return clrMagenta;
             }
+
             return clrRed;
         }
+
         return clrLightGray;
     }
 
@@ -393,10 +425,12 @@ private:
         if (!fromSnapshot.originalAvailable || fromSnapshot.alert.currentBarTime <= 0) {
             return;
         }
+
         int m5Index = this.findTimeFrame(fromSnapshot.originalTimeFrames, PERIOD_M5);
         if (m5Index < 0 || !this.isPriceValid(fromSnapshot.originalTimeFrames[m5Index].currentOpen)) {
             return;
         }
+
         double alertPrice = fromSnapshot.originalTimeFrames[m5Index].currentOpen;
         bool isComparison = fromShowCorrected && fromShowOriginal;
         if (fromShowCorrected || fromSnapshot.correctionStatus == "NONE") {
@@ -408,6 +442,7 @@ private:
             if (fromShowCorrected) {
                 modeLabel = "補正後（採用）";
             }
+
             this.drawAlertLabel(fromSnapshot, "AlertTextC", fromSnapshot.correction.selectedAlertText,
                 modeLabel, alertPrice, anchor);
         }
@@ -420,6 +455,7 @@ private:
             if (isComparison) {
                 anchor = ANCHOR_UPPER;
             }
+
             this.drawAlertLabel(fromSnapshot, "AlertTextO", text,
                 this.originalModeLabel(fromSnapshot.correctionStatus), alertPrice, anchor);
         }
@@ -440,10 +476,12 @@ private:
         if (fromText == "") {
             return;
         }
+
         string name = this.prefix + fromKey;
         if (!this.createObject(name, OBJ_TEXT, fromSnapshot.alert.currentBarTime, fromPrice)) {
             return;
         }
+
         ObjectSetString(this.chartId, name, OBJPROP_TEXT, fromText);
         ObjectSetString(this.chartId, name, OBJPROP_FONT, "MS Gothic");
         ObjectSetInteger(this.chartId, name, OBJPROP_FONTSIZE, 20);
@@ -451,6 +489,7 @@ private:
         ObjectSetInteger(this.chartId, name, OBJPROP_ANCHOR, fromAnchor);
         ObjectSetInteger(this.chartId, name, OBJPROP_BACK, false);
         ObjectSetInteger(this.chartId, name, OBJPROP_ZORDER, 5);
+
         string correctionText = "補正情報未記録";
         if (fromSnapshot.correctionStatus == "APPLIED") {
             string frame = "H1";
@@ -478,6 +517,7 @@ private:
         if (StringLen(tooltip) > 159) {
             tooltip = fromModeLabel + details;
         }
+
         ObjectSetString(this.chartId, name, OBJPROP_TOOLTIP, tooltip);
     }
 
@@ -490,6 +530,7 @@ private:
                 return i;
             }
         }
+
         return -1;
     }
 
@@ -506,6 +547,7 @@ private:
                 return i;
             }
         }
+
         return -1;
     }
 
@@ -533,6 +575,7 @@ private:
                 fromComparison, i, fromHigherCount, fromModeLabel
             );
         }
+
         if (fromShowPrices) {
             int m5Index = this.findTimeFrame(fromTimeFrames, PERIOD_M5);
             if (m5Index >= 0) {
@@ -555,6 +598,7 @@ private:
         if (fromPoint.isSubElliotAvailable == 1 && fromPoint.subElliotLabel != "") {
             text += "." + fromPoint.subElliotLabel;
         }
+
         return text;
     }
 
@@ -596,6 +640,7 @@ private:
         } else {
             text += "\n取得種別 通常";
         }
+
         return text;
     }
 
@@ -624,12 +669,14 @@ private:
             lineStyle = STYLE_DASH;
             lineWidth = 1;
         }
+
         for (int i = 1; i < fromTimeFrame.pointCount; i++) {
             int pointIndex = this.findPoint(fromPoints, fromTimeFrame.timeFrame, i);
             if (pointIndex < 0 || fromPoints[pointIndex].barTime <= 0
                     || !this.isPriceValid(fromPoints[pointIndex].rate)) {
                 continue;
             }
+
             if (i > 0) {
                 int previousIndex = this.findPoint(fromPoints, fromTimeFrame.timeFrame, i - 1);
                 if (previousIndex >= 0 && fromPoints[previousIndex].barTime > 0
@@ -645,6 +692,7 @@ private:
                     );
                 }
             }
+
             string label = fromTimeFrame.timeFrameText + " " + this.pointWaveLabel(fromPoints[pointIndex]);
             if (fromComparison) {
                 label = modeText + " " + label;
@@ -680,6 +728,7 @@ private:
         if (!this.createObject(name, OBJ_TREND, fromFirst.barTime, fromFirst.rate, fromLast.barTime, fromLast.rate)) {
             return;
         }
+
         ObjectSetInteger(this.chartId, name, OBJPROP_RAY_LEFT, false);
         ObjectSetInteger(this.chartId, name, OBJPROP_RAY_RIGHT, false);
         ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, fromColor);
@@ -714,11 +763,13 @@ private:
         if (!ChartTimePriceToXY(this.chartId, 0, fromPoint.barTime, fromPoint.rate, pointX, pointY)) {
             return;
         }
+
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
         if (pointX < 0 || pointX > chartWidth) {
             return;
         }
+
         int fontSize = 12 + fromHigherIndex * 2;
         int lane = 0;
         if (fromComparison && !fromCorrected) {
@@ -741,6 +792,7 @@ private:
         if (pointY < topLimit || pointY > chartHeight - 10) {
             return;
         }
+
         this.drawLabel(
             fromKey, fromLabel, pointX, pointY, fontSize, fromColor,
             this.pointTooltip(fromTimeFrame, fromPoint, fromModeLabel), ANCHOR_CENTER
@@ -763,15 +815,18 @@ private:
         if (!this.isPriceValid(fromPrice)) {
             return;
         }
+
         string name = this.prefix + fromKey;
         if (!this.createObject(name, OBJ_HLINE, 0, fromPrice)) {
             return;
         }
+
         string text = fromLabel + " " + this.priceText(fromPrice);
         ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, fromColor);
         ObjectSetInteger(this.chartId, name, OBJPROP_STYLE, fromStyle);
         ObjectSetInteger(this.chartId, name, OBJPROP_WIDTH, fromWidth);
         ObjectSetString(this.chartId, name, OBJPROP_TOOLTIP, text + "\nAlert DBの保存値");
+
         int pointX = 0;
         int pointY = 0;
         if (ChartTimePriceToXY(this.chartId, 0, fromEventTime, fromPrice, pointX, pointY)) {
@@ -817,6 +872,7 @@ private:
         if (fromTimeFrame.isFiboExpansionAvailable != 1) {
             return;
         }
+
         double prices[] = {
             fromTimeFrame.fe618Price, fromTimeFrame.fe1000Price, fromTimeFrame.fe1272Price,
             fromTimeFrame.fe1618Price, fromTimeFrame.fe2000Price
@@ -832,6 +888,7 @@ private:
             lineStyle = STYLE_DASH;
             labelLane = 1;
         }
+
         for (int i = 0; i < ArraySize(prices); i++) {
             this.drawPrice("FE" + mode + IntegerToString(i), prices[i],
                 "M5 " + fromModeLabel + " FE" + levels[i] + "%",
@@ -846,15 +903,19 @@ private:
         if (fromTimeFrame.timeFrame == PERIOD_MN1) {
             return "対象外";
         }
+
         if (fromTimeFrame.isEma200Buy == 1 && fromTimeFrame.isEma200Sell == 0) {
             return "BUY";
         }
+
         if (fromTimeFrame.isEma200Buy == 0 && fromTimeFrame.isEma200Sell == 1) {
             return "SELL";
         }
+
         if (fromTimeFrame.isEma200Buy == 0 && fromTimeFrame.isEma200Sell == 0) {
             return "—";
         }
+
         return "—";
     }
 
@@ -871,6 +932,7 @@ private:
         } else {
             wave = "▼" + wave;
         }
+
         return wave;
     }
 
@@ -914,6 +976,7 @@ private:
                 panelHeight += 25 + rowCount * rowHeight;
             }
         }
+
         string panelName = this.prefix + "Panel";
         if (this.createObject(panelName, OBJ_RECTANGLE_LABEL)) {
             ObjectSetInteger(this.chartId, panelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
@@ -925,11 +988,13 @@ private:
             ObjectSetInteger(this.chartId, panelName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
             ObjectSetInteger(this.chartId, panelName, OBJPROP_COLOR, clrDimGray);
         }
+
         if (shortTable && chartHeight < fromPanelTop + 90) {
             this.drawLabel("ResizeNotice", "チャートを縦に拡大してください", panelX, fromPanelTop + 5, 9, clrOrange,
                 "7時間足の表示に必要な高さが不足しています。");
             return;
         }
+
         string decision = "保存判定 " + fromSnapshot.alert.entryResult + " / " + fromSnapshot.alert.side
             + " / Count " + IntegerToString(fromSnapshot.alert.signalCount);
         this.drawLabel("Decision", decision, panelX, fromPanelTop + 5, 10, clrWhite, decision + "\n表示モードで再判定しません。");
@@ -957,9 +1022,11 @@ private:
         }
         this.drawLabel("Legend", legend, panelX, fromPanelTop + 45, 8, clrSilver,
             legend + "\n" + fromSnapshot.originalReason + "\n" + fromSnapshot.correctionReason);
+
         if (!fromShowTable || !fromSnapshot.originalAvailable) {
             return;
         }
+
         if (shortTable) {
             if (summaryFits) {
                 this.drawSummaryTable(fromSnapshot, fromShowOriginal, fromShowCorrected, panelX, panelWidth, fromPanelTop + 69);
@@ -969,6 +1036,7 @@ private:
             }
             return;
         }
+
         this.drawTableHeader(panelX, fromPanelTop + 69, compact);
         int timeFrames[] = { PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5 };
         int rowY = fromPanelTop + 90;
@@ -1009,6 +1077,7 @@ private:
         if (fromSnapshot.correctionStatus == "APPLIED") {
             originalMode = "前";
         }
+
         for (int i = 0; i < ArraySize(timeFrames); i++) {
             int correctedIndex = this.findTimeFrame(fromSnapshot.correctedTimeFrames, timeFrames[i]);
             int originalIndex = this.findTimeFrame(fromSnapshot.originalTimeFrames, timeFrames[i]);
@@ -1024,6 +1093,7 @@ private:
                 tooltip += this.timeFrameTooltip(fromSnapshot.originalTimeFrames[originalIndex],
                     this.originalModeLabel(fromSnapshot.correctionStatus), 0);
             }
+
             string key = "Summary" + IntegerToString(timeFrames[i]);
             string frameLabel = labels[i];
             if (fromShowCorrected && timeFrames[i] == fromSnapshot.correction.correctionTimeFrame) {
@@ -1076,6 +1146,7 @@ private:
         if (ema == "—") {
             tooltip += "\nEMA200 —: 有効方向なし、または未記録";
         }
+
         return tooltip;
     }
 
@@ -1090,6 +1161,7 @@ private:
                 "2段目: Oscillator / Stochastic短・中・長 / GMMA Trend・Cross");
             return;
         }
+
         for (int i = 0; i < ArraySize(labels); i++) {
             this.drawLabel("TH" + IntegerToString(i), labels[i], fromX + positions[i], fromY, 9, clrSilver, labels[i]);
         }
@@ -1129,6 +1201,7 @@ private:
         string wave = this.timeFrameWave(fromTimeFrame);
         string tooltip = this.timeFrameTooltip(fromTimeFrame, mode, fromCorrectionTimeFrame);
         color rowColor = this.directionColor(fromTimeFrame.isBuy);
+
         if (fromCompact) {
             string first = frameLabel + " " + mode + " " + fromTimeFrame.buySellLabel + " " + ema + " " + wave + " " + state;
             this.drawLabel(key, first, fromX, fromY, 9, rowColor, tooltip);
@@ -1141,6 +1214,7 @@ private:
             this.drawLabel(key + "Counts", second, fromX, fromY + 16, 8, clrSilver, tooltip);
             return;
         }
+
         string values[] = {
             frameLabel, mode, fromTimeFrame.buySellLabel, ema,
             this.signedCount(fromTimeFrame.oscillatorCount),
@@ -1156,6 +1230,7 @@ private:
             fromTimeFrame.stochasticMiddleCount, fromTimeFrame.stochasticLongCount,
             fromTimeFrame.gmmaTrendCount, fromTimeFrame.gmmaCrossCount
         };
+
         for (int i = 0; i < ArraySize(values); i++) {
             color textColor = rowColor;
             if (i >= 4 && i <= 9) {

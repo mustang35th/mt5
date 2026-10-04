@@ -49,6 +49,7 @@ public:
                     this.tooltipOverrides[i].originalTooltip);
             }
         }
+
         ArrayFree(this.tooltipOverrides);
         ObjectsDeleteAll(this.chartId, this.prefix + "Marker-");
         ObjectsDeleteAll(this.chartId, this.prefix + "MarkerLink-");
@@ -63,15 +64,18 @@ public:
     void draw(const ZigZagElliotAlertHistoryMarker &fromMarkers[],
             const string fromExistingTextPrefix = "", const datetime fromKnownTime = 0) {
         this.clear();
+
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
         if (chartWidth <= 20 || chartHeight <= 40) {
             return;
         }
+
         ArrayFree(this.occupied);
         this.reservePanel(this.prefix + "Wave-Panel");
         this.reservePanel(this.prefix + "Ui-Background");
         TextSetFont("MS Gothic", -200);
+
         for (int i = 0; i < ArraySize(fromMarkers); i++) {
             if (!fromMarkers[i].available) {
                 continue;
@@ -80,6 +84,7 @@ public:
                     || fromMarkers[i].serverTime > fromKnownTime)) {
                 continue;
             }
+
             if (fromExistingTextPrefix != "") {
                 string existingName = fromExistingTextPrefix + IntegerToString((long)fromMarkers[i].barTime);
                 if (ObjectFind(this.chartId, existingName) >= 0
@@ -89,6 +94,7 @@ public:
                     continue;
                 }
             }
+
             int pointX = 0;
             int pointY = 0;
             if (!ChartTimePriceToXY(this.chartId, 0, fromMarkers[i].barTime, fromMarkers[i].price, pointX, pointY)
@@ -120,6 +126,7 @@ public:
                     break;
                 }
             }
+
             this.reserve(textX, textY, width, height);
             string name = this.prefix + "Marker-" + IntegerToString(fromMarkers[i].alertId);
             if (!ObjectCreate(this.chartId, name, OBJ_LABEL, 0, 0, 0)) {
@@ -137,6 +144,7 @@ public:
             ObjectSetString(this.chartId, name, OBJPROP_FONT, "MS Gothic");
             ObjectSetString(this.chartId, name, OBJPROP_TEXT, fromMarkers[i].text);
             ObjectSetString(this.chartId, name, OBJPROP_TOOLTIP, this.tooltip(fromMarkers[i]));
+
             if (textY != initialY) {
                 this.drawLink(fromMarkers[i], textX + width / 2, textY + height / 2);
             }
@@ -167,14 +175,17 @@ private:
                 break;
             }
         }
+
         if (index < 0) {
             index = ArraySize(this.tooltipOverrides);
             if (ArrayResize(this.tooltipOverrides, index + 1) != index + 1) {
                 return;
             }
+
             this.tooltipOverrides[index].objectName = fromName;
             this.tooltipOverrides[index].originalTooltip = ObjectGetString(this.chartId, fromName, OBJPROP_TOOLTIP);
         }
+
         this.tooltipOverrides[index].appliedTooltip = fromTooltip;
         ObjectSetString(this.chartId, fromName, OBJPROP_TOOLTIP, fromTooltip);
     }
@@ -187,6 +198,7 @@ private:
         if (ArrayResize(this.occupied, count + 1, 128) < 0) {
             return;
         }
+
         this.occupied[count][0] = fromX;
         this.occupied[count][1] = fromY;
         this.occupied[count][2] = fromWidth;
@@ -200,6 +212,7 @@ private:
         if (ObjectFind(this.chartId, fromName) < 0) {
             return;
         }
+
         this.reserve((int)ObjectGetInteger(this.chartId, fromName, OBJPROP_XDISTANCE),
             (int)ObjectGetInteger(this.chartId, fromName, OBJPROP_YDISTANCE),
             (int)ObjectGetInteger(this.chartId, fromName, OBJPROP_XSIZE),
@@ -218,6 +231,7 @@ private:
                 return true;
             }
         }
+
         return false;
     }
 
@@ -229,11 +243,14 @@ private:
             if (fromMarker.isEntry == 1) {
                 return clrDodgerBlue;
             }
+
             return clrBlue;
         }
+
         if (fromMarker.isEntry == 1) {
             return clrMagenta;
         }
+
         return clrRed;
     }
 
@@ -245,6 +262,7 @@ private:
         if (fromTime <= 0 || !TimeToStruct(fromTime, parts)) {
             return "—";
         }
+
         return StringFormat("%02d/%02d %02d:%02d", parts.mon, parts.day, parts.hour, parts.min);
     }
 
@@ -257,12 +275,15 @@ private:
         StringReplace(fromText, "\t", " ");
         StringTrimLeft(fromText);
         StringTrimRight(fromText);
+
         if (StringLen(fromText) == 0) {
             return "—";
         }
+
         if (fromLimit > 0 && StringLen(fromText) > fromLimit) {
             return StringSubstr(fromText, 0, fromLimit - 1) + "…";
         }
+
         return fromText;
     }
 
@@ -273,6 +294,7 @@ private:
         if (fromDirection == "B" || fromDirection == "S") {
             return fromDirection;
         }
+
         return "—";
     }
 
@@ -287,6 +309,7 @@ private:
         if (fromMarker.timeFrame == PERIOD_H1) {
             frameCount = 5;
         }
+
         for (int i = 0; i < frameCount; i++) {
             string wave = this.cellText(fromMarker.waves[i].wave, fromMainLimit);
             if (fromIncludeSub && wave != "—" && StringLen(fromMarker.waves[i].subWave) > 0) {
@@ -300,9 +323,11 @@ private:
             if (i > 0) {
                 ema = this.directionText(fromMarker.waves[i].emaDirection);
             }
+
             text += "\n" + frames[i] + " " + this.directionText(fromMarker.waves[i].direction)
                 + "/" + ema + " " + wave + state;
         }
+
         return text;
     }
 
@@ -322,6 +347,7 @@ private:
             }
         }
         header += this.cellText(fromMarker.side, 4) + "/" + entry;
+
         string correction = "";
         if (fromMarker.correctionStatus == "APPLIED") {
             correction = fromMarker.correctionText;
@@ -332,20 +358,24 @@ private:
             StringReplace(correction, "D1 ", "D1補正 ");
             correction = "\n" + this.cellText(correction, 12);
         }
+
         string tail = correction + "\nJST " + this.timeText(fromMarker.jstTime);
         string text = header + this.waveRows(fromMarker, true) + tail
             + "\nSV " + this.timeText(fromMarker.serverTime);
         if (StringLen(text) <= 159) {
             return text;
         }
+
         text = header + this.waveRows(fromMarker, true) + tail;
         if (StringLen(text) <= 159) {
             return text;
         }
+
         text = header + this.waveRows(fromMarker, false) + tail;
         for (int i = 4; StringLen(text) > 159 && i >= 1; i--) {
             text = header + this.waveRows(fromMarker, false, i) + tail;
         }
+
         return text;
     }
 
@@ -360,11 +390,13 @@ private:
                 || subWindow != 0) {
             return;
         }
+
         string name = this.prefix + "MarkerLink-" + IntegerToString(fromMarker.alertId);
         if (!ObjectCreate(this.chartId, name, OBJ_TREND, 0,
                 fromMarker.barTime, fromMarker.price, displayTime, displayPrice)) {
             return;
         }
+
         ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, clrDimGray);
         ObjectSetInteger(this.chartId, name, OBJPROP_STYLE, STYLE_DOT);
         ObjectSetInteger(this.chartId, name, OBJPROP_RAY_LEFT, false);

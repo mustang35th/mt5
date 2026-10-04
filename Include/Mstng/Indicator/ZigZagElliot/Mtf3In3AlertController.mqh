@@ -75,6 +75,7 @@ public:
         this.alertCsvEnabled = fromConfig.mtf3In3AlertCsvEnabled;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
+
         this.signalCount = new SignalCount(this.marketContext);
 
         if (this.signalCount == NULL) {
@@ -134,6 +135,7 @@ public:
         if (!fromElliotAll.isAnalysisSucceeded || fromElliotAll.elliotCurrent == NULL) {
             return;
         }
+
         ZigZagPoint *sourceSignalPoint = fromElliotAll.elliotCurrent.getLatestPoint2();
         if (sourceSignalPoint == NULL || !this.restoreAlertSignalCount(
                 sourceSignalPoint.barTime, fromElliotAll.elliotCurrent.isBuy)) {
@@ -343,17 +345,21 @@ private:
                     && this.marketContext.timeFrame != PERIOD_H1)) {
             return true;
         }
+
         if (fromReferenceTime <= 0 || this.signalCount == NULL) {
             return false;
         }
+
         string signalKey = StringFormat("%I64d|%d", (long)fromReferenceTime, (int)fromIsBuy);
         if (this.checkedSignalKeys.SearchLinear(signalKey) >= 0) {
             return true;
         }
+
         if (!this.databaseReady && !this.initializeDatabase()) {
             this.logger.error(__FUNCTION__, "signal history unavailable; alert judgment deferred");
             return false;
         }
+
         ZigZagElliotAlertPersistenceService *persistenceService =
             this.databaseContext.getPersistenceService();
         int savedCount = 0;
@@ -364,20 +370,24 @@ private:
             this.logger.error(__FUNCTION__, "signal history lookup failed; alert judgment deferred");
             return false;
         }
+
         if (savedCount > 0 && !this.signalCount.restoreCount(
                 fromReferenceTime, fromIsBuy, savedCount)) {
             this.logger.error(__FUNCTION__, "signal count restore failed; alert judgment deferred");
             return false;
         }
+
         if (!this.checkedSignalKeys.Add(signalKey)) {
             return false;
         }
+
         if (savedCount > 0) {
             this.logger.info(__FUNCTION__, StringFormat(
                 "alert signal restored. referenceTime=%s isBuy=%s count=%d",
                 TimeToString(fromReferenceTime, TIME_DATE | TIME_SECONDS),
                 (string)fromIsBuy, savedCount));
         }
+
         return true;
     }
 

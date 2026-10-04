@@ -82,6 +82,7 @@ public:
                 && fromConfig.currencyStrengthEntryFilterEnabled;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
+
         this.oscillatorHandlePool =
             new OscillatorHandlePool(this.marketContext);
 
@@ -148,6 +149,7 @@ public:
         );
         this.elliotAll.timerSeconds = fromTimerSeconds;
         this.elliotAll.isSendMail = true;
+
         this.elliotAll.analyze();
 
         return this.elliotAll.isAnalysisSucceeded;

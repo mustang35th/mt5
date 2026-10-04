@@ -158,6 +158,7 @@ public:
 
         this.updateVerticalFit(fromElliotAll, true);
         this.applyInitialVerticalFit(fromElliotAll);
+
         this.draw.drawAll(
             fromElliotAll,
             this.elliotInfoVisible,

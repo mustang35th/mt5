@@ -159,6 +159,7 @@ public:
             OBJPROP_TEXT,
             fromText
         );
+
         this.created = true;
         this.lastSubWindow = fromSubWindow;
         this.lastText = fromText;
