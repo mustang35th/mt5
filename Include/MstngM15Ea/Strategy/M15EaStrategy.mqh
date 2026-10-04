@@ -46,20 +46,24 @@ public:
             const double fromH4MaxFibonacciExpansionPercent = 161.8,
             const double fromH1MaxFibonacciExpansionPercent = 161.8) {
         this.destroy();
+
         if (!M15EaConfig::isFibonacciExpansionLimitValid(fromH4MaxFibonacciExpansionPercent)
                 || !M15EaConfig::isFibonacciExpansionLimitValid(fromH1MaxFibonacciExpansionPercent)) {
             this.lastError = "INVALID_HIGHER_FE_LIMIT";
             return false;
         }
+
         this.directionCorrectionEnabled = fromDirectionCorrectionEnabled;
         this.h4MaxFibonacciExpansionPercent = fromH4MaxFibonacciExpansionPercent;
         this.h1MaxFibonacciExpansionPercent = fromH1MaxFibonacciExpansionPercent;
         MarketContext context(fromSymbol, PERIOD_M15);
         this.marketContext = context;
+
         if (!this.historyPreparation.initialize(fromSymbol, PERIOD_M15, (bool)MQLInfoInteger(MQL_TESTER))) {
             this.lastError = "ANALYSIS_HISTORY_CONFIGURATION_INVALID";
             return false;
         }
+
         this.handlePool = new OscillatorHandlePool(this.marketContext);
 
         if (this.handlePool == NULL) {
@@ -133,6 +137,7 @@ public:
         this.elliotAll.isSendMail = false;
         this.elliotAll.timerSeconds = 30;
         this.elliotAll.setOscillatorHandlePool(this.handlePool);
+
         LoggerRepeatScope logScope;
         Logger::beginTesterRepeatScope(this.marketContext.symbolName, barTime, logScope);
         this.elliotAll.analyze();
@@ -176,6 +181,7 @@ public:
             this.directionCorrectionEnabled, this.h4MaxFibonacciExpansionPercent,
             this.h1MaxFibonacciExpansionPercent
         );
+
         this.lastError = "";
 
         if (!isSucceeded) {
@@ -289,6 +295,7 @@ private:
     bool isHistoryReady(const datetime fromWarmupEndTime) {
         bool ready = this.historyPreparation.prepare(fromWarmupEndTime);
         this.historyStatusText = this.historyPreparation.getStatusText();
+
         return ready;
     }
 };

@@ -30,14 +30,17 @@ public:
         if (this.isHeld()) {
             return false;
         }
+
         string scopeHash = EaTextUtil::hash(fromScope);
         if (StringLen(scopeHash) != 64) {
             return false;
         }
+
         FolderCreate("MstngM15Ea", FILE_COMMON);
         FolderCreate("MstngM15Ea\\Locks", FILE_COMMON);
         this.handle = FileOpen("MstngM15Ea\\Locks\\" + scopeHash + ".lock",
             FILE_BIN | FILE_READ | FILE_WRITE | FILE_COMMON);
+
         return this.isHeld();
     }
 

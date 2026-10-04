@@ -53,6 +53,7 @@ public:
         if (this.initializationAttempted) {
             return false;
         }
+
         this.initializationAttempted = true;
         if (!this.config.initialize(fromSymbol, fromLotSize, fromMaxInitialStopLossPips,
                 fromTesterTradeStartTime, fromDirectionCorrectionEnabled,
@@ -60,18 +61,23 @@ public:
             this.logger.error("M15EaController.initialize", this.config.lastError);
             return false;
         }
+
         this.logger.initialize(this.config.symbolName, this.config.magicNumber, this.config.runUid);
+
         if (!this.strategy.initialize(this.config.symbolName, this.config.directionCorrectionEnabled,
                 this.config.h4MaxFibonacciExpansionPercent, this.config.h1MaxFibonacciExpansionPercent)) {
             this.logger.error("M15EaController.initialize", this.strategy.getLastError());
             return false;
         }
+
         if (!this.instanceLock.acquire(this.config.lockScope)) {
             this.logger.error("M15EaController.initialize", "INSTANCE_ALREADY_LOCKED");
             this.strategy.destroy();
             return false;
         }
+
         this.lockAcquiredAt = TimeLocal();
+
         this.initializeRun();
         if (StringLen(this.run.configHash) != 64 || StringLen(this.run.analysisInputHash) != 64) {
             this.logger.error("M15EaController.initialize", "CONFIG_HASH_UNAVAILABLE");
@@ -79,18 +85,22 @@ public:
             this.instanceLock.release();
             return false;
         }
+
         this.started = true;
         this.lastTrailObservedBar = iTime(this.config.symbolName, PERIOD_M15, 0);
         this.nextEntryTick = GetTickCount64() + 1000;
+
         if (!this.connectAndRestore()) {
             this.logger.error("M15EaController.initialize", "DB制限状態: " + this.persistence.getLastError());
         }
         if (this.leaseLost) {
             return false;
         }
+
         this.nextMaintenanceTick = EaClock::milliseconds() + 5000;
         this.logger.info("M15EaController.initialize", "START " + this.config.contextKey
             + " DB=" + this.config.databaseFileName + " " + this.config.createCanonicalText());
+
         return true;
     }
 
@@ -101,12 +111,14 @@ public:
         if (!this.started) {
             return false;
         }
+
         if (!this.timerReady) {
             this.timerReady = EventSetTimer(1);
             if (!this.timerReady) {
                 this.logger.error("M15EaController.startTimer", "TIMER_START_FAILED");
             }
         }
+
         return this.timerReady;
     }
 
@@ -117,7 +129,9 @@ public:
         if (!this.started) {
             return;
         }
+
         this.maintainPersistence();
+
         datetime barTime = iTime(this.config.symbolName, PERIOD_M15, 0);
         if (this.executorInitialized) {
             this.updateManagementAuthority();
@@ -125,6 +139,7 @@ public:
             this.executor.processPending(barTime);
             this.processTrail(barTime);
         }
+
         if (this.config.isTester) {
             this.evaluateEntry();
         }
@@ -137,11 +152,14 @@ public:
         if (!this.started) {
             return;
         }
+
         this.maintainPersistence();
+
         if (this.executorInitialized) {
             this.updateManagementAuthority();
             this.executor.reconcile();
         }
+
         if (!this.config.isTester && GetTickCount64() >= this.nextEntryTick) {
             this.nextEntryTick = GetTickCount64() + 30000;
             this.evaluateEntry();
@@ -163,6 +181,7 @@ public:
      */
     void shutdown(const int fromReason) {
         this.timerReady = false;
+
         if (this.started) {
             this.flushDecisions();
             bool tradeQueueSaved = true;
@@ -172,6 +191,7 @@ public:
                 tradeQueueSaved = this.executor.flushPendingEvents() && tradeQueueSaved;
                 this.executor.setManagementAuthority(false, 0);
             }
+
             string status = "STOPPED";
             string errorText = "";
             if (fromReason == REASON_INITFAILED) {
@@ -185,14 +205,17 @@ public:
                 status = "FAILED";
                 errorText = "DEAL_AUDIT_PENDING: 同contextで約定履歴の再照合が必要です";
             }
+
             if (errorText != "") {
                 this.logger.error("M15EaController.shutdown", errorText);
             }
+
             if (this.run.id > 0 && !this.persistence.finishRun(this.run.id, status, errorText)) {
                 this.logger.error("M15EaController.shutdown", "RUN_END_UNSAVED " + this.persistence.getLastError());
             }
             this.logger.info("M15EaController.shutdown", "STOP reason=" + IntegerToString(fromReason));
         }
+
         this.started = false;
         this.databaseReady = false;
         this.persistence.close();
@@ -311,26 +334,31 @@ private:
         if (this.leaseLost) {
             return false;
         }
+
         if (this.run.id == 0 && TimeLocal() >= this.lockAcquiredAt + 60) {
             this.leaseLost = true;
             this.logger.error("M15EaController.connectAndRestore", "INITIAL_DB_RECOVERY_DEADLINE_EXPIRED");
             return false;
         }
+
         if (!this.persistence.open(this.config.databaseFileName, this.run.id == 0)) {
             return false;
         }
+
         if (this.run.id == 0 && !this.persistence.acquireRun(this.run)) {
             if (this.persistence.getLastError() == "RUN_CONTEXT_ALREADY_ACTIVE") {
                 this.leaseLost = true;
             }
             return false;
         }
+
         if (!this.persistence.hasLease(this.run.id, TimeLocal())) {
             if (this.persistence.getLastError() == "LEASE_NOT_OWNED") {
                 this.leaseLost = true;
             }
             return false;
         }
+
         if (!this.countsRestored) {
             long referenceTimes[];
             string sides[];
@@ -341,22 +369,27 @@ private:
                     || !this.persistence.hasAuditGap(this.config.contextKey, hasGap)) {
                 return false;
             }
+
             this.auditStateLost = hasGap;
+
             datetime currentBar = iTime(this.config.symbolName, PERIOD_M15, 0);
             if (currentBar <= 0) {
                 return false;
             }
+
             M15EaDecisionEntity savedDecision;
             bool found = false;
             if (!this.persistence.loadDecision(this.config.contextKey, currentBar, savedDecision, found)
                     || currentBar != iTime(this.config.symbolName, PERIOD_M15, 0)) {
                 return false;
             }
+
             if (found) {
                 this.entryState.finalize(currentBar);
             }
             this.countsRestored = true;
         }
+
         if (!this.executorInitialized) {
             EaTradeProfile profile;
             M15EaTradePolicy::profile(profile);
@@ -365,19 +398,24 @@ private:
                     this.config.contextKey, GetPointer(this.persistence), profile, GetPointer(this.tradePolicy))) {
                 return false;
             }
+
             this.executor.setRequireCurrentQuote(true);
             this.executorInitialized = true;
         }
+
         datetime blockedBar = 0;
         if (!this.persistence.loadCrossBlockedBar(this.config.contextKey, blockedBar)
                 || !this.executor.restoreFromDatabase()) {
             return false;
         }
+
         this.executor.setBlockedEntryBar(blockedBar);
         this.databaseReady = true;
+
         this.updateManagementAuthority();
         this.executor.flushPendingEvents();
         this.executor.reconcile();
+
         return true;
     }
 
@@ -390,6 +428,7 @@ private:
             this.leaseLost = true;
             this.logger.error("M15EaController.maintainPersistence", "LEASE_EXPIRED");
         }
+
         if (this.databaseReady && !this.leaseLost && now >= this.run.heartbeatAt + 10) {
             if (!this.persistence.heartbeat(this.run, now)) {
                 if (!this.persistence.hasLease(this.run.id, now)
@@ -400,14 +439,18 @@ private:
                 this.logger.error("M15EaController.maintainPersistence", "HEARTBEAT_FAILED");
             }
         }
+
         this.updateManagementAuthority();
+
         if (EaClock::milliseconds() < this.nextMaintenanceTick) {
             return;
         }
+
         this.nextMaintenanceTick = EaClock::milliseconds() + 5000;
         if (!this.databaseReady && !this.leaseLost) {
             this.connectAndRestore();
         }
+
         if (this.databaseReady) {
             this.flushDecisions();
             if (this.executorInitialized) {
@@ -425,6 +468,7 @@ private:
             if (this.leaseLost) {
                 expires = 0;
             }
+
             this.executor.setManagementAuthority(this.instanceLock.isHeld(), expires);
         }
     }
@@ -436,20 +480,24 @@ private:
         if (fromBarTime <= 0 || fromBarTime == this.lastTrailObservedBar) {
             return;
         }
+
         this.lastTrailObservedBar = fromBarTime;
         if (!this.executor.isTrailEligible(fromBarTime)) {
             return;
         }
+
         M15EaStrategySnapshot snapshot;
         if (this.strategy.analyze(snapshot)) {
             if (snapshot.barTime != fromBarTime
                     || iTime(this.config.symbolName, PERIOD_M15, 0) != fromBarTime) {
                 return;
             }
+
             this.executor.evaluateTrail(fromBarTime, this.strategy.getWave());
         } else {
             this.executor.evaluateTrail(fromBarTime, NULL, this.strategy.getLastError());
         }
+
         this.executor.processPending(fromBarTime);
     }
 
@@ -569,6 +617,7 @@ private:
         if (barTime <= 0 || barTime == this.lastWarmupBar) {
             return;
         }
+
         this.lastWarmupBar = barTime;
         if (!this.strategy.prepareHistory(this.config.testerTradeStartTime)) {
             this.logAnalysisWait(barTime);
@@ -583,8 +632,10 @@ private:
         if (reason == this.lastAnalysisError && fromBar == this.lastAnalysisErrorBar) {
             return;
         }
+
         this.lastAnalysisError = reason;
         this.lastAnalysisErrorBar = fromBar;
+
         this.logger.info("M15EaController.evaluateEntry", "M15=" + IntegerToString(fromBar)
             + " " + reason + " " + this.strategy.getHistoryStatusText());
     }
@@ -632,31 +683,38 @@ private:
             fromDecision.reasonCode = "AUDIT_STATE_LOST";
             return;
         }
+
         if (this.leaseLost || !this.databaseReady || ArraySize(this.decisionQueue) > 0
                 || this.executor.hasUnsavedEvents()) {
             fromDecision.reasonCode = "DB_UNAVAILABLE";
             return;
         }
+
         if (!this.executor.hasCurrentEntryQuote(fromSnapshot.barTime)) {
             fromDecision.reasonCode = "ANALYSIS_BAR_OR_QUOTE_CHANGED";
             return;
         }
+
         string reason = "";
         if (!this.executor.canEnter(fromSnapshot.barTime, reason)) {
             fromDecision.reasonCode = reason;
             return;
         }
+
         double volume = 0.0;
         if (!this.normalizeVolume(volume)) {
             fromDecision.reasonCode = "INVALID_VOLUME";
             return;
         }
+
         fromDecision.requestedVolume = volume;
+
         MqlTick marketTick;
         if (!SymbolInfoTick(this.config.symbolName, marketTick)) {
             fromDecision.reasonCode = "PRICE_UNAVAILABLE";
             return;
         }
+
         EaInitialStopLossResult result;
         EaInitialStopLossDecision initialStopLoss;
         initialStopLoss.evaluate(fromSnapshot.isBuy, fromSnapshot.initialStopLossPivotPrice,
@@ -664,12 +722,14 @@ private:
             this.config.pipSize, this.config.tickSize, this.config.pointSize,
             SymbolInfoInteger(this.config.symbolName, SYMBOL_TRADE_STOPS_LEVEL),
             this.config.maxInitialStopLossPips, 10.0, result);
+
         fromDecision.initialStopLoss = result.stopLoss;
         fromDecision.initialRiskPips = result.riskPips;
         if (!result.isAccepted) {
             fromDecision.reasonCode = result.reasonCode;
             return;
         }
+
         fromDecision.decision = fromSnapshot.signalSide;
         fromDecision.reasonCode = "ENTRY_ACCEPTED";
     }
@@ -685,8 +745,10 @@ private:
                 || !MathIsValidNumber(step) || minimum <= 0.0 || maximum < minimum || step <= 0.0) {
             return false;
         }
+
         double requested = MathMax(minimum, MathMin(maximum, this.config.lotSize));
         fromVolume = NormalizeDouble(MathFloor(requested / step + 0.00000001) * step, 8);
+
         return fromVolume >= minimum - 0.00000001 && fromVolume <= maximum + 0.00000001;
     }
 
@@ -698,13 +760,16 @@ private:
         if (!M15EaDecisionBuilder::seal(fromDecision, this.config.digits, fromDiagnostics)) {
             this.auditStateLost = true;
         }
+
         int queueSize = ArraySize(this.decisionQueue);
         if (queueSize >= 256 || ArrayResize(this.decisionQueue, queueSize + 1) != queueSize + 1) {
             this.auditStateLost = true;
             this.logger.error("M15EaController.enqueueDecision", "AUDIT_STATE_LOST QUEUE_OVERFLOW");
             return;
         }
+
         this.decisionQueue[queueSize] = fromDecision;
+
         this.logDecision(fromDecision);
     }
 
@@ -715,16 +780,19 @@ private:
         if (!this.databaseReady || this.leaseLost || this.run.id <= 0) {
             return;
         }
+
         while (ArraySize(this.decisionQueue) > 0) {
             if (!this.persistence.saveDecision(this.run.id, this.decisionQueue[0])) {
                 this.databaseReady = false;
                 this.logger.error("M15EaController.flushDecisions", this.persistence.getLastError());
                 return;
             }
+
             int queueSize = ArraySize(this.decisionQueue);
             for (int i = 1; i < queueSize; i++) {
                 this.decisionQueue[i - 1] = this.decisionQueue[i];
             }
+
             ArrayResize(this.decisionQueue, queueSize - 1);
         }
     }

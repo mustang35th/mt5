@@ -15,8 +15,10 @@ public:
     void initialize(const string fromSymbol, const ulong fromMagic, const string fromRunUid) {
         this.logger.setSymbolNameAndTimeFrame(fromSymbol, PERIOD_H1);
         this.logger.setLevel(LOG_INFO);
+
         this.identity = fromSymbol + "|" + H1EaTextUtil::ticket(fromMagic) + "|" + fromRunUid;
         this.fileName = "MstngH1Ea\\Logs\\" + fromRunUid + ".log";
+
         FolderCreate("MstngH1Ea", FILE_COMMON);
         FolderCreate("MstngH1Ea\\Logs", FILE_COMMON);
     }
@@ -61,6 +63,7 @@ private:
         if (this.fileName == "") {
             return;
         }
+
         int fileHandle = FileOpen(this.fileName,
             FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ,
             0, CP_UTF8);
@@ -68,12 +71,14 @@ private:
             this.logger.error("H1EaOperationLogger.append", "LOG_UNAVAILABLE: " + this.fileName);
             return;
         }
+
         FileSeek(fileHandle, 0, SEEK_END);
         string record = TimeToString(TimeLocal(), TIME_DATE | TIME_SECONDS)
             + " [" + fromLevel + "] " + this.identity + " " + fromMethod + ": " + fromMessage + "\r\n";
         if (FileWriteString(fileHandle, record) == 0) {
             this.logger.error("H1EaOperationLogger.append", "LOG_WRITE_FAILED");
         }
+
         FileFlush(fileHandle);
         FileClose(fileHandle);
     }

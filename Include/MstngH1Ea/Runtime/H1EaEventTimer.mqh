@@ -33,16 +33,20 @@ public:
         if (fromFastWarmup) {
             requiredSeconds = 30;
         }
+
         if (this.timerSeconds == requiredSeconds) {
             return true;
         }
+
         if (H1EaClock::milliseconds() < this.nextTimerRetryTick) {
             return false;
         }
+
         if (requiredSeconds == 1) {
             // 高速期間の30秒待ちをDB復旧・未保存イベント処理へ持ち込まない。
             fromResetMaintenance = true;
         }
+
         ResetLastError();
         if (!EventSetTimer(requiredSeconds)) {
             int errorCode = GetLastError();
@@ -52,10 +56,12 @@ public:
                 + IntegerToString(requiredSeconds) + " error=" + IntegerToString(errorCode));
             return false;
         }
+
         this.timerSeconds = requiredSeconds;
         this.nextTimerRetryTick = 0;
         fromLogger.info("H1EaController.updateEventTimer", "TIMER_SECONDS="
             + IntegerToString(this.timerSeconds));
+
         return true;
     }
 

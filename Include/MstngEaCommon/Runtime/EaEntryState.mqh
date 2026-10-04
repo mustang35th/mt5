@@ -51,6 +51,7 @@ public:
         }
 
         this.observedBar = fromBar;
+
         return expiredBar;
     }
 
@@ -121,6 +122,7 @@ public:
         this.referenceTimes[nextSize - 1] = fromReferenceTime;
         this.sides[nextSize - 1] = fromSide;
         this.counts[nextSize - 1] = fromCount;
+
         return true;
     }
 

@@ -113,17 +113,20 @@ public:
             "H4_ELLIOT_LABEL_REJECTED", "H4_WAVE3_SUB_ELLIOT_PRESENT_REJECTED",
             waveResult
         );
+
         H1DirectionAlignmentDecision alignmentDecision;
         H1DirectionAlignmentResult alignmentResult;
         fromSnapshot.isH1DirectionAlignmentPassed = alignmentDecision.evaluate(
             Mtf3In3H1Policy::getDirectionAlignmentMode(),
             fromElliotAll, alignmentResult
         );
+
         H1Ema200ConfirmationDecision ema200Decision;
         fromSnapshot.isEma200ConfirmationPassed = ema200Decision.evaluate(
             Mtf3In3H1Policy::getEma200ConfirmationMode(),
             fromSnapshot.isBuy, elliotH1, elliotH4, elliotD1
         );
+
         fromSnapshot.analysisSnapshotText = StringFormat(
             "MN1=%s|W1=%s|D1=%s|H4=%s|H1=%s|W1_EMA200=%s|D1_EMA200=%s|H4_EMA200=%s|H1_EMA200=%s|H1_GT=%d|H1_GC=%d|H1_WAVE=%s|H4_WAVE=%s|DIRECTION_STATE=%s|EMA200_MATCHED=%d",
             fromSnapshot.mn1Direction, fromSnapshot.w1Direction,
@@ -203,6 +206,7 @@ public:
         strategy.analyze(fromElliotAll, GetPointer(signalCount), 1);
         fromSnapshot.alertResult = strategy.getAlertResult();
         delete strategy;
+
         fromSnapshot.isJudge = fromSnapshot.alertResult.isJudge;
         fromSnapshot.signalCount = fromSnapshot.alertResult.signalCount;
         fromSnapshot.isEntryEvaluated = fromSnapshot.alertResult.isEntryEvaluated;

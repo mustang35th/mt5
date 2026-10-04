@@ -36,21 +36,26 @@ public:
         this.currency = "";
         this.digits = 2;
         this.clearSample(false);
+
         if (ArraySize(fromRuns) != 28) {
             return;
         }
+
         for (int i = 0; i < 28; i++) {
             if (fromRuns[i].symbolName == "" || H1EaTextUtil::parseTicket(fromRuns[i].magicNumber) == 0) {
                 return;
             }
+
             for (int j = 0; j < i; j++) {
                 if (fromRuns[i].symbolName == this.symbols[j]) {
                     return;
                 }
             }
+
             this.symbols[i] = fromRuns[i].symbolName;
             this.magics[i] = H1EaTextUtil::parseTicket(fromRuns[i].magicNumber);
         }
+
         this.initialized = true;
     }
 
@@ -66,6 +71,7 @@ public:
             this.sampled = true;
             this.readSample();
         }
+
         fromState.accountCurrency = this.currency;
         fromState.currencyDigits = this.digits;
         fromState.floatingProfitTime = this.sampleTime;
@@ -161,6 +167,7 @@ private:
                 return i;
             }
         }
+
         return -1;
     }
 
@@ -171,6 +178,7 @@ private:
     void readSample() {
         this.clearSample(true);
         this.sampleTime = TimeCurrent();
+
         ResetLastError();
         this.currency = AccountInfoString(ACCOUNT_CURRENCY);
         long currencyDigits = AccountInfoInteger(ACCOUNT_CURRENCY_DIGITS);
@@ -178,6 +186,7 @@ private:
             this.invalidateSample();
             return;
         }
+
         this.digits = (int)currencyDigits;
         int positions = PositionsTotal();
         for (int i = 0; i < positions; i++) {
@@ -192,6 +201,7 @@ private:
             if (symbolIndex < 0) {
                 continue;
             }
+
             this.positionCounts[symbolIndex]++;
             this.totalPositions++;
             double profit = 0.0;
@@ -203,6 +213,7 @@ private:
                 this.totalKnown = false;
                 continue;
             }
+
             this.profits[symbolIndex] += profit + swap;
             this.totalProfit += profit + swap;
             if (!MathIsValidNumber(this.profits[symbolIndex]) || !MathIsValidNumber(this.totalProfit)) {
@@ -210,6 +221,7 @@ private:
                 this.totalKnown = false;
             }
         }
+
         if (PositionsTotal() != positions) {
             this.invalidateSample();
         }

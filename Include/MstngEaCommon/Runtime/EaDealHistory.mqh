@@ -91,14 +91,17 @@ public:
     static bool read(const ulong fromTicket, EaDealSnapshot &fromDeal, string &fromFailure) {
         fromDeal.reset();
         fromFailure = "";
+
         if (fromTicket == 0) {
             return EaDealHistory::fail(fromTicket, "DEAL_TICKET", 0, "INVALID_TICKET", fromFailure);
         }
+
         ResetLastError();
         if (!HistoryDealSelect(fromTicket)) {
             return EaDealHistory::fail(fromTicket, "HistoryDealSelect", GetLastError(),
                 "SELECT_FAILED", fromFailure);
         }
+
         EaDealSnapshot candidate;
         long actualTicket = 0;
         long orderTicket = 0;
@@ -114,15 +117,18 @@ public:
                 || !EaDealHistory::readInteger(fromTicket, DEAL_TIME_MSC, candidate.timeMsc, fromFailure)) {
             return false;
         }
+
         candidate.ticket = (ulong)actualTicket;
         candidate.orderTicket = (ulong)orderTicket;
         candidate.positionIdentifier = (ulong)positionIdentifier;
         candidate.magic = (ulong)magic;
+
         ResetLastError();
         if (!HistoryDealGetString(fromTicket, DEAL_SYMBOL, candidate.symbol)) {
             return EaDealHistory::fail(fromTicket, "DEAL_SYMBOL", GetLastError(),
                 "GETTER_FAILED", fromFailure);
         }
+
         if (!EaDealHistory::readDouble(fromTicket, DEAL_VOLUME, candidate.volume, fromFailure)
                 || !EaDealHistory::readDouble(fromTicket, DEAL_PRICE, candidate.price, fromFailure)
                 || !EaDealHistory::readDouble(fromTicket, DEAL_PROFIT, candidate.profit, fromFailure)
@@ -131,29 +137,38 @@ public:
                 || !EaDealHistory::readDouble(fromTicket, DEAL_FEE, candidate.fee, fromFailure)) {
             return false;
         }
+
         if (candidate.ticket != fromTicket) {
             return EaDealHistory::fail(fromTicket, "DEAL_TICKET", 0, "TICKET_MISMATCH", fromFailure);
         }
+
         if (candidate.positionIdentifier == 0) {
             return EaDealHistory::fail(fromTicket, "DEAL_POSITION_ID", 0, "INVALID_POSITION_ID", fromFailure);
         }
+
         if (candidate.timeMsc <= 0) {
             return EaDealHistory::fail(fromTicket, "DEAL_TIME_MSC", 0, "INVALID_TIME", fromFailure);
         }
+
         if (StringLen(candidate.symbol) == 0) {
             return EaDealHistory::fail(fromTicket, "DEAL_SYMBOL", 0, "EMPTY_SYMBOL", fromFailure);
         }
+
         bool tradingDeal = candidate.type == DEAL_TYPE_BUY || candidate.type == DEAL_TYPE_SELL;
         if (tradingDeal && candidate.orderTicket == 0) {
             return EaDealHistory::fail(fromTicket, "DEAL_ORDER", 0, "INVALID_ORDER_TICKET", fromFailure);
         }
+
         if (candidate.volume < 0.0 || (tradingDeal && candidate.volume == 0.0)) {
             return EaDealHistory::fail(fromTicket, "DEAL_VOLUME", 0, "INVALID_VOLUME", fromFailure);
         }
+
         if (candidate.price < 0.0 || (tradingDeal && candidate.price == 0.0)) {
             return EaDealHistory::fail(fromTicket, "DEAL_PRICE", 0, "INVALID_PRICE", fromFailure);
         }
+
         fromDeal = candidate;
+
         return true;
     }
 
@@ -165,20 +180,24 @@ public:
             EaDealSnapshot &fromDeals[], string &fromFailure) {
         fromFailure = "";
         ArrayResize(fromDeals, 0);
+
         if (fromIdentifier == 0 || StringLen(fromSymbol) == 0) {
             return EaDealHistory::fail(0, "POSITION_SCOPE", 0, "INVALID_SCOPE", fromFailure);
         }
+
         ResetLastError();
         if (!HistorySelectByPosition(fromIdentifier)) {
             return EaDealHistory::fail(0, "HistorySelectByPosition", GetLastError(),
                 "SELECT_FAILED position=" + StringFormat("%I64u", fromIdentifier), fromFailure);
         }
+
         int total = HistoryDealsTotal();
         ulong tickets[];
         ResetLastError();
         if (total < 0 || ArrayResize(tickets, total) != total) {
             return EaDealHistory::fail(0, "TICKET_ARRAY", GetLastError(), "ALLOCATION_FAILED", fromFailure);
         }
+
         for (int i = 0; i < total; i++) {
             ResetLastError();
             tickets[i] = HistoryDealGetTicket(i);
@@ -186,6 +205,7 @@ public:
                 return EaDealHistory::fail(0, "HistoryDealGetTicket", GetLastError(),
                     "ENUMERATION_FAILED index=" + IntegerToString(i), fromFailure);
             }
+
             for (int j = 0; j < i; j++) {
                 if (tickets[j] == tickets[i]) {
                     return EaDealHistory::fail(tickets[i], "TICKET_ARRAY", 0,
@@ -193,33 +213,40 @@ public:
                 }
             }
         }
+
         EaDealSnapshot candidates[];
         ResetLastError();
         if (ArrayResize(candidates, total) != total) {
             return EaDealHistory::fail(0, "SNAPSHOT_ARRAY", GetLastError(), "ALLOCATION_FAILED", fromFailure);
         }
+
         for (int i = 0; i < total; i++) {
             if (!EaDealHistory::read(tickets[i], candidates[i], fromFailure)) {
                 return false;
             }
+
             if (candidates[i].positionIdentifier != fromIdentifier) {
                 return EaDealHistory::fail(tickets[i], "DEAL_POSITION_ID", 0,
                     "POSITION_MISMATCH expected=" + StringFormat("%I64u", fromIdentifier), fromFailure);
             }
+
             if (candidates[i].symbol != fromSymbol) {
                 return EaDealHistory::fail(tickets[i], "DEAL_SYMBOL", 0,
                     "SYMBOL_MISMATCH expected=" + fromSymbol, fromFailure);
             }
         }
+
         ResetLastError();
         if (ArrayResize(fromDeals, total) != total) {
             int errorCode = GetLastError();
             ArrayResize(fromDeals, 0);
             return EaDealHistory::fail(0, "OUTPUT_ARRAY", errorCode, "ALLOCATION_FAILED", fromFailure);
         }
+
         for (int i = 0; i < total; i++) {
             fromDeals[i] = candidates[i];
         }
+
         return true;
     }
 
@@ -234,6 +261,7 @@ private:
             return EaDealHistory::fail(fromTicket, EnumToString(fromProperty), GetLastError(),
                 "GETTER_FAILED", fromFailure);
         }
+
         return true;
     }
 
@@ -247,9 +275,11 @@ private:
             return EaDealHistory::fail(fromTicket, EnumToString(fromProperty), GetLastError(),
                 "GETTER_FAILED", fromFailure);
         }
+
         if (!MathIsValidNumber(fromValue)) {
             return EaDealHistory::fail(fromTicket, EnumToString(fromProperty), 0, "NON_FINITE", fromFailure);
         }
+
         return true;
     }
 
@@ -260,6 +290,7 @@ private:
             const string fromReason, string &fromFailure) {
         fromFailure = StringFormat("DEAL_HISTORY_READ_FAILED ticket=%I64u property=%s error=%d reason=%s",
             fromTicket, fromProperty, fromError, fromReason);
+
         return false;
     }
 };

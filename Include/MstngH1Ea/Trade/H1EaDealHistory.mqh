@@ -20,10 +20,12 @@ public:
     static bool readPosition(const ulong fromIdentifier, const string fromSymbol,
             H1EaDealSnapshot &fromDeals[], string &fromFailure) {
         ArrayResize(fromDeals, 0);
+
         EaDealSnapshot candidates[];
         if (!EaDealHistory::readPosition(fromIdentifier, fromSymbol, candidates, fromFailure)) {
             return false;
         }
+
         int total = ArraySize(candidates);
         ResetLastError();
         if (ArrayResize(fromDeals, total) != total) {
@@ -33,9 +35,11 @@ public:
                 (ulong)0, "OUTPUT_ARRAY", errorCode, "ALLOCATION_FAILED");
             return false;
         }
+
         for (int i = 0; i < total; i++) {
             H1EaDealHistory::copySnapshot(candidates[i], fromDeals[i]);
         }
+
         return true;
     }
 

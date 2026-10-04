@@ -28,6 +28,7 @@ public:
         this.readErrors = 0;
         this.lastValues = "";
         this.folder = "";
+
         this.logger.setSymbolNameAndTimeFrame(_Symbol, PERIOD_H1);
         this.logger.setLevel(LOG_INFO);
     }
@@ -48,18 +49,22 @@ public:
                 || this.active || ArraySize(fromRuns) != 28) {
             return;
         }
+
         string session = fromRuns[0].sessionUid;
         if (StringLen(session) != 64) {
             return;
         }
+
         for (int i = 0; i < 28; i++) {
             if (fromRuns[i].sourceMode != "TESTER" || fromRuns[i].sessionUid != session
                     || fromRuns[i].symbolName == "" || H1EaTextUtil::parseTicket(fromRuns[i].magicNumber) == 0) {
                 return;
             }
+
             this.symbols[i] = fromRuns[i].symbolName;
             this.magics[i] = H1EaTextUtil::parseTicket(fromRuns[i].magicNumber);
         }
+
         this.tradeStart = fromTradeStart;
         this.testStart = TimeCurrent();
         this.folder = "MstngH1Ea\\Backtests\\" + session;
@@ -67,6 +72,7 @@ public:
         FolderCreate("MstngH1Ea\\Backtests", FILE_COMMON);
         FolderCreate(this.folder, FILE_COMMON);
         this.active = true;
+
         int runsHandle = this.openFile("runs.csv");
         this.writeLine(runsHandle, "symbol,magic,runId,runUid,sessionUid,programVersion,strategyVersion,configHash,configText,analysisInputHash");
         for (int i = 0; i < 28; i++) {
@@ -76,9 +82,12 @@ public:
                 + "," + this.quote(fromRuns[i].strategyVersion) + "," + this.quote(fromRuns[i].configHash)
                 + "," + this.quote(fromRuns[i].configText) + "," + this.quote(fromRuns[i].analysisInputHash));
         }
+
         this.finishFile(runsHandle);
+
         this.samplesHandle = this.openFile("samples.csv");
         this.writeLine(this.samplesHandle, "serverTime,positions,pendingOrders,foreignPositions,foreignOrders,balance,equity,margin,freeMargin,marginLevel,openProfit,slRiskKnown,slRiskUnknown,readErrors,currencySlots");
+
         this.logger.info(__FUNCTION__, "BASELINE_REPORT " + this.folder);
         this.sample();
     }
@@ -91,14 +100,17 @@ public:
         if (!this.active || this.finished || this.failed) {
             return;
         }
+
         datetime now = TimeCurrent();
         if (now < this.tradeStart || (!fromForce && now <= this.lastSampleTime)) {
             return;
         }
+
         this.lastSampleTime = now;
         if (this.firstSampleTime == 0) {
             this.firstSampleTime = now;
         }
+
         int positions = 0;
         int pendingOrders = 0;
         int foreignPositions = 0;
@@ -120,6 +132,7 @@ public:
                 foreignPositions++;
                 continue;
             }
+
             positions++;
             double volume = PositionGetDouble(POSITION_VOLUME);
             double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
@@ -138,6 +151,7 @@ public:
             } else {
                 risk += MathMax(0.0, -loss);
             }
+
             string base = SymbolInfoString(symbol, SYMBOL_CURRENCY_BASE);
             string quoteCurrency = SymbolInfoString(symbol, SYMBOL_CURRENCY_PROFIT);
             if (base == "" || quoteCurrency == "") {
@@ -147,6 +161,7 @@ public:
                 this.addCurrency(quoteCurrency, !isBuy, currencies, longSlots, shortSlots);
             }
         }
+
         for (int i = 0; i < OrdersTotal(); i++) {
             if (OrderGetTicket(i) == 0) {
                 errors++;
@@ -156,6 +171,7 @@ public:
                 foreignOrders++;
             }
         }
+
         string slots = "";
         for (int i = 0; i < ArraySize(currencies); i++) {
             if (i > 0) {
@@ -163,6 +179,7 @@ public:
             }
             slots += currencies[i] + ":" + IntegerToString(longSlots[i]) + ":" + IntegerToString(shortSlots[i]);
         }
+
         string values = IntegerToString(positions) + "," + IntegerToString(pendingOrders)
             + "," + IntegerToString(foreignPositions) + "," + IntegerToString(foreignOrders)
             + "," + this.number(AccountInfoDouble(ACCOUNT_BALANCE))
@@ -172,6 +189,7 @@ public:
             + "," + this.number(AccountInfoDouble(ACCOUNT_MARGIN_LEVEL))
             + "," + this.number(openProfit) + "," + this.number(risk)
             + "," + IntegerToString(unknownRisk) + "," + IntegerToString(errors) + "," + this.quote(slots);
+
         this.readErrors += errors;
         if (fromForce || values != this.lastValues || now >= this.lastWriteTime + 60) {
             if (this.writeLine(this.samplesHandle, IntegerToString(now) + "," + values)) {
@@ -193,10 +211,12 @@ public:
         if (!this.active || this.finished || !MQLInfoInteger(MQL_TESTER)) {
             return;
         }
+
         this.sample(true);
         this.finishFile(this.samplesHandle);
         this.samplesHandle = INVALID_HANDLE;
         this.exportDeals();
+
         int summaryHandle = this.openFile("summary.csv");
         this.writeLine(summaryHandle, "key,value");
         this.writePair(summaryHandle, "schema", "H1_EA_BASELINE_V1");
@@ -222,6 +242,7 @@ public:
         this.writePair(summaryHandle, "ioFailed", IntegerToString((int)this.failed));
         this.finishFile(summaryHandle);
         this.finished = true;
+
         if (!this.failed) {
             int statusHandle = this.openFile("status.csv");
             this.writeLine(statusHandle, "key,value");
@@ -308,6 +329,7 @@ private:
                 return true;
             }
         }
+
         return false;
     }
 
@@ -323,6 +345,7 @@ private:
                 break;
             }
         }
+
         if (index < 0) {
             index = ArraySize(fromCurrencies);
             ArrayResize(fromCurrencies, index + 1);
@@ -332,6 +355,7 @@ private:
             fromLongSlots[index] = 0;
             fromShortSlots[index] = 0;
         }
+
         if (fromLong) {
             fromLongSlots[index]++;
         } else {
@@ -347,6 +371,7 @@ private:
             this.fail("HISTORY_SELECT_FAILED");
             return;
         }
+
         int handle = this.openFile("deals.csv");
         this.writeLine(handle, "ticket,timeMsc,positionId,symbol,magic,type,entry,volume,profit,commission,swap,fee");
         for (int i = 0; i < HistoryDealsTotal(); i++) {
@@ -355,6 +380,7 @@ private:
                 this.fail("HISTORY_DEAL_FAILED");
                 break;
             }
+
             ResetLastError();
             string row = H1EaTextUtil::ticket(ticket)
                 + "," + IntegerToString(HistoryDealGetInteger(ticket, DEAL_TIME_MSC))
@@ -372,11 +398,13 @@ private:
                 this.fail("HISTORY_PROPERTY_FAILED");
                 break;
             }
+
             if (!this.writeLine(handle, row)) {
                 break;
             }
             this.dealRows++;
         }
+
         this.finishFile(handle);
     }
 
@@ -389,6 +417,7 @@ private:
         if (handle == INVALID_HANDLE) {
             this.fail("FILE_OPEN_FAILED: " + fromName);
         }
+
         return handle;
     }
 
@@ -397,6 +426,7 @@ private:
      */
     string quote(string fromText) {
         StringReplace(fromText, "\"", "\"\"");
+
         return "\"" + fromText + "\"";
     }
 
@@ -408,6 +438,7 @@ private:
             this.readErrors++;
             return "";
         }
+
         return DoubleToString(fromValue, 8);
     }
 
@@ -420,10 +451,12 @@ private:
             this.fail("FILE_WRITE_FAILED");
             return false;
         }
+
         if (GetLastError() != 0) {
             this.fail("FILE_WRITE_ERROR");
             return false;
         }
+
         return true;
     }
 
@@ -441,6 +474,7 @@ private:
         if (fromHandle == INVALID_HANDLE) {
             return;
         }
+
         ResetLastError();
         FileFlush(fromHandle);
         if (GetLastError() != 0) {

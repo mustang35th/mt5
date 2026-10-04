@@ -16,19 +16,24 @@ public:
         if (fromIntent == "INITIAL_STOP_LOSS_CROSSED" || fromIntent == "H1_ZIGZAG_TRAIL_CROSSED") {
             return fromIntent;
         }
+
         if (fromBrokerReason == "SL") {
             if (fromSource == "INITIAL_STOP_LOSS" || fromSource == "H1_ZIGZAG_TRAIL") {
                 return fromSource;
             }
+
             if (fromSource == "EXTERNAL") {
                 return "EXTERNAL_STOP_LOSS";
             }
+
             return "UNKNOWN_STOP_LOSS";
         }
+
         if (fromBrokerReason == "CLIENT" || fromBrokerReason == "MOBILE"
                 || fromBrokerReason == "WEB") {
             return "EXTERNAL_CLOSE";
         }
+
         return "UNKNOWN_CLOSE";
     }
 };

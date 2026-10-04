@@ -48,6 +48,7 @@ public:
         H1ZigZagTrailDecision decision;
         H1ZigZagTrailDecisionResult result;
         bool accepted = decision.evaluate(fromPosition, fromWave, 10.0, fromPipSize, fromTickSize, result);
+
         fromResult.shouldModify = result.shouldModify;
         fromResult.targetStopLoss = result.targetStopLoss;
         fromResult.pivotRate = result.pivotRate;
@@ -56,6 +57,7 @@ public:
         fromResult.pivotIsPeak = result.pivotIsPeak;
         fromResult.latestBarTime = result.latestBarTime;
         fromResult.skipReason = result.skipReason;
+
         return accepted;
     }
 

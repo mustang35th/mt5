@@ -56,42 +56,51 @@ public:
         if (this.started) {
             return false;
         }
+
         this.lastError = "";
         this.sessionUid = "";
         this.testerTradeStartTime = fromTesterTradeStartTime;
         this.resetMonitorMetrics();
+
         if (_Period != PERIOD_H1) {
             return this.fail("H1_CHART_REQUIRED");
         }
+
         if (MQLInfoInteger(MQL_OPTIMIZATION)) {
             return this.fail("OPTIMIZATION_NOT_SUPPORTED");
         }
+
         SymbolNameInfoAll symbols;
         symbols.setAll();
         if (symbols.size() != ArraySize(this.controllers)) {
             return this.fail("SYMBOL_COUNT_MISMATCH");
         }
+
         for (int i = 0; i < symbols.size(); i++) {
             SymbolNameInfo *symbol = symbols.getSymbolNameInfo(i);
             if (symbol == NULL || symbol.symbolName == "" || !symbol.isTarget) {
                 return this.fail("INVALID_SYMBOL_LIST");
             }
+
             for (int j = 0; j < i; j++) {
                 SymbolNameInfo *previousSymbol = symbols.getSymbolNameInfo(j);
                 if (previousSymbol.symbolName == symbol.symbolName) {
                     return this.fail("DUPLICATE_SYMBOL: " + symbol.symbolName);
                 }
             }
+
             if (!SymbolSelect(symbol.symbolName, true)) {
                 return this.fail("SYMBOL_UNAVAILABLE: " + symbol.symbolName);
             }
         }
+
         string sourceMode = "LIVE";
         string databaseFileName = "mstng-h1-ea.sqlite";
         if (MQLInfoInteger(MQL_TESTER)) {
             sourceMode = "TESTER";
             databaseFileName = "mstng-h1-ea-tester.sqlite";
         }
+
         this.sessionUid = H1EaTextUtil::hash("H1_EA_SESSION_V1|" + sourceMode + "|"
             + AccountInfoString(ACCOUNT_SERVER) + "|" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))
             + "|" + IntegerToString(ChartID()) + "|" + IntegerToString(TimeLocal())
@@ -99,6 +108,7 @@ public:
         if (!H1EaSql::isHash(this.sessionUid)) {
             return this.fail("SESSION_HASH_UNAVAILABLE");
         }
+
         for (int i = 0; i < symbols.size(); i++) {
             SymbolNameInfo *symbol = symbols.getSymbolNameInfo(i);
             if (symbol.symbolName == _Symbol) {
@@ -109,6 +119,7 @@ public:
                     || !this.controllers[i].initializePreparation(symbol.symbolName)) {
                 return this.fail("SYMBOL_INITIALIZATION_FAILED: " + symbol.symbolName);
             }
+
             if (!this.controllers[i].initializePersistencePreparation(fromLotSize,
                     fromMaxInitialStopLossPips, fromTesterTradeStartTime, this.sessionUid)) {
                 H1EaRestorationState state;
@@ -116,21 +127,26 @@ public:
                 return this.fail("SYMBOL_CONFIGURATION_OR_LOCK_FAILED: " + symbol.symbolName + " " + state.reason);
             }
         }
+
         if (!this.cleanupTesterWarmupReservations(databaseFileName)) {
             return this.fail("TESTER_WARMUP_CLEANUP_FAILED");
         }
+
         // 全Lock取得後、親だけがschema移行を行う。子は既存schemaへ接続するだけ。
         H1EaDatabaseContext database;
         if (!database.open(databaseFileName, true)) {
             return this.fail("DATABASE_SCHEMA_PREPARATION_FAILED");
         }
+
         database.close();
+
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             if (!this.controllers[i].startPersistencePreparation()) {
                 H1EaRestorationState state;
                 this.controllers[i].getRestorationState(state);
                 return this.fail("SYMBOL_RESTORE_FAILED: " + state.run.symbolName + " " + state.reason);
             }
+
             // 起動処理が長引いても、先に登録したRunのLeaseを失効させない。
             for (int j = 0; j <= i; j++) {
                 this.controllers[j].processPersistencePreparation();
@@ -141,10 +157,12 @@ public:
                 }
             }
         }
+
         this.nextSymbolIndex = 0;
         this.timerLogger.initialize(_Symbol, 0, this.sessionUid);
         this.started = true;
         this.logger.info(__FUNCTION__, "MULTI_SYMBOL_ENTRY symbols=28 timeFrame=H1 entry=waiting session=" + this.sessionUid);
+
         return true;
     }
 
@@ -155,22 +173,27 @@ public:
         if (!this.started) {
             return false;
         }
+
         if (this.timerStarted) {
             return true;
         }
+
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             if (!this.controllers[i].canEnableProtection()) {
                 return this.fail("PROTECTION_INITIALIZATION_NOT_READY: " + this.controllers[i].getSymbolName());
             }
         }
+
         if (!this.updateEventTimer(false)) {
             return this.fail("TIMER_START_FAILED: " + IntegerToString(GetLastError()));
         }
+
         this.timerStarted = true;
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             this.controllers[i].enableProtection();
             this.controllers[i].enableEntry();
         }
+
         return true;
     }
 
@@ -181,6 +204,7 @@ public:
         if (!this.started || !this.timerStarted || this.fastWarmupActive) {
             return;
         }
+
         ulong timerStartedMicros = GetMicrosecondCount();
         ulong operationStartedMicros = GetMicrosecondCount();
         this.fastWarmupActive = this.processFastTesterWarmup();
@@ -191,34 +215,40 @@ public:
             this.recordTimerDuration(timerStartedMicros);
             return;
         }
+
         // 履歴巡回の順番を待たず、全通貨のLeaseを毎イベント確認する。
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             operationStartedMicros = GetMicrosecondCount();
             this.controllers[i].processPersistencePreparation();
             this.logSlowOperation(this.controllers[i].getSymbolName(),
                 "onTimer.processPersistencePreparation", operationStartedMicros);
+
             operationStartedMicros = GetMicrosecondCount();
             this.logRestorationState(i);
             this.logSlowOperation(this.controllers[i].getSymbolName(),
                 "onTimer.logRestorationState", operationStartedMicros);
         }
+
         this.recordProtectionPass();
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             operationStartedMicros = GetMicrosecondCount();
             datetime barTime = iTime(this.controllers[i].getSymbolName(), PERIOD_H1, 0);
             this.logSlowOperation(this.controllers[i].getSymbolName(),
                 "onTimer.protection.iTime", operationStartedMicros);
+
             operationStartedMicros = GetMicrosecondCount();
             this.controllers[i].processProtection(barTime);
             this.logSlowOperation(this.controllers[i].getSymbolName(),
                 "onTimer.processProtection", operationStartedMicros);
         }
+
         // 毎時の開始通貨はサーバー時刻で決め、再テストでも同じ順序にする。
         datetime scheduleHour = (datetime)((long)TimeCurrent() / 3600);
         if (scheduleHour != this.entryScheduleHour) {
             this.entryScheduleHour = scheduleHour;
             this.nextEntrySymbolIndex = (int)((long)scheduleHour % ArraySize(this.controllers));
         }
+
         int entrySymbolIndex = -1;
         datetime entryBarTime = 0;
         for (int i = 0; i < ArraySize(this.controllers); i++) {
@@ -236,6 +266,7 @@ public:
                 entryBarTime = candidateBar;
             }
         }
+
         int symbolIndex = -1;
         datetime trailBarTime = 0;
         // トレイル分析が続く場合も、3タスク目にはEntryまたは履歴へ枠を渡す。
@@ -253,6 +284,7 @@ public:
                 }
             }
         }
+
         if (symbolIndex >= 0) {
             this.consecutiveTrailTasks++;
         } else if (entrySymbolIndex >= 0) {
@@ -268,6 +300,7 @@ public:
             }
             this.consecutiveTrailTasks = 0;
         }
+
         H1EaPreparationState previousState;
         H1EaPreparationState currentState;
         this.controllers[symbolIndex].getPreparationState(previousState);
@@ -275,12 +308,14 @@ public:
         this.controllers[symbolIndex].processPreparation();
         this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
             "onTimer.processPreparation", operationStartedMicros);
+
         if (!this.isBeforeTesterTradeStart()) {
             operationStartedMicros = GetMicrosecondCount();
             this.controllers[symbolIndex].restorePreparedDecision();
             this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
                 "onTimer.restorePreparedDecision", operationStartedMicros);
         }
+
         if (trailBarTime > 0) {
             operationStartedMicros = GetMicrosecondCount();
             this.controllers[symbolIndex].processScheduledTrail(trailBarTime);
@@ -292,6 +327,7 @@ public:
             this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
                 "onTimer.processScheduledEntry", operationStartedMicros);
         }
+
         operationStartedMicros = GetMicrosecondCount();
         this.logRestorationState(symbolIndex);
         this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
@@ -302,6 +338,7 @@ public:
             this.logger.info(__FUNCTION__, currentState.symbolName + " " + currentState.status
                 + " H1=" + IntegerToString(currentState.h1BarTime) + " " + currentState.reason);
         }
+
         this.recordTimerDuration(timerStartedMicros);
     }
 
@@ -312,6 +349,7 @@ public:
         if (!this.started || !this.timerStarted) {
             return;
         }
+
         bool wasFastWarmup = this.fastWarmupActive;
         this.fastWarmupActive = this.processFastTesterWarmup();
         if (this.fastWarmupActive) {
@@ -319,6 +357,7 @@ public:
             this.lastProtectionGapMs = 0;
             return;
         }
+
         if (wasFastWarmup || !this.eventTimer.isNormalReady()) {
             // 高速終了・Timer復帰失敗時も、他通貨の保護を次のTimer待ちにしない。
             this.recordProtectionPass();
@@ -326,11 +365,14 @@ public:
                 this.controllers[i].processPersistencePreparation();
                 this.controllers[i].processProtection(iTime(this.controllers[i].getSymbolName(), PERIOD_H1, 0));
             }
+
             return;
         }
+
         if (this.chartSymbolIndex < 0) {
             return;
         }
+
         H1EaController *symbolController = this.controllers[this.chartSymbolIndex];
         symbolController.processPersistencePreparation();
         symbolController.processProtection(iTime(symbolController.getSymbolName(), PERIOD_H1, 0));
@@ -345,12 +387,14 @@ public:
         if (!this.started || !this.timerStarted) {
             return;
         }
+
         if (this.fastWarmupActive) {
             // Tickが途絶えても通知キューを次のTimerで処理できるよう再開する。
             this.updateEventTimer(false);
             this.fastWarmupActive = false;
             this.lastWarmupPreparationTime = 0;
         }
+
         string symbol = H1EaTradeTransactionRouter::explicitSymbol(fromTransaction, fromRequest);
         if (symbol != "") {
             int symbolIndex = this.findSymbolIndex(symbol);
@@ -359,6 +403,7 @@ public:
             }
             return;
         }
+
         int matchedIndex = -1;
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             if (this.controllers[i].matchesTradeTransaction(fromTransaction, fromRequest, fromResult)) {
@@ -366,13 +411,16 @@ public:
                     this.requestAllReconciliation();
                     return;
                 }
+
                 matchedIndex = i;
             }
         }
+
         if (matchedIndex >= 0) {
             this.controllers[matchedIndex].queueTradeTransaction(fromTransaction, fromRequest, fromResult);
             return;
         }
+
         symbol = H1EaTradeTransactionRouter::resolveSymbol(fromTransaction, fromRequest, fromResult);
         if (symbol != "") {
             int symbolIndex = this.findSymbolIndex(symbol);
@@ -381,6 +429,7 @@ public:
             }
             return;
         }
+
         this.requestAllReconciliation();
     }
 
@@ -391,6 +440,7 @@ public:
         if (!this.started) {
             return 0;
         }
+
         return ArraySize(this.controllers);
     }
 
@@ -402,7 +452,9 @@ public:
         if (!this.started || fromIndex < 0 || fromIndex >= ArraySize(this.controllers)) {
             return false;
         }
+
         this.controllers[fromIndex].getPreparationState(fromState);
+
         return true;
     }
 
@@ -414,7 +466,9 @@ public:
         if (!this.started || fromIndex < 0 || fromIndex >= ArraySize(this.controllers)) {
             return false;
         }
+
         this.controllers[fromIndex].getRestorationState(fromState);
+
         return true;
     }
 
@@ -426,6 +480,7 @@ public:
         if (!this.started) {
             return;
         }
+
         fromState.sessionUid = this.sessionUid;
         if (MQLInfoInteger(MQL_TESTER)) {
             fromState.sourceMode = "TESTER";
@@ -443,6 +498,7 @@ public:
         fromState.lastProtectionGapMs = this.lastProtectionGapMs;
         fromState.maxProtectionGapMs = this.maxProtectionGapMs;
         fromState.memoryMb = MQLInfoInteger(MQL_MEMORY_USED);
+
         datetime currentBar = (datetime)((long)fromState.serverTime / 3600 * 3600);
         ulong lastAnalysisFinished = 0;
         for (int i = 0; i < ArraySize(this.controllers); i++) {
@@ -491,6 +547,7 @@ public:
         if (this.started && (this.timerCount > 0 || this.warmupCount > 0)) {
             this.logRuntimeMetrics(true);
         }
+
         if (this.timerStarted) {
             EventKillTimer();
             this.timerStarted = false;
@@ -498,6 +555,7 @@ public:
         this.eventTimer.reset();
         this.fastWarmupActive = false;
         this.started = false;
+
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             if (this.controllers[i] != NULL) {
                 this.controllers[i].shutdown(fromReason);
@@ -505,6 +563,7 @@ public:
                 this.controllers[i] = NULL;
             }
         }
+
         this.nextSymbolIndex = 0;
         this.nextTrailSymbolIndex = 0;
         this.nextEntrySymbolIndex = 0;
@@ -654,6 +713,7 @@ private:
         if (elapsedMicros < 1000000) {
             return;
         }
+
         this.timerLogger.info("H1EaMultiSymbolController.logSlowOperation",
             "SLOW_OPERATION symbol=" + fromSymbol + " operation=" + fromOperation
             + " elapsedMs=" + DoubleToString((double)elapsedMicros / 1000.0, 2) + " thresholdMs=1000");
@@ -668,6 +728,7 @@ private:
         if (this.lastTimerMicros > this.maxTimerMicros) {
             this.maxTimerMicros = this.lastTimerMicros;
         }
+
         this.logRuntimeMetrics(false);
         this.logHistoryWaitSummary();
     }
@@ -681,10 +742,12 @@ private:
                 && this.timerCount < (ulong)ArraySize(this.controllers))) {
             return;
         }
+
         long currentDay = (long)TimeCurrent() / 86400;
         if (currentDay == this.lastHistorySummaryDay) {
             return;
         }
+
         this.lastHistorySummaryDay = currentDay;
         int readyCount = 0;
         int pendingCount = 0;
@@ -708,9 +771,11 @@ private:
                 }
             }
         }
+
         if (readyCount == ArraySize(this.controllers)) {
             return;
         }
+
         string message = "HISTORY_WAIT ready=" + IntegerToString(readyCount)
             + "/" + IntegerToString(ArraySize(this.controllers));
         string timeFrames[5] = {"MN1", "W1", "D1", "H4", "H1"};
@@ -719,12 +784,14 @@ private:
                 message += " " + timeFrames[i] + "不足=" + IntegerToString(missingCounts[i]);
             }
         }
+
         if (pendingCount > 0) {
             message += " pending=" + IntegerToString(pendingCount);
         }
         if (errorCount > 0) {
             message += " error=" + IntegerToString(errorCount);
         }
+
         this.timerLogger.info(__FUNCTION__, message);
     }
 
@@ -737,10 +804,12 @@ private:
         if (!fromForce && now < this.nextMetricsLogTick) {
             return;
         }
+
         this.nextMetricsLogTick = now + 60000;
         if (MQLInfoInteger(MQL_TESTER)) {
             this.nextMetricsLogTick = now + 3600000;
         }
+
         H1EaMonitorState state;
         this.getMonitorState(state);
         if (MQLInfoInteger(MQL_TESTER) && state.symbolCount > 0
@@ -749,8 +818,10 @@ private:
             if (!fromForce && currentDay == this.lastWaitingMetricsLogDay) {
                 return;
             }
+
             this.lastWaitingMetricsLogDay = currentDay;
         }
+
         this.timerLogger.info(__FUNCTION__, "METRICS symbols=" + IntegerToString(state.symbolCount)
             + " historyReady=" + IntegerToString(state.historyReadyCount)
             + " watch=" + IntegerToString(state.watchingCount) + " preparing=" + IntegerToString(state.preparingCount)
@@ -786,11 +857,13 @@ private:
                 || PositionsTotal() != 0 || OrdersTotal() != 0) {
             return false;
         }
+
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             if (!this.controllers[i].canUseScheduledFastTesterWarmup()) {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -807,6 +880,7 @@ private:
                 }
             }
         }
+
         return updated;
     }
 
@@ -819,6 +893,7 @@ private:
             this.endFastTesterWarmup();
             return false;
         }
+
         if (!this.fastWarmupActive) {
             this.warmupReservationsPending = true;
             for (int i = 0; i < ArraySize(this.controllers); i++) {
@@ -827,16 +902,19 @@ private:
                     return false;
                 }
             }
+
             EventKillTimer();
             this.eventTimer.reset();
             this.fastWarmupActive = true;
             this.lastWarmupPreparationTime = 0;
             this.timerLogger.info(__FUNCTION__, "TESTER_TICK_WARMUP START symbols=28 interval=3600 timer=OFF");
         }
+
         if (!this.processWarmupPreparation() || !this.canUseFastTesterWarmup()) {
             this.endFastTesterWarmup();
             return false;
         }
+
         return true;
     }
 
@@ -849,6 +927,7 @@ private:
         if (!wasActive && !this.warmupReservationsPending) {
             return;
         }
+
         bool restored = true;
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             if (this.controllers[i].isScheduledTickWarmup()) {
@@ -858,6 +937,7 @@ private:
                 this.logRestorationState(i);
             }
         }
+
         this.warmupReservationsPending = !restored;
         this.fastWarmupActive = false;
         this.lastWarmupPreparationTime = 0;
@@ -876,6 +956,7 @@ private:
                 && now - this.lastWarmupPreparationTime < 3600) {
             return true;
         }
+
         this.lastWarmupPreparationTime = now;
         ulong startedMicros = GetMicrosecondCount();
         bool prepared = true;
@@ -887,13 +968,16 @@ private:
             }
             this.controllers[i].processPreparation();
         }
+
         this.warmupCount++;
         this.lastWarmupMicros = GetMicrosecondCount() - startedMicros;
         if (this.lastWarmupMicros > this.maxWarmupMicros) {
             this.maxWarmupMicros = this.lastWarmupMicros;
         }
+
         this.logRuntimeMetrics(false);
         this.logHistoryWaitSummary();
+
         return prepared;
     }
 
@@ -905,28 +989,35 @@ private:
         if (!MQLInfoInteger(MQL_TESTER)) {
             return true;
         }
+
         SqliteDatabase database(fromFileName, true);
         if (!database.open()) {
             return false;
         }
+
         int handle = database.getHandle();
         long tableCount = 0;
         if (!H1EaSql::scalar(handle, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name='h1_ea_runs'", tableCount)) {
             return false;
         }
+
         if (tableCount == 0) {
             return true;
         }
+
         long sessionColumnCount = 0;
         if (!H1EaSql::scalar(handle, "SELECT COUNT(*) FROM pragma_table_info('h1_ea_runs') WHERE name='session_uid'", sessionColumnCount)) {
             return false;
         }
+
         if (sessionColumnCount == 0) {
             return true;
         }
+
         if (!H1EaSql::execute(handle, "PRAGMA busy_timeout=5000") || !H1EaSql::execute(handle, "BEGIN IMMEDIATE")) {
             return false;
         }
+
         bool success = true;
         for (int i = 0; i < ArraySize(this.controllers); i++) {
             H1EaRestorationState state;
@@ -945,10 +1036,13 @@ private:
                 break;
             }
         }
+
         if (success && H1EaSql::execute(handle, "COMMIT")) {
             return true;
         }
+
         H1EaSql::execute(handle, "ROLLBACK");
+
         return false;
     }
 
@@ -961,6 +1055,7 @@ private:
                 return i;
             }
         }
+
         return -1;
     }
 
@@ -983,6 +1078,7 @@ private:
         if (this.lastRestorationStatus[fromIndex] == status) {
             return;
         }
+
         this.lastRestorationStatus[fromIndex] = status;
         string message = state.run.symbolName + " " + status + " run=" + IntegerToString(state.run.id)
             + " trade=" + IntegerToString(state.trade.id) + " pending=" + state.trade.pendingStopLossKind;
@@ -1000,6 +1096,7 @@ private:
         this.lastError = fromReason;
         this.logger.error(__FUNCTION__, fromReason);
         this.shutdown(REASON_INITFAILED);
+
         return false;
     }
 };

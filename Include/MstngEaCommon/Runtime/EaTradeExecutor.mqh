@@ -80,6 +80,7 @@ public:
                 || fromPipSize <= 0.0 || fromTickSize <= 0.0) {
             return false;
         }
+
         this.symbolName = fromSymbol;
         this.magicNumber = fromMagic;
         this.pipSize = fromPipSize;
@@ -90,8 +91,10 @@ public:
         this.persistence = fromPersistence;
         this.profile = fromProfile;
         this.policy = fromPolicy;
+
         this.policy.initialize(fromSymbol, fromMagic, fromRunUid);
         this.initialized = true;
+
         return true;
     }
 
@@ -103,15 +106,18 @@ public:
         if (!this.initialized || this.persistence == NULL) {
             return false;
         }
+
         if (!this.loaded) {
             if (!this.persistence.loadActiveTrade(this.contextKey, this.trade, this.active)) {
                 return false;
             }
+
             this.loaded = true;
             this.pendingStored = this.active;
             // 再起動前の通知欠落も含め、後続のbroker照合で全約定を再確認する。
             this.dealHistoryPending = this.active;
         }
+
         return true;
     }
 
@@ -124,8 +130,10 @@ public:
         if (!this.loaded) {
             return false;
         }
+
         fromTrade = this.trade;
         fromActive = this.active;
+
         return true;
     }
 
@@ -153,7 +161,9 @@ public:
                 || iTime(this.symbolName, this.profile.timeFrame, 0) != fromBarTime) {
             return false;
         }
+
         MqlTick marketTick;
+
         return this.readTick(marketTick)
             && iTime(this.symbolName, this.profile.timeFrame, 0) == fromBarTime;
     }
@@ -166,6 +176,7 @@ public:
         if (!this.initialized || !this.active) {
             return false;
         }
+
         if (fromTransaction.type == TRADE_TRANSACTION_REQUEST) {
             return (this.pendingModifyRequestId > 0 && fromResult.request_id == this.pendingModifyRequestId)
                 || this.matchesPositionTicket(fromRequest.position)
@@ -173,6 +184,7 @@ public:
                 || this.matchesOrderTicket(fromRequest.order) || this.matchesOrderTicket(fromResult.order)
                 || this.matchesDealTicket(fromResult.deal);
         }
+
         return this.matchesPositionTicket(fromTransaction.position)
             || this.matchesPositionTicket(fromTransaction.position_by)
             || this.matchesOrderTicket(fromTransaction.order) || this.matchesDealTicket(fromTransaction.deal);
@@ -185,6 +197,7 @@ public:
         if (!this.initialized) {
             return;
         }
+
         if (this.closedDealAuditChecked || !this.closedDealAuditFull) {
             this.closedDealAuditAfterId = 0;
         }
@@ -236,6 +249,7 @@ public:
         if (fromAllowSuspendedAuthority && MQLInfoInteger(MQL_TESTER) && this.knownLeaseExpires == 0) {
             authorityKnown = true;
         }
+
         if (!this.initialized || !this.loaded || !this.idleReconciled || this.persistence == NULL
                 || this.runId <= 0 || !this.lockHeld || !authorityKnown
                 || this.active || this.ownershipLost || this.queueOverflow || ArraySize(this.saveQueue) > 0
@@ -244,6 +258,7 @@ public:
                 || ArraySize(this.pendingDealTickets) > 0) {
             return false;
         }
+
         if (this.trade.id != 0 || this.trade.status != "" || this.trade.lastError != ""
                 || this.trade.positionIdentifier != "" || this.trade.positionTicket != ""
                 || this.trade.entryOrderTicket != "" || this.trade.exitOrderTicket != ""
@@ -253,6 +268,7 @@ public:
                 || this.confirmedModifyRetcode != -1) {
             return false;
         }
+
         return this.trade.pendingStopLossKind == "" && this.trade.pendingStopLossActionUid == ""
             && this.trade.pendingStopLoss == 0.0 && this.trade.pendingStopLossBarTime == 0
             && this.trade.pendingStopLossPivotTime == 0 && this.trade.pendingStopLossPivotRate == 0.0
@@ -266,6 +282,7 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         while (ArraySize(this.saveQueue) > 0) {
             if (!this.persistence.saveTradeEvent(this.runId, this.saveQueue[0].trade,
                     this.saveQueue[0].event, false, true)) {
@@ -277,6 +294,7 @@ public:
                 }
                 return false;
             }
+
             if (this.trade.id == 0 && this.trade.contextKey == this.saveQueue[0].trade.contextKey) {
                 this.trade.id = this.saveQueue[0].trade.id;
             }
@@ -290,12 +308,16 @@ public:
                     this.saveQueue[i].event.tradeId = this.saveQueue[0].trade.id;
                 }
             }
+
             for (int i = 1; i < queueSize; i++) {
                 this.saveQueue[i - 1] = this.saveQueue[i];
             }
+
             ArrayResize(this.saveQueue, queueSize - 1);
         }
+
         this.recoveryCommitPending = false;
+
         return !this.queueOverflow;
     }
 
@@ -308,6 +330,7 @@ public:
             fromReason = "DB_UNAVAILABLE";
             return false;
         }
+
         if (!this.persistence.hasLease(this.runId, TimeLocal())) {
             if (this.persistence.getLastError() == "LEASE_NOT_OWNED") {
                 this.ownershipLost = true;
@@ -316,29 +339,35 @@ public:
             fromReason = "LEASE_UNAVAILABLE";
             return false;
         }
+
         if (fromBar == this.blockedEntryBar) {
             fromReason = "SAME_BAR_EXIT_BLOCKED";
             return false;
         }
+
         PositionSnapshot position;
         int positionCount = 0;
         if (!this.readPosition(position, positionCount)) {
             fromReason = "POSITION_UNAVAILABLE";
             return false;
         }
+
         if (this.active || positionCount > 0 || this.hasOwnOrders()) {
             fromReason = "POSITION_OR_ORDER_EXISTS";
             return false;
         }
+
         if (!this.tradeEnvironmentReady()) {
             fromReason = "TRADING_UNAVAILABLE";
             return false;
         }
+
         MqlTick marketTick;
         if (!this.readTick(marketTick)) {
             fromReason = "PRICE_UNAVAILABLE";
             return false;
         }
+
         return true;
     }
 
@@ -358,6 +387,7 @@ public:
         fromTrade.entryRequestedServerTime = TimeCurrent();
         fromTrade.createdAt = TimeLocal();
         fromTrade.updatedAt = fromTrade.createdAt;
+
         this.newEvent("ENTRY_REQUEST", fromEvent);
         this.actionSequence++;
         fromEvent.actionUid = this.profile.actionUidPrefix + this.runUid + "|{TRADE_ID}|ENTRY|"
@@ -371,6 +401,7 @@ public:
         fromEvent.stopLoss = fromTrade.requestedStopLoss;
         fromEvent.barTime = fromDecision.barTime;
         fromEvent.message = "MAX_INITIAL_RISK_PIPS=" + DoubleToString(fromDecision.maxInitialRiskPips, 8);
+
         this.entryMaximumRisk = fromDecision.maxInitialRiskPips;
         this.entryBar = (datetime)fromDecision.barTime;
     }
@@ -469,11 +500,14 @@ public:
         if (!this.initialized) {
             return;
         }
+
         if (!this.restoreFromDatabase()) {
             return;
         }
+
         this.reconcilePendingDealTickets();
         this.reconcileClosedDealAudit();
+
         PositionSnapshot position;
         int positionCount = 0;
         if (!this.readPosition(position, positionCount)) {
@@ -482,20 +516,24 @@ public:
             }
             return;
         }
+
         if (positionCount > 1) {
             if (this.active) {
                 this.requireRecovery("MULTIPLE_OWN_POSITIONS");
             }
             return;
         }
+
         if (!this.active) {
             if (!position.hasPosition) {
                 this.idleReconciled = true;
                 return;
             }
+
             this.createRecoveryTrade(position);
             return;
         }
+
         if (!this.pendingStructureValid()) {
             EaTradeEvent event;
             this.newEvent("RECOVERY", event);
@@ -506,12 +544,15 @@ public:
             } else {
                 event.quarantinedPendingText = this.profile.pendingMemoryPrefix + this.pendingText();
             }
+
             this.clearPending();
             this.trade.status = "RECOVERY_REQUIRED";
             this.trade.lastError = "INVALID_PENDING_STRUCTURE";
+
             this.recoveryEvent(event);
             return;
         }
+
         if (position.hasPosition) {
             string identifier = EaTextUtil::ticket(position.identifier);
             if ((this.trade.positionIdentifier != "" && this.trade.positionIdentifier != identifier)
@@ -519,10 +560,12 @@ public:
                 this.requireRecovery("POSITION_IDENTITY_MISMATCH");
                 return;
             }
+
             if (this.trade.positionIdentifier == "" && !this.matchEntryPosition(position)) {
                 this.requireRecovery("ENTRY_POSITION_UNMATCHED");
                 return;
             }
+
             this.trade.positionIdentifier = identifier;
             this.trade.positionTicket = EaTextUtil::ticket(position.ticket);
             this.trade.openedAtMsc = position.openTimeMilliseconds;
@@ -532,6 +575,7 @@ public:
             if (this.trade.openedVolume == EMPTY_VALUE || this.trade.openedVolume < position.volume) {
                 this.trade.openedVolume = position.volume;
             }
+
             bool needsDealRecovery = this.trade.status != "OPEN" || this.trade.entryDealTicket == ""
                 || positionVolumeChanged || this.dealHistoryPending;
             bool wasRecovery = this.trade.status == "RECOVERY_REQUIRED";
@@ -540,6 +584,7 @@ public:
                 this.requireRecovery("BROKER_ORDER_UNAVAILABLE");
                 return;
             }
+
             if (this.trade.status == "OPEN_PENDING" || this.trade.status == "OPEN_PARTIAL"
                     || this.trade.status == "RECOVERY_REQUIRED") {
                 if (this.trade.exitIntentReason != "") {
@@ -557,18 +602,22 @@ public:
                     && position.volume < this.trade.openedVolume - 0.00000001) {
                 this.trade.status = "CLOSE_PARTIAL";
             }
+
             this.syncStopLoss(position);
             if (this.trade.exitIntentReason != "") {
                 this.reconcileCloseOrder();
             }
+
             if (needsDealRecovery) {
                 this.aggregateDeals(false);
             }
+
             EaTradeEvent event;
             this.newEvent("RECOVERY", event);
             if (wasRecovery && this.trade.status != "RECOVERY_REQUIRED") {
                 this.recoveryCommitPending = true;
             }
+
             this.recoveryEvent(event);
         } else {
             this.reconcileMissingPosition();
@@ -591,11 +640,13 @@ public:
         if (!this.isTrailEligible(fromBar)) {
             return;
         }
+
         EaTradeEvent event;
         this.newEvent("TRAIL_EVALUATION", event);
         event.eventUid = this.profile.trailEvaluationUidPrefix + this.contextKey + "|"
             + IntegerToString(this.trade.id) + "|" + IntegerToString(fromBar);
         event.barTime = fromBar;
+
         PositionSnapshot position;
         int positionCount = 0;
         EaTrailDecision result;
@@ -625,6 +676,7 @@ public:
                 this.copyPendingToEvent(event, false);
             }
         }
+
         this.trade.lastTrailEvaluatedBarTime = fromBar;
         this.saveEvent(event, false);
     }
@@ -637,38 +689,46 @@ public:
                 || !this.hasManagementAuthority() || this.queueOverflow) {
             return;
         }
+
         if (this.lastSendTick > 0 && EaClock::milliseconds() - this.lastSendTick < 1000) {
             return;
         }
+
         if (this.trade.status == "OPEN_PARTIAL"
                 && this.trade.pendingStopLossKind != "INITIAL_RESTORE") {
             this.cancelEntryRemainder();
             return;
         }
+
         if (this.trade.status == "CLOSE_PENDING" || this.trade.status == "CLOSE_PARTIAL") {
             bool entryActive = this.entryOrderIsActive();
             if (this.orderReadFailed) {
                 this.requireRecovery("BROKER_ORDER_UNAVAILABLE");
                 return;
             }
+
             if (entryActive && this.cancelTurn) {
                 this.cancelTurn = false;
                 this.cancelEntryRemainder();
                 return;
             }
+
             this.cancelTurn = true;
             this.retryClose(fromBar);
             return;
         }
+
         if ((this.trade.status != "OPEN" && this.trade.status != "OPEN_PARTIAL")
                 || this.trade.pendingStopLoss <= 0.0
                 || this.trade.pendingStopLossActionUid != "") {
             return;
         }
+
         if (!this.pendingStructureValid()) {
             this.reconcile();
             return;
         }
+
         PositionSnapshot position;
         int positionCount = 0;
         if (!this.readPosition(position, positionCount) || positionCount != 1
@@ -676,6 +736,7 @@ public:
             this.requireRecovery("PENDING_POSITION_UNAVAILABLE");
             return;
         }
+
         if (EaProtectionPolicy::protects(position.isBuy, position.stopLoss,
                 this.trade.pendingStopLoss, this.tickSize)) {
             this.syncStopLoss(position);
@@ -684,10 +745,12 @@ public:
             this.recoveryEvent(event);
             return;
         }
+
         MqlTick marketTick;
         if (!this.readTick(marketTick)) {
             return;
         }
+
         if (EaProtectionPolicy::crossed(position.isBuy, marketTick.bid, marketTick.ask,
                 this.trade.pendingStopLoss)) {
             // 部分Entryでは先に残注文取消を要求し、その後も残注文を監視する。
@@ -695,9 +758,11 @@ public:
                 this.cancelEntryRemainder();
                 return;
             }
+
             this.beginClose(position, fromBar);
             return;
         }
+
         double point = SymbolInfoDouble(this.symbolName, SYMBOL_POINT);
         long stops = SymbolInfoInteger(this.symbolName, SYMBOL_TRADE_STOPS_LEVEL);
         long freeze = SymbolInfoInteger(this.symbolName, SYMBOL_TRADE_FREEZE_LEVEL);
@@ -705,6 +770,7 @@ public:
                 this.trade.pendingStopLoss, point, this.tickSize, stops, freeze)) {
             return;
         }
+
         this.modifyStopLoss(position);
     }
 
@@ -725,6 +791,7 @@ public:
         if (!this.initialized) {
             return;
         }
+
         if (this.active && fromTransaction.type == TRADE_TRANSACTION_REQUEST
                 && fromRequest.action == TRADE_ACTION_SLTP
                 && fromRequest.position == EaTextUtil::parseTicket(this.trade.positionTicket)
@@ -732,6 +799,7 @@ public:
                 && EaProtectionPolicy::isAcceptedRetcode(fromResult.retcode)) {
             this.externalStopLoss = fromRequest.sl;
         }
+
         if (this.active && this.trade.pendingStopLossActionUid != ""
                 && this.pendingModifyRequestId > 0 && fromTransaction.type == TRADE_TRANSACTION_REQUEST
                 && fromResult.request_id == this.pendingModifyRequestId
@@ -741,6 +809,7 @@ public:
             this.confirmedModifyActionUid = this.trade.pendingStopLossActionUid;
             this.confirmedModifyRetcode = (int)fromResult.retcode;
         }
+
         bool dealAdded = fromTransaction.type == TRADE_TRANSACTION_DEAL_ADD
             && fromTransaction.deal > 0 && fromTransaction.symbol == this.symbolName;
         if (dealAdded) {
@@ -908,7 +977,9 @@ private:
         if (fromTicket == 0) {
             return false;
         }
+
         string ticket = EaTextUtil::ticket(fromTicket);
+
         return ticket == this.trade.entryOrderTicket || ticket == this.trade.exitOrderTicket;
     }
 
@@ -919,7 +990,9 @@ private:
         if (fromTicket == 0) {
             return false;
         }
+
         string ticket = EaTextUtil::ticket(fromTicket);
+
         return ticket == this.trade.entryDealTicket || ticket == this.trade.exitDealTicket;
     }
 
@@ -948,6 +1021,7 @@ private:
                 || fromTick.ask < fromTick.bid || !MathIsValidNumber(fromTick.bid) || !MathIsValidNumber(fromTick.ask)) {
             return false;
         }
+
         if (this.requireCurrentQuote) {
             datetime barTime = iTime(this.symbolName, this.profile.timeFrame, 0);
             if (fromTick.time_msc <= 0 || fromTick.time_msc > (long)TimeCurrent() * 1000 + 999
@@ -955,6 +1029,7 @@ private:
                 return false;
             }
         }
+
         return true;
     }
 
@@ -964,11 +1039,13 @@ private:
     bool readPosition(PositionSnapshot &fromPosition, int &fromCount) {
         fromPosition.hasPosition = false;
         fromCount = 0;
+
         for (int i = 0; i < PositionsTotal(); i++) {
             ulong ticket = PositionGetTicket(i);
             if (ticket == 0) {
                 return false;
             }
+
             if (PositionGetString(POSITION_SYMBOL) != this.symbolName) {
                 continue;
             }
@@ -977,11 +1054,13 @@ private:
                     && (!this.active || EaTextUtil::ticket(identifier) != this.trade.positionIdentifier)) {
                 continue;
             }
+
             fromCount++;
             double actualStopLoss = 0.0;
             if (!PositionGetDouble(POSITION_SL, actualStopLoss) || !MathIsValidNumber(actualStopLoss)) {
                 return false;
             }
+
             fromPosition.hasPosition = true;
             fromPosition.ticket = ticket;
             fromPosition.identifier = identifier;
@@ -994,6 +1073,7 @@ private:
                 return false;
             }
         }
+
         return true;
     }
 
@@ -1005,11 +1085,13 @@ private:
             if (OrderGetTicket(i) == 0) {
                 return true;
             }
+
             if (OrderGetString(ORDER_SYMBOL) == this.symbolName
                     && (ulong)OrderGetInteger(ORDER_MAGIC) == this.magicNumber) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -1021,9 +1103,11 @@ private:
         if ((filling & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK) {
             return ORDER_FILLING_FOK;
         }
+
         if ((filling & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC) {
             return ORDER_FILLING_IOC;
         }
+
         return ORDER_FILLING_RETURN;
     }
 
@@ -1078,6 +1162,7 @@ private:
         }
         fromRequest.type_filling = this.fillingType();
         fromRequest.comment = this.entryComment();
+
         return true;
     }
 
@@ -1121,6 +1206,7 @@ private:
     bool saveEvent(EaTradeEvent &fromEvent, const bool fromRequest) {
         this.trade.updatedAt = TimeLocal();
         fromEvent.tradeId = this.trade.id;
+
         bool saved = false;
         if (ArraySize(this.saveQueue) == 0) {
             // 重複Eventの読戻しで最新メモリ状態を古いDB状態へ巻き戻さない。
@@ -1139,10 +1225,12 @@ private:
                     && storedTrade.pendingStopLossActionUid == this.trade.pendingStopLossActionUid;
             }
         }
+
         if (saved) {
             this.writeLog("INFO", fromEvent.eventType + " " + fromEvent.eventUid + " " + fromEvent.message);
             return true;
         }
+
         string failure = this.persistence.getLastError();
         if (failure == "LEASE_NOT_OWNED" || failure == "RUN_SCOPE_OR_LEASE_LOST"
                 || failure == "SNAPSHOT_OWNER_SUPERSEDED") {
@@ -1151,21 +1239,25 @@ private:
             this.writeLog("ERROR", "LEASE_LOST " + fromEvent.eventUid);
             return false;
         }
+
         int size = ArraySize(this.saveQueue);
         for (int i = 0; i < size; i++) {
             if (this.saveQueue[i].event.eventUid == fromEvent.eventUid) {
                 return !fromRequest || this.hasManagementAuthority();
             }
         }
+
         if (size >= 256 || ArrayResize(this.saveQueue, size + 1) != size + 1) {
             this.queueOverflow = true;
             this.writeLog("ERROR", "EVENT_QUEUE_FULL " + fromEvent.eventUid);
             return false;
         }
+
         this.saveQueue[size].trade = this.trade;
         this.saveQueue[size].event = fromEvent;
         this.pendingStored = false;
         this.writeLog("ERROR", "EVENT_QUEUED " + fromEvent.eventUid + " " + this.persistence.getLastError());
+
         return !fromRequest || this.hasManagementAuthority();
     }
 
@@ -1206,18 +1298,22 @@ private:
                 && this.trade.pendingStopLossPivotTime == 0 && this.trade.pendingStopLossPivotRate == 0.0
                 && this.trade.pendingStopLossLatestTime == 0 && this.trade.pendingStopLossActionUid == "";
         }
+
         if (!MathIsValidNumber(this.trade.pendingStopLoss) || this.trade.pendingStopLoss <= 0.0
                 || this.tickSize <= 0.0 || this.pipSize <= 0.0) {
             return false;
         }
+
         double tickCount = this.trade.pendingStopLoss / this.tickSize;
         if (MathAbs(tickCount - MathRound(tickCount)) > 0.000001) {
             return false;
         }
+
         if (this.trade.pendingStopLossKind == "INITIAL_RESTORE") {
             return this.trade.pendingStopLossBarTime == 0 && this.trade.pendingStopLossPivotTime == 0
                 && this.trade.pendingStopLossPivotRate == 0.0 && this.trade.pendingStopLossLatestTime == 0;
         }
+
         return (this.trade.pendingStopLossKind == "TRAIL_CANDIDATE" || this.trade.pendingStopLossKind == "TRAIL_RESTORE")
             && this.trade.pendingStopLossBarTime > 0 && this.trade.pendingStopLossPivotTime > 0
             && this.trade.pendingStopLossPivotRate > 0.0
@@ -1242,12 +1338,14 @@ private:
      */
     bool entryOrderIsActive() {
         this.orderReadFailed = false;
+
         for (int i = 0; i < OrdersTotal(); i++) {
             ulong ticket = OrderGetTicket(i);
             if (ticket == 0) {
                 this.orderReadFailed = true;
                 return true;
             }
+
             if (OrderGetString(ORDER_SYMBOL) != this.symbolName
                     || (ulong)OrderGetInteger(ORDER_MAGIC) != this.magicNumber) {
                 continue;
@@ -1259,7 +1357,9 @@ private:
                 return true;
             }
         }
+
         this.trade.remainingEntryVolume = 0.0;
+
         return false;
     }
 
@@ -1270,6 +1370,7 @@ private:
         if (this.trade.origin == "RECOVERED") {
             return true;
         }
+
         ulong entryOrder = EaTextUtil::parseTicket(this.trade.entryOrderTicket);
         if (entryOrder > 0 && OrderSelect(entryOrder)
                 && OrderGetString(ORDER_SYMBOL) == this.symbolName
@@ -1277,12 +1378,14 @@ private:
                 && (ulong)OrderGetInteger(ORDER_POSITION_ID) == fromPosition.identifier) {
             return true;
         }
+
         // 応答欠落でticket未保存でも、まだ履歴へ移っていない部分注文を照合する。
         for (int i = 0; i < OrdersTotal(); i++) {
             ulong ticket = OrderGetTicket(i);
             if (ticket == 0) {
                 return false;
             }
+
             if (OrderGetString(ORDER_SYMBOL) == this.symbolName
                     && (ulong)OrderGetInteger(ORDER_MAGIC) == this.magicNumber
                     && OrderGetString(ORDER_COMMENT) == this.entryComment()
@@ -1291,6 +1394,7 @@ private:
                 return true;
             }
         }
+
         ulong entryDeal = EaTextUtil::parseTicket(this.trade.entryDealTicket);
         if (entryDeal > 0 && HistoryDealSelect(entryDeal)
                 && (ulong)HistoryDealGetInteger(entryDeal, DEAL_POSITION_ID) == fromPosition.identifier
@@ -1299,9 +1403,11 @@ private:
             this.trade.entryOrderTicket = EaTextUtil::ticket((ulong)HistoryDealGetInteger(entryDeal, DEAL_ORDER));
             return true;
         }
+
         if (!HistorySelectByPosition(fromPosition.identifier)) {
             return false;
         }
+
         for (int i = 0; i < HistoryOrdersTotal(); i++) {
             ulong ticket = HistoryOrderGetTicket(i);
             if (ticket == 0 || HistoryOrderGetString(ticket, ORDER_SYMBOL) != this.symbolName
@@ -1314,6 +1420,7 @@ private:
                 return true;
             }
         }
+
         return false;
     }
 
@@ -1324,12 +1431,14 @@ private:
         if (this.entryActionUid != "") {
             return true;
         }
+
         EaTradeEvent event;
         bool found = false;
         if (this.persistence.loadLatestTradeEvent(this.trade.id, "ENTRY_REQUEST", event, found) && found) {
             this.entryActionUid = event.actionUid;
             return this.entryActionUid != "";
         }
+
         return false;
     }
 
@@ -1340,20 +1449,24 @@ private:
         if (fromActual <= 0.0) {
             return "NONE";
         }
+
         if (this.externalStopLoss > 0.0
                 && MathAbs(fromActual - this.externalStopLoss) <= this.tickSize * 0.5) {
             return "EXTERNAL";
         }
+
         if (this.trade.currentStopLoss > 0.0
                 && MathAbs(fromActual - this.trade.currentStopLoss) <= this.tickSize * 0.5
                 && this.trade.stopLossSource != "NONE") {
             return this.trade.stopLossSource;
         }
+
         if (this.trade.requestedStopLoss > 0.0
                 && MathAbs(fromActual - this.trade.requestedStopLoss) <= this.tickSize * 0.5
                 && this.trade.lastAppliedTrailStopLoss <= 0.0 && this.hasEntryAction()) {
             return "INITIAL_STOP_LOSS";
         }
+
         return "UNKNOWN";
     }
 
@@ -1374,15 +1487,19 @@ private:
             }
             return;
         }
+
         this.trade.currentStopLoss = fromPosition.stopLoss;
         this.trade.stopLossSource = source;
+
         if (this.trade.status != "OPEN" && this.trade.status != "OPEN_PARTIAL") {
             return;
         }
+
         if (this.trade.pendingStopLoss > 0.0 && EaProtectionPolicy::protects(fromPosition.isBuy,
                 fromPosition.stopLoss, this.trade.pendingStopLoss, this.tickSize)) {
             this.clearPending();
         }
+
         double protectedLevel = this.trade.requestedStopLoss;
         string restoreKind = "INITIAL_RESTORE";
         if (this.trade.status == "OPEN" && this.trade.lastAppliedTrailStopLoss > 0.0 && (protectedLevel <= 0.0
@@ -1391,15 +1508,18 @@ private:
             protectedLevel = this.trade.lastAppliedTrailStopLoss;
             restoreKind = "TRAIL_RESTORE";
         }
+
         if (this.trade.pendingStopLoss > 0.0 && (protectedLevel <= 0.0
                 || EaProtectionPolicy::protects(fromPosition.isBuy,
                     this.trade.pendingStopLoss, protectedLevel, this.tickSize))) {
             return;
         }
+
         if (protectedLevel <= 0.0 || EaProtectionPolicy::protects(fromPosition.isBuy,
                 fromPosition.stopLoss, protectedLevel, this.tickSize)) {
             return;
         }
+
         this.clearPending();
         this.trade.pendingStopLossKind = restoreKind;
         this.trade.pendingStopLoss = protectedLevel;
@@ -1428,6 +1548,7 @@ private:
         if (fromPosition.stopLoss > 0.0) {
             event.isConfirmedStopLossPresent = 1;
         }
+
         string source = this.identifyStopLoss(fromPosition.stopLoss);
         bool protectedEnough = EaProtectionPolicy::protects(fromPosition.isBuy,
             fromPosition.stopLoss, this.trade.pendingStopLoss, this.tickSize);
@@ -1447,6 +1568,7 @@ private:
                 }
             }
         }
+
         if (protectedEnough && actionProven && fromAllowOwnSource) {
             if (this.trade.pendingStopLossKind == "INITIAL_RESTORE") {
                 source = "INITIAL_STOP_LOSS";
@@ -1459,6 +1581,7 @@ private:
                 this.trade.lastAppliedTrailLatestTime = this.trade.pendingStopLossLatestTime;
             }
         }
+
         this.trade.currentStopLoss = fromPosition.stopLoss;
         this.trade.stopLossSource = source;
         event.stopLossSource = source;
@@ -1474,6 +1597,7 @@ private:
         if (this.trade.status == "RECOVERY_REQUIRED") {
             this.trade.status = "OPEN";
         }
+
         this.saveEvent(event, false);
     }
 
@@ -1486,9 +1610,11 @@ private:
         this.copyPendingToEvent(event, true);
         event.previousStopLoss = fromPosition.stopLoss;
         this.trade.pendingStopLossActionUid = event.actionUid;
+
         if (!this.saveEvent(event, true) || !this.hasManagementAuthority()) {
             return;
         }
+
         // DB待ち中の手動変更・価格変動を反映し、古いSLで保護を緩めない。
         PositionSnapshot currentPosition;
         int currentCount = 0;
@@ -1498,20 +1624,24 @@ private:
             this.requireRecovery("SL_PRE_SEND_BROKER_UNAVAILABLE");
             return;
         }
+
         if (EaProtectionPolicy::protects(currentPosition.isBuy, currentPosition.stopLoss,
                 event.stopLoss, this.tickSize)) {
             this.resolveModifyResult(currentPosition, "RECONCILIATION", 0, false);
             return;
         }
+
         if (currentPosition.ticket != fromPosition.ticket) {
             this.resolveModifyResult(currentPosition, "RECONCILIATION", (int)TRADE_RETCODE_PRICE_CHANGED, false);
             return;
         }
+
         if (EaProtectionPolicy::crossed(currentPosition.isBuy, currentTick.bid, currentTick.ask, event.stopLoss)) {
             this.resolveModifyResult(currentPosition, "RECONCILIATION", (int)TRADE_RETCODE_PRICE_CHANGED, false);
             this.beginClose(currentPosition, iTime(this.symbolName, this.profile.timeFrame, 0));
             return;
         }
+
         if (!EaProtectionPolicy::canModify(currentPosition.isBuy, currentTick.bid, currentTick.ask,
                 event.stopLoss, SymbolInfoDouble(this.symbolName, SYMBOL_POINT), this.tickSize,
                 SymbolInfoInteger(this.symbolName, SYMBOL_TRADE_STOPS_LEVEL),
@@ -1519,6 +1649,7 @@ private:
             this.resolveModifyResult(currentPosition, "RECONCILIATION", (int)TRADE_RETCODE_INVALID_STOPS, false);
             return;
         }
+
         MqlTradeRequest request;
         MqlTradeResult result;
         ZeroMemory(request);
@@ -1533,16 +1664,19 @@ private:
             this.requireRecovery("SL_PRE_SEND_POSITION_CHANGED");
             return;
         }
+
         this.lastSendTick = EaClock::milliseconds();
         if (!this.hasManagementAuthority()) {
             return;
         }
+
         bool sent = OrderSend(request, result);
         this.pendingModifyRequestId = result.request_id;
         if (!EaProtectionPolicy::isUnknownRetcode(result.retcode) && result.retcode != TRADE_RETCODE_PLACED) {
             this.confirmedModifyActionUid = event.actionUid;
             this.confirmedModifyRetcode = (int)result.retcode;
         }
+
         PositionSnapshot confirmed;
         int count = 0;
         if (!this.readPosition(confirmed, count) || count != 1
@@ -1550,6 +1684,7 @@ private:
             this.requireRecovery("SL_RESULT_BROKER_UNAVAILABLE");
             return;
         }
+
         if (!sent) {
             this.trade.lastError = "SL_MODIFY_SEND: " + result.comment;
         }
@@ -1558,6 +1693,7 @@ private:
             this.requireRecovery("SL_ACCEPTANCE_UNRESOLVED");
             return;
         }
+
         this.resolveModifyResult(confirmed, "EA", (int)result.retcode);
     }
 
@@ -1569,6 +1705,7 @@ private:
         if (this.trade.pendingStopLossKind == "INITIAL_RESTORE") {
             this.trade.exitIntentReason = "INITIAL_STOP_LOSS_CROSSED";
         }
+
         EaTradeEvent event;
         this.newAction("EXIT", event);
         this.exitActionUid = event.actionUid;
@@ -1582,9 +1719,11 @@ private:
         this.trade.exitOrderTicket = "";
         this.clearPending();
         this.setBlockedEntryBar(fromBar);
+
         if (!this.saveEvent(event, true) || !this.hasManagementAuthority()) {
             return;
         }
+
         this.sendClose(fromPosition, event);
     }
 
@@ -1595,6 +1734,7 @@ private:
         if (this.hasActiveCloseOrder()) {
             return;
         }
+
         bool mayRetry = false;
         if (this.trade.exitRetcode >= 0
                 && !EaProtectionPolicy::isUnknownRetcode((uint)this.trade.exitRetcode)
@@ -1611,6 +1751,7 @@ private:
             // 無応答・再起動前未送信を推測で再送しない。
             return;
         }
+
         PositionSnapshot position;
         int count = 0;
         if (!this.readPosition(position, count) || count != 1
@@ -1618,6 +1759,7 @@ private:
             this.reconcile();
             return;
         }
+
         EaTradeEvent event;
         this.newAction("EXIT", event);
         this.exitActionUid = event.actionUid;
@@ -1629,9 +1771,11 @@ private:
         this.trade.exitRetcode = -1;
         this.trade.exitOrderTicket = "";
         this.setBlockedEntryBar(fromBar);
+
         if (!this.saveEvent(event, true) || !this.hasManagementAuthority()) {
             return;
         }
+
         this.sendClose(position, event);
     }
 
@@ -1644,6 +1788,7 @@ private:
             if (ticket == 0) {
                 return true;
             }
+
             if (OrderGetString(ORDER_SYMBOL) != this.symbolName) {
                 continue;
             }
@@ -1657,6 +1802,7 @@ private:
                 return true;
             }
         }
+
         return false;
     }
 
@@ -1683,6 +1829,7 @@ private:
                 break;
             }
         }
+
         if (!found) {
             if (this.exitActionUid != "") {
                 // 現在actionが既知なら、別の古い「最新DB行」へ戻さない。
@@ -1693,9 +1840,11 @@ private:
                 return;
             }
         }
+
         if (this.exitActionUid != "" && requested.actionUid != this.exitActionUid) {
             return;
         }
+
         this.exitActionUid = requested.actionUid;
         string comment = this.closeComment(requested.actionUid);
         ulong matched = 0;
@@ -1704,6 +1853,7 @@ private:
             if (ticket == 0) {
                 return;
             }
+
             if (OrderGetString(ORDER_SYMBOL) == this.symbolName
                     && (ulong)OrderGetInteger(ORDER_MAGIC) == this.magicNumber
                     && OrderGetString(ORDER_COMMENT) == comment
@@ -1712,6 +1862,7 @@ private:
                 break;
             }
         }
+
         if (matched == 0 && this.selectTradeHistory()) {
             for (int i = 0; i < HistoryOrdersTotal(); i++) {
                 ulong ticket = HistoryOrderGetTicket(i);
@@ -1724,15 +1875,18 @@ private:
                 }
             }
         }
+
         if (matched == 0) {
             return;
         }
+
         this.trade.exitOrderTicket = EaTextUtil::ticket(matched);
         EaTradeEvent existing;
         bool resultFound = false;
         if (!this.persistence.loadEvent(requested.actionUid, "EXIT_RESULT", existing, resultFound) || resultFound) {
             return;
         }
+
         EaTradeEvent event;
         this.newEvent("EXIT_RESULT", event);
         event.actionUid = requested.actionUid;
@@ -1741,6 +1895,7 @@ private:
         event.orderTicket = this.trade.exitOrderTicket;
         event.exitIntentReason = this.trade.exitIntentReason;
         event.message = "BROKER_ORDER_MATCHED_TO_EXIT_REQUEST";
+
         this.saveEvent(event, false);
     }
 
@@ -1756,6 +1911,7 @@ private:
             this.requireRecovery("CLOSE_PRE_SEND_POSITION_CHANGED");
             return;
         }
+
         MqlTick marketTick;
         if (!this.readTick(marketTick)) {
             this.trade.lastError = "CLOSE_PRICE_UNAVAILABLE";
@@ -1779,10 +1935,12 @@ private:
                 request.type = ORDER_TYPE_SELL;
                 request.price = marketTick.bid;
             }
+
             this.lastSendTick = EaClock::milliseconds();
             if (!this.hasManagementAuthority()) {
                 return;
             }
+
             bool sent = OrderSend(request, result);
             this.trade.exitRetcode = (int)result.retcode;
             if (result.order > 0) {
@@ -1795,6 +1953,7 @@ private:
                 this.trade.lastError = "CLOSE_SEND: " + result.comment;
             }
         }
+
         EaTradeEvent event;
         this.newEvent("EXIT_RESULT", event);
         event.actionUid = fromEvent.actionUid;
@@ -1805,6 +1964,7 @@ private:
         event.exitIntentReason = this.trade.exitIntentReason;
         event.volume = currentPosition.volume;
         event.message = this.trade.lastError;
+
         this.saveEvent(event, false);
         this.reconcile();
     }
@@ -1817,10 +1977,12 @@ private:
             this.reconcile();
             return;
         }
+
         if (this.orderReadFailed || this.trade.entryOrderTicket == "") {
             this.requireRecovery("ENTRY_CANCEL_ORDER_UNAVAILABLE");
             return;
         }
+
         EaTradeEvent event;
         this.newEvent("ERROR", event);
         this.actionSequence++;
@@ -1828,9 +1990,11 @@ private:
             + IntegerToString(this.trade.id) + "|" + IntegerToString(this.actionSequence) + "|REQUEST";
         event.orderTicket = this.trade.entryOrderTicket;
         event.message = "ENTRY_REMAINDER_CANCEL_REQUEST";
+
         if (!this.saveEvent(event, true) || !this.hasManagementAuthority()) {
             return;
         }
+
         MqlTradeRequest request;
         MqlTradeResult result;
         ZeroMemory(request);
@@ -1839,11 +2003,13 @@ private:
         request.order = EaTextUtil::parseTicket(this.trade.entryOrderTicket);
         request.symbol = this.symbolName;
         request.magic = this.magicNumber;
+
         this.lastSendTick = EaClock::milliseconds();
         this.entryCancelAttempted = true;
         if (!this.hasManagementAuthority()) {
             return;
         }
+
         bool sent = OrderSend(request, result);
         event.id = 0;
         event.sequence = 0;
@@ -1853,6 +2019,7 @@ private:
         if (!sent) {
             this.trade.lastError = event.message;
         }
+
         this.saveEvent(event, false);
         this.reconcile();
     }
@@ -1886,6 +2053,7 @@ private:
         this.trade.createdAt = TimeLocal();
         this.active = true;
         this.recoveryCommitPending = true;
+
         bool historyFound = this.aggregateDeals(false);
         if (historyFound && this.trade.requestedStopLoss > 0.0) {
             this.trade.status = "OPEN";
@@ -1893,9 +2061,11 @@ private:
         } else {
             this.trade.lastError = "RECOVERED_INITIAL_SL_UNAVAILABLE";
         }
+
         EaTradeEvent event;
         this.newEvent("RECOVERY", event);
         this.recoveryEvent(event);
+
         if (this.trade.id > 0) {
             this.aggregateDeals(false);
         }
@@ -1910,11 +2080,13 @@ private:
                 this.requireRecovery("BROKER_ORDER_UNAVAILABLE");
                 return;
             }
+
             if (this.trade.positionIdentifier != "") {
                 // 決済後も残Entryが有効ならCLOSEDにせず取消を継続する。
                 this.trade.status = "OPEN_PARTIAL";
                 this.trade.remainingPositionVolume = 0.0;
                 this.clearPending();
+
                 EaTradeEvent event;
                 this.newEvent("RECOVERY", event);
                 this.recoveryEvent(event);
@@ -1923,6 +2095,7 @@ private:
             }
             return;
         }
+
         if (this.trade.positionIdentifier != "") {
             if (this.trade.exitIntentReason != "") {
                 this.reconcileCloseOrder();
@@ -1930,9 +2103,11 @@ private:
             if (this.aggregateDeals(true)) {
                 return;
             }
+
             this.requireRecovery("POSITION_AND_EXIT_HISTORY_UNAVAILABLE");
             return;
         }
+
         if (this.trade.entryOrderTicket == "" && this.trade.entryRequestedServerTime > 0
                 && HistorySelect((datetime)MathMax(0, this.trade.entryRequestedServerTime - 60), TimeCurrent() + 60)) {
             for (int i = 0; i < HistoryOrdersTotal(); i++) {
@@ -1945,6 +2120,7 @@ private:
                 }
             }
         }
+
         ulong entryOrder = EaTextUtil::parseTicket(this.trade.entryOrderTicket);
         if (entryOrder > 0 && HistoryOrderSelect(entryOrder)) {
             ulong identifier = (ulong)HistoryOrderGetInteger(entryOrder, ORDER_POSITION_ID);
@@ -1954,6 +2130,7 @@ private:
                     return;
                 }
             }
+
             long state = HistoryOrderGetInteger(entryOrder, ORDER_STATE);
             if (EaProtectionPolicy::isTerminalOrder(state) && state != ORDER_STATE_FILLED
                     && identifier == 0) {
@@ -1966,6 +2143,7 @@ private:
                 return;
             }
         }
+
         // 受付不明のOPENは再送せず、履歴が揃うまでactive枠を保持する。
         this.requireRecovery("ENTRY_ACCEPTANCE_UNRESOLVED");
     }
@@ -1976,6 +2154,7 @@ private:
     string brokerReason(const long fromReason) {
         string result = EnumToString((ENUM_DEAL_REASON)fromReason);
         StringReplace(result, "DEAL_REASON_", "");
+
         return result;
     }
 
@@ -1992,6 +2171,7 @@ private:
                 || (fromDeal.type != DEAL_TYPE_BUY && fromDeal.type != DEAL_TYPE_SELL)) {
             return false;
         }
+
         fromEvent.reset();
         fromEvent.tradeId = fromTrade.id;
         fromEvent.runId = this.runId;
@@ -2020,6 +2200,7 @@ private:
         fromEvent.price = fromDeal.price;
         fromEvent.brokerReason = this.brokerReason(fromDeal.reason);
         fromEvent.message = EnumToString((ENUM_DEAL_ENTRY)fromDeal.entry);
+
         if (fromDeal.entry == DEAL_ENTRY_OUT || fromDeal.entry == DEAL_ENTRY_OUT_BY
                 || fromDeal.entry == DEAL_ENTRY_INOUT) {
             fromEvent.exitIntentReason = fromTrade.exitIntentReason;
@@ -2030,6 +2211,7 @@ private:
                 fromEvent.closeReason = "EXTERNAL_CLOSE";
             }
         }
+
         return true;
     }
 
@@ -2040,11 +2222,13 @@ private:
         if (fromDeal.type != DEAL_TYPE_BUY && fromDeal.type != DEAL_TYPE_SELL) {
             return true;
         }
+
         EaTradeEvent event;
         if (!this.buildDealEvent(this.trade, fromDeal, fromSource, event)) {
             this.logDealHistoryFailure("DEAL_EVENT_INVALID ticket=" + EaTextUtil::ticket(fromDeal.ticket));
             return false;
         }
+
         return this.saveEvent(event, false);
     }
 
@@ -2058,6 +2242,7 @@ private:
             this.ownershipLost = true;
             this.knownLeaseExpires = 0;
         }
+
         if (fromFailure != this.lastDealHistoryFailure) {
             this.writeLog("ERROR", fromFailure);
             this.lastDealHistoryFailure = fromFailure;
@@ -2075,11 +2260,13 @@ private:
                 return;
             }
         }
+
         if (size >= 256 || ArrayResize(this.pendingDealTickets, size + 1) != size + 1) {
             this.queueOverflow = true;
             this.writeLog("ERROR", "DEAL_AUDIT_QUEUE_FULL ticket=" + EaTextUtil::ticket(fromTicket));
             return;
         }
+
         this.pendingDealTickets[size] = fromTicket;
     }
 
@@ -2092,6 +2279,7 @@ private:
                 || this.queueOverflow || EaClock::milliseconds() < this.nextPendingDealAuditTick) {
             return;
         }
+
         this.nextPendingDealAuditTick = EaClock::milliseconds() + 1000;
         while (ArraySize(this.pendingDealTickets) > 0) {
             EaDealSnapshot deal;
@@ -2100,6 +2288,7 @@ private:
                 this.logDealHistoryFailure(failure);
                 return;
             }
+
             if (deal.symbol == this.symbolName && (deal.type == DEAL_TYPE_BUY || deal.type == DEAL_TYPE_SELL)) {
                 string identifier = EaTextUtil::ticket(deal.positionIdentifier);
                 EaTradeState closedTrade;
@@ -2108,6 +2297,7 @@ private:
                     this.logDealHistoryFailure(this.persistence.getLastError());
                     return;
                 }
+
                 if (found) {
                     EaTradeEvent event;
                     if (!this.buildDealEvent(closedTrade, deal, "CALLBACK", event)
@@ -2120,10 +2310,12 @@ private:
                     this.dealHistoryPending = true;
                 }
             }
+
             int size = ArraySize(this.pendingDealTickets);
             for (int i = 1; i < size; i++) {
                 this.pendingDealTickets[i - 1] = this.pendingDealTickets[i];
             }
+
             ArrayResize(this.pendingDealTickets, size - 1);
         }
     }
@@ -2141,6 +2333,7 @@ private:
             if (fromDeals[i].type != DEAL_TYPE_BUY && fromDeals[i].type != DEAL_TYPE_SELL) {
                 continue;
             }
+
             string ticket = EaTextUtil::ticket(fromDeals[i].ticket);
             if (fromDeals[i].entry == DEAL_ENTRY_IN) {
                 entryVolume += fromDeals[i].volume;
@@ -2156,6 +2349,7 @@ private:
                 return false;
             }
         }
+
         return entryFound && exitFound && entryVolume > 0.0
             && MathAbs(entryVolume - exitVolume) <= 0.00000001
             && MathAbs(entryVolume - fromTrade.openedVolume) <= 0.00000001;
@@ -2170,6 +2364,7 @@ private:
                 || EaClock::milliseconds() < this.nextClosedDealAuditTick) {
             return;
         }
+
         this.nextClosedDealAuditTick = EaClock::milliseconds() + 1000;
         EaTradeState closedTrade;
         bool found = false;
@@ -2178,11 +2373,13 @@ private:
             this.logDealHistoryFailure(this.persistence.getLastError());
             return;
         }
+
         if (!found) {
             this.closedDealAuditChecked = true;
             this.closedDealAuditFull = false;
             return;
         }
+
         EaDealSnapshot deals[];
         string failure;
         if (!EaDealHistory::readPosition(EaTextUtil::parseTicket(closedTrade.positionIdentifier),
@@ -2190,14 +2387,17 @@ private:
             this.logDealHistoryFailure(failure);
             return;
         }
+
         if (!this.closedDealHistoryComplete(closedTrade, deals)) {
             this.logDealHistoryFailure("CLOSED_DEAL_HISTORY_INCOMPLETE trade=" + IntegerToString(closedTrade.id));
             return;
         }
+
         for (int i = 0; i < ArraySize(deals); i++) {
             if (deals[i].type != DEAL_TYPE_BUY && deals[i].type != DEAL_TYPE_SELL) {
                 continue;
             }
+
             EaTradeEvent event;
             if (!this.buildDealEvent(closedTrade, deals[i], "RECONCILIATION", event)
                     || !this.persistence.appendClosedDealEvent(this.runId, closedTrade.id, event)) {
@@ -2206,10 +2406,12 @@ private:
                 return;
             }
         }
+
         if (!this.persistence.completeClosedDealAudit(this.runId, closedTrade.id)) {
             this.logDealHistoryFailure(this.persistence.getLastError());
             return;
         }
+
         this.closedDealAuditAfterId = closedTrade.id;
         this.nextClosedDealAuditTick = 0;
         this.lastDealHistoryFailure = "";
@@ -2219,6 +2421,7 @@ private:
                 this.trade.lastError = "";
             }
         }
+
         this.writeLog("INFO", "CLOSED_DEAL_AUDIT_COMPLETE trade=" + IntegerToString(closedTrade.id));
     }
 
@@ -2234,6 +2437,7 @@ private:
             this.logDealHistoryFailure(failure);
             return false;
         }
+
         double entryVolume = 0.0;
         double exitVolume = 0.0;
         double entryValue = 0.0;
@@ -2256,11 +2460,13 @@ private:
             commission += deals[i].commission;
             swap += deals[i].swap;
             fee += deals[i].fee;
+
             long entry = deals[i].entry;
             long type = deals[i].type;
             if (type != DEAL_TYPE_BUY && type != DEAL_TYPE_SELL) {
                 continue;
             }
+
             double volume = deals[i].volume;
             double price = deals[i].price;
             long timeMsc = deals[i].timeMsc;
@@ -2287,17 +2493,20 @@ private:
                 this.trade.status = "RECOVERY_REQUIRED";
             }
         }
+
         if (entryVolume <= 0.0) {
             this.dealHistoryPending = true;
             this.logDealHistoryFailure("DEAL_ENTRY_HISTORY_UNAVAILABLE position=" + this.trade.positionIdentifier);
             return false;
         }
+
         if (this.trade.openedVolume != EMPTY_VALUE
                 && entryVolume + 0.00000001 < this.trade.openedVolume) {
             this.dealHistoryPending = true;
             this.logDealHistoryFailure("DEAL_HISTORY_VOLUME_INCOMPLETE position=" + this.trade.positionIdentifier);
             return false;
         }
+
         this.trade.openPrice = entryValue / entryVolume;
         this.trade.openedVolume = entryVolume;
         this.trade.openedAtMsc = firstTime;
@@ -2307,6 +2516,7 @@ private:
         this.trade.swap = swap;
         this.trade.fee = fee;
         this.trade.entryOrderTicket = EaTextUtil::ticket(initialOrder);
+
         if (this.trade.requestedStopLoss <= 0.0 && initialOrder > 0) {
             double initialStopLoss = 0.0;
             if (HistoryOrderSelect(initialOrder) && HistoryOrderGetDouble(initialOrder, ORDER_SL, initialStopLoss)) {
@@ -2318,6 +2528,7 @@ private:
             this.trade.exitDealTicket = EaTextUtil::ticket(lastDeal);
             this.trade.brokerCloseReason = lastReason;
         }
+
         if (fromPositionAbsent && exitVolume + 0.00000001 >= entryVolume && lastTime > 0) {
             this.trade.closedAtMsc = lastTime;
             this.trade.remainingPositionVolume = 0.0;
@@ -2330,6 +2541,7 @@ private:
             this.trade.status = "CLOSED";
             this.clearPending();
         }
+
         bool dealsAccepted = true;
         if (this.trade.status == "CLOSED") {
             // Eventの途中まで保存して終了しても、次回起動から残りを再取得できる印を先に残す。
@@ -2342,16 +2554,19 @@ private:
             pendingEvent.message = "DEAL_EVENTS_PENDING";
             dealsAccepted = this.saveEvent(pendingEvent, false);
         }
+
         for (int i = 0; i < total; i++) {
             if (!dealsAccepted || !this.recordDeal(deals[i], "RECONCILIATION")) {
                 dealsAccepted = false;
                 break;
             }
         }
+
         this.dealHistoryPending = !dealsAccepted;
         if (dealsAccepted) {
             this.lastDealHistoryFailure = "";
         }
+
         if (this.trade.status == "CLOSED") {
             if (dealsAccepted) {
                 this.trade.lastError = "";
@@ -2360,6 +2575,7 @@ private:
                 this.closedDealAuditAfterId = 0;
                 this.nextClosedDealAuditTick = 0;
             }
+
             EaTradeEvent event;
             this.newEvent("RECOVERY", event);
             event.closeReason = this.trade.closeReason;
@@ -2369,6 +2585,7 @@ private:
             // brokerの決済事実は確定済み。明細未保存は別のフラグでEntryを止める。
             return true;
         }
+
         return !fromPositionAbsent;
     }
 
@@ -2378,9 +2595,11 @@ private:
     void requireRecovery(const string fromReason) {
         this.trade.status = "RECOVERY_REQUIRED";
         this.trade.lastError = fromReason;
+
         EaTradeEvent event;
         this.newEvent("RECOVERY", event);
         event.message = fromReason;
+
         this.recoveryEvent(event);
     }
 
@@ -2391,6 +2610,7 @@ private:
         if (fromValue == "") {
             return "~";
         }
+
         return fromValue;
     }
 
@@ -2401,6 +2621,7 @@ private:
         if (fromValue <= 0) {
             return "~";
         }
+
         return IntegerToString(fromValue);
     }
 
@@ -2411,6 +2632,7 @@ private:
         if (fromValue <= 0.0 || fromValue == EMPTY_VALUE) {
             return "~";
         }
+
         return DoubleToString(fromValue, (int)SymbolInfoInteger(this.symbolName, SYMBOL_DIGITS));
     }
 
@@ -2421,6 +2643,7 @@ private:
         if (fromValue == EMPTY_VALUE) {
             return "~";
         }
+
         return DoubleToString(fromValue, 8);
     }
 
@@ -2431,9 +2654,11 @@ private:
         if (this.trade.positionIdentifier != "") {
             return HistorySelectByPosition(EaTextUtil::parseTicket(this.trade.positionIdentifier));
         }
+
         if (this.trade.entryRequestedServerTime > 0) {
             return HistorySelect((datetime)MathMax(0, this.trade.entryRequestedServerTime - 60), TimeCurrent() + 60);
         }
+
         return false;
     }
 
@@ -2444,10 +2669,12 @@ private:
         if (HistoryOrderGetString(fromTicket, ORDER_SYMBOL) != this.symbolName) {
             return false;
         }
+
         if (this.trade.positionIdentifier != "") {
             return EaTextUtil::ticket((ulong)HistoryOrderGetInteger(fromTicket, ORDER_POSITION_ID))
                 == this.trade.positionIdentifier;
         }
+
         return (ulong)HistoryOrderGetInteger(fromTicket, ORDER_MAGIC) == this.magicNumber
             && (EaTextUtil::ticket(fromTicket) == this.trade.entryOrderTicket
                 || HistoryOrderGetString(fromTicket, ORDER_COMMENT) == this.entryComment());
@@ -2463,23 +2690,28 @@ private:
             if (ticket == 0) {
                 return "~";
             }
+
             if (OrderGetString(ORDER_SYMBOL) != this.symbolName
                     || ((ulong)OrderGetInteger(ORDER_MAGIC) != this.magicNumber
                         && EaTextUtil::ticket((ulong)OrderGetInteger(ORDER_POSITION_ID)) != this.trade.positionIdentifier)) {
                 continue;
             }
+
             int size = ArraySize(tickets);
             if (ArrayResize(tickets, size + 1) != size + 1) {
                 return "~";
             }
+
             tickets[size] = ticket;
         }
+
         ArraySort(tickets);
         string result = "";
         for (int i = 0; i < ArraySize(tickets); i++) {
             if (!OrderSelect(tickets[i])) {
                 return "~";
             }
+
             string item = "ORDER_V1";
             EaTextUtil::appendField(item, "ticket", EaTextUtil::ticket(tickets[i]));
             EaTextUtil::appendField(item, "position_id", EaTextUtil::ticket((ulong)OrderGetInteger(ORDER_POSITION_ID)));
@@ -2491,6 +2723,7 @@ private:
             EaTextUtil::appendField(item, "setup_msc", IntegerToString(OrderGetInteger(ORDER_TIME_SETUP_MSC)));
             EaTextUtil::appendField(result, "order", item);
         }
+
         return result;
     }
 
@@ -2501,18 +2734,22 @@ private:
         if (!this.selectTradeHistory()) {
             return "~";
         }
+
         ulong tickets[];
         for (int i = 0; i < HistoryOrdersTotal(); i++) {
             ulong ticket = HistoryOrderGetTicket(i);
             if (!this.historyOrderBelongs(ticket)) {
                 continue;
             }
+
             int size = ArraySize(tickets);
             if (ArrayResize(tickets, size + 1) != size + 1) {
                 return "~";
             }
+
             tickets[size] = ticket;
         }
+
         ArraySort(tickets);
         string result = "";
         for (int i = 0; i < ArraySize(tickets); i++) {
@@ -2529,6 +2766,7 @@ private:
             EaTextUtil::appendField(item, "done_msc", IntegerToString(HistoryOrderGetInteger(ticket, ORDER_TIME_DONE_MSC)));
             EaTextUtil::appendField(result, "order", item);
         }
+
         return result;
     }
 
@@ -2539,18 +2777,22 @@ private:
         if (!this.selectTradeHistory()) {
             return "~";
         }
+
         ulong tickets[];
         for (int i = 0; i < HistoryDealsTotal(); i++) {
             ulong ticket = HistoryDealGetTicket(i);
             if (ticket == 0) {
                 return "~";
             }
+
             int size = ArraySize(tickets);
             if (ArrayResize(tickets, size + 1) != size + 1) {
                 return "~";
             }
+
             tickets[size] = ticket;
         }
+
         ArraySort(tickets);
         string result = "";
         for (int i = 0; i < ArraySize(tickets); i++) {
@@ -2560,6 +2802,7 @@ private:
                 this.logDealHistoryFailure(failure);
                 return "~";
             }
+
             if (deal.symbol != this.symbolName) {
                 continue;
             }
@@ -2570,6 +2813,7 @@ private:
             } else if (EaTextUtil::ticket(deal.orderTicket) != this.trade.entryOrderTicket) {
                 continue;
             }
+
             string item = "DEAL_V1";
             EaTextUtil::appendField(item, "ticket", EaTextUtil::ticket(deal.ticket));
             EaTextUtil::appendField(item, "order", EaTextUtil::ticket(deal.orderTicket));
@@ -2586,6 +2830,7 @@ private:
             EaTextUtil::appendField(item, "fee", DoubleToString(deal.fee, 8));
             EaTextUtil::appendField(result, "deal", item);
         }
+
         return result;
     }
 
@@ -2631,13 +2876,16 @@ private:
         EaTextUtil::appendField(snapshot, "unresolved_actions", this.unresolvedActionsText());
         EaTextUtil::appendField(snapshot, "recovery_issue_code", this.optionalText(fromEvent.recoveryIssueCode));
         EaTextUtil::appendField(snapshot, "quarantined_pending_text", this.optionalText(fromEvent.quarantinedPendingText));
+
         fromEvent.eventUid = this.profile.recoveryUidPrefix + this.contextKey + "|"
             + IntegerToString(this.trade.id) + "|" + EaTextUtil::hash(snapshot);
         if (fromEvent.eventUid == this.lastRecoveryUid) {
             return;
         }
+
         fromEvent.stopLossSource = this.trade.stopLossSource;
         fromEvent.message += " " + snapshot;
+
         if (this.saveEvent(fromEvent, false)) {
             this.lastRecoveryUid = fromEvent.eventUid;
             if (ArraySize(this.saveQueue) == 0) {

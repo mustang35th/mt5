@@ -26,7 +26,9 @@ public:
         if (this.persistence != NULL || fromPersistence == NULL) {
             return false;
         }
+
         this.persistence = fromPersistence;
+
         return true;
     }
 
@@ -37,6 +39,7 @@ public:
         if (this.persistence == NULL) {
             return "TRADE_STORE_UNAVAILABLE";
         }
+
         return this.persistence.getLastError();
     }
 
@@ -47,6 +50,7 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         return this.persistence.hasLease(fromRunId, fromNow);
     }
 
@@ -59,14 +63,18 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         H1EaTradeEntity trade;
         H1EaTradeEventEntity event;
         H1EaTradeStateMapper::toH1(fromTrade, trade);
         H1EaTradeStateMapper::toH1(fromEvent, event);
+
         bool success = this.persistence.saveTradeEvent(fromRunId, trade, event,
             fromRequireLease, fromReplayQueuedRequest);
+
         H1EaTradeStateMapper::toCommon(trade, fromTrade);
         H1EaTradeStateMapper::toCommon(event, fromEvent);
+
         return success;
     }
 
@@ -78,10 +86,13 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         H1EaTradeEntity trade;
         H1EaTradeStateMapper::toH1(fromTrade, trade);
         bool success = this.persistence.loadActiveTrade(fromContext, trade, fromFound);
+
         H1EaTradeStateMapper::toCommon(trade, fromTrade);
+
         return success;
     }
 
@@ -93,11 +104,14 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         H1EaTradeEntity trade;
         H1EaTradeStateMapper::toH1(fromTrade, trade);
         bool success = this.persistence.loadClosedTradeForDealAudit(fromContext, fromAfterId,
             trade, fromFound, fromFullAudit);
+
         H1EaTradeStateMapper::toCommon(trade, fromTrade);
+
         return success;
     }
 
@@ -109,11 +123,14 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         H1EaTradeEntity trade;
         H1EaTradeStateMapper::toH1(fromTrade, trade);
         bool success = this.persistence.loadClosedTradeByPosition(fromContext, fromPositionIdentifier,
             trade, fromFound);
+
         H1EaTradeStateMapper::toCommon(trade, fromTrade);
+
         return success;
     }
 
@@ -125,10 +142,14 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         H1EaTradeEventEntity event;
         H1EaTradeStateMapper::toH1(fromEvent, event);
+
         bool success = this.persistence.appendClosedDealEvent(fromRunId, fromTradeId, event);
+
         H1EaTradeStateMapper::toCommon(event, fromEvent);
+
         return success;
     }
 
@@ -139,6 +160,7 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         return this.persistence.completeClosedDealAudit(fromRunId, fromTradeId);
     }
 
@@ -149,6 +171,7 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         return this.persistence.loadPendingRaw(fromTradeId, fromText);
     }
 
@@ -160,10 +183,13 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         H1EaTradeEventEntity event;
         H1EaTradeStateMapper::toH1(fromEvent, event);
         bool success = this.persistence.loadEvent(fromActionUid, fromEventType, event, fromFound);
+
         H1EaTradeStateMapper::toCommon(event, fromEvent);
+
         return success;
     }
 
@@ -175,10 +201,13 @@ public:
         if (this.persistence == NULL) {
             return false;
         }
+
         H1EaTradeEventEntity event;
         H1EaTradeStateMapper::toH1(fromEvent, event);
         bool success = this.persistence.loadLatestTradeEvent(fromTradeId, fromEventType, event, fromFound);
+
         H1EaTradeStateMapper::toCommon(event, fromEvent);
+
         return success;
     }
 
@@ -189,6 +218,7 @@ public:
         if (this.persistence == NULL) {
             return "~";
         }
+
         string sql = "SELECT requested.action_uid FROM h1_ea_trade_events requested WHERE requested.trade_id="
             + IntegerToString(fromTradeId)
             + " AND requested.event_type IN ('ENTRY_REQUEST','SL_MODIFY_REQUEST','EXIT_REQUEST')"
@@ -198,6 +228,7 @@ public:
         if (handle == INVALID_HANDLE) {
             return "~";
         }
+
         string result = "";
         while (DatabaseRead(handle)) {
             string actionUid;
@@ -205,9 +236,12 @@ public:
                 DatabaseFinalize(handle);
                 return "~";
             }
+
             EaTextUtil::appendField(result, "action_uid", actionUid);
         }
+
         DatabaseFinalize(handle);
+
         return result;
     }
 

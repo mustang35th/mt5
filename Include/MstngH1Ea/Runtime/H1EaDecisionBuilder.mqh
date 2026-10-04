@@ -51,10 +51,12 @@ public:
             append(text, "d1_ema200_direction", fromDecision.d1Ema200Direction);
             append(text, "is_ema200_confirmation_passed", flag(fromDecision.isEma200ConfirmationPassed));
         }
+
         fromDecision.analysisSnapshotText = text;
         append(text, "analysis_version", ZigZagElliotAnalysisProfile::getAnalysisVersion());
         append(text, "analysis_input_hash", ZigZagElliotAnalysisProfile::createHash());
         fromDecision.snapshotHash = H1EaTextUtil::hash(text);
+
         return StringLen(fromDecision.snapshotHash) == 64;
     }
 
@@ -67,6 +69,7 @@ private:
         if (value == "") {
             value = "~";
         }
+
         fromText += "|" + fromName + "=" + value;
     }
 
@@ -77,6 +80,7 @@ private:
         if (fromValue) {
             return "1";
         }
+
         return "0";
     }
 
@@ -87,6 +91,7 @@ private:
         if (fromValue == EMPTY_VALUE || !MathIsValidNumber(fromValue)) {
             return "~";
         }
+
         return DoubleToString(fromValue, fromDigits);
     }
 
@@ -97,6 +102,7 @@ private:
         if (fromValue <= 0.0) {
             return "~";
         }
+
         return optionalNumber(fromValue, fromDigits);
     }
 
@@ -107,6 +113,7 @@ private:
         if (fromValue == INT_MIN) {
             return "~";
         }
+
         return IntegerToString(fromValue);
     }
 };

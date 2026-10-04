@@ -77,21 +77,25 @@ public:
         if (this.preparationState.registered) {
             return false;
         }
+
         if (!this.config.initialize(fromSymbol, fromLotSize, fromMaxInitialStopLossPips,
                 fromTesterTradeStartTime)) {
             this.logger.error("H1EaController.initialize", this.config.lastError);
             return false;
         }
+
         this.logger.initialize(this.config.symbolName, this.config.magicNumber, this.config.runUid);
         if (!this.strategy.initialize(this.config.symbolName)) {
             this.logger.error("H1EaController.initialize", this.strategy.getLastError());
             return false;
         }
+
         if (!this.instanceLock.acquire(this.config.lockScope)) {
             this.logger.error("H1EaController.initialize", "INSTANCE_ALREADY_LOCKED");
             this.strategy.destroy();
             return false;
         }
+
         this.lockAcquiredAt = TimeLocal();
         this.initializeRun();
         if (StringLen(this.run.configHash) != 64 || StringLen(this.run.analysisInputHash) != 64) {
@@ -100,9 +104,11 @@ public:
             this.instanceLock.release();
             return false;
         }
+
         this.started = true;
         this.lastTrailObservedBar = iTime(this.config.symbolName, PERIOD_H1, 0);
         this.nextEntryTick = GetTickCount64() + 1000;
+
         if (!this.connectAndRestore()) {
             this.logger.error("H1EaController.initialize", "DB制限状態: " + this.persistence.getLastError());
         }
@@ -110,9 +116,11 @@ public:
             this.shutdown(REASON_INITFAILED);
             return false;
         }
+
         this.nextMaintenanceTick = H1EaClock::milliseconds() + 5000;
         this.logger.info("H1EaController.initialize", "START " + this.config.contextKey
             + " DB=" + this.config.databaseFileName + " " + this.config.createCanonicalText());
+
         return true;
     }
 
@@ -127,6 +135,7 @@ public:
         if (this.started || this.preparationState.registered || fromSymbol == "") {
             return false;
         }
+
         this.preparationState.reset();
         this.preparationBeforeTradeStart = false;
         this.preparationState.symbolName = fromSymbol;
@@ -137,6 +146,7 @@ public:
         this.lastPreparationLogTime = 0;
         this.preparationState.registered = true;
         this.preparationState.status = "REGISTERED";
+
         return true;
     }
 
@@ -149,23 +159,27 @@ public:
         if (!this.preparationState.registered || this.started || this.persistencePreparation) {
             return false;
         }
+
         this.persistencePreparation = true;
         if (!this.config.initialize(this.preparationState.symbolName, fromLotSize,
                 fromMaxInitialStopLossPips, fromTesterTradeStartTime, fromSessionUid)) {
             this.restorationError = this.config.lastError;
             return false;
         }
+
         this.logger.initialize(this.config.symbolName, this.config.magicNumber, this.config.runUid);
         if (!this.instanceLock.acquire(this.config.lockScope)) {
             this.restorationError = "INSTANCE_ALREADY_LOCKED";
             return false;
         }
+
         this.initializeRun();
         this.run.programVersion = "1.11";
         if (!H1EaSql::isHash(this.run.configHash) || !H1EaSql::isHash(this.run.analysisInputHash)) {
             this.restorationError = "CONFIG_HASH_UNAVAILABLE";
             return false;
         }
+
         return true;
     }
 
@@ -177,15 +191,18 @@ public:
         if (!this.persistencePreparation || this.started || !this.instanceLock.isHeld()) {
             return false;
         }
+
         this.lockAcquiredAt = TimeLocal();
         this.started = true;
         if (!this.connectAndRestore()) {
             this.restorationError = this.persistence.getLastError();
             return false;
         }
+
         this.nextMaintenanceTick = H1EaClock::milliseconds() + 5000;
         this.logger.info(__FUNCTION__, "DB_PREPARATION session=" + this.run.sessionUid
             + " context=" + this.config.contextKey + " entry=disabled protection=waiting");
+
         return true;
     }
 
@@ -215,6 +232,7 @@ public:
         if (!this.protectionEnabled) {
             return;
         }
+
         this.entryEnabled = true;
         this.nextScheduledEntryTick = H1EaClock::milliseconds() + 1000;
     }
@@ -232,14 +250,17 @@ public:
                 || H1EaClock::milliseconds() < this.nextScheduledEntryTick) {
             return 0;
         }
+
         datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
         if (barTime <= 0 || this.entryState.isFinalized(barTime)) {
             return 0;
         }
+
         if (this.entryQueuedBar != barTime) {
             this.entryQueuedBar = barTime;
             this.entryQueuedTick = H1EaClock::milliseconds();
         }
+
         return barTime;
     }
 
@@ -251,6 +272,7 @@ public:
         if (!fromNormalTimerReady || fromBarTime <= 0 || fromBarTime != this.getPendingEntryBar()) {
             return;
         }
+
         ulong startedTick = H1EaClock::milliseconds();
         ulong queueWaitMilliseconds = startedTick - this.entryQueuedTick;
         this.entryQueuedBar = 0;
@@ -258,11 +280,13 @@ public:
         if (this.config.isTester) {
             this.nextScheduledEntryTick = startedTick + 1000;
         }
+
         if (!this.preparationState.resourcesInitialized || !this.preparationState.historyReady
                 || this.preparationState.h1BarTime != fromBarTime || this.restoredDecisionBar != fromBarTime
                 || !this.executor.hasCurrentEntryQuote(fromBarTime)) {
             return;
         }
+
         this.logger.info(__FUNCTION__, "SCHEDULE_ENTRY H1=" + IntegerToString(fromBarTime)
             + " queueWaitMs=" + H1EaTextUtil::ticket(queueWaitMilliseconds)
             + " barDelaySeconds=" + IntegerToString(TimeCurrent() - fromBarTime));
@@ -284,13 +308,16 @@ public:
                 || this.scheduledTickWarmup || this.leaseLost || this.run.leaseExpiresAt <= TimeLocal()) {
             return 0;
         }
+
         datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
         if (barTime <= 0 || barTime == this.lastTrailObservedBar || !this.executor.isTrailEligible(barTime)) {
             return 0;
         }
+
         if (barTime == this.protectionAnalysisBar && H1EaClock::milliseconds() < this.nextProtectionAnalysisTick) {
             return 0;
         }
+
         return barTime;
     }
 
@@ -301,11 +328,14 @@ public:
         if (fromBarTime <= 0 || fromBarTime != this.getPendingTrailBar()) {
             return;
         }
+
         this.protectionAnalysisBar = fromBarTime;
         this.nextProtectionAnalysisTick = H1EaClock::milliseconds() + 30000;
+
         if (!this.preparationState.resourcesInitialized || !this.preparationState.historyReady) {
             return;
         }
+
         this.processTrail(fromBarTime);
     }
 
@@ -326,10 +356,12 @@ public:
         if (!this.started || !this.protectionEnabled || !this.executorInitialized) {
             return;
         }
+
         MqlTradeTransaction transaction = fromTransaction;
         if (transaction.type != TRADE_TRANSACTION_REQUEST && transaction.symbol == "") {
             transaction.symbol = this.config.symbolName;
         }
+
         this.executor.observeTradeTransaction(transaction, fromRequest, fromResult);
     }
 
@@ -349,13 +381,16 @@ public:
         if (!this.started || !this.persistencePreparation) {
             return;
         }
+
         if (this.scheduledTickWarmup && !this.endScheduledTickWarmup()) {
             return;
         }
+
         if (fromFastWarmup && this.canUseScheduledFastTesterWarmup()) {
             this.maintainFastTesterWarmup();
             return;
         }
+
         this.maintainPersistence();
     }
 
@@ -373,6 +408,7 @@ public:
                 || ArraySize(this.decisionQueue) > 0) {
             return false;
         }
+
         return this.executor.isIdleForTesterWarmup(this.scheduledTickWarmup);
     }
 
@@ -383,18 +419,22 @@ public:
         if (this.scheduledTickWarmup) {
             return this.canUseScheduledFastTesterWarmup();
         }
+
         if (!this.config.isTester || !this.persistencePreparation || this.run.sessionUid == ""
                 || !this.canUseScheduledFastTesterWarmup()) {
             return false;
         }
+
         if (!this.persistence.beginTesterWarmupLease(this.run, TimeLocal())) {
             this.databaseReady = false;
             this.executor.setManagementAuthority(this.instanceLock.isHeld(), 0);
             this.logger.error(__FUNCTION__, this.persistence.getLastError());
             return false;
         }
+
         this.scheduledTickWarmup = true;
         this.updateManagementAuthority();
+
         return true;
     }
 
@@ -405,17 +445,21 @@ public:
         if (!this.scheduledTickWarmup || !this.canUseScheduledFastTesterWarmup()) {
             return false;
         }
+
         datetime now = TimeLocal();
         if ((long)now < this.run.heartbeatAt + 3600) {
             return true;
         }
+
         if (!this.persistence.heartbeatTesterWarmupLease(this.run, now)) {
             this.databaseReady = false;
             this.updateManagementAuthority();
             this.logger.error(__FUNCTION__, this.persistence.getLastError());
             return false;
         }
+
         this.updateManagementAuthority();
+
         return true;
     }
 
@@ -427,11 +471,13 @@ public:
         if (!this.scheduledTickWarmup) {
             return true;
         }
+
         if (!this.started || !this.persistencePreparation || !this.config.isTester
                 || this.leaseLost || !this.instanceLock.isHeld()) {
             this.updateManagementAuthority();
             return false;
         }
+
         if ((!this.databaseReady && !this.persistence.open(this.config.databaseFileName, false))
                 || !this.persistence.endTesterWarmupLease(this.run, TimeLocal())) {
             this.databaseReady = false;
@@ -439,10 +485,12 @@ public:
             this.logger.error(__FUNCTION__, this.persistence.getLastError());
             return false;
         }
+
         this.scheduledTickWarmup = false;
         this.databaseReady = true;
         this.nextMaintenanceTick = 0;
         this.updateManagementAuthority();
+
         return true;
     }
 
@@ -470,19 +518,23 @@ public:
         if (!this.started || !this.persistencePreparation || !this.databaseReady || this.leaseLost) {
             return;
         }
+
         datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
         if (barTime <= 0 || barTime == this.restoredDecisionBar) {
             return;
         }
+
         H1EaDecisionEntity savedDecision;
         bool found = false;
         if (!this.persistence.loadDecision(this.config.contextKey, barTime, savedDecision, found)) {
             this.databaseReady = false;
             return;
         }
+
         if (barTime != iTime(this.config.symbolName, PERIOD_H1, 0)) {
             return;
         }
+
         if (found) {
             this.entryState.finalize(barTime);
         }
@@ -503,6 +555,7 @@ public:
         fromState.decisionBar = this.restoredDecisionBar;
         fromState.blockedEntryBar = this.restoredBlockedBar;
         fromState.reason = this.restorationError;
+
         if (this.leaseLost) {
             fromState.status = "LEASE_LOST";
         } else if (!this.databaseReady) {
@@ -543,6 +596,7 @@ public:
         fromState.pendingStopLossKind = trade.pendingStopLossKind;
         fromState.pendingStopLoss = trade.pendingStopLoss;
         fromState.tradeError = trade.lastError;
+
         fromState.category = "STOPPED";
         if (!this.started || !this.entryEnabled || !this.protectionEnabled) {
             fromState.status = "DISABLED";
@@ -597,6 +651,7 @@ public:
         if ((this.started && !this.persistencePreparation) || !this.preparationState.registered) {
             return;
         }
+
         datetime barTime = iTime(this.preparationState.symbolName, PERIOD_H1, 0);
         bool beforeTradeStart = this.config.isBeforeTesterTradeStart(TimeCurrent());
         if (this.preparationState.historyReady && this.strategy.isHistoryPrepared() && barTime > 0
@@ -604,9 +659,11 @@ public:
                 && beforeTradeStart == this.preparationBeforeTradeStart) {
             return;
         }
+
         this.preparationBeforeTradeStart = beforeTradeStart;
         this.preparationState.historyReady = false;
         this.preparationState.h1BarTime = barTime;
+
         if (!this.preparationState.resourcesInitialized) {
             if (!this.strategy.initialize(this.preparationState.symbolName)) {
                 this.preparationState.status = "ERROR";
@@ -614,20 +671,24 @@ public:
                 this.logPreparationHistory();
                 return;
             }
+
             this.preparationState.resourcesInitialized = true;
         }
+
         if (!this.strategy.prepareHistory(this.config.testerTradeStartTime)) {
             this.preparationState.status = "WAIT_HISTORY";
             this.preparationState.reason = this.strategy.getLastError();
             this.logPreparationHistory();
             return;
         }
+
         if (barTime <= 0 || barTime != iTime(this.preparationState.symbolName, PERIOD_H1, 0)) {
             this.preparationState.status = "WAIT_HISTORY";
             this.preparationState.reason = "H1_BAR_UNAVAILABLE_OR_CHANGED";
             this.logPreparationHistory();
             return;
         }
+
         this.preparationState.historyReady = true;
         this.preparationState.status = "READY";
         this.preparationState.reason = "";
@@ -653,6 +714,7 @@ public:
         if (!this.started || this.persistencePreparation) {
             return false;
         }
+
         return this.updateEventTimer(this.canUseFastTesterWarmup());
     }
 
@@ -664,22 +726,28 @@ public:
         if (!this.started || this.persistencePreparation) {
             return;
         }
+
         bool fastWarmup = this.canUseFastTesterWarmup();
         if (!this.updateEventTimer(fastWarmup)) {
             fastWarmup = false;
         }
+
         if (fastWarmup) {
             this.processMaintenance(true);
             if (this.canUseFastTesterWarmup()) {
                 this.processWarmup();
                 return;
             }
+
             this.updateEventTimer(false);
         }
+
         this.processMaintenance();
+
         datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
         this.processProtection(barTime);
         this.processTrail(barTime);
+
         if (this.config.isTester) {
             this.processEntry(this.eventTimer.isNormalReady());
         }
@@ -693,19 +761,24 @@ public:
         if (!this.started || this.persistencePreparation) {
             return;
         }
+
         bool fastWarmup = this.canUseFastTesterWarmup();
         if (!this.updateEventTimer(fastWarmup)) {
             fastWarmup = false;
         }
+
         if (fastWarmup) {
             this.processMaintenance(true);
             if (this.canUseFastTesterWarmup()) {
                 return;
             }
+
             this.updateEventTimer(false);
         }
+
         this.processMaintenance();
         this.processTradeReconciliation();
+
         if (!this.config.isTester && GetTickCount64() >= this.nextEntryTick) {
             this.nextEntryTick = GetTickCount64() + 30000;
             this.processEntry(this.eventTimer.isNormalReady());
@@ -721,10 +794,12 @@ public:
         if (!this.started || this.persistencePreparation) {
             return;
         }
+
         if (fromFastWarmup && this.canUseFastTesterWarmup()) {
             this.maintainFastTesterWarmup();
             return;
         }
+
         this.maintainPersistence();
     }
 
@@ -736,6 +811,7 @@ public:
                 || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
+
         this.updateManagementAuthority();
         this.executor.reconcile();
     }
@@ -750,6 +826,7 @@ public:
                 || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
+
         this.processTradeReconciliation();
         this.executor.processPending(fromBarTime);
     }
@@ -764,6 +841,7 @@ public:
                 || (this.persistencePreparation && !this.protectionEnabled) || !this.executorInitialized) {
             return;
         }
+
         if (fromBarTime > 0 && fromBarTime != this.lastTrailObservedBar) {
             this.lastTrailObservedBar = fromBarTime;
             if (this.executor.isTrailEligible(fromBarTime)) {
@@ -775,11 +853,13 @@ public:
                             || iTime(this.config.symbolName, PERIOD_H1, 0) != fromBarTime)) {
                         return;
                     }
+
                     this.executor.evaluateTrail(fromBarTime, this.strategy.getWave());
                 } else {
                     this.recordAnalysisDuration(analysisStarted);
                     this.executor.evaluateTrail(fromBarTime, NULL, this.strategy.getLastError());
                 }
+
                 this.executor.processPending(fromBarTime);
             }
         }
@@ -794,6 +874,7 @@ public:
         if (!this.started || this.persistencePreparation) {
             return;
         }
+
         this.evaluateEntry(fromNormalTimerReady);
     }
 
@@ -804,6 +885,7 @@ public:
         if (!this.started || this.persistencePreparation || !this.config.isBeforeTesterTradeStart(TimeCurrent())) {
             return;
         }
+
         this.processTesterWarmup();
     }
 
@@ -819,6 +901,7 @@ public:
                 || ArraySize(this.decisionQueue) > 0) {
             return false;
         }
+
         return this.executor.isIdleForTesterWarmup()
             && PositionsTotal() == 0 && OrdersTotal() == 0;
     }
@@ -846,9 +929,11 @@ public:
                 status = "FAILED";
                 errorText = "MULTI_SYMBOL_INITIALIZATION_FAILED";
             }
+
             if (this.run.id > 0 && !this.persistence.finishRun(this.run.id, status, errorText)) {
                 this.logger.error(__FUNCTION__, "RUN_END_UNSAVED " + this.persistence.getLastError());
             }
+
             this.started = false;
             this.databaseReady = false;
             this.persistence.close();
@@ -859,12 +944,14 @@ public:
             this.persistencePreparation = false;
             return;
         }
+
         if (this.preparationState.registered && !this.protectionEnabled) {
             this.preparationBeforeTradeStart = false;
             this.strategy.destroy();
             this.preparationState.reset();
             return;
         }
+
         if (this.started) {
             this.flushDecisions();
             bool tradeQueueSaved = true;
@@ -874,6 +961,7 @@ public:
                 this.executor.reconcile();
                 tradeQueueSaved = this.executor.flushPendingEvents() && tradeQueueSaved;
             }
+
             string status = "STOPPED";
             string errorText = "";
             if (fromReason == REASON_INITFAILED) {
@@ -889,11 +977,13 @@ public:
                 errorText = "DEAL_AUDIT_PENDING: 約定明細の保存確認が未完了です。同contextで履歴再照合が必要です";
                 this.logger.error("H1EaController.shutdown", errorText);
             }
+
             if (this.run.id > 0 && !this.persistence.finishRun(this.run.id, status, errorText)) {
                 this.logger.error("H1EaController.shutdown", "RUN_END_UNSAVED " + errorText);
             }
             this.logger.info("H1EaController.shutdown", "STOP reason=" + IntegerToString(fromReason));
         }
+
         this.started = false;
         this.persistence.close();
         this.strategy.destroy();
@@ -1065,6 +1155,7 @@ private:
         if (!this.persistencePreparation || !this.config.isTester) {
             return;
         }
+
         string status = this.preparationState.status;
         string reason = this.preparationState.reason;
         int missingMask = this.strategy.getHistoryMissingMask();
@@ -1076,6 +1167,7 @@ private:
                 && unsynchronizedMask == this.lastPreparationLogUnsynchronizedMask) {
             return;
         }
+
         string historyText = this.strategy.getHistoryMissingStatusText();
         if (historyText == "") {
             historyText = "history=UNAVAILABLE";
@@ -1083,6 +1175,7 @@ private:
                 historyText = "history=READY";
             }
         }
+
         string message = "state=" + status + " reason=" + reason + " " + historyText;
         string logText = "PREPARATION_HISTORY symbol=" + this.preparationState.symbolName
             + " simulatedTime=" + TimeToString(now, TIME_DATE | TIME_SECONDS)
@@ -1092,6 +1185,7 @@ private:
         } else {
             this.logger.info("H1EaController.logPreparationHistory", logText);
         }
+
         this.lastPreparationLogStatus = status;
         this.lastPreparationLogReason = reason;
         this.lastPreparationLogMissingMask = missingMask;
@@ -1106,6 +1200,7 @@ private:
         if (!this.persistencePreparation) {
             return;
         }
+
         this.analysisFinishedMicros = GetMicrosecondCount();
         this.lastAnalysisMicros = this.analysisFinishedMicros - fromStarted;
         if (this.lastAnalysisMicros > this.maxAnalysisMicros) {
@@ -1125,6 +1220,7 @@ private:
             // Timer設定失敗時も高速期間の保守待ちを解除する。
             this.nextMaintenanceTick = 0;
         }
+
         return updated;
     }
 
@@ -1168,26 +1264,31 @@ private:
         if (this.leaseLost) {
             return false;
         }
+
         if (this.run.id == 0 && TimeLocal() >= this.lockAcquiredAt + 60) {
             this.leaseLost = true;
             this.logger.error("H1EaController.connectAndRestore", "INITIAL_DB_RECOVERY_DEADLINE_EXPIRED");
             return false;
         }
+
         if (!this.persistence.open(this.config.databaseFileName, this.run.id == 0 && !this.persistencePreparation)) {
             return false;
         }
+
         if (this.run.id == 0 && !this.persistence.acquireRun(this.run)) {
             if (this.persistence.getLastError() == "RUN_CONTEXT_ALREADY_ACTIVE") {
                 this.leaseLost = true;
             }
             return false;
         }
+
         if (!this.persistence.hasLease(this.run.id, TimeLocal())) {
             if (this.persistence.getLastError() == "LEASE_NOT_OWNED") {
                 this.leaseLost = true;
             }
             return false;
         }
+
         if (!this.countsRestored) {
             long referenceTimes[];
             string sides[];
@@ -1198,46 +1299,57 @@ private:
                     || !this.persistence.hasAuditGap(this.config.contextKey, hasGap)) {
                 return false;
             }
+
             this.auditStateLost = hasGap;
+
             if (!this.persistencePreparation) {
                 datetime currentBar = iTime(this.config.symbolName, PERIOD_H1, 0);
                 if (currentBar <= 0) {
                     return false;
                 }
+
                 H1EaDecisionEntity savedDecision;
                 bool found = false;
                 if (currentBar > 0 && !this.persistence.loadDecision(this.config.contextKey,
                         currentBar, savedDecision, found)) {
                     return false;
                 }
+
                 if (found) {
                     this.entryState.finalize(currentBar);
                 }
             }
             this.countsRestored = true;
         }
+
         if (!this.executorInitialized) {
             if (!this.executor.initialize(this.config.symbolName, this.config.magicNumber,
                     this.config.pipSize, this.config.tickSize, this.run.id, this.run.runUid,
                     this.config.contextKey, GetPointer(this.persistence))) {
                 return false;
             }
+
             this.executorInitialized = true;
         }
+
         datetime blockedBar = 0;
         if (!this.persistence.loadCrossBlockedBar(this.config.contextKey, blockedBar)) {
             return false;
         }
+
         this.executor.setBlockedEntryBar(blockedBar);
         this.restoredBlockedBar = blockedBar;
+
         if (this.persistencePreparation) {
             this.databaseReady = this.executor.restoreFromDatabase();
             return this.databaseReady;
         }
+
         this.databaseReady = true;
         this.updateManagementAuthority();
         this.executor.flushPendingEvents();
         this.executor.reconcile();
+
         return true;
     }
 
@@ -1250,17 +1362,20 @@ private:
             this.updateManagementAuthority();
             return;
         }
+
         int heartbeatSeconds = 10;
         ulong maintenanceMilliseconds = 5000;
         if (fromFastWarmup) {
             heartbeatSeconds = 30;
             maintenanceMilliseconds = 30000;
         }
+
         datetime now = TimeLocal();
         if (this.run.id > 0 && this.run.leaseExpiresAt <= now && !this.leaseLost) {
             this.leaseLost = true;
             this.logger.error("H1EaController.maintainPersistence", "LEASE_EXPIRED: broker SL以外の操作を停止");
         }
+
         bool heartbeatDue = (this.databaseReady || (this.persistencePreparation && this.run.id > 0)) && !this.leaseLost
             && now >= this.run.heartbeatAt + heartbeatSeconds;
         if (heartbeatDue && !this.persistence.heartbeat(this.run, now)) {
@@ -1271,17 +1386,21 @@ private:
             this.databaseReady = false;
             this.logger.error("H1EaController.maintainPersistence", "HEARTBEAT_FAILED");
         }
+
         this.updateManagementAuthority();
         if (H1EaClock::milliseconds() < this.nextMaintenanceTick) {
             return;
         }
+
         this.nextMaintenanceTick = H1EaClock::milliseconds() + maintenanceMilliseconds;
         if (!this.databaseReady && !this.leaseLost) {
             this.connectAndRestore();
         }
+
         if (this.persistencePreparation && !this.protectionEnabled) {
             return;
         }
+
         if (this.databaseReady) {
             this.flushDecisions();
             if (this.executorInitialized) {
@@ -1297,6 +1416,7 @@ private:
         if (!this.executorInitialized) {
             return;
         }
+
         datetime expires = (datetime)this.run.leaseExpiresAt;
         if (this.leaseLost || this.scheduledTickWarmup
                 || (this.persistencePreparation && !this.protectionEnabled)) {
@@ -1312,26 +1432,32 @@ private:
         if (this.scheduledTickWarmup) {
             return;
         }
+
         if (this.config.isBeforeTesterTradeStart(TimeCurrent())) {
             this.processTesterWarmup();
             return;
         }
+
         if (this.testerWarmupActive) {
             this.testerWarmupActive = false;
             this.logger.info("H1EaController.evaluateEntry", "TESTER_TRADE_PERIOD_STARTED start="
                 + TimeToString(this.config.testerTradeStartTime, TIME_DATE | TIME_SECONDS)
                 + " current=" + TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS));
         }
+
         if (!fromNormalTimerReady) {
             return;
         }
+
         if (!this.countsRestored || this.run.id <= 0) {
             return;
         }
+
         datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
         if (barTime <= 0) {
             return;
         }
+
         datetime expiredBar = this.entryState.observe(barTime);
         if (expiredBar > 0) {
             H1EaDecisionEntity unavailable;
@@ -1340,15 +1466,19 @@ private:
             this.enqueueDecision(unavailable);
             this.flushDecisions();
         }
+
         if (this.entryState.isFinalized(barTime)) {
             return;
         }
+
         if (this.config.isTester && this.analysisRetryBar == barTime
                 && TimeCurrent() < this.nextAnalysisRetryTime) {
             return;
         }
+
         this.analysisRetryBar = 0;
         this.nextAnalysisRetryTime = 0;
+
         H1EaStrategySnapshot snapshot;
         ulong analysisStarted = GetMicrosecondCount();
         if (!this.strategy.analyze(snapshot)) {
@@ -1361,22 +1491,26 @@ private:
             this.logAnalysisWait(barTime);
             return;
         }
+
         this.recordAnalysisDuration(analysisStarted);
         this.clearAnalysisWait();
         if (snapshot.h1BarTime != barTime) {
             this.logger.error("H1EaController.evaluateEntry", "ANALYSIS_BAR_CHANGED: Judge未消費で再試行");
             return;
         }
+
         if (this.persistencePreparation && (!this.entryEnabled || this.restoredDecisionBar != barTime
                 || !this.executor.hasCurrentEntryQuote(barTime))) {
             // 分析中のバー切替・気配欠落はJudge回数を消費せず、現在バーの巡回へ戻す。
             return;
         }
+
         int previousCount = this.entryState.getCount(snapshot.signalReferenceTime, snapshot.signalSide);
         if (!this.strategy.evaluate(previousCount, snapshot)) {
             this.logger.error("H1EaController.evaluateEntry", this.strategy.getLastError());
             return;
         }
+
         H1EaDecisionEntity decision;
         this.buildDecision(snapshot, decision);
         if (decision.isJudgeMatched && !this.entryState.recordCount(
@@ -1385,9 +1519,11 @@ private:
             decision.reasonCode = "AUDIT_STATE_LOST";
         }
         this.entryState.finalize(barTime);
+
         if (decision.isStrategyEntry) {
             this.applyEntrySafety(snapshot, decision);
         }
+
         if (!H1EaDecisionBuilder::seal(decision, this.config.digits)) {
             this.auditStateLost = true;
             decision.decision = "SKIP";
@@ -1395,19 +1531,23 @@ private:
             this.enqueueDecision(decision);
             return;
         }
+
         if (decision.decision != "SKIP") {
             H1EaTradeEntity trade;
             H1EaTradeEventEntity event;
             this.executor.prepareEntry(decision, trade, event);
+
             if (this.persistence.saveEntry(this.run.id, decision, trade, event)) {
                 this.executor.sendEntry(trade, event);
                 this.logDecision(decision);
                 return;
             }
+
             decision.decision = "SKIP";
             decision.reasonCode = "DB_UNAVAILABLE";
             this.databaseReady = false;
         }
+
         this.enqueueDecision(decision);
         this.flushDecisions();
     }
@@ -1422,15 +1562,18 @@ private:
                 + TimeToString(this.config.testerTradeStartTime, TIME_DATE | TIME_SECONDS)
                 + " 履歴確認のみ・波動分析・発注・Judge回数消費・Decision保存なし");
         }
+
         datetime barTime = iTime(this.config.symbolName, PERIOD_H1, 0);
         if (barTime <= 0 || barTime == this.lastWarmupBar) {
             return;
         }
+
         this.lastWarmupBar = barTime;
         if (!this.strategy.prepareHistory(this.config.testerTradeStartTime)) {
             this.logAnalysisWait(barTime);
             return;
         }
+
         this.clearAnalysisWait(true);
     }
 
@@ -1450,16 +1593,19 @@ private:
                     && (message == this.lastAnalysisLogText || elapsedSeconds < 3600)) {
                 return;
             }
+
             this.logger.info("H1EaController.logAnalysisWait", "H1=" + IntegerToString(fromBar)
                 + " " + message);
         } else {
             if (message == this.lastAnalysisLogText && fromBar == this.lastAnalysisErrorBar) {
                 return;
             }
+
             this.lastAnalysisErrorBar = fromBar;
             this.logger.error("H1EaController.logAnalysisWait", "H1=" + IntegerToString(fromBar)
                 + " " + message);
         }
+
         this.lastAnalysisLogText = message;
         this.lastAnalysisLogTime = now;
     }
@@ -1476,6 +1622,7 @@ private:
             this.logger.info("H1EaController.clearAnalysisWait", readyCode + " "
                 + this.strategy.getHistoryStatusText());
         }
+
         this.lastAnalysisLogText = "";
         this.lastAnalysisLogTime = 0;
         this.lastAnalysisErrorBar = 0;
@@ -1549,31 +1696,38 @@ private:
             fromDecision.reasonCode = "AUDIT_STATE_LOST";
             return;
         }
+
         if (this.leaseLost || !this.databaseReady || ArraySize(this.decisionQueue) > 0
                 || !this.executorInitialized || this.executor.hasUnsavedEvents()) {
             fromDecision.reasonCode = "DB_UNAVAILABLE";
             return;
         }
+
         if (iTime(this.config.symbolName, PERIOD_H1, 0) != fromSnapshot.h1BarTime) {
             fromDecision.reasonCode = "ANALYSIS_BAR_CHANGED";
             return;
         }
+
         string reason = "";
         if (!this.executor.canEnter(fromSnapshot.h1BarTime, reason)) {
             fromDecision.reasonCode = reason;
             return;
         }
+
         double volume = 0.0;
         if (!this.normalizeVolume(volume)) {
             fromDecision.reasonCode = "INVALID_VOLUME";
             return;
         }
+
         fromDecision.requestedVolume = volume;
+
         MqlTick marketTick;
         if (!SymbolInfoTick(this.config.symbolName, marketTick)) {
             fromDecision.reasonCode = "PRICE_UNAVAILABLE";
             return;
         }
+
         H1EaInitialStopLossResult stopLoss;
         H1EaInitialStopLossDecision initialStopLossDecision;
         initialStopLossDecision.evaluate(fromSnapshot.isBuy, fromSnapshot.signalReferencePrice,
@@ -1581,12 +1735,14 @@ private:
             this.config.pipSize, this.config.tickSize, this.config.pointSize,
             SymbolInfoInteger(this.config.symbolName, SYMBOL_TRADE_STOPS_LEVEL),
             this.config.maxInitialStopLossPips, stopLoss);
+
         fromDecision.initialStopLoss = stopLoss.stopLoss;
         fromDecision.initialRiskPips = stopLoss.riskPips;
         if (!stopLoss.isAccepted) {
             fromDecision.reasonCode = stopLoss.reasonCode;
             return;
         }
+
         fromDecision.decision = fromSnapshot.signalSide;
         fromDecision.reasonCode = "ENTRY_ACCEPTED";
     }
@@ -1602,8 +1758,10 @@ private:
                 || !MathIsValidNumber(step) || minimum <= 0.0 || maximum < minimum || step <= 0.0) {
             return false;
         }
+
         double requested = MathMax(minimum, MathMin(maximum, this.config.lotSize));
         fromVolume = NormalizeDouble(MathFloor(requested / step + 0.00000001) * step, 8);
+
         return fromVolume >= minimum - 0.00000001 && fromVolume <= maximum + 0.00000001;
     }
 
@@ -1615,6 +1773,7 @@ private:
         if (!H1EaDecisionBuilder::seal(fromDecision, this.config.digits)) {
             this.auditStateLost = true;
         }
+
         int queueSize = ArraySize(this.decisionQueue);
         if (queueSize >= 256 || ArrayResize(this.decisionQueue, queueSize + 1) != queueSize + 1) {
             this.auditStateLost = true;
@@ -1622,6 +1781,7 @@ private:
                 + IntegerToString(fromDecision.h1BarTime) + " hash=" + fromDecision.snapshotHash);
             return;
         }
+
         this.decisionQueue[queueSize] = fromDecision;
         this.logDecision(fromDecision);
     }
@@ -1633,16 +1793,19 @@ private:
         if (!this.databaseReady || this.leaseLost || this.run.id <= 0) {
             return;
         }
+
         while (ArraySize(this.decisionQueue) > 0) {
             if (!this.persistence.saveDecision(this.run.id, this.decisionQueue[0])) {
                 this.databaseReady = false;
                 this.logger.error("H1EaController.flushDecisions", this.persistence.getLastError());
                 return;
             }
+
             int queueSize = ArraySize(this.decisionQueue);
             for (int i = 1; i < queueSize; i++) {
                 this.decisionQueue[i - 1] = this.decisionQueue[i];
             }
+
             ArrayResize(this.decisionQueue, queueSize - 1);
         }
     }

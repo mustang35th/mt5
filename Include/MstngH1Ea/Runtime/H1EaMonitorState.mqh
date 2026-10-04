@@ -212,6 +212,7 @@ struct H1EaMonitorState {
         for (int i = 0; i < ArraySize(this.symbols); i++) {
             this.symbols[i].reset();
         }
+
         this.sessionUid = "";
         this.sourceMode = "LIVE";
         this.serverTime = 0;

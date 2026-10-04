@@ -83,6 +83,7 @@ public:
         sql += "FOREIGN KEY(created_run_id) REFERENCES m15_ea_runs(id) ON DELETE RESTRICT,";
         sql += "FOREIGN KEY(decision_id) REFERENCES m15_ea_decisions(id) ON DELETE RESTRICT,";
         sql += "CHECK(origin <> 'NORMAL' OR decision_id IS NOT NULL))";
+
         return sql;
     }
 
@@ -93,6 +94,7 @@ public:
         if (ArrayResize(fromSql, 7) != 7) {
             return false;
         }
+
         fromSql[0] = "CREATE UNIQUE INDEX IF NOT EXISTS idx_m15_ea_trades_decision ON m15_ea_trades(decision_id) WHERE decision_id IS NOT NULL;";
         fromSql[1] = "CREATE UNIQUE INDEX IF NOT EXISTS idx_m15_ea_trades_active_context ON m15_ea_trades(context_key) WHERE status IN ( 'OPEN_PENDING', 'OPEN_PARTIAL', 'OPEN', 'CLOSE_PENDING', 'CLOSE_PARTIAL', 'RECOVERY_REQUIRED' );";
         fromSql[2] = "CREATE UNIQUE INDEX IF NOT EXISTS idx_m15_ea_trades_position_identifier ON m15_ea_trades(context_key, position_identifier) WHERE position_identifier IS NOT NULL;";
@@ -100,6 +102,7 @@ public:
         fromSql[4] = "CREATE INDEX IF NOT EXISTS idx_m15_ea_trades_context_updated ON m15_ea_trades(context_key, updated_at, id);";
         fromSql[5] = "CREATE INDEX IF NOT EXISTS idx_m15_ea_trades_closed ON m15_ea_trades(closed_at_msc, id);";
         fromSql[6] = "CREATE INDEX IF NOT EXISTS idx_m15_ea_trades_pending_stop_loss ON m15_ea_trades(context_key, pending_stop_loss_bar_time, id) WHERE pending_stop_loss IS NOT NULL;";
+
         return true;
     }
 
@@ -180,6 +183,7 @@ public:
         values += "," + M15EaSql::text(fromEntity.lastError);
         values += "," + IntegerToString((long)fromEntity.createdAt);
         values += "," + IntegerToString((long)fromEntity.updatedAt);
+
         return values;
     }
 
@@ -192,6 +196,7 @@ public:
         if (!M15EaSql::execute(fromHandle, sql)) {
             return false;
         }
+
         return M15EaSql::scalar(fromHandle, "SELECT last_insert_rowid()", fromEntity.id);
     }
 
@@ -251,10 +256,13 @@ public:
         sql += ",created_at=" + IntegerToString((long)fromEntity.createdAt);
         sql += ",updated_at=" + IntegerToString((long)fromEntity.updatedAt);
         sql += " WHERE id=" + IntegerToString(fromEntity.id);
+
         if (!M15EaSql::execute(fromHandle, sql)) {
             return false;
         }
+
         long changed = 0;
+
         return M15EaSql::scalar(fromHandle, "SELECT changes()", changed) && changed == 1;
     }
 
@@ -263,162 +271,214 @@ public:
      */
     static bool read(const int fromRequest, EaTradeState &fromEntity) {
         fromEntity.reset();
+
         long integerValue = 0;
         if (!DatabaseColumnLong(fromRequest, 0, fromEntity.id)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 1, fromEntity.createdRunId)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 2, fromEntity.decisionId)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 3, fromEntity.contextKey)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 4, fromEntity.origin)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 5, fromEntity.status)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 6, fromEntity.side)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 7, fromEntity.requestedVolume)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 8, fromEntity.requestedStopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 9, fromEntity.entryRequestedServerTime)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 10, fromEntity.entryOrderTicket)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 11, fromEntity.entryDealTicket)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 12, integerValue)) {
             return false;
         }
+
         fromEntity.entryRetcode = (int)integerValue;
         if (!DatabaseColumnText(fromRequest, 13, fromEntity.positionIdentifier)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 14, fromEntity.positionTicket)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 15, fromEntity.openedAtMsc)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 16, fromEntity.openPrice)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 17, fromEntity.openedVolume)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 18, fromEntity.remainingEntryVolume)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 19, fromEntity.currentStopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 20, fromEntity.stopLossSource)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 21, fromEntity.lastTrailEvaluatedBarTime)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 22, fromEntity.pendingStopLossKind)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 23, fromEntity.pendingStopLossBarTime)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 24, fromEntity.pendingStopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 25, fromEntity.pendingStopLossPivotTime)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 26, fromEntity.pendingStopLossPivotRate)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 27, fromEntity.pendingStopLossLatestTime)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 28, fromEntity.pendingStopLossActionUid)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 29, fromEntity.lastAppliedTrailBarTime)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 30, fromEntity.lastAppliedTrailStopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 31, fromEntity.lastAppliedTrailPivotTime)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 32, fromEntity.lastAppliedTrailPivotRate)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 33, fromEntity.lastAppliedTrailLatestTime)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 34, fromEntity.exitRequestedServerTime)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 35, fromEntity.exitOrderTicket)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 36, fromEntity.exitDealTicket)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 37, integerValue)) {
             return false;
         }
+
         fromEntity.exitRetcode = (int)integerValue;
         if (!DatabaseColumnLong(fromRequest, 38, fromEntity.closedAtMsc)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 39, fromEntity.closePrice)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 40, fromEntity.remainingPositionVolume)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 41, fromEntity.exitIntentReason)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 42, fromEntity.closeReason)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 43, fromEntity.brokerCloseReason)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 44, fromEntity.profit)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 45, fromEntity.commission)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 46, fromEntity.swap)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 47, fromEntity.fee)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 48, fromEntity.lastError)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 49, fromEntity.createdAt)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 50, fromEntity.updatedAt)) {
             return false;
         }
+
         return true;
     }
 
@@ -427,20 +487,24 @@ public:
      */
     static bool load(const int fromHandle, const string fromWhere, EaTradeState &fromEntity, bool &fromFound) {
         fromFound = false;
+
         int request = DatabasePrepare(fromHandle, "SELECT " + M15EaTradeDao::selectColumns()
             + " FROM m15_ea_trades WHERE " + fromWhere + " LIMIT 1");
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         ResetLastError();
         if (!DatabaseRead(request)) {
             int errorCode = GetLastError();
             DatabaseFinalize(request);
             return errorCode == ERR_DATABASE_NO_MORE_DATA;
         }
+
         bool success = M15EaTradeDao::read(request, fromEntity);
         DatabaseFinalize(request);
         fromFound = success;
+
         return success;
     }
 };

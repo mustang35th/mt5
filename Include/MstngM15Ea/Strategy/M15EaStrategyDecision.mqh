@@ -21,13 +21,16 @@ public:
         fromSnapshot.barTime = fromBarTime;
         fromSnapshot.evaluatedTime = TimeCurrent();
         fromSnapshot.reasonCode = "ANALYSIS_UNAVAILABLE";
+
         if (!this.isAnalysisAvailable(fromElliotAll) || fromBarTime <= 0) {
             return false;
         }
+
         ZigZagPoint *pivot = fromElliotAll.elliotCurrent.getLatestPoint2();
         if (pivot == NULL || pivot.barTime <= 0) {
             return false;
         }
+
         if (!MathIsValidNumber(fromElliotAll.todayRate.spread)
                 || fromElliotAll.todayRate.spread < 0.0
                 || !MathIsValidNumber(fromElliotAll.todayRate.bid)
@@ -38,6 +41,7 @@ public:
             fromSnapshot.reasonCode = "PRICE_UNAVAILABLE";
             return false;
         }
+
         fromSnapshot.isBuy = fromElliotAll.elliotCurrent.isBuy;
         fromSnapshot.signalSide = this.direction(fromSnapshot.isBuy);
         fromSnapshot.signalReferenceTime = pivot.barTime;
@@ -46,9 +50,11 @@ public:
         fromSnapshot.spreadPips = fromElliotAll.todayRate.spread;
         fromSnapshot.bid = fromElliotAll.todayRate.bid;
         fromSnapshot.ask = fromElliotAll.todayRate.ask;
+
         fromSnapshot.analysisSnapshotText = "M15_EA_ANALYSIS_V1";
         this.appendAnalysisSnapshot(fromSnapshot.analysisSnapshotText, "SOURCE", fromElliotAll);
         fromSnapshot.reasonCode = "NOT_EVALUATED";
+
         return true;
     }
 
@@ -65,12 +71,14 @@ public:
             fromSnapshot.reasonCode = "SIGNAL_COUNT_INVALID";
             return false;
         }
+
         if (!this.isAnalysisAvailable(fromElliotAll)
                 || fromSnapshot.signalReferenceTime <= 0
                 || fromSnapshot.reasonCode != "NOT_EVALUATED") {
             fromSnapshot.reasonCode = "ANALYSIS_UNAVAILABLE";
             return false;
         }
+
         ZigZagPoint *pivot = fromElliotAll.elliotCurrent.getLatestPoint2();
         if (pivot == NULL || pivot.barTime != fromSnapshot.signalReferenceTime
                 || pivot.rate != fromSnapshot.signalReferencePrice
@@ -79,6 +87,7 @@ public:
             fromSnapshot.reasonCode = "ANALYSIS_SNAPSHOT_CHANGED";
             return false;
         }
+
         MarketContext context = fromElliotAll.marketContext;
         SignalCount signalCount(context);
         if (!signalCount.restoreCount(fromSnapshot.signalReferenceTime,
@@ -86,6 +95,7 @@ public:
             fromSnapshot.reasonCode = "SIGNAL_COUNT_RESTORE_FAILED";
             return false;
         }
+
         ExpertAdvisorMTF_3in3 *strategy = ExpertAdvisorMtf3In3Factory::create(
             context, false, Mtf3In3H1Policy::getW1ConfirmationMode(),
             Mtf3In3H1Policy::getDirectionAlignmentMode(),
@@ -97,7 +107,9 @@ public:
             fromSnapshot.reasonCode = "STRATEGY_UNAVAILABLE";
             return false;
         }
+
         strategy.analyze(fromElliotAll, GetPointer(signalCount), 1);
+
         fromSnapshot.alertResult = strategy.getAlertResult();
         fromSnapshot.correctionTimeFrame = strategy.getCorrectionTimeFrame();
         ElliotAll *judgment = strategy.getJudgmentElliotAll();
@@ -110,6 +122,7 @@ public:
                 fromSnapshot.initialStopLossPivotIsHigh = selectedPivot.isPeak;
             }
         }
+
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "DIRECTION_CORRECTION_ENABLED",
             IntegerToString((int)fromDirectionCorrectionEnabled));
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "H4_MAX_FE_PERCENT",
@@ -119,6 +132,7 @@ public:
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "CORRECTION_TIME_FRAME",
             EnumToString(fromSnapshot.correctionTimeFrame));
         this.appendAnalysisSnapshot(fromSnapshot.analysisSnapshotText, "SELECTED", judgment);
+
         delete strategy;
 
         fromSnapshot.isJudge = fromSnapshot.alertResult.isJudge;
@@ -137,6 +151,7 @@ public:
         } else {
             fromSnapshot.reasonCode = "STRATEGY_ENTRY";
         }
+
         return true;
     }
 
@@ -151,6 +166,7 @@ private:
                 || fromElliotAll.elliotCurrent != fromElliotAll.getElliot(PERIOD_M15)) {
             return false;
         }
+
         ENUM_TIMEFRAMES timeFrames[] = {
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15
         };
@@ -160,6 +176,7 @@ private:
                 return false;
             }
         }
+
         return true;
     }
 
@@ -172,6 +189,7 @@ private:
         if (!this.isAnalysisAvailable(fromElliotAll)) {
             return;
         }
+
         ENUM_TIMEFRAMES timeFrames[] = {
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15
         };
@@ -190,6 +208,7 @@ private:
             EaTextUtil::appendField(fromText, prefix + "_FE_PERCENT", this.number(latest.fibonacciExpansionPercent));
             EaTextUtil::appendField(fromText, prefix + "_LATEST_TIME", IntegerToString(latest.barTime));
             EaTextUtil::appendField(fromText, prefix + "_LATEST_ADDED", IntegerToString((int)latest.isAddedPoint));
+
             ZigZagPoint *pivot = elliot.getLatestPoint2();
             if (pivot != NULL) {
                 EaTextUtil::appendField(fromText, prefix + "_PIVOT_TIME", IntegerToString(pivot.barTime));
@@ -206,6 +225,7 @@ private:
         if (!MathIsValidNumber(fromValue) || fromValue == EMPTY_VALUE) {
             return "UNAVAILABLE";
         }
+
         return DoubleToString(fromValue, 8);
     }
 
@@ -216,6 +236,7 @@ private:
         if (fromIsBuy) {
             return "BUY";
         }
+
         return "SELL";
     }
 };

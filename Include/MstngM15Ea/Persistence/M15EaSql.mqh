@@ -14,6 +14,7 @@ public:
     static string text(const string fromText) {
         string escaped = fromText;
         StringReplace(escaped, "'", "''");
+
         return "'" + escaped + "'";
     }
 
@@ -24,6 +25,7 @@ public:
         if (fromText == "") {
             return "NULL";
         }
+
         return M15EaSql::text(fromText);
     }
 
@@ -34,6 +36,7 @@ public:
         if (fromNumber == fromNull) {
             return "NULL";
         }
+
         return IntegerToString(fromNumber);
     }
 
@@ -44,6 +47,7 @@ public:
         if (fromNumber == fromNull || !MathIsValidNumber(fromNumber)) {
             return "NULL";
         }
+
         return StringFormat("%.17g", fromNumber);
     }
 
@@ -55,8 +59,10 @@ public:
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         bool success = DatabaseRead(request) && DatabaseColumnLong(request, 0, fromResult);
         DatabaseFinalize(request);
+
         return success;
     }
 
@@ -65,6 +71,7 @@ public:
      */
     static bool execute(const int fromHandle, const string fromSql) {
         ResetLastError();
+
         return DatabaseExecute(fromHandle, fromSql);
     }
 
@@ -82,6 +89,7 @@ public:
         if (StringLen(fromHash) != 64) {
             return false;
         }
+
         for (int i = 0; i < StringLen(fromHash); i++) {
             ushort character = StringGetCharacter(fromHash, i);
             if ((character < '0' || character > '9')
@@ -89,6 +97,7 @@ public:
                 return false;
             }
         }
+
         return true;
     }
 };

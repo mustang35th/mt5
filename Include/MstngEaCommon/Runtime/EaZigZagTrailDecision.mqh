@@ -130,6 +130,7 @@ public:
             fromPositionSnapshot.isBuy,
             fromTickSize
         );
+
         fromResult.targetStopLoss = targetStopLoss;
 
         if (targetStopLoss <= 0.0) {

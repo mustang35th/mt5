@@ -15,6 +15,7 @@ public:
         if (fromTransaction.type == TRADE_TRANSACTION_REQUEST) {
             return fromRequest.symbol;
         }
+
         return fromTransaction.symbol;
     }
 
@@ -27,6 +28,7 @@ public:
         if (symbol != "") {
             return symbol;
         }
+
         if (fromTransaction.type == TRADE_TRANSACTION_REQUEST) {
             symbol = H1EaTradeTransactionRouter::positionSymbol(fromRequest.position);
             if (symbol == "") {
@@ -43,6 +45,7 @@ public:
             }
             return symbol;
         }
+
         symbol = H1EaTradeTransactionRouter::dealSymbol(fromTransaction.deal);
         if (symbol == "") {
             symbol = H1EaTradeTransactionRouter::orderSymbol(fromTransaction.order);
@@ -53,6 +56,7 @@ public:
         if (symbol == "") {
             symbol = H1EaTradeTransactionRouter::positionSymbol(fromTransaction.position_by);
         }
+
         return symbol;
     }
 
@@ -64,6 +68,7 @@ private:
         if (fromTicket > 0 && PositionSelectByTicket(fromTicket)) {
             return PositionGetString(POSITION_SYMBOL);
         }
+
         return "";
     }
 
@@ -74,12 +79,15 @@ private:
         if (fromTicket == 0) {
             return "";
         }
+
         if (OrderSelect(fromTicket)) {
             return OrderGetString(ORDER_SYMBOL);
         }
+
         if (HistoryOrderSelect(fromTicket)) {
             return HistoryOrderGetString(fromTicket, ORDER_SYMBOL);
         }
+
         return "";
     }
 
@@ -90,6 +98,7 @@ private:
         if (fromTicket > 0 && HistoryDealSelect(fromTicket)) {
             return HistoryDealGetString(fromTicket, DEAL_SYMBOL);
         }
+
         return "";
     }
 };

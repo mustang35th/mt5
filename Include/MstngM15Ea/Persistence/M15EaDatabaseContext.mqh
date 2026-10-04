@@ -32,11 +32,13 @@ public:
      */
     bool open(const string fromFileName, const bool fromInitializeSchema = true) {
         this.close();
+
         this.database = new SqliteDatabase(fromFileName, true);
         if (this.database == NULL || !this.database.open()) {
             this.close();
             return false;
         }
+
         long version = 0;
         long objects = 0;
         if (!M15EaSql::scalar(this.getHandle(), "PRAGMA user_version", version)
@@ -44,6 +46,7 @@ public:
             this.close();
             return false;
         }
+
         bool emptyDatabase = version == 0 && objects == 0;
         // 未知DBにはjournal modeやschemaを一切書き込まない。
         if ((emptyDatabase && !fromInitializeSchema)
@@ -51,12 +54,14 @@ public:
             this.close();
             return false;
         }
+
         if (!M15EaSql::execute(this.getHandle(), "PRAGMA foreign_keys=ON")
                 || !M15EaSql::execute(this.getHandle(), "PRAGMA busy_timeout=5000")
                 || !M15EaSql::execute(this.getHandle(), "PRAGMA journal_mode=WAL")) {
             this.close();
             return false;
         }
+
         long foreignKeys = 0;
         long timeout = 0;
         string journalMode = "";
@@ -68,6 +73,7 @@ public:
             this.close();
             return false;
         }
+
         return true;
     }
 
@@ -89,6 +95,7 @@ public:
         if (this.database == NULL) {
             return INVALID_HANDLE;
         }
+
         return this.database.getHandle();
     }
 
@@ -103,11 +110,13 @@ private:
         if (ArrayResize(fromSql, 4) != 4) {
             return false;
         }
+
         fromSql[0] = M15EaRunDao::createSql();
         fromSql[1] = M15EaDecisionDao::createSql();
         fromSql[2] = M15EaTradeDao::createSql();
         fromSql[3] = M15EaTradeEventDao::createSql();
         string indices[];
+
         return M15EaRunDao::indexSql(indices) && this.appendSql(fromSql, indices)
             && M15EaDecisionDao::indexSql(indices) && this.appendSql(fromSql, indices)
             && M15EaTradeDao::indexSql(indices) && this.appendSql(fromSql, indices)
@@ -123,9 +132,11 @@ private:
         if (ArrayResize(fromTarget, size) != size) {
             return false;
         }
+
         for (int i = 0; i < ArraySize(fromSource); i++) {
             fromTarget[offset + i] = fromSource[i];
         }
+
         return true;
     }
 
@@ -145,8 +156,10 @@ private:
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         bool success = DatabaseRead(request) && DatabaseColumnText(request, 0, fromText);
         DatabaseFinalize(request);
+
         return success;
     }
 
@@ -160,6 +173,7 @@ private:
                 || count != ArraySize(statements)) {
             return false;
         }
+
         for (int i = 0; i < ArraySize(statements); i++) {
             string expected = statements[i];
             string marker = "IF NOT EXISTS ";
@@ -168,12 +182,14 @@ private:
             if (nameStart < StringLen(marker) || nameEnd <= nameStart) {
                 return false;
             }
+
             string name = StringSubstr(expected, nameStart, nameEnd - nameStart);
             string actual = "";
             if (!this.readText("SELECT sql FROM sqlite_schema WHERE name="
                     + M15EaSql::text(name), actual)) {
                 return false;
             }
+
             StringReplace(expected, marker, "");
             StringReplace(actual, marker, "");
             StringReplace(expected, ";", "");
@@ -182,6 +198,7 @@ private:
                 return false;
             }
         }
+
         return true;
     }
 
@@ -194,6 +211,7 @@ private:
                 || !M15EaSql::execute(this.getHandle(), "BEGIN IMMEDIATE")) {
             return false;
         }
+
         bool success = true;
         for (int i = 0; i < ArraySize(statements); i++) {
             if (!M15EaSql::execute(this.getHandle(), statements[i])) {
@@ -201,12 +219,15 @@ private:
                 break;
             }
         }
+
         if (success && this.validateSchema()
                 && M15EaSql::execute(this.getHandle(), "PRAGMA user_version=1")
                 && M15EaSql::execute(this.getHandle(), "COMMIT")) {
             return true;
         }
+
         M15EaSql::execute(this.getHandle(), "ROLLBACK");
+
         return false;
     }
 };

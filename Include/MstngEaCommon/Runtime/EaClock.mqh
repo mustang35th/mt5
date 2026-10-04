@@ -14,6 +14,7 @@ public:
         if (MQLInfoInteger(MQL_TESTER)) {
             return (ulong)TimeCurrent() * 1000;
         }
+
         return GetTickCount64();
     }
 };

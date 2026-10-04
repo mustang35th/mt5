@@ -84,6 +84,7 @@ public:
         if (this.sessionUid != "" && !H1EaSql::isHash(this.sessionUid)) {
             return this.fail("INVALID_SESSION_UID");
         }
+
         this.symbolName = fromSymbol;
         this.lotSize = NormalizeDouble(fromLotSize, 8);
         this.maxInitialStopLossPips = fromMaxInitialStopLossPips;
@@ -97,28 +98,36 @@ public:
             if (fromTesterTradeStartTime < 0) {
                 return this.fail("INVALID_TESTER_TRADE_START_TIME");
             }
+
             this.testerTradeStartTime = fromTesterTradeStartTime;
         }
+
         if (_Period != PERIOD_H1) {
             return this.fail("H1_CHART_REQUIRED");
         }
+
         if (MQLInfoInteger(MQL_OPTIMIZATION)) {
             return this.fail("OPTIMIZATION_NOT_SUPPORTED");
         }
+
         if (!MathIsValidNumber(this.lotSize) || this.lotSize <= 0.0) {
             return this.fail("INVALID_LOT_SIZE");
         }
+
         if (!MathIsValidNumber(this.maxInitialStopLossPips)
                 || this.maxInitialStopLossPips <= 0.0) {
             return this.fail("MAX_INITIAL_SL_UNSET: InpMaxInitialStopLossPipsへ正の上限pipsを設定してください");
         }
+
         if (MathAbs(NormalizeDouble(this.maxInitialStopLossPips, 1)
                 - this.maxInitialStopLossPips) > 0.00000001) {
             return this.fail("MAX_INITIAL_SL_REQUIRES_ONE_DECIMAL_PLACE");
         }
+
         if (AccountInfoInteger(ACCOUNT_MARGIN_MODE) != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING) {
             return this.fail("HEDGING_ACCOUNT_REQUIRED");
         }
+
         this.accountServer = AccountInfoString(ACCOUNT_SERVER);
         this.accountLogin = AccountInfoInteger(ACCOUNT_LOGIN);
         if (this.accountServer == "" || this.accountLogin <= 0 || this.symbolName == ""
@@ -126,9 +135,11 @@ public:
                 || StringFind(this.symbolName, "|") >= 0) {
             return this.fail("INVALID_CONTEXT");
         }
+
         if (!SymbolSelect(this.symbolName, true)) {
             return this.fail("SYMBOL_UNAVAILABLE");
         }
+
         this.digits = (int)SymbolInfoInteger(this.symbolName, SYMBOL_DIGITS);
         this.pointSize = SymbolInfoDouble(this.symbolName, SYMBOL_POINT);
         this.tickSize = SymbolInfoDouble(this.symbolName, SYMBOL_TRADE_TICK_SIZE);
@@ -138,8 +149,10 @@ public:
                 || !MathIsValidNumber(this.pipSize) || this.pipSize <= 0.0) {
             return this.fail("INVALID_PRICE_UNITS");
         }
+
         MarketContext marketContext(this.symbolName, PERIOD_H1);
         this.magicNumber = MagicNumberUtil::build(12, marketContext, STRATEGY_TYPE_MTF_3IN3);
+
         string identity = this.accountServer + "|" + IntegerToString(this.accountLogin);
         this.runUid = H1EaTextUtil::hash(this.sourceMode + "|" + identity + "|"
             + IntegerToString(ChartID()) + "|" + IntegerToString(TimeLocal()) + "|"
@@ -159,6 +172,7 @@ public:
         if (StringLen(this.runUid) != 64) {
             return this.fail("HASH_UNAVAILABLE");
         }
+
         return true;
     }
 
@@ -176,6 +190,7 @@ public:
             operatingText = "|OPERATING_MODE=MULTI_SYMBOL_ENTRY"
                 + "|SYMBOL_LIST=M5_FIXED_28_V1|SCHEDULE=TIMER_1S_TRAIL2_ENTRY1_HOUR_ROTATE_V1|ENTRY_ENABLED=1|PROTECTION_ENABLED=1|GLOBAL_POSITION_LIMIT=0|TESTER_FAST_WARMUP=ALL_IDLE_TICK_HOUR_V2";
         }
+
         return "H1_EA_CONFIG_V1|LOT_SIZE=" + DoubleToString(this.lotSize, 8)
             + "|MAX_INITIAL_SL_PIPS=" + DoubleToString(this.maxInitialStopLossPips, 1)
             + "|ZIGZAG_SL_BUFFER_PIPS=10.0|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME="
@@ -219,6 +234,7 @@ private:
      */
     bool fail(const string fromReason) {
         this.lastError = fromReason;
+
         return false;
     }
 };

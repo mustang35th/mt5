@@ -46,6 +46,7 @@ public:
         this.page = 0;
         this.nextRefreshTick = 0;
         this.forceRefresh = true;
+
         if (this.canDraw()) {
             this.clear();
         }
@@ -65,6 +66,7 @@ public:
         if (!this.canDraw()) {
             return;
         }
+
         if (fromId == CHARTEVENT_CHART_CHANGE) {
             this.forceRefresh = true;
         } else if (fromId == CHARTEVENT_OBJECT_CLICK) {
@@ -75,6 +77,7 @@ public:
             } else {
                 return;
             }
+
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
             this.forceRefresh = true;
         }
@@ -88,11 +91,13 @@ public:
         if (!this.canDraw()) {
             return true;
         }
+
         ulong now = H1EaClock::milliseconds();
         if (now >= this.nextRefreshTick) {
             this.nextRefreshTick = now + 60000;
         }
         this.forceRefresh = false;
+
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
         int columnCount = 1;
@@ -112,9 +117,11 @@ public:
         if (this.page >= this.pageCount) {
             this.page = this.pageCount - 1;
         }
+
         if (!this.created && !this.create()) {
             return this.reportFailure();
         }
+
         bool changed = false;
         bool ok = true;
         string mode = "通常";
@@ -133,6 +140,7 @@ public:
             + TimeToString(fromState.serverTime, TIME_DATE | TIME_SECONDS)
             + "\n稼働は巡回の準備状態です。発注条件の成立を意味しません。";
         ok = this.label(0, title, clrWhite, 16, 18, titleTip, changed) && ok;
+
         string currency = fromState.accountCurrency;
         if (currency == "") {
             currency = "口座通貨未取得";
@@ -153,6 +161,7 @@ public:
         ok = this.label(156, profitSummary,
             this.floatingProfitColor(fromState.floatingProfit, fromState.floatingProfitKnown, fromState.currencyDigits),
             16, 42, profitTip, changed) && ok;
+
         string historyText = "履歴準備 ";
         if (fromState.symbolCount > 0 && fromState.historyReadyCount == fromState.symbolCount) {
             historyText = "履歴準備完了 ";
@@ -173,6 +182,7 @@ public:
         }
         ok = this.label(155, historyLine, clrWhiteSmoke, 16, 86,
             "価格履歴の同期と必要本数を確認した通貨数です。分析成功や売買許可とは別です。", changed) && ok;
+
         string metrics = "分析ms " + this.milliseconds(fromState.lastAnalysisMicros) + " / 最大 "
             + this.milliseconds(fromState.maxAnalysisMicros) + "  Timerms " + this.milliseconds(fromState.lastTimerMicros)
             + " / " + this.milliseconds(fromState.maxTimerMicros);
@@ -188,6 +198,7 @@ public:
         }
         ok = this.label(3, gaps, clrSilver, 16, 122,
             "全通貨保護の巡回開始間隔。Testerではテスト内時刻です。\n高速準備による意図的な休止は除外します。", changed) && ok;
+
         int usedLabels = 4;
         if (!this.compact) {
             for (int i = 0; i < this.columns; i++) {
@@ -199,11 +210,13 @@ public:
                 ok = this.label(8 + i * 5, "評価損益 (" + currency + ")", clrSilver,
                     left + 564, 144, profitTip, changed, true) && ok;
             }
+
             if (this.columns == 1) {
                 for (int i = 9; i < 14; i++) {
                     ok = this.label(i, "", clrSilver, 0, 0, "", changed) && ok;
                 }
             }
+
             int slots = this.rows * this.columns;
             for (int i = 0; i < slots; i++) {
                 int symbolIndex = this.page * slots + i;
@@ -214,8 +227,10 @@ public:
                     for (int j = 0; j < 5; j++) {
                         ok = this.label(offset + j, "", clrSilver, 0, 0, "", changed) && ok;
                     }
+
                     continue;
                 }
+
                 H1EaMonitorSymbolState state = fromState.symbols[symbolIndex];
                 string tooltip = this.buildTooltip(state) + "\n"
                     + this.floatingProfitTooltip(state.floatingProfit, state.floatingProfitKnown,
@@ -236,6 +251,7 @@ public:
                 } else if (state.activeTrade && state.tradeSide == "SELL") {
                     tradeColor = clrLightCoral;
                 }
+
                 ok = this.label(offset, state.symbolName, clrWhiteSmoke, left, top, tooltip, changed) && ok;
                 ok = this.label(offset + 1, this.statusText(state.status), statusColor, left + 64, top, tooltip, changed) && ok;
                 ok = this.label(offset + 2, barText, clrSilver, left + 142, top, tooltip, changed) && ok;
@@ -245,11 +261,14 @@ public:
                     this.floatingProfitColor(state.floatingProfit, state.floatingProfitKnown, fromState.currencyDigits),
                     left + 564, top, tooltip, changed, true) && ok;
             }
+
             usedLabels = 14 + slots * 5;
         }
+
         for (int i = usedLabels; i < 154; i++) {
             ok = this.label(i, "", clrSilver, 0, 0, "", changed) && ok;
         }
+
         int footer = 174 + this.rows * 18;
         int width = 584 * this.columns;
         int footerX = 90;
@@ -268,10 +287,12 @@ public:
         if (!ok) {
             return this.reportFailure();
         }
+
         this.drawFailed = false;
         if (changed) {
             ChartRedraw(this.chartId);
         }
+
         return true;
     }
 
@@ -355,6 +376,7 @@ private:
      */
     bool create() {
         this.clear();
+
         string background = this.objectPrefix + "Background";
         if (!ObjectCreate(this.chartId, background, OBJ_RECTANGLE_LABEL, 0, 0, 0)
                 || !ObjectSetInteger(this.chartId, background, OBJPROP_CORNER, CORNER_LEFT_UPPER)
@@ -367,6 +389,7 @@ private:
                 || !ObjectSetInteger(this.chartId, background, OBJPROP_HIDDEN, true)) {
             return false;
         }
+
         for (int i = 0; i < ArraySize(this.lastTexts); i++) {
             string name = this.objectPrefix + "Label" + IntegerToString(i);
             if (!ObjectCreate(this.chartId, name, OBJ_LABEL, 0, 0, 0)
@@ -378,6 +401,7 @@ private:
                     || !ObjectSetString(this.chartId, name, OBJPROP_FONT, "MS Gothic")) {
                 return false;
             }
+
             this.lastTexts[i] = "<UNSET>";
             this.lastTooltips[i] = "<UNSET>";
             this.lastColors[i] = clrNONE;
@@ -385,11 +409,14 @@ private:
             this.lastY[i] = -1;
             this.lastAnchors[i] = ANCHOR_LEFT_UPPER;
         }
+
         if (!ObjectCreate(this.chartId, this.objectPrefix + "Previous", OBJ_BUTTON, 0, 0, 0)
                 || !ObjectCreate(this.chartId, this.objectPrefix + "Next", OBJ_BUTTON, 0, 0, 0)) {
             return false;
         }
+
         this.created = true;
+
         return true;
     }
 
@@ -415,6 +442,7 @@ private:
                     || !ObjectSetInteger(this.chartId, name, OBJPROP_YDISTANCE, fromY)) {
                 return false;
             }
+
             this.lastTexts[fromIndex] = fromText;
             this.lastTooltips[fromIndex] = fromTooltip;
             this.lastColors[fromIndex] = fromColor;
@@ -423,6 +451,7 @@ private:
             this.lastAnchors[fromIndex] = anchor;
             fromChanged = true;
         }
+
         return true;
     }
 
@@ -435,6 +464,7 @@ private:
             periods = OBJ_ALL_PERIODS;
         }
         string name = this.objectPrefix + fromSuffix;
+
         return ObjectSetString(this.chartId, name, OBJPROP_TEXT, fromText)
             && ObjectSetString(this.chartId, name, OBJPROP_FONT, "MS Gothic")
             && ObjectSetInteger(this.chartId, name, OBJPROP_FONTSIZE, 9)
@@ -459,6 +489,7 @@ private:
         }
         this.drawFailed = true;
         this.clear();
+
         return false;
     }
 
@@ -469,6 +500,7 @@ private:
         if (!fromKnown || !MathIsValidNumber(fromProfit)) {
             return "取得待ち";
         }
+
         int digits = MathMax(0, MathMin(16, fromDigits));
         double rounded = StringToDouble(DoubleToString(fromProfit, digits));
         string text = DoubleToString(MathAbs(rounded), digits);
@@ -479,12 +511,15 @@ private:
         for (int i = integerEnd - 3; i > 0; i -= 3) {
             text = StringSubstr(text, 0, i) + "," + StringSubstr(text, i);
         }
+
         if (rounded > 0.0) {
             return "+" + text;
         }
+
         if (rounded < 0.0) {
             return "-" + text;
         }
+
         return text;
     }
 
@@ -495,13 +530,16 @@ private:
         if (!fromKnown || !MathIsValidNumber(fromProfit)) {
             return clrSilver;
         }
+
         double rounded = StringToDouble(DoubleToString(fromProfit, MathMax(0, MathMin(16, fromDigits))));
         if (rounded > 0.0) {
             return clrDeepSkyBlue;
         }
+
         if (rounded < 0.0) {
             return clrLightCoral;
         }
+
         return clrSilver;
     }
 
@@ -518,6 +556,7 @@ private:
         if (fromTime > 0) {
             timeText = TimeToString(fromTime, TIME_DATE | TIME_SECONDS);
         }
+
         return "EA評価損益: " + this.formatFloatingProfit(fromProfit, fromKnown, fromDigits)
             + " " + fromCurrency + "\n保有: " + countText
             + "\n確認時刻(Server): " + timeText
@@ -530,17 +569,29 @@ private:
      */
     string statusText(const string fromStatus) {
         if (fromStatus == "WATCH") { return "稼働"; }
+
         if (fromStatus == "WARMUP") { return "開始前"; }
+
         if (fromStatus == "WAIT_HISTORY") { return "履歴待ち"; }
+
         if (fromStatus == "WAIT_ANALYSIS") { return "分析待ち"; }
+
         if (fromStatus == "WAIT_BAR_DB") { return "判定復元"; }
+
         if (fromStatus == "WAIT_DB") { return "DB待ち"; }
+
         if (fromStatus == "SAVE_PENDING") { return "保存待ち"; }
+
         if (fromStatus == "LEASE_LOST") { return "Lease失効"; }
+
         if (fromStatus == "LOCK_LOST") { return "Lock喪失"; }
+
         if (fromStatus == "AUDIT_STATE_LOST") { return "監査欠落"; }
+
         if (fromStatus == "TIMER_WAIT") { return "Timer待ち"; }
+
         if (fromStatus == "RESOURCE_ERROR") { return "準備異常"; }
+
         return "停止";
     }
 
@@ -549,13 +600,16 @@ private:
      */
     string tradeText(H1EaMonitorSymbolState &fromState) {
         if (!fromState.tradeKnown) { return "未取得"; }
+
         if (!fromState.activeTrade) { return "なし"; }
+
         string text = "復旧待ち";
         if (fromState.tradeStatus == "OPEN") { text = "保有"; }
         if (fromState.tradeStatus == "OPEN_PENDING") { text = "発注中"; }
         if (fromState.tradeStatus == "OPEN_PARTIAL") { text = "一部約定"; }
         if (fromState.tradeStatus == "CLOSE_PENDING") { text = "決済中"; }
         if (fromState.tradeStatus == "CLOSE_PARTIAL") { text = "一部決済"; }
+
         return fromState.tradeSide + " " + text;
     }
 
@@ -581,6 +635,7 @@ private:
         if (fromState.tradeError != "") {
             text += "\n取引エラー: " + fromState.tradeError;
         }
+
         return text;
     }
 

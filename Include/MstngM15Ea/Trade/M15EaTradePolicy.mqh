@@ -45,6 +45,7 @@ public:
     virtual bool evaluateTrail(PositionSnapshot &fromPosition, Wave *fromWave,
             const double fromPipSize, const double fromTickSize, EaTrailDecision &fromResult) {
         EaZigZagTrailDecision decision;
+
         return decision.evaluate(fromPosition, fromWave, PERIOD_M15,
             10.0, fromPipSize, fromTickSize, fromResult);
     }
@@ -57,19 +58,24 @@ public:
         if (fromIntent == "INITIAL_STOP_LOSS_CROSSED" || fromIntent == "M15_ZIGZAG_TRAIL_CROSSED") {
             return fromIntent;
         }
+
         if (fromBrokerReason == "SL") {
             if (fromStopLossSource == "INITIAL_STOP_LOSS" || fromStopLossSource == "M15_ZIGZAG_TRAIL") {
                 return fromStopLossSource;
             }
+
             if (fromStopLossSource == "EXTERNAL") {
                 return "EXTERNAL_STOP_LOSS";
             }
+
             return "UNKNOWN_STOP_LOSS";
         }
+
         if (fromBrokerReason == "CLIENT" || fromBrokerReason == "MOBILE"
                 || fromBrokerReason == "WEB") {
             return "EXTERNAL_CLOSE";
         }
+
         return "UNKNOWN_CLOSE";
     }
 

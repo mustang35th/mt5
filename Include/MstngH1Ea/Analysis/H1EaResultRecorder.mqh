@@ -28,6 +28,7 @@ public:
         this.nextFailureRetryTime = 0;
         this.errorText = "";
         this.positionState = "";
+
         this.logger.setSymbolNameAndTimeFrame(_Symbol, PERIOD_H1);
         this.logger.setLevel(LOG_INFO);
     }
@@ -47,10 +48,12 @@ public:
         if (!MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION) || this.active) {
             return;
         }
+
         if (ArraySize(fromRuns) != 28 || !H1EaSql::isHash(fromRuns[0].sessionUid)) {
             this.fail("RESULT_RUNS_INVALID");
             return;
         }
+
         this.sessionUid = fromRuns[0].sessionUid;
         this.programVersion = fromRuns[0].programVersion;
         this.runIds = "";
@@ -62,12 +65,14 @@ public:
                 this.fail("RESULT_RUN_SCOPE_INVALID");
                 return;
             }
+
             for (int j = 0; j < i; j++) {
                 if (fromRuns[j].id == fromRuns[i].id || fromRuns[j].symbolName == fromRuns[i].symbolName) {
                     this.fail("RESULT_RUN_DUPLICATE");
                     return;
                 }
             }
+
             this.symbols[i] = fromRuns[i].symbolName;
             this.magics[i] = H1EaTextUtil::parseTicket(fromRuns[i].magicNumber);
             if (i > 0) {
@@ -75,6 +80,7 @@ public:
             }
             this.runIds += IntegerToString(fromRuns[i].id);
         }
+
         this.tradeStart = fromTradeStart;
         this.startedTime = TimeCurrent();
         ResetLastError();
@@ -88,11 +94,13 @@ public:
             this.fail("RESULT_ACCOUNT_INVALID");
             return;
         }
+
         this.active = true;
         if (!this.ensureSession()) {
             this.fail("RESULT_SESSION_OPEN_FAILED");
             return;
         }
+
         this.logger.info(__FUNCTION__, "RESULT_RECORDING session=" + this.sessionUid + " interval=60");
         this.sample();
     }
@@ -105,14 +113,17 @@ public:
         if (!this.active || this.onTesterReached) {
             return;
         }
+
         datetime now = TimeCurrent();
         if (this.failed) {
             this.retryFailureState(now, fromEnd);
             return;
         }
+
         if (now < this.tradeStart || (!fromTradeEvent && !fromEnd && now <= this.lastObservedTime)) {
             return;
         }
+
         this.lastObservedTime = now;
         string identities[];
         int positions = 0;
@@ -128,6 +139,7 @@ public:
                 this.fail("RESULT_POSITION_READ_FAILED");
                 return;
             }
+
             string symbol = PositionGetString(POSITION_SYMBOL);
             ulong magic = (ulong)PositionGetInteger(POSITION_MAGIC);
             ulong identifier = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
@@ -137,11 +149,13 @@ public:
                 this.fail("RESULT_POSITION_VALUE_INVALID");
                 return;
             }
+
             if (!this.addIdentity(identities, "P:" + H1EaTextUtil::ticket(identifier) + ":"
                     + H1EaTextUtil::ticket(ticket) + ":" + DoubleToString(volume, 8))) {
                 this.fail("RESULT_SAMPLE_ALLOCATION_FAILED");
                 return;
             }
+
             if (this.owns(symbol, magic)) {
                 positions++;
                 openProfit += profit;
@@ -149,6 +163,7 @@ public:
                 foreignPositions++;
             }
         }
+
         int orderTotal = OrdersTotal();
         for (int i = 0; i < orderTotal; i++) {
             ulong ticket = OrderGetTicket(i);
@@ -156,6 +171,7 @@ public:
                 this.fail("RESULT_ORDER_READ_FAILED");
                 return;
             }
+
             string symbol = OrderGetString(ORDER_SYMBOL);
             ulong magic = (ulong)OrderGetInteger(ORDER_MAGIC);
             double volume = OrderGetDouble(ORDER_VOLUME_CURRENT);
@@ -163,16 +179,19 @@ public:
                 this.fail("RESULT_ORDER_VALUE_INVALID");
                 return;
             }
+
             if (!this.addIdentity(identities, "O:" + H1EaTextUtil::ticket(ticket) + ":" + DoubleToString(volume, 8))) {
                 this.fail("RESULT_SAMPLE_ALLOCATION_FAILED");
                 return;
             }
+
             if (this.owns(symbol, magic)) {
                 pendingOrders++;
             } else {
                 foreignOrders++;
             }
         }
+
         double balance = AccountInfoDouble(ACCOUNT_BALANCE);
         double equity = AccountInfoDouble(ACCOUNT_EQUITY);
         double margin = AccountInfoDouble(ACCOUNT_MARGIN);
@@ -185,6 +204,7 @@ public:
             this.fail("RESULT_ACCOUNT_SAMPLE_INVALID");
             return;
         }
+
         string state = this.joinIdentities(identities);
         string reason = "INTERVAL";
         if (this.sequence == 0) {
@@ -194,9 +214,11 @@ public:
         } else if (!fromEnd && now < this.lastSavedTime + 60) {
             return;
         }
+
         if (fromEnd) {
             reason = "END";
         }
+
         string sql = "INSERT INTO h1_ea_account_samples(session_uid,sequence,server_time,reason,"
             + "balance,equity,margin,free_margin,margin_level,open_profit,positions,pending_orders,foreign_positions,foreign_orders) VALUES("
             + H1EaSql::text(this.sessionUid) + "," + IntegerToString(this.sequence + 1) + ","
@@ -209,6 +231,7 @@ public:
             this.fail("RESULT_SAMPLE_SAVE_FAILED");
             return;
         }
+
         this.sequence++;
         this.lastSavedTime = now;
         this.positionState = state;
@@ -222,12 +245,14 @@ public:
         if (!this.active || this.onTesterReached || !MQLInfoInteger(MQL_TESTER)) {
             return;
         }
+
         this.sample(true, true);
         this.onTesterReached = true;
         if (!this.ensureSession()) {
             this.fail("RESULT_FINISH_SESSION_UNAVAILABLE");
             return;
         }
+
         this.saveStatistics();
         this.saveDeals();
     }
@@ -240,6 +265,7 @@ public:
             this.database.close();
             return;
         }
+
         if (!this.onTesterReached) {
             this.sample(true, true);
         }
@@ -249,6 +275,7 @@ public:
             this.active = false;
             return;
         }
+
         string state = "INTERRUPTED";
         if (fromReason == REASON_INITFAILED) {
             this.fail("RESULT_INITIALIZATION_FAILED");
@@ -266,6 +293,7 @@ public:
         if (this.failed) {
             state = "FAILED";
         }
+
         string sql = "UPDATE h1_ea_sessions SET recording_state=" + H1EaSql::text(state)
             + ",ended_server_time=" + IntegerToString(TimeCurrent())
             + ",finished_at=" + IntegerToString((long)TimeLocal())
@@ -277,6 +305,7 @@ public:
             this.logger.info(__FUNCTION__, "RESULT_" + state + " session=" + this.sessionUid
                 + " samples=" + IntegerToString(this.sequence));
         }
+
         this.database.close();
         this.active = false;
     }
@@ -365,13 +394,16 @@ private:
                 && !this.database.open("mstng-h1-ea-tester.sqlite", false, 0)) {
             return false;
         }
+
         if (this.sessionInserted) {
             return true;
         }
+
         string state = "RECORDING";
         if (this.failed) {
             state = "FAILED";
         }
+
         string sql = "INSERT INTO h1_ea_sessions(session_uid,source_mode,account_currency,account_server,"
             + "leverage,program_version,started_server_time,trade_start_time,initial_balance,sample_interval_seconds,"
             + "recording_state,statistics_available,deals_complete,error_text,recorded_at) VALUES("
@@ -384,7 +416,9 @@ private:
         if (!H1EaSql::execute(this.database.getHandle(), sql)) {
             return false;
         }
+
         this.sessionInserted = true;
+
         return true;
     }
 
@@ -400,6 +434,7 @@ private:
      */
     bool updateSession(const string fromSql) {
         long changed = 0;
+
         return H1EaSql::execute(this.database.getHandle(), fromSql)
             && H1EaSql::scalar(this.database.getHandle(), "SELECT changes()", changed) && changed == 1;
     }
@@ -413,6 +448,7 @@ private:
             this.logger.error(__FUNCTION__, fromError + " session=" + this.sessionUid);
         }
         this.failed = true;
+
         this.retryFailureState(TimeCurrent(), true);
     }
 
@@ -423,6 +459,7 @@ private:
         if (!this.active || (!fromForce && fromNow < this.nextFailureRetryTime)) {
             return;
         }
+
         this.nextFailureRetryTime = fromNow + 60;
         if (this.ensureSession()) {
             this.updateSession("UPDATE h1_ea_sessions SET recording_state='FAILED',error_text="
@@ -439,6 +476,7 @@ private:
                 return true;
             }
         }
+
         return false;
     }
 
@@ -450,12 +488,15 @@ private:
         if (ArrayResize(fromValues, size + 1) != size + 1) {
             return false;
         }
+
         int index = size;
         while (index > 0 && StringCompare(fromValues[index - 1], fromValue) > 0) {
             fromValues[index] = fromValues[index - 1];
             index--;
         }
+
         fromValues[index] = fromValue;
+
         return true;
     }
 
@@ -467,6 +508,7 @@ private:
         for (int i = 0; i < ArraySize(fromValues); i++) {
             result += fromValues[i] + "|";
         }
+
         return result;
     }
 
@@ -487,6 +529,7 @@ private:
             this.fail("RESULT_STATISTICS_INVALID");
             return;
         }
+
         string sql = "UPDATE h1_ea_sessions SET statistics_available=1,initial_deposit="
             + H1EaSql::real(initialDeposit) + ",net_profit=" + H1EaSql::real(netProfit)
             + ",equity_drawdown=" + H1EaSql::real(equityDrawdown)
@@ -497,6 +540,7 @@ private:
             this.fail("RESULT_STATISTICS_SAVE_FAILED");
             return;
         }
+
         this.statisticsAvailable = true;
     }
 
@@ -507,11 +551,14 @@ private:
         if (fromId == 0 || this.containsPositionId(fromIds, fromId)) {
             return true;
         }
+
         int size = ArraySize(fromIds);
         if (ArrayResize(fromIds, size + 1) != size + 1) {
             return false;
         }
+
         fromIds[size] = fromId;
+
         return true;
     }
 
@@ -522,11 +569,13 @@ private:
         if (fromId == 0) {
             return false;
         }
+
         for (int i = 0; i < ArraySize(fromIds); i++) {
             if (fromIds[i] == fromId) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -539,6 +588,7 @@ private:
             this.fail("RESULT_HISTORY_SELECT_FAILED");
             return;
         }
+
         ulong positionIds[];
         ResetLastError();
         int total = HistoryDealsTotal();
@@ -546,6 +596,7 @@ private:
             this.fail("RESULT_HISTORY_COUNT_FAILED");
             return;
         }
+
         for (int i = 0; i < total; i++) {
             ulong ticket = HistoryDealGetTicket(i);
             ResetLastError();
@@ -556,16 +607,19 @@ private:
                 this.fail("RESULT_HISTORY_SCOPE_FAILED");
                 return;
             }
+
             if (this.owns(symbol, magic) && !this.addPositionId(positionIds, identifier)) {
                 this.fail("RESULT_DEAL_ALLOCATION_FAILED");
                 return;
             }
         }
+
         int handle = this.database.getHandle();
         if (!H1EaSql::execute(handle, "BEGIN IMMEDIATE")) {
             this.fail("RESULT_DEALS_BEGIN_FAILED");
             return;
         }
+
         bool success = true;
         long savedDeals = 0;
         for (int i = 0; i < total; i++) {
@@ -581,12 +635,14 @@ private:
             if (!this.owns(symbol, magic) && !this.containsPositionId(positionIds, identifier)) {
                 continue;
             }
+
             if (!this.saveDeal(ticket, identifier, symbol, magic)) {
                 success = false;
                 break;
             }
             savedDeals++;
         }
+
         long storedDeals = -1;
         ResetLastError();
         int finalTotal = HistoryDealsTotal();
@@ -598,10 +654,12 @@ private:
             success = this.updateSession("UPDATE h1_ea_sessions SET deals_complete=1 WHERE session_uid="
                 + H1EaSql::text(this.sessionUid));
         }
+
         if (success && H1EaSql::execute(handle, "COMMIT")) {
             this.dealsComplete = true;
             return;
         }
+
         H1EaSql::execute(handle, "ROLLBACK");
         this.fail("RESULT_DEALS_SAVE_FAILED");
     }
@@ -627,6 +685,7 @@ private:
                 || !this.isMeasurementValid(fee)) {
             return false;
         }
+
         string sql = "INSERT INTO h1_ea_deals(session_uid,ticket,time_msc,position_identifier,symbol,magic_number,"
             + "deal_type,entry_type,volume,price,profit,commission,swap,fee,reason) VALUES("
             + H1EaSql::text(this.sessionUid) + "," + H1EaSql::text(H1EaTextUtil::ticket(fromTicket)) + ","
@@ -636,6 +695,7 @@ private:
             + H1EaSql::real(volume) + "," + H1EaSql::real(price) + "," + H1EaSql::real(profit) + ","
             + H1EaSql::real(commission) + "," + H1EaSql::real(swap) + "," + H1EaSql::real(fee) + ","
             + IntegerToString(reason) + ")";
+
         return H1EaSql::execute(this.database.getHandle(), sql);
     }
 
@@ -655,10 +715,12 @@ private:
                     + " AND COALESCE(error_text,'')=''", stopped) || stopped != 28) {
             return false;
         }
+
         // OnTester未到達は約定エクスポート前なので、Runの終了状態だけを確認する。
         if (!this.onTesterReached) {
             return true;
         }
+
         string sql = "SELECT COUNT(*) FROM h1_ea_deals d WHERE d.session_uid=" + H1EaSql::text(this.sessionUid)
             + " AND d.deal_type IN (0,1) AND NOT EXISTS (SELECT 1 FROM h1_ea_trade_events e"
             + " JOIN h1_ea_trades t ON t.id=e.trade_id JOIN h1_ea_runs r ON r.id=t.created_run_id"
@@ -667,6 +729,7 @@ private:
         if (!H1EaSql::scalar(handle, sql, missing) || missing != 0) {
             return false;
         }
+
         // 保存集合が空または一部欠落した場合も、既存監査側から検出する。
         string reverseSql = "SELECT COUNT(*) FROM h1_ea_trade_events e"
             + " JOIN h1_ea_trades t ON t.id=e.trade_id JOIN h1_ea_runs r ON r.id=t.created_run_id"
@@ -674,6 +737,7 @@ private:
             + " AND e.event_type='DEAL_ADD' AND NOT EXISTS (SELECT 1 FROM h1_ea_deals d"
             + " WHERE d.session_uid=r.session_uid AND d.ticket=e.deal_ticket"
             + " AND d.position_identifier=e.position_identifier AND d.deal_type IN (0,1))";
+
         return H1EaSql::scalar(handle, reverseSql, missing) && missing == 0;
     }
 };

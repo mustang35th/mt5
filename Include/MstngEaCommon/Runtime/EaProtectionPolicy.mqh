@@ -73,6 +73,7 @@ public:
         }
 
         double required = (double)MathMax(fromStops, fromFreeze) * fromPoint + fromTickSize;
+
         return distance + fromTickSize * 0.000001 >= required;
     }
 

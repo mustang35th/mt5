@@ -27,7 +27,9 @@ public:
         if (!this.context.open(fromFileName, fromInitializeSchema)) {
             return this.fail("DATABASE_OPEN_OR_SCHEMA_FAILED");
         }
+
         this.lastError = "";
+
         return true;
     }
 
@@ -63,9 +65,11 @@ public:
                 || fromRun.analysisInputHash != M15EaSql::hash(fromRun.analysisInputText)) {
             return this.fail("RUN_HASH_INVALID");
         }
+
         if (fromRun.id != 0 || !this.begin()) {
             return this.fail("RUN_ALREADY_ACQUIRED_OR_BEGIN_FAILED");
         }
+
         M15EaRunEntity candidate = fromRun;
         long now = (long)TimeLocal();
         long activeCount = 0;
@@ -75,26 +79,33 @@ public:
                 + " AND status='RUNNING' AND lease_expires_at>" + IntegerToString(now), activeCount)) {
             return this.complete(false, "RUN_CONTEXT_READ_FAILED");
         }
+
         if (activeCount > 0) {
             M15EaSql::execute(this.getHandle(), "ROLLBACK");
             return this.fail("RUN_CONTEXT_ALREADY_ACTIVE");
         }
+
         candidate.status = "RUNNING";
         candidate.heartbeatAt = now;
         candidate.leaseExpiresAt = now + 60;
         if (candidate.startedAt == 0) {
             candidate.startedAt = now;
         }
+
         string sql = "UPDATE m15_ea_runs SET status='INTERRUPTED',ended_at="
             + IntegerToString(now) + ",error_text=error_text||'|LEASE_EXPIRED' WHERE context_key="
             + M15EaSql::text(candidate.contextKey)
             + " AND status='RUNNING' AND lease_expires_at<=" + IntegerToString(now);
+
         bool success = M15EaSql::execute(this.getHandle(), sql)
             && M15EaRunDao::insert(this.getHandle(), candidate);
+
         if (!this.complete(success, "RUN_LEASE_ACQUIRE_FAILED")) {
             return false;
         }
+
         fromRun = candidate;
+
         return true;
     }
 
@@ -105,18 +116,23 @@ public:
         if (!this.begin()) {
             return false;
         }
+
         string sql = "UPDATE m15_ea_runs SET heartbeat_at=" + IntegerToString((long)fromNow)
             + ",lease_expires_at=" + IntegerToString((long)fromNow + 60)
             + " WHERE id=" + IntegerToString(fromRun.id)
             + " AND status='RUNNING' AND lease_expires_at>" + IntegerToString((long)fromNow);
+
         long changed = 0;
         bool success = M15EaSql::execute(this.getHandle(), sql)
             && M15EaSql::scalar(this.getHandle(), "SELECT changes()", changed) && changed == 1;
+
         if (!this.complete(success, "RUN_LEASE_HEARTBEAT_FAILED")) {
             return false;
         }
+
         fromRun.heartbeatAt = (long)fromNow;
         fromRun.leaseExpiresAt = (long)fromNow + 60;
+
         return true;
     }
 
@@ -131,10 +147,13 @@ public:
             count)) {
             return this.fail("LEASE_READ_FAILED");
         }
+
         if (count != 1) {
             return this.fail("LEASE_NOT_OWNED");
         }
+
         this.lastError = "";
+
         return true;
     }
 
@@ -145,12 +164,15 @@ public:
         if (!M15EaSql::isHash(fromDecision.snapshotHash)) {
             return this.fail("DECISION_HASH_INVALID");
         }
+
         if (fromDecision.decision != "SKIP") {
             return this.fail("ENTRY_REQUIRES_ATOMIC_TRADE");
         }
+
         if (!this.beginOwned(fromRunId, true, fromDecision.contextKey)) {
             return false;
         }
+
         M15EaDecisionEntity candidate = fromDecision;
         M15EaDecisionEntity existing;
         bool found = false;
@@ -165,10 +187,13 @@ public:
             candidate.runId = fromRunId;
             success = M15EaDecisionDao::insert(this.getHandle(), candidate);
         }
+
         if (!this.complete(success, "DECISION_SAVE_FAILED")) {
             return false;
         }
+
         fromDecision = candidate;
+
         return true;
     }
 
@@ -180,6 +205,7 @@ public:
         if (!M15EaSql::isHash(fromDecision.snapshotHash)) {
             return this.fail("DECISION_HASH_INVALID");
         }
+
         if ((fromDecision.decision != "BUY" && fromDecision.decision != "SELL")
                 || fromTrade.id != 0 || fromEvent.eventType != "ENTRY_REQUEST"
                 || fromTrade.status != "OPEN_PENDING"
@@ -187,19 +213,23 @@ public:
                 || fromTrade.side != fromDecision.decision) {
             return this.fail("ENTRY_SNAPSHOT_INVALID");
         }
+
         if (!this.beginOwned(fromRunId, true, fromDecision.contextKey)) {
             return false;
         }
+
         M15EaDecisionEntity decision = fromDecision;
         EaTradeState trade = fromTrade;
         EaTradeEvent event = fromEvent;
         decision.runId = fromRunId;
+
         bool success = M15EaDecisionDao::insert(this.getHandle(), decision);
         if (success) {
             trade.createdRunId = fromRunId;
             trade.decisionId = decision.id;
             success = M15EaTradeDao::insert(this.getHandle(), trade);
         }
+
         if (success) {
             event.tradeId = trade.id;
             event.runId = fromRunId;
@@ -209,12 +239,15 @@ public:
             }
             success = this.insertEvent(event);
         }
+
         if (!this.complete(success, "ENTRY_ATOMIC_SAVE_FAILED")) {
             return false;
         }
+
         fromDecision = decision;
         fromTrade = trade;
         fromEvent = event;
+
         return true;
     }
 
@@ -232,15 +265,18 @@ public:
                 return this.fail("REQUEST_REQUIRES_LEASE");
             }
         }
+
         if (!this.beginOwned(fromRunId, fromRequireLease, fromTrade.contextKey)) {
             return false;
         }
+
         EaTradeState trade = fromTrade;
         EaTradeEvent event = fromEvent;
         EaTradeEvent existingEvent;
         if (trade.id > 0 && !this.resolveRecoveryUid(trade, event)) {
             return this.complete(false, "RECOVERY_UID_RESOLUTION_FAILED");
         }
+
         bool found = false;
         bool success = M15EaTradeEventDao::load(this.getHandle(),
             "event_uid=" + M15EaSql::text(event.eventUid), existingEvent, found);
@@ -274,17 +310,21 @@ public:
                     success = M15EaTradeDao::update(this.getHandle(), trade);
                 }
             }
+
             if (success) {
                 event.tradeId = trade.id;
                 event.runId = fromRunId;
                 success = this.resolveRecoveryUid(trade, event) && this.insertEvent(event);
             }
         }
+
         if (!this.complete(success, "TRADE_EVENT_ATOMIC_SAVE_FAILED")) {
             return false;
         }
+
         fromTrade = trade;
         fromEvent = event;
+
         return true;
     }
 
@@ -317,9 +357,11 @@ public:
     virtual bool loadClosedTradeForDealAudit(const string fromContext, const long fromAfterId,
             EaTradeState &fromTrade, bool &fromFound, const bool fromFullAudit = false) {
         fromFound = false;
+
         if (StringLen(fromContext) == 0 || fromAfterId < 0) {
             return this.fail("CLOSED_DEAL_AUDIT_QUERY_INVALID");
         }
+
         string where = "context_key=" + M15EaSql::text(fromContext)
             + " AND status='CLOSED' AND id>" + IntegerToString(fromAfterId);
         if (!fromFullAudit) {
@@ -332,10 +374,13 @@ public:
                 + " AND e.event_type='DEAL_ADD' AND e.deal_ticket=m15_ea_trades.exit_deal_ticket)))";
         }
         where += " ORDER BY id ASC";
+
         if (!M15EaTradeDao::load(this.getHandle(), where, fromTrade, fromFound)) {
             return this.fail("CLOSED_DEAL_AUDIT_READ_FAILED");
         }
+
         this.lastError = "";
+
         return true;
     }
 
@@ -346,16 +391,20 @@ public:
     virtual bool loadClosedTradeByPosition(const string fromContext, const string fromPositionIdentifier,
             EaTradeState &fromTrade, bool &fromFound) {
         fromFound = false;
+
         if (StringLen(fromContext) == 0 || StringLen(fromPositionIdentifier) == 0) {
             return this.fail("CLOSED_DEAL_POSITION_QUERY_INVALID");
         }
+
         if (!M15EaTradeDao::load(this.getHandle(),
                 "context_key=" + M15EaSql::text(fromContext) + " AND status='CLOSED'"
                 + " AND position_identifier=" + M15EaSql::text(fromPositionIdentifier),
                 fromTrade, fromFound)) {
             return this.fail("CLOSED_DEAL_POSITION_READ_FAILED");
         }
+
         this.lastError = "";
+
         return true;
     }
 
@@ -369,21 +418,25 @@ public:
                 || (fromEvent.tradeId != 0 && fromEvent.tradeId != fromTradeId)) {
             return this.fail("CLOSED_DEAL_EVENT_INVALID");
         }
+
         M15EaRunEntity run;
         EaTradeState trade;
         if (!this.beginClosedDealAudit(fromRunId, fromTradeId, run, trade)) {
             return false;
         }
+
         string scope = "LIVE|" + run.accountServer + "|"
             + IntegerToString(run.accountLogin) + "|" + fromEvent.dealTicket;
         if (run.sourceMode == "TESTER") {
             scope = "TESTER|" + run.runUid + "|" + fromEvent.dealTicket;
         }
+
         if (StringLen(trade.positionIdentifier) == 0
                 || fromEvent.positionIdentifier != trade.positionIdentifier
                 || fromEvent.dealScopeKey != scope || fromEvent.eventUid != scope) {
             return this.complete(false, "CLOSED_DEAL_EVENT_SCOPE_INVALID");
         }
+
         EaTradeEvent event = fromEvent;
         EaTradeEvent existing;
         bool found = false;
@@ -404,10 +457,13 @@ public:
             event.runId = fromRunId;
             success = this.insertEvent(event);
         }
+
         if (!this.complete(success, "CLOSED_DEAL_EVENT_APPEND_FAILED")) {
             return false;
         }
+
         fromEvent = event;
+
         return true;
     }
 
@@ -421,8 +477,10 @@ public:
         if (!this.beginClosedDealAudit(fromRunId, fromTradeId, run, trade)) {
             return false;
         }
+
         string sql = "UPDATE m15_ea_trades SET last_error='' WHERE id="
             + IntegerToString(fromTradeId) + " AND last_error='DEAL_EVENTS_PENDING'";
+
         return this.complete(M15EaSql::execute(this.getHandle(), sql),
             "CLOSED_DEAL_AUDIT_COMPLETE_FAILED");
     }
@@ -433,19 +491,23 @@ public:
      */
     virtual bool loadPendingRaw(const long fromTradeId, string &fromText) {
         fromText = "";
+
         if (fromTradeId <= 0) {
             return this.fail("PENDING_RAW_TRADE_ID_INVALID");
         }
+
         int request = DatabasePrepare(this.getHandle(),
             "SELECT " + M15EaTradeDao::pendingRawColumns()
             + " FROM m15_ea_trades WHERE id=" + IntegerToString(fromTradeId));
         if (request == INVALID_HANDLE) {
             return this.fail("PENDING_RAW_READ_FAILED");
         }
+
         if (!DatabaseRead(request)) {
             DatabaseFinalize(request);
             return this.fail("PENDING_RAW_READ_FAILED");
         }
+
         string columns[] = {
             "pending_stop_loss_kind", "pending_stop_loss_bar_time", "pending_stop_loss",
             "pending_stop_loss_pivot_time", "pending_stop_loss_pivot_rate",
@@ -461,6 +523,7 @@ public:
                 success = false;
                 break;
             }
+
             string value = actualType + ":" + actualValue;
             uchar bytes[];
             int size = StringToCharArray(value, bytes, 0, WHOLE_ARRAY, CP_UTF8);
@@ -468,14 +531,18 @@ public:
                 success = false;
                 break;
             }
+
             canonical += "|" + columns[i] + "#" + IntegerToString(size - 1) + "=" + value;
         }
+
         DatabaseFinalize(request);
         if (!success) {
             return this.fail("PENDING_RAW_READ_FAILED");
         }
+
         fromText = canonical;
         this.lastError = "";
+
         return true;
     }
 
@@ -508,9 +575,11 @@ public:
         bool success = M15EaSql::scalar(this.getHandle(),
             "SELECT COUNT(*) FROM m15_ea_runs WHERE context_key=" + M15EaSql::text(fromContext)
             + " AND error_text LIKE '%AUDIT_STATE_LOST%'", count);
+
         if (success) {
             fromFound = count > 0;
         }
+
         return success;
     }
 
@@ -525,10 +594,12 @@ public:
             + M15EaSql::text(fromContext) + " AND signal_reference_time="
             + IntegerToString(fromReferenceTime) + " AND signal_side=" + M15EaSql::text(fromSide)
             + " AND is_judge_matched=1", count);
+
         if (success && count >= 0 && count <= INT_MAX) {
             fromCount = (int)count;
             return true;
         }
+
         return false;
     }
 
@@ -540,6 +611,7 @@ public:
         ArrayResize(fromTimes, 0);
         ArrayResize(fromSides, 0);
         ArrayResize(fromCounts, 0);
+
         int request = DatabasePrepare(this.getHandle(),
             "SELECT signal_reference_time,signal_side,MAX(signal_count) FROM m15_ea_decisions"
             + " WHERE context_key=" + M15EaSql::text(fromContext)
@@ -548,6 +620,7 @@ public:
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         bool success = true;
         int count = 0;
         while (true) {
@@ -556,6 +629,7 @@ public:
                 success = GetLastError() == ERR_DATABASE_NO_MORE_DATA;
                 break;
             }
+
             long referenceTime = 0;
             long signalCount = 0;
             string side = "";
@@ -569,12 +643,15 @@ public:
                 success = false;
                 break;
             }
+
             fromTimes[count] = referenceTime;
             fromSides[count] = side;
             fromCounts[count] = (int)signalCount;
             count++;
         }
+
         DatabaseFinalize(request);
+
         return success;
     }
 
@@ -588,9 +665,11 @@ public:
             + " FROM m15_ea_trade_events e JOIN m15_ea_trades t ON t.id=e.trade_id"
             + " WHERE t.context_key=" + M15EaSql::text(fromContext)
             + " AND e.event_type='EXIT_REQUEST' AND e.exit_intent_reason IS NOT NULL", bar);
+
         if (success) {
             fromBar = (datetime)bar;
         }
+
         return success;
     }
 
@@ -601,13 +680,16 @@ public:
         if (fromStatus != "STOPPED" && fromStatus != "FAILED") {
             return this.fail("RUN_TERMINAL_STATUS_INVALID");
         }
+
         if (!this.begin()) {
             return false;
         }
+
         long now = (long)TimeLocal();
         string sql = "UPDATE m15_ea_runs SET status=" + M15EaSql::text(fromStatus)
             + ",ended_at=" + IntegerToString(now) + ",error_text=" + M15EaSql::text(fromError)
             + " WHERE id=" + IntegerToString(fromRunId) + " AND status='RUNNING'";
+
         return this.complete(M15EaSql::execute(this.getHandle(), sql), "RUN_FINISH_FAILED");
     }
 
@@ -618,6 +700,7 @@ public:
         if (this.getHandle() == INVALID_HANDLE) {
             return "~";
         }
+
         string sql = "SELECT requested.action_uid FROM m15_ea_trade_events requested WHERE requested.trade_id="
             + IntegerToString(fromTradeId)
             + " AND requested.event_type IN ('ENTRY_REQUEST','SL_MODIFY_REQUEST','EXIT_REQUEST')"
@@ -627,6 +710,7 @@ public:
         if (handle == INVALID_HANDLE) {
             return "~";
         }
+
         string result = "";
         while (true) {
             ResetLastError();
@@ -636,13 +720,16 @@ public:
                 if (errorCode != ERR_DATABASE_NO_MORE_DATA) {
                     return "~";
                 }
+
                 return result;
             }
+
             string actionUid;
             if (!DatabaseColumnText(handle, 0, actionUid)) {
                 DatabaseFinalize(handle);
                 return "~";
             }
+
             EaTextUtil::appendField(result, "action_uid", actionUid);
         }
     }
@@ -664,6 +751,7 @@ private:
         if (!M15EaSql::execute(this.getHandle(), "BEGIN IMMEDIATE")) {
             return this.fail("TRANSACTION_BEGIN_FAILED");
         }
+
         return true;
     }
 
@@ -676,19 +764,23 @@ private:
         if (fromRunId <= 0 || fromTradeId <= 0) {
             return this.fail("CLOSED_DEAL_AUDIT_ID_INVALID");
         }
+
         bool found = false;
         if (!M15EaRunDao::load(this.getHandle(), "id=" + IntegerToString(fromRunId),
                 fromRun, found) || !found) {
             return this.fail("CLOSED_DEAL_AUDIT_RUN_READ_FAILED");
         }
+
         if (!this.beginOwned(fromRunId, false, fromRun.contextKey)) {
             return false;
         }
+
         if (!M15EaTradeDao::load(this.getHandle(), "id=" + IntegerToString(fromTradeId),
                 fromTrade, found) || !found || fromTrade.contextKey != fromRun.contextKey
                 || fromTrade.status != "CLOSED") {
             return this.complete(false, "CLOSED_DEAL_AUDIT_TRADE_SCOPE_INVALID");
         }
+
         return true;
     }
 
@@ -700,12 +792,14 @@ private:
         if (!this.begin()) {
             return false;
         }
+
         M15EaRunEntity run;
         bool found = false;
         if (!M15EaRunDao::load(this.getHandle(),
                 "id=" + IntegerToString(fromRunId), run, found)) {
             return this.complete(false, "RUN_SCOPE_READ_FAILED");
         }
+
         bool success = found && run.contextKey == fromContext;
         if (success) {
             long successors = 0;
@@ -714,11 +808,13 @@ private:
                     + M15EaSql::text(fromContext) + " AND id>" + IntegerToString(fromRunId), successors)) {
                 return this.complete(false, "RUN_SUCCESSOR_READ_FAILED");
             }
+
             if (successors > 0) {
                 M15EaSql::execute(this.getHandle(), "ROLLBACK");
                 return this.fail("SNAPSHOT_OWNER_SUPERSEDED");
             }
         }
+
         if (success && fromRequireLease) {
             success = run.status == "RUNNING" && run.leaseExpiresAt > (long)TimeLocal();
         }
@@ -726,6 +822,7 @@ private:
             M15EaSql::execute(this.getHandle(), "ROLLBACK");
             return this.fail("RUN_SCOPE_OR_LEASE_LOST");
         }
+
         return true;
     }
 
@@ -739,7 +836,9 @@ private:
                 + IntegerToString(fromEvent.tradeId), sequence)) {
             return false;
         }
+
         fromEvent.sequence = sequence;
+
         return M15EaTradeEventDao::insert(this.getHandle(), fromEvent);
     }
 
@@ -750,16 +849,19 @@ private:
         if (fromEvent.eventType != "RECOVERY" || fromTrade.id <= 0) {
             return true;
         }
+
         int start = StringFind(fromEvent.message, "M15_EA_RECOVERY_SNAPSHOT_V1");
         if (start < 0) {
             return true;
         }
+
         string snapshot = StringSubstr(fromEvent.message, start);
         string marker = "|trade_id#1=0|";
         int position = StringFind(snapshot, marker);
         if (position < 0) {
             return true;
         }
+
         string tradeId = IntegerToString(fromTrade.id);
         string replacement = "|trade_id#" + IntegerToString(StringLen(tradeId)) + "=" + tradeId + "|";
         snapshot = StringSubstr(snapshot, 0, position) + replacement
@@ -768,8 +870,10 @@ private:
         if (hash == "") {
             return false;
         }
+
         fromEvent.message = StringSubstr(fromEvent.message, 0, start) + snapshot;
         fromEvent.eventUid = "M15_EA_RECOVERY_V1|" + fromTrade.contextKey + "|" + tradeId + "|" + hash;
+
         return true;
     }
 
@@ -781,8 +885,10 @@ private:
             this.lastError = "";
             return true;
         }
+
         int errorCode = GetLastError();
         M15EaSql::execute(this.getHandle(), "ROLLBACK");
+
         return this.fail(fromReason + " error=" + IntegerToString(errorCode));
     }
 
@@ -792,6 +898,7 @@ private:
     bool fail(const string fromReason) {
         this.lastError = fromReason;
         this.logger.error(__FUNCTION__, fromReason);
+
         return false;
     }
 };

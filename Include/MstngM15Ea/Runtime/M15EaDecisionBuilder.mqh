@@ -36,8 +36,10 @@ public:
         EaTextUtil::appendField(text, "strategy_snapshot", fromDiagnostics);
         EaTextUtil::appendField(text, "analysis_version", ZigZagElliotAnalysisProfile::getAnalysisVersion());
         EaTextUtil::appendField(text, "analysis_input_hash", ZigZagElliotAnalysisProfile::createHash());
+
         fromDecision.analysisSnapshotText = text;
         fromDecision.snapshotHash = EaTextUtil::hash(text);
+
         return StringLen(fromDecision.snapshotHash) == 64;
     }
 
@@ -49,6 +51,7 @@ private:
         if (fromValue) {
             return "1";
         }
+
         return "0";
     }
 
@@ -59,6 +62,7 @@ private:
         if (fromValue == EMPTY_VALUE || !MathIsValidNumber(fromValue)) {
             return "~";
         }
+
         return DoubleToString(fromValue, fromDigits);
     }
 };

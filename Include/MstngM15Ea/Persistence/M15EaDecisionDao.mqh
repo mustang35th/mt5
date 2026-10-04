@@ -50,6 +50,7 @@ public:
         sql += "CHECK( is_judge_matched = 0 OR ( signal_reference_time IS NOT NULL AND signal_reference_time > 0 AND signal_side IS NOT NULL AND signal_side IN ('BUY', 'SELL') ) ),";
         sql += "CHECK( decision = 'SKIP' OR ( is_strategy_entry = 1 AND is_signal_consumed = 1 AND decision = signal_side AND initial_stop_loss IS NOT NULL AND initial_stop_loss > 0.0 ) ),";
         sql += "FOREIGN KEY(run_id) REFERENCES m15_ea_runs(id) ON DELETE RESTRICT)";
+
         return sql;
     }
 
@@ -60,12 +61,14 @@ public:
         if (ArrayResize(fromSql, 6) != 6) {
             return false;
         }
+
         fromSql[0] = "CREATE UNIQUE INDEX IF NOT EXISTS idx_m15_ea_decisions_context_bar ON m15_ea_decisions(context_key, bar_time);";
         fromSql[1] = "CREATE UNIQUE INDEX IF NOT EXISTS idx_m15_ea_decisions_consumed_signal ON m15_ea_decisions( context_key, signal_reference_time, signal_side ) WHERE is_signal_consumed = 1;";
         fromSql[2] = "CREATE INDEX IF NOT EXISTS idx_m15_ea_decisions_bar ON m15_ea_decisions(bar_time, id);";
         fromSql[3] = "CREATE INDEX IF NOT EXISTS idx_m15_ea_decisions_run_bar ON m15_ea_decisions(run_id, bar_time, id);";
         fromSql[4] = "CREATE INDEX IF NOT EXISTS idx_m15_ea_decisions_result_bar ON m15_ea_decisions(decision, bar_time, id);";
         fromSql[5] = "CREATE INDEX IF NOT EXISTS idx_m15_ea_decisions_reason_bar ON m15_ea_decisions(reason_code, bar_time, id);";
+
         return true;
     }
 
@@ -112,6 +115,7 @@ public:
         values += "," + M15EaSql::real(fromEntity.initialRiskPips, 0.0);
         values += "," + M15EaSql::real(fromEntity.maxInitialRiskPips, 0.0);
         values += "," + M15EaSql::text(fromEntity.analysisSnapshotText);
+
         return values;
     }
 
@@ -122,11 +126,13 @@ public:
         if (StringFind(fromEntity.analysisSnapshotText, "M15_EA_DECISION_V1|") != 0) {
             return false;
         }
+
         string sql = "INSERT INTO m15_ea_decisions (" + M15EaDecisionDao::columns()
             + ") VALUES (" + M15EaDecisionDao::values(fromEntity) + ")";
         if (!M15EaSql::execute(fromHandle, sql)) {
             return false;
         }
+
         return M15EaSql::scalar(fromHandle, "SELECT last_insert_rowid()", fromEntity.id);
     }
 
@@ -135,82 +141,106 @@ public:
      */
     static bool read(const int fromRequest, M15EaDecisionEntity &fromEntity) {
         fromEntity.reset();
+
         long integerValue = 0;
         if (!DatabaseColumnLong(fromRequest, 0, fromEntity.id)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 1, fromEntity.runId)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 2, fromEntity.contextKey)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 3, fromEntity.marketSignalKey)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 4, fromEntity.snapshotHash)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 5, fromEntity.barTime)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 6, fromEntity.evaluatedServerTime)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 7, fromEntity.createdAt)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 8, fromEntity.signalReferenceTime)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 9, fromEntity.decision)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 10, fromEntity.reasonCode)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 11, fromEntity.signalSide)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 12, integerValue)) {
             return false;
         }
+
         fromEntity.isJudgeMatched = (bool)integerValue;
         if (!DatabaseColumnLong(fromRequest, 13, integerValue)) {
             return false;
         }
+
         fromEntity.signalCount = (int)integerValue;
         if (!DatabaseColumnLong(fromRequest, 14, integerValue)) {
             return false;
         }
+
         fromEntity.entryCount = (int)integerValue;
         if (!DatabaseColumnLong(fromRequest, 15, integerValue)) {
             return false;
         }
+
         fromEntity.isEntryEvaluated = (bool)integerValue;
         if (!DatabaseColumnLong(fromRequest, 16, integerValue)) {
             return false;
         }
+
         fromEntity.isStrategyEntry = (bool)integerValue;
         if (!DatabaseColumnLong(fromRequest, 17, integerValue)) {
             return false;
         }
+
         fromEntity.isSignalConsumed = (bool)integerValue;
         if (!DatabaseColumnDouble(fromRequest, 18, fromEntity.spreadPips)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 19, fromEntity.requestedVolume)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 20, fromEntity.initialStopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 21, fromEntity.initialRiskPips)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 22, fromEntity.maxInitialRiskPips)) {
             return false;
         }
+
         return DatabaseColumnText(fromRequest, 23, fromEntity.analysisSnapshotText)
             && StringFind(fromEntity.analysisSnapshotText, "M15_EA_DECISION_V1|") == 0;
     }
@@ -220,20 +250,24 @@ public:
      */
     static bool load(const int fromHandle, const string fromWhere, M15EaDecisionEntity &fromEntity, bool &fromFound) {
         fromFound = false;
+
         int request = DatabasePrepare(fromHandle, "SELECT " + M15EaDecisionDao::selectColumns()
             + " FROM m15_ea_decisions WHERE " + fromWhere + " LIMIT 1");
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         ResetLastError();
         if (!DatabaseRead(request)) {
             int errorCode = GetLastError();
             DatabaseFinalize(request);
             return errorCode == ERR_DATABASE_NO_MORE_DATA;
         }
+
         bool success = M15EaDecisionDao::read(request, fromEntity);
         DatabaseFinalize(request);
         fromFound = success;
+
         return success;
     }
 

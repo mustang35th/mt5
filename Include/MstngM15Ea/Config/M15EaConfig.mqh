@@ -127,41 +127,52 @@ public:
             if (fromTesterTradeStartTime < 0) {
                 return this.fail("INVALID_TESTER_TRADE_START_TIME");
             }
+
             this.testerTradeStartTime = fromTesterTradeStartTime;
         }
+
         if (_Period != PERIOD_M15) {
             return this.fail("M15_CHART_REQUIRED");
         }
+
         if (MQLInfoInteger(MQL_OPTIMIZATION)) {
             return this.fail("OPTIMIZATION_NOT_SUPPORTED");
         }
+
         if (!MathIsValidNumber(this.lotSize) || this.lotSize == EMPTY_VALUE || this.lotSize <= 0.0) {
             return this.fail("INVALID_LOT_SIZE");
         }
+
         if (!MathIsValidNumber(this.maxInitialStopLossPips)
                 || this.maxInitialStopLossPips == EMPTY_VALUE || this.maxInitialStopLossPips <= 0.0) {
             return this.fail("MAX_INITIAL_SL_UNSET");
         }
+
         if (MathAbs(NormalizeDouble(this.maxInitialStopLossPips, 1)
                 - this.maxInitialStopLossPips) > 0.00000001) {
             return this.fail("MAX_INITIAL_SL_REQUIRES_ONE_DECIMAL_PLACE");
         }
+
         if (!M15EaConfig::isFibonacciExpansionLimitValid(this.h4MaxFibonacciExpansionPercent)
                 || !M15EaConfig::isFibonacciExpansionLimitValid(this.h1MaxFibonacciExpansionPercent)) {
             return this.fail("INVALID_HIGHER_FE_LIMIT");
         }
+
         if (AccountInfoInteger(ACCOUNT_MARGIN_MODE) != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING) {
             return this.fail("HEDGING_ACCOUNT_REQUIRED");
         }
+
         this.accountServer = AccountInfoString(ACCOUNT_SERVER);
         this.accountLogin = AccountInfoInteger(ACCOUNT_LOGIN);
         if (this.accountServer == "" || this.accountLogin <= 0 || this.symbolName == ""
                 || StringFind(this.accountServer, "|") >= 0 || StringFind(this.symbolName, "|") >= 0) {
             return this.fail("INVALID_CONTEXT");
         }
+
         if (!SymbolSelect(this.symbolName, true)) {
             return this.fail("SYMBOL_UNAVAILABLE");
         }
+
         this.digits = (int)SymbolInfoInteger(this.symbolName, SYMBOL_DIGITS);
         this.pointSize = SymbolInfoDouble(this.symbolName, SYMBOL_POINT);
         this.tickSize = SymbolInfoDouble(this.symbolName, SYMBOL_TRADE_TICK_SIZE);
@@ -171,6 +182,7 @@ public:
                 || !MathIsValidNumber(this.pipSize) || this.pipSize <= 0.0) {
             return this.fail("INVALID_PRICE_UNITS");
         }
+
         MarketContext context(this.symbolName, PERIOD_M15);
         this.magicNumber = MagicNumberUtil::build(13, context, STRATEGY_TYPE_MTF_3IN3);
         string identity = this.accountServer + "|" + IntegerToString(this.accountLogin);
@@ -187,6 +199,7 @@ public:
         if (StringLen(this.runUid) != 64) {
             return this.fail("HASH_UNAVAILABLE");
         }
+
         return true;
     }
 
@@ -240,6 +253,7 @@ private:
      */
     bool fail(const string fromReason) {
         this.lastError = fromReason;
+
         return false;
     }
 };

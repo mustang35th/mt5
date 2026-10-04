@@ -40,12 +40,14 @@ public:
      */
     bool initialize(const string fromSymbol) {
         this.destroy();
+
         MarketContext context(fromSymbol, PERIOD_H1);
         this.marketContext = context;
         if (!this.historyPreparation.initialize(fromSymbol, PERIOD_H1, (bool)MQLInfoInteger(MQL_TESTER))) {
             this.lastError = "ANALYSIS_HISTORY_CONFIGURATION_INVALID";
             return false;
         }
+
         this.handlePool = new OscillatorHandlePool(this.marketContext);
 
         if (this.handlePool == NULL) {
@@ -119,6 +121,7 @@ public:
         this.elliotAll.isSendMail = false;
         this.elliotAll.timerSeconds = 30;
         this.elliotAll.setOscillatorHandlePool(this.handlePool);
+
         LoggerRepeatScope logScope;
         Logger::beginTesterRepeatScope(this.marketContext.symbolName, barTime, logScope);
         this.elliotAll.analyze();
@@ -160,6 +163,7 @@ public:
         bool isSucceeded = decision.evaluate(
             this.elliotAll, fromPreviousCount, fromSnapshot
         );
+
         this.lastError = "";
 
         if (!isSucceeded) {
@@ -264,6 +268,7 @@ private:
     bool isHistoryReady(const datetime fromWarmupEndTime) {
         bool ready = this.historyPreparation.prepare(fromWarmupEndTime);
         this.historyStatusText = this.historyPreparation.getStatusText();
+
         return ready;
     }
 };

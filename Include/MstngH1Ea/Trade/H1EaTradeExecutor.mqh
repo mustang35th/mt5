@@ -40,14 +40,18 @@ public:
                 || fromPipSize <= 0.0 || fromTickSize <= 0.0) {
             return false;
         }
+
         if (!this.store.initialize(fromPersistence)) {
             return false;
         }
+
         EaTradeProfile runtimeProfile;
         H1EaTradePolicy::profile(runtimeProfile);
+
         this.configured = EaTradeExecutor::initialize(fromSymbol, fromMagic,
             fromPipSize, fromTickSize, fromRunId, fromRunUid, fromContextKey,
             GetPointer(this.store), runtimeProfile, GetPointer(this.h1Policy));
+
         return this.configured;
     }
 
@@ -57,7 +61,9 @@ public:
     bool getRestoredTrade(H1EaTradeEntity &fromTrade, bool &fromActive) {
         EaTradeState commonTrade;
         bool restored = EaTradeExecutor::getRestoredTrade(commonTrade, fromActive);
+
         H1EaTradeStateMapper::toH1(commonTrade, fromTrade);
+
         return restored;
     }
 
@@ -72,9 +78,11 @@ public:
         request.initialStopLoss = fromDecision.initialStopLoss;
         request.barTime = fromDecision.h1BarTime;
         request.maxInitialRiskPips = fromDecision.maxInitialRiskPips;
+
         EaTradeState commonTrade;
         EaTradeEvent event;
         EaTradeExecutor::prepareEntry(request, commonTrade, event);
+
         H1EaTradeStateMapper::toH1(commonTrade, fromTrade);
         H1EaTradeStateMapper::toH1(event, fromEvent);
     }
@@ -87,7 +95,9 @@ public:
         EaTradeEvent event;
         H1EaTradeStateMapper::toCommon(fromTrade, commonTrade);
         H1EaTradeStateMapper::toCommon(fromEntryRequest, event);
+
         EaTradeExecutor::sendEntry(commonTrade, event);
+
         H1EaTradeStateMapper::toH1(commonTrade, fromTrade);
         H1EaTradeStateMapper::toH1(event, fromEntryRequest);
     }

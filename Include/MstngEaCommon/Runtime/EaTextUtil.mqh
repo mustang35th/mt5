@@ -15,15 +15,18 @@ public:
         if (sourceSize <= 1 || ArrayResize(sourceBytes, sourceSize - 1) != sourceSize - 1) {
             return "";
         }
+
         uchar keyBytes[];
         uchar resultBytes[];
         if (CryptEncode(CRYPT_HASH_SHA256, sourceBytes, keyBytes, resultBytes) != 32) {
             return "";
         }
+
         string result = "";
         for (int i = 0; i < ArraySize(resultBytes); i++) {
             result += StringFormat("%02x", (int)resultBytes[i]);
         }
+
         return result;
     }
 
@@ -33,6 +36,7 @@ public:
     static void appendField(string &fromText, const string fromName, const string fromValue) {
         uchar valueBytes[];
         int byteCount = StringToCharArray(fromValue, valueBytes, 0, WHOLE_ARRAY, CP_UTF8) - 1;
+
         fromText += "|" + fromName + "#" + IntegerToString(byteCount) + "=" + fromValue;
     }
 
@@ -51,18 +55,22 @@ public:
         if (length == 0 || length > 20) {
             return 0;
         }
+
         ulong result = 0;
         for (int i = 0; i < length; i++) {
             ushort character = StringGetCharacter(fromText, i);
             if (character < '0' || character > '9') {
                 return 0;
             }
+
             ulong number = (ulong)(character - '0');
             if (result > (ULONG_MAX - number) / 10) {
                 return 0;
             }
+
             result = result * 10 + number;
         }
+
         return result;
     }
 };
