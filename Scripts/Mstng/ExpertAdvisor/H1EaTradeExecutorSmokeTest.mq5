@@ -102,6 +102,87 @@ void verifyFreshIdle(H1EaPersistenceService &fromService, H1EaRunEntity &fromRun
 }
 
 /**
+ * 保存済み保護状態を新しいH1実行部へ復元し、broker操作なしで公開型を確認する。
+ */
+void verifyStoredProtectionRestore(H1EaPersistenceService &fromService, H1EaRunEntity &fromRun) {
+    H1EaTradeEntity saved;
+    saved.contextKey = fromRun.contextKey;
+    saved.origin = "RECOVERED";
+    saved.status = "RECOVERY_REQUIRED";
+    saved.side = "SELL";
+    saved.positionIdentifier = "9223372036854775808";
+    saved.positionTicket = "18446744073709551615";
+    saved.currentStopLoss = 1.10300;
+    saved.stopLossSource = "H1_ZIGZAG_TRAIL";
+    saved.lastTrailEvaluatedH1BarTime = 18000;
+    saved.pendingStopLossKind = "TRAIL_RESTORE";
+    saved.pendingStopLossH1BarTime = 14400;
+    saved.pendingStopLoss = 1.10250;
+    saved.pendingStopLossPivotTime = 13000;
+    saved.pendingStopLossPivotRate = 1.10150;
+    saved.pendingStopLossLatestTime = 13500;
+    saved.pendingStopLossActionUid = fromRun.runUid + "|RESTORE_SMOKE_MODIFY";
+    saved.lastAppliedTrailH1BarTime = 10800;
+    saved.lastAppliedTrailStopLoss = 1.10300;
+    saved.lastAppliedTrailPivotTime = 9500;
+    saved.lastAppliedTrailPivotRate = 1.10200;
+    saved.lastAppliedTrailLatestTime = 10000;
+    saved.exitRequestedServerTime = 18020;
+    saved.exitOrderTicket = "9876543210";
+    saved.exitRetcode = TRADE_RETCODE_TIMEOUT;
+    saved.exitIntentReason = "H1_ZIGZAG_TRAIL_CROSSED";
+    saved.createdAt = (long)TimeLocal();
+    saved.updatedAt = saved.createdAt;
+    H1EaTradeEventEntity event;
+    event.eventUid = fromRun.runUid + "|RESTORE_SMOKE";
+    event.eventType = "RECOVERY";
+    event.eventSource = "RECONCILIATION";
+    event.recordedAt = saved.createdAt;
+    bool stored = fromService.saveTradeEvent(fromRun.id, saved, event);
+    verify(stored && saved.id > 0 && event.id > 0, "save dedicated pending protection fixture");
+    if (!stored) {
+        return;
+    }
+
+    H1EaTradeExecutor executor;
+    bool initialized = executor.initialize(_Symbol, 1204010501, 0.0001, 0.00001,
+        fromRun.id, fromRun.runUid, fromRun.contextKey, GetPointer(fromService));
+    verify(initialized, "initialize fresh H1 executor for restoration");
+    if (!initialized) {
+        return;
+    }
+    H1EaTradeEntity restored;
+    bool active = true;
+    verify(!executor.getRestoredTrade(restored, active) && !active && restored.id == 0,
+        "fresh executor reports no loaded snapshot before restoration");
+    bool loaded = executor.restoreFromDatabase();
+    verify(loaded && executor.getRestoredTrade(restored, active) && active,
+        "H1 store restores active saved state without reconciliation");
+    if (!loaded) {
+        return;
+    }
+    verify(restored.id == saved.id && restored.createdRunId == fromRun.id
+        && H1EaTradeDao::values(restored) == H1EaTradeDao::values(saved),
+        "H1 store roundtrip preserves all persisted protection and exit fields");
+    verify(restored.lastTrailEvaluatedH1BarTime == 18000
+        && restored.pendingStopLossH1BarTime == 14400 && restored.lastAppliedTrailH1BarTime == 10800,
+        "H1 evaluation pending and applied bars remain distinct");
+    verify(restored.requestedVolume == EMPTY_VALUE && restored.profit == EMPTY_VALUE,
+        "restored optional NULL values keep the H1 entity sentinel");
+    verify(executor.hasActiveTrade() && executor.hasPendingDealAudit() && !executor.isIdleForTesterWarmup(),
+        "restoration reserves active state and still requires broker deal reconciliation");
+    verify(executor.restoreFromDatabase() && executor.getRestoredTrade(restored, active) && active
+        && H1EaTradeDao::values(restored) == H1EaTradeDao::values(saved),
+        "repeated restoration retains the saved snapshot");
+    long tradeCount = -1;
+    long eventCount = -1;
+    verify(H1EaSql::scalar(fromService.getHandle(), "SELECT COUNT(*) FROM h1_ea_trades", tradeCount)
+        && H1EaSql::scalar(fromService.getHandle(), "SELECT COUNT(*) FROM h1_ea_trade_events", eventCount)
+        && tradeCount == 1 && eventCount == 1, "restoration writes no extra trade or event");
+    verify(PositionsTotal() == 0 && OrdersTotal() == 0, "restoration leaves the account empty");
+}
+
+/**
  * 今回作成した専用DBとそのsidecarだけを、接続終了後に削除する。
  */
 void cleanupSmokeDatabase(const string fromFileName) {
@@ -151,6 +232,7 @@ void verifyFreshDatabase() {
         verify(acquired, "acquire dedicated smoke run");
         if (acquired) {
             verifyFreshIdle(service, run);
+            verifyStoredProtectionRestore(service, run);
             string status = "STOPPED";
             string errorText = "";
             if (failedCount > 0) {

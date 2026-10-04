@@ -58,7 +58,7 @@ class TickWarmupLeaseContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.service = (ROOT / "Include/Mstng/Database/Service/H1EaPersistenceService.mqh").read_text(encoding="utf-8-sig")
         cls.child = (ROOT / "Include/MstngH1Ea/H1EaController.mqh").read_text(encoding="utf-8-sig")
-        cls.executor = (ROOT / "Include/MstngH1Ea/Trade/H1EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        cls.executor = (ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
         cls.sentinel = int(datetime(3000, 12, 31, 23, 59, 59, tzinfo=timezone.utc).timestamp())
 
     def setUp(self):

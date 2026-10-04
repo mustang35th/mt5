@@ -19,7 +19,7 @@ CONFIG = ROOT / "Include/MstngH1Ea/Config/H1EaConfig.mqh"
 CONTROLLER = ROOT / "Include/MstngH1Ea/H1EaController.mqh"
 EXPERT = ROOT / "Experts/MstngH1Ea.mq5"
 STRATEGY = ROOT / "Include/MstngH1Ea/Strategy/H1EaStrategy.mqh"
-EXECUTOR = ROOT / "Include/MstngH1Ea/Trade/H1EaTradeExecutor.mqh"
+EXECUTOR = ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh"
 EVENT_TIMER = ROOT / "Include/MstngH1Ea/Runtime/H1EaEventTimer.mqh"
 PERSISTENCE = ROOT / "Include/Mstng/Database/Service/H1EaPersistenceService.mqh"
 
@@ -195,7 +195,7 @@ class TesterWarmupWiringTests(unittest.TestCase):
         gate = method(self.executor, "isIdleForTesterWarmup")
         guarded_names = set(re.findall(r'this\.(\w+)\s*!=\s*""', gate))
         self.assertIn("entryActionUid", guarded_names)
-        constructor = method(self.executor, "H1EaTradeExecutor")
+        constructor = method(self.executor, "EaTradeExecutor")
         masked = code_only(constructor)
         initialized_names = {
             match.group(1)
@@ -458,11 +458,84 @@ class EmaConfigurationWiringTests(unittest.TestCase):
         self.assertIn("rawStopLoss=fromPivotPrice+fromBufferPips*fromPipSize;", common_initial)
         self.assertIn("rawStopLoss=fromPivotPrice-fromBufferPips*fromPipSize;", common_initial)
         trail = re.sub(r"\s+", "", code_only(method(self.executor, "evaluateTrail")))
-        self.assertIn("H1ZigZagTrailDecisiondecision;", trail)
-        self.assertIn("decision.evaluate(position,fromWave,10.0,this.pipSize,this.tickSize,result)", trail)
-        for body in (initial, common_initial, trail):
+        self.assertIn("this.policy.evaluateTrail(position,fromWave,this.pipSize,this.tickSize,result)", trail)
+        h1_policy = (ROOT / "Include/MstngH1Ea/Trade/H1EaTradePolicy.mqh").read_text(encoding="utf-8-sig")
+        h1_trail = re.sub(r"\s+", "", code_only(method(h1_policy, "evaluateTrail")))
+        self.assertIn("H1ZigZagTrailDecisiondecision;", h1_trail)
+        self.assertIn("decision.evaluate(fromPosition,fromWave,10.0,fromPipSize,fromTickSize,result)", h1_trail)
+        for body in (initial, common_initial, trail, h1_trail):
             self.assertNotIn("H1Ema200Confirmation", body)
             self.assertNotIn("isEma200ConfirmationPassed", body)
+
+
+class SharedTradeRuntimeWiringTests(unittest.TestCase):
+    """H1 compatibility at the actual shared-core boundary; no broker execution."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.core = EXECUTOR.read_text(encoding="utf-8-sig")
+        cls.wrapper = (ROOT / "Include/MstngH1Ea/Trade/H1EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        cls.policy = (ROOT / "Include/MstngH1Ea/Trade/H1EaTradePolicy.mqh").read_text(encoding="utf-8-sig")
+
+    def test_h1_wrapper_supplies_own_store_profile_and_policy_to_shared_core(self):
+        self.assertIn("class H1EaTradeExecutor : public EaTradeExecutor", code_only(self.wrapper))
+        body = code_only(method(self.wrapper, "initialize"))
+        initialize = body.index("EaTradeExecutor::initialize(")
+        self.assertLess(body.index("this.store.initialize(fromPersistence)"), initialize)
+        self.assertLess(body.index("H1EaTradePolicy::profile(runtimeProfile);"), initialize)
+        self.assertIn("GetPointer(this.store), runtimeProfile, GetPointer(this.h1Policy)", body[initialize:])
+        self.assertNotIn("OrderSend(", code_only(self.wrapper))
+        self.assertNotIn("DatabaseOpen(", code_only(self.core))
+        self.assertNotIn("MstngH1Ea", code_only(self.core))
+        self.assertNotIn("H1Ea", code_only(self.core))
+        self.assertNotIn("PERIOD_H1", code_only(self.core))
+        self.assertIn("!fromProfile.isValid()", code_only(method(self.core, "initialize")))
+
+    def test_h1_profile_preserves_existing_broker_and_recovery_identities(self):
+        profile = method(self.policy, "profile")
+        self.assertIn("fromProfile.timeFrame = PERIOD_H1;", code_only(profile))
+        expected = {
+            "actionUidPrefix": "H1_EA_ACTION_V1|",
+            "trailEvaluationUidPrefix": "H1_EA_TRAIL_EVALUATION_V1|",
+            "cancelUidPrefix": "H1_EA_CANCEL_V1|",
+            "dealAuditUidPrefix": "H1_EA_DEAL_AUDIT_PENDING_V1|",
+            "recoveryUidPrefix": "H1_EA_RECOVERY_V1|",
+            "recoverySnapshotPrefix": "H1_EA_RECOVERY_SNAPSHOT_V1",
+            "pendingMemoryPrefix": "H1_EA_PENDING_MEMORY_V1|db_raw_unavailable=1|",
+            "entryCommentPrefix": "MstngH1EaV1:",
+            "closeCommentPrefix": "MstngH1C:",
+            "trailStopLossSource": "H1_ZIGZAG_TRAIL",
+            "trailCrossedReason": "H1_ZIGZAG_TRAIL_CROSSED",
+            "pendingBarField": "pending_stop_loss_h1_bar_time",
+            "lastAppliedTrailBarField": "last_applied_trail_h1_bar_time",
+            "lastTrailEvaluatedBarField": "last_trail_evaluated_h1_bar_time",
+        }
+        for field, value in expected.items():
+            with self.subTest(field=field):
+                self.assertIn(f'fromProfile.{field} = "{value}";', profile)
+                self.assertIn(f"this.profile.{field}", self.core)
+
+    def test_h1_entry_and_restoration_keep_bidirectional_state_mapping(self):
+        prepare = code_only(method(self.wrapper, "prepareEntry"))
+        common_call = prepare.index("EaTradeExecutor::prepareEntry(request, commonTrade, event);")
+        for field, source in (
+            ("side", "decision"), ("requestedVolume", "requestedVolume"),
+            ("initialStopLoss", "initialStopLoss"), ("barTime", "h1BarTime"),
+            ("maxInitialRiskPips", "maxInitialRiskPips"),
+        ):
+            self.assertLess(prepare.index(f"request.{field} = fromDecision.{source};"), common_call)
+        for mapping in ("H1EaTradeStateMapper::toH1(commonTrade, fromTrade);",
+                        "H1EaTradeStateMapper::toH1(event, fromEvent);"):
+            self.assertGreater(prepare.index(mapping), common_call)
+        send = code_only(method(self.wrapper, "sendEntry"))
+        call = send.index("EaTradeExecutor::sendEntry(commonTrade, event);")
+        self.assertLess(send.index("H1EaTradeStateMapper::toCommon(fromTrade, commonTrade);"), call)
+        self.assertLess(send.index("H1EaTradeStateMapper::toCommon(fromEntryRequest, event);"), call)
+        self.assertGreater(send.index("H1EaTradeStateMapper::toH1(commonTrade, fromTrade);"), call)
+        self.assertGreater(send.index("H1EaTradeStateMapper::toH1(event, fromEntryRequest);"), call)
+        restore = code_only(method(self.wrapper, "getRestoredTrade"))
+        self.assertLess(restore.index("EaTradeExecutor::getRestoredTrade(commonTrade, fromActive)"),
+                        restore.index("H1EaTradeStateMapper::toH1(commonTrade, fromTrade);"))
 
 
 class H1PolicyConfigurationWiringTests(unittest.TestCase):

@@ -973,3 +973,21 @@ M15版への再利用に向け、時間足やDBに依存しない処理を `Incl
 - `EaEntryState` は判定済みバーとシグナル回数の記録・復元を担当します。状態はインスタンスごとに保持し、回数を消費する条件・タイミングは既存Controllerに委ねます。
 
 この段階では発注処理・SL再試行の制御・トレイル候補判定・DB復元処理そのものは移動していません。H1版の入力・戦略・Magic・Lock・DBスキーマ・保存理由・設定hash・プログラムバージョンは維持します。M15用EAの入口・売買制御はまだ追加していません。
+
+## 発注・取引状態復元の共通化（2026-10-04）
+
+続いて `EaTradeExecutor` へ、発注要求の作成・送信前確認・送信、broker照合、pending SLの再試行、保存キュー、約定履歴監査、取引状態の復元を移しました。時刻・文字列・約定履歴取得も `EaClock`・`EaTextUtil`・`EaDealHistory` へ移し、既存H1クラスは互換窓口として残しています。
+
+- `EaTradeState`・`EaTradeEvent` は保存先に依存しない状態型です。`IEaTradeStore` を介して保存・復元し、共通ExecutorからDBスキーマやSQLを参照しません。
+- `H1EaTradeStore`・`H1EaTradeStateMapper` が従来のPersistenceServiceとH1 Entityへ接続します。H1の列名・NULL表現・採番・transaction・未完了要求の監査順序を維持します。
+- `EaTradeProfile` で時間足と保存識別子を指定し、`IEaTradePolicy` でトレイル候補・決済理由・ログへ接続します。`H1EaTradePolicy` は従来のH1判定・10pips余白・UID・注文コメント・理由コード・ログ名を使用します。
+- `H1EaTradeExecutor` は従来の公開メソッドを維持します。Controllerの `saveEntry()` 成功後に送信する順序、Timer/Tick周期、Run/Lease、SignalCountと同一バー反転禁止の復元は従来のH1側に残します。H1単一通貨版・All版の入力、戦略、Magic、DBスキーマ、設定hash、プログラムバージョンは変更していません。
+
+確認結果:
+
+- H1単一通貨版・All版、共通発注テスト・H1復元テスト・約定履歴テストをMetaEditorでコンパイルし、すべてエラー0・警告0。
+- 隔離MT5で `EaTradeExecutorSmokeTest`・`H1EaTradeExecutorSmokeTest`・`H1EaDealHistorySmokeTest` を実行し、すべて失敗0。発注テストはbroker APIをfixtureへ差し替え、H1/M15の要求値、明示拒否、送信直前のバー変更・Lease失効、重複送信防止、保存失敗後の再保存を確認しました。
+- H1復元テストは専用一時DBへpending SL・適用済みトレイル・未完了決済状態を保存し、新しいExecutorで全保存項目とH1バー3項目が復元されることを確認しました。復元中の追加保存がなく、broker照合前の状態を維持し、終了時に一時DBを削除しています。
+- EA関連Pythonは182件中181件成功。残る1件は変更前から失敗しているM15 Factoryの引数数期待で、今回の変更による新規失敗はありません。DB関連Python165件は成功しています。
+
+コンパイルは一時ディレクトリで実施しました。運用先のex5更新、実注文、Strategy Testerによる売買成績比較は行っていません。M15版は今後、専用のPolicy・StoreとControllerを接続する段階です。

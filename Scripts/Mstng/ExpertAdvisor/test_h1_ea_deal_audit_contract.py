@@ -36,8 +36,8 @@ WIRING = load_test_helpers(
     "h1_deal_audit_wiring_helpers",
     ROOT / "Scripts/Mstng/ExpertAdvisor/test_h1_ea_tester_warmup_contract.py",
 )
-HISTORY = ROOT / "Include/MstngH1Ea/Trade/H1EaDealHistory.mqh"
-EXECUTOR = ROOT / "Include/MstngH1Ea/Trade/H1EaTradeExecutor.mqh"
+HISTORY = ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaDealHistory.mqh"
+EXECUTOR = ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh"
 SMOKE = ROOT / "Scripts/Mstng/ExpertAdvisor/H1EaDealHistorySmokeTest.mq5"
 PERSISTENCE = ROOT / "Include/Mstng/Database/Service/H1EaPersistenceService.mqh"
 CONTROLLER = ROOT / "Include/MstngH1Ea/H1EaController.mqh"
@@ -282,7 +282,7 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
             helper = WIRING.code_only(WIRING.method(self.history, getter))
             native = "HistoryDealGetInteger" if getter == "readInteger" else "HistoryDealGetDouble"
             self.assertRegex(helper, rf"if\s*\(!{native}\(fromTicket,\s*fromProperty,\s*fromValue\)\)")
-            self.assertIn("return H1EaDealHistory::fail(", helper)
+            self.assertIn("return EaDealHistory::fail(", helper)
         self.assertRegex(body, r"if\s*\(!HistoryDealGetString\(fromTicket,\s*DEAL_SYMBOL,\s*candidate.symbol\)\)")
         self.assertGreater(body.index("fromDeal = candidate;"), body.index("candidate.ticket != fromTicket"))
         self.assertGreater(body.index("fromDeal = candidate;"), body.index("candidate.timeMsc <= 0"))
@@ -296,8 +296,8 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
         loop = body[capture.end():capture_end]
         self.assertIn("tickets[i] = HistoryDealGetTicket(i);", loop)
         self.assertIn("tickets[i] == 0", loop)
-        self.assertNotIn("H1EaDealHistory::read(", loop)
-        self.assertGreater(body.index("H1EaDealHistory::read(tickets[i],"), capture_end)
+        self.assertNotIn("EaDealHistory::read(", loop)
+        self.assertGreater(body.index("EaDealHistory::read(tickets[i],"), capture_end)
         publish = body.index("fromDeals[i] = candidates[i];")
         self.assertGreater(publish, body.index("candidates[i].positionIdentifier != fromIdentifier"))
         self.assertGreater(publish, body.index("candidates[i].symbol != fromSymbol"))
@@ -339,7 +339,7 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
 
     def test_aggregation_cannot_use_partial_history_or_selection_dependent_getters(self):
         body = WIRING.code_only(WIRING.method(self.executor, "aggregateDeals"))
-        guard = re.search(r"if\s*\(!H1EaDealHistory::readPosition\([^;{}]+\)\)\s*\{", body)
+        guard = re.search(r"if\s*\(!EaDealHistory::readPosition\([^;{}]+\)\)\s*\{", body)
         self.assertIsNotNone(guard)
         end = WIRING.block_end(body, guard.end() - 1)
         branch = body[guard.end():end]
@@ -370,7 +370,7 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
         body = WIRING.code_only(WIRING.method(self.executor, "reconcileClosedDealAudit"))
         publish = body.index("this.closedDealAuditAfterId = closedTrade.id;")
         for condition in (
-            "!this.persistence.loadClosedTradeForDealAudit(", "!H1EaDealHistory::readPosition(",
+            "!this.persistence.loadClosedTradeForDealAudit(", "!EaDealHistory::readPosition(",
             "!this.closedDealHistoryComplete(closedTrade, deals)",
             "!this.persistence.appendClosedDealEvent(this.runId, closedTrade.id, event)",
             "!this.persistence.completeClosedDealAudit(this.runId, closedTrade.id)",
@@ -386,7 +386,7 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
         self.assertNotIn("OrderSend(", body)
 
     def test_restart_full_audit_is_disabled_only_after_reaching_the_end(self):
-        constructor = WIRING.code_only(WIRING.method(self.executor, "H1EaTradeExecutor"))
+        constructor = WIRING.code_only(WIRING.method(self.executor, "EaTradeExecutor"))
         self.assertIn("this.closedDealAuditFull = true;", constructor)
         self.assertIn("this.closedDealAuditChecked = false;", constructor)
         body = WIRING.code_only(WIRING.method(self.executor, "reconcileClosedDealAudit"))
@@ -482,11 +482,11 @@ class DealHistoryStaticWiringTests(unittest.TestCase):
 
     def test_pending_ticket_is_retained_on_read_query_or_append_failure(self):
         body = WIRING.code_only(WIRING.method(self.executor, "reconcilePendingDealTickets"))
-        self.assertIn("H1EaClock::milliseconds() < this.nextPendingDealAuditTick", body)
-        self.assertIn("this.nextPendingDealAuditTick = H1EaClock::milliseconds() + 1000;", body)
+        self.assertIn("EaClock::milliseconds() < this.nextPendingDealAuditTick", body)
+        self.assertIn("this.nextPendingDealAuditTick = EaClock::milliseconds() + 1000;", body)
         remove = body.index("ArrayResize(this.pendingDealTickets, size - 1);")
         for condition in (
-            "!H1EaDealHistory::read(this.pendingDealTickets[0], deal, failure)",
+            "!EaDealHistory::read(this.pendingDealTickets[0], deal, failure)",
             "!this.persistence.loadClosedTradeByPosition(this.contextKey, identifier, closedTrade, found)",
             "!this.persistence.appendClosedDealEvent(this.runId, closedTrade.id, event)",
         ):
