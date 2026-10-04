@@ -144,7 +144,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertIn("this.executor.restoreFromDatabase()", branch)
         self.assertIn("return this.databaseReady;", branch)
         self.assertNotIn("reconcile", branch)
-        executor = (ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        executor = (ROOT / "Include/MstngEaCommon/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
         body = code_only(method(executor, "restoreFromDatabase"))
         for forbidden in ("OrderSend", "reconcile", "processPending", "saveTrade", "setManagementAuthority"):
             self.assertNotIn(forbidden, body)
@@ -236,7 +236,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertIn("this.executor.observeTradeTransaction", queue)
 
     def test_unknown_notification_schedules_full_deal_reconciliation(self):
-        executor = (ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        executor = (ROOT / "Include/MstngEaCommon/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
         body = code_only(method(executor, "requestReconciliation"))
         self.assertIn("this.closedDealAuditChecked || !this.closedDealAuditFull", body)
         self.assertIn("this.closedDealAuditFull = true", body)
@@ -245,7 +245,7 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertNotIn("History", body)
 
     def test_multi_quote_validation_is_opt_in_and_uses_own_symbol(self):
-        executor = (ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        executor = (ROOT / "Include/MstngEaCommon/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
         body = code_only(method(executor, "readTick"))
         self.assertIn("if (this.requireCurrentQuote)", body)
         self.assertIn("iTime(this.symbolName, this.profile.timeFrame, 0)", body)
@@ -305,14 +305,14 @@ class MultiSymbolPreparationTests(unittest.TestCase):
         self.assertIn("H1EaClock::milliseconds() < this.nextScheduledEntryTick", pending)
         clock_wrapper = (ROOT / "Include/MstngH1Ea/Runtime/H1EaClock.mqh").read_text(encoding="utf-8-sig")
         self.assertIn("class H1EaClock : public EaClock", code_only(clock_wrapper))
-        clock = (ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaClock.mqh").read_text(encoding="utf-8-sig")
+        clock = (ROOT / "Include/MstngEaCommon/Runtime/EaClock.mqh").read_text(encoding="utf-8-sig")
         self.assertIn("TimeCurrent()", method(clock, "milliseconds"))
 
     def test_changed_or_stale_quote_cannot_consume_judge_after_analysis(self):
         body = code_only(method(self.child, "evaluateEntry"))
         self.assertLess(body.index("this.strategy.analyze(snapshot)"), body.index("!this.executor.hasCurrentEntryQuote(barTime)"))
         self.assertLess(body.index("!this.executor.hasCurrentEntryQuote(barTime)"), body.index("this.strategy.evaluate(previousCount, snapshot)"))
-        executor = (ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
+        executor = (ROOT / "Include/MstngEaCommon/Runtime/EaTradeExecutor.mqh").read_text(encoding="utf-8-sig")
         body = code_only(method(executor, "hasCurrentEntryQuote"))
         self.assertIn("fromBarTime > TimeCurrent()", body)
         self.assertIn("TimeCurrent() >= fromBarTime + PeriodSeconds(this.profile.timeFrame)", body)

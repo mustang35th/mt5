@@ -1,7 +1,7 @@
 ﻿#ifndef MSTNGM15EA_PERSISTENCE_TRADEDAO_MQH
 #define MSTNGM15EA_PERSISTENCE_TRADEDAO_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaTradeState.mqh>
+#include <MstngEaCommon\Runtime\EaTradeState.mqh>
 #include <MstngM15Ea\Persistence\M15EaSql.mqh>
 
 /**

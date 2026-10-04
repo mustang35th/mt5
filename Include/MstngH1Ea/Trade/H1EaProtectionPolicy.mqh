@@ -1,7 +1,7 @@
 ﻿#ifndef MSTNGH1EA_TRADE_H1EAPROTECTIONPOLICY_MQH
 #define MSTNGH1EA_TRADE_H1EAPROTECTIONPOLICY_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaProtectionPolicy.mqh>
+#include <MstngEaCommon\Runtime\EaProtectionPolicy.mqh>
 
 /**
  * 共通の保護判定を公開し、H1固有の決済理由を維持する互換クラス。

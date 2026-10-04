@@ -1,9 +1,9 @@
 ﻿#ifndef MSTNGM15EA_PERSISTENCE_PERSISTENCESERVICE_MQH
 #define MSTNGM15EA_PERSISTENCE_PERSISTENCESERVICE_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\IEaTradeStore.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
+#include <MstngEaCommon\Runtime\IEaTradeStore.mqh>
 #include <MstngM15Ea\Persistence\M15EaDatabaseContext.mqh>
 
 /**

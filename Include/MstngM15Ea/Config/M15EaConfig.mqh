@@ -4,8 +4,8 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
 #include <MstngEa\Trade\MagicNumberUtil.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
 
 /**
  * M15単一通貨EAの設定と、H1から分離した保存・管理識別子を保持する。

@@ -3,8 +3,8 @@
 
 #include <Mstng\Database\Entity\H1EaTradeEntity.mqh>
 #include <Mstng\Database\Entity\H1EaTradeEventEntity.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTradeEvent.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTradeState.mqh>
+#include <MstngEaCommon\Runtime\EaTradeEvent.mqh>
+#include <MstngEaCommon\Runtime\EaTradeState.mqh>
 
 /**
  * H1保存形式と共通の取引状態・イベントを全項目で相互変換する。

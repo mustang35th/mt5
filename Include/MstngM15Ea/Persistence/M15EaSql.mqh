@@ -1,7 +1,7 @@
 ﻿#ifndef MSTNGM15EA_PERSISTENCE_SQL_MQH
 #define MSTNGM15EA_PERSISTENCE_SQL_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
 
 /**
  * M15 EA専用SQLの値表現と読み取りを統一する。

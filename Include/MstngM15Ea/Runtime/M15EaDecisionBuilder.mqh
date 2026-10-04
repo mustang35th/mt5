@@ -2,7 +2,7 @@
 #define MSTNGM15EA_RUNTIME_DECISIONBUILDER_MQH
 
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
 #include <MstngM15Ea\Persistence\M15EaDecisionEntity.mqh>
 
 /**

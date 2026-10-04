@@ -19,7 +19,7 @@ CONFIG = ROOT / "Include/MstngH1Ea/Config/H1EaConfig.mqh"
 CONTROLLER = ROOT / "Include/MstngH1Ea/H1EaController.mqh"
 EXPERT = ROOT / "Experts/MstngH1Ea.mq5"
 STRATEGY = ROOT / "Include/MstngH1Ea/Strategy/H1EaStrategy.mqh"
-EXECUTOR = ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh"
+EXECUTOR = ROOT / "Include/MstngEaCommon/Runtime/EaTradeExecutor.mqh"
 EVENT_TIMER = ROOT / "Include/MstngH1Ea/Runtime/H1EaEventTimer.mqh"
 PERSISTENCE = ROOT / "Include/Mstng/Database/Service/H1EaPersistenceService.mqh"
 
@@ -459,7 +459,7 @@ class EmaConfigurationWiringTests(unittest.TestCase):
         initial = re.sub(r"\s+", "", code_only(method(self.initial_stop, "evaluate")))
         self.assertIn("EaInitialStopLossDecisiondecision;", initial)
         self.assertIn("fromMaxRiskPips,10.0,fromResult);", initial)
-        common_source = (ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaInitialStopLossDecision.mqh").read_text(encoding="utf-8-sig")
+        common_source = (ROOT / "Include/MstngEaCommon/Runtime/EaInitialStopLossDecision.mqh").read_text(encoding="utf-8-sig")
         common_initial = re.sub(r"\s+", "", code_only(method(common_source, "evaluate")))
         self.assertIn("rawStopLoss=fromPivotPrice+fromBufferPips*fromPipSize;", common_initial)
         self.assertIn("rawStopLoss=fromPivotPrice-fromBufferPips*fromPipSize;", common_initial)

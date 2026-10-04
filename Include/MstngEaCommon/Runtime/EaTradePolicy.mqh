@@ -1,5 +1,5 @@
-﻿#ifndef MSTNG_EA_TRADE_POLICY_MQH
-#define MSTNG_EA_TRADE_POLICY_MQH
+﻿#ifndef MSTNGEACOMMON_RUNTIME_EATRADEPOLICY_MQH
+#define MSTNGEACOMMON_RUNTIME_EATRADEPOLICY_MQH
 
 #include <Mstng\Elliot\Wave.mqh>
 #include <MstngEa\Domain\PositionSnapshot.mqh>

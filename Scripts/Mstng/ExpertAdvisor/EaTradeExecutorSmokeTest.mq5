@@ -1,11 +1,11 @@
 #property strict
 
-#include <Mstng\ExpertAdvisor\Runtime\EaClock.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaDealHistory.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaProtectionPolicy.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTradePolicy.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\IEaTradeStore.mqh>
+#include <MstngEaCommon\Runtime\EaClock.mqh>
+#include <MstngEaCommon\Runtime\EaDealHistory.mqh>
+#include <MstngEaCommon\Runtime\EaProtectionPolicy.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
+#include <MstngEaCommon\Runtime\EaTradePolicy.mqh>
+#include <MstngEaCommon\Runtime\IEaTradeStore.mqh>
 
 /** 検証失敗数。 */
 int failureCount = 0;
@@ -156,7 +156,7 @@ int fakeBrokerTotal() {
 #define TimeLocal fakeNow
 #define PositionsTotal fakeBrokerTotal
 #define OrdersTotal fakeBrokerTotal
-#include <Mstng\ExpertAdvisor\Runtime\EaTradeExecutor.mqh>
+#include <MstngEaCommon\Runtime\EaTradeExecutor.mqh>
 #undef OrderCheck
 #undef OrderSend
 #undef AccountInfoInteger

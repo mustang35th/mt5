@@ -1,10 +1,10 @@
 ﻿#ifndef MSTNGM15EA_CONTROLLER_MQH
 #define MSTNGM15EA_CONTROLLER_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaClock.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaEntryState.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaInitialStopLossDecision.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTradeExecutor.mqh>
+#include <MstngEaCommon\Runtime\EaClock.mqh>
+#include <MstngEaCommon\Runtime\EaEntryState.mqh>
+#include <MstngEaCommon\Runtime\EaInitialStopLossDecision.mqh>
+#include <MstngEaCommon\Runtime\EaTradeExecutor.mqh>
 #include <MstngM15Ea\Config\M15EaConfig.mqh>
 #include <MstngM15Ea\Persistence\M15EaPersistenceService.mqh>
 #include <MstngM15Ea\Runtime\M15EaDecisionBuilder.mqh>

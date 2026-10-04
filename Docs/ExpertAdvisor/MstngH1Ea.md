@@ -966,7 +966,9 @@ Timerを通常周期へ戻す試行では、失敗時も高速期間の保守待
 
 ## 初期SL・保護判定・回数管理の共通化（2026-10-04）
 
-M15版への再利用に向け、時間足やDBに依存しない処理を `Include/Mstng/ExpertAdvisor/Runtime` へ移しました。既存のH1クラス名・公開メソッド・includeパスは維持し、単一通貨版とAll版は従来の呼び出しから共通処理を使用します。
+M15版への再利用に向け、時間足やDBに依存しない処理を `Include/MstngEaCommon/Runtime` へ移しました。既存のH1クラス名・公開メソッド・includeパスは維持し、単一通貨版とAll版は従来の呼び出しから共通処理を使用します。
+
+`MstngEaCommon/Runtime` はH1・M15 EAが共有する発注・保護・状態管理の配置先です。インジケーターでも使う分析・判定は `Mstng`、旧 `MstngEa` の専用処理は `MstngEa`、時間足固有の設定・Controllerは `MstngH1Ea`・`MstngM15Ea` に分けます。DB保存は各時間足用の実装に残します。
 
 - `EaInitialStopLossDecision` は初期SLの計算と検証を担当し、余白pipsを引数で受け取ります。共通処理では0以上の有限値を許可します。`H1EaInitialStopLossDecision` は従来どおり10.0 pipsを渡し、結果型・理由コード・丸め・判定順を維持します。
 - `EaProtectionPolicy` はSLの保護水準・改善・候補跨ぎ・変更距離と、注文応答・終端状態を判定します。H1固有の決済理由分類 `closeReason()` は `H1EaProtectionPolicy` に残します。

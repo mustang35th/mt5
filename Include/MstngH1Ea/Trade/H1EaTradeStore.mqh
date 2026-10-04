@@ -2,8 +2,8 @@
 #define MSTNGH1EA_TRADE_H1EATRADESTORE_MQH
 
 #include <Mstng\Database\Service\H1EaPersistenceService.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\IEaTradeStore.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
+#include <MstngEaCommon\Runtime\IEaTradeStore.mqh>
 #include <MstngH1Ea\Trade\H1EaTradeStateMapper.mqh>
 
 /**

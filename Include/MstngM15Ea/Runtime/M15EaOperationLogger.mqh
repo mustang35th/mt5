@@ -1,8 +1,8 @@
 ﻿#ifndef MSTNGM15EA_RUNTIME_OPERATIONLOGGER_MQH
 #define MSTNGM15EA_RUNTIME_OPERATIONLOGGER_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
 
 /**
  * 既存Loggerと、DB障害時にも利用できる追記専用運用ログ。

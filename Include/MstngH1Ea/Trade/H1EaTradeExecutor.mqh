@@ -1,7 +1,7 @@
 ﻿#ifndef MSTNGH1EA_TRADE_H1EATRADEEXECUTOR_MQH
 #define MSTNGH1EA_TRADE_H1EATRADEEXECUTOR_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaTradeExecutor.mqh>
+#include <MstngEaCommon\Runtime\EaTradeExecutor.mqh>
 #include <MstngH1Ea\Trade\H1EaTradePolicy.mqh>
 #include <MstngH1Ea\Trade\H1EaTradeStore.mqh>
 

@@ -36,8 +36,8 @@ WIRING = load_test_helpers(
     "h1_deal_audit_wiring_helpers",
     ROOT / "Scripts/Mstng/ExpertAdvisor/test_h1_ea_tester_warmup_contract.py",
 )
-HISTORY = ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaDealHistory.mqh"
-EXECUTOR = ROOT / "Include/Mstng/ExpertAdvisor/Runtime/EaTradeExecutor.mqh"
+HISTORY = ROOT / "Include/MstngEaCommon/Runtime/EaDealHistory.mqh"
+EXECUTOR = ROOT / "Include/MstngEaCommon/Runtime/EaTradeExecutor.mqh"
 SMOKE = ROOT / "Scripts/Mstng/ExpertAdvisor/H1EaDealHistorySmokeTest.mq5"
 PERSISTENCE = ROOT / "Include/Mstng/Database/Service/H1EaPersistenceService.mqh"
 CONTROLLER = ROOT / "Include/MstngH1Ea/H1EaController.mqh"

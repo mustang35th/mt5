@@ -1,7 +1,7 @@
 ﻿#ifndef MSTNGH1EA_INITIAL_STOP_LOSS_DECISION_MQH
 #define MSTNGH1EA_INITIAL_STOP_LOSS_DECISION_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaInitialStopLossDecision.mqh>
+#include <MstngEaCommon\Runtime\EaInitialStopLossDecision.mqh>
 
 /**
  * H1初期SL判定結果の既存公開名を維持する互換型。

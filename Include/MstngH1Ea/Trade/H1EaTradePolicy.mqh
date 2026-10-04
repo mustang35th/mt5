@@ -1,8 +1,8 @@
 ﻿#ifndef MSTNGH1EA_TRADE_POLICY_MQH
 #define MSTNGH1EA_TRADE_POLICY_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaTradePolicy.mqh>
 #include <MstngEa\Strategy\H1ZigZagTrailDecision.mqh>
+#include <MstngEaCommon\Runtime\EaTradePolicy.mqh>
 #include <MstngH1Ea\Runtime\H1EaOperationLogger.mqh>
 #include <MstngH1Ea\Trade\H1EaProtectionPolicy.mqh>
 

@@ -1,7 +1,7 @@
 ﻿#ifndef MSTNGH1EA_TRADE_H1EADEALHISTORY_MQH
 #define MSTNGH1EA_TRADE_H1EADEALHISTORY_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaDealHistory.mqh>
+#include <MstngEaCommon\Runtime\EaDealHistory.mqh>
 
 /**
  * 共通の約定スナップショットを利用するH1互換型。

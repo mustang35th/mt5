@@ -4,6 +4,8 @@
 
 `Experts/MstngM15Ea.mq5` はM15チャートで動作する単一通貨EAです。既存の `ExpertAdvisorMtf3In3M15` の判定を使い、発注・broker照合・SL保護・取引状態復元を `EaTradeExecutor`、初期SLを `EaInitialStopLossDecision`、判定回数を `EaEntryState` へ接続します。
 
+H1・M15 EA専用の共通処理は `Include/MstngEaCommon/Runtime` に配置します。インジケーターでも使う分析・判定は `Include/Mstng`、M15固有の設定・Controller・保存処理は `Include/MstngM15Ea` に置き、旧EA専用の `Include/MstngEa` とは分けます。
+
 H1版と同様にhedging口座を必要とし、最適化は受け付けません。H1 EAの入力・保存形式・売買条件は変更しません。M15 All版やViewerのM15取引表示は今回の対象に含みません。
 
 ## 入力と初期値

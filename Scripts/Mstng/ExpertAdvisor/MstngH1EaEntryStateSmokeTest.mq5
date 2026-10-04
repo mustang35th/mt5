@@ -1,6 +1,6 @@
 #property strict
 
-#include <Mstng\ExpertAdvisor\Runtime\EaEntryState.mqh>
+#include <MstngEaCommon\Runtime\EaEntryState.mqh>
 #include <MstngH1Ea\Config\H1EaConfig.mqh>
 #include <MstngH1Ea\Runtime\H1EaDecisionBuilder.mqh>
 #include <MstngH1Ea\Runtime\H1EaEntryState.mqh>

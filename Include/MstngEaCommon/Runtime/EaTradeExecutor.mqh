@@ -1,12 +1,12 @@
-﻿#ifndef MSTNG_EXPERTADVISOR_RUNTIME_EATRADEEXECUTOR_MQH
-#define MSTNG_EXPERTADVISOR_RUNTIME_EATRADEEXECUTOR_MQH
+﻿#ifndef MSTNGEACOMMON_RUNTIME_EATRADEEXECUTOR_MQH
+#define MSTNGEACOMMON_RUNTIME_EATRADEEXECUTOR_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaClock.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaDealHistory.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaProtectionPolicy.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTradePolicy.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\IEaTradeStore.mqh>
+#include <MstngEaCommon\Runtime\EaClock.mqh>
+#include <MstngEaCommon\Runtime\EaDealHistory.mqh>
+#include <MstngEaCommon\Runtime\EaProtectionPolicy.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
+#include <MstngEaCommon\Runtime\EaTradePolicy.mqh>
+#include <MstngEaCommon\Runtime\IEaTradeStore.mqh>
 
 /**
  * 取引状態と監査Eventを同じ順序で再保存するメモリ項目。

@@ -1,7 +1,7 @@
 #property version "1.00"
 #property script_show_inputs
 
-#include <Mstng\ExpertAdvisor\Runtime\EaInitialStopLossDecision.mqh>
+#include <MstngEaCommon\Runtime\EaInitialStopLossDecision.mqh>
 #include <MstngH1Ea\Strategy\H1EaInitialStopLossDecision.mqh>
 
 /** 検証失敗数。 */

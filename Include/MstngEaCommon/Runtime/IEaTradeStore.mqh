@@ -1,8 +1,8 @@
-﻿#ifndef MSTNG_EXPERTADVISOR_RUNTIME_IEATRADESTORE_MQH
-#define MSTNG_EXPERTADVISOR_RUNTIME_IEATRADESTORE_MQH
+﻿#ifndef MSTNGEACOMMON_RUNTIME_IEATRADESTORE_MQH
+#define MSTNGEACOMMON_RUNTIME_IEATRADESTORE_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaTradeEvent.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTradeState.mqh>
+#include <MstngEaCommon\Runtime\EaTradeEvent.mqh>
+#include <MstngEaCommon\Runtime\EaTradeState.mqh>
 
 /**
  * 共通の発注・復元処理が使用する取引保存先の契約。

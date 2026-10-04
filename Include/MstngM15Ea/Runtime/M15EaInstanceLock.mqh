@@ -1,7 +1,7 @@
 ﻿#ifndef MSTNGM15EA_RUNTIME_INSTANCELOCK_MQH
 #define MSTNGM15EA_RUNTIME_INSTANCELOCK_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
 
 /**
  * DB障害中も二重管理を防ぐCommonファイルの排他ハンドル。

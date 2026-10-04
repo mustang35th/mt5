@@ -1,8 +1,8 @@
 ﻿#ifndef MSTNGEA_STRATEGY_H1ZIGZAGTRAILDECISION_MQH
 #define MSTNGEA_STRATEGY_H1ZIGZAGTRAILDECISION_MQH
 
-#include <Mstng\ExpertAdvisor\Runtime\EaZigZagTrailDecision.mqh>
 #include <MstngEa\Domain\H1ZigZagTrailDecisionResult.mqh>
+#include <MstngEaCommon\Runtime\EaZigZagTrailDecision.mqh>
 
 /**
  * H1の公開APIを維持し、確定ZigZagの純粋判定を共通処理へ委譲する。

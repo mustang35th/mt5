@@ -3,7 +3,7 @@
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
-#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
+#include <MstngEaCommon\Runtime\EaTextUtil.mqh>
 #include <MstngM15Ea\Strategy\M15EaStrategySnapshot.mqh>
 
 /**
