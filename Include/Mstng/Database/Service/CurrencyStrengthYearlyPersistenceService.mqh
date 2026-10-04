@@ -400,6 +400,7 @@ private:
             fromCalculatedAt,
             fromSourceMode
         );
+
         cleanupDatabase.close();
 
         return isDeleted;

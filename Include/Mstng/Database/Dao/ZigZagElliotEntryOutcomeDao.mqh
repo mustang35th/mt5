@@ -272,6 +272,7 @@ public:
             __FUNCTION__,
             "upsert entry outcome run"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted
@@ -355,6 +356,7 @@ public:
             __FUNCTION__,
             "upsert entry outcome"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted
@@ -406,6 +408,7 @@ public:
         sql += "status = ?1, total_count = ?2, success_count = ?3,";
         sql += " failure_count = ?4, completed_at = ?5, updated_at = ?6 ";
         sql += "WHERE id = ?7";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -456,6 +459,7 @@ public:
             __FUNCTION__,
             "complete entry outcome run"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted) {
@@ -1037,8 +1041,10 @@ private:
      */
     bool findRunIdByKey(const string fromRunKey, long &fromRunId) {
         fromRunId = 0;
+
         string sql = "SELECT id FROM zigzag_elliot_entry_outcome_runs ";
         sql += "WHERE run_key = ?1 LIMIT 1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -1109,8 +1115,10 @@ private:
         long &fromOutcomeId
     ) {
         fromOutcomeId = 0;
+
         string sql = "SELECT id FROM zigzag_elliot_entry_outcomes ";
         sql += "WHERE outcome_run_id = ?1 AND source_alert_id = ?2 LIMIT 1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -1354,6 +1362,7 @@ private:
      */
     bool readChanges(long &fromChangedCount) {
         fromChangedCount = 0;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,

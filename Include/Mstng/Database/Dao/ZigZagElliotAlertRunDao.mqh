@@ -138,6 +138,7 @@ public:
         }
 
         fromEntity.id = 0;
+
         string sql = "INSERT INTO zigzag_elliot_alert_runs (";
         sql += "run_uid, schema_version, source_mode, source, program_name,";
         sql += " program_version, strategy, strategy_version, analysis_version,";
@@ -355,6 +356,7 @@ public:
         sql += " completed_at = ?6, error_text = ?7,";
         sql += " tester_from = ?8, tester_to = ?9, tester_model = ?10";
         sql += " WHERE id = ?11";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 

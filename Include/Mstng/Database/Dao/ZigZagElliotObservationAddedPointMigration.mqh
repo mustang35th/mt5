@@ -175,6 +175,7 @@ private:
         sql += "ADD COLUMN latest_point_is_added INTEGER ";
         sql += "CHECK(latest_point_is_added IS NULL ";
         sql += "OR latest_point_is_added IN (0, 1))";
+
         ResetLastError();
 
         if (DatabaseExecute(fromDatabaseHandle, sql)) {
@@ -222,6 +223,7 @@ private:
         Logger &fromLogger
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             fromDatabaseHandle,

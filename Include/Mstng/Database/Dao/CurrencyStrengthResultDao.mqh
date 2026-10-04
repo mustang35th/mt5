@@ -258,6 +258,7 @@ public:
             __FUNCTION__,
             "delete results by run id"
         );
+
         DatabaseFinalize(requestHandle);
 
         return isExecuted;
@@ -390,6 +391,7 @@ public:
         ResetLastError();
         bool isRead = DatabaseReadBind(requestHandle, fromInfo);
         int readErrorCode = GetLastError();
+
         DatabaseFinalize(requestHandle);
 
         if (!isRead) {
@@ -1130,6 +1132,7 @@ private:
         bool &fromHasColumn
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,

@@ -148,6 +148,7 @@ public:
         }
 
         fromEntity.id = 0;
+
         string sql = this.buildInsertSql();
 
         ResetLastError();
@@ -182,6 +183,7 @@ public:
             __FUNCTION__,
             "insert run"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted) {
@@ -387,6 +389,7 @@ public:
             __FUNCTION__,
             "update run"
         );
+
         DatabaseFinalize(requestHandle);
 
         return isExecuted;
@@ -448,6 +451,7 @@ public:
             __FUNCTION__,
             "delete old runs"
         );
+
         DatabaseFinalize(requestHandle);
 
         return isExecuted;
@@ -683,6 +687,7 @@ private:
         bool &fromHasColumn
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,

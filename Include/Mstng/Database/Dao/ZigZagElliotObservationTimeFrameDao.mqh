@@ -188,6 +188,7 @@ public:
                 && !ZigZagElliotObservationPreviousMotiveSubMigration::execute(this.databaseHandle)) {
             return false;
         }
+
         this.savePreviousMotiveSubElliot = fromCurrentSchemaOnly;
 
         sql = "CREATE UNIQUE INDEX IF NOT EXISTS ";
@@ -231,6 +232,7 @@ public:
         }
 
         fromEntity.id = 0;
+
         string sql = this.buildInsertSql();
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
@@ -817,6 +819,7 @@ private:
         if (this.savePreviousMotiveSubElliot) {
             return 88;
         }
+
         return 87;
     }
 

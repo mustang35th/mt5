@@ -193,6 +193,7 @@ private:
 
         string sql = "ALTER TABLE zigzag_elliot_alert_runs ADD COLUMN ";
         sql += fromColumnName + " TEXT NOT NULL DEFAULT ''";
+
         ResetLastError();
 
         if (DatabaseExecute(fromDatabaseHandle, sql)) {
@@ -244,6 +245,7 @@ private:
         Logger &fromLogger
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             fromDatabaseHandle,

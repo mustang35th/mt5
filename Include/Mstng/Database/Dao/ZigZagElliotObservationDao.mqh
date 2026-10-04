@@ -281,6 +281,7 @@ public:
         sql += "AND anchor_time_frame = ?4 AND anchor_bar_time = ?5 ";
         sql += "AND capture_phase = ?6 AND analysis_version = ?7 ";
         sql += "AND analysis_input_hash = ?8 LIMIT 1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -554,6 +555,7 @@ private:
      */
     bool getChanges(bool &fromIsInserted) {
         fromIsInserted = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,

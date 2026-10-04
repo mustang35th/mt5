@@ -74,9 +74,11 @@ public:
         sql += "AND original_direction <> corrected_direction AND selected_analysis = 'CORRECTED' ";
         sql += "AND selected_stop_loss = corrected_lc5 AND corrected_reference_point_time > 0))";
         sql += ")";
+
         if (this.databaseHandle == INVALID_HANDLE) {
             return false;
         }
+
         ResetLastError();
         if (!DatabaseExecute(this.databaseHandle, sql)) {
             this.logger.error(__FUNCTION__, StringFormat(
@@ -84,6 +86,7 @@ public:
             ));
             return false;
         }
+
         return ZigZagElliotAlertCorrectionTimeFrameMigration::execute(this.databaseHandle);
     }
 
@@ -99,6 +102,7 @@ public:
         if (this.databaseHandle == INVALID_HANDLE || fromEntity.alertId <= 0) {
             return false;
         }
+
         string sql = "INSERT INTO zigzag_elliot_alert_corrections (";
         sql += "alert_id,";
         sql += "correction_status,";
@@ -136,6 +140,7 @@ public:
         sql += "?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ";
         sql += "?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ";
         sql += "?31, ?32)";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
         if (requestHandle == INVALID_HANDLE) {
@@ -144,6 +149,7 @@ public:
             ));
             return false;
         }
+
         bool isBound = this.bindEntity(requestHandle, fromEntity);
         if (!isBound) {
             int errorCode = GetLastError();
@@ -153,6 +159,7 @@ public:
             ));
             return false;
         }
+
         ResetLastError();
         bool isRead = DatabaseRead(requestHandle);
         int errorCode = GetLastError();
@@ -163,6 +170,7 @@ public:
             ));
             return false;
         }
+
         return true;
     }
 
@@ -282,6 +290,7 @@ private:
         if (isBound) {
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.createdAtText);
         }
+
         return isBound && index == 32;
     }
 };

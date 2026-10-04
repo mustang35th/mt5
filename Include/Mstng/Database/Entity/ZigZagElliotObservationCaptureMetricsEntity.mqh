@@ -52,21 +52,27 @@ struct ZigZagElliotObservationCaptureMetricsEntity {
         if (observationId < 0) {
             return false;
         }
+
         if (hasQuoteTickTimeMsc && quoteTickTimeMsc <= 0) {
             return false;
         }
+
         if (hasCaptureMarketTime && captureMarketTime <= 0) {
             return false;
         }
+
         if (hasAnalysisElapsedMs && analysisElapsedMs < 0) {
             return false;
         }
+
         if (hasCaptureElapsedMs && captureElapsedMs < 0) {
             return false;
         }
+
         if (hasAnalysisAttemptCount && analysisAttemptCount < 1) {
             return false;
         }
+
         return true;
     }
 };

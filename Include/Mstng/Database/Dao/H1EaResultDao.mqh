@@ -48,6 +48,7 @@ public:
         sql += "CHECK(mt5_trades IS NULL OR mt5_trades>=0),";
         sql += "CHECK(recorded_at>0 AND (finished_at IS NULL OR finished_at>=recorded_at)),";
         sql += "CHECK(recording_state!='RECORDED' OR (statistics_available=1 AND deals_complete=1 AND ended_server_time IS NOT NULL AND finished_at IS NOT NULL)))";
+
         return sql;
     }
 
@@ -75,6 +76,7 @@ public:
         sql += "CHECK(sequence>0 AND server_time>0 AND length(reason)>0),";
         sql += "CHECK(margin>=0 AND margin_level>=0),";
         sql += "CHECK(positions>=0 AND pending_orders>=0 AND foreign_positions>=0 AND foreign_orders>=0))";
+
         return sql;
     }
 
@@ -105,6 +107,7 @@ public:
         sql += "CHECK(length(magic_number)>0 AND magic_number NOT GLOB '*[^0-9]*'),";
         sql += "CHECK(time_msc>0 AND deal_type>=0 AND entry_type>=0 AND reason>=0),";
         sql += "CHECK(volume>=0 AND price>=0))";
+
         return sql;
     }
 

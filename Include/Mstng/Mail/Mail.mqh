@@ -60,6 +60,7 @@ public:
                 Print(__FUNCTION__, " corrected mail skipped: correction analysis is invalid.");
                 return;
             }
+
             title = StringFormat("%s:%s:【%s】",
                 fromSource.marketContext.symbolName,
                 fromJudgment.elliotCurrent.buySellLabel,
@@ -119,6 +120,7 @@ private:
                     && fromSelected.marketContext.timeFrame != PERIOD_M5)) {
             return "";
         }
+
         string prefix = "";
         if (fromSelected.marketContext.timeFrame == PERIOD_H1) {
             prefix = "★";
@@ -139,6 +141,7 @@ private:
         if (StringLen(prefix) > 0) {
             prefix += " ";
         }
+
         return prefix;
     }
 
@@ -234,6 +237,7 @@ private:
     ) {
         Elliot *sourceCorrection = fromSource.getElliot(fromCorrectionTimeFrame);
         Elliot *judgmentCorrection = fromJudgment.getElliot(fromCorrectionTimeFrame);
+
         string text = getCommonBody(fromSource);
         text += "補正内容\n";
         text += StringFormat("%s：%s → %s\n\n",
@@ -245,6 +249,7 @@ private:
         text += getAnalysisBody(fromJudgment);
         text += "\n【補正前全体：比較用】\n";
         text += getAnalysisBody(fromSource);
+
         return text;
     }
 
@@ -289,6 +294,7 @@ private:
                 expectedCount = 6;
             }
         }
+
         if (fromCorrectionTimeFrame != higherTimeFrame
                 && fromCorrectionTimeFrame != lowerTimeFrame
                 && (currentTimeFrame != PERIOD_M15 || fromCorrectionTimeFrame != PERIOD_H1)) {
@@ -312,6 +318,7 @@ private:
                 || fromJudgment.elliotList.Total() != expectedCount) {
             return false;
         }
+
         for (int i = 0; i < expectedCount; i++) {
             Elliot *sourceElliot = fromSource.getElliot(timeFrames[i]);
             Elliot *judgmentElliot = fromJudgment.getElliot(timeFrames[i]);
@@ -343,6 +350,7 @@ private:
                 return false;
             }
         }
+
         return true;
     }
 
@@ -421,6 +429,7 @@ private:
             executionInfo.getLongMediumRankDifference();
         int mediumShortDifference =
             executionInfo.getMediumShortRankDifference();
+
         string text = StringFormat(
             "通貨強弱 MODE:%s %s SOURCE:%s%s\n\n",
             voteWeightMode,

@@ -100,6 +100,7 @@ public:
             fromJstTimeTextColumnName,
             logger
         );
+
         bool isTimeoutRestored = setBusyTimeout(
             fromDatabaseHandle,
             originalBusyTimeoutMilliseconds,
@@ -340,6 +341,7 @@ private:
 
         string sql = "ALTER TABLE " + fromTableName + " ADD COLUMN ";
         sql += fromColumnName + " " + fromColumnDefinition;
+
         ResetLastError();
 
         if (DatabaseExecute(fromDatabaseHandle, sql)) {
@@ -399,6 +401,7 @@ private:
         Logger &fromLogger
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             fromDatabaseHandle,
@@ -557,8 +560,10 @@ private:
         Logger &fromLogger
     ) {
         fromHasIndex = false;
+
         string sql = "SELECT COUNT(*) FROM sqlite_master ";
         sql += "WHERE type = 'index' AND name = '" + fromIndexName + "'";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
 
@@ -602,6 +607,7 @@ private:
         }
 
         DatabaseFinalize(requestHandle);
+
         fromHasIndex = indexCount == 1;
 
         return true;
@@ -746,9 +752,11 @@ private:
         Logger &fromLogger
     ) {
         fromMissingCount = 0;
+
         string sql = "SELECT COUNT(*) FROM " + fromTableName;
         sql += " WHERE " + fromJstTimeColumnName + " <= 0";
         sql += " OR " + fromJstTimeTextColumnName + " = ''";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
 
@@ -869,6 +877,7 @@ private:
         Logger &fromLogger
     ) {
         fromTimeoutMilliseconds = 0;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             fromDatabaseHandle,

@@ -361,6 +361,7 @@ private:
             );
         string liveFileName = this.queryService.getActiveFileName();
         liveStatus = this.applyExactMode(liveStatus, liveInfo, fromInfo);
+
         CurrencyStrengthRankInfo liveRanks[];
 
         if (liveStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {
@@ -385,6 +386,7 @@ private:
             );
         string testerFileName = this.queryService.getActiveFileName();
         testerStatus = this.applyExactMode(testerStatus, testerInfo, fromInfo);
+
         CurrencyStrengthRankInfo testerRanks[];
 
         if (testerStatus == CURRENCY_STRENGTH_PAIR_RANK_QUERY_FOUND) {

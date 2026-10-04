@@ -77,6 +77,7 @@ public:
         }
 
         this.close();
+
         this.database = new SqliteDatabase(
             this.fileName,
             this.useCommonFolder
@@ -353,6 +354,7 @@ private:
         long &fromValue
     ) {
         fromValue = 0;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, fromSql);
 
@@ -390,6 +392,7 @@ private:
         string &fromValue
     ) {
         fromValue = "";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, fromSql);
 

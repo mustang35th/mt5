@@ -184,6 +184,7 @@ private:
         string sql = "ALTER TABLE zigzag_elliot_observations ";
         sql += "ADD COLUMN pip_size REAL ";
         sql += "CHECK(pip_size IS NULL OR pip_size > 0)";
+
         ResetLastError();
 
         if (DatabaseExecute(fromDatabaseHandle, sql)) {
@@ -298,8 +299,10 @@ private:
         Logger &fromLogger
     ) {
         fromIsComplete = false;
+
         string sql = "SELECT COUNT(*) FROM zigzag_elliot_observations ";
         sql += "WHERE pip_size IS NULL OR pip_size <= 0";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
 
@@ -343,6 +346,7 @@ private:
         }
 
         DatabaseFinalize(requestHandle);
+
         fromIsComplete = invalidCount == 0;
 
         return true;
@@ -362,6 +366,7 @@ private:
         Logger &fromLogger
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             fromDatabaseHandle,

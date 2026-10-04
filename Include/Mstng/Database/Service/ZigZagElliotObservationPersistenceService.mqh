@@ -360,6 +360,7 @@ private:
     bool setBusyTimeout(const int fromTimeoutMilliseconds) {
         string sql = "PRAGMA busy_timeout = ";
         sql += IntegerToString(fromTimeoutMilliseconds);
+
         ResetLastError();
 
         if (!DatabaseExecute(this.databaseHandle, sql)) {
@@ -405,6 +406,7 @@ private:
      */
     bool readBusyTimeout(long &fromTimeoutMilliseconds) {
         fromTimeoutMilliseconds = 0;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,
@@ -708,6 +710,7 @@ private:
         sql += " AND analysis_version=?4 AND analysis_input_hash=?5";
         sql += " AND strategy=?6 AND strategy_version=?7 AND schema_version=?8";
         sql += " AND analysis_input_text=?9";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 

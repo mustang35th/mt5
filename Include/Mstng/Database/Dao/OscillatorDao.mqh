@@ -118,6 +118,7 @@ public:
         ResetLastError();
         DatabaseRead(requestHandle);
         int executeErrorCode = GetLastError();
+
         DatabaseFinalize(requestHandle);
 
         // INSERTは結果行を返さないため正常時もNO_MORE_DATAとなる
@@ -188,6 +189,7 @@ public:
         ResetLastError();
         bool isRead = DatabaseReadBind(requestHandle, fromEntity);
         int readErrorCode = GetLastError();
+
         DatabaseFinalize(requestHandle);
 
         if (!isRead) {

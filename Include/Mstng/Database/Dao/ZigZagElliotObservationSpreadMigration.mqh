@@ -169,6 +169,7 @@ private:
         string sql = "ALTER TABLE zigzag_elliot_observations ";
         sql += "ADD COLUMN spread_pips REAL ";
         sql += "CHECK(spread_pips IS NULL OR spread_pips >= 0)";
+
         ResetLastError();
 
         if (DatabaseExecute(fromDatabaseHandle, sql)) {
@@ -216,6 +217,7 @@ private:
         Logger &fromLogger
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             fromDatabaseHandle,

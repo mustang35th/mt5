@@ -490,9 +490,11 @@ private:
         Logger &fromLogger
     ) {
         fromTableSql = "";
+
         string sql = "SELECT sql FROM sqlite_master ";
         sql += "WHERE type = 'table' ";
         sql += "AND name = 'zigzag_elliot_alerts'";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
 
@@ -601,6 +603,7 @@ private:
 
         string sql = "ALTER TABLE zigzag_elliot_alerts ADD COLUMN ";
         sql += fromColumnName + " " + fromColumnDefinition;
+
         ResetLastError();
 
         if (DatabaseExecute(fromDatabaseHandle, sql)) {
@@ -691,6 +694,7 @@ private:
         Logger &fromLogger
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             fromDatabaseHandle,

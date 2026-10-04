@@ -19,6 +19,7 @@ public:
     static bool execute(const int fromDatabaseHandle) {
         Logger logger;
         logger.setLevel(LOG_INFO);
+
         if (fromDatabaseHandle == INVALID_HANDLE) {
             logger.error(__FUNCTION__, "databaseHandle is INVALID_HANDLE.");
             return false;
@@ -28,6 +29,7 @@ public:
         if (!readColumn(fromDatabaseHandle, hasColumn, logger)) {
             return false;
         }
+
         if (hasColumn) {
             return true;
         }
@@ -36,12 +38,15 @@ public:
         sql += "ADD COLUMN previous_motive_sub_elliot_index INTEGER ";
         sql += "CHECK(previous_motive_sub_elliot_index IS NULL ";
         sql += "OR previous_motive_sub_elliot_index IN (0, 1, 3))";
+
         ResetLastError();
         if (!DatabaseExecute(fromDatabaseHandle, sql)) {
             logger.error(__FUNCTION__, StringFormat("previous motive sub migration failed. error=%d", GetLastError()));
             return false;
         }
+
         logger.info(__FUNCTION__, "M5 previous motive sub Elliott column added; historical rows remain NULL.");
+
         return true;
     }
 
@@ -56,12 +61,14 @@ private:
      */
     static bool readColumn(const int fromDatabaseHandle, bool &fromHasColumn, Logger &fromLogger) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, "PRAGMA table_info(zigzag_elliot_observation_timeframes)");
         if (requestHandle == INVALID_HANDLE) {
             fromLogger.error(__FUNCTION__, StringFormat("DatabasePrepare failed. error=%d", GetLastError()));
             return false;
         }
+
         while (true) {
             ResetLastError();
             if (!DatabaseRead(requestHandle)) {
@@ -70,9 +77,11 @@ private:
                 if (readError == ERR_DATABASE_NO_MORE_DATA) {
                     return true;
                 }
+
                 fromLogger.error(__FUNCTION__, StringFormat("DatabaseRead failed. error=%d", readError));
                 return false;
             }
+
             string columnName = "";
             ResetLastError();
             if (!DatabaseColumnText(requestHandle, 1, columnName)) {
@@ -81,12 +90,14 @@ private:
                 fromLogger.error(__FUNCTION__, StringFormat("DatabaseColumnText failed. error=%d", columnError));
                 return false;
             }
+
             if (columnName == "previous_motive_sub_elliot_index") {
                 fromHasColumn = true;
                 DatabaseFinalize(requestHandle);
                 return true;
             }
         }
+
         return false;
     }
 };

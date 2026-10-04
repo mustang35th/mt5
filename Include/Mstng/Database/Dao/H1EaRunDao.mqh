@@ -44,6 +44,7 @@ public:
         sql += "CHECK(lease_expires_at >= heartbeat_at),";
         sql += "CHECK(schema_version = 1),";
         sql += "CHECK(time_frame = 16385))";
+
         return sql;
     }
 
@@ -53,6 +54,7 @@ public:
     static string createLegacySql() {
         string sql = H1EaRunDao::createSql();
         StringReplace(sql, " session_uid TEXT CHECK(session_uid IS NULL OR (length(session_uid)=64 AND session_uid NOT GLOB '*[^0-9a-f]*')),", "");
+
         return sql;
     }
 
@@ -70,21 +72,27 @@ public:
         if (!H1EaSql::execute(fromHandle, H1EaRunDao::createSql())) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_runs_run_uid ON h1_ea_runs(run_uid);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_runs_active_context ON h1_ea_runs(context_key) WHERE status = 'RUNNING';")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_source_started ON h1_ea_runs(source_mode, started_at, id);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_context_started ON h1_ea_runs(context_key, started_at, id);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_runs_session_symbol ON h1_ea_runs(session_uid, symbol_name, id);")) {
             return false;
         }
+
         return true;
     }
 
@@ -131,6 +139,7 @@ public:
         values += "," + H1EaSql::text(fromEntity.status);
         values += "," + H1EaSql::text(fromEntity.errorText);
         values += "," + H1EaSql::optionalText(fromEntity.sessionUid);
+
         return values;
     }
 
@@ -140,9 +149,11 @@ public:
     static bool insert(const int fromHandle, H1EaRunEntity &fromEntity) {
         string sql = "INSERT INTO h1_ea_runs (" + H1EaRunDao::columns()
             + ") VALUES (" + H1EaRunDao::values(fromEntity) + ")";
+
         if (!H1EaSql::execute(fromHandle, sql)) {
             return false;
         }
+
         return H1EaSql::scalar(fromHandle, "SELECT last_insert_rowid()", fromEntity.id);
     }
 
@@ -175,10 +186,13 @@ public:
         sql += ",error_text=" + H1EaSql::text(fromEntity.errorText);
         sql += ",session_uid=" + H1EaSql::optionalText(fromEntity.sessionUid);
         sql += " WHERE id=" + IntegerToString(fromEntity.id);
+
         if (!H1EaSql::execute(fromHandle, sql)) {
             return false;
         }
+
         long changed = 0;
+
         return H1EaSql::scalar(fromHandle, "SELECT changes()", changed) && changed == 1;
     }
 
@@ -191,77 +205,101 @@ public:
         if (!DatabaseColumnLong(fromRequest, 0, fromEntity.id)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 1, fromEntity.runUid)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 2, integerValue)) {
             return false;
         }
+
         fromEntity.schemaVersion = (int)integerValue;
         if (!DatabaseColumnText(fromRequest, 3, fromEntity.sourceMode)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 4, fromEntity.contextKey)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 5, fromEntity.accountServer)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 6, fromEntity.accountLogin)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 7, fromEntity.symbolName)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 8, integerValue)) {
             return false;
         }
+
         fromEntity.timeFrame = (int)integerValue;
         if (!DatabaseColumnText(fromRequest, 9, fromEntity.magicNumber)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 10, fromEntity.programVersion)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 11, fromEntity.strategyVersion)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 12, fromEntity.analysisVersion)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 13, fromEntity.analysisInputText)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 14, fromEntity.analysisInputHash)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 15, fromEntity.configText)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 16, fromEntity.configHash)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 17, fromEntity.startedAt)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 18, fromEntity.endedAt)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 19, fromEntity.heartbeatAt)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 20, fromEntity.leaseExpiresAt)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 21, fromEntity.status)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 23, fromEntity.sessionUid)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 22, fromEntity.errorText)) {
             return false;
         }
+
         return true;
     }
 
@@ -270,20 +308,25 @@ public:
      */
     static bool load(const int fromHandle, const string fromWhere, H1EaRunEntity &fromEntity, bool &fromFound) {
         fromFound = false;
+
         int request = DatabasePrepare(fromHandle, "SELECT " + H1EaRunDao::selectColumns()
             + " FROM h1_ea_runs WHERE " + fromWhere + " LIMIT 1");
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         ResetLastError();
         if (!DatabaseRead(request)) {
             int errorCode = GetLastError();
             DatabaseFinalize(request);
             return errorCode == ERR_DATABASE_NO_MORE_DATA;
         }
+
         bool success = H1EaRunDao::read(request, fromEntity);
+
         DatabaseFinalize(request);
         fromFound = success;
+
         return success;
     }
 };

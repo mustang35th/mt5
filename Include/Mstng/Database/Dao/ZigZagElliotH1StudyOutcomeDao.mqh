@@ -392,6 +392,7 @@ public:
             __FUNCTION__,
             "upsert H1 study outcome run"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted
@@ -419,6 +420,7 @@ public:
 
         string sql = "DELETE FROM zigzag_elliot_h1_study_entries ";
         sql += "WHERE outcome_run_id = ?1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -443,6 +445,7 @@ public:
             __FUNCTION__,
             "delete H1 study run children"
         );
+
         DatabaseFinalize(requestHandle);
 
         return isExecuted;
@@ -538,6 +541,7 @@ public:
             __FUNCTION__,
             "upsert H1 study entry"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted
@@ -618,6 +622,7 @@ public:
             __FUNCTION__,
             "upsert H1 study outcome"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted
@@ -722,6 +727,7 @@ public:
         string sql = "UPDATE zigzag_elliot_h1_study_outcome_runs SET ";
         sql += "status = 'FAILED', completed_at = ?1, updated_at = ?2 ";
         sql += "WHERE id = ?3";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -754,6 +760,7 @@ public:
             __FUNCTION__,
             "fail H1 study outcome run"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted) {
@@ -833,6 +840,7 @@ public:
         sql += " total_outcome_count = ?6, calculated_outcome_count = ?7,";
         sql += " failed_outcome_count = ?8, completed_at = ?9,";
         sql += " updated_at = ?10 WHERE id = ?11";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -897,6 +905,7 @@ public:
             __FUNCTION__,
             "complete H1 study outcome run"
         );
+
         DatabaseFinalize(requestHandle);
 
         if (!isExecuted) {
@@ -1646,8 +1655,10 @@ private:
      */
     bool findRunIdByKey(const string fromRunKey, long &fromRunId) {
         fromRunId = 0;
+
         string sql = "SELECT id FROM zigzag_elliot_h1_study_outcome_runs ";
         sql += "WHERE run_key = ?1 LIMIT 1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -1686,10 +1697,12 @@ private:
         long &fromEntryId
     ) {
         fromEntryId = 0;
+
         string sql = "SELECT id FROM zigzag_elliot_h1_study_entries ";
         sql += "WHERE outcome_run_id = ?1 ";
         sql += "AND signal_start_observation_id = ?2 ";
         sql += "AND confirmation_h1_count = ?3 LIMIT 1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -1742,8 +1755,10 @@ private:
         long &fromOutcomeId
     ) {
         fromOutcomeId = 0;
+
         string sql = "SELECT id FROM zigzag_elliot_h1_study_outcomes ";
         sql += "WHERE entry_id = ?1 AND horizon_h1_bars = ?2 LIMIT 1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -2115,6 +2130,7 @@ private:
      */
     bool readChanges(long &fromChangedCount) {
         fromChangedCount = 0;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,

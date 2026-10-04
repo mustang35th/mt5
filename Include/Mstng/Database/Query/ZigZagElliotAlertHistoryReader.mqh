@@ -32,16 +32,19 @@ public:
     bool open(const string fromFileName, const bool fromUseCommonFolder, string &fromError) {
         this.close();
         fromError = "";
+
         if (fromFileName == "") {
             fromError = "Alert DBファイル名が指定されていません。";
             return false;
         }
+
         this.database = new SqliteDatabase(fromFileName, fromUseCommonFolder);
         if (this.database == NULL || !this.database.openReadOnly()) {
             fromError = "Alert DBを読み取り専用で開けません。";
             this.close();
             return false;
         }
+
         return true;
     }
 
@@ -68,24 +71,29 @@ public:
         ArrayFree(fromAlertIds);
         fromResolvedRunId = fromRunId;
         fromError = "";
+
         if (!this.isOpen(fromError)) {
             return false;
         }
+
         if (fromSymbol == "" || fromRunId < 0 || fromStartTime < 0 || fromEndTime < 0
                 || (fromEndTime > 0 && fromEndTime <= fromStartTime)) {
             fromError = "通貨・Run・日時範囲の指定が不正です。";
             return false;
         }
+
         string sql = "WITH candidates AS (SELECT id,run_id,current_bar_time ";
         sql += "FROM zigzag_elliot_alerts WHERE symbol_name=?1 AND time_frame=5 AND is_alert=1 ";
         sql += "AND (?2=0 OR run_id=?2) AND (?3=0 OR current_bar_time>=?3) ";
         sql += "AND (?4=0 OR current_bar_time<?4) AND (?5=0 OR is_entry=1)) ";
         sql += "SELECT id,run_id FROM candidates WHERE run_id=(SELECT MAX(run_id) FROM candidates) ";
         sql += "ORDER BY current_bar_time,id";
+
         int request = this.prepare(sql, fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         if (!DatabaseBind(request, 0, fromSymbol) || !DatabaseBind(request, 1, fromRunId)
                 || !DatabaseBind(request, 2, (long)fromStartTime)
                 || !DatabaseBind(request, 3, (long)fromEndTime)
@@ -94,6 +102,7 @@ public:
             DatabaseFinalize(request);
             return false;
         }
+
         bool success = true;
         bool hasRow = false;
         while (true) {
@@ -104,6 +113,7 @@ public:
             if (!hasRow) {
                 break;
             }
+
             long alertId = 0;
             long runId = 0;
             if (!this.readLongValue(request, 0, alertId) || !this.readLongValue(request, 1, runId)
@@ -112,20 +122,24 @@ public:
                 success = false;
                 break;
             }
+
             int count = ArraySize(fromAlertIds);
             if (ArrayResize(fromAlertIds, count + 1) != count + 1) {
                 fromError = "アラート一覧のメモリを確保できません。";
                 success = false;
                 break;
             }
+
             fromAlertIds[count] = alertId;
             fromResolvedRunId = runId;
         }
+
         DatabaseFinalize(request);
         if (!success) {
             ArrayFree(fromAlertIds);
             fromResolvedRunId = 0;
         }
+
         return success;
     }
 
@@ -152,19 +166,23 @@ public:
         }
         fromResolvedRunId = requestedRunId;
         fromError = "";
+
         if (!this.isOpen(fromError)) {
             return false;
         }
+
         if (fromSymbol == "" || fromRunId < 0 || fromStartTime < 0 || fromEndTime < 0 || fromKnownTime < 0
                 || (fromEndTime > 0 && fromEndTime <= fromStartTime)
                 || (fromTimeFrame != PERIOD_M5 && fromTimeFrame != PERIOD_H1)) {
             fromError = "通貨・Run・日時範囲の指定が不正です。";
             return false;
         }
+
         string correctionColumns = "";
         if (!this.tableColumns("zigzag_elliot_alert_corrections", correctionColumns, fromError)) {
             return false;
         }
+
         string correctionProjection = "NULL,'',0,'','',''";
         string correctionJoin = "";
         if (correctionColumns != ",") {
@@ -177,15 +195,18 @@ public:
                 if (fromError != "") {
                     return false;
                 }
+
                 correctionProjection = "'INCOMPLETE','',0,'','',''";
             }
         }
+
         string originalFrames = "";
         string correctedFrames = "";
         if (!this.markerFrameSource("zigzag_elliot_alert_timeframes", false, originalFrames, fromError)
                 || !this.markerFrameSource("zigzag_elliot_alert_corrected_timeframes", true, correctedFrames, fromError)) {
             return false;
         }
+
         string frameFilter = " WHERE alert_id IN (SELECT id FROM selected)";
         if (originalFrames != "") {
             originalFrames += frameFilter;
@@ -209,6 +230,7 @@ public:
         if (correctionJoin != "") {
             selectedFrameKind = "CASE WHEN c.correction_status='APPLIED' AND c.selected_analysis='CORRECTED' THEN 1 ELSE 0 END";
         }
+
         string sql = "WITH candidates AS (SELECT id,run_id,current_bar_time,server_time,jst_time,side,is_entry,entry_result,alert_text FROM zigzag_elliot_alerts ";
         sql += "WHERE symbol_name=?1 AND time_frame=?9 AND is_alert=1 ";
         sql += "AND (?2=0 OR run_id=?2) AND (?3=0 OR current_bar_time>=?3) ";
@@ -225,10 +247,12 @@ public:
         sql += " FROM selected a" + correctionJoin;
         sql += " LEFT JOIN (" + frameSource + ") tf ON tf.alert_id=a.id AND tf.corrected=" + selectedFrameKind;
         sql += " ORDER BY a.current_bar_time,a.id,tf.time_frame";
+
         int request = this.prepare(sql, fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         if (!DatabaseBind(request, 0, fromSymbol) || !DatabaseBind(request, 1, requestedRunId)
                 || !DatabaseBind(request, 2, (long)fromStartTime)
                 || !DatabaseBind(request, 3, (long)fromEndTime)
@@ -242,6 +266,7 @@ public:
             DatabaseFinalize(request);
             return false;
         }
+
         bool success = true;
         bool hasRow = false;
         while (true) {
@@ -252,6 +277,7 @@ public:
             if (!hasRow) {
                 break;
             }
+
             long alertId = 0;
             long runId = 0;
             if (!this.readLongValue(request, 0, alertId) || !this.readLongValue(request, 1, runId)
@@ -260,17 +286,20 @@ public:
                 success = false;
                 break;
             }
+
             int count = ArraySize(fromAlertIds);
             if (count > 0 && fromAlertIds[count - 1] == alertId) {
                 this.readMarkerWave(request, fromMarkers[count - 1]);
                 continue;
             }
+
             if (ArrayResize(fromAlertIds, count + 1, 256) != count + 1
                     || ArrayResize(fromMarkers, count + 1, 256) != count + 1) {
                 fromError = "アラート一覧のメモリを確保できません。";
                 success = false;
                 break;
             }
+
             fromAlertIds[count] = alertId;
             this.readMarker(request, alertId, fromMarkers[count], fromTimeFrame);
             this.readMarkerWave(request, fromMarkers[count]);
@@ -278,12 +307,14 @@ public:
                 fromResolvedRunId = runId;
             }
         }
+
         DatabaseFinalize(request);
         if (!success) {
             ArrayFree(fromAlertIds);
             ArrayFree(fromMarkers);
             fromResolvedRunId = 0;
         }
+
         return success;
     }
 
@@ -293,19 +324,24 @@ public:
     bool loadSnapshot(const long fromAlertId, ZigZagElliotAlertHistorySnapshot &fromSnapshot, string &fromError) {
         fromSnapshot.clear();
         fromError = "";
+
         if (!this.isOpen(fromError)) {
             return false;
         }
+
         if (fromAlertId <= 0) {
             fromError = "アラートIDが不正です。";
             return false;
         }
+
         ResetLastError();
         if (!DatabaseExecute(this.database.getHandle(), "BEGIN")) {
             this.databaseError("begin snapshot", fromError);
             return false;
         }
+
         bool success = this.loadSnapshotRows(fromAlertId, fromSnapshot, fromError);
+
         if (success) {
             ResetLastError();
             success = DatabaseExecute(this.database.getHandle(), "COMMIT");
@@ -313,10 +349,12 @@ public:
                 this.databaseError("end snapshot", fromError);
             }
         }
+
         if (!success) {
             DatabaseExecute(this.database.getHandle(), "ROLLBACK");
             fromSnapshot.clear();
         }
+
         return success;
     }
 
@@ -336,9 +374,11 @@ private:
         for (int i = 0; i < ArraySize(fromMarker.waves); i++) {
             fromMarker.waves[i].clear();
         }
+
         fromMarker.alertId = fromAlertId;
         fromMarker.timeFrame = fromTimeFrame;
         fromMarker.correctionStatus = "UNRECORDED";
+
         if (!this.readTimeValue(fromRequest, 2, fromMarker.barTime)
                 || !this.readTimeValue(fromRequest, 3, fromMarker.serverTime)
                 || !this.readTimeValue(fromRequest, 4, fromMarker.jstTime)
@@ -352,6 +392,7 @@ private:
                 || (fromMarker.side != "BUY" && fromMarker.side != "SELL")) {
             return;
         }
+
         if (DatabaseColumnType(fromRequest, 10) == DATABASE_FIELD_TYPE_NULL) {
             if (fromTimeFrame == PERIOD_H1) {
                 fromMarker.correctionStatus = "NONE";
@@ -359,6 +400,7 @@ private:
                 fromMarker.available = fromMarker.text != "";
                 return;
             }
+
             fromMarker.correctionText = "補正情報未記録・元分析";
             if (fromMarker.text != "") {
                 fromMarker.text += " [元分析]";
@@ -366,6 +408,7 @@ private:
             }
             return;
         }
+
         string status = "";
         string selectedAnalysis = "";
         string selectedText = "";
@@ -380,6 +423,7 @@ private:
                 || !this.readTextValue(fromRequest, 15, selectedAnalysis) || selectedText == "") {
             return;
         }
+
         if (status == "NONE" && selectedAnalysis == "ORIGINAL" && correctionTimeFrame == 0
                 && originalDirection == "" && correctedDirection == "") {
             fromMarker.correctionText = "補正なし・元分析採用";
@@ -397,6 +441,7 @@ private:
         } else {
             return;
         }
+
         fromMarker.correctionStatus = status;
         fromMarker.text = selectedText;
         fromMarker.available = true;
@@ -407,13 +452,16 @@ private:
      */
     bool markerFrameSource(const string fromTable, const bool fromCorrected, string &fromSql, string &fromError) {
         fromSql = "";
+
         string columns = "";
         if (!this.tableColumns(fromTable, columns, fromError)) {
             return false;
         }
+
         if (StringFind(columns, ",alert_id,") < 0 || StringFind(columns, ",time_frame,") < 0) {
             return true;
         }
+
         string fields[] = {"time_frame", "is_buy", "is_ema200_buy", "is_ema200_sell", "latest_elliot_label",
             "latest_sub_elliot_index", "latest_sub_elliot_label", "is_wave_confirmed"};
         fromSql = "SELECT alert_id," + IntegerToString((int)fromCorrected) + " AS corrected";
@@ -425,7 +473,9 @@ private:
                 fromSql += "NULL AS " + fields[i];
             }
         }
+
         fromSql += " FROM " + fromTable;
+
         return true;
     }
 
@@ -436,10 +486,12 @@ private:
         if (!fromMarker.available) {
             return;
         }
+
         int timeFrame = 0;
         if (!this.readIntValue(fromRequest, 16, timeFrame)) {
             return;
         }
+
         int frames[] = {PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
         int index = -1;
         for (int i = 0; i < ArraySize(frames); i++) {
@@ -448,14 +500,17 @@ private:
                 break;
             }
         }
+
         if (index < 0) {
             return;
         }
+
         if (fromMarker.waves[index].recorded) {
             fromMarker.waves[index].clear();
             fromMarker.waves[index].recorded = true;
             return;
         }
+
         fromMarker.waves[index].recorded = true;
         int flag = 0;
         if (this.readIntValue(fromRequest, 17, flag, true)) {
@@ -495,6 +550,7 @@ private:
             fromError = "Alert DBが開かれていません。";
             return false;
         }
+
         return true;
     }
 
@@ -516,6 +572,7 @@ private:
         if (request == INVALID_HANDLE) {
             this.databaseError("prepare", fromError);
         }
+
         return request;
     }
 
@@ -528,11 +585,14 @@ private:
         if (fromHasRow) {
             return true;
         }
+
         int errorCode = GetLastError();
         if (errorCode == ERR_DATABASE_NO_MORE_DATA) {
             return true;
         }
+
         this.databaseError("read next", fromError);
+
         return false;
     }
 
@@ -552,10 +612,13 @@ private:
         if (!this.readLongValue(fromRequest, fromColumn, value) || value < -2147483648 || value > 2147483647) {
             return false;
         }
+
         if (fromFlag && value != 0 && value != 1) {
             return false;
         }
+
         fromValue = (int)value;
+
         return true;
     }
 
@@ -567,7 +630,9 @@ private:
         if (!this.readLongValue(fromRequest, fromColumn, value) || value < 0) {
             return false;
         }
+
         fromValue = (datetime)value;
+
         return true;
     }
 
@@ -576,6 +641,7 @@ private:
      */
     bool readDoubleValue(const int fromRequest, const int fromColumn, double &fromValue) {
         ENUM_DATABASE_FIELD_TYPE fieldType = DatabaseColumnType(fromRequest, fromColumn);
+
         return (fieldType == DATABASE_FIELD_TYPE_INTEGER || fieldType == DATABASE_FIELD_TYPE_FLOAT)
             && DatabaseColumnDouble(fromRequest, fromColumn, fromValue) && MathIsValidNumber(fromValue);
     }
@@ -593,10 +659,12 @@ private:
      */
     bool tableColumns(const string fromTable, string &fromColumns, string &fromError) {
         fromColumns = ",";
+
         int request = this.prepare("PRAGMA table_info(" + fromTable + ")", fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         bool success = true;
         bool hasRow = false;
         while (true) {
@@ -607,15 +675,19 @@ private:
             if (!hasRow) {
                 break;
             }
+
             string columnName = "";
             if (!this.readTextValue(request, 1, columnName)) {
                 fromError = "DBの列情報を確認できません。";
                 success = false;
                 break;
             }
+
             fromColumns += columnName + ",";
         }
+
         DatabaseFinalize(request);
+
         return success;
     }
 
@@ -626,10 +698,12 @@ private:
                     const bool fromAllowLegacyEma, string &fromProjection, string &fromReason, string &fromError) {
         fromProjection = "";
         fromReason = "";
+
         string columns = "";
         if (!this.tableColumns(fromTable, columns, fromError)) {
             return false;
         }
+
         string required[];
         int count = StringSplit(fromRequired, ',', required);
         for (int i = 0; i < count; i++) {
@@ -645,6 +719,7 @@ private:
                 return false;
             }
         }
+
         return true;
     }
 
@@ -658,6 +733,7 @@ private:
             DatabaseFinalize(request);
             return INVALID_HANDLE;
         }
+
         return request;
     }
 
@@ -673,10 +749,12 @@ private:
             }
             return false;
         }
+
         int request = this.prepareIdQuery("SELECT " + columns + " FROM zigzag_elliot_alerts WHERE id=?", fromAlertId, fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         bool hasRow = false;
         bool success = this.readNext(request, hasRow, fromError);
         if (success && (!hasRow || !this.readAlert(request, fromSnapshot.alert))) {
@@ -689,10 +767,12 @@ private:
             }
             success = false;
         }
+
         DatabaseFinalize(request);
         if (!success) {
             return false;
         }
+
         bool isTimeFrameValid = fromSnapshot.alert.timeFrame == PERIOD_M5
             && fromSnapshot.alert.timeFrameText == "M5";
         if (fromSnapshot.alert.timeFrame == PERIOD_M15) {
@@ -711,16 +791,19 @@ private:
             fromError = "元アラートの時間足・方向・日時・価格が不正です。";
             return false;
         }
+
         if (!this.projection("zigzag_elliot_alert_runs", this.getRunColumns(), "", false, columns, reason, fromError)) {
             if (fromError == "") {
                 fromError = "Run: " + reason;
             }
             return false;
         }
+
         request = this.prepareIdQuery("SELECT " + columns + " FROM zigzag_elliot_alert_runs WHERE id=?", fromSnapshot.alert.runId, fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         success = this.readNext(request, hasRow, fromError);
         if (success && (!hasRow || !this.readRun(request, fromSnapshot.run))) {
             fromError = "保存元Runが存在しないか保存値が不正です。";
@@ -732,7 +815,9 @@ private:
             }
             success = false;
         }
+
         DatabaseFinalize(request);
+
         return success;
     }
 
@@ -745,6 +830,7 @@ private:
         ArrayFree(fromTimeFrames);
         ArrayFree(fromPoints);
         fromReason = "";
+
         string frameTable = "zigzag_elliot_alert_timeframes";
         string pointTable = "zigzag_elliot_alert_points";
         if (fromCorrected) {
@@ -757,11 +843,13 @@ private:
                 || !this.projection(pointTable, this.getPointColumns(), "p.", false, pointProjection, fromReason, fromError)) {
             return fromError == "";
         }
+
         int request = this.prepareIdQuery("SELECT " + frameProjection + " FROM " + frameTable
             + " WHERE alert_id=? ORDER BY time_frame_order,id", fromAlertId, fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         bool hasRow = false;
         bool success = true;
         while (true) {
@@ -772,29 +860,35 @@ private:
             if (!hasRow) {
                 break;
             }
+
             ZigZagElliotAlertTimeFrameEntity entity;
             if (!this.readTimeFrame(request, entity)) {
                 fromReason = "時間足の保存値または型が不正です。";
                 continue;
             }
+
             int count = ArraySize(fromTimeFrames);
             if (ArrayResize(fromTimeFrames, count + 1) != count + 1) {
                 fromError = "時間足のメモリを確保できません。";
                 success = false;
                 break;
             }
+
             fromTimeFrames[count] = entity;
         }
+
         DatabaseFinalize(request);
         if (!success) {
             return false;
         }
+
         request = this.prepareIdQuery("SELECT " + pointProjection + ",tf.time_frame FROM " + frameTable
             + " tf INNER JOIN " + pointTable + " p ON p.alert_timeframe_id=tf.id WHERE tf.alert_id=?"
             + " ORDER BY tf.time_frame_order,p.point_order,p.id", fromAlertId, fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         while (true) {
             if (!this.readNext(request, hasRow, fromError)) {
                 success = false;
@@ -803,21 +897,26 @@ private:
             if (!hasRow) {
                 break;
             }
+
             ZigZagElliotAlertPointEntity entity;
             if (!this.readPoint(request, entity)
                     || !this.readIntValue(request, DatabaseColumnsCount(request) - 1, entity.timeFrame)) {
                 fromReason = "波動ポイントの保存値または型が不正です。";
                 continue;
             }
+
             int count = ArraySize(fromPoints);
             if (ArrayResize(fromPoints, count + 1) != count + 1) {
                 fromError = "波動ポイントのメモリを確保できません。";
                 success = false;
                 break;
             }
+
             fromPoints[count] = entity;
         }
+
         DatabaseFinalize(request);
+
         return success;
     }
 
@@ -837,10 +936,12 @@ private:
         if (fromAlert.timeFrame == PERIOD_H1) {
             frameCount = 5;
         }
+
         if (ArraySize(fromTimeFrames) != frameCount) {
             fromReason = "MN1から現在足までの時間足が揃っていません。";
             return false;
         }
+
         int pointIndex = 0;
         int references = 0;
         for (int i = 0; i < frameCount; i++) {
@@ -856,30 +957,35 @@ private:
                 fromReason = "時間足の識別子・方向・ポイント数が不整合です。";
                 return false;
             }
+
             for (int j = 0; j < i; j++) {
                 if (frame.id == fromTimeFrames[j].id) {
                     fromReason = "時間足の識別子が重複しています。";
                     return false;
                 }
             }
+
             int latestCount = 0;
             for (int j = 0; j < frame.pointCount; j++) {
                 if (pointIndex >= ArraySize(fromPoints)) {
                     fromReason = "波動ポイントが不足しています。";
                     return false;
                 }
+
                 ZigZagElliotAlertPointEntity point = fromPoints[pointIndex];
                 if (point.id <= 0 || point.alertTimeFrameId != frame.id || point.timeFrame != frame.timeFrame
                         || point.pointOrder != j || point.barTime <= 0 || point.rate <= 0) {
                     fromReason = "波動ポイントの所属・順序・日時・価格が不整合です。";
                     return false;
                 }
+
                 for (int k = 0; k < pointIndex; k++) {
                     if (point.id == fromPoints[k].id) {
                         fromReason = "波動ポイントの識別子が重複しています。";
                         return false;
                     }
                 }
+
                 if (point.isLatest == 1) {
                     latestCount++;
                     if (j != frame.pointCount - 1 || point.elliotIndex != frame.latestElliotIndex
@@ -890,6 +996,7 @@ private:
                         return false;
                     }
                 }
+
                 if (point.isSignalReference == 1) {
                     references++;
                     if (i != frameCount - 1 || point.barTime != fromReferenceTime
@@ -898,17 +1005,21 @@ private:
                         return false;
                     }
                 }
+
                 pointIndex++;
             }
+
             if (latestCount != 1) {
                 fromReason = "最新ポイントを一意に特定できません。";
                 return false;
             }
         }
+
         if (pointIndex != ArraySize(fromPoints) || references != 1) {
             fromReason = "波動ポイント件数または損切り基準点の数が不整合です。";
             return false;
         }
+
         return true;
     }
 
@@ -927,6 +1038,7 @@ private:
             return fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4
                 || (fromCurrentTimeFrame == PERIOD_M15 && fromCorrectionTimeFrame == PERIOD_H1);
         }
+
         return fromCurrentTimeFrame == PERIOD_M5
             && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
     }
@@ -939,20 +1051,24 @@ private:
         if (!this.tableColumns("zigzag_elliot_alert_corrections", tableColumns, fromError)) {
             return false;
         }
+
         if (tableColumns == ",") {
             return true;
         }
+
         string columns = "";
         if (!this.projection("zigzag_elliot_alert_corrections", this.getCorrectionColumns(), "", false,
                 columns, fromSnapshot.correctionReason, fromError)) {
             fromSnapshot.correctionStatus = "INCOMPLETE";
             return fromError == "";
         }
+
         int request = this.prepareIdQuery("SELECT " + columns + " FROM zigzag_elliot_alert_corrections WHERE alert_id=?",
             fromSnapshot.alert.id, fromError);
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         bool hasRow = false;
         bool success = this.readNext(request, hasRow, fromError);
         if (success && hasRow) {
@@ -969,7 +1085,9 @@ private:
                 fromSnapshot.correctionReason = "補正情報の識別子が重複しています。";
             }
         }
+
         DatabaseFinalize(request);
+
         return success;
     }
 
@@ -991,6 +1109,7 @@ private:
             fromSnapshot.correctionReason = "元アラートと補正の状態・価格・波動情報が不整合です。";
             return false;
         }
+
         if (correction.correctionStatus == "NONE") {
             if (correction.selectedAnalysis != "ORIGINAL" || correction.correctionTimeFrame != 0
                     || correction.originalDirection != "" || correction.correctedDirection != ""
@@ -1003,8 +1122,10 @@ private:
                 fromSnapshot.correctionReason = "補正なしの記録に補正後の値が混在しています。";
                 return false;
             }
+
             return true;
         }
+
         if (correction.selectedAnalysis != "CORRECTED"
                 || !this.isCorrectionTimeFrameValid(alert.timeFrame, correction.correctionTimeFrame)
                 || (correction.originalDirection != "BUY" && correction.originalDirection != "SELL")
@@ -1015,6 +1136,7 @@ private:
             fromSnapshot.correctionReason = "補正した時間足・方向・採用損切りが不整合です。";
             return false;
         }
+
         return true;
     }
 
@@ -1025,17 +1147,21 @@ private:
         if (!this.loadParents(fromAlertId, fromSnapshot, fromError)) {
             return false;
         }
+
         if (!this.loadAnalysis(fromAlertId, false, fromSnapshot.originalTimeFrames, fromSnapshot.originalPoints,
                 fromSnapshot.originalReason, fromError)) {
             return false;
         }
+
         if (fromSnapshot.originalReason == "") {
             fromSnapshot.originalAvailable = this.validateAnalysis(fromSnapshot.alert, fromSnapshot.originalTimeFrames,
                 fromSnapshot.originalPoints, fromSnapshot.alert.signalReferencePointTime, 0, false, fromSnapshot.originalReason);
         }
+
         if (!this.loadCorrection(fromSnapshot, fromError)) {
             return false;
         }
+
         if (fromSnapshot.correctionStatus != "UNRECORDED" && fromSnapshot.correctionStatus != "INCOMPLETE") {
             if (!this.validateCorrection(fromSnapshot)) {
                 fromSnapshot.correctionStatus = "INCOMPLETE";
@@ -1053,10 +1179,12 @@ private:
                     ArrayFree(fromSnapshot.originalPoints);
                     return true;
                 }
+
                 if (!this.loadAnalysis(fromAlertId, true, fromSnapshot.correctedTimeFrames, fromSnapshot.correctedPoints,
                         fromSnapshot.correctionReason, fromError)) {
                     return false;
                 }
+
                 if (fromSnapshot.correctionReason != "") {
                     fromSnapshot.correctionStatus = "INCOMPLETE";
                 } else if (fromSnapshot.correctionStatus == "NONE") {
@@ -1074,6 +1202,7 @@ private:
                 }
             }
         }
+
         if (!fromSnapshot.originalAvailable) {
             ArrayFree(fromSnapshot.originalTimeFrames);
             ArrayFree(fromSnapshot.originalPoints);
@@ -1082,6 +1211,7 @@ private:
             ArrayFree(fromSnapshot.correctedTimeFrames);
             ArrayFree(fromSnapshot.correctedPoints);
         }
+
         return true;
     }
 
@@ -1090,10 +1220,12 @@ private:
      */
     void validateComparison(ZigZagElliotAlertHistorySnapshot &fromSnapshot) {
         fromSnapshot.correctionStatus = "INCOMPLETE";
+
         if (!fromSnapshot.originalAvailable) {
             fromSnapshot.correctionReason = "補正前: " + fromSnapshot.originalReason;
             return;
         }
+
         string reason = "";
         if (!this.validateAnalysis(fromSnapshot.alert, fromSnapshot.originalTimeFrames, fromSnapshot.originalPoints,
                 fromSnapshot.alert.signalReferencePointTime, fromSnapshot.correction.originalLc0, true, reason)) {
@@ -1102,11 +1234,13 @@ private:
             fromSnapshot.correctionReason = "補正前: " + reason;
             return;
         }
+
         if (!this.validateAnalysis(fromSnapshot.alert, fromSnapshot.correctedTimeFrames, fromSnapshot.correctedPoints,
                 fromSnapshot.correction.correctedReferencePointTime, fromSnapshot.correction.correctedLc0, true, reason)) {
             fromSnapshot.correctionReason = "補正後: " + reason;
             return;
         }
+
         int frameCount = ArraySize(fromSnapshot.originalTimeFrames);
         for (int i = 0; i < frameCount; i++) {
             ZigZagElliotAlertTimeFrameEntity original = fromSnapshot.originalTimeFrames[i];
@@ -1124,10 +1258,12 @@ private:
                 return;
             }
         }
+
         if (fromSnapshot.correctedTimeFrames[frameCount - 1].latestElliotLabel != fromSnapshot.correction.selectedCurrentElliotLabel) {
             fromSnapshot.correctionReason = "採用した現在足の波動ラベルが一致しません。";
             return;
         }
+
         fromSnapshot.correctionStatus = "APPLIED";
     }
 
@@ -1143,6 +1279,7 @@ private:
      */
     bool readAlert(const int fromRequest, ZigZagElliotAlertEntity &fromEntity) {
         ZeroMemory(fromEntity);
+
         return this.readLongValue(fromRequest, 0, fromEntity.id)
             && this.readLongValue(fromRequest, 1, fromEntity.runId)
             && this.readTimeValue(fromRequest, 2, fromEntity.serverTime)
@@ -1186,6 +1323,7 @@ private:
      */
     bool readRun(const int fromRequest, ZigZagElliotAlertRunEntity &fromEntity) {
         ZeroMemory(fromEntity);
+
         return this.readLongValue(fromRequest, 0, fromEntity.id)
             && this.readTextValue(fromRequest, 1, fromEntity.runUid)
             && this.readIntValue(fromRequest, 2, fromEntity.schemaVersion)
@@ -1213,6 +1351,7 @@ private:
      */
     bool readCorrection(const int fromRequest, ZigZagElliotAlertCorrectionEntity &fromEntity) {
         ZeroMemory(fromEntity);
+
         return this.readLongValue(fromRequest, 0, fromEntity.alertId)
             && this.readTextValue(fromRequest, 1, fromEntity.correctionStatus)
             && this.readIntValue(fromRequest, 2, fromEntity.correctionTimeFrame)
@@ -1259,6 +1398,7 @@ private:
      */
     bool readTimeFrame(const int fromRequest, ZigZagElliotAlertTimeFrameEntity &fromEntity) {
         ZeroMemory(fromEntity);
+
         return this.readLongValue(fromRequest, 0, fromEntity.id)
             && this.readLongValue(fromRequest, 1, fromEntity.alertId)
             && this.readIntValue(fromRequest, 2, fromEntity.timeFrame)
@@ -1318,6 +1458,7 @@ private:
      */
     bool readPoint(const int fromRequest, ZigZagElliotAlertPointEntity &fromEntity) {
         ZeroMemory(fromEntity);
+
         return this.readLongValue(fromRequest, 0, fromEntity.id)
             && this.readLongValue(fromRequest, 1, fromEntity.alertTimeFrameId)
             && this.readIntValue(fromRequest, 2, fromEntity.pointOrder)

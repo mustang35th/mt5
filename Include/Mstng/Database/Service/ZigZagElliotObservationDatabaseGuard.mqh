@@ -27,6 +27,7 @@ public:
     ) {
         fromIsAllowed = false;
         fromReason = "";
+
         if (fromDatabaseHandle == INVALID_HANDLE) {
             fromReason = "DATABASE_READ_ERROR: INVALID_HANDLE";
             return false;
@@ -37,6 +38,7 @@ public:
         if (!readSchema(fromDatabaseHandle, schemaText, objectCount, fromReason)) {
             return false;
         }
+
         if (objectCount == 0) {
             fromIsAllowed = true;
             return true;
@@ -47,6 +49,7 @@ public:
             fromReason = "DATABASE_READ_ERROR: schema hash failed";
             return false;
         }
+
         if (schemaHash != getSupportedSchemaHash()
                 && schemaHash != getPreviousMotiveSubSchemaHash()) {
             fromReason = "M5_DATABASE_REJECTED: unsupported or incomplete schema";
@@ -64,6 +67,7 @@ public:
         if (!readScalar(fromDatabaseHandle, sql, hasForeignRun, fromReason)) {
             return false;
         }
+
         if (hasForeignRun != 0) {
             fromReason = "M5_DATABASE_REJECTED: foreign or unsupported Run";
             return true;
@@ -86,12 +90,14 @@ public:
         if (!readScalar(fromDatabaseHandle, sql, hasForeignObservation, fromReason)) {
             return false;
         }
+
         if (hasForeignObservation != 0) {
             fromReason = "M5_DATABASE_REJECTED: foreign or inconsistent observation";
             return true;
         }
 
         fromIsAllowed = true;
+
         return true;
     }
 
@@ -127,6 +133,7 @@ private:
     ) {
         string sql = "SELECT type, name, COALESCE(sql, '') FROM sqlite_master ";
         sql += "WHERE name NOT GLOB 'sqlite_*' ORDER BY type, name";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, sql);
         if (requestHandle == INVALID_HANDLE) {
@@ -141,6 +148,7 @@ private:
                 if (errorCode == ERR_DATABASE_NO_MORE_DATA) {
                     return true;
                 }
+
                 return readError("DatabaseRead", errorCode, fromReason);
             }
 
@@ -155,6 +163,7 @@ private:
                 DatabaseFinalize(requestHandle);
                 return readError("DatabaseColumnText", errorCode, fromReason);
             }
+
             fromSchemaText += objectType + ":" + objectName + ":";
             fromSchemaText += normalizeSql(definition) + "\n";
             fromObjectCount++;
@@ -183,20 +192,24 @@ private:
                 normalized += part;
                 continue;
             }
+
             if (!isLiteral) {
                 if (character == ' ' || character == '\t'
                         || character == '\r' || character == '\n') {
                     hasPendingSpace = true;
                     continue;
                 }
+
                 if (hasPendingSpace && normalized != "") {
                     normalized += " ";
                 }
                 hasPendingSpace = false;
                 StringToUpper(part);
             }
+
             normalized += part;
         }
+
         return normalized;
     }
 
@@ -211,13 +224,16 @@ private:
         if (size <= 1 || ArrayResize(source, size - 1) != size - 1) {
             return "";
         }
+
         if (CryptEncode(CRYPT_HASH_SHA256, source, key, digest) != 32) {
             return "";
         }
+
         string result = "";
         for (int i = 0; i < ArraySize(digest); i++) {
             result += StringFormat("%02x", (int)digest[i]);
         }
+
         return result;
     }
 
@@ -235,13 +251,16 @@ private:
         if (requestHandle == INVALID_HANDLE) {
             return readError("DatabasePrepare", GetLastError(), fromReason);
         }
+
         ResetLastError();
         if (!DatabaseRead(requestHandle) || !DatabaseColumnLong(requestHandle, 0, fromValue)) {
             int errorCode = GetLastError();
             DatabaseFinalize(requestHandle);
             return readError("DatabaseRead/ColumnLong", errorCode, fromReason);
         }
+
         DatabaseFinalize(requestHandle);
+
         return true;
     }
 
@@ -253,6 +272,7 @@ private:
         Logger logger;
         logger.setLevel(LOG_INFO);
         logger.error(__FUNCTION__, fromReason);
+
         return false;
     }
 };

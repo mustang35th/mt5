@@ -172,6 +172,7 @@ public:
         }
 
         fromEntity.id = 0;
+
         string sql = this.buildInsertSql();
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);

@@ -172,6 +172,7 @@ public:
         CurrencyStrengthPairRankInfo &fromInfo
     ) {
         fromInfo.reset();
+
         CurrencyStrengthPairRankInfo liveInfo;
         ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS liveStatus =
             this.findLatestPairRanksAtOrBefore(
@@ -451,6 +452,7 @@ public:
         CurrencyStrengthAllRankPoint &fromPoints[]
     ) {
         ArrayResize(fromPoints, 0);
+
         CurrencyStrengthAllRankPoint livePoints[];
         ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS liveStatus =
             this.findAllRankPointsInRange(
@@ -703,6 +705,7 @@ public:
         CurrencyStrengthPairRankPoint &fromPoints[]
     ) {
         ArrayResize(fromPoints, 0);
+
         CurrencyStrengthPairRankPoint livePoints[];
         ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS liveStatus =
             this.findPairRankPointsInRange(

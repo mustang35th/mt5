@@ -42,6 +42,7 @@ public:
         sql += "FOREIGN KEY(observation_id) REFERENCES ";
         sql += "zigzag_elliot_observations(id) ON DELETE CASCADE";
         sql += ")";
+
         return this.executeSql(sql, "create observation capture metrics");
     }
 
@@ -80,6 +81,7 @@ public:
             fromEntity.hasAnalysisAttemptCount, fromEntity.analysisAttemptCount
         );
         sql += ")";
+
         return this.executeSql(sql, "insert observation capture metrics");
     }
 
@@ -101,6 +103,7 @@ private:
         if (!fromIsAvailable) {
             return "NULL";
         }
+
         return IntegerToString(fromNumber);
     }
 
@@ -116,6 +119,7 @@ private:
             this.logger.error(__FUNCTION__, "databaseHandle is INVALID_HANDLE.");
             return false;
         }
+
         ResetLastError();
         if (!DatabaseExecute(this.databaseHandle, fromSql)) {
             this.logger.error(
@@ -127,6 +131,7 @@ private:
             );
             return false;
         }
+
         return true;
     }
 };

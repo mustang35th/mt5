@@ -75,6 +75,7 @@ public:
         sql += "CHECK(event_type <> 'DEAL_ADD' OR ( deal_ticket IS NOT NULL AND LENGTH(deal_ticket) > 0 AND deal_scope_key IS NOT NULL AND LENGTH(deal_scope_key) > 0 AND broker_time_msc IS NOT NULL AND broker_time_msc > 0 AND position_identifier IS NOT NULL AND LENGTH(position_identifier) > 0 AND side IS NOT NULL AND broker_reason IS NOT NULL AND LENGTH(broker_reason) > 0 )),";
         sql += "FOREIGN KEY(trade_id) REFERENCES h1_ea_trades(id) ON DELETE RESTRICT,";
         sql += "FOREIGN KEY(run_id) REFERENCES h1_ea_runs(id) ON DELETE RESTRICT)";
+
         return sql;
     }
 
@@ -85,27 +86,35 @@ public:
         if (!H1EaSql::execute(fromHandle, H1EaTradeEventDao::createSql())) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_trade_events_event_uid ON h1_ea_trade_events(event_uid);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_trade_events_trade_sequence ON h1_ea_trade_events(trade_id, sequence);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_trade_events_deal_scope ON h1_ea_trade_events(deal_scope_key) WHERE deal_scope_key IS NOT NULL;")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_trade_events_action_type ON h1_ea_trade_events(action_uid, event_type) WHERE action_uid IS NOT NULL;")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_trade_events_trail_bar ON h1_ea_trade_events(trade_id, event_type, h1_bar_time) WHERE event_type = 'TRAIL_EVALUATION';")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_trade_events_trade_time ON h1_ea_trade_events(trade_id, broker_time_msc, id);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_trade_events_run_recorded ON h1_ea_trade_events(run_id, recorded_at, id);")) {
             return false;
         }
+
         return true;
     }
 
@@ -166,6 +175,7 @@ public:
         values += "," + H1EaSql::optionalText(fromEntity.recoveryIssueCode);
         values += "," + H1EaSql::optionalText(fromEntity.quarantinedPendingText);
         values += "," + H1EaSql::text(fromEntity.message);
+
         return values;
     }
 
@@ -175,9 +185,11 @@ public:
     static bool insert(const int fromHandle, H1EaTradeEventEntity &fromEntity) {
         string sql = "INSERT INTO h1_ea_trade_events (" + H1EaTradeEventDao::columns()
             + ") VALUES (" + H1EaTradeEventDao::values(fromEntity) + ")";
+
         if (!H1EaSql::execute(fromHandle, sql)) {
             return false;
         }
+
         return H1EaSql::scalar(fromHandle, "SELECT last_insert_rowid()", fromEntity.id);
     }
 
@@ -190,120 +202,158 @@ public:
         if (!DatabaseColumnLong(fromRequest, 0, fromEntity.id)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 1, fromEntity.tradeId)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 2, fromEntity.runId)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 3, fromEntity.eventUid)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 4, fromEntity.actionUid)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 5, fromEntity.sequence)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 6, fromEntity.eventType)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 7, fromEntity.eventSource)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 8, fromEntity.serverTime)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 9, fromEntity.brokerTimeMsc)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 10, fromEntity.recordedAt)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 11, integerValue)) {
             return false;
         }
+
         fromEntity.transactionType = (int)integerValue;
         if (!DatabaseColumnText(fromRequest, 12, fromEntity.orderTicket)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 13, fromEntity.dealTicket)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 14, fromEntity.dealScopeKey)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 15, fromEntity.positionIdentifier)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 16, fromEntity.positionTicket)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 17, fromEntity.side)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 18, fromEntity.volume)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 19, fromEntity.price)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 20, fromEntity.h1BarTime)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 21, fromEntity.pivotBarTime)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 22, fromEntity.pivotRate)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 23, fromEntity.latestPointBarTime)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 24, fromEntity.previousStopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 25, fromEntity.stopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 26, fromEntity.confirmedStopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 27, integerValue)) {
             return false;
         }
+
         fromEntity.isConfirmedStopLossPresent = (int)integerValue;
         if (!DatabaseColumnText(fromRequest, 28, fromEntity.stopLossActionKind)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 29, fromEntity.stopLossSource)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 30, fromEntity.trailSkipReason)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 31, integerValue)) {
             return false;
         }
+
         fromEntity.retcode = (int)integerValue;
         if (!DatabaseColumnText(fromRequest, 32, fromEntity.exitIntentReason)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 33, fromEntity.closeReason)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 34, fromEntity.brokerReason)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 35, fromEntity.recoveryIssueCode)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 36, fromEntity.quarantinedPendingText)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 37, fromEntity.message)) {
             return false;
         }
+
         return true;
     }
 
@@ -312,20 +362,25 @@ public:
      */
     static bool load(const int fromHandle, const string fromWhere, H1EaTradeEventEntity &fromEntity, bool &fromFound) {
         fromFound = false;
+
         int request = DatabasePrepare(fromHandle, "SELECT " + H1EaTradeEventDao::selectColumns()
             + " FROM h1_ea_trade_events WHERE " + fromWhere + " LIMIT 1");
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         ResetLastError();
         if (!DatabaseRead(request)) {
             int errorCode = GetLastError();
             DatabaseFinalize(request);
             return errorCode == ERR_DATABASE_NO_MORE_DATA;
         }
+
         bool success = H1EaTradeEventDao::read(request, fromEntity);
+
         DatabaseFinalize(request);
         fromFound = success;
+
         return success;
     }
 };

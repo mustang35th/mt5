@@ -239,6 +239,7 @@ public:
             __FUNCTION__,
             "delete pair votes by run id"
         );
+
         DatabaseFinalize(requestHandle);
 
         return isExecuted;
@@ -354,8 +355,10 @@ private:
     ) {
         fromViewSql = "";
         fromIsFound = false;
+
         string sql = "SELECT sql FROM sqlite_master ";
         sql += "WHERE type = 'view' AND name = ?1";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
 
@@ -708,6 +711,7 @@ private:
         bool &fromHasColumn
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             this.databaseHandle,

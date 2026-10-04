@@ -71,6 +71,7 @@ public:
         sql += "CHECK(is_h4_wave_accepted IN (0,1)),";
         sql += "CHECK(is_h1_direction_alignment_passed IN (0,1)),";
         sql += "FOREIGN KEY(run_id) REFERENCES h1_ea_runs(id) ON DELETE RESTRICT)";
+
         return sql;
     }
 
@@ -80,6 +81,7 @@ public:
     static string createLegacySql() {
         string sql = H1EaDecisionDao::createSql();
         StringReplace(sql, " d1_ema200_direction TEXT CHECK(d1_ema200_direction IS NULL OR d1_ema200_direction IN ('BUY', 'SELL', 'NONE')),", "");
+
         return sql;
     }
 
@@ -97,24 +99,31 @@ public:
         if (!H1EaSql::execute(fromHandle, H1EaDecisionDao::createSql())) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_decisions_context_bar ON h1_ea_decisions(context_key, h1_bar_time);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE UNIQUE INDEX IF NOT EXISTS idx_h1_ea_decisions_consumed_signal ON h1_ea_decisions( context_key, signal_reference_time, signal_side ) WHERE is_signal_consumed = 1;")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_decisions_bar ON h1_ea_decisions(h1_bar_time, id);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_decisions_run_bar ON h1_ea_decisions(run_id, h1_bar_time, id);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_decisions_result_bar ON h1_ea_decisions(decision, h1_bar_time, id);")) {
             return false;
         }
+
         if (!H1EaSql::execute(fromHandle, "CREATE INDEX IF NOT EXISTS idx_h1_ea_decisions_reason_bar ON h1_ea_decisions(reason_code, h1_bar_time, id);")) {
             return false;
         }
+
         return true;
     }
 
@@ -179,6 +188,7 @@ public:
         values += "," + IntegerToString((long)fromEntity.isH1DirectionAlignmentPassed);
         values += "," + H1EaSql::text(fromEntity.analysisSnapshotText);
         values += "," + H1EaSql::optionalText(fromEntity.d1Ema200Direction);
+
         return values;
     }
 
@@ -193,11 +203,14 @@ public:
                 || diagnostics.hasEma200ConfirmationDiagnostics != fromEntity.hasEma200ConfirmationDiagnostics) {
             return false;
         }
+
         string sql = "INSERT INTO h1_ea_decisions (" + H1EaDecisionDao::columns()
             + ") VALUES (" + H1EaDecisionDao::values(fromEntity) + ")";
+
         if (!H1EaSql::execute(fromHandle, sql)) {
             return false;
         }
+
         return H1EaSql::scalar(fromHandle, "SELECT last_insert_rowid()", fromEntity.id);
     }
 
@@ -210,142 +223,184 @@ public:
         if (!DatabaseColumnLong(fromRequest, 0, fromEntity.id)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 1, fromEntity.runId)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 2, fromEntity.contextKey)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 3, fromEntity.marketSignalKey)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 4, fromEntity.snapshotHash)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 5, fromEntity.h1BarTime)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 6, fromEntity.evaluatedServerTime)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 7, fromEntity.createdAt)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 8, fromEntity.signalReferenceTime)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 9, fromEntity.decision)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 10, fromEntity.reasonCode)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 11, fromEntity.signalSide)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 12, integerValue)) {
             return false;
         }
+
         fromEntity.isJudgeMatched = (bool)integerValue;
         if (!DatabaseColumnLong(fromRequest, 13, integerValue)) {
             return false;
         }
+
         fromEntity.signalCount = (int)integerValue;
         if (!DatabaseColumnLong(fromRequest, 14, integerValue)) {
             return false;
         }
+
         fromEntity.entryCount = (int)integerValue;
         if (!DatabaseColumnLong(fromRequest, 15, integerValue)) {
             return false;
         }
+
         fromEntity.isEntryEvaluated = (bool)integerValue;
         if (!DatabaseColumnLong(fromRequest, 16, integerValue)) {
             return false;
         }
+
         fromEntity.isStrategyEntry = (bool)integerValue;
         if (!DatabaseColumnLong(fromRequest, 17, integerValue)) {
             return false;
         }
+
         fromEntity.isSignalConsumed = (bool)integerValue;
         if (!DatabaseColumnDouble(fromRequest, 18, fromEntity.spreadPips)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 19, fromEntity.requestedVolume)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 20, fromEntity.initialStopLoss)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 21, fromEntity.initialRiskPips)) {
             return false;
         }
+
         if (!DatabaseColumnDouble(fromRequest, 22, fromEntity.maxInitialRiskPips)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 23, fromEntity.mn1Direction)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 24, fromEntity.w1Direction)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 25, fromEntity.d1Direction)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 26, fromEntity.h4Direction)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 27, fromEntity.h1Direction)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 28, fromEntity.h1WaveDirection)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 29, fromEntity.h1ElliotLabel)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 30, fromEntity.h4ElliotLabel)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 31, integerValue)) {
             return false;
         }
+
         fromEntity.isH1WaveAccepted = (bool)integerValue;
         if (!DatabaseColumnLong(fromRequest, 32, integerValue)) {
             return false;
         }
+
         fromEntity.isH4WaveAccepted = (bool)integerValue;
         if (!DatabaseColumnLong(fromRequest, 33, integerValue)) {
             return false;
         }
+
         fromEntity.h1GmmaTrendCount = (int)integerValue;
         if (!DatabaseColumnLong(fromRequest, 34, integerValue)) {
             return false;
         }
+
         fromEntity.h1GmmaCrossCount = (int)integerValue;
         if (!DatabaseColumnText(fromRequest, 35, fromEntity.h1Ema200Direction)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 36, fromEntity.h4Ema200Direction)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 37, fromEntity.w1Ema200Direction)) {
             return false;
         }
+
         if (!DatabaseColumnText(fromRequest, 38, fromEntity.h1DirectionAlignmentMode)) {
             return false;
         }
+
         if (!DatabaseColumnLong(fromRequest, 39, integerValue)) {
             return false;
         }
+
         fromEntity.isH1DirectionAlignmentPassed = (bool)integerValue;
         if (!DatabaseColumnText(fromRequest, 40, fromEntity.analysisSnapshotText)) {
             return false;
         }
+
         string savedD1Direction = "";
         if (!DatabaseColumnText(fromRequest, 41, savedD1Direction)
                 || !H1EaDecisionDao::restoreEma200Diagnostics(fromEntity)) {
             return false;
         }
+
         return fromEntity.d1Ema200Direction == savedD1Direction;
     }
 
@@ -354,20 +409,25 @@ public:
      */
     static bool load(const int fromHandle, const string fromWhere, H1EaDecisionEntity &fromEntity, bool &fromFound) {
         fromFound = false;
+
         int request = DatabasePrepare(fromHandle, "SELECT " + H1EaDecisionDao::selectColumns()
             + " FROM h1_ea_decisions WHERE " + fromWhere + " LIMIT 1");
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         ResetLastError();
         if (!DatabaseRead(request)) {
             int errorCode = GetLastError();
             DatabaseFinalize(request);
             return errorCode == ERR_DATABASE_NO_MORE_DATA;
         }
+
         bool success = H1EaDecisionDao::read(request, fromEntity);
+
         DatabaseFinalize(request);
         fromFound = success;
+
         return success;
     }
 
@@ -389,26 +449,33 @@ public:
                 "is_ema200_confirmation_passed", passed, hasPassed)) {
             return false;
         }
+
         if (!hasDirection && !hasPassed) {
             return true;
         }
+
         if (!hasDirection || !hasPassed) {
             return false;
         }
+
         if (StringFind(fromEntity.analysisSnapshotText, "H1_EA_DECISION_V1|") != 0) {
             return false;
         }
+
         if (direction != "~" && direction != "BUY" && direction != "SELL" && direction != "NONE") {
             return false;
         }
+
         if (passed != "0" && passed != "1") {
             return false;
         }
+
         if (direction != "~") {
             fromEntity.d1Ema200Direction = direction;
         }
         fromEntity.isEma200ConfirmationPassed = passed == "1";
         fromEntity.hasEma200ConfirmationDiagnostics = true;
+
         return true;
     }
 
@@ -420,15 +487,18 @@ private:
             string &fromValue, bool &fromFound) {
         fromValue = "";
         fromFound = false;
+
         string key = "|" + fromName + "=";
         int position = StringFind(fromText, key);
         if (position < 0) {
             return true;
         }
+
         int valueStart = position + StringLen(key);
         if (StringFind(fromText, key, valueStart) >= 0) {
             return false;
         }
+
         int valueEnd = StringFind(fromText, "|", valueStart);
         if (valueEnd < 0) {
             valueEnd = StringLen(fromText);
@@ -436,8 +506,10 @@ private:
         if (valueEnd <= valueStart) {
             return false;
         }
+
         fromValue = StringSubstr(fromText, valueStart, valueEnd - valueStart);
         fromFound = true;
+
         return true;
     }
 };

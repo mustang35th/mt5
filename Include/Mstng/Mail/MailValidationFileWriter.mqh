@@ -61,6 +61,7 @@ public:
             fromTitle,
             fromBody
         );
+
         CsvFileWriter fileWriter(
             fileName,
             true,
@@ -71,6 +72,7 @@ public:
             CSV_FILE_WRITE_MODE_APPEND
         );
         bool isWritten = fileWriter.writeLine(record);
+
         fileWriter.close();
 
         return isWritten;
@@ -138,6 +140,7 @@ private:
         const string fromBody
     ) {
         string body = normalizeLineBreaks(fromBody);
+
         string record = "===== MAIL BEGIN =====\r\n";
 
         record += StringFormat(

@@ -280,6 +280,7 @@ private:
         }
 
         bool isAllowed = this.inspectHandle(readOnlyDatabase.getHandle());
+
         readOnlyDatabase.close();
 
         return isAllowed;
@@ -456,6 +457,7 @@ private:
         sql += " AND source_mode = ?2 AND source_server = ?3 AND schema_version = ?4";
         sql += " AND strategy = ?5 AND strategy_version = ?6 AND analysis_version = ?7";
         sql += " AND analysis_input_text = ?8 AND analysis_input_hash = ?9";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(this.getHandle(), sql);
 
@@ -472,11 +474,13 @@ private:
             && DatabaseBind(requestHandle, 6, fromRunEntity.analysisVersion)
             && DatabaseBind(requestHandle, 7, fromRunEntity.analysisInputText)
             && DatabaseBind(requestHandle, 8, fromRunEntity.analysisInputHash);
+
         long matchingCount = 0;
         bool isMatching = isBound
             && DatabaseRead(requestHandle)
             && DatabaseColumnLong(requestHandle, 0, matchingCount)
             && matchingCount == 1;
+
         DatabaseFinalize(requestHandle);
 
         if (!isMatching) {
@@ -500,6 +504,7 @@ private:
         long &fromValue
     ) {
         fromValue = 0;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, fromSql);
 
@@ -509,6 +514,7 @@ private:
 
         bool isRead = DatabaseRead(requestHandle)
             && DatabaseColumnLong(requestHandle, 0, fromValue);
+
         DatabaseFinalize(requestHandle);
 
         return isRead;
@@ -528,6 +534,7 @@ private:
         string &fromValue
     ) {
         fromValue = "";
+
         ResetLastError();
         int requestHandle = DatabasePrepare(fromDatabaseHandle, fromSql);
 
@@ -537,6 +544,7 @@ private:
 
         bool isRead = DatabaseRead(requestHandle)
             && DatabaseColumnText(requestHandle, 0, fromValue);
+
         DatabaseFinalize(requestHandle);
 
         return isRead;

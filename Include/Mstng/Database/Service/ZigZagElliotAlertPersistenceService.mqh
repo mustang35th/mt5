@@ -86,10 +86,12 @@ public:
         if (!this.pointDao.createTable()) {
             return false;
         }
+
         if (this.correctionDao == NULL && this.correctedTimeFrameDao == NULL
                 && this.correctedPointDao == NULL) {
             return true;
         }
+
         return this.isCorrectionReady()
             && this.correctionDao.createTable()
             && this.correctedTimeFrameDao.createTable()
@@ -113,9 +115,11 @@ public:
         int &fromCount
     ) {
         fromCount = 0;
+
         if (!this.isReady(__FUNCTION__)) {
             return false;
         }
+
         return this.alertDao.loadAlertSignalCount(
             fromSourceServer, fromSourceLogin, fromSymbolName, fromTimeFrame,
             fromReferenceTime, fromIsBuy, fromKnownTime, fromCount
@@ -235,6 +239,7 @@ public:
         ZeroMemory(correction);
         ZigZagElliotAlertTimeFrameEntity correctedTimeFrames[];
         ZigZagElliotAlertPointEntity correctedPoints[];
+
         return this.saveSnapshotInternal(
             fromAlertEntity, fromTimeFrameEntities, fromPointEntities,
             false, correction, correctedTimeFrames, correctedPoints
@@ -334,9 +339,11 @@ private:
             for (int i = 0; i < ArraySize(fromCorrectedTimeFrames); i++) {
                 this.normalizeTimeFrameTextValues(fromCorrectedTimeFrames[i]);
             }
+
             for (int i = 0; i < ArraySize(fromCorrectedPoints); i++) {
                 this.normalizePointTextValues(fromCorrectedPoints[i]);
             }
+
             if (!this.isCorrectionReady() || !this.isCorrectionSnapshotValid(
                     fromAlertEntity, fromTimeFrameEntities, fromPointEntities,
                     fromCorrection, fromCorrectedTimeFrames, fromCorrectedPoints)) {
@@ -402,6 +409,7 @@ private:
                 this.timeFrameDao, this.pointDao
             );
         }
+
         if (isSaved && fromHasCorrection) {
             fromCorrection.alertId = fromAlertEntity.id;
             isSaved = this.correctionDao.insert(fromCorrection);
@@ -471,19 +479,23 @@ private:
             if (!fromTimeFrameDao.insert(fromTimeFrames[i])) {
                 return false;
             }
+
             int savedTimeFramePointCount = 0;
             for (int j = 0; j < ArraySize(fromPoints); j++) {
                 if (fromPoints[j].timeFrame != fromTimeFrames[i].timeFrame) {
                     continue;
                 }
+
                 fromPoints[j].id = 0;
                 fromPoints[j].alertTimeFrameId = fromTimeFrames[i].id;
                 if (!fromPointDao.insert(fromPoints[j])) {
                     return false;
                 }
+
                 savedPointCount++;
                 savedTimeFramePointCount++;
             }
+
             if (savedTimeFramePointCount != fromTimeFrames[i].pointCount) {
                 this.logger.error(
                     __FUNCTION__,
@@ -497,6 +509,7 @@ private:
                 return false;
             }
         }
+
         if (savedPointCount != ArraySize(fromPoints)) {
             this.logger.error(
                 __FUNCTION__,
@@ -508,6 +521,7 @@ private:
             );
             return false;
         }
+
         return true;
     }
 
@@ -524,6 +538,7 @@ private:
             fromTimeFrames[i].id = 0;
             fromTimeFrames[i].alertId = 0;
         }
+
         for (int i = 0; i < ArraySize(fromPoints); i++) {
             fromPoints[i].id = 0;
             fromPoints[i].alertTimeFrameId = 0;
@@ -591,6 +606,7 @@ private:
                 || !MathIsValidNumber(fromAlert.riskPips)) {
             return false;
         }
+
         if (fromCorrection.comparisonHash == "" || fromCorrection.originalAnalysisText == ""
                 || fromCorrection.selectedAlertText == "" || fromCorrection.selectedWaveSummaryText == ""
                 || fromCorrection.createdAt <= 0 || fromCorrection.createdAtText == ""
@@ -601,6 +617,7 @@ private:
                 || (fromAlert.side != "BUY" && fromAlert.side != "SELL")) {
             return false;
         }
+
         int expectedOriginalAvailable = 0;
         if (fromAlert.referencePrice > 0.0 && fromAlert.stopLoss > 0.0) {
             expectedOriginalAvailable = 1;
@@ -614,15 +631,18 @@ private:
                 || (expectedSelectedAvailable == 0 && fromCorrection.selectedRiskPips != 0.0)) {
             return false;
         }
+
         if (!this.isAnalysisStructureValid(
                 fromOriginalTimeFrames, fromOriginalPoints, fromAlert.timeFrame,
                 fromAlert.signalReferencePointTime, fromCorrection.originalLc0)) {
             return false;
         }
+
         int currentIndex = this.findTimeFrameIndex(fromOriginalTimeFrames, fromAlert.timeFrame);
         if (currentIndex < 0 || fromOriginalTimeFrames[currentIndex].buySellLabel != fromAlert.side) {
             return false;
         }
+
         if (fromCorrection.correctionStatus == "NONE") {
             return fromCorrection.correctionTimeFrame == 0
                 && fromCorrection.originalDirection == "" && fromCorrection.correctedDirection == ""
@@ -640,6 +660,7 @@ private:
                 && fromCorrection.correctedElliotCsvText == ""
                 && ArraySize(fromCorrectedTimeFrames) == 0 && ArraySize(fromCorrectedPoints) == 0;
         }
+
         bool isCorrectionTimeFrameValid = fromAlert.timeFrame == PERIOD_M5
             && (fromCorrection.correctionTimeFrame == PERIOD_H4 || fromCorrection.correctionTimeFrame == PERIOD_H1);
         if (fromAlert.timeFrame == PERIOD_H1 || fromAlert.timeFrame == PERIOD_M15) {
@@ -658,6 +679,7 @@ private:
                     fromCorrection.correctedReferencePointTime, fromCorrection.correctedLc0)) {
             return false;
         }
+
         return this.isAppliedDirectionValid(
             fromOriginalTimeFrames, fromCorrectedTimeFrames, fromCorrection, fromAlert.timeFrame
         );
@@ -680,6 +702,7 @@ private:
         if (timeFrameCount <= 0 || totalPointCount <= 0 || fromReferenceTime < 0) {
             return false;
         }
+
         int mappedPointCount = 0;
         int currentCount = 0;
         int referenceCount = 0;
@@ -690,6 +713,7 @@ private:
                     || (fromTimeFrames[i].isBuy != 0 && fromTimeFrames[i].isBuy != 1)) {
                 return false;
             }
+
             string expectedDirection = "SELL";
             if (fromTimeFrames[i].isBuy == 1) {
                 expectedDirection = "BUY";
@@ -703,18 +727,21 @@ private:
                     || fromTimeFrames[i].isCurrentTimeFrame != expectedCurrent) {
                 return false;
             }
+
             for (int j = 0; j < i; j++) {
                 if (fromTimeFrames[j].timeFrame == fromTimeFrames[i].timeFrame
                         || fromTimeFrames[j].timeFrameOrder == fromTimeFrames[i].timeFrameOrder) {
                     return false;
                 }
             }
+
             int pointCount = 0;
             int latestCount = 0;
             for (int j = 0; j < totalPointCount; j++) {
                 if (fromPoints[j].timeFrame != fromTimeFrames[i].timeFrame) {
                     continue;
                 }
+
                 pointCount++;
                 mappedPointCount++;
                 if (fromPoints[j].pointOrder < 0
@@ -724,12 +751,14 @@ private:
                         || (fromPoints[j].isSignalReference != 0 && fromPoints[j].isSignalReference != 1)) {
                     return false;
                 }
+
                 for (int k = 0; k < j; k++) {
                     if (fromPoints[k].timeFrame == fromPoints[j].timeFrame
                             && fromPoints[k].pointOrder == fromPoints[j].pointOrder) {
                         return false;
                     }
                 }
+
                 if (fromPoints[j].isLatest == 1) {
                     latestCount++;
                     if (fromPoints[j].pointOrder != fromTimeFrames[i].pointCount - 1
@@ -740,6 +769,7 @@ private:
                         return false;
                     }
                 }
+
                 if (fromPoints[j].isSignalReference == 1) {
                     referenceCount++;
                     if (expectedCurrent != 1 || fromPoints[j].barTime != fromReferenceTime
@@ -748,14 +778,17 @@ private:
                     }
                 }
             }
+
             if (pointCount != fromTimeFrames[i].pointCount || latestCount != 1) {
                 return false;
             }
         }
+
         int expectedReferenceCount = 0;
         if (fromReferenceTime > 0) {
             expectedReferenceCount = 1;
         }
+
         return mappedPointCount == totalPointCount && currentCount == 1
             && referenceCount == expectedReferenceCount;
     }
@@ -783,16 +816,19 @@ private:
             upperTimeFrame = PERIOD_D1;
             lowerTimeFrame = PERIOD_H4;
         }
+
         if (ArraySize(fromOriginal) != timeFrameCount
                 || ArraySize(fromCorrected) != timeFrameCount) {
             return false;
         }
+
         int currentIsBuy = fromOriginal[timeFrameCount - 1].isBuy;
         for (int i = 0; i < timeFrameCount; i++) {
             if (fromOriginal[i].timeFrame != timeFrames[i] || fromCorrected[i].timeFrame != timeFrames[i]
                     || fromOriginal[i].timeFrameOrder != i || fromCorrected[i].timeFrameOrder != i) {
                 return false;
             }
+
             if (timeFrames[i] == fromCorrection.correctionTimeFrame) {
                 if (fromOriginal[i].isBuy == currentIsBuy || fromCorrected[i].isBuy != currentIsBuy
                         || fromCorrection.originalDirection != fromOriginal[i].buySellLabel
@@ -802,6 +838,7 @@ private:
             } else if (fromOriginal[i].isBuy != fromCorrected[i].isBuy) {
                 return false;
             }
+
             if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame
                     || (fromCurrentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1))
                     && timeFrames[i] != fromCorrection.correctionTimeFrame
@@ -809,6 +846,7 @@ private:
                 return false;
             }
         }
+
         return fromCorrection.selectedCurrentElliotLabel == fromCorrected[timeFrameCount - 1].latestElliotLabel;
     }
 
@@ -826,6 +864,7 @@ private:
                 return i;
             }
         }
+
         return -1;
     }
 

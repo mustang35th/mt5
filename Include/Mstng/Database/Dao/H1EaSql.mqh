@@ -12,6 +12,7 @@ public:
     static string text(const string fromText) {
         string escaped = fromText;
         StringReplace(escaped, "'", "''");
+
         return "'" + escaped + "'";
     }
 
@@ -22,6 +23,7 @@ public:
         if (fromText == "") {
             return "NULL";
         }
+
         return H1EaSql::text(fromText);
     }
 
@@ -32,6 +34,7 @@ public:
         if (fromNumber == fromNull) {
             return "NULL";
         }
+
         return IntegerToString(fromNumber);
     }
 
@@ -42,6 +45,7 @@ public:
         if (fromNumber == fromNull || !MathIsValidNumber(fromNumber)) {
             return "NULL";
         }
+
         return StringFormat("%.17g", fromNumber);
     }
 
@@ -53,8 +57,11 @@ public:
         if (request == INVALID_HANDLE) {
             return false;
         }
+
         bool success = DatabaseRead(request) && DatabaseColumnLong(request, 0, fromResult);
+
         DatabaseFinalize(request);
+
         return success;
     }
 
@@ -63,6 +70,7 @@ public:
      */
     static bool execute(const int fromHandle, const string fromSql) {
         ResetLastError();
+
         return DatabaseExecute(fromHandle, fromSql);
     }
 
@@ -77,13 +85,16 @@ public:
         if (size <= 1 || ArrayResize(source, size - 1) != size - 1) {
             return "";
         }
+
         if (CryptEncode(CRYPT_HASH_SHA256, source, key, digest) != 32) {
             return "";
         }
+
         string result = "";
         for (int i = 0; i < ArraySize(digest); i++) {
             result += StringFormat("%02x", (int)digest[i]);
         }
+
         return result;
     }
 
@@ -94,6 +105,7 @@ public:
         if (StringLen(fromHash) != 64) {
             return false;
         }
+
         for (int i = 0; i < StringLen(fromHash); i++) {
             ushort character = StringGetCharacter(fromHash, i);
             if ((character < '0' || character > '9')
@@ -101,6 +113,7 @@ public:
                 return false;
             }
         }
+
         return true;
     }
 };

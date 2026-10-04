@@ -57,6 +57,7 @@ public:
         }
 
         this.close();
+
         this.database = new SqliteDatabase(
             this.fileName,
             this.useCommonFolder

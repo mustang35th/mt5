@@ -293,6 +293,7 @@ private:
 
         string sql = "ALTER TABLE zigzag_elliot_observation_timeframes ";
         sql += "ADD COLUMN " + fromColumnDefinition;
+
         ResetLastError();
 
         if (DatabaseExecute(fromDatabaseHandle, sql)) {
@@ -345,6 +346,7 @@ private:
         Logger &fromLogger
     ) {
         fromHasColumn = false;
+
         ResetLastError();
         int requestHandle = DatabasePrepare(
             fromDatabaseHandle,

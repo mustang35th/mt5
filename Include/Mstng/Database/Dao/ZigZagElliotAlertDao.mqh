@@ -242,6 +242,7 @@ public:
         }
 
         fromEntity.id = 0;
+
         string sql = this.buildInsertSql();
         ResetLastError();
         int requestHandle = DatabasePrepare(this.databaseHandle, sql);
@@ -305,6 +306,7 @@ public:
         int &fromCount
     ) {
         fromCount = 0;
+
         if (!this.isDatabaseReady(__FUNCTION__)
                 || fromReferenceTime <= 0 || fromKnownTime <= 0
                 || (fromTimeFrame != PERIOD_M5 && fromTimeFrame != PERIOD_H1)) {
@@ -315,6 +317,7 @@ public:
         if (fromIsBuy) {
             side = "BUY";
         }
+
         string sql = "SELECT COALESCE(MAX(a.signal_count),0) ";
         sql += "FROM zigzag_elliot_alerts a ";
         sql += "JOIN zigzag_elliot_alert_runs r ON r.id=a.run_id ";
@@ -332,6 +335,7 @@ public:
                 "signal history prepare failed. error=%d", GetLastError()));
             return false;
         }
+
         bool isRead = DatabaseBind(requestHandle, 0, fromSymbolName)
             && DatabaseBind(requestHandle, 1, (int)fromTimeFrame)
             && DatabaseBind(requestHandle, 2, (long)fromReferenceTime)
@@ -346,13 +350,16 @@ public:
         }
         int errorCode = GetLastError();
         DatabaseFinalize(requestHandle);
+
         if (!isRead || savedCount < 0 || savedCount >= INT_MAX) {
             this.logger.error(__FUNCTION__, StringFormat(
                 "signal history read failed. error=%d count=%I64d",
                 errorCode, savedCount));
             return false;
         }
+
         fromCount = (int)savedCount;
+
         return true;
     }
 
