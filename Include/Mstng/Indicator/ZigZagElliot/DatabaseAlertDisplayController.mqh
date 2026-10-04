@@ -8,6 +8,7 @@
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryConfig.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * 通常版M5・H1の保存アラート表示を管理する。分析・判定・DB書込は行わない。
@@ -67,7 +68,7 @@ public:
             return false;
         }
         this.sourceMode = "LIVE";
-        if (MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             this.sourceMode = "TESTER";
         }
         string prefix = "ZzeDbAlert-" + IntegerToString((long)GetMicrosecondCount()) + "-";

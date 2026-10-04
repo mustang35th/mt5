@@ -99,6 +99,7 @@
 #include <Mstng\Strength\CurrencyStrengthAllRankPoint.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * 全通貨順位履歴に表示する集計期間。
@@ -166,7 +167,7 @@ bool gRankLabelObjectsPrepared = false;
  * @return 初期化結果。
  */
 int OnInit() {
-    bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+    bool isTester = Util::isStrategyTester();
 
     if (MQLInfoInteger(MQL_OPTIMIZATION)) {
         Print("CurrencyStrengthAllRankHistory does not support optimization");
@@ -340,7 +341,7 @@ int OnCalculate(
     datetime displayStartM5BarTime = getDisplayStartM5BarTime(
         targetM5BarTime
     );
-    bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+    bool isTester = Util::isStrategyTester();
     bool cacheRefreshed = false;
     datetime changedStartM5BarTime = targetM5BarTime;
 

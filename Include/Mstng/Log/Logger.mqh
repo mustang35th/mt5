@@ -8,6 +8,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * ログ出力の重要度を表す列挙型。
@@ -131,7 +132,7 @@ public:
         fromScope.started = false;
         fromScope.wasActive = false;
         fromScope.previousKey = "";
-        if (!MQLInfoInteger(MQL_TESTER) || fromSymbol == "" || fromH1BarTime <= 0) {
+        if (!Util::isStrategyTester() || fromSymbol == "" || fromH1BarTime <= 0) {
             return;
         }
 

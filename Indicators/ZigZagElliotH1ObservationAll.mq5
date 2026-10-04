@@ -14,6 +14,7 @@
 
 #include <Mstng\Draw\DrawH1ElliotObservationAllStatus.mqh>
 #include <Mstng\Indicator\ZigZagElliot\H1ElliotObservationAllController.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /** 観測データベースファイル名。 */
 input string observationDatabaseFileName =
@@ -71,7 +72,7 @@ int OnInit() {
         return INIT_FAILED;
     }
 
-    if ((bool)MQLInfoInteger(MQL_TESTER)
+    if (Util::isStrategyTester()
             && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_H1)) {
         return INIT_PARAMETERS_INCORRECT;
     }
@@ -174,7 +175,7 @@ int OnCalculate(
 
     int calculated = gObservationController.onCalculate(fromRatesTotal);
 
-    if ((bool)MQLInfoInteger(MQL_TESTER)) {
+    if (Util::isStrategyTester()) {
         updateStatusPanel();
     }
 

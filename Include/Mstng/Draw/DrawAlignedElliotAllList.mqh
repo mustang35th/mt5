@@ -22,6 +22,7 @@
 #include <Mstng\ExpertAdvisor\Mtf3In3EntryPriorityDecision.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
+#include <Mstng\Util\Util.mqh>
 
 enum DrawAlignedElliotAllListColumn {
     drawAlignedElliotAllListColumnSymbol = 0,
@@ -2346,7 +2347,7 @@ private:
         datetime japanTime = TimeJapanUtil::getJapanTime(serverTime);
         string executionModeText = "LIVE";
 
-        if ((bool)MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             executionModeText = "TESTER";
         }
 

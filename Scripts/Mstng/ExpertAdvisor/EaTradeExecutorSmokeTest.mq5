@@ -81,11 +81,24 @@ long fakeTerminalInfoInteger(const ENUM_TERMINAL_INFO_INTEGER fromProperty) {
 }
 
 /**
- * fixture内だけでtesterとプログラム売買許可を再現する。
+ * fixture内だけでプログラム売買許可を再現する。
  */
 int fakeMqlInfoInteger(const ENUM_MQL_INFO_INTEGER fromProperty) {
     return 1;
 }
+
+/**
+ * Executor内のテスター判定を固定するfixture用ユーティリティ。
+ */
+class EaTradeExecutorTestUtil {
+public:
+    /**
+     * fixtureでは常にテスターとして動作する。
+     */
+    static bool isStrategyTester() {
+        return true;
+    }
+};
 
 /**
  * 実気配を使用しない。
@@ -156,7 +169,9 @@ int fakeBrokerTotal() {
 #define TimeLocal fakeNow
 #define PositionsTotal fakeBrokerTotal
 #define OrdersTotal fakeBrokerTotal
+#define Util EaTradeExecutorTestUtil
 #include <MstngEaCommon\Runtime\EaTradeExecutor.mqh>
+#undef Util
 #undef OrderCheck
 #undef OrderSend
 #undef AccountInfoInteger

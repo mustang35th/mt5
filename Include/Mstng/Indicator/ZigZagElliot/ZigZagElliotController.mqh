@@ -162,7 +162,7 @@ public:
             return INIT_PARAMETERS_INCORRECT;
         }
 
-        if (MQLInfoInteger(MQL_TESTER)
+        if (Util::isStrategyTester()
                 && this.config.mtf3In3AlertDatabaseEnabled
                 && this.config.mtf3In3AlertTesterSaveStartTime < 0) {
             this.logger.error(

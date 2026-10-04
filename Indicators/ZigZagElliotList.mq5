@@ -16,6 +16,7 @@
 #include <Mstng\Elliot\ElliotListSortType.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotListController.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * ZigZag Elliott一覧の基準時間足モード。
@@ -126,19 +127,19 @@ int OnInit() {
     bool h1M5IndependentModeEnabled = listMode
         == ZIGZAG_ELLIOT_LIST_MODE_H1_M5_INDEPENDENT;
 
-    if ((bool)MQLInfoInteger(MQL_TESTER)
+    if (Util::isStrategyTester()
             && listMode == ZIGZAG_ELLIOT_LIST_MODE_D1
             && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_D1)) {
         return INIT_PARAMETERS_INCORRECT;
     }
 
-    if ((bool)MQLInfoInteger(MQL_TESTER)
+    if (Util::isStrategyTester()
             && listMode == ZIGZAG_ELLIOT_LIST_MODE_H4
             && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_H4)) {
         return INIT_PARAMETERS_INCORRECT;
     }
 
-    if ((bool)MQLInfoInteger(MQL_TESTER)
+    if (Util::isStrategyTester()
             && h1M5IndependentModeEnabled
             && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_M5)) {
         return INIT_PARAMETERS_INCORRECT;

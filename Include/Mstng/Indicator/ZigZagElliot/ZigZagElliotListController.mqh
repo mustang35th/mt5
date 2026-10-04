@@ -23,6 +23,7 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
@@ -118,7 +119,7 @@ public:
         this.destroy();
 
         this.marketContext = fromMarketContext;
-        this.isTester = (bool)MQLInfoInteger(MQL_TESTER);
+        this.isTester = Util::isStrategyTester();
         this.h1M5IndependentModeEnabled =
             fromH1M5IndependentModeEnabled;
         this.testerHistoryWarmUpEnabled =

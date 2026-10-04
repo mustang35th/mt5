@@ -12,6 +12,7 @@
 #define MSTNGEA_PERSISTENCE_PROFITRETRACEMENTSTATESTORE_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngEa\Domain\ProfitRetracementState.mqh>
 
 /**
@@ -37,7 +38,7 @@ public:
         this.accountServer = AccountInfoString(ACCOUNT_SERVER);
         this.enabled = fromEnabled;
 
-        if (MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             this.enabled = false;
         }
 

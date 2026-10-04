@@ -1,6 +1,7 @@
 ﻿#ifndef MSTNGEACOMMON_RUNTIME_EATRADEEXECUTOR_MQH
 #define MSTNGEACOMMON_RUNTIME_EATRADEEXECUTOR_MQH
 
+#include <Mstng\Util\Util.mqh>
 #include <MstngEaCommon\Runtime\EaClock.mqh>
 #include <MstngEaCommon\Runtime\EaDealHistory.mqh>
 #include <MstngEaCommon\Runtime\EaProtectionPolicy.mqh>
@@ -246,7 +247,7 @@ public:
      */
     bool isIdleForTesterWarmup(const bool fromAllowSuspendedAuthority = false) const {
         bool authorityKnown = this.knownLeaseExpires > 0;
-        if (fromAllowSuspendedAuthority && MQLInfoInteger(MQL_TESTER) && this.knownLeaseExpires == 0) {
+        if (fromAllowSuspendedAuthority && Util::isStrategyTester() && this.knownLeaseExpires == 0) {
             authorityKnown = true;
         }
 
@@ -1010,7 +1011,7 @@ private:
         return AccountInfoInteger(ACCOUNT_MARGIN_MODE) == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING
             && AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) && AccountInfoInteger(ACCOUNT_TRADE_EXPERT)
             && MQLInfoInteger(MQL_TRADE_ALLOWED) && TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)
-            && (MQLInfoInteger(MQL_TESTER) || TerminalInfoInteger(TERMINAL_CONNECTED));
+            && (Util::isStrategyTester() || TerminalInfoInteger(TERMINAL_CONNECTED));
     }
 
     /**
@@ -2188,7 +2189,7 @@ private:
         fromEvent.brokerTimeMsc = fromDeal.timeMsc;
         fromEvent.dealScopeKey = "LIVE|" + AccountInfoString(ACCOUNT_SERVER) + "|"
             + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "|" + fromEvent.dealTicket;
-        if (MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             fromEvent.dealScopeKey = "TESTER|" + this.runUid + "|" + fromEvent.dealTicket;
         }
         fromEvent.eventUid = fromEvent.dealScopeKey;

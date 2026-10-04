@@ -20,6 +20,7 @@
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngEa\App\EaContext.mqh>
 #include <MstngEa\App\EaController.mqh>
 #include <MstngEa\App\StrategyFactory.mqh>
@@ -197,7 +198,7 @@ int OnInit() {
     }
 
     if (InpUseCurrencyStrength
-            && MQLInfoInteger(MQL_TESTER)
+            && Util::isStrategyTester()
             && !InpCurrencyStrengthDatabaseUseCommonFolder) {
         Print("MstngEa requires Common database folder in Strategy Tester");
 
@@ -260,7 +261,7 @@ int OnInit() {
         g_marketContext,
         g_eaConfig.strategyType
     );
-    bool isProfitRetracementPersistenceEnabled = !MQLInfoInteger(MQL_TESTER);
+    bool isProfitRetracementPersistenceEnabled = !Util::isStrategyTester();
     g_eaContext.profitRetracementStateStore = new ProfitRetracementStateStore(
         g_marketContext,
         g_eaContext.magicNumber,

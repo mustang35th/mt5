@@ -5,6 +5,7 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 #include <Mstng\Util\ElliotHistoryPreparation.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngM15Ea\Config\M15EaConfig.mqh>
 #include <MstngM15Ea\Strategy\M15EaStrategyDecision.mqh>
 
@@ -59,7 +60,7 @@ public:
         MarketContext context(fromSymbol, PERIOD_M15);
         this.marketContext = context;
 
-        if (!this.historyPreparation.initialize(fromSymbol, PERIOD_M15, (bool)MQLInfoInteger(MQL_TESTER))) {
+        if (!this.historyPreparation.initialize(fromSymbol, PERIOD_M15, Util::isStrategyTester())) {
             this.lastError = "ANALYSIS_HISTORY_CONFIGURATION_INVALID";
             return false;
         }
@@ -127,7 +128,7 @@ public:
             return false;
         }
 
-        this.elliotAll.isTimer = !MQLInfoInteger(MQL_TESTER);
+        this.elliotAll.isTimer = !Util::isStrategyTester();
         this.elliotAll.setAnalysisStartTimeFrame(
             Mtf3In3H1Policy::getAnalysisStartTimeFrame()
         );

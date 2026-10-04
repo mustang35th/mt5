@@ -1,6 +1,7 @@
 ﻿#ifndef MSTNG_UTIL_ELLIOT_HISTORY_PREPARATION_MQH
 #define MSTNG_UTIL_ELLIOT_HISTORY_PREPARATION_MQH
 
+#include <Mstng\Util\Util.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
@@ -81,7 +82,7 @@ public:
             return false;
         }
         ulong now = this.getClock();
-        bool isBeforeStart = MQLInfoInteger(MQL_TESTER) && fromWarmupEndTime > 0
+        bool isBeforeStart = Util::isStrategyTester() && fromWarmupEndTime > 0
             && TimeCurrent() < fromWarmupEndTime;
         bool clockReversed = this.checked && now < this.lastCheckTick;
         bool phaseChanged = this.checked && (isBeforeStart != this.beforeStart
@@ -224,7 +225,7 @@ private:
      * Testerはシミュレーション時刻、LIVEは単調経過時刻を返す。
      */
     ulong getClock() const {
-        if (MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             return (ulong)TimeCurrent() * 1000;
         }
         return GetTickCount64();

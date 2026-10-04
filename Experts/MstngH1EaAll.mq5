@@ -14,6 +14,7 @@
 #property strict
 #property description "28通貨H1の新規Entry・ポジション・SL管理"
 
+#include <Mstng\Util\Util.mqh>
 #include <MstngH1Ea\Analysis\H1EaBaselineReport.mqh>
 #include <MstngH1Ea\Analysis\H1EaResultRecorder.mqh>
 #include <MstngH1Ea\H1EaMultiSymbolController.mqh>
@@ -53,7 +54,7 @@ int OnInit() {
     if (controller != NULL) {
         return INIT_FAILED;
     }
-    if (MQLInfoInteger(MQL_TESTER)) {
+    if (Util::isStrategyTester()) {
         // 分析用インジケーターの自動表示を抑止する。
         TesterHideIndicators(true);
     }
@@ -170,7 +171,7 @@ void initializeFloatingProfitMonitor() {
  * 共通DBに保存した28 Runの識別情報を、テスター専用の観測クラスへ渡す。
  */
 void initializeBaselineReport() {
-    if (!MQLInfoInteger(MQL_TESTER) || !InpExportBaselineReport || controller == NULL) {
+    if (!Util::isStrategyTester() || !InpExportBaselineReport || controller == NULL) {
         return;
     }
     H1EaRunEntity runs[28];
@@ -197,7 +198,7 @@ double OnTester() {
  * CSV出力を無効にした場合も28 Runの結果をDBへ記録する。
  */
 void initializeResultRecorder() {
-    if (!MQLInfoInteger(MQL_TESTER) || controller == NULL) {
+    if (!Util::isStrategyTester() || controller == NULL) {
         return;
     }
     H1EaRunEntity runs[28];

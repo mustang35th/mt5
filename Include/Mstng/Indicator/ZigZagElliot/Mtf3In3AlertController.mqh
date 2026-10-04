@@ -338,7 +338,7 @@ private:
      */
     bool restoreAlertSignalCount(const datetime fromReferenceTime, const bool fromIsBuy) {
         if (!this.config.mtf3In3AlertDatabaseEnabled
-                || MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION)
+                || Util::isStrategyTester() || MQLInfoInteger(MQL_OPTIMIZATION)
                 || (this.marketContext.timeFrame != PERIOD_M5
                     && this.marketContext.timeFrame != PERIOD_H1)) {
             return true;
@@ -388,7 +388,7 @@ private:
      * @return LIVE、日時制限なし、または保存対象期間の場合true
      */
     bool isDatabaseSaveTimeReached(const datetime fromCurrentBarTime) {
-        if (!MQLInfoInteger(MQL_TESTER)
+        if (!Util::isStrategyTester()
                 || this.config.mtf3In3AlertTesterSaveStartTime == 0) {
             return true;
         }
@@ -403,7 +403,7 @@ private:
      * @return テスターの設定日時。LIVEは0
      */
     datetime getEffectiveDatabaseSaveStartTime() {
-        if (!MQLInfoInteger(MQL_TESTER)) {
+        if (!Util::isStrategyTester()) {
             return 0;
         }
 

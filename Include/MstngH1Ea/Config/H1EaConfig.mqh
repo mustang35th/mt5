@@ -8,6 +8,7 @@
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\H1W1ConfirmationMode.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngEa\Trade\MagicNumberUtil.mqh>
 #include <MstngH1Ea\Runtime\H1EaTextUtil.mqh>
 
@@ -88,7 +89,7 @@ public:
         this.symbolName = fromSymbol;
         this.lotSize = NormalizeDouble(fromLotSize, 8);
         this.maxInitialStopLossPips = fromMaxInitialStopLossPips;
-        this.isTester = (bool)MQLInfoInteger(MQL_TESTER);
+        this.isTester = Util::isStrategyTester();
         this.testerTradeStartTime = 0;
         this.sourceMode = "LIVE";
         this.databaseFileName = "mstng-h1-ea.sqlite";

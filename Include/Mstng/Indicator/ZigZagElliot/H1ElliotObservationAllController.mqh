@@ -26,6 +26,7 @@
 #include <Mstng\Util\ElliotHistoryPreparation.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * 全28通貨の固定H1・M5新規足Elliott観測を一括記録するクラス。
@@ -135,7 +136,7 @@ public:
         this.timerSeconds = fromTimerSeconds;
         this.databaseRetrySeconds = fromDatabaseRetrySeconds;
         this.queueCapacity = fromQueueCapacity;
-        this.testerMode = MQLInfoInteger(MQL_TESTER) != 0;
+        this.testerMode = Util::isStrategyTester();
         this.observationTesterSaveStartTime = 0;
 
         if (this.testerMode) {

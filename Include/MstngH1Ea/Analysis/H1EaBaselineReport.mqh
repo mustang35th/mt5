@@ -3,6 +3,7 @@
 
 #include <Mstng\Database\Entity\H1EaRunEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngH1Ea\Runtime\H1EaTextUtil.mqh>
 
 /**
@@ -45,7 +46,7 @@ public:
      * 出力失敗は売買停止理由にせず、不完全なレポートとして通知する。
      */
     void initialize(const H1EaRunEntity &fromRuns[], const datetime fromTradeStart) {
-        if (!MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION)
+        if (!Util::isStrategyTester() || MQLInfoInteger(MQL_OPTIMIZATION)
                 || this.active || ArraySize(fromRuns) != 28) {
             return;
         }
@@ -208,7 +209,7 @@ public:
      * OnTesterからだけ呼び、全約定とMT5標準成績を保存する。最適化基準には使わない。
      */
     void finish() {
-        if (!this.active || this.finished || !MQLInfoInteger(MQL_TESTER)) {
+        if (!this.active || this.finished || !Util::isStrategyTester()) {
             return;
         }
 

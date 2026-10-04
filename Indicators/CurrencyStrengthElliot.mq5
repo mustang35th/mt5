@@ -23,6 +23,7 @@
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
@@ -90,7 +91,7 @@ string gLastRetryPreparationFailureReason;
  * @return 初期化結果。
  */
 int OnInit() {
-    bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+    bool isTester = Util::isStrategyTester();
 
     if (MQLInfoInteger(MQL_OPTIMIZATION)) {
         Print("CurrencyStrengthElliot does not support optimization");
@@ -237,7 +238,7 @@ int OnInit() {
 void OnDeinit(const int reason) {
     EventKillTimer();
 
-    if (MQLInfoInteger(MQL_TESTER)) {
+    if (Util::isStrategyTester()) {
         logTesterSnapshotSummary();
     }
 
@@ -248,7 +249,7 @@ void OnDeinit(const int reason) {
  * タイマーごとに通貨強弱を更新する。
  */
 void OnTimer() {
-    if (MQLInfoInteger(MQL_TESTER)) {
+    if (Util::isStrategyTester()) {
         return;
     }
 
@@ -272,7 +273,7 @@ int OnCalculate(
     const long &volume[],
     const int &spread[]
 ) {
-    if (!MQLInfoInteger(MQL_TESTER)) {
+    if (!Util::isStrategyTester()) {
         processLiveSnapshot(false);
 
         return ratesTotal;
@@ -292,7 +293,7 @@ int OnCalculate(
  * @param fromForceRefresh 同じM5足でも定期更新する場合true。
  */
 void processLiveSnapshot(const bool fromForceRefresh) {
-    if (MQLInfoInteger(MQL_TESTER)) {
+    if (Util::isStrategyTester()) {
         return;
     }
 
@@ -485,7 +486,7 @@ bool isTesterHistorySeriesSynchronized() {
  * @return 基準シンボルの価格バー数が十分な場合true。
  */
 bool isTesterHistoryWarmUpReady(const datetime fromM5BarTime) {
-    if (!MQLInfoInteger(MQL_TESTER)) {
+    if (!Util::isStrategyTester()) {
         return true;
     }
 
@@ -773,7 +774,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         return currencyStrengthExecutionFailed;
     }
 
-    bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+    bool isTester = Util::isStrategyTester();
     datetime m5BarTime = fromM5BarTime;
 
     if (m5BarTime <= 0) {
@@ -932,7 +933,7 @@ bool initializeDatabase() {
 
     datetime initialM5BarTime = 0;
 
-    if (MQLInfoInteger(MQL_TESTER) && databaseSaveStartTime > 0) {
+    if (Util::isStrategyTester() && databaseSaveStartTime > 0) {
         initialM5BarTime = databaseSaveStartTime;
     }
 

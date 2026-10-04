@@ -4,6 +4,7 @@
 #include <Mstng\Database\Entity\H1EaRunEntity.mqh>
 #include <Mstng\Database\H1EaDatabaseContext.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngH1Ea\Runtime\H1EaTextUtil.mqh>
 
 /**
@@ -45,7 +46,7 @@ public:
      * DB障害はログと結果状態へ残し、EAの開始・売買を停止しない。
      */
     void initialize(const H1EaRunEntity &fromRuns[], const datetime fromTradeStart) {
-        if (!MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION) || this.active) {
+        if (!Util::isStrategyTester() || MQLInfoInteger(MQL_OPTIMIZATION) || this.active) {
             return;
         }
 
@@ -242,7 +243,7 @@ public:
      * 指定した予定期間の完走を意味せず、ここではRECORDEDへ変更しない。
      */
     void finish() {
-        if (!this.active || this.onTesterReached || !MQLInfoInteger(MQL_TESTER)) {
+        if (!this.active || this.onTesterReached || !Util::isStrategyTester()) {
             return;
         }
 

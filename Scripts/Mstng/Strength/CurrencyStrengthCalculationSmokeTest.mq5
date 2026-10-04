@@ -22,6 +22,7 @@
 #include <Mstng\Strength\CurrencyStrengthPairVote.mqh>
 #include <Mstng\Util\StringUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /** 全28通貨ペアが準備されるまでの待機上限秒。 */
 input int timeoutSeconds = 600;
@@ -1219,7 +1220,7 @@ bool saveDatabaseSnapshot(
 void OnStart() {
     Logger logger(LOG_INFO);
 
-    if (MQLInfoInteger(MQL_TESTER)) {
+    if (Util::isStrategyTester()) {
         logger.error(
             __FUNCTION__,
             "Run this script on an online chart, not in Strategy Tester."

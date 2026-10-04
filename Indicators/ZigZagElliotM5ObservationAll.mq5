@@ -14,6 +14,7 @@
 
 #include <Mstng\Draw\DrawH1ElliotObservationAllStatus.mqh>
 #include <Mstng\Indicator\ZigZagElliot\M5ElliotObservationAllController.mqh>
+#include <Mstng\Util\Util.mqh>
 
 input group "01 保存先（M5専用DB）"
 /** 観測データベースファイル名。H1・AlertのDBは指定しない。 */
@@ -61,7 +62,7 @@ bool gStatusDrawErrorLogged = false;
  */
 int OnInit() {
     if (MQLInfoInteger(MQL_OPTIMIZATION)
-            || (MQLInfoInteger(MQL_TESTER)
+            || (Util::isStrategyTester()
                 && PeriodSeconds(_Period) > PeriodSeconds(PERIOD_M5))) {
         Print("[ERROR] M5 Observation All requires tester M5 or lower; optimization is unsupported.");
         return INIT_PARAMETERS_INCORRECT;
@@ -159,7 +160,7 @@ int OnCalculate(
         return fromRatesTotal;
     }
     int calculated = gObservationController.onCalculate(fromRatesTotal);
-    if (MQLInfoInteger(MQL_TESTER)) {
+    if (Util::isStrategyTester()) {
         updateStatusPanel();
     }
     return calculated;

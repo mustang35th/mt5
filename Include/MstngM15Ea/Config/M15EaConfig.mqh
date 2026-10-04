@@ -4,6 +4,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngEa\Trade\MagicNumberUtil.mqh>
 #include <MstngEaCommon\Runtime\EaTextUtil.mqh>
 
@@ -117,7 +118,7 @@ public:
         this.directionCorrectionEnabled = fromDirectionCorrectionEnabled;
         this.h4MaxFibonacciExpansionPercent = fromH4MaxFibonacciExpansionPercent;
         this.h1MaxFibonacciExpansionPercent = fromH1MaxFibonacciExpansionPercent;
-        this.isTester = (bool)MQLInfoInteger(MQL_TESTER);
+        this.isTester = Util::isStrategyTester();
         this.testerTradeStartTime = 0;
         this.sourceMode = "LIVE";
         this.databaseFileName = "mstng-m15-ea.sqlite";

@@ -9,6 +9,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Util\PipConverter.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
 /**
@@ -246,7 +247,7 @@ private:
      * @return 日足高値・安値を取得可能な場合true。
      */
     bool canReadDailyRange() {
-        bool isTester = (bool)MQLInfoInteger(MQL_TESTER);
+        bool isTester = Util::isStrategyTester();
 
         if (!isTester) {
             return true;

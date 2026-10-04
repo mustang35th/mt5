@@ -200,6 +200,7 @@ public:
 // 置換範囲はproductionの共通履歴準備headerだけに限定する。
 #define WarmUpSeriesUtil HistoryPreparationTestSeries
 #define MQLInfoInteger testMqlInfoInteger
+#include <Mstng\Util\Util.mqh>
 #define TimeCurrent testTimeCurrent
 #define GetTickCount64 testGetTickCount64
 #define Bars testGetBars

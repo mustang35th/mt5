@@ -16,6 +16,7 @@
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankQueryMode.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * EAとインジケータで共有する実行時通貨強弱情報を取得する。
@@ -107,7 +108,7 @@ public:
             );
         }
 
-        bool runtimeTester = (bool)MQLInfoInteger(MQL_TESTER);
+        bool runtimeTester = Util::isStrategyTester();
         fromInfo.calculationVersion =
             CurrencyStrengthCalculationProfile::getCalculationVersion(
                 runtimeTester,

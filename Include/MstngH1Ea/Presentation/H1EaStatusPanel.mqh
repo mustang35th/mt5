@@ -2,6 +2,7 @@
 #define MSTNGH1EA_PRESENTATION_STATUSPANEL_MQH
 
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngH1Ea\Runtime\H1EaClock.mqh>
 #include <MstngH1Ea\Runtime\H1EaMonitorState.mqh>
 
@@ -300,7 +301,7 @@ public:
      * このパネルの名前領域だけを削除する。取引や他の描画は変更しない。
      */
     void clear() {
-        if (this.objectPrefix != "" && (!MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_VISUAL_MODE))) {
+        if (this.objectPrefix != "" && (!Util::isStrategyTester() || MQLInfoInteger(MQL_VISUAL_MODE))) {
             ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         }
         this.created = false;
@@ -368,7 +369,7 @@ private:
      * LIVEまたはビジュアルTesterで、表示指定がある場合だけ描画する。
      */
     bool canDraw() {
-        return this.enabled && (!MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_VISUAL_MODE));
+        return this.enabled && (!Util::isStrategyTester() || MQLInfoInteger(MQL_VISUAL_MODE));
     }
 
     /**

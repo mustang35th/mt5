@@ -14,6 +14,7 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1Policy.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngEa\App\EaContext.mqh>
 #include <MstngEa\Domain\ExitDecision.mqh>
 #include <MstngEa\Domain\H1ZigZagTrailDecisionResult.mqh>
@@ -390,7 +391,7 @@ private:
      * @return 再試行を予約し、分析結果の所有権を保持した場合true
      */
     bool scheduleCurrencyStrengthEntryRetry(ElliotAll *elliotAllValue) {
-        if ((bool)MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             return false;
         }
 
@@ -438,7 +439,7 @@ private:
             return;
         }
 
-        if ((bool)MQLInfoInteger(MQL_TESTER)
+        if (Util::isStrategyTester()
                 || this.eaContext.eaConfig == NULL
                 || !this.eaContext.eaConfig.useCurrencyStrength
                 || this.eaContext.currencyStrengthExecutionInfoProvider == NULL) {

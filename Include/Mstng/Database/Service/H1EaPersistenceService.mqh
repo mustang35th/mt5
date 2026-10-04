@@ -3,6 +3,7 @@
 
 #include <Mstng\Database\H1EaDatabaseContext.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * H1 EAのLease・判定・取引履歴を短いtransactionで永続化する。
@@ -668,7 +669,7 @@ private:
     bool writeTesterWarmupLease(H1EaRunEntity &fromRun, const datetime fromNow,
             const bool fromRequireReservation, const datetime fromLeaseExpires) {
         datetime reservedExpiry = H1EaPersistenceService::getTesterWarmupLeaseExpiresAt();
-        if (!MQLInfoInteger(MQL_TESTER) || fromRun.sourceMode != "TESTER"
+        if (!Util::isStrategyTester() || fromRun.sourceMode != "TESTER"
                 || fromRun.id <= 0 || !H1EaSql::isHash(fromRun.runUid)
                 || !H1EaSql::isHash(fromRun.sessionUid)
                 || StringFind(fromRun.contextKey, "H1_EA_CONTEXT_V1|TESTER|" + fromRun.runUid + "|") != 0

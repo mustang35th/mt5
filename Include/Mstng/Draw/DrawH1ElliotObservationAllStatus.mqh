@@ -12,6 +12,7 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Indicator\ZigZagElliot\H1ElliotObservationAllStatus.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * 全28通貨H1／M5観測処理の実行状態を固定パネルへ描画するクラス。
@@ -124,7 +125,7 @@ public:
      * @return 描画に成功した場合true。
      */
     bool draw(H1ElliotObservationAllStatus &fromStatus) {
-        if (MQLInfoInteger(MQL_TESTER)
+        if (Util::isStrategyTester()
                 && !MQLInfoInteger(MQL_VISUAL_MODE)) {
             if (this.created) {
                 this.clear();

@@ -3,6 +3,7 @@
 
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <MstngH1Ea\H1EaController.mqh>
 #include <MstngH1Ea\Runtime\H1EaEventTimer.mqh>
 #include <MstngH1Ea\Runtime\H1EaMonitorState.mqh>
@@ -96,7 +97,7 @@ public:
 
         string sourceMode = "LIVE";
         string databaseFileName = "mstng-h1-ea.sqlite";
-        if (MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             sourceMode = "TESTER";
             databaseFileName = "mstng-h1-ea-tester.sqlite";
         }
@@ -333,7 +334,7 @@ public:
         this.logSlowOperation(this.controllers[symbolIndex].getSymbolName(),
             "onTimer.logRestorationState", operationStartedMicros);
         this.controllers[symbolIndex].getPreparationState(currentState);
-        if (!MQLInfoInteger(MQL_TESTER) && (previousState.status != currentState.status
+        if (!Util::isStrategyTester() && (previousState.status != currentState.status
                 || previousState.reason != currentState.reason)) {
             this.logger.info(__FUNCTION__, currentState.symbolName + " " + currentState.status
                 + " H1=" + IntegerToString(currentState.h1BarTime) + " " + currentState.reason);
@@ -482,7 +483,7 @@ public:
         }
 
         fromState.sessionUid = this.sessionUid;
-        if (MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             fromState.sourceMode = "TESTER";
         }
         fromState.serverTime = TimeCurrent();
@@ -738,7 +739,7 @@ private:
      * 初回一括準備後、または通常巡回28イベント後に集計する。履歴取得や売買判定は行わない。
      */
     void logHistoryWaitSummary() {
-        if (!MQLInfoInteger(MQL_TESTER) || (this.warmupCount == 0
+        if (!Util::isStrategyTester() || (this.warmupCount == 0
                 && this.timerCount < (ulong)ArraySize(this.controllers))) {
             return;
         }
@@ -806,13 +807,13 @@ private:
         }
 
         this.nextMetricsLogTick = now + 60000;
-        if (MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             this.nextMetricsLogTick = now + 3600000;
         }
 
         H1EaMonitorState state;
         this.getMonitorState(state);
-        if (MQLInfoInteger(MQL_TESTER) && state.symbolCount > 0
+        if (Util::isStrategyTester() && state.symbolCount > 0
                 && state.preparingCount == state.symbolCount && state.activeTradeCount == 0) {
             long currentDay = (long)state.serverTime / 86400;
             if (!fromForce && currentDay == this.lastWaitingMetricsLogDay) {
@@ -844,7 +845,7 @@ private:
      * Testerで明示された売買開始日時より前か返す。LIVEと0指定には適用しない。
      */
     bool isBeforeTesterTradeStart() {
-        return MQLInfoInteger(MQL_TESTER) && this.testerTradeStartTime > 0
+        return Util::isStrategyTester() && this.testerTradeStartTime > 0
             && TimeCurrent() < this.testerTradeStartTime;
     }
 
@@ -986,7 +987,7 @@ private:
      * schema移行より先に実行し、LIVE・通常Lease・別口座・別Magicは変更しない。
      */
     bool cleanupTesterWarmupReservations(const string fromFileName) {
-        if (!MQLInfoInteger(MQL_TESTER)) {
+        if (!Util::isStrategyTester()) {
             return true;
         }
 

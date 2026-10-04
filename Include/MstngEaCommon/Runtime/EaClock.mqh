@@ -1,6 +1,8 @@
 ﻿#ifndef MSTNGEACOMMON_RUNTIME_EACLOCK_MQH
 #define MSTNGEACOMMON_RUNTIME_EACLOCK_MQH
 
+#include <Mstng\Util\Util.mqh>
+
 /**
  * LIVEの単調経過時間とTesterの再現可能な経過時間を提供する。
  */
@@ -11,7 +13,7 @@ public:
      * Testerではテスト実行速度で再試行回数が変わらないようserver時刻を使う。
      */
     static ulong milliseconds() {
-        if (MQLInfoInteger(MQL_TESTER)) {
+        if (Util::isStrategyTester()) {
             return (ulong)TimeCurrent() * 1000;
         }
 
