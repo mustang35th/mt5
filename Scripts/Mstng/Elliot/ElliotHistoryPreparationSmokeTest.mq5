@@ -222,7 +222,7 @@ void verifyInitializationAndReset() {
     ElliotHistoryPreparation preparation;
     verify(!preparation.prepare() && !preparation.isReady(), "uninitialized is not ready");
     verify(!preparation.initialize("", PERIOD_H1), "empty symbol rejected");
-    verify(!preparation.initialize(testSymbol, PERIOD_M15), "unsupported anchor rejected");
+    verify(!preparation.initialize(testSymbol, PERIOD_M1), "unsupported anchor rejected");
     verify(initialRequestCount == 0, "invalid setup does not request history");
     verify(preparation.initialize(testSymbol, PERIOD_H1), "H1 initialized");
     verify(initialRequestCount == 5 && initialRequestedBars == 500, "H1 requests five series at 500 bars");
@@ -238,6 +238,11 @@ void verifyInitializationAndReset() {
     verify(!preparation.prepare() && !preparation.isReady(), "reset clears readiness");
     verify(preparation.getStatusText() == "" && preparation.getMissingStatusText() == "",
         "reset clears diagnostics");
+    verify(preparation.initialize(testSymbol, PERIOD_M15), "M15 initialized after reset");
+    verify(initialRequestCount == 6 && initialRequestedBars == 500, "M15 requests six series at 500 bars");
+    for (int i = 0; i < 6; i++) {
+        verify(initialTimeFrames[i] == testTimeFrames[5 - i], "M15 initial request order");
+    }
     verify(preparation.initialize(testSymbol, PERIOD_M5), "M5 initialized after reset");
     verify(initialRequestCount == 7 && initialRequestedBars == 500, "M5 requests seven series at 500 bars");
     for (int i = 0; i < 7; i++) {
@@ -267,6 +272,14 @@ void verifyRequirements() {
     testBars[5] = 0;
     testBars[6] = 0;
     verify(preparation.prepare(), "H1 does not require M15 or M5");
+    preparation.initialize(testSymbol, PERIOD_M15);
+    verify(!preparation.prepare(), "M15 requires its additional series");
+    testBars[5] = 205;
+    verify(!preparation.prepare(), "M15 205 bars rejected");
+    testBars[5] = 206;
+    verify(preparation.prepare(), "M15 ready without M5");
+    verify(StringFind(preparation.getStatusText(), "M5[") < 0, "M15 diagnostics exclude M5");
+    testBars[5] = 0;
     preparation.initialize(testSymbol, PERIOD_M5);
     verify(!preparation.prepare(), "M5 requires both additional series");
     for (int i = 5; i < 7; i++) {

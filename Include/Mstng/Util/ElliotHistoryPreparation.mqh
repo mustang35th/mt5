@@ -4,7 +4,7 @@
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
- * H1・M5の28通貨観測とH1 EAで使う、1通貨の価格履歴準備。
+ * H1・M5の28通貨観測とH1・M15 EAで使う、1通貨の価格履歴準備。
  * 履歴の同期・本数だけを管理し、分析成功・DB・保存/売買許可は扱わない。
  */
 class ElliotHistoryPreparation {
@@ -41,7 +41,7 @@ public:
      * 500本は取得要求量であり、履歴準備完了の必要本数ではない。
      *
      * @param fromSymbol 対象通貨。
-     * @param fromAnchorTimeFrame H1またはM5。
+     * @param fromAnchorTimeFrame H1、M15またはM5。
      * @param fromRequireMinimumBars falseは既存EAのLIVE同期確認に使用。
      * @return 対象設定が有効な場合true。取得完了はprepareで確認する。
      */
@@ -49,7 +49,7 @@ public:
             const bool fromRequireMinimumBars = true) {
         this.reset();
         if (fromSymbol == "" || (fromAnchorTimeFrame != PERIOD_H1
-                && fromAnchorTimeFrame != PERIOD_M5)) {
+                && fromAnchorTimeFrame != PERIOD_M15 && fromAnchorTimeFrame != PERIOD_M5)) {
             return false;
         }
         this.symbolName = fromSymbol;
@@ -218,11 +218,14 @@ private:
     }
 
     /**
-     * H1は5足、M5は7足を対象にする。
+     * H1は5足、M15は6足、M5は7足を対象にする。
      */
     int getTimeFrameCount() const {
         if (this.anchorTimeFrame == PERIOD_M5) {
             return 7;
+        }
+        if (this.anchorTimeFrame == PERIOD_M15) {
+            return 6;
         }
         return 5;
     }

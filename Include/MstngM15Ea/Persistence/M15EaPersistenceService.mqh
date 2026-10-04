@@ -1,0 +1,797 @@
+﻿#ifndef MSTNGM15EA_PERSISTENCE_PERSISTENCESERVICE_MQH
+#define MSTNGM15EA_PERSISTENCE_PERSISTENCESERVICE_MQH
+
+#include <Mstng\ExpertAdvisor\Runtime\EaTextUtil.mqh>
+#include <Mstng\ExpertAdvisor\Runtime\IEaTradeStore.mqh>
+#include <Mstng\Log\Logger.mqh>
+#include <MstngM15Ea\Persistence\M15EaDatabaseContext.mqh>
+
+/**
+ * M15 EAのLease・判定・取引履歴を短いtransactionで永続化する。
+ * broker送信は担当せず、保存完了を送信側へ明示する。
+ */
+class M15EaPersistenceService : public IEaTradeStore {
+public:
+    /**
+     * 未接続状態で初期化する。
+     */
+    M15EaPersistenceService() {
+        this.lastError = "";
+        this.logger.setLevel(LOG_INFO);
+    }
+
+    /**
+     * DBと現行schemaを準備する。Run登録後の再接続時はfalseでDDLを禁止する。
+     */
+    bool open(const string fromFileName, const bool fromInitializeSchema = true) {
+        if (!this.context.open(fromFileName, fromInitializeSchema)) {
+            return this.fail("DATABASE_OPEN_OR_SCHEMA_FAILED");
+        }
+        this.lastError = "";
+        return true;
+    }
+
+    /**
+     * DBを閉じる。Run終了は明示的にfinishRunで保存する。
+     */
+    void close() {
+        this.context.close();
+    }
+
+    /**
+     * 接続ハンドルを返す。
+     */
+    int getHandle() const {
+        return this.context.getHandle();
+    }
+
+    /**
+     * 最後の保存エラーを取得する。
+     */
+    virtual string getLastError() const {
+        return this.lastError;
+    }
+
+    /**
+     * 期限切れRunの中断と新RunのLease取得を一括保存する。
+     */
+    bool acquireRun(M15EaRunEntity &fromRun) {
+        if ((fromRun.sessionUid != "" && !M15EaSql::isHash(fromRun.sessionUid))
+                || !M15EaSql::isHash(fromRun.runUid) || !M15EaSql::isHash(fromRun.configHash)
+                || !M15EaSql::isHash(fromRun.analysisInputHash)
+                || fromRun.configHash != M15EaSql::hash(fromRun.configText)
+                || fromRun.analysisInputHash != M15EaSql::hash(fromRun.analysisInputText)) {
+            return this.fail("RUN_HASH_INVALID");
+        }
+        if (fromRun.id != 0 || !this.begin()) {
+            return this.fail("RUN_ALREADY_ACQUIRED_OR_BEGIN_FAILED");
+        }
+        M15EaRunEntity candidate = fromRun;
+        long now = (long)TimeLocal();
+        long activeCount = 0;
+        if (!M15EaSql::scalar(this.getHandle(),
+                "SELECT COUNT(*) FROM m15_ea_runs WHERE context_key="
+                + M15EaSql::text(candidate.contextKey)
+                + " AND status='RUNNING' AND lease_expires_at>" + IntegerToString(now), activeCount)) {
+            return this.complete(false, "RUN_CONTEXT_READ_FAILED");
+        }
+        if (activeCount > 0) {
+            M15EaSql::execute(this.getHandle(), "ROLLBACK");
+            return this.fail("RUN_CONTEXT_ALREADY_ACTIVE");
+        }
+        candidate.status = "RUNNING";
+        candidate.heartbeatAt = now;
+        candidate.leaseExpiresAt = now + 60;
+        if (candidate.startedAt == 0) {
+            candidate.startedAt = now;
+        }
+        string sql = "UPDATE m15_ea_runs SET status='INTERRUPTED',ended_at="
+            + IntegerToString(now) + ",error_text=error_text||'|LEASE_EXPIRED' WHERE context_key="
+            + M15EaSql::text(candidate.contextKey)
+            + " AND status='RUNNING' AND lease_expires_at<=" + IntegerToString(now);
+        bool success = M15EaSql::execute(this.getHandle(), sql)
+            && M15EaRunDao::insert(this.getHandle(), candidate);
+        if (!this.complete(success, "RUN_LEASE_ACQUIRE_FAILED")) {
+            return false;
+        }
+        fromRun = candidate;
+        return true;
+    }
+
+    /**
+     * 未失効の今回Runだけを更新する。失効Leaseは復活させない。
+     */
+    bool heartbeat(M15EaRunEntity &fromRun, const datetime fromNow) {
+        if (!this.begin()) {
+            return false;
+        }
+        string sql = "UPDATE m15_ea_runs SET heartbeat_at=" + IntegerToString((long)fromNow)
+            + ",lease_expires_at=" + IntegerToString((long)fromNow + 60)
+            + " WHERE id=" + IntegerToString(fromRun.id)
+            + " AND status='RUNNING' AND lease_expires_at>" + IntegerToString((long)fromNow);
+        long changed = 0;
+        bool success = M15EaSql::execute(this.getHandle(), sql)
+            && M15EaSql::scalar(this.getHandle(), "SELECT changes()", changed) && changed == 1;
+        if (!this.complete(success, "RUN_LEASE_HEARTBEAT_FAILED")) {
+            return false;
+        }
+        fromRun.heartbeatAt = (long)fromNow;
+        fromRun.leaseExpiresAt = (long)fromNow + 60;
+        return true;
+    }
+
+    /**
+     * 指定Runが現在もLeaseを所有しているかDBで確認する。
+     */
+    virtual bool hasLease(const long fromRunId, const datetime fromNow) {
+        long count = 0;
+        if (!M15EaSql::scalar(this.getHandle(),
+            "SELECT COUNT(*) FROM m15_ea_runs WHERE id=" + IntegerToString(fromRunId)
+            + " AND status='RUNNING' AND lease_expires_at>" + IntegerToString((long)fromNow),
+            count)) {
+            return this.fail("LEASE_READ_FAILED");
+        }
+        if (count != 1) {
+            return this.fail("LEASE_NOT_OWNED");
+        }
+        this.lastError = "";
+        return true;
+    }
+
+    /**
+     * 初回消費を含むSKIPを確定保存する。既存Decisionは上書きしない。
+     */
+    bool saveDecision(const long fromRunId, M15EaDecisionEntity &fromDecision) {
+        if (!M15EaSql::isHash(fromDecision.snapshotHash)) {
+            return this.fail("DECISION_HASH_INVALID");
+        }
+        if (fromDecision.decision != "SKIP") {
+            return this.fail("ENTRY_REQUIRES_ATOMIC_TRADE");
+        }
+        if (!this.beginOwned(fromRunId, true, fromDecision.contextKey)) {
+            return false;
+        }
+        M15EaDecisionEntity candidate = fromDecision;
+        M15EaDecisionEntity existing;
+        bool found = false;
+        bool success = this.loadDecision(candidate.contextKey, candidate.barTime, existing, found);
+        if (success && found) {
+            success = existing.snapshotHash == candidate.snapshotHash
+                && existing.analysisSnapshotText == candidate.analysisSnapshotText;
+            if (success) {
+                candidate = existing;
+            }
+        } else if (success) {
+            candidate.runId = fromRunId;
+            success = M15EaDecisionDao::insert(this.getHandle(), candidate);
+        }
+        if (!this.complete(success, "DECISION_SAVE_FAILED")) {
+            return false;
+        }
+        fromDecision = candidate;
+        return true;
+    }
+
+    /**
+     * Decision・OPEN_PENDING・ENTRY_REQUESTを同じLease下で一括保存する。
+     */
+    bool saveEntry(const long fromRunId, M15EaDecisionEntity &fromDecision,
+            EaTradeState &fromTrade, EaTradeEvent &fromEvent) {
+        if (!M15EaSql::isHash(fromDecision.snapshotHash)) {
+            return this.fail("DECISION_HASH_INVALID");
+        }
+        if ((fromDecision.decision != "BUY" && fromDecision.decision != "SELL")
+                || fromTrade.id != 0 || fromEvent.eventType != "ENTRY_REQUEST"
+                || fromTrade.status != "OPEN_PENDING"
+                || fromTrade.contextKey != fromDecision.contextKey
+                || fromTrade.side != fromDecision.decision) {
+            return this.fail("ENTRY_SNAPSHOT_INVALID");
+        }
+        if (!this.beginOwned(fromRunId, true, fromDecision.contextKey)) {
+            return false;
+        }
+        M15EaDecisionEntity decision = fromDecision;
+        EaTradeState trade = fromTrade;
+        EaTradeEvent event = fromEvent;
+        decision.runId = fromRunId;
+        bool success = M15EaDecisionDao::insert(this.getHandle(), decision);
+        if (success) {
+            trade.createdRunId = fromRunId;
+            trade.decisionId = decision.id;
+            success = M15EaTradeDao::insert(this.getHandle(), trade);
+        }
+        if (success) {
+            event.tradeId = trade.id;
+            event.runId = fromRunId;
+            if (StringFind(event.actionUid, "{TRADE_ID}") >= 0) {
+                StringReplace(event.actionUid, "{TRADE_ID}", IntegerToString(trade.id));
+                event.eventUid = event.actionUid + "|REQUEST";
+            }
+            success = this.insertEvent(event);
+        }
+        if (!this.complete(success, "ENTRY_ATOMIC_SAVE_FAILED")) {
+            return false;
+        }
+        fromDecision = decision;
+        fromTrade = trade;
+        fromEvent = event;
+        return true;
+    }
+
+    /**
+     * 取引snapshotと監査Eventを原子的に保存する。
+     * Lease不要経路はbroker事実の監査専用であり、送信許可を与えない。
+     */
+    virtual bool saveTradeEvent(const long fromRunId, EaTradeState &fromTrade,
+            EaTradeEvent &fromEvent, const bool fromRequireLease = true,
+            const bool fromReplayQueuedRequest = false) {
+        if (!fromRequireLease && (fromEvent.eventType == "ENTRY_REQUEST"
+                || fromEvent.eventType == "SL_MODIFY_REQUEST"
+                || fromEvent.eventType == "EXIT_REQUEST")) {
+            if (!fromReplayQueuedRequest || fromEvent.eventType == "ENTRY_REQUEST") {
+                return this.fail("REQUEST_REQUIRES_LEASE");
+            }
+        }
+        if (!this.beginOwned(fromRunId, fromRequireLease, fromTrade.contextKey)) {
+            return false;
+        }
+        EaTradeState trade = fromTrade;
+        EaTradeEvent event = fromEvent;
+        EaTradeEvent existingEvent;
+        if (trade.id > 0 && !this.resolveRecoveryUid(trade, event)) {
+            return this.complete(false, "RECOVERY_UID_RESOLUTION_FAILED");
+        }
+        bool found = false;
+        bool success = M15EaTradeEventDao::load(this.getHandle(),
+            "event_uid=" + M15EaSql::text(event.eventUid), existingEvent, found);
+        if (success && found) {
+            bool tradeFound = false;
+            success = (trade.id == 0 || existingEvent.tradeId == trade.id)
+                && M15EaTradeDao::load(this.getHandle(),
+                    "id=" + IntegerToString(existingEvent.tradeId), trade, tradeFound)
+                && tradeFound && trade.contextKey == fromTrade.contextKey;
+            if (success) {
+                event = existingEvent;
+            }
+        } else if (success) {
+            if (trade.id == 0) {
+                if (trade.origin != "RECOVERED") {
+                    success = false;
+                } else {
+                    trade.createdRunId = fromRunId;
+                    success = M15EaTradeDao::insert(this.getHandle(), trade);
+                }
+            } else {
+                EaTradeState previous;
+                bool tradeFound = false;
+                success = M15EaTradeDao::load(this.getHandle(),
+                    "id=" + IntegerToString(trade.id), previous, tradeFound)
+                    && tradeFound && previous.contextKey == trade.contextKey;
+                if (success && previous.status == "CLOSED" && trade.status != "CLOSED") {
+                    success = false;
+                }
+                if (success) {
+                    success = M15EaTradeDao::update(this.getHandle(), trade);
+                }
+            }
+            if (success) {
+                event.tradeId = trade.id;
+                event.runId = fromRunId;
+                success = this.resolveRecoveryUid(trade, event) && this.insertEvent(event);
+            }
+        }
+        if (!this.complete(success, "TRADE_EVENT_ATOMIC_SAVE_FAILED")) {
+            return false;
+        }
+        fromTrade = trade;
+        fromEvent = event;
+        return true;
+    }
+
+    /**
+     * 保存済みM15バーを確認する。別Runの確定行もそのまま返す。
+     */
+    bool loadDecision(const string fromContext, const long fromBar,
+            M15EaDecisionEntity &fromDecision, bool &fromFound) {
+        return M15EaDecisionDao::load(this.getHandle(),
+            "context_key=" + M15EaSql::text(fromContext)
+            + " AND bar_time=" + IntegerToString(fromBar), fromDecision, fromFound);
+    }
+
+    /**
+     * active枠を占める取引を読み取る。
+     */
+    virtual bool loadActiveTrade(const string fromContext,
+            EaTradeState &fromTrade, bool &fromFound) {
+        return M15EaTradeDao::load(this.getHandle(),
+            "context_key=" + M15EaSql::text(fromContext)
+            + " AND status IN ('OPEN_PENDING','OPEN_PARTIAL','OPEN',"
+            + "'CLOSE_PENDING','CLOSE_PARTIAL','RECOVERY_REQUIRED')", fromTrade, fromFound);
+    }
+
+    /**
+     * 現context内でdeal監査未完了のCLOSEDを主キー順に一件取得する。
+     * NULLの約定ticketは欠落と推測せず、明示的な監査待ちだけを別途拾う。
+     * 起動時の全件監査ではendpointやmarkerに依存せず、途中約定の欠落も再照合する。
+     */
+    virtual bool loadClosedTradeForDealAudit(const string fromContext, const long fromAfterId,
+            EaTradeState &fromTrade, bool &fromFound, const bool fromFullAudit = false) {
+        fromFound = false;
+        if (StringLen(fromContext) == 0 || fromAfterId < 0) {
+            return this.fail("CLOSED_DEAL_AUDIT_QUERY_INVALID");
+        }
+        string where = "context_key=" + M15EaSql::text(fromContext)
+            + " AND status='CLOSED' AND id>" + IntegerToString(fromAfterId);
+        if (!fromFullAudit) {
+            where += " AND (last_error='DEAL_EVENTS_PENDING'"
+                + " OR (entry_deal_ticket IS NOT NULL AND NOT EXISTS ("
+                + "SELECT 1 FROM m15_ea_trade_events e WHERE e.trade_id=m15_ea_trades.id"
+                + " AND e.event_type='DEAL_ADD' AND e.deal_ticket=m15_ea_trades.entry_deal_ticket))"
+                + " OR (exit_deal_ticket IS NOT NULL AND NOT EXISTS ("
+                + "SELECT 1 FROM m15_ea_trade_events e WHERE e.trade_id=m15_ea_trades.id"
+                + " AND e.event_type='DEAL_ADD' AND e.deal_ticket=m15_ea_trades.exit_deal_ticket)))";
+        }
+        where += " ORDER BY id ASC";
+        if (!M15EaTradeDao::load(this.getHandle(), where, fromTrade, fromFound)) {
+            return this.fail("CLOSED_DEAL_AUDIT_READ_FAILED");
+        }
+        this.lastError = "";
+        return true;
+    }
+
+    /**
+     * 遅延した途中約定のため、endpointや監査待ちに依存せずCLOSEDを取得する。
+     * 指定contextとPosition IDが完全一致する過去取引だけを対象にする。
+     */
+    virtual bool loadClosedTradeByPosition(const string fromContext, const string fromPositionIdentifier,
+            EaTradeState &fromTrade, bool &fromFound) {
+        fromFound = false;
+        if (StringLen(fromContext) == 0 || StringLen(fromPositionIdentifier) == 0) {
+            return this.fail("CLOSED_DEAL_POSITION_QUERY_INVALID");
+        }
+        if (!M15EaTradeDao::load(this.getHandle(),
+                "context_key=" + M15EaSql::text(fromContext) + " AND status='CLOSED'"
+                + " AND position_identifier=" + M15EaSql::text(fromPositionIdentifier),
+                fromTrade, fromFound)) {
+            return this.fail("CLOSED_DEAL_POSITION_READ_FAILED");
+        }
+        this.lastError = "";
+        return true;
+    }
+
+    /**
+     * CLOSEDのbroker約定事実だけを追記し、過去Tradeのsnapshotは更新しない。
+     * Lease不要の監査専用経路であり、現在の取引状態変更や発注を許可しない。
+     */
+    virtual bool appendClosedDealEvent(const long fromRunId, const long fromTradeId,
+            EaTradeEvent &fromEvent) {
+        if (fromEvent.eventType != "DEAL_ADD" || StringLen(fromEvent.dealTicket) == 0
+                || (fromEvent.tradeId != 0 && fromEvent.tradeId != fromTradeId)) {
+            return this.fail("CLOSED_DEAL_EVENT_INVALID");
+        }
+        M15EaRunEntity run;
+        EaTradeState trade;
+        if (!this.beginClosedDealAudit(fromRunId, fromTradeId, run, trade)) {
+            return false;
+        }
+        string scope = "LIVE|" + run.accountServer + "|"
+            + IntegerToString(run.accountLogin) + "|" + fromEvent.dealTicket;
+        if (run.sourceMode == "TESTER") {
+            scope = "TESTER|" + run.runUid + "|" + fromEvent.dealTicket;
+        }
+        if (StringLen(trade.positionIdentifier) == 0
+                || fromEvent.positionIdentifier != trade.positionIdentifier
+                || fromEvent.dealScopeKey != scope || fromEvent.eventUid != scope) {
+            return this.complete(false, "CLOSED_DEAL_EVENT_SCOPE_INVALID");
+        }
+        EaTradeEvent event = fromEvent;
+        EaTradeEvent existing;
+        bool found = false;
+        bool success = M15EaTradeEventDao::load(this.getHandle(),
+            "event_uid=" + M15EaSql::text(scope)
+            + " OR deal_scope_key=" + M15EaSql::text(scope), existing, found);
+        if (success && found) {
+            success = existing.tradeId == fromTradeId && existing.eventType == "DEAL_ADD"
+                && existing.eventUid == scope && existing.dealScopeKey == scope
+                && existing.dealTicket == event.dealTicket
+                && existing.positionIdentifier == trade.positionIdentifier;
+            if (success) {
+                event = existing;
+            }
+        } else if (success) {
+            event.id = 0;
+            event.tradeId = fromTradeId;
+            event.runId = fromRunId;
+            success = this.insertEvent(event);
+        }
+        if (!this.complete(success, "CLOSED_DEAL_EVENT_APPEND_FAILED")) {
+            return false;
+        }
+        fromEvent = event;
+        return true;
+    }
+
+    /**
+     * 全dealの保存成功後に監査待ちだけを解除し、他のエラーやTrade状態を保持する。
+     * 呼出側がbroker履歴の全件照合を完了した場合に限って使用する。
+     */
+    virtual bool completeClosedDealAudit(const long fromRunId, const long fromTradeId) {
+        M15EaRunEntity run;
+        EaTradeState trade;
+        if (!this.beginClosedDealAudit(fromRunId, fromTradeId, run, trade)) {
+            return false;
+        }
+        string sql = "UPDATE m15_ea_trades SET last_error='' WHERE id="
+            + IntegerToString(fromTradeId) + " AND last_error='DEAL_EVENTS_PENDING'";
+        return this.complete(M15EaSql::execute(this.getHandle(), sql),
+            "CLOSED_DEAL_AUDIT_COMPLETE_FAILED");
+    }
+
+    /**
+     * 型変換前のpending全7列を、SQLite実型・SQL値付きCanonical Textで取得する。
+     * 列名の後の長さは型とSQLリテラルを合わせたUTF-8バイト数とする。
+     */
+    virtual bool loadPendingRaw(const long fromTradeId, string &fromText) {
+        fromText = "";
+        if (fromTradeId <= 0) {
+            return this.fail("PENDING_RAW_TRADE_ID_INVALID");
+        }
+        int request = DatabasePrepare(this.getHandle(),
+            "SELECT " + M15EaTradeDao::pendingRawColumns()
+            + " FROM m15_ea_trades WHERE id=" + IntegerToString(fromTradeId));
+        if (request == INVALID_HANDLE) {
+            return this.fail("PENDING_RAW_READ_FAILED");
+        }
+        if (!DatabaseRead(request)) {
+            DatabaseFinalize(request);
+            return this.fail("PENDING_RAW_READ_FAILED");
+        }
+        string columns[] = {
+            "pending_stop_loss_kind", "pending_stop_loss_bar_time", "pending_stop_loss",
+            "pending_stop_loss_pivot_time", "pending_stop_loss_pivot_rate",
+            "pending_stop_loss_latest_time", "pending_stop_loss_action_uid"
+        };
+        string canonical = "M15_EA_PENDING_RAW_V1";
+        bool success = true;
+        for (int i = 0; i < ArraySize(columns); i++) {
+            string actualType = "";
+            string actualValue = "";
+            if (!DatabaseColumnText(request, i * 2, actualType)
+                    || !DatabaseColumnText(request, i * 2 + 1, actualValue)) {
+                success = false;
+                break;
+            }
+            string value = actualType + ":" + actualValue;
+            uchar bytes[];
+            int size = StringToCharArray(value, bytes, 0, WHOLE_ARRAY, CP_UTF8);
+            if (size < 1) {
+                success = false;
+                break;
+            }
+            canonical += "|" + columns[i] + "#" + IntegerToString(size - 1) + "=" + value;
+        }
+        DatabaseFinalize(request);
+        if (!success) {
+            return this.fail("PENDING_RAW_READ_FAILED");
+        }
+        fromText = canonical;
+        this.lastError = "";
+        return true;
+    }
+
+    /**
+     * SLまたは注文actionの要求・結果を取得する。
+     */
+    virtual bool loadEvent(const string fromActionUid, const string fromEventType,
+            EaTradeEvent &fromEvent, bool &fromFound) {
+        return M15EaTradeEventDao::load(this.getHandle(),
+            "action_uid=" + M15EaSql::text(fromActionUid)
+            + " AND event_type=" + M15EaSql::text(fromEventType), fromEvent, fromFound);
+    }
+
+    /**
+     * 最後の要求Eventを読み取り、再起動時の送信意図を照合する。
+     */
+    virtual bool loadLatestTradeEvent(const long fromTradeId, const string fromEventType,
+            EaTradeEvent &fromEvent, bool &fromFound) {
+        return M15EaTradeEventDao::load(this.getHandle(),
+            "trade_id=" + IntegerToString(fromTradeId)
+            + " AND event_type=" + M15EaSql::text(fromEventType)
+            + " ORDER BY sequence DESC", fromEvent, fromFound);
+    }
+
+    /**
+     * 検出済みの監査欠落があるコンテキストでは初回回数を推測復元しない。
+     */
+    bool hasAuditGap(const string fromContext, bool &fromFound) {
+        long count = 0;
+        bool success = M15EaSql::scalar(this.getHandle(),
+            "SELECT COUNT(*) FROM m15_ea_runs WHERE context_key=" + M15EaSql::text(fromContext)
+            + " AND error_text LIKE '%AUDIT_STATE_LOST%'", count);
+        if (success) {
+            fromFound = count > 0;
+        }
+        return success;
+    }
+
+    /**
+     * Judge OFFを挟んでも同じシグナルの最終回数を復元する。
+     */
+    bool loadSignalCount(const string fromContext, const long fromReferenceTime,
+            const string fromSide, int &fromCount) {
+        long count = 0;
+        bool success = M15EaSql::scalar(this.getHandle(),
+            "SELECT COALESCE(MAX(signal_count),0) FROM m15_ea_decisions WHERE context_key="
+            + M15EaSql::text(fromContext) + " AND signal_reference_time="
+            + IntegerToString(fromReferenceTime) + " AND signal_side=" + M15EaSql::text(fromSide)
+            + " AND is_judge_matched=1", count);
+        if (success && count >= 0 && count <= INT_MAX) {
+            fromCount = (int)count;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 全保存済みシグナルの回数を復元する。
+     */
+    bool loadSignalCounts(const string fromContext, long &fromTimes[],
+            string &fromSides[], int &fromCounts[]) {
+        ArrayResize(fromTimes, 0);
+        ArrayResize(fromSides, 0);
+        ArrayResize(fromCounts, 0);
+        int request = DatabasePrepare(this.getHandle(),
+            "SELECT signal_reference_time,signal_side,MAX(signal_count) FROM m15_ea_decisions"
+            + " WHERE context_key=" + M15EaSql::text(fromContext)
+            + " AND is_judge_matched=1 GROUP BY signal_reference_time,signal_side"
+            + " ORDER BY signal_reference_time,signal_side");
+        if (request == INVALID_HANDLE) {
+            return false;
+        }
+        bool success = true;
+        int count = 0;
+        while (true) {
+            ResetLastError();
+            if (!DatabaseRead(request)) {
+                success = GetLastError() == ERR_DATABASE_NO_MORE_DATA;
+                break;
+            }
+            long referenceTime = 0;
+            long signalCount = 0;
+            string side = "";
+            if (!DatabaseColumnLong(request, 0, referenceTime)
+                    || !DatabaseColumnText(request, 1, side)
+                    || !DatabaseColumnLong(request, 2, signalCount)
+                    || signalCount < 1 || signalCount > INT_MAX
+                    || ArrayResize(fromTimes, count + 1) < 0
+                    || ArrayResize(fromSides, count + 1) < 0
+                    || ArrayResize(fromCounts, count + 1) < 0) {
+                success = false;
+                break;
+            }
+            fromTimes[count] = referenceTime;
+            fromSides[count] = side;
+            fromCounts[count] = (int)signalCount;
+            count++;
+        }
+        DatabaseFinalize(request);
+        return success;
+    }
+
+    /**
+     * 候補跨ぎ決済を要求した最後のM15バーを復元する。
+     */
+    bool loadCrossBlockedBar(const string fromContext, datetime &fromBar) {
+        long bar = 0;
+        bool success = M15EaSql::scalar(this.getHandle(),
+            "SELECT COALESCE(MAX((e.server_time/900)*900),0)"
+            + " FROM m15_ea_trade_events e JOIN m15_ea_trades t ON t.id=e.trade_id"
+            + " WHERE t.context_key=" + M15EaSql::text(fromContext)
+            + " AND e.event_type='EXIT_REQUEST' AND e.exit_intent_reason IS NOT NULL", bar);
+        if (success) {
+            fromBar = (datetime)bar;
+        }
+        return success;
+    }
+
+    /**
+     * 正常終了・初期化失敗を保存しLeaseを解放する。
+     */
+    bool finishRun(const long fromRunId, const string fromStatus, const string fromError) {
+        if (fromStatus != "STOPPED" && fromStatus != "FAILED") {
+            return this.fail("RUN_TERMINAL_STATUS_INVALID");
+        }
+        if (!this.begin()) {
+            return false;
+        }
+        long now = (long)TimeLocal();
+        string sql = "UPDATE m15_ea_runs SET status=" + M15EaSql::text(fromStatus)
+            + ",ended_at=" + IntegerToString(now) + ",error_text=" + M15EaSql::text(fromError)
+            + " WHERE id=" + IntegerToString(fromRunId) + " AND status='RUNNING'";
+        return this.complete(M15EaSql::execute(this.getHandle(), sql), "RUN_FINISH_FAILED");
+    }
+
+    /**
+     * 既存SQLと文字列形式で未完了要求をaction UID順に返す。
+     */
+    virtual string unresolvedActionsText(const long fromTradeId) {
+        if (this.getHandle() == INVALID_HANDLE) {
+            return "~";
+        }
+        string sql = "SELECT requested.action_uid FROM m15_ea_trade_events requested WHERE requested.trade_id="
+            + IntegerToString(fromTradeId)
+            + " AND requested.event_type IN ('ENTRY_REQUEST','SL_MODIFY_REQUEST','EXIT_REQUEST')"
+            + " AND NOT EXISTS(SELECT 1 FROM m15_ea_trade_events resolved WHERE resolved.action_uid=requested.action_uid"
+            + " AND resolved.event_type=REPLACE(requested.event_type,'_REQUEST','_RESULT')) ORDER BY requested.action_uid";
+        int handle = DatabasePrepare(this.getHandle(), sql);
+        if (handle == INVALID_HANDLE) {
+            return "~";
+        }
+        string result = "";
+        while (true) {
+            ResetLastError();
+            if (!DatabaseRead(handle)) {
+                int errorCode = GetLastError();
+                DatabaseFinalize(handle);
+                if (errorCode != ERR_DATABASE_NO_MORE_DATA) {
+                    return "~";
+                }
+                return result;
+            }
+            string actionUid;
+            if (!DatabaseColumnText(handle, 0, actionUid)) {
+                DatabaseFinalize(handle);
+                return "~";
+            }
+            EaTextUtil::appendField(result, "action_uid", actionUid);
+        }
+    }
+
+private:
+    /** 接続とschema管理。 */
+    M15EaDatabaseContext context;
+    /** 最後のエラー識別値。 */
+    string lastError;
+    /** 運用ログ。 */
+    Logger logger;
+
+    /**
+     * 書込みtransactionを開始する。
+     */
+    bool begin() {
+        if (!M15EaSql::execute(this.getHandle(), "BEGIN IMMEDIATE")) {
+            return this.fail("TRANSACTION_BEGIN_FAILED");
+        }
+        return true;
+    }
+
+    /**
+     * 後発Runの所有権を維持し、同contextのCLOSEDをtransaction内で読み直す。
+     * Testerの別Runやactive Tradeを過去約定の補完対象にしない。
+     */
+    bool beginClosedDealAudit(const long fromRunId, const long fromTradeId,
+            M15EaRunEntity &fromRun, EaTradeState &fromTrade) {
+        if (fromRunId <= 0 || fromTradeId <= 0) {
+            return this.fail("CLOSED_DEAL_AUDIT_ID_INVALID");
+        }
+        bool found = false;
+        if (!M15EaRunDao::load(this.getHandle(), "id=" + IntegerToString(fromRunId),
+                fromRun, found) || !found) {
+            return this.fail("CLOSED_DEAL_AUDIT_RUN_READ_FAILED");
+        }
+        if (!this.beginOwned(fromRunId, false, fromRun.contextKey)) {
+            return false;
+        }
+        if (!M15EaTradeDao::load(this.getHandle(), "id=" + IntegerToString(fromTradeId),
+                fromTrade, found) || !found || fromTrade.contextKey != fromRun.contextKey
+                || fromTrade.status != "CLOSED") {
+            return this.complete(false, "CLOSED_DEAL_AUDIT_TRADE_SCOPE_INVALID");
+        }
+        return true;
+    }
+
+    /**
+     * 同じtransactionでRunのscopeと必要なLeaseを確認する。
+     */
+    bool beginOwned(const long fromRunId, const bool fromRequireLease,
+            const string fromContext) {
+        if (!this.begin()) {
+            return false;
+        }
+        M15EaRunEntity run;
+        bool found = false;
+        if (!M15EaRunDao::load(this.getHandle(),
+                "id=" + IntegerToString(fromRunId), run, found)) {
+            return this.complete(false, "RUN_SCOPE_READ_FAILED");
+        }
+        bool success = found && run.contextKey == fromContext;
+        if (success) {
+            long successors = 0;
+            if (!M15EaSql::scalar(this.getHandle(),
+                    "SELECT COUNT(*) FROM m15_ea_runs WHERE context_key="
+                    + M15EaSql::text(fromContext) + " AND id>" + IntegerToString(fromRunId), successors)) {
+                return this.complete(false, "RUN_SUCCESSOR_READ_FAILED");
+            }
+            if (successors > 0) {
+                M15EaSql::execute(this.getHandle(), "ROLLBACK");
+                return this.fail("SNAPSHOT_OWNER_SUPERSEDED");
+            }
+        }
+        if (success && fromRequireLease) {
+            success = run.status == "RUNNING" && run.leaseExpiresAt > (long)TimeLocal();
+        }
+        if (!success) {
+            M15EaSql::execute(this.getHandle(), "ROLLBACK");
+            return this.fail("RUN_SCOPE_OR_LEASE_LOST");
+        }
+        return true;
+    }
+
+    /**
+     * trade内の連番を同じtransactionで採番する。
+     */
+    bool insertEvent(EaTradeEvent &fromEvent) {
+        long sequence = 0;
+        if (!M15EaSql::scalar(this.getHandle(),
+                "SELECT COALESCE(MAX(sequence),0)+1 FROM m15_ea_trade_events WHERE trade_id="
+                + IntegerToString(fromEvent.tradeId), sequence)) {
+            return false;
+        }
+        fromEvent.sequence = sequence;
+        return M15EaTradeEventDao::insert(this.getHandle(), fromEvent);
+    }
+
+    /**
+     * 新規回復Tradeの採番をcanonical snapshotとUIDへ同じtransactionで反映する。
+     */
+    bool resolveRecoveryUid(const EaTradeState &fromTrade, EaTradeEvent &fromEvent) {
+        if (fromEvent.eventType != "RECOVERY" || fromTrade.id <= 0) {
+            return true;
+        }
+        int start = StringFind(fromEvent.message, "M15_EA_RECOVERY_SNAPSHOT_V1");
+        if (start < 0) {
+            return true;
+        }
+        string snapshot = StringSubstr(fromEvent.message, start);
+        string marker = "|trade_id#1=0|";
+        int position = StringFind(snapshot, marker);
+        if (position < 0) {
+            return true;
+        }
+        string tradeId = IntegerToString(fromTrade.id);
+        string replacement = "|trade_id#" + IntegerToString(StringLen(tradeId)) + "=" + tradeId + "|";
+        snapshot = StringSubstr(snapshot, 0, position) + replacement
+            + StringSubstr(snapshot, position + StringLen(marker));
+        string hash = M15EaSql::hash(snapshot);
+        if (hash == "") {
+            return false;
+        }
+        fromEvent.message = StringSubstr(fromEvent.message, 0, start) + snapshot;
+        fromEvent.eventUid = "M15_EA_RECOVERY_V1|" + fromTrade.contextKey + "|" + tradeId + "|" + hash;
+        return true;
+    }
+
+    /**
+     * commit失敗を含む途中失敗を必ずrollbackする。
+     */
+    bool complete(const bool fromSuccess, const string fromReason) {
+        if (fromSuccess && M15EaSql::execute(this.getHandle(), "COMMIT")) {
+            this.lastError = "";
+            return true;
+        }
+        int errorCode = GetLastError();
+        M15EaSql::execute(this.getHandle(), "ROLLBACK");
+        return this.fail(fromReason + " error=" + IntegerToString(errorCode));
+    }
+
+    /**
+     * エラー理由を運用ログへ保存する。
+     */
+    bool fail(const string fromReason) {
+        this.lastError = fromReason;
+        this.logger.error(__FUNCTION__, fromReason);
+        return false;
+    }
+};
+
+#endif

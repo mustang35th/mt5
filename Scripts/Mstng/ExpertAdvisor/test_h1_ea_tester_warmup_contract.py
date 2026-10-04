@@ -441,11 +441,17 @@ class EmaConfigurationWiringTests(unittest.TestCase):
             "H1Ema200ConfirmationModefromH1Ema200ConfirmationMode=H1_EMA200_CONFIRMATION_H1_ONLY",
             compact,
         )
-        for timeframe, class_name in (("M5", "ExpertAdvisorMtf3In3M5"), ("M15", "ExpertAdvisorMtf3In3M15")):
+        branches = (
+            ("M5", "ExpertAdvisorMtf3In3M5", "fromMarketContext,fromIsDrawArrow"),
+            ("M15", "ExpertAdvisorMtf3In3M15",
+             "fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled,"
+             "fromM15H4MaxFibonacciExpansionPercent,fromM15H1MaxFibonacciExpansionPercent"),
+        )
+        for timeframe, class_name, arguments in branches:
             with self.subTest(timeframe=timeframe):
                 self.assertIn(
                     f"if(fromMarketContext.timeFrame==PERIOD_{timeframe}){{"
-                    f"returnnew{class_name}(fromMarketContext,fromIsDrawArrow);}}",
+                    f"returnnew{class_name}({arguments});}}",
                     compact,
                 )
 
