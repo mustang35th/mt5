@@ -23,14 +23,17 @@ public:
         if (ArraySize(fromSides) != count || ArraySize(fromCounts) != count) {
             return false;
         }
+
         ArrayResize(this.referenceTimes, 0);
         ArrayResize(this.sides, 0);
         ArrayResize(this.counts, 0);
+
         for (int i = 0; i < count; i++) {
             if (!this.recordCount(fromTimes[i], fromSides[i], fromCounts[i])) {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -41,10 +44,12 @@ public:
         if (fromBar <= 0 || fromBar == this.observedBar) {
             return 0;
         }
+
         datetime expiredBar = 0;
         if (this.observedBar > 0 && this.finalizedBar != this.observedBar) {
             expiredBar = this.observedBar;
         }
+
         this.observedBar = fromBar;
         return expiredBar;
     }
@@ -79,6 +84,7 @@ public:
                 return this.counts[i];
             }
         }
+
         return 0;
     }
 
@@ -90,15 +96,18 @@ public:
                 || fromCount <= 0 || fromCount == INT_MAX) {
             return false;
         }
+
         for (int i = 0; i < ArraySize(this.referenceTimes); i++) {
             if (this.referenceTimes[i] == fromReferenceTime && this.sides[i] == fromSide) {
                 if (fromCount < this.counts[i]) {
                     return false;
                 }
+
                 this.counts[i] = fromCount;
                 return true;
             }
         }
+
         int nextSize = ArraySize(this.referenceTimes) + 1;
         if (ArrayResize(this.referenceTimes, nextSize) != nextSize
                 || ArrayResize(this.sides, nextSize) != nextSize
@@ -108,6 +117,7 @@ public:
             ArrayResize(this.counts, nextSize - 1);
             return false;
         }
+
         this.referenceTimes[nextSize - 1] = fromReferenceTime;
         this.sides[nextSize - 1] = fromSide;
         this.counts[nextSize - 1] = fromCount;
@@ -117,12 +127,16 @@ public:
 private:
     /** 最後にEntry側で観測したバー。 */
     datetime observedBar;
+
     /** 最後に確定したバー。保存再試行でも変更しない。 */
     datetime finalizedBar;
+
     /** 消費キーの基準時刻。 */
     long referenceTimes[];
+
     /** 消費キーの方向。 */
     string sides[];
+
     /** Judge成立回数。 */
     int counts[];
 };

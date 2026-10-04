@@ -435,13 +435,16 @@ private:
             this.processTesterWarmup();
             return;
         }
+
         if (!this.timerReady || !this.countsRestored || !this.executorInitialized || this.run.id <= 0) {
             return;
         }
+
         datetime barTime = iTime(this.config.symbolName, PERIOD_M15, 0);
         if (barTime <= 0) {
             return;
         }
+
         datetime expiredBar = this.entryState.observe(barTime);
         if (expiredBar > 0) {
             M15EaDecisionEntity unavailable;
@@ -450,13 +453,16 @@ private:
             this.enqueueDecision(unavailable, "");
             this.flushDecisions();
         }
+
         if (this.entryState.isFinalized(barTime)
                 || (this.config.isTester && this.analysisRetryBar == barTime
                     && TimeCurrent() < this.nextAnalysisRetryTime)) {
             return;
         }
+
         this.analysisRetryBar = 0;
         this.nextAnalysisRetryTime = 0;
+
         M15EaStrategySnapshot snapshot;
         if (!this.strategy.analyze(snapshot)) {
             if (this.config.isTester) {
@@ -466,19 +472,23 @@ private:
             this.logAnalysisWait(barTime);
             return;
         }
+
         if (snapshot.barTime != barTime || !this.executor.hasCurrentEntryQuote(barTime)) {
             return;
         }
+
         this.lastAnalysisError = "";
         int previousCount = this.entryState.getCount(snapshot.signalReferenceTime, snapshot.signalSide);
         if (!this.strategy.evaluate(previousCount, snapshot)) {
             this.logAnalysisWait(barTime);
             return;
         }
+
         // 方向補正の再分析中にバーや気配が変わった場合も、保存回数を消費しない。
         if (snapshot.barTime != barTime || !this.executor.hasCurrentEntryQuote(barTime)) {
             return;
         }
+
         M15EaDecisionEntity decision;
         this.buildDecision(snapshot, decision);
         if (decision.isJudgeMatched && !this.entryState.recordCount(
@@ -487,15 +497,18 @@ private:
             decision.reasonCode = "AUDIT_STATE_LOST";
         }
         this.entryState.finalize(barTime);
+
         if (decision.isStrategyEntry) {
             this.applyEntrySafety(snapshot, decision);
         }
+
         if (!M15EaDecisionBuilder::seal(decision, this.config.digits, snapshot.analysisSnapshotText)) {
             this.auditStateLost = true;
             decision.reasonCode = "SNAPSHOT_HASH_UNAVAILABLE";
             this.enqueueDecision(decision, snapshot.analysisSnapshotText);
             return;
         }
+
         if (decision.decision != "SKIP") {
             EaEntryRequest request;
             request.side = decision.decision;
@@ -503,17 +516,21 @@ private:
             request.initialStopLoss = decision.initialStopLoss;
             request.barTime = decision.barTime;
             request.maxInitialRiskPips = decision.maxInitialRiskPips;
+
             EaTradeState trade;
             EaTradeEvent event;
             this.executor.prepareEntry(request, trade, event);
+
             if (this.persistence.saveEntry(this.run.id, decision, trade, event)) {
                 this.executor.sendEntry(trade, event);
                 this.logDecision(decision);
                 return;
             }
+
             decision.reasonCode = "DB_UNAVAILABLE";
             this.databaseReady = false;
         }
+
         this.enqueueDecision(decision, snapshot.analysisSnapshotText);
         this.flushDecisions();
     }

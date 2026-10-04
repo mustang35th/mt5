@@ -15,9 +15,11 @@ public:
                 || fromActual <= 0.0 || fromTarget <= 0.0 || fromTickSize <= 0.0) {
             return false;
         }
+
         if (fromIsBuy) {
             return fromActual >= fromTarget - fromTickSize * 0.5;
         }
+
         return fromActual <= fromTarget + fromTickSize * 0.5;
     }
 
@@ -29,10 +31,12 @@ public:
         if (fromTarget <= 0.0 || fromPrevious <= 0.0 || fromTickSize <= 0.0) {
             return false;
         }
+
         double improvement = fromPrevious - fromTarget;
         if (fromIsBuy) {
             improvement = fromTarget - fromPrevious;
         }
+
         return improvement + fromTickSize * 0.000001 >= fromTickSize;
     }
 
@@ -44,9 +48,11 @@ public:
         if (fromBid <= 0.0 || fromAsk < fromBid || fromTarget <= 0.0) {
             return false;
         }
+
         if (fromIsBuy) {
             return fromBid <= fromTarget;
         }
+
         return fromAsk >= fromTarget;
     }
 
@@ -60,10 +66,12 @@ public:
                 || fromAsk < fromBid || fromTarget <= 0.0) {
             return false;
         }
+
         double distance = fromTarget - fromAsk;
         if (fromIsBuy) {
             distance = fromBid - fromTarget;
         }
+
         double required = (double)MathMax(fromStops, fromFreeze) * fromPoint + fromTickSize;
         return distance + fromTickSize * 0.000001 >= required;
     }
@@ -93,6 +101,7 @@ public:
         if (fromTerminalResponse) {
             return true;
         }
+
         return fromActual > 0.0 && fromTarget > 0.0 && fromTickSize > 0.0
             && MathAbs(fromActual - fromTarget) <= fromTickSize * 0.5;
     }

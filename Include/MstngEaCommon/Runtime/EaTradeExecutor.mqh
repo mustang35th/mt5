@@ -382,6 +382,7 @@ public:
                 || this.lastDispatchedTradeId == fromTrade.id) {
             return;
         }
+
         this.lastDispatchedTradeId = fromTrade.id;
         this.trade = fromTrade;
         this.active = true;
@@ -389,6 +390,7 @@ public:
         this.externalStopLoss = 0.0;
         this.entryCancelAttempted = false;
         this.exitActionUid = "";
+
         MqlTradeRequest request;
         MqlTradeResult result;
         MqlTradeCheckResult check;
@@ -396,6 +398,7 @@ public:
         ZeroMemory(result);
         ZeroMemory(check);
         string reason;
+
         if (!this.buildEntryRequest(request, reason)) {
             this.trade.status = "OPEN_FAILED";
             this.trade.lastError = reason;
@@ -424,6 +427,7 @@ public:
                 if (result.deal > 0) {
                     this.trade.entryDealTicket = EaTextUtil::ticket(result.deal);
                 }
+
                 if (!EaProtectionPolicy::isAcceptedRetcode(result.retcode)
                         && !EaProtectionPolicy::isUnknownRetcode(result.retcode)) {
                     this.trade.status = "OPEN_FAILED";
@@ -433,6 +437,7 @@ public:
                 }
             }
         }
+
         this.trade.entryRetcode = (int)result.retcode;
         EaTradeEvent event;
         this.newEvent("ENTRY_RESULT", event);
@@ -444,8 +449,10 @@ public:
         event.volume = this.trade.requestedVolume;
         event.stopLoss = this.trade.requestedStopLoss;
         event.message = this.trade.lastError;
+
         this.saveEvent(event, false);
         fromTrade = this.trade;
+
         if (this.trade.status == "OPEN_FAILED") {
             this.active = false;
         } else {
@@ -981,6 +988,7 @@ private:
             fromReason = "ENTRY_BAR_EXPIRED";
             return false;
         }
+
         MqlTick marketTick;
         PositionSnapshot position;
         int count = 0;
@@ -990,6 +998,7 @@ private:
                 || this.trade.requestedStopLoss <= 0.0 || this.entryMaximumRisk <= 0.0) {
             return false;
         }
+
         bool isBuy = this.trade.side == "BUY";
         double price = marketTick.bid;
         double distance = this.trade.requestedStopLoss - price;
@@ -999,6 +1008,7 @@ private:
             distance = price - this.trade.requestedStopLoss;
             stopDistance = marketTick.bid - this.trade.requestedStopLoss;
         }
+
         double required = (double)SymbolInfoInteger(this.symbolName, SYMBOL_TRADE_STOPS_LEVEL)
             * SymbolInfoDouble(this.symbolName, SYMBOL_POINT);
         if (distance <= 0.0 || distance / this.pipSize > this.entryMaximumRisk + 0.000001
@@ -1006,6 +1016,7 @@ private:
             fromReason = "ENTRY_PRICE_SL_OR_SPREAD_CHANGED";
             return false;
         }
+
         fromRequest.action = TRADE_ACTION_DEAL;
         fromRequest.symbol = this.symbolName;
         fromRequest.magic = this.magicNumber;
