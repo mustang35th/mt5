@@ -288,40 +288,58 @@ public:
 private:
     /** 描画先チャート。 */
     long chartId;
+
     /** このパネル専用のオブジェクト接頭辞。 */
     string objectPrefix;
+
     /** inputの表示指定。 */
     bool enabled;
+
     /** オブジェクト生成済み。 */
     bool created;
+
     /** 同じ描画失敗ログを繰り返さないための状態。 */
     bool drawFailed;
+
     /** 次の表示更新時刻。 */
     ulong nextRefreshTick;
+
     /** ページ・サイズ操作による即時再描画。定期更新の期限とは分ける。 */
     bool forceRefresh;
+
     /** 表示中ページ。 */
     int page;
+
     /** ページ数。 */
     int pageCount;
+
     /** 表示ブロック数。 */
     int columns;
+
     /** 1ブロックの行数。 */
     int rows;
+
     /** 小さすぎるチャートは要約だけにする。 */
     bool compact;
+
     /** 描画エラーを記録する既存Logger。 */
     Logger logger;
+
     /** ラベル文字列の差分キャッシュ。 */
     string lastTexts[157];
+
     /** ツールチップの差分キャッシュ。 */
     string lastTooltips[157];
+
     /** 色の差分キャッシュ。 */
     color lastColors[157];
+
     /** X位置の差分キャッシュ。 */
     int lastX[157];
+
     /** Y位置の差分キャッシュ。 */
     int lastY[157];
+
     /** 左揃え・右揃えの差分キャッシュ。 */
     ENUM_ANCHOR_POINT lastAnchors[157];
 

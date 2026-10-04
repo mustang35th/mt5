@@ -14,6 +14,7 @@
 struct EaTradeSaveItem {
     /** Event時点の状態。 */
     EaTradeState trade;
+
     /** 一意ID確定済みEvent。 */
     EaTradeEvent event;
 };
@@ -754,96 +755,142 @@ public:
 private:
     /** 他通貨Timerの保護では気配時刻を追加確認する。 */
     bool requireCurrentQuote;
+
     /** DB。 */
     IEaTradeStore *persistence;
+
     /** 時間足と保存識別子。 */
     EaTradeProfile profile;
+
     /** 戦略固有の判定と運用ログ。 */
     IEaTradePolicy *policy;
+
     /** 現在Trade。 */
     EaTradeState trade;
+
     /** 保存待ちFIFO。 */
     EaTradeSaveItem saveQueue[];
+
     /** シンボル。 */
     string symbolName;
+
     /** Magic。 */
     ulong magicNumber;
+
     /** pip幅。 */
     double pipSize;
+
     /** tick幅。 */
     double tickSize;
+
     /** Run。 */
     long runId;
+
     /** Run UID。 */
     string runUid;
+
     /** context。 */
     string contextKey;
+
     /** 初期化済み。 */
     bool initialized;
+
     /** DB初回読込済み。 */
     bool loaded;
+
     /** 最後のbroker照合で自EAのTradeとPositionがないことを確認済み。 */
     bool idleReconciled;
+
     /** active状態。 */
     bool active;
+
     /** 排他Lock保持。 */
     bool lockHeld;
+
     /** 既知Lease期限。 */
     datetime knownLeaseExpires;
+
     /** 同一バー発注禁止。 */
     datetime blockedEntryBar;
+
     /** Run内action連番。 */
     long actionSequence;
+
     /** 最終送信のプロセス時刻。 */
     ulong lastSendTick;
+
     /** キュー欠落を検出。 */
     bool queueOverflow;
+
     /** Entry要求action。 */
     string entryActionUid;
+
     /** Entry時の最大幅。 */
     double entryMaximumRisk;
+
     /** 保存待ちで次のバーへ繰り越さない判定対象バー。 */
     datetime entryBar;
+
     /** 外部変更と積極的に確認したSL。 */
     double externalStopLoss;
+
     /** 同一brokerスナップショットの再保存抑止。 */
     string lastRecoveryUid;
+
     /** プロセス内のEntry再呼出しを拒否する。 */
     long lastDispatchedTradeId;
+
     /** RECOVERY_REQUIRED解除のcommit前はbroker送信しない。 */
     bool recoveryCommitPending;
+
     /** 注文列挙の失敗を「注文なし」と混同しない。 */
     bool orderReadFailed;
+
     /** 部分Entryの取消を一度は要求したか。 */
     bool entryCancelAttempted;
+
     /** 決済中も残Entry取消と残量決済を交互に進める。 */
     bool cancelTurn;
+
     /** 最後の決済要求の一意識別。 */
     string exitActionUid;
+
     /** brokerから終端応答を確認したSL action。 */
     string confirmedModifyActionUid;
+
     /** 終端SL応答コード。 */
     int confirmedModifyRetcode;
+
     /** 同一プロセス内でcallbackへ照合するbroker request ID。 */
     uint pendingModifyRequestId;
+
     /** メモリpendingが保存済みDB列と一致している場合true。 */
     bool pendingStored;
+
     /** 確認済み所有権喪失は古いheartbeat値で解除しない。 */
     bool ownershipLost;
+
     /** 現在Tradeの約定読取・保存を再照合する必要がある。 */
     bool dealHistoryPending;
+
     /** 現contextの決済明細欠落を最後まで確認済み。 */
     bool closedDealAuditChecked;
+
     /** 起動時は中間約定の欠落も拾うため、現contextの全CLOSEDを一度走査する。 */
     bool closedDealAuditFull;
+
     /** 成功したCLOSED監査だけを進める走査位置。 */
     long closedDealAuditAfterId;
+
     /** 履歴未準備・DB停止時の再試行を最短1秒に制限する。 */
     ulong nextClosedDealAuditTick;
+
     /** 同じ履歴失敗の毎Tickログを抑制する。 */
     string lastDealHistoryFailure;
+
     /** 通知時に履歴またはDBが未準備でも捨てない約定ticket。 */
     ulong pendingDealTickets[];
+
     /** 通知ticketの再取得間隔。新通知では即時に再確認する。 */
     ulong nextPendingDealAuditTick;
 

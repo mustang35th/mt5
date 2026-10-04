@@ -908,102 +908,151 @@ public:
 private:
     /** 表示・計測専用の分析試行数。 */
     ulong analysisCount;
+
     /** 最後の分析実時間。 */
     ulong lastAnalysisMicros;
+
     /** 起動後の最大分析実時間。 */
     ulong maxAnalysisMicros;
+
     /** 最後の分析終了時の実時計。 */
     ulong analysisFinishedMicros;
+
     /** 全通貨の起動成功と親Timer開始後に保護処理だけを許可する。 */
     bool protectionEnabled;
+
     /** 履歴待ちのトレイル再巡回を制限する対象バー。 */
     datetime protectionAnalysisBar;
+
     /** 次に履歴待ちトレイルを再巡回できる時刻。 */
     ulong nextProtectionAnalysisTick;
+
     /** 親Timerから専用入口で新規判定を開始できるか。 */
     bool entryEnabled;
+
     /** 外部巡回によるEntry再試行の最早時刻。 */
     ulong nextScheduledEntryTick;
+
     /** 親が最初に巡回対象として観測した未判定バー。 */
     datetime entryQueuedBar;
+
     /** 未判定バーを巡回対象として観測した時刻。 */
     ulong entryQueuedTick;
+
     /** 外部巡回モード。子のTimer・通常イベント・通常Entry入口を無効にする。 */
     bool persistencePreparation;
+
     /** 現在バーのDB照会が完了したH1。履歴未取得は0。 */
     datetime restoredDecisionBar;
+
     /** 再起動から復元した同一バー反転禁止。 */
     datetime restoredBlockedBar;
+
     /** DB準備初期化の拒否理由。 */
     string restorationError;
+
     /** 外部巡回用の通貨別履歴準備状態。 */
     H1EaPreparationState preparationState;
+
     /** 同一H1途中の売買開始到達でも履歴を再確認するための前回区分。 */
     bool preparationBeforeTradeStart;
+
     /** 有効設定。 */
     H1EaConfig config;
+
     /** DBに依存しない運用ログ。 */
     H1EaOperationLogger logger;
+
     /** DB障害中も保持する排他Lock。 */
     H1EaInstanceLock instanceLock;
+
     /** Runと取引の永続化。 */
     H1EaPersistenceService persistence;
+
     /** 今回のRunと最後に確認したLease。 */
     H1EaRunEntity run;
+
     /** 既存H1判定の分析アダプター。 */
     H1EaStrategy strategy;
+
     /** brokerとの取引整合。 */
     H1EaTradeExecutor executor;
+
     /** トレイルとは分離したEntry消費状態。 */
     H1EaEntryState entryState;
+
     /** 保存だけを再試行する確定SKIP。上限256件。 */
     H1EaDecisionEntity decisionQueue[];
+
     /** 初期化済み。 */
     bool started;
+
     /** 現在DBを利用可能。 */
     bool databaseReady;
+
     /** 全回数の復元完了。 */
     bool countsRestored;
+
     /** Executorへ依存を設定済み。 */
     bool executorInitialized;
+
     /** 既知の監査欠落では新規Entryを永久停止する。 */
     bool auditStateLost;
+
     /** 失効したLeaseを同じRunで復活させない。 */
     bool leaseLost;
+
     /** 全通貨TesterのTick準備予約。通常Leaseへ戻るまでbroker権限を停止する。 */
     bool scheduledTickWarmup;
+
     /** 次のDB再接続・キュー処理時刻。 */
     ulong nextMaintenanceTick;
+
     /** LIVE Entryの次回評価時刻。 */
     ulong nextEntryTick;
+
     /** 初回DB接続待ちの安全期限の基準。 */
     datetime lockAcquiredAt;
+
     /** トレイル専用の観測バー。 */
     datetime lastTrailObservedBar;
+
     /** Testerの開始前分析だけに使う観測バー。Entry状態と共有しない。 */
     datetime lastWarmupBar;
+
     /** Testerの売買開始前期間を観測済み。 */
     bool testerWarmupActive;
+
     /** 最後に出力した分析待機理由。毎Tickの同一ログを抑制する。 */
     string lastAnalysisLogText;
+
     /** 最後に分析待機理由を出力したサーバー時刻。 */
     datetime lastAnalysisLogTime;
+
     /** 履歴待機以外の分析エラーを最後に出力したH1バー。 */
     datetime lastAnalysisErrorBar;
+
     /** 全通貨Testerの履歴診断を最後に出した準備状態。分析待機状態とは共有しない。 */
     string lastPreparationLogStatus;
+
     /** 最後に出力した履歴準備の失敗理由。 */
     string lastPreparationLogReason;
+
     /** 最後に出力した不足足。本数・最古日時は比較対象に含めない。 */
     int lastPreparationLogMissingMask;
+
     /** 最後に出力した未同期足。不足足が同じ場合も同期変化は記録する。 */
     int lastPreparationLogUnsynchronizedMask;
+
     /** 最後に履歴診断を出力したTester内サーバー時刻。 */
     datetime lastPreparationLogTime;
+
     /** TesterのEntry分析に失敗したH1バー。トレイルやLIVEと共有しない。 */
     datetime analysisRetryBar;
+
     /** Tester内時刻での次回Entry分析時刻。成功時・H1切替時に解除する。 */
     datetime nextAnalysisRetryTime;
+
     /** 単一通貨イベント入口のTimer管理。通貨別処理からは操作しない。 */
     H1EaEventTimer eventTimer;
 

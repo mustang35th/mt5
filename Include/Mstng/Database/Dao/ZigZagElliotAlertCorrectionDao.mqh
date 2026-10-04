@@ -169,6 +169,7 @@ public:
 private:
     /** データベースハンドル。 */
     int databaseHandle;
+
     /** ロガー。 */
     Logger logger;
 

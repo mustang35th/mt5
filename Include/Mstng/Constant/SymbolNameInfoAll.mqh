@@ -306,8 +306,10 @@ public:
 private:
     /** シンボル情報リスト。 */
     CArrayObj symbolNameInfoList;
+
     /** 通貨定数。 */
     ConstantCurrency constantCurrency;
+
     /** ロガー。 */
     Logger logger;
 

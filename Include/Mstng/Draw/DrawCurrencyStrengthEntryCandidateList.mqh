@@ -137,56 +137,82 @@ public:
 private:
     /** 描画対象チャートID。 */
     long chartId;
+
     /** 候補一覧専用オブジェクト名プレフィックス。 */
     string objectPrefix;
+
     /** オブジェクト生成済みの場合true。 */
     bool created;
+
     /** パネル配置基準の角。 */
     ENUM_BASE_CORNER corner;
+
     /** チャート左端からの距離。 */
     int xDistance;
+
     /** チャート上端からの距離。 */
     int yDistance;
+
     /** 最大表示件数。 */
     int maximumCount;
+
     /** パネル幅。 */
     int panelWidth;
+
     /** タイトル背景の高さ。 */
     int headerHeight;
+
     /** 列ヘッダーのY位置。 */
     int columnHeaderYDistance;
+
     /** ヘッダー区切り線のY位置。 */
     int separatorYDistance;
+
     /** データ先頭行のY位置。 */
     int firstRowYDistance;
+
     /** 1行の高さ。 */
     int rowHeight;
+
     /** パネル下部余白。 */
     int bottomPadding;
+
     /** 表示フォント名。 */
     string fontName;
+
     /** タイトル文字サイズ。 */
     int titleFontSize;
+
     /** 本文文字サイズ。 */
     int bodyFontSize;
+
     /** パネル背景色。 */
     color panelBackgroundColor;
+
     /** タイトル背景色。 */
     color headerBackgroundColor;
+
     /** 枠線色。 */
     color borderColor;
+
     /** タイトル文字色。 */
     color titleColor;
+
     /** 列ヘッダー文字色。 */
     color headerColor;
+
     /** 通常文字色。 */
     color normalColor;
+
     /** 補助文字色。 */
     color mutedColor;
+
     /** BUY候補文字色。 */
     color buyColor;
+
     /** SELL候補文字色。 */
     color sellColor;
+
     /** 注意表示文字色。 */
     color warningColor;
 

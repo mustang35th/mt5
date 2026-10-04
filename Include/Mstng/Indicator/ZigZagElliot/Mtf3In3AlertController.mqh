@@ -293,26 +293,37 @@ public:
 private:
     /** 市場コンテキスト。 */
     MarketContext marketContext;
+
     /** MTF_3in3外部戦略。 */
     ExpertAdvisorMTF_3in3 *expertAdvisorMtf3In3;
+
     /** ロガー。 */
     Logger logger;
+
     /** シグナル回数。 */
     SignalCount *signalCount;
+
     /** DB照合と復元を完了した起点・方向。回数を繰り返し巻き戻さない。 */
     CArrayString checkedSignalKeys;
+
     /** 検証CSVを出力する場合true。 */
     bool alertCsvEnabled;
+
     /** ZigZagElliot設定。 */
     ZigZagElliotConfig config;
+
     /** ZigZagElliotデータベース接続。 */
     ZigZagElliotAlertDatabaseContext *databaseContext;
+
     /** データベースへ保存済みの実行情報。 */
     ZigZagElliotAlertRunEntity databaseRun;
+
     /** データベースへ保存可能な場合true。 */
     bool databaseReady;
+
     /** テスターの保存対象期間への到達をログへ出力済みの場合true。 */
     bool databaseSavePeriodReached;
+
     /** 保存開始日時以降の最初のAlert保存をログへ出力済みの場合true。 */
     bool databaseFirstSnapshotSaved;
 

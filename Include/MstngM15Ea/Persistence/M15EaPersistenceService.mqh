@@ -650,8 +650,10 @@ public:
 private:
     /** 接続とschema管理。 */
     M15EaDatabaseContext context;
+
     /** 最後のエラー識別値。 */
     string lastError;
+
     /** 運用ログ。 */
     Logger logger;
 

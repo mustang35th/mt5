@@ -273,6 +273,7 @@ private:
     
     /** 表示設定。 */
     DrawProperties drawProperties;
+
     /** 描画対象のElliot全体データ。 */
     ElliotAll *elliotAll;
     

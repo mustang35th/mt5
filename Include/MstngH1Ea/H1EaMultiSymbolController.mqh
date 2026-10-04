@@ -516,64 +516,94 @@ public:
 private:
     /** 表示・ログ専用のTimer処理回数。 */
     ulong timerCount;
+
     /** 直近のTimer実時間。 */
     ulong lastTimerMicros;
+
     /** 起動後の最大Timer実時間。 */
     ulong maxTimerMicros;
+
     /** 前回の通常保護巡回開始時計。高速準備では0へ戻す。 */
     ulong lastProtectionClock;
+
     /** 直近の全通貨保護巡回間隔。 */
     ulong lastProtectionGapMs;
+
     /** 起動後の最大保護巡回間隔。 */
     ulong maxProtectionGapMs;
+
     /** 子に待機予約を設定済み、または予約解除の再試行が必要な場合true。 */
     bool warmupReservationsPending;
+
     /** Tick起点で28通貨を最後に準備したテスト内時刻。0は未実行。 */
     datetime lastWarmupPreparationTime;
+
     /** 待機中の28通貨一括準備回数。初回のTimer経由も含み、Timer回数とは区別する。 */
     ulong warmupCount;
+
     /** 直近の28通貨準備実時間。 */
     ulong lastWarmupMicros;
+
     /** 最大の28通貨準備実時間。 */
     ulong maxWarmupMicros;
+
     /** 次の定期計測ログを出せる巡回時計。 */
     ulong nextMetricsLogTick;
+
     /** 待機中の計測ログを最後に出したTester内サーバー日。未出力は-1。 */
     long lastWaitingMetricsLogDay;
+
     /** 履歴待機の全体集約を最後に確認したTester内サーバー日。未確認は-1。 */
     long lastHistorySummaryDay;
+
     /** 固定28通貨それぞれが所有する独立したController。 */
     H1EaController *controllers[28];
+
     /** 全通貨の登録を完了したか。 */
     bool started;
+
     /** 親のイベント処理を開始済みか。待機中のTimer停止でもtrueを保持する。 */
     bool timerStarted;
+
     /** Testerの売買開始日時。0は準備期間なし。 */
     datetime testerTradeStartTime;
+
     /** 直前イベントで高速準備が安全に成立したか。 */
     bool fastWarmupActive;
+
     /** 親だけが操作するTimer設定状態。 */
     H1EaEventTimer eventTimer;
+
     /** session UID単位に記録する親Timerの運用ログ。 */
     H1EaOperationLogger timerLogger;
+
     /** 次に巡回する通貨の添字。 */
     int nextSymbolIndex;
+
     /** 次に優先確認するトレイル対象の添字。 */
     int nextTrailSymbolIndex;
+
     /** Entry候補を巡回する次の通貨。毎時の開始位置から順に進める。 */
     int nextEntrySymbolIndex;
+
     /** 巡回開始位置を決めたサーバー時刻の時間番号。 */
     datetime entryScheduleHour;
+
     /** 連続する重いトレイル処理の数。2回でEntry/履歴へ譲る。 */
     int consecutiveTrailTasks;
+
     /** Tick補助対象。チャート通貨が対象外なら-1。 */
     int chartSymbolIndex;
+
     /** 最新の失敗理由。終了処理後も保持する。 */
     string lastError;
+
     /** 28通貨共通の起動ID。設定hashやLIVE復元キーには含めない。 */
     string sessionUid;
+
     /** 同一のDB待機ログを繰り返さないための通貨別状態。 */
     string lastRestorationStatus[28];
+
     /** 全体の起動・状態変化ログ。 */
     Logger logger;
 

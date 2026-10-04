@@ -24,15 +24,19 @@ class Mtf3In3AlertSnapshot {
 public:
     /** アラート本体。 */
     ZigZagElliotAlertEntity alert;
+
     /** 時間足別Elliott分析一覧。 */
     ZigZagElliotAlertTimeFrameEntity timeFrames[];
+
     /** 最新WaveのZigZagポイント一覧。 */
     ZigZagElliotAlertPointEntity points[];
 
     /** 補正の有無と判定に採用した分析・損切り情報。 */
     ZigZagElliotAlertCorrectionEntity correction;
+
     /** 補正後の全時間足分析。補正なしの場合は空。 */
     ZigZagElliotAlertTimeFrameEntity correctedTimeFrames[];
+
     /** 補正後の各最新Waveポイント。基準点は元シグナルキーとは別。 */
     ZigZagElliotAlertPointEntity correctedPoints[];
 

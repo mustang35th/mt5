@@ -55,8 +55,10 @@ public:
 private:
     /** 既存形式のターミナルログ。 */
     Logger logger;
+
     /** 実行識別情報。 */
     string identity;
+
     /** Common内の追記先。 */
     string fileName;
 

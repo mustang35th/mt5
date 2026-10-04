@@ -179,56 +179,82 @@ public:
 private:
     /** 履歴表示設定。 */
     ZigZagElliotAlertHistoryConfig config;
+
     /** 読み取り専用Reader。 */
     ZigZagElliotAlertHistoryReader reader;
+
     /** 選択した保存分析。 */
     ZigZagElliotAlertHistorySnapshot snapshot;
+
     /** 保存波動の描画。 */
     DrawZigZagElliotAlertHistory *drawer;
+
     /** 全件の保存ラベル描画。 */
     DrawZigZagElliotAlertMarkers *markerDrawer;
+
     /** 選択一覧と同じ順序の保存ラベル。 */
     ZigZagElliotAlertHistoryMarker markers[];
+
     /** 操作ログ。 */
     Logger logger;
+
     /** 対象チャート。 */
     long chartId;
+
     /** 対象通貨。 */
     string symbolName;
+
     /** 自分の描画だけを識別する接頭辞。 */
     string prefix;
+
     /** 条件に一致するアラートIDの時刻順配列。 */
     long alertIds[];
+
     /** 現在の一覧内位置。 */
     int selectedIndex;
+
     /** 検索対象Run。 */
     long resolvedRunId;
+
     /** 開始日時以上。 */
     datetime startTime;
+
     /** 終了日の翌日未満。 */
     datetime endTime;
+
     /** 現在の表示モード。 */
     ZigZagElliotAlertHistoryView view;
+
     /** 親アラートを読み込めた場合true。 */
     bool snapshotLoaded;
+
     /** 価格履歴を取得中の場合true。 */
     bool historyPending;
+
     /** 描画更新が必要な場合true。 */
     bool needsRedraw;
+
     /** 価格履歴の再確認回数。 */
     int historyAttempts;
+
     /** 波動を表示するために必要な最初の時刻。 */
     datetime historyStartTime;
+
     /** 一覧の全ラベルを含む履歴終了時刻。 */
     datetime historyEndTime;
+
     /** 価格履歴の状態説明。 */
     string historyMessage;
+
     /** 読取エラーまたは検索結果の説明。 */
     string loadError;
+
     /** 元の自動スクロール状態を保持した場合true。 */
     bool autoScrollCaptured;
+
     /** 初期化前の自動スクロール。 */
     bool originalAutoScroll;
+
     /** チャート内の二重起動防止マーカーを所有する場合true。 */
     bool ownsMarker;
 

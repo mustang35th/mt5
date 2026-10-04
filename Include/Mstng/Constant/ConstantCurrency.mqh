@@ -19,84 +19,112 @@ class ConstantCurrency {
 public:
     /** USD通貨文字列。 */
     static const string USD;
+
     /** JPY通貨文字列。 */
     static const string JPY;
+
     /** EUR通貨文字列。 */
     static const string EUR;
+
     /** GBP通貨文字列。 */
     static const string GBP;
+
     /** AUD通貨文字列。 */
     static const string AUD;
+
     /** NZD通貨文字列。 */
     static const string NZD;
+
     /** CAD通貨文字列。 */
     static const string CAD;
+
     /** CHF通貨文字列。 */
     static const string CHF;
 
     // JPYクロス。
     /** USDJPY通貨ペア文字列。 */
     static const string USDJPY;
+
     /** EURJPY通貨ペア文字列。 */
     static const string EURJPY;
+
     /** GBPJPY通貨ペア文字列。 */
     static const string GBPJPY;
+
     /** AUDJPY通貨ペア文字列。 */
     static const string AUDJPY;
+
     /** NZDJPY通貨ペア文字列。 */
     static const string NZDJPY;
+
     /** CADJPY通貨ペア文字列。 */
     static const string CADJPY;
+
     /** CHFJPY通貨ペア文字列。 */
     static const string CHFJPY;
 
     // USDクロス。
     /** EURUSD通貨ペア文字列。 */
     static const string EURUSD;
+
     /** GBPUSD通貨ペア文字列。 */
     static const string GBPUSD;
+
     /** AUDUSD通貨ペア文字列。 */
     static const string AUDUSD;
+
     /** NZDUSD通貨ペア文字列。 */
     static const string NZDUSD;
+
     /** USDCAD通貨ペア文字列。 */
     static const string USDCAD;
+
     /** USDCHF通貨ペア文字列。 */
     static const string USDCHF;
 
     // GBPクロス。
     /** EURGBP通貨ペア文字列。 */
     static const string EURGBP;
+
     /** GBPAUD通貨ペア文字列。 */
     static const string GBPAUD;
+
     /** GBPNZD通貨ペア文字列。 */
     static const string GBPNZD;
+
     /** GBPCAD通貨ペア文字列。 */
     static const string GBPCAD;
+
     /** GBPCHF通貨ペア文字列。 */
     static const string GBPCHF;
 
     // EURクロス。
     /** EURAUD通貨ペア文字列。 */
     static const string EURAUD;
+
     /** EURNZD通貨ペア文字列。 */
     static const string EURNZD;
+
     /** EURCAD通貨ペア文字列。 */
     static const string EURCAD;
+
     /** EURCHF通貨ペア文字列。 */
     static const string EURCHF;
 
     // AUDクロス。
     /** AUDNZD通貨ペア文字列。 */
     static const string AUDNZD;
+
     /** AUDCAD通貨ペア文字列。 */
     static const string AUDCAD;
+
     /** AUDCHF通貨ペア文字列。 */
     static const string AUDCHF;
 
     // NZDクロス。
     /** NZDCAD通貨ペア文字列。 */
     static const string NZDCAD;
+
     /** NZDCHF通貨ペア文字列。 */
     static const string NZDCHF;
 

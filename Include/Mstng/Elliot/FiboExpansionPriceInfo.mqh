@@ -16,14 +16,19 @@ class FiboExpansionPriceInfo {
 public:
     /** FE618の価格。 */
     double FE618Price;
+
     /** FE1000の価格。 */
     double FE1000Price;
+
     /** FE1272の価格。 */
     double FE1272Price;
+
     /** FE1618の価格。 */
     double FE1618Price;
+
     /** FE2000の価格。 */
     double FE2000Price;
+
     /** 現在価格からFE2000までの差。単位: pips。 */
     double DistanceToFE2000Pips;
 

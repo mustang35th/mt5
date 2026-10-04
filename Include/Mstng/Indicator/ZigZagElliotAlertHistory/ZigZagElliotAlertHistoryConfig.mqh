@@ -16,20 +16,28 @@ class ZigZagElliotAlertHistoryConfig {
 public:
     /** Alert DBファイル名。 */
     string databaseFileName;
+
     /** CommonフォルダのDBを読む場合true。 */
     bool useCommonFolder;
+
     /** Run ID。0は検索条件に一致する最新Run一つを選ぶ。 */
     long runId;
+
     /** 表示開始日。サーバー日付で0は制限なし。 */
     datetime startDate;
+
     /** 表示終了日。当日を含み、0は制限なし。 */
     datetime endDate;
+
     /** ENTRY成立だけを検索する場合true。 */
     bool entryOnly;
+
     /** 現在足に加えて表示する上位足数。 */
     int higherCount;
+
     /** 参照価格・SL候補・FEを表示する場合true。 */
     bool showPrices;
+
     /** 保存された各時間足の情報表を表示する場合true。 */
     bool showTable;
 

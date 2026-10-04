@@ -171,10 +171,13 @@ public:
 private:
     /** ロガー。 */
     Logger logger;
+
     /** ZigZagのDepthパラメータ。 */
     int depth;
+
     /** ZigZagのDeviationパラメータ。 */
     int deviation;
+
     /** ZigZagのBackstepパラメータ。 */
     int backstep;
 

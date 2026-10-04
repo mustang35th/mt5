@@ -7,32 +7,46 @@
 struct EaDealSnapshot {
     /** 約定ticket。 */
     ulong ticket;
+
     /** 約定元の注文ticket。 */
     ulong orderTicket;
+
     /** 安定したPosition ID。 */
     ulong positionIdentifier;
+
     /** 約定のMagic。手動操作では0を許容する。 */
     ulong magic;
+
     /** 約定シンボル。 */
     string symbol;
+
     /** DEAL_ENTRY。 */
     long entry;
+
     /** DEAL_TYPE。 */
     long type;
+
     /** DEAL_REASON。 */
     long reason;
+
     /** 約定時刻のミリ秒。 */
     long timeMsc;
+
     /** 約定数量。 */
     double volume;
+
     /** 約定価格。 */
     double price;
+
     /** 損益。 */
     double profit;
+
     /** commission。 */
     double commission;
+
     /** swap。 */
     double swap;
+
     /** fee。 */
     double fee;
 

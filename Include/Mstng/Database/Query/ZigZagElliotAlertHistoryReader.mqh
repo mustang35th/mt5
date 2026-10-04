@@ -323,6 +323,7 @@ public:
 private:
     /** 所有する読取専用接続。 */
     SqliteDatabase *database;
+
     /** 内部DB診断用ロガー。 */
     Logger logger;
 

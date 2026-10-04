@@ -41,6 +41,7 @@ public:
 
     /** 判定されたエントリーランク。 */
     ENUM_EXPERT_ADVISOR_ENTRY_RANK rank;
+
     /** エントリーランク文字列。 */
     string rankLabel;
     

@@ -8,7 +8,9 @@
  */
 struct ZigZagElliotAlertTooltipOverride {
     string objectName;
+
     string originalTooltip;
+
     string appliedTooltip;
 };
 
@@ -144,10 +146,13 @@ public:
 private:
     /** 表示先チャート。 */
     long chartId;
+
     /** 履歴インスタンスの接頭辞。 */
     string prefix;
+
     /** 配置済み領域の左・上・幅・高さ。 */
     int occupied[][4];
+
     /** 通常ラベルへ設定したツールチップ。 */
     ZigZagElliotAlertTooltipOverride tooltipOverrides[];
 

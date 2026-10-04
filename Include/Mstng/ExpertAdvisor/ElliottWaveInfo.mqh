@@ -26,18 +26,25 @@ public:
 
     /** 互換用の時間足表示名。 */
     string timeFrame;
+
     /** 売買方向ラベル。 */
     string buySell;
+
     /** オシレーター総合カウント。 */
     string oscillator;
+
     /** 短期オシレーターカウント。 */
     string oscillatorS;
+
     /** 中期オシレーターカウント。 */
     string oscillatorM;
+
     /** 長期オシレーターカウント。 */
     string oscillatorL;
+
     /** GMMAカウント。 */
     string gmma;
+
     /** Elliott波動ラベル。 */
     string elliott;
 

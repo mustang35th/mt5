@@ -108,10 +108,13 @@ public:
 private:
     /** 描画先チャートID。 */
     long chartId;
+
     /** このインスタンスだけが管理するオブジェクト接頭辞。 */
     string prefix;
+
     /** 描画失敗を記録するロガー。 */
     Logger logger;
+
     /** 同じ描画中のエラーを重複出力しないための状態。 */
     bool hasDrawingError;
 

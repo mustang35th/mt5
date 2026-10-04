@@ -644,8 +644,10 @@ public:
 private:
     /** 接続とschema管理。 */
     H1EaDatabaseContext context;
+
     /** 最後のエラー識別値。 */
     string lastError;
+
     /** 運用ログ。 */
     Logger logger;
 

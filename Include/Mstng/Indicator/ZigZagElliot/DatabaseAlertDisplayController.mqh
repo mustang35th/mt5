@@ -166,34 +166,49 @@ public:
 private:
     /** 現在の通貨と時間足。 */
     MarketContext marketContext;
+
     /** 表示用検索条件。 */
     ZigZagElliotAlertHistoryConfig config;
+
     /** 一括読取専用接続。 */
     ZigZagElliotAlertHistoryReader reader;
+
     /** 保存ラベル描画。 */
     DrawZigZagElliotAlertMarkers *drawer;
+
     /** 保存ラベルのキャッシュ。 */
     ZigZagElliotAlertHistoryMarker markers[];
+
     /** 表示開始日を含む時刻。 */
     datetime startTime;
+
     /** 表示終了日の翌日を含まない時刻。 */
     datetime endTime;
+
     /** 最後にDB読込を試みた表示足バー。 */
     datetime lastBarTime;
+
     /** 最後にDB検索へ渡した既知時刻。 */
     datetime lastKnownTime;
+
     /** 自動選択後に保持するRun。 */
     long resolvedRunId;
+
     /** 条件に一致する全Runを毎回読み取る場合true。 */
     bool allRuns;
+
     /** LIVEまたはTESTER。 */
     string sourceMode;
+
     /** 検索対象サーバー。 */
     string sourceServer;
+
     /** 重複ログを抑える直前のエラー。 */
     string lastError;
+
     /** 直前の表示値不足件数。 */
     int lastUnavailableCount;
+
     /** 表示用診断ログ。 */
     Logger logger;
 

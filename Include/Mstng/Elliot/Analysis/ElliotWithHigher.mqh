@@ -22,6 +22,7 @@ class ElliotWithHigher : public ElliotBase {
 public:
     /** 最初に生成するWaveが推進波の場合true。 */
     bool isMotive;
+
     /** 最新側のポイント列を分析する場合true。 */
     bool isLatest;
 

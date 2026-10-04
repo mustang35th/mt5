@@ -18,114 +18,169 @@ class ElliottInfoPanelView {
 public:
     /** チャートID */
     long chartId;
+
     /** ベース名 */
     string labelName;
+
     /** パネル名 */
     string panelName;
+
     /** ヘッダー名 */
     string headerName;
+
     /** タイトル名 */
     string titleName;
+
     /** 列ヘッダー名 */
     string columnHeaderName;
+
     /** TF列ヘッダー名 */
     string tfHeaderName;
+
     /** 売買列ヘッダー名 */
     string buySellHeaderName;
+
     /** オシレータ短期列ヘッダー名 */
     string oscillatorSHeaderName;
+
     /** オシレータ中期列ヘッダー名 */
     string oscillatorMHeaderName;
+
     /** オシレータ長期列ヘッダー名 */
     string oscillatorLHeaderName;
+
     /** GMMA列ヘッダー名 */
     string gmmaHeaderName;
+
     /** エリオット列ヘッダー名 */
     string elliottHeaderName;
+
     /** 区切り線名 */
     string separatorName;
+
     /** 作成済み */
     bool created;
+
     /** 左位置 */
     int xDistance;
+
     /** 上位置 */
     int yDistance;
+
     /** 横幅 */
     int panelWidth;
+
     /** 最小高さ */
     int minimumPanelHeight;
+
     /** 1行高さ */
     int rowHeight;
+
     /** 本文開始位置 */
     int firstRowYDistance;
+
     /** 生成済み行数 */
     int createdRowCount;
+
     /** 行名一覧 */
     string rowNames[];
+
     /** タイトル */
     string titleText;
+
     /** 列ヘッダー */
     string columnHeaderText;
+
     /** 背景色 */
     color panelBackgroundColor;
+
     /** ヘッダー色 */
     color headerBackgroundColor;
+
     /** 枠線色 */
     color borderColor;
+
     /** タイトル色 */
     color titleColor;
+
     /** 本文色 */
     color rowColor;
+
     /** BUY色 */
     color buyColor;
+
     /** SELL色 */
     color sellColor;
+
     /** 列ヘッダー色 */
     color columnHeaderColor;
+
     /** 区切り線色 */
     color separatorColor;
+
     /** フォント名 */
     string fontName;
+
     /** タイトルフォントサイズ */
     int titleFontSize;
+
     /** 本文フォントサイズ */
     int bodyFontSize;
+
     /** 角位置 */
     ENUM_BASE_CORNER corner;
+
     /** 初期化文言 */
     string initializingText;
+
     /** 最大想定行数 */
     int maximumRowCount;
+
     /** 下余白 */
     int bottomPadding;
+
     /** 列見出しY位置 */
     int columnHeaderYDistance;
+
     /** 区切り線Y位置 */
     int separatorYDistance;
+
     /** タイトルX位置 */
     int titleXDistance;
+
     /** 本文X位置 */
     int rowXDistance;
+
     /** 列見出しX位置 */
     int columnHeaderXDistance;
+
     /** TF列見出しX位置 */
     int tfHeaderXDistance;
+
     /** 売買列見出しX位置 */
     int buySellHeaderXDistance;
+
     /** オシレータ短期列見出しX位置 */
     int oscillatorSHeaderXDistance;
+
     /** オシレータ中期列見出しX位置 */
     int oscillatorMHeaderXDistance;
+
     /** オシレータ長期列見出しX位置 */
     int oscillatorLHeaderXDistance;
+
     /** GMMA列見出しX位置 */
     int gmmaHeaderXDistance;
+
     /** エリオット列見出しX位置 */
     int elliottHeaderXDistance;
+
     /** ヘッダー高さ */
     int headerHeight;
+
     /** 区切り線太さ */
     int separatorWidth;
+
     /** 行最大文字数 */
     int maxRowTextLength;
 

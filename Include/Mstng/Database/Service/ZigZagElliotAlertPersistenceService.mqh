@@ -271,20 +271,28 @@ public:
 private:
     /** データベースハンドル。 */
     int databaseHandle;
+
     /** アラートDAO。 */
     ZigZagElliotAlertDao *alertDao;
+
     /** ポイントDAO。 */
     ZigZagElliotAlertPointDao *pointDao;
+
     /** 実行情報DAO。 */
     ZigZagElliotAlertRunDao *runDao;
+
     /** 時間足別分析DAO。 */
     ZigZagElliotAlertTimeFrameDao *timeFrameDao;
+
     /** 補正比較情報DAOへの非所有参照。 */
     ZigZagElliotAlertCorrectionDao *correctionDao;
+
     /** 補正後時間足DAOへの非所有参照。 */
     ZigZagElliotAlertTimeFrameDao *correctedTimeFrameDao;
+
     /** 補正後ポイントDAOへの非所有参照。 */
     ZigZagElliotAlertPointDao *correctedPointDao;
+
     /** ロガー。 */
     Logger logger;
 

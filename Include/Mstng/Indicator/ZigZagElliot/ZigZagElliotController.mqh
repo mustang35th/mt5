@@ -411,36 +411,52 @@ private:
 
     /** 市場コンテキスト。 */
     MarketContext marketContext;
+
     /** インジケータ設定。 */
     ZigZagElliotConfig config;
+
     /** ロガー。 */
     Logger logger;
+
     /** 通貨強弱制御。 */
     CurrencyStrengthPairRankController *currencyStrengthController;
+
     /** Elliott分析制御。 */
     ElliotAnalysisController *analysisController;
+
     /** チャート表示制御。 */
     ElliotChartController *chartController;
+
     /** MTF_3in3アラート制御。 */
     Mtf3In3AlertController *alertController;
+
     /** タイマー実行の場合true。 */
     bool timerMode;
+
     /** 分析実行間隔秒。 */
     int timerSeconds;
+
     /** 時間足別の実行間隔を設定済みの場合true。 */
     bool timerInitialized;
+
     /** 前回分析実行時のTickCount。 */
     long lastExecuteTickCount;
+
     /** テスター分析およびアラート処理済みの最新バー時刻。 */
     datetime lastProcessedBarTime;
+
     /** 最後に通知したテスター分析履歴の進捗率。 */
     int lastAnalysisWarmUpProgress;
+
     /** 通常版の保存済みアラート表示。M5で有効時だけ保持する。 */
     DatabaseAlertDisplayController *databaseAlertDisplayController;
+
     /** MN1から表示足までの分析対象時間足。 */
     ENUM_TIMEFRAMES analysisTimeFrames[];
+
     /** 分析対象足ごとに未同期系列を再要求済みの場合true。 */
     bool seriesWarmUpRequested[];
+
     /** 分析対象足ごとの未同期系列を再要求した表示足バー時刻。 */
     datetime seriesWarmUpRequestBarTimes[];
 

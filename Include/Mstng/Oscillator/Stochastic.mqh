@@ -22,6 +22,7 @@ public:
 
     /** 直近Main0値。 */
     double main0;
+
     /** 直近Signal値。 */
     double signal0;
 
@@ -285,8 +286,10 @@ private:
 
     /** Stochastic ハンドルプール。 */
     StochasticHandlePool *stochasticHandlePool;
+
     /** ハンドル値。 */
     int handle;
+
     /** ロガー。 */
     Logger logger;
 

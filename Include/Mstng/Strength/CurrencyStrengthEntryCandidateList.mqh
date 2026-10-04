@@ -176,14 +176,19 @@ public:
 private:
     /** エントリー候補一覧。 */
     CurrencyStrengthEntryCandidate candidates[];
+
     /** 全28通貨ペア定義。 */
     SymbolNameInfoAll symbolNameInfoAll;
+
     /** 全通貨ペアの順位を利用できる場合true。 */
     bool rankingReady;
+
     /** 集計済み通貨ペア数。 */
     int validPairCount;
+
     /** 全通貨ペア数。 */
     int expectedPairCount;
+
     /** 候補抽出に使用した最小順位差。 */
     int minimumRankDifference;
 

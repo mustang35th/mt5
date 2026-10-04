@@ -473,6 +473,7 @@ protected:
     
     /** 描画共通設定。 */
     DrawProperties drawProperties;
+
     /** Elliot解析全体を保持する参照。 */
     ElliotAll *elliotAll;
 

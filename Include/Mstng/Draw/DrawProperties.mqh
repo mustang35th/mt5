@@ -16,21 +16,28 @@ class DrawProperties {
 public:
     /** Elliotの描画に使うフォント名。 */
     string elliotFontFace;
+
     /** Elliotラベルの文字サイズ。 */
     int elliotAlertSize;
+
     /** Elliot文字の基本サイズ。 */
     int elliotFontSize;
+
     /** Elliotラベルの文字間隔。単位: ピクセル。 */
     int elliotPixelDistance;
+
     /** フォントサイズ計算用ピクセル高さ。 */
     uint fontPixelHeight;
 
     /** 上昇判定時のラベル色。 */
     color elliotUpColor;
+
     /** 下降判定時のラベル色。 */
     color elliotDownColor;
+
     /** 未確定上昇ラベル色。 */
     color elliotMikakuteiUpColor;
+
     /** 未確定下降ラベル色。 */
     color elliotMikakuteiDownColor;
     

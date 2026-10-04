@@ -248,26 +248,37 @@ public:
 private:
     /** 市場コンテキスト。 */
     MarketContext marketContext;
+
     /** ロガー。 */
     Logger logger;
+
     /** オシレーターハンドルプール。 */
     OscillatorHandlePool *oscillatorHandlePool;
+
     /** 最新のElliott分析結果。 */
     ElliotAll *elliotAll;
+
     /** テスター用Elliott分析CSV。 */
     ElliotAllFile elliotAllFile;
+
     /** タイマー実行の場合true。 */
     bool timerMode;
+
     /** Elliott分析開始時間足。 */
     ENUM_TIMEFRAMES analysisStartTimeFrame;
+
     /** Mail内容を検証用ファイルへ出力する場合true。 */
     bool mailValidationFileEnabled;
+
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
+
     /** 通貨強弱をエントリー条件として使用する場合true。 */
     bool currencyStrengthEntryFilterEnabled;
+
     /** CSV初期化済みの場合true。 */
     bool fileInitialized;
+
     /** CSV出力開始時間足。 */
     ENUM_TIMEFRAMES logStartTimeFrame;
 

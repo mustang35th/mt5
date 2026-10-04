@@ -334,24 +334,34 @@ public:
 private:
     /** 市場コンテキスト。 */
     MarketContext marketContext;
+
     /** ロガー。 */
     Logger logger;
+
     /** 全体描画。 */
     Draw draw;
+
     /** GMMA表示。 */
     GmmaIndicator *gmmaIndicator;
+
     /** EMA200表示。 */
     Ema200Indicator *ema200Indicator;
+
     /** 日本時間軸表示。 */
     JapanTimeAxisView *japanTimeAxisView;
+
     /** Elliott上下FIT。 */
     DrawElliotVerticalFit *drawElliotVerticalFit;
+
     /** 波動ラベルを表示する上位時間足数。 */
     int elliotHigherTimeFrameDisplayCount;
+
     /** Elliott情報表を表示する場合true。 */
     bool elliotInfoVisible;
+
     /** Elliott情報を簡易表示する場合true。 */
     bool elliotInfoSimple;
+
     /** 初回上下FITの適用待ちの場合true。 */
     bool initialVerticalFitPending;
 

@@ -267,7 +267,6 @@ protected:
     /** Elliott波動条件の判定補助クラス。 */
     ExpertAdvisorElliot *expertAdvisorElliot;
     
-    
     /** EMA200 エキスパートアドバイザー。 */
     ExpertAdvisorEma200 *expertAdvisorEma200;
 

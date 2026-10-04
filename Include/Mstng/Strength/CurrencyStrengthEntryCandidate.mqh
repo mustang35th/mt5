@@ -17,22 +17,31 @@
 struct CurrencyStrengthEntryCandidate {
     /** 正規化された通貨ペア名。 */
     string symbolName;
+
     /** BUY候補の場合true。 */
     bool isBuy;
+
     /** 基軸通貨の長中期順位。 */
     int baseLongMediumRank;
+
     /** 決済通貨の長中期順位。 */
     int quoteLongMediumRank;
+
     /** 基軸通貨の中短期順位。 */
     int baseMediumShortRank;
+
     /** 決済通貨の中短期順位。 */
     int quoteMediumShortRank;
+
     /** 長中期の決済通貨順位と基軸通貨順位の差。 */
     int longMediumRankDifference;
+
     /** 中短期の決済通貨順位と基軸通貨順位の差。 */
     int mediumShortRankDifference;
+
     /** 長中期と中短期の小さいほうの絶対順位差。 */
     int minimumRankDifference;
+
     /** 長中期と中短期の絶対順位差合計。 */
     int totalRankDifference;
 

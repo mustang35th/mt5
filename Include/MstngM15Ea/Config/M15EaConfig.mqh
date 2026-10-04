@@ -14,44 +14,64 @@ class M15EaConfig {
 public:
     /** 対象シンボル。 */
     string symbolName;
+
     /** 接続サーバー。 */
     string accountServer;
+
     /** 口座番号。 */
     long accountLogin;
+
     /** 自EAの識別番号。 */
     ulong magicNumber;
+
     /** 固定ロット。 */
     double lotSize;
+
     /** 許容する最大初期SL幅。 */
     double maxInitialStopLossPips;
+
     /** 価格の最小表示単位。 */
     double pointSize;
+
     /** 注文価格の最小刻み。 */
     double tickSize;
+
     /** 1pipの価格幅。 */
     double pipSize;
+
     /** 価格の小数桁数。 */
     int digits;
+
     /** Tester実行の場合true。 */
     bool isTester;
+
     /** Tester売買開始日時。LIVEは0。 */
     datetime testerTradeStartTime;
+
     /** LIVEまたはTESTER。 */
     string sourceMode;
+
     /** 再起動ごとの識別子。 */
     string runUid;
+
     /** 再起動復元用の実行コンテキスト。 */
     string contextKey;
+
     /** OS排他ハンドルのscope。 */
     string lockScope;
+
     /** Common内のDBファイル名。 */
     string databaseFileName;
+
     /** 最後の初期化エラー。 */
     string lastError;
+
     /** D1・H4・H1の片足方向補正を使用する場合true。 */
     bool directionCorrectionEnabled;
+
     /** H4のFE上限。0は無効。 */
     double h4MaxFibonacciExpansionPercent;
+
     /** H1のFE上限。0は無効。 */
     double h1MaxFibonacciExpansionPercent;
 

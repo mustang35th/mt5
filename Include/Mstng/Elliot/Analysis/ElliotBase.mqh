@@ -33,6 +33,7 @@ public:
     
     /** 売買方向。true: BUY、false: SELL。 */
     bool isBuy;
+
     /** 売買方向表示用ラベル。 */
     string buySellLabel;
     

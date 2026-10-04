@@ -18,18 +18,25 @@ class M15ElliotEmaSortResult {
 public:
     /** 判定に必要な分析結果が揃っている場合true。 */
     bool isEvaluated;
+
     /** M15最新Waveの方向一致ランク。 */
     int m15WaveDirectionRank;
+
     /** M15 EMA200の方向一致ランク。 */
     int m15EmaDirectionRank;
+
     /** H1最新Waveの方向一致ランク。 */
     int h1WaveDirectionRank;
+
     /** H1 EMA200の方向一致ランク。 */
     int h1EmaDirectionRank;
+
     /** H4最新Waveの方向一致ランク。 */
     int h4WaveDirectionRank;
+
     /** H4 EMA200の方向一致ランク。 */
     int h4EmaDirectionRank;
+
     /** D1 EMA200の方向一致ランク。 */
     int d1EmaDirectionRank;
 

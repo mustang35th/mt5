@@ -213,6 +213,7 @@ public:
 private:
     /** 固定候補から選択した保存テーブル名。 */
     string tableName;
+
     /** 固定候補から選択した親テーブル名。 */
     string parentTableName;
 

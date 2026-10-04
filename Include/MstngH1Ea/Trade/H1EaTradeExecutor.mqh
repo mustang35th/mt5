@@ -11,6 +11,7 @@
 struct H1EaTradeSaveItem {
     /** Event時点の状態。 */
     H1EaTradeEntity trade;
+
     /** 一意ID確定済みEvent。 */
     H1EaTradeEventEntity event;
 };
@@ -94,8 +95,10 @@ public:
 private:
     /** 共通実行部の初期化完了状態。 */
     bool configured;
+
     /** 既存H1永続化への接続。 */
     H1EaTradeStore store;
+
     /** 既存H1戦略・ログへの接続。 */
     H1EaTradePolicy h1Policy;
 };

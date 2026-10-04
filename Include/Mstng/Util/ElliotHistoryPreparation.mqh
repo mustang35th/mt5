@@ -180,30 +180,43 @@ public:
 private:
     /** 対象通貨。 */
     string symbolName;
+
     /** 最下位の対象足。 */
     ENUM_TIMEFRAMES anchorTimeFrame;
+
     /** 同期に加えて最低本数を要求する場合true。 */
     bool requireMinimumBars;
+
     /** 対象設定済みの場合true。 */
     bool initialized;
+
     /** 少なくとも1回履歴を確認済みの場合true。 */
     bool checked;
+
     /** 全対象足の直近の履歴準備結果。 */
     bool ready;
+
     /** 直近の実確認で不足した足。bit 0からMN1・W1・D1・H4・H1・M15・M5の順。 */
     int missingMask;
+
     /** 直近の実確認で未同期だった足。不足足と同じビット順。 */
     int unsynchronizedMask;
+
     /** 前回確認時に指定開始前だった場合true。 */
     bool beforeStart;
+
     /** 前回指定された開始時刻。 */
     datetime lastWarmupEndTime;
+
     /** 前回確認時の経過時刻。Testerはサーバー時刻を使用する。 */
     ulong lastCheckTick;
+
     /** 次の不足履歴取得要求が可能な経過時刻。 */
     ulong nextRequestTick;
+
     /** 全対象足の履歴診断。 */
     string statusText;
+
     /** 不足足だけの履歴診断。 */
     string missingStatusText;
 

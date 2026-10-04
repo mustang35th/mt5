@@ -328,16 +328,22 @@ protected:
 private:
     /** 30期間EMA周期。 */
     int ema30Period;
+
     /** 60期間EMA周期。 */
     int ema60Period;
+
     /** MA 計算方法。 */
     ENUM_MA_METHOD maMethod;
+
     /** 価格種別。 */
     ENUM_APPLIED_PRICE appliedPrice;
+
     /** 移動平均の表示shift。 */
     int maShift;
+
     /** 低速EMAの時間足別ハンドル配列。 */
     int ema30Handles[TIMEFRAME_SIZE];
+
     /** 高速EMAの時間足別ハンドル配列。 */
     int ema60Handles[TIMEFRAME_SIZE];
     

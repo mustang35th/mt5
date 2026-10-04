@@ -59,13 +59,16 @@ public:
 
     /** 短期ストキャス状態。 */
     StochasticStatus stochasticShort;
+
     /** 中期ストキャス状態。 */
     StochasticStatus stochasticMiddle;
+
     /** 長期ストキャス状態。 */
     StochasticStatus stochasticLong;
 
     /** GMMAのトレンド継続カウント。 */
     int gmmaTrendCount;
+
     /** GMMAのトレンド転換クロスカウント。 */
     int gmmaCrossCount;
 
@@ -86,8 +89,10 @@ public:
 
     /** ストキャス/GMMAの総合判定値（売買での補助指標）。 */
     int oscillatorCount;
+
     /** BUY判定フラグ。 */
     bool isBuy;
+
     /** 3本ストキャスMain0の並び順。 */
     ENUM_STOCHASTIC_MAIN_ORDER stochasticMainOrder;
     

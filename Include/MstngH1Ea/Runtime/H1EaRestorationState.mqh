@@ -10,26 +10,37 @@
 struct H1EaRestorationState {
     /** 今回の通貨別Run。 */
     H1EaRunEntity run;
+
     /** 最後に確認した取引。保留SLも含み、保護接続後はbroker照合結果を反映する。 */
     H1EaTradeEntity trade;
+
     /** DBへの接続と保存状態の復元が完了したか。 */
     bool databaseReady;
+
     /** 外部巡回による保護処理が接続済みか。現在の送信可否とは別。 */
     bool protectionEnabled;
+
     /** 外部巡回によるEntry評価が接続済みか。発注の成立とは別。 */
     bool entryEnabled;
+
     /** SignalCountの読取が完了したか。 */
     bool countsRestored;
+
     /** 取引の有無の読取が完了したか。 */
     bool tradeRestored;
+
     /** DBに未完了取引があるか。broker側の保有有無とは別。 */
     bool hasActiveTrade;
+
     /** 判定済みかどうかDB照会を完了したH1バー。未取得は0。 */
     datetime decisionBar;
+
     /** 同一バー反転禁止の復元値。 */
     datetime blockedEntryBar;
+
     /** DB_RESTORED・WAIT_H1・WAIT_DB・LEASE_LOST等。 */
     string status;
+
     /** 復元待機または失敗の理由。 */
     string reason;
 

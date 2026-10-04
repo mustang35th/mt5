@@ -28,16 +28,22 @@ class D1ElliotEmaSortResult {
 public:
     /** 判定に必要な分析結果が揃っている場合true。 */
     bool isEvaluated;
+
     /** D1に対するW1・MN1・W1 EMA200の一致ランク。 */
     D1ConditionSortRank d1ConditionRank;
+
     /** D1最新Waveの方向一致ランク。 */
     int d1WaveDirectionRank;
+
     /** D1 EMA200の方向一致ランク。 */
     int d1EmaDirectionRank;
+
     /** W1最新Waveの方向一致ランク。 */
     int w1WaveDirectionRank;
+
     /** W1 EMA200の方向一致ランク。 */
     int w1EmaDirectionRank;
+
     /** MN1最新Waveの方向一致ランク。 */
     int mn1WaveDirectionRank;
 

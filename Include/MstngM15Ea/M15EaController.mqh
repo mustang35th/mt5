@@ -203,56 +203,82 @@ public:
 private:
     /** 再初期化による保存先の取り違えを防ぐ。 */
     bool initializationAttempted;
+
     /** 設定と排他取得が完了した場合true。 */
     bool started;
+
     /** Timer設定成功状態。 */
     bool timerReady;
+
     /** DBとRunが使用可能な場合true。 */
     bool databaseReady;
+
     /** 起動時の回数と判定済みバーの復元完了状態。 */
     bool countsRestored;
+
     /** 共通実行部の接続完了状態。 */
     bool executorInitialized;
+
     /** 消費回数または監査情報の欠落がある場合true。 */
     bool auditStateLost;
+
     /** 一度失効した管理権は同Run内で復活させない。 */
     bool leaseLost;
+
     /** 排他取得時刻。初回DB復旧の期限に使う。 */
     datetime lockAcquiredAt;
+
     /** 次回DB再接続・保存の試行時刻。 */
     ulong nextMaintenanceTick;
+
     /** LIVEの次回Entry評価時刻。 */
     ulong nextEntryTick;
+
     /** 最後に観測したトレイル用M15バー。 */
     datetime lastTrailObservedBar;
+
     /** 売買開始前に履歴を確認したM15バー。 */
     datetime lastWarmupBar;
+
     /** Testerで分析を再試行するバー。 */
     datetime analysisRetryBar;
+
     /** Tester分析の最短再試行時刻。 */
     datetime nextAnalysisRetryTime;
+
     /** 重複分析エラーログを抑制するバー。 */
     datetime lastAnalysisErrorBar;
+
     /** 最後の分析エラー。 */
     string lastAnalysisError;
+
     /** M15専用の設定。 */
     M15EaConfig config;
+
     /** M15専用運用ログ。 */
     M15EaOperationLogger logger;
+
     /** M15同一scopeの排他ハンドル。 */
     M15EaInstanceLock instanceLock;
+
     /** M15専用DBと共通TradeStoreの接続。 */
     M15EaPersistenceService persistence;
+
     /** 今回のLease所有Run。 */
     M15EaRunEntity run;
+
     /** M15の分析・既存戦略判定。 */
     M15EaStrategy strategy;
+
     /** 時間足に依存しない発注・保護・復元。 */
     EaTradeExecutor executor;
+
     /** M15固有のトレイル・理由・識別子。 */
     M15EaTradePolicy tradePolicy;
+
     /** 回数とEntryバーの共通管理。 */
     EaEntryState entryState;
+
     /** 確定したSKIPの保存待ち。遅延発注に使わない。 */
     M15EaDecisionEntity decisionQueue[];
 

@@ -10,12 +10,16 @@
 struct EaEntryRequest {
     /** BUYまたはSELL。 */
     string side;
+
     /** 発注要求ロット。 */
     double requestedVolume;
+
     /** 必須の初期SL。 */
     double initialStopLoss;
+
     /** 判定した基準足の開始時刻。 */
     long barTime;
+
     /** 許容する初期SL幅。 */
     double maxInitialRiskPips;
 };
@@ -26,18 +30,25 @@ struct EaEntryRequest {
 struct EaTrailDecision {
     /** SLを変更する場合true。 */
     bool shouldModify;
+
     /** 変更候補のSL価格。 */
     double targetStopLoss;
+
     /** 基準ZigZagポイント価格。 */
     double pivotRate;
+
     /** 基準ZigZagポイント時刻。 */
     datetime pivotBarTime;
+
     /** 基準ZigZagポイントのバー位置。 */
     int pivotBarIndex;
+
     /** 基準ポイントが山の場合true。 */
     bool pivotIsPeak;
+
     /** 確定確認に使用した最新ポイント時刻。 */
     datetime latestBarTime;
+
     /** 変更を見送った理由。 */
     string skipReason;
 
@@ -62,32 +73,46 @@ struct EaTrailDecision {
 struct EaTradeProfile {
     /** 発注期限と気配の検証に使う時間足。 */
     ENUM_TIMEFRAMES timeFrame;
+
     /** 要求IDの接頭辞。 */
     string actionUidPrefix;
+
     /** トレイル評価IDの接頭辞。 */
     string trailEvaluationUidPrefix;
+
     /** 取消IDの接頭辞。 */
     string cancelUidPrefix;
+
     /** 約定再監査IDの接頭辞。 */
     string dealAuditUidPrefix;
+
     /** 復旧IDの接頭辞。 */
     string recoveryUidPrefix;
+
     /** 復旧状態文字列の接頭辞。 */
     string recoverySnapshotPrefix;
+
     /** メモリ内保留状態の隔離文字列接頭辞。 */
     string pendingMemoryPrefix;
+
     /** 新規注文コメントの接頭辞。 */
     string entryCommentPrefix;
+
     /** 決済注文コメントの接頭辞。 */
     string closeCommentPrefix;
+
     /** 戦略のトレイルSLを表す保存値。 */
     string trailStopLossSource;
+
     /** トレイル水準を跨いだ決済理由。 */
     string trailCrossedReason;
+
     /** 保留候補の基準足を表す監査キー。 */
     string pendingBarField;
+
     /** 適用済み候補の基準足を表す監査キー。 */
     string lastAppliedTrailBarField;
+
     /** 最後の評価基準足を表す監査キー。 */
     string lastTrailEvaluatedBarField;
 

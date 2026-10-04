@@ -200,56 +200,82 @@ public:
 private:
     /** 市場コンテキスト。 */
     MarketContext marketContext;
+
     /** ロガー。 */
     Logger logger;
+
     /** 順位パネル描画。 */
     DrawCurrencyStrengthPairRank *pairRankDraw;
+
     /** 通貨強弱実行情報Provider。 */
     CurrencyStrengthExecutionInfoProvider *executionInfoProvider;
+
     /** 最新の通貨強弱実行情報。 */
     CurrencyStrengthExecutionInfo executionInfo;
+
     /** 通貨強弱を利用する場合true。 */
     bool enabled;
+
     /** 順位パネルを表示する場合true。 */
     bool rankVisible;
+
     /** 順位パネルの右端からの距離。 */
     int panelXDistance;
+
     /** DB再取得間隔秒。 */
     int refreshSeconds;
+
     /** DB参照プロファイル。 */
     CurrencyStrengthRankDatabaseProfile databaseProfile;
+
     /** 投票ウェイト方式。 */
     CurrencyStrengthVoteWeightMode voteWeightMode;
+
     /** DBファイル名。 */
     string databaseFileName;
+
     /** DBを年単位で分割する場合true。 */
     bool databaseSplitByYear;
+
     /** DBで共通フォルダを使用する場合true。 */
     bool databaseUseCommonFolder;
+
     /** 基軸通貨。 */
     string baseCurrency;
+
     /** 決済通貨。 */
     string quoteCurrency;
+
     /** 前回表示した実行ID。 */
     long lastRunId;
+
     /** 前回表示した対象M5バー時刻。 */
     datetime lastTargetM5BarTime;
+
     /** 前回表示したM5バー時刻。 */
     datetime lastM5BarTime;
+
     /** 前回表示した更新時刻。 */
     datetime lastUpdatedAt;
+
     /** 前回表示したデータソース。 */
     string lastSourceMode;
+
     /** 前回表示した基軸通貨の長中期順位。 */
     int baseLongMediumRank;
+
     /** 前回表示した基軸通貨の中短期順位。 */
     int baseMediumShortRank;
+
     /** 前回表示した決済通貨の長中期順位。 */
     int quoteLongMediumRank;
+
     /** 前回表示した決済通貨の中短期順位。 */
     int quoteMediumShortRank;
+
     /** 有効な順位を表示済みの場合true。 */
     bool rankAvailable;
+
     /** 前回表示した実行状態。 */
     ENUM_CURRENCY_STRENGTH_EXECUTION_STATUS lastDisplayStatus;
 

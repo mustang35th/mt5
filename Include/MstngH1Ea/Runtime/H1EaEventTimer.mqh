@@ -83,6 +83,7 @@ public:
 private:
     /** 設定成功を確認済みのTimer秒数。0は未設定または更新失敗。 */
     int timerSeconds;
+
     /** Timer設定失敗時の次回試行時刻。最短5秒で再試行する。 */
     ulong nextTimerRetryTick;
 };

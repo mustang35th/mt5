@@ -7,10 +7,13 @@
 struct EaInitialStopLossResult {
     /** 発注に使用できる場合true。 */
     bool isAccepted;
+
     /** 最小価格刻みへ丸めたSL。 */
     double stopLoss;
+
     /** BUY Ask/SELL BidからSLまでのpips幅。 */
     double riskPips;
+
     /** 判定理由。 */
     string reasonCode;
 

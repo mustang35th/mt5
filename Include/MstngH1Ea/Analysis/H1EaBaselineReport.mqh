@@ -247,38 +247,55 @@ public:
 private:
     /** 出力を開始したか。 */
     bool active;
+
     /** OnTesterの出力が終了したか。 */
     bool finished;
+
     /** 一度でも入出力に失敗したか。 */
     bool failed;
+
     /** Common配下のsession固有フォルダ。 */
     string folder;
+
     /** 登録済み28通貨。 */
     string symbols[28];
+
     /** 通貨に対応するMagic。 */
     ulong magics[28];
+
     /** 売買開始日時。 */
     datetime tradeStart;
+
     /** 初期化時のサーバー時刻。 */
     datetime testStart;
+
     /** 最初に観測できた時刻。 */
     datetime firstSampleTime;
+
     /** 最後に読み取った時刻。 */
     datetime lastSampleTime;
+
     /** 最後に出力した時刻。 */
     datetime lastWriteTime;
+
     /** 最後にバッファを確定した時刻。 */
     datetime lastFlushTime;
+
     /** 出力済み行数。 */
     long sampleRows;
+
     /** 出力済み約定数。切れたCSVを集計しないための件数。 */
     long dealRows;
+
     /** 読取失敗の累積。 */
     long readErrors;
+
     /** 同値圧縮用の前回データ。 */
     string lastValues;
+
     /** 連続サンプルのファイル。 */
     int samplesHandle;
+
     /** 通常形式の診断ログ。 */
     Logger logger;
 

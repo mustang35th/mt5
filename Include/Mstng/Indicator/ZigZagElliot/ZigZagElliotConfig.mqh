@@ -32,62 +32,91 @@ class ZigZagElliotConfig {
 public:
     /** Mail内容を検証用ファイルへ出力する場合true。 */
     bool mailValidationFileEnabled;
+
     /** MTF_3in3アラート検証CSVを出力する場合true。 */
     bool mtf3In3AlertCsvEnabled;
+
     /** MTF_3in3アラートをデータベースへ保存する場合true。 */
     bool mtf3In3AlertDatabaseEnabled;
+
     /** MTF_3in3アラートデータベースファイル名。 */
     string mtf3In3AlertDatabaseFileName;
+
     /** MTF_3in3アラートデータベースで共通フォルダを使用する場合true。 */
     bool mtf3In3AlertDatabaseUseCommonFolder;
+
     /** テスターのAlert DB保存開始サーバー時刻。0は日時制限なし。 */
     datetime mtf3In3AlertTesterSaveStartTime;
+
     /** M5・H1に保存済みDBアラートを表示する場合true。 */
     bool databaseAlertDisplayEnabled;
+
     /** 表示対象Run。0は最初に一致した最新Runを保持する。 */
     long databaseAlertDisplayRunId;
+
     /** 指定または最新の一Runか、期間内の全Runか。 */
     ZigZagElliotDatabaseAlertRunScope databaseAlertDisplayRunScope;
+
     /** 表示開始サーバー日付。0は制限なし。 */
     datetime databaseAlertDisplayStartDate;
+
     /** 表示終了サーバー日付。当日を含み0は制限なし。 */
     datetime databaseAlertDisplayEndDate;
+
     /** DB表示をENTRY成立だけに絞る場合true。 */
     bool databaseAlertDisplayEntryOnly;
+
     /** H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。 */
     bool h1DirectionCorrectionEnabled;
+
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
+
     /** M15エントリーで使用するH4のFE上限（%）。0は制限なし。 */
     double m15H4MaxFibonacciExpansionPercent;
+
     /** M15エントリーで使用するH1のFE上限（%）。0は制限なし。 */
     double m15H1MaxFibonacciExpansionPercent;
+
     /** H1エントリーで使用するW1確認モード。 */
     H1W1ConfirmationMode h1W1ConfirmationMode;
+
     /** H1エントリーで使用する方向一致モード。 */
     H1DirectionAlignmentMode h1DirectionAlignmentMode;
+
     /** H1エントリーで使用するEMA200確認モード。 */
     H1Ema200ConfirmationMode h1Ema200ConfirmationMode;
+
     /** 通貨強弱を利用する場合true。 */
     bool currencyStrengthEnabled;
+
     /** 通貨強弱をエントリー条件として使用する場合true。 */
     bool currencyStrengthEntryFilterEnabled;
+
     /** 通貨強弱順位パネルを表示する場合true。 */
     bool currencyStrengthRankVisible;
+
     /** 通貨強弱順位パネルの右端からの距離。 */
     int currencyStrengthRankPanelXDistance;
+
     /** 通貨強弱情報の再取得間隔秒。 */
     int currencyStrengthRefreshSeconds;
+
     /** 通貨強弱DB参照プロファイル。 */
     CurrencyStrengthRankDatabaseProfile currencyStrengthDatabaseProfile;
+
     /** 通貨強弱の投票ウェイト方式。 */
     CurrencyStrengthVoteWeightMode currencyStrengthVoteWeightMode;
+
     /** 通貨強弱DBファイル名。 */
     string currencyStrengthDatabaseFileName;
+
     /** 通貨強弱DBを年単位で分割する場合true。 */
     bool currencyStrengthDatabaseSplitByYear;
+
     /** 通貨強弱DBで共通フォルダを使用する場合true。 */
     bool currencyStrengthDatabaseUseCommonFolder;
+
     /** チャートへ波動ラベルを表示する上位時間足数。 */
     ElliotHigherTimeFrameDisplayCount elliotHigherTimeFrameDisplayCount;
     /**

@@ -88,30 +88,43 @@ public:
 private:
     /** 固定28通貨の登録完了。 */
     bool initialized;
+
     /** 初回取得を実行済みか。取得失敗時も再試行を1分空ける。 */
     bool sampled;
+
     /** 最後に取得した巡回時計。Testerはテスト内時刻。 */
     ulong lastSampleTick;
+
     /** 最後の取得を行ったサーバー時刻。 */
     datetime sampleTime;
+
     /** 登録通貨名。 */
     string symbols[28];
+
     /** 登録Magic。 */
     ulong magics[28];
+
     /** 通貨別の取得成功フラグ。 */
     bool profitKnown[28];
+
     /** 通貨別の評価損益とスワップの合計。 */
     double profits[28];
+
     /** 通貨別の実保有数。 */
     int positionCounts[28];
+
     /** 全対象を漏れなく取得できたか。 */
     bool totalKnown;
+
     /** 全対象の評価損益とスワップの合計。 */
     double totalProfit;
+
     /** 全対象の実保有数。 */
     int totalPositions;
+
     /** 口座通貨名。 */
     string currency;
+
     /** 口座通貨の表示小数桁数。 */
     int digits;
 

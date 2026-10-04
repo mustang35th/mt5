@@ -15,8 +15,10 @@ class StochasticStatus {
 public:
     /** クロス継続数（正：上向き、負：下向き）。 */
     int count;
+
     /** Main0の最新値。 */
     double main0;
+
     /** Signalの最新値。 */
     double signal0;
 

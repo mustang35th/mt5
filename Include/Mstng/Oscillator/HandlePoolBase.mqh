@@ -130,6 +130,7 @@ protected:
 
     /** 市場コンテキスト。 */
     MarketContext marketContext;
+
     /** 対象時間足配列。 */
     ENUM_TIMEFRAMES timeframes[TIMEFRAME_SIZE];
 

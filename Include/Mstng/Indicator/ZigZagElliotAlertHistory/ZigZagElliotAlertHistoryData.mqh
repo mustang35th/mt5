@@ -22,14 +22,19 @@ enum ZigZagElliotAlertHistoryView {
 struct ZigZagElliotAlertHistoryWaveSummary {
     /** 重複行を不明として扱うための読取済みフラグ。 */
     bool recorded;
+
     /** isBuyに対応するBまたはS。 */
     string direction;
+
     /** EMA200のBまたはS。対象外・方向なしは空。 */
     string emaDirection;
+
     /** 主波ラベル。 */
     string wave;
+
     /** 副次波ラベル。 */
     string subWave;
+
     /** 確定は確、未確定は未。 */
     string state;
 
@@ -52,30 +57,43 @@ struct ZigZagElliotAlertHistoryWaveSummary {
 struct ZigZagElliotAlertHistoryMarker {
     /** 保存アラートID。 */
     long alertId;
+
     /** アラートの表示時間足。 */
     ENUM_TIMEFRAMES timeFrame;
+
     /** 発生足のサーバー時刻。 */
     datetime barTime;
+
     /** 判定サーバー時刻。 */
     datetime serverTime;
+
     /** 保存された判定JST。 */
     datetime jstTime;
+
     /** 元分析の対象時間足の保存始値。 */
     double price;
+
     /** 保存されたBUYまたはSELL。 */
     string side;
+
     /** 保存されたENTRY成立フラグ。 */
     int isEntry;
+
     /** 保存されたENTRY結果。 */
     string entryResult;
+
     /** 保存された採用文字、未記録時は元文字。 */
     string text;
+
     /** 保存された補正内容の説明。 */
     string correctionText;
+
     /** 採用分析を特定した保存状態。 */
     string correctionStatus;
+
     /** MN1・W1・D1・H4・H1・M15・M5の保存概要。 */
     ZigZagElliotAlertHistoryWaveSummary waves[7];
+
     /** ラベル表示に必要な保存値を確認できた場合true。 */
     bool available;
 };
@@ -88,24 +106,34 @@ class ZigZagElliotAlertHistorySnapshot {
 public:
     /** 保存されたアラートと最終判定。 */
     ZigZagElliotAlertEntity alert;
+
     /** 保存元Run。 */
     ZigZagElliotAlertRunEntity run;
+
     /** 補正メタデータ。 */
     ZigZagElliotAlertCorrectionEntity correction;
+
     /** APPLIED、NONE、UNRECORDED、INCOMPLETE。 */
     string correctionStatus;
+
     /** 補正情報を利用できない理由。 */
     string correctionReason;
+
     /** 元の保存分析を描画できる場合true。 */
     bool originalAvailable;
+
     /** 元分析を利用できない理由。 */
     string originalReason;
+
     /** 元分析の時間足。 */
     ZigZagElliotAlertTimeFrameEntity originalTimeFrames[];
+
     /** 元分析の最新Waveポイント。 */
     ZigZagElliotAlertPointEntity originalPoints[];
+
     /** 補正分析の時間足。 */
     ZigZagElliotAlertTimeFrameEntity correctedTimeFrames[];
+
     /** 補正分析の最新Waveポイント。 */
     ZigZagElliotAlertPointEntity correctedPoints[];
 

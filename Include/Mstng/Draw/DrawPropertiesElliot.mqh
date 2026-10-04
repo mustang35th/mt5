@@ -15,6 +15,7 @@ class DrawPropertiesElliot : public CObject {
 public:
     /** 表示する場合true。 */
     bool isVisible;
+
     /** 列幅。単位: ピクセル。 */
     int width;
     

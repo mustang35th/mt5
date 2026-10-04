@@ -284,52 +284,76 @@ public:
 private:
     /** 結果記録専用の一接続。 */
     H1EaDatabaseContext database;
+
     /** 観測を開始したか。 */
     bool active;
+
     /** session行の保存を確認したか。 */
     bool sessionInserted;
+
     /** 一度でも欠落・保存障害が発生したか。 */
     bool failed;
+
     /** OnTesterに到達したか。期間完走の保証ではない。 */
     bool onTesterReached;
+
     /** 標準統計の保存を確認したか。 */
     bool statisticsAvailable;
+
     /** 対象全約定の保存を確認したか。 */
     bool dealsComplete;
+
     /** 28 Run共通ID。 */
     string sessionUid;
+
     /** 今回の28 Run IDをSQL整数リストで保持する。 */
     string runIds;
+
     /** 対象通貨。 */
     string symbols[28];
+
     /** 対象通貨に対応するMagic。 */
     ulong magics[28];
+
     /** Runに記録したプログラム版。 */
     string programVersion;
+
     /** 口座通貨。 */
     string accountCurrency;
+
     /** 口座サーバー。 */
     string accountServer;
+
     /** 口座レバレッジ。 */
     long leverage;
+
     /** 起動時口座残高。 */
     double initialBalance;
+
     /** 起動時サーバー時刻。 */
     datetime startedTime;
+
     /** 売買開始時刻。 */
     datetime tradeStart;
+
     /** 保存済みサンプルの連番。 */
     long sequence;
+
     /** 最終観測時刻。 */
     datetime lastObservedTime;
+
     /** 最終保存時刻。 */
     datetime lastSavedTime;
+
     /** 障害状態の再保存を許可する次の時刻。 */
     datetime nextFailureRetryTime;
+
     /** 直近の保有・注文のIDと数量。 */
     string positionState;
+
     /** 最初の障害理由。 */
     string errorText;
+
     /** 通常形式の診断ログ。 */
     Logger logger;
 

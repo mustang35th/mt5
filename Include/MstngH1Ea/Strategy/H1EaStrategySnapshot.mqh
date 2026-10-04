@@ -9,74 +9,109 @@
 struct H1EaStrategySnapshot {
     /** 評価対象H1バー。 */
     datetime h1BarTime;
+
     /** 分析時刻。 */
     datetime evaluatedTime;
+
     /** シグナル基準となる1つ前のH1点の時刻。 */
     datetime signalReferenceTime;
+
     /** シグナルのBUY/SELL方向。 */
     string signalSide;
+
     /** BUYの場合true。 */
     bool isBuy;
+
     /** シグナル基準点の価格。 */
     double signalReferencePrice;
+
     /** シグナル基準点が山の場合true。 */
     bool signalReferenceIsHigh;
+
     /** 分析時Spread。 */
     double spreadPips;
+
     /** 分析時Bid。 */
     double bid;
+
     /** 分析時Ask。 */
     double ask;
+
     /** MN1多数決方向。 */
     string mn1Direction;
+
     /** W1多数決方向。 */
     string w1Direction;
+
     /** D1多数決方向。 */
     string d1Direction;
+
     /** H4多数決方向。 */
     string h4Direction;
+
     /** H1多数決方向。 */
     string h1Direction;
+
     /** W1 EMA200方向。 */
     string w1Ema200Direction;
+
     /** D1 EMA200方向。診断テキストへ保存する。 */
     string d1Ema200Direction;
+
     /** H4 EMA200方向。 */
     string h4Ema200Direction;
+
     /** H1 EMA200方向。 */
     string h1Ema200Direction;
+
     /** H1 GMMAトレンド回数。 */
     int h1GmmaTrendCount;
+
     /** H1 GMMAクロス回数。 */
     int h1GmmaCrossCount;
+
     /** H1最新波動ラベル。 */
     string h1ElliotLabel;
+
     /** H4最新波動ラベル。 */
     string h4ElliotLabel;
+
     /** H1最新Wave方向。 */
     string h1WaveDirection;
+
     /** H1波動診断結果。Entry実行とは別。 */
     bool isH1WaveAccepted;
+
     /** H4波動診断結果。Entry実行とは別。 */
     bool isH4WaveAccepted;
+
     /** 上位方向一致診断結果。 */
     bool isH1DirectionAlignmentPassed;
+
     /** H1・H4・D1 EMA200の厳密な方向一致診断結果。 */
     bool isEma200ConfirmationPassed;
+
     /** 共通Judge成立。 */
     bool isJudge;
+
     /** 今回Judge成立後の回数。Judge NGでは0。 */
     int signalCount;
+
     /** 詳細Entryを実行した場合true。 */
     bool isEntryEvaluated;
+
     /** 発注安全条件を適用する前の戦略Entry。 */
     bool isStrategyEntry;
+
     /** 今回初回Judgeを消費した場合true。 */
     bool isSignalConsumed;
+
     /** 戦略の結果理由。 */
     string reasonCode;
+
     /** 保存用の分析診断文字列。 */
     string analysisSnapshotText;
+
     /** 既存戦略の正本結果。 */
     Mtf3In3AlertResult alertResult;
 

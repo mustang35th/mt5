@@ -227,36 +227,52 @@ public:
 private:
     /** データベースファイル名。 */
     string fileName;
+
     /** 共通フォルダ使用有無。 */
     bool useCommonFolder;
+
     /** Elliott観測テーブルを準備する場合true。 */
     bool observationEnabled;
+
     /** アラート補正比較テーブルを準備する場合true。 */
     bool correctionEnabled;
+
     /** データベース接続設定用ロガー。 */
     Logger logger;
+
     /** SQLite接続。 */
     SqliteDatabase *database;
+
     /** アラートDAO。 */
     ZigZagElliotAlertDao *alertDao;
+
     /** ポイントDAO。 */
     ZigZagElliotAlertPointDao *pointDao;
+
     /** 実行情報DAO。 */
     ZigZagElliotAlertRunDao *runDao;
+
     /** 時間足別分析DAO。 */
     ZigZagElliotAlertTimeFrameDao *timeFrameDao;
+
     /** 補正比較情報DAO。 */
     ZigZagElliotAlertCorrectionDao *correctionDao;
+
     /** 補正後時間足DAO。 */
     ZigZagElliotAlertTimeFrameDao *correctedTimeFrameDao;
+
     /** 補正後ポイントDAO。 */
     ZigZagElliotAlertPointDao *correctedPointDao;
+
     /** Elliott観測DAO。 */
     ZigZagElliotObservationDao *observationDao;
+
     /** Elliott時間足別観測DAO。 */
     ZigZagElliotObservationTimeFrameDao *observationTimeFrameDao;
+
     /** 永続化サービス。 */
     ZigZagElliotAlertPersistenceService *persistenceService;
+
     /** Elliott観測永続化サービス。 */
     ZigZagElliotObservationPersistenceService *observationPersistenceService;
 

@@ -239,16 +239,22 @@ public:
 private:
     /** 分析対象。 */
     MarketContext marketContext;
+
     /** 所有ハンドル。 */
     OscillatorHandlePool *handlePool;
+
     /** 所有分析結果。 */
     ElliotAll *elliotAll;
+
     /** 直前分析のJudge未評価フラグ。 */
     bool isPrepared;
+
     /** 直近失敗理由。 */
     string lastError;
+
     /** 全時間足の直近履歴診断。TesterではEAから見える系列だけを示す。 */
     string historyStatusText;
+
     /** 観測版と共通の価格履歴準備。分析成功とは分けて管理する。 */
     ElliotHistoryPreparation historyPreparation;
 

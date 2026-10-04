@@ -33,8 +33,10 @@ enum LogLevel {
 struct LoggerRepeatScope {
     /** このトークンで区間を開始したか。 */
     bool started;
+
     /** 呼び出し前に抑制区間が有効だったか。 */
     bool wasActive;
+
     /** 呼び出し前のシンボル・H1開始時刻キー。 */
     string previousKey;
 };
@@ -252,14 +254,19 @@ private:
 
     /** 明示的に開始したTesterの抑制区間だけでtrue。通常はfalse。 */
     static bool repeatScopeActive;
+
     /** 現在の抑制区間のシンボル・H1開始時刻キー。 */
     static string repeatScopeKey;
+
     /** 保持中のログに対応する区間キー。 */
     static string repeatCacheKey;
+
     /** 整形済み出力を完全一致で比較する固定長リング。 */
     static string repeatedOutputs[64];
+
     /** 現在記録している出力数。 */
     static int repeatedOutputCount;
+
     /** 新しい出力で置き換えるリング位置。 */
     static int nextRepeatedOutputIndex;
 

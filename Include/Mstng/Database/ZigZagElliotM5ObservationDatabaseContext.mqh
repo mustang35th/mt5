@@ -226,24 +226,34 @@ public:
 private:
     /** データベースファイル名。 */
     string fileName;
+
     /** 共通フォルダ使用有無。 */
     bool useCommonFolder;
+
     /** 最後の接続試行でDBの用途または形式を拒否した場合true。 */
     bool databaseRejected;
+
     /** 当該接続のM5固定観測Profile。 */
     ZigZagElliotObservationProfile observationProfile;
+
     /** 接続設定用ロガー。 */
     Logger logger;
+
     /** SQLite接続。 */
     SqliteDatabase *database;
+
     /** 実行情報DAO。 */
     ZigZagElliotAlertRunDao *runDao;
+
     /** 観測本体DAO。 */
     ZigZagElliotObservationDao *observationDao;
+
     /** 時間足別観測DAO。 */
     ZigZagElliotObservationTimeFrameDao *timeFrameDao;
+
     /** 取得品質DAO。 */
     ZigZagElliotObservationCaptureMetricsDao *captureMetricsDao;
+
     /** M5観測永続化サービス。 */
     ZigZagElliotObservationPersistenceService *persistenceService;
 

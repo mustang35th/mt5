@@ -19,18 +19,25 @@ class H1D1EntrySortResult {
 public:
     /** D1環境を評価できた場合true。 */
     bool isEvaluated;
+
     /** D1に対する上位足条件の一致ランク。 */
     D1ConditionSortRank d1ConditionRank;
+
     /** ENTRY判定に使用した時間足。 */
     ENUM_TIMEFRAMES entryTimeFrame;
+
     /** エントリー優先度。 */
     Mtf3In3EntryPriorityRank entryPriorityRank;
+
     /** 1波または3波に一致した時間足数。 */
     int waveMatchCount;
+
     /** 一致した副条件数。 */
     int conditionMatchCount;
+
     /** D1最新Waveの方向一致ランク。 */
     int d1WaveDirectionRank;
+
     /** D1 EMA200の方向一致ランク。 */
     int d1EmaDirectionRank;
 

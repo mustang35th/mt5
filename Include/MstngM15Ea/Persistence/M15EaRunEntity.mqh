@@ -8,50 +8,73 @@
 struct M15EaRunEntity {
     /** 主キー。 */
     long id;
+
     /** 起動ごとの一意ID。 */
     string runUid;
+
     /** 複数通貨EAの共通起動ID。単一通貨・旧Runは空文字。 */
     string sessionUid;
+
     /** 保存契約バージョン。 */
     int schemaVersion;
+
     /** LIVEまたはTESTER。 */
     string sourceMode;
+
     /** LIVEまたはTesterの実行コンテキストキー。 */
     string contextKey;
+
     /** 接続サーバー。 */
     string accountServer;
+
     /** 口座番号。 */
     long accountLogin;
+
     /** brokerシンボル名。 */
     string symbolName;
+
     /** PERIOD_M15。 */
     int timeFrame;
+
     /** Magic Number。 */
     string magicNumber;
+
     /** EAバージョン。 */
     string programVersion;
+
     /** エントリーおよびポジション管理ロジック世代。 */
     string strategyVersion;
+
     /** 分析計算世代。 */
     string analysisVersion;
+
     /** 分析結果へ影響する設定のCanonical Text。 */
     string analysisInputText;
+
     /** analysis_input_textのSHA-256。 */
     string analysisInputHash;
+
     /** 有効設定のCanonical Text。 */
     string configText;
+
     /** config_textのSHA-256。 */
     string configHash;
+
     /** TimeLocal()による起動時刻。 */
     long startedAt;
+
     /** TimeLocal()による終了時刻。 */
     long endedAt;
+
     /** 最終Lease更新時刻。 */
     long heartbeatAt;
+
     /** Lease失効時刻。 */
     long leaseExpiresAt;
+
     /** Run状態。 */
     string status;
+
     /** 終了または異常理由。通常は空文字。 */
     string errorText;
 
