@@ -336,6 +336,10 @@ public:
         } else if (currentTimeFrame == PERIOD_H1
                 && alignmentStartTimeFrame == PERIOD_MN1) {
             alignmentStartTimeFrameText = "MN1-H1";
+        } else if (currentTimeFrame == PERIOD_M15
+                && fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200) {
+            alignmentStartTimeFrameText = "W1-M15&EMA4";
         } else if (currentTimeFrame == PERIOD_M5
                 && fromDecision.getAlignmentRule()
                     == ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1) {

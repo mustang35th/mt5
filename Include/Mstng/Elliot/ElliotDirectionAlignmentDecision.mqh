@@ -22,7 +22,8 @@ enum ElliotDirectionAlignmentRule {
     ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_AND_H4_OR_H1 = 4,
     ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1 = 5,
     ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1 = 6,
-    ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1 = 7
+    ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1 = 7,
+    ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200 = 8
 };
 
 /** H1次点候補で不足している一致条件。 */
@@ -185,6 +186,15 @@ public:
                 == ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1
                 && (fromCurrentTimeFrame != PERIOD_M5
                     || this.alignmentStartTimeFrame != PERIOD_D1)) {
+            ArrayResize(fromTimeFrames, 0);
+
+            return false;
+        }
+
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200
+                && (fromCurrentTimeFrame != PERIOD_M15
+                    || this.alignmentStartTimeFrame != PERIOD_W1)) {
             ArrayResize(fromTimeFrames, 0);
 
             return false;
@@ -548,6 +558,12 @@ public:
             if (elliot.isBuy != isBuy) {
                 return trendAlignNone;
             }
+        }
+
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200
+                && !this.isM15Ema200DirectionMatched(fromElliotAll, isBuy)) {
+            return trendAlignNone;
         }
 
         if (isBuy) {
@@ -1043,6 +1059,50 @@ private:
 
         ENUM_TIMEFRAMES timeFrames[] = {
             PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5
+        };
+        for (int i = 0; i < ArraySize(timeFrames); i++) {
+            Elliot *elliot = fromElliotAll.getElliot(timeFrames[i]);
+            if (elliot == NULL
+                    || elliot.marketContext.timeFrame != timeFrames[i]
+                    || elliot.oscillator.marketContext.timeFrame != timeFrames[i]
+                    || elliot.oscillator.ema200.marketContext.timeFrame != timeFrames[i]) {
+                return false;
+            }
+
+            bool isEma200Buy = elliot.oscillator.ema200.isBuy;
+            bool isEma200Sell = elliot.oscillator.ema200.isSell;
+            string direction = elliot.oscillator.ema200.getBuySellLabel();
+            if (fromIsBuy) {
+                if (!isEma200Buy || isEma200Sell || direction != "BUY") {
+                    return false;
+                }
+            } else {
+                if (isEma200Buy || !isEma200Sell || direction != "SELL") {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * D1からM15までのEMA200がM15分析方向と一致するか判定する。
+     *
+     * @param fromElliotAll 複数時間足Elliott分析結果
+     * @param fromIsBuy M15分析方向がBUYの場合true
+     * @return 全4足の時間足・フラグ・ラベルが整合して同方向の場合true
+     */
+    bool isM15Ema200DirectionMatched(
+        ElliotAll *fromElliotAll,
+        const bool fromIsBuy
+    ) {
+        if (fromElliotAll == NULL) {
+            return false;
+        }
+
+        ENUM_TIMEFRAMES timeFrames[] = {
+            PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15
         };
         for (int i = 0; i < ArraySize(timeFrames); i++) {
             Elliot *elliot = fromElliotAll.getElliot(timeFrames[i]);
