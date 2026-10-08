@@ -77,6 +77,9 @@ public:
         this.renderedHeight = 0;
         this.lastCompletedTitleText = "";
         this.lastCompletedTitleTimeText = "";
+        this.lastCompletedTitleTimeTooltip = "";
+        this.updateTimeFrame = PERIOD_CURRENT;
+        this.updateBarTime = 0;
         this.sortType = fromSortType;
         this.gmoSymbolNameInfoAll.setGmo();
 
@@ -339,7 +342,7 @@ public:
         } else if (currentTimeFrame == PERIOD_M15
                 && fromDecision.getAlignmentRule()
                     == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200) {
-            alignmentStartTimeFrameText = "W1-M15&EMA4";
+            alignmentStartTimeFrameText = "W1=M15&2/3&EMA4";
         } else if (currentTimeFrame == PERIOD_M5
                 && fromDecision.getAlignmentRule()
                     == ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1) {
@@ -499,6 +502,22 @@ public:
     }
 
     /**
+     * Controllerが使用する更新時間足と対象バー開始時刻を保存する。
+     *
+     * このメソッドでは再描画や分析を開始しない。
+     *
+     * @param fromUpdateTimeFrame 実際の更新判定に使用する時間足。
+     * @param fromUpdateBarTime 更新対象バーのサーバー開始時刻。
+     */
+    void setUpdateSchedule(
+        ENUM_TIMEFRAMES fromUpdateTimeFrame,
+        datetime fromUpdateBarTime
+    ) {
+        this.updateTimeFrame = fromUpdateTimeFrame;
+        this.updateBarTime = fromUpdateBarTime;
+    }
+
+    /**
      * 現在生成されている一覧全体の縦幅を取得する。
      *
      * @return 一覧と補助パネルを含む縦幅。
@@ -655,8 +674,17 @@ private:
     /** 最後に28通貨の分析が完了したタイトル文字列。 */
     string lastCompletedTitleText;
 
-    /** 最後に28通貨の分析が完了した実行時刻文字列。 */
+    /** 最後に28通貨の分析が完了した更新予定文字列。 */
     string lastCompletedTitleTimeText;
+
+    /** 最後に28通貨の分析が完了した日時と実行モードの説明。 */
+    string lastCompletedTitleTimeTooltip;
+
+    /** Controllerが実際の更新判定に使用する時間足。 */
+    ENUM_TIMEFRAMES updateTimeFrame;
+
+    /** 更新対象バーのサーバー開始時刻。 */
+    datetime updateBarTime;
 
     /** 列ヘッダー文字色。 */
     color headerColor;
@@ -887,7 +915,10 @@ private:
             23,
             this.bodyFontSize,
             this.headerColor,
-            "LAST ANALYSIS --"
+            this.getUpdateScheduleText(
+                TimeUtil::convertTimeFrameToString(fromCurrentTimeFrame),
+                0
+            )
         )) {
             this.destroyObjects();
             return false;
@@ -1784,6 +1815,10 @@ private:
             m15SortResults
         );
 
+        bool m15AlignmentGroupingEnabled = fromCurrentTimeFrame == PERIOD_M15
+            && fromDecision.getAlignmentRule()
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200;
+
         for (int i = 0; i < displayCount; i++) {
             ElliotAll *elliotAll =
                 fromElliotAllList.elliotAllList.At(displayIndexes[i]);
@@ -1798,7 +1833,8 @@ private:
                 fromAlignType,
                 priorityResults[i],
                 d1SortResults[i],
-                h1D1SortResults[i]
+                h1D1SortResults[i],
+                m15AlignmentGroupingEnabled
             );
         }
     }
@@ -1932,7 +1968,13 @@ private:
         ArrayResize(fromH1D1SortResults, displayCount);
         ArrayResize(fromM15SortResults, displayCount);
 
+        bool m15AlignmentGroupingEnabled = fromCurrentTimeFrame == PERIOD_M15
+            && fromDecision.getAlignmentRule()
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200;
+
         this.sortDisplayOrder(
+            fromElliotAllList,
+            m15AlignmentGroupingEnabled,
             fromCurrentTimeFrame,
             fromDisplayIndexes,
             fromPriorityResults,
@@ -2000,7 +2042,10 @@ private:
      * H1ではD1環境とH1直接一致を主キー、ENTRYを副キーにする。
      * D1またはM15 Elliott・EMA200ソート選択時は各専用順を使用し、
      * その他の場合はENTRY優先度順にする。
+     * M15専用条件では全一致・H1逆・H4逆・D1逆の順で、各群内は選択された優先順を保つ。
      *
+     * @param fromElliotAllList 分析結果一覧。
+     * @param fromM15AlignmentGroupingEnabled M15専用条件の一致状態順に並べる場合true。
      * @param fromCurrentTimeFrame 表示時間足。
      * @param fromDisplayIndexes 表示用インデックス。
      * @param fromPriorityResults インデックスと対応する優先度判定結果。
@@ -2009,6 +2054,8 @@ private:
      * @param fromM15SortResults インデックスと対応するM15ソート結果。
      */
     void sortDisplayOrder(
+        ElliotAllList *fromElliotAllList,
+        const bool fromM15AlignmentGroupingEnabled,
         ENUM_TIMEFRAMES fromCurrentTimeFrame,
         int &fromDisplayIndexes[],
         Mtf3In3EntryPriorityResult &fromPriorityResults[],
@@ -2034,10 +2081,27 @@ private:
                 fromH1D1SortResults[i];
             M15ElliotEmaSortResult currentM15SortResult =
                 fromM15SortResults[i];
-            int j = i - 1;
+            int currentAlignmentRank = 0;
+            if (fromM15AlignmentGroupingEnabled) {
+                currentAlignmentRank = this.getM15AlignmentRank(
+                    fromElliotAllList.elliotAllList.At(currentIndex)
+                );
+            }
 
-            while (j >= 0
-                    && this.shouldShiftDisplayResult(
+            int j = i - 1;
+            while (j >= 0) {
+                bool shouldShift = false;
+                bool differentAlignmentGroup = false;
+                if (fromM15AlignmentGroupingEnabled) {
+                    int previousAlignmentRank = this.getM15AlignmentRank(
+                        fromElliotAllList.elliotAllList.At(fromDisplayIndexes[j])
+                    );
+                    differentAlignmentGroup = currentAlignmentRank != previousAlignmentRank;
+                    shouldShift = currentAlignmentRank < previousAlignmentRank;
+                }
+
+                if (!differentAlignmentGroup) {
+                    shouldShift = this.shouldShiftDisplayResult(
                         fromCurrentTimeFrame,
                         currentD1SortResult,
                         fromD1SortResults[j],
@@ -2047,7 +2111,13 @@ private:
                         fromM15SortResults[j],
                         currentResult,
                         fromPriorityResults[j]
-                    )) {
+                    );
+                }
+
+                if (!shouldShift) {
+                    break;
+                }
+
                 fromDisplayIndexes[j + 1] = fromDisplayIndexes[j];
                 fromPriorityResults[j + 1] = fromPriorityResults[j];
                 fromD1SortResults[j + 1] = fromD1SortResults[j];
@@ -2183,6 +2253,7 @@ private:
      * @param fromPriorityResult エントリー優先度判定結果。
      * @param fromD1SortResult D1条件ソート判定結果。
      * @param fromH1D1SortResult H1用D1環境・ENTRYソート結果。
+     * @param fromM15AlignmentGroupingEnabled M15専用条件の一致状態を表示する場合true。
      */
     void drawRow(
         int fromRowIndex,
@@ -2194,7 +2265,8 @@ private:
         TrendAlignType fromAlignType,
         Mtf3In3EntryPriorityResult &fromPriorityResult,
         D1ElliotEmaSortResult &fromD1SortResult,
-        H1D1EntrySortResult &fromH1D1SortResult
+        H1D1EntrySortResult &fromH1D1SortResult,
+        const bool fromM15AlignmentGroupingEnabled
     ) {
         if (fromElliotAll == NULL) {
             return;
@@ -2285,6 +2357,8 @@ private:
             entryDetailColor = this.getEntryPriorityColor(
                 fromPriorityResult.rank
             );
+        } else if (fromM15AlignmentGroupingEnabled) {
+            entryDetailText = this.getM15AlignmentDetailText(fromElliotAll);
         }
 
         this.setCell(
@@ -2371,7 +2445,11 @@ private:
             fromTargetCount,
             fromErrorCount
         );
-        this.lastCompletedTitleTimeText = StringFormat(
+        this.lastCompletedTitleTimeText = this.getUpdateScheduleText(
+            fromTimeFrameText,
+            serverTime
+        );
+        this.lastCompletedTitleTimeTooltip = StringFormat(
             "LAST JST %s / SERVER %s / %s",
             this.formatTitleTime(japanTime),
             this.formatTitleTime(serverTime),
@@ -2404,7 +2482,8 @@ private:
         }
 
         string tooltipText = this.lastCompletedTitleText
-            + " | " + this.lastCompletedTitleTimeText;
+            + " | " + this.lastCompletedTitleTimeText
+            + " | " + this.lastCompletedTitleTimeTooltip;
 
         ObjectSetString(
             this.chartId,
@@ -2673,6 +2752,71 @@ private:
     }
 
     /**
+     * M15専用条件を通過した候補の分析方向一致状態を順位で取得する。
+     *
+     * 表示対象の判定は変更せず、並び順とENTRY下段に共通で使用する。
+     *
+     * @param fromElliotAll 分析結果。
+     * @return 全一致0、H1逆1、H4逆2、D1逆3。対象欠損・複数逆は4。
+     */
+    int getM15AlignmentRank(ElliotAll *fromElliotAll) {
+        if (fromElliotAll == NULL) {
+            return 4;
+        }
+
+        Elliot *elliotM15 = fromElliotAll.getElliot(PERIOD_M15);
+        if (elliotM15 == NULL) {
+            return 4;
+        }
+
+        int alignmentRank = 0;
+        ENUM_TIMEFRAMES timeFrames[] = { PERIOD_H1, PERIOD_H4, PERIOD_D1 };
+        for (int i = 0; i < ArraySize(timeFrames); i++) {
+            Elliot *elliot = fromElliotAll.getElliot(timeFrames[i]);
+            if (elliot == NULL) {
+                return 4;
+            }
+
+            if (elliot.isBuy != elliotM15.isBuy) {
+                if (alignmentRank != 0) {
+                    return 4;
+                }
+
+                alignmentRank = i + 1;
+            }
+        }
+
+        return alignmentRank;
+    }
+
+    /**
+     * M15専用条件の一致状態順位に対応する表示文字列を取得する。
+     *
+     * @param fromElliotAll 分析結果。
+     * @return 全一致、H1逆、H4逆、D1逆。対象欠損・複数逆は空白。
+     */
+    string getM15AlignmentDetailText(ElliotAll *fromElliotAll) {
+        int alignmentRank = this.getM15AlignmentRank(fromElliotAll);
+        if (alignmentRank == 0) {
+            return "全一致";
+        }
+
+        if (alignmentRank == 1) {
+            return "H1逆";
+        }
+
+        if (alignmentRank == 2) {
+            return "H4逆";
+        }
+
+        if (alignmentRank == 3) {
+            return "D1逆";
+        }
+
+        return " ";
+    }
+
+    /**
      * H1分析方向に対するD1・H4・H1 EMA200の一致を参考文字列として返す。
      * 表示対象・既存ランク・並び順には使用せず、SYMBOL列の下段だけに表示する。
      *
@@ -2898,6 +3042,47 @@ private:
         }
 
         return fromSymbolName;
+    }
+
+    /**
+     * 表示時間足・実際の更新間隔・完了時刻・次回目安を日本時間で表示する。
+     *
+     * 完了時刻がない初回分析中は、最終時刻と次回目安を未確定として表示する。
+     *
+     * @param fromTimeFrameText 一覧の表示時間足。
+     * @param fromServerTime 最後に分析が完了したサーバー時刻。未完了は0。
+     * @return 更新予定を示すタイトル2行目の文字列。
+     */
+    string getUpdateScheduleText(string fromTimeFrameText, datetime fromServerTime) {
+        int updateSeconds = 0;
+        string intervalText = "--";
+        if (this.updateTimeFrame != PERIOD_CURRENT) {
+            updateSeconds = PeriodSeconds(this.updateTimeFrame);
+        }
+
+        if (updateSeconds > 0) {
+            intervalText = IntegerToString(updateSeconds / 60) + "分ごと";
+        }
+
+        string lastTimeText = "--:--";
+        string nextTimeText = "--:--";
+        if (fromServerTime > 0) {
+            lastTimeText = TimeToString(
+                TimeJapanUtil::getJapanTime(fromServerTime),
+                TIME_MINUTES
+            );
+            if (this.updateBarTime > 0 && updateSeconds > 0) {
+                datetime nextBarTime = this.updateBarTime + updateSeconds;
+                nextTimeText = TimeToString(
+                    TimeJapanUtil::getJapanTime(nextBarTime),
+                    TIME_MINUTES
+                );
+            }
+        }
+
+        return fromTimeFrameText + " ｜ 更新：" + intervalText
+            + " ｜ 最終：" + lastTimeText
+            + " ｜ 次回目安：" + nextTimeText + "（JST）";
     }
 
     /**

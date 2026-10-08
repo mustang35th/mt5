@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.37"
+#property version   "1.40"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -300,7 +300,7 @@ int OnInit() {
     } else if (listTimeFrame == PERIOD_M15) {
         alignmentStartTimeFrame = PERIOD_W1;
         alignmentRule = ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200;
-        alignmentText = "W1-M15&EMA4";
+        alignmentText = "W1=M15&2/3&EMA4";
     }
 
     if (listTimeFrame == PERIOD_M5) {

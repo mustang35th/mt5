@@ -972,6 +972,13 @@ private:
         int m5PanelYDistance = 12;
 
         if (this.h1M5IndependentModeEnabled) {
+            if (this.h1Drawer != NULL) {
+                this.h1Drawer.setUpdateSchedule(
+                    this.updateTimeFrame,
+                    currentBarTime
+                );
+            }
+
             bool h1DrawSucceeded = this.h1Drawer != NULL
                 && this.h1AlignmentDecision != NULL
                 && this.h1Drawer.draw(
@@ -1005,6 +1012,8 @@ private:
             overlapDecision = this.h1AlignmentDecision;
             overlapTimeFrame = PERIOD_H1;
         }
+
+        this.drawer.setUpdateSchedule(this.updateTimeFrame, currentBarTime);
 
         if (!this.drawer.draw(
             elliotAllList,

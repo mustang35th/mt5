@@ -378,6 +378,41 @@ public:
             return trendAlignSell;
         }
 
+        // M15一覧はW1一致を必須とし、D1・H4・H1の分析方向は最大1足まで逆方向を許可する。
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200) {
+            Elliot *elliotM15 = fromElliotAll.getElliot(PERIOD_M15);
+            Elliot *elliotW1 = fromElliotAll.getElliot(PERIOD_W1);
+            bool isBuy = elliotM15.isBuy;
+
+            if (elliotW1.isBuy != isBuy) {
+                return trendAlignNone;
+            }
+
+            ENUM_TIMEFRAMES intermediateTimeFrames[] = {
+                PERIOD_D1, PERIOD_H4, PERIOD_H1
+            };
+            int oppositeCount = 0;
+            for (int i = 0; i < ArraySize(intermediateTimeFrames); i++) {
+                Elliot *elliot = fromElliotAll.getElliot(intermediateTimeFrames[i]);
+                if (elliot.isBuy != isBuy) {
+                    oppositeCount++;
+                }
+            }
+
+            // 分析方向が逆の足も含め、EMA200は4足ともM15方向への一致を要求する。
+            if (oppositeCount > 1
+                    || !this.isM15Ema200DirectionMatched(fromElliotAll, isBuy)) {
+                return trendAlignNone;
+            }
+
+            if (isBuy) {
+                return trendAlignBuy;
+            }
+
+            return trendAlignSell;
+        }
+
         // D1固定一覧の追加条件。既存の共有方向判定や他の表示足には適用しない。
         if (fromCurrentTimeFrame == PERIOD_D1
                 && this.d1Ema200Required
@@ -558,12 +593,6 @@ public:
             if (elliot.isBuy != isBuy) {
                 return trendAlignNone;
             }
-        }
-
-        if (this.alignmentRule
-                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200
-                && !this.isM15Ema200DirectionMatched(fromElliotAll, isBuy)) {
-            return trendAlignNone;
         }
 
         if (isBuy) {

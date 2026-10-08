@@ -1661,7 +1661,7 @@ void validateM5Ema200Required() {
 }
 
 /**
- * M15の全32方向組合せ、必要な分析データと適用範囲を検証する。
+ * M15の全32方向組合せで中間1足逆を許可し、必要な分析データと適用範囲を検証する。
  */
 void validateM15W1WithEma200() {
     ElliotAll *elliotAll = createD1EmaFilterFixture(true);
@@ -1689,12 +1689,12 @@ void validateM15W1WithEma200() {
             setD1TestEma(elliot, isBuy, !isBuy, direction);
         }
 
-        // bit順はW1・D1・H4・H1・M15。新条件は5足すべての一致を要求する。
+        // bit順はW1・D1・H4・H1・M15。W1一致と中間3足の逆方向が最大1足の組合せだけ許可。
         TrendAlignType expected = trendAlignNone;
         TrendAlignType legacyExpected = trendAlignNone;
-        if (i == 0) {
+        if (i == 0 || i == 2 || i == 4 || i == 8) {
             expected = trendAlignSell;
-        } else if (i == 31) {
+        } else if (i == 23 || i == 27 || i == 29 || i == 31) {
             expected = trendAlignBuy;
         }
         if (i == 0 || i == 1) {
@@ -1783,7 +1783,7 @@ void validateM15W1WithEma200() {
 }
 
 /**
- * M15の4足EMA全16方向組合せと各足の不正状態をBUY/SELL両方向で検証する。
+ * M15の4足EMA全16方向組合せと中間1足逆時を含む不正状態をBUY/SELL両方向で検証する。
  */
 void validateM15Ema200Required() {
     ENUM_TIMEFRAMES timeFrames[] = {
@@ -1833,6 +1833,20 @@ void validateM15Ema200Required() {
                 PERIOD_M15, true, emaExpected);
             assertD1EmaObjectAlignment(caseName + " legacy ignores EMA", legacy,
                 elliotAll, PERIOD_M15, true, expected);
+
+            // 中間足の分析方向が1足逆でも、EMA200は全4足ともM15方向でなければ通さない。
+            for (int k = 0; k < 3; k++) {
+                Elliot *elliot = elliotAll.getElliot(timeFrames[k]);
+                elliot.isBuy = !isBuy;
+                string inverseCaseName = caseName + " inverse " + EnumToString(timeFrames[k]);
+                assertD1EmaObjectAlignment(inverseCaseName, decision, elliotAll,
+                    PERIOD_M15, true, emaExpected);
+                assertD1EmaObjectAlignment(inverseCaseName + " legacy still requires all", legacy,
+                    elliotAll, PERIOD_M15, true, trendAlignNone);
+                assertD1EmaCondition(elliot.isBuy == !isBuy,
+                    inverseCaseName + " original direction preserved");
+                elliot.isBuy = isBuy;
+            }
         }
 
         for (int j = 0; j < ArraySize(timeFrames); j++) {
@@ -1841,7 +1855,16 @@ void validateM15Ema200Required() {
 
         for (int j = 0; j < ArraySize(timeFrames); j++) {
             Elliot *elliot = elliotAll.getElliot(timeFrames[j]);
+            if (timeFrames[j] != PERIOD_M15) {
+                elliot.isBuy = !isBuy;
+            }
+
             string caseName = direction + " M15 EMA " + EnumToString(timeFrames[j]);
+            assertD1EmaObjectAlignment(caseName + " M15 direction required", decision,
+                elliotAll, PERIOD_M15, true, expected);
+            setD1TestEma(elliot, !isBuy, isBuy, oppositeLabel);
+            assertD1EmaObjectAlignment(caseName + " opposite EMA", decision,
+                elliotAll, PERIOD_M15, true, trendAlignNone);
             setD1TestEma(elliot, false, false, "NONE");
             assertD1EmaObjectAlignment(caseName + " NONE", decision,
                 elliotAll, PERIOD_M15, true, trendAlignNone);
@@ -1869,6 +1892,7 @@ void validateM15Ema200Required() {
             elliot.oscillator.ema200.marketContext.timeFrame = timeFrames[j];
             assertD1EmaObjectAlignment(caseName + " restored", decision,
                 elliotAll, PERIOD_M15, true, expected);
+            elliot.isBuy = isBuy;
         }
 
         delete elliotAll;
