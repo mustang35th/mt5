@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AlertListItem } from "../api/types";
+import type { AlertAnalysisTimeFrame, AlertListItem } from "../api/types";
 import {
   GRID_DENSITY_STORAGE_KEY,
   GRID_LAYOUT_STORAGE_KEY,
@@ -354,7 +354,7 @@ describe("AlertTable", () => {
       for (const colId of ["tf_mn1", "tf_w1", "tf_d1", "tf_h4", "tf_h1"]) {
         expect(view.container.querySelector<HTMLElement>(
           `[role="columnheader"][col-id="${colId}"]`,
-        )).toHaveStyle({ width: "125px" });
+        )).toHaveStyle({ width: "184px" });
       }
       expect(view.container.querySelector('[col-id="time_frame_sides"]')).not.toBeInTheDocument();
     });
@@ -368,7 +368,7 @@ describe("AlertTable", () => {
       .toBeLessThan(initialColumnIds.indexOf("time_frame"));
     expect(initialColumnIds.indexOf("time_frame"))
       .toBeLessThan(initialColumnIds.indexOf("side"));
-    const migratedTimeFrameColumnIds = ["tf_mn1", "tf_w1", "tf_d1", "tf_h4", "tf_h1"];
+    const migratedTimeFrameColumnIds = ["tf_mn1", "tf_w1", "tf_d1", "tf_h4", "tf_h1", "tf_m15", "tf_m5"];
     expect(initialColumnIds.filter((colId) => migratedTimeFrameColumnIds.includes(colId || "")))
       .toEqual(migratedTimeFrameColumnIds);
     expect(initialColumnIds.indexOf("h1_structure_rank"))
@@ -385,7 +385,7 @@ describe("AlertTable", () => {
       (column) => migratedTimeFrameColumnIds.includes(column.colId),
     )).toEqual(migratedTimeFrameColumnIds.map((colId) => ({
       colId,
-      width: 125,
+      width: 184,
       hide: false,
     })));
 
@@ -412,7 +412,7 @@ describe("AlertTable", () => {
     });
   });
 
-  it("shows fixed higher-time-frame context without marking a current column for M5 alerts", async () => {
+  it("adds M15 and M5 context and marks M5 as current for legacy alerts", async () => {
     const alert = { ...alertWithAlignment(41, true), time_frame_text: "M5" };
     const view = render(
       <AlertTable
@@ -428,9 +428,174 @@ describe("AlertTable", () => {
 
     expect(await screen.findByRole("columnheader", { name: "MN1" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "H1" })).toBeInTheDocument();
-    expect(view.container.querySelectorAll(".time-frame-analysis-cell")).toHaveLength(5);
-    expect(view.container.querySelector(".current-time-frame-analysis-cell")).toBeNull();
-    expect(view.container.querySelector('[aria-current="true"]')).toBeNull();
-    expect(screen.queryByText("現在足")).not.toBeInTheDocument();
+    expect(view.container.querySelectorAll(".time-frame-analysis-cell")).toHaveLength(7);
+    const currentCell = view.container.querySelector('.ag-cell[col-id="tf_m5"]');
+    expect(currentCell?.querySelector(".current-time-frame-analysis-cell")).toHaveAttribute("aria-current", "true");
+    expect(within(currentCell as HTMLElement).getByText("現在足")).toBeInTheDocument();
+    expect(within(currentCell as HTMLElement).getByLabelText("M5 分析方向 未記録")).toBeInTheDocument();
+    expect(screen.getByText("元分析（補正未記録）")).toBeInTheDocument();
+  });
+});
+
+
+function snapshotTimeFrame(timeFrame: string, overrides: Partial<AlertAnalysisTimeFrame> = {}): AlertAnalysisTimeFrame {
+  return {
+    time_frame_text: timeFrame, side: "BUY", is_ema200_available: true,
+    is_ema200_buy: true, is_ema200_sell: false,
+    latest_elliot_label: "2", latest_sub_elliot_label: null,
+    is_wave_uptrend: false, is_wave_confirmed: true,
+    org_elliot_label: "2", org_elliot_index: 2,
+    is_fibonacci_available: true, fibonacci_percent: 61.8,
+    is_fibonacci_expansion_available: true, fibonacci_expansion_percent: 161.8,
+    ...overrides,
+  };
+}
+
+function renderSnapshotAlert(alert: AlertListItem) {
+  return render(<AlertTable items={[alert]} loading={false} sort="jst_time" order="desc"
+    onSort={vi.fn()} onOpenComparison={vi.fn()} onOpenDetail={vi.fn()} />);
+}
+
+function snapshotAlert(overrides: Partial<AlertListItem> = {}): AlertListItem {
+  return { ...alertWithAlignment(1, true), time_frame_text: "M15", analysis_snapshot: {
+    status: "NONE", correction_time_frame_text: null,
+    timeframes: ["MN1", "W1", "D1", "H4", "H1", "M15"].map((frame) => snapshotTimeFrame(frame)),
+  }, ...overrides };
+}
+
+describe("AlertTable saved analysis snapshot", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("renders adopted correction fields together and keeps wave direction distinct from analysis side", async () => {
+    const corrected = snapshotTimeFrame("D1", { side: "SELL", is_ema200_buy: false, is_ema200_sell: true,
+      latest_elliot_label: "1", latest_sub_elliot_label: "3", org_elliot_label: "3", org_elliot_index: 3,
+      is_wave_uptrend: true, is_wave_confirmed: false });
+    const view = renderSnapshotAlert(snapshotAlert({ analysis_snapshot: {
+      status: "APPLIED", correction_time_frame_text: "D1",
+      timeframes: [corrected, snapshotTimeFrame("M15", { is_ema200_buy: false, is_ema200_sell: true,
+        latest_elliot_label: "5", org_elliot_label: "5" })],
+    } }));
+    expect(await screen.findByText("採用分析 · D1補正")).toBeInTheDocument();
+    const cell = view.container.querySelector('.ag-cell[col-id="tf_d1"]') as HTMLElement;
+    expect(within(cell).getByLabelText("D1 分析方向 SELL")).toHaveClass("sell");
+    expect(within(cell).queryByLabelText("D1 分析方向 BUY")).not.toBeInTheDocument();
+    expect(within(cell).getByLabelText("EMA200判定 SELL")).toBeInTheDocument();
+    expect(within(cell).getByLabelText("波動方向 上昇").parentElement).toHaveClass("buy");
+    expect(within(cell).getByLabelText("1.3[3]")).toHaveTextContent("1.3[3]");
+    expect(within(cell).getByText("形成中")).toBeInTheDocument();
+    expect(within(cell).getByText("FE 161.8%")).toBeInTheDocument();
+    expect(within(cell).queryByText("F 61.8%")).not.toBeInTheDocument();
+    const pinnedSide = view.container.querySelector('.ag-cell[col-id="side"]') as HTMLElement;
+    expect(within(pinnedSide).getByLabelText("EMA200判定 SELL")).toBeInTheDocument();
+    expect(within(pinnedSide).getByLabelText("アラート方向 BUY")).toBeInTheDocument();
+    expect(view.container.querySelector('.ag-cell[col-id="h1_structure_rank"]')).toHaveTextContent("wave 5");
+    expect(view.container.querySelector('.ag-cell[col-id="tf_m15"] [aria-current="true"]')).toBeInTheDocument();
+    expect(view.container.querySelector('.ag-cell[col-id="tf_m5"]')).toHaveTextContent("対象外");
+    const missingH4 = view.container.querySelector('.ag-cell[col-id="tf_h4"]') as HTMLElement;
+    expect(within(missingH4).getByLabelText("H4 分析方向 未記録")).toBeInTheDocument();
+    expect(within(missingH4).getByLabelText("EMA200判定 記録なし")).toBeInTheDocument();
+  });
+
+  it.each(["NONE", "UNRECORDED"] as const)("shows original source status %s without inventing missing flags", async (status) => {
+    const view = renderSnapshotAlert(snapshotAlert({ analysis_snapshot: { status, correction_time_frame_text: null,
+      timeframes: [snapshotTimeFrame("M15", { is_wave_uptrend: null, is_wave_confirmed: null,
+        is_ema200_buy: null, is_ema200_sell: null, org_elliot_index: null })],
+    } }));
+    expect(await screen.findByText(status === "NONE" ? "採用分析 · 補正なし" : "元分析（補正未記録）"))
+      .toBeInTheDocument();
+    const cell = view.container.querySelector('.ag-cell[col-id="tf_m15"]') as HTMLElement;
+    expect(within(cell).queryByLabelText(/波動方向/)).not.toBeInTheDocument();
+    expect(within(cell).getByText("確定未記録")).toBeInTheDocument();
+    expect(within(cell).getByLabelText("EMA200判定 記録なし")).toBeInTheDocument();
+    expect(within(cell).getByText("F / FE 未記録")).toBeInTheDocument();
+  });
+
+  it("does not blend flattened original values into an incomplete adopted correction", async () => {
+    const view = renderSnapshotAlert(snapshotAlert({ analysis_snapshot: {
+      status: "INCOMPLETE", correction_time_frame_text: "H1", timeframes: [],
+    } }));
+    expect(await screen.findByText("補正情報不足")).toBeInTheDocument();
+    const cell = view.container.querySelector('.ag-cell[col-id="tf_h1"]') as HTMLElement;
+    expect(within(cell).getByLabelText("H1 分析方向 未記録")).toBeInTheDocument();
+    expect(within(cell).getByLabelText("EMA200判定 記録なし")).toBeInTheDocument();
+    expect(within(cell).getByText("F / FE 未記録")).toBeInTheDocument();
+    expect(within(cell).queryByText("BUY")).not.toBeInTheDocument();
+    const pinnedSide = view.container.querySelector('.ag-cell[col-id="side"]') as HTMLElement;
+    expect(within(pinnedSide).getByLabelText("EMA200判定 記録なし")).toBeInTheDocument();
+    expect(view.container.querySelector('.ag-cell[col-id="h1_structure_rank"]')).toHaveTextContent("wave 未記録");
+  });
+
+  it.each([
+    { index: 0, available: true, value: 0, expected: "F / FE 対象外" },
+    { index: 1, available: true, value: 100, expected: "F / FE 対象外" },
+    { index: 2, available: true, value: 61.8, expected: "F 61.8%" },
+    { index: 3, available: true, value: 161.8, expected: "FE 161.8%" },
+    { index: 2, available: false, value: 61.8, expected: "F 未記録" },
+    { index: 3, available: null, value: 161.8, expected: "FE 未記録" },
+    { index: 2, available: true, value: 0, expected: "F 未記録" },
+    { index: 3, available: true, value: -1, expected: "FE 未記録" },
+    { index: 3, available: true, value: Number.POSITIVE_INFINITY, expected: "FE 未記録" },
+    { index: null, available: true, value: 161.8, expected: "F / FE 未記録" },
+  ])("uses saved original index $index with available $available and value $value for Fibonacci", async ({ index, available, value, expected }) => {
+    const view = renderSnapshotAlert(snapshotAlert({ analysis_snapshot: { status: "NONE", correction_time_frame_text: null,
+      timeframes: [snapshotTimeFrame("M15", { latest_elliot_label: "1", org_elliot_index: index,
+        is_fibonacci_available: available, fibonacci_percent: value,
+        is_fibonacci_expansion_available: available, fibonacci_expansion_percent: value })],
+    } }));
+    await screen.findByText("採用分析 · 補正なし");
+    const cell = view.container.querySelector('.ag-cell[col-id="tf_m15"]') as HTMLElement;
+    expect(within(cell).getByText(expected)).toBeInTheDocument();
+  });
+
+  it("distinguishes out-of-scope lower frames and does not hide known M1 context", async () => {
+    const view = renderSnapshotAlert(snapshotAlert({ time_frame_text: "H1" }));
+    await screen.findByText("採用分析 · 補正なし");
+    expect(view.container.querySelector('.ag-cell[col-id="tf_m15"]')).toHaveTextContent("対象外");
+    expect(view.container.querySelector('.ag-cell[col-id="tf_m5"]')).toHaveTextContent("対象外");
+    view.unmount();
+    const m1 = renderSnapshotAlert(snapshotAlert({ time_frame_text: "M1", analysis_snapshot: {
+      status: "NONE", correction_time_frame_text: null,
+      timeframes: [snapshotTimeFrame("M1", { latest_elliot_label: "7", org_elliot_label: "7",
+        is_ema200_buy: false, is_ema200_sell: true })],
+    } }));
+    await screen.findByText("採用分析 · 補正なし");
+    expect(m1.container.querySelectorAll(".time-frame-analysis-cell")).toHaveLength(7);
+    expect(m1.container.querySelector(".snapshot-outside-analysis")).toBeNull();
+    const m1Side = m1.container.querySelector('.ag-cell[col-id="side"]') as HTMLElement;
+    expect(within(m1Side).getByLabelText("EMA200判定 SELL")).toBeInTheDocument();
+    expect(m1.container.querySelector('.ag-cell[col-id="h1_structure_rank"]')).toHaveTextContent("wave 7");
+    expect(screen.queryByRole("columnheader", { name: "M1" })).not.toBeInTheDocument();
+  });
+
+  it("migrates saved five-column layouts while preserving custom order, width, hidden fields and density", async () => {
+    localStorage.setItem(GRID_DENSITY_STORAGE_KEY, "compact");
+    writeGridColumnLayout(localStorage, [
+      { colId: "tf_h4", width: 125, hide: false },
+      { colId: "tf_d1", width: 205, hide: true },
+      { colId: "tf_mn1", width: 215, hide: false },
+      { colId: "tf_w1", width: 210, hide: false },
+      { colId: "tf_h1", width: 225, hide: false },
+      { colId: "entry_result", width: 130, hide: false },
+    ]);
+    const view = renderSnapshotAlert(snapshotAlert());
+    await screen.findByText("採用分析 · 補正なし");
+    expect(view.container.querySelector(".alert-grid")).toHaveClass("density-compact");
+    expect(view.container.querySelector('.ag-row[row-id="1"]')).toHaveStyle({ height: "72px" });
+    expect(view.container.querySelector('[role="columnheader"][col-id="tf_h4"]')).toHaveStyle({ width: "176px" });
+    expect(view.container.querySelector('[role="columnheader"][col-id="tf_d1"]')).toBeNull();
+    expect(view.container.querySelector('[role="columnheader"][col-id="tf_mn1"]')).toHaveStyle({ width: "215px" });
+    expect(view.container.querySelector('[role="columnheader"][col-id="tf_w1"]')).toHaveStyle({ width: "210px" });
+    expect(view.container.querySelector('[role="columnheader"][col-id="tf_h1"]')).toHaveStyle({ width: "225px" });
+    const stored = JSON.parse(localStorage.getItem(GRID_LAYOUT_STORAGE_KEY) || "{}");
+    const tf = stored.columns.filter((column: { colId: string }) => column.colId.startsWith("tf_"));
+    expect(tf.map((column: { colId: string }) => column.colId)).toEqual([
+      "tf_h4", "tf_d1", "tf_mn1", "tf_w1", "tf_h1", "tf_m15", "tf_m5",
+    ]);
+    expect(tf[1]).toEqual({ colId: "tf_d1", width: 205, hide: true });
+    fireEvent.click(screen.getByRole("button", { name: "表示列" }));
+    for (const timeFrame of ["M15", "M5"]) {
+      expect(await screen.findByRole("menuitemcheckbox", { name: new RegExp(`${timeFrame} 方向 / EMA200`) }))
+        .toHaveAttribute("aria-checked", "true");
+    }
   });
 });

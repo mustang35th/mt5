@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import defaultdict
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,7 @@ TIME_FRAMES = ((49153, "MN1"), (32769, "W1"), (16408, "D1"),
                (16388, "H4"), (16385, "H1"), (15, "M15"), (5, "M5"))
 CORRECTION_TARGETS = {5: {16388, 16385}, 15: {16408, 16388, 16385}, 16385: {16408, 16388}}
 ANALYSIS_TIME_FRAMES = {5: TIME_FRAMES, 15: TIME_FRAMES[:6], 16385: TIME_FRAMES[:5]}
+SNAPSHOT_TIME_FRAME_LABELS = {**dict(TIME_FRAMES), 1: "M1"}
 
 METADATA_COLUMNS = """
 alert_id correction_status correction_time_frame original_direction corrected_direction
@@ -73,7 +76,7 @@ def _response(status: str, reason: str | None = None,
             "timeframes": timeframes or [], "points": points or []}
 
 
-def _columns(session: Session, table: str) -> set[str]:
+def _columns(session: Session | Connection, table: str) -> set[str]:
     # Every identifier is a module constant, never a request value.
     return {row["name"] for row in session.execute(
         text(f'PRAGMA table_info("{table}")')
@@ -235,6 +238,194 @@ def _analysis_reason(timeframes: list[dict[str, Any]], points: list[dict[str, An
     return None
 
 
+class _AlertPageReader:
+    """Cache only the requested page inside the caller's read transaction."""
+
+    def __init__(self, connection: Connection, alert_ids: list[int]) -> None:
+        self.connection = connection
+        self.alert_ids = alert_ids
+        self.tables = set(connection.execute(
+            text("SELECT name FROM sqlite_schema WHERE type='table'")
+        ).scalars())
+        self.column_cache: dict[str, set[str]] = {}
+        self.metadata_cache: dict[int, list[dict[str, Any]]] | None = None
+        self.analysis_cache: dict[tuple[str, str], tuple[dict, dict]] = {}
+
+    def columns(self, table: str) -> set[str]:
+        if table not in self.column_cache:
+            self.column_cache[table] = _columns(self.connection, table)
+        return self.column_cache[table]
+
+    def metadata(self, alert_id: int) -> list[dict[str, Any]]:
+        if self.metadata_cache is None:
+            self.metadata_cache = defaultdict(list)
+            statement = text(
+                f"SELECT * FROM {CORRECTION_TABLE} WHERE alert_id IN :alert_ids"
+            ).bindparams(bindparam("alert_ids", expanding=True))
+            for row in self.connection.execute(
+                statement, {"alert_ids": self.alert_ids}
+            ).mappings():
+                self.metadata_cache[row["alert_id"]].append(dict(row))
+        return self.metadata_cache.get(alert_id, [])
+
+    def analysis(self, timeframe_table: str, point_table: str,
+                 alert_id: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        key = (timeframe_table, point_table)
+        if key not in self.analysis_cache:
+            frames: dict[int, list[dict[str, Any]]] = defaultdict(list)
+            points: dict[int, list[dict[str, Any]]] = defaultdict(list)
+            columns = self.columns(timeframe_table)
+            if {"id", "alert_id", "time_frame", "time_frame_text"}.issubset(columns):
+                order = "tf.time_frame DESC"
+                if "time_frame_order" in columns:
+                    order = "tf.time_frame_order"
+                statement = text(f"""
+                    SELECT tf.* FROM {timeframe_table} AS tf
+                    WHERE tf.alert_id IN :alert_ids
+                    ORDER BY tf.alert_id, {order}, tf.id
+                """).bindparams(bindparam("alert_ids", expanding=True))
+                for row in self.connection.execute(
+                    statement, {"alert_ids": self.alert_ids}
+                ).mappings():
+                    frames[row["alert_id"]].append(dict(row))
+                point_columns = self.columns(point_table)
+                if {"id", "alert_timeframe_id", "is_latest"}.issubset(point_columns):
+                    point_order = "p.id"
+                    if "point_order" in point_columns:
+                        point_order = "p.point_order, p.id"
+                    frame_order = ""
+                    if "time_frame_order" in columns:
+                        frame_order = "tf.time_frame_order,"
+                    statement = text(f"""
+                        SELECT tf.alert_id, tf.time_frame, tf.time_frame_text,
+                               {frame_order} p.*
+                        FROM {timeframe_table} AS tf
+                        INNER JOIN {point_table} AS p ON p.alert_timeframe_id = tf.id
+                        WHERE tf.alert_id IN :alert_ids
+                        ORDER BY tf.alert_id, {order}, {point_order}
+                    """).bindparams(bindparam("alert_ids", expanding=True))
+                    for row in self.connection.execute(
+                        statement, {"alert_ids": self.alert_ids}
+                    ).mappings():
+                        points[row["alert_id"]].append(dict(row))
+            self.analysis_cache[key] = (frames, points)
+        frames, points = self.analysis_cache[key]
+        return frames.get(alert_id, []), points.get(alert_id, [])
+
+
+def _snapshot_boolean(value: Any) -> bool | None:
+    if value in (0, 1):
+        return bool(value)
+    return None
+
+
+def _snapshot_text(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
+
+
+def _compact_timeframes(timeframes: list[dict[str, Any]], points: list[dict[str, Any]],
+                        ema_available: bool) -> list[dict[str, Any]]:
+    """Keep missing values distinct and use one unambiguous latest point per frame."""
+    latest: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for point in points:
+        if point.get("is_latest") == 1:
+            latest[point["alert_timeframe_id"]].append(point)
+    frame_counts: dict[str, int] = defaultdict(int)
+    for timeframe in timeframes:
+        frame_counts[timeframe["time_frame_text"]] += 1
+    items = []
+    for timeframe in timeframes:
+        label = timeframe["time_frame_text"]
+        if (SNAPSHOT_TIME_FRAME_LABELS.get(timeframe.get("time_frame")) != label
+                or frame_counts[label] != 1):
+            continue
+        candidates = latest.get(timeframe["id"], [])
+        point: dict[str, Any] = {}
+        count = timeframe.get("point_count")
+        if (len(candidates) == 1 and _integer(count) and count > 0
+                and candidates[0].get("point_order") == count - 1):
+            point = candidates[0]
+        side = timeframe.get("buy_sell_label")
+        is_buy = _snapshot_boolean(timeframe.get("is_buy"))
+        if side not in {"BUY", "SELL"} or is_buy is None or (side == "BUY") != is_buy:
+            side = None
+        original_index = point.get("org_elliot_index")
+        original_available = _snapshot_boolean(point.get("is_original_elliot_available"))
+        if original_available is not True or not _integer(original_index):
+            original_index = None
+        item = {
+            "time_frame_text": label,
+            "side": side,
+            "is_ema200_available": ema_available,
+            "is_ema200_buy": None,
+            "is_ema200_sell": None,
+            "latest_elliot_label": _snapshot_text(timeframe.get("latest_elliot_label")),
+            "latest_sub_elliot_label": _snapshot_text(timeframe.get("latest_sub_elliot_label")),
+            "is_wave_uptrend": _snapshot_boolean(timeframe.get("is_wave_uptrend")),
+            "is_wave_confirmed": _snapshot_boolean(timeframe.get("is_wave_confirmed")),
+            "org_elliot_label": None,
+            "org_elliot_index": original_index,
+        }
+        if ema_available:
+            item["is_ema200_buy"] = _snapshot_boolean(timeframe.get("is_ema200_buy"))
+            item["is_ema200_sell"] = _snapshot_boolean(timeframe.get("is_ema200_sell"))
+        if original_available is True:
+            item["org_elliot_label"] = _snapshot_text(point.get("org_elliot_label"))
+        for prefix in ("fibonacci", "fibonacci_expansion"):
+            available = _snapshot_boolean(point.get(f"is_{prefix}_available"))
+            value = point.get(f"{prefix}_percent")
+            item[f"is_{prefix}_available"] = available
+            item[f"{prefix}_percent"] = None
+            if available is True and _number(value):
+                item[f"{prefix}_percent"] = value
+        items.append(item)
+    return items
+
+
+def load_alert_analysis_snapshots(
+    connection: Connection,
+    alerts: list[dict[str, Any]],
+    normalize: Callable[[Mapping[str, Any]], dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    """Batch compact list snapshots while reusing the detail correction validation."""
+    snapshots = {
+        alert["id"]: {"status": "INCOMPLETE", "correction_time_frame_text": None,
+                      "timeframes": []}
+        for alert in alerts
+    }
+    if not alerts:
+        return snapshots
+    try:
+        reader = _AlertPageReader(connection, [alert["id"] for alert in alerts])
+        for alert in alerts:
+            correction = _load_alert_correction(connection, alert, normalize, reader)
+            status = correction["status"]
+            if status == "INCOMPLETE":
+                continue
+            frame_table = ORIGINAL_TIME_FRAME_TABLE
+            point_table = ORIGINAL_POINT_TABLE
+            correction_frame = None
+            if status == "APPLIED":
+                frame_table = TIME_FRAME_TABLE
+                point_table = POINT_TABLE
+                correction_frame = dict(TIME_FRAMES).get(
+                    correction["metadata"]["correction_time_frame"]
+                )
+            timeframes, points = reader.analysis(frame_table, point_table, alert["id"])
+            snapshots[alert["id"]] = {
+                "status": status,
+                "correction_time_frame_text": correction_frame,
+                "timeframes": _compact_timeframes(
+                    timeframes, points, EMA_COLUMNS.issubset(reader.columns(frame_table))
+                ),
+            }
+    except SQLAlchemyError:
+        logging.getLogger(__name__).warning("Unable to read alert list snapshots", exc_info=True)
+    return snapshots
+
+
 def load_alert_correction(session: Session, alert: Mapping[str, Any],
                           normalize: Callable[[Mapping[str, Any]], dict[str, Any]]) -> dict[str, Any]:
     """Keep optional correction read failures separate from the original alert."""
@@ -245,16 +436,27 @@ def load_alert_correction(session: Session, alert: Mapping[str, Any],
         return _response("INCOMPLETE", "補正データを確認できません。")
 
 
-def _load_alert_correction(session: Session, alert: Mapping[str, Any],
-                           normalize: Callable[[Mapping[str, Any]], dict[str, Any]]) -> dict[str, Any]:
+def _load_alert_correction(session: Session | Connection, alert: Mapping[str, Any],
+                           normalize: Callable[[Mapping[str, Any]], dict[str, Any]],
+                           reader: _AlertPageReader | None = None) -> dict[str, Any]:
     """Read one comparison using the caller's read transaction and fixed SQL identifiers."""
-    tables = set(session.execute(text("SELECT name FROM sqlite_schema WHERE type='table'")).scalars())
+    if reader is None:
+        tables = set(session.execute(text("SELECT name FROM sqlite_schema WHERE type='table'")).scalars())
+    else:
+        tables = reader.tables
     if CORRECTION_TABLE not in tables:
         return _response("UNRECORDED")
-    if not set(METADATA_COLUMNS).issubset(_columns(session, CORRECTION_TABLE)):
+    def read_columns(table: str) -> set[str]:
+        if reader is not None:
+            return reader.columns(table)
+        return _columns(session, table)
+    if not set(METADATA_COLUMNS).issubset(read_columns(CORRECTION_TABLE)):
         return _response("INCOMPLETE", "補正情報の保存形式に不足があります。")
-    rows = session.execute(text(f"SELECT * FROM {CORRECTION_TABLE} WHERE alert_id = :alert_id"),
-                           {"alert_id": alert["id"]}).mappings().all()
+    if reader is None:
+        rows = session.execute(text(f"SELECT * FROM {CORRECTION_TABLE} WHERE alert_id = :alert_id"),
+                               {"alert_id": alert["id"]}).mappings().all()
+    else:
+        rows = reader.metadata(alert["id"])
     if not rows:
         return _response("UNRECORDED")
     if len(rows) != 1:
@@ -269,19 +471,23 @@ def _load_alert_correction(session: Session, alert: Mapping[str, Any],
         return _response("INCOMPLETE", reason, rendered)
     if not {TIME_FRAME_TABLE, POINT_TABLE}.issubset(tables):
         return _response("INCOMPLETE", "補正後の分析テーブルが不足しています。", rendered)
-    frame_columns = _columns(session, TIME_FRAME_TABLE)
+    frame_columns = read_columns(TIME_FRAME_TABLE)
     if (not TIME_FRAME_COLUMNS.issubset(frame_columns)
-            or not POINT_COLUMNS.issubset(_columns(session, POINT_TABLE))):
+            or not POINT_COLUMNS.issubset(read_columns(POINT_TABLE))):
         return _response("INCOMPLETE", "補正後の分析の保存形式に不足があります。", rendered)
-    corrected, corrected_points = _read_analysis(session, TIME_FRAME_TABLE, POINT_TABLE, alert["id"])
+    def read_analysis(frames: str, points: str, alert_id: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if reader is not None:
+            return reader.analysis(frames, points, alert_id)
+        return _read_analysis(session, frames, points, alert_id)
+    corrected, corrected_points = read_analysis(TIME_FRAME_TABLE, POINT_TABLE, alert["id"])
     if metadata["correction_status"] == "NONE":
         if corrected or corrected_points:
             return _response("INCOMPLETE", "補正なしの記録に補正後の分析が混在しています。", rendered)
         return _response("NONE", metadata=rendered)
-    if (not TIME_FRAME_COLUMNS.issubset(_columns(session, ORIGINAL_TIME_FRAME_TABLE))
-            or not POINT_COLUMNS.issubset(_columns(session, ORIGINAL_POINT_TABLE))):
+    if (not TIME_FRAME_COLUMNS.issubset(read_columns(ORIGINAL_TIME_FRAME_TABLE))
+            or not POINT_COLUMNS.issubset(read_columns(ORIGINAL_POINT_TABLE))):
         return _response("INCOMPLETE", "比較元の分析の保存形式に不足があります。", rendered)
-    original, original_points = _read_analysis(session, ORIGINAL_TIME_FRAME_TABLE, ORIGINAL_POINT_TABLE, alert["id"])
+    original, original_points = read_analysis(ORIGINAL_TIME_FRAME_TABLE, ORIGINAL_POINT_TABLE, alert["id"])
     reason = _analysis_reason(original, original_points, alert, alert.get("signal_reference_point_time", 0),
                               metadata["original_lc0"], True)
     if reason:

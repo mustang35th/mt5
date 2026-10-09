@@ -1,0 +1,35 @@
+.alert-grid .snapshot-analysis-cell { gap: 3px; padding: 3px 4px; }
+.alert-grid .snapshot-analysis-cell .badge {
+  min-height: 19px;
+  padding: 1px 4px;
+  font-size: 0.59rem;
+  white-space: nowrap;
+}
+.alert-grid .snapshot-analysis-cell .observation-ema200-badge { font-size: 0.56rem; }
+.snapshot-wave-line, .snapshot-fibonacci-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 18px;
+  gap: 5px;
+}
+.snapshot-wave { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; font-size: 0.78rem; }
+.snapshot-wave.buy { color: var(--buy); }
+.snapshot-wave.sell { color: var(--sell); }
+.snapshot-wave-status { flex-shrink: 0; color: var(--muted); font-size: 0.61rem; }
+.snapshot-wave-status.forming { color: #dabb70; }
+.snapshot-fibonacci { color: #bac9d0; font-size: 0.67rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.snapshot-outside-analysis { color: var(--muted); font-size: 0.7rem; }
+.snapshot-source { color: #9cb9c2; font-size: 0.64rem; white-space: nowrap; }
+.snapshot-source.incomplete { color: #dabb70; }
+.alert-grid.density-compact .snapshot-analysis-cell { gap: 1px; padding: 2px 3px; }
+.alert-grid.density-compact .snapshot-analysis-cell .badge { min-height: 17px; padding: 1px 3px; font-size: 0.56rem; }
+.alert-grid.density-compact .snapshot-wave { font-size: 0.72rem; }
+.alert-grid.density-compact .snapshot-wave-status { font-size: 0.57rem; }
+.alert-grid.density-compact .snapshot-fibonacci { font-size: 0.63rem; }
+.alert-grid .snapshot-analysis-cell .time-frame-analysis-direction-line { width: 100%; min-width: 0; }
+.alert-grid .snapshot-analysis-cell .time-frame-analysis-direction-line > .badge:first-child { flex: 0 0 auto; }
+.alert-grid .snapshot-analysis-cell .observation-ema200-badge { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.snapshot-wave-line, .snapshot-fibonacci-line { min-width: 0; }
+.snapshot-fibonacci { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

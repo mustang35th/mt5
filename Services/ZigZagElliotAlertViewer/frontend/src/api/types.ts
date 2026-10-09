@@ -166,7 +166,32 @@ export interface H1DirectionAlignmentDiagnostics {
   is_h1_direction_alignment_legacy: boolean;
 }
 
+export interface AlertAnalysisTimeFrame {
+  time_frame_text: string;
+  side: string | null;
+  is_ema200_available: boolean | null;
+  is_ema200_buy: boolean | null;
+  is_ema200_sell: boolean | null;
+  latest_elliot_label: string | null;
+  latest_sub_elliot_label: string | null;
+  is_wave_uptrend: boolean | null;
+  is_wave_confirmed: boolean | null;
+  org_elliot_label: string | null;
+  org_elliot_index: number | null;
+  is_fibonacci_available: boolean | null;
+  fibonacci_percent: number | null;
+  is_fibonacci_expansion_available: boolean | null;
+  fibonacci_expansion_percent: number | null;
+}
+
+export interface AlertAnalysisSnapshot {
+  status: "APPLIED" | "NONE" | "UNRECORDED" | "INCOMPLETE";
+  correction_time_frame_text: string | null;
+  timeframes: AlertAnalysisTimeFrame[];
+}
+
 export interface AlertListItem extends W1ConfirmationDiagnostics, H1DirectionAlignmentDiagnostics {
+  analysis_snapshot?: AlertAnalysisSnapshot;
   id: number;
   run_id: number;
   source_mode: string;

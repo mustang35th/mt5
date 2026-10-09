@@ -18,8 +18,8 @@ import {
 } from "ag-grid-community";
 import { AgGridReact, type CustomHeaderProps } from "ag-grid-react";
 import { useMediaQuery } from "@mui/material";
-import type { AlertListItem, AlertSort, SortOrder } from "../api/types";
-import { displayValue, formatNumber, sideClass } from "../lib/format";
+import type { AlertAnalysisTimeFrame, AlertListItem, AlertSort, SortOrder } from "../api/types";
+import { displayValue, elliottDirectionSymbol, formatElliottLabel, formatNumber, sideClass } from "../lib/format";
 import {
   clearGridColumnLayout,
   type GridColumnLayoutItem,
@@ -30,6 +30,8 @@ import {
   writeGridDensity,
 } from "../lib/gridPreferences";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
+import { ElliottLabelText } from "./ElliottLabelText";
+import "./AlertTable.css";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import { GridControls, type GridColumnOption } from "./GridControls";
 import { H1DirectionAlignmentBadge } from "./H1DirectionAlignmentBadge";
@@ -70,9 +72,12 @@ const TIME_FRAME_ANALYSIS_COLUMN_IDS = [
   "tf_d1",
   "tf_h4",
   "tf_h1",
+  "tf_m15",
+  "tf_m5",
 ] as const;
 const LEGACY_TIME_FRAME_SIDES_COLUMN_ID = "time_frame_sides";
-const TIME_FRAME_ANALYSIS_COLUMN_WIDTH = 125;
+const TIME_FRAME_ANALYSIS_COLUMN_WIDTH = 184;
+const TIME_FRAME_ANALYSIS_MIN_WIDTH = 176;
 
 const GRID_COLUMN_IDS = [
   "jst_time",
@@ -111,11 +116,13 @@ const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
   { colId: "source_mode", label: "実行モード" },
   { colId: "judgement", label: "判定" },
   { colId: "h1_structure_rank", label: "構造・波動" },
-  { colId: "tf_mn1", label: "MN1 方向 / EMA200" },
-  { colId: "tf_w1", label: "W1 方向 / EMA200" },
-  { colId: "tf_d1", label: "D1 方向 / EMA200" },
-  { colId: "tf_h4", label: "H4 方向 / EMA200" },
-  { colId: "tf_h1", label: "H1 方向 / EMA200" },
+  { colId: "tf_mn1", label: "MN1 方向 / EMA200 / 波動 / F" },
+  { colId: "tf_w1", label: "W1 方向 / EMA200 / 波動 / F" },
+  { colId: "tf_d1", label: "D1 方向 / EMA200 / 波動 / F" },
+  { colId: "tf_h4", label: "H4 方向 / EMA200 / 波動 / F" },
+  { colId: "tf_h1", label: "H1 方向 / EMA200 / 波動 / F" },
+  { colId: "tf_m15", label: "M15 方向 / EMA200 / 波動 / F" },
+  { colId: "tf_m5", label: "M5 方向 / EMA200 / 波動 / F" },
   { colId: "h1_direction_alignment", label: "H1方向ルール" },
   { colId: "is_w1_aligned", label: "W1確認" },
   { colId: "risk_pips", label: "Risk / Spread" },
@@ -163,6 +170,8 @@ const TIME_FRAME_ANALYSIS_COLUMNS = [
     buyField: "h1_is_ema200_buy",
     sellField: "h1_is_ema200_sell",
   },
+  { colId: "tf_m15", timeFrame: "M15", sideField: null, availableField: null, buyField: null, sellField: null },
+  { colId: "tf_m5", timeFrame: "M5", sideField: null, availableField: null, buyField: null, sellField: null },
 ] as const;
 
 type TimeFrameAnalysisColumn = (typeof TIME_FRAME_ANALYSIS_COLUMNS)[number];
@@ -183,6 +192,22 @@ function migrateLegacyTimeFrameColumns(
       hide: column.hide,
     }));
   });
+}
+
+/** Add missing analysis columns and widen old narrow cells while preserving order and visibility. */
+function includeLowerTimeFrameColumns(fromLayout: GridColumnLayoutItem[]): GridColumnLayoutItem[] {
+  const analysisIds: ReadonlySet<string> = new Set(TIME_FRAME_ANALYSIS_COLUMN_IDS);
+  const result = fromLayout.map((column) => analysisIds.has(column.colId)
+    ? { ...column, width: Math.max(column.width, TIME_FRAME_ANALYSIS_MIN_WIDTH) } : column);
+  for (const colId of ["tf_m15", "tf_m5"]) {
+    if (result.some((column) => column.colId === colId)) continue;
+    let insertIndex = result.findIndex((column) => column.colId === "h1_structure_rank") + 1;
+    for (let i = 0; i < result.length; i++) {
+      if (analysisIds.has(result[i].colId)) insertIndex = i + 1;
+    }
+    result.splice(insertIndex, 0, { colId, width: TIME_FRAME_ANALYSIS_COLUMN_WIDTH, hide: false });
+  }
+  return result;
 }
 
 function includeTimeFrameColumn(
@@ -277,43 +302,108 @@ function Badge({
   return <span aria-label={ariaLabel} className={`badge ${variant}`}>{text}</span>;
 }
 
+function analysisSourceText(alert: AlertListItem): string {
+  const snapshot = alert.analysis_snapshot;
+  if (!snapshot || snapshot.status === "UNRECORDED") return "元分析（補正未記録）";
+  if (snapshot.status === "INCOMPLETE") return "補正情報不足";
+  if (snapshot.status === "APPLIED") {
+    return `採用分析 · ${snapshot.correction_time_frame_text || "方向"}補正`;
+  }
+  return "採用分析 · 補正なし";
+}
+
+function snapshotFrame(alert: AlertListItem, timeFrame: string): AlertAnalysisTimeFrame | undefined {
+  if (alert.analysis_snapshot?.status === "INCOMPLETE") return undefined;
+  const matches = alert.analysis_snapshot?.timeframes.filter((frame) => frame.time_frame_text === timeFrame);
+  return matches?.length === 1 ? matches[0] : undefined;
+}
+
+function snapshotFibonacci(frame: AlertAnalysisTimeFrame | undefined): string {
+  const index = frame?.org_elliot_index;
+  if (typeof index !== "number" || !Number.isFinite(index) || !Number.isInteger(index)) return "F / FE 未記録";
+  if (index <= 1) return "F / FE 対象外";
+  const isRetracement = index % 2 === 0;
+  const label = isRetracement ? "F" : "FE";
+  const available = isRetracement ? frame?.is_fibonacci_available : frame?.is_fibonacci_expansion_available;
+  const value = isRetracement ? frame?.fibonacci_percent : frame?.fibonacci_expansion_percent;
+  if (available !== true || typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return `${label} 未記録`;
+  }
+  return `${label} ${formatNumber(value, 1)}%`;
+}
+
 function timeFrameAnalysisCell(column: TimeFrameAnalysisColumn) {
   return function TimeFrameAnalysisCell(params: ICellRendererParams<AlertListItem>) {
     const alert = dataFrom(params);
     if (!alert) return null;
-    const normalizedSide = String(alert[column.sideField] || "NONE").toUpperCase();
+    const frames = ["MN1", "W1", "D1", "H4", "H1", "M15", "M5", "M1"];
+    const currentIndex = frames.indexOf(alert.time_frame_text.toUpperCase());
+    const isOutsideAnalysis = currentIndex >= 0 && frames.indexOf(column.timeFrame) > currentIndex;
     const isCurrentTimeFrame = alert.time_frame_text.toUpperCase() === column.timeFrame;
     const groupLabel = `${column.timeFrame} 分析方向とEMA200判定${
       isCurrentTimeFrame ? "（現在のアラート時間足）" : ""
     }`;
-
+    if (isOutsideAnalysis) {
+      return <span className="snapshot-outside-analysis" title="アラートの分析対象より下位の時間足">
+        対象外
+      </span>;
+    }
+    const frame = snapshotFrame(alert, column.timeFrame);
+    const isLegacy = alert.analysis_snapshot === undefined;
+    const side = isLegacy && column.sideField !== null ? alert[column.sideField] : frame?.side;
+    const normalizedSide = String(side || "NONE").toUpperCase();
+    const emaBuy = isLegacy && column.buyField !== null ? alert[column.buyField] : frame?.is_ema200_buy;
+    const emaSell = isLegacy && column.sellField !== null ? alert[column.sellField] : frame?.is_ema200_sell;
+    const emaAvailable = isLegacy && column.availableField !== null
+      ? alert[column.availableField] === true
+      : Boolean(frame && (column.timeFrame === "MN1" || (frame.is_ema200_available === true
+        && typeof emaBuy === "boolean" && typeof emaSell === "boolean")));
+    const waveLabel = formatElliottLabel(frame?.latest_elliot_label, frame?.latest_sub_elliot_label,
+      frame?.org_elliot_label, "未記録");
+    const waveDirection = frame?.is_wave_uptrend;
+    const waveConfirmed = frame?.is_wave_confirmed;
+    const sourceText = analysisSourceText(alert);
     return (
       <div
         aria-current={isCurrentTimeFrame ? "true" : undefined}
         aria-label={groupLabel}
-        className={`grid-cell-stack time-frame-analysis-cell${
+        className={`grid-cell-stack time-frame-analysis-cell snapshot-analysis-cell${
           isCurrentTimeFrame ? " current-time-frame-analysis-cell" : ""
         }`}
         role="group"
+        title={sourceText}
       >
         <span className="time-frame-analysis-direction-line">
           <Badge
-            ariaLabel={`${column.timeFrame} 分析方向 ${normalizedSide}`}
-            text={normalizedSide === "NONE" ? "—" : normalizedSide}
+            ariaLabel={`${column.timeFrame} 分析方向 ${side ? normalizedSide : "未記録"}`}
+            text={side ? (normalizedSide === "NONE" ? "—" : normalizedSide) : "未記録"}
             variant={sideClass(normalizedSide)}
           />
-          {isCurrentTimeFrame && (
-            <span aria-hidden="true" className="current-time-frame-chip">現在足</span>
-          )}
-        </span>
-        <Ema200SignalBadge
-          available={alert[column.availableField] === true}
-          timeFrame={{
+          <Ema200SignalBadge available={emaAvailable} timeFrame={{
             time_frame_text: column.timeFrame,
-            is_ema200_buy: alert[column.buyField] === true,
-            is_ema200_sell: alert[column.sellField] === true,
-          }}
-        />
+            is_ema200_buy: emaBuy === true,
+            is_ema200_sell: emaSell === true,
+          }} />
+        </span>
+        <span className="snapshot-wave-line">
+          <span className={`snapshot-wave ${waveDirection === true ? "buy" : waveDirection === false ? "sell" : "neutral"}`}>
+            {typeof waveDirection === "boolean" && <span
+              aria-label={`波動方向 ${waveDirection ? "上昇" : "下降"}`}
+              title="最新波動の方向（分析方向とは別）"
+            >{elliottDirectionSymbol(waveDirection)} </span>}
+            <ElliottLabelText label={waveLabel} mainLabel={frame?.latest_elliot_label}
+              originalLabel={frame?.org_elliot_label} description={sourceText} />
+          </span>
+          <span className={`snapshot-wave-status${waveConfirmed === false ? " forming" : ""}`}>
+            {waveConfirmed === true ? "確定" : waveConfirmed === false ? "形成中" : "確定未記録"}
+          </span>
+        </span>
+        <span className="snapshot-fibonacci-line">
+          <span className="snapshot-fibonacci" title="保存された元波番号で判定：偶数はF、奇数はFE、1以下は対象外">
+            {snapshotFibonacci(frame)}
+          </span>
+          {isCurrentTimeFrame && <span aria-hidden="true" className="current-time-frame-chip">現在足</span>}
+        </span>
       </div>
     );
   };
@@ -363,6 +453,12 @@ function SourceModeCell(params: ICellRendererParams<AlertListItem>) {
 function SideCell(params: ICellRendererParams<AlertListItem>) {
   const alert = dataFrom(params);
   if (!alert) return null;
+  const frame = snapshotFrame(alert, alert.time_frame_text);
+  const isLegacy = alert.analysis_snapshot === undefined;
+  const emaBuy = isLegacy ? alert.is_ema200_buy : frame?.is_ema200_buy;
+  const emaSell = isLegacy ? alert.is_ema200_sell : frame?.is_ema200_sell;
+  const emaAvailable = isLegacy ? alert.is_ema200_available === true
+    : frame?.is_ema200_available === true && typeof emaBuy === "boolean" && typeof emaSell === "boolean";
   return (
     <div className="grid-cell-stack alert-direction-cell">
       <Badge
@@ -371,11 +467,11 @@ function SideCell(params: ICellRendererParams<AlertListItem>) {
         variant={sideClass(alert.side)}
       />
       <Ema200SignalBadge
-        available={alert.is_ema200_available === true}
+        available={emaAvailable}
         timeFrame={{
           time_frame_text: alert.time_frame_text,
-          is_ema200_buy: alert.is_ema200_buy === true,
-          is_ema200_sell: alert.is_ema200_sell === true,
+          is_ema200_buy: emaBuy === true,
+          is_ema200_sell: emaSell === true,
         }}
       />
     </div>
@@ -389,6 +485,8 @@ function JudgementCell(params: ICellRendererParams<AlertListItem>) {
     <div className="grid-cell-stack grid-cell-wrap">
       <strong>{alert.strategy} {alert.signal_count}/{alert.entry_count}</strong>
       <span className="subtext">{displayValue(alert.alert_title)}</span>
+      <span className={`snapshot-source${alert.analysis_snapshot?.status === "INCOMPLETE" ? " incomplete" : ""}`}
+        title="時間足列の分析データの採用状態">{analysisSourceText(alert)}</span>
     </div>
   );
 }
@@ -396,10 +494,13 @@ function JudgementCell(params: ICellRendererParams<AlertListItem>) {
 function StructureCell(params: ICellRendererParams<AlertListItem>) {
   const alert = dataFrom(params);
   if (!alert) return null;
+  const frame = snapshotFrame(alert, alert.time_frame_text);
+  const currentWave = alert.analysis_snapshot === undefined ? displayValue(alert.current_elliot_label)
+    : formatElliottLabel(frame?.latest_elliot_label, frame?.latest_sub_elliot_label, frame?.org_elliot_label, "未記録");
   return (
     <div className="grid-cell-stack">
       <Badge text={`${displayValue(alert.h1_structure_rank)}${alert.is_h1_structure_late ? "-LATE" : ""}`} />
-      <span className="subtext">wave {displayValue(alert.current_elliot_label)}</span>
+      <span className="subtext">wave {currentWave}</span>
     </div>
   );
 }
@@ -552,8 +653,14 @@ export function AlertTable({
       const hasLegacyTimeFrameColumn = storedLayout.some(
         (column) => column.colId === LEGACY_TIME_FRAME_SIDES_COLUMN_ID,
       );
+      const hasNarrowTimeFrameColumn = storedLayout.some(
+        (column) => column.colId.startsWith("tf_") && column.width < TIME_FRAME_ANALYSIS_MIN_WIDTH,
+      );
+      const hasMissingLowerTimeFrameColumn = ["tf_m15", "tf_m5"].some(
+        (colId) => !storedLayout.some((column) => column.colId === colId),
+      );
       const restoredLayout = includeTimeFrameColumn(
-        migrateLegacyTimeFrameColumns(storedLayout),
+        includeLowerTimeFrameColumns(migrateLegacyTimeFrameColumns(storedLayout)),
       );
       event.api.applyColumnState({
         state: restoredLayout.map((column) => ({
@@ -562,7 +669,7 @@ export function AlertTable({
         })),
         applyOrder: true,
       });
-      if (hasLegacyTimeFrameColumn) {
+      if (hasLegacyTimeFrameColumn || hasMissingLowerTimeFrameColumn || hasNarrowTimeFrameColumn) {
         writeGridColumnLayout(
           window.localStorage,
           restoredLayout.map((column) => ({
@@ -759,7 +866,7 @@ export function AlertTable({
       colId: column.colId,
       headerName: column.timeFrame,
       initialWidth: TIME_FRAME_ANALYSIS_COLUMN_WIDTH,
-      minWidth: 120,
+      minWidth: TIME_FRAME_ANALYSIS_MIN_WIDTH,
       cellRenderer: timeFrameAnalysisCell(column),
     })),
     {
@@ -868,7 +975,7 @@ export function AlertTable({
           onGridReady={handleGridReady}
           pagination={false}
           rowData={items}
-          rowHeight={density === "compact" ? 56 : 72}
+          rowHeight={density === "compact" ? 72 : 88}
           styleNonce={styleNonce}
           suppressColumnVirtualisation
           theme={alertGridTheme}

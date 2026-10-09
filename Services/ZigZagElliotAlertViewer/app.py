@@ -37,7 +37,7 @@ except ModuleNotFoundError as error:
     )
     raise SystemExit(2) from error
 
-from alert_corrections import load_alert_correction
+from alert_corrections import load_alert_analysis_snapshots, load_alert_correction
 from h1_ea_results import EaRequestError, H1EaResultsDatabase
 from m5_observations import M5ObservationDatabase, M5RequestError
 
@@ -3152,6 +3152,9 @@ class AlertDatabase:
                 parameters["offset"] = (effective_page - 1) * filters.page_size
                 rows = connection.execute(text(list_sql), parameters).mappings()
                 items = [row_to_dict(row) for row in rows]
+                snapshots = load_alert_analysis_snapshots(connection, items, values_to_dict)
+                for item in items:
+                    item["analysis_snapshot"] = snapshots[item["id"]]
             finally:
                 connection.rollback()
         return {
