@@ -526,9 +526,10 @@ protected:
      * 指定した分析の上位2足と現在足からアラート表示文字列を生成する。
      *
      * @param fromAnalysis 表示に使用する分析結果。
+     * @param fromIncludeOriginal 再カウント前の主波ラベルを併記する場合true。
      * @return 上位2足の波動方向と3足の波動ラベル。分析が不足する場合は空文字列。
      */
-    string getThreeTimeFrameAlertText(ElliotAll *fromAnalysis) {
+    string getThreeTimeFrameAlertText(ElliotAll *fromAnalysis, const bool fromIncludeOriginal = false) {
         if (fromAnalysis == NULL) {
             return "";
         }
@@ -543,17 +544,40 @@ protected:
 
         Wave *latestWaveHigher2 = analysisHigher2.getLatestWave();
         string text = latestWaveHigher2.trendLabel;
-        text += analysisHigher2.getLatestPointElliotLabel();
+        text += this.getAlertPointLabel(analysisHigher2, fromIncludeOriginal);
         text += "-";
-        text += analysisHigher1.getLatestPointElliotLabel();
+        text += this.getAlertPointLabel(analysisHigher1, fromIncludeOriginal);
         text += "-";
-        text += analysisCurrent.getLatestPointElliotLabel();
+        text += this.getAlertPointLabel(analysisCurrent, fromIncludeOriginal);
 
         return text;
     }
     
     
 private:
+    /**
+     * チャート用に、変更がある場合だけ再カウント前の主波ラベルを併記する。
+     *
+     * @param fromElliot 表示対象の分析。
+     * @param fromIncludeOriginal 再カウント前の主波ラベルを併記する場合true。
+     * @return 最新ポイントの主波・副次波と、必要な場合だけ元主波ラベル。
+     */
+    string getAlertPointLabel(Elliot *fromElliot, const bool fromIncludeOriginal) {
+        ZigZagPoint *point = fromElliot.getLatestPoint();
+        if (point == NULL) {
+            return "";
+        }
+
+        string text = point.getElliotLabel();
+        if (fromIncludeOriginal && !StringUtil::isEmpty(point.elliotLabel)
+                && !StringUtil::isEmpty(point.orgElliotLabel)
+                && point.orgElliotLabel != point.elliotLabel) {
+            text += "[" + point.orgElliotLabel + "]";
+        }
+
+        return text;
+    }
+
     /** M5第3波・C波のフィボナッチエクスパンション許容上限%。 */
     static const double maxM5Elliot3OrCFibonacciExpansionPercent;
 

@@ -3,6 +3,7 @@
 
 #include <Mstng\Database\SqliteDatabase.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryData.mqh>
+#include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryText.mqh>
 #include <Mstng\Log\Logger.mqh>
 
 /**
@@ -144,7 +145,7 @@ public:
     }
 
     /**
-     * 同じ検索条件で全ラベルを一括取得する。波動ポイントや詳細分析は読み取らない。
+     * 同じ検索条件で全ラベルと最新ポイントの元ラベルを一括取得する。詳細分析は読み取らない。
      * 表示値が不足する行もIDを残し、前後移動による詳細確認を可能にする。
      * 任意の実行モード・サーバー・既知時刻はRun選択前に適用する。空文字と0は制限なし。
      * 全RunではRun ID指定を使わず、解決Run IDは0。M5/H1とも保存された採用分析を使用する。
@@ -224,7 +225,8 @@ public:
         if (frameSource == "") {
             frameSource = "SELECT NULL AS alert_id,0 AS corrected,NULL AS time_frame,NULL AS is_buy,"
                 + "NULL AS is_ema200_buy,NULL AS is_ema200_sell,NULL AS latest_elliot_label,"
-                + "NULL AS latest_sub_elliot_index,NULL AS latest_sub_elliot_label,NULL AS is_wave_confirmed WHERE 0";
+                + "NULL AS latest_sub_elliot_index,NULL AS latest_sub_elliot_label,NULL AS is_wave_confirmed,"
+                + "NULL AS original_wave WHERE 0";
         }
         string selectedFrameKind = "0";
         if (correctionJoin != "") {
@@ -243,7 +245,7 @@ public:
         sql += "(SELECT CASE WHEN COUNT(*)=1 THEN current_open ELSE NULL END ";
         sql += "FROM zigzag_elliot_alert_timeframes WHERE alert_id=a.id AND time_frame=?9),";
         sql += correctionProjection + ",tf.time_frame,tf.is_buy,tf.is_ema200_buy,tf.is_ema200_sell,"
-            + "tf.latest_elliot_label,tf.latest_sub_elliot_index,tf.latest_sub_elliot_label,tf.is_wave_confirmed";
+            + "tf.latest_elliot_label,tf.latest_sub_elliot_index,tf.latest_sub_elliot_label,tf.is_wave_confirmed,tf.original_wave";
         sql += " FROM selected a" + correctionJoin;
         sql += " LEFT JOIN (" + frameSource + ") tf ON tf.alert_id=a.id AND tf.corrected=" + selectedFrameKind;
         sql += " ORDER BY a.current_bar_time,a.id,tf.time_frame";
@@ -313,6 +315,11 @@ public:
             ArrayFree(fromAlertIds);
             ArrayFree(fromMarkers);
             fromResolvedRunId = 0;
+        } else {
+            for (int i = 0; i < ArraySize(fromMarkers); i++) {
+                fromMarkers[i].text = ZigZagElliotAlertHistoryText::format(fromMarkers[i].text,
+                    fromMarkers[i].timeFrame, fromMarkers[i].waves);
+            }
         }
 
         return success;
@@ -464,17 +471,44 @@ private:
 
         string fields[] = {"time_frame", "is_buy", "is_ema200_buy", "is_ema200_sell", "latest_elliot_label",
             "latest_sub_elliot_index", "latest_sub_elliot_label", "is_wave_confirmed"};
-        fromSql = "SELECT alert_id," + IntegerToString((int)fromCorrected) + " AS corrected";
+        fromSql = "SELECT sourceFrame.alert_id," + IntegerToString((int)fromCorrected) + " AS corrected";
         for (int i = 0; i < ArraySize(fields); i++) {
             fromSql += ",";
             if (StringFind(columns, "," + fields[i] + ",") >= 0) {
-                fromSql += fields[i];
+                fromSql += "sourceFrame." + fields[i];
             } else {
                 fromSql += "NULL AS " + fields[i];
             }
         }
 
-        fromSql += " FROM " + fromTable;
+        string pointTable = "zigzag_elliot_alert_points";
+        if (fromCorrected) {
+            pointTable = "zigzag_elliot_alert_corrected_points";
+        }
+        string pointColumns = "";
+        if (!this.tableColumns(pointTable, pointColumns, fromError)) {
+            return false;
+        }
+
+        string originalWave = "NULL";
+        if (StringFind(columns, ",id,") >= 0 && StringFind(columns, ",latest_elliot_label,") >= 0
+                && StringFind(columns, ",latest_sub_elliot_index,") >= 0
+                && StringFind(columns, ",latest_sub_elliot_label,") >= 0
+                && StringFind(pointColumns, ",alert_timeframe_id,") >= 0
+                && StringFind(pointColumns, ",is_latest,") >= 0
+                && StringFind(pointColumns, ",is_original_elliot_available,") >= 0
+                && StringFind(pointColumns, ",org_elliot_label,") >= 0
+                && StringFind(pointColumns, ",elliot_label,") >= 0
+                && StringFind(pointColumns, ",sub_elliot_index,") >= 0
+                && StringFind(pointColumns, ",sub_elliot_label,") >= 0) {
+            originalWave = "(SELECT CASE WHEN COUNT(*)=1 AND MAX(point.is_original_elliot_available)=1"
+                + " AND MAX(point.elliot_label)=sourceFrame.latest_elliot_label"
+                + " AND MAX(point.sub_elliot_index)=sourceFrame.latest_sub_elliot_index"
+                + " AND MAX(point.sub_elliot_label)=sourceFrame.latest_sub_elliot_label"
+                + " THEN MAX(point.org_elliot_label) ELSE NULL END FROM " + pointTable + " point"
+                + " WHERE point.alert_timeframe_id=sourceFrame.id AND point.is_latest=1)";
+        }
+        fromSql += "," + originalWave + " AS original_wave FROM " + fromTable + " sourceFrame";
 
         return true;
     }
@@ -530,6 +564,7 @@ private:
             }
         }
         this.readTextValue(fromRequest, 20, fromMarker.waves[index].wave);
+        this.readTextValue(fromRequest, 24, fromMarker.waves[index].originalWave);
         int subIndex = 0;
         if (this.readIntValue(fromRequest, 21, subIndex) && subIndex > 0) {
             this.readTextValue(fromRequest, 22, fromMarker.waves[index].subWave);

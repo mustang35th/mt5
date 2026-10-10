@@ -361,10 +361,10 @@ protected:
      * @return 採用した分析の文言。補正分析の場合は補正時間足を末尾へ付ける。
      */
     virtual string getChartAlertText() override {
-        string chartAlertText = this.getH1AlertText(this.elliotAll);
+        string chartAlertText = this.getH1AlertText(this.elliotAll, true);
         ENUM_TIMEFRAMES correctionTimeFrame = this.getCorrectionTimeFrame();
         if (chartAlertText != "" && correctionTimeFrame != PERIOD_CURRENT) {
-            chartAlertText += " [" + TimeUtil::convertTimeFrameToString(correctionTimeFrame) + "補正]";
+            chartAlertText += " [" + TimeUtil::convertTimeFrameToString(correctionTimeFrame) + "C]";
         }
 
         return chartAlertText;
@@ -399,9 +399,10 @@ private:
      * 指定したH1分析から構造ランクと3足の波動文言を生成する。
      *
      * @param fromAnalysis 元分析または判定用の補正分析。
+     * @param fromIncludeOriginal 再カウント前の主波ラベルを併記する場合true。
      * @return アラート文言。分析未採用の場合は空文字列。
      */
-    string getH1AlertText(ElliotAll *fromAnalysis) {
+    string getH1AlertText(ElliotAll *fromAnalysis, const bool fromIncludeOriginal = false) {
         if (fromAnalysis == NULL) {
             return "";
         }
@@ -411,7 +412,7 @@ private:
         structureDecision.evaluate(fromAnalysis, structureResult);
 
         return "H1[" + structureResult.getDisplayLabel()
-            + "] " + this.getThreeTimeFrameAlertText(fromAnalysis);
+            + "] " + this.getThreeTimeFrameAlertText(fromAnalysis, fromIncludeOriginal);
     }
 
     /**

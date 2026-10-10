@@ -35,6 +35,9 @@ struct ZigZagElliotAlertHistoryWaveSummary {
     /** 副次波ラベル。 */
     string subWave;
 
+    /** 同じ分析の最新ポイントに保存された再カウント前の主波ラベル。 */
+    string originalWave;
+
     /** 確定は確、未確定は未。 */
     string state;
 
@@ -47,6 +50,7 @@ struct ZigZagElliotAlertHistoryWaveSummary {
         this.emaDirection = "";
         this.wave = "";
         this.subWave = "";
+        this.originalWave = "";
         this.state = "";
     }
 };

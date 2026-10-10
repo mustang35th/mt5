@@ -2,6 +2,7 @@
 #define MSTNG_DRAW_ZIGZAG_ELLIOT_ALERT_HISTORY_MQH
 
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryData.mqh>
+#include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryText.mqh>
 #include <Mstng\Log\Logger.mqh>
 
 /**
@@ -439,15 +440,25 @@ private:
                 anchor = ANCHOR_LOWER;
             }
             string modeLabel = "元分析（採用）";
+            string text = "";
             if (fromShowCorrected) {
                 modeLabel = "補正後（採用）";
+                text = ZigZagElliotAlertHistoryText::formatSnapshot(fromSnapshot.correction.selectedAlertText,
+                    (ENUM_TIMEFRAMES)fromSnapshot.alert.timeFrame, fromSnapshot.correctedTimeFrames,
+                    fromSnapshot.correctedPoints);
+            } else {
+                text = ZigZagElliotAlertHistoryText::formatSnapshot(fromSnapshot.correction.selectedAlertText,
+                    (ENUM_TIMEFRAMES)fromSnapshot.alert.timeFrame, fromSnapshot.originalTimeFrames,
+                    fromSnapshot.originalPoints);
             }
 
-            this.drawAlertLabel(fromSnapshot, "AlertTextC", fromSnapshot.correction.selectedAlertText,
+            this.drawAlertLabel(fromSnapshot, "AlertTextC", text,
                 modeLabel, alertPrice, anchor);
         }
         if (fromShowOriginal && fromSnapshot.correctionStatus != "NONE") {
-            string text = fromSnapshot.alert.alertText;
+            string text = ZigZagElliotAlertHistoryText::formatSnapshot(fromSnapshot.alert.alertText,
+                (ENUM_TIMEFRAMES)fromSnapshot.alert.timeFrame, fromSnapshot.originalTimeFrames,
+                fromSnapshot.originalPoints);
             if (text != "" && fromSnapshot.correctionStatus == "APPLIED") {
                 text += " [補正前]";
             }

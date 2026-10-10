@@ -288,16 +288,16 @@ protected:
      * @return 採用した波動ラベル。補正分析の場合は補正した時間足を末尾へ付ける。
      */
     virtual string getChartAlertText() override {
-        string chartAlertText = this.getThreeTimeFrameAlertText(this.elliotAll);
+        string chartAlertText = this.getThreeTimeFrameAlertText(this.elliotAll, true);
         if (chartAlertText == "" || this.correctedElliotAll == NULL
                 || this.elliotAll != this.correctedElliotAll) {
             return chartAlertText;
         }
 
         if (this.correctedTimeFrame == PERIOD_H1) {
-            chartAlertText += " [H1補正]";
+            chartAlertText += " [H1C]";
         } else if (this.correctedTimeFrame == PERIOD_H4) {
-            chartAlertText += " [H4補正]";
+            chartAlertText += " [H4C]";
         }
 
         return chartAlertText;

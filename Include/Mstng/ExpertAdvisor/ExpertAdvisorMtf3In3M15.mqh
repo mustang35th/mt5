@@ -292,10 +292,10 @@ protected:
      * @return 判定に採用した分析のアラート文言。
      */
     virtual string getChartAlertText() override {
-        string chartAlertText = this.getThreeTimeFrameAlertText(this.elliotAll);
+        string chartAlertText = this.getThreeTimeFrameAlertText(this.elliotAll, true);
         ENUM_TIMEFRAMES correctionTimeFrame = this.getCorrectionTimeFrame();
         if (chartAlertText != "" && correctionTimeFrame != PERIOD_CURRENT) {
-            chartAlertText += " [" + TimeUtil::convertTimeFrameToString(correctionTimeFrame) + "補正]";
+            chartAlertText += " [" + TimeUtil::convertTimeFrameToString(correctionTimeFrame) + "C]";
         }
 
         return chartAlertText;
