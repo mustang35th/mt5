@@ -500,15 +500,16 @@ public:
     /**
      * 全時間足の分析結果を表示用テキストとして取得する。
      *
+     * @param fromIncludeOriginal 再カウント前の主波ラベルを併記する場合true。
      * @return 各Elliotの表示文字列を改行で連結したテキスト
      */
-    string getText() {
+    string getText(const bool fromIncludeOriginal = false) {
         string text = "";
                 
         for (int i = this.elliotList.Total() - 1; i >= 0; i--) {
             Elliot *elliot = this.elliotList.At(i);
             
-            text += StringFormat("%s\n", elliot.getText());
+            text += StringFormat("%s\n", elliot.getText(fromIncludeOriginal));
             
         }
         

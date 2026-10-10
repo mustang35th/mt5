@@ -355,14 +355,15 @@ public:
      *
      * 時間足、売買方向、EMA200、Oscillator、GMMAの要約を複数行で返す。
      *
+     * @param fromIncludeOriginal 再カウント前の主波ラベルを併記する場合true。
      * @return チャート表示用テキスト
      */
-    string getText() {
+    string getText(const bool fromIncludeOriginal = false) {
         string text = "";
         
         Wave *wave = this.getLatestWave();
         ZigZagPoint *zigZagPoint = this.getLatestPoint();
-        string elliotText = zigZagPoint.getTextIndexInfo();
+        string elliotText = zigZagPoint.getTextIndexInfo(fromIncludeOriginal);
 
         if (!wave.isConfirmed) {
             elliotText = wave.getConfirmedLabel() + elliotText;

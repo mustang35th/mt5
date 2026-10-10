@@ -599,7 +599,19 @@ private:
     }
 
     /**
-     * 保存主波・副次波を表示文字列へまとめる。
+     * 保存された主波と異なる場合だけ、再カウント前の主波ラベルを括弧付きで返す。
+     */
+    string originalWaveSuffix(ZigZagElliotAlertPointEntity &fromPoint) {
+        if (fromPoint.isOriginalElliotAvailable != 1 || fromPoint.elliotLabel == ""
+                || fromPoint.orgElliotLabel == "" || fromPoint.orgElliotLabel == fromPoint.elliotLabel) {
+            return "";
+        }
+
+        return "[" + fromPoint.orgElliotLabel + "]";
+    }
+
+    /**
+     * 保存主波・副次波と、変更がある場合の再カウント前ラベルを表示文字列へまとめる。
      */
     string pointWaveLabel(ZigZagElliotAlertPointEntity &fromPoint) {
         string text = fromPoint.elliotLabel;
@@ -609,6 +621,7 @@ private:
         if (fromPoint.isSubElliotAvailable == 1 && fromPoint.subElliotLabel != "") {
             text += "." + fromPoint.subElliotLabel;
         }
+        text += this.originalWaveSuffix(fromPoint);
 
         return text;
     }
@@ -931,13 +944,36 @@ private:
     }
 
     /**
-     * 情報表用に最新波動ラベルを整形する。
+     * 情報表用に、同じ分析の一意な最新ポイントから再カウント前ラベルを併記する。
      */
-    string timeFrameWave(ZigZagElliotAlertTimeFrameEntity &fromTimeFrame) {
+    string timeFrameWave(ZigZagElliotAlertTimeFrameEntity &fromTimeFrame,
+            ZigZagElliotAlertPointEntity &fromPoints[]) {
         string wave = fromTimeFrame.latestElliotLabel;
         if (fromTimeFrame.latestSubElliotIndex > 0 && fromTimeFrame.latestSubElliotLabel != "") {
             wave += "." + fromTimeFrame.latestSubElliotLabel;
         }
+
+        int latestIndex = -1;
+        for (int i = 0; i < ArraySize(fromPoints); i++) {
+            if (fromPoints[i].alertTimeFrameId != fromTimeFrame.id || fromPoints[i].isLatest != 1) {
+                continue;
+            }
+
+            if (latestIndex >= 0) {
+                latestIndex = -1;
+                break;
+            }
+
+            latestIndex = i;
+        }
+
+        if (latestIndex >= 0 && fromPoints[latestIndex].timeFrame == fromTimeFrame.timeFrame
+                && fromPoints[latestIndex].elliotLabel == fromTimeFrame.latestElliotLabel
+                && fromPoints[latestIndex].subElliotIndex == fromTimeFrame.latestSubElliotIndex
+                && fromPoints[latestIndex].subElliotLabel == fromTimeFrame.latestSubElliotLabel) {
+            wave += this.originalWaveSuffix(fromPoints[latestIndex]);
+        }
+
         if (fromTimeFrame.isWaveUptrend == 1) {
             wave = "▲" + wave;
         } else {
@@ -1032,7 +1068,8 @@ private:
             legend = "7足要約 / 指標・確定状態は行ツールチップ";
         }
         this.drawLabel("Legend", legend, panelX, fromPanelTop + 45, 8, clrSilver,
-            legend + "\n" + fromSnapshot.originalReason + "\n" + fromSnapshot.correctionReason);
+            legend + "\n[ ]＝再カウント前の主波ラベル"
+            + "\n" + fromSnapshot.originalReason + "\n" + fromSnapshot.correctionReason);
 
         if (!fromShowTable || !fromSnapshot.originalAvailable) {
             return;
@@ -1055,7 +1092,7 @@ private:
             if (fromShowCorrected) {
                 int rowIndex = this.findTimeFrame(fromSnapshot.correctedTimeFrames, timeFrames[i]);
                 if (rowIndex >= 0) {
-                    this.drawTableRow(fromSnapshot.correctedTimeFrames[rowIndex], true,
+                    this.drawTableRow(fromSnapshot.correctedTimeFrames[rowIndex], fromSnapshot.correctedPoints, true,
                         panelX, rowY, compact, fromSnapshot.correction.correctionTimeFrame, true);
                 }
                 rowY += rowHeight;
@@ -1063,7 +1100,7 @@ private:
             if (fromShowOriginal) {
                 int rowIndex = this.findTimeFrame(fromSnapshot.originalTimeFrames, timeFrames[i]);
                 if (rowIndex >= 0) {
-                    this.drawTableRow(fromSnapshot.originalTimeFrames[rowIndex], false,
+                    this.drawTableRow(fromSnapshot.originalTimeFrames[rowIndex], fromSnapshot.originalPoints, false,
                         panelX, rowY, compact, 0, fromSnapshot.correctionStatus == "APPLIED");
                 }
                 rowY += rowHeight;
@@ -1095,14 +1132,14 @@ private:
             string tooltip = "";
             if (fromShowCorrected && correctedIndex >= 0) {
                 tooltip = this.timeFrameTooltip(fromSnapshot.correctedTimeFrames[correctedIndex],
-                    "後（採用）", fromSnapshot.correction.correctionTimeFrame);
+                    fromSnapshot.correctedPoints, "後（採用）", fromSnapshot.correction.correctionTimeFrame);
             }
             if (fromShowOriginal && originalIndex >= 0) {
                 if (tooltip != "") {
                     tooltip += "\n\n";
                 }
                 tooltip += this.timeFrameTooltip(fromSnapshot.originalTimeFrames[originalIndex],
-                    this.originalModeLabel(fromSnapshot.correctionStatus), 0);
+                    fromSnapshot.originalPoints, this.originalModeLabel(fromSnapshot.correctionStatus), 0);
             }
 
             string key = "Summary" + IntegerToString(timeFrames[i]);
@@ -1114,7 +1151,7 @@ private:
             this.drawLabel(key, frameLabel, fromX, rowY, 9, clrSilver, tooltip);
             if (fromShowCorrected && correctedIndex >= 0) {
                 this.drawLabel(key + "C", "後 " + fromSnapshot.correctedTimeFrames[correctedIndex].buySellLabel
-                    + " " + this.timeFrameWave(fromSnapshot.correctedTimeFrames[correctedIndex]),
+                    + " " + this.timeFrameWave(fromSnapshot.correctedTimeFrames[correctedIndex], fromSnapshot.correctedPoints),
                     fromX + 45, rowY, 9, this.directionColor(fromSnapshot.correctedTimeFrames[correctedIndex].isBuy), tooltip);
             }
             if (fromShowOriginal && originalIndex >= 0) {
@@ -1123,7 +1160,7 @@ private:
                     originalX += (fromWidth - 45) / 2;
                 }
                 this.drawLabel(key + "O", originalMode + " " + fromSnapshot.originalTimeFrames[originalIndex].buySellLabel
-                    + " " + this.timeFrameWave(fromSnapshot.originalTimeFrames[originalIndex]),
+                    + " " + this.timeFrameWave(fromSnapshot.originalTimeFrames[originalIndex], fromSnapshot.originalPoints),
                     originalX, rowY, 9, this.directionColor(fromSnapshot.originalTimeFrames[originalIndex].isBuy), tooltip);
             }
         }
@@ -1134,6 +1171,7 @@ private:
      */
     string timeFrameTooltip(
         ZigZagElliotAlertTimeFrameEntity &fromTimeFrame,
+        ZigZagElliotAlertPointEntity &fromPoints[],
         const string fromMode,
         const int fromCorrectionTimeFrame
     ) {
@@ -1144,7 +1182,7 @@ private:
         string ema = this.emaDirection(fromTimeFrame);
         string tooltip = fromTimeFrame.timeFrameText + " / " + fromMode
             + "\n分析方向 " + fromTimeFrame.buySellLabel + "\nEMA200 " + ema
-            + "\nElliott " + this.timeFrameWave(fromTimeFrame) + " / " + state
+            + "\nElliott " + this.timeFrameWave(fromTimeFrame, fromPoints) + " / " + state
             + "\nOscillator " + this.signedCount(fromTimeFrame.oscillatorCount)
             + "\nStochastic S / M / L " + this.signedCount(fromTimeFrame.stochasticShortCount)
             + " / " + this.signedCount(fromTimeFrame.stochasticMiddleCount)
@@ -1183,6 +1221,7 @@ private:
      */
     void drawTableRow(
         ZigZagElliotAlertTimeFrameEntity &fromTimeFrame,
+        ZigZagElliotAlertPointEntity &fromPoints[],
         const bool fromCorrected,
         const int fromX,
         const int fromY,
@@ -1209,8 +1248,8 @@ private:
             frameLabel += "*";
         }
         string ema = this.emaDirection(fromTimeFrame);
-        string wave = this.timeFrameWave(fromTimeFrame);
-        string tooltip = this.timeFrameTooltip(fromTimeFrame, mode, fromCorrectionTimeFrame);
+        string wave = this.timeFrameWave(fromTimeFrame, fromPoints);
+        string tooltip = this.timeFrameTooltip(fromTimeFrame, fromPoints, mode, fromCorrectionTimeFrame);
         color rowColor = this.directionColor(fromTimeFrame.isBuy);
 
         if (fromCompact) {

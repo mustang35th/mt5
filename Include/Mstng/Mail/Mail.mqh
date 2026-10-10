@@ -202,7 +202,7 @@ private:
     }
 
     /**
-     * 1つの分析結果から損切り候補と全時間足のElliott本文を生成する。
+     * 1つの分析結果から損切り候補と再カウント前ラベル付きの全時間足Elliott本文を生成する。
      *
      * @param fromElliotAll 表示する分析結果。
      * @return 損切り候補とElliott本文。
@@ -217,7 +217,7 @@ private:
 
         // エリオット。
         text += "エリオット\n";
-        text += StringFormat("%s\n", fromElliotAll.getText());
+        text += StringFormat("%s\n", fromElliotAll.getText(true));
 
         return text;
     }

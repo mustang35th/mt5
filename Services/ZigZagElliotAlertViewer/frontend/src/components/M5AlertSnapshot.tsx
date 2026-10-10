@@ -236,7 +236,10 @@ function WavePoints({ rows, points, label }: { rows: SnapshotRow[]; points: Aler
     const values = points.filter((point) => point.alert_timeframe_id === row.timeFrame?.id && point.time_frame === row.frame).sort((first, second) => first.point_order - second.point_order);
     return <details key={row.frame}><summary>{row.label}・{values.length}点</summary><div className="m5-alert-point-scroll">
       <table aria-label={`${label} ${row.label} 最新Wave全ポイント`}><thead><tr>{["順序", "Server", "価格", "Elliott / Sub", "元番号", "pips差", "F %", "FE %", "取得種別", "最新", "基準点"].map((column) => <th key={column}>{column}</th>)}</tr></thead>
-        <tbody>{values.map((point) => <tr key={`${row.analysis}-${point.id}`}><td>{point.point_order}</td><td>{text(point.bar_time_text)}</td><td>{number(point.rate, 5)}</td><td>{text(point.elliot_label)}{point.sub_elliot_label && "." + point.sub_elliot_label}</td><td>{text(point.org_elliot_label)}</td><td>{number(point.pips_diff, 1)}</td><td>{flag(point.is_fibonacci_available, number(point.fibonacci_percent, 1), "対象外")}</td><td>{flag(point.is_fibonacci_expansion_available, number(point.fibonacci_expansion_percent, 1), "対象外")}</td><td>{flag(point.is_added_point, "補完", "通常")}</td><td>{flag(point.is_latest, "最新", "—")}</td><td>{flag(point.is_signal_reference, "基準点", "—")}</td></tr>)}</tbody>
+        <tbody>{values.map((point) => <tr key={`${row.analysis}-${point.id}`}><td>{point.point_order}</td><td>{text(point.bar_time_text)}</td><td>{number(point.rate, 5)}</td><td>
+          <ElliottLabelText label={formatElliottLabel(point.elliot_label, point.sub_elliot_label, point.org_elliot_label, missing)}
+            mainLabel={point.elliot_label} originalLabel={point.org_elliot_label} />
+        </td><td>{text(point.org_elliot_label)}</td><td>{number(point.pips_diff, 1)}</td><td>{flag(point.is_fibonacci_available, number(point.fibonacci_percent, 1), "対象外")}</td><td>{flag(point.is_fibonacci_expansion_available, number(point.fibonacci_expansion_percent, 1), "対象外")}</td><td>{flag(point.is_added_point, "補完", "通常")}</td><td>{flag(point.is_latest, "最新", "—")}</td><td>{flag(point.is_signal_reference, "基準点", "—")}</td></tr>)}</tbody>
       </table>{values.length === 0 && <p>ポイントは未記録です。</p>}
     </div></details>;
   })}</div>;

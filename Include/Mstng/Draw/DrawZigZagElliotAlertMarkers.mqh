@@ -299,21 +299,28 @@ private:
     }
 
     /**
-     * 採用分析のM5は7時間足、H1は5時間足を作る。欠損値は他の分析から補完しない。
+     * 採用分析のM5は7時間足、M15は6時間足、H1は5時間足を作る。元ラベルは同じ分析から表示する。
      */
     string waveRows(const ZigZagElliotAlertHistoryMarker &fromMarker, const bool fromIncludeSub,
             const int fromMainLimit = 0) {
         string frames[] = {"MN1", "W1", "D1", "H4", "H1", "M15", "M5"};
-        string text = "\n足 分析/EMA 波動";
+        string text = "\n足 分析/EMA 波動[元]";
         int frameCount = ArraySize(frames);
         if (fromMarker.timeFrame == PERIOD_H1) {
             frameCount = 5;
+        } else if (fromMarker.timeFrame == PERIOD_M15) {
+            frameCount = 6;
         }
 
         for (int i = 0; i < frameCount; i++) {
-            string wave = this.cellText(fromMarker.waves[i].wave, fromMainLimit);
+            string mainWave = this.cellText(fromMarker.waves[i].wave);
+            string originalWave = this.cellText(fromMarker.waves[i].originalWave);
+            string wave = this.cellText(mainWave, fromMainLimit);
             if (fromIncludeSub && wave != "—" && StringLen(fromMarker.waves[i].subWave) > 0) {
                 wave += "." + this.cellText(fromMarker.waves[i].subWave);
+            }
+            if (mainWave != "—" && originalWave != "—" && originalWave != mainWave) {
+                wave += "[" + this.cellText(originalWave, fromMainLimit) + "]";
             }
             string state = "—";
             if (fromMarker.waves[i].state == "確" || fromMarker.waves[i].state == "未") {
@@ -332,7 +339,8 @@ private:
     }
 
     /**
-     * 159文字を超える場合はServer行、副次波の順で省く。全時間足とJSTは残す。
+     * 159文字を超える場合はServer行、副次波の順で省き、主波・元主波を個別に短縮する。
+     * 全時間足とJST、および元主波の括弧を残す。
      */
     string tooltip(const ZigZagElliotAlertHistoryMarker &fromMarker) {
         string header = "採用 ";

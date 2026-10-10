@@ -2533,10 +2533,10 @@ private:
     }
 
     /**
-     * 最新Waveの表示文字列を取得する。
+     * 最新Waveの表示文字列へ、変更がある場合だけ再カウント前の主波ラベルを併記する。
      *
      * @param fromElliot 対象時間足のElliot。
-     * @return 未確定表示、方向、Elliottラベル、補完表示を連結した文字列。
+     * @return 未確定表示、方向、Elliottラベル、元ラベル、補完表示を連結した文字列。
      */
     string getWaveText(Elliot *fromElliot) {
         if (fromElliot == NULL) {
@@ -2566,11 +2566,42 @@ private:
 
         ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
 
+        if (latestPoint != NULL && !StringUtil::isEmpty(latestPoint.elliotLabel)
+                && !StringUtil::isEmpty(latestPoint.orgElliotLabel)
+                && latestPoint.orgElliotLabel != latestPoint.elliotLabel) {
+            text += "[" + latestPoint.orgElliotLabel + "]";
+        }
         if (latestPoint != NULL && latestPoint.isAddedPoint) {
             text += "★";
         }
 
         return text;
+    }
+
+    /**
+     * 元ラベル付きの波動が隣列と重ならないよう、必要な場合だけ文字サイズを縮小する。
+     *
+     * @param fromText 波動セルの表示文字列。
+     * @return 通常サイズから6ptまでの、列幅に収まる文字サイズ。
+     */
+    int getWaveFontSize(const string fromText) {
+        if (StringFind(fromText, "[") < 0) {
+            return this.bodyFontSize;
+        }
+
+        for (int fontSize = this.bodyFontSize; fontSize >= 6; fontSize--) {
+            uint textWidth = 0;
+            uint textHeight = 0;
+            if (!TextSetFont(this.fontName, fontSize * -10)
+                    || !TextGetSize(fromText, textWidth, textHeight)) {
+                return this.bodyFontSize;
+            }
+            if (textWidth <= (uint)(this.columnWidth - 4)) {
+                return fontSize;
+            }
+        }
+
+        return 6;
     }
 
     /**
@@ -3193,6 +3224,9 @@ private:
 
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+        if (fromColumnIndex >= drawAlignedElliotAllListColumnTimeFrameStart) {
+            ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.getWaveFontSize(fromText));
+        }
     }
 
     /**

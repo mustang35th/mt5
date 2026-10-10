@@ -223,13 +223,19 @@ public:
     /**
      * 波動ラベル、フィボナッチ情報、値幅および価格の表示文字列を取得する。
      *
+     * @param fromIncludeOriginal 再カウント前の主波ラベルを併記する場合true。
      * @return ポイントのインデックス情報
      */
-    string getTextIndexInfo() {
+    string getTextIndexInfo(const bool fromIncludeOriginal = false) {
         string text = "";
         
         text += this.getTextSimple();
-                
+
+        if (fromIncludeOriginal && this.elliotLabel != "" && this.orgElliotLabel != ""
+                && this.orgElliotLabel != this.elliotLabel) {
+            text += "[" + this.orgElliotLabel + "]";
+        }
+
         text += this.getTextFibonacci();
         
         text += this.getTextPipsDiff();

@@ -178,7 +178,8 @@ public:
         Mtf3In3AlertResult alertResult =
             this.expertAdvisorMtf3In3.getAlertResult();
 
-        if (this.marketContext.timeFrame == PERIOD_M5 || this.marketContext.timeFrame == PERIOD_H1) {
+        if (this.marketContext.timeFrame == PERIOD_M5 || this.marketContext.timeFrame == PERIOD_M15
+                || this.marketContext.timeFrame == PERIOD_H1) {
             string objectName = Constant::PREFIX_FIXED + "TextMTF_3in3"
                 + IntegerToString((int)fromElliotAll.elliotCurrent.currentOhlcBarTime);
             if (!DrawZigZagElliotLiveAlertTooltip::apply(

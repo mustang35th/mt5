@@ -8,6 +8,7 @@ import {
   themeQuartz,
   type ColDef,
   type GridState,
+  type ICellRendererParams,
   type RowClassParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
@@ -28,11 +29,13 @@ import {
   displayValue,
   elliottDirectionSymbol,
   formatAlertBarTimes,
+  formatElliottLabel,
   formatNumber,
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
 import { CurrencyStrengthSnapshotPanel } from "./CurrencyStrengthSnapshotPanel";
+import { ElliottLabelText } from "./ElliottLabelText";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import {
@@ -113,12 +116,6 @@ function yesNo(value: boolean): string {
   return value ? "はい" : "いいえ";
 }
 
-function waveLabel(mainLabel: string, subLabel: string): string {
-  if (!mainLabel) return "—";
-  if (!subLabel) return mainLabel;
-  return `${mainLabel}.${subLabel}`;
-}
-
 function structureLabel(rank: string, isLate: boolean): string {
   return `${displayValue(rank)}${isLate ? "-LATE" : ""}`;
 }
@@ -183,8 +180,17 @@ function DetailField({ label, value }: { label: string; value: unknown }) {
   );
 }
 
-function TimeFrameCard({ timeFrame }: { timeFrame: AlertTimeFrame }) {
+function TimeFrameCard({ timeFrame, points }: { timeFrame: AlertTimeFrame; points: AlertPoint[] }) {
   const waveDirection = `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)} ${timeFrame.is_wave_uptrend ? "UP / 上昇" : "DOWN / 下降"}`;
+  const latestPoints = points.filter((point) => point.alert_timeframe_id === timeFrame.id
+    && point.time_frame === timeFrame.time_frame && point.is_latest);
+  const latestPoint = latestPoints.length === 1 ? latestPoints[0] : undefined;
+  const originalLabel = latestPoint?.elliot_label === timeFrame.latest_elliot_label
+    && latestPoint?.sub_elliot_label === timeFrame.latest_sub_elliot_label
+    ? latestPoint?.org_elliot_label : undefined;
+  const wave = `${elliottDirectionSymbol(timeFrame.is_wave_uptrend)}${formatElliottLabel(
+    timeFrame.latest_elliot_label, timeFrame.latest_sub_elliot_label, originalLabel,
+  )}`;
 
   return (
     <article
@@ -216,7 +222,8 @@ function TimeFrameCard({ timeFrame }: { timeFrame: AlertTimeFrame }) {
       <div className="timeframe-values">
         <div><span>分析方向</span><b>{timeFrame.buy_sell_label}</b></div>
         <div><span>最新Wave方向</span><b>{waveDirection}</b></div>
-        <div><span>波動</span><b>{elliottDirectionSymbol(timeFrame.is_wave_uptrend)}{waveLabel(timeFrame.latest_elliot_label, timeFrame.latest_sub_elliot_label)}</b></div>
+        <div><span>波動</span><b><ElliottLabelText label={wave}
+          mainLabel={timeFrame.latest_elliot_label} originalLabel={originalLabel} /></b></div>
         <div><span>状態</span><b>{timeFrame.is_wave_confirmed ? "確定" : "形成中"}</b></div>
         <div><span>Wave種別</span><b>{timeFrame.is_wave_motive ? "推進波" : "修正波"}</b></div>
         <div><span>ポイント</span><b>{timeFrame.point_count} / wave {timeFrame.latest_wave_index}</b></div>
@@ -266,7 +273,11 @@ const wavePointColumns: ColDef<AlertPoint>[] = [
   {
     field: "elliot_label",
     headerName: "Elliott",
-    valueFormatter: ({ value }) => displayValue(value),
+    valueGetter: ({ data }) => formatElliottLabel(data?.elliot_label, undefined, data?.org_elliot_label),
+    cellRenderer: ({ data, value }: ICellRendererParams<AlertPoint, string>) => (
+      <ElliottLabelText label={displayValue(value)} mainLabel={data?.elliot_label}
+        originalLabel={data?.org_elliot_label} />
+    ),
     width: 80,
   },
   {
@@ -639,7 +650,8 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
         >
           <summary><h3>時間足別 Elliott スナップショット</h3></summary>
           <div className="timeframe-grid">
-            {bundle.timeFrames.items.map((timeFrame) => <TimeFrameCard timeFrame={timeFrame} key={timeFrame.id} />)}
+            {bundle.timeFrames.items.map((timeFrame) => <TimeFrameCard timeFrame={timeFrame}
+              points={bundle.points.items} key={timeFrame.id} />)}
           </div>
         </details>
       </section>

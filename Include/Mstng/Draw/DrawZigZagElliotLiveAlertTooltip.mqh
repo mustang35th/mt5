@@ -12,7 +12,7 @@
 class DrawZigZagElliotLiveAlertTooltip {
 public:
     /**
-     * 描画済みの通常M5・H1ラベルへ判定時点の概要を付ける。
+     * 描画済みの通常M5・M15・H1ラベルへ判定時点の概要を付ける。
      *
      * @param fromObjectName 描画済みオブジェクト名。
      * @param fromSource 元分析。判定日時はここから取得する。
@@ -27,6 +27,7 @@ public:
         if (fromSource == NULL || fromJudgment == NULL
                 || !fromJudgment.isAnalysisSucceeded || !fromResult.isAlert
                 || (fromSource.marketContext.timeFrame != PERIOD_M5
+                    && fromSource.marketContext.timeFrame != PERIOD_M15
                     && fromSource.marketContext.timeFrame != PERIOD_H1)
                 || ObjectFind(0, fromObjectName) < 0) {
             return false;
@@ -47,7 +48,10 @@ public:
                 && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
             bool isH1Correction = marker.timeFrame == PERIOD_H1
                 && (fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4);
-            if (!isM5Correction && !isH1Correction) {
+            bool isM15Correction = marker.timeFrame == PERIOD_M15
+                && (fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4
+                    || fromCorrectionTimeFrame == PERIOD_H1);
+            if (!isM5Correction && !isM15Correction && !isH1Correction) {
                 return false;
             }
 
@@ -73,9 +77,11 @@ public:
         };
         for (int i = 0; i < ArraySize(frames); i++) {
             marker.waves[i].clear();
-            if (marker.timeFrame == PERIOD_H1 && i > 4) {
+            if ((marker.timeFrame == PERIOD_H1 && i > 4)
+                    || (marker.timeFrame == PERIOD_M15 && i > 5)) {
                 continue;
             }
+
             Elliot *elliot = fromJudgment.getElliot(frames[i]);
             if (elliot == NULL) {
                 continue;
@@ -102,6 +108,7 @@ public:
             }
             if (point != NULL) {
                 marker.waves[i].wave = point.elliotLabel;
+                marker.waves[i].originalWave = point.orgElliotLabel;
                 if (point.subElliotIndex > 0) {
                     marker.waves[i].subWave = point.subElliotLabel;
                 }
