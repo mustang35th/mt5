@@ -710,6 +710,7 @@ function comparisonTimeFrames(bundle: DetailBundle): ObservationDetailTimeFrame[
       latest_point_jst_time: 0,
       latest_point_jst_time_text: "",
       latest_point_rate: latestPoint?.rate ?? Number.NaN,
+      latest_point_org_elliot_label: latestPoint?.org_elliot_label ?? null,
       latest_point_is_added:
         timeFrame.latest_point_is_added ?? latestPoint?.is_added_point ?? null,
     };
@@ -795,6 +796,7 @@ function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce, showC
   )) ? alert : null;
   const comparisonGrid = <ObservationTimeFrameSnapshotGrid
     ariaLabel="アラート時間足比較スナップショットグリッド"
+    showOriginalElliottLabel
     stateRef={gridStateRef}
     styleNonce={styleNonce}
     timeFrames={timeFrames}

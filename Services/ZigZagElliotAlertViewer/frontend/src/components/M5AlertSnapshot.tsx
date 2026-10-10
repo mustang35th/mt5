@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { AlertCorrectionMetadata, AlertCorrectionResponse, AlertDetailResponse, AlertPoint, AlertTimeFrame } from "../api/types";
+import { formatElliottLabel } from "../lib/format";
 import { CurrencyStrengthSnapshotPanel } from "./CurrencyStrengthSnapshotPanel";
+import { ElliottLabelText } from "./ElliottLabelText";
 import "./M5AlertSnapshot.css";
 
 type Analysis = "ORIGINAL" | "CORRECTED";
@@ -54,9 +56,8 @@ function wave(row: SnapshotRow): string {
   let symbol = "";
   if (row.timeFrame.is_wave_uptrend === true) symbol = "▲";
   if (row.timeFrame.is_wave_uptrend === false) symbol = "▼";
-  let suffix = "";
-  if (row.timeFrame.latest_sub_elliot_label) suffix = "." + row.timeFrame.latest_sub_elliot_label;
-  return symbol + text(row.timeFrame.latest_elliot_label) + suffix;
+  return symbol + formatElliottLabel(row.timeFrame.latest_elliot_label,
+    row.timeFrame.latest_sub_elliot_label, row.point?.org_elliot_label, missing);
 }
 /** Read only the matching timeframe header from its own saved analysis. */
 function previousMotiveSub(analysisText: string | undefined, frameLabel: string): string {
@@ -164,7 +165,7 @@ const columns: Column[] = [
 const keyColumns: Column[] = [
   { id: "direction", label: "分析方向", get: (row) => row.timeFrame?.is_buy, display: direction },
   { id: "ema-direction", label: "EMA200方向", get: (row) => [row.timeFrame?.is_ema200_available, row.timeFrame?.is_ema200_buy, row.timeFrame?.is_ema200_sell], display: emaDirection },
-  { id: "wave", label: "Elliott / Sub", get: (row) => [row.timeFrame?.is_wave_uptrend, row.timeFrame?.latest_elliot_label, row.timeFrame?.latest_sub_elliot_label], display: wave, direction },
+  { id: "wave", label: "Elliott / Sub", get: (row) => [row.timeFrame?.is_wave_uptrend, row.timeFrame?.latest_elliot_label, row.timeFrame?.latest_sub_elliot_label, row.point?.org_elliot_label], display: wave, direction },
 ];
 function rowsFor(timeFrames: AlertTimeFrame[], points: AlertPoint[], analysis: Analysis, snapshotFrames: typeof frames, analysisText?: string): SnapshotRow[] {
   return snapshotFrames.map((frame) => {
@@ -294,6 +295,7 @@ function SnapshotContent({ detail, timeFrames, points, currentTimeFrame }: Alert
       <label><input type="checkbox" checked={changedOnly} disabled={!comparison} onChange={(event) => setChangedOnly(event.target.checked)} />差がある列のみ</label>
       <button type="button" className="secondary-button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded && "要点のみ"}{!expanded && "すべて表示"}</button>
     </div></div>
+    <p className="m5-alert-note">[ ]＝再カウント前の主波ラベル</p>
     {comparison && changedOnly && shownColumns.length === 0 && <p className="m5-alert-note">表示中の項目に差はありません。比較キーは常に表示します。</p>}
     <div className="m5-alert-grid-scroll" role="region" aria-label={`${currentTimeFrame}アラート全画面グリッド`} tabIndex={0}>
       <table className="m5-alert-grid" aria-label={`${currentTimeFrame}アラート${snapshotFrames.length}時間足比較`}><thead><tr><th className="m5-alert-key-0" scope="col">時間足</th><th className="m5-alert-key-1" scope="col">分析</th>{[...keyColumns, ...shownColumns].map((column, index) => {
@@ -319,7 +321,12 @@ function SnapshotContent({ detail, timeFrames, points, currentTimeFrame }: Alert
             let color = sideClass(value);
             if (column.direction) color = sideClass(column.direction(row));
             if (column.numeric && !column.signed) color = "";
-            return <td key={column.id} data-column={column.id} className={classes.join(" ")}><span className={color}>{value}</span></td>;
+            let content = <span className={color}>{value}</span>;
+            if (column.id === "wave") {
+              content = <span className={color}><ElliottLabelText label={value}
+                mainLabel={row.timeFrame?.latest_elliot_label} originalLabel={row.point?.org_elliot_label} /></span>;
+            }
+            return <td key={column.id} data-column={column.id} className={classes.join(" ")}>{content}</td>;
           })}
         </tr>;
       })}</tbody></table>
