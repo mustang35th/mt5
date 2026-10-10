@@ -1,0 +1,17 @@
+.react-detail-dialog .alert-snapshot-header { gap: 14px; }
+.alert-snapshot-header .alert-snapshot-heading { flex: 1 1 auto; min-width: 0; }
+.alert-snapshot-header .observation-detail-header-actions { width: auto; flex: 0 0 auto; }
+.react-detail-dialog .alert-snapshot-heading h2 {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  scrollbar-width: thin;
+  font-size: clamp(0.82rem, 1.1vw, 1.125rem);
+  font-variant-numeric: tabular-nums;
+}
+.alert-snapshot-heading h2:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.alert-snapshot-heading .alert-snapshot-jst { font-weight: 700; }
+.alert-snapshot-heading .alert-snapshot-server { color: var(--muted); font-weight: 400; }

@@ -222,6 +222,49 @@ afterEach(() => {
 });
 
 describe("AlertDetailDrawer", () => {
+  it.each(["detail", "comparison"] as const)("shows the saved bar start in JST and Server in the %s heading", async (initialView) => {
+    const payload = detailPayload();
+    const alert = {
+      ...payload.alert, symbol_name: "EURJPY", side: "SELL", time_frame: 15, time_frame_text: "M15",
+      current_bar_time_text: "2026.10.08 20:30:00",
+      server_time_text: "2026.10.08 20:30:02", jst_time_text: "2026.10.09 02:30:02",
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/alerts/74") return jsonResponse({ ...payload, alert });
+      if (path.endsWith("/timeframes") || path.endsWith("/points")) return jsonResponse({ items: [], count: 0 });
+      throw new Error(`unexpected path: ${path}`);
+    }));
+
+    render(<AlertDetailDrawer alertId={74} initialView={initialView} onClose={vi.fn()} />);
+
+    const heading = await screen.findByRole("heading", {
+      name: "EURJPY SELL ｜ M15 ｜ JST 2026.10.09 02:30:00 ｜ Server 2026.10.08 20:30:00",
+    });
+    expect(heading).toHaveAttribute("title", "足開始時刻（JST / Server）");
+    expect(within(heading).getByText("JST 2026.10.09 02:30:00")).toHaveClass("alert-snapshot-jst");
+    expect(within(heading).getByText("Server 2026.10.08 20:30:00")).toHaveClass("alert-snapshot-server");
+    expect(heading).not.toHaveTextContent("02:30:02");
+    expect(heading).toHaveAttribute("tabindex", "0");
+  });
+
+  it("keeps the saved server bar time when JST cannot be converted", async () => {
+    const payload = detailPayload();
+    payload.alert.server_time_text = "";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/alerts/74") return jsonResponse(payload);
+      if (path.endsWith("/timeframes") || path.endsWith("/points")) return jsonResponse({ items: [], count: 0 });
+      throw new Error(`unexpected path: ${path}`);
+    }));
+
+    render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+
+    const heading = await screen.findByRole("heading", { name: "AUDUSD BUY ｜ 未記録 ｜ JST 未記録 ｜ Server 2026.07.30 19:00:00" });
+    expect(heading).toHaveTextContent("Server 2026.07.30 19:00:00");
+    expect(heading).toHaveAttribute("title", "足開始時刻（JST / Server）");
+  });
+
   it("opens the alert snapshot directly in TIMEFRAME COMPARISON and switches views", async () => {
     provideGridLayoutSize();
     const timeFrames = [
@@ -439,7 +482,7 @@ describe("AlertDetailDrawer", () => {
     const onClose = vi.fn();
     render(<AlertDetailDrawer alertId={74} onClose={onClose} />);
 
-    expect(await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AUDUSD BUY ｜ H1 ｜ JST 2026.07.31 01:00:00 ｜ Server 2026.07.30 19:00:00" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(screen.getByText("UNAVAILABLE / 取得不可")).toBeInTheDocument();
     expect(screen.getByText("mode: 記録のみ")).toBeInTheDocument();
@@ -654,7 +697,7 @@ describe("AlertDetailDrawer", () => {
 
     render(<AlertDetailDrawer alertId={77} onClose={vi.fn()} />);
 
-    expect(await screen.findByRole("heading", { name: "USDJPY BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "USDJPY BUY ｜ H1 ｜ JST 2026.07.31 01:00:00 ｜ Server 2026.07.30 19:00:00" })).toBeInTheDocument();
     const wavePointContainer = screen.getByRole("group", { name: "時間足別最新Waveポイント" });
     const pointGroups = within(wavePointContainer).getAllByRole("group");
     expect(pointGroups.map((group) => group.getAttribute("aria-label"))).toEqual([
@@ -699,7 +742,7 @@ describe("AlertDetailDrawer", () => {
     const view = render(<AlertDetailDrawer alertId={78} onClose={vi.fn()} />);
 
     expect(await screen.findByRole("heading", {
-      name: "USDJPY BUY / 2026.07.30 19:00:00",
+      name: "USDJPY BUY ｜ M5 ｜ JST 2026.07.31 01:00:00 ｜ Server 2026.07.30 19:00:00",
     })).toBeInTheDocument();
     expect(view.container.querySelector(".m5-alert-dialog"))
       .toHaveClass("observation-grid-mode");
@@ -724,7 +767,7 @@ describe("AlertDetailDrawer", () => {
 
     render(<AlertDetailDrawer alertId={76} onClose={vi.fn()} />);
 
-    expect(await screen.findByRole("heading", { name: "USDJPY BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "USDJPY BUY ｜ 未記録 ｜ JST 2026.07.31 01:00:00 ｜ Server 2026.07.30 19:00:00" })).toBeInTheDocument();
     const closeAllButton = screen.getByRole("button", { name: "すべて閉じる" });
     expect(closeAllButton).toHaveAttribute(
       "aria-controls",
@@ -763,12 +806,12 @@ describe("AlertDetailDrawer", () => {
     const view = render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
     view.rerender(<AlertDetailDrawer alertId={75} onClose={vi.fn()} />);
 
-    expect(await screen.findByRole("heading", { name: "USDJPY BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "USDJPY BUY ｜ 未記録 ｜ JST 2026.07.31 01:00:00 ｜ Server 2026.07.30 19:00:00" })).toBeInTheDocument();
     expect(await screen.findByText("保存されたポイントはありません。")).toBeInTheDocument();
     expect(oldSignals).toHaveLength(3);
     oldSignals.forEach((signal) => expect(signal.aborted).toBe(true));
     resolveOld(jsonResponse(detailPayload(74)));
-    await waitFor(() => expect(screen.queryByText("AUDUSD BUY / 2026.07.30 19:00:00")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /AUDUSD BUY/ })).not.toBeInTheDocument());
   });
 
   it("closes on cancel and an outside pointer action", () => {

@@ -320,7 +320,7 @@ describe("App", () => {
       if (path === "/api/alerts/74") {
         return jsonResponse({
           alert: {
-            id: 74, run_id: 4, symbol_name: "AUDUSD", side: "BUY",
+            id: 74, run_id: 4, symbol_name: "AUDUSD", side: "BUY", time_frame_text: "H1",
             current_bar_time_text: "2026.07.30 19:00:00", alert_title: "AUDUSD alert",
             jst_time_text: "2026.07.31 01:00:00", server_time_text: "2026.07.30 19:00:00",
             reference_price: 1.2, is_stop_loss_available: true, stop_loss: 1.1, risk_pips: 50,
@@ -1253,7 +1253,7 @@ describe("App", () => {
     const detailButton = await screen.findByRole("button", { name: "AUDUSD BUY 2026.07.31 01:00:00 の詳細を表示" });
     detailButton.focus();
     fireEvent.click(detailButton);
-    expect(await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 19:00:00" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AUDUSD BUY ｜ H1 ｜ JST 2026.07.31 01:00:00 ｜ Server 2026.07.30 19:00:00" })).toBeInTheDocument();
     const dialog = screen.getByRole("dialog");
     fireEvent(dialog, new Event("cancel", { bubbles: false, cancelable: true }));
     await waitFor(() => expect(detailButton).toHaveFocus());
@@ -1323,7 +1323,7 @@ describe("App", () => {
     fireEvent.click(trigger);
     await screen.findByText("TIMEFRAME COMPARISON");
     fireEvent.click(screen.getByRole("button", { name: "次のアラート（検索結果順）" }));
-    await screen.findByRole("heading", { name: "AUDUSD BUY / 2026.07.30 20:00:00" });
+    await screen.findByRole("heading", { name: "AUDUSD BUY ｜ H1 ｜ JST 2026.07.31 02:00:00 ｜ Server 2026.07.30 20:00:00" });
     expect(screen.getByRole("button", { name: "TF比較" })).toHaveAttribute("aria-pressed", "true");
     const navigationRequests = vi.mocked(fetch).mock.calls
       .map(([path]) => new URL(String(path), "http://localhost"))

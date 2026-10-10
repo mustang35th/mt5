@@ -27,6 +27,7 @@ import type {
 import {
   displayValue,
   elliottDirectionSymbol,
+  formatAlertBarTimes,
   formatNumber,
   formatSignedNumber,
   sideClass,
@@ -47,6 +48,7 @@ import {
   w1ConfirmationModeLabel,
   w1ConfirmationStateDescription,
 } from "./W1ConfirmationBadge";
+import "./AlertDetailDrawer.css";
 
 export type AlertDetailView = "detail" | "comparison";
 
@@ -982,7 +984,8 @@ export function AlertDetailDrawer({
   let isM5Alert = false;
   let hasUpperCorrection = false;
   let correctionTimeFrame: "H1" | "M15" = "H1";
-  let title = "アラート詳細";
+  let title: ReactNode = "アラート詳細";
+  let titleDescription: string | undefined;
   if (hasDisplayedBundle && bundle) {
     const alert = bundle.detail.alert;
     isM5Alert = alert.time_frame === 5 || alert.time_frame_text === "M5"
@@ -1000,7 +1003,18 @@ export function AlertDetailDrawer({
     if (isM15Alert) correctionTimeFrame = "M15";
     hasUpperCorrection = (isH1Alert || isM15Alert) && (bundle.detail.correction?.status === "APPLIED"
       || bundle.detail.correction?.status === "INCOMPLETE");
-    title = `${alert.symbol_name} ${alert.side} / ${alert.current_bar_time_text}`;
+    const timeFrameText = alert.time_frame_text?.trim()
+      || bundle.timeFrames.items.find((timeFrame) => timeFrame.is_current_time_frame)?.time_frame_text
+      || "未記録";
+    const barTimes = formatAlertBarTimes(
+      alert.current_bar_time_text, alert.server_time_text, alert.jst_time_text,
+    );
+    titleDescription = "足開始時刻（JST / Server）";
+    title = <>
+      <span>{alert.symbol_name} {alert.side}</span>{" ｜ "}<span>{timeFrameText}</span>{" ｜ "}
+      <span className="alert-snapshot-jst">JST {barTimes.jst}</span>{" ｜ "}
+      <span className="alert-snapshot-server">Server {barTimes.server}</span>
+    </>;
   }
   let dialogClassName = "react-detail-dialog";
   if (isM5Alert || hasUpperCorrection || view === "comparison") {
@@ -1036,10 +1050,10 @@ export function AlertDetailDrawer({
       onClick={handleBackdropClick}
       ref={dialogRef}
     >
-      <div className="drawer-header">
-        <div>
+      <div className="drawer-header alert-snapshot-header">
+        <div className="alert-snapshot-heading">
           <p className="eyebrow">ALERT SNAPSHOT</p>
-          <h2 id="reactDetailTitle">{title}</h2>
+          <h2 id="reactDetailTitle" tabIndex={0} title={titleDescription}>{title}</h2>
         </div>
         <div className="observation-detail-header-actions">
           {hasDisplayedBundle && bundle && !isM5Alert && (
