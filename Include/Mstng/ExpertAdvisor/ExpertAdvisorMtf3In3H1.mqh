@@ -22,8 +22,10 @@
  *
  * D1とH4は売買方向の一致確認に使用し、H1とH4の第1波/3波、
  * または第3波に副次波がない有効な第5波をエントリー対象とする。
- * 方向一致、W1追加診断およびEMA200確認はMtf3In3H1Policyの固定設定を使い、
- * 明示的に有効化した場合だけ、D1・H4の片足逆方向を元H1方向へ補正する。
+ * 方向一致、W1確認およびEMA200確認はMtf3In3H1Policyを使い、
+ * 通常版H1では明示指定によりMN1方向とW1 EMA200の両方を必須にする。
+ * H4の波動制限を無効化した場合は、H4の分析取得だけを確認する。
+ * 方向補正を明示的に有効化した場合だけ、D1・H4の片足逆方向を元H1方向へ補正する。
  * H1の最新ZigZagポイントは確定・未確定を問わず、
  * 通常版ZigZagElliot以外ではエントリー成立時にメール送信対象とする。
  */
@@ -35,19 +37,24 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromDirectionCorrectionEnabled D1・H4の片足方向補正を使用する場合true。
+     * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
+     * @param fromH4WaveRestrictionEnabled H4の波番号と第5波構造を制限する場合true。
      */
     ExpertAdvisorMtf3In3H1(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow = true,
-        bool fromDirectionCorrectionEnabled = false
+        bool fromDirectionCorrectionEnabled = false,
+        bool fromRequireMn1AndW1Ema200 = false,
+        bool fromH4WaveRestrictionEnabled = true
     ) : ExpertAdvisorMTF_3in3(
         fromMarketContext,
         fromIsDrawArrow,
-        Mtf3In3H1Policy::getW1ConfirmationMode(),
-        Mtf3In3H1Policy::getDirectionAlignmentMode(),
+        Mtf3In3H1Policy::getW1ConfirmationMode(fromRequireMn1AndW1Ema200),
+        Mtf3In3H1Policy::getDirectionAlignmentMode(fromRequireMn1AndW1Ema200),
         Mtf3In3H1Policy::getEma200ConfirmationMode()
     ) {
         this.isDirectionCorrectionEnabled = fromDirectionCorrectionEnabled;
+        this.isH4WaveRestrictionEnabled = fromH4WaveRestrictionEnabled;
         this.correctedElliotAll = NULL;
         this.correctedTimeFrame = PERIOD_CURRENT;
     }
@@ -235,8 +242,8 @@ protected:
     /**
      * W1方向とW1 EMA200方向をH1エントリー方向と照合する。
      *
-     * 主条件と同じW1分析結果から診断を記録する。共通ポリシーの
-     * OBSERVE_ONLYを使用し、追加確認によるエントリー制限は行わない。
+     * 主条件と同じW1分析結果を使う。通常はOBSERVE_ONLYで診断を記録し、
+     * MN1・W1 EMA200のAND指定時はDIRECTION_AND_EMA200をエントリー条件にする。
      *
      * @return W1診断後にエントリー判定を継続する場合true。
      */
@@ -263,6 +270,7 @@ protected:
      *
      * H1を先に判定し、通過した場合だけH4を判定する。第1波と第3波は
      * 許可し、第5波は同じWaveの第3波に副次波がない場合だけ許可する。
+     * H4の波動制限が無効の場合、H4の分析取得だけを確認する。
      *
      * @param fromRejectReason 条件未達時の結果コード。
      * @return H1およびH4の波動条件を満たす場合true。
@@ -292,6 +300,16 @@ protected:
             fromRejectReason = h1Result.rejectReason;
 
             return false;
+        }
+
+        if (!this.isH4WaveRestrictionEnabled) {
+            if (!this.isH4WaveAnalysisAvailable()) {
+                fromRejectReason = "H4_ELLIOT_UNAVAILABLE";
+
+                return false;
+            }
+
+            return true;
         }
 
         H1EntryWaveResult h4Result;
@@ -389,11 +407,34 @@ private:
     /** D1・H4の片足方向補正を明示的に使用する場合true。 */
     bool isDirectionCorrectionEnabled;
 
+    /** H4の波番号と第5波構造を制限する場合true。 */
+    bool isH4WaveRestrictionEnabled;
+
     /** 全条件の判定に採用する補正分析。本クラスが所有する。 */
     ElliotAll *correctedElliotAll;
 
     /** 補正分析で方向を変更した時間足。補正なしはPERIOD_CURRENT。 */
     ENUM_TIMEFRAMES correctedTimeFrame;
+
+    /**
+     * H4の波番号を制限しない場合も、判定用の分析を取得できるか確認する。
+     *
+     * @return H4の最新Waveと空でないラベルの最新ポイントがある場合true。
+     */
+    bool isH4WaveAnalysisAvailable() {
+        if (this.elliotH4 == NULL
+                || this.elliotH4.marketContext.timeFrame != PERIOD_H4
+                || this.elliotH4.getLatestWave() == NULL) {
+            return false;
+        }
+
+        ZigZagPoint *latestPoint = this.elliotH4.getLatestPoint();
+        if (latestPoint == NULL) {
+            return false;
+        }
+
+        return !StringUtil::isEmpty(latestPoint.elliotLabel);
+    }
 
     /**
      * 指定したH1分析から構造ランクと3足の波動文言を生成する。

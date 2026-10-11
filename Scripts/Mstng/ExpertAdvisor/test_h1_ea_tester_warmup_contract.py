@@ -551,8 +551,12 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
     def read(path):
         return (ROOT / path).read_text(encoding="utf-8-sig")
 
-    def test_policy_owns_all_four_fixed_values(self):
+    def test_policy_preserves_defaults_and_allows_explicit_mn1_and_w1_ema200(self):
         policy = self.read("Include/Mstng/ExpertAdvisor/Mtf3In3H1Policy.mqh")
+        required = {
+            "DirectionAlignmentMode": "H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED",
+            "W1ConfirmationMode": "H1_W1_CONFIRMATION_DIRECTION_AND_EMA200",
+        }
         for getter, value in (
             ("DirectionAlignmentMode", "H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED"),
             ("W1ConfirmationMode", "H1_W1_CONFIRMATION_OBSERVE_ONLY"),
@@ -560,14 +564,30 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
             ("AnalysisStartTimeFrame", "PERIOD_MN1"),
         ):
             with self.subTest(getter=getter):
-                self.assertEqual(code_only(method(policy, "get" + getter)).strip(), f"return {value};")
+                body = re.sub(r"\s+", "", code_only(method(policy, "get" + getter)))
+                if getter in required:
+                    self.assertRegex(
+                        code_only(policy),
+                        rf"get{getter}\(\s*(?:const\s+)?bool\s+fromRequireMn1AndW1Ema200\s*=\s*false\s*\)",
+                    )
+                    self.assertEqual(
+                        body,
+                        "if(fromRequireMn1AndW1Ema200){return" + required[getter]
+                        + ";}return" + value + ";",
+                    )
+                else:
+                    self.assertEqual(body, f"return{value};")
 
     def test_config_defaults_and_normalization_read_the_same_policy(self):
         config = self.read("Include/Mstng/Indicator/ZigZagElliot/ZigZagElliotConfig.mqh")
-        self.assertIn("this.applyH1EntryPolicy();", code_only(method(config, "ZigZagElliotConfig")))
+        constructor = re.sub(r"\s+", "", code_only(method(config, "ZigZagElliotConfig")))
+        self.assertLess(constructor.index("this.h1Mn1AndW1Ema200Required=false;"),
+                        constructor.index("this.applyH1EntryPolicy();"))
+        self.assertIn("this.h1H4WaveRestrictionEnabled=true;", constructor)
         normalize = re.sub(r"\s+", "", code_only(method(config, "applyH1EntryPolicy")))
         for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):
-            self.assertIn(f"this.h1{suffix}=Mtf3In3H1Policy::get{suffix}();", normalize)
+            argument = "this.h1Mn1AndW1Ema200Required" if suffix != "Ema200ConfirmationMode" else ""
+            self.assertIn(f"this.h1{suffix}=Mtf3In3H1Policy::get{suffix}({argument});", normalize)
 
     def test_unanalyzed_decision_metadata_also_records_the_common_policy(self):
         controller = CONTROLLER.read_text(encoding="utf-8-sig")
@@ -590,22 +610,43 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 initialize = code_only(method(source, "OnInit"))
                 self.assertIn(f"{config_name}.applyH1EntryPolicy();", initialize)
                 self.assertNotRegex(initialize, rf"{config_name}\.h1(?:DirectionAlignment|W1Confirmation|Ema200Confirmation)Mode\s*=")
+                compact = re.sub(r"\s+", "", initialize)
+                if path == "Indicators/ZigZagElliot.mq5":
+                    self.assertLess(
+                        compact.index("config.h1Mn1AndW1Ema200Required=_Period==PERIOD_H1;"),
+                        compact.index("config.applyH1EntryPolicy();"),
+                    )
+                    self.assertLess(
+                        compact.index("config.h1H4WaveRestrictionEnabled=_Period!=PERIOD_H1;"),
+                        compact.index("config.applyH1EntryPolicy();"),
+                    )
+                else:
+                    self.assertNotIn("h1Mn1AndW1Ema200Required", compact)
+                    self.assertNotIn("h1H4WaveRestrictionEnabled", compact)
 
     def test_h1_constructor_and_factory_disallow_legacy_override_arguments(self):
         strategy = code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3H1.mqh"))
         compact = re.sub(r"\s+", "", strategy)
         self.assertIn(
-            "ExpertAdvisorMtf3In3H1(MarketContext&fromMarketContext,boolfromIsDrawArrow=true,boolfromDirectionCorrectionEnabled=false)"
+            "ExpertAdvisorMtf3In3H1(MarketContext&fromMarketContext,boolfromIsDrawArrow=true,boolfromDirectionCorrectionEnabled=false,"
+            "boolfromRequireMn1AndW1Ema200=false,boolfromH4WaveRestrictionEnabled=true)"
             ":ExpertAdvisorMTF_3in3(fromMarketContext,fromIsDrawArrow,"
-            "Mtf3In3H1Policy::getW1ConfirmationMode(),Mtf3In3H1Policy::getDirectionAlignmentMode(),"
+            "Mtf3In3H1Policy::getW1ConfirmationMode(fromRequireMn1AndW1Ema200),"
+            "Mtf3In3H1Policy::getDirectionAlignmentMode(fromRequireMn1AndW1Ema200),"
             "Mtf3In3H1Policy::getEma200ConfirmationMode())", compact,
         )
         factory = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh")))
         self.assertIn(
             "if(fromMarketContext.timeFrame==PERIOD_H1){"
-            "returnnewExpertAdvisorMtf3In3H1(fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled);}", factory,
+            "returnnewExpertAdvisorMtf3In3H1(fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled,"
+            "fromH1Mn1AndW1Ema200Required,fromH1H4WaveRestrictionEnabled);}", factory,
         )
         self.assertIn("boolfromH1DirectionCorrectionEnabled=false", factory)
+        self.assertIn("boolfromH1Mn1AndW1Ema200Required=false", factory)
+        self.assertEqual(factory.count("fromH1Mn1AndW1Ema200Required"), 2)
+        self.assertIn("this.isH4WaveRestrictionEnabled=fromH4WaveRestrictionEnabled;", compact)
+        self.assertIn("boolfromH1H4WaveRestrictionEnabled=true", factory)
+        self.assertEqual(factory.count("fromH1H4WaveRestrictionEnabled"), 2)
         # The other-timeframe compatibility signature is intentionally retained.
         for argument in ("fromH1W1ConfirmationMode", "fromH1DirectionAlignmentMode", "fromH1Ema200ConfirmationMode"):
             self.assertIn(argument, factory)
@@ -631,10 +672,23 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 if name == "Mtf3In3AlertController":
                     self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
                                     initialize.index("ExpertAdvisorMtf3In3Factory::create("))
+                    self.assertRegex(
+                        initialize,
+                        r"ExpertAdvisorMtf3In3Factory::create\([^;]*,\s*this\.config\.h1Mn1AndW1Ema200Required"
+                        r"\s*,\s*this\.config\.h1H4WaveRestrictionEnabled\s*\);",
+                    )
                 else:
                     self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
                                     initialize.index("state.initialize(info.symbolName, this.config)"))
+                    self.assertNotIn("h1Mn1AndW1Ema200Required", code_only(source))
+                    self.assertNotIn("h1H4WaveRestrictionEnabled", code_only(source))
                 text = method(source, "createInputText")
+                if name == "Mtf3In3AlertController":
+                    self.assertIn(
+                        'if(this.marketContext.timeFrame==PERIOD_H1){inputText+="|h1H4WaveRestrictionEnabled="'
+                        '+(string)this.config.h1H4WaveRestrictionEnabled;}',
+                        re.sub(r"\s+", "", text),
+                    )
                 for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):
                     self.assertRegex(
                         text, rf'inputText\s*\+=\s*"\|h1{suffix}="\s*\+\s*'

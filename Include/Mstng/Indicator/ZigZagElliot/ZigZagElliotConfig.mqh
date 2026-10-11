@@ -69,6 +69,12 @@ public:
     /** H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。 */
     bool h1DirectionCorrectionEnabled;
 
+    /** 通常版H1でMN1方向とW1 EMA200の両方を必須にする場合true。 */
+    bool h1Mn1AndW1Ema200Required;
+
+    /** H1エントリーでH4の波番号と第5波構造を制限する場合true。 */
+    bool h1H4WaveRestrictionEnabled;
+
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
 
@@ -137,6 +143,8 @@ public:
         this.databaseAlertDisplayEndDate = 0;
         this.databaseAlertDisplayEntryOnly = false;
         this.h1DirectionCorrectionEnabled = false;
+        this.h1Mn1AndW1Ema200Required = false;
+        this.h1H4WaveRestrictionEnabled = true;
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.m15H4MaxFibonacciExpansionPercent = 161.8;
         this.m15H1MaxFibonacciExpansionPercent = 161.8;
@@ -159,11 +167,15 @@ public:
     }
 
     /**
-     * H1・M15の判定とRun設定が一致するように共通の固定条件を適用する。
+     * H1・M15の判定とRun設定が一致するように共通条件と明示したAND設定を適用する。
      */
     void applyH1EntryPolicy() {
-        this.h1W1ConfirmationMode = Mtf3In3H1Policy::getW1ConfirmationMode();
-        this.h1DirectionAlignmentMode = Mtf3In3H1Policy::getDirectionAlignmentMode();
+        this.h1W1ConfirmationMode = Mtf3In3H1Policy::getW1ConfirmationMode(
+            this.h1Mn1AndW1Ema200Required
+        );
+        this.h1DirectionAlignmentMode = Mtf3In3H1Policy::getDirectionAlignmentMode(
+            this.h1Mn1AndW1Ema200Required
+        );
         this.h1Ema200ConfirmationMode = Mtf3In3H1Policy::getEma200ConfirmationMode();
     }
 };

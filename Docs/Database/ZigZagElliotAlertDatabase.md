@@ -129,6 +129,8 @@ ON zigzag_elliot_alert_runs(started_at);
 
 通常版v1.45のAlert Runは`schema_version = 7`を維持し、M5の`strategy_version`は`MTF3IN3_M5_CORRECTED_WAVES_V12`です。保存開始日時の追加ではスキーマや分析バージョンを更新しません。補正前後の追加保存領域については[ZigZagElliot仕様書](../Indicator/ZigZagElliot.md)を参照してください。現行のH1 Observation Runは`schema_version = 6`、`program_version = 1.04`、`strategy_version = H1_OBSERVATION_ALL_V5`です。既存Runのバージョンは書き換えません。
 
+通常版v1.66のH1では、`input_text`と`input_hash`に`h1H4WaveRestrictionEnabled=false`を含め、H4の波番号・第5波構造をエントリー制限に使わないことを記録します。`strategy_version`は`MTF3IN3_H1_H4_WAVE_UNRESTRICTED_V19`です。H4の波動データと構造ランクは引き続き保存します。Viewerは明示された解除設定を表示し、未記録の過去Runへ新条件を適用しません。DBスキーマと分析Profileは変更しません。
+
 ### 6.3 テスター保存開始設定の記録
 
 通常版v1.45の`mtf3In3AlertTesterSaveStartTime`は、指定値と実効開始日時を既存の`input_text`へ記録し、その内容を`input_hash`へ反映します。通常チャートでは実効開始日時を`0`とします。分析条件を変える設定ではないため、`analysis_input_text`・`analysis_input_hash`は変更しません。Runは初期化時に作成し、指定日時への到達まで作成を遅らせません。既存Runの内容は書き換えません。
@@ -163,7 +165,7 @@ H1のW1確認は、W1の3本Stochasticによる分析方向とW1 EMA200方向を
 
 H1方向一致はH1の3本Stochastic多数決方向を基準にします。`D1_TO_H1`は従来のD1・H4・H1一致条件を維持し、`MN1_TO_H1_OBSERVE`はMN1・W1・D1・H4・H1の一致結果を記録するだけでエントリーを制限しません。`MN1_TO_H1_REQUIRED`は同じ5足の全一致を必須にします。`W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`はW1・D1・H4・H1の全一致に加え、MN1方向またはW1 EMA200方向のどちらか一方がH1方向と一致することを必須にします。REQUIREDモードは取得不能または不正値をfail-closedで拒否します。
 
-`ZigZagElliot`の既定値は`W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`です。
+通常版`ZigZagElliot`のH1はv1.65から`MN1_TO_H1_REQUIRED`とW1確認の`DIRECTION_AND_EMA200`を組み合わせ、MN1方向とW1 EMA200の両方を必須にします。Run設定とAlert診断にもこの既存2モードを保存します。M15・一覧Alert・EAは従来の`W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`を維持します。既存モードを使用するためDBスキーマと過去レコードは変更しません。
 
 `MN1_TO_H1_REQUIRED`と`W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED`ではW1分析方向の一致がすでに必須です。そのためW1確認を`DIRECTION_OR_EMA200`にすると方向条件で常に通過し、`DIRECTION_AND_EMA200`にすると実質的にW1 EMA200一致が追加条件になります。`MN1_TO_H1_OBSERVE`は記録だけなので、既存のW1確認ゲート動作を変えません。
 

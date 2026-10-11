@@ -57,6 +57,44 @@ function item(
 }
 
 describe("buildH1EntryCheckSnapshot", () => {
+  it("marks unrestricted H4 waves as reference without changing H1 or the saved result", () => {
+    const timeFrames = passingBuyTimeFrames().map((frame) => (
+      frame.time_frame_text === "H4" ? { ...frame, latest_elliot_label: "2" } : frame
+    ));
+    const decision = {
+      time_frame_text: "H1", is_entry: true, entry_result: "ENTRY",
+    } as AlertDetail;
+    const previous = buildH1EntryCheckSnapshot(timeFrames, 1, decision);
+    const snapshot = buildH1EntryCheckSnapshot(
+      timeFrames, 1, decision, "h1H4WaveRestrictionEnabled=false",
+    );
+
+    expect(item(snapshot.items, "h4_elliott_wave")).toMatchObject({
+      status: "対象外", required: false, actual: "wave 2",
+      expected: "波番号・第5波構造の制限なし（参考表示）",
+    });
+    expect(snapshot.items.filter((entry) => entry.id !== "h4_elliott_wave"))
+      .toEqual(previous.items);
+    expect(snapshot.overallStatus).toBe(previous.overallStatus);
+    expect(snapshot.overallReason).toBe("ENTRY");
+    expect(previous.items.some((entry) => entry.id === "h4_elliott_wave")).toBe(false);
+  });
+
+  it("does not infer H4 data or apply saved settings to observations", () => {
+    const timeFrames = passingBuyTimeFrames().filter((frame) => frame.time_frame_text !== "H4");
+    const input = "h1H4WaveRestrictionEnabled=false";
+    const snapshot = buildH1EntryCheckSnapshot(timeFrames, 1, {
+      time_frame_text: "H1", is_entry: false, entry_result: "H4_ELLIOT_UNAVAILABLE",
+    } as AlertDetail, input);
+    expect(item(snapshot.items, "h4_elliott_wave")).toMatchObject({
+      actual: "記録なし", status: "対象外", required: false,
+    });
+    expect(snapshot.overallStatus).toBe("NG");
+    expect(snapshot.overallReason).toBe("H4_ELLIOT_UNAVAILABLE");
+    expect(buildH1EntryCheckSnapshot(timeFrames, 1, null, input).items
+      .some((entry) => entry.id === "h4_elliott_wave")).toBe(false);
+  });
+
   it("marks determinable BUY conditions as OK but keeps the overall unknown", () => {
     const snapshot = buildH1EntryCheckSnapshot(passingBuyTimeFrames(), 1.2);
 

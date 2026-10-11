@@ -5,6 +5,7 @@ import type {
 } from "../api/types";
 import { evaluateCurrencyStrengthSnapshot } from "../lib/currencyStrengthSnapshot";
 import { formatNumber, formatSignedNumber } from "../lib/format";
+import { H4_WAVE_UNRESTRICTED_DESCRIPTION, isH1H4WaveRestrictionDisabled } from "../lib/h1EntryPolicy";
 
 export type H1EntryCheckStatus = "OK" | "NG" | "参考" | "対象外" | "不明";
 
@@ -894,6 +895,15 @@ export function buildH1EntryCheckSnapshot(
     buildHigherEma200Item("D1", d1, h1Direction, emaMode),
     buildW1Item(w1, fromSavedDecision),
     buildCountItem(fromSavedDecision),
+    ...(isH1H4WaveRestrictionDisabled(fromSavedDecision?.time_frame_text, fromSavedRunInputText)
+      ? [optionalItem(
+        "h4_elliott_wave",
+        "Entry",
+        "H4波番号",
+        h4?.latest_elliot_label?.trim() ? `wave ${h4.latest_elliot_label.trim()}` : "記録なし",
+        H4_WAVE_UNRESTRICTED_DESCRIPTION,
+        "対象外",
+      )] : []),
     buildDisplayWaveScopeItem(fromSavedDecision),
     buildEma200DistanceItem(h1, fromSavedDecision),
   ];

@@ -95,7 +95,9 @@ public:
             this.config.h1Ema200ConfirmationMode,
             this.config.h1DirectionCorrectionEnabled,
             this.config.m15H4MaxFibonacciExpansionPercent,
-            this.config.m15H1MaxFibonacciExpansionPercent
+            this.config.m15H1MaxFibonacciExpansionPercent,
+            this.config.h1Mn1AndW1Ema200Required,
+            this.config.h1H4WaveRestrictionEnabled
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -539,11 +541,19 @@ private:
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
+        if (this.databaseRun.programName == "ZigZagElliot") {
+            this.databaseRun.programVersion = "1.66";
+        }
+
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_H1
                 && this.config.h1DirectionCorrectionEnabled) {
             this.databaseRun.strategyVersion = "MTF3IN3_H1_CORRECTED_WAVES_V14";
+        }
+        if (this.marketContext.timeFrame == PERIOD_H1
+                && !this.config.h1H4WaveRestrictionEnabled) {
+            this.databaseRun.strategyVersion = "MTF3IN3_H1_H4_WAVE_UNRESTRICTED_V19";
         }
         if (this.marketContext.timeFrame == PERIOD_M5) {
             this.databaseRun.strategyVersion = "MTF3IN3_M5_SPREAD5_V13";
@@ -589,6 +599,11 @@ private:
             + (string)this.config.h1DisplayWaveEntryLimitEnabled;
         inputText += "|h1DirectionCorrectionEnabled="
             + (string)this.config.h1DirectionCorrectionEnabled;
+        if (this.marketContext.timeFrame == PERIOD_H1) {
+            inputText += "|h1H4WaveRestrictionEnabled="
+                + (string)this.config.h1H4WaveRestrictionEnabled;
+        }
+
         inputText += "|h1W1ConfirmationMode="
             + getH1W1ConfirmationModeText(
                 this.config.h1W1ConfirmationMode

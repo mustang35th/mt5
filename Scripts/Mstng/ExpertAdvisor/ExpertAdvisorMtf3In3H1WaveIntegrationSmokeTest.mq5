@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.00"
+#property version   "1.01"
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3H1.mqh>
 
@@ -21,10 +21,14 @@ public:
      * H1市場コンテキストで初期化する。
      *
      * @param fromMarketContext H1市場コンテキスト。
+     * @param fromH4WaveRestrictionEnabled H4波番号の制限を使用する場合true。
      */
     ExpertAdvisorMtf3In3H1WaveTestAdapter(
-        MarketContext &fromMarketContext
-    ) : ExpertAdvisorMtf3In3H1(fromMarketContext, false) {
+        MarketContext &fromMarketContext,
+        bool fromH4WaveRestrictionEnabled = true
+    ) : ExpertAdvisorMtf3In3H1(
+        fromMarketContext, false, false, false, fromH4WaveRestrictionEnabled
+    ) {
     }
 
     /**
@@ -189,6 +193,7 @@ Elliot *createWave5Elliot(
  * @param fromH4Wave3SubElliotLabel H4第3波の副次波ラベル。
  * @param fromExpectedResult 期待する判定結果。
  * @param fromExpectedRejectReason 期待する対象外理由。
+ * @param fromH4WaveRestrictionEnabled H4波番号の制限を使用する場合true。
  */
 void validateEntryCase(
     const string fromCaseName,
@@ -197,7 +202,8 @@ void validateEntryCase(
     const int fromH4Wave3SubElliotIndex,
     const string fromH4Wave3SubElliotLabel,
     const bool fromExpectedResult,
-    const string fromExpectedRejectReason
+    const string fromExpectedRejectReason,
+    const bool fromH4WaveRestrictionEnabled = true
 ) {
     Elliot *elliotH1 = createWave5Elliot(
         PERIOD_H1,
@@ -225,7 +231,9 @@ void validateEntryCase(
     }
 
     MarketContext context("EURUSD", PERIOD_H1);
-    ExpertAdvisorMtf3In3H1WaveTestAdapter expertAdvisor(context);
+    ExpertAdvisorMtf3In3H1WaveTestAdapter expertAdvisor(
+        context, fromH4WaveRestrictionEnabled
+    );
     expertAdvisor.setTestElliots(elliotH1, elliotH4);
     bool isEntryWave = expertAdvisor.evaluateCurrentEntryWave();
     string rejectReason = "NOT_EVALUATED";
@@ -240,6 +248,127 @@ void validateEntryCase(
         fromCaseName + " reason",
         rejectReason == fromExpectedRejectReason
     );
+
+    expertAdvisor.setTestElliots(NULL, NULL);
+    delete elliotH1;
+    delete elliotH4;
+}
+
+/**
+ * H4制限解除時だけ追加ラベルが許可され、H1判定は維持されることを検証する。
+ *
+ * @param fromTimeFrame ラベルを変更する時間足。
+ * @param fromElliotIndex 検証する波番号。
+ * @param fromIsAlphabet アルファベット波の場合true。
+ */
+void validateLabelCase(
+    const ENUM_TIMEFRAMES fromTimeFrame,
+    const int fromElliotIndex,
+    const bool fromIsAlphabet
+) {
+    Elliot *elliotH1 = createWave5Elliot(PERIOD_H1, 0, "");
+    Elliot *elliotH4 = createWave5Elliot(PERIOD_H4, 0, "");
+    if (elliotH1 == NULL || elliotH4 == NULL) {
+        assertCondition("LABEL fixture", false);
+        if (elliotH1 != NULL) {
+            delete elliotH1;
+        }
+
+        if (elliotH4 != NULL) {
+            delete elliotH4;
+        }
+
+        return;
+    }
+
+    Elliot *target = elliotH4;
+    if (fromTimeFrame == PERIOD_H1) {
+        target = elliotH1;
+    }
+
+    ZigZagPoint *latestPoint = target.getLatestPoint();
+    latestPoint.elliotIndex = fromElliotIndex;
+    latestPoint.isElliotAlphabet = fromIsAlphabet;
+    latestPoint.setElliotLabel();
+    Wave *latestWave = target.getLatestWave();
+    latestWave.isMotive = !fromIsAlphabet;
+    string caseName = EnumToString(fromTimeFrame) + " " + latestPoint.elliotLabel;
+
+    MarketContext context("EURUSD", PERIOD_H1);
+    ExpertAdvisorMtf3In3H1WaveTestAdapter restricted(context);
+    ExpertAdvisorMtf3In3H1WaveTestAdapter unrestricted(context, false);
+    restricted.setTestElliots(elliotH1, elliotH4);
+    unrestricted.setTestElliots(elliotH1, elliotH4);
+    string rejectReason = "NOT_EVALUATED";
+    assertCondition(caseName + " default rejects", !restricted.evaluateWaveEntry(rejectReason));
+    bool expected = fromTimeFrame == PERIOD_H4;
+    bool actual = unrestricted.evaluateWaveEntry(rejectReason);
+    assertCondition(caseName + " unrestricted result", actual == expected);
+    assertCondition(caseName + " H1 label scope", unrestricted.evaluateCurrentEntryWave() == expected);
+    if (expected) {
+        assertCondition(caseName + " reason cleared", rejectReason == "");
+    } else {
+        assertCondition(caseName + " H1 rejection", rejectReason == "ELLIOT_LABEL_REJECTED");
+    }
+
+    restricted.setTestElliots(NULL, NULL);
+    unrestricted.setTestElliots(NULL, NULL);
+    delete elliotH1;
+    delete elliotH4;
+}
+
+/**
+ * H4分析情報の欠損が制限解除後も拒否されることを検証する。
+ *
+ * @param fromExpertAdvisor 制限解除済みの判定アダプター。
+ * @param fromCaseName 検証名。
+ */
+void assertUnavailableH4(
+    ExpertAdvisorMtf3In3H1WaveTestAdapter &fromExpertAdvisor,
+    const string fromCaseName
+) {
+    string rejectReason = "NOT_EVALUATED";
+    assertCondition(fromCaseName + " rejected", !fromExpertAdvisor.evaluateWaveEntry(rejectReason));
+    assertCondition(fromCaseName + " reason", rejectReason == "H4_ELLIOT_UNAVAILABLE");
+}
+
+/**
+ * H4の参照、時間足、ラベル、ポイントおよびWaveの欠損を検証する。
+ */
+void validateUnavailableH4Cases() {
+    Elliot *elliotH1 = createWave5Elliot(PERIOD_H1, 0, "");
+    Elliot *elliotH4 = createWave5Elliot(PERIOD_H4, 0, "");
+    if (elliotH1 == NULL || elliotH4 == NULL) {
+        assertCondition("UNAVAILABLE fixture", false);
+        if (elliotH1 != NULL) {
+            delete elliotH1;
+        }
+
+        if (elliotH4 != NULL) {
+            delete elliotH4;
+        }
+
+        return;
+    }
+
+    MarketContext context("EURUSD", PERIOD_H1);
+    ExpertAdvisorMtf3In3H1WaveTestAdapter expertAdvisor(context, false);
+    expertAdvisor.setTestElliots(elliotH1, NULL);
+    assertUnavailableH4(expertAdvisor, "MISSING H4");
+    expertAdvisor.setTestElliots(elliotH1, elliotH4);
+    elliotH4.marketContext.timeFrame = PERIOD_D1;
+    assertUnavailableH4(expertAdvisor, "WRONG H4 TIMEFRAME");
+    elliotH4.marketContext.timeFrame = PERIOD_H4;
+
+    ZigZagPoint *latestPoint = elliotH4.getLatestPoint();
+    latestPoint.elliotLabel = "";
+    assertUnavailableH4(expertAdvisor, "EMPTY H4 LABEL");
+
+    Wave *latestWave = elliotH4.getLatestWave();
+    latestWave.zigZagPointList.Clear();
+    assertUnavailableH4(expertAdvisor, "MISSING H4 POINT");
+    elliotH4.waveList.Clear();
+    assertUnavailableH4(expertAdvisor, "MISSING H4 WAVE");
 
     expertAdvisor.setTestElliots(NULL, NULL);
     delete elliotH1;
@@ -279,6 +408,26 @@ void OnStart() {
         false,
         "H4_WAVE3_SUB_ELLIOT_PRESENT_REJECTED"
     );
+    validateEntryCase(
+        "UNRESTRICTED H4 SUB ELLIOT", 0, "", 0, "iii", true, "", false
+    );
+    validateEntryCase(
+        "UNRESTRICTED H4 KEEPS H1 SUB REJECTION",
+        1, "", 0, "", false, "H1_WAVE3_SUB_ELLIOT_PRESENT_REJECTED", false
+    );
+
+    int numericLabels[] = {2, 4, 7, 9};
+    for (int i = 0; i < ArraySize(numericLabels); i++) {
+        validateLabelCase(PERIOD_H4, numericLabels[i], false);
+        validateLabelCase(PERIOD_H1, numericLabels[i], false);
+    }
+
+    for (int i = 1; i <= 3; i++) {
+        validateLabelCase(PERIOD_H4, i, true);
+        validateLabelCase(PERIOD_H1, i, true);
+    }
+
+    validateUnavailableH4Cases();
 
     if (gFailureCount == 0) {
         Print(

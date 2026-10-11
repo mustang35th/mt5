@@ -17,6 +17,7 @@
  * 現在時間足に対応するMTF_3in3判定クラスを生成する。
  *
  * H1・M15はH1共通ポリシーに固定し、確認モード引数による上書きを受け付けない。
+ * H1だけは明示指定によりMN1方向とW1 EMA200の両方を必須にできる。
  * 確認モード引数はその他の従来互換経路のために維持する。
  * 呼び出し元のH1設定記録も共通ポリシーから生成すること。
  *
@@ -35,6 +36,8 @@ public:
      * @param fromH1DirectionCorrectionEnabled H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。
      * @param fromM15H4MaxFibonacciExpansionPercent M15で使用するH4のFE上限（%）。0は制限なし。
      * @param fromM15H1MaxFibonacciExpansionPercent M15で使用するH1のFE上限（%）。0は制限なし。
+     * @param fromH1Mn1AndW1Ema200Required H1でMN1方向とW1 EMA200の両方を必須にする場合true。
+     * @param fromH1H4WaveRestrictionEnabled H1でH4の波番号と第5波構造を制限する場合true。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */
     static ExpertAdvisorMTF_3in3 *create(
@@ -48,13 +51,17 @@ public:
             H1_EMA200_CONFIRMATION_H1_ONLY,
         bool fromH1DirectionCorrectionEnabled = false,
         double fromM15H4MaxFibonacciExpansionPercent = 0.0,
-        double fromM15H1MaxFibonacciExpansionPercent = 0.0
+        double fromM15H1MaxFibonacciExpansionPercent = 0.0,
+        bool fromH1Mn1AndW1Ema200Required = false,
+        bool fromH1H4WaveRestrictionEnabled = true
     ) {
         if (fromMarketContext.timeFrame == PERIOD_H1) {
             return new ExpertAdvisorMtf3In3H1(
                 fromMarketContext,
                 fromIsDrawArrow,
-                fromH1DirectionCorrectionEnabled
+                fromH1DirectionCorrectionEnabled,
+                fromH1Mn1AndW1Ema200Required,
+                fromH1H4WaveRestrictionEnabled
             );
         }
 

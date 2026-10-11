@@ -13,8 +13,17 @@ class Mtf3In3H1Policy {
 public:
     /**
      * W1～H1の方向一致と、MN1またはW1 EMA200の同方向一致を要求する。
+     * AND指定時はMN1～H1の全方向一致を要求し、W1確認側でEMA200を必須にする。
+     *
+     * @param fromRequireMn1AndW1Ema200 MN1とW1 EMA200の両方を必須にする場合true。
      */
-    static H1DirectionAlignmentMode getDirectionAlignmentMode() {
+    static H1DirectionAlignmentMode getDirectionAlignmentMode(
+        const bool fromRequireMn1AndW1Ema200 = false
+    ) {
+        if (fromRequireMn1AndW1Ema200) {
+            return H1_DIRECTION_ALIGNMENT_MN1_TO_H1_REQUIRED;
+        }
+
         return H1_DIRECTION_ALIGNMENT_W1_TO_H1_WITH_MN1_OR_EMA200_REQUIRED;
     }
 
@@ -26,9 +35,17 @@ public:
     }
 
     /**
-     * W1追加確認は診断だけを記録し、追加のエントリー制限は行わない。
+     * 通常はW1追加確認を診断だけにし、AND指定時は方向とEMA200の一致を必須にする。
+     *
+     * @param fromRequireMn1AndW1Ema200 MN1とW1 EMA200の両方を必須にする場合true。
      */
-    static H1W1ConfirmationMode getW1ConfirmationMode() {
+    static H1W1ConfirmationMode getW1ConfirmationMode(
+        const bool fromRequireMn1AndW1Ema200 = false
+    ) {
+        if (fromRequireMn1AndW1Ema200) {
+            return H1_W1_CONFIRMATION_DIRECTION_AND_EMA200;
+        }
+
         return H1_W1_CONFIRMATION_OBSERVE_ONLY;
     }
 

@@ -34,6 +34,7 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { H4_WAVE_UNRESTRICTED_DESCRIPTION, isH1H4WaveRestrictionDisabled } from "../lib/h1EntryPolicy";
 import { CurrencyStrengthSnapshotPanel } from "./CurrencyStrengthSnapshotPanel";
 import { ElliottLabelText } from "./ElliottLabelText";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
@@ -587,6 +588,9 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
             <DetailField label="Alert / Entry" value={`${yesNo(alert.is_alert)} / ${yesNo(alert.is_entry)}`} />
             <DetailField label="Entry result" value={alert.entry_result} />
             <DetailField label="現在Elliott" value={`wave ${displayValue(alert.current_elliot_label)}`} />
+            {isH1H4WaveRestrictionDisabled(alert.time_frame_text, run?.input_text) && (
+              <DetailField label="H4波動制限" value={H4_WAVE_UNRESTRICTED_DESCRIPTION} />
+            )}
             <DetailField label="EMA200距離" value={`${formatNumber(alert.close_ema200_diff_pips)} / max ${formatNumber(alert.max_close_ema200_diff_pips)} pips`} />
             <DetailField label="Spread" value={`${formatNumber(alert.spread_pips)} pips`} />
             <DetailField label="通貨強弱" value={`${displayValue(alert.currency_strength_status)} / ${alert.is_currency_strength_available ? "取得済" : "未取得"}`} />

@@ -351,6 +351,43 @@ afterEach(() => {
 });
 
 describe("AlertDetailDrawer correction integration", () => {
+  it.each([undefined, "true", "false"])(
+    "shows H4 restriction changes in normal H1 detail and ENTRY CHECK only for saved false: %s",
+    async (setting) => {
+      const data = h1Fixture(16408, "BUY", "NONE");
+      if (setting !== undefined) {
+        data.detail.run!.input_text = `h1H4WaveRestrictionEnabled=${setting}`;
+      }
+      serve(data);
+      render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+      await screen.findByRole("heading", { name: "判定情報" });
+      expect(screen.queryByText("H4波動制限") !== null).toBe(setting === "false");
+      fireEvent.click(screen.getByRole("button", { name: "TF比較" }));
+      const panel = await screen.findByRole("region", { name: h1PanelName });
+      fireEvent.click(within(panel).getByText("条件を表示"));
+      expect(within(panel).queryByLabelText("H4波番号 対象外") !== null).toBe(setting === "false");
+      expect(within(panel).getByRole("status")).toHaveTextContent("ENTRY");
+    },
+  );
+
+  it("keeps the saved H4 exemption and ENTRY fixed across corrected H1 views", async () => {
+    const data = h1Fixture(16388);
+    data.detail.run!.input_text = "h1H4WaveRestrictionEnabled=false";
+    serve(data);
+    render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+    const snapshot = await screen.findByRole("region", { name: "H1アラート補正スナップショット" });
+    const saved = within(snapshot).getByRole("region", { name: "保存済みエントリー判定" });
+    expect(saved).toHaveTextContent("H4波動：波番号・第5波構造の制限なし（参考表示）");
+    const originalDecisionText = saved.textContent;
+    for (const label of ["補正前", "前後比較", "補正後（採用）"]) {
+      fireEvent.click(within(snapshot).getByRole("button", { name: label }));
+      expect(saved.textContent).toBe(originalDecisionText);
+    }
+    fireEvent.click(screen.getByRole("button", { name: "TF比較" }));
+    expect(screen.getByRole("region", { name: "保存済みエントリー判定" }).textContent)
+      .toBe(originalDecisionText);
+  });
+
   it.each(["detail", "comparison"] as const)("shows the adopted M15 six-frame snapshot in %s", async (initialView) => {
     serve(h1Fixture(16408, "BUY", "APPLIED", 74, 15));
     render(<AlertDetailDrawer alertId={74} initialView={initialView} onClose={vi.fn()} />);

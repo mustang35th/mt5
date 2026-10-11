@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { AlertCorrectionMetadata, AlertCorrectionResponse, AlertDetailResponse, AlertPoint, AlertTimeFrame } from "../api/types";
 import { formatElliottLabel } from "../lib/format";
+import { H4_WAVE_UNRESTRICTED_DESCRIPTION, isH1H4WaveRestrictionDisabled } from "../lib/h1EntryPolicy";
 import { CurrencyStrengthSnapshotPanel } from "./CurrencyStrengthSnapshotPanel";
 import { ElliottLabelText } from "./ElliottLabelText";
 import "./M5AlertSnapshot.css";
@@ -287,7 +288,11 @@ function SnapshotContent({ detail, timeFrames, points, currentTimeFrame }: Alert
       {applied && metadata && <span className="m5-alert-correction-badge">{frames.find((frame) => frame.id === metadata.correction_time_frame)?.label}方向補正：<span className={sideClass(metadata.original_direction)}>{metadata.original_direction}</span> → <span className={sideClass(metadata.corrected_direction)}>{metadata.corrected_direction}</span></span>}
       {detail.correction?.reason && <small>{detail.correction.reason}</small>}
     </div>
-    <section className="m5-alert-decision" aria-label="保存済みエントリー判定"><strong>保存判定：{text(detail.alert.entry_result)}</strong><span>採用結果を固定表示・再判定なし</span><span className={sideClass(detail.alert.side)}>{detail.alert.side}</span><span>Signal / Entry {detail.alert.signal_count} / {detail.alert.entry_count}</span><span>{text(savedAlertText)}</span></section>
+    <section className="m5-alert-decision" aria-label="保存済みエントリー判定"><strong>保存判定：{text(detail.alert.entry_result)}</strong><span>採用結果を固定表示・再判定なし</span><span className={sideClass(detail.alert.side)}>{detail.alert.side}</span><span>Signal / Entry {detail.alert.signal_count} / {detail.alert.entry_count}</span><span>{text(savedAlertText)}</span>
+      {currentTimeFrame === "H1" && isH1H4WaveRestrictionDisabled(detail.alert.time_frame_text, detail.run?.input_text) && (
+        <span>H4波動：{H4_WAVE_UNRESTRICTED_DESCRIPTION}</span>
+      )}
+    </section>
     <StopLoss detail={detail} status={status} />
     <details className="m5-alert-extra"><summary>通貨強弱（Alert保存時点）</summary><CurrencyStrengthSnapshotPanel alert={detail.alert} /></details>
     <div className="m5-alert-toolbar"><div role="group" aria-label="分析の表示対象">
