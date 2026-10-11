@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isH1H4WaveRestrictionDisabled, isH4WaveRestrictionDisabled, isM15H4FeLimitDisabled } from "./h1EntryPolicy";
+import { isH1H4WaveRestrictionDisabled, isH4WaveRestrictionDisabled, isM15H4FeLimitDisabled, isM5Mn1AndW1Ema200Required } from "./h1EntryPolicy";
 
 describe("saved H1 H4 wave restriction", () => {
   it("requires one exact false setting on an H1 alert", () => {
@@ -55,5 +55,28 @@ describe("saved M15 H4 exemptions", () => {
     const input = `${waveSetting}|m15H4MaxFibonacciExpansionPercent=${value}`;
     expect(isH4WaveRestrictionDisabled("M15", input)).toBe(true);
     expect(isM15H4FeLimitDisabled("M15", input)).toBe(false);
+  });
+});
+
+describe("saved M5 MN1 and W1 EMA200 confirmation", () => {
+  it("requires one exact true setting on an explicit M5 alert", () => {
+    const input = "before=1|m5Mn1AndW1Ema200Required=true|after=0";
+    expect(isM5Mn1AndW1Ema200Required("M5", input)).toBe(true);
+    for (const frame of ["H1", "M15", undefined]) {
+      expect(isM5Mn1AndW1Ema200Required(frame, input)).toBe(false);
+    }
+  });
+
+  it.each([
+    undefined,
+    "m5Mn1AndW1Ema200Required=false",
+    "m5Mn1AndW1Ema200Required=1",
+    "m5Mn1AndW1Ema200Required=true ",
+    "other=m5Mn1AndW1Ema200Required=true",
+    "m5Mn1AndW1Ema200RequiredExtra=true",
+    "m5Mn1AndW1Ema200Required=true|m5Mn1AndW1Ema200Required=true",
+    "m5Mn1AndW1Ema200Required=true| m5Mn1AndW1Ema200Required=false",
+  ])("does not infer AND from missing or ambiguous saved settings: %s", (input) => {
+    expect(isM5Mn1AndW1Ema200Required("M5", input)).toBe(false);
   });
 });

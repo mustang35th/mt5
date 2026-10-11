@@ -133,6 +133,8 @@ ON zigzag_elliot_alert_runs(started_at);
 
 通常版v1.67のM15も`h1H4WaveRestrictionEnabled=false`を記録し、H4 FEの実効値を`m15H4MaxFibonacciExpansionPercent=0.0`として保存します。方向条件は`MN1_TO_H1_REQUIRED`、W1確認は`DIRECTION_AND_EMA200`です。`strategy_version`は`MTF3IN3_M15_H4_WAVE_UNRESTRICTED_V20`となり、H1 FEの実効値とともに`input_text`・`input_hash`で条件を識別します。H4の波動・FEデータは引き続き保存し、未記録の旧Runの条件は推測しません。
 
+通常版v1.68のM5は、専用の`m5Mn1AndW1Ema200Required=true`を`input_text`・`input_hash`へ記録します。`strategy_version`は`MTF3IN3_M5_MN1_W1_AND_V21`です。M5のH1方向一致・W1診断列は従来の`NOT_APPLICABLE`を維持し、M5のAND条件は専用の保存設定で識別します。Viewerはこの明示trueだけを表示に使用し、未記録の旧Runへ新条件を適用しません。
+
 ### 6.3 テスター保存開始設定の記録
 
 通常版v1.45の`mtf3In3AlertTesterSaveStartTime`は、指定値と実効開始日時を既存の`input_text`へ記録し、その内容を`input_hash`へ反映します。通常チャートでは実効開始日時を`0`とします。分析条件を変える設定ではないため、`analysis_input_text`・`analysis_input_hash`は変更しません。Runは初期化時に作成し、指定日時への到達まで作成を遅らせません。既存Runの内容は書き換えません。

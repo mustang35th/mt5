@@ -3,6 +3,8 @@ export const H4_WAVE_UNRESTRICTED_DESCRIPTION =
 
 export const H4_FE_UNRESTRICTED_DESCRIPTION = "対象外（参考表示）";
 
+export const M5_MN1_AND_W1_EMA200_DESCRIPTION = "MN1のisBuy一致 AND W1のEMA200一致";
+
 function hasUniqueSavedSetting(
   fromInputText: unknown,
   fromKey: string,
@@ -40,4 +42,13 @@ export function isM15H4FeLimitDisabled(
   return fromTimeFrame === "M15"
     && isH4WaveRestrictionDisabled(fromTimeFrame, fromInputText)
     && hasUniqueSavedSetting(fromInputText, "m15H4MaxFibonacciExpansionPercent", "0.0");
+}
+
+/** M5の保存設定が単一の明示trueの場合だけ、MN1・W1 EMA200のAND条件を表示します。 */
+export function isM5Mn1AndW1Ema200Required(
+  fromTimeFrame: unknown,
+  fromInputText: unknown,
+): boolean {
+  return fromTimeFrame === "M5"
+    && hasUniqueSavedSetting(fromInputText, "m5Mn1AndW1Ema200Required", "true");
 }

@@ -442,7 +442,8 @@ class EmaConfigurationWiringTests(unittest.TestCase):
             compact,
         )
         branches = (
-            ("M5", "ExpertAdvisorMtf3In3M5", "fromMarketContext,fromIsDrawArrow"),
+            ("M5", "ExpertAdvisorMtf3In3M5",
+             "fromMarketContext,fromIsDrawArrow,fromM5Mn1AndW1Ema200Required"),
             ("M15", "ExpertAdvisorMtf3In3M15",
              "fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled,"
              "fromM15H4MaxFibonacciExpansionPercent,fromM15H1MaxFibonacciExpansionPercent,"
@@ -585,6 +586,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
         self.assertLess(constructor.index("this.h1Mn1AndW1Ema200Required=false;"),
                         constructor.index("this.applyH1EntryPolicy();"))
         self.assertIn("this.h1H4WaveRestrictionEnabled=true;", constructor)
+        self.assertIn("this.m5Mn1AndW1Ema200Required=false;", constructor)
         normalize = re.sub(r"\s+", "", code_only(method(config, "applyH1EntryPolicy")))
         for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):
             argument = "this.h1Mn1AndW1Ema200Required" if suffix != "Ema200ConfirmationMode" else ""
@@ -621,9 +623,14 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                         compact.index("config.h1H4WaveRestrictionEnabled=_Period!=PERIOD_H1&&_Period!=PERIOD_M15;"),
                         compact.index("config.applyH1EntryPolicy();"),
                     )
+                    self.assertLess(
+                        compact.index("config.m5Mn1AndW1Ema200Required=_Period==PERIOD_M5;"),
+                        compact.index("config.applyH1EntryPolicy();"),
+                    )
                 else:
                     self.assertNotIn("h1Mn1AndW1Ema200Required", compact)
                     self.assertNotIn("h1H4WaveRestrictionEnabled", compact)
+                    self.assertNotIn("m5Mn1AndW1Ema200Required", compact)
 
     def test_h1_constructor_and_factory_disallow_legacy_override_arguments(self):
         strategy = code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3H1.mqh"))
@@ -683,6 +690,18 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
             recorded,
         )
 
+    def test_m5_explicit_and_uses_own_flag_and_keeps_legacy_default(self):
+        strategy = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3M5.mqh")))
+        self.assertIn(
+            "ExpertAdvisorMtf3In3M5(MarketContext&fromMarketContext,boolfromIsDrawArrow=true,"
+            "boolfromRequireMn1AndW1Ema200=false):ExpertAdvisorMTF_3in3(fromMarketContext,fromIsDrawArrow)",
+            strategy,
+        )
+        self.assertIn("this.isMn1AndW1Ema200Required=fromRequireMn1AndW1Ema200;", strategy)
+        factory = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh")))
+        self.assertIn("boolfromM5Mn1AndW1Ema200Required=false", factory)
+        self.assertEqual(factory.count("fromM5Mn1AndW1Ema200Required"), 2)
+
     def test_normal_and_list_normalize_before_factory_and_run_record(self):
         for name in ("Mtf3In3AlertController", "Mtf3In3AlertAllController"):
             with self.subTest(controller=name):
@@ -698,19 +717,26 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                     self.assertRegex(
                         initialize,
                         r"ExpertAdvisorMtf3In3Factory::create\([^;]*,\s*this\.config\.h1Mn1AndW1Ema200Required"
-                        r"\s*,\s*this\.config\.h1H4WaveRestrictionEnabled\s*\);",
+                        r"\s*,\s*this\.config\.h1H4WaveRestrictionEnabled"
+                        r"\s*,\s*this\.config\.m5Mn1AndW1Ema200Required\s*\);",
                     )
                 else:
                     self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
                                     initialize.index("state.initialize(info.symbolName, this.config)"))
                     self.assertNotIn("h1Mn1AndW1Ema200Required", code_only(source))
                     self.assertNotIn("h1H4WaveRestrictionEnabled", code_only(source))
+                    self.assertNotIn("m5Mn1AndW1Ema200Required", code_only(source))
                 text = method(source, "createInputText")
                 if name == "Mtf3In3AlertController":
                     self.assertIn(
                         'if(this.marketContext.timeFrame==PERIOD_H1||this.marketContext.timeFrame==PERIOD_M15)'
                         '{inputText+="|h1H4WaveRestrictionEnabled="'
                         '+(string)this.config.h1H4WaveRestrictionEnabled;}',
+                        re.sub(r"\s+", "", text),
+                    )
+                    self.assertIn(
+                        'if(this.marketContext.timeFrame==PERIOD_M5){inputText+="|m5Mn1AndW1Ema200Required="'
+                        '+(string)this.config.m5Mn1AndW1Ema200Required;}',
                         re.sub(r"\s+", "", text),
                     )
                 for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):

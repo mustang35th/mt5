@@ -75,6 +75,9 @@ public:
     /** H1・M15エントリーでH4の波番号と第5波構造を制限する場合true。 */
     bool h1H4WaveRestrictionEnabled;
 
+    /** 通常版M5でMN1方向とW1 EMA200の両方を必須にする場合true。 */
+    bool m5Mn1AndW1Ema200Required;
+
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
 
@@ -145,6 +148,7 @@ public:
         this.h1DirectionCorrectionEnabled = false;
         this.h1Mn1AndW1Ema200Required = false;
         this.h1H4WaveRestrictionEnabled = true;
+        this.m5Mn1AndW1Ema200Required = false;
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.m15H4MaxFibonacciExpansionPercent = 161.8;
         this.m15H1MaxFibonacciExpansionPercent = 161.8;

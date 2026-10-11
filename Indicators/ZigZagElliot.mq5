@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.67"
+#property version   "1.68"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -175,6 +175,7 @@ int OnInit() {
         _Period == PERIOD_H1 || _Period == PERIOD_M15;
     config.h1H4WaveRestrictionEnabled =
         _Period != PERIOD_H1 && _Period != PERIOD_M15;
+    config.m5Mn1AndW1Ema200Required = _Period == PERIOD_M5;
     config.applyH1EntryPolicy();
     config.currencyStrengthEnabled = currencyStrengthEnabled;
     config.currencyStrengthEntryFilterEnabled =

@@ -38,6 +38,7 @@ public:
      * @param fromM15H1MaxFibonacciExpansionPercent M15で使用するH1のFE上限（%）。0は制限なし。
      * @param fromH1Mn1AndW1Ema200Required H1・M15でMN1方向とW1 EMA200の両方を必須にする場合true。
      * @param fromH1H4WaveRestrictionEnabled H1・M15でH4の波番号と第5波構造を制限する場合true。
+     * @param fromM5Mn1AndW1Ema200Required M5でMN1方向とW1 EMA200の両方を必須にする場合true。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */
     static ExpertAdvisorMTF_3in3 *create(
@@ -53,7 +54,8 @@ public:
         double fromM15H4MaxFibonacciExpansionPercent = 0.0,
         double fromM15H1MaxFibonacciExpansionPercent = 0.0,
         bool fromH1Mn1AndW1Ema200Required = false,
-        bool fromH1H4WaveRestrictionEnabled = true
+        bool fromH1H4WaveRestrictionEnabled = true,
+        bool fromM5Mn1AndW1Ema200Required = false
     ) {
         if (fromMarketContext.timeFrame == PERIOD_H1) {
             return new ExpertAdvisorMtf3In3H1(
@@ -80,7 +82,8 @@ public:
         if (fromMarketContext.timeFrame == PERIOD_M5) {
             return new ExpertAdvisorMtf3In3M5(
                 fromMarketContext,
-                fromIsDrawArrow
+                fromIsDrawArrow,
+                fromM5Mn1AndW1Ema200Required
             );
         }
 

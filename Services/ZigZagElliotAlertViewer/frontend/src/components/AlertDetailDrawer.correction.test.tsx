@@ -351,6 +351,43 @@ afterEach(() => {
 });
 
 describe("AlertDetailDrawer correction integration", () => {
+  it.each(["NONE", "APPLIED"] as const)(
+    "shows the saved M5 AND policy with %s and keeps it fixed when browsing analyses",
+    async (status) => {
+      const data = fixture(status);
+      data.detail.run!.input_text = "m5Mn1AndW1Ema200Required=true";
+      serve(data);
+      render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+      const snapshot = await screen.findByRole("region", { name: snapshotName });
+      const saved = within(snapshot).getByRole("region", { name: "保存済みエントリー判定" });
+      expect(saved).toHaveTextContent("上位足確認：MN1のisBuy一致 AND W1のEMA200一致");
+      expect(saved).toHaveTextContent("ENTRY");
+      expect(saved).not.toHaveTextContent("H4波動");
+      expect(saved).not.toHaveTextContent("H4 FE上限");
+      expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
+      if (status === "APPLIED") {
+        const savedText = saved.textContent;
+        for (const label of ["補正前", "前後比較", "補正後（採用）"]) {
+          fireEvent.click(within(snapshot).getByRole("button", { name: label }));
+          expect(saved.textContent).toBe(savedText);
+        }
+      }
+    },
+  );
+
+  it.each([undefined, "m5Mn1AndW1Ema200Required=false"])(
+    "does not infer the new M5 policy from old settings: %s",
+    async (inputText) => {
+      const data = fixture("NONE");
+      data.detail.run!.input_text = inputText;
+      serve(data);
+      render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+      const snapshot = await screen.findByRole("region", { name: snapshotName });
+      expect(within(snapshot).getByRole("region", { name: "保存済みエントリー判定" }))
+        .not.toHaveTextContent("上位足確認");
+    },
+  );
+
   it("shows saved M15 H4 exemptions in normal detail and comparison without H1 ENTRY CHECK", async () => {
     const data = h1Fixture(16408, "BUY", "NONE", 74, 15);
     data.detail.run!.input_text = "h1H4WaveRestrictionEnabled=false|m15H4MaxFibonacciExpansionPercent=0.0|m15H1MaxFibonacciExpansionPercent=161.8";

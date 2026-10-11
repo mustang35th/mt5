@@ -17,6 +17,7 @@
  *
  * M5の1・3・A・C波を対象とし、M5固有の
  * FE上限、H1表示波の重複制限および成立時のメール送信を管理する。
+ * 通常版M5では明示指定によりMN1方向とW1 EMA200の両方を必須にする。
  */
 class ExpertAdvisorMtf3In3M5 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -25,11 +26,14 @@ public:
      *
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
+     * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
      */
     ExpertAdvisorMtf3In3M5(
         MarketContext &fromMarketContext,
-        bool fromIsDrawArrow = true
+        bool fromIsDrawArrow = true,
+        bool fromRequireMn1AndW1Ema200 = false
     ) : ExpertAdvisorMTF_3in3(fromMarketContext, fromIsDrawArrow) {
+        this.isMn1AndW1Ema200Required = fromRequireMn1AndW1Ema200;
         this.correctedElliotAll = NULL;
         this.correctedTimeFrame = PERIOD_CURRENT;
     }
@@ -175,7 +179,7 @@ protected:
     }
 
     /**
-     * H1と共通のMN1・W1・D1条件をM5分析方向で判定する。
+     * 共通のMN1・W1・D1条件をM5分析方向で判定し、指定時はAND条件を追加する。
      *
      * @return 上位足条件を満たす場合true。
      */
@@ -187,6 +191,18 @@ protected:
         Mtf3In3HigherTimeFrameDecision decision;
         string rejectReason;
         bool isPassed = decision.evaluate(this.elliotAll, this.isBuy, rejectReason);
+        if (isPassed && this.isMn1AndW1Ema200Required) {
+            Elliot *elliotMn1 = this.elliotAll.getElliot(PERIOD_MN1);
+            if (elliotMn1.isBuy != this.isBuy) {
+                rejectReason = "MN1_DIRECTION_MISMATCH";
+                isPassed = false;
+            } else if (!decision.isEma200DirectionMatched(
+                    this.elliotAll.getElliot(PERIOD_W1), PERIOD_W1, this.isBuy)) {
+                rejectReason = "W1_EMA200_MISMATCH";
+                isPassed = false;
+            }
+        }
+
         if (!isPassed) {
             this.logger.debug(__FUNCTION__, "higher timeframe rejected: " + rejectReason);
         }
@@ -326,6 +342,9 @@ protected:
     }
 
 private:
+    /** MN1方向とW1 EMA200の両方を必須にする場合true。 */
+    bool isMn1AndW1Ema200Required;
+
     /** 全エントリー条件の判定に使用する補正分析。本クラスが所有する。 */
     ElliotAll *correctedElliotAll;
 
