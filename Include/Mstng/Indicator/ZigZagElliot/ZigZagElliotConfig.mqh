@@ -69,10 +69,10 @@ public:
     /** H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。 */
     bool h1DirectionCorrectionEnabled;
 
-    /** 通常版H1でMN1方向とW1 EMA200の両方を必須にする場合true。 */
+    /** 通常版H1・M15でMN1方向とW1 EMA200の両方を必須にする場合true。 */
     bool h1Mn1AndW1Ema200Required;
 
-    /** H1エントリーでH4の波番号と第5波構造を制限する場合true。 */
+    /** H1・M15エントリーでH4の波番号と第5波構造を制限する場合true。 */
     bool h1H4WaveRestrictionEnabled;
 
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */

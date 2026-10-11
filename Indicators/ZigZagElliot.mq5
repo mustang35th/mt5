@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.66"
+#property version   "1.67"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -52,9 +52,8 @@ bool h1DirectionCorrectionEnabled = true;
 input(name="H1表示波の回数制限")
 bool h1DisplayWaveEntryLimitEnabled = false;
 
-/** M15エントリーで使用するH4のFE上限（%）。0は制限なし。 */
-input(name="M15のH4 FE上限（%、0=制限なし）")
-double m15H4MaxFibonacciExpansionPercent = 161.8;
+/** 通常版M15のH4 FE判定は無効に固定する。 */
+const double m15H4MaxFibonacciExpansionPercent = 0.0;
 
 /** M15エントリーで使用するH1のFE上限（%）。0は制限なし。 */
 input(name="M15のH1 FE上限（%、0=制限なし）")
@@ -141,15 +140,6 @@ ZigZagElliotController *gController = NULL;
 int OnInit() {
     if (_Period == PERIOD_M15) {
         Logger logger(LOG_ERROR);
-        if (!MathIsValidNumber(m15H4MaxFibonacciExpansionPercent)
-                || m15H4MaxFibonacciExpansionPercent == EMPTY_VALUE
-                || m15H4MaxFibonacciExpansionPercent < 0.0
-                || (m15H4MaxFibonacciExpansionPercent > 0.0
-                    && NormalizeDouble(m15H4MaxFibonacciExpansionPercent, 1) <= 0.0)) {
-            logger.error(__FUNCTION__,
-                "invalid M15 H4 FE limit: use 0 (disabled) or a finite positive value rounded to at least 0.1");
-            return INIT_PARAMETERS_INCORRECT;
-        }
         if (!MathIsValidNumber(m15H1MaxFibonacciExpansionPercent)
                 || m15H1MaxFibonacciExpansionPercent == EMPTY_VALUE
                 || m15H1MaxFibonacciExpansionPercent < 0.0
@@ -181,8 +171,10 @@ int OnInit() {
     config.m15H1MaxFibonacciExpansionPercent = m15H1MaxFibonacciExpansionPercent;
     config.h1DisplayWaveEntryLimitEnabled =
         h1DisplayWaveEntryLimitEnabled;
-    config.h1Mn1AndW1Ema200Required = _Period == PERIOD_H1;
-    config.h1H4WaveRestrictionEnabled = _Period != PERIOD_H1;
+    config.h1Mn1AndW1Ema200Required =
+        _Period == PERIOD_H1 || _Period == PERIOD_M15;
+    config.h1H4WaveRestrictionEnabled =
+        _Period != PERIOD_H1 && _Period != PERIOD_M15;
     config.applyH1EntryPolicy();
     config.currencyStrengthEnabled = currencyStrengthEnabled;
     config.currencyStrengthEntryFilterEnabled =

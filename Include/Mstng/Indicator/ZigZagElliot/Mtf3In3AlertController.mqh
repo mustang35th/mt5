@@ -542,7 +542,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "1.66";
+            this.databaseRun.programVersion = "1.67";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
@@ -560,6 +560,9 @@ private:
         }
         if (this.marketContext.timeFrame == PERIOD_M15) {
             this.databaseRun.strategyVersion = "MTF3IN3_M15_HIGHER_FE_V18";
+            if (!this.config.h1H4WaveRestrictionEnabled) {
+                this.databaseRun.strategyVersion = "MTF3IN3_M15_H4_WAVE_UNRESTRICTED_V20";
+            }
         }
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();
@@ -599,7 +602,8 @@ private:
             + (string)this.config.h1DisplayWaveEntryLimitEnabled;
         inputText += "|h1DirectionCorrectionEnabled="
             + (string)this.config.h1DirectionCorrectionEnabled;
-        if (this.marketContext.timeFrame == PERIOD_H1) {
+        if (this.marketContext.timeFrame == PERIOD_H1
+                || this.marketContext.timeFrame == PERIOD_M15) {
             inputText += "|h1H4WaveRestrictionEnabled="
                 + (string)this.config.h1H4WaveRestrictionEnabled;
         }

@@ -222,7 +222,9 @@ DBは`mode=ro`・`query_only`で元ファイルのWALを含めて読みます。
 
 H1アラートの`H1 ENTRY CHECK`は、保存時Runの`input_text`からEMA200確認modeを表示します。`H1_ONLY`はH1だけ、`H1_AND_H4_REQUIRED`はH1・H4、`H1_AND_H4_AND_D1_REQUIRED`はH1・H4・D1を必須とし、対象外足は`対象外`です。必須のH4／D1 EMA200はH1方向と排他的に一致すれば`OK`、反対方向・NONE・両方向成立は`NG`、Snapshot欠損・NULL・旧DBのEMA未記録は`不明`とします。pipe区切りの`h1Ema200ConfirmationMode`が正確なキーと既知の値で1件だけ保存されている場合に限り採用し、重複・不正値・旧Runの未記録はmode不明です。Observationはmode不明の参考表示にとどめ、保存済みAlertの総合Entry判定や検索のFULL／Episode定義を変更しません。既存Run列を使用するためDB変更は不要です。
 
-通常版H1のH4波動制限を解除したRunでは、`input_text`に`h1H4WaveRestrictionEnabled=false`が単一の完全一致設定として保存されている場合だけ、通常詳細・`H1 ENTRY CHECK`・補正画面に「波番号・第5波構造の制限なし（参考表示）」を表示します。チェック表ではH4波番号を`対象外`とし、H4方向・EMA200や保存済みEntry結果は維持します。補正前後の表示を切り替えても保存設定は固定します。未記録・true・不正値・重複設定の過去Run、およびObservation・M15・M5の表示と判定は従来どおりです。H1構造ランクは別の診断として維持します。
+通常版H1・M15のH4波動制限を解除したRunでは、`input_text`に`h1H4WaveRestrictionEnabled=false`が単一の完全一致設定として保存されている場合だけ、通常詳細・TF比較・補正画面に「波番号・第5波構造の制限なし（参考表示）」を表示します。H1のチェック表ではH4波番号を`対象外`とし、H4方向・EMA200や保存済みEntry結果は維持します。補正前後の表示を切り替えても保存設定は固定します。未記録・true・不正値・重複設定から解除を推測せず、Observation・M5には適用しません。H1構造ランクは別の診断として維持します。
+
+M15の解除Runは、さらに`m15H4MaxFibonacciExpansionPercent=0.0`が単一の完全一致設定として保存されている場合、H4 FE上限を「対象外（参考表示）」と表示します。保存されたFE値自体やH1 FE条件は変更しません。旧RunのFE上限0だけでは今回の解除を推測しません。M15と明示されたアラートのTF比較にはH1専用の`H1 ENTRY CHECK`を表示せず、保存設定の説明を表示します。H1および時間足未記録の既存表示は維持します。
 
 H1推移タブでは、実行モード、Run、通貨、JST日時範囲、`H1方向との一致`および`W1～H1＋EMA200一致`で検索します。一覧はJST日時を主表示とし、H1新規足と最新点のServer日時も併記します。
 

@@ -445,7 +445,8 @@ class EmaConfigurationWiringTests(unittest.TestCase):
             ("M5", "ExpertAdvisorMtf3In3M5", "fromMarketContext,fromIsDrawArrow"),
             ("M15", "ExpertAdvisorMtf3In3M15",
              "fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled,"
-             "fromM15H4MaxFibonacciExpansionPercent,fromM15H1MaxFibonacciExpansionPercent"),
+             "fromM15H4MaxFibonacciExpansionPercent,fromM15H1MaxFibonacciExpansionPercent,"
+             "fromH1Mn1AndW1Ema200Required,fromH1H4WaveRestrictionEnabled"),
         )
         for timeframe, class_name, arguments in branches:
             with self.subTest(timeframe=timeframe):
@@ -613,11 +614,11 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 compact = re.sub(r"\s+", "", initialize)
                 if path == "Indicators/ZigZagElliot.mq5":
                     self.assertLess(
-                        compact.index("config.h1Mn1AndW1Ema200Required=_Period==PERIOD_H1;"),
+                        compact.index("config.h1Mn1AndW1Ema200Required=_Period==PERIOD_H1||_Period==PERIOD_M15;"),
                         compact.index("config.applyH1EntryPolicy();"),
                     )
                     self.assertLess(
-                        compact.index("config.h1H4WaveRestrictionEnabled=_Period!=PERIOD_H1;"),
+                        compact.index("config.h1H4WaveRestrictionEnabled=_Period!=PERIOD_H1&&_Period!=PERIOD_M15;"),
                         compact.index("config.applyH1EntryPolicy();"),
                     )
                 else:
@@ -643,10 +644,10 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
         )
         self.assertIn("boolfromH1DirectionCorrectionEnabled=false", factory)
         self.assertIn("boolfromH1Mn1AndW1Ema200Required=false", factory)
-        self.assertEqual(factory.count("fromH1Mn1AndW1Ema200Required"), 2)
+        self.assertEqual(factory.count("fromH1Mn1AndW1Ema200Required"), 3)
         self.assertIn("this.isH4WaveRestrictionEnabled=fromH4WaveRestrictionEnabled;", compact)
         self.assertIn("boolfromH1H4WaveRestrictionEnabled=true", factory)
-        self.assertEqual(factory.count("fromH1H4WaveRestrictionEnabled"), 2)
+        self.assertEqual(factory.count("fromH1H4WaveRestrictionEnabled"), 3)
         # The other-timeframe compatibility signature is intentionally retained.
         for argument in ("fromH1W1ConfirmationMode", "fromH1DirectionAlignmentMode", "fromH1Ema200ConfirmationMode"):
             self.assertIn(argument, factory)
@@ -659,6 +660,28 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
         self.assertIn("elliotW1", body)
         legacy = code_only(self.read("Include/MstngEa/App/EaController.mqh"))
         self.assertNotIn("setH1W1ConfirmationElliot", legacy)
+
+    def test_m15_explicit_policy_keeps_defaults_and_only_disables_normal_h4_fe(self):
+        strategy = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3M15.mqh")))
+        self.assertIn("boolfromRequireMn1AndW1Ema200=false,boolfromH4WaveRestrictionEnabled=true", strategy)
+        for suffix in ("W1ConfirmationMode", "DirectionAlignmentMode"):
+            self.assertIn(f"Mtf3In3H1Policy::get{suffix}(fromRequireMn1AndW1Ema200)", strategy)
+        self.assertIn("this.isH4WaveRestrictionEnabled=fromH4WaveRestrictionEnabled;", strategy)
+
+        indicator = self.read("Indicators/ZigZagElliot.mq5")
+        self.assertRegex(code_only(indicator), r"const\s+double\s+m15H4MaxFibonacciExpansionPercent\s*=\s*0\.0\s*;")
+        self.assertRegex(code_only(indicator), r"input\([^;]*\)\s*double\s+m15H1MaxFibonacciExpansionPercent\s*=\s*161\.8\s*;")
+        initialize = re.sub(r"\s+", "", code_only(method(indicator, "OnInit")))
+        self.assertIn("config.m15H4MaxFibonacciExpansionPercent=m15H4MaxFibonacciExpansionPercent;", initialize)
+        self.assertIn("config.m15H1MaxFibonacciExpansionPercent=m15H1MaxFibonacciExpansionPercent;", initialize)
+        self.assertNotIn("MathIsValidNumber(m15H4MaxFibonacciExpansionPercent)", initialize)
+        self.assertIn("MathIsValidNumber(m15H1MaxFibonacciExpansionPercent)", initialize)
+        controller = self.read("Include/Mstng/Indicator/ZigZagElliot/Mtf3In3AlertController.mqh")
+        recorded = re.sub(r"\s+", "", method(controller, "createInputText"))
+        self.assertIn(
+            'inputText+="|m15H4MaxFibonacciExpansionPercent="+DoubleToString(this.config.m15H4MaxFibonacciExpansionPercent,1);',
+            recorded,
+        )
 
     def test_normal_and_list_normalize_before_factory_and_run_record(self):
         for name in ("Mtf3In3AlertController", "Mtf3In3AlertAllController"):
@@ -685,7 +708,8 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 text = method(source, "createInputText")
                 if name == "Mtf3In3AlertController":
                     self.assertIn(
-                        'if(this.marketContext.timeFrame==PERIOD_H1){inputText+="|h1H4WaveRestrictionEnabled="'
+                        'if(this.marketContext.timeFrame==PERIOD_H1||this.marketContext.timeFrame==PERIOD_M15)'
+                        '{inputText+="|h1H4WaveRestrictionEnabled="'
                         '+(string)this.config.h1H4WaveRestrictionEnabled;}',
                         re.sub(r"\s+", "", text),
                     )

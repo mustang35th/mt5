@@ -131,6 +131,8 @@ ON zigzag_elliot_alert_runs(started_at);
 
 通常版v1.66のH1では、`input_text`と`input_hash`に`h1H4WaveRestrictionEnabled=false`を含め、H4の波番号・第5波構造をエントリー制限に使わないことを記録します。`strategy_version`は`MTF3IN3_H1_H4_WAVE_UNRESTRICTED_V19`です。H4の波動データと構造ランクは引き続き保存します。Viewerは明示された解除設定を表示し、未記録の過去Runへ新条件を適用しません。DBスキーマと分析Profileは変更しません。
 
+通常版v1.67のM15も`h1H4WaveRestrictionEnabled=false`を記録し、H4 FEの実効値を`m15H4MaxFibonacciExpansionPercent=0.0`として保存します。方向条件は`MN1_TO_H1_REQUIRED`、W1確認は`DIRECTION_AND_EMA200`です。`strategy_version`は`MTF3IN3_M15_H4_WAVE_UNRESTRICTED_V20`となり、H1 FEの実効値とともに`input_text`・`input_hash`で条件を識別します。H4の波動・FEデータは引き続き保存し、未記録の旧Runの条件は推測しません。
+
 ### 6.3 テスター保存開始設定の記録
 
 通常版v1.45の`mtf3In3AlertTesterSaveStartTime`は、指定値と実効開始日時を既存の`input_text`へ記録し、その内容を`input_hash`へ反映します。通常チャートでは実効開始日時を`0`とします。分析条件を変える設定ではないため、`analysis_input_text`・`analysis_input_hash`は変更しません。Runは初期化時に作成し、指定日時への到達まで作成を遅らせません。既存Runの内容は書き換えません。

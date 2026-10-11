@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.00"
+#property version   "1.01"
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 
@@ -25,10 +25,13 @@ public:
         MarketContext &fromMarketContext,
         ElliotAll *fromJudgment,
         double fromH4MaxFibonacciExpansionPercent = 0.0,
-        double fromH1MaxFibonacciExpansionPercent = 0.0
+        double fromH1MaxFibonacciExpansionPercent = 0.0,
+        bool fromRequireMn1AndW1Ema200 = false,
+        bool fromH4WaveRestrictionEnabled = true
     ) : ExpertAdvisorMtf3In3M15(
         fromMarketContext, false, true,
-        fromH4MaxFibonacciExpansionPercent, fromH1MaxFibonacciExpansionPercent
+        fromH4MaxFibonacciExpansionPercent, fromH1MaxFibonacciExpansionPercent,
+        fromRequireMn1AndW1Ema200, fromH4WaveRestrictionEnabled
     ) {
         this.judgmentFixture = fromJudgment;
     }
@@ -282,14 +285,16 @@ void applyFault(
  * @param fromTimeFrame 不成立にする時間足。
  * @param fromFault 不成立にする条件名。
  * @param fromIsBuy BUY方向の場合true。
+ * @param fromUseNormalPolicy AND条件とH4波番号制限解除を使用する場合true。
  */
 void validateWaitAndRetry(
     const ENUM_TIMEFRAMES fromTimeFrame,
     const string fromFault,
-    const bool fromIsBuy
+    const bool fromIsBuy,
+    const bool fromUseNormalPolicy = false
 ) {
     string caseName = EnumToString(fromTimeFrame) + " " + fromFault
-        + " buy=" + (string)fromIsBuy;
+        + " buy=" + (string)fromIsBuy + " normal=" + (string)fromUseNormalPolicy;
     ElliotAll *waiting = createAnalysis(fromIsBuy);
     ElliotAll *ready = createAnalysis(fromIsBuy);
     if (waiting == NULL || ready == NULL) {
@@ -301,7 +306,9 @@ void validateWaitAndRetry(
     applyFault(waiting, fromTimeFrame, fromFault, fromIsBuy);
     MarketContext context("EURUSD", PERIOD_M15);
     SignalCount signalCount(context);
-    ExpertAdvisorMtf3In3M15 expertAdvisor(context, false, false);
+    ExpertAdvisorMtf3In3M15 expertAdvisor(
+        context, false, false, 0.0, 0.0, fromUseNormalPolicy, !fromUseNormalPolicy
+    );
     expertAdvisor.analyze(waiting, GetPointer(signalCount));
     assertCondition(caseName + " wait", !expertAdvisor.isEntry);
     expertAdvisor.analyze(waiting, GetPointer(signalCount));
@@ -457,10 +464,11 @@ void validateCorrectionSelection() {
  * H1補正後も確定・EMA200・Wave方向・M15 GMMAを再確認する。
  * 元H1の実測方向を保持した合成snapshotで、待機後の初回ENTRYを検証する。
  */
-void validateH1CorrectionWaitAndRetry() {
+void validateH1CorrectionWaitAndRetry(const bool fromUseNormalPolicy = false) {
     for (int i = 0; i < 2; i++) {
         bool isBuy = i == 0;
-        string caseName = "H1 corrected buy=" + (string)isBuy;
+        string caseName = "H1 corrected buy=" + (string)isBuy
+            + " normal=" + (string)fromUseNormalPolicy;
         ElliotAll *original = createAnalysis(isBuy);
         ElliotAll *selected = createAnalysis(isBuy);
         if (original == NULL || selected == NULL) {
@@ -484,7 +492,9 @@ void validateH1CorrectionWaitAndRetry() {
         selectedPoint.isAddedPoint = true;
         MarketContext context("EURUSD", PERIOD_M15);
         SignalCount signalCount(context);
-        M15CorrectionFixtureExpertAdvisor expertAdvisor(context, selected);
+        M15CorrectionFixtureExpertAdvisor expertAdvisor(
+            context, selected, 0.0, 0.0, fromUseNormalPolicy, !fromUseNormalPolicy
+        );
         expertAdvisor.analyze(original, GetPointer(signalCount));
         assertCondition(caseName + " M15 pending", !expertAdvisor.isEntry);
 
@@ -592,6 +602,178 @@ ElliotAll *createFibonacciAnalysis(const bool fromIsBuy) {
         setFibonacciFixture(analysis, PERIOD_M15, 3, EMPTY_VALUE);
     }
     return analysis;
+}
+
+/**
+ * Factory経由のM15 AND条件と、H4波番号・FE制限解除をBUY・SELLで検証する。
+ */
+void validateNormalPolicyFactory() {
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        for (int j = 0; j < 4; j++) {
+            string caseName = "normal factory mask=" + IntegerToString(j)
+                + " buy=" + (string)isBuy;
+            ElliotAll *analysis = createFibonacciAnalysis(isBuy);
+            if (analysis == NULL) {
+                assertCondition(caseName + " fixture", false);
+                continue;
+            }
+
+            setDirection(analysis.getElliot(PERIOD_MN1), isBuy == ((j & 1) != 0));
+            setEma200Direction(analysis.getElliot(PERIOD_W1), isBuy == ((j & 2) != 0));
+            applyFault(analysis, PERIOD_H4, "WAVE2", isBuy);
+            setFibonacciFixture(analysis, PERIOD_H4, 2, EMPTY_VALUE);
+            MarketContext context("EURUSD", PERIOD_M15);
+            SignalCount signalCount(context);
+            ExpertAdvisorMTF_3in3 *expertAdvisor = ExpertAdvisorMtf3In3Factory::create(
+                context, false,
+                Mtf3In3H1Policy::getW1ConfirmationMode(),
+                Mtf3In3H1Policy::getDirectionAlignmentMode(),
+                Mtf3In3H1Policy::getEma200ConfirmationMode(),
+                false, 0.0, 161.8, true, false
+            );
+            if (expertAdvisor == NULL) {
+                assertCondition(caseName + " strategy", false);
+                delete analysis;
+                continue;
+            }
+
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            Mtf3In3AlertResult result = expertAdvisor.getAlertResult();
+            assertCondition(caseName + " AND result", result.isEntry == (j == 3));
+            if (j != 3) {
+                assertCondition(caseName + " no count", !result.isJudge && result.signalCount == 0);
+                setDirection(analysis.getElliot(PERIOD_MN1), isBuy);
+                setEma200Direction(analysis.getElliot(PERIOD_W1), isBuy);
+                expertAdvisor.analyze(analysis, GetPointer(signalCount));
+                result = expertAdvisor.getAlertResult();
+            }
+
+            assertCondition(caseName + " first entry", result.isEntry && result.signalCount == 1);
+            assertCondition(caseName + " direction mode", result.h1DirectionAlignmentMode == "MN1_TO_H1_REQUIRED");
+            assertCondition(caseName + " W1 mode", result.w1ConfirmationMode == "DIRECTION_AND_EMA200");
+            delete expertAdvisor;
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * H4の追加波番号と第5波構造を通常版だけで許可し、既定の旧条件を維持する。
+ */
+void validateUnrestrictedH4Cases() {
+    int labels[] = {2, 4, 1, 2, 3, 7, 9, 5, 5, 5};
+    bool alphabetLabels[] = {false, false, true, true, true, false, false, false, false, false};
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        for (int j = 0; j < ArraySize(labels); j++) {
+            string caseName = "unrestricted H4 case=" + IntegerToString(j)
+                + " buy=" + (string)isBuy;
+            ElliotAll *analysis = createAnalysis(isBuy);
+            if (analysis == NULL) {
+                assertCondition(caseName + " fixture", false);
+                continue;
+            }
+
+            Elliot *elliotH4 = analysis.getElliot(PERIOD_H4);
+            ZigZagPoint *point = elliotH4.getLatestPoint();
+            point.elliotIndex = labels[j];
+            point.isElliotAlphabet = alphabetLabels[j];
+            point.setElliotLabel();
+            Wave *wave = elliotH4.getLatestWave();
+            wave.isMotive = !alphabetLabels[j];
+            if (j == 7) {
+                applyFault(analysis, PERIOD_H4, "WAVE5_SUB_LABEL", isBuy);
+            } else if (j == 8) {
+                applyFault(analysis, PERIOD_H4, "WAVE5_WITHOUT_WAVE3", isBuy);
+            } else if (j == 9) {
+                applyFault(analysis, PERIOD_H4, "WAVE5_NOT_MOTIVE", isBuy);
+            }
+
+            setFibonacciFixture(analysis, PERIOD_H4, 0, EMPTY_VALUE);
+            setFibonacciFixture(analysis, PERIOD_H1, 3, 140.0);
+            MarketContext context("EURUSD", PERIOD_M15);
+            SignalCount defaultCount(context);
+            SignalCount normalCount(context);
+            ExpertAdvisorMtf3In3M15 defaultAdvisor(context, false, false, 0.0, 161.8);
+            ExpertAdvisorMtf3In3M15 normalAdvisor(context, false, false, 0.0, 161.8, true, false);
+            defaultAdvisor.analyze(analysis, GetPointer(defaultCount));
+            assertCondition(caseName + " default rejects", !defaultAdvisor.isEntry);
+            normalAdvisor.analyze(analysis, GetPointer(normalCount));
+            assertFirstEntry(caseName, normalAdvisor);
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * H4波番号制限解除後も欠損データを拒否し、復旧後の初回ENTRYを維持する。
+ */
+void validateUnrestrictedH4Unavailable() {
+    for (int i = 0; i < 4; i++) {
+        string caseName = "unrestricted H4 unavailable=" + IntegerToString(i);
+        ElliotAll *waiting = createAnalysis(true);
+        ElliotAll *ready = createAnalysis(true);
+        if (waiting == NULL || ready == NULL) {
+            assertCondition(caseName + " fixture", false);
+            delete waiting;
+            delete ready;
+            continue;
+        }
+
+        Elliot *elliotH4 = waiting.getElliot(PERIOD_H4);
+        if (i == 0) {
+            elliotH4.getLatestPoint().elliotLabel = "";
+        } else if (i == 1) {
+            elliotH4.getLatestWave().zigZagPointList.Clear();
+        } else if (i == 2) {
+            elliotH4.waveList.Clear();
+        } else {
+            elliotH4.marketContext.timeFrame = PERIOD_D1;
+        }
+
+        MarketContext context("EURUSD", PERIOD_M15);
+        SignalCount signalCount(context);
+        ExpertAdvisorMtf3In3M15 expertAdvisor(context, false, false, 0.0, 0.0, true, false);
+        expertAdvisor.analyze(waiting, GetPointer(signalCount));
+        Mtf3In3AlertResult result = expertAdvisor.getAlertResult();
+        assertCondition(caseName + " no count", !result.isJudge && result.signalCount == 0);
+        expertAdvisor.analyze(ready, GetPointer(signalCount));
+        assertFirstEntry(caseName + " restored", expertAdvisor);
+        delete waiting;
+        delete ready;
+    }
+}
+
+/**
+ * H4 FEが不明でも許可し、H1 FE超過・不正値では回数を消費せず待機する。
+ */
+void validateNormalPolicyH1Fibonacci() {
+    double rejectedValues[] = {161.86, 0.0, EMPTY_VALUE};
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < ArraySize(rejectedValues); j++) {
+            string caseName = "normal H1 FE case=" + IntegerToString(j)
+                + " buy=" + (string)(i == 0);
+            ElliotAll *analysis = createFibonacciAnalysis(i == 0);
+            if (analysis == NULL) {
+                assertCondition(caseName + " fixture", false);
+                continue;
+            }
+
+            setFibonacciFixture(analysis, PERIOD_H4, 0, EMPTY_VALUE);
+            setFibonacciFixture(analysis, PERIOD_H1, 3, rejectedValues[j]);
+            MarketContext context("EURUSD", PERIOD_M15);
+            SignalCount signalCount(context);
+            ExpertAdvisorMtf3In3M15 expertAdvisor(context, false, false, 0.0, 161.8, true, false);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            Mtf3In3AlertResult result = expertAdvisor.getAlertResult();
+            assertCondition(caseName + " no count", !result.isJudge && result.signalCount == 0);
+            setFibonacciFixture(analysis, PERIOD_H1, 3, 161.84);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertFirstEntry(caseName + " rounded recovery", expertAdvisor);
+            delete analysis;
+        }
+    }
 }
 
 /**
@@ -900,6 +1082,7 @@ void OnStart() {
     validateHigherConditionWhileWaiting();
     validateCorrectionSelection();
     validateH1CorrectionWaitAndRetry();
+    validateH1CorrectionWaitAndRetry(true);
     validateSignalIdentity();
     validateFibonacciBoundaryWaitAndRetry();
     validateFibonacciOriginalWaveCases();
@@ -907,6 +1090,10 @@ void OnStart() {
     validateInvalidFibonacciLimits();
     validateCorrectedFibonacciSelection();
     validateFactoryFibonacciSettings();
+    validateNormalPolicyFactory();
+    validateUnrestrictedH4Cases();
+    validateUnrestrictedH4Unavailable();
+    validateNormalPolicyH1Fibonacci();
 
     ENUM_TIMEFRAMES directionFrames[] = { PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15 };
     ENUM_TIMEFRAMES emaFrames[] = { PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15 };
@@ -937,6 +1124,26 @@ void OnStart() {
         validateWaitAndRetry(PERIOD_M15, "UNCONFIRMED", isBuy);
         validateWaitAndRetry(PERIOD_M15, "SPREAD", isBuy);
         validateWaitAndRetry(PERIOD_MN1, "MN1_AND_W1_EMA200", isBuy);
+
+        for (int j = 0; j < ArraySize(directionFrames); j++) {
+            validateWaitAndRetry(directionFrames[j], "DIRECTION", isBuy, true);
+        }
+
+        for (int j = 0; j < ArraySize(emaFrames); j++) {
+            validateWaitAndRetry(emaFrames[j], "EMA200", isBuy, true);
+        }
+
+        for (int j = 0; j < ArraySize(timingFrames); j++) {
+            for (int k = 0; k < ArraySize(waveFaults); k++) {
+                validateWaitAndRetry(timingFrames[j], waveFaults[k], isBuy, true);
+            }
+
+            validateWaitAndRetry(timingFrames[j], "WAVE_DIRECTION", isBuy, true);
+        }
+
+        validateWaitAndRetry(PERIOD_M15, "GMMA_TREND", isBuy, true);
+        validateWaitAndRetry(PERIOD_M15, "GMMA_CROSS", isBuy, true);
+        validateWaitAndRetry(PERIOD_M15, "UNCONFIRMED", isBuy, true);
     }
     emitMailBodyFixtures();
     if (gFailureCount == 0) {

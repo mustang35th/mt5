@@ -351,6 +351,61 @@ afterEach(() => {
 });
 
 describe("AlertDetailDrawer correction integration", () => {
+  it("shows saved M15 H4 exemptions in normal detail and comparison without H1 ENTRY CHECK", async () => {
+    const data = h1Fixture(16408, "BUY", "NONE", 74, 15);
+    data.detail.run!.input_text = "h1H4WaveRestrictionEnabled=false|m15H4MaxFibonacciExpansionPercent=0.0|m15H1MaxFibonacciExpansionPercent=161.8";
+    serve(data);
+    render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+    await screen.findByRole("heading", { name: "判定情報" });
+    expect(screen.getByText("H4波動制限")).toBeInTheDocument();
+    expect(screen.getByText("H4 FE上限")).toBeInTheDocument();
+    expect(screen.getByText("対象外（参考表示）")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "TF比較" }));
+    await screen.findByText("TIMEFRAME COMPARISON");
+    expect(screen.getByText("H4波動制限")).toBeInTheDocument();
+    expect(screen.getByText("H4 FE上限")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
+  });
+
+  it("keeps both saved M15 exemptions and adopted Entry fixed through correction views", async () => {
+    const data = h1Fixture(16388, "SELL", "APPLIED", 74, 15);
+    data.detail.run!.input_text = "h1H4WaveRestrictionEnabled=false|m15H4MaxFibonacciExpansionPercent=0.0";
+    serve(data);
+    render(<AlertDetailDrawer alertId={74} onClose={vi.fn()} />);
+    const snapshot = await screen.findByRole("region", { name: "M15アラート補正スナップショット" });
+    const saved = within(snapshot).getByRole("region", { name: "保存済みエントリー判定" });
+    expect(saved).toHaveTextContent("H4波動：波番号・第5波構造の制限なし（参考表示）");
+    expect(saved).toHaveTextContent("H4 FE上限：対象外（参考表示）");
+    const savedText = saved.textContent;
+    for (const label of ["補正前", "前後比較", "補正後（採用）"]) {
+      fireEvent.click(within(snapshot).getByRole("button", { name: label }));
+      expect(saved.textContent).toBe(savedText);
+    }
+    fireEvent.click(screen.getByRole("button", { name: "TF比較" }));
+    expect(screen.getByRole("region", { name: "保存済みエントリー判定" }).textContent).toBe(savedText);
+    expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
+  });
+
+  it("does not infer new M15 settings from legacy H4 FE zero and never uses the H1 check", async () => {
+    const data = h1Fixture(16408, "BUY", "NONE", 74, 15);
+    data.detail.run!.input_text = "m15H4MaxFibonacciExpansionPercent=0.0";
+    serve(data);
+    render(<AlertDetailDrawer alertId={74} initialView="comparison" onClose={vi.fn()} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    expect(screen.queryByText("H4波動制限")).not.toBeInTheDocument();
+    expect(screen.queryByText("H4 FE上限")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
+  });
+
+  it("preserves the existing H1 comparison when the alert timeframe was not recorded", async () => {
+    const data = h1Fixture(16408, "BUY", "NONE");
+    Object.assign(data.detail.alert, { time_frame_text: undefined });
+    serve(data);
+    render(<AlertDetailDrawer alertId={74} initialView="comparison" onClose={vi.fn()} />);
+    expect(await screen.findByRole("region", { name: h1PanelName })).toBeInTheDocument();
+    expect(screen.queryByText("H4 FE上限")).not.toBeInTheDocument();
+  });
+
   it.each([undefined, "true", "false"])(
     "shows H4 restriction changes in normal H1 detail and ENTRY CHECK only for saved false: %s",
     async (setting) => {

@@ -24,6 +24,7 @@
  * シグナル回数を消費せず、D1・H4・H1の片足補正はM15まで再分析する。
  * GMMAはM15だけを判定し、H1のGMMAは条件に使用しない。
  * 設定時はH4・H1の再カウント前の進行波FE上限も回数加算前に判定する。
+ * 通常版M15はMN1方向とW1 EMA200をANDとし、H4の波番号とFEを制限しない。
  */
 class ExpertAdvisorMtf3In3M15 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -35,21 +36,26 @@ public:
      * @param fromDirectionCorrectionEnabled D1・H4・H1の片足方向補正を使用する場合true。
      * @param fromH4MaxFibonacciExpansionPercent H4のFE上限。0は判定無効。
      * @param fromH1MaxFibonacciExpansionPercent H1のFE上限。0は判定無効。
+     * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
+     * @param fromH4WaveRestrictionEnabled H4の波番号と第5波構造を制限する場合true。
      */
     ExpertAdvisorMtf3In3M15(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow = true,
         bool fromDirectionCorrectionEnabled = false,
         double fromH4MaxFibonacciExpansionPercent = 0.0,
-        double fromH1MaxFibonacciExpansionPercent = 0.0
+        double fromH1MaxFibonacciExpansionPercent = 0.0,
+        bool fromRequireMn1AndW1Ema200 = false,
+        bool fromH4WaveRestrictionEnabled = true
     ) : ExpertAdvisorMTF_3in3(
         fromMarketContext,
         fromIsDrawArrow,
-        Mtf3In3H1Policy::getW1ConfirmationMode(),
-        Mtf3In3H1Policy::getDirectionAlignmentMode(),
+        Mtf3In3H1Policy::getW1ConfirmationMode(fromRequireMn1AndW1Ema200),
+        Mtf3In3H1Policy::getDirectionAlignmentMode(fromRequireMn1AndW1Ema200),
         Mtf3In3H1Policy::getEma200ConfirmationMode()
     ) {
         this.isDirectionCorrectionEnabled = fromDirectionCorrectionEnabled;
+        this.isH4WaveRestrictionEnabled = fromH4WaveRestrictionEnabled;
         this.h4MaxFibonacciExpansionPercent = fromH4MaxFibonacciExpansionPercent;
         this.h1MaxFibonacciExpansionPercent = fromH1MaxFibonacciExpansionPercent;
         this.correctedElliotAll = NULL;
@@ -186,6 +192,7 @@ protected:
 
     /**
      * 回数加算前にH4・H1・M15の波動条件と、H4・H1のFE上限を判定する。
+     * H4の波動制限が無効の場合、H4の分析取得だけを確認する。
      *
      * @return M15用の波動条件を満たす場合true。
      */
@@ -194,7 +201,7 @@ protected:
             return false;
         }
 
-        return this.isEntryWave(this.elliotHigher2)
+        return this.isH4WaveConditionMatched()
             && this.isEntryWave(this.elliotHigher1)
             && this.isEntryWave(this.elliotCurrent)
             && this.isHigherFibonacciExpansionWithin(
@@ -241,7 +248,7 @@ protected:
     }
 
     /**
-     * H1のWave方向を再確認し、共通W1診断を記録する。
+     * H1のWave方向を再確認し、設定に従ってW1の方向・EMA200を判定する。
      *
      * @return H1条件を維持してM15のエントリー判定を続行できる場合true。
      */
@@ -317,6 +324,9 @@ protected:
     }
 
 private:
+    /** H4の波番号と第5波構造を制限する場合true。 */
+    bool isH4WaveRestrictionEnabled;
+
     /** H4のFE上限。0は判定無効。 */
     double h4MaxFibonacciExpansionPercent;
 
@@ -331,6 +341,30 @@ private:
 
     /** 補正した時間足。補正なしはPERIOD_CURRENT。 */
     ENUM_TIMEFRAMES correctedTimeFrame;
+
+    /**
+     * H4の波動制限を適用し、制限なしの場合も分析取得を確認する。
+     *
+     * @return H4の波動条件、または制限なし時の分析取得条件を満たす場合true。
+     */
+    bool isH4WaveConditionMatched() {
+        if (this.isH4WaveRestrictionEnabled) {
+            return this.isEntryWave(this.elliotHigher2);
+        }
+
+        if (this.elliotHigher2 == NULL
+                || this.elliotHigher2.marketContext.timeFrame != PERIOD_H4
+                || this.elliotHigher2.getLatestWave() == NULL) {
+            return false;
+        }
+
+        ZigZagPoint *latestPoint = this.elliotHigher2.getLatestPoint();
+        if (latestPoint == NULL) {
+            return false;
+        }
+
+        return !StringUtil::isEmpty(latestPoint.elliotLabel);
+    }
 
     /**
      * 採用分析の元波番号とFEを使用し、上位足の伸び過ぎを判定する。

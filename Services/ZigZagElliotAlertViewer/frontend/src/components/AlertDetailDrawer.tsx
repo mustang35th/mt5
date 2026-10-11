@@ -34,7 +34,7 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
-import { H4_WAVE_UNRESTRICTED_DESCRIPTION, isH1H4WaveRestrictionDisabled } from "../lib/h1EntryPolicy";
+import { H4_FE_UNRESTRICTED_DESCRIPTION, H4_WAVE_UNRESTRICTED_DESCRIPTION, isH4WaveRestrictionDisabled, isM15H4FeLimitDisabled } from "../lib/h1EntryPolicy";
 import { CurrencyStrengthSnapshotPanel } from "./CurrencyStrengthSnapshotPanel";
 import { ElliottLabelText } from "./ElliottLabelText";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
@@ -588,8 +588,11 @@ function DetailContent({ bundle, styleNonce }: { bundle: DetailBundle; styleNonc
             <DetailField label="Alert / Entry" value={`${yesNo(alert.is_alert)} / ${yesNo(alert.is_entry)}`} />
             <DetailField label="Entry result" value={alert.entry_result} />
             <DetailField label="現在Elliott" value={`wave ${displayValue(alert.current_elliot_label)}`} />
-            {isH1H4WaveRestrictionDisabled(alert.time_frame_text, run?.input_text) && (
+            {isH4WaveRestrictionDisabled(alert.time_frame_text, run?.input_text) && (
               <DetailField label="H4波動制限" value={H4_WAVE_UNRESTRICTED_DESCRIPTION} />
+            )}
+            {isM15H4FeLimitDisabled(alert.time_frame_text, run?.input_text) && (
+              <DetailField label="H4 FE上限" value={H4_FE_UNRESTRICTED_DESCRIPTION} />
             )}
             <DetailField label="EMA200距離" value={`${formatNumber(alert.close_ema200_diff_pips)} / max ${formatNumber(alert.max_close_ema200_diff_pips)} pips`} />
             <DetailField label="Spread" value={`${formatNumber(alert.spread_pips)} pips`} />
@@ -844,12 +847,21 @@ function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce, showC
         currentTimeFrame={correctionTimeFrame}
       />}
       {!showCorrection && <CurrencyStrengthSnapshotPanel alert={alert} />}
-      {!showCorrection && <H1EntryCheckPanel
+      {!showCorrection && alert.time_frame_text !== "M15" && <H1EntryCheckPanel
         savedDecision={savedH1Decision}
         savedRunInputText={run?.input_text}
         spreadPips={alert.spread_pips}
         timeFrames={timeFrames}
       />}
+      {!showCorrection && correctionTimeFrame === "M15"
+        && isH4WaveRestrictionDisabled(alert.time_frame_text, run?.input_text) && (
+        <div className="detail-grid">
+          <DetailField label="H4波動制限" value={H4_WAVE_UNRESTRICTED_DESCRIPTION} />
+          {isM15H4FeLimitDisabled(alert.time_frame_text, run?.input_text) && (
+            <DetailField label="H4 FE上限" value={H4_FE_UNRESTRICTED_DESCRIPTION} />
+          )}
+        </div>
+      )}
       {showCorrection ? <details className="m5-alert-extra">
         <summary>{bundle.detail.correction?.status === "APPLIED" ? "採用分析のTF比較" : "元の保存分析のTF比較（比較用）"}</summary>
         <p className="m5-alert-note">この表は{bundle.detail.correction?.status === "APPLIED" ? "補正後の採用分析" : "元の保存分析（比較用）"}を固定表示します。上の補正前後切替とは独立し、保存済みエントリー判定は再計算しません。</p>
