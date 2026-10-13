@@ -11,6 +11,7 @@
 
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
+#include <Mstng\Elliot\M15ElliotAlignmentDecision.mqh>
 #include <Mstng\Elliot\TrendAlignDecision.mqh>
 
 /** Elliott売買方向一致の判定ルール。 */
@@ -23,7 +24,8 @@ enum ElliotDirectionAlignmentRule {
     ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_MN1_W1_AND_H4_OR_H1 = 5,
     ELLIOT_DIRECTION_ALIGNMENT_RULE_D1_W1_MN1_OR_EMA_AND_H4_OR_H1 = 6,
     ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1 = 7,
-    ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200 = 8
+    ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200 = 8,
+    ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_MN1_WITH_EMA200 = 9
 };
 
 /** H1次点候補で不足している一致条件。 */
@@ -200,6 +202,15 @@ public:
             return false;
         }
 
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_MN1_WITH_EMA200
+                && (fromCurrentTimeFrame != PERIOD_M15
+                    || this.alignmentStartTimeFrame != PERIOD_MN1)) {
+            ArrayResize(fromTimeFrames, 0);
+
+            return false;
+        }
+
         return ElliotTimeFrameRange::build(
             this.alignmentStartTimeFrame,
             fromCurrentTimeFrame,
@@ -284,6 +295,15 @@ public:
             return d1Decision.isReady(fromElliotAll, PERIOD_D1);
         }
 
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_MN1_WITH_EMA200) {
+            M15ElliotAlignmentDecision decision;
+            M15ElliotAlignmentResult result;
+            decision.evaluate(fromElliotAll, result);
+
+            return result.isEvaluated;
+        }
+
         return true;
     }
 
@@ -352,6 +372,16 @@ public:
             timeFrames
         )) {
             return trendAlignNone;
+        }
+
+        // M15の4分類は分析方向の多数派を基準に判定する。
+        if (this.alignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_MN1_WITH_EMA200) {
+            M15ElliotAlignmentDecision decision;
+            M15ElliotAlignmentResult result;
+            decision.evaluate(fromElliotAll, result);
+
+            return result.alignType;
         }
 
         // M5一覧はA案の分析方向一致と、D1からM5までのEMA200同方向一致を要求する。

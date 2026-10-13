@@ -17,6 +17,7 @@
 #include <Mstng\Elliot\ElliotListSortType.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\H1D1EntrySortDecision.mqh>
+#include <Mstng\Elliot\M15ElliotAlignmentDecision.mqh>
 #include <Mstng\Elliot\M15ElliotEmaSortDecision.mqh>
 #include <Mstng\ExpertAdvisor\H1Ema200ConfirmationDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3EntryPriorityDecision.mqh>
@@ -91,6 +92,8 @@ public:
         this.sectionTitle = "";
         this.entryLegendEnabled = true;
         this.h1RunnerUpEnabled = true;
+        this.m15AlignmentGroup = m15ElliotAlignmentNone;
+        this.showUpdateSchedule = true;
         this.headerHeight = 45;
         this.columnHeaderYDistance = 59;
         this.separatorYDistance = 78;
@@ -343,6 +346,10 @@ public:
                 && fromDecision.getAlignmentRule()
                     == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200) {
             alignmentStartTimeFrameText = "W1=M15&2/3&EMA4";
+        } else if (currentTimeFrame == PERIOD_M15
+                && fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_MN1_WITH_EMA200) {
+            alignmentStartTimeFrameText = "isBuy MN1-M15 / EMA W1-M15";
         } else if (currentTimeFrame == PERIOD_M5
                 && fromDecision.getAlignmentRule()
                     == ELLIOT_DIRECTION_ALIGNMENT_RULE_M5_D1_M15_WITH_H4_OR_H1) {
@@ -386,6 +393,10 @@ public:
             );
         }
         this.updateGroupHeaders(buyCount, sellCount);
+        if (this.m15AlignmentGroup != m15ElliotAlignmentNone) {
+            this.updateM15GroupTitle(buyCount, sellCount);
+        }
+
         this.drawRows(
             fromElliotAllList,
             fromDecision,
@@ -471,6 +482,45 @@ public:
 
         this.destroyObjects();
         this.sectionTitle = fromSectionTitle;
+    }
+
+    /**
+     * M15の表示分類と更新時刻の表示有無を設定する。
+     *
+     * @param fromGroup 表示するM15分類。
+     * @param fromShowUpdateSchedule 共通更新時刻を表示する先頭表の場合true。
+     */
+    void setM15AlignmentGroup(
+        M15ElliotAlignmentGroup fromGroup,
+        bool fromShowUpdateSchedule = true
+    ) {
+        if (fromGroup < m15ElliotAlignmentAll
+                || fromGroup > m15ElliotAlignmentBoth) {
+            return;
+        }
+
+        this.destroyObjects();
+        this.m15AlignmentGroup = fromGroup;
+        this.showUpdateSchedule = fromShowUpdateSchedule;
+        this.entryLegendEnabled = false;
+        this.h1RunnerUpEnabled = false;
+        this.headerHeight = 25;
+        if (fromShowUpdateSchedule) {
+            this.headerHeight = 45;
+        }
+
+        this.columnHeaderYDistance = this.headerHeight + 8;
+        this.separatorYDistance = this.headerHeight + 25;
+        this.firstGroupYDistance = this.headerHeight + 31;
+        if (fromGroup == m15ElliotAlignmentAll) {
+            this.sectionTitle = "(1) 全一致  isBuy 6/6・EMA 5/5";
+        } else if (fromGroup == m15ElliotAlignmentAnalysisOpposite) {
+            this.sectionTitle = "(2) isBuyが1足逆  isBuy 5/6・EMA 5/5";
+        } else if (fromGroup == m15ElliotAlignmentEmaMismatch) {
+            this.sectionTitle = "(3) EMAが1足逆/NONE  isBuy 6/6・EMA 4/5";
+        } else {
+            this.sectionTitle = "(4) 両方1足不一致  isBuy 5/6・EMA 4/5";
+        }
     }
 
     /**
@@ -595,6 +645,12 @@ private:
 
     /** H1次点候補パネルを表示する場合true。 */
     bool h1RunnerUpEnabled;
+
+    /** M15で表示する分類。Noneの場合は従来の一覧表示。 */
+    M15ElliotAlignmentGroup m15AlignmentGroup;
+
+    /** 共通の更新時刻行を表示する場合true。 */
+    bool showUpdateSchedule;
 
     /** タイトル背景の高さ。 */
     int headerHeight;
@@ -754,8 +810,9 @@ private:
                 continue;
             }
 
-            TrendAlignType alignType = fromDecision.getAlignType(
+            TrendAlignType alignType = this.getDisplayAlignType(
                 elliotAll,
+                fromDecision,
                 fromCurrentTimeFrame
             );
 
@@ -772,6 +829,39 @@ private:
         if (fromElliotAllList.targetCount > total) {
             fromErrorCount += fromElliotAllList.targetCount - total;
         }
+    }
+
+    /**
+     * 共通条件と表示分類を満たした行の基準方向を取得する。
+     *
+     * @param fromElliotAll 分析結果。
+     * @param fromDecision 共通方向判定。
+     * @param fromCurrentTimeFrame 表示時間足。
+     * @return 表示対象の方向。対象外はNone。
+     */
+    TrendAlignType getDisplayAlignType(
+        ElliotAll *fromElliotAll,
+        ElliotDirectionAlignmentDecision *fromDecision,
+        ENUM_TIMEFRAMES fromCurrentTimeFrame
+    ) {
+        if (this.m15AlignmentGroup != m15ElliotAlignmentNone) {
+            if (fromCurrentTimeFrame != PERIOD_M15
+                    || fromDecision.getAlignmentRule()
+                        != ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_MN1_WITH_EMA200) {
+                return trendAlignNone;
+            }
+
+            M15ElliotAlignmentDecision decision;
+            M15ElliotAlignmentResult result;
+            decision.evaluate(fromElliotAll, result);
+            if (result.group != this.m15AlignmentGroup) {
+                return trendAlignNone;
+            }
+
+            return result.alignType;
+        }
+
+        return fromDecision.getAlignType(fromElliotAll, fromCurrentTimeFrame);
     }
 
     /**
@@ -824,6 +914,12 @@ private:
             + this.groupHeight
             + (maximumRowCount * this.rowHeight)
             + this.bottomPadding;
+        bool isEmptyM15Group = this.m15AlignmentGroup != m15ElliotAlignmentNone
+            && rowCount == 0;
+        if (isEmptyM15Group) {
+            panelHeight = this.headerHeight + 2;
+        }
+
         int combinedPanelWidth = this.getCombinedPanelWidth();
         int sellPanelLeftOffset = this.getDirectionPanelLeftOffset(
             trendAlignSell
@@ -909,7 +1005,7 @@ private:
             return false;
         }
 
-        if (!this.createLabel(
+        if (this.showUpdateSchedule && !this.createLabel(
             this.objectPrefix + "TitleTime",
             14,
             23,
@@ -924,7 +1020,22 @@ private:
             return false;
         }
 
-        if (!this.createDirectionPanel(
+        if (this.m15AlignmentGroup != m15ElliotAlignmentNone
+                && this.showUpdateSchedule
+                && !this.createLabel(
+                    this.objectPrefix + "M15Legend",
+                    sellPanelLeftOffset + 14,
+                    23,
+                    this.bodyFontSize,
+                    this.headerColor,
+                    "基準=isBuy多数派 / 上:波動 下:EMA / *=逆 NONE=方向なし -=対象外"
+                )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!isEmptyM15Group && !this.createDirectionPanel(
             trendAlignBuy,
             0,
             fromBuyCount,
@@ -938,7 +1049,7 @@ private:
             return false;
         }
 
-        if (!this.createDirectionPanel(
+        if (!isEmptyM15Group && !this.createDirectionPanel(
             trendAlignSell,
             fromBuyCount,
             fromSellCount,
@@ -1816,8 +1927,9 @@ private:
         );
 
         bool m15AlignmentGroupingEnabled = fromCurrentTimeFrame == PERIOD_M15
-            && fromDecision.getAlignmentRule()
-                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200;
+            && (fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200
+                || this.m15AlignmentGroup != m15ElliotAlignmentNone);
 
         for (int i = 0; i < displayCount; i++) {
             ElliotAll *elliotAll =
@@ -1902,8 +2014,9 @@ private:
                 continue;
             }
 
-            TrendAlignType alignType = fromDecision.getAlignType(
+            TrendAlignType alignType = this.getDisplayAlignType(
                 elliotAll,
+                fromDecision,
                 fromCurrentTimeFrame
             );
 
@@ -1951,7 +2064,15 @@ private:
 
             if (this.sortType == ELLIOT_LIST_SORT_M15_ELLIOT_EMA
                     && fromCurrentTimeFrame == PERIOD_M15) {
-                m15SortDecision.evaluate(elliotAll, m15SortResult);
+                if (this.m15AlignmentGroup != m15ElliotAlignmentNone) {
+                    m15SortDecision.evaluate(
+                        elliotAll,
+                        fromAlignType == trendAlignBuy,
+                        m15SortResult
+                    );
+                } else {
+                    m15SortDecision.evaluate(elliotAll, m15SortResult);
+                }
             }
 
             fromDisplayIndexes[displayCount] = i;
@@ -1969,8 +2090,9 @@ private:
         ArrayResize(fromM15SortResults, displayCount);
 
         bool m15AlignmentGroupingEnabled = fromCurrentTimeFrame == PERIOD_M15
-            && fromDecision.getAlignmentRule()
-                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200;
+            && (fromDecision.getAlignmentRule()
+                    == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_W1_WITH_EMA200
+                || this.m15AlignmentGroup != m15ElliotAlignmentNone);
 
         this.sortDisplayOrder(
             fromElliotAllList,
@@ -2042,7 +2164,8 @@ private:
      * H1ではD1環境とH1直接一致を主キー、ENTRYを副キーにする。
      * D1またはM15 Elliott・EMA200ソート選択時は各専用順を使用し、
      * その他の場合はENTRY優先度順にする。
-     * M15専用条件では全一致・H1逆・H4逆・D1逆の順で、各群内は選択された優先順を保つ。
+     * M15の4分類表示ではEMAのNONE候補を逆方向候補の前にまとめる。
+     * 従来のM15条件では全一致・H1逆・H4逆・D1逆の順を保つ。
      *
      * @param fromElliotAllList 分析結果一覧。
      * @param fromM15AlignmentGroupingEnabled M15専用条件の一致状態順に並べる場合true。
@@ -2273,6 +2396,13 @@ private:
         }
 
         color directionColor = this.getAlignColor(fromAlignType);
+        M15ElliotAlignmentResult m15Result;
+        bool isM15Group = this.m15AlignmentGroup != m15ElliotAlignmentNone;
+        if (isM15Group) {
+            M15ElliotAlignmentDecision m15Decision;
+            m15Decision.evaluate(fromElliotAll, m15Result);
+        }
+
         bool isOverlap = this.isOverlapCandidate(
             fromElliotAll,
             fromOverlapDecision,
@@ -2300,7 +2430,15 @@ private:
         string emaReferenceText = "EMA200";
         color emaReferenceColor = this.headerColor;
 
-        if (fromCurrentTimeFrame == PERIOD_H1) {
+        if (isM15Group) {
+            emaReferenceText = "M15 SELL";
+            emaReferenceColor = this.sellColor;
+            Elliot *elliotM15 = fromElliotAll.getElliot(PERIOD_M15);
+            if (elliotM15 != NULL && elliotM15.isBuy) {
+                emaReferenceText = "M15 BUY";
+                emaReferenceColor = this.buyColor;
+            }
+        } else if (fromCurrentTimeFrame == PERIOD_H1) {
             string emaReferenceTooltip = "";
             emaReferenceText = this.getH1Ema3ReferenceText(
                 fromElliotAll,
@@ -2341,7 +2479,29 @@ private:
         string entryDetailText = " ";
         color entryDetailColor = this.mutedColor;
 
-        if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
+        if (isM15Group) {
+            entryText = "isBuy一致";
+            entryColor = this.mutedColor;
+            entryDetailText = "EMA一致";
+            if (m15Result.analysisOppositeTimeFrame != PERIOD_CURRENT) {
+                entryText = "isBuy逆:" + TimeUtil::convertTimeFrameToString(
+                    m15Result.analysisOppositeTimeFrame
+                );
+                entryColor = this.entryNearColor;
+            }
+
+            if (m15Result.emaMismatchTimeFrame != PERIOD_CURRENT) {
+                string emaTimeFrameText = TimeUtil::convertTimeFrameToString(
+                    m15Result.emaMismatchTimeFrame
+                );
+                if (m15Result.isEmaNone) {
+                    entryDetailText = "EMA NONE:" + emaTimeFrameText;
+                } else {
+                    entryDetailText = "EMA逆:" + emaTimeFrameText;
+                    entryDetailColor = this.entryNearColor;
+                }
+            }
+        } else if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
                 && fromCurrentTimeFrame == PERIOD_D1) {
             entryText = this.getD1ConditionRankText(fromD1SortResult);
             entryColor = this.getD1ConditionRankColor(fromD1SortResult);
@@ -2379,21 +2539,48 @@ private:
         for (int i = 0; i < timeFrameCount; i++) {
             Elliot *elliot = fromElliotAll.getElliot(fromDisplayTimeFrames[i]);
             int columnIndex = drawAlignedElliotAllListColumnTimeFrameStart + i;
+            string waveText = this.getWaveText(elliot);
+            color waveColor = this.getWaveColor(elliot);
+            string emaText = this.getEmaText(elliot);
+            color emaColor = this.getEmaColor(emaText);
+            string tooltip = this.getWaveTooltip(elliot);
+            if (isM15Group) {
+                if (fromDisplayTimeFrames[i] == m15Result.analysisOppositeTimeFrame) {
+                    waveText = "*" + waveText;
+                    waveColor = this.entryNearColor;
+                }
+
+                if (fromDisplayTimeFrames[i] == PERIOD_MN1) {
+                    emaText = "-";
+                    emaColor = this.mutedColor;
+                    tooltip += "\nMN1 EMA200は判定対象外。";
+                } else if (fromDisplayTimeFrames[i] == m15Result.emaMismatchTimeFrame) {
+                    if (m15Result.isEmaNone) {
+                        emaText = "NONE";
+                        emaColor = this.mutedColor;
+                    } else {
+                        emaText = "*" + emaText;
+                        emaColor = this.entryNearColor;
+                    }
+                }
+
+                tooltip += "\n基準方向はMN1からM15までのisBuy多数派。"
+                    + "\nisBuy逆は最大1足、EMA逆とNONEは合計1足まで。"
+                    + "\n*は基準方向と逆、NONEは計算済みの方向なし。";
+            }
 
             this.setCell(
                 fromRowIndex,
                 columnIndex,
-                this.getWaveText(elliot),
-                this.getWaveColor(elliot)
+                waveText,
+                waveColor
             );
-
-            string emaText = this.getEmaText(elliot);
 
             this.setEmaCell(
                 fromRowIndex,
                 columnIndex,
                 emaText,
-                this.getEmaColor(emaText)
+                emaColor
             );
             this.setFibonacciCell(
                 fromRowIndex,
@@ -2404,7 +2591,44 @@ private:
             this.setTimeFrameCellTooltip(
                 fromRowIndex,
                 columnIndex,
-                this.getWaveTooltip(elliot)
+                tooltip
+            );
+        }
+    }
+
+    /**
+     * M15分類ごとの件数と共通凡例を表示する。
+     *
+     * @param fromBuyCount 基準BUYの件数。
+     * @param fromSellCount 基準SELLの件数。
+     */
+    void updateM15GroupTitle(int fromBuyCount, int fromSellCount) {
+        string titleText = StringFormat(
+            "%s  / 基準BUY %d・SELL %d",
+            this.sectionTitle,
+            fromBuyCount,
+            fromSellCount
+        );
+        ObjectSetString(this.chartId, this.objectPrefix + "Title", OBJPROP_TEXT, titleText);
+        ObjectSetString(
+            this.chartId,
+            this.objectPrefix + "Title",
+            OBJPROP_TOOLTIP,
+            titleText + "\n基準方向=isBuy MN1-M15の多数派。EMAはW1-M15。"
+                + "\nEMAの逆とNONEは合計1足まで。④は同じ足・別々の足の逆を含む。"
+                + "\n" + this.lastCompletedTitleText
+        );
+        if (this.showUpdateSchedule) {
+            string scheduleText = this.lastCompletedTitleTimeText;
+            if (scheduleText == "") {
+                scheduleText = this.getUpdateScheduleText("M15", 0);
+            }
+
+            ObjectSetString(
+                this.chartId,
+                this.objectPrefix + "TitleTime",
+                OBJPROP_TEXT,
+                scheduleText
             );
         }
     }
@@ -2491,21 +2715,24 @@ private:
             OBJPROP_TEXT,
             this.lastCompletedTitleText
         );
-        ObjectSetString(
-            this.chartId,
-            this.objectPrefix + "TitleTime",
-            OBJPROP_TEXT,
-            this.lastCompletedTitleTimeText
-        );
+        if (this.showUpdateSchedule) {
+            ObjectSetString(
+                this.chartId,
+                this.objectPrefix + "TitleTime",
+                OBJPROP_TEXT,
+                this.lastCompletedTitleTimeText
+            );
+            ObjectSetString(
+                this.chartId,
+                this.objectPrefix + "TitleTime",
+                OBJPROP_TOOLTIP,
+                tooltipText
+            );
+        }
+
         ObjectSetString(
             this.chartId,
             this.objectPrefix + "Title",
-            OBJPROP_TOOLTIP,
-            tooltipText
-        );
-        ObjectSetString(
-            this.chartId,
-            this.objectPrefix + "TitleTime",
             OBJPROP_TOOLTIP,
             tooltipText
         );
@@ -2518,17 +2745,28 @@ private:
      * @param fromSellCount SELL件数。
      */
     void updateGroupHeaders(int fromBuyCount, int fromSellCount) {
+        string buyText = StringFormat("BUY  %d", fromBuyCount);
+        string sellText = StringFormat("SELL  %d", fromSellCount);
+        if (this.m15AlignmentGroup != m15ElliotAlignmentNone) {
+            if (fromBuyCount + fromSellCount == 0) {
+                return;
+            }
+
+            buyText = StringFormat("基準BUY  %d", fromBuyCount);
+            sellText = StringFormat("基準SELL  %d", fromSellCount);
+        }
+
         ObjectSetString(
             this.chartId,
             this.objectPrefix + "GroupBuy",
             OBJPROP_TEXT,
-            StringFormat("BUY  %d", fromBuyCount)
+            buyText
         );
         ObjectSetString(
             this.chartId,
             this.objectPrefix + "GroupSell",
             OBJPROP_TEXT,
-            StringFormat("SELL  %d", fromSellCount)
+            sellText
         );
     }
 
@@ -2785,12 +3023,27 @@ private:
     /**
      * M15専用条件を通過した候補の分析方向一致状態を順位で取得する。
      *
-     * 表示対象の判定は変更せず、並び順とENTRY下段に共通で使用する。
+     * 4分類表示ではNONEと逆方向を分け、従来条件では逆の分析時間足を使用する。
      *
      * @param fromElliotAll 分析結果。
-     * @return 全一致0、H1逆1、H4逆2、D1逆3。対象欠損・複数逆は4。
+     * @return 4分類はEMA一致/NONEが0、EMA逆が1。従来は全一致0、H1逆1、H4逆2、D1逆3。対象外は4。
      */
     int getM15AlignmentRank(ElliotAll *fromElliotAll) {
+        if (this.m15AlignmentGroup != m15ElliotAlignmentNone) {
+            M15ElliotAlignmentDecision decision;
+            M15ElliotAlignmentResult result;
+            decision.evaluate(fromElliotAll, result);
+            if (result.alignType == trendAlignNone) {
+                return 4;
+            }
+
+            if (result.emaMismatchTimeFrame == PERIOD_CURRENT || result.isEmaNone) {
+                return 0;
+            }
+
+            return 1;
+        }
+
         if (fromElliotAll == NULL) {
             return 4;
         }
@@ -3520,6 +3773,10 @@ private:
         }
 
         if (fromColumnIndex == drawAlignedElliotAllListColumnEntryPriority) {
+            if (this.m15AlignmentGroup != m15ElliotAlignmentNone) {
+                return "不一致";
+            }
+
             if (this.sortType == ELLIOT_LIST_SORT_D1_ELLIOT_EMA
                     && fromCurrentTimeFrame == PERIOD_D1) {
                 return "D1 RANK";

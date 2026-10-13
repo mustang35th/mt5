@@ -115,8 +115,18 @@ class H1ListD1WiringTests(unittest.TestCase):
         for name in ("countRows", "buildDisplayOrder"):
             body = compact(method(self.drawer, name))
             self.assertIn("fromDecision.isReady(elliotAll,fromCurrentTimeFrame)", body)
-            self.assertIn("fromDecision.getAlignType(elliotAll,fromCurrentTimeFrame)", body)
+            self.assertIn("this.getDisplayAlignType(elliotAll,fromDecision,fromCurrentTimeFrame)", body)
             self.assertNotIn("h1D1Alignment", body)
+        # The extracted display helper must preserve the shared H1 filter outside M15 groups.
+        display = typed_body(self.drawer, "getDisplayAlignType")
+        position, m15 = branch(display, r"this\.m15AlignmentGroup\s*!=\s*m15ElliotAlignmentNone")
+        self.assertEqual(compact(display[:position]), "")
+        self.assertIn("if(fromCurrentTimeFrame!=PERIOD_M15||fromDecision.getAlignmentRule()"
+                      "!=ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_MN1_WITH_EMA200){returntrendAlignNone;}",
+                      compact(m15))
+        self.assertEqual(compact(display.split(m15, 1)[1]),
+                         "}returnfromDecision.getAlignType(fromElliotAll,fromCurrentTimeFrame);")
+        self.assertNotIn("h1D1Alignment", compact(display))
         order = compact(method(self.drawer, "buildDisplayOrder"))
         self.assertLess(order.index("if(alignType!=fromAlignType){continue;}"),
                         order.index("h1D1SortDecision.evaluate("))

@@ -44,6 +44,11 @@ public:
         this.h1AlignmentDecision = NULL;
         this.drawer = NULL;
         this.h1Drawer = NULL;
+
+        for (int i = 0; i < ArraySize(this.m15Drawers); i++) {
+            this.m15Drawers[i] = NULL;
+        }
+
         this.alertAllController = NULL;
         this.initialized = false;
         this.executing = false;
@@ -53,6 +58,7 @@ public:
         this.testerHistoryWarmUpEnabled = false;
         this.hasPendingAnalysis = false;
         this.h1M5IndependentModeEnabled = false;
+        this.m15AlignmentGroupsEnabled = false;
         this.updateTimeFrame = PERIOD_M5;
         this.lastProcessedBarTime = 0;
         this.lastTesterWarmUpCheckBarTime = 0;
@@ -122,6 +128,10 @@ public:
         this.isTester = Util::isStrategyTester();
         this.h1M5IndependentModeEnabled =
             fromH1M5IndependentModeEnabled;
+        this.m15AlignmentGroupsEnabled =
+            this.marketContext.timeFrame == PERIOD_M15
+            && fromAlignmentRule
+                == ELLIOT_DIRECTION_ALIGNMENT_RULE_M15_MN1_WITH_EMA200;
         this.testerHistoryWarmUpEnabled =
             fromTesterHistoryWarmUpEnabled && this.isTester;
         this.updateTimeFrame = PERIOD_M5;
@@ -389,6 +399,33 @@ public:
             this.drawer.setEntryLegendEnabled(false);
         }
 
+        if (this.m15AlignmentGroupsEnabled) {
+            this.drawer.setM15AlignmentGroup(m15ElliotAlignmentAll);
+
+            for (int i = 0; i < ArraySize(this.m15Drawers); i++) {
+                this.m15Drawers[i] = new DrawAlignedElliotAllList(
+                    0,
+                    i + 1,
+                    fromSortType
+                );
+
+                if (this.m15Drawers[i] == NULL) {
+                    this.logger.error(
+                        __FUNCTION__,
+                        "failed to create M15 alignment group drawer"
+                    );
+                    this.destroy();
+
+                    return INIT_FAILED;
+                }
+
+                this.m15Drawers[i].setM15AlignmentGroup(
+                    (M15ElliotAlignmentGroup)(i + 1),
+                    false
+                );
+            }
+        }
+
         if (!this.isTester) {
             this.timerEnabled = EventSetTimer(this.retrySeconds);
 
@@ -466,6 +503,9 @@ private:
     /** 独立2段表示で使用するH1一覧描画。 */
     DrawAlignedElliotAllList *h1Drawer;
 
+    /** M15の全一致以外の3分類で使用する追加一覧描画。 */
+    DrawAlignedElliotAllList *m15Drawers[3];
+
     /** 28通貨MTF_3in3 Alert判定制御。 */
     Mtf3In3AlertAllController *alertAllController;
 
@@ -495,6 +535,9 @@ private:
 
     /** H1・M5を独立した上下2段で表示する場合true。 */
     bool h1M5IndependentModeEnabled;
+
+    /** M15を方向一致状態別の4段で表示する場合true。 */
+    bool m15AlignmentGroupsEnabled;
 
     /** 分析更新の基準時間足。ライブではM5。 */
     ENUM_TIMEFRAMES updateTimeFrame;
@@ -1015,6 +1058,10 @@ private:
 
         this.drawer.setUpdateSchedule(this.updateTimeFrame, currentBarTime);
 
+        if (this.m15AlignmentGroupsEnabled) {
+            this.drawer.setYDistance(12);
+        }
+
         if (!this.drawer.draw(
             elliotAllList,
             this.alignmentDecision,
@@ -1026,6 +1073,38 @@ private:
 
             if (this.alertAllController == NULL) {
                 this.hasPendingAnalysis = true;
+            }
+        }
+
+        if (this.m15AlignmentGroupsEnabled) {
+            int groupPanelYDistance =
+                12 + this.drawer.getRenderedHeight() + 8;
+
+            for (int i = 0; i < ArraySize(this.m15Drawers); i++) {
+                this.m15Drawers[i].setYDistance(groupPanelYDistance);
+                this.m15Drawers[i].setUpdateSchedule(
+                    this.updateTimeFrame,
+                    currentBarTime
+                );
+
+                if (!this.m15Drawers[i].draw(
+                    elliotAllList,
+                    this.alignmentDecision,
+                    PERIOD_M15
+                )) {
+                    this.logger.error(
+                        __FUNCTION__,
+                        "failed to draw M15 alignment group="
+                            + IntegerToString(i + 1)
+                    );
+
+                    if (this.alertAllController == NULL) {
+                        this.hasPendingAnalysis = true;
+                    }
+                }
+
+                groupPanelYDistance +=
+                    this.m15Drawers[i].getRenderedHeight() + 8;
             }
         }
 
@@ -1301,6 +1380,14 @@ private:
             this.h1Drawer = NULL;
         }
 
+        for (int i = 0; i < ArraySize(this.m15Drawers); i++) {
+            if (this.m15Drawers[i] != NULL) {
+                this.m15Drawers[i].clear();
+                delete this.m15Drawers[i];
+                this.m15Drawers[i] = NULL;
+            }
+        }
+
         if (this.alertAllController != NULL) {
             delete this.alertAllController;
             this.alertAllController = NULL;
@@ -1332,6 +1419,7 @@ private:
         this.testerHistoryWarmUpEnabled = false;
         this.hasPendingAnalysis = false;
         this.h1M5IndependentModeEnabled = false;
+        this.m15AlignmentGroupsEnabled = false;
         this.updateTimeFrame = PERIOD_M5;
         this.lastProcessedBarTime = 0;
         this.lastTesterWarmUpCheckBarTime = 0;

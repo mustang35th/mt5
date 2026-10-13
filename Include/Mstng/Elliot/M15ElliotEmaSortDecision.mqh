@@ -81,6 +81,31 @@ public:
         M15ElliotEmaSortResult &fromResult
     ) {
         fromResult.reset();
+        if (fromElliotAll == NULL) {
+            return;
+        }
+
+        Elliot *elliotM15 = fromElliotAll.getElliot(PERIOD_M15);
+        if (elliotM15 == NULL) {
+            return;
+        }
+
+        this.evaluate(fromElliotAll, elliotM15.isBuy, fromResult);
+    }
+
+    /**
+     * 指定した基準方向に対するM15 Elliott・EMA200ソート結果を生成する。
+     *
+     * @param fromElliotAll 複数時間足のElliott分析結果。
+     * @param fromIsBuy 一覧の基準方向がBUYの場合true。
+     * @param fromResult 判定結果の格納先。
+     */
+    void evaluate(
+        ElliotAll *fromElliotAll,
+        const bool fromIsBuy,
+        M15ElliotEmaSortResult &fromResult
+    ) {
+        fromResult.reset();
 
         if (fromElliotAll == NULL
                 || !fromElliotAll.isAnalysisSucceeded) {
@@ -105,7 +130,7 @@ public:
             return;
         }
 
-        bool isBuy = elliotM15.isBuy;
+        bool isBuy = fromIsBuy;
 
         fromResult.m15WaveDirectionRank =
             this.getWaveDirectionRank(elliotM15, isBuy);
