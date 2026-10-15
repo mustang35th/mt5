@@ -55,6 +55,7 @@ def evaluate_predicate(expression, **values):
         "this.testerSaveGateOpen": "gate_open",
         "this.testerMode": "tester",
         "MQLInfoInteger(MQL_TESTER)": "tester",
+        "Util::isStrategyTester()": "tester",
         "TimeCurrent()": "current",
         "this.checked": "checked",
         "this.beforeStart": "was_before_start",
@@ -453,7 +454,7 @@ class ObservationWarmupContractTest(unittest.TestCase):
 
     def test_progress_called_after_drain_and_for_each_stop_or_source_wait_return(self):
         execute = body(self.source, "void execute()")
-        self.assertEqual(execute.count("this.logM5TesterProgress()"), 4)
+        self.assertEqual(execute.count("this.logM5TesterProgress()"), 5)
         stopped = body(execute, "if (this.competingWriterDetected || this.databaseRejected)")
         self.assertIn("this.logM5TesterProgress()", stopped)
         self.assertLess(stopped.index("this.logM5TesterProgress()"), stopped.index("return;"))
@@ -581,12 +582,16 @@ class ObservationWarmupContractTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(actual, expected)
 
-    def test_m5_indicator_and_run_share_program_version(self):
-        indicator = (ROOT / "Indicators/ZigZagElliotM5ObservationAll.mq5").read_text(encoding="utf-8-sig")
-        version = re.search(r'#property version\s+"([^"]+)"', indicator).group(1)
+    def test_h1_and_m5_indicators_and_run_share_program_versions(self):
         run = body(self.source, "void setDatabaseRun()")
-        self.assertIn('this.databaseRun.programVersion = "1.04"', run)
-        self.assertIn(f'this.databaseRun.programVersion = "{version}"', body(run, "if (this.observationProfile.isM5())"))
+        for profile in ("H1", "M5"):
+            with self.subTest(profile=profile):
+                indicator = (ROOT / f"Indicators/ZigZagElliot{profile}ObservationAll.mq5").read_text(encoding="utf-8-sig")
+                version = re.search(r'#property version\s+"([^"]+)"', indicator).group(1)
+                branch = run.split("if (this.observationProfile.isM5())", 1)[0]
+                if profile == "M5":
+                    branch = body(run, "if (this.observationProfile.isM5())")
+                self.assertIn(f'this.databaseRun.programVersion = "{version}"', branch)
 
     def test_new_diagnostics_do_not_trade_persist_or_rewrite_gate(self):
         for signature in ("bool shouldSkipM5TesterWarmup()", "bool isM5AnalysisSeriesReady(",

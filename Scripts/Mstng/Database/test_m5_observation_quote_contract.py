@@ -54,9 +54,11 @@ class AdoptedQuoteContractTest(unittest.TestCase):
 
     def test_legacy_today_rate_update_still_uses_original_path(self):
         body = method_body(self.rate, "void update(MarketContext &fromMarketContext)")
-        self.assertEqual(body.strip(),
-                         "this.initializeMarketContext(fromMarketContext);\n"
-                         "        this.updateValues();")
+        statements = [line.strip() for line in body.splitlines() if line.strip()]
+        self.assertEqual(statements, [
+            "this.initializeMarketContext(fromMarketContext);",
+            "this.updateValues();",
+        ])
 
     def test_legacy_rate_body_unchanged_after_helper_expansion(self):
         body = method_body(self.rate, "void updateValues()")

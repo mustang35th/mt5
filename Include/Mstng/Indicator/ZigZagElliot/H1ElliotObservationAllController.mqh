@@ -15,6 +15,7 @@
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Database\ZigZagElliotAlertDatabaseContext.mqh>
 #include <Mstng\Database\ZigZagElliotM5ObservationDatabaseContext.mqh>
+#include <Mstng\Database\ZigZagElliotObservationWriterLock.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Elliot\ZigZagElliotObservationProfile.mqh>
@@ -279,6 +280,7 @@ public:
         }
         this.snapshotQueue.Clear();
         this.releaseDatabase(false);
+        this.writerLock.release();
 
         if (this.oscillatorHandleManager != NULL) {
             delete this.oscillatorHandleManager;
@@ -393,8 +395,11 @@ private:
     /** 観測を保存可能なDB接続がある場合true。 */
     bool databaseReady;
 
-    /** 別RunのWriterによる自然キー競合を検出した場合true。 */
+    /** Writer排他ハンドルを取得できず収集を停止した場合true。 */
     bool competingWriterDetected;
+
+    /** 稼働中の観測WriterをDB・モード・基準足ごとに排他制御する。 */
+    ZigZagElliotObservationWriterLock writerLock;
 
     /** 観測保存先DBファイル名。 */
     string databaseFileName;
@@ -471,9 +476,6 @@ private:
     /** 通貨ごとにTESTER事前分析を試行したH1バー開始時刻。 */
     datetime testerPreflightAttemptH1BarTimes[];
 
-    /** 通貨ごとに別RunのWriter競合を検出した場合true。 */
-    bool symbolCompetingWriterFlags[];
-
     /** 通貨ごとの状態コード。 */
     string symbolStatusCodes[];
 
@@ -503,6 +505,13 @@ private:
         }
 
         if (!this.ensureExecutionSource()) {
+            this.refreshStatus();
+            this.logM5TesterProgress();
+
+            return;
+        }
+
+        if (!this.ensureWriterLock()) {
             this.refreshStatus();
             this.logM5TesterProgress();
 
@@ -763,23 +772,64 @@ private:
             return;
         }
 
-        // M5の準備完了へ昇格する前の状態で、前区間を欠損集計するか固定する。
+        // LIVE準備中は境界を処理せず、準備完了後の現在足をbaselineにする。
         bool countPreviousGaps = !this.observationProfile.isM5()
             || this.analysisReadyFlags[fromIndex];
         if (!this.testerMode
-                && !this.analysisReadyFlags[fromIndex]
-                && this.isAnalysisSeriesReady(fromIndex)) {
+                && !this.analysisReadyFlags[fromIndex]) {
+            if (!this.isAnalysisSeriesReady(fromIndex)) {
+                this.symbolRetryCounts[fromIndex]++;
+                this.setSymbolStatus(
+                    fromIndex,
+                    "RETRY",
+                    "LIVE履歴を準備中"
+                );
+
+                return;
+            }
+
+            ResetLastError();
+            currentH1BarTime = iTime(
+                symbolName,
+                this.observationProfile.getAnchorTimeFrame(),
+                0
+            );
+
+            if (currentH1BarTime <= 0) {
+                this.currentH1BarTimes[fromIndex] = 0;
+                this.symbolRetryCounts[fromIndex]++;
+                this.setSymbolStatus(
+                    fromIndex,
+                    "RETRY",
+                    "H1系列を取得待ち"
+                );
+
+                return;
+            }
+
+            this.observeCaptureBoundary(fromIndex, currentH1BarTime);
+            this.currentH1BarTimes[fromIndex] = currentH1BarTime;
+            if (currentH1BarTime > this.currentBatchH1BarTime) {
+                this.currentBatchH1BarTime = currentH1BarTime;
+            }
+
             this.analysisReadyFlags[fromIndex] = true;
+            this.lastDetectedH1BarTimes[fromIndex] = currentH1BarTime;
+            this.pendingAnalysisH1BarTimes[fromIndex] = 0;
+            this.symbolRetryCounts[fromIndex] = 0;
+            this.setSymbolStatus(
+                fromIndex,
+                "BASE",
+                "準備完了後の現在H1をbaselineに設定"
+            );
+
+            return;
         }
 
         if (this.lastDetectedH1BarTimes[fromIndex] == 0) {
             this.lastDetectedH1BarTimes[fromIndex] = currentH1BarTime;
 
             if (!this.testerMode) {
-                if (!this.analysisReadyFlags[fromIndex]) {
-                    this.warmUpSymbol(fromIndex);
-                }
-
                 this.setSymbolStatus(
                     fromIndex,
                     "BASE",
@@ -815,16 +865,6 @@ private:
 
         if (this.symbolQueuedCounts[fromIndex] > 0) {
             this.setSymbolStatus(fromIndex, "DB", "DB保存待ち");
-
-            return;
-        }
-
-        if (this.symbolCompetingWriterFlags[fromIndex]) {
-            this.setSymbolStatus(
-                fromIndex,
-                "ERR",
-                "別WriterのRunへ既存行あり"
-            );
 
             return;
         }
@@ -1570,35 +1610,22 @@ private:
             }
 
             int stateIndex = this.findSymbolIndex(queueItem.symbolName);
-            bool isCompetingWriter =
+            bool isExistingRun =
                 queueItem.snapshot.observation.runId != expectedRunId;
+            string savedMessage = "DB保存完了";
 
-            if (isCompetingWriter) {
-                this.competingWriterDetected = true;
-                this.lastDatabaseMessage =
-                    "別RunのWriterによる自然キー競合を検出";
-
-                if (stateIndex >= 0) {
-                    this.symbolCompetingWriterFlags[stateIndex] = true;
-                    this.setSymbolStatus(
-                        stateIndex,
-                        "ERR",
-                        "別Writerを停止して再起動してください"
-                    );
-                }
-
-                this.logger.error(
+            if (isExistingRun) {
+                savedMessage = "既存の観測を保持（保存済み）";
+                this.logger.info(
                     __FUNCTION__,
                     StringFormat(
-                        "Competing observation writer detected. symbol=%s anchor=%s expectedRunId=%I64d actualRunId=%I64d",
+                        "Existing observation from another run is retained. symbol=%s anchor=%s currentRunId=%I64d existingRunId=%I64d",
                         queueItem.symbolName,
                         this.formatDateTime(queueItem.anchorBarTime),
                         expectedRunId,
                         queueItem.snapshot.observation.runId
                     )
                 );
-
-                return;
             }
 
             if (stateIndex >= 0) {
@@ -1610,13 +1637,7 @@ private:
                     queueItem.anchorBarTime;
                 this.symbolRetryCounts[stateIndex] = 0;
 
-                if (this.symbolCompetingWriterFlags[stateIndex]) {
-                    this.setSymbolStatus(
-                        stateIndex,
-                        "ERR",
-                        "別WriterのRunへ既存行あり"
-                    );
-                } else if (this.symbolQueuedCounts[stateIndex] > 0) {
+                if (this.symbolQueuedCounts[stateIndex] > 0) {
                     this.setSymbolStatus(
                         stateIndex,
                         "DB",
@@ -1626,7 +1647,7 @@ private:
                     this.setSymbolStatus(
                         stateIndex,
                         "OK",
-                        "DB保存完了"
+                        savedMessage
                     );
                 }
             }
@@ -1636,6 +1657,49 @@ private:
             this.nextDatabaseRetryTime = 0;
             this.snapshotQueue.Delete(0);
         }
+    }
+
+    /**
+     * DB接続とは独立して、稼働中Writerの排他ハンドルを確保する。
+     *
+     * 取得失敗時は収集を停止する。既存SnapshotのRun番号は競合判定に使わない。
+     *
+     * @return このインスタンスが排他ハンドルを保持している場合true。
+     */
+    bool ensureWriterLock() {
+        if (this.writerLock.isHeld()) {
+            return true;
+        }
+
+        ResetLastError();
+        if (this.writerLock.acquire(
+                this.databaseFileName,
+                this.databaseUseCommonFolder,
+                this.databaseRun.sourceMode,
+                this.getAnchorTimeFrameText()
+            )) {
+            return true;
+        }
+
+        int errorCode = GetLastError();
+        this.competingWriterDetected = true;
+        this.lastDatabaseMessage =
+            "Writerロック取得失敗（別Writer稼働またはファイルアクセス不可）";
+
+        for (int i = 0; i < ArraySize(this.symbolNames); i++) {
+            this.setSymbolStatus(i, "ERR", this.lastDatabaseMessage);
+        }
+
+        this.logger.error(__FUNCTION__, StringFormat(
+            "Observation writer lock unavailable. database=%s common=%d mode=%s anchor=%s error=%d",
+            this.databaseFileName,
+            (int)this.databaseUseCommonFolder,
+            this.databaseRun.sourceMode,
+            this.getAnchorTimeFrameText(),
+            errorCode
+        ));
+
+        return false;
     }
 
     /**
@@ -1855,7 +1919,6 @@ private:
         ArrayResize(this.analysisReadyFlags, total);
         ArrayResize(this.testerPreflightH1BarTimes, total);
         ArrayResize(this.testerPreflightAttemptH1BarTimes, total);
-        ArrayResize(this.symbolCompetingWriterFlags, total);
         ArrayResize(this.symbolStatusCodes, total);
         ArrayResize(this.symbolMessages, total);
         ArrayResize(this.lastHistoryLogTexts, total);
@@ -1878,7 +1941,6 @@ private:
             this.analysisReadyFlags[i] = false;
             this.testerPreflightH1BarTimes[i] = 0;
             this.testerPreflightAttemptH1BarTimes[i] = 0;
-            this.symbolCompetingWriterFlags[i] = false;
             this.symbolStatusCodes[i] = "BASE";
             this.symbolMessages[i] = "初期化中";
             this.lastHistoryLogTexts[i] = "";
@@ -2046,9 +2108,9 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.04";
+        this.databaseRun.programVersion = "1.05";
         if (this.observationProfile.isM5()) {
-            this.databaseRun.programVersion = "1.03";
+            this.databaseRun.programVersion = "1.04";
         }
         this.databaseRun.strategy = this.observationProfile.getStrategy();
         this.databaseRun.strategyVersion = this.observationProfile.getStrategyVersion();
@@ -2169,6 +2231,7 @@ private:
         this.status.isRunning = this.initialized;
         this.status.isWriterActive =
             this.initialized
+                && this.writerLock.isHeld()
                 && !this.competingWriterDetected
                 && !this.databaseRejected
                 && this.isPersistenceAllowed();
@@ -2203,11 +2266,6 @@ private:
         this.status.elapsedMilliseconds =
             this.lastExecutionMilliseconds;
         this.status.message = this.lastDatabaseMessage;
-
-        if (this.competingWriterDetected) {
-            this.status.message =
-                "別RunのWriterによる自然キー競合を検出";
-        }
 
         for (int i = 0; i < ArraySize(this.symbolNames); i++) {
             this.status.symbolHistoryReady[i] = this.historyPreparations[i].isReady()
@@ -2346,7 +2404,6 @@ private:
         ArrayResize(this.analysisReadyFlags, 0);
         ArrayResize(this.testerPreflightH1BarTimes, 0);
         ArrayResize(this.testerPreflightAttemptH1BarTimes, 0);
-        ArrayResize(this.symbolCompetingWriterFlags, 0);
         ArrayResize(this.symbolStatusCodes, 0);
         ArrayResize(this.symbolMessages, 0);
         ArrayResize(this.lastHistoryLogTexts, 0);

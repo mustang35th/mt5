@@ -5,13 +5,13 @@
 | 項目 | 内容 |
 |---|---|
 | 対象 | `Indicators/ZigZagElliotH1ObservationAll.mq5` |
-| プログラムバージョン | `1.04` |
+| プログラムバージョン | `1.05` |
 | 役割 | 全28通貨のH1新規足時点におけるElliott分析結果を時系列保存する |
 | 基準時間足 | H1 |
 | 保存時間足 | MN1、W1、D1、H4、H1 |
 | 保存先 | MetaTrader 5組み込みSQLite |
 | 観測タイミング | `BAR_OPEN_FIRST_SUCCESS` |
-| 最終更新日 | 2026-09-26 |
+| 最終更新日 | 2026-10-15 |
 
 本書は、`ZigZagElliotH1ObservationAll`の収集対象、実行ライフサイクル、H1境界の扱い、分析内容、FIFO、DB保存、状態パネルおよび障害時の動作を定義します。
 
@@ -156,12 +156,12 @@ DB接続やRun保存の一時的な失敗だけでは初期化を失敗させま
 | 実行イベント | `OnTimer` | `OnCalculate` |
 | 境界確認頻度 | `observationTimerSeconds` | 価格更新ごと |
 | Timer登録 | あり | なし |
-| 起動直後の現在H1 | baselineとして設定し保存しない | 保存開始時刻が`0`なら従来どおり通貨別の初回成功時に保存する |
+| 起動時の現在H1 | 履歴準備成功後に再取得した現在H1をbaselineに設定し、保存しない | 保存開始時刻が`0`なら従来どおり通貨別の初回成功時に保存する |
 | 保存開始時刻が0より大きい場合 | 使用しない | 保存開始前の事前分析と、全28通貨の保存ゲートを使用する |
 | `source_mode` | `LIVE` | `TESTER` |
 | 最適化 | 対象外 | 使用不可 |
 
-LIVEでは、インジケーターを有効にした時点の進行中H1をbaselineにします。最初の保存対象は、その次に検出したH1新規足です。
+LIVEでは、通貨ごとの履歴準備に成功した後、`iTime(symbol, PERIOD_H1, 0)`を再取得して、その時点の現在H1をbaselineにします。再取得した時刻が無効なら準備完了にせず再試行します。履歴準備前の古いキャッシュ時刻をbaselineへ使わず、準備中にH1境界を越えても現在H1をSnapshot化しません。準備中とbaselineのH1は`gapCount`へ加算せず、最初の保存対象はbaselineより後に検出したH1新規足です。
 
 `observationTesterSaveStartTime = 0`のTESTERでは、各通貨についてH1境界ごとに履歴準備を確認します。準備できたH1を分析待ちに設定し、その場で分析に成功した場合に最初のSnapshotとして保存します。この設定は追加の保存ゲートを使用せず、従来のTESTER初回処理を維持します。
 
@@ -177,6 +177,7 @@ LIVEでは、インジケーターを有効にした時点の進行中H1をbasel
 - 状態パネルのチャートオブジェクト
 - 保存待ちFIFO
 - DB接続とPersistence Service
+- 稼働中に保持したWriterロックのファイルハンドル（`FileClose`で解放）
 - 28通貨分の分析ハンドル
 - シンボル一覧と通貨別状態
 
@@ -185,6 +186,8 @@ FIFOはメモリだけに存在します。終了時に未保存Snapshotをデ�
 ## 7. H1観測フロー
 
 ### 7.1 通常フロー
+
+LIVEでは6.2の履歴準備後baseline設定を終えてから、次の通常フローへ入ります。初回準備中のバーはpendingやSnapshotにせず、Gapにも加算しません。
 
 ```text
 各通貨のiTime(H1, 0)を取得
@@ -328,7 +331,7 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 | Run `strategy_version` | `H1_OBSERVATION_ALL_V5` |
 | Run `schema_version` | `6` |
 
-ここでいう`schema_version = 6`は、本インジケーターが作成するRun行のメタデータです。共有DBのAlert Runや、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.04`です。
+ここでいう`schema_version = 6`は、本インジケーターが作成するRun行のメタデータです。共有DBのAlert Runや、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.05`です。
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
 
@@ -462,7 +465,7 @@ SQLite接続には次を設定します。
 
 ### 10.2 単一Run
 
-1回のインジケーター起動中は、28通貨すべてを同じRunへ関連付けます。
+1回のインジケーター起動中に新規保存する28通貨の観測は、すべて同じRunへ関連付けます。既存の自然キーを保持した観測は元のRunに残します。
 
 `run_uid`は起動ローカル時刻、`GetTickCount64()`およびChart IDから生成します。DB再接続後も同じRun Entityを再利用します。
 
@@ -512,21 +515,27 @@ Run行の準備はこのSnapshotトランザクションより前に行うため
 - 同じhashなら既存Observation IDを返す
 - 異なるhashでも既存行と子5行を変更しない
 - hash差異はINFOログへ記録する
+- 旧Runを含む既存自然キーは保存済みとして件数・通貨状態へ反映し、FIFOから除去して後続の保存を続ける
+- 既存行の`run_id`が現在Runと異なるだけではWriter競合としない
 
-### 11.3 Writer競合の検出
+既存行の親・子・Run帰属は変更しません。旧Run重複の完了メッセージは「既存の観測を保持（保存済み）」とし、Saveには新規INSERTだけでなく既存保持で完了した件数も含みます。DBスキーマ、自然キーおよびfirst-writeの保存方針は変更しません。
 
-既存Observationの`run_id`が現在の単一Runと異なる場合、Controllerは別Writerによる競合と判定します。
+### 11.3 Writerの排他ロック
 
-競合検出後は次の動作になります。
+同時に書き込むWriterは、DBと同じ保存フォルダに置く次のファイルで排他制御します。
 
-- `Writer PASSIVE`相当の状態になる
-- 全体処理を停止し、新しい分析と保存を進めない
-- 対象通貨を`ERR`にする
-- 「別Writerを停止して再起動してください」と表示する
+```text
+<dbfile>.<LIVE|TESTER>.<H1|M5>.writer.lock
+例: mstng-zigzag-elliot-alert.sqlite.LIVE.H1.writer.lock
+```
 
-H1 Observationの現行Writerは`ZigZagElliotH1ObservationAll`だけです。同じDB・Server・実行モード・分析Profileに対して、本インジケーターを複数同時稼働させないでください。
+`execute()`で実行元を確認した後、通貨処理より前に、共有指定なしの`FileOpen`で取得します。DBファイル・実行モード・基準足の組合せを排他単位とし、Serverや分析Profileが異なっても同じ排他単位なら同時に稼働できません。TESTERではウォームアップの初回から取得するため、保存ゲート前もロックファイルは作成されますが、DB接続・Run保存・Observation保存は従来のゲートに従います。
 
-通常の`ZigZagElliot`からH1 Observation Writerは撤去されています。ただし、撤去前にコンパイルした`ZigZagElliot.ex5`は、削除済みの入力`h1ElliotObservationDatabaseEnabled=true`で書込みを継続する可能性があります。この旧インスタンスは、本インジケーターを起動する前に停止してください。
+取得したハンドルは稼働寿命中保持し、一時的なDB切断・再接続でも解放しません。Controllerの終了処理で`FileClose`します。ファイルの存在ではなく開いている排他ハンドルが所有を表すため、終了後にファイルが残っていても次の起動を妨げません。
+
+取得失敗は「Writerロック取得失敗（別Writer稼働またはファイルアクセス不可）」として扱います。ファイルエラーだけでは別Writerの存在を断定しません。`Writer PASSIVE`相当の状態で新しい分析・保存を停止し、各通貨を`ERR`にします。自動で所有権取得を再試行しないため、所有側の終了、またはファイルアクセス問題の解消後に、停止したインジケーターを再装着してください。
+
+H1 Observationの現行Writerは`ZigZagElliotH1ObservationAll`です。ロック未対応の旧版はこの排他制御へ参加しないため、現行版と同時稼働させないでください。通常の`ZigZagElliot`からH1 Observation Writerは撤去されていますが、撤去前にコンパイルした`ZigZagElliot.ex5`は、削除済みの入力`h1ElliotObservationDatabaseEnabled=true`で書込みを継続する可能性があります。この旧インスタンスも起動前に停止してください。
 
 ## 12. FIFOとDB再試行
 
@@ -544,7 +553,7 @@ DB接続または保存に失敗した場合は次の順で処理します。
 
 1. FIFO先頭のSnapshotを削除しない
 2. その時点でDrainを停止して順序を維持する
-3. DB接続を解放する
+3. DB接続を解放する。Writerロックのハンドルは保持する
 4. `observationDatabaseRetrySeconds`後にDBと同じRunを再準備する
 5. FIFO先頭から保存を再開する
 
@@ -601,8 +610,8 @@ H1境界直後は一時的に`ANALYZING`または`WAITING`になります。
 | `RUN` | 通常のElliott分析またはTESTER事前分析中 |
 | `RETRY` | 履歴、Server情報、分析またはSnapshot生成を再試行中 |
 | `DB` | Snapshot生成済み、DB保存待ちまたは保存再試行中 |
-| `OK` | 対象H1のDB保存完了 |
-| `ERR` | シンボル、ハンドル、領域確保または別Writerなどのエラー |
+| `OK` | 対象H1の新規保存完了、または既存観測を保持して保存済みと判定した |
+| `ERR` | シンボル、ハンドル、領域確保、Writerロック取得失敗などのエラー |
 | `GAP` | 対象H1を保存できず欠損が確定した |
 
 通貨名の後ろに`Qn`がある場合はその通貨のQueue件数、`Rn`がある場合は再試行回数を表します。
@@ -675,7 +684,7 @@ MN1の最低61本には約5年1か月が必要です。休日、履歴配信範�
 
 再現性を高めるため、通常はH1境界に一致する時刻を指定してください。入力値はJSTへ自動解釈されません。
 
-共有DBで同じTESTER期間・Server・分析Profileを再実行すると、前回Runが保存した自然キーと重複し、Writer競合として停止します。新しいRunを開始するだけでは重複を回避できません。過去行を維持する場合は別DBを使用し、共有DBへ書き直す場合はバックアップ後に対象TESTERデータを整理してから実行してください。
+同じTESTER期間・Server・分析Profileを再実行して前回Runの自然キーと重複した場合、既存観測を維持して保存済みとして進みます。Run差だけでは停止せず、未保存の自然キーだけ新規保存します。同時起動は11.3のWriterロックで防止します。first-writeのため再実行で過去行を置き換えることはないので、計算結果を独立して比較する場合は別DBを使用してください。
 
 ## 16. 障害対応
 
@@ -688,7 +697,7 @@ MN1の最低61本には約5年1か月が必要です。休日、履歴配信範�
 | `DB`が継続 | Queue保存中または保存失敗後の再試行 | Queue増加とDB接続を確認する |
 | `Queue`が増加 | DBの書込み速度低下または接続障害 | DB Writer、disk、lock、retry設定を確認する |
 | `GAP` | 次のH1までに前H1を分析できなかった | 原因を修正する。失われたH1は自動復元されない |
-| 別Writerエラー | 同じ自然キーを別Runが先に保存した | 重複インスタンスを停止し、本インジケーターを再起動する |
+| Writerロック取得失敗 | 同じDB・実行モード・基準足の別Writerが稼働中、またはロックファイルへアクセスできない | 所有側を終了するかファイル権限等を修正し、本インジケーターを再装着する。残存ロックファイルの存在だけでは競合と判断しない |
 | 初期化失敗 | 入力不正、28通貨解決失敗、ハンドル生成失敗 | Inputs、Market Watch、ブローカー銘柄を確認する |
 
 ## 17. DBスモークテスト
@@ -722,6 +731,12 @@ mstng-zigzag-elliot-h1-observation-smoke-test.sqlite
 `recreateDatabaseObjects = true`でテーブルを再作成できるのは、誤操作防止のため既定の専用DB名だけです。本番DBをSmokeへ指定しないでください。
 
 このSmokeはDB契約を検証するものであり、28通貨のH1境界検出やLIVEの長時間運転までは検証しません。
+
+### 17.1 v1.05 再起動・排他制御の確認観点と結果
+
+LIVE履歴準備後の現在足再取得とbaseline設定、準備中のGap非加算、旧Runの既存自然キー保持とFIFO継続、同時Writerのロック取得拒否、DB再接続中の所有維持、所有側終了後の再取得、残存ロックファイルからの再取得を確認対象とします。DBスキーマ・自然キー・保存済み内容のHashは変更しません。
+
+2026-10-15 22:15 JSTに運用チャートへv1.05を再装着し、Run 2537でLIVE収集を確認しました。10月15日23:00と10月16日00:00 JSTの各H1は、それぞれ28親・28通貨、合計56親・280子で、各親の子5行との対応が一致し、不正子件数は0でした。10月16日00:15 JSTの確認時点で、再装着後のH1エラー・Gap・Writer競合は0です。この2足の確認を超える長時間運転の検証結果ではありません。
 
 ## 18. 確認用SQL
 
@@ -770,7 +785,8 @@ HAVING COUNT(time_frame.id) <> 5;
 - 1インスタンスが28通貨を順番に処理するため、処理時間中にH1境界が変わると欠損になり得る
 - 形成中の上位足とshift 0指標を含むため、後の確定値とは一致しない場合がある
 - 全ZigZagポイントを保存しないため、DBだけからWaveを完全再構築できない
-- 自然キーが同じ別Runとの同時書込みを検出すると、再起動まで処理を停止する
+- 同じDB・実行モード・基準足のWriterロックを取得できなければ、再装着まで処理を停止する。別Runの既存自然キーだけでは停止しない
+- ロック未対応の旧版Writerは排他制御へ参加しないため、現行版と同時稼働させない
 - DB障害がQueue容量を超えて続くと、新しい観測を保持できない
 - Status Panelの表示設定はRun比較用の入力Hashへ含まれない
 - `observationTesterSaveStartTime = 0`のTESTERでその通貨の初回履歴準備が未完了の場合、同じH1内の後続`OnCalculate`では準備状態を再確認せず、次のH1境界で再確認する
@@ -784,6 +800,7 @@ HAVING COUNT(time_frame.id) <> 5;
 
 - [ZigZagElliotH1ObservationAll.mq5](../../Indicators/ZigZagElliotH1ObservationAll.mq5)
 - [H1ElliotObservationAllController.mqh](../../Include/Mstng/Indicator/ZigZagElliot/H1ElliotObservationAllController.mqh)
+- [ZigZagElliotObservationWriterLock.mqh](../../Include/Mstng/Database/ZigZagElliotObservationWriterLock.mqh)
 - [ElliotHistoryPreparation.mqh](../../Include/Mstng/Util/ElliotHistoryPreparation.mqh)
 - [H1ElliotObservationAllStatus.mqh](../../Include/Mstng/Indicator/ZigZagElliot/H1ElliotObservationAllStatus.mqh)
 - [DrawH1ElliotObservationAllStatus.mqh](../../Include/Mstng/Draw/DrawH1ElliotObservationAllStatus.mqh)

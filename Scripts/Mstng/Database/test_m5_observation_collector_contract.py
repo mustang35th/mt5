@@ -1,10 +1,15 @@
-"""M5 collector wiring/order contracts; these do not execute MT5 collection.
+"""M5 collector wiring contracts and extracted startup-control-flow regression.
 
 H1 method fingerprints were captured from the pre-collector implementation.
-Native DB tests and a short real collection run remain separate checks.
+The startup regression executes production method bodies in Node after replacing
+MQL local type declarations; platform calls use deterministic history fixtures.
+Native MT5/DB tests and a short real collection run remain separate checks.
 """
 import hashlib
+import json
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -24,6 +29,116 @@ def body(source, signature):
         depth += (source[position] == "{") - (source[position] == "}")
         position += 1
     return source[start:position - 1]
+
+
+def execute_startup_scenario(source, *, period, steps, tester=False):
+    """Run real branch/assignment code, replacing only MQL local declarations."""
+    methods = {}
+    for name, signature in (
+        ("processSymbol", "void processSymbol("),
+        ("handleNewBoundary", "void handleNewBoundary("),
+        ("observeCaptureBoundary", "void observeCaptureBoundary("),
+    ):
+        methods[name] = re.sub(
+            r"\b(?:string|datetime|bool|int)\s+(?=[A-Za-z]\w*\s*=)",
+            "let ", body(source, signature),
+        )
+
+    harness = r"""
+const scenario = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+let step;
+let reads;
+let ticks = 1000;
+const trace = [];
+const captures = [];
+globalThis.ResetLastError = () => {};
+globalThis.iTime = () => {
+    if (reads >= step.bars.length) throw new Error('unexpected iTime read');
+    return step.bars[reads++];
+};
+globalThis.GetTickCount64 = () => ++ticks;
+globalThis.StringFormat = (...args) => args.join(' ');
+globalThis.__FUNCTION__ = 'productionMethod';
+const controller = {
+    testerMode: scenario.tester,
+    testerSaveGateOpen: false,
+    observationProfile: {
+        isM5: () => scenario.period === 300,
+        getAnchorTimeFrame: () => scenario.period,
+    },
+    symbolNames: ['EURUSD'],
+    currentH1BarTimes: [0],
+    currentBatchH1BarTime: 0,
+    lastDetectedH1BarTimes: [0],
+    pendingAnalysisH1BarTimes: [0],
+    lastCapturedH1BarTimes: [0],
+    analysisReadyFlags: [false],
+    symbolRetryCounts: [0],
+    testerPreflightH1BarTimes: [0],
+    symbolQueuedCounts: [0],
+    symbolCompetingWriterFlags: [false],
+    captureTargetBarTimes: [0],
+    captureDetectedTicks: [0],
+    captureAnalysisAttempts: [0],
+    totalGapCount: 0,
+    logger: {error: () => {}},
+    isTesterSaveWindowEnabled: () => false,
+    isAnalysisSeriesReady() {
+        trace.push(['readiness']);
+        return step.ready;
+    },
+    warmUpSymbol(index) { this.isAnalysisSeriesReady(index); },
+    setSymbolStatus(index, code) { this.statusCode = code; },
+    getAnchorTimeFrameText: () => String(scenario.period),
+    formatDateTime: value => String(value),
+    countSkippedH1Bars: (symbol, previous, current) =>
+        Math.max(0, Math.floor((current - previous) / scenario.period) - 1),
+    capturePendingObservation(index) {
+        trace.push(['capture', this.pendingAnalysisH1BarTimes[index]]);
+        captures.push(this.pendingAnalysisH1BarTimes[index]);
+        this.lastCapturedH1BarTimes[index] = this.pendingAnalysisH1BarTimes[index];
+        this.pendingAnalysisH1BarTimes[index] = 0;
+        this.analysisReadyFlags[index] = true;
+    },
+};
+controller.processSymbol = new Function('fromIndex', scenario.methods.processSymbol);
+controller.handleNewBoundary = new Function(
+    'fromIndex', 'fromCurrentH1BarTime', 'fromCountGaps',
+    scenario.methods.handleNewBoundary,
+);
+const observe = new Function('fromIndex', 'fromBarTime', scenario.methods.observeCaptureBoundary);
+controller.observeCaptureBoundary = function(index, bar) {
+    trace.push(['detect', bar]);
+    observe.call(this, index, bar);
+};
+const results = [];
+for (step of scenario.steps) {
+    reads = 0;
+    const traceStart = trace.length;
+    controller.processSymbol(0);
+    results.push({
+        baseline: controller.lastDetectedH1BarTimes[0],
+        current: controller.currentH1BarTimes[0],
+        pending: controller.pendingAnalysisH1BarTimes[0],
+        ready: controller.analysisReadyFlags[0],
+        gaps: controller.totalGapCount,
+        captures: [...captures],
+        captureTarget: controller.captureTargetBarTimes[0],
+        captureDetectedTick: controller.captureDetectedTicks[0],
+        status: controller.statusCode,
+        reads,
+        trace: trace.slice(traceStart),
+    });
+}
+process.stdout.write(JSON.stringify(results));
+"""
+    completed = subprocess.run(
+        [shutil.which("node"), "-e", harness],
+        input=json.dumps({"methods": methods, "period": period,
+                          "steps": steps, "tester": tester}),
+        text=True, encoding="utf-8", capture_output=True, timeout=10, check=True,
+    )
+    return json.loads(completed.stdout)
 
 
 class ObservationCollectorContractTest(unittest.TestCase):
@@ -168,7 +283,7 @@ class ObservationCollectorContractTest(unittest.TestCase):
     def test_fifo_full_checks_before_analysis_and_failure_keeps_head(self):
         self.assertLess(self.capture.index("this.snapshotQueue.Total() >= this.queueCapacity"),
                         self.capture.index("elliotAll.analyze(quoteTick)"))
-        failure = self.drain.split("if (!isSaved)", 1)[1].split("bool isCompetingWriter", 1)[0]
+        failure = self.drain.split("if (!isSaved)", 1)[1].split("bool isExistingRun", 1)[0]
         self.assertIn("this.releaseDatabase(false)", failure)
         self.assertIn("return;", failure)
         self.assertNotIn("snapshotQueue.Delete", failure)
@@ -212,14 +327,97 @@ class ObservationCollectorContractTest(unittest.TestCase):
         self.assertIn("symbolCaptureMetricsBarTimes[28]", status)
 
     def test_live_readiness_transition_does_not_count_preparation_as_gap(self):
-        promotion = self.process.index("this.analysisReadyFlags[fromIndex] = true")
-        self.assertLess(self.process.index("bool countPreviousGaps"), promotion)
-        self.assertIn("!this.observationProfile.isM5()\n            || this.analysisReadyFlags[fromIndex]", self.process)
+        startup = body(self.process, "if (!this.testerMode")
+        unavailable = body(startup, "if (!this.isAnalysisSeriesReady(fromIndex))")
+        self.assertTrue(unavailable.rstrip().endswith("return;"))
+        self.assertNotIn("lastDetectedH1BarTimes", unavailable)
+        self.assertNotIn("capturePendingObservation", unavailable)
+        self.assertLess(startup.index("this.isAnalysisSeriesReady(fromIndex)"),
+                        startup.index("currentH1BarTime = iTime("))
+        self.assertLess(startup.index("currentH1BarTime = iTime("),
+                        startup.index("this.analysisReadyFlags[fromIndex] = true"))
+        self.assertIn("this.lastDetectedH1BarTimes[fromIndex] = currentH1BarTime", startup)
+        self.assertIn("this.pendingAnalysisH1BarTimes[fromIndex] = 0", startup)
+        self.assertNotIn("handleNewBoundary", startup)
+        self.assertNotIn("capturePendingObservation", startup)
+        self.assertTrue(startup.rstrip().endswith("return;"))
         self.assertIn("this.handleNewBoundary(fromIndex, currentH1BarTime, countPreviousGaps)", self.process)
         boundary = body(self.source, "void handleNewBoundary(")
         self.assertIn("if (fromCountGaps && skippedBarCount > 0)", boundary)
         self.assertIn("if (fromCountGaps && pendingBarTime > 0", boundary)
         self.assertNotIn("this.analysisReadyFlags", boundary)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for extracted MQL control flow")
+    def test_live_restart_stale_anchor_is_not_saved_or_counted_as_gap(self):
+        for period in (300, 3600):
+            with self.subTest(period=period):
+                stale, ready_bar, next_bar = period, 19 * period, 20 * period
+                result = execute_startup_scenario(self.source, period=period, steps=[
+                    {"bars": [stale], "ready": False},
+                    {"bars": [7 * period], "ready": False},
+                    {"bars": [stale, ready_bar], "ready": True},
+                    {"bars": [ready_bar], "ready": True},
+                    {"bars": [next_bar], "ready": True},
+                ])
+                for waiting in result[:2]:
+                    self.assertEqual(waiting["baseline"], 0)
+                    self.assertFalse(waiting["ready"])
+                    self.assertEqual(waiting["status"], "RETRY")
+                for before_new_bar in result[:4]:
+                    self.assertEqual(before_new_bar["captures"], [])
+                    self.assertEqual(before_new_bar["gaps"], 0)
+                    self.assertEqual(before_new_bar["pending"], 0)
+                baseline = result[2]
+                self.assertEqual(baseline["baseline"], ready_bar)
+                self.assertEqual(baseline["current"], ready_bar)
+                self.assertEqual(baseline["reads"], 2)
+                self.assertEqual(baseline["status"], "BASE")
+                self.assertEqual(baseline["trace"][0], ["detect", stale])
+                self.assertEqual(baseline["trace"][1], ["readiness"])
+                self.assertEqual(baseline["trace"][2], ["detect", ready_bar])
+                self.assertEqual(result[4]["captures"], [next_bar])
+                self.assertEqual(result[4]["gaps"], 0)
+                if period == 300:
+                    self.assertEqual(baseline["captureTarget"], ready_bar)
+                    self.assertEqual(result[3]["captureDetectedTick"], baseline["captureDetectedTick"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for extracted MQL control flow")
+    def test_live_first_ready_pass_rereads_anchor_and_retries_zero(self):
+        for period in (300, 3600):
+            with self.subTest(period=period):
+                result = execute_startup_scenario(self.source, period=period, steps=[
+                    {"bars": [period, 0], "ready": True},
+                    {"bars": [period, 19 * period], "ready": True},
+                    {"bars": [22 * period], "ready": True},
+                ])
+                self.assertFalse(result[0]["ready"])
+                self.assertEqual(result[0]["baseline"], 0)
+                self.assertEqual(result[0]["current"], 0)
+                self.assertEqual(result[0]["captures"], [])
+                self.assertEqual(result[1]["baseline"], 19 * period)
+                self.assertEqual(result[1]["captures"], [])
+                self.assertEqual(result[1]["gaps"], 0)
+                self.assertEqual(result[2]["captures"], [22 * period])
+                self.assertEqual(result[2]["gaps"], 2)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for extracted MQL control flow")
+    def test_tester_initial_retry_and_first_ready_capture_are_preserved(self):
+        for period in (300, 3600):
+            with self.subTest(period=period):
+                result = execute_startup_scenario(self.source, period=period, tester=True, steps=[
+                    {"bars": [period], "ready": False},
+                    {"bars": [period], "ready": True},
+                    {"bars": [2 * period], "ready": True},
+                ])
+                self.assertEqual(result[0]["baseline"], period)
+                self.assertEqual(result[0]["captures"], [])
+                self.assertEqual(result[1]["captures"], [])
+                self.assertNotIn(["readiness"], result[1]["trace"])
+                self.assertEqual(result[2]["captures"], [2 * period])
+                self.assertEqual(result[2]["reads"], 1)
+                self.assertEqual(result[2]["gaps"], 0)
+                self.assertEqual(result[2]["trace"][0], ["detect", 2 * period])
+                self.assertEqual(result[2]["trace"][1], ["readiness"])
 
     def test_collector_never_trades_or_sends_alerts(self):
         for forbidden in ("OrderSend(", "SendMail(", "SendNotification(", "Alert(", "ExpertAdvisorFactory"):
