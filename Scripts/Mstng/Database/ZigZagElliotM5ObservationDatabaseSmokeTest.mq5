@@ -194,8 +194,8 @@ void testProfiles() {
     ZigZagElliotObservationProfile h1Profile;
     ZigZagElliotObservationProfile m5Profile(PERIOD_M5);
     ZigZagElliotObservationProfile invalidProfile(PERIOD_M15);
-    string expectedHash = "a4c9b3633501890e7110a1122b370dc12787d15d12f1efae82ca7b9657c9efbf";
-    expect(h1Profile.createHash() == expectedHash, "H1 canonical SHA-256 unchanged");
+    string expectedHash = "6f5d6ac0601aecd4b53f58a000a9c37f1c08cda1f9af6479ebbaac488186a226";
+    expect(h1Profile.createHash() == expectedHash, "H1 canonical SHA-256 matches current Profile");
     expect(h1Profile.createCanonicalText() == ZigZagElliotAnalysisProfile::createCanonicalText(),
         "H1 canonical delegation unchanged");
     expect(h1Profile.getObservationTimeFrameCount() == 5

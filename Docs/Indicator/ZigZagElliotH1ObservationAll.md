@@ -5,13 +5,13 @@
 | 項目 | 内容 |
 |---|---|
 | 対象 | `Indicators/ZigZagElliotH1ObservationAll.mq5` |
-| プログラムバージョン | `1.05` |
+| プログラムバージョン | `1.06` |
 | 役割 | 全28通貨のH1新規足時点におけるElliott分析結果を時系列保存する |
 | 基準時間足 | H1 |
 | 保存時間足 | MN1、W1、D1、H4、H1 |
 | 保存先 | MetaTrader 5組み込みSQLite |
 | 観測タイミング | `BAR_OPEN_FIRST_SUCCESS` |
-| 最終更新日 | 2026-10-15 |
+| 最終更新日 | 2026-10-17 |
 
 本書は、`ZigZagElliotH1ObservationAll`の収集対象、実行ライフサイクル、H1境界の扱い、分析内容、FIFO、DB保存、状態パネルおよび障害時の動作を定義します。
 
@@ -320,8 +320,8 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 
 | 項目 | 値 |
 |---|---|
-| `analysis_version` | `ELLIOT_MN1_V6` |
-| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V5` |
+| `analysis_version` | `ELLIOT_MN1_V7` |
+| Profile version | `ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V6` |
 | 親修正区間規則 | `STRICT_CONFIRMED_FOUR_POINT_OR_NESTED_ABC_AB_V2` |
 | 親区間3Wave再カウント規則 | `EXACT_PARENT_SEGMENT_THREE_WAVE_FOUR_ANCHOR_DOW_RECOUNT_V1` |
 | Wave分割終了規則 | `POSITION_PROGRESS_TO_POINT_COUNT_V1` |
@@ -331,9 +331,11 @@ LIVEおよびTESTERで最初のSnapshotへ成功した後は、次のH1へ移る
 | Run `strategy_version` | `H1_OBSERVATION_ALL_V5` |
 | Run `schema_version` | `6` |
 
-ここでいう`schema_version = 6`は、本インジケーターが作成するRun行のメタデータです。共有DBのAlert Runや、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.05`です。
+ここでいう`schema_version = 6`は、本インジケーターが作成するRun行のメタデータです。共有DBのAlert Runや、物理DB全体の世代を表す値ではありません。物理DBには全体を一括判定する`PRAGMA user_version`などを使用していません。現行Runの`program_version`は`1.06`です。
 
 計算式へ影響するStochastic、GMMA、ATR、EMA200、ZigZag、Elliott再分析などの設定は、固定順序のCanonical TextとSHA-256 `analysis_input_hash`としてRunへ保存します。
+
+`ELLIOT_MN1_V7`ではEMA200を直近2回連続の方向判定へ変更し、Canonical Textに`EMA200_COMPARE_SHIFT=3`、`EMA200_COUNT_BARS=2`、`EMA200_DIRECTION_RULE=ALL_COUNT_SAME`を記録します。新しい分析バージョンとhashで旧判定と区別し、既存のCSV・DB列や過去の保存結果は変更しません。
 
 `STRICT_CONFIRMED_FOUR_POINT_OR_NESTED_ABC_AB_V2`は、隣接する親子時間足の確定済み修正区間を対象とします。下位足の通常分析と再分析を完了した後、その親区間で追加されたWave群から重複境界と区間外の文脈点を除きます。親区間の左右境界に対応するポイント間が、補完ポイントを含まない4点の有効な山谷列となる場合は、従来どおり親区間の方向を持つ単一の修正Waveへ置換します。
 
@@ -375,9 +377,12 @@ LIVEでは有効な0以上の入力値にかかわらず`0`を保存します。
 | GMMA trend・cross | shift 0 |
 | ATR14 | shift 0 |
 | EMA200終値位置 | Close shift 1とEMA200 shift 1 |
-| EMA200傾き | EMA200 shift 1とshift 4 |
+| EMA200傾き | EMA200 shift 1とshift 3 |
+| EMA200方向 | EMA200 shift 1・2・3による直近2回連続の上昇・下降 |
 
 H1境界時点でも、MN1、W1、D1およびH4のcurrent OHLCやshift 0指標は形成中です。Observationはその時点の逐次Snapshotであり、後から完成した上位足の値へ置き換えません。
+
+EMA200のBUYは`Close[1] > EMA200[1]`かつ`EMA200[1] > EMA200[2] > EMA200[3]`、SELLは不等号を反転した条件です。同値を含む場合や直近2回の方向が異なる場合など、いずれも満たさなければ`NONE`です。上昇・下降回数は各最大2で、trend countは従来どおり回数の集計情報です。
 
 MN1のEMA200計算はProfileで省略します。
 

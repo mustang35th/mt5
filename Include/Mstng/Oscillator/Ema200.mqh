@@ -51,9 +51,9 @@ enum ENUM_EMA200_SLOPE_DIRECTION {
  *
  * 管理対象:
  * 1. Close1 が EMA200 の上か下か
- * 2. EMA200[1] と EMA200[4] の傾き
- * 3. EMA200 の上昇/下降回数
- * 4. テキスト表示用BUY/SELLラベル
+ * 2. EMA200[1] と EMA200[3] の傾き
+ * 3. EMA200 の直近2回の上昇/下降回数
+ * 4. 直近2回の連続方向によるBUY/SELLラベル
  */
 class Ema200 {
 public:
@@ -66,7 +66,7 @@ public:
     /** EMA200[1]。 */
     double ema200Shift1;
 
-    /** 比較対象EMA200。標準はEMA200[4]。 */
+    /** 比較対象EMA200。標準はEMA200[3]。 */
     double ema200Compare;
 
     /** EMA200[1] - EMA200[compareBarIndex] のpips。 */
@@ -230,8 +230,8 @@ public:
      *
      * @param fromSymbolName シンボル名。
      * @param fromTimeFrame 時間足。
-     * @param fromCompareBarIndex 傾き比較足。標準は4でEMA200[1]とEMA200[4]を比較する。
-     * @param fromCountBars 上昇/下降を数える本数。標準は4でEMA200[1]からEMA200[5]までを比較する。
+     * @param fromCompareBarIndex 傾き比較足。標準は3でEMA200[1]とEMA200[3]を比較する。
+     * @param fromCountBars 連続方向を判定する回数。標準は2でEMA200[1]からEMA200[3]までを比較する。
      * @param fromMinSlopePips 最低傾きpips。この値未満は横ばい扱い。
      * @param fromCloseShift 終値およびEMAの基準shift。
      * @return 更新できた場合は true。
@@ -239,8 +239,8 @@ public:
     bool update(
         string fromSymbolName,
         ENUM_TIMEFRAMES fromTimeFrame,
-        int fromCompareBarIndex = 4,
-        int fromCountBars = 4,
+        int fromCompareBarIndex = 3,
+        int fromCountBars = 2,
         double fromMinSlopePips = 0.0,
         int fromCloseShift = 1
     ) {
@@ -259,16 +259,16 @@ public:
      * 市場コンテキストを指定してEMA200状態を更新する。
      *
      * @param fromMarketContext 分析対象の市場コンテキスト。
-     * @param fromCompareBarIndex 傾き比較足。標準は4でEMA200[1]とEMA200[4]を比較する。
-     * @param fromCountBars 上昇/下降を数える本数。標準は4でEMA200[1]からEMA200[5]までを比較する。
+     * @param fromCompareBarIndex 傾き比較足。標準は3でEMA200[1]とEMA200[3]を比較する。
+     * @param fromCountBars 連続方向を判定する回数。標準は2でEMA200[1]からEMA200[3]までを比較する。
      * @param fromMinSlopePips 最低傾きpips。この値未満は横ばい扱い。
      * @param fromCloseShift 終値およびEMAの基準shift。
      * @return 更新できた場合は true。
      */
     bool update(
         MarketContext &fromMarketContext,
-        int fromCompareBarIndex = 4,
-        int fromCountBars = 4,
+        int fromCompareBarIndex = 3,
+        int fromCountBars = 2,
         double fromMinSlopePips = 0.0,
         int fromCloseShift = 1
     ) {
@@ -343,7 +343,7 @@ public:
             this.downCount
         );
         this.trendCount = this.determineTrendCount(this.upCount, this.downCount);
-        this.setBuySell();
+        this.setBuySell(fromCountBars);
 
         this.setTextLabels();
 
@@ -1219,15 +1219,17 @@ private:
     }
 
     /**
-     * BUY/SELL方向を設定する。
+     * 全比較が同じ方向へ連続した場合にBUY/SELL方向を設定する。
+     *
+     * @param fromCountBars 連続方向の一致が必要な比較回数。
      */
-    void setBuySell() {
+    void setBuySell(const int fromCountBars) {
         this.isBuy = false;
         this.isSell = false;
 
         if (this.closePosition == EMA200_POSITION_ABOVE
             && this.slopeDirection == EMA200_SLOPE_UP
-            && this.trendCount > 0) {
+            && this.upCount == fromCountBars) {
             this.isBuy = true;
 
             return;
@@ -1235,7 +1237,7 @@ private:
 
         if (this.closePosition == EMA200_POSITION_BELOW
             && this.slopeDirection == EMA200_SLOPE_DOWN
-            && this.trendCount < 0) {
+            && this.downCount == fromCountBars) {
             this.isSell = true;
 
             return;

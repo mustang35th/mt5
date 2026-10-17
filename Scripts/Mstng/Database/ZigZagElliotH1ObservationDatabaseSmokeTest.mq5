@@ -40,7 +40,7 @@ const string rollbackTriggerName =
 
 /** 分析Profile Canonical Textの固定SHA-256期待値。 */
 const string expectedAnalysisProfileHash =
-    "a4c9b3633501890e7110a1122b370dc12787d15d12f1efae82ca7b9657c9efbf";
+    "6f5d6ac0601aecd4b53f58a000a9c37f1c08cda1f9af6479ebbaac488186a226";
 
 /**
  * 指定SQLを実行する。

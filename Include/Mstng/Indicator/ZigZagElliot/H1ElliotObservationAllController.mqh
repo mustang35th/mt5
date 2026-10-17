@@ -2108,9 +2108,9 @@ private:
 
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
-        this.databaseRun.programVersion = "1.05";
+        this.databaseRun.programVersion = "1.06";
         if (this.observationProfile.isM5()) {
-            this.databaseRun.programVersion = "1.04";
+            this.databaseRun.programVersion = "1.05";
         }
         this.databaseRun.strategy = this.observationProfile.getStrategy();
         this.databaseRun.strategyVersion = this.observationProfile.getStrategyVersion();

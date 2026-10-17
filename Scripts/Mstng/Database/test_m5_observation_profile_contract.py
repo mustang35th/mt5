@@ -23,7 +23,7 @@ def canonical(m5=False):
     enums = dict(MODE_SMA=0, MODE_EMA=1, STO_LOWHIGH=0, PRICE_CLOSE=1,
                  PERIOD_H1=16385, PERIOD_H4=16388, PERIOD_D1=16408,
                  PERIOD_W1=32769, PERIOD_MN1=49153, PERIOD_M15=15, PERIOD_M5=5)
-    overrides = dict(fromProfileVersion="ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V5",
+    overrides = dict(fromProfileVersion="ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V6",
                      fromAnchorTimeFrame=16385, fromAnalysisStartTimeFrame=49153,
                      fromTimeFrameCount=5, fromTimeFrameOrderText="49153,32769,16408,16388,16385")
     if m5:
@@ -81,9 +81,9 @@ def canonical(m5=False):
 class ObservationProfileContractTest(unittest.TestCase):
     def test_h1_golden_canonical_hash(self):
         self.assertEqual(hashlib.sha256(canonical().encode()).hexdigest(),
-                         "a4c9b3633501890e7110a1122b370dc12787d15d12f1efae82ca7b9657c9efbf")
+                         "6f5d6ac0601aecd4b53f58a000a9c37f1c08cda1f9af6479ebbaac488186a226")
 
-    def test_h1_default_delegates_to_legacy_values(self):
+    def test_h1_default_delegates_to_shared_values(self):
         analysis = read("Elliot/ZigZagElliotAnalysisProfile.mqh")
         wrapper = analysis.split("static string createCanonicalText() {", 1)[1].split("}", 1)[0]
         for getter in ("getProfileVersion", "getAnchorTimeFrame", "getAnalysisStartTimeFrame",
@@ -102,6 +102,20 @@ class ObservationProfileContractTest(unittest.TestCase):
             self.assertIn(expected, fields)
         self.assertNotEqual(hashlib.sha256(canonical().encode()).digest(),
                             hashlib.sha256(canonical(True).encode()).digest())
+
+    def test_ema_direction_contract_is_shared_by_h1_and_m5(self):
+        expected = ("EMA200_CLOSE_SHIFT=1", "EMA200_COMPARE_SHIFT=3",
+                    "EMA200_COUNT_BARS=2", "EMA200_DIRECTION_RULE=ALL_COUNT_SAME",
+                    "EMA200_MIN_SLOPE_PIPS=0.0")
+        for m5 in (False, True):
+            with self.subTest(m5=m5):
+                fields = canonical(m5).split("|")
+                for field in expected:
+                    self.assertIn(field, fields)
+                self.assertLess(fields.index("EMA200_COUNT_BARS=2"),
+                                fields.index("EMA200_DIRECTION_RULE=ALL_COUNT_SAME"))
+                self.assertLess(fields.index("EMA200_DIRECTION_RULE=ALL_COUNT_SAME"),
+                                fields.index("EMA200_MIN_SLOPE_PIPS=0.0"))
 
     def test_profile_has_no_shared_mutable_mode(self):
         profile = read("Elliot/ZigZagElliotObservationProfile.mqh")

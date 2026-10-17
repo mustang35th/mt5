@@ -4,11 +4,11 @@
 
 | 項目 | 内容 |
 |---|---|
-| 対象プログラム | `Indicators/ZigZagElliotM5ObservationAll.mq5` v1.04 |
+| 対象プログラム | `Indicators/ZigZagElliotM5ObservationAll.mq5` v1.05 |
 | 文書バージョン | `1.0` |
 | 状態 | v1.02で28通貨・1日分の実収集、進捗ログ、DB完全性を確認済み。Viewer初版は実装・自動テスト・r3読取確認済み、実ブラウザ表示は未確認。長期間・LIVE・障害復旧の検証は残る |
 | 作成日 | 2026-09-10 |
-| 最終更新日 | 2026-10-15 |
+| 最終更新日 | 2026-10-17 |
 | 設計元 | `ZigZagElliotH1ObservationAll` v1.05 |
 | 参照ソース | 本書作成時のコミット `a52991b` |
 | 主な対象工程 | ①DB・観測設定の設計、および②M5収集に必要な基本動作 |
@@ -338,7 +338,7 @@ DBと同じ保存フォルダの`<dbfile>.<LIVE|TESTER>.<H1|M5>.writer.lock`を�
 | 項目 | 用途 |
 |---|---|
 | `input_text`／`input_hash` | DB名、Common使用、Timer・DB再試行、保存開始時刻、Queue容量、解決済み28通貨などの運用入力 |
-| `analysis_version` | 共通Elliott計算の世代。作成時ソースは`ELLIOT_MN1_V6` |
+| `analysis_version` | 共通Elliott計算の世代。現行は`ELLIOT_MN1_V7` |
 | `analysis_input_text`／`analysis_input_hash` | 共通計算パラメーターと、M5基準・7足順序・取得方式などの観測Profile |
 | `snapshot_hash` | 取得した市場・分析値の同一性比較 |
 | `program_version`／`strategy_version`／`schema_version` | プログラム、収集契約、Run保存形式の識別 |
@@ -351,7 +351,9 @@ v1.03はM5 Snapshot Hash形式を`M5_OBSERVATION_V2`とし、各時間足の既�
 
 取得品質5項目は`analysis_input_hash`と`snapshot_hash`へ含めない。同じ分析値でも実行環境・待ち時間・試行回数が変わるためである。品質行の整合は外部キー、同一トランザクション、Snapshot固定および保存テストで確認する。
 
-H1の既存Canonical Text、Hash生成規則、保存されたHash値、Run識別値は変更しない。M5対応に伴ってH1の分析設定が変わったように見える変更を防ぐため、既存H1の文字列・Hash一致を回帰テストする。
+M5導入時にはH1のCanonical Text、Hash生成規則、保存されたHash値、Run識別値を変更せず、観測足の分離によってH1の分析設定が変わらないことを回帰テストした。
+
+2026-10-17の共通分析`ELLIOT_MN1_V7`では、H1・M5ともEMA200を直近2回連続の方向判定へ変更する。Canonical Textは`EMA200_COMPARE_SHIFT=3`、`EMA200_COUNT_BARS=2`と新規キー`EMA200_DIRECTION_RULE=ALL_COUNT_SAME`を含み、両方の`analysis_input_hash`が変わる。M5の観測契約`M5_OBSERVATION_PROFILE_V1`、Snapshot Hash形式、CSV・DB列および保存済み結果は維持する。新旧の判定は分析バージョンとhashで区別する。具体的なEMA200条件は[H1仕様書の形成足と確定足](ZigZagElliotH1ObservationAll.md#84-形成足と確定足)を参照する。
 
 ## 11. 収集開始・境界・ウォームアップ
 

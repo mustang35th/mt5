@@ -9,6 +9,7 @@
 *.bak
 *.old
 /temp/
+/work/
 
 # zip files
 *.zip

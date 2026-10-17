@@ -18,11 +18,11 @@
 class ZigZagElliotAnalysisProfile {
 public:
     /** @return Elliott分析バージョン。 */
-    static string getAnalysisVersion() { return "ELLIOT_MN1_V6"; }
+    static string getAnalysisVersion() { return "ELLIOT_MN1_V7"; }
 
     /** @return 分析Profileバージョン。 */
     static string getProfileVersion() {
-        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V5";
+        return "ZIGZAG_ELLIOT_ANALYSIS_PROFILE_V6";
     }
 
     /** @return 短期Stochastic K期間。 */
@@ -133,13 +133,16 @@ public:
     static int getEma200MaShift() { return 0; }
 
     /** @return EMA200傾き比較対象shift。 */
-    static int getEma200CompareBarIndex() { return 4; }
+    static int getEma200CompareBarIndex() { return 3; }
 
     /** @return EMA200と比較する終値のshift。 */
     static int getEma200CloseShift() { return 1; }
 
-    /** @return EMA200上昇・下降判定本数。 */
-    static int getEma200CountBars() { return 4; }
+    /** @return EMA200上昇・下降の連続一致を要求する比較回数。 */
+    static int getEma200CountBars() { return 2; }
+
+    /** @return EMA200方向判定ルール。 */
+    static string getEma200DirectionRule() { return "ALL_COUNT_SAME"; }
 
     /** @return EMA200傾き方向判定の最低pips。 */
     static double getEma200MinSlopePips() { return 0.0; }
@@ -384,6 +387,7 @@ public:
         appendInteger(text, "EMA200_CLOSE_SHIFT", getEma200CloseShift());
         appendInteger(text, "EMA200_COMPARE_SHIFT", getEma200CompareBarIndex());
         appendInteger(text, "EMA200_COUNT_BARS", getEma200CountBars());
+        appendText(text, "EMA200_DIRECTION_RULE", getEma200DirectionRule());
         appendDouble(text, "EMA200_MIN_SLOPE_PIPS", getEma200MinSlopePips(), 1);
         appendInteger(text, "EMA200_SKIP_MN1", boolToInteger(isEma200SkippedForMn1()));
         appendText(text, "PIPS_RULE", getPipsRule());
