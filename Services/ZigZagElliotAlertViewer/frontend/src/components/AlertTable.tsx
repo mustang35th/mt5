@@ -30,6 +30,7 @@ import {
   writeGridDensity,
 } from "../lib/gridPreferences";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
+import { Ema200DistanceCell } from "./Ema200DistanceCell";
 import { ElliottLabelText } from "./ElliottLabelText";
 import "./AlertTable.css";
 import { GmoTargetBadge } from "./GmoTargetBadge";
@@ -84,6 +85,7 @@ const GRID_COLUMN_IDS = [
   "symbol_name",
   "time_frame",
   "side",
+  "ema200_distance",
   "source_mode",
   "judgement",
   "h1_structure_rank",
@@ -111,8 +113,10 @@ const FIXED_COLUMN_IDS: ReadonlySet<string> = new Set([
   ...GRID_PINNED_RIGHT_COLUMN_IDS,
 ]);
 const TIME_FRAME_COLUMN_WIDTH = 80;
+const ema200DistanceColumnWidth = 160;
 
 const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
+  { colId: "ema200_distance", label: "EMA200距離" },
   { colId: "source_mode", label: "実行モード" },
   { colId: "judgement", label: "判定" },
   { colId: "h1_structure_rank", label: "構造・波動" },
@@ -224,6 +228,28 @@ function includeTimeFrameColumn(
   return [
     ...fromLayout.slice(0, insertIndex),
     timeFrameColumn,
+    ...fromLayout.slice(insertIndex),
+  ];
+}
+
+/**
+ * Add the saved EMA200 distance beside direction while preserving existing preferences.
+ */
+function includeEma200DistanceColumn(fromLayout: GridColumnLayoutItem[]): GridColumnLayoutItem[] {
+  if (fromLayout.some((column) => column.colId === "ema200_distance")) {
+    return fromLayout;
+  }
+
+  const insertIndex = fromLayout.findIndex((column) => column.colId === "side") + 1;
+  const distanceColumn = {
+    colId: "ema200_distance",
+    width: ema200DistanceColumnWidth,
+    hide: false,
+  };
+
+  return [
+    ...fromLayout.slice(0, insertIndex),
+    distanceColumn,
     ...fromLayout.slice(insertIndex),
   ];
 }
@@ -478,6 +504,18 @@ function SideCell(params: ICellRendererParams<AlertListItem>) {
   );
 }
 
+/**
+ * Render the saved distance for the alert's own time frame.
+ */
+function Ema200DistanceGridCell(params: ICellRendererParams<AlertListItem>) {
+  const alert = dataFrom(params);
+  if (!alert) {
+    return null;
+  }
+
+  return <Ema200DistanceCell alert={alert} />;
+}
+
 function JudgementCell(params: ICellRendererParams<AlertListItem>) {
   const alert = dataFrom(params);
   if (!alert) return null;
@@ -659,8 +697,13 @@ export function AlertTable({
       const hasMissingLowerTimeFrameColumn = ["tf_m15", "tf_m5"].some(
         (colId) => !storedLayout.some((column) => column.colId === colId),
       );
-      const restoredLayout = includeTimeFrameColumn(
-        includeLowerTimeFrameColumns(migrateLegacyTimeFrameColumns(storedLayout)),
+      const hasMissingEma200DistanceColumn = !storedLayout.some(
+        (column) => column.colId === "ema200_distance",
+      );
+      const restoredLayout = includeEma200DistanceColumn(
+        includeTimeFrameColumn(
+          includeLowerTimeFrameColumns(migrateLegacyTimeFrameColumns(storedLayout)),
+        ),
       );
       event.api.applyColumnState({
         state: restoredLayout.map((column) => ({
@@ -669,7 +712,8 @@ export function AlertTable({
         })),
         applyOrder: true,
       });
-      if (hasLegacyTimeFrameColumn || hasMissingLowerTimeFrameColumn || hasNarrowTimeFrameColumn) {
+      if (hasLegacyTimeFrameColumn || hasMissingLowerTimeFrameColumn || hasNarrowTimeFrameColumn
+        || hasMissingEma200DistanceColumn) {
         writeGridColumnLayout(
           window.localStorage,
           restoredLayout.map((column) => ({
@@ -838,6 +882,14 @@ export function AlertTable({
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("side", sort, order, onSort),
       cellRenderer: SideCell,
+    },
+    {
+      colId: "ema200_distance",
+      field: "close_ema200_diff_pips",
+      headerName: "EMA200距離",
+      initialWidth: ema200DistanceColumnWidth,
+      minWidth: 144,
+      cellRenderer: Ema200DistanceGridCell,
     },
     {
       colId: "source_mode",

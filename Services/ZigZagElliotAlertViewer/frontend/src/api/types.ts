@@ -208,6 +208,10 @@ export interface AlertListItem extends W1ConfirmationDiagnostics, H1DirectionAli
   signal_count: number;
   entry_count: number;
   is_entry: boolean;
+  is_entry_evaluated?: boolean;
+  close_ema200_diff_pips?: number | null;
+  max_close_ema200_diff_pips?: number | null;
+  is_ema200_distance_within?: boolean;
   entry_result: string;
   current_elliot_label: string;
   risk_pips: number;

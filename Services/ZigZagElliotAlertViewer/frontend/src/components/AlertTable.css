@@ -33,3 +33,7 @@
 .alert-grid .snapshot-analysis-cell .observation-ema200-badge { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .snapshot-wave-line, .snapshot-fibonacci-line { min-width: 0; }
 .snapshot-fibonacci { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ema200-distance-cell { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ema200-distance-cell.over-limit { color: #f1ad67; }
+.ema200-distance-cell.unavailable { color: var(--muted); }
+.ema200-distance-status { font-size: 0.65rem; font-weight: 600; }

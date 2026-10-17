@@ -104,7 +104,11 @@ describe("AlertTable", () => {
     const onSort = vi.fn();
     const view = render(
       <AlertTable
-        items={[alertWithAlignment(1, true), alertWithAlignment(2, false), alertWithAlignment(3, null)]}
+        items={[
+          { ...alertWithAlignment(1, true), is_entry_evaluated: true,
+            close_ema200_diff_pips: 33.99868384499127, max_close_ema200_diff_pips: 25 },
+          alertWithAlignment(2, false), alertWithAlignment(3, null),
+        ]}
         loading={false}
         highlightedIds={new Set([2])}
         sort="jst_time"
@@ -151,6 +155,9 @@ describe("AlertTable", () => {
     expect(screen.getAllByText("test <img onerror=alert(1)>")).toHaveLength(3);
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByRole("columnheader", { name: "時間足" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "EMA200距離" })).toBeInTheDocument();
+    expect(firstRow?.querySelector('.ag-cell[col-id="ema200_distance"]')).toHaveTextContent("34.0 pips");
+    expect(firstRow?.querySelector('.ag-cell[col-id="ema200_distance"]')).toHaveTextContent("超過");
     expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
     await waitFor(() => {
       const timeFrameCells = view.container.querySelectorAll('.ag-cell[col-id="time_frame"]');
@@ -273,14 +280,17 @@ describe("AlertTable", () => {
     });
     expect(w1TimeFrameColumnItem).toHaveAttribute("aria-checked", "true");
     fireEvent.click(w1TimeFrameColumnItem);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "EMA200距離" }));
     await waitFor(() => {
       expect(screen.queryByRole("columnheader", { name: "W1" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "EMA200距離" })).not.toBeInTheDocument();
       const storedText = localStorage.getItem(GRID_LAYOUT_STORAGE_KEY);
       expect(storedText).not.toBeNull();
       const stored = JSON.parse(storedText || "{}") as {
         columns?: Array<{ colId: string; hide: boolean }>;
       };
       expect(stored.columns?.find((column) => column.colId === "tf_w1")?.hide).toBe(true);
+      expect(stored.columns?.find((column) => column.colId === "ema200_distance")?.hide).toBe(true);
     });
 
     firstView.unmount();
@@ -298,6 +308,7 @@ describe("AlertTable", () => {
     await waitFor(() => {
       expect(restoredView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
       expect(screen.queryByRole("columnheader", { name: "W1" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "EMA200距離" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "列を初期化" })).toBeEnabled();
     });
 
@@ -307,6 +318,8 @@ describe("AlertTable", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "表示列" }));
     expect(await screen.findByRole("menuitemcheckbox", { name: /W1 方向 \/ EMA200/ }))
+      .toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "EMA200距離" }))
       .toHaveAttribute("aria-checked", "true");
     expect(restoredView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
   });
@@ -368,6 +381,8 @@ describe("AlertTable", () => {
       .toBeLessThan(initialColumnIds.indexOf("time_frame"));
     expect(initialColumnIds.indexOf("time_frame"))
       .toBeLessThan(initialColumnIds.indexOf("side"));
+    expect(initialColumnIds.indexOf("ema200_distance"))
+      .toBe(initialColumnIds.indexOf("side") + 1);
     const migratedTimeFrameColumnIds = ["tf_mn1", "tf_w1", "tf_d1", "tf_h4", "tf_h1", "tf_m15", "tf_m5"];
     expect(initialColumnIds.filter((colId) => migratedTimeFrameColumnIds.includes(colId || "")))
       .toEqual(migratedTimeFrameColumnIds);
@@ -381,6 +396,8 @@ describe("AlertTable", () => {
     expect(migratedStoredLayout.columns?.some(
       (column) => column.colId === "time_frame_sides",
     )).toBe(false);
+    expect(migratedStoredLayout.columns?.find((column) => column.colId === "ema200_distance"))
+      .toEqual({ colId: "ema200_distance", width: 160, hide: false });
     expect(migratedStoredLayout.columns?.filter(
       (column) => migratedTimeFrameColumnIds.includes(column.colId),
     )).toEqual(migratedTimeFrameColumnIds.map((colId) => ({
