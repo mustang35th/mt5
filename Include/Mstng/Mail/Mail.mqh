@@ -8,6 +8,7 @@
 
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
+#include <Mstng\Mail\Ema200DistanceMailPolicy.mqh>
 #include <Mstng\Mail\MailValidationFileWriter.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 
@@ -72,14 +73,18 @@ public:
             body = getBody(fromSource);
         }
 
+        ElliotAll *selectedAnalysis = fromSource;
+        if (hasCorrection) {
+            selectedAnalysis = fromJudgment;
+        }
+
         // 通常版の対象時間足と、採用分析のW1 EMA200・MN1方向一致を件名で示す。
         if (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
-            ElliotAll *selectedAnalysis = fromSource;
-            if (hasCorrection) {
-                selectedAnalysis = fromJudgment;
-            }
             title = getTitlePrefix(selectedAnalysis) + title;
         }
+
+        // 通常・補正とも、採用分析の対象時間足の距離超過だけを先頭に付ける。
+        title = getEma200DistancePrefix(selectedAnalysis) + title;
 
         Print(__FUNCTION__, " isSendMail = ", fromIsSendMail);
         Print(__FUNCTION__, " title = ", title);
@@ -106,6 +111,58 @@ public:
     }
 
 private:
+    /**
+     * 採用分析のM5・M15・H1がメール用距離上限を超えた場合に件名接頭辞を作る。
+     *
+     * @param fromSelected 判定に採用した分析。補正時は補正後の分析。
+     * @return 超過時は【EMA 距離/上限p】。未取得・対象外・上限以内は空文字列。
+     */
+    static string getEma200DistancePrefix(ElliotAll *fromSelected) {
+        if (fromSelected == NULL || fromSelected.elliotCurrent == NULL
+                || (fromSelected.marketContext.timeFrame != PERIOD_M5
+                    && fromSelected.marketContext.timeFrame != PERIOD_M15
+                    && fromSelected.marketContext.timeFrame != PERIOD_H1)) {
+            return "";
+        }
+
+        double close1 = fromSelected.elliotCurrent.oscillator.ema200.close1;
+        double ema200Shift1 = fromSelected.elliotCurrent.oscillator.ema200.ema200Shift1;
+        if (!MathIsValidNumber(close1) || close1 <= 0.0 || close1 == EMPTY_VALUE
+                || !MathIsValidNumber(ema200Shift1) || ema200Shift1 <= 0.0
+                || ema200Shift1 == EMPTY_VALUE) {
+            return "";
+        }
+
+        string quoteCurrency = SymbolInfoString(
+            fromSelected.marketContext.symbolName, SYMBOL_CURRENCY_PROFIT);
+        double distancePips = fromSelected.elliotCurrent.oscillator.ema200.closeEma200DiffPips;
+        if (!Ema200DistanceMailPolicy::isExceeded(quoteCurrency, distancePips)) {
+            return "";
+        }
+
+        double maxDistancePips = Ema200DistanceMailPolicy::getMaxDistancePips(quoteCurrency);
+        string distanceText = formatEma200Distance(MathAbs(distancePips), maxDistancePips);
+
+        return StringFormat("【EMA %s/%sp】", distanceText, DoubleToString(maxDistancePips, 0));
+    }
+
+    /**
+     * 距離を短く表示し、丸めによって超過が上限と同値に見えることを防ぐ。
+     *
+     * @param fromDistancePips 上限を超えた絶対距離pips。
+     * @param fromMaxDistancePips メール用上限pips。
+     * @return 通常は整数。境界付近は小数、8桁でも区別できない場合は上限超過記号。
+     */
+    static string formatEma200Distance(const double fromDistancePips, const double fromMaxDistancePips) {
+        for (int i = 0; i <= 8; i++) {
+            if (NormalizeDouble(fromDistancePips, i) > fromMaxDistancePips) {
+                return DoubleToString(fromDistancePips, i);
+            }
+        }
+
+        return ">" + DoubleToString(fromMaxDistancePips, 0);
+    }
+
     /**
      * H1の星と、H1・M5のW1 EMA200・MN1同方向を示す件名接頭辞を作る。
      *
