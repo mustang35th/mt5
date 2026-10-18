@@ -19,6 +19,7 @@ interface Column {
   get: (row: SnapshotRow) => unknown;
   display?: (row: SnapshotRow) => string;
   direction?: (row: SnapshotRow) => string;
+  tooltip?: (row: SnapshotRow) => string;
 }
 export interface M5AlertSnapshotProps { detail: AlertDetailResponse; timeFrames: AlertTimeFrame[]; points: AlertPoint[] }
 interface AlertCorrectionSnapshotProps extends M5AlertSnapshotProps { currentTimeFrame: "M5" | "M15" | "H1" }
@@ -84,6 +85,71 @@ function emaDirection(row: SnapshotRow): string {
   if (buy === false && sell === false) return "NONE";
   return "不整合";
 }
+
+/**
+ * 有効な保存済みEMA200値かを確認し、MQL5の未取得値を除外します。
+ */
+function isRecordedEmaNumber(fromValue: unknown): fromValue is number {
+  return typeof fromValue === "number" && Number.isFinite(fromValue)
+    && Math.abs(fromValue) !== Number.MAX_VALUE;
+}
+
+/**
+ * この行自身の分析に保存された符号付き距離を取得します。
+ */
+function emaDistance(fromRow: SnapshotRow): number | null {
+  const timeFrame = fromRow.timeFrame;
+  if (fromRow.frame === 49153 || timeFrame?.is_ema200_available !== true) {
+    return null;
+  }
+
+  if (!isRecordedEmaNumber(timeFrame.ema200_close_diff_pips)
+      || !isRecordedEmaNumber(timeFrame.ema200_close1) || timeFrame.ema200_close1 <= 0
+      || !isRecordedEmaNumber(timeFrame.ema200_shift1) || timeFrame.ema200_shift1 <= 0) {
+    return null;
+  }
+
+  return timeFrame.ema200_close_diff_pips;
+}
+
+/**
+ * 価格の上下位置を符号付きで表示し、有効なゼロと未記録を区別します。
+ */
+function emaDistanceLabel(fromRow: SnapshotRow): string {
+  if (fromRow.frame === 49153) {
+    return "— 対象外";
+  }
+
+  const distance = emaDistance(fromRow);
+  if (distance === null) {
+    return "— 未記録";
+  }
+
+  if (Math.abs(distance) < 0.05) {
+    return "0.0";
+  }
+
+  return number(distance, 1, true);
+}
+
+/**
+ * 各時間足の確定足を基準とする距離と、その保存価格を説明します。
+ */
+function emaDistanceTooltip(fromRow: SnapshotRow): string {
+  const distance = emaDistance(fromRow);
+  if (distance === null) {
+    return `${fromRow.label} EMA200距離: ${emaDistanceLabel(fromRow)}`;
+  }
+
+  return [
+    `${fromRow.label} EMA200距離: ${emaDistanceLabel(fromRow)} pips`,
+    "この分析に保存された各時間足の確定足終値[1] − EMA200[1]をpips換算。",
+    `確定足終値[1]: ${number(fromRow.timeFrame?.ema200_close1, 5)}`,
+    `EMA200[1]: ${number(fromRow.timeFrame?.ema200_shift1, 5)}`,
+    "＋はEMA200より上、−は下。現在価格からの距離ではありません。",
+  ].join("\n");
+}
+
 function fibonacci(row: SnapshotRow): string {
   const point = row.point;
   if (!point || typeof point.org_elliot_index !== "number") return missing;
@@ -142,7 +208,7 @@ const columns: Column[] = [
     return (["open", "high", "low", "close"] as const).map((item) => field(`${period}_${item}`, label + " " + item, 5));
   }),
   emaField("ema200_close1", "EMA200 Close1", 5), emaField("ema200_shift1", "EMA200 Shift1", 5), emaField("ema200_compare", "EMA200 比較値", 5),
-  emaField("ema200_slope_pips", "EMA200 傾き pips", 1, true), emaField("ema200_close_diff_pips", "EMA200 終値距離 pips", 1, true),
+  emaField("ema200_slope_pips", "EMA200 傾き pips", 1, true),
   emaField("ema200_up_count", "EMA200 上昇本数"), emaField("ema200_down_count", "EMA200 下降本数"), emaField("ema200_trend_count", "EMA200 Trend Count", 0, true),
   field("ema30", "EMA30", 5), field("ema60", "EMA60", 5), field("ema30_ema60_diff_pips", "EMA30–60距離 pips", 1, true), field("atr14_pips", "ATR14 pips", 1),
   { id: "osc-direction", label: "Oscillator方向", get: (row) => row.timeFrame?.is_oscillator_buy, display: (row) => flag(row.timeFrame?.is_oscillator_buy, "BUY", "SELL") },
@@ -166,6 +232,7 @@ const columns: Column[] = [
 const keyColumns: Column[] = [
   { id: "direction", label: "分析方向", get: (row) => row.timeFrame?.is_buy, display: direction },
   { id: "ema-direction", label: "EMA200方向", get: (row) => [row.timeFrame?.is_ema200_available, row.timeFrame?.is_ema200_buy, row.timeFrame?.is_ema200_sell], display: emaDirection },
+  { id: "ema200_close_diff_pips", label: "EMA200距離 (pips)", numeric: true, signed: true, get: emaDistance, display: emaDistanceLabel, tooltip: emaDistanceTooltip },
   { id: "wave", label: "Elliott / Sub", get: (row) => [row.timeFrame?.is_wave_uptrend, row.timeFrame?.latest_elliot_label, row.timeFrame?.latest_sub_elliot_label, row.point?.org_elliot_label], display: wave, direction },
 ];
 function rowsFor(timeFrames: AlertTimeFrame[], points: AlertPoint[], analysis: Analysis, snapshotFrames: typeof frames, analysisText?: string): SnapshotRow[] {
@@ -185,6 +252,10 @@ function hasDifference(column: Column, first: SnapshotRow, second: SnapshotRow):
   return JSON.stringify(column.get(first)) !== JSON.stringify(column.get(second));
 }
 function cellText(column: Column, row: SnapshotRow): string {
+  if (column.id === "ema200_close_diff_pips") {
+    return emaDistanceLabel(row);
+  }
+
   if (!row.timeFrame) return missing;
   if (column.display) return column.display(row);
   if (column.numeric) return number(column.get(row), column.digits, column.signed);
@@ -309,7 +380,7 @@ function SnapshotContent({ detail, timeFrames, points, currentTimeFrame }: Alert
       <label><input type="checkbox" checked={changedOnly} disabled={!comparison} onChange={(event) => setChangedOnly(event.target.checked)} />差がある列のみ</label>
       <button type="button" className="secondary-button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded && "要点のみ"}{!expanded && "すべて表示"}</button>
     </div></div>
-    <p className="m5-alert-note">[ ]＝再カウント前の主波ラベル</p>
+    <p className="m5-alert-note">[ ]＝再カウント前の主波ラベル。EMA200距離：＋はEMA200より上、−は下（各時間足の保存済み確定足基準）。</p>
     {comparison && changedOnly && shownColumns.length === 0 && <p className="m5-alert-note">表示中の項目に差はありません。比較キーは常に表示します。</p>}
     <div className="m5-alert-grid-scroll" role="region" aria-label={`${currentTimeFrame}アラート全画面グリッド`} tabIndex={0}>
       <table className="m5-alert-grid" aria-label={`${currentTimeFrame}アラート${snapshotFrames.length}時間足比較`}><thead><tr><th className="m5-alert-key-0" scope="col">時間足</th><th className="m5-alert-key-1" scope="col">分析</th>{[...keyColumns, ...shownColumns].map((column, index) => {
@@ -340,7 +411,7 @@ function SnapshotContent({ detail, timeFrames, points, currentTimeFrame }: Alert
               content = <span className={color}><ElliottLabelText label={value}
                 mainLabel={row.timeFrame?.latest_elliot_label} originalLabel={row.point?.org_elliot_label} /></span>;
             }
-            return <td key={column.id} data-column={column.id} className={classes.join(" ")}>{content}</td>;
+            return <td key={column.id} data-column={column.id} className={classes.join(" ")} title={column.tooltip?.(row)}>{content}</td>;
           })}
         </tr>;
       })}</tbody></table>

@@ -10,6 +10,7 @@ function fixture() {
     is_current_time_frame: frame === 5, is_buy: frame !== 16385, buy_sell_label: "BUY", latest_elliot_label: "1", latest_sub_elliot_label: "i",
     is_wave_uptrend: true, is_wave_confirmed: false, is_wave_motive: true, point_count: 1, wave_count: 5, latest_wave_index: 4,
     is_ema200_available: true, is_ema200_buy: true, is_ema200_sell: false,
+    ema200_close1: 150.5, ema200_shift1: 150.4, ema200_close_diff_pips: 10,
     oscillator_count: 3, stochastic_short_count: 2, stochastic_middle_count: -1, stochastic_long_count: 0, gmma_trend_count: 5, gmma_cross_count: -3,
     previous_open: 150, previous_high: 151, previous_low: 149, previous_close: 150.5, current_open: 150.5, current_high: 150.8, current_low: 150.4, current_close: 150.6,
     latest_point_is_added: false, is_fibo_expansion_available: true, fe1618_price: 151.5,
@@ -124,6 +125,8 @@ describe("M5 Alert corrected snapshots", () => {
     fireEvent.click(screen.getByRole("button", { name: "前後比較" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "差がある列のみ" }));
     expect(within(grid()).getByRole("columnheader", { name: "分析方向" })).toBeInTheDocument();
+    expect(within(grid()).getByRole("columnheader", { name: "EMA200距離 (pips)" })).toBeInTheDocument();
+    expect(row("M5", "CORRECTED").querySelector('[data-column="ema200_close_diff_pips"]')).toHaveTextContent("+10.0");
     expect(within(grid()).getByRole("columnheader", { name: "最新点価格" })).toBeInTheDocument();
     expect(within(grid()).queryByRole("columnheader", { name: "GMMA Cross" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "差がある列のみ" }));
@@ -131,6 +134,84 @@ describe("M5 Alert corrected snapshots", () => {
     expect(within(grid()).getByRole("columnheader", { name: "直前確定足 open" })).toBeInTheDocument();
     expect(within(grid()).getByRole("columnheader", { name: "取得時点の形成中足 close" })).toBeInTheDocument();
     expect(within(grid()).getByRole("columnheader", { name: "EMA200 傾き pips" })).toBeInTheDocument();
+    expect(within(grid()).getAllByRole("columnheader", { name: "EMA200距離 (pips)" })).toHaveLength(1);
+    expect(within(grid()).queryByRole("columnheader", { name: "EMA200 終値距離 pips" })).not.toBeInTheDocument();
+    expect(row("M5", "CORRECTED").querySelectorAll('[data-column="ema200_close_diff_pips"]')).toHaveLength(1);
+  });
+
+  it("places signed saved EMA distances beside direction and preserves zero and NONE", () => {
+    const data = fixture();
+    const corrected = data.detail.correction!.timeframes;
+    corrected[1].ema200_close_diff_pips = 120.5;
+    corrected[2].ema200_close_diff_pips = -34;
+    corrected[3].ema200_close_diff_pips = 0;
+    corrected[4].ema200_close_diff_pips = -0;
+    corrected[5].ema200_close_diff_pips = -0.01;
+    corrected[6].ema200_close_diff_pips = 12.3;
+    corrected[6].is_ema200_buy = false;
+    corrected[6].is_ema200_sell = false;
+    render(<M5AlertSnapshot {...data} />);
+    const headers = within(grid()).getAllByRole("columnheader").map((header) => header.textContent);
+    expect(headers[headers.indexOf("EMA200方向") + 1]).toBe("EMA200距離 (pips)");
+    const distanceCell = (frame: string) => row(frame, "CORRECTED").querySelector('[data-column="ema200_close_diff_pips"]');
+    expect(distanceCell("MN1")).toHaveTextContent(/^— 対象外$/);
+    expect(distanceCell("W1")).toHaveTextContent(/^\+120\.5$/);
+    expect(distanceCell("D1")).toHaveTextContent(/^-34\.0$/);
+    for (const frame of ["H4", "H1", "M15"]) {
+      expect(distanceCell(frame)).toHaveTextContent(/^0\.0$/);
+    }
+
+    expect(row("M5", "CORRECTED").querySelector('[data-column="ema-direction"]')).toHaveTextContent("NONE");
+    expect(distanceCell("M5")).toHaveTextContent(/^\+12\.3$/);
+    expect(distanceCell("W1")).toHaveAttribute("title", expect.stringContaining("W1 EMA200距離: +120.5 pips"));
+    expect(distanceCell("W1")).toHaveAttribute("title", expect.stringContaining("確定足終値[1]: 150.50000"));
+    expect(distanceCell("W1")).toHaveAttribute("title", expect.stringContaining("EMA200[1]: 150.40000"));
+    expect(distanceCell("W1")).toHaveAttribute("title", expect.stringContaining("＋はEMA200より上、−は下"));
+  });
+
+  it.each([
+    { label: "unavailable", values: { is_ema200_available: false } },
+    { label: "unknown availability", values: { is_ema200_available: undefined } },
+    { label: "null availability", values: { is_ema200_available: null } },
+    { label: "missing distance", values: { ema200_close_diff_pips: undefined } },
+    { label: "null distance", values: { ema200_close_diff_pips: null } },
+    { label: "NaN distance", values: { ema200_close_diff_pips: NaN } },
+    { label: "infinite distance", values: { ema200_close_diff_pips: Infinity } },
+    { label: "negative infinite distance", values: { ema200_close_diff_pips: -Infinity } },
+    { label: "EMPTY_VALUE distance", values: { ema200_close_diff_pips: Number.MAX_VALUE } },
+    { label: "negative EMPTY_VALUE distance", values: { ema200_close_diff_pips: -Number.MAX_VALUE } },
+    { label: "uncomputed close", values: { ema200_close1: 0 } },
+    { label: "negative close", values: { ema200_close1: -1 } },
+    { label: "missing close", values: { ema200_close1: undefined } },
+    { label: "NaN close", values: { ema200_close1: NaN } },
+    { label: "EMPTY_VALUE close", values: { ema200_close1: Number.MAX_VALUE } },
+    { label: "uncomputed EMA", values: { ema200_shift1: 0 } },
+    { label: "negative EMA", values: { ema200_shift1: -1 } },
+    { label: "missing EMA", values: { ema200_shift1: undefined } },
+    { label: "infinite EMA", values: { ema200_shift1: Infinity } },
+    { label: "EMPTY_VALUE EMA", values: { ema200_shift1: Number.MAX_VALUE } },
+  ])("does not present $label as a recorded EMA distance", ({ values }) => {
+    const data = fixture();
+    Object.assign(data.detail.correction!.timeframes[6], values);
+    render(<M5AlertSnapshot {...data} />);
+    expect(row("M5", "CORRECTED").querySelector('[data-column="ema200_close_diff_pips"]')).toHaveTextContent(/^— 未記録$/);
+  });
+
+  it("compares each analysis's saved EMA distance without borrowing the adopted value", () => {
+    const data = fixture();
+    data.timeFrames[6].ema200_close_diff_pips = 120.5;
+    data.detail.correction!.timeframes[6].ema200_close_diff_pips = -34;
+    render(<M5AlertSnapshot {...data} />);
+    fireEvent.click(screen.getByRole("button", { name: "前後比較" }));
+    const original = row("M5", "ORIGINAL").querySelector('[data-column="ema200_close_diff_pips"]');
+    const corrected = row("M5", "CORRECTED").querySelector('[data-column="ema200_close_diff_pips"]');
+    expect(original).toHaveTextContent(/^\+120\.5$/);
+    expect(corrected).toHaveTextContent(/^-34\.0$/);
+    expect(original).toHaveClass("m5-alert-changed");
+    expect(corrected).toHaveClass("m5-alert-changed");
+    fireEvent.click(screen.getByRole("checkbox", { name: "差がある列のみ" }));
+    expect(original).toBeInTheDocument();
+    expect(corrected).toBeInTheDocument();
   });
 
   it("joins points within their own analysis even when parent and point IDs overlap", () => {
@@ -237,6 +318,8 @@ describe("M5 Alert corrected snapshots", () => {
     fireEvent.click(screen.getByRole("button", { name: "前後比較" }));
     expect(row("M15", "ORIGINAL")).toHaveTextContent("未記録");
     expect(row("M15", "CORRECTED")).toHaveTextContent("▲1.i");
+    expect(row("M15", "ORIGINAL").querySelector('[data-column="ema200_close_diff_pips"]')).toHaveTextContent(/^— 未記録$/);
+    expect(row("M15", "CORRECTED").querySelector('[data-column="ema200_close_diff_pips"]')).toHaveTextContent(/^\+10\.0$/);
   });
 
   it("shows selected full text safely, and both sets of wave points and text in comparison", () => {

@@ -481,7 +481,10 @@ describe("AlertDetailDrawer correction integration", () => {
   });
 
   it.each(["detail", "comparison"] as const)("shows the adopted M15 six-frame snapshot in %s", async (initialView) => {
-    serve(h1Fixture(16408, "BUY", "APPLIED", 74, 15));
+    const data = h1Fixture(16408, "BUY", "APPLIED", 74, 15);
+    data.timeFrames[5].ema200_close_diff_pips = 120.5;
+    data.detail.correction!.timeframes[5].ema200_close_diff_pips = -34;
+    serve(data);
     render(<AlertDetailDrawer alertId={74} initialView={initialView} onClose={vi.fn()} />);
     const snapshot = await screen.findByRole("region", { name: "M15アラート補正スナップショット" });
     const table = within(snapshot).getByRole("table", { name: "M15アラート6時間足比較" });
@@ -489,10 +492,14 @@ describe("AlertDetailDrawer correction integration", () => {
       .toEqual(["MN1", "W1", "D1", "H4", "H1", "M15"]);
     expect(table.querySelector('tr[data-timeframe="M15"]')).toHaveClass("m5-alert-current");
     expect(table.querySelectorAll('tr[data-analysis="CORRECTED"]')).toHaveLength(6);
+    expect(within(table).getByRole("columnheader", { name: "EMA200距離 (pips)" })).toBeInTheDocument();
+    expect(table.querySelector('tr[data-timeframe="M15"] [data-column="ema200_close_diff_pips"]')).toHaveTextContent(/^-34\.0$/);
     expect(snapshot).toHaveTextContent("D1方向補正");
     const savedSl = within(snapshot).getByRole("region", { name: "判定時の損切り候補" }).textContent;
     fireEvent.click(within(snapshot).getByRole("button", { name: "前後比較" }));
     expect(table.querySelectorAll("tbody tr")).toHaveLength(12);
+    expect(table.querySelector('tr[data-timeframe="M15"][data-analysis="ORIGINAL"] [data-column="ema200_close_diff_pips"]')).toHaveTextContent(/^\+120\.5$/);
+    expect(table.querySelector('tr[data-timeframe="M15"][data-analysis="CORRECTED"] [data-column="ema200_close_diff_pips"]')).toHaveTextContent(/^-34\.0$/);
     expect(within(snapshot).getByRole("region", { name: "判定時の損切り候補" }).textContent).toBe(savedSl);
     expect(screen.queryByRole("region", { name: h1PanelName })).not.toBeInTheDocument();
   });
