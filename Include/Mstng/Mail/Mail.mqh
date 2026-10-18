@@ -6,6 +6,7 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
 #include <Mstng\Mail\Ema200DistanceMailPolicy.mqh>
@@ -78,6 +79,9 @@ public:
             selectedAnalysis = fromJudgment;
         }
 
+        // GMO対象の通貨名の直前に、通常・補正共通の目印を付ける。
+        title = getGmoTitlePrefix(fromSource.marketContext.symbolName) + title;
+
         // 通常版の対象時間足と、採用分析のW1 EMA200・MN1方向一致を件名で示す。
         if (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
             title = getTitlePrefix(selectedAnalysis) + title;
@@ -111,6 +115,40 @@ public:
     }
 
 private:
+    /**
+     * Viewerと同じGMO対象通貨にだけ件名の目印を付ける。
+     *
+     * 大文字・小文字、接頭辞・接尾辞を許容する。既知の通貨ペアが複数含まれる場合は付けない。
+     * @param fromSymbolName 元分析のシンボル名。
+     * @return GMO対象は[G]。対象外・未登録・曖昧なシンボル名は空文字列。
+     */
+    static string getGmoTitlePrefix(const string fromSymbolName) {
+        string symbolName = fromSymbolName;
+        StringToUpper(symbolName);
+        SymbolNameInfoAll symbolNameInfoAll;
+        symbolNameInfoAll.setGmo();
+
+        SymbolNameInfo *matchedSymbol = NULL;
+        for (int i = 0; i < symbolNameInfoAll.size(); i++) {
+            SymbolNameInfo *symbolNameInfo = symbolNameInfoAll.getSymbolNameInfo(i);
+            if (symbolNameInfo == NULL || StringFind(symbolName, symbolNameInfo.symbolName) < 0) {
+                continue;
+            }
+
+            if (matchedSymbol != NULL) {
+                return "";
+            }
+
+            matchedSymbol = symbolNameInfo;
+        }
+
+        if (matchedSymbol == NULL || !matchedSymbol.isTarget) {
+            return "";
+        }
+
+        return "[G]";
+    }
+
     /**
      * 採用分析のM5・M15・H1がメール用距離上限を超えた場合に件名接頭辞を作る。
      *
