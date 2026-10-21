@@ -61,7 +61,7 @@ public:
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
         this.maximumCount = fromMaximumCount;
-        this.panelWidth = 1000;
+        this.panelWidth = 680;
         this.headerHeight = 25;
         this.columnHeaderYDistance = 39;
         this.separatorYDistance = 58;
@@ -348,12 +348,12 @@ private:
 
             if (fromCandidateList.size() <= 0) {
                 titleText = StringFormat(
-                    "ENTRY CANDIDATES  LONG-MID + MID-SHORT  MIN GAP %d  NO ENTRY CANDIDATES",
+                    "ENTRY CANDIDATES  MIN GAP %d  NO CANDIDATES",
                     fromCandidateList.getMinimumRankDifference()
                 );
             } else {
                 titleText = StringFormat(
-                    "ENTRY CANDIDATES  LONG-MID + MID-SHORT  MIN GAP %d  FOUND %d  TOP %d",
+                    "ENTRY CANDIDATES  MIN GAP %d  FOUND %d  TOP %d",
                     fromCandidateList.getMinimumRankDifference(),
                     fromCandidateList.size(),
                     visibleCount
@@ -471,8 +471,9 @@ private:
      * @param fromRowIndex 表示行番号。
      */
     void clearRow(const int fromRowIndex) {
+        // 空文字はMT5の既定文字Labelになるため、空白1文字で非表示にする。
         for (int i = 0; i < this.getColumnCount(); i++) {
-            this.setCell(fromRowIndex, i, "", this.mutedColor);
+            this.setCell(fromRowIndex, i, " ", this.mutedColor);
         }
     }
 
@@ -484,7 +485,7 @@ private:
      * @return 基軸通貨順位/決済通貨順位。
      */
     string formatRanks(const int fromBaseRank, const int fromQuoteRank) {
-        return StringFormat("%d / %d", fromBaseRank, fromQuoteRank);
+        return StringFormat("%d/%d", fromBaseRank, fromQuoteRank);
     }
 
     /**
@@ -653,23 +654,23 @@ private:
             case 0:
                 return 14;
             case 1:
-                return 44;
+                return 40;
             case 2:
-                return 125;
+                return 110;
             case 3:
-                return 200;
+                return 160;
             case 4:
-                return 350;
+                return 270;
             case 5:
-                return 420;
+                return 320;
             case 6:
-                return 580;
+                return 435;
             case 7:
-                return 650;
+                return 480;
             case 8:
-                return 720;
+                return 525;
             case 9:
-                return 800;
+                return 595;
         }
 
         return 14;

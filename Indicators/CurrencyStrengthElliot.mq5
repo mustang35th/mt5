@@ -35,23 +35,69 @@ enum CurrencyStrengthExecutionStatus {
     currencyStrengthExecutionFailed = 2
 };
 
-input int refreshSeconds = 60;
-input int panelXDistance = 12;
-input int panelYDistance = 12;
-input bool showEntryCandidates = true;
-input int entryCandidateMaxCount = 10;
-input int entryCandidateMinRankDifference = 2;
-input CurrencyStrengthSortType sortType = CURRENCY_STRENGTH_SORT_TOTAL;
-input CurrencyStrengthVoteWeightMode voteWeightMode =
+input group "01. 画面表示"
+
+/** MN1からM5までの時間足別スコア列を表示する場合true。 */
+input(name="時間足別スコアを表示（MN1～M5）") bool showTimeFrameScores = true;
+
+/** 通貨強弱ランキングの並び替え基準。 */
+input(name="ランキングの並び順") CurrencyStrengthSortType sortType =
+    CURRENCY_STRENGTH_SORT_TOTAL;
+
+/** パネルのチャート左端からの距離。単位はピクセル。 */
+input(name="表示位置：左から（px）") int panelXDistance = 12;
+
+/** パネルのチャート上端からの距離。単位はピクセル。 */
+input(name="表示位置：上から（px）") int panelYDistance = 12;
+
+input group "02. 候補一覧"
+
+/** 通貨強弱順位による売買候補一覧を表示する場合true。 */
+input(name="売買候補一覧を表示") bool showEntryCandidates = true;
+
+/** 売買候補一覧の最大表示件数。 */
+input(name="候補の最大表示件数") int entryCandidateMaxCount = 10;
+
+/** 長中期と中短期の両方に必要な基軸通貨と決済通貨の最小順位差。 */
+input(name="候補に必要な順位差（1～7）") int entryCandidateMinRankDifference = 2;
+
+input group "03. 計算・更新"
+
+/** オシレーター一致度に応じたスコアの重み付け方式。 */
+input(name="スコアの計算方式") CurrencyStrengthVoteWeightMode voteWeightMode =
     CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
-input bool databaseEnabled = true;
-input string databaseFileName = "mstng-currency-strength.sqlite";
-input bool databaseSplitByYear = true;
-input bool databaseUseCommonFolder = true;
-input bool databaseSaveEveryRefresh = false;
-input bool databaseSavePartialRuns = false;
-input datetime databaseSaveStartTime = D'2026.07.16 00:00';
-input int databaseRetentionDays = 0;
+
+/** LIVEのタイマー更新間隔。M5新足でも更新し、TESTERには適用しない。 */
+input(name="通常チャートの更新間隔（秒）") int refreshSeconds = 60;
+
+input group "04. DB保存"
+
+/** 通貨強弱の集計結果をデータベースへ保存する場合true。 */
+input(name="集計結果をDBに保存") bool databaseEnabled = true;
+
+/** 年別分割時の年付与前のデータベースファイル名。 */
+input(name="DBファイル名") string databaseFileName = "mstng-currency-strength.sqlite";
+
+/** 保存対象M5足のサーバー時刻の年ごとにDBファイルを分ける場合true。 */
+input(name="DBファイルを年ごとに分ける") bool databaseSplitByYear = true;
+
+/** MT5共通フォルダへDBを保存する場合true。TESTERでは必須。 */
+input(name="MT5共通フォルダに保存") bool databaseUseCommonFolder = true;
+
+input group "05. DB詳細設定"
+
+/** LIVEで保存済みの同じM5足も更新のたびに再保存する場合true。 */
+input(name="同じM5足も再保存（LIVE）") bool databaseSaveEveryRefresh = false;
+
+/** 全28通貨ペアが揃っていない集計結果も保存する場合true。 */
+input(name="一部ペアが未取得でも保存") bool databaseSavePartialRuns = false;
+
+/** TESTERのDB保存開始サーバー時刻。0は開始日時を制限しない。 */
+input(name="テスター保存開始日時（サーバー時刻）")
+datetime databaseSaveStartTime = D'2026.07.16 00:00';
+
+/** LIVEデータの保持日数。0は削除せず、TESTERデータは対象外。 */
+input(name="LIVEデータの保持日数（0＝削除なし）") int databaseRetentionDays = 0;
 
 /** テスター診断ログを約1日ごとに出力するM5足数。 */
 const int testerDiagnosticLogIntervalBars = 288;
@@ -59,8 +105,8 @@ const int testerDiagnosticLogIntervalBars = 288;
 const int testerMonthlyHistoryWarmUpBars = 61;
 /** ZigZagElliotと揃えるW1以下履歴のウォームアップ必要本数。 */
 const int testerStandardHistoryWarmUpBars = 206;
-/** 通貨ランキングパネル左端から候補一覧左端までの距離。 */
-const int entryCandidatePanelXOffset = 1012;
+/** 通貨ランキングパネルと候補一覧の間隔。 */
+const int entryCandidatePanelGap = 12;
 
 double gHiddenBuffer[];
 
@@ -150,18 +196,20 @@ int OnInit() {
         panelXDistance,
         panelYDistance,
         sortType,
-        voteWeightModeText
+        voteWeightModeText,
+        showTimeFrameScores
     );
     gOscillatorHandleManager = new OscillatorHandleManager(PERIOD_M15);
     gCurrencyStrengthCalculator = new CurrencyStrengthCalculator(
         voteWeightMode
     );
 
-    if (showEntryCandidates) {
+    if (showEntryCandidates && gDrawCurrencyStrengthList != NULL) {
         gDrawCurrencyStrengthEntryCandidateList =
             new DrawCurrencyStrengthEntryCandidateList(
                 0,
-                panelXDistance + entryCandidatePanelXOffset,
+                panelXDistance + gDrawCurrencyStrengthList.getPanelWidth()
+                    + entryCandidatePanelGap,
                 panelYDistance,
                 entryCandidateMaxCount,
                 voteWeightModeText

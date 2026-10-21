@@ -29,13 +29,15 @@ public:
      * @param fromYDistance チャート上端からの距離。
      * @param fromSortType 並び替え基準。
      * @param fromInstanceKey 同一チャート内のインスタンス識別子。
+     * @param fromShowTimeFrameScores MN1からM5までの時間足別スコアを表示する場合true。
      */
     DrawCurrencyStrengthList(
         long fromChartId = 0,
         int fromXDistance = 12,
         int fromYDistance = 12,
         CurrencyStrengthSortType fromSortType = CURRENCY_STRENGTH_SORT_TOTAL,
-        string fromInstanceKey = ""
+        string fromInstanceKey = "",
+        bool fromShowTimeFrameScores = true
     ) {
         this.chartId = fromChartId;
         string baseObjectPrefix = Constant::PREFIX_FIXED + "CurrencyStrengthList_";
@@ -61,7 +63,13 @@ public:
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
         this.sortType = fromSortType;
+        this.showTimeFrameScores = fromShowTimeFrameScores;
         this.panelWidth = 1000;
+        if (!this.showTimeFrameScores) {
+            this.panelWidth -= this.getFullColumnLeftOffset(9)
+                - this.getFullColumnLeftOffset(2);
+        }
+
         this.headerHeight = 25;
         this.columnHeaderYDistance = 39;
         this.separatorYDistance = 58;
@@ -144,6 +152,15 @@ public:
         ChartRedraw(this.chartId);
     }
 
+    /**
+     * 表示列に応じたパネル幅を取得する。
+     *
+     * @return パネル幅。単位はピクセル。
+     */
+    int getPanelWidth() const {
+        return this.panelWidth;
+    }
+
 private:
     /** 描画対象チャートID。 */
     long chartId;
@@ -168,6 +185,9 @@ private:
 
     /** 一覧の並び替え基準。 */
     CurrencyStrengthSortType sortType;
+
+    /** MN1からM5までの時間足別スコアを表示する場合true。 */
+    bool showTimeFrameScores;
 
     /** パネル幅。 */
     int panelWidth;
@@ -290,6 +310,10 @@ private:
         }
 
         for (int i = 0; i < this.getColumnCount(); i++) {
+            if (!this.isColumnVisible(i)) {
+                continue;
+            }
+
             color columnHeaderColor = this.headerColor;
 
             if (i == this.getSortColumnIndex()) {
@@ -329,6 +353,10 @@ private:
             int rowYDistance = this.firstRowYDistance + (i * this.rowHeight);
 
             for (int j = 0; j < this.getColumnCount(); j++) {
+                if (!this.isColumnVisible(j)) {
+                    continue;
+                }
+
                 if (!this.createLabel(
                     this.getCellObjectName(i, j),
                     this.getColumnLeftOffset(j),
@@ -861,6 +889,10 @@ private:
         string fromText,
         color fromColor
     ) {
+        if (!this.isColumnVisible(fromColumnIndex)) {
+            return;
+        }
+
         string objectName = this.getCellObjectName(fromRowIndex, fromColumnIndex);
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
@@ -956,12 +988,38 @@ private:
     }
 
     /**
+     * 指定列を表示するか判定する。
+     *
+     * @param fromColumnIndex 列番号。2から8がMN1からM5の列。
+     * @return 表示対象の場合true。
+     */
+    bool isColumnVisible(const int fromColumnIndex) {
+        return this.showTimeFrameScores || fromColumnIndex < 2 || fromColumnIndex > 8;
+    }
+
+    /**
      * 列の左位置を取得する。
      *
      * @param fromColumnIndex 列番号。
      * @return パネル左端からの位置。
      */
     int getColumnLeftOffset(int fromColumnIndex) {
+        int leftOffset = this.getFullColumnLeftOffset(fromColumnIndex);
+        if (!this.showTimeFrameScores && fromColumnIndex >= 9) {
+            leftOffset -= this.getFullColumnLeftOffset(9)
+                - this.getFullColumnLeftOffset(2);
+        }
+
+        return leftOffset;
+    }
+
+    /**
+     * 全列表示時の列の左位置を取得する。
+     *
+     * @param fromColumnIndex 列番号。
+     * @return パネル左端からの位置。
+     */
+    int getFullColumnLeftOffset(int fromColumnIndex) {
         switch (fromColumnIndex) {
             case 0:
                 return 14;

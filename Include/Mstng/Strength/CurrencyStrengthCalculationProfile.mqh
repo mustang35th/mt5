@@ -14,10 +14,10 @@
  */
 enum CurrencyStrengthVoteWeightMode {
     /** 3対0と2対1を同じ1票として集計する現行方式。 */
-    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM = 0,
+    CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM = 0, // 均等（すべて1点）
 
     /** 3対0を2票、2対1を1票として集計する加重方式。 */
-    CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED = 1
+    CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED = 1 // 加重（3対0は2点・2対1は1点）
 };
 
 /**

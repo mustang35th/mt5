@@ -100,6 +100,38 @@ D1やH1などの時間足は複数期間へ重複して使用します。平均�
 
 `CurrencyStrengthElliot`の`sortType`では、チャート表示順を`TOTAL`、`LONG`、`LONG-MID`、`MID`、`MID-SHORT`、`SHORT`から選択します。完全な集計では選択スコアの降順、TOTALの降順、通貨コードの昇順で並べ、`#`列はこの表示順を示します。未完全集計ではソートせず、`#`列は従来どおり`-`を表示します。この表示設定はDB保存値とLIVE・TESTERそれぞれの`calculation_version`へ影響しません。
 
+`時間足別スコアを表示（MN1～M5）`（`showTimeFrameScores`、既定`true`）を`false`にすると、MN1・W1・D1・H4・H1・M15・M5の7列を非表示にします。`#`・`CCY`・`LONG`・`LONG-MID`・`MID`・`MID-SHORT`・`SHORT`・`TOTAL`・`N`は残し、左パネルを縮め、右の候補一覧も左へ詰めます。表示列だけの変更で、時間足別の計算・平均・順位・候補抽出・DB保存には影響しません。
+
+右の売買候補一覧は幅680pxです。`#`・`PAIR`・`SIDE`・`LONG-MID B/Q`・`DIFF`・`MID-SHORT B/Q`・`DIFF`・`MIN`・`TOTAL`・`STATE`の全10列を維持し、文字サイズと色分けを保ったまま列間と右端の余白を詰めます。順位は`1/7`のように表示し、左が基軸通貨、右が決済通貨の順位です。左の時間足別スコアを非表示にした場合、左右パネルの合計幅は間隔12pxを含めて1280px（588px + 12px + 680px）になります。
+
+### 3.1 CurrencyStrengthElliotの入力設定
+
+入力設定は次の5グループに分けて表示します。表示名と配置を変更しても、入力変数名・型・初期値および列挙値の数値は維持します。真偽値の設定は`true`が有効、`false`が無効です。
+
+| グループ | 表示名 | 入力変数 | 初期値 |
+|---|---|---|---|
+| 01. 画面表示 | 時間足別スコアを表示（MN1～M5） | `showTimeFrameScores` | `true` |
+| 01. 画面表示 | ランキングの並び順 | `sortType` | 合計（TOTAL） |
+| 01. 画面表示 | 表示位置：左から（px） | `panelXDistance` | `12` |
+| 01. 画面表示 | 表示位置：上から（px） | `panelYDistance` | `12` |
+| 02. 候補一覧 | 売買候補一覧を表示 | `showEntryCandidates` | `true` |
+| 02. 候補一覧 | 候補の最大表示件数 | `entryCandidateMaxCount` | `10` |
+| 02. 候補一覧 | 候補に必要な順位差（1～7） | `entryCandidateMinRankDifference` | `2` |
+| 03. 計算・更新 | スコアの計算方式 | `voteWeightMode` | 加重（3対0は2点・2対1は1点） |
+| 03. 計算・更新 | 通常チャートの更新間隔（秒） | `refreshSeconds` | `60` |
+| 04. DB保存 | 集計結果をDBに保存 | `databaseEnabled` | `true` |
+| 04. DB保存 | DBファイル名 | `databaseFileName` | `mstng-currency-strength.sqlite` |
+| 04. DB保存 | DBファイルを年ごとに分ける | `databaseSplitByYear` | `true` |
+| 04. DB保存 | MT5共通フォルダに保存 | `databaseUseCommonFolder` | `true` |
+| 05. DB詳細設定 | 同じM5足も再保存（LIVE） | `databaseSaveEveryRefresh` | `false` |
+| 05. DB詳細設定 | 一部ペアが未取得でも保存 | `databaseSavePartialRuns` | `false` |
+| 05. DB詳細設定 | テスター保存開始日時（サーバー時刻） | `databaseSaveStartTime` | `2026.07.16 00:00` |
+| 05. DB詳細設定 | LIVEデータの保持日数（0＝削除なし） | `databaseRetentionDays` | `0` |
+
+並び順の選択肢は合計（TOTAL）・長期（LONG）・長中期（LONG-MID）・中期（MID）・中短期（MID-SHORT）・短期（SHORT）です。計算方式は均等（すべて1点）と加重（3対0は2点・2対1は1点）から選択します。共通の計算方式列挙型を使用する他のインジケーターやスクリプトも、再コンパイル後は同じ選択肢名になります。
+
+候補の順位差は長中期と中短期の両方に適用します。通常チャートは指定秒数のタイマーに加えてM5新足でも更新します。同じM5足の再保存は既存記録の更新で、件数を増やす設定ではありません。テスター保存開始日時はLIVEには適用せず、`0`では開始日時を制限しません。保持日数による削除はLIVEデータだけが対象です。
+
 ## 4. テーブル関係
 
 ```text
