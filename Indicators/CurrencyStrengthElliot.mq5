@@ -16,6 +16,8 @@
 #include <Mstng\Database\Service\CurrencyStrengthYearlyPersistenceService.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthList.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankComparison.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthSnapshotHeader.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
@@ -37,6 +39,9 @@ enum CurrencyStrengthExecutionStatus {
 
 input group "01. 画面表示"
 
+/** 長中期と中短期の順位を接続する比較パネルを一番左に表示する場合true。 */
+input(name="順位比較を表示") bool showRankComparison = true;
+
 /** MN1からM5までの時間足別スコア列を表示する場合true。 */
 input(name="時間足別スコアを表示（MN1～M5）") bool showTimeFrameScores = true;
 
@@ -48,7 +53,7 @@ input(name="ランキングの並び順") CurrencyStrengthSortType sortType =
 input(name="表示位置：左から（px）") int panelXDistance = 12;
 
 /** パネルのチャート上端からの距離。単位はピクセル。 */
-input(name="表示位置：上から（px）") int panelYDistance = 12;
+input(name="表示位置：上から（px）") int panelYDistance = 32;
 
 input group "02. 候補一覧"
 
@@ -105,14 +110,18 @@ const int testerDiagnosticLogIntervalBars = 288;
 const int testerMonthlyHistoryWarmUpBars = 61;
 /** ZigZagElliotと揃えるW1以下履歴のウォームアップ必要本数。 */
 const int testerStandardHistoryWarmUpBars = 206;
-/** 通貨ランキングパネルと候補一覧の間隔。 */
-const int entryCandidatePanelGap = 12;
+/** 隣接する表示パネル間の間隔。 */
+const int panelGap = 12;
+/** 共通日時欄24pxとパネル上側の余白4px。 */
+const int snapshotHeaderOffset = 28;
 
 double gHiddenBuffer[];
 
 Logger gLogger;
 DrawCurrencyStrengthEntryCandidateList *gDrawCurrencyStrengthEntryCandidateList = NULL;
 DrawCurrencyStrengthList *gDrawCurrencyStrengthList;
+DrawCurrencyStrengthRankComparison *gDrawCurrencyStrengthRankComparison = NULL;
+DrawCurrencyStrengthSnapshotHeader *gDrawCurrencyStrengthSnapshotHeader = NULL;
 OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
 CurrencyStrengthEntryCandidateList *gCurrencyStrengthEntryCandidateList = NULL;
@@ -191,10 +200,25 @@ int OnInit() {
     gLogger.setLevel(LOG_INFO);
     gLogger.setMarketContext(context);
 
+    int strengthPanelXDistance = panelXDistance;
+    int contentYDistance = panelYDistance + snapshotHeaderOffset;
+    if (showRankComparison) {
+        gDrawCurrencyStrengthRankComparison = new DrawCurrencyStrengthRankComparison(
+            0,
+            panelXDistance,
+            contentYDistance,
+            voteWeightModeText
+        );
+        if (gDrawCurrencyStrengthRankComparison != NULL) {
+            strengthPanelXDistance += gDrawCurrencyStrengthRankComparison.getPanelWidth()
+                + panelGap;
+        }
+    }
+
     gDrawCurrencyStrengthList = new DrawCurrencyStrengthList(
         0,
-        panelXDistance,
-        panelYDistance,
+        strengthPanelXDistance,
+        contentYDistance,
         sortType,
         voteWeightModeText,
         showTimeFrameScores
@@ -208,9 +232,9 @@ int OnInit() {
         gDrawCurrencyStrengthEntryCandidateList =
             new DrawCurrencyStrengthEntryCandidateList(
                 0,
-                panelXDistance + gDrawCurrencyStrengthList.getPanelWidth()
-                    + entryCandidatePanelGap,
-                panelYDistance,
+                strengthPanelXDistance + gDrawCurrencyStrengthList.getPanelWidth()
+                    + panelGap,
+                contentYDistance,
                 entryCandidateMaxCount,
                 voteWeightModeText
             );
@@ -218,7 +242,26 @@ int OnInit() {
             new CurrencyStrengthEntryCandidateList();
     }
 
+    if (gDrawCurrencyStrengthList != NULL) {
+        int totalPanelWidth = strengthPanelXDistance - panelXDistance
+            + gDrawCurrencyStrengthList.getPanelWidth();
+        if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            totalPanelWidth += panelGap
+                + gDrawCurrencyStrengthEntryCandidateList.getPanelWidth();
+        }
+
+        gDrawCurrencyStrengthSnapshotHeader = new DrawCurrencyStrengthSnapshotHeader(
+            0,
+            panelXDistance,
+            panelYDistance,
+            totalPanelWidth,
+            voteWeightModeText
+        );
+    }
+
     if (gDrawCurrencyStrengthList == NULL
+            || gDrawCurrencyStrengthSnapshotHeader == NULL
+            || (showRankComparison && gDrawCurrencyStrengthRankComparison == NULL)
             || gOscillatorHandleManager == NULL
             || gCurrencyStrengthCalculator == NULL
             || (showEntryCandidates
@@ -264,6 +307,17 @@ int OnInit() {
         }
     }
 
+    if (!isTester || MQLInfoInteger(MQL_VISUAL_MODE)) {
+        if (!gDrawCurrencyStrengthSnapshotHeader.draw(
+            0,
+            0,
+            gCurrencyStrengthCalculator.getExpectedPairCount()
+        )) {
+            gLogger.error(__FUNCTION__, "currency strength snapshot header draw failed");
+            gDrawCurrencyStrengthSnapshotHeader.clear();
+        }
+    }
+
     if (!isTester) {
         if (!EventSetTimer(refreshSeconds)) {
             gLogger.error(__FUNCTION__, "EventSetTimer failed");
@@ -302,6 +356,96 @@ void OnTimer() {
     }
 
     processLiveSnapshot(true);
+}
+
+/**
+ * 順位比較の通貨名または候補ペアのクリックで接続線の強調を切り替える。
+ *
+ * @param fromEventId チャートイベントID。
+ * @param fromLongValue 整数イベント引数。
+ * @param fromDoubleValue 実数イベント引数。
+ * @param fromStringValue クリックしたチャートオブジェクト名。
+ */
+void OnChartEvent(
+    const int fromEventId,
+    const long &fromLongValue,
+    const double &fromDoubleValue,
+    const string &fromStringValue
+) {
+    if (fromEventId != CHARTEVENT_OBJECT_CLICK
+            || gDrawCurrencyStrengthRankComparison == NULL) {
+        return;
+    }
+
+    if (gDrawCurrencyStrengthRankComparison.handleObjectClick(fromStringValue)) {
+        if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol("");
+        }
+
+        return;
+    }
+
+    if (gDrawCurrencyStrengthEntryCandidateList == NULL) {
+        return;
+    }
+
+    string symbolName = "";
+    if (gDrawCurrencyStrengthEntryCandidateList.getClickedSymbol(
+            fromStringValue, symbolName)
+            && gDrawCurrencyStrengthRankComparison.togglePairSelection(symbolName)) {
+        gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
+            gDrawCurrencyStrengthRankComparison.getSelectedPair()
+        );
+    }
+}
+
+/**
+ * 最新候補に合わせてペア選択とクリック可否を同期する。
+ * 表示上限より下の候補も検索し、単通貨選択は候補の増減で解除しない。
+ *
+ * @param fromCandidatesReady 最新候補一覧の構築と描画に成功した場合true。
+ */
+void synchronizePairSelection(const bool fromCandidatesReady) {
+    if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+        gDrawCurrencyStrengthEntryCandidateList.setPairSelectionEnabled(
+            fromCandidatesReady && gDrawCurrencyStrengthRankComparison != NULL
+        );
+    }
+
+    if (gDrawCurrencyStrengthRankComparison == NULL) {
+        if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol("");
+        }
+
+        return;
+    }
+
+    string selectedPair = gDrawCurrencyStrengthRankComparison.getSelectedPair();
+    if (selectedPair != "") {
+        bool isCandidate = false;
+        if (fromCandidatesReady
+                && gCurrencyStrengthEntryCandidateList != NULL
+                && gCurrencyStrengthEntryCandidateList.isRankingReady()) {
+            for (int i = 0; i < gCurrencyStrengthEntryCandidateList.size(); i++) {
+                CurrencyStrengthEntryCandidate candidate;
+                if (gCurrencyStrengthEntryCandidateList.get(i, candidate)
+                        && candidate.symbolName == selectedPair) {
+                    isCandidate = true;
+                    break;
+                }
+            }
+        }
+
+        if (!isCandidate) {
+            gDrawCurrencyStrengthRankComparison.clearPairSelection();
+        }
+    }
+
+    if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+        gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
+            gDrawCurrencyStrengthRankComparison.getSelectedPair()
+        );
+    }
 }
 
 /**
@@ -835,7 +979,35 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         m5BarTime
     );
 
+    bool isDrawingEnabled = !isTester || MQLInfoInteger(MQL_VISUAL_MODE);
+    if (isDrawingEnabled && gDrawCurrencyStrengthSnapshotHeader != NULL) {
+        if (!gDrawCurrencyStrengthSnapshotHeader.draw(
+            m5BarTime,
+            gCurrencyStrengthCalculator.validPairCount,
+            gCurrencyStrengthCalculator.getExpectedPairCount()
+        )) {
+            gLogger.error(__FUNCTION__, "currency strength snapshot header draw failed");
+            gDrawCurrencyStrengthSnapshotHeader.clear();
+        }
+    }
+
+    bool isRankComparisonDrawn = false;
+    if (isDrawingEnabled && gDrawCurrencyStrengthRankComparison != NULL) {
+        isRankComparisonDrawn = gDrawCurrencyStrengthRankComparison.draw(
+            gCurrencyStrengthCalculator,
+            m5BarTime
+        );
+        if (!isRankComparisonDrawn) {
+            gLogger.error(__FUNCTION__, "currency strength rank comparison draw failed");
+            gDrawCurrencyStrengthRankComparison.clear();
+        }
+    }
+
     if (!isCalculated) {
+        if (isDrawingEnabled) {
+            synchronizePairSelection(false);
+        }
+
         if (!isTester) {
             gLogger.error(__FUNCTION__, "currency strength calculation failed");
 
@@ -849,11 +1021,12 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         return currencyStrengthExecutionNotReady;
     }
 
-    if (!isTester || MQLInfoInteger(MQL_VISUAL_MODE)) {
+    if (isDrawingEnabled) {
         if (!gDrawCurrencyStrengthList.draw(gCurrencyStrengthCalculator)) {
             gLogger.error(__FUNCTION__, "currency strength draw failed");
         }
 
+        bool areCandidatesReady = false;
         if (showEntryCandidates
                 && gCurrencyStrengthEntryCandidateList != NULL
                 && gDrawCurrencyStrengthEntryCandidateList != NULL) {
@@ -873,8 +1046,12 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
                     __FUNCTION__,
                     "currency strength entry candidate draw failed"
                 );
+            } else {
+                areCandidatesReady = gCurrencyStrengthEntryCandidateList.isRankingReady();
             }
         }
+
+        synchronizePairSelection(areCandidatesReady && isRankComparisonDrawn);
     }
 
     datetime calculatedAt = TimeCurrent();
@@ -1075,6 +1252,18 @@ void releaseResources() {
     gTesterRetryWaitCount = 0;
     gTesterPersistedSnapshotCount = 0;
     gLastRetryPreparationFailureReason = "";
+
+    if (gDrawCurrencyStrengthSnapshotHeader != NULL) {
+        gDrawCurrencyStrengthSnapshotHeader.clear();
+        delete gDrawCurrencyStrengthSnapshotHeader;
+        gDrawCurrencyStrengthSnapshotHeader = NULL;
+    }
+
+    if (gDrawCurrencyStrengthRankComparison != NULL) {
+        gDrawCurrencyStrengthRankComparison.clear();
+        delete gDrawCurrencyStrengthRankComparison;
+        gDrawCurrencyStrengthRankComparison = NULL;
+    }
 
     if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
         gDrawCurrencyStrengthEntryCandidateList.clear();

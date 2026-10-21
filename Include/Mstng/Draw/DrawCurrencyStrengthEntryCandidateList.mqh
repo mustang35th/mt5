@@ -57,15 +57,17 @@ public:
         }
 
         this.created = false;
+        this.pairSelectionEnabled = false;
+        this.selectedSymbol = "";
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
         this.maximumCount = fromMaximumCount;
         this.panelWidth = 680;
         this.headerHeight = 25;
-        this.columnHeaderYDistance = 39;
-        this.separatorYDistance = 58;
-        this.firstRowYDistance = 65;
+        this.columnHeaderYDistance = 61;
+        this.separatorYDistance = 80;
+        this.firstRowYDistance = 87;
         this.rowHeight = 19;
         this.bottomPadding = 10;
         this.fontName = "MS Gothic";
@@ -81,6 +83,7 @@ public:
         this.buyColor = clrAqua;
         this.sellColor = clrHotPink;
         this.warningColor = clrGold;
+        this.selectionBackgroundColor = C'29,44,58';
     }
 
     /**
@@ -98,6 +101,11 @@ public:
      */
     bool draw(CurrencyStrengthEntryCandidateList *fromCandidateList) {
         if (fromCandidateList == NULL) {
+            this.clearDisplayedSymbols();
+            this.updatePairTooltips();
+            this.updateSelectionBackground();
+            ChartRedraw(this.chartId);
+
             return false;
         }
 
@@ -122,9 +130,80 @@ public:
             }
         }
 
+        this.updatePairTooltips();
+        this.updateSelectionBackground();
         ChartRedraw(this.chartId);
 
         return true;
+    }
+
+    /**
+     * 候補一覧のパネル幅を取得する。
+     *
+     * @return ピクセル単位のパネル幅。
+     */
+    int getPanelWidth() const {
+        return this.panelWidth;
+    }
+
+    /**
+     * 現在表示しているPAIRセルのクリックから通貨ペア名を取得する。
+     *
+     * @param fromObjectName クリックされたチャートオブジェクト名。
+     * @param fromSymbolName 有効なPAIRセルの場合に返す通貨ペア名。
+     * @return ペア選択が有効で、表示中のPAIRセルの場合true。
+     */
+    bool getClickedSymbol(const string fromObjectName, string &fromSymbolName) const {
+        fromSymbolName = "";
+        if (!this.pairSelectionEnabled || !this.created) {
+            return false;
+        }
+
+        for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
+            if (this.displayedSymbols[i] == ""
+                    || fromObjectName != this.getCellObjectName(i, 1)) {
+                continue;
+            }
+
+            if (ObjectFind(this.chartId, fromObjectName) < 0
+                    || ObjectGetString(this.chartId, fromObjectName, OBJPROP_TEXT)
+                        != this.displayedSymbols[i]) {
+                return false;
+            }
+
+            fromSymbolName = this.displayedSymbols[i];
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 比較パネルで選択中の通貨ペアに対応する行背景を更新する。
+     *
+     * @param fromSymbolName 選択中の通貨ペア名。空文字列の場合は解除する。
+     */
+    void setSelectedSymbol(const string fromSymbolName) {
+        this.selectedSymbol = fromSymbolName;
+        if (this.created) {
+            this.updateSelectionBackground();
+            ChartRedraw(this.chartId);
+        }
+    }
+
+    /**
+     * 比較パネルの有無に合わせてPAIRクリックと操作案内を切り替える。
+     *
+     * @param fromEnabled ペア選択を有効にする場合true。
+     */
+    void setPairSelectionEnabled(const bool fromEnabled) {
+        this.pairSelectionEnabled = fromEnabled;
+        if (this.created) {
+            this.updatePairTooltips();
+            this.updateSelectionBackground();
+            ChartRedraw(this.chartId);
+        }
     }
 
     /**
@@ -144,6 +223,15 @@ private:
 
     /** オブジェクト生成済みの場合true。 */
     bool created;
+
+    /** 比較パネルへ通貨ペアの選択を通知できる場合true。 */
+    bool pairSelectionEnabled;
+
+    /** 表示行ごとの有効な通貨ペア名。空行は空文字列。 */
+    string displayedSymbols[];
+
+    /** 選択中の通貨ペア名。表示順位の圏外でも保持する。 */
+    string selectedSymbol;
 
     /** パネル配置基準の角。 */
     ENUM_BASE_CORNER corner;
@@ -217,6 +305,9 @@ private:
     /** 注意表示文字色。 */
     color warningColor;
 
+    /** 選択行の背景色。BUY・SELLの文字色は変更しない。 */
+    color selectionBackgroundColor;
+
     /**
      * 候補一覧パネルを生成する。
      *
@@ -224,9 +315,16 @@ private:
      */
     bool create() {
         this.destroyObjects();
+        if (ArrayResize(this.displayedSymbols, this.maximumCount) != this.maximumCount) {
+            return false;
+        }
 
-        int panelHeight = this.firstRowYDistance
-            + this.maximumCount * this.rowHeight
+        this.clearDisplayedSymbols();
+
+        int footerSeparatorYDistance = this.firstRowYDistance
+            + this.maximumCount * this.rowHeight + 4;
+        int footerYDistance = footerSeparatorYDistance + 12;
+        int panelHeight = footerYDistance + 3 * this.rowHeight
             + this.bottomPadding;
 
         if (!this.createRectangle(
@@ -265,7 +363,20 @@ private:
             5,
             this.titleFontSize,
             this.titleColor,
-            "ENTRY CANDIDATES"
+            "売買候補一覧"
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            this.objectPrefix + "Summary",
+            14,
+            35,
+            this.bodyFontSize,
+            this.headerColor,
+            "集計待ち"
         )) {
             this.destroyObjects();
 
@@ -302,6 +413,27 @@ private:
             return false;
         }
 
+        // 行ラベルより先に生成して、背景で文字やPAIRクリックを覆わない。
+        string selectionObjectName = this.objectPrefix + "Selection";
+        if (!this.createRectangle(
+            selectionObjectName,
+            this.xDistance + 10,
+            this.yDistance + this.firstRowYDistance - 1,
+            this.panelWidth - 20,
+            this.rowHeight,
+            this.panelBackgroundColor,
+            this.panelBackgroundColor,
+            1
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        // 表示時間足を切り替えると前面へ移るため、常時表示して未選択時はパネル色にする。
+        ObjectSetInteger(this.chartId, selectionObjectName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+        ObjectSetString(this.chartId, selectionObjectName, OBJPROP_TOOLTIP, "\n");
+
         for (int i = 0; i < this.maximumCount; i++) {
             int rowYDistance = this.firstRowYDistance + i * this.rowHeight;
 
@@ -321,19 +453,61 @@ private:
             }
         }
 
+        if (!this.createRectangle(
+            this.objectPrefix + "FooterSeparator",
+            this.xDistance + 12,
+            this.yDistance + footerSeparatorYDistance,
+            this.panelWidth - 24,
+            1,
+            this.borderColor,
+            this.borderColor,
+            1
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            this.objectPrefix + "Description",
+            14,
+            footerYDistance,
+            this.bodyFontSize,
+            this.mutedColor,
+            "長中期・中短期の両方で強弱方向が一致するペア"
+        ) || !this.createLabel(
+            this.objectPrefix + "ReadyHint",
+            14,
+            footerYDistance + this.rowHeight,
+            this.bodyFontSize,
+            this.mutedColor,
+            "READY：両期間の順位差の大きさが4以上"
+        ) || !this.createLabel(
+            this.objectPrefix + "WatchHint",
+            14,
+            footerYDistance + 2 * this.rowHeight,
+            this.bodyFontSize,
+            this.mutedColor,
+            "WATCH：候補条件を満たすが、どちらかの順位差の大きさが4未満"
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
         this.created = true;
 
         return true;
     }
 
     /**
-     * 候補一覧タイトルを更新する。
+     * 日本語タイトルと、候補条件・件数・集計状態を更新する。
      *
      * @param fromCandidateList 候補一覧。
      */
     void updateTitle(CurrencyStrengthEntryCandidateList *fromCandidateList) {
-        string titleText = StringFormat(
-            "ENTRY CANDIDATES  WAITING DATA %d/%d",
+        string summaryText = StringFormat(
+            "集計待ち：%d/%dペア",
             fromCandidateList.getValidPairCount(),
             fromCandidateList.getExpectedPairCount()
         );
@@ -347,31 +521,37 @@ private:
             }
 
             if (fromCandidateList.size() <= 0) {
-                titleText = StringFormat(
-                    "ENTRY CANDIDATES  MIN GAP %d  NO CANDIDATES",
+                summaryText = StringFormat(
+                    "必要順位差：%d以上 ｜ 候補なし",
                     fromCandidateList.getMinimumRankDifference()
                 );
             } else {
-                titleText = StringFormat(
-                    "ENTRY CANDIDATES  MIN GAP %d  FOUND %d  TOP %d",
+                summaryText = StringFormat(
+                    "必要順位差：%d以上 ｜ 候補：%d件 ｜ 表示：%d件",
                     fromCandidateList.getMinimumRankDifference(),
                     fromCandidateList.size(),
                     visibleCount
                 );
             }
 
-            displayColor = this.titleColor;
+            displayColor = this.headerColor;
         }
 
         ObjectSetString(
             this.chartId,
             this.objectPrefix + "Title",
             OBJPROP_TEXT,
-            titleText
+            "売買候補一覧"
+        );
+        ObjectSetString(
+            this.chartId,
+            this.objectPrefix + "Summary",
+            OBJPROP_TEXT,
+            summaryText
         );
         ObjectSetInteger(
             this.chartId,
-            this.objectPrefix + "Title",
+            this.objectPrefix + "Summary",
             OBJPROP_COLOR,
             displayColor
         );
@@ -387,6 +567,7 @@ private:
         const int fromRowIndex,
         CurrencyStrengthEntryCandidate &fromCandidate
     ) {
+        this.displayedSymbols[fromRowIndex] = fromCandidate.symbolName;
         color directionColor = this.sellColor;
 
         if (fromCandidate.isBuy) {
@@ -471,10 +652,70 @@ private:
      * @param fromRowIndex 表示行番号。
      */
     void clearRow(const int fromRowIndex) {
+        this.displayedSymbols[fromRowIndex] = "";
+
         // 空文字はMT5の既定文字Labelになるため、空白1文字で非表示にする。
         for (int i = 0; i < this.getColumnCount(); i++) {
             this.setCell(fromRowIndex, i, " ", this.mutedColor);
         }
+    }
+
+    /**
+     * 描画失敗や再生成に備えて、クリック可能な表示行の記録を消す。
+     */
+    void clearDisplayedSymbols() {
+        for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
+            this.displayedSymbols[i] = "";
+        }
+    }
+
+    /**
+     * 有効なPAIRセルだけに比較パネルの操作案内を表示する。
+     */
+    void updatePairTooltips() {
+        if (!this.created) {
+            return;
+        }
+
+        for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
+            string tooltip = "\n";
+            if (this.pairSelectionEnabled && this.displayedSymbols[i] != "") {
+                tooltip = "クリックで比較パネルの2通貨を強調します";
+            }
+
+            ObjectSetString(this.chartId, this.getCellObjectName(i, 1), OBJPROP_TOOLTIP, tooltip);
+        }
+    }
+
+    /**
+     * 選択中ペアの表示位置へ背景を移動し、圏外や解除時にはパネル色に戻す。
+     */
+    void updateSelectionBackground() {
+        if (!this.created) {
+            return;
+        }
+
+        string objectName = this.objectPrefix + "Selection";
+        int selectedRow = -1;
+        if (this.pairSelectionEnabled && this.selectedSymbol != "") {
+            for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
+                if (this.displayedSymbols[i] == this.selectedSymbol) {
+                    selectedRow = i;
+                    break;
+                }
+            }
+        }
+
+        if (selectedRow < 0) {
+            ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, this.panelBackgroundColor);
+            ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.panelBackgroundColor);
+            return;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE,
+            this.yDistance + this.firstRowYDistance + selectedRow * this.rowHeight - 1);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, this.selectionBackgroundColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.selectionBackgroundColor);
     }
 
     /**
@@ -731,7 +972,7 @@ private:
     string getCellObjectName(
         const int fromRowIndex,
         const int fromColumnIndex
-    ) {
+    ) const {
         return this.objectPrefix
             + "Row_" + IntegerToString(fromRowIndex)
             + "_Column_" + IntegerToString(fromColumnIndex);
@@ -743,6 +984,7 @@ private:
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
+        ArrayResize(this.displayedSymbols, 0);
     }
 };
 

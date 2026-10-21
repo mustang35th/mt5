@@ -13,7 +13,6 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
-#include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
 /**
@@ -75,7 +74,7 @@ public:
         this.separatorYDistance = 58;
         this.firstRowYDistance = 65;
         this.rowHeight = 19;
-        this.bottomPadding = 36;
+        this.bottomPadding = 10;
 
         this.fontName = "MS Gothic";
         this.titleFontSize = 11;
@@ -262,8 +261,13 @@ private:
     ) {
         this.destroyObjects();
 
-        int panelHeight = this.firstRowYDistance
+        int summarySeparatorYDistance = this.firstRowYDistance
             + (fromRowCount * this.rowHeight)
+            + 2;
+        int footerSeparatorYDistance = summarySeparatorYDistance
+            + this.rowHeight + 10;
+        int footerYDistance = footerSeparatorYDistance + 9;
+        int panelHeight = footerYDistance + (4 * this.rowHeight)
             + this.bottomPadding;
 
         if (!this.createRectangle(
@@ -302,7 +306,7 @@ private:
             5,
             this.titleFontSize,
             this.titleColor,
-            "Elliot Currency Strength"
+            "通貨強弱スコア"
         )) {
             this.destroyObjects();
 
@@ -372,10 +376,6 @@ private:
             }
         }
 
-        int summarySeparatorYDistance = this.firstRowYDistance
-            + (fromRowCount * this.rowHeight)
-            + 2;
-
         if (!this.createRectangle(
             this.objectPrefix + "SummarySeparator",
             this.xDistance + 12,
@@ -402,6 +402,43 @@ private:
             this.destroyObjects();
 
             return false;
+        }
+
+        if (!this.createRectangle(
+            this.objectPrefix + "FooterSeparator",
+            this.xDistance + 12,
+            this.yDistance + footerSeparatorYDistance,
+            this.panelWidth - 24,
+            1,
+            this.borderColor,
+            this.borderColor,
+            1
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        string descriptions[] = {
+            "＋は相対的に強い、－は弱い、0は均衡",
+            "長期～短期：対象時間足の平均 ／ TOTAL：7時間足の合計",
+            "長中期：MN1・W1・D1・H4・H1",
+            "中短期：D1・H4・H1・M15・M5"
+        };
+
+        for (int i = 0; i < ArraySize(descriptions); i++) {
+            if (!this.createLabel(
+                this.objectPrefix + "Description" + IntegerToString(i + 1),
+                14,
+                footerYDistance + (i * this.rowHeight),
+                this.bodyFontSize,
+                this.mutedColor,
+                descriptions[i]
+            )) {
+                this.destroyObjects();
+
+                return false;
+            }
         }
 
         this.createdRowCount = fromRowCount;
@@ -634,20 +671,20 @@ private:
     string getSortTypeText() {
         switch (this.sortType) {
             case CURRENCY_STRENGTH_SORT_LONG:
-                return "LONG";
+                return "長期順";
             case CURRENCY_STRENGTH_SORT_LONG_MEDIUM:
-                return "LONG-MID";
+                return "長中期順";
             case CURRENCY_STRENGTH_SORT_MEDIUM:
-                return "MID";
+                return "中期順";
             case CURRENCY_STRENGTH_SORT_MEDIUM_SHORT:
-                return "MID-SHORT";
+                return "中短期順";
             case CURRENCY_STRENGTH_SORT_SHORT:
-                return "SHORT";
+                return "短期順";
             case CURRENCY_STRENGTH_SORT_TOTAL:
-                return "TOTAL";
+                return "合計順";
         }
 
-        return "TOTAL";
+        return "合計順";
     }
 
     /**
@@ -806,11 +843,14 @@ private:
      * @param fromCalculator 集計結果。
      */
     void updateTitle(CurrencyStrengthCalculator *fromCalculator) {
-        datetime japanTime = TimeJapanUtil::getJapanTime(TimeCurrent());
+        string voteWeightModeText = "均等";
+        if (fromCalculator.getVoteWeightMode() == CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED) {
+            voteWeightModeText = "重み付き";
+        }
+
         string titleText = StringFormat(
-            "Elliot Currency Strength  %s  JST %s  %d/%d  %s",
-            fromCalculator.getVoteWeightModeText(),
-            this.formatTitleTime(japanTime),
+            "通貨強弱スコア［%s］  %d/%d  %s",
+            voteWeightModeText,
             fromCalculator.validPairCount,
             fromCalculator.getExpectedPairCount(),
             this.getSortTypeText()
@@ -938,26 +978,6 @@ private:
         }
 
         return scoreText;
-    }
-
-    /**
-     * タイトル表示用の日時文字列へ変換する。
-     *
-     * @param fromDatetime 変換対象日時。
-     * @return 年月日と時分を表す文字列。
-     */
-    string formatTitleTime(datetime fromDatetime) {
-        MqlDateTime dateTime;
-        TimeToStruct(fromDatetime, dateTime);
-
-        return StringFormat(
-            "%04d/%02d/%02d %02d:%02d",
-            dateTime.year,
-            dateTime.mon,
-            dateTime.day,
-            dateTime.hour,
-            dateTime.min
-        );
     }
 
     /**
