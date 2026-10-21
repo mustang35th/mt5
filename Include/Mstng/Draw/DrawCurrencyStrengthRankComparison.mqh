@@ -55,6 +55,7 @@ public:
         this.created = false;
         this.rankingReady = false;
         this.selectedCurrency = "";
+        this.selectedSecondCurrency = "";
         this.selectedPair = "";
         this.statusText = "WAITING DATA";
         this.statusColor = clrGold;
@@ -107,6 +108,7 @@ public:
 
         bool ranksReady = this.readRanks(fromCalculator);
         string previousSelection = this.selectedCurrency;
+        string previousSecondSelection = this.selectedSecondCurrency;
         string previousPairSelection = this.selectedPair;
         if (!this.created || (ranksReady && this.displayRowCount != this.requiredRowCount)) {
             if (ranksReady) {
@@ -120,12 +122,14 @@ public:
             }
 
             this.selectedCurrency = previousSelection;
+            this.selectedSecondCurrency = previousSecondSelection;
             this.selectedPair = previousPairSelection;
         }
 
         this.rankingReady = ranksReady;
         if (!this.rankingReady) {
             this.selectedCurrency = "";
+            this.selectedSecondCurrency = "";
             this.selectedPair = "";
         }
 
@@ -174,9 +178,11 @@ public:
 
         if (this.selectedPair == fromSymbolName) {
             this.selectedCurrency = "";
+            this.selectedSecondCurrency = "";
             this.selectedPair = "";
         } else {
             this.selectedCurrency = baseCurrency;
+            this.selectedSecondCurrency = quoteCurrency;
             this.selectedPair = fromSymbolName;
         }
 
@@ -189,14 +195,14 @@ public:
     /**
      * 候補ペアのクリックで選択している通貨ペア名を取得する。
      *
-     * @return 選択中の通貨ペア名。未選択または単通貨選択の場合は空文字。
+     * @return 候補から選択中の通貨ペア名。未選択または通貨名からの手動選択は空文字。
      */
     string getSelectedPair() const {
         return this.selectedPair;
     }
 
     /**
-     * ペア選択だけを解除する。単通貨の選択は維持する。
+     * 候補ペアの選択だけを解除する。通貨名からの手動選択は維持する。
      */
     void clearPairSelection() {
         if (this.selectedPair == "") {
@@ -204,6 +210,7 @@ public:
         }
 
         this.selectedCurrency = "";
+        this.selectedSecondCurrency = "";
         this.selectedPair = "";
         if (this.created) {
             this.renderComparison();
@@ -212,13 +219,29 @@ public:
     }
 
     /**
-     * 通貨ラベルのクリックで線の強調を切り替える。
+     * 通貨ラベルのクリックで最大2通貨を選択する。選択済み通貨は解除する。
+     * 3通貨目は先に選択した通貨と入れ替え、解除ボタンでは選択をすべて消す。
      *
      * @param fromObjectName CHARTEVENT_OBJECT_CLICKで通知された名前。
-     * @return このパネルの有効な通貨クリックを処理した場合true。
+     * @return このパネルの有効な通貨または解除ボタンのクリックを処理した場合true。
      */
     bool handleObjectClick(const string fromObjectName) {
-        if (!this.created || !this.rankingReady) {
+        if (!this.created) {
+            return false;
+        }
+
+        if (fromObjectName == this.objectPrefix + "ClearSelection") {
+            this.selectedCurrency = "";
+            this.selectedSecondCurrency = "";
+            this.selectedPair = "";
+            ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
+            this.renderComparison();
+            ChartRedraw(this.chartId);
+
+            return true;
+        }
+
+        if (!this.rankingReady) {
             return false;
         }
 
@@ -228,13 +251,19 @@ public:
                 continue;
             }
 
-            bool isSameSingleCurrency = this.selectedPair == ""
-                && this.selectedCurrency == this.currencyNames[i];
             this.selectedPair = "";
-            if (isSameSingleCurrency) {
-                this.selectedCurrency = "";
-            } else {
+            if (this.selectedCurrency == this.currencyNames[i]) {
+                this.selectedCurrency = this.selectedSecondCurrency;
+                this.selectedSecondCurrency = "";
+            } else if (this.selectedSecondCurrency == this.currencyNames[i]) {
+                this.selectedSecondCurrency = "";
+            } else if (this.selectedCurrency == "") {
                 this.selectedCurrency = this.currencyNames[i];
+            } else if (this.selectedSecondCurrency == "") {
+                this.selectedSecondCurrency = this.currencyNames[i];
+            } else {
+                this.selectedCurrency = this.selectedSecondCurrency;
+                this.selectedSecondCurrency = this.currencyNames[i];
             }
 
             this.renderComparison();
@@ -331,16 +360,19 @@ private:
     /** 実順位1から8の共有帯の行数。 */
     int rankBandSizes[8];
 
-    /** 強調中の通貨。空文字は選択なし。 */
+    /** 先に選択した通貨。空文字は選択なし。 */
     string selectedCurrency;
 
-    /** 強調中の候補ペア。空文字は未選択または単通貨選択。 */
+    /** 後に選択した通貨。空文字は2通貨目の選択なし。 */
+    string selectedSecondCurrency;
+
+    /** 候補から選択中のペア。空文字は未選択または通貨名からの手動選択。 */
     string selectedPair;
 
-    /** ペア未選択時に表示する集計状態。 */
+    /** 通貨未選択時に表示する集計状態。 */
     string statusText;
 
-    /** ペア未選択時の集計状態の文字色。 */
+    /** 通貨未選択時の集計状態の文字色。 */
     color statusColor;
 
     /**
@@ -383,12 +415,13 @@ private:
 
         if (!this.createLabel("Title", 14, 5, 11, clrWhite, "通貨順位比較")
                 || !this.createLabel("Status", 14, 32, 10, clrGold, "WAITING DATA")
+                || !this.createClearSelectionButton()
                 || !this.createLabel("LeftHeader", 14, 55, 10, C'180,180,180', "LONG-MID")
                 || !this.createLabel("RightHeader", 218, 55, 10, C'180,180,180', "MID-SHORT")
                 || !this.createLabel("Footer", 14, footerTop + 9, 10, this.mutedColor,
                     "同時点の比較・同順位は同じ帯")
                 || !this.createLabel("Hint", 14, footerTop + 30, 10, this.mutedColor,
-                    "通貨名・候補ペアをクリックで線を強調")) {
+                    "2通貨まで選択・再クリックで解除")) {
             this.destroyObjects();
 
             return false;
@@ -410,7 +443,8 @@ private:
             }
 
             string tooltip = this.currencyNames[i]
-                + "：クリックで接続線を強調、再クリックで解除。数字は実順位、同順位は通貨名順。";
+                + "：クリックで選択・解除（最大2通貨）。3通貨目は先に選んだ通貨と入替。"
+                + "数字は実順位、同順位は通貨名順。";
             ObjectSetInteger(this.chartId, this.getCurrencyObjectName(true, i), OBJPROP_ZORDER, 3);
             ObjectSetInteger(this.chartId, this.getCurrencyObjectName(false, i), OBJPROP_ZORDER, 3);
             ObjectSetString(this.chartId, this.getCurrencyObjectName(true, i), OBJPROP_TOOLTIP, tooltip);
@@ -555,18 +589,33 @@ private:
     }
 
     /**
-     * 選択中の候補ペア、または直近の集計状態を表示する。
+     * 選択中の通貨または候補ペア、未選択時は直近の集計状態を表示する。
      */
     void updateSelectionStatus() {
         string displayText = this.statusText;
         color displayColor = this.statusColor;
-        if (this.rankingReady && this.selectedPair != "") {
-            displayText = "選択：" + this.selectedPair;
+        bool hasSelection = this.rankingReady && this.selectedCurrency != "";
+        if (hasSelection) {
+            displayText = "選択：" + this.selectedCurrency;
+            if (this.selectedPair != "") {
+                displayText = "選択：" + this.selectedPair;
+            } else if (this.selectedSecondCurrency != "") {
+                displayText += " / " + this.selectedSecondCurrency;
+            }
+
             displayColor = clrWhite;
         }
 
         ObjectSetString(this.chartId, this.objectPrefix + "Status", OBJPROP_TEXT, displayText);
         ObjectSetInteger(this.chartId, this.objectPrefix + "Status", OBJPROP_COLOR, displayColor);
+
+        color clearButtonColor = this.mutedColor;
+        if (hasSelection) {
+            clearButtonColor = clrWhite;
+        }
+
+        ObjectSetInteger(this.chartId, this.objectPrefix + "ClearSelection",
+            OBJPROP_COLOR, clearButtonColor);
     }
 
     /**
@@ -619,15 +668,14 @@ private:
     }
 
     /**
-     * 単通貨、またはペアを構成する2通貨の選択状態を判定する。
+     * 手動選択または候補ペアから選択した、最大2通貨の選択状態を判定する。
      *
      * @param fromCurrencyName 通貨名。
      * @return 強調対象の場合true。
      */
     bool isCurrencySelected(const string fromCurrencyName) {
         return this.selectedCurrency == fromCurrencyName
-            || (this.selectedPair != ""
-                && StringSubstr(this.selectedPair, 3, 3) == fromCurrencyName);
+            || this.selectedSecondCurrency == fromCurrencyName;
     }
 
     /**
@@ -778,6 +826,36 @@ private:
     }
 
     /**
+     * 集計状態の右側へ、手動選択と候補ペアの強調をすべて解除するボタンを生成する。
+     *
+     * @return ボタンを生成できた場合true。
+     */
+    bool createClearSelectionButton() {
+        string objectName = this.objectPrefix + "ClearSelection";
+        if (!ObjectCreate(this.chartId, objectName, OBJ_BUTTON, 0, 0, 0)) {
+            return false;
+        }
+
+        this.configureObject(objectName, 3);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE,
+            this.xDistance + this.panelWidth - 66);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE, this.yDistance + 29);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 52);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, 22);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, 10);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.mutedColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, C'35,35,35');
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_COLOR, clrDimGray);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, "解除");
+        ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP,
+            "選択中の通貨と候補ペアの強調をすべて解除します");
+
+        return true;
+    }
+
+    /**
      * チャートの移動や拡縮から独立したオブジェクト属性を設定する。
      *
      * @param fromObjectName 対象名。
@@ -801,6 +879,7 @@ private:
         this.created = false;
         this.rankingReady = false;
         this.selectedCurrency = "";
+        this.selectedSecondCurrency = "";
         this.selectedPair = "";
     }
 };
