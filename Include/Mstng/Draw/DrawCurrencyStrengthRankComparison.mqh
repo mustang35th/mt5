@@ -57,6 +57,9 @@ public:
         this.selectedCurrency = "";
         this.selectedSecondCurrency = "";
         this.selectedPair = "";
+        this.readyHighlightEnabled = false;
+        this.readyCurrencyCount = 0;
+        ArrayInitialize(this.readyCurrencyMask, false);
         this.statusText = "WAITING DATA";
         this.statusColor = clrGold;
 
@@ -103,6 +106,8 @@ public:
      */
     bool draw(CurrencyStrengthCalculator *fromCalculator, datetime fromSnapshotTime = 0) {
         if (fromCalculator == NULL) {
+            this.resetReadyHighlight(true);
+
             return false;
         }
 
@@ -110,6 +115,10 @@ public:
         string previousSelection = this.selectedCurrency;
         string previousSecondSelection = this.selectedSecondCurrency;
         string previousPairSelection = this.selectedPair;
+        bool previousReadyHighlight = this.readyHighlightEnabled;
+        int previousReadyCurrencyCount = this.readyCurrencyCount;
+        bool previousReadyCurrencyMask[8];
+        ArrayCopy(previousReadyCurrencyMask, this.readyCurrencyMask);
         if (!this.created || (ranksReady && this.displayRowCount != this.requiredRowCount)) {
             if (ranksReady) {
                 this.displayRowCount = this.requiredRowCount;
@@ -124,6 +133,9 @@ public:
             this.selectedCurrency = previousSelection;
             this.selectedSecondCurrency = previousSecondSelection;
             this.selectedPair = previousPairSelection;
+            this.readyHighlightEnabled = previousReadyHighlight;
+            this.readyCurrencyCount = previousReadyCurrencyCount;
+            ArrayCopy(this.readyCurrencyMask, previousReadyCurrencyMask);
         }
 
         this.rankingReady = ranksReady;
@@ -131,6 +143,7 @@ public:
             this.selectedCurrency = "";
             this.selectedSecondCurrency = "";
             this.selectedPair = "";
+            this.resetReadyHighlight();
         }
 
         this.updateTitle(fromCalculator);
@@ -158,6 +171,77 @@ public:
     }
 
     /**
+     * 表示中のREADY候補に含まれる通貨をまとめて強調する。
+     * 対象が空でもONを保持し、全通貨を通常表示する。
+     *
+     * @param fromEnabled READY強調を有効にする場合true。
+     * @param fromSymbols 主要8通貨からなる大文字6文字の候補ペア一覧。
+     * @return 設定を反映できた場合true。無効な指定ではREADY強調を解除する。
+     */
+    bool setReadyHighlight(const bool fromEnabled, const string &fromSymbols[]) {
+        if (!fromEnabled) {
+            this.resetReadyHighlight(true);
+
+            return true;
+        }
+
+        if (!this.created || !this.rankingReady) {
+            this.resetReadyHighlight(true);
+
+            return false;
+        }
+
+        bool nextCurrencyMask[8];
+        ArrayInitialize(nextCurrencyMask, false);
+        int nextCurrencyCount = 0;
+        for (int i = 0; i < ArraySize(fromSymbols); i++) {
+            if (StringLen(fromSymbols[i]) != 6) {
+                this.resetReadyHighlight(true);
+
+                return false;
+            }
+
+            int baseIndex = this.getCurrencyIndex(StringSubstr(fromSymbols[i], 0, 3));
+            int quoteIndex = this.getCurrencyIndex(StringSubstr(fromSymbols[i], 3, 3));
+            if (baseIndex < 0 || quoteIndex < 0 || baseIndex == quoteIndex) {
+                this.resetReadyHighlight(true);
+
+                return false;
+            }
+
+            if (!nextCurrencyMask[baseIndex]) {
+                nextCurrencyMask[baseIndex] = true;
+                nextCurrencyCount++;
+            }
+
+            if (!nextCurrencyMask[quoteIndex]) {
+                nextCurrencyMask[quoteIndex] = true;
+                nextCurrencyCount++;
+            }
+        }
+
+        this.selectedCurrency = "";
+        this.selectedSecondCurrency = "";
+        this.selectedPair = "";
+        this.readyHighlightEnabled = true;
+        this.readyCurrencyCount = nextCurrencyCount;
+        ArrayCopy(this.readyCurrencyMask, nextCurrencyMask);
+        this.renderComparison();
+        ChartRedraw(this.chartId);
+
+        return true;
+    }
+
+    /**
+     * READY候補の通貨強調が有効か取得する。
+     *
+     * @return 対象通貨の有無にかかわらずREADY強調がONならtrue。
+     */
+    bool isReadyHighlightEnabled() const {
+        return this.readyHighlightEnabled;
+    }
+
+    /**
      * 候補ペアの2通貨を強調する。同じペアの再選択では強調を解除する。
      *
      * @param fromSymbolName 主要8通貨からなる大文字6文字の通貨ペア名。
@@ -176,6 +260,7 @@ public:
             return false;
         }
 
+        this.resetReadyHighlight();
         if (this.selectedPair == fromSymbolName) {
             this.selectedCurrency = "";
             this.selectedSecondCurrency = "";
@@ -234,6 +319,7 @@ public:
             this.selectedCurrency = "";
             this.selectedSecondCurrency = "";
             this.selectedPair = "";
+            this.resetReadyHighlight();
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
             this.renderComparison();
             ChartRedraw(this.chartId);
@@ -251,6 +337,7 @@ public:
                 continue;
             }
 
+            this.resetReadyHighlight();
             this.selectedPair = "";
             if (this.selectedCurrency == this.currencyNames[i]) {
                 this.selectedCurrency = this.selectedSecondCurrency;
@@ -368,6 +455,15 @@ private:
 
     /** 候補から選択中のペア。空文字は未選択または通貨名からの手動選択。 */
     string selectedPair;
+
+    /** 表示中のREADY候補の通貨を強調する場合true。 */
+    bool readyHighlightEnabled;
+
+    /** READY候補に含まれる通貨の選択状態。 */
+    bool readyCurrencyMask[8];
+
+    /** READY候補に含まれる重複なしの通貨数。 */
+    int readyCurrencyCount;
 
     /** 通貨未選択時に表示する集計状態。 */
     string statusText;
@@ -589,13 +685,21 @@ private:
     }
 
     /**
-     * 選択中の通貨または候補ペア、未選択時は直近の集計状態を表示する。
+     * READY強調、選択中の通貨、または直近の集計状態を表示する。
      */
     void updateSelectionStatus() {
         string displayText = this.statusText;
         color displayColor = this.statusColor;
-        bool hasSelection = this.rankingReady && this.selectedCurrency != "";
-        if (hasSelection) {
+        bool hasSelection = this.rankingReady
+            && (this.selectedCurrency != "" || this.readyHighlightEnabled);
+        if (this.rankingReady && this.readyHighlightEnabled) {
+            displayText = "READY対象なし";
+            displayColor = this.mutedColor;
+            if (this.readyCurrencyCount > 0) {
+                displayText = StringFormat("READY：%d通貨", this.readyCurrencyCount);
+                displayColor = clrWhite;
+            }
+        } else if (hasSelection) {
             displayText = "選択：" + this.selectedCurrency;
             if (this.selectedPair != "") {
                 displayText = "選択：" + this.selectedPair;
@@ -635,7 +739,7 @@ private:
                     this.yDistance + this.firstRowYDistance + this.leftRows[i] * this.rowHeight);
                 ObjectSetInteger(this.chartId, this.getCurrencyObjectName(false, i), OBJPROP_YDISTANCE,
                     this.yDistance + this.firstRowYDistance + this.rightRows[i] * this.rowHeight);
-                if (this.selectedCurrency != "") {
+                if (this.hasHighlightedCurrencies()) {
                     labelColor = this.mutedColor;
                     if (this.isCurrencySelected(this.currencyNames[i])) {
                         labelColor = clrWhite;
@@ -668,14 +772,49 @@ private:
     }
 
     /**
-     * 手動選択または候補ペアから選択した、最大2通貨の選択状態を判定する。
+     * READY強調または手動・候補ペア選択による通貨の選択状態を判定する。
      *
      * @param fromCurrencyName 通貨名。
      * @return 強調対象の場合true。
      */
     bool isCurrencySelected(const string fromCurrencyName) {
+        if (this.readyHighlightEnabled) {
+            int currencyIndex = this.getCurrencyIndex(fromCurrencyName);
+            if (currencyIndex < 0) {
+                return false;
+            }
+
+            return this.readyCurrencyMask[currencyIndex];
+        }
+
         return this.selectedCurrency == fromCurrencyName
             || this.selectedSecondCurrency == fromCurrencyName;
+    }
+
+    /**
+     * 他通貨を薄く表示するための強調対象があるか判定する。
+     *
+     * @return 手動選択またはREADY対象通貨がある場合true。
+     */
+    bool hasHighlightedCurrencies() const {
+        return this.selectedCurrency != ""
+            || (this.readyHighlightEnabled && this.readyCurrencyCount > 0);
+    }
+
+    /**
+     * READY強調だけを解除し、手動選択は変更しない。
+     *
+     * @param fromRedraw ONから解除した場合に表示も更新するならtrue。
+     */
+    void resetReadyHighlight(const bool fromRedraw = false) {
+        bool wasEnabled = this.readyHighlightEnabled;
+        this.readyHighlightEnabled = false;
+        this.readyCurrencyCount = 0;
+        ArrayInitialize(this.readyCurrencyMask, false);
+        if (fromRedraw && wasEnabled && this.created) {
+            this.renderComparison();
+            ChartRedraw(this.chartId);
+        }
     }
 
     /**
@@ -712,7 +851,7 @@ private:
         int rightY = this.firstRowYDistance - this.canvasTop
             + this.rightRows[fromCurrencyIndex] * this.rowHeight + 7;
         uchar opacity = 230;
-        if (this.selectedCurrency != "" && !fromSelected) {
+        if (this.hasHighlightedCurrencies() && !fromSelected) {
             opacity = 55;
         }
 
@@ -850,7 +989,7 @@ private:
         ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, "解除");
         ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP,
-            "選択中の通貨と候補ペアの強調をすべて解除します");
+            "手動選択・候補ペア・READY強調をすべて解除します");
 
         return true;
     }
@@ -881,6 +1020,7 @@ private:
         this.selectedCurrency = "";
         this.selectedSecondCurrency = "";
         this.selectedPair = "";
+        this.resetReadyHighlight();
     }
 };
 

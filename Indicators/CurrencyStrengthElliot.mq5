@@ -359,7 +359,7 @@ void OnTimer() {
 }
 
 /**
- * 順位比較の通貨名・解除ボタン、または候補ペアのクリックで強調を切り替える。
+ * 通貨名・候補ペア・解除・READY強調ボタンのクリックで強調を切り替える。
  *
  * @param fromEventId チャートイベントID。
  * @param fromLongValue 整数イベント引数。
@@ -372,13 +372,23 @@ void OnChartEvent(
     const double &fromDoubleValue,
     const string &fromStringValue
 ) {
-    if (fromEventId != CHARTEVENT_OBJECT_CLICK
-            || gDrawCurrencyStrengthRankComparison == NULL) {
+    if (fromEventId != CHARTEVENT_OBJECT_CLICK) {
+        return;
+    }
+
+    if (gDrawCurrencyStrengthRankComparison == NULL) {
+        if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.isReadyHighlightClick(fromStringValue);
+        }
+
         return;
     }
 
     if (gDrawCurrencyStrengthRankComparison.handleObjectClick(fromStringValue)) {
         if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
+                gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
+            );
             gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol("");
         }
 
@@ -389,10 +399,29 @@ void OnChartEvent(
         return;
     }
 
+    if (gDrawCurrencyStrengthEntryCandidateList.isReadyHighlightClick(fromStringValue)) {
+        string readySymbols[];
+        gDrawCurrencyStrengthEntryCandidateList.getDisplayedReadySymbols(readySymbols);
+        gDrawCurrencyStrengthRankComparison.setReadyHighlight(
+            !gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled(), readySymbols
+        );
+        gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
+            gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
+        );
+        gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
+            gDrawCurrencyStrengthRankComparison.getSelectedPair()
+        );
+
+        return;
+    }
+
     string symbolName = "";
     if (gDrawCurrencyStrengthEntryCandidateList.getClickedSymbol(
             fromStringValue, symbolName)
             && gDrawCurrencyStrengthRankComparison.togglePairSelection(symbolName)) {
+        gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
+            gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
+        );
         gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
             gDrawCurrencyStrengthRankComparison.getSelectedPair()
         );
@@ -400,8 +429,9 @@ void OnChartEvent(
 }
 
 /**
- * 最新候補に合わせてペア選択とクリック可否を同期する。
+ * 最新候補に合わせてペア選択・READY強調とクリック可否を同期する。
  * 表示上限より下の候補も検索し、通貨名からの手動選択は候補の増減で解除しない。
+ * READY強調は表示中のREADY候補だけを対象にする。
  *
  * @param fromCandidatesReady 最新候補一覧の構築と描画に成功した場合true。
  */
@@ -414,10 +444,22 @@ void synchronizePairSelection(const bool fromCandidatesReady) {
 
     if (gDrawCurrencyStrengthRankComparison == NULL) {
         if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(false);
             gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol("");
         }
 
         return;
+    }
+
+    if (gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()) {
+        string readySymbols[];
+        bool canHighlightReady = fromCandidatesReady
+            && gDrawCurrencyStrengthEntryCandidateList != NULL;
+        if (canHighlightReady) {
+            gDrawCurrencyStrengthEntryCandidateList.getDisplayedReadySymbols(readySymbols);
+        }
+
+        gDrawCurrencyStrengthRankComparison.setReadyHighlight(canHighlightReady, readySymbols);
     }
 
     string selectedPair = gDrawCurrencyStrengthRankComparison.getSelectedPair();
@@ -442,6 +484,9 @@ void synchronizePairSelection(const bool fromCandidatesReady) {
     }
 
     if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+        gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
+            gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
+        );
         gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
             gDrawCurrencyStrengthRankComparison.getSelectedPair()
         );

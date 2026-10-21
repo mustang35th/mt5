@@ -58,6 +58,7 @@ public:
 
         this.created = false;
         this.pairSelectionEnabled = false;
+        this.readyHighlightEnabled = false;
         this.selectedSymbol = "";
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
@@ -180,6 +181,72 @@ public:
     }
 
     /**
+     * 自身のREADY強調ボタンのクリックか確認し、押下状態を解除する。
+     *
+     * @param fromObjectName クリックされたチャートオブジェクト名。
+     * @return 比較パネルとの連携が有効な自身のボタンの場合true。
+     */
+    bool isReadyHighlightClick(const string fromObjectName) {
+        if (fromObjectName != this.objectPrefix + "ReadyButton") {
+            return false;
+        }
+
+        if (this.created) {
+            ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
+            ChartRedraw(this.chartId);
+        }
+
+        return this.created && this.pairSelectionEnabled;
+    }
+
+    /**
+     * 現在表示中の有効なREADY候補だけを取得する。
+     *
+     * @param fromSymbols 表示順位順のREADY通貨ペア名を格納する配列。
+     * @return 取得した通貨ペア数。連携無効や未生成の場合は0。
+     */
+    int getDisplayedReadySymbols(string &fromSymbols[]) const {
+        ArrayResize(fromSymbols, 0);
+        if (!this.created || !this.pairSelectionEnabled) {
+            return 0;
+        }
+
+        int count = 0;
+        for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
+            string symbolName = "";
+            if (!this.displayedReady[i]
+                    || !this.getClickedSymbol(this.getCellObjectName(i, 1), symbolName)) {
+                continue;
+            }
+
+            if (ArrayResize(fromSymbols, count + 1) != count + 1) {
+                ArrayResize(fromSymbols, 0);
+
+                return 0;
+            }
+
+            fromSymbols[count] = symbolName;
+            count++;
+        }
+
+        return count;
+    }
+
+    /**
+     * 比較パネルのREADY強調モードをボタン表示へ反映する。
+     * 手動選択している候補行の背景は変更しない。
+     *
+     * @param fromEnabled READY強調モードが有効な場合true。
+     */
+    void setReadyHighlightEnabled(const bool fromEnabled) {
+        this.readyHighlightEnabled = fromEnabled && this.pairSelectionEnabled;
+        if (this.created) {
+            this.updateReadyButton();
+            ChartRedraw(this.chartId);
+        }
+    }
+
+    /**
      * 比較パネルで選択中の通貨ペアに対応する行背景を更新する。
      *
      * @param fromSymbolName 選択中の通貨ペア名。空文字列の場合は解除する。
@@ -199,9 +266,14 @@ public:
      */
     void setPairSelectionEnabled(const bool fromEnabled) {
         this.pairSelectionEnabled = fromEnabled;
+        if (!fromEnabled) {
+            this.readyHighlightEnabled = false;
+        }
+
         if (this.created) {
             this.updatePairTooltips();
             this.updateSelectionBackground();
+            this.updateReadyButton();
             ChartRedraw(this.chartId);
         }
     }
@@ -229,6 +301,12 @@ private:
 
     /** 表示行ごとの有効な通貨ペア名。空行は空文字列。 */
     string displayedSymbols[];
+
+    /** 表示行ごとのREADY状態。空行やWATCHはfalse。 */
+    bool displayedReady[];
+
+    /** 比較パネルから通知されたREADY強調モード。 */
+    bool readyHighlightEnabled;
 
     /** 選択中の通貨ペア名。表示順位の圏外でも保持する。 */
     string selectedSymbol;
@@ -315,7 +393,10 @@ private:
      */
     bool create() {
         this.destroyObjects();
-        if (ArrayResize(this.displayedSymbols, this.maximumCount) != this.maximumCount) {
+        if (ArrayResize(this.displayedSymbols, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.displayedReady, this.maximumCount) != this.maximumCount) {
+            this.destroyObjects();
+
             return false;
         }
 
@@ -365,6 +446,12 @@ private:
             this.titleColor,
             "売買候補一覧"
         )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createReadyButton()) {
             this.destroyObjects();
 
             return false;
@@ -496,8 +583,69 @@ private:
         }
 
         this.created = true;
+        this.updateReadyButton();
 
         return true;
+    }
+
+    /**
+     * タイトル右側へREADY強調モードを切り替えるボタンを生成する。
+     *
+     * @return ボタンを生成できた場合true。
+     */
+    bool createReadyButton() {
+        string objectName = this.objectPrefix + "ReadyButton";
+        if (!ObjectCreate(this.chartId, objectName, OBJ_BUTTON, 0, 0, 0)) {
+            return false;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE,
+            this.xDistance + this.panelWidth - 162);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE, this.yDistance + 3);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 150);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, 20);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.bodyFontSize);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_COLOR, this.borderColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, 3);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
+
+        return true;
+    }
+
+    /**
+     * READY強調ボタンの状態表示と操作可否を更新する。
+     */
+    void updateReadyButton() {
+        if (!this.created) {
+            return;
+        }
+
+        string objectName = this.objectPrefix + "ReadyButton";
+        string buttonText = "READY強調：OFF";
+        string tooltip = "\n";
+        color textColor = this.mutedColor;
+        color backgroundColor = C'35,35,35';
+        if (this.pairSelectionEnabled) {
+            textColor = this.normalColor;
+            tooltip = "表示中のREADY候補に含まれる通貨を比較パネルで強調します";
+            if (this.readyHighlightEnabled) {
+                buttonText = "READY強調：ON";
+                textColor = this.warningColor;
+                backgroundColor = C'58,62,42';
+            }
+        }
+
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, buttonText);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, tooltip);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
     }
 
     /**
@@ -568,6 +716,7 @@ private:
         CurrencyStrengthEntryCandidate &fromCandidate
     ) {
         this.displayedSymbols[fromRowIndex] = fromCandidate.symbolName;
+        this.displayedReady[fromRowIndex] = fromCandidate.isReady();
         color directionColor = this.sellColor;
 
         if (fromCandidate.isBuy) {
@@ -653,6 +802,7 @@ private:
      */
     void clearRow(const int fromRowIndex) {
         this.displayedSymbols[fromRowIndex] = "";
+        this.displayedReady[fromRowIndex] = false;
 
         // 空文字はMT5の既定文字Labelになるため、空白1文字で非表示にする。
         for (int i = 0; i < this.getColumnCount(); i++) {
@@ -667,6 +817,8 @@ private:
         for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
             this.displayedSymbols[i] = "";
         }
+
+        ArrayInitialize(this.displayedReady, false);
     }
 
     /**
@@ -984,7 +1136,9 @@ private:
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
+        this.readyHighlightEnabled = false;
         ArrayResize(this.displayedSymbols, 0);
+        ArrayResize(this.displayedReady, 0);
     }
 };
 
