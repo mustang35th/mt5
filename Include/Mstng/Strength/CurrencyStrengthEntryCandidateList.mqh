@@ -13,6 +13,7 @@
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidate.mqh>
+#include <Mstng\Strength\CurrencyStrengthH1EmaProvider.mqh>
 
 /**
  * 長中期と中短期の通貨順位を使用して
@@ -95,6 +96,66 @@ public:
         this.sort();
 
         return true;
+    }
+
+    /**
+     * 全候補のH1 EMA200を集計時点に対応する共通判定で更新する。
+     *
+     * 取得できなかった候補は未取得へ戻し、次回の更新で再試行する。
+     * 通貨順位による候補順序とREADY判定は変更しない。
+     *
+     * @param fromCalculator 通貨強弱集計結果。
+     * @param fromProvider シンボル別H1 EMA200保持クラス。
+     * @param fromTargetM5BarTime 集計対象のM5足開始時刻。
+     * @return 全候補のH1 EMA200を取得できた場合true。
+     */
+    bool updateH1Ema(
+        CurrencyStrengthCalculator *fromCalculator,
+        CurrencyStrengthH1EmaProvider *fromProvider,
+        const datetime fromTargetM5BarTime
+    ) {
+        int candidateCount = ArraySize(this.candidates);
+
+        for (int i = 0; i < candidateCount; i++) {
+            this.candidates[i].resetH1Ema();
+        }
+
+        if (fromCalculator == NULL
+                || fromProvider == NULL
+                || fromTargetM5BarTime <= 0) {
+            return false;
+        }
+
+        int pairVoteCount = fromCalculator.getPairVoteCount();
+        bool isReady = true;
+
+        for (int i = 0; i < candidateCount; i++) {
+            bool isAvailable = false;
+
+            for (int j = 0; j < pairVoteCount; j++) {
+                CurrencyStrengthPairVote pairVote;
+
+                if (!fromCalculator.getPairVote(j, pairVote)
+                        || pairVote.timeFrame != PERIOD_H1
+                        || pairVote.canonicalSymbolName
+                            != this.candidates[i].symbolName) {
+                    continue;
+                }
+
+                isAvailable = fromProvider.update(
+                    pairVote,
+                    fromTargetM5BarTime,
+                    this.candidates[i]
+                );
+                break;
+            }
+
+            if (!isAvailable) {
+                isReady = false;
+            }
+        }
+
+        return isReady;
     }
 
     /**

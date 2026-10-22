@@ -45,6 +45,30 @@ struct CurrencyStrengthEntryCandidate {
     /** 長中期と中短期の絶対順位差合計。 */
     int totalRankDifference;
 
+    /** H1 EMA200の判定値を取得済みの場合true。 */
+    bool h1EmaAvailable;
+
+    /** H1 EMA200がBUYの場合true。 */
+    bool h1EmaIsBuy;
+
+    /** H1 EMA200がSELLの場合true。 */
+    bool h1EmaIsSell;
+
+    /** H1 EMA200の判定に使用した確定足の開始時刻。 */
+    datetime h1EmaBarTime;
+
+    /** 判定対象のH1確定足に対応するEMA200価格。 */
+    double h1EmaValue;
+
+    /** H1 EMA200価格の実シンボル小数桁数。 */
+    int h1EmaDigits;
+
+    /** H1確定足終値とEMA200の価格差pips。 */
+    double h1EmaCloseDiffPips;
+
+    /** 共通ルールの比較足に対するH1 EMA200の傾きpips。 */
+    double h1EmaSlopePips;
+
     /**
      * 保持値を初期化する。
      */
@@ -59,6 +83,21 @@ struct CurrencyStrengthEntryCandidate {
         this.mediumShortRankDifference = 0;
         this.minimumRankDifference = 0;
         this.totalRankDifference = 0;
+        this.resetH1Ema();
+    }
+
+    /**
+     * H1 EMA200の取得状態と判定値を初期化する。
+     */
+    void resetH1Ema() {
+        this.h1EmaAvailable = false;
+        this.h1EmaIsBuy = false;
+        this.h1EmaIsSell = false;
+        this.h1EmaBarTime = 0;
+        this.h1EmaValue = 0.0;
+        this.h1EmaDigits = 0;
+        this.h1EmaCloseDiffPips = 0.0;
+        this.h1EmaSlopePips = 0.0;
     }
 
     /**
@@ -68,6 +107,78 @@ struct CurrencyStrengthEntryCandidate {
      */
     bool isReady() {
         return this.minimumRankDifference >= 4;
+    }
+
+    /**
+     * 候補方向と取得済みH1 EMA200の方向が一致するか判定する。
+     *
+     * @return BUY同士またはSELL同士の場合true。
+     */
+    bool isH1EmaMatched() {
+        if (!this.h1EmaAvailable) {
+            return false;
+        }
+
+        if (this.isBuy) {
+            return this.h1EmaIsBuy && !this.h1EmaIsSell;
+        }
+
+        return this.h1EmaIsSell && !this.h1EmaIsBuy;
+    }
+
+    /**
+     * 通貨順位のREADY条件とH1 EMA200方向一致を満たすか判定する。
+     *
+     * @return 両条件を満たす場合true。
+     */
+    bool isAndReady() {
+        return this.isReady() && this.isH1EmaMatched();
+    }
+
+    /**
+     * H1 EMA200の方向または未取得を表すラベルを取得する。
+     *
+     * @return BUY、SELL、NONE、未取得のいずれか。
+     */
+    string getH1EmaLabel() {
+        if (!this.h1EmaAvailable) {
+            return "—";
+        }
+
+        if (this.h1EmaIsBuy) {
+            return "BUY";
+        }
+
+        if (this.h1EmaIsSell) {
+            return "SELL";
+        }
+
+        return "NONE";
+    }
+
+    /**
+     * 強弱READYとH1 EMA200のAND判定結果を取得する。
+     *
+     * @return 成立、逆向き、方向なし、取得待ち、強弱待ちのいずれか。
+     */
+    string getAndStatusLabel() {
+        if (!this.isReady()) {
+            return "強弱待ち";
+        }
+
+        if (!this.h1EmaAvailable) {
+            return "取得待ち";
+        }
+
+        if (this.isH1EmaMatched()) {
+            return "成立";
+        }
+
+        if (this.h1EmaIsBuy || this.h1EmaIsSell) {
+            return "逆向き";
+        }
+
+        return "方向なし";
     }
 };
 

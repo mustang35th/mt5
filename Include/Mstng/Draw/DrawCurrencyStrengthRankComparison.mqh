@@ -38,14 +38,14 @@ public:
         this.chartId = fromChartId;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
-        this.panelWidth = 320;
-        this.panelHeight = 318;
+        this.panelWidth = 360;
+        this.panelHeight = 350;
         this.firstRowYDistance = 82;
-        this.rowHeight = 22;
+        this.rowHeight = 26;
         this.canvasLeft = 76;
         this.canvasTop = 80;
-        this.canvasWidth = 168;
-        this.canvasHeight = 176;
+        this.canvasWidth = 208;
+        this.canvasHeight = 208;
         this.displayRowCount = 8;
         this.requiredRowCount = 8;
         this.fontName = "MS Gothic";
@@ -513,7 +513,7 @@ private:
                 || !this.createLabel("Status", 14, 32, 10, clrGold, "WAITING DATA")
                 || !this.createClearSelectionButton()
                 || !this.createLabel("LeftHeader", 14, 55, 10, C'180,180,180', "LONG-MID")
-                || !this.createLabel("RightHeader", 218, 55, 10, C'180,180,180', "MID-SHORT")
+                || !this.createLabel("RightHeader", this.panelWidth - 102, 55, 10, C'180,180,180', "MID-SHORT")
                 || !this.createLabel("Footer", 14, footerTop + 9, 10, this.mutedColor,
                     "同時点の比較・同順位は同じ帯")
                 || !this.createLabel("Hint", 14, footerTop + 30, 10, this.mutedColor,
@@ -530,9 +530,9 @@ private:
 
         for (int i = 0; i < 8; i++) {
             if (!this.createLabel("Left_" + this.currencyNames[i], 14,
-                    this.firstRowYDistance + i * this.rowHeight, 10, this.getCurrencyColor(i), " ")
-                    || !this.createLabel("Right_" + this.currencyNames[i], 258,
-                        this.firstRowYDistance + i * this.rowHeight, 10, this.getCurrencyColor(i), " ")) {
+                    this.firstRowYDistance + i * this.rowHeight, 11, this.getCurrencyColor(i), " ")
+                    || !this.createLabel("Right_" + this.currencyNames[i], this.panelWidth - 62,
+                        this.firstRowYDistance + i * this.rowHeight, 11, this.getCurrencyColor(i), " ")) {
                 this.destroyObjects();
 
                 return false;
@@ -693,10 +693,10 @@ private:
         bool hasSelection = this.rankingReady
             && (this.selectedCurrency != "" || this.readyHighlightEnabled);
         if (this.rankingReady && this.readyHighlightEnabled) {
-            displayText = "READY対象なし";
+            displayText = "AND対象なし";
             displayColor = this.mutedColor;
             if (this.readyCurrencyCount > 0) {
-                displayText = StringFormat("READY：%d通貨", this.readyCurrencyCount);
+                displayText = StringFormat("AND成立：%d通貨", this.readyCurrencyCount);
                 displayColor = clrWhite;
             }
         } else if (hasSelection) {
@@ -847,9 +847,9 @@ private:
      */
     void drawConnection(const int fromCurrencyIndex, const bool fromSelected) {
         int leftY = this.firstRowYDistance - this.canvasTop
-            + this.leftRows[fromCurrencyIndex] * this.rowHeight + 7;
+            + this.leftRows[fromCurrencyIndex] * this.rowHeight + 8;
         int rightY = this.firstRowYDistance - this.canvasTop
-            + this.rightRows[fromCurrencyIndex] * this.rowHeight + 7;
+            + this.rightRows[fromCurrencyIndex] * this.rowHeight + 8;
         uchar opacity = 230;
         if (this.hasHighlightedCurrencies() && !fromSelected) {
             opacity = 55;
@@ -989,7 +989,7 @@ private:
         ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, "解除");
         ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP,
-            "手動選択・候補ペア・READY強調をすべて解除します");
+            "手動選択・候補ペア・READY＋H1強調をすべて解除します");
 
         return true;
     }

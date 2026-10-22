@@ -15,7 +15,7 @@
 
 /**
  * 通貨強弱のエントリー候補一覧を
- * ランキングパネルの右側へ固定表示する。
+ * 通貨強弱スコアパネルの左側へ固定表示する。
  */
 class DrawCurrencyStrengthEntryCandidateList {
 public:
@@ -59,6 +59,7 @@ public:
         this.created = false;
         this.pairSelectionEnabled = false;
         this.readyHighlightEnabled = false;
+        this.andOnly = false;
         this.selectedSymbol = "";
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
@@ -102,7 +103,10 @@ public:
      */
     bool draw(CurrencyStrengthEntryCandidateList *fromCandidateList) {
         if (fromCandidateList == NULL) {
-            this.clearDisplayedSymbols();
+            for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
+                this.clearRow(i);
+            }
+
             this.updatePairTooltips();
             this.updateSelectionBackground();
             ChartRedraw(this.chartId);
@@ -114,23 +118,38 @@ public:
             return false;
         }
 
-        this.updateTitle(fromCandidateList);
-
         int candidateCount = fromCandidateList.size();
+        int andCount = 0;
+        int visibleCount = 0;
 
-        for (int i = 0; i < this.maximumCount; i++) {
-            CurrencyStrengthEntryCandidate candidate;
-            candidate.reset();
+        if (fromCandidateList.isRankingReady()) {
+            for (int i = 0; i < candidateCount; i++) {
+                CurrencyStrengthEntryCandidate candidate;
+                candidate.reset();
+                if (!fromCandidateList.get(i, candidate)) {
+                    continue;
+                }
 
-            if (fromCandidateList.isRankingReady()
-                    && i < candidateCount
-                    && fromCandidateList.get(i, candidate)) {
-                this.drawRow(i, candidate);
-            } else {
-                this.clearRow(i);
+                if (candidate.isAndReady()) {
+                    andCount++;
+                }
+
+                if (this.andOnly && !candidate.isAndReady()) {
+                    continue;
+                }
+
+                if (visibleCount < this.maximumCount) {
+                    this.drawRow(visibleCount, candidate);
+                    visibleCount++;
+                }
             }
         }
 
+        for (int i = visibleCount; i < this.maximumCount; i++) {
+            this.clearRow(i);
+        }
+
+        this.updateTitle(fromCandidateList, andCount, visibleCount);
         this.updatePairTooltips();
         this.updateSelectionBackground();
         ChartRedraw(this.chartId);
@@ -145,6 +164,34 @@ public:
      */
     int getPanelWidth() const {
         return this.panelWidth;
+    }
+
+    /**
+     * 自身の絞り込みボタンのクリックで、表示対象を切り替える。
+     * 呼び出し元で候補一覧を再描画し、比較パネルの強調対象を更新する。
+     *
+     * @param fromObjectName クリックされたチャートオブジェクト名。
+     * @return 自身の生成済みボタンを操作した場合true。
+     */
+    bool handleFilterClick(const string fromObjectName) {
+        if (!this.created || fromObjectName != this.objectPrefix + "FilterButton") {
+            return false;
+        }
+
+        this.andOnly = !this.andOnly;
+        this.updateFilterButton();
+        ChartRedraw(this.chartId);
+
+        return true;
+    }
+
+    /**
+     * AND成立候補だけに絞り込んでいるか取得する。
+     *
+     * @return AND成立候補だけを表示する場合true。
+     */
+    bool isAndOnly() const {
+        return this.andOnly;
     }
 
     /**
@@ -181,7 +228,7 @@ public:
     }
 
     /**
-     * 自身のREADY強調ボタンのクリックか確認し、押下状態を解除する。
+     * 自身のREADY＋H1強調ボタンのクリックか確認し、押下状態を解除する。
      *
      * @param fromObjectName クリックされたチャートオブジェクト名。
      * @return 比較パネルとの連携が有効な自身のボタンの場合true。
@@ -200,9 +247,9 @@ public:
     }
 
     /**
-     * 現在表示中の有効なREADY候補だけを取得する。
+     * 現在表示中の有効なAND成立候補だけを取得する。
      *
-     * @param fromSymbols 表示順位順のREADY通貨ペア名を格納する配列。
+     * @param fromSymbols 表示順位順のAND成立通貨ペア名を格納する配列。
      * @return 取得した通貨ペア数。連携無効や未生成の場合は0。
      */
     int getDisplayedReadySymbols(string &fromSymbols[]) const {
@@ -302,11 +349,14 @@ private:
     /** 表示行ごとの有効な通貨ペア名。空行は空文字列。 */
     string displayedSymbols[];
 
-    /** 表示行ごとのREADY状態。空行やWATCHはfalse。 */
+    /** 表示行ごとのAND成立状態。空行や未成立はfalse。 */
     bool displayedReady[];
 
     /** 比較パネルから通知されたREADY強調モード。 */
     bool readyHighlightEnabled;
+
+    /** AND成立候補だけを表示する場合true。 */
+    bool andOnly;
 
     /** 選択中の通貨ペア名。表示順位の圏外でも保持する。 */
     string selectedSymbol;
@@ -405,7 +455,7 @@ private:
         int footerSeparatorYDistance = this.firstRowYDistance
             + this.maximumCount * this.rowHeight + 4;
         int footerYDistance = footerSeparatorYDistance + 12;
-        int panelHeight = footerYDistance + 3 * this.rowHeight
+        int panelHeight = footerYDistance + 3 * 19
             + this.bottomPadding;
 
         if (!this.createRectangle(
@@ -451,7 +501,7 @@ private:
             return false;
         }
 
-        if (!this.createReadyButton()) {
+        if (!this.createReadyButton() || !this.createFilterButton()) {
             this.destroyObjects();
 
             return false;
@@ -482,6 +532,11 @@ private:
                 this.destroyObjects();
 
                 return false;
+            }
+
+            if (i == 3 || i == 4) {
+                ObjectSetString(this.chartId, this.getHeaderObjectName(i),
+                    OBJPROP_TOOLTIP, "基軸通貨順位/決済通貨順位(符号付き順位差)");
             }
         }
 
@@ -561,21 +616,21 @@ private:
             footerYDistance,
             this.bodyFontSize,
             this.mutedColor,
-            "長中期・中短期の両方で強弱方向が一致するペア"
+            "READY：両期間の順位差の大きさが4以上 ／ WATCH：4未満の期間あり"
         ) || !this.createLabel(
             this.objectPrefix + "ReadyHint",
             14,
-            footerYDistance + this.rowHeight,
+            footerYDistance + 19,
             this.bodyFontSize,
             this.mutedColor,
-            "READY：両期間の順位差の大きさが4以上"
+            "AND成立：READY かつ候補方向とH1 EMA200の共通判定が一致"
         ) || !this.createLabel(
             this.objectPrefix + "WatchHint",
             14,
-            footerYDistance + 2 * this.rowHeight,
+            footerYDistance + 2 * 19,
             this.bodyFontSize,
             this.mutedColor,
-            "WATCH：候補条件を満たすが、どちらかの順位差の大きさが4未満"
+            "H1は確定足 ／ NONE：方向なし ／ —：取得待ち ／ B/Q：基軸/決済"
         )) {
             this.destroyObjects();
 
@@ -584,12 +639,13 @@ private:
 
         this.created = true;
         this.updateReadyButton();
+        this.updateFilterButton();
 
         return true;
     }
 
     /**
-     * タイトル右側へREADY強調モードを切り替えるボタンを生成する。
+     * タイトル右側へREADY＋H1強調モードを切り替えるボタンを生成する。
      *
      * @return ボタンを生成できた場合true。
      */
@@ -601,9 +657,9 @@ private:
 
         ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE,
-            this.xDistance + this.panelWidth - 162);
+            this.xDistance + this.panelWidth - 204);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE, this.yDistance + 3);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 150);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 192);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, 20);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.bodyFontSize);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_COLOR, this.borderColor);
@@ -619,7 +675,63 @@ private:
     }
 
     /**
-     * READY強調ボタンの状態表示と操作可否を更新する。
+     * 全候補とAND成立候補の表示を切り替えるボタンを生成する。
+     *
+     * @return ボタンを生成できた場合true。
+     */
+    bool createFilterButton() {
+        string objectName = this.objectPrefix + "FilterButton";
+        if (!ObjectCreate(this.chartId, objectName, OBJ_BUTTON, 0, 0, 0)) {
+            return false;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE,
+            this.xDistance + this.panelWidth - 352);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE, this.yDistance + 3);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 140);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, 20);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.bodyFontSize);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_COLOR, this.borderColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, 3);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
+
+        return true;
+    }
+
+    /**
+     * 絞り込みボタンへ現在の表示対象を反映する。
+     */
+    void updateFilterButton() {
+        if (!this.created) {
+            return;
+        }
+
+        string objectName = this.objectPrefix + "FilterButton";
+        string buttonText = "表示：全候補";
+        color textColor = this.normalColor;
+        color backgroundColor = C'35,35,35';
+        if (this.andOnly) {
+            buttonText = "AND成立のみ";
+            textColor = this.warningColor;
+            backgroundColor = C'58,62,42';
+        }
+
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, buttonText);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP,
+            "全候補／READYかつH1 EMA200が同方向の候補を切り替えます");
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+    }
+
+    /**
+     * READY＋H1強調ボタンの状態表示と操作可否を更新する。
      */
     void updateReadyButton() {
         if (!this.created) {
@@ -627,15 +739,15 @@ private:
         }
 
         string objectName = this.objectPrefix + "ReadyButton";
-        string buttonText = "READY強調：OFF";
+        string buttonText = "READY＋H1強調：OFF";
         string tooltip = "\n";
         color textColor = this.mutedColor;
         color backgroundColor = C'35,35,35';
         if (this.pairSelectionEnabled) {
             textColor = this.normalColor;
-            tooltip = "表示中のREADY候補に含まれる通貨を比較パネルで強調します";
+            tooltip = "表示中のAND成立候補に含まれる通貨を比較パネルで強調します";
             if (this.readyHighlightEnabled) {
-                buttonText = "READY強調：ON";
+                buttonText = "READY＋H1強調：ON";
                 textColor = this.warningColor;
                 backgroundColor = C'58,62,42';
             }
@@ -652,8 +764,14 @@ private:
      * 日本語タイトルと、候補条件・件数・集計状態を更新する。
      *
      * @param fromCandidateList 候補一覧。
+     * @param fromAndCount 全候補中のAND成立件数。
+     * @param fromVisibleCount 現在の表示件数。
      */
-    void updateTitle(CurrencyStrengthEntryCandidateList *fromCandidateList) {
+    void updateTitle(
+        CurrencyStrengthEntryCandidateList *fromCandidateList,
+        const int fromAndCount,
+        const int fromVisibleCount
+    ) {
         string summaryText = StringFormat(
             "集計待ち：%d/%dペア",
             fromCandidateList.getValidPairCount(),
@@ -662,26 +780,13 @@ private:
         color displayColor = this.warningColor;
 
         if (fromCandidateList.isRankingReady()) {
-            int visibleCount = fromCandidateList.size();
-
-            if (visibleCount > this.maximumCount) {
-                visibleCount = this.maximumCount;
-            }
-
-            if (fromCandidateList.size() <= 0) {
-                summaryText = StringFormat(
-                    "必要順位差：%d以上 ｜ 候補なし",
-                    fromCandidateList.getMinimumRankDifference()
-                );
-            } else {
-                summaryText = StringFormat(
-                    "必要順位差：%d以上 ｜ 候補：%d件 ｜ 表示：%d件",
-                    fromCandidateList.getMinimumRankDifference(),
-                    fromCandidateList.size(),
-                    visibleCount
-                );
-            }
-
+            summaryText = StringFormat(
+                "必要順位差：%d以上 ｜ 候補：%d件 ｜ AND成立：%d件 ｜ 表示：%d件",
+                fromCandidateList.getMinimumRankDifference(),
+                fromCandidateList.size(),
+                fromAndCount,
+                fromVisibleCount
+            );
             displayColor = this.headerColor;
         }
 
@@ -716,7 +821,7 @@ private:
         CurrencyStrengthEntryCandidate &fromCandidate
     ) {
         this.displayedSymbols[fromRowIndex] = fromCandidate.symbolName;
-        this.displayedReady[fromRowIndex] = fromCandidate.isReady();
+        this.displayedReady[fromRowIndex] = fromCandidate.isAndReady();
         color directionColor = this.sellColor;
 
         if (fromCandidate.isBuy) {
@@ -755,44 +860,54 @@ private:
             3,
             this.formatRanks(
                 fromCandidate.baseLongMediumRank,
-                fromCandidate.quoteLongMediumRank
+                fromCandidate.quoteLongMediumRank,
+                fromCandidate.longMediumRankDifference
             ),
             this.normalColor
         );
         this.setCell(
             fromRowIndex,
             4,
-            this.formatDifference(fromCandidate.longMediumRankDifference),
-            directionColor
-        );
-        this.setCell(
-            fromRowIndex,
-            5,
             this.formatRanks(
                 fromCandidate.baseMediumShortRank,
-                fromCandidate.quoteMediumShortRank
+                fromCandidate.quoteMediumShortRank,
+                fromCandidate.mediumShortRankDifference
             ),
             this.normalColor
         );
         this.setCell(
             fromRowIndex,
-            6,
-            this.formatDifference(fromCandidate.mediumShortRankDifference),
-            directionColor
-        );
-        this.setCell(
-            fromRowIndex,
-            7,
-            IntegerToString(fromCandidate.minimumRankDifference),
+            5,
+            StringFormat("%d / %d", fromCandidate.minimumRankDifference,
+                fromCandidate.totalRankDifference),
             this.normalColor
         );
-        this.setCell(
-            fromRowIndex,
-            8,
-            IntegerToString(fromCandidate.totalRankDifference),
-            this.normalColor
-        );
-        this.setCell(fromRowIndex, 9, stateText, stateColor);
+        this.setCell(fromRowIndex, 6, stateText, stateColor);
+
+        color emaColor = this.mutedColor;
+        if (fromCandidate.h1EmaAvailable) {
+            emaColor = this.warningColor;
+            if (fromCandidate.h1EmaIsBuy) {
+                emaColor = this.buyColor;
+            } else if (fromCandidate.h1EmaIsSell) {
+                emaColor = this.sellColor;
+            }
+        }
+
+        color andColor = this.mutedColor;
+        if (fromCandidate.isAndReady()) {
+            andColor = directionColor;
+        } else if (fromCandidate.isReady()) {
+            andColor = this.warningColor;
+        }
+
+        this.setCell(fromRowIndex, 7, fromCandidate.getH1EmaLabel(), emaColor);
+        this.setCell(fromRowIndex, 8, fromCandidate.getAndStatusLabel(), andColor);
+        string emaTooltip = this.getEmaTooltip(fromCandidate);
+        ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, 7),
+            OBJPROP_TOOLTIP, emaTooltip);
+        ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, 8),
+            OBJPROP_TOOLTIP, emaTooltip);
     }
 
     /**
@@ -807,6 +922,8 @@ private:
         // 空文字はMT5の既定文字Labelになるため、空白1文字で非表示にする。
         for (int i = 0; i < this.getColumnCount(); i++) {
             this.setCell(fromRowIndex, i, " ", this.mutedColor);
+            ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, i),
+                OBJPROP_TOOLTIP, "\n");
         }
     }
 
@@ -871,14 +988,20 @@ private:
     }
 
     /**
-     * 基軸通貨順位と決済通貨順位を表示用文字列へ変換する。
+     * 基軸通貨順位、決済通貨順位と符号付き順位差を1行へまとめる。
      *
      * @param fromBaseRank 基軸通貨順位。
      * @param fromQuoteRank 決済通貨順位。
-     * @return 基軸通貨順位/決済通貨順位。
+     * @param fromDifference 順位差。
+     * @return 基軸通貨順位/決済通貨順位(符号付き順位差)。
      */
-    string formatRanks(const int fromBaseRank, const int fromQuoteRank) {
-        return StringFormat("%d/%d", fromBaseRank, fromQuoteRank);
+    string formatRanks(
+        const int fromBaseRank,
+        const int fromQuoteRank,
+        const int fromDifference
+    ) {
+        return StringFormat("%d/%d(%s)", fromBaseRank, fromQuoteRank,
+            this.formatDifference(fromDifference));
     }
 
     /**
@@ -893,6 +1016,28 @@ private:
         }
 
         return IntegerToString(fromDifference);
+    }
+
+    /**
+     * H1 EMA200の共通判定に使った確定足と値を操作案内へまとめる。
+     *
+     * @param fromCandidate 表示対象候補。
+     * @return 判定時刻、EMA値、終値との差、傾きを含む操作案内。
+     */
+    string getEmaTooltip(CurrencyStrengthEntryCandidate &fromCandidate) {
+        if (!fromCandidate.h1EmaAvailable) {
+            return "H1 EMA200：取得待ち\n確定足の共通判定を取得できていません";
+        }
+
+        string tooltip = "H1確定足 SERVER："
+            + TimeToString(fromCandidate.h1EmaBarTime, TIME_DATE | TIME_MINUTES)
+            + "\nEMA200：" + DoubleToString(fromCandidate.h1EmaValue, fromCandidate.h1EmaDigits)
+            + StringFormat("\n終値－EMA200：%+.1f p\nEMA200傾き：%+.1f p",
+                fromCandidate.h1EmaCloseDiffPips, fromCandidate.h1EmaSlopePips)
+            + "\n共通判定：" + fromCandidate.getH1EmaLabel()
+            + " ／ AND：" + fromCandidate.getAndStatusLabel();
+
+        return tooltip;
     }
 
     /**
@@ -1033,7 +1178,7 @@ private:
      * @return 全列数。
      */
     int getColumnCount() {
-        return 10;
+        return 9;
     }
 
     /**
@@ -1051,19 +1196,17 @@ private:
             case 2:
                 return 110;
             case 3:
-                return 160;
+                return 164;
             case 4:
-                return 270;
+                return 260;
             case 5:
-                return 320;
+                return 356;
             case 6:
-                return 435;
+                return 452;
             case 7:
-                return 480;
+                return 538;
             case 8:
-                return 525;
-            case 9:
-                return 595;
+                return 610;
         }
 
         return 14;
@@ -1084,19 +1227,17 @@ private:
             case 2:
                 return "SIDE";
             case 3:
-                return "LONG-MID B/Q";
+                return "長中期";
             case 4:
-                return "DIFF";
+                return "中短期";
             case 5:
-                return "MID-SHORT B/Q";
+                return "MIN/TOTAL";
             case 6:
-                return "DIFF";
+                return "強弱";
             case 7:
-                return "MIN";
+                return "H1 EMA200";
             case 8:
-                return "TOTAL";
-            case 9:
-                return "STATE";
+                return "AND判定";
         }
 
         return "";
