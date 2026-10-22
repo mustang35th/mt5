@@ -65,10 +65,10 @@
  */
 enum CurrencyStrengthRankPeriod {
     /** 長中期平均順位を表示する。 */
-    CURRENCY_STRENGTH_RANK_PERIOD_LONG_MEDIUM = 0,
+    CURRENCY_STRENGTH_RANK_PERIOD_LONG_MEDIUM = 0, // 長中期
 
     /** 中短期平均順位を表示する。 */
-    CURRENCY_STRENGTH_RANK_PERIOD_MEDIUM_SHORT = 1
+    CURRENCY_STRENGTH_RANK_PERIOD_MEDIUM_SHORT = 1 // 中短期
 };
 
 /**
@@ -87,18 +87,41 @@ enum CurrencyStrengthRankSignal {
     CURRENCY_STRENGTH_RANK_SIGNAL_NON = 2
 };
 
-input CurrencyStrengthRankPeriod rankPeriod =
+input group "01. 履歴表示・更新"
+
+/** サブ画面へ表示する通貨強弱順位の期間。 */
+input(name="表示する順位") CurrencyStrengthRankPeriod rankPeriod =
     CURRENCY_STRENGTH_RANK_PERIOD_LONG_MEDIUM;
-input int historyDays = 30;
-input int refreshSeconds = 15;
-input int subPanelHeight = 120;
-input CurrencyStrengthRankDatabaseProfile databaseProfile =
+
+/** 現在のサーバーM5時刻からさかのぼる表示日数。DBの保存・削除には影響しない。 */
+input(name="履歴の表示日数（1～366日）") int historyDays = 30;
+
+/** 通常チャートの計算イベントで確認するDB再読込間隔。M5更新時も再読込し、テスターには適用しない。 */
+input(name="通常チャートの再読込間隔（秒）") int refreshSeconds = 15;
+
+/** サブ画面の高さ。0は高さを指定せず、MT5側のサイズを使用する。 */
+input(name="サブ画面の高さ（px・0＝指定なし）") int subPanelHeight = 120;
+
+input group "02. データ参照"
+
+/** 参照する保存済み履歴。LIVE優先では同じM5時刻にLIVEがない場合だけテスター履歴を使用する。 */
+input(name="参照する履歴") CurrencyStrengthRankDatabaseProfile databaseProfile =
     CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;
-input CurrencyStrengthVoteWeightMode voteWeightMode =
+
+/** 保存済みの加重・均等データの選択。保存側の計算方式に合わせる。 */
+input(name="参照するスコアの計算方式") CurrencyStrengthVoteWeightMode voteWeightMode =
     CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED;
-input string databaseFileName = "mstng-currency-strength.sqlite";
-input bool databaseSplitByYear = true;
-input bool databaseUseCommonFolder = true;
+
+input group "03. DB参照先"
+
+/** 年別分割時の年付与前のDBファイル名。保存側の設定に合わせる。 */
+input(name="DBファイル名（年なし）") string databaseFileName = "mstng-currency-strength.sqlite";
+
+/** サーバー時刻の年ごとに分割されたDBを参照する場合true。保存側の設定に合わせる。 */
+input(name="年別DBファイルを参照") bool databaseSplitByYear = true;
+
+/** MT5共通フォルダ内のDBを参照する場合true。保存側の設定に合わせ、テスターでは必須。 */
+input(name="MT5共通フォルダから読み込む") bool databaseUseCommonFolder = true;
 
 double gBaseDisplayRankBuffer[];
 double gQuoteDisplayRankBuffer[];
