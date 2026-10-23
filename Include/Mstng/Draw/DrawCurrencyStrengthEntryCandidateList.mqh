@@ -11,6 +11,7 @@
 #define MSTNG_DRAW_CURRENCY_STRENGTH_ENTRY_CANDIDATE_LIST_MQH
 
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
 
 /**
@@ -65,7 +66,8 @@ public:
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
         this.maximumCount = fromMaximumCount;
-        this.panelWidth = 680;
+        this.gmoSymbolNameInfoAll.setGmo();
+        this.panelWidth = 710;
         this.headerHeight = 25;
         this.columnHeaderYDistance = 61;
         this.separatorYDistance = 80;
@@ -195,11 +197,11 @@ public:
     }
 
     /**
-     * 現在表示しているPAIRセルのクリックから通貨ペア名を取得する。
+     * 現在表示しているPAIRセルまたはGMO目印のクリックから通貨ペア名を取得する。
      *
      * @param fromObjectName クリックされたチャートオブジェクト名。
-     * @param fromSymbolName 有効なPAIRセルの場合に返す通貨ペア名。
-     * @return ペア選択が有効で、表示中のPAIRセルの場合true。
+     * @param fromSymbolName 有効なPAIRセルまたはGMO目印の場合に返す通貨ペア名。
+     * @return ペア選択が有効で、表示中のPAIRセルまたはGMO目印の場合true。
      */
     bool getClickedSymbol(const string fromObjectName, string &fromSymbolName) const {
         fromSymbolName = "";
@@ -208,14 +210,25 @@ public:
         }
 
         for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
+            string pairObjectName = this.getCellObjectName(i, 1);
+            string gmoObjectName = this.getGmoObjectName(i);
             if (this.displayedSymbols[i] == ""
-                    || fromObjectName != this.getCellObjectName(i, 1)) {
+                    || (fromObjectName != pairObjectName
+                        && fromObjectName != gmoObjectName)) {
                 continue;
             }
 
-            if (ObjectFind(this.chartId, fromObjectName) < 0
-                    || ObjectGetString(this.chartId, fromObjectName, OBJPROP_TEXT)
+            if (ObjectFind(this.chartId, pairObjectName) < 0
+                    || ObjectGetString(this.chartId, pairObjectName, OBJPROP_TEXT)
                         != this.displayedSymbols[i]) {
+                return false;
+            }
+
+            if (fromObjectName == gmoObjectName
+                    && (!this.displayedGmo[i]
+                        || ObjectFind(this.chartId, gmoObjectName) < 0
+                        || ObjectGetString(this.chartId, gmoObjectName, OBJPROP_TEXT)
+                            != "[G]")) {
                 return false;
             }
 
@@ -352,6 +365,12 @@ private:
     /** 表示行ごとのAND成立状態。空行や未成立はfalse。 */
     bool displayedReady[];
 
+    /** 表示行ごとのGMO対象状態。空行や対象外はfalse。 */
+    bool displayedGmo[];
+
+    /** メールと共通のGMO対象判定に使用する通貨ペア定義。 */
+    SymbolNameInfoAll gmoSymbolNameInfoAll;
+
     /** 比較パネルから通知されたREADY強調モード。 */
     bool readyHighlightEnabled;
 
@@ -444,7 +463,8 @@ private:
     bool create() {
         this.destroyObjects();
         if (ArrayResize(this.displayedSymbols, this.maximumCount) != this.maximumCount
-                || ArrayResize(this.displayedReady, this.maximumCount) != this.maximumCount) {
+                || ArrayResize(this.displayedReady, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.displayedGmo, this.maximumCount) != this.maximumCount) {
             this.destroyObjects();
 
             return false;
@@ -593,6 +613,19 @@ private:
                     return false;
                 }
             }
+
+            if (!this.createLabel(
+                this.getGmoObjectName(i),
+                this.getColumnLeftOffset(1) + 60,
+                rowYDistance,
+                this.bodyFontSize,
+                this.headerColor,
+                " "
+            )) {
+                this.destroyObjects();
+
+                return false;
+            }
         }
 
         if (!this.createRectangle(
@@ -623,7 +656,7 @@ private:
             footerYDistance + 19,
             this.bodyFontSize,
             this.mutedColor,
-            "AND成立：READY かつ候補方向とH1 EMA200の共通判定が一致"
+            "AND成立：READY かつ候補方向とH1 EMA200の共通判定が一致 ／ [G]：GMO対象"
         ) || !this.createLabel(
             this.objectPrefix + "WatchHint",
             14,
@@ -822,6 +855,17 @@ private:
     ) {
         this.displayedSymbols[fromRowIndex] = fromCandidate.symbolName;
         this.displayedReady[fromRowIndex] = fromCandidate.isAndReady();
+        this.displayedGmo[fromRowIndex] =
+            this.gmoSymbolNameInfoAll.isTarget(fromCandidate.symbolName);
+
+        string gmoText = " ";
+        if (this.displayedGmo[fromRowIndex]) {
+            gmoText = "[G]";
+        }
+
+        ObjectSetString(this.chartId, this.getGmoObjectName(fromRowIndex),
+            OBJPROP_TEXT, gmoText);
+
         color directionColor = this.sellColor;
 
         if (fromCandidate.isBuy) {
@@ -918,6 +962,7 @@ private:
     void clearRow(const int fromRowIndex) {
         this.displayedSymbols[fromRowIndex] = "";
         this.displayedReady[fromRowIndex] = false;
+        this.displayedGmo[fromRowIndex] = false;
 
         // 空文字はMT5の既定文字Labelになるため、空白1文字で非表示にする。
         for (int i = 0; i < this.getColumnCount(); i++) {
@@ -925,6 +970,11 @@ private:
             ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, i),
                 OBJPROP_TOOLTIP, "\n");
         }
+
+        ObjectSetString(this.chartId, this.getGmoObjectName(fromRowIndex),
+            OBJPROP_TEXT, " ");
+        ObjectSetString(this.chartId, this.getGmoObjectName(fromRowIndex),
+            OBJPROP_TOOLTIP, "\n");
     }
 
     /**
@@ -936,10 +986,11 @@ private:
         }
 
         ArrayInitialize(this.displayedReady, false);
+        ArrayInitialize(this.displayedGmo, false);
     }
 
     /**
-     * 有効なPAIRセルだけに比較パネルの操作案内を表示する。
+     * 有効なPAIRセルとGMO目印に対象説明と比較パネルの操作案内を表示する。
      */
     void updatePairTooltips() {
         if (!this.created) {
@@ -948,11 +999,20 @@ private:
 
         for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
             string tooltip = "\n";
-            if (this.pairSelectionEnabled && this.displayedSymbols[i] != "") {
-                tooltip = "クリックで比較パネルの2通貨を強調します";
+            string gmoTooltip = "\n";
+            if (this.displayedSymbols[i] != "") {
+                if (this.pairSelectionEnabled) {
+                    tooltip = "クリックで比較パネルの2通貨を強調します";
+                }
+
+                if (this.displayedGmo[i]) {
+                    tooltip = "[G]：GMO対象\n" + tooltip;
+                    gmoTooltip = tooltip;
+                }
             }
 
             ObjectSetString(this.chartId, this.getCellObjectName(i, 1), OBJPROP_TOOLTIP, tooltip);
+            ObjectSetString(this.chartId, this.getGmoObjectName(i), OBJPROP_TOOLTIP, gmoTooltip);
         }
     }
 
@@ -1194,19 +1254,19 @@ private:
             case 1:
                 return 40;
             case 2:
-                return 110;
+                return 140;
             case 3:
-                return 164;
+                return 194;
             case 4:
-                return 260;
+                return 290;
             case 5:
-                return 356;
+                return 386;
             case 6:
-                return 452;
+                return 482;
             case 7:
-                return 538;
+                return 568;
             case 8:
-                return 610;
+                return 640;
         }
 
         return 14;
@@ -1272,6 +1332,16 @@ private:
     }
 
     /**
+     * GMO目印のオブジェクト名を取得する。
+     *
+     * @param fromRowIndex 行番号。
+     * @return オブジェクト名。
+     */
+    string getGmoObjectName(const int fromRowIndex) const {
+        return this.objectPrefix + "Gmo_" + IntegerToString(fromRowIndex);
+    }
+
+    /**
      * 候補一覧専用オブジェクトを削除する。
      */
     void destroyObjects() {
@@ -1280,6 +1350,7 @@ private:
         this.readyHighlightEnabled = false;
         ArrayResize(this.displayedSymbols, 0);
         ArrayResize(this.displayedReady, 0);
+        ArrayResize(this.displayedGmo, 0);
     }
 };
 
