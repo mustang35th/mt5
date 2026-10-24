@@ -545,7 +545,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "1.72";
+            this.databaseRun.programVersion = "1.74";
         }
 
         this.databaseRun.strategy = "MTF_3in3";

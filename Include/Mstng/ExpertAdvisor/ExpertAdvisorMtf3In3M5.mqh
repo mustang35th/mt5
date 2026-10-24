@@ -356,10 +356,10 @@ protected:
     /**
      * M5エントリー成立時にメールを送信するか判定する。
      *
-     * @return 通常版ZigZagElliot以外の場合true。
+     * @return 通常版ZigZagElliotを含め、M5の成立時はtrue。
      */
     virtual bool shouldSendMail() override {
-        return MQLInfoString(MQL_PROGRAM_NAME) != "ZigZagElliot";
+        return true;
     }
 
     /**

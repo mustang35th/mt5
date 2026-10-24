@@ -82,13 +82,21 @@ public:
         // GMO対象の通貨名の直前に、通常・補正共通の目印を付ける。
         title = getGmoTitlePrefix(fromSource.marketContext.symbolName) + title;
 
-        // 通常版の対象時間足と、採用分析のW1 EMA200・MN1方向一致を件名で示す。
-        if (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
-            title = getTitlePrefix(selectedAnalysis) + title;
-        }
+        // 通常版はM15だけ時間足を先頭に置き、M5・M15の追加の方向・EMA距離の目印を省く。
+        bool isSimpleTimeFrameTitle = MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot"
+            && (selectedAnalysis.marketContext.timeFrame == PERIOD_M5
+                || selectedAnalysis.marketContext.timeFrame == PERIOD_M15);
+        if (isSimpleTimeFrameTitle) {
+            if (selectedAnalysis.marketContext.timeFrame == PERIOD_M15) {
+                title = "[M15] " + title;
+            }
+        } else {
+            if (MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
+                title = getTitlePrefix(selectedAnalysis) + title;
+            }
 
-        // 通常・補正とも、採用分析の対象時間足の距離超過だけを先頭に付ける。
-        title = getEma200DistancePrefix(selectedAnalysis) + title;
+            title = getEma200DistancePrefix(selectedAnalysis) + title;
+        }
 
         Print(__FUNCTION__, " isSendMail = ", fromIsSendMail);
         Print(__FUNCTION__, " title = ", title);

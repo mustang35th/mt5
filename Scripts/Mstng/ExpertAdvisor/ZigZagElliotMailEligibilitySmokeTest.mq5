@@ -113,7 +113,7 @@ void OnStart() {
         Print("FAIL M15 mail eligibility");
         failureCount++;
     }
-    if (m5Probe.isMailEligible() != !isZigZagElliot) {
+    if (!m5Probe.isMailEligible()) {
         Print("FAIL M5 mail eligibility");
         failureCount++;
     }
