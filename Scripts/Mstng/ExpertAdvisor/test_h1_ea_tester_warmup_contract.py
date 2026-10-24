@@ -443,7 +443,8 @@ class EmaConfigurationWiringTests(unittest.TestCase):
         )
         branches = (
             ("M5", "ExpertAdvisorMtf3In3M5",
-             "fromMarketContext,fromIsDrawArrow,fromM5Mn1AndW1Ema200Required"),
+             "fromMarketContext,fromIsDrawArrow,fromM5Mn1AndW1Ema200Required,"
+             "fromM5D1ToM5EntryPolicyEnabled,fromM5CurrencyStrengthMinimumRankDifference"),
             ("M15", "ExpertAdvisorMtf3In3M15",
              "fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled,"
              "fromM15H4MaxFibonacciExpansionPercent,fromM15H1MaxFibonacciExpansionPercent,"
@@ -587,6 +588,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                         constructor.index("this.applyH1EntryPolicy();"))
         self.assertIn("this.h1H4WaveRestrictionEnabled=true;", constructor)
         self.assertIn("this.m5Mn1AndW1Ema200Required=false;", constructor)
+        self.assertIn("this.m5D1ToM5EntryPolicyEnabled=false;", constructor)
         normalize = re.sub(r"\s+", "", code_only(method(config, "applyH1EntryPolicy")))
         for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):
             argument = "this.h1Mn1AndW1Ema200Required" if suffix != "Ema200ConfirmationMode" else ""
@@ -624,13 +626,18 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                         compact.index("config.applyH1EntryPolicy();"),
                     )
                     self.assertLess(
-                        compact.index("config.m5Mn1AndW1Ema200Required=_Period==PERIOD_M5;"),
+                        compact.index("config.m5Mn1AndW1Ema200Required=false;"),
+                        compact.index("config.applyH1EntryPolicy();"),
+                    )
+                    self.assertLess(
+                        compact.index("config.m5D1ToM5EntryPolicyEnabled=_Period==PERIOD_M5;"),
                         compact.index("config.applyH1EntryPolicy();"),
                     )
                 else:
                     self.assertNotIn("h1Mn1AndW1Ema200Required", compact)
                     self.assertNotIn("h1H4WaveRestrictionEnabled", compact)
                     self.assertNotIn("m5Mn1AndW1Ema200Required", compact)
+                    self.assertNotIn("m5D1ToM5EntryPolicyEnabled", compact)
 
     def test_h1_constructor_and_factory_disallow_legacy_override_arguments(self):
         strategy = code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3H1.mqh"))
@@ -690,17 +697,31 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
             recorded,
         )
 
-    def test_m5_explicit_and_uses_own_flag_and_keeps_legacy_default(self):
+    def test_m5_explicit_policies_use_own_flags_and_keep_legacy_defaults(self):
+        indicator = re.sub(r"\s+", "", code_only(self.read("Indicators/ZigZagElliot.mq5")))
+        self.assertIn("boolm5CurrencyStrengthEntryFilterEnabled=true;", indicator)
+        self.assertIn("intm5CurrencyStrengthMinimumRankDifference=4;", indicator)
+        self.assertIn(
+            "if(_Period==PERIOD_M5){"
+            "config.currencyStrengthEntryFilterEnabled=m5CurrencyStrengthEntryFilterEnabled;"
+            "config.m5CurrencyStrengthMinimumRankDifference=m5CurrencyStrengthMinimumRankDifference;}",
+            indicator,
+        )
         strategy = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3M5.mqh")))
         self.assertIn(
             "ExpertAdvisorMtf3In3M5(MarketContext&fromMarketContext,boolfromIsDrawArrow=true,"
-            "boolfromRequireMn1AndW1Ema200=false):ExpertAdvisorMTF_3in3(fromMarketContext,fromIsDrawArrow)",
+            "boolfromRequireMn1AndW1Ema200=false,boolfromD1ToM5EntryPolicyEnabled=false,"
+            "intfromCurrencyStrengthMinimumRankDifference=4)"
+            ":ExpertAdvisorMTF_3in3(fromMarketContext,fromIsDrawArrow)",
             strategy,
         )
         self.assertIn("this.isMn1AndW1Ema200Required=fromRequireMn1AndW1Ema200;", strategy)
+        self.assertIn("this.isD1ToM5EntryPolicyEnabled=fromD1ToM5EntryPolicyEnabled;", strategy)
         factory = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh")))
         self.assertIn("boolfromM5Mn1AndW1Ema200Required=false", factory)
         self.assertEqual(factory.count("fromM5Mn1AndW1Ema200Required"), 2)
+        self.assertIn("boolfromM5D1ToM5EntryPolicyEnabled=false", factory)
+        self.assertEqual(factory.count("fromM5D1ToM5EntryPolicyEnabled"), 2)
 
     def test_normal_and_list_normalize_before_factory_and_run_record(self):
         for name in ("Mtf3In3AlertController", "Mtf3In3AlertAllController"):
@@ -718,7 +739,9 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                         initialize,
                         r"ExpertAdvisorMtf3In3Factory::create\([^;]*,\s*this\.config\.h1Mn1AndW1Ema200Required"
                         r"\s*,\s*this\.config\.h1H4WaveRestrictionEnabled"
-                        r"\s*,\s*this\.config\.m5Mn1AndW1Ema200Required\s*\);",
+                        r"\s*,\s*this\.config\.m5Mn1AndW1Ema200Required"
+                        r"\s*,\s*this\.config\.m5D1ToM5EntryPolicyEnabled"
+                        r"\s*,\s*this\.config\.m5CurrencyStrengthMinimumRankDifference\s*\);",
                     )
                 else:
                     self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
@@ -726,6 +749,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                     self.assertNotIn("h1Mn1AndW1Ema200Required", code_only(source))
                     self.assertNotIn("h1H4WaveRestrictionEnabled", code_only(source))
                     self.assertNotIn("m5Mn1AndW1Ema200Required", code_only(source))
+                    self.assertNotIn("m5D1ToM5EntryPolicyEnabled", code_only(source))
                 text = method(source, "createInputText")
                 if name == "Mtf3In3AlertController":
                     self.assertIn(
@@ -736,7 +760,13 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                     )
                     self.assertIn(
                         'if(this.marketContext.timeFrame==PERIOD_M5){inputText+="|m5Mn1AndW1Ema200Required="'
-                        '+(string)this.config.m5Mn1AndW1Ema200Required;}',
+                        '+(string)this.config.m5Mn1AndW1Ema200Required;'
+                        'inputText+="|m5D1ToM5EntryPolicyEnabled="'
+                        '+(string)this.config.m5D1ToM5EntryPolicyEnabled;'
+                        'if(this.config.m5D1ToM5EntryPolicyEnabled){'
+                        'inputText+="|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";'
+                        'inputText+="|m5CurrencyStrengthMinimumRankDifference="'
+                        '+(string)this.config.m5CurrencyStrengthMinimumRankDifference;}}',
                         re.sub(r"\s+", "", text),
                     )
                 for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):
@@ -748,6 +778,12 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 self.assertIn("stringinputText=this.createInputText();", saved)
                 self.assertIn("this.databaseRun.inputText=inputText;", saved)
                 self.assertIn("this.databaseRun.inputHash=this.createTextHash(inputText);", saved)
+                if name == "Mtf3In3AlertController":
+                    self.assertIn(
+                        'if(this.config.m5D1ToM5EntryPolicyEnabled){'
+                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_M5_EMA3_WAVES13_STRENGTH_V24";}',
+                        re.sub(r"\s+", "", method(source, "setDatabaseRun")),
+                    )
 
     def test_legacy_ea_uses_policy_and_expands_h1_and_m5_mtf3_history(self):
         expert = self.read("Experts/MstngEa.mq5")

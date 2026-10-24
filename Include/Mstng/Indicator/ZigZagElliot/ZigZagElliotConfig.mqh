@@ -78,6 +78,9 @@ public:
     /** 通常版M5でMN1方向とW1 EMA200の両方を必須にする場合true。 */
     bool m5Mn1AndW1Ema200Required;
 
+    /** 通常版M5で補正なしのD1〜M5方向一致とH1・M15・M5のEMA200方向一致を必須にする場合true。 */
+    bool m5D1ToM5EntryPolicyEnabled;
+
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
     bool h1DisplayWaveEntryLimitEnabled;
 
@@ -101,6 +104,9 @@ public:
 
     /** 通貨強弱をエントリー条件として使用する場合true。 */
     bool currencyStrengthEntryFilterEnabled;
+
+    /** 通常版M5で長中期・中短期の両方に要求する最低順位差。 */
+    int m5CurrencyStrengthMinimumRankDifference;
 
     /** 通貨強弱順位パネルを表示する場合true。 */
     bool currencyStrengthRankVisible;
@@ -149,12 +155,14 @@ public:
         this.h1Mn1AndW1Ema200Required = false;
         this.h1H4WaveRestrictionEnabled = true;
         this.m5Mn1AndW1Ema200Required = false;
+        this.m5D1ToM5EntryPolicyEnabled = false;
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.m15H4MaxFibonacciExpansionPercent = 161.8;
         this.m15H1MaxFibonacciExpansionPercent = 161.8;
         this.applyH1EntryPolicy();
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;
+        this.m5CurrencyStrengthMinimumRankDifference = 4;
         this.currencyStrengthRankVisible = true;
         this.currencyStrengthRankPanelXDistance = 48;
         this.currencyStrengthRefreshSeconds = 15;

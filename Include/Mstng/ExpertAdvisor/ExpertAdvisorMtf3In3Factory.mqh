@@ -39,6 +39,8 @@ public:
      * @param fromH1Mn1AndW1Ema200Required H1・M15でMN1方向とW1 EMA200の両方を必須にする場合true。
      * @param fromH1H4WaveRestrictionEnabled H1・M15でH4の波番号と第5波構造を制限する場合true。
      * @param fromM5Mn1AndW1Ema200Required M5でMN1方向とW1 EMA200の両方を必須にする場合true。
+     * @param fromM5D1ToM5EntryPolicyEnabled M5で補正なしのD1〜M5方向一致とH1・M15・M5のEMA200方向一致を必須にする場合true。
+     * @param fromM5CurrencyStrengthMinimumRankDifference 通常版M5で両期間に要求する最低順位差。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */
     static ExpertAdvisorMTF_3in3 *create(
@@ -55,7 +57,9 @@ public:
         double fromM15H1MaxFibonacciExpansionPercent = 0.0,
         bool fromH1Mn1AndW1Ema200Required = false,
         bool fromH1H4WaveRestrictionEnabled = true,
-        bool fromM5Mn1AndW1Ema200Required = false
+        bool fromM5Mn1AndW1Ema200Required = false,
+        bool fromM5D1ToM5EntryPolicyEnabled = false,
+        int fromM5CurrencyStrengthMinimumRankDifference = 4
     ) {
         if (fromMarketContext.timeFrame == PERIOD_H1) {
             return new ExpertAdvisorMtf3In3H1(
@@ -83,7 +87,9 @@ public:
             return new ExpertAdvisorMtf3In3M5(
                 fromMarketContext,
                 fromIsDrawArrow,
-                fromM5Mn1AndW1Ema200Required
+                fromM5Mn1AndW1Ema200Required,
+                fromM5D1ToM5EntryPolicyEnabled,
+                fromM5CurrencyStrengthMinimumRankDifference
             );
         }
 

@@ -13,8 +13,10 @@ public:
     /**
      * テスト用市場で初期化する。
      */
-    M5HigherProbe(MarketContext &fromContext, bool fromRequireMn1AndW1Ema200 = false)
-        : ExpertAdvisorMtf3In3M5(fromContext, false, fromRequireMn1AndW1Ema200) {
+    M5HigherProbe(MarketContext &fromContext, bool fromRequireMn1AndW1Ema200 = false,
+        bool fromD1ToM5EntryPolicyEnabled = false)
+        : ExpertAdvisorMtf3In3M5(fromContext, false, fromRequireMn1AndW1Ema200,
+            fromD1ToM5EntryPolicyEnabled) {
     }
 
     /**
@@ -37,6 +39,36 @@ public:
         this.elliotAll = fromAll;
         this.isBuy = fromIsBuy;
         return this.isTimeFrameEma200ConditionMatched();
+    }
+
+    /**
+     * M5固有の分析方向ゲートを注文なしで呼ぶ。
+     */
+    bool evaluateDirection(ElliotAll *fromAll, const bool fromIsBuy) {
+        this.elliotAll = fromAll;
+        this.isBuy = fromIsBuy;
+
+        return this.isTimeFrameAnalysisDirectionConditionMatched();
+    }
+
+    /**
+     * 本番の分析選択を呼び、元分析を補正せず使用することを検証する。
+     */
+    ElliotAll *selectOriginal(ElliotAll *fromAll) {
+        return this.selectJudgmentElliotAll(fromAll);
+    }
+
+    /**
+     * 主波条件を回数加算なしで確認する。
+     */
+    bool evaluateWaves(ElliotAll *fromAll) {
+        this.elliotAll = fromAll;
+        this.elliotCurrent = NULL;
+        if (fromAll != NULL) {
+            this.elliotCurrent = fromAll.elliotCurrent;
+        }
+
+        return this.isTimeFrameWaveConditionMatched();
     }
 };
 
@@ -482,7 +514,351 @@ void validateFibonacciConsumesFirstCount(int &fromFailures) {
 }
 
 /**
- * 上位足と5足EMA200条件を検証する。注文・DB更新は行わない。
+ * D1～M5の方向一致とH1～M5のEMA200一致を、BUY/SELL両方向で検証する。
+ * MN1/W1およびD1/H4のEMA200は逆方向・NONEでも判定対象外とする。
+ */
+void validateD1ToM5Policy(int &fromFailures) {
+    MarketContext context("EURUSD", PERIOD_M5);
+    M5HigherProbe probe(context, true, true);
+    ENUM_TIMEFRAMES frames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
+    check(!probe.evaluateDirection(NULL, true), "D1-M5 null direction", fromFailures);
+    check(!probe.evaluateEma(NULL, true), "EMA3 null analysis", fromFailures);
+    check(probe.selectOriginal(NULL) == NULL, "D1-M5 null selection", fromFailures);
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        int matchingEma = 2;
+        if (isBuy) {
+            matchingEma = 1;
+        }
+
+        for (int j = 0; j < ArraySize(frames); j++) {
+            ElliotAll *analysis = createEntryAll(isBuy);
+            Elliot *changed = analysis.getElliot(frames[j]);
+            string caseName = StringFormat("D1-M5 direction %d/%d", i, j);
+            check(probe.evaluateDirection(analysis, isBuy), caseName + " aligned", fromFailures);
+            setState(changed, !isBuy, matchingEma);
+            check(probe.selectOriginal(analysis) == analysis
+                && probe.getCorrectionTimeFrame() == PERIOD_CURRENT,
+                caseName + " original selected without correction", fromFailures);
+            check(!probe.evaluateDirection(analysis, isBuy), caseName + " opposite rejected", fromFailures);
+            setState(changed, isBuy, matchingEma);
+            changed.oscillator.isBuy = !isBuy;
+            check(!probe.evaluateDirection(analysis, isBuy), caseName + " inconsistent rejected", fromFailures);
+            setState(changed, isBuy, matchingEma);
+            changed.buySellLabel = "NONE";
+            check(!probe.evaluateDirection(analysis, isBuy), caseName + " NONE rejected", fromFailures);
+            if (frames[j] == PERIOD_M5) {
+                analysis.elliotCurrent = NULL;
+            }
+
+            analysis.elliotList.Delete(j + 2);
+            check(!probe.evaluateDirection(analysis, isBuy), caseName + " missing rejected", fromFailures);
+            if (j >= 2) {
+                check(!probe.evaluateEma(analysis, isBuy), caseName + " missing EMA rejected", fromFailures);
+            }
+
+            delete analysis;
+        }
+
+        for (int j = 0; j < 243; j++) {
+            ElliotAll *analysis = createEntryAll(isBuy);
+            int combination = j;
+            bool expected = true;
+            for (int k = 0; k < ArraySize(frames); k++) {
+                int ema = combination % 3;
+                combination /= 3;
+                setState(analysis.getElliot(frames[k]), isBuy, ema);
+                if (k >= 2) {
+                    expected = expected && ema == matchingEma;
+                }
+            }
+
+            setState(analysis.getElliot(PERIOD_MN1), !isBuy, 0);
+            setState(analysis.getElliot(PERIOD_W1), !isBuy, 3 - matchingEma);
+            check(probe.evaluateEma(analysis, isBuy) == expected,
+                StringFormat("EMA3 %d/%d", i, j), fromFailures);
+            check(probe.evaluate(analysis), "D1-M5 bypass old AND gate", fromFailures);
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * 通常M5の公開ENTRY経路で補正しないことと、条件回復時の初回ENTRYを検証する。
+ */
+void validateD1ToM5Entry(int &fromFailures) {
+    ENUM_TIMEFRAMES frames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
+    for (int i = 0; i < 2; i++) {
+        bool isBuy = i == 0;
+        int matchingEma = 2;
+        if (isBuy) {
+            matchingEma = 1;
+        }
+
+        for (int j = 0; j < 11; j++) {
+            ElliotAll *analysis = createEntryAll(isBuy);
+            string caseName = StringFormat("D1-M5 ENTRY %d/%d", i, j);
+            setState(analysis.getElliot(PERIOD_MN1), !isBuy, 0);
+            setState(analysis.getElliot(PERIOD_W1), !isBuy, 3 - matchingEma);
+            setState(analysis.getElliot(PERIOD_D1), isBuy, 3 - matchingEma);
+            setState(analysis.getElliot(PERIOD_H4), isBuy, 0);
+            MarketContext context("EURUSD", PERIOD_M5);
+            SignalCount signalCount(context);
+            ExpertAdvisorMtf3In3M5 probe(context, false, false, true);
+            if (j < 4) {
+                setState(analysis.getElliot(frames[j]), !isBuy, matchingEma);
+            } else if (j < 10) {
+                int ema = 0;
+                if (j < 7) {
+                    ema = 3 - matchingEma;
+                }
+
+                setState(analysis.getElliot(frames[2 + (j - 4) % 3]), isBuy, ema);
+            }
+
+            if (j < 10) {
+                probe.analyze(analysis, GetPointer(signalCount));
+                Mtf3In3AlertResult rejected = probe.getAlertResult();
+                check(!rejected.isJudge && rejected.signalCount == 0,
+                    caseName + " rejected without consuming count", fromFailures);
+                check(probe.getJudgmentElliotAll() == analysis
+                    && probe.getCorrectionTimeFrame() == PERIOD_CURRENT,
+                    caseName + " no correction", fromFailures);
+                for (int k = 0; k < ArraySize(frames); k++) {
+                    setState(analysis.getElliot(frames[k]), isBuy, matchingEma);
+                }
+            }
+
+            probe.analyze(analysis, GetPointer(signalCount));
+            Mtf3In3AlertResult accepted = probe.getAlertResult();
+            check(accepted.isEntry && accepted.signalCount == 1,
+                caseName + " first entry despite upper disagreements", fromFailures);
+            check(probe.getJudgmentElliotAll() == analysis
+                && probe.getCorrectionTimeFrame() == PERIOD_CURRENT,
+                caseName + " original used", fromFailures);
+            probe.analyze(analysis, GetPointer(signalCount));
+            check(!probe.isEntry, caseName + " duplicate blocked", fromFailures);
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * 主波の全4通り、対象外ラベルでの待機・回復、FE境界と従来ポリシーを確認する。
+ */
+void validateM15AndM5MainWaves(int &fromFailures) {
+    MarketContext context("EURUSD", PERIOD_M5);
+    M5HigherProbe waveProbe(context, false, true);
+    M5HigherProbe legacyProbe(context);
+    check(!waveProbe.evaluateWaves(NULL), "main waves null analysis", fromFailures);
+    ElliotAll *missingWaves = createAll();
+    check(!waveProbe.evaluateWaves(missingWaves), "main waves missing points", fromFailures);
+    delete missingWaves;
+
+    string rejectedLabels[] = {"", "0", "2", "4", "5", "A", "B", "C"};
+    ENUM_TIMEFRAMES frames[] = {PERIOD_M15, PERIOD_M5};
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 4; j++) {
+            ElliotAll *analysis = createEntryAll(i == 0);
+            ZigZagPoint *m15Point = analysis.getElliot(PERIOD_M15).getLatestPoint();
+            ZigZagPoint *m5Point = analysis.elliotCurrent.getLatestPoint();
+            if (j < 2) {
+                m15Point.elliotLabel = "1";
+            }
+            if (j % 2 == 0) {
+                m5Point.elliotLabel = "1";
+            }
+
+            m15Point.subElliotLabel = "2";
+            m5Point.subElliotLabel = "2";
+            m15Point.fibonacciExpansionPercent = 200.0;
+            m5Point.fibonacciExpansionPercent = 161.8;
+            if (m5Point.elliotLabel == "1") {
+                m5Point.fibonacciExpansionPercent = 200.0;
+            }
+
+            SignalCount signalCount(context);
+            ExpertAdvisorMtf3In3M5 probe(context, false, false, true);
+            probe.analyze(analysis, GetPointer(signalCount));
+            Mtf3In3AlertResult result = probe.getAlertResult();
+            check(result.isEntry && result.signalCount == 1,
+                StringFormat("main wave combination %d/%d", i, j), fromFailures);
+            delete analysis;
+        }
+
+        for (int j = 0; j < ArraySize(frames); j++) {
+            for (int k = 0; k < ArraySize(rejectedLabels); k++) {
+                ElliotAll *analysis = createEntryAll(i == 0);
+                ZigZagPoint *point = analysis.getElliot(frames[j]).getLatestPoint();
+                point.elliotLabel = rejectedLabels[k];
+                point.subElliotLabel = "3";
+                SignalCount signalCount(context);
+                ExpertAdvisorMtf3In3M5 probe(context, false, false, true);
+                probe.analyze(analysis, GetPointer(signalCount));
+                Mtf3In3AlertResult result = probe.getAlertResult();
+                string caseName = StringFormat("main wave wait %d/%d/%d", i, j, k);
+                check(!result.isJudge && result.signalCount == 0,
+                    caseName + " rejected without count", fromFailures);
+                point.elliotLabel = "3";
+                probe.analyze(analysis, GetPointer(signalCount));
+                result = probe.getAlertResult();
+                check(result.isEntry && result.signalCount == 1,
+                    caseName + " first entry after recovery", fromFailures);
+                probe.analyze(analysis, GetPointer(signalCount));
+                check(!probe.isEntry, caseName + " duplicate blocked", fromFailures);
+                delete analysis;
+            }
+        }
+
+        ElliotAll *analysis = createEntryAll(i == 0);
+        analysis.getElliot(PERIOD_M15).waveList.Clear();
+        check(!waveProbe.evaluateWaves(analysis), "M15 missing latest point", fromFailures);
+        analysis.elliotCurrent.getLatestPoint().elliotLabel = "A";
+        check(legacyProbe.evaluateWaves(analysis), "legacy A preserved", fromFailures);
+        analysis.elliotCurrent.getLatestPoint().elliotLabel = "C";
+        check(legacyProbe.evaluateWaves(analysis), "legacy C preserved", fromFailures);
+        delete analysis;
+
+        analysis = createEntryAll(i == 0);
+        analysis.elliotCurrent.getLatestPoint().fibonacciExpansionPercent = 161.9;
+        SignalCount signalCount(context);
+        ExpertAdvisorMtf3In3M5 probe(context, false, false, true);
+        probe.analyze(analysis, GetPointer(signalCount));
+        Mtf3In3AlertResult result = probe.getAlertResult();
+        check(result.isJudge && !result.isEntry && result.signalCount == 1
+            && result.entryResult == "M5_ELLIOT3_FE_REJECTED",
+            "main wave 3 FE above boundary", fromFailures);
+        delete analysis;
+    }
+}
+
+/**
+ * 有効な同一M5時刻の順位を設定する。差は決済通貨順位から基軸通貨順位を引く。
+ */
+void setStrengthRanks(ElliotAll *fromAnalysis, int fromLongMedium, int fromMediumShort) {
+    fromAnalysis.isCurrencyStrengthEntryFilterEnabled = true;
+    CurrencyStrengthExecutionInfo info;
+    info.reset();
+    info.status = CURRENCY_STRENGTH_EXECUTION_STATUS_FOUND;
+    info.targetM5BarTime = D'2026.10.01 00:00';
+    info.pairRankInfo.m5BarTime = info.targetM5BarTime;
+    info.pairRankInfo.baseCurrency = "EUR";
+    info.pairRankInfo.quoteCurrency = "USD";
+    int longMediumBase = 1;
+    int mediumShortBase = 1;
+    if (fromLongMedium < 0) {
+        longMediumBase = 8;
+    }
+    if (fromMediumShort < 0) {
+        mediumShortBase = 8;
+    }
+
+    info.pairRankInfo.baseLongMediumTermAverageRank = longMediumBase;
+    info.pairRankInfo.quoteLongMediumTermAverageRank = longMediumBase + fromLongMedium;
+    info.pairRankInfo.baseMediumShortTermAverageRank = mediumShortBase;
+    info.pairRankInfo.quoteMediumShortTermAverageRank = mediumShortBase + fromMediumShort;
+    fromAnalysis.currencyStrengthExecutionInfo = info;
+}
+
+/**
+ * BUY/SELLの全順位差、境界、欠損・古いデータ、待機後の初回成立と設定を確認する。
+ */
+void validateM5StrengthEntry(int &fromFailures) {
+    MarketContext context("EURUSD", PERIOD_M5);
+    for (int i = 0; i < 2; i++) {
+        for (int j = -7; j <= 7; j++) {
+            for (int k = -7; k <= 7; k++) {
+                ElliotAll *analysis = createEntryAll(i == 0);
+                setStrengthRanks(analysis, j, k);
+                SignalCount signalCount(context);
+                ExpertAdvisorMtf3In3M5 probe(context, false, false, true);
+                probe.analyze(analysis, GetPointer(signalCount));
+                bool expected = j >= 4 && k >= 4;
+                if (i == 1) {
+                    expected = j <= -4 && k <= -4;
+                }
+
+                Mtf3In3AlertResult result = probe.getAlertResult();
+                string caseName = StringFormat("M5 strength %d/%d/%d", i, j, k);
+                check(result.isEntry == expected && result.isJudge == expected,
+                    caseName + " AND direction and threshold", fromFailures);
+                if (!expected) {
+                    check(result.signalCount == 0, caseName + " no count consumed", fromFailures);
+                    int matchingDifference = 4;
+                    if (i == 1) {
+                        matchingDifference = -4;
+                    }
+
+                    setStrengthRanks(analysis, matchingDifference, matchingDifference);
+                    probe.analyze(analysis, GetPointer(signalCount));
+                    result = probe.getAlertResult();
+                    check(result.isEntry && result.signalCount == 1,
+                        caseName + " first entry on recovery", fromFailures);
+                }
+
+                probe.analyze(analysis, GetPointer(signalCount));
+                check(!probe.isEntry, caseName + " duplicate blocked", fromFailures);
+                delete analysis;
+            }
+        }
+    }
+
+    for (int i = 0; i < 10; i++) {
+        ElliotAll *analysis = createEntryAll(true);
+        setStrengthRanks(analysis, 4, 4);
+        int minimumDifference = 4;
+        bool expected = false;
+        if (i == 0) {
+            analysis.currencyStrengthExecutionInfo.status = CURRENCY_STRENGTH_EXECUTION_STATUS_RECORD_NOT_FOUND;
+        } else if (i == 1) {
+            analysis.currencyStrengthExecutionInfo.pairRankInfo.m5BarTime -= 300;
+        } else if (i == 2) {
+            analysis.currencyStrengthExecutionInfo.pairRankInfo.baseCurrency = "";
+        } else if (i == 3) {
+            analysis.currencyStrengthExecutionInfo.pairRankInfo.quoteMediumShortTermAverageRank = 9;
+        } else if (i == 4) {
+            analysis.currencyStrengthExecutionInfo.reset();
+            analysis.isCurrencyStrengthEntryFilterEnabled = false;
+            expected = true;
+        } else if (i == 5) {
+            minimumDifference = 5;
+        } else if (i == 6) {
+            minimumDifference = 0;
+        } else if (i == 7) {
+            minimumDifference = 8;
+        } else if (i == 8) {
+            minimumDifference = 1;
+            setStrengthRanks(analysis, 1, 1);
+            expected = true;
+        } else {
+            minimumDifference = 7;
+            setStrengthRanks(analysis, 7, 7);
+            expected = true;
+        }
+
+        SignalCount signalCount(context);
+        ExpertAdvisorMtf3In3M5 probe(context, false, false, true, minimumDifference);
+        probe.analyze(analysis, GetPointer(signalCount));
+        Mtf3In3AlertResult result = probe.getAlertResult();
+        check(result.isEntry == expected, StringFormat("M5 strength setting %d", i), fromFailures);
+        if (!expected) {
+            check(result.signalCount == 0, "invalid strength does not consume count", fromFailures);
+        }
+
+        delete analysis;
+    }
+
+    ElliotAll *legacyAnalysis = createEntryAll(true);
+    setStrengthRanks(legacyAnalysis, 1, 1);
+    SignalCount legacyCount(context);
+    ExpertAdvisorMtf3In3M5 legacyProbe(context, false);
+    legacyProbe.analyze(legacyAnalysis, GetPointer(legacyCount));
+    check(legacyProbe.isEntry, "legacy strength remains direction only", fromFailures);
+    delete legacyAnalysis;
+}
+
+/**
+ * 通常M5と従来ポリシーの判定を検証する。注文・DB更新は行わない。
  */
 void OnStart() {
     int failures = 0;
@@ -492,5 +868,9 @@ void OnStart() {
     validateAndWaitAndRetry(failures);
     validateCorrectedAndWait(failures);
     validateFibonacciConsumesFirstCount(failures);
+    validateD1ToM5Policy(failures);
+    validateD1ToM5Entry(failures);
+    validateM15AndM5MainWaves(failures);
+    validateM5StrengthEntry(failures);
     PrintFormat("Mtf3In3HigherTimeFrameDecisionSmokeTest failures=%d", failures);
 }

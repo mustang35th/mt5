@@ -135,6 +135,12 @@ ON zigzag_elliot_alert_runs(started_at);
 
 通常版v1.68のM5は、専用の`m5Mn1AndW1Ema200Required=true`を`input_text`・`input_hash`へ記録します。`strategy_version`は`MTF3IN3_M5_MN1_W1_AND_V21`です。M5のH1方向一致・W1診断列は従来の`NOT_APPLICABLE`を維持し、M5のAND条件は専用の保存設定で識別します。Viewerはこの明示trueだけを表示に使用し、未記録の旧Runへ新条件を適用しません。
 
+通常版v1.70のM5は、`m5D1ToM5EntryPolicyEnabled=true`と`m5Mn1AndW1Ema200Required=false`を保存し、新フラグをRunのCanonical Textである`input_text`とその`input_hash`へ含めます。`strategy_version`は`MTF3IN3_M5_D1_M5_EMA3_NO_CORRECTION_V22`です。元分析のD1・H4・H1・M15・M5方向一致、H1・M15・M5のEMA200一致、H4・H1片足方向補正なしという条件を記録し、MN1・W1方向とW1・D1・H4のEMA200は要求しません。旧Runは書き換えず、新フラグ未記録の履歴に新条件を推測適用しません。M5のH1専用診断列、DBスキーマ・CSV列は変更しません。Viewerの旧MN1・W1 AND説明は旧フラグの明示trueでのみ表示され、新Runの保存済み判定結果は再計算しません。
+
+通常版v1.71のM5は、M15・M5両方の主波1・3を必須にします。`strategy_version`は`MTF3IN3_M5_D1_M5_EMA3_WAVES13_V23`です。専用ポリシーが有効なM5のCanonical Textへ`m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3`を加え、`input_text`・`input_hash`でv1.70と区別します。既存Run・DBスキーマ・CSV列は変更しません。
+
+通常版v1.72のM5は`MTF3IN3_M5_D1_M5_EMA3_WAVES13_STRENGTH_V24`を使用し、両期間の最低順位差を`m5CurrencyStrengthMinimumRankDifference`としてCanonical Textへ保存します。既存の`currencyStrengthEnabled`とM5用入力を反映した`currencyStrengthEntryFilterEnabled`も保存し、ON/OFF・閾値の変更を`input_hash`で区別します。初期値は有効・順位差4です。旧Run・DBスキーマ・CSV列は変更しません。
+
 ### 6.3 テスター保存開始設定の記録
 
 通常版v1.45の`mtf3In3AlertTesterSaveStartTime`は、指定値と実効開始日時を既存の`input_text`へ記録し、その内容を`input_hash`へ反映します。通常チャートでは実効開始日時を`0`とします。分析条件を変える設定ではないため、`analysis_input_text`・`analysis_input_hash`は変更しません。Runは初期化時に作成し、指定日時への到達まで作成を遅らせません。既存Runの内容は書き換えません。

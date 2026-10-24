@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.69"
+#property version   "1.72"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -64,9 +64,17 @@ input group "04. 通貨強弱"
 /** 通貨強弱を利用する場合true。 */
 input(name="通貨強弱を使用") bool currencyStrengthEnabled = true;
 
-/** 通貨強弱をエントリー条件として使用する場合true。 */
-input(name="エントリー条件に使用")
+/** M5以外で通貨強弱の方向一致をエントリー条件として使用する場合true。 */
+input(name="エントリー条件に使用（M5以外）")
 bool currencyStrengthEntryFilterEnabled = false;
+
+/** M5で長中期・中短期の方向一致と最低順位差を必須にする場合true。 */
+input(name="M5エントリー条件に使用")
+bool m5CurrencyStrengthEntryFilterEnabled = true;
+
+/** M5で長中期・中短期の両方に要求する最低順位差。 */
+input(name="M5最低順位差（両期間、1～7）")
+int m5CurrencyStrengthMinimumRankDifference = 4;
 
 /** 通貨強弱順位パネルを表示する場合true。 */
 input(name="順位パネルを表示") bool currencyStrengthRankVisible = true;
@@ -138,6 +146,15 @@ ZigZagElliotController *gController = NULL;
  * @return 初期化結果
  */
 int OnInit() {
+    if (_Period == PERIOD_M5
+            && (m5CurrencyStrengthMinimumRankDifference < 1
+                || m5CurrencyStrengthMinimumRankDifference > 7)) {
+        Logger logger(LOG_ERROR);
+        logger.error(__FUNCTION__, "invalid M5 currency strength minimum rank difference: use 1 to 7");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
     if (_Period == PERIOD_M15) {
         Logger logger(LOG_ERROR);
         if (!MathIsValidNumber(m15H1MaxFibonacciExpansionPercent)
@@ -175,11 +192,17 @@ int OnInit() {
         _Period == PERIOD_H1 || _Period == PERIOD_M15;
     config.h1H4WaveRestrictionEnabled =
         _Period != PERIOD_H1 && _Period != PERIOD_M15;
-    config.m5Mn1AndW1Ema200Required = _Period == PERIOD_M5;
+    config.m5Mn1AndW1Ema200Required = false;
+    config.m5D1ToM5EntryPolicyEnabled = _Period == PERIOD_M5;
     config.applyH1EntryPolicy();
     config.currencyStrengthEnabled = currencyStrengthEnabled;
     config.currencyStrengthEntryFilterEnabled =
         currencyStrengthEntryFilterEnabled;
+    if (_Period == PERIOD_M5) {
+        config.currencyStrengthEntryFilterEnabled = m5CurrencyStrengthEntryFilterEnabled;
+        config.m5CurrencyStrengthMinimumRankDifference = m5CurrencyStrengthMinimumRankDifference;
+    }
+
     config.currencyStrengthRankVisible = currencyStrengthRankVisible;
     config.currencyStrengthRankPanelXDistance =
         currencyStrengthRankPanelXDistance;

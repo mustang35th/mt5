@@ -15,9 +15,10 @@
 /**
  * M5を現在足としてMTF_3in3エントリーを判定する。
  *
- * M5の1・3・A・C波を対象とし、M5固有の
+ * 通常版はM15・M5の主波1・3、従来ポリシーはM5の1・3・A・C波を対象とし、M5固有の
  * FE上限、H1表示波の重複制限および成立時のメール送信を管理する。
- * 通常版M5では明示指定によりMN1方向とW1 EMA200の両方を必須にする。
+ * 通常版M5ではD1からM5の元方向一致とH1・M15・M5のEMA200一致を使用する。
+ * その他の呼び出し元では従来の上位足条件と片足方向補正を維持する。
  */
 class ExpertAdvisorMtf3In3M5 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -27,13 +28,19 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
+     * @param fromD1ToM5EntryPolicyEnabled 補正なしのD1～M5方向一致とH1～M5のEMA200一致を使用する場合true。
+     * @param fromCurrencyStrengthMinimumRankDifference 通常版M5で両期間に要求する最低順位差。
      */
     ExpertAdvisorMtf3In3M5(
         MarketContext &fromMarketContext,
         bool fromIsDrawArrow = true,
-        bool fromRequireMn1AndW1Ema200 = false
+        bool fromRequireMn1AndW1Ema200 = false,
+        bool fromD1ToM5EntryPolicyEnabled = false,
+        int fromCurrencyStrengthMinimumRankDifference = 4
     ) : ExpertAdvisorMTF_3in3(fromMarketContext, fromIsDrawArrow) {
         this.isMn1AndW1Ema200Required = fromRequireMn1AndW1Ema200;
+        this.isD1ToM5EntryPolicyEnabled = fromD1ToM5EntryPolicyEnabled;
+        this.currencyStrengthMinimumRankDifference = fromCurrencyStrengthMinimumRankDifference;
         this.correctedElliotAll = NULL;
         this.correctedTimeFrame = PERIOD_CURRENT;
     }
@@ -61,6 +68,19 @@ public:
 
 protected:
     /**
+     * 通常版M5の最低順位差を取得する。従来ポリシーは方向一致のみとする。
+     *
+     * @return 両期間に要求する最低順位差。
+     */
+    virtual int getCurrencyStrengthMinimumRankDifference() override {
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            return this.currencyStrengthMinimumRankDifference;
+        }
+
+        return 1;
+    }
+
+    /**
      * M5エントリーのスプレッドが全通貨共通の許容範囲内か判定する。
      *
      * @return スプレッドが5.0 pips以下の場合true。
@@ -80,6 +100,7 @@ protected:
     /**
      * 元のH4・H1方向から、今回の全エントリー条件へ使用する分析を選択する。
      *
+     * D1～M5ポリシーでは元分析を採用し、方向補正を実行しない。
      * 両足同方向なら元分析を採用し、片足逆方向ならその足を補正してM5まで
      * 再分析する。両足逆方向または補正失敗の場合は判定対象外とする。
      *
@@ -92,6 +113,10 @@ protected:
                 || fromOriginal.marketContext.timeFrame != PERIOD_M5
                 || fromOriginal.marketContext.symbolName != this.marketContext.symbolName) {
             return NULL;
+        }
+
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            return fromOriginal;
         }
 
         Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
@@ -143,9 +168,10 @@ protected:
     }
 
     /**
-     * D1・H4・H1・M15・M5のEMA200がM5分析方向と一致するか判定する。
+     * ポリシーに応じた対象足のEMA200がM5分析方向と一致するか判定する。
+     * 通常版はH1・M15・M5、従来ポリシーはD1・H4も確認する。
      *
-     * @return 全5足が有効かつ同方向の場合true。NONEは許可しない。
+     * @return 対象足すべてが有効かつ同方向の場合true。NONEは許可しない。
      */
     virtual bool isTimeFrameEma200ConditionMatched() override {
         if (this.marketContext.timeFrame != PERIOD_M5 || this.elliotAll == NULL) {
@@ -154,7 +180,12 @@ protected:
 
         Mtf3In3HigherTimeFrameDecision decision;
         ENUM_TIMEFRAMES timeFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
-        for (int i = 0; i < ArraySize(timeFrames); i++) {
+        int firstTimeFrameIndex = 0;
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            firstTimeFrameIndex = 2;
+        }
+
+        for (int i = firstTimeFrameIndex; i < ArraySize(timeFrames); i++) {
             if (!decision.isEma200DirectionMatched(
                     this.elliotAll.getElliot(timeFrames[i]), timeFrames[i], this.isBuy)) {
                 return false;
@@ -165,8 +196,8 @@ protected:
     }
 
     /**
-     * M15がM5と同方向で、H4またはH1も同方向か判定する。
-     * W1・D1とMN1の追加条件は共通の上位足判定で確認する。
+     * 通常版ではD1・H4・H1・M15・M5の元方向がすべて一致するか判定する。
+     * 従来ポリシーではM15と、H4またはH1の同方向一致を確認する。
      *
      * @return M5固有の分析方向条件を満たす場合true。
      */
@@ -175,17 +206,36 @@ protected:
             return false;
         }
 
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            Mtf3In3HigherTimeFrameDecision decision;
+            ENUM_TIMEFRAMES timeFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
+            for (int i = 0; i < ArraySize(timeFrames); i++) {
+                Elliot *elliot = this.elliotAll.getElliot(timeFrames[i]);
+                if (!decision.isDirectionStateValid(elliot, timeFrames[i])
+                        || elliot.isBuy != this.isBuy) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         return this.elliotAll.isBuySellH4OrH1AndM15();
     }
 
     /**
-     * 共通のMN1・W1・D1条件をM5分析方向で判定し、指定時はAND条件を追加する。
+     * 従来ポリシーのMN1・W1・D1追加条件をM5分析方向で判定する。
+     * D1～M5ポリシーでは方向とEMA200を専用判定で確認し、追加条件を使用しない。
      *
      * @return 上位足条件を満たす場合true。
      */
     virtual bool isTimeFrameDirectionAlignmentConditionMatched() override {
-        if (this.marketContext.timeFrame != PERIOD_M5) {
+        if (this.marketContext.timeFrame != PERIOD_M5 || this.elliotAll == NULL) {
             return false;
+        }
+
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            return true;
         }
 
         Mtf3In3HigherTimeFrameDecision decision;
@@ -211,20 +261,39 @@ protected:
     }
 
     /**
-     * M5の主波だけを判定し、H1・M15の波動番号は制限しない。
+     * 通常版はM15・M5両方の主波1・3を、初回回数の加算前に確認する。
+     * 従来ポリシーではM5の主波だけを判定する。
      *
      * @return M5用の波動条件を満たす場合true。
      */
     virtual bool isTimeFrameWaveConditionMatched() override {
-        if (this.marketContext.timeFrame != PERIOD_M5) {
+        if (this.marketContext.timeFrame != PERIOD_M5 || this.elliotAll == NULL) {
             return false;
         }
 
-        return this.isEntryWave(this.elliotCurrent);
+        if (!this.isEntryWave(this.elliotCurrent)) {
+            return false;
+        }
+
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            Elliot *m15Analysis = this.elliotAll.getElliot(PERIOD_M15);
+            if (m15Analysis == NULL || m15Analysis.marketContext.timeFrame != PERIOD_M15) {
+                return false;
+            }
+
+            ZigZagPoint *latestPoint = m15Analysis.getLatestPoint();
+            if (latestPoint == NULL) {
+                return false;
+            }
+
+            return latestPoint.elliotLabel == "1" || latestPoint.elliotLabel == "3";
+        }
+
+        return true;
     }
 
     /**
-     * M5の最新主波が1・3・A・C波のいずれか判定する。
+     * M5の最新主波を判定する。通常版は1・3、従来ポリシーは1・3・A・Cを許可する。
      *
      * @param fromElliot 判定対象。副次波ラベルは使用しない。
      * @return M5の主波がエントリー対象の場合true。
@@ -240,6 +309,10 @@ protected:
         }
 
         string elliotLabel = latestPoint.elliotLabel;
+
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            return elliotLabel == "1" || elliotLabel == "3";
+        }
 
         return elliotLabel == "1" || elliotLabel == "3"
             || elliotLabel == "A" || elliotLabel == "C";
@@ -342,8 +415,14 @@ protected:
     }
 
 private:
+    /** 通常版M5の通貨強弱フィルタで両期間に要求する最低順位差。 */
+    int currencyStrengthMinimumRankDifference;
+
     /** MN1方向とW1 EMA200の両方を必須にする場合true。 */
     bool isMn1AndW1Ema200Required;
+
+    /** 補正なしのD1～M5方向一致とH1・M15・M5のEMA200一致を使用する場合true。 */
+    bool isD1ToM5EntryPolicyEnabled;
 
     /** 全エントリー条件の判定に使用する補正分析。本クラスが所有する。 */
     ElliotAll *correctedElliotAll;

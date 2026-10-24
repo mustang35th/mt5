@@ -98,7 +98,9 @@ public:
             this.config.m15H1MaxFibonacciExpansionPercent,
             this.config.h1Mn1AndW1Ema200Required,
             this.config.h1H4WaveRestrictionEnabled,
-            this.config.m5Mn1AndW1Ema200Required
+            this.config.m5Mn1AndW1Ema200Required,
+            this.config.m5D1ToM5EntryPolicyEnabled,
+            this.config.m5CurrencyStrengthMinimumRankDifference
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -543,7 +545,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "1.69";
+            this.databaseRun.programVersion = "1.72";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
@@ -560,6 +562,9 @@ private:
             this.databaseRun.strategyVersion = "MTF3IN3_M5_SPREAD5_V13";
             if (this.config.m5Mn1AndW1Ema200Required) {
                 this.databaseRun.strategyVersion = "MTF3IN3_M5_MN1_W1_AND_V21";
+            }
+            if (this.config.m5D1ToM5EntryPolicyEnabled) {
+                this.databaseRun.strategyVersion = "MTF3IN3_M5_D1_M5_EMA3_WAVES13_STRENGTH_V24";
             }
         }
         if (this.marketContext.timeFrame == PERIOD_M15) {
@@ -615,6 +620,13 @@ private:
         if (this.marketContext.timeFrame == PERIOD_M5) {
             inputText += "|m5Mn1AndW1Ema200Required="
                 + (string)this.config.m5Mn1AndW1Ema200Required;
+            inputText += "|m5D1ToM5EntryPolicyEnabled="
+                + (string)this.config.m5D1ToM5EntryPolicyEnabled;
+            if (this.config.m5D1ToM5EntryPolicyEnabled) {
+                inputText += "|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";
+                inputText += "|m5CurrencyStrengthMinimumRankDifference="
+                    + (string)this.config.m5CurrencyStrengthMinimumRankDifference;
+            }
         }
 
         inputText += "|h1W1ConfirmationMode="

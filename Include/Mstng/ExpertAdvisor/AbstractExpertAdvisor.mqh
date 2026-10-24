@@ -260,6 +260,15 @@ public:
     }
     
 protected:
+    /**
+     * 通貨強弱フィルタで両期間に要求する最低順位差を取得する。
+     *
+     * @return 従来の方向一致を表す1。
+     */
+    virtual int getCurrencyStrengthMinimumRankDifference() {
+        return 1;
+    }
+
     /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
@@ -573,6 +582,7 @@ private:
      * 決済通貨が強いSELL方向となる。BUYでは長中期と中短期の順位差が
      * 両方とも正、SELLでは両方とも負の場合に限りtrueを返す。期間ごとの
      * 方向が異なるMIXED状態や、同順位による順位差0は許可しない。
+     * さらに両期間の順位差の絶対値が、戦略ごとの最低順位差以上であることを要求する。
      *
      * trueは通貨強弱フィルタの通過を表すだけであり、エントリー確定では
      * ない。呼び出し元で後続のElliott条件isJudge()を判定する。
@@ -600,7 +610,17 @@ private:
 
         // 順位差は「決済通貨順位 - 基軸通貨順位」。BUYは両期間とも正、
         // SELLは両期間とも負の場合だけ許可し、MIXEDと順位差0は拒否する。
-        return executionInfo.isDirectionAligned(this.isBuy);
+        if (!executionInfo.isDirectionAligned(this.isBuy)) {
+            return false;
+        }
+
+        int minimumDifference = this.getCurrencyStrengthMinimumRankDifference();
+        if (minimumDifference < 1 || minimumDifference > 7) {
+            return false;
+        }
+
+        return MathAbs(executionInfo.getLongMediumRankDifference()) >= minimumDifference
+            && MathAbs(executionInfo.getMediumShortRankDifference()) >= minimumDifference;
     }
 
     /**
