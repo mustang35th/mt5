@@ -55,6 +55,7 @@
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthLatestRankLabels.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankAndRibbon.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankPeriodLabel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankSignalLabel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankSourceLabel.mqh>
@@ -106,6 +107,9 @@ input(name="通常チャートの再読込間隔（秒）") int refreshSeconds =
 /** サブ画面の高さ。0は高さを指定せず、MT5側のサイズを使用する。 */
 input(name="サブ画面の高さ（px・0＝指定なし）") int subPanelHeight = 120;
 
+/** 長中期と中短期の同方向・順位差4以上をメインチャート下端へ表示する。同時表示時は最上段を優先する。 */
+input(name="メインチャートにAND帯を表示") bool rankAndRibbonVisible = true;
+
 input group "02. データ参照"
 
 /** 参照する保存済み履歴。LIVE優先では同じM5時刻にLIVEがない場合だけテスター履歴を使用する。 */
@@ -143,6 +147,10 @@ double gQuoteRankFillBuffer[];
 Logger gLogger;
 CurrencyStrengthYearlyRankQueryService *gRankQueryService = NULL;
 DrawCurrencyStrengthLatestRankLabels *gLatestRankLabelsDraw = NULL;
+
+/** メインチャート下端のAND帯描画。 */
+DrawCurrencyStrengthRankAndRibbon *gRankAndRibbonDraw = NULL;
+
 DrawCurrencyStrengthRankPeriodLabel *gRankPeriodLabelDraw = NULL;
 DrawCurrencyStrengthRankSignalLabel *gRankSignalLabelDraw = NULL;
 DrawCurrencyStrengthRankSourceLabel *gRankSourceLabelDraw = NULL;
@@ -151,6 +159,10 @@ string gBaseCurrency = "";
 string gQuoteCurrency = "";
 string gCalculationVersion = "";
 string gSourceMode = "";
+
+/** 同時表示時にAND帯の描画担当を識別するインジケータ名。 */
+string gIndicatorShortName = "";
+
 datetime gLastQueryTargetM5BarTime = 0;
 datetime gLastDisplayStartM5BarTime = 0;
 ulong gLastQueryTickCount = 0;
@@ -320,6 +332,23 @@ int OnInit() {
         return INIT_FAILED;
     }
 
+    if (rankAndRibbonVisible) {
+        gRankAndRibbonDraw = new DrawCurrencyStrengthRankAndRibbon(
+            ChartID(),
+            drawObjectSuffix
+        );
+
+        if (gRankAndRibbonDraw == NULL) {
+            return INIT_FAILED;
+        }
+
+        if (!isTester && !EventSetTimer(1)) {
+            gLogger.error(__FUNCTION__, "rank AND ribbon timer initialization failed");
+
+            return INIT_FAILED;
+        }
+    }
+
     ArrayResize(gRankPoints, 0);
     gLastQueryTargetM5BarTime = 0;
     gLastDisplayStartM5BarTime = 0;
@@ -337,6 +366,13 @@ int OnInit() {
  * @param reason 終了理由。
  */
 void OnDeinit(const int reason) {
+    EventKillTimer();
+
+    if (gRankAndRibbonDraw != NULL) {
+        delete gRankAndRibbonDraw;
+        gRankAndRibbonDraw = NULL;
+    }
+
     if (gRankSourceLabelDraw != NULL) {
         delete gRankSourceLabelDraw;
         gRankSourceLabelDraw = NULL;
@@ -468,12 +504,20 @@ int OnCalculate(
 
     gLastDisplayStartM5BarTime = displayStartM5BarTime;
     drawLatestRankLabels(ratesTotal, time);
+    drawRankAndRibbon(fullRefresh || cacheRefreshed);
 
     return ratesTotal;
 }
 
 /**
- * チャート変更時に期間名ラベルの表示位置を再確認する。
+ * ティックがない場合もAND帯の表示位置と描画担当を再確認する。
+ */
+void OnTimer() {
+    drawRankAndRibbon();
+}
+
+/**
+ * チャート変更時に期間名ラベルとAND帯の表示位置を再確認する。
  *
  * @param fromEventId イベントID。
  * @param fromLongParameter long型イベント値。
@@ -499,6 +543,7 @@ void OnChartEvent(
     }
 
     gRankPeriodLabelReady = drawRankPeriodLabel();
+    drawRankAndRibbon(true);
 }
 
 /**
@@ -642,21 +687,81 @@ void configurePlots() {
     PlotIndexSetInteger(0, PLOT_LINE_COLOR, baseColor);
     PlotIndexSetInteger(1, PLOT_LINE_COLOR, quoteColor);
 
-    IndicatorSetInteger(INDICATOR_DIGITS, 0);
-    IndicatorSetString(
-        INDICATOR_SHORTNAME,
-        StringFormat(
-            "Currency Strength Rank %s/%s %s %s %s -1=Top (%d days)",
-            gBaseCurrency,
-            gQuoteCurrency,
-            gSourceMode,
-            CurrencyStrengthCalculationProfile::getVoteWeightModeText(
-                voteWeightMode
-            ),
-            rankPeriodLabel,
-            historyDays
-        )
+    string rankAndName = "";
+
+    if (rankAndRibbonVisible) {
+        rankAndName = " AND";
+    }
+
+    gIndicatorShortName = StringFormat(
+        "Currency Strength Rank%s %s/%s %s %s %s -1=Top (%d days)",
+        rankAndName,
+        gBaseCurrency,
+        gQuoteCurrency,
+        gSourceMode,
+        CurrencyStrengthCalculationProfile::getVoteWeightModeText(voteWeightMode),
+        rankPeriodLabel,
+        historyDays
     );
+    // MT5の表示名上限に合わせ、ChartIndicatorNameとの照合を一致させる。
+    gIndicatorShortName = StringSubstr(gIndicatorShortName, 0, 63);
+    IndicatorSetInteger(INDICATOR_DIGITS, 0);
+    IndicatorSetString(INDICATOR_SHORTNAME, gIndicatorShortName);
+}
+
+/**
+ * 同じチャートでAND帯を有効にした最上段のインジケータか判定する。
+ *
+ * @return このインスタンスが描画を担当する場合true。
+ */
+bool isRankAndRibbonOwner() {
+    int currentSubWindow = ChartWindowFind();
+
+    if (currentSubWindow <= 0) {
+        return false;
+    }
+
+    int windowCount = (int)ChartGetInteger(ChartID(), CHART_WINDOWS_TOTAL);
+
+    for (int i = 1; i < windowCount; i++) {
+        int indicatorCount = ChartIndicatorsTotal(ChartID(), i);
+
+        for (int j = 0; j < indicatorCount; j++) {
+            string indicatorName = ChartIndicatorName(ChartID(), i, j);
+
+            if (StringFind(indicatorName, "Currency Strength Rank AND ") == 0) {
+                return i == currentSubWindow && indicatorName == gIndicatorShortName;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
+ * 保存済み順位からメインチャート下端のAND帯を更新する。
+ *
+ * @param fromForce データ更新後など、表示範囲が同じでも再描画する場合true。
+ */
+void drawRankAndRibbon(const bool fromForce = false) {
+    if (gRankAndRibbonDraw == NULL) {
+        return;
+    }
+
+    if (!gRankPointCacheReady || !isRankAndRibbonOwner()) {
+        gRankAndRibbonDraw.clear();
+
+        return;
+    }
+
+    if (!gRankAndRibbonDraw.draw(
+        gRankPoints,
+        gLastQueryTargetM5BarTime,
+        rankSignalHighlightDifference,
+        fromForce
+    )) {
+        gLogger.error(__FUNCTION__, "rank AND ribbon draw failed");
+    }
 }
 
 /**
