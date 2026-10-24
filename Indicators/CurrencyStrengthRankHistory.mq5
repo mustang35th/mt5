@@ -7,8 +7,8 @@
 #property link      "https://www.mql5.com"
 #property version   "1.01"
 #property indicator_separate_window
-#property indicator_buffers 6
-#property indicator_plots   5
+#property indicator_buffers 8
+#property indicator_plots   6
 #property indicator_minimum -9.5
 #property indicator_maximum -0.5
 #property indicator_level1  -1.0
@@ -43,9 +43,13 @@
 
 #property indicator_label5  "Rank Signal"
 #property indicator_type5   DRAW_COLOR_LINE
-#property indicator_color5  clrAqua, clrHotPink, clrDimGray
+#property indicator_color5  clrAqua, clrHotPink, clrDimGray, clrTeal, C'128,50,90'
 #property indicator_style5  STYLE_SOLID
 #property indicator_width5  5
+
+#property indicator_label6  "Rank Gap Base;Rank Gap Quote"
+#property indicator_type6   DRAW_FILLING
+#property indicator_color6  C'0,51,51', C'51,21,36'
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
@@ -74,7 +78,7 @@ enum CurrencyStrengthRankPeriod {
 /**
  * 選択期間の通貨強弱順位による売買方向。
  *
- * 値は履歴リボンの色番号として使用する。
+ * 値は履歴リボンの強調色と同順位色の番号として使用する。
  */
 enum CurrencyStrengthRankSignal {
     /** 基軸通貨の順位が上の場合。 */
@@ -130,6 +134,12 @@ double gQuoteActualRankBuffer[];
 double gRankSignalDisplayBuffer[];
 double gRankSignalColorBuffer[];
 
+/** 順位差を強調する塗り領域の基軸通貨側の境界。 */
+double gBaseRankFillBuffer[];
+
+/** 順位差を強調する塗り領域の決済通貨側の境界。 */
+double gQuoteRankFillBuffer[];
+
 Logger gLogger;
 CurrencyStrengthYearlyRankQueryService *gRankQueryService = NULL;
 DrawCurrencyStrengthLatestRankLabels *gLatestRankLabelsDraw = NULL;
@@ -148,6 +158,9 @@ bool gRankPointCacheReady = false;
 bool gRankPeriodLabelReady = false;
 bool gRankLabelObjectsPrepared = false;
 const double rankSignalDisplayPosition = -9.0;
+
+/** 塗り領域、リボンと右上ラベルを強調する順位差の絶対値。 */
+const int rankSignalHighlightDifference = 4;
 
 /**
  * インジケータを初期化する。
@@ -490,11 +503,21 @@ void OnChartEvent(
 
 /**
  * 2本の表示バッファ、2本の実順位バッファおよび
- * 選択期間の履歴シグナルバッファを初期化する。
+ * 選択期間の履歴シグナルと順位差の塗りバッファを初期化する。
  *
  * @return 初期化に成功した場合true。
  */
 bool initializeBuffers() {
+    // 保存済みチャートの描画設定がある場合もバッファの対応を維持する。
+    if (!PlotIndexSetInteger(0, PLOT_DRAW_TYPE, DRAW_LINE)
+            || !PlotIndexSetInteger(1, PLOT_DRAW_TYPE, DRAW_LINE)
+            || !PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_NONE)
+            || !PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_NONE)
+            || !PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_COLOR_LINE)
+            || !PlotIndexSetInteger(5, PLOT_DRAW_TYPE, DRAW_FILLING)) {
+        return false;
+    }
+
     if (!SetIndexBuffer(
         0,
         gBaseDisplayRankBuffer,
@@ -543,6 +566,24 @@ bool initializeBuffers() {
         return false;
     }
 
+    if (!SetIndexBuffer(
+        6,
+        gBaseRankFillBuffer,
+        INDICATOR_DATA
+    )) {
+        return false;
+    }
+
+    if (!SetIndexBuffer(
+        7,
+        gQuoteRankFillBuffer,
+        INDICATOR_DATA
+    )) {
+        return false;
+    }
+
+    ArraySetAsSeries(gBaseRankFillBuffer, true);
+    ArraySetAsSeries(gQuoteRankFillBuffer, true);
     ArraySetAsSeries(gBaseDisplayRankBuffer, true);
     ArraySetAsSeries(gQuoteDisplayRankBuffer, true);
     ArraySetAsSeries(gBaseActualRankBuffer, true);
@@ -550,7 +591,7 @@ bool initializeBuffers() {
     ArraySetAsSeries(gRankSignalDisplayBuffer, true);
     ArraySetAsSeries(gRankSignalColorBuffer, true);
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         PlotIndexSetDouble(i, PLOT_EMPTY_VALUE, EMPTY_VALUE);
     }
 
@@ -559,6 +600,7 @@ bool initializeBuffers() {
     PlotIndexSetInteger(2, PLOT_SHOW_DATA, true);
     PlotIndexSetInteger(3, PLOT_SHOW_DATA, true);
     PlotIndexSetInteger(4, PLOT_SHOW_DATA, false);
+    PlotIndexSetInteger(5, PLOT_SHOW_DATA, false);
 
     return true;
 }
@@ -848,6 +890,7 @@ void drawLatestRankLabels(
  * 基軸通貨と決済通貨の順位差から売買方向を描画する。
  *
  * 基軸通貨の順位が上の場合はBUY、決済通貨の順位が上の場合はSELLとする。
+ * 順位差の絶対値が強調基準以上の場合は先頭へ◆を付ける。
  *
  * @param fromSubWindow 描画対象サブウィンドウ番号。
  * @param fromBaseRank 基軸通貨の順位。
@@ -883,6 +926,10 @@ void drawRankSignalLabel(
         } else if (rankSignal == CURRENCY_STRENGTH_RANK_SIGNAL_SELL) {
             signalText = StringFormat("SELL %d", rankDifference);
             signalColor = clrHotPink;
+        }
+
+        if (MathAbs(rankDifference) >= rankSignalHighlightDifference) {
+            signalText = "◆ " + signalText;
         }
     }
 
@@ -1375,6 +1422,9 @@ void fillAllBuffers(
     const datetime fromDisplayStartM5BarTime,
     const datetime fromTargetM5BarTime
 ) {
+    // DRAW_FILLINGはEMPTY_VALUEの区間を接続するため、非表示区間には0を使用する。
+    ArrayInitialize(gBaseRankFillBuffer, 0.0);
+    ArrayInitialize(gQuoteRankFillBuffer, 0.0);
     ArrayInitialize(gBaseDisplayRankBuffer, EMPTY_VALUE);
     ArrayInitialize(gQuoteDisplayRankBuffer, EMPTY_VALUE);
     ArrayInitialize(gBaseActualRankBuffer, EMPTY_VALUE);
@@ -1531,16 +1581,26 @@ void setBufferValues(
     gBaseActualRankBuffer[fromBufferIndex] = getActualRankValue(baseRank);
     gQuoteActualRankBuffer[fromBufferIndex] = getActualRankValue(quoteRank);
     gRankSignalDisplayBuffer[fromBufferIndex] = rankSignalDisplayPosition;
-    gRankSignalColorBuffer[fromBufferIndex] = (double)getRankSignal(
+    gRankSignalColorBuffer[fromBufferIndex] = (double)getRankSignalColorIndex(
         baseRank,
         quoteRank
     );
+
+    gBaseRankFillBuffer[fromBufferIndex] = 0.0;
+    gQuoteRankFillBuffer[fromBufferIndex] = 0.0;
+
+    if (MathAbs(quoteRank - baseRank) >= rankSignalHighlightDifference) {
+        gBaseRankFillBuffer[fromBufferIndex] = gBaseDisplayRankBuffer[fromBufferIndex];
+        gQuoteRankFillBuffer[fromBufferIndex] = gQuoteDisplayRankBuffer[fromBufferIndex];
+    }
 }
 
 /**
  * 指定バーの表示値と実順位を空値へ戻す。
  */
 void clearBufferValues(const int fromBufferIndex) {
+    gBaseRankFillBuffer[fromBufferIndex] = 0.0;
+    gQuoteRankFillBuffer[fromBufferIndex] = 0.0;
     gBaseDisplayRankBuffer[fromBufferIndex] = EMPTY_VALUE;
     gQuoteDisplayRankBuffer[fromBufferIndex] = EMPTY_VALUE;
     gBaseActualRankBuffer[fromBufferIndex] = EMPTY_VALUE;
@@ -1599,6 +1659,36 @@ CurrencyStrengthRankSignal getRankSignal(
     }
 
     return CURRENCY_STRENGTH_RANK_SIGNAL_NON;
+}
+
+/**
+ * 売買方向と順位差から履歴リボンの色番号を取得する。
+ *
+ * @param fromBaseRank 基軸通貨の順位。
+ * @param fromQuoteRank 決済通貨の順位。
+ * @return 強調BUYは0、強調SELLは1、同順位は2、通常BUYは3、通常SELLは4。
+ */
+int getRankSignalColorIndex(
+    const int fromBaseRank,
+    const int fromQuoteRank
+) {
+    CurrencyStrengthRankSignal rankSignal = getRankSignal(
+        fromBaseRank,
+        fromQuoteRank
+    );
+    int rankDifference = fromQuoteRank - fromBaseRank;
+
+    if (MathAbs(rankDifference) < rankSignalHighlightDifference) {
+        if (rankSignal == CURRENCY_STRENGTH_RANK_SIGNAL_BUY) {
+            return 3;
+        }
+
+        if (rankSignal == CURRENCY_STRENGTH_RANK_SIGNAL_SELL) {
+            return 4;
+        }
+    }
+
+    return (int)rankSignal;
 }
 
 /**
