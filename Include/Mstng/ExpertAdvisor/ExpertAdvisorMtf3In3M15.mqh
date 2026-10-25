@@ -25,6 +25,7 @@
  * GMMAはM15だけを判定し、H1のGMMAは条件に使用しない。
  * 設定時はH4・H1の再カウント前の進行波FE上限も回数加算前に判定する。
  * 通常版M15はMN1方向とW1 EMA200をANDとし、H4の波番号とFEを制限しない。
+ * 通貨別EMA200距離制限が有効な場合、JPY建て50pips・その他25pipsを回数加算前に要求する。
  */
 class ExpertAdvisorMtf3In3M15 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -38,6 +39,7 @@ public:
      * @param fromH1MaxFibonacciExpansionPercent H1のFE上限。0は判定無効。
      * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
      * @param fromH4WaveRestrictionEnabled H4の波番号と第5波構造を制限する場合true。
+     * @param fromCurrencyEma200DistanceEnabled 通貨別EMA200距離上限を使用する場合true。
      */
     ExpertAdvisorMtf3In3M15(
         MarketContext &fromMarketContext,
@@ -46,7 +48,8 @@ public:
         double fromH4MaxFibonacciExpansionPercent = 0.0,
         double fromH1MaxFibonacciExpansionPercent = 0.0,
         bool fromRequireMn1AndW1Ema200 = false,
-        bool fromH4WaveRestrictionEnabled = true
+        bool fromH4WaveRestrictionEnabled = true,
+        bool fromCurrencyEma200DistanceEnabled = false
     ) : ExpertAdvisorMTF_3in3(
         fromMarketContext,
         fromIsDrawArrow,
@@ -54,6 +57,7 @@ public:
         Mtf3In3H1Policy::getDirectionAlignmentMode(fromRequireMn1AndW1Ema200),
         Mtf3In3H1Policy::getEma200ConfirmationMode()
     ) {
+        this.isCurrencyEma200DistanceEnabled = fromCurrencyEma200DistanceEnabled;
         this.isDirectionCorrectionEnabled = fromDirectionCorrectionEnabled;
         this.isH4WaveRestrictionEnabled = fromH4WaveRestrictionEnabled;
         this.h4MaxFibonacciExpansionPercent = fromH4MaxFibonacciExpansionPercent;
@@ -233,9 +237,9 @@ protected:
     }
 
     /**
-     * H1共通EMA200条件にM15 EMA200の同方向一致を追加する。
+     * H1共通EMA200条件にM15 EMA200の同方向一致と、有効時の通貨別距離上限を追加する。
      *
-     * @return D1・H4・H1・M15のEMA200が同方向の場合true。
+     * @return EMA200方向条件と、有効時の距離条件が成立する場合true。
      */
     virtual bool isTimeFrameEma200ConditionMatched() override {
         H1Ema200ConfirmationDecision h1Decision;
@@ -244,7 +248,8 @@ protected:
         return h1Decision.evaluate(
             this.h1Ema200ConfirmationMode, this.isBuy,
             this.elliotH1, this.elliotH4, this.elliotD1
-        ) && decision.isEma200DirectionMatched(this.elliotCurrent, PERIOD_M15, this.isBuy);
+        ) && decision.isEma200DirectionMatched(this.elliotCurrent, PERIOD_M15, this.isBuy)
+            && (!this.isCurrencyEma200DistanceEnabled || this.isM15Ema200DistanceWithin());
     }
 
     /**
@@ -267,12 +272,34 @@ protected:
     }
 
     /**
-     * H1と同じくEMA200の距離制限を適用しない。
+     * 通貨別EMA200距離制限の有効状態を取得する。
      *
-     * @return 常にfalse。
+     * @return 通貨別距離上限を使用する場合true。
      */
     virtual bool isTimeFrameEma200DistanceRequired() override {
-        return false;
+        return this.isCurrencyEma200DistanceEnabled;
+    }
+
+    /**
+     * メール注意表示と同じ通貨別上限を判定・保存に使用する。
+     *
+     * @return JPY建て50pips、その他25pips。通貨取得失敗時はEMPTY_VALUE。
+     */
+    virtual double getTimeFrameMaxCloseEma200DiffPips() override {
+        if (!this.isCurrencyEma200DistanceEnabled) {
+            return ExpertAdvisorMTF_3in3::getTimeFrameMaxCloseEma200DiffPips();
+        }
+
+        string quoteCurrency = SymbolInfoString(this.marketContext.symbolName, SYMBOL_CURRENCY_PROFIT);
+        if (quoteCurrency == "") {
+            return EMPTY_VALUE;
+        }
+
+        if (quoteCurrency == "JPY") {
+            return 50.0;
+        }
+
+        return 25.0;
     }
 
     /**
@@ -324,6 +351,9 @@ protected:
     }
 
 private:
+    /** 通貨別EMA200距離上限を回数加算前に判定する場合true。 */
+    bool isCurrencyEma200DistanceEnabled;
+
     /** H4の波番号と第5波構造を制限する場合true。 */
     bool isH4WaveRestrictionEnabled;
 
@@ -341,6 +371,27 @@ private:
 
     /** 補正した時間足。補正なしはPERIOD_CURRENT。 */
     ENUM_TIMEFRAMES correctedTimeFrame;
+
+    /**
+     * M15確定足終値・EMA200の取得を確認し、丸め前の絶対距離を判定する。
+     *
+     * @return 有効な価格・距離が取得でき、通貨別上限以内の場合true。
+     */
+    bool isM15Ema200DistanceWithin() {
+        if (this.elliotCurrent == NULL) {
+            return false;
+        }
+
+        double close1 = this.elliotCurrent.oscillator.ema200.close1;
+        double ema200Shift1 = this.elliotCurrent.oscillator.ema200.ema200Shift1;
+        if (!MathIsValidNumber(close1) || close1 == EMPTY_VALUE || close1 <= 0.0
+                || !MathIsValidNumber(ema200Shift1) || ema200Shift1 == EMPTY_VALUE
+                || ema200Shift1 <= 0.0) {
+            return false;
+        }
+
+        return this.isTimeFrameEma200DistanceWithin();
+    }
 
     /**
      * H4の波動制限を適用し、制限なしの場合も分析取得を確認する。

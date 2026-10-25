@@ -314,7 +314,8 @@ private:
     /**
      * 市場状況に応じた背景色を設定する。
      *
-     * 上位足、通貨強弱、EMA200条件が揃った場合に背景色を売買方向へ合わせる。
+     * 上位足とEMA200条件が揃った場合に背景色を売買方向へ合わせる。
+     * 通常版M5では通貨強弱の両期間方向一致と順位差4以上を準備・成立の2段階で表示する。
      * 条件を満たさない場合は黒背景を設定する。
      */
     void drawBgColor() {
@@ -354,7 +355,6 @@ private:
         Elliot *elliotCurrent = this.elliotAll.elliotCurrent;
 
         if (this.elliotAll.isBuySell(PERIOD_D1)
-                //&& this.isCurrencyStrengthEntryAllowed(isBuy)
                 && expertAdvisorEma200.isEma200BuySell(elliotHigher2)
                 && expertAdvisorEma200.isEma200BuySell(elliotHigher1)
                 && expertAdvisorEma200.isEma200BuySell(elliotCurrent)
@@ -366,40 +366,57 @@ private:
             }
         }
         
+        if (bgColor != clrBlack
+                && this.elliotAll.marketContext.timeFrame == PERIOD_M5
+                && MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
+            bgColor = this.getM5CurrencyStrengthBackgroundColor(isBuy);
+        }
+
         DrawUtil::setBgColor(bgColor);
         
         //delete expertAdvisorOscillator;
     }
 
     /**
-     * 実行時の通貨強弱が売買方向と一致するか判定する。
+     * 通貨強弱の準備・成立状態に対応するM5背景色を取得する。
      *
-     * フィルター無効時は従来の背景色判定を維持する。フィルター有効時は、
-     * 順位を取得済みで対象M5足が一致し、長中期と中短期の両方が
-     * 売買方向と一致する場合だけtrueを返す。
+     * 両期間が売買方向と一致し、片方だけ順位差4以上なら準備色、
+     * 両方とも4以上なら成立色とする。差0・逆方向・欠損・時刻不一致は黒とする。
+     * エントリーフィルターの有効状態や最低順位差設定には連動しない。
      *
-     * @param fromIsBuy 買い方向の場合true
-     * @return 通貨強弱条件を使用して背景色判定を継続する場合true
+     * @param fromIsBuy 買い方向の場合true。
+     * @return BUYは濃紺系、SELLは暗赤系。未成立の場合は黒。
      */
-    bool isCurrencyStrengthEntryAllowed(bool fromIsBuy) {
-        if (!this.elliotAll.isCurrencyStrengthEntryFilterEnabled) {
-            return true;
-        }
-
+    color getM5CurrencyStrengthBackgroundColor(const bool fromIsBuy) {
         CurrencyStrengthExecutionInfo executionInfo =
             this.elliotAll.currencyStrengthExecutionInfo;
-
-        if (!executionInfo.isAvailable()) {
-            return false;
+        if (executionInfo.targetM5BarTime <= 0
+                || !executionInfo.isExactM5Bar()
+                || !executionInfo.isDirectionAligned(fromIsBuy)) {
+            return clrBlack;
         }
 
-        if (!executionInfo.isExactM5Bar()) {
-            return false;
+        bool isLongMediumReady = MathAbs(executionInfo.getLongMediumRankDifference()) >= 4;
+        bool isMediumShortReady = MathAbs(executionInfo.getMediumShortRankDifference()) >= 4;
+        if (isLongMediumReady && isMediumShortReady) {
+            if (fromIsBuy) {
+                return clrMidnightBlue;
+            }
+
+            return clrMaroon;
         }
 
-        return executionInfo.isDirectionAligned(fromIsBuy);
+        if (isLongMediumReady || isMediumShortReady) {
+            if (fromIsBuy) {
+                return C'12,12,56';
+            }
+
+            return C'64,0,0';
+        }
+
+        return clrBlack;
     }
-    
+
     /*void drawMarketActivityAnalyzer() {
         color fontColor = this.elliotAll.marketActivityAnalyzer.getLevelColor();
         string objectName = "MarketActivityAnalyzerLabel";

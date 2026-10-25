@@ -302,19 +302,11 @@ protected:
         bool isTimeFrameEntryAllowed =
             this.isTimeFrameEntryConditionMatched(timeFrameRejectReason);
 
-        Mtf3In3Ema200DistancePolicy ema200DistancePolicy;
         double closeEma200DiffPips =
             this.elliotCurrent.oscillator.ema200.closeEma200DiffPips;
         this.closeEma200DiffPipsResult = MathAbs(closeEma200DiffPips);
-        this.maxCloseEma200DiffPipsResult =
-            ema200DistancePolicy.getMaxCloseEma200DiffPips(
-                this.marketContext.timeFrame
-            );
-        this.isEma200DistanceWithinResult =
-            ema200DistancePolicy.isCloseEma200DiffPipsWithin(
-                this.marketContext.timeFrame,
-                closeEma200DiffPips
-            );
+        this.maxCloseEma200DiffPipsResult = this.getTimeFrameMaxCloseEma200DiffPips();
+        this.isEma200DistanceWithinResult = this.isTimeFrameEma200DistanceWithin();
 
         if (!this.isEntryWaveResult) {
             this.entryResult = "ELLIOT_LABEL_REJECTED";
@@ -433,6 +425,38 @@ protected:
      */
     virtual bool isTimeFrameEma200DistanceRequired() {
         return true;
+    }
+
+    /**
+     * 現在足のEMA200距離上限を取得する。
+     *
+     * @return 許容距離pips。
+     */
+    virtual double getTimeFrameMaxCloseEma200DiffPips() {
+        Mtf3In3Ema200DistancePolicy policy;
+
+        return policy.getMaxCloseEma200DiffPips(this.marketContext.timeFrame);
+    }
+
+    /**
+     * 現在足の有効なEMA200距離が上限以内か判定する。
+     *
+     * @return 上限と同値を含め、絶対距離が許容範囲内の場合true。
+     */
+    bool isTimeFrameEma200DistanceWithin() {
+        if (this.elliotCurrent == NULL) {
+            return false;
+        }
+
+        double distancePips = this.elliotCurrent.oscillator.ema200.closeEma200DiffPips;
+        double maxDistancePips = this.getTimeFrameMaxCloseEma200DiffPips();
+        if (!MathIsValidNumber(distancePips) || MathAbs(distancePips) == EMPTY_VALUE
+                || !MathIsValidNumber(maxDistancePips) || maxDistancePips == EMPTY_VALUE
+                || maxDistancePips <= 0.0) {
+            return false;
+        }
+
+        return MathAbs(distancePips) <= maxDistancePips;
     }
 
     /**

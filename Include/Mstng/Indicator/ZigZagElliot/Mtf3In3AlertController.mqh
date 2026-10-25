@@ -100,7 +100,8 @@ public:
             this.config.h1H4WaveRestrictionEnabled,
             this.config.m5Mn1AndW1Ema200Required,
             this.config.m5D1ToM5EntryPolicyEnabled,
-            this.config.m5CurrencyStrengthMinimumRankDifference
+            this.config.m5CurrencyStrengthMinimumRankDifference,
+            this.config.m15CurrencyEma200DistanceEnabled
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -545,7 +546,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "1.74";
+            this.databaseRun.programVersion = "1.76";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
@@ -571,6 +572,9 @@ private:
             this.databaseRun.strategyVersion = "MTF3IN3_M15_HIGHER_FE_V18";
             if (!this.config.h1H4WaveRestrictionEnabled) {
                 this.databaseRun.strategyVersion = "MTF3IN3_M15_H4_WAVE_UNRESTRICTED_V20";
+            }
+            if (this.config.m15CurrencyEma200DistanceEnabled) {
+                this.databaseRun.strategyVersion = "MTF3IN3_M15_CURRENCY_EMA_DISTANCE_V25";
             }
         }
         this.databaseRun.analysisVersion =
@@ -646,6 +650,11 @@ private:
                 + DoubleToString(this.config.m15H4MaxFibonacciExpansionPercent, 1);
             inputText += "|m15H1MaxFibonacciExpansionPercent="
                 + DoubleToString(this.config.m15H1MaxFibonacciExpansionPercent, 1);
+            inputText += "|m15CurrencyEma200DistanceEnabled="
+                + (string)this.config.m15CurrencyEma200DistanceEnabled;
+            if (this.config.m15CurrencyEma200DistanceEnabled) {
+                inputText += "|m15Ema200DistancePolicy=QUOTE_JPY_50_OTHER_25_PIPS_BEFORE_COUNT";
+            }
         }
         inputText += "|currencyStrengthEnabled="
             + (string)this.config.currencyStrengthEnabled;

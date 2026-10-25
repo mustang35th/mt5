@@ -90,6 +90,9 @@ public:
     /** M15エントリーで使用するH1のFE上限（%）。0は制限なし。 */
     double m15H1MaxFibonacciExpansionPercent;
 
+    /** 通常版M15でJPY建て50pips・その他25pipsのEMA200距離上限を使用する場合true。 */
+    bool m15CurrencyEma200DistanceEnabled;
+
     /** H1エントリーで使用するW1確認モード。 */
     H1W1ConfirmationMode h1W1ConfirmationMode;
 
@@ -159,6 +162,7 @@ public:
         this.h1DisplayWaveEntryLimitEnabled = false;
         this.m15H4MaxFibonacciExpansionPercent = 161.8;
         this.m15H1MaxFibonacciExpansionPercent = 161.8;
+        this.m15CurrencyEma200DistanceEnabled = false;
         this.applyH1EntryPolicy();
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;

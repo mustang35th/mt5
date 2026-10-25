@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.01"
+#property version   "1.03"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -107,8 +107,8 @@ input(name="通常チャートの再読込間隔（秒）") int refreshSeconds =
 /** サブ画面の高さ。0は高さを指定せず、MT5側のサイズを使用する。 */
 input(name="サブ画面の高さ（px・0＝指定なし）") int subPanelHeight = 120;
 
-/** 長中期と中短期の同方向・順位差4以上をメインチャート下端へ表示する。同時表示時は最上段を優先する。 */
-input(name="メインチャートにAND帯を表示") bool rankAndRibbonVisible = true;
+/** H1未満は両期間同方向の準備・成立、H1以上は長中期の順位差4以上を下端へ表示する。同時表示時は最上段を優先する。 */
+input(name="メインチャートに強弱帯を表示") bool rankAndRibbonVisible = true;
 
 input group "02. データ参照"
 

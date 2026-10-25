@@ -27,11 +27,13 @@ public:
         double fromH4MaxFibonacciExpansionPercent = 0.0,
         double fromH1MaxFibonacciExpansionPercent = 0.0,
         bool fromRequireMn1AndW1Ema200 = false,
-        bool fromH4WaveRestrictionEnabled = true
+        bool fromH4WaveRestrictionEnabled = true,
+        bool fromCurrencyEma200DistanceEnabled = false
     ) : ExpertAdvisorMtf3In3M15(
         fromMarketContext, false, true,
         fromH4MaxFibonacciExpansionPercent, fromH1MaxFibonacciExpansionPercent,
-        fromRequireMn1AndW1Ema200, fromH4WaveRestrictionEnabled
+        fromRequireMn1AndW1Ema200, fromH4WaveRestrictionEnabled,
+        fromCurrencyEma200DistanceEnabled
     ) {
         this.judgmentFixture = fromJudgment;
     }
@@ -136,10 +138,15 @@ void setEma200Direction(Elliot *fromElliot, const bool fromIsBuy) {
  *
  * @param fromIsBuy BUY方向の場合true。
  * @param fromEntryWave H4、H1、M15の最新波動番号。
+ * @param fromSymbolName 判定対象シンボル。
  * @return 呼び出し側が所有する分析結果。生成失敗時NULL。
  */
-ElliotAll *createAnalysis(const bool fromIsBuy, const int fromEntryWave = 5) {
-    ElliotAll *analysis = new ElliotAll("EURUSD", PERIOD_M15);
+ElliotAll *createAnalysis(
+    const bool fromIsBuy,
+    const int fromEntryWave = 5,
+    const string fromSymbolName = "EURUSD"
+) {
+    ElliotAll *analysis = new ElliotAll(fromSymbolName, PERIOD_M15);
     if (analysis == NULL) {
         return NULL;
     }
@@ -148,7 +155,7 @@ ElliotAll *createAnalysis(const bool fromIsBuy, const int fromEntryWave = 5) {
         PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15
     };
     for (int i = 0; i < ArraySize(timeFrames); i++) {
-        Elliot *elliot = new Elliot("EURUSD", timeFrames[i]);
+        Elliot *elliot = new Elliot(fromSymbolName, timeFrames[i]);
         if (elliot == NULL || !analysis.elliotList.Add(elliot)) {
             if (elliot != NULL) {
                 delete elliot;
@@ -1073,10 +1080,125 @@ void emitMailBodyFixtures() {
 }
 
 /**
+ * 通貨別境界と不正値からの復帰で、初回回数を消費せずENTRYできることを検証する。
+ * Factory経由で有効化し、BUY・SELLの絶対距離と保存上限も確認する。
+ */
+void validateCurrencyDistanceWaitAndRetry() {
+    string symbols[] = { "USDJPY", "EURJPY", "EURUSD", "GBPUSD" };
+    double limits[] = { 50.0, 50.0, 25.0, 25.0 };
+    for (int i = 0; i < ArraySize(symbols); i++) {
+        for (int j = 0; j < 2; j++) {
+            bool isBuy = j == 0;
+            string caseName = "currency distance " + symbols[i] + " buy=" + (string)isBuy;
+            ElliotAll *analysis = createAnalysis(isBuy, 1, symbols[i]);
+            if (analysis == NULL) {
+                assertCondition(caseName + " fixture", false);
+                continue;
+            }
+
+            MarketContext context(symbols[i], PERIOD_M15);
+            SignalCount signalCount(context);
+            ExpertAdvisorMTF_3in3 *expertAdvisor = ExpertAdvisorMtf3In3Factory::create(
+                context, false,
+                Mtf3In3H1Policy::getW1ConfirmationMode(),
+                Mtf3In3H1Policy::getDirectionAlignmentMode(),
+                Mtf3In3H1Policy::getEma200ConfirmationMode(),
+                false, 0.0, 0.0, true, false, false, false, 4, true
+            );
+            if (expertAdvisor == NULL) {
+                assertCondition(caseName + " strategy", false);
+                delete analysis;
+                continue;
+            }
+
+            double sign = 1.0;
+            if (!isBuy) {
+                sign = -1.0;
+            }
+
+            Ema200 *ema200 = GetPointer(analysis.elliotCurrent.oscillator.ema200);
+            for (int k = 0; k < 5; k++) {
+                ema200.close1 = 1.1;
+                ema200.ema200Shift1 = 1.0;
+                ema200.closeEma200DiffPips = sign * limits[i];
+                if (k == 0) {
+                    ema200.closeEma200DiffPips = sign * (limits[i] + 0.000001);
+                } else if (k == 1) {
+                    ema200.closeEma200DiffPips = EMPTY_VALUE;
+                } else if (k == 2) {
+                    ema200.close1 = EMPTY_VALUE;
+                } else if (k == 3) {
+                    ema200.ema200Shift1 = 0.0;
+                } else {
+                    ema200.closeEma200DiffPips = MathArcsin(2.0);
+                }
+
+                expertAdvisor.analyze(analysis, GetPointer(signalCount));
+                Mtf3In3AlertResult waiting = expertAdvisor.getAlertResult();
+                assertCondition(caseName + " wait " + IntegerToString(k),
+                    !waiting.isJudge && !waiting.isEntry && !waiting.isSendMail
+                    && !waiting.isAlert && waiting.signalCount == 0);
+            }
+
+            ema200.close1 = 1.1;
+            ema200.ema200Shift1 = 1.0;
+            ema200.closeEma200DiffPips = sign * limits[i];
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            Mtf3In3AlertResult result = expertAdvisor.getAlertResult();
+            assertCondition(caseName + " boundary first ENTRY",
+                result.isEntry && result.isAlert && result.signalCount == 1);
+            assertCondition(caseName + " saved distance",
+                result.closeEma200DiffPips == limits[i]
+                && result.maxCloseEma200DiffPips == limits[i] && result.isEma200DistanceWithin);
+            expertAdvisor.analyze(analysis, GetPointer(signalCount));
+            assertCondition(caseName + " no repeat", !expertAdvisor.isEntry && !expertAdvisor.isAlert);
+            delete expertAdvisor;
+            delete analysis;
+        }
+    }
+}
+
+/**
+ * 方向補正時は採用分析の距離を使い、元分析と混在しないことを検証する。
+ */
+void validateCorrectedCurrencyDistance() {
+    MarketContext context("EURUSD", PERIOD_M15);
+    SignalCount signalCount(context);
+    ElliotAll *original = createAnalysis(true, 1);
+    ElliotAll *selected = createAnalysis(true, 1);
+    if (original == NULL || selected == NULL) {
+        assertCondition("currency corrected fixture", false);
+        delete original;
+        delete selected;
+        return;
+    }
+
+    setDirection(original.getElliot(PERIOD_H1), false);
+    original.getElliot(PERIOD_H1).getLatestWave().isUptrend = false;
+    selected.getElliot(PERIOD_H1).oscillator.isBuy = false;
+    original.elliotCurrent.oscillator.ema200.closeEma200DiffPips = 10.0;
+    selected.elliotCurrent.oscillator.ema200.close1 = 1.1;
+    selected.elliotCurrent.oscillator.ema200.ema200Shift1 = 1.0;
+    selected.elliotCurrent.oscillator.ema200.closeEma200DiffPips = 25.000001;
+    M15CorrectionFixtureExpertAdvisor expertAdvisor(
+        context, selected, 0.0, 0.0, true, false, true);
+    expertAdvisor.analyze(original, GetPointer(signalCount));
+    assertCondition("currency corrected selected rejected", !expertAdvisor.isEntry);
+    original.elliotCurrent.oscillator.ema200.closeEma200DiffPips = 1000.0;
+    selected.elliotCurrent.oscillator.ema200.closeEma200DiffPips = 25.0;
+    expertAdvisor.analyze(original, GetPointer(signalCount));
+    assertFirstEntry("currency corrected selected restored", expertAdvisor);
+    delete original;
+    delete selected;
+}
+
+/**
  * H1条件にM15確定条件を加えた公開ENTRY経路と送信せずメール生成を検証する。
  */
 void OnStart() {
     gFailureCount = 0;
+    validateCurrencyDistanceWaitAndRetry();
+    validateCorrectedCurrencyDistance();
     validateAcceptedCases();
     validateH1GmmaIgnored();
     validateHigherConditionWhileWaiting();

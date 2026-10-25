@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.74"
+#property version   "1.76"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -186,6 +186,7 @@ int OnInit() {
     config.h1DirectionCorrectionEnabled = h1DirectionCorrectionEnabled;
     config.m15H4MaxFibonacciExpansionPercent = m15H4MaxFibonacciExpansionPercent;
     config.m15H1MaxFibonacciExpansionPercent = m15H1MaxFibonacciExpansionPercent;
+    config.m15CurrencyEma200DistanceEnabled = _Period == PERIOD_M15;
     config.h1DisplayWaveEntryLimitEnabled =
         h1DisplayWaveEntryLimitEnabled;
     config.h1Mn1AndW1Ema200Required =

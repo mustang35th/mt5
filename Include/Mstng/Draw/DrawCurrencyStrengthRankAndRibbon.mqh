@@ -16,7 +16,7 @@
 #include <Mstng\Strength\CurrencyStrengthRankAndSignal.mqh>
 
 /**
- * 長中期と中短期のAND成立区間をメインチャート下端へ描画する。
+ * H1未満は長中期と中短期の準備・成立、H1以上は長中期の成立区間を下端へ描画する。
  * 既存の順位履歴線と同じチャート足頭のM5順位を使用する。
  */
 class DrawCurrencyStrengthRankAndRibbon {
@@ -47,11 +47,11 @@ public:
     }
 
     /**
-     * 表示中のチャート足に対応するAND帯を描画する。
+     * 表示中のチャート足に対応する通貨強弱の準備・成立帯を描画する。
      *
      * @param fromPoints M5時刻の昇順で保持した順位履歴。
      * @param fromTargetM5BarTime 使用可能なM5時刻の上限。
-     * @param fromMinimumDifference 両期間に必要な順位差の絶対値。
+     * @param fromMinimumDifference 準備・成立の基準となる順位差の絶対値。
      * @param fromForce 履歴更新時など、同じ表示範囲でも描き直す場合true。
      * @return 描画または変更なしの確認に成功した場合true。
      */
@@ -130,7 +130,17 @@ public:
             return false;
         }
 
-        this.canvas.TextOut(8, 1, "長中期 AND 中短期", ColorToARGB(foregroundColor));
+        string periodTitle = "長中期・中短期 準備/成立";
+        string tooltip = "両期間が同方向：片方だけ順位差" + (string)fromMinimumDifference
+            + "以上は暗い準備色、両方は明るい成立色。";
+        if (this.isLongMediumOnly()) {
+            periodTitle = "長中期";
+            tooltip = "長中期：順位差" + (string)fromMinimumDifference + "以上。";
+        }
+
+        this.canvas.TextOut(8, 1, periodTitle, ColorToARGB(foregroundColor));
+        ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP,
+            tooltip + "帯の左端の白色は確認できた開始。準備・成立の切り替え時には追加しません。");
         this.renderBars(fromPoints, barTimes, fromTargetM5BarTime, fromMinimumDifference,
             PeriodSeconds(chartPeriod), referencePrice, barWidth, chartWidth);
         this.canvas.Update(false);
@@ -165,7 +175,7 @@ private:
     /** このインスタンスのCanvasオブジェクト名。 */
     string objectName;
 
-    /** AND帯用のCanvas。 */
+    /** 通貨強弱帯用のCanvas。 */
     CCanvas canvas;
 
     /** Canvasを生成済みの場合true。 */
@@ -176,6 +186,15 @@ private:
 
     /** タイトルと帯を含む描画高さ。 */
     int canvasHeight;
+
+    /**
+     * H1以上のチャートでは長中期だけで帯を判定する。
+     *
+     * @return チャートの時間足がH1以上の場合true。
+     */
+    bool isLongMediumOnly() {
+        return PeriodSeconds(ChartPeriod(this.chartId)) >= PeriodSeconds(PERIOD_H1);
+    }
 
     /**
      * メインチャート下端にCanvasを作成または再配置する。
@@ -201,8 +220,6 @@ private:
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_SELECTED, false);
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_HIDDEN, true);
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_ZORDER, 0);
-            ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP,
-                "長中期・中短期が同方向で順位差4以上。帯の左端の白色は確認できた成立開始。");
         } else if (this.canvas.Width() != fromWidth
                 && !this.canvas.Resize(fromWidth, this.canvasHeight)) {
             return false;
@@ -212,7 +229,8 @@ private:
     }
 
     /**
-     * 可視足を古い順に判定し、同じ方向の連続区間をまとめる。
+     * 可視足を古い順に判定し、同じ準備・成立状態の連続区間をまとめる。
+     * 色が変わっても同方向なら開始の白色を追加しない。
      */
     void renderBars(
         const CurrencyStrengthPairRankPoint &fromPoints[],
@@ -224,7 +242,7 @@ private:
         const int fromBarWidth,
         const int fromCanvasWidth
     ) {
-        int runDirection = 0;
+        int runState = 0;
         int runLeft = 0;
         int runRight = 0;
         int runStartX = -1;
@@ -235,9 +253,16 @@ private:
         for (int i = ArraySize(fromBarTimes) - 1; i >= 0; i--) {
             int pointX = 0;
             int ignoredY = 0;
+            int state = 0;
+            bool known = this.getSignalState(fromPoints, fromBarTimes[i],
+                fromTargetM5BarTime, fromMinimumDifference, state);
             int direction = 0;
-            bool known = this.getDirection(fromPoints, fromBarTimes[i],
-                fromTargetM5BarTime, fromMinimumDifference, direction);
+            if (state > 0) {
+                direction = 1;
+            } else if (state < 0) {
+                direction = -1;
+            }
+
             bool positionKnown = ChartTimePriceToXY(this.chartId, 0, fromBarTimes[i],
                 fromReferencePrice, pointX, ignoredY);
             int left = pointX - fromBarWidth / 2;
@@ -248,15 +273,15 @@ private:
                 previousKnown = false;
             }
 
-            if (runDirection != 0 && (!known || !positionKnown || !timeContinuous
-                    || direction != runDirection || left > runRight + 1)) {
-                this.drawRun(runDirection, runLeft, runRight, runStartX, fromCanvasWidth);
-                runDirection = 0;
+            if (runState != 0 && (!known || !positionKnown || !timeContinuous
+                    || state != runState || left > runRight + 1)) {
+                this.drawRun(runState, runLeft, runRight, runStartX, fromCanvasWidth);
+                runState = 0;
             }
 
-            if (known && positionKnown && direction != 0) {
-                if (runDirection == 0) {
-                    runDirection = direction;
+            if (known && positionKnown && state != 0) {
+                if (runState == 0) {
+                    runState = state;
                     runLeft = left;
                     runStartX = -1;
                     if (previousKnown && previousDirection != direction) {
@@ -272,22 +297,22 @@ private:
             previousTime = fromBarTimes[i];
         }
 
-        if (runDirection != 0) {
-            this.drawRun(runDirection, runLeft, runRight, runStartX, fromCanvasWidth);
+        if (runState != 0) {
+            this.drawRun(runState, runLeft, runRight, runStartX, fromCanvasWidth);
         }
     }
 
     /**
-     * 足頭に一致する有効なM5順位から方向を取得する。欠損はfalse。
+     * 足頭に一致する有効なM5順位から準備・成立状態を取得する。欠損はfalse。
      */
-    bool getDirection(
+    bool getSignalState(
         const CurrencyStrengthPairRankPoint &fromPoints[],
         const datetime fromBarTime,
         const datetime fromTargetM5BarTime,
         const int fromMinimumDifference,
-        int &fromDirection
+        int &fromState
     ) {
-        fromDirection = 0;
+        fromState = 0;
         int m5Seconds = PeriodSeconds(PERIOD_M5);
         datetime pointTime = (datetime)((long)fromBarTime - (long)fromBarTime % m5Seconds);
         if (pointTime <= 0 || pointTime > fromTargetM5BarTime) {
@@ -300,14 +325,21 @@ private:
             int middle = left + (right - left) / 2;
             if (fromPoints[middle].m5BarTime == pointTime) {
                 CurrencyStrengthPairRankPoint point = fromPoints[middle];
+                bool longMediumOnly = this.isLongMediumOnly();
                 if (point.baseLongMediumTermAverageRank < 1 || point.baseLongMediumTermAverageRank > 8
-                        || point.quoteLongMediumTermAverageRank < 1 || point.quoteLongMediumTermAverageRank > 8
-                        || point.baseMediumShortTermAverageRank < 1 || point.baseMediumShortTermAverageRank > 8
-                        || point.quoteMediumShortTermAverageRank < 1 || point.quoteMediumShortTermAverageRank > 8) {
+                        || point.quoteLongMediumTermAverageRank < 1 || point.quoteLongMediumTermAverageRank > 8) {
                     return false;
                 }
 
-                fromDirection = CurrencyStrengthRankAndSignal::getDirection(point, fromMinimumDifference);
+                if (!longMediumOnly && (point.baseMediumShortTermAverageRank < 1
+                        || point.baseMediumShortTermAverageRank > 8
+                        || point.quoteMediumShortTermAverageRank < 1
+                        || point.quoteMediumShortTermAverageRank > 8)) {
+                    return false;
+                }
+
+                fromState = CurrencyStrengthRankAndSignal::getRibbonState(
+                    point, fromMinimumDifference, longMediumOnly);
 
                 return true;
             }
@@ -323,9 +355,9 @@ private:
     }
 
     /**
-     * 1つの成立区間を描画し、確認できた成立開始の左端だけ白くする。
+     * 同じ準備・成立色の区間を描画し、確認できた帯の開始の左端だけ白くする。
      */
-    void drawRun(const int fromDirection, const int fromLeft, const int fromRight,
+    void drawRun(const int fromState, const int fromLeft, const int fromRight,
             const int fromStartX, const int fromCanvasWidth) {
         int left = (int)MathMax(0, fromLeft);
         int right = (int)MathMin(fromCanvasWidth - 1, fromRight);
@@ -335,9 +367,19 @@ private:
 
         color signalColor = clrAqua;
         string signalText = "BUY";
-        if (fromDirection < 0) {
+        if (fromState < 0) {
             signalColor = clrHotPink;
             signalText = "SELL";
+        }
+
+        color textColor = clrBlack;
+        if (MathAbs(fromState) == 1) {
+            signalColor = clrTeal;
+            if (fromState < 0) {
+                signalColor = C'128,50,90';
+            }
+
+            textColor = clrWhite;
         }
 
         uint drawColor = ColorToARGB(signalColor);
@@ -351,7 +393,7 @@ private:
         int textWidth = this.canvas.TextWidth(signalText);
         if (right - left >= textWidth + 18) {
             this.canvas.TextOut(left + (right - left - textWidth) / 2, 19,
-                signalText, ColorToARGB(clrBlack));
+                signalText, ColorToARGB(textColor));
         }
     }
 };
