@@ -315,7 +315,7 @@ private:
      * 市場状況に応じた背景色を設定する。
      *
      * 上位足とEMA200条件が揃った場合に背景色を売買方向へ合わせる。
-     * 通常版M5では通貨強弱の両期間方向一致と順位差4以上を準備・成立の2段階で表示する。
+     * 通常版M5では通貨強弱とGMMAを組み合わせ、準備・成立の2段階で表示する。
      * 条件を満たさない場合は黒背景を設定する。
      */
     void drawBgColor() {
@@ -369,7 +369,7 @@ private:
         if (bgColor != clrBlack
                 && this.elliotAll.marketContext.timeFrame == PERIOD_M5
                 && MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
-            bgColor = this.getM5CurrencyStrengthBackgroundColor(isBuy);
+            bgColor = this.getM5BackgroundColor(isBuy);
         }
 
         DrawUtil::setBgColor(bgColor);
@@ -378,16 +378,18 @@ private:
     }
 
     /**
-     * 通貨強弱の準備・成立状態に対応するM5背景色を取得する。
+     * 通貨強弱とGMMAの準備・成立状態に対応するM5背景色を取得する。
      *
-     * 両期間が売買方向と一致し、片方だけ順位差4以上なら準備色、
-     * 両方とも4以上なら成立色とする。差0・逆方向・欠損・時刻不一致は黒とする。
+     * 強弱の両期間とGMMAトレンド・クロスが売買方向と一致し、
+     * 少なくとも片方の順位差が4以上なら準備色とする。
+     * 両方の順位差が4以上かつGMMA両カウントの絶対値が2以上なら成立色とする。
+     * 差0・GMMAの0・逆方向・欠損・時刻不一致は黒とする。
      * エントリーフィルターの有効状態や最低順位差設定には連動しない。
      *
      * @param fromIsBuy 買い方向の場合true。
      * @return BUYは濃紺系、SELLは暗赤系。未成立の場合は黒。
      */
-    color getM5CurrencyStrengthBackgroundColor(const bool fromIsBuy) {
+    color getM5BackgroundColor(const bool fromIsBuy) {
         CurrencyStrengthExecutionInfo executionInfo =
             this.elliotAll.currencyStrengthExecutionInfo;
         if (executionInfo.targetM5BarTime <= 0
@@ -396,9 +398,22 @@ private:
             return clrBlack;
         }
 
+        int gmmaTrendCount = this.elliotAll.elliotCurrent.oscillator.gmmaTrendCount;
+        int gmmaCrossCount = this.elliotAll.elliotCurrent.oscillator.gmmaCrossCount;
+        bool isGmmaAligned = gmmaTrendCount > 0 && gmmaCrossCount > 0;
+        bool isGmmaReady = gmmaTrendCount >= 2 && gmmaCrossCount >= 2;
+        if (!fromIsBuy) {
+            isGmmaAligned = gmmaTrendCount < 0 && gmmaCrossCount < 0;
+            isGmmaReady = gmmaTrendCount <= -2 && gmmaCrossCount <= -2;
+        }
+
+        if (!isGmmaAligned) {
+            return clrBlack;
+        }
+
         bool isLongMediumReady = MathAbs(executionInfo.getLongMediumRankDifference()) >= 4;
         bool isMediumShortReady = MathAbs(executionInfo.getMediumShortRankDifference()) >= 4;
-        if (isLongMediumReady && isMediumShortReady) {
+        if (isLongMediumReady && isMediumShortReady && isGmmaReady) {
             if (fromIsBuy) {
                 return clrMidnightBlue;
             }
