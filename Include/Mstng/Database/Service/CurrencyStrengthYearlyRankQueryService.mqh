@@ -510,6 +510,7 @@ public:
     /**
      * 指定期間の完全集計から通貨ペアの順位を時刻昇順で取得する。
      *
+     * 同一年の検索は結果配列へ直接取得し、年別作業配列からのコピーを省く。
      * 年別分割を使用している場合は、開始年から終了年までのDBを
      * 読み取り専用で順番に参照する。存在しない年のDBはスキップする。
      *
@@ -566,7 +567,7 @@ public:
 
         bool databaseExists = false;
 
-        if (!this.splitByYear) {
+        if (!this.splitByYear || startYear == endYear) {
             if (!this.openFor(fromEndM5BarTime, databaseExists)) {
                 return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
             }
@@ -587,6 +588,8 @@ public:
                 fromMaximumPointCount,
                 fromPoints
             )) {
+                ArrayResize(fromPoints, 0);
+
                 return CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
             }
 
@@ -939,7 +942,9 @@ private:
 
     /**
      * LIVEとTESTERの時系列順位をM5バー時刻単位で統合する。
-     * 統合先配列は両配列の合計件数と取得上限の小さい方まで確保する。
+     * 片側のみの場合は上限確認後に配列を引き渡し、統合先の確保と全件コピーを省く。
+     * 引き渡した側の入力配列は空になるため、呼び出し元では統合後に再利用しない。
+     * 両側に履歴がある場合は、合計件数と取得上限の小さい方まで統合先配列を確保する。
      *
      * @param fromLivePoints LIVE順位配列。
      * @param fromTesterPoints TESTER順位配列。
@@ -963,6 +968,38 @@ private:
         int maximumMergedCount = liveCount + testerCount;
 
         if (maximumMergedCount == 0) {
+            return true;
+        }
+
+        if (liveCount == 0 || testerCount == 0) {
+            if (maximumMergedCount > fromMaximumPointCount) {
+                this.logPointLimitExceeded(
+                    fromStartM5BarTime,
+                    fromEndM5BarTime,
+                    fromMaximumPointCount
+                );
+
+                return false;
+            }
+
+            ResetLastError();
+            bool isSwapped = false;
+
+            if (liveCount > 0) {
+                isSwapped = ArraySwap(fromDestination, fromLivePoints);
+            } else {
+                isSwapped = ArraySwap(fromDestination, fromTesterPoints);
+            }
+
+            if (!isSwapped) {
+                this.logger.error(
+                    __FUNCTION__,
+                    StringFormat("ArraySwap failed. error=%d", GetLastError())
+                );
+
+                return false;
+            }
+
             return true;
         }
 
