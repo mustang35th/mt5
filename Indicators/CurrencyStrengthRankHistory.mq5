@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.13"
+#property version   "1.16"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -54,6 +54,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
+#include <Mstng\Draw\ChartRedrawRequest.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthLatestRankLabels.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankAndRibbon.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankPeriodLabel.mqh>
@@ -140,6 +141,9 @@ double gBaseRankFillBuffer[];
 
 /** 順位差を強調する塗り領域の決済通貨側の境界。 */
 double gQuoteRankFillBuffer[];
+
+/** このインスタンスのラベルと帯の再描画要求をイベントごとにまとめる。 */
+ChartRedrawRequest gChartRedrawRequest;
 
 Logger gLogger;
 CurrencyStrengthYearlyRankQueryService *gRankQueryService = NULL;
@@ -291,7 +295,8 @@ int OnInit() {
     );
     gRankPeriodLabelDraw = new DrawCurrencyStrengthRankPeriodLabel(
         ChartID(),
-        drawObjectSuffix
+        drawObjectSuffix,
+        GetPointer(gChartRedrawRequest)
     );
 
     if (gRankPeriodLabelDraw == NULL) {
@@ -304,7 +309,8 @@ int OnInit() {
 
     gLatestRankLabelsDraw = new DrawCurrencyStrengthLatestRankLabels(
         ChartID(),
-        drawObjectSuffix
+        drawObjectSuffix,
+        GetPointer(gChartRedrawRequest)
     );
 
     if (gLatestRankLabelsDraw == NULL) {
@@ -319,7 +325,8 @@ int OnInit() {
 
     gRankSignalLabelDraw = new DrawCurrencyStrengthRankSignalLabel(
         ChartID(),
-        drawObjectSuffix
+        drawObjectSuffix,
+        GetPointer(gChartRedrawRequest)
     );
 
     if (gRankSignalLabelDraw == NULL) {
@@ -336,7 +343,8 @@ int OnInit() {
 
     gRankSourceLabelDraw = new DrawCurrencyStrengthRankSourceLabel(
         ChartID(),
-        drawObjectSuffix
+        drawObjectSuffix,
+        GetPointer(gChartRedrawRequest)
     );
 
     if (gRankSourceLabelDraw == NULL) {
@@ -356,7 +364,8 @@ int OnInit() {
     if (rankAndRibbonVisible) {
         gRankAndRibbonDraw = new DrawCurrencyStrengthRankAndRibbon(
             ChartID(),
-            drawObjectSuffix
+            drawObjectSuffix,
+            GetPointer(gChartRedrawRequest)
         );
 
         if (gRankAndRibbonDraw == NULL) {
@@ -433,6 +442,7 @@ void OnDeinit(const int reason) {
     gRankPeriodLabelReady = false;
     gRankLabelObjectsPrepared = false;
     gLatestRankLabelsDirty = false;
+    gChartRedrawRequest.flush(ChartID());
 }
 
 /**
@@ -457,6 +467,8 @@ int OnCalculate(
     }
 
     if (!gRankLabelObjectsPrepared) {
+        gChartRedrawRequest.flush(ChartID());
+
         return previousCalculated;
     }
 
@@ -465,6 +477,8 @@ int OnCalculate(
     }
 
     if (ratesTotal <= 0 || gRankQueryService == NULL) {
+        gChartRedrawRequest.flush(ChartID());
+
         return 0;
     }
 
@@ -473,6 +487,8 @@ int OnCalculate(
     datetime targetM5BarTime = getTargetM5BarTime(time[0]);
 
     if (targetM5BarTime <= 0) {
+        gChartRedrawRequest.flush(ChartID());
+
         return previousCalculated;
     }
 
@@ -504,6 +520,8 @@ int OnCalculate(
         if (gLatestRankLabelsDirty) {
             drawCachedLatestRankLabels();
         }
+
+        gChartRedrawRequest.flush(ChartID());
 
         return ratesTotal;
     }
@@ -544,8 +562,9 @@ int OnCalculate(
 
     gLastDisplayStartM5BarTime = displayStartM5BarTime;
     gLastCalculatedBarTime = time[0];
-    drawLatestRankLabels(ratesTotal, time);
+    drawLatestRankLabels(ratesTotal, time, displayStartM5BarTime);
     drawRankAndRibbon(fullRefresh || cacheChanged || displayRangeChanged);
+    gChartRedrawRequest.flush(ChartID());
 
     return ratesTotal;
 }
@@ -560,6 +579,7 @@ void OnTimer() {
     }
 
     drawRankAndRibbon();
+    gChartRedrawRequest.flush(ChartID());
 }
 
 /**
@@ -585,6 +605,8 @@ void OnChartEvent(
     }
 
     if (!gRankLabelObjectsPrepared) {
+        gChartRedrawRequest.flush(ChartID());
+
         return;
     }
 
@@ -592,6 +614,7 @@ void OnChartEvent(
     gLatestRankLabelsDirty = true;
     drawCachedLatestRankLabels();
     drawRankAndRibbon();
+    gChartRedrawRequest.flush(ChartID());
 }
 
 /**
@@ -851,6 +874,7 @@ bool clearStaleRankLabelObjects() {
     }
 
     bool isDeleted = true;
+    gChartRedrawRequest.request();
 
     if (ObjectsDeleteAll(
         ChartID(),
@@ -907,8 +931,6 @@ bool clearStaleRankLabelObjects() {
         return false;
     }
 
-    ChartRedraw(ChartID());
-
     return true;
 }
 
@@ -942,13 +964,16 @@ bool drawRankPeriodLabel() {
 
 /**
  * 最新順位線の右側へ順位と通貨名を描画する。
+ * 表示開始時刻より古い足に達したら、最新順位の探索を終了する。
  *
  * @param fromRatesTotal チャートのバー総数。
  * @param fromTime チャートバー時刻配列。
+ * @param fromDisplayStartM5BarTime M5境界に揃えた表示開始時刻。
  */
 void drawLatestRankLabels(
     const int fromRatesTotal,
-    const datetime &fromTime[]
+    const datetime &fromTime[],
+    const datetime fromDisplayStartM5BarTime
 ) {
     gLatestRankBarTime = 0;
     gLatestBaseRank = 0;
@@ -959,6 +984,10 @@ void drawLatestRankLabels(
 
     if (ArraySize(gRankPoints) > 0) {
         for (int i = 0; i < fromRatesTotal; i++) {
+            if (fromTime[i] < fromDisplayStartM5BarTime) {
+                break;
+            }
+
             if (isActualRankBufferValue(gBaseActualRankBuffer[i])
                     && isActualRankBufferValue(gQuoteActualRankBuffer[i])) {
                 latestBufferIndex = i;

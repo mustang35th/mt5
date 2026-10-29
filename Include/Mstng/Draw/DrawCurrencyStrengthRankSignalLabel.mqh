@@ -11,6 +11,7 @@
 #define MSTNG_DRAW_CURRENCY_STRENGTH_RANK_SIGNAL_LABEL_MQH
 
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\ChartRedrawRequest.mqh>
 
 /**
  * 通貨強弱順位差による売買方向をサブパネル右上へ描画する。
@@ -22,12 +23,15 @@ public:
      *
      * @param fromChartId 描画対象チャートID。
      * @param fromObjectSuffix オブジェクト名を一意にする接尾辞。
+     * @param fromRedrawRequest 再描画要求の集約先。NULLの場合は従来どおり再描画する。
      */
     DrawCurrencyStrengthRankSignalLabel(
         const long fromChartId,
-        const string fromObjectSuffix
+        const string fromObjectSuffix,
+        ChartRedrawRequest *fromRedrawRequest = NULL
     ) {
         this.chartId = fromChartId;
+        this.redrawRequest = fromRedrawRequest;
         this.objectName = Constant::PREFIX_FIXED
             + "CurrencyStrengthRankSignal_"
             + fromObjectSuffix;
@@ -66,6 +70,10 @@ public:
                 && this.lastText == fromText
                 && this.lastColor == fromColor) {
             return true;
+        }
+
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
         }
 
         int objectWindow = ObjectFind(this.chartId, this.objectName);
@@ -129,7 +137,10 @@ public:
         this.lastSubWindow = fromSubWindow;
         this.lastText = fromText;
         this.lastColor = fromColor;
-        ChartRedraw(this.chartId);
+
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
 
         return true;
     }
@@ -138,17 +149,27 @@ public:
      * 売買方向ラベルを削除する。
      */
     void clear() {
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
+        }
+
         ObjectDelete(this.chartId, this.objectName);
         this.created = false;
         this.lastSubWindow = -1;
         this.lastText = "";
         this.lastColor = clrNONE;
-        ChartRedraw(this.chartId);
+
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
     }
 
 private:
     /** 描画対象チャートID。 */
     long chartId;
+
+    /** 呼び出し元が所有する再描画要求の集約先。 */
+    ChartRedrawRequest *redrawRequest;
 
     /** 売買方向ラベルのオブジェクト名。 */
     string objectName;

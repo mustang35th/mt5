@@ -12,6 +12,7 @@
 
 #include <Canvas\Canvas.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\ChartRedrawRequest.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankAndSignal.mqh>
 
@@ -26,12 +27,15 @@ public:
      *
      * @param fromChartId 描画対象チャートID。
      * @param fromObjectSuffix インスタンス識別子。
+     * @param fromRedrawRequest 再描画要求の集約先。NULLの場合は従来どおり即時に要求する。
      */
     DrawCurrencyStrengthRankAndRibbon(
         const long fromChartId,
-        const string fromObjectSuffix
+        const string fromObjectSuffix,
+        ChartRedrawRequest *fromRedrawRequest = NULL
     ) {
         this.chartId = fromChartId;
+        this.redrawRequest = fromRedrawRequest;
         this.objectName = Constant::PREFIX_FIXED
             + "CurrencyStrengthRankAndRibbon_" + fromObjectSuffix;
         this.created = false;
@@ -144,11 +148,30 @@ public:
         this.canvas.TextOut(8, 1, periodTitle, ColorToARGB(foregroundColor));
         ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP,
             tooltip + "帯の左端の白色は確認できた開始。準備・成立の切り替え時には追加しません。");
+
+        if (!this.canvas.FontSet("MS Gothic", -80)) {
+            this.clear();
+
+            return false;
+        }
+
+        int buyTextWidth = this.canvas.TextWidth("BUY");
+        int sellTextWidth = this.canvas.TextWidth("SELL");
+        if (buyTextWidth <= 0 || sellTextWidth <= 0) {
+            this.clear();
+
+            return false;
+        }
+
         this.renderBars(fromPoints, barTimes, fromTargetM5BarTime, fromMinimumDifference,
-            periodSeconds, longMediumOnly, newestX, barWidth, chartWidth);
+            periodSeconds, longMediumOnly, newestX, barWidth, chartWidth,
+            buyTextWidth, sellTextWidth);
         this.canvas.Update(false);
         this.lastViewKey = viewKey;
-        ChartRedraw(this.chartId);
+
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
 
         return true;
     }
@@ -173,13 +196,20 @@ public:
         this.created = false;
         this.lastViewKey = "";
         if (hadCanvas) {
-            ChartRedraw(this.chartId);
+            if (this.redrawRequest != NULL) {
+                this.redrawRequest.request();
+            } else {
+                ChartRedraw(this.chartId);
+            }
         }
     }
 
 private:
     /** 描画対象チャートID。 */
     long chartId;
+
+    /** 呼び出し元が所有する再描画要求の集約先。NULLの場合は即時要求。 */
+    ChartRedrawRequest *redrawRequest;
 
     /** このインスタンスのCanvasオブジェクト名。 */
     string objectName;
@@ -205,6 +235,10 @@ private:
     bool prepareCanvas(const int fromWidth, const int fromChartHeight) {
         if (this.created && ObjectFind(this.chartId, this.objectName) != 0) {
             this.clear();
+        }
+
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
         }
 
         // チャート下端にある既存の時刻ラベル用に32px空ける。
@@ -235,6 +269,7 @@ private:
     /**
      * 可視足を古い順に判定し、同じ準備・成立状態の連続区間をまとめる。
      * series配列の足番号と共通の足幅から座標を求め、足ごとの座標変換を省く。
+     * BUY/SELLの文字幅は描画開始時の計測値を全区間で共用する。
      * 色が変わっても同方向なら開始の白色を追加しない。
      */
     void renderBars(
@@ -246,7 +281,9 @@ private:
         const bool fromLongMediumOnly,
         const int fromNewestX,
         const int fromBarWidth,
-        const int fromCanvasWidth
+        const int fromCanvasWidth,
+        const int fromBuyTextWidth,
+        const int fromSellTextWidth
     ) {
         int runState = 0;
         int runLeft = 0;
@@ -279,7 +316,8 @@ private:
 
             if (runState != 0 && (!known || !timeContinuous
                     || state != runState || left > runRight + 1)) {
-                this.drawRun(runState, runLeft, runRight, runStartX, fromCanvasWidth);
+                this.drawRun(runState, runLeft, runRight, runStartX, fromCanvasWidth,
+                    fromBuyTextWidth, fromSellTextWidth);
                 runState = 0;
             }
 
@@ -302,7 +340,8 @@ private:
         }
 
         if (runState != 0) {
-            this.drawRun(runState, runLeft, runRight, runStartX, fromCanvasWidth);
+            this.drawRun(runState, runLeft, runRight, runStartX, fromCanvasWidth,
+                fromBuyTextWidth, fromSellTextWidth);
         }
     }
 
@@ -360,9 +399,11 @@ private:
 
     /**
      * 同じ準備・成立色の区間を描画し、確認できた帯の開始の左端だけ白くする。
+     * 事前に計測した文字幅で、表示可否と中央配置を決める。
      */
     void drawRun(const int fromState, const int fromLeft, const int fromRight,
-            const int fromStartX, const int fromCanvasWidth) {
+            const int fromStartX, const int fromCanvasWidth,
+            const int fromBuyTextWidth, const int fromSellTextWidth) {
         int left = (int)MathMax(0, fromLeft);
         int right = (int)MathMin(fromCanvasWidth - 1, fromRight);
         if (right < left) {
@@ -371,9 +412,11 @@ private:
 
         color signalColor = clrAqua;
         string signalText = "BUY";
+        int textWidth = fromBuyTextWidth;
         if (fromState < 0) {
             signalColor = clrHotPink;
             signalText = "SELL";
+            textWidth = fromSellTextWidth;
         }
 
         color textColor = clrBlack;
@@ -393,8 +436,6 @@ private:
             this.canvas.FillRectangle(fromLeft, 20, startRight, 29, ColorToARGB(clrWhite));
         }
 
-        this.canvas.FontSet("MS Gothic", -80);
-        int textWidth = this.canvas.TextWidth(signalText);
         if (right - left >= textWidth + 18) {
             this.canvas.TextOut(left + (right - left - textWidth) / 2, 19,
                 signalText, ColorToARGB(textColor));

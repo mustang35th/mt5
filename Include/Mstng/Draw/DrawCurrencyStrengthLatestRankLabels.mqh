@@ -11,6 +11,7 @@
 #define MSTNG_DRAW_CURRENCY_STRENGTH_LATEST_RANK_LABELS_MQH
 
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\ChartRedrawRequest.mqh>
 
 /**
  * 通貨強弱順位線の最新値ラベルを描画する。
@@ -22,12 +23,15 @@ public:
      *
      * @param fromChartId 描画対象チャートID。
      * @param fromObjectSuffix オブジェクト名を一意にする接尾辞。
+     * @param fromRedrawRequest 再描画要求の集約先。NULLの場合は従来どおり即時に要求する。
      */
     DrawCurrencyStrengthLatestRankLabels(
         const long fromChartId,
-        const string fromObjectSuffix
+        const string fromObjectSuffix,
+        ChartRedrawRequest *fromRedrawRequest = NULL
     ) {
         this.chartId = fromChartId;
+        this.redrawRequest = fromRedrawRequest;
         this.baseObjectName = Constant::PREFIX_FIXED
             + "CurrencyStrengthLatestBase_"
             + fromObjectSuffix;
@@ -106,6 +110,10 @@ public:
             return true;
         }
 
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
+        }
+
         double basePosition = (double)(0 - fromBaseRank);
         double quotePosition = (double)(0 - fromQuoteRank);
 
@@ -139,7 +147,10 @@ public:
         this.lastQuoteCurrency = fromQuoteCurrency;
         this.lastBaseColor = fromBaseColor;
         this.lastQuoteColor = fromQuoteColor;
-        ChartRedraw(this.chartId);
+
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
 
         return true;
     }
@@ -153,12 +164,18 @@ public:
         }
 
         this.deleteObjects();
-        ChartRedraw(this.chartId);
+
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
     }
 
 private:
     /** 描画対象チャートID。 */
     long chartId;
+
+    /** 呼び出し元が所有する再描画要求の集約先。NULLの場合は即時要求。 */
+    ChartRedrawRequest *redrawRequest;
 
     /** 基軸通貨ラベルのオブジェクト名。 */
     string baseObjectName;
@@ -330,6 +347,10 @@ private:
      * 最新順位ラベルのオブジェクトを削除する。
      */
     void deleteObjects() {
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
+        }
+
         ObjectDelete(this.chartId, this.baseObjectName);
         ObjectDelete(this.chartId, this.quoteObjectName);
         this.created = false;
