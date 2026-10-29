@@ -842,6 +842,7 @@ private:
      * LIVEとTESTERの全通貨時系列順位をM5バー時刻単位で統合する。
      *
      * 同一時刻ではLIVEのスナップショット全体を採用する。
+     * 統合先配列は両配列の合計件数と取得上限の小さい方まで確保する。
      *
      * @param fromLivePoints LIVE順位配列。
      * @param fromTesterPoints TESTER順位配列。
@@ -866,6 +867,10 @@ private:
 
         if (maximumMergedCount == 0) {
             return true;
+        }
+
+        if (maximumMergedCount > fromMaximumPointCount) {
+            maximumMergedCount = fromMaximumPointCount;
         }
 
         if (ArrayResize(fromDestination, maximumMergedCount)
@@ -934,6 +939,7 @@ private:
 
     /**
      * LIVEとTESTERの時系列順位をM5バー時刻単位で統合する。
+     * 統合先配列は両配列の合計件数と取得上限の小さい方まで確保する。
      *
      * @param fromLivePoints LIVE順位配列。
      * @param fromTesterPoints TESTER順位配列。
@@ -958,6 +964,10 @@ private:
 
         if (maximumMergedCount == 0) {
             return true;
+        }
+
+        if (maximumMergedCount > fromMaximumPointCount) {
+            maximumMergedCount = fromMaximumPointCount;
         }
 
         if (ArrayResize(fromDestination, maximumMergedCount)

@@ -50,6 +50,7 @@ public:
 
     /**
      * 指定サブウィンドウの右上へ売買方向を描画する。
+     * 固定座標は初期化時に設定し、文字・色の更新時は再設定しない。
      *
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromText 表示する売買方向。
@@ -107,21 +108,9 @@ public:
         bool updated = ObjectSetInteger(
             this.chartId,
             this.objectName,
-            OBJPROP_XDISTANCE,
-            48
-        );
-        updated = ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_YDISTANCE,
-            27
-        ) && updated;
-        updated = ObjectSetInteger(
-            this.chartId,
-            this.objectName,
             OBJPROP_COLOR,
             fromColor
-        ) && updated;
+        );
         updated = ObjectSetString(
             this.chartId,
             this.objectName,
@@ -187,7 +176,7 @@ private:
     color lastColor;
 
     /**
-     * ラベル生成時または設定失敗後の再試行時に固定の表示設定を反映する。
+     * ラベル生成時または設定失敗後の再試行時に固定座標と表示設定を反映する。
      *
      * @return 固定の表示設定に成功した場合true。
      */
@@ -203,6 +192,18 @@ private:
             this.objectName,
             OBJPROP_ANCHOR,
             ANCHOR_RIGHT_UPPER
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_XDISTANCE,
+            48
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_YDISTANCE,
+            27
         ) && configured;
         configured = ObjectSetInteger(
             this.chartId,

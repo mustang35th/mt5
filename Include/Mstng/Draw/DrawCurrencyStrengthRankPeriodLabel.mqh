@@ -49,7 +49,7 @@ public:
     /**
      * 指定サブウィンドウの右上へ期間名を描画する。
      * ラベルが存在し、前回設定した表示先と文字列が同じ場合は設定と再描画を省く。
-     * 固定表示設定は作成時に行い、更新時は位置・文字・色だけを反映する。
+     * 固定座標と表示設定は初期化時に行い、更新時は文字・色だけを反映する。
      *
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromText 表示する期間名。
@@ -103,21 +103,9 @@ public:
         bool configured = ObjectSetInteger(
             this.chartId,
             this.objectName,
-            OBJPROP_XDISTANCE,
-            48
-        );
-        configured = ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_YDISTANCE,
-            8
-        ) && configured;
-        configured = ObjectSetInteger(
-            this.chartId,
-            this.objectName,
             OBJPROP_COLOR,
             clrWhiteSmoke
-        ) && configured;
+        );
         configured = ObjectSetString(
             this.chartId,
             this.objectName,
@@ -169,7 +157,7 @@ private:
     string lastText;
 
     /**
-     * 期間名ラベルの固定表示設定を作成時に適用する。
+     * 期間名ラベルの固定座標と表示設定を初期化時・設定失敗後の再試行時に適用する。
      *
      * @return すべての設定に成功した場合true。
      */
@@ -185,6 +173,18 @@ private:
             this.objectName,
             OBJPROP_ANCHOR,
             ANCHOR_RIGHT_UPPER
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_XDISTANCE,
+            48
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_YDISTANCE,
+            8
         ) && configured;
         configured = ObjectSetInteger(
             this.chartId,

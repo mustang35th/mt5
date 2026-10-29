@@ -59,7 +59,7 @@ public:
 
     /**
      * 最新順位を順位線の右側へ描画する。
-     * 固定表示設定は作成時に行い、更新時は位置・文字・色だけを反映する。
+     * 固定表示設定は作成時に行い、更新時は通貨ごとに変更された位置・文字・色だけを反映する。
      *
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromBaseLabelTime 基軸通貨ラベルを配置する時刻。
@@ -114,23 +114,26 @@ public:
             this.redrawRequest.request();
         }
 
-        double basePosition = (double)(0 - fromBaseRank);
-        double quotePosition = (double)(0 - fromQuoteRank);
-
         if (!this.drawLabel(
             this.baseObjectName,
             fromSubWindow,
             fromBaseLabelTime,
-            basePosition,
-            StringFormat("%d:%s", fromBaseRank, fromBaseCurrency),
-            fromBaseColor
+            fromBaseCurrency,
+            fromBaseRank,
+            fromBaseColor,
+            this.lastBaseLabelTime != fromBaseLabelTime || this.lastBaseRank != fromBaseRank,
+            this.lastBaseRank != fromBaseRank || this.lastBaseCurrency != fromBaseCurrency,
+            this.lastBaseColor != fromBaseColor
         ) || !this.drawLabel(
             this.quoteObjectName,
             fromSubWindow,
             fromQuoteLabelTime,
-            quotePosition,
-            StringFormat("%d:%s", fromQuoteRank, fromQuoteCurrency),
-            fromQuoteColor
+            fromQuoteCurrency,
+            fromQuoteRank,
+            fromQuoteColor,
+            this.lastQuoteLabelTime != fromQuoteLabelTime || this.lastQuoteRank != fromQuoteRank,
+            this.lastQuoteRank != fromQuoteRank || this.lastQuoteCurrency != fromQuoteCurrency,
+            this.lastQuoteColor != fromQuoteColor
         )) {
             this.deleteObjects();
 
@@ -214,23 +217,29 @@ private:
     color lastQuoteColor;
 
     /**
-     * 1通貨分の最新順位ラベルを描画する。
+     * 1通貨分の最新順位ラベルへ変更項目だけを反映する。初期化時はすべて設定する。
      *
      * @param fromObjectName オブジェクト名。
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromLabelTime ラベルを配置する時刻。
-     * @param fromPosition ラベルを配置する順位位置。
-     * @param fromText 表示文字列。
+     * @param fromCurrency 表示する通貨名。
+     * @param fromRank 表示する順位。
      * @param fromColor 文字色。
+     * @param fromPositionChanged 時刻または順位位置が変わった場合true。
+     * @param fromTextChanged 順位または通貨名が変わった場合true。
+     * @param fromColorChanged 文字色が変わった場合true。
      * @return 描画に成功した場合true。
      */
     bool drawLabel(
         const string fromObjectName,
         const int fromSubWindow,
         const datetime fromLabelTime,
-        const double fromPosition,
-        const string fromText,
-        const color fromColor
+        const string fromCurrency,
+        const int fromRank,
+        const color fromColor,
+        const bool fromPositionChanged,
+        const bool fromTextChanged,
+        const bool fromColorChanged
     ) {
         int objectWindow = ObjectFind(this.chartId, fromObjectName);
 
@@ -242,6 +251,10 @@ private:
             objectWindow = -1;
         }
 
+        bool initializeProperties = objectWindow < 0 || !this.created
+            || this.lastSubWindow != fromSubWindow;
+        double position = (double)(0 - fromRank);
+
         if (objectWindow < 0
                 && !ObjectCreate(
             this.chartId,
@@ -249,37 +262,44 @@ private:
             OBJ_TEXT,
             fromSubWindow,
             fromLabelTime,
-            fromPosition
+            position
         )) {
             return false;
         }
 
-        if ((objectWindow < 0 || !this.created) && !this.configureObject(fromObjectName)) {
+        if (initializeProperties && !this.configureObject(fromObjectName)) {
             return false;
         }
 
-        if (!ObjectMove(
+        if ((initializeProperties || fromPositionChanged) && !ObjectMove(
             this.chartId,
             fromObjectName,
             0,
             fromLabelTime,
-            fromPosition
+            position
         )) {
             return false;
         }
 
-        bool configured = ObjectSetInteger(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_COLOR,
-            fromColor
-        );
-        configured = ObjectSetString(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_TEXT,
-            fromText
-        ) && configured;
+        bool configured = true;
+
+        if (initializeProperties || fromColorChanged) {
+            configured = ObjectSetInteger(
+                this.chartId,
+                fromObjectName,
+                OBJPROP_COLOR,
+                fromColor
+            );
+        }
+
+        if (initializeProperties || fromTextChanged) {
+            configured = ObjectSetString(
+                this.chartId,
+                fromObjectName,
+                OBJPROP_TEXT,
+                StringFormat("%d:%s", fromRank, fromCurrency)
+            ) && configured;
+        }
 
         return configured;
     }
