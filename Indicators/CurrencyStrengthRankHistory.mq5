@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.22"
+#property version   "1.25"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -210,6 +210,9 @@ const int displayCheckSeconds = 10;
 
 /** 期限切れ履歴をまとめて前詰めする件数。M5足の1日分。 */
 const int rankPointCompactThreshold = 288;
+
+/** 履歴配列のメモリ確保時に追加する予備件数。M5足の1日分。 */
+const int rankPointReserveCount = 288;
 
 const double rankSignalDisplayPosition = -9.0;
 
@@ -558,7 +561,7 @@ int OnCalculate(
             targetM5BarTime
         );
     } else {
-        fillNewBars(
+        int updatedBarCount = fillNewBars(
             ratesTotal,
             previousCalculated,
             time,
@@ -572,7 +575,8 @@ int OnCalculate(
                 time,
                 changedStartM5BarTime,
                 displayStartM5BarTime,
-                targetM5BarTime
+                targetM5BarTime,
+                updatedBarCount
             );
         }
 
@@ -1632,6 +1636,7 @@ int getCacheKeepCount(const datetime fromRangeStartM5BarTime) {
 /**
  * 指定範囲以降のキャッシュへ、変更・追加された履歴点だけを反映する。
  * 保持部分はコピーせず、必要な配列サイズを確保してから検索結果を反映する。
+ * メモリ確保時は予備容量を追加し、少量ずつの履歴追加による再確保を減らす。
  *
  * @param fromRangeStartM5BarTime 置換範囲の開始M5時刻。
  * @param fromPoints 置換する順位履歴。
@@ -1648,7 +1653,8 @@ bool replaceCacheRange(
     int nextArraySize = replaceStartIndex + queriedPointCount;
 
     if (nextArraySize != cachedArraySize
-            && ArrayResize(gRankPoints, nextArraySize) != nextArraySize) {
+            && ArrayResize(gRankPoints, nextArraySize, rankPointReserveCount)
+                != nextArraySize) {
         return false;
     }
 
@@ -1728,6 +1734,9 @@ void fillAllBuffers(
     ArrayInitialize(gRankSignalDisplayBuffer, EMPTY_VALUE);
     ArrayInitialize(gRankSignalColorBuffer, EMPTY_VALUE);
 
+    datetime cachedM5BarTime = 0;
+    int cachedBufferIndex = -1;
+
     for (int i = 0; i < fromRatesTotal; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
 
@@ -1735,14 +1744,18 @@ void fillAllBuffers(
             break;
         }
 
-        setBufferValues(i, barM5Time, fromTargetM5BarTime);
+        setCachedBufferValues(
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+        );
     }
 }
 
 /**
  * 新規・再計算対象バーの表示値を設定する。
+ *
+ * @return 先頭から更新した件数。表示期限切れでクリアしたバーを含む。
  */
-void fillNewBars(
+int fillNewBars(
     const int fromRatesTotal,
     const int fromPreviousCalculated,
     const datetime &fromTime[],
@@ -1759,6 +1772,9 @@ void fillNewBars(
         calculationCount = fromRatesTotal;
     }
 
+    datetime cachedM5BarTime = 0;
+    int cachedBufferIndex = -1;
+
     for (int i = 0; i < calculationCount; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
 
@@ -1768,21 +1784,31 @@ void fillNewBars(
             continue;
         }
 
-        setBufferValues(i, barM5Time, fromTargetM5BarTime);
+        setCachedBufferValues(
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+        );
     }
+
+    return calculationCount;
 }
 
 /**
- * DB再取得で変更された範囲の表示値を更新する。
+ * DB再取得で変更された範囲のうち、先頭の更新済みバーを除いて表示値を更新する。
+ *
+ * @param fromStartBufferIndex 更新開始位置。新規足の更新済み件数を指定する。
  */
 void fillChangedBuffers(
     const int fromRatesTotal,
     const datetime &fromTime[],
     const datetime fromChangedStartM5BarTime,
     const datetime fromDisplayStartM5BarTime,
-    const datetime fromTargetM5BarTime
+    const datetime fromTargetM5BarTime,
+    const int fromStartBufferIndex = 0
 ) {
-    for (int i = 0; i < fromRatesTotal; i++) {
+    datetime cachedM5BarTime = 0;
+    int cachedBufferIndex = -1;
+
+    for (int i = fromStartBufferIndex; i < fromRatesTotal; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
 
         if (barM5Time < fromChangedStartM5BarTime
@@ -1790,7 +1816,9 @@ void fillChangedBuffers(
             break;
         }
 
-        setBufferValues(i, barM5Time, fromTargetM5BarTime);
+        setCachedBufferValues(
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+        );
     }
 }
 
@@ -1830,6 +1858,41 @@ void clearExpiredBuffers(
             clearBufferValues(i);
         }
     }
+}
+
+/**
+ * 同じ更新処理内で同じM5時刻が続く場合は、計算済みの表示値を再利用する。
+ * 欠損・無効順位の空値と塗りの0も再利用し、次の更新処理へは持ち越さない。
+ *
+ * @param fromBufferIndex 設定先のバッファ位置。
+ * @param fromBarM5Time 対象バーのM5時刻。
+ * @param fromTargetM5BarTime 使用可能なM5時刻の上限。
+ * @param fromCachedM5BarTime この更新処理で最後に計算したM5時刻。
+ * @param fromCachedBufferIndex 計算済みのバッファ位置。更新処理の開始時は-1。
+ */
+void setCachedBufferValues(
+    const int fromBufferIndex,
+    const datetime fromBarM5Time,
+    const datetime fromTargetM5BarTime,
+    datetime &fromCachedM5BarTime,
+    int &fromCachedBufferIndex
+) {
+    if (fromCachedBufferIndex < 0 || fromCachedM5BarTime != fromBarM5Time) {
+        setBufferValues(fromBufferIndex, fromBarM5Time, fromTargetM5BarTime);
+        fromCachedM5BarTime = fromBarM5Time;
+        fromCachedBufferIndex = fromBufferIndex;
+
+        return;
+    }
+
+    gBaseDisplayRankBuffer[fromBufferIndex] = gBaseDisplayRankBuffer[fromCachedBufferIndex];
+    gQuoteDisplayRankBuffer[fromBufferIndex] = gQuoteDisplayRankBuffer[fromCachedBufferIndex];
+    gBaseActualRankBuffer[fromBufferIndex] = gBaseActualRankBuffer[fromCachedBufferIndex];
+    gQuoteActualRankBuffer[fromBufferIndex] = gQuoteActualRankBuffer[fromCachedBufferIndex];
+    gRankSignalDisplayBuffer[fromBufferIndex] = gRankSignalDisplayBuffer[fromCachedBufferIndex];
+    gRankSignalColorBuffer[fromBufferIndex] = gRankSignalColorBuffer[fromCachedBufferIndex];
+    gBaseRankFillBuffer[fromBufferIndex] = gBaseRankFillBuffer[fromCachedBufferIndex];
+    gQuoteRankFillBuffer[fromBufferIndex] = gQuoteRankFillBuffer[fromCachedBufferIndex];
 }
 
 /**
