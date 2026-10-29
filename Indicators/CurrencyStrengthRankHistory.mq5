@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.03"
+#property version   "1.04"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -169,6 +169,25 @@ ulong gLastQueryTickCount = 0;
 bool gRankPointCacheReady = false;
 bool gRankPeriodLabelReady = false;
 bool gRankLabelObjectsPrepared = false;
+
+/** 最後に表示バッファを更新したチャート足の開始時刻。 */
+datetime gLastCalculatedBarTime = 0;
+
+/** 最新順位ラベルが参照するチャート足の開始時刻。 */
+datetime gLatestRankBarTime = 0;
+
+/** 最新順位ラベルに表示する基軸通貨順位。 */
+int gLatestBaseRank = 0;
+
+/** 最新順位ラベルに表示する決済通貨順位。 */
+int gLatestQuoteRank = 0;
+
+/** 最新順位ラベルが参照する履歴の取得元。 */
+string gLatestRankSourceMode = "";
+
+/** 最新順位ラベルの再配置または描画再試行が必要な場合true。 */
+bool gLatestRankLabelsDirty = false;
+
 const double rankSignalDisplayPosition = -9.0;
 
 /** 塗り領域、リボンと右上ラベルを強調する順位差の絶対値。 */
@@ -341,12 +360,12 @@ int OnInit() {
         if (gRankAndRibbonDraw == NULL) {
             return INIT_FAILED;
         }
+    }
 
-        if (!isTester && !EventSetTimer(1)) {
-            gLogger.error(__FUNCTION__, "rank AND ribbon timer initialization failed");
+    if (!isTester && !EventSetTimer(1)) {
+        gLogger.error(__FUNCTION__, "rank history timer initialization failed");
 
-            return INIT_FAILED;
-        }
+        return INIT_FAILED;
     }
 
     ArrayResize(gRankPoints, 0);
@@ -356,6 +375,12 @@ int OnInit() {
     gRankPointCacheReady = false;
     gRankPeriodLabelReady = false;
     gRankLabelObjectsPrepared = false;
+    gLastCalculatedBarTime = 0;
+    gLatestRankBarTime = 0;
+    gLatestBaseRank = 0;
+    gLatestQuoteRank = 0;
+    gLatestRankSourceMode = "";
+    gLatestRankLabelsDirty = false;
 
     return INIT_SUCCEEDED;
 }
@@ -405,6 +430,7 @@ void OnDeinit(const int reason) {
     gRankPointCacheReady = false;
     gRankPeriodLabelReady = false;
     gRankLabelObjectsPrepared = false;
+    gLatestRankLabelsDirty = false;
 }
 
 /**
@@ -452,14 +478,15 @@ int OnCalculate(
         targetM5BarTime
     );
     bool isTester = Util::isStrategyTester();
-    bool cacheRefreshed = false;
+    bool cacheChanged = false;
     datetime changedStartM5BarTime = targetM5BarTime;
 
     if (shouldRefreshRankPoints(targetM5BarTime, isTester)) {
-        cacheRefreshed = refreshRankPoints(
+        refreshRankPoints(
             displayStartM5BarTime,
             targetM5BarTime,
-            changedStartM5BarTime
+            changedStartM5BarTime,
+            cacheChanged
         );
     }
 
@@ -467,6 +494,17 @@ int OnCalculate(
         || previousCalculated > ratesTotal
         || gLastDisplayStartM5BarTime <= 0
         || displayStartM5BarTime < gLastDisplayStartM5BarTime;
+    bool chartBarChanged = time[0] != gLastCalculatedBarTime
+        || ratesTotal != previousCalculated;
+    bool displayRangeChanged = displayStartM5BarTime != gLastDisplayStartM5BarTime;
+
+    if (!fullRefresh && !cacheChanged && !chartBarChanged && !displayRangeChanged) {
+        if (gLatestRankLabelsDirty) {
+            drawCachedLatestRankLabels();
+        }
+
+        return ratesTotal;
+    }
 
     if (fullRefresh) {
         fillAllBuffers(
@@ -484,7 +522,7 @@ int OnCalculate(
             targetM5BarTime
         );
 
-        if (cacheRefreshed) {
+        if (cacheChanged) {
             fillChangedBuffers(
                 ratesTotal,
                 time,
@@ -503,21 +541,26 @@ int OnCalculate(
     }
 
     gLastDisplayStartM5BarTime = displayStartM5BarTime;
+    gLastCalculatedBarTime = time[0];
     drawLatestRankLabels(ratesTotal, time);
-    drawRankAndRibbon(fullRefresh || cacheRefreshed);
+    drawRankAndRibbon(fullRefresh || cacheChanged || displayRangeChanged);
 
     return ratesTotal;
 }
 
 /**
- * ティックがない場合もAND帯の表示位置と描画担当を再確認する。
+ * ティックがない場合も帯の表示変更を確認し、失敗したラベル描画を再試行する。
  */
 void OnTimer() {
+    if (gRankLabelObjectsPrepared && gLatestRankLabelsDirty) {
+        drawCachedLatestRankLabels();
+    }
+
     drawRankAndRibbon();
 }
 
 /**
- * チャート変更時に期間名ラベルとAND帯の表示位置を再確認する。
+ * チャート変更時にラベルを再配置し、AND帯の表示位置を再確認する。
  *
  * @param fromEventId イベントID。
  * @param fromLongParameter long型イベント値。
@@ -543,7 +586,9 @@ void OnChartEvent(
     }
 
     gRankPeriodLabelReady = drawRankPeriodLabel();
-    drawRankAndRibbon(true);
+    gLatestRankLabelsDirty = true;
+    drawCachedLatestRankLabels();
+    drawRankAndRibbon();
 }
 
 /**
@@ -902,7 +947,44 @@ void drawLatestRankLabels(
     const int fromRatesTotal,
     const datetime &fromTime[]
 ) {
-    if (gLatestRankLabelsDraw == NULL || fromRatesTotal <= 0) {
+    gLatestRankBarTime = 0;
+    gLatestBaseRank = 0;
+    gLatestQuoteRank = 0;
+    gLatestRankSourceMode = "";
+    gLatestRankLabelsDirty = true;
+    int latestBufferIndex = -1;
+
+    if (ArraySize(gRankPoints) > 0) {
+        for (int i = 0; i < fromRatesTotal; i++) {
+            if (isActualRankBufferValue(gBaseActualRankBuffer[i])
+                    && isActualRankBufferValue(gQuoteActualRankBuffer[i])) {
+                latestBufferIndex = i;
+
+                break;
+            }
+        }
+    }
+
+    if (latestBufferIndex >= 0) {
+        gLatestBaseRank = (int)MathRound(gBaseActualRankBuffer[latestBufferIndex]);
+        gLatestQuoteRank = (int)MathRound(gQuoteActualRankBuffer[latestBufferIndex]);
+        gLatestRankBarTime = fromTime[latestBufferIndex];
+        int pointIndex = findRankPointIndex(floorToM5(gLatestRankBarTime));
+
+        if (pointIndex >= 0) {
+            gLatestRankSourceMode = gRankPoints[pointIndex].sourceMode;
+        }
+    }
+
+    drawCachedLatestRankLabels();
+}
+
+/**
+ * 保持した最新順位を使ってラベルを再配置する。画面変更時も履歴を走査しない。
+ * 描画に失敗した場合は更新待ち状態を維持し、次のイベントで再試行する。
+ */
+void drawCachedLatestRankLabels() {
+    if (gLatestRankLabelsDraw == NULL) {
         return;
     }
 
@@ -912,50 +994,18 @@ void drawLatestRankLabels(
         return;
     }
 
-    if (ArraySize(gRankPoints) == 0) {
+    bool signalDrawn = drawRankSignalLabel(subWindow, gLatestBaseRank, gLatestQuoteRank);
+    bool sourceDrawn = drawRankSourceLabel(subWindow, gLatestRankSourceMode);
+
+    if (gLatestRankBarTime <= 0) {
         gLatestRankLabelsDraw.clear();
-        drawRankSignalLabel(subWindow, 0, 0);
-        drawRankSourceLabel(subWindow, "");
+        gLatestRankLabelsDirty = !signalDrawn || !sourceDrawn;
 
         return;
     }
 
-    int latestBufferIndex = -1;
-
-    for (int i = 0; i < fromRatesTotal; i++) {
-        if (isActualRankBufferValue(gBaseActualRankBuffer[i])
-                && isActualRankBufferValue(gQuoteActualRankBuffer[i])) {
-            latestBufferIndex = i;
-
-            break;
-        }
-    }
-
-    if (latestBufferIndex < 0) {
-        gLatestRankLabelsDraw.clear();
-        drawRankSignalLabel(subWindow, 0, 0);
-        drawRankSourceLabel(subWindow, "");
-
-        return;
-    }
-
-    int baseRank = (int)MathRound(
-        gBaseActualRankBuffer[latestBufferIndex]
-    );
-    int quoteRank = (int)MathRound(
-        gQuoteActualRankBuffer[latestBufferIndex]
-    );
-    drawRankSignalLabel(subWindow, baseRank, quoteRank);
-    datetime latestBarTime = fromTime[latestBufferIndex];
-    int pointIndex = findRankPointIndex(floorToM5(latestBarTime));
-
-    if (pointIndex >= 0) {
-        CurrencyStrengthPairRankPoint point = gRankPoints[pointIndex];
-        drawRankSourceLabel(subWindow, point.sourceMode);
-    } else {
-        drawRankSourceLabel(subWindow, "");
-    }
-
+    int baseRank = gLatestBaseRank;
+    int quoteRank = gLatestQuoteRank;
     int basePixelOffset = 18;
     int quotePixelOffset = 18;
 
@@ -965,13 +1015,13 @@ void drawLatestRankLabels(
 
     datetime baseLabelTime = getLatestRankLabelTime(
         subWindow,
-        latestBarTime,
+        gLatestRankBarTime,
         (double)(0 - baseRank),
         basePixelOffset
     );
     datetime quoteLabelTime = getLatestRankLabelTime(
         subWindow,
-        latestBarTime,
+        gLatestRankBarTime,
         (double)(0 - quoteRank),
         quotePixelOffset
     );
@@ -988,7 +1038,11 @@ void drawLatestRankLabels(
         ConstantCurrency::getColor(gQuoteCurrency)
     )) {
         gLogger.error(__FUNCTION__, "latest rank label draw failed");
+
+        return;
     }
+
+    gLatestRankLabelsDirty = !signalDrawn || !sourceDrawn;
 }
 
 /**
@@ -1000,14 +1054,15 @@ void drawLatestRankLabels(
  * @param fromSubWindow 描画対象サブウィンドウ番号。
  * @param fromBaseRank 基軸通貨の順位。
  * @param fromQuoteRank 決済通貨の順位。
+ * @return 描画に成功した場合true。
  */
-void drawRankSignalLabel(
+bool drawRankSignalLabel(
     const int fromSubWindow,
     const int fromBaseRank,
     const int fromQuoteRank
 ) {
     if (gRankSignalLabelDraw == NULL) {
-        return;
+        return false;
     }
 
     string signalText = "-";
@@ -1044,7 +1099,11 @@ void drawRankSignalLabel(
         signalColor
     )) {
         gLogger.error(__FUNCTION__, "rank signal label draw failed");
+
+        return false;
     }
+
+    return true;
 }
 
 /**
@@ -1052,13 +1111,14 @@ void drawRankSignalLabel(
  *
  * @param fromSubWindow 描画対象サブウィンドウ番号。
  * @param fromSourceMode 最新順位点の集計実行モード。
+ * @return 描画に成功した場合true。
  */
-void drawRankSourceLabel(
+bool drawRankSourceLabel(
     const int fromSubWindow,
     const string fromSourceMode
 ) {
     if (gRankSourceLabelDraw == NULL) {
-        return;
+        return false;
     }
 
     string sourceText = "SOURCE: -";
@@ -1082,7 +1142,11 @@ void drawRankSourceLabel(
         sourceColor
     )) {
         gLogger.error(__FUNCTION__, "rank source label draw failed");
+
+        return false;
     }
+
+    return true;
 }
 
 /**
@@ -1266,13 +1330,16 @@ bool shouldRefreshRankPoints(
  * @param fromDisplayStartM5BarTime 表示開始M5時刻。
  * @param fromTargetM5BarTime 表示終端M5時刻。
  * @param fromChangedStartM5BarTime 変更確認範囲の開始M5時刻。
+ * @param fromCacheChanged 初回取得、内容変更または期限切れ削除があった場合true。
  * @return DB検索に成功した場合true。
  */
 bool refreshRankPoints(
     const datetime fromDisplayStartM5BarTime,
     const datetime fromTargetM5BarTime,
-    datetime &fromChangedStartM5BarTime
+    datetime &fromChangedStartM5BarTime,
+    bool &fromCacheChanged
 ) {
+    fromCacheChanged = false;
     gLastQueryTargetM5BarTime = fromTargetM5BarTime;
     gLastQueryTickCount = GetTickCount64();
 
@@ -1341,14 +1408,17 @@ bool refreshRankPoints(
         queriedPoints
     );
 
-    if (!replaceCacheRange(queryStartM5BarTime, queriedPoints)) {
+    if (rangeChanged && !replaceCacheRange(queryStartM5BarTime, queriedPoints)) {
         gLogger.error(__FUNCTION__, "rank point cache update failed");
 
         return false;
     }
 
+    int pointCountBeforePrune = ArraySize(gRankPoints);
     pruneRankPoints(fromDisplayStartM5BarTime);
     gRankPointCacheReady = true;
+    fromCacheChanged = initialLoad || rangeChanged
+        || pointCountBeforePrune != ArraySize(gRankPoints);
     fromChangedStartM5BarTime = fromTargetM5BarTime;
 
     if (initialLoad) {
