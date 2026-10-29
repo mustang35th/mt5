@@ -11,6 +11,7 @@
 #define MSTNG_DRAW_CURRENCY_STRENGTH_ALL_RANK_SUMMARY_LABEL_MQH
 
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\ChartRedrawRequest.mqh>
 
 /**
  * 全通貨の最新順位サマリーをサブパネル右上へ描画する。
@@ -22,12 +23,15 @@ public:
      *
      * @param fromChartId 描画対象チャートID。
      * @param fromObjectSuffix オブジェクト名を一意にする接尾辞。
+     * @param fromRedrawRequest 再描画要求の集約先。NULLの場合は従来どおり再描画する。
      */
     DrawCurrencyStrengthAllRankSummaryLabel(
         const long fromChartId,
-        const string fromObjectSuffix
+        const string fromObjectSuffix,
+        ChartRedrawRequest *fromRedrawRequest = NULL
     ) {
         this.chartId = fromChartId;
+        this.redrawRequest = fromRedrawRequest;
         this.objectName = Constant::PREFIX_FIXED
             + "CurrencyStrengthAllRankSummary_"
             + fromObjectSuffix;
@@ -46,6 +50,7 @@ public:
 
     /**
      * 指定サブウィンドウの右上へ全通貨の最新順位サマリーを描画する。
+     * 固定設定は初期化時だけ反映し、文字・色は変更された項目だけ更新する。
      *
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromText 表示するサマリー。
@@ -68,10 +73,19 @@ public:
             return true;
         }
 
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
+        }
+
         int objectWindow = ObjectFind(this.chartId, this.objectName);
+        bool initializeProperties = !this.created || objectWindow != fromSubWindow;
+        this.created = false;
 
         if (objectWindow >= 0 && objectWindow != fromSubWindow) {
-            ObjectDelete(this.chartId, this.objectName);
+            if (!ObjectDelete(this.chartId, this.objectName)) {
+                return false;
+            }
+
             objectWindow = -1;
         }
 
@@ -87,84 +101,42 @@ public:
             return false;
         }
 
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_CORNER,
-            CORNER_RIGHT_UPPER
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_ANCHOR,
-            ANCHOR_RIGHT_UPPER
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_XDISTANCE,
-            48
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_YDISTANCE,
-            38
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_FONTSIZE,
-            10
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_COLOR,
-            fromColor
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_SELECTABLE,
-            false
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_SELECTED,
-            false
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_HIDDEN,
-            true
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_ZORDER,
-            2
-        );
-        ObjectSetString(
-            this.chartId,
-            this.objectName,
-            OBJPROP_FONT,
-            "MS Gothic"
-        );
-        ObjectSetString(
-            this.chartId,
-            this.objectName,
-            OBJPROP_TEXT,
-            fromText
-        );
+        if (initializeProperties && !this.configureObject()) {
+            return false;
+        }
+
+        bool updated = true;
+
+        if (initializeProperties || this.lastColor != fromColor) {
+            updated = ObjectSetInteger(
+                this.chartId,
+                this.objectName,
+                OBJPROP_COLOR,
+                fromColor
+            );
+        }
+
+        if (initializeProperties || this.lastText != fromText) {
+            updated = ObjectSetString(
+                this.chartId,
+                this.objectName,
+                OBJPROP_TEXT,
+                fromText
+            ) && updated;
+        }
+
+        if (!updated) {
+            return false;
+        }
 
         this.created = true;
         this.lastSubWindow = fromSubWindow;
         this.lastText = fromText;
         this.lastColor = fromColor;
-        ChartRedraw(this.chartId);
+
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
 
         return true;
     }
@@ -173,22 +145,32 @@ public:
      * 全通貨の最新順位サマリーを削除する。
      */
     void clear() {
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
+        }
+
         ObjectDelete(this.chartId, this.objectName);
         this.created = false;
         this.lastSubWindow = -1;
         this.lastText = "";
         this.lastColor = clrNONE;
-        ChartRedraw(this.chartId);
+
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
     }
 
 private:
     /** 描画対象チャートID。 */
     long chartId;
 
+    /** 呼び出し元が所有する再描画要求の集約先。 */
+    ChartRedrawRequest *redrawRequest;
+
     /** 最新順位サマリーのオブジェクト名。 */
     string objectName;
 
-    /** ラベル生成済みの場合true。 */
+    /** ラベルの設定と描画が完了した場合true。 */
     bool created;
 
     /** 前回描画したサブウィンドウ番号。 */
@@ -199,6 +181,76 @@ private:
 
     /** 前回描画した文字色。 */
     color lastColor;
+
+    /**
+     * ラベル生成時または設定失敗後の再試行時に固定座標と表示設定を反映する。
+     *
+     * @return 固定の表示設定に成功した場合true。
+     */
+    bool configureObject() {
+        bool configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_CORNER,
+            CORNER_RIGHT_UPPER
+        );
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_ANCHOR,
+            ANCHOR_RIGHT_UPPER
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_XDISTANCE,
+            48
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_YDISTANCE,
+            38
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_FONTSIZE,
+            10
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_SELECTABLE,
+            false
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_SELECTED,
+            false
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_HIDDEN,
+            true
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_ZORDER,
+            2
+        ) && configured;
+        configured = ObjectSetString(
+            this.chartId,
+            this.objectName,
+            OBJPROP_FONT,
+            "MS Gothic"
+        ) && configured;
+
+        return configured;
+    }
 };
 
 #endif // MSTNG_DRAW_CURRENCY_STRENGTH_ALL_RANK_SUMMARY_LABEL_MQH

@@ -12,6 +12,7 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
+#include <Mstng\Draw\ChartRedrawRequest.mqh>
 
 /**
  * 全通貨の通貨強弱順位線へ最新値ラベルを描画する。
@@ -23,12 +24,15 @@ public:
      *
      * @param fromChartId 描画対象チャートID。
      * @param fromObjectSuffix オブジェクト名を一意にする接尾辞。
+     * @param fromRedrawRequest 再描画要求の集約先。NULLの場合は従来どおり再描画する。
      */
     DrawCurrencyStrengthAllLatestRankLabels(
         const long fromChartId,
-        const string fromObjectSuffix
+        const string fromObjectSuffix,
+        ChartRedrawRequest *fromRedrawRequest = NULL
     ) {
         this.chartId = fromChartId;
+        this.redrawRequest = fromRedrawRequest;
         this.currencyNames[0] = ConstantCurrency::USD;
         this.currencyNames[1] = ConstantCurrency::JPY;
         this.currencyNames[2] = ConstantCurrency::EUR;
@@ -58,6 +62,7 @@ public:
 
     /**
      * 全通貨の最新順位を順位線の右側へ描画する。
+     * 固定設定は作成時に行い、更新時は通貨ごとに変更された位置・文字だけを反映する。
      *
      * 配列の通貨順はUSD、JPY、EUR、GBP、AUD、NZD、CAD、CHFとする。
      *
@@ -81,16 +86,26 @@ public:
             return true;
         }
 
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
+        }
+
         for (int i = 0; i < 8; i++) {
-            double position = (double)(0 - fromRanks[i]);
+            bool rankChanged = this.lastRanks[i] != fromRanks[i];
+            bool positionChanged = this.lastLabelTimes[i] != fromLabelTimes[i] || rankChanged;
+
+            if (this.created && this.lastSubWindow == fromSubWindow && !positionChanged) {
+                continue;
+            }
 
             if (!this.drawLabel(
                 this.objectNames[i],
                 fromSubWindow,
                 fromLabelTimes[i],
-                position,
-                StringFormat("%d:%s", fromRanks[i], this.currencyNames[i]),
-                ConstantCurrency::getColor(this.currencyNames[i])
+                this.currencyNames[i],
+                fromRanks[i],
+                positionChanged,
+                rankChanged
             )) {
                 this.deleteObjects();
 
@@ -106,7 +121,9 @@ public:
             this.lastRanks[i] = fromRanks[i];
         }
 
-        ChartRedraw(this.chartId);
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
 
         return true;
     }
@@ -120,12 +137,18 @@ public:
         }
 
         this.deleteObjects();
-        ChartRedraw(this.chartId);
+
+        if (this.redrawRequest == NULL) {
+            ChartRedraw(this.chartId);
+        }
     }
 
 private:
     /** 描画対象チャートID。 */
     long chartId;
+
+    /** 呼び出し元が所有する再描画要求の集約先。 */
+    ChartRedrawRequest *redrawRequest;
 
     /** 通貨コード配列。 */
     string currencyNames[8];
@@ -203,30 +226,39 @@ private:
     }
 
     /**
-     * 1通貨分の最新順位ラベルを描画する。
+     * 1通貨分の最新順位ラベルへ変更項目だけを反映する。初期化時はすべて設定する。
      *
      * @param fromObjectName オブジェクト名。
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromLabelTime ラベルを配置する時刻。
-     * @param fromPosition ラベルを配置する順位位置。
-     * @param fromText 表示文字列。
-     * @param fromColor 文字色。
+     * @param fromCurrency 表示する通貨名。
+     * @param fromRank 表示する順位。
+     * @param fromPositionChanged 時刻または順位位置が変わった場合true。
+     * @param fromTextChanged 順位が変わった場合true。
      * @return 描画に成功した場合true。
      */
     bool drawLabel(
         const string fromObjectName,
         const int fromSubWindow,
         const datetime fromLabelTime,
-        const double fromPosition,
-        const string fromText,
-        const color fromColor
+        const string fromCurrency,
+        const int fromRank,
+        const bool fromPositionChanged,
+        const bool fromTextChanged
     ) {
         int objectWindow = ObjectFind(this.chartId, fromObjectName);
 
         if (objectWindow >= 0 && objectWindow != fromSubWindow) {
-            ObjectDelete(this.chartId, fromObjectName);
+            if (!ObjectDelete(this.chartId, fromObjectName)) {
+                return false;
+            }
+
             objectWindow = -1;
         }
+
+        bool initializeProperties = objectWindow < 0 || !this.created
+            || this.lastSubWindow != fromSubWindow;
+        double position = (double)(0 - fromRank);
 
         if (objectWindow < 0
                 && !ObjectCreate(
@@ -235,89 +267,114 @@ private:
             OBJ_TEXT,
             fromSubWindow,
             fromLabelTime,
-            fromPosition
+            position
         )) {
             return false;
         }
 
-        if (!ObjectMove(
+        if (initializeProperties && !this.configureObject(
+            fromObjectName,
+            ConstantCurrency::getColor(fromCurrency)
+        )) {
+            return false;
+        }
+
+        if ((initializeProperties || fromPositionChanged) && !ObjectMove(
             this.chartId,
             fromObjectName,
             0,
             fromLabelTime,
-            fromPosition
+            position
         )) {
             return false;
         }
 
-        ObjectSetInteger(
+        if ((initializeProperties || fromTextChanged) && !ObjectSetString(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_TEXT,
+            StringFormat("%d:%s", fromRank, fromCurrency)
+        )) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 最新順位ラベルの通貨色と固定表示設定を作成時に適用する。
+     *
+     * @param fromObjectName 設定対象のオブジェクト名。
+     * @param fromColor 通貨の文字色。
+     * @return すべての設定に成功した場合true。
+     */
+    bool configureObject(const string fromObjectName, const color fromColor) {
+        bool configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_ANCHOR,
             ANCHOR_LEFT
         );
-        ObjectSetInteger(
+        configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_FONTSIZE,
             9
-        );
-        ObjectSetInteger(
+        ) && configured;
+        configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_COLOR,
             fromColor
-        );
-        ObjectSetInteger(
+        ) && configured;
+        configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_BACK,
             false
-        );
-        ObjectSetInteger(
+        ) && configured;
+        configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_SELECTABLE,
             false
-        );
-        ObjectSetInteger(
+        ) && configured;
+        configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_SELECTED,
             false
-        );
-        ObjectSetInteger(
+        ) && configured;
+        configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_HIDDEN,
             true
-        );
-        ObjectSetInteger(
+        ) && configured;
+        configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_ZORDER,
             2
-        );
-        ObjectSetString(
+        ) && configured;
+        configured = ObjectSetString(
             this.chartId,
             fromObjectName,
             OBJPROP_FONT,
             "MS Gothic"
-        );
-        ObjectSetString(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_TEXT,
-            fromText
-        );
+        ) && configured;
 
-        return true;
+        return configured;
     }
 
     /**
      * 全通貨の最新順位ラベルを削除する。
      */
     void deleteObjects() {
+        if (this.redrawRequest != NULL) {
+            this.redrawRequest.request();
+        }
+
         for (int i = 0; i < 8; i++) {
             ObjectDelete(this.chartId, this.objectNames[i]);
         }

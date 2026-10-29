@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.00"
+#property version   "1.06"
 #property indicator_separate_window
 #property indicator_buffers 16
 #property indicator_plots   16
@@ -91,6 +91,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyRankQueryService.mqh>
+#include <Mstng\Draw\ChartRedrawRequest.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthAllLatestRankLabels.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthAllRankSummaryLabel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankPeriodLabel.mqh>
@@ -144,6 +145,10 @@ double gCadActualRankBuffer[];
 double gChfActualRankBuffer[];
 
 Logger gLogger;
+
+/** ラベルの変更・削除による再描画要求をイベントごとに集約する。 */
+ChartRedrawRequest gChartRedrawRequest;
+
 CurrencyStrengthYearlyRankQueryService *gRankQueryService = NULL;
 DrawCurrencyStrengthAllLatestRankLabels *gLatestRankLabelsDraw = NULL;
 DrawCurrencyStrengthAllRankSummaryLabel *gRankSummaryLabelDraw = NULL;
@@ -160,6 +165,21 @@ ulong gLastQueryTickCount = 0;
 bool gRankPointCacheReady = false;
 bool gRankPeriodLabelReady = false;
 bool gRankLabelObjectsPrepared = false;
+
+/** 前回計算したチャートの最新バー時刻。 */
+datetime gLastCalculatedBarTime = 0;
+
+/** 最新有効順位を表示するチャートバー時刻。 */
+datetime gLatestRankBarTime = 0;
+
+/** 最新有効バーの全8通貨順位。 */
+int gLatestRanks[8];
+
+/** 最新有効順位の取得元。 */
+string gLatestRankSourceMode = "";
+
+/** 最新順位ラベルの再配置・再試行が必要な場合true。 */
+bool gLatestRankLabelsDirty = false;
 
 /**
  * インジケーターを初期化する。
@@ -246,19 +266,23 @@ int OnInit() {
     );
     gRankPeriodLabelDraw = new DrawCurrencyStrengthRankPeriodLabel(
         ChartID(),
-        drawObjectSuffix
+        drawObjectSuffix,
+        GetPointer(gChartRedrawRequest)
     );
     gLatestRankLabelsDraw = new DrawCurrencyStrengthAllLatestRankLabels(
         ChartID(),
-        drawObjectSuffix
+        drawObjectSuffix,
+        GetPointer(gChartRedrawRequest)
     );
     gRankSummaryLabelDraw = new DrawCurrencyStrengthAllRankSummaryLabel(
         ChartID(),
-        drawObjectSuffix
+        drawObjectSuffix,
+        GetPointer(gChartRedrawRequest)
     );
     gRankSourceLabelDraw = new DrawCurrencyStrengthRankSourceLabel(
         ChartID(),
-        drawObjectSuffix
+        drawObjectSuffix,
+        GetPointer(gChartRedrawRequest)
     );
 
     if (gRankPeriodLabelDraw == NULL
@@ -266,6 +290,7 @@ int OnInit() {
             || gRankSummaryLabelDraw == NULL
             || gRankSourceLabelDraw == NULL) {
         releaseResources();
+        gChartRedrawRequest.flush(ChartID());
 
         return INIT_FAILED;
     }
@@ -277,6 +302,12 @@ int OnInit() {
     gRankPointCacheReady = false;
     gRankPeriodLabelReady = false;
     gRankLabelObjectsPrepared = false;
+
+    gLastCalculatedBarTime = 0;
+    gLatestRankBarTime = 0;
+    ArrayInitialize(gLatestRanks, 0);
+    gLatestRankSourceMode = "";
+    gLatestRankLabelsDirty = false;
 
     return INIT_SUCCEEDED;
 }
@@ -296,6 +327,13 @@ void OnDeinit(const int fromReason) {
     gRankPointCacheReady = false;
     gRankPeriodLabelReady = false;
     gRankLabelObjectsPrepared = false;
+
+    gLastCalculatedBarTime = 0;
+    gLatestRankBarTime = 0;
+    ArrayInitialize(gLatestRanks, 0);
+    gLatestRankSourceMode = "";
+    gLatestRankLabelsDirty = false;
+    gChartRedrawRequest.flush(ChartID());
 }
 
 /**
@@ -320,6 +358,8 @@ int OnCalculate(
     }
 
     if (!gRankLabelObjectsPrepared) {
+        gChartRedrawRequest.flush(ChartID());
+
         return previousCalculated;
     }
 
@@ -328,6 +368,8 @@ int OnCalculate(
     }
 
     if (ratesTotal <= 0 || gRankQueryService == NULL) {
+        gChartRedrawRequest.flush(ChartID());
+
         return 0;
     }
 
@@ -335,6 +377,8 @@ int OnCalculate(
     datetime targetM5BarTime = getTargetM5BarTime(time[0]);
 
     if (targetM5BarTime <= 0) {
+        gChartRedrawRequest.flush(ChartID());
+
         return previousCalculated;
     }
 
@@ -342,14 +386,15 @@ int OnCalculate(
         targetM5BarTime
     );
     bool isTester = Util::isStrategyTester();
-    bool cacheRefreshed = false;
+    bool dataChanged = false;
     datetime changedStartM5BarTime = targetM5BarTime;
 
     if (shouldRefreshRankPoints(targetM5BarTime, isTester)) {
-        cacheRefreshed = refreshRankPoints(
+        refreshRankPoints(
             displayStartM5BarTime,
             targetM5BarTime,
-            changedStartM5BarTime
+            changedStartM5BarTime,
+            dataChanged
         );
     }
 
@@ -357,6 +402,19 @@ int OnCalculate(
         || previousCalculated > ratesTotal
         || gLastDisplayStartM5BarTime <= 0
         || displayStartM5BarTime < gLastDisplayStartM5BarTime;
+    bool chartBarChanged = time[0] != gLastCalculatedBarTime
+        || ratesTotal != previousCalculated;
+    bool displayRangeChanged = displayStartM5BarTime != gLastDisplayStartM5BarTime;
+
+    if (!fullRefresh && !dataChanged && !chartBarChanged && !displayRangeChanged) {
+        if (gLatestRankLabelsDirty) {
+            drawCachedLatestRankLabels();
+        }
+
+        gChartRedrawRequest.flush(ChartID());
+
+        return ratesTotal;
+    }
 
     if (fullRefresh) {
         fillAllBuffers(
@@ -374,7 +432,7 @@ int OnCalculate(
             targetM5BarTime
         );
 
-        if (cacheRefreshed) {
+        if (dataChanged) {
             fillChangedBuffers(
                 ratesTotal,
                 time,
@@ -393,13 +451,15 @@ int OnCalculate(
     }
 
     gLastDisplayStartM5BarTime = displayStartM5BarTime;
+    gLastCalculatedBarTime = time[0];
     drawLatestRankLabels(ratesTotal, time);
+    gChartRedrawRequest.flush(ChartID());
 
     return ratesTotal;
 }
 
 /**
- * チャート変更時に右端の通貨ラベルを再配置対象にする。
+ * チャート変更時に保持した最新順位から右端の通貨ラベルを再配置する。
  *
  * @param fromEventId イベントID。
  * @param fromLongParameter long型イベント値。
@@ -413,6 +473,8 @@ void OnChartEvent(
     const string &fromStringParameter
 ) {
     if (fromEventId != CHARTEVENT_CHART_CHANGE) {
+        gChartRedrawRequest.flush(ChartID());
+
         return;
     }
 
@@ -421,14 +483,15 @@ void OnChartEvent(
     }
 
     if (!gRankLabelObjectsPrepared) {
+        gChartRedrawRequest.flush(ChartID());
+
         return;
     }
 
-    if (gLatestRankLabelsDraw != NULL) {
-        gLatestRankLabelsDraw.clear();
-    }
-
     gRankPeriodLabelReady = drawRankPeriodLabel();
+    gLatestRankLabelsDirty = true;
+    drawCachedLatestRankLabels();
+    gChartRedrawRequest.flush(ChartID());
 }
 
 /**
@@ -629,6 +692,7 @@ bool clearStaleRankLabelObjects() {
     }
 
     bool isDeleted = true;
+    gChartRedrawRequest.request();
 
     if (ObjectsDeleteAll(
         ChartID(),
@@ -672,8 +736,6 @@ bool clearStaleRankLabelObjects() {
         return false;
     }
 
-    ChartRedraw(ChartID());
-
     return true;
 }
 
@@ -706,7 +768,7 @@ bool drawRankPeriodLabel() {
 }
 
 /**
- * 最新有効バーの全通貨順位ラベルと概要を描画する。
+ * 最新有効バーの全通貨順位と取得元を保持し、ラベルと概要を描画する。
  *
  * @param fromRatesTotal チャートバー総数。
  * @param fromTime チャートバー時刻配列。
@@ -715,7 +777,36 @@ void drawLatestRankLabels(
     const int fromRatesTotal,
     const datetime &fromTime[]
 ) {
-    if (gLatestRankLabelsDraw == NULL || fromRatesTotal <= 0) {
+    gLatestRankBarTime = 0;
+    ArrayInitialize(gLatestRanks, 0);
+    gLatestRankSourceMode = "";
+    gLatestRankLabelsDirty = true;
+    int latestBufferIndex = findLatestRankBufferIndex(fromRatesTotal);
+
+    if (latestBufferIndex >= 0) {
+        for (int i = 0; i < 8; i++) {
+            gLatestRanks[i] = (int)MathRound(
+                getActualRankBufferValue(i, latestBufferIndex)
+            );
+        }
+
+        gLatestRankBarTime = fromTime[latestBufferIndex];
+        int pointIndex = findRankPointIndex(floorToM5(gLatestRankBarTime));
+
+        if (pointIndex >= 0) {
+            gLatestRankSourceMode = gRankPoints[pointIndex].sourceMode;
+        }
+    }
+
+    drawCachedLatestRankLabels();
+}
+
+/**
+ * 保持した最新順位を使ってラベルを再配置し、履歴の探索を省く。
+ * 描画または座標変換に失敗した場合は、次のティック・画面変更で再試行する。
+ */
+void drawCachedLatestRankLabels() {
+    if (gLatestRankLabelsDraw == NULL) {
         return;
     }
 
@@ -725,54 +816,45 @@ void drawLatestRankLabels(
         return;
     }
 
-    int latestBufferIndex = findLatestRankBufferIndex(fromRatesTotal);
+    bool sourceDrawn = drawRankSourceLabel(subWindow, gLatestRankSourceMode);
 
-    if (latestBufferIndex < 0) {
+    if (gLatestRankBarTime <= 0) {
         int emptyRanks[];
         gLatestRankLabelsDraw.clear();
-        drawRankSummaryLabel(subWindow, emptyRanks);
-        drawRankSourceLabel(subWindow, "");
+        bool summaryDrawn = drawRankSummaryLabel(subWindow, emptyRanks);
+        gLatestRankLabelsDirty = !sourceDrawn || !summaryDrawn;
 
         return;
     }
 
-    int ranks[8];
-
-    for (int i = 0; i < 8; i++) {
-        ranks[i] = (int)MathRound(
-            getActualRankBufferValue(i, latestBufferIndex)
-        );
-    }
-
-    datetime latestBarTime = fromTime[latestBufferIndex];
-    int pointIndex = findRankPointIndex(floorToM5(latestBarTime));
-
-    if (pointIndex >= 0) {
-        drawRankSourceLabel(subWindow, gRankPoints[pointIndex].sourceMode);
-    } else {
-        drawRankSourceLabel(subWindow, "");
-    }
-
-    drawRankSummaryLabel(subWindow, ranks);
+    bool summaryDrawn = drawRankSummaryLabel(subWindow, gLatestRanks);
     int rankOccurrences[9];
     datetime labelTimes[8];
+    bool positionsResolved = true;
     ArrayInitialize(rankOccurrences, 0);
 
     for (int i = 0; i < 8; i++) {
-        int rank = ranks[i];
+        int rank = gLatestRanks[i];
         int pixelOffset = 18 + (rankOccurrences[rank] * 48);
         rankOccurrences[rank]++;
+        bool positionResolved = false;
         labelTimes[i] = getLatestRankLabelTime(
             subWindow,
-            latestBarTime,
+            gLatestRankBarTime,
             (double)(0 - rank),
-            pixelOffset
+            pixelOffset,
+            positionResolved
         );
+        positionsResolved = positionsResolved && positionResolved;
     }
 
-    if (!gLatestRankLabelsDraw.draw(subWindow, labelTimes, ranks)) {
+    if (!gLatestRankLabelsDraw.draw(subWindow, labelTimes, gLatestRanks)) {
         gLogger.error(__FUNCTION__, "latest all-rank label draw failed");
+
+        return;
     }
+
+    gLatestRankLabelsDirty = !sourceDrawn || !summaryDrawn || !positionsResolved;
 }
 
 /**
@@ -808,13 +890,14 @@ int findLatestRankBufferIndex(const int fromRatesTotal) {
  *
  * @param fromSubWindow 描画対象サブウィンドウ番号。
  * @param fromRanks 全通貨順位。指定されない場合は未取得表示。
+ * @return 描画に成功した場合true。
  */
-void drawRankSummaryLabel(
+bool drawRankSummaryLabel(
     const int fromSubWindow,
     const int &fromRanks[]
 ) {
     if (gRankSummaryLabelDraw == NULL) {
-        return;
+        return false;
     }
 
     string summaryText = "TOP: - / BOTTOM: -";
@@ -862,7 +945,11 @@ void drawRankSummaryLabel(
         clrWhiteSmoke
     )) {
         gLogger.error(__FUNCTION__, "all-rank summary label draw failed");
+
+        return false;
     }
+
+    return true;
 }
 
 /**
@@ -888,13 +975,14 @@ string appendCurrencyName(
  *
  * @param fromSubWindow 描画対象サブウィンドウ番号。
  * @param fromSourceMode 最新順位点の実行モード。
+ * @return 描画に成功した場合true。
  */
-void drawRankSourceLabel(
+bool drawRankSourceLabel(
     const int fromSubWindow,
     const string fromSourceMode
 ) {
     if (gRankSourceLabelDraw == NULL) {
-        return;
+        return false;
     }
 
     string sourceText = "SOURCE: -";
@@ -918,7 +1006,11 @@ void drawRankSourceLabel(
         sourceColor
     )) {
         gLogger.error(__FUNCTION__, "all-rank source label draw failed");
+
+        return false;
     }
+
+    return true;
 }
 
 /**
@@ -928,14 +1020,17 @@ void drawRankSourceLabel(
  * @param fromBarTime 最新順位を持つバー時刻。
  * @param fromDisplayPosition 順位線の表示位置。
  * @param fromPixelOffset 最新足から右へ離すピクセル数。
+ * @param fromPositionResolved 座標変換で配置時刻を取得できた場合true。
  * @return ラベル配置時刻。
  */
 datetime getLatestRankLabelTime(
     const int fromSubWindow,
     const datetime fromBarTime,
     const double fromDisplayPosition,
-    const int fromPixelOffset
+    const int fromPixelOffset,
+    bool &fromPositionResolved
 ) {
+    fromPositionResolved = false;
     int barX = 0;
     int barY = 0;
 
@@ -960,6 +1055,8 @@ datetime getLatestRankLabelTime(
             resolvedPosition
         ) && resolvedSubWindow == fromSubWindow
                 && resolvedTime > fromBarTime) {
+            fromPositionResolved = true;
+
             return resolvedTime;
         }
     }
@@ -1137,13 +1234,16 @@ bool shouldRefreshRankPoints(
  * @param fromDisplayStartM5BarTime 表示開始M5時刻。
  * @param fromTargetM5BarTime 表示終端M5時刻。
  * @param fromChangedStartM5BarTime 変更確認範囲の開始M5時刻。
+ * @param fromDataChanged 初回取得、履歴の変更または期限切れ削除があった場合true。
  * @return DB検索に成功した場合true。
  */
 bool refreshRankPoints(
     const datetime fromDisplayStartM5BarTime,
     const datetime fromTargetM5BarTime,
-    datetime &fromChangedStartM5BarTime
+    datetime &fromChangedStartM5BarTime,
+    bool &fromDataChanged
 ) {
+    fromDataChanged = false;
     gLastQueryTargetM5BarTime = fromTargetM5BarTime;
     gLastQueryTickCount = GetTickCount64();
 
@@ -1161,7 +1261,10 @@ bool refreshRankPoints(
     }
 
     CurrencyStrengthAllRankPoint queriedPoints[];
-    int maximumPointCount = (historyDays * 288) + 2;
+    // 検索範囲の両端のM5足と従来の余裕1件を含め、DAOの予約容量を抑える。
+    long queryRangeSeconds = (long)fromTargetM5BarTime - (long)queryStartM5BarTime;
+    int maximumPointCount = (int)(queryRangeSeconds / PeriodSeconds(PERIOD_M5)) + 2;
+
     ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS queryStatus =
         CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
 
@@ -1207,14 +1310,17 @@ bool refreshRankPoints(
         queriedPoints
     );
 
-    if (!replaceCacheRange(queryStartM5BarTime, queriedPoints)) {
+    if (rangeChanged && !replaceCacheRange(queryStartM5BarTime, queriedPoints)) {
         gLogger.error(__FUNCTION__, "all-rank point cache update failed");
 
         return false;
     }
 
+    int pointCountBeforePrune = ArraySize(gRankPoints);
     pruneRankPoints(fromDisplayStartM5BarTime);
     gRankPointCacheReady = true;
+    fromDataChanged = initialLoad || rangeChanged
+        || pointCountBeforePrune != ArraySize(gRankPoints);
     fromChangedStartM5BarTime = fromTargetM5BarTime;
 
     if (initialLoad) {
@@ -1264,11 +1370,7 @@ bool isCacheRangeChanged(
     }
 
     for (int i = 0; i < queriedPointCount; i++) {
-        CurrencyStrengthAllRankPoint cachedPoint =
-            gRankPoints[keepCount + i];
-        CurrencyStrengthAllRankPoint queriedPoint = fromPoints[i];
-
-        if (!cachedPoint.isSame(queriedPoint)) {
+        if (!gRankPoints[keepCount + i].isSame(fromPoints[i])) {
             return true;
         }
     }
@@ -1277,25 +1379,31 @@ bool isCacheRangeChanged(
 }
 
 /**
- * 再取得範囲より前にあるキャッシュ件数を取得する。
+ * 時刻の昇順を利用し、再取得範囲より前にあるキャッシュ件数を二分探索する。
  *
  * @param fromRangeStartM5BarTime 再取得範囲の開始M5時刻。
  * @return 保持するキャッシュ件数。
  */
 int getCacheKeepCount(const datetime fromRangeStartM5BarTime) {
-    int pointCount = ArraySize(gRankPoints);
-    int keepCount = 0;
+    int leftIndex = 0;
+    int rightIndex = ArraySize(gRankPoints);
 
-    while (keepCount < pointCount
-            && gRankPoints[keepCount].m5BarTime < fromRangeStartM5BarTime) {
-        keepCount++;
+    while (leftIndex < rightIndex) {
+        int middleIndex = leftIndex + (rightIndex - leftIndex) / 2;
+
+        if (gRankPoints[middleIndex].m5BarTime < fromRangeStartM5BarTime) {
+            leftIndex = middleIndex + 1;
+        } else {
+            rightIndex = middleIndex;
+        }
     }
 
-    return keepCount;
+    return leftIndex;
 }
 
 /**
- * 指定範囲以降のキャッシュを検索結果で置き換える。
+ * 指定範囲以降のキャッシュへ、変更・追加された履歴点だけを反映する。
+ * 保持部分はコピーせず、必要な配列サイズを確保してから検索結果を反映する。
  *
  * @param fromRangeStartM5BarTime 置換範囲の開始M5時刻。
  * @param fromPoints 置換する全通貨順位点。
@@ -1305,29 +1413,24 @@ bool replaceCacheRange(
     const datetime fromRangeStartM5BarTime,
     CurrencyStrengthAllRankPoint &fromPoints[]
 ) {
+    int cachedPointCount = ArraySize(gRankPoints);
     int keepCount = getCacheKeepCount(fromRangeStartM5BarTime);
     int queriedPointCount = ArraySize(fromPoints);
     int nextPointCount = keepCount + queriedPointCount;
-    CurrencyStrengthAllRankPoint nextPoints[];
 
-    if (ArrayResize(nextPoints, nextPointCount) != nextPointCount) {
+    if (nextPointCount != cachedPointCount
+            && ArrayResize(gRankPoints, nextPointCount) != nextPointCount) {
         return false;
-    }
-
-    for (int i = 0; i < keepCount; i++) {
-        nextPoints[i] = gRankPoints[i];
     }
 
     for (int i = 0; i < queriedPointCount; i++) {
-        nextPoints[keepCount + i] = fromPoints[i];
-    }
+        int pointIndex = keepCount + i;
 
-    if (ArrayResize(gRankPoints, nextPointCount) != nextPointCount) {
-        return false;
-    }
+        if (pointIndex < cachedPointCount && gRankPoints[pointIndex].isSame(fromPoints[i])) {
+            continue;
+        }
 
-    for (int i = 0; i < nextPointCount; i++) {
-        gRankPoints[i] = nextPoints[i];
+        gRankPoints[pointIndex] = fromPoints[i];
     }
 
     return true;
@@ -1376,6 +1479,8 @@ void fillAllBuffers(
     const datetime fromTargetM5BarTime
 ) {
     initializeAllBufferValues();
+    datetime cachedM5BarTime = 0;
+    int cachedBufferIndex = -1;
 
     for (int i = 0; i < fromRatesTotal; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
@@ -1384,7 +1489,9 @@ void fillAllBuffers(
             break;
         }
 
-        setBufferValues(i, barM5Time, fromTargetM5BarTime);
+        setCachedBufferValues(
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+        );
     }
 }
 
@@ -1436,6 +1543,9 @@ void fillNewBars(
         calculationCount = fromRatesTotal;
     }
 
+    datetime cachedM5BarTime = 0;
+    int cachedBufferIndex = -1;
+
     for (int i = 0; i < calculationCount; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
 
@@ -1445,7 +1555,9 @@ void fillNewBars(
             continue;
         }
 
-        setBufferValues(i, barM5Time, fromTargetM5BarTime);
+        setCachedBufferValues(
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+        );
     }
 }
 
@@ -1465,6 +1577,9 @@ void fillChangedBuffers(
     const datetime fromDisplayStartM5BarTime,
     const datetime fromTargetM5BarTime
 ) {
+    datetime cachedM5BarTime = 0;
+    int cachedBufferIndex = -1;
+
     for (int i = 0; i < fromRatesTotal; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
 
@@ -1473,7 +1588,9 @@ void fillChangedBuffers(
             break;
         }
 
-        setBufferValues(i, barM5Time, fromTargetM5BarTime);
+        setCachedBufferValues(
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+        );
     }
 }
 
@@ -1518,6 +1635,49 @@ void clearExpiredBuffers(
             clearBufferValues(i);
         }
     }
+}
+
+/**
+ * 同じ更新処理内で同じM5時刻が続く場合は、計算済みの全16バッファを再利用する。
+ * 欠損・無効順位・未来時刻の空値も再利用し、次の更新処理へは持ち越さない。
+ *
+ * @param fromBufferIndex 設定先のバッファ位置。
+ * @param fromBarM5Time 対象バーのM5時刻。
+ * @param fromTargetM5BarTime 使用可能なM5時刻の上限。
+ * @param fromCachedM5BarTime この更新処理で最後に計算したM5時刻。
+ * @param fromCachedBufferIndex 計算済みのバッファ位置。更新処理の開始時は-1。
+ */
+void setCachedBufferValues(
+    const int fromBufferIndex,
+    const datetime fromBarM5Time,
+    const datetime fromTargetM5BarTime,
+    datetime &fromCachedM5BarTime,
+    int &fromCachedBufferIndex
+) {
+    if (fromCachedBufferIndex < 0 || fromCachedM5BarTime != fromBarM5Time) {
+        setBufferValues(fromBufferIndex, fromBarM5Time, fromTargetM5BarTime);
+        fromCachedM5BarTime = fromBarM5Time;
+        fromCachedBufferIndex = fromBufferIndex;
+
+        return;
+    }
+
+    gUsdDisplayRankBuffer[fromBufferIndex] = gUsdDisplayRankBuffer[fromCachedBufferIndex];
+    gJpyDisplayRankBuffer[fromBufferIndex] = gJpyDisplayRankBuffer[fromCachedBufferIndex];
+    gEurDisplayRankBuffer[fromBufferIndex] = gEurDisplayRankBuffer[fromCachedBufferIndex];
+    gGbpDisplayRankBuffer[fromBufferIndex] = gGbpDisplayRankBuffer[fromCachedBufferIndex];
+    gAudDisplayRankBuffer[fromBufferIndex] = gAudDisplayRankBuffer[fromCachedBufferIndex];
+    gNzdDisplayRankBuffer[fromBufferIndex] = gNzdDisplayRankBuffer[fromCachedBufferIndex];
+    gCadDisplayRankBuffer[fromBufferIndex] = gCadDisplayRankBuffer[fromCachedBufferIndex];
+    gChfDisplayRankBuffer[fromBufferIndex] = gChfDisplayRankBuffer[fromCachedBufferIndex];
+    gUsdActualRankBuffer[fromBufferIndex] = gUsdActualRankBuffer[fromCachedBufferIndex];
+    gJpyActualRankBuffer[fromBufferIndex] = gJpyActualRankBuffer[fromCachedBufferIndex];
+    gEurActualRankBuffer[fromBufferIndex] = gEurActualRankBuffer[fromCachedBufferIndex];
+    gGbpActualRankBuffer[fromBufferIndex] = gGbpActualRankBuffer[fromCachedBufferIndex];
+    gAudActualRankBuffer[fromBufferIndex] = gAudActualRankBuffer[fromCachedBufferIndex];
+    gNzdActualRankBuffer[fromBufferIndex] = gNzdActualRankBuffer[fromCachedBufferIndex];
+    gCadActualRankBuffer[fromBufferIndex] = gCadActualRankBuffer[fromCachedBufferIndex];
+    gChfActualRankBuffer[fromBufferIndex] = gChfActualRankBuffer[fromCachedBufferIndex];
 }
 
 /**
