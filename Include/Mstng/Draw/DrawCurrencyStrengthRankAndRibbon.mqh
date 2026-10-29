@@ -60,14 +60,24 @@ public:
      * @param fromTargetM5BarTime 使用可能なM5時刻の上限。
      * @param fromMinimumDifference 準備・成立の基準となる順位差の絶対値。
      * @param fromForce 履歴更新時など、同じ表示範囲でも描き直す場合true。
+     * @param fromPointStartIndex 有効な順位履歴の先頭位置。
      * @return 描画または変更なしの確認に成功した場合true。
      */
     bool draw(
         const CurrencyStrengthPairRankPoint &fromPoints[],
         const datetime fromTargetM5BarTime,
         const int fromMinimumDifference,
-        const bool fromForce = false
+        const bool fromForce = false,
+        const int fromPointStartIndex = 0
     ) {
+        int pointCount = ArraySize(fromPoints);
+        if (fromPointStartIndex < 0 || fromPointStartIndex > pointCount) {
+            this.clear();
+
+            return false;
+        }
+
+        int activePointCount = pointCount - fromPointStartIndex;
         int firstVisibleBar = (int)ChartGetInteger(this.chartId, CHART_FIRST_VISIBLE_BAR);
         int visibleBars = (int)ChartGetInteger(this.chartId, CHART_VISIBLE_BARS);
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS) - 60;
@@ -87,10 +97,10 @@ public:
         }
 
         string viewKey = StringFormat(
-            "%s/%d/%d/%d/%d/%d/%I64d/%I64d/%d/%d/%d/%d/%d",
+            "%s/%d/%d/%d/%d/%d/%I64d/%I64d/%d/%d/%d/%d/%d/%d",
             symbolName, (int)chartPeriod, firstVisibleBar, visibleBars,
             chartWidth, chartHeight, (long)latestBarTime, (long)fromTargetM5BarTime,
-            fromMinimumDifference, ArraySize(fromPoints), (int)backgroundColor,
+            fromMinimumDifference, activePointCount, fromPointStartIndex, (int)backgroundColor,
             (int)foregroundColor, (int)ChartGetInteger(this.chartId, CHART_SCALE)
         );
         if (!fromForce && this.created && this.lastViewKey == viewKey
@@ -175,7 +185,7 @@ public:
 
         this.renderBars(fromPoints, barTimes, fromTargetM5BarTime, fromMinimumDifference,
             periodSeconds, longMediumOnly, newestX, barWidth, chartWidth,
-            buyTextWidth, sellTextWidth);
+            buyTextWidth, sellTextWidth, fromPointStartIndex);
         this.canvas.Update(false);
         this.lastViewKey = viewKey;
 
@@ -302,6 +312,8 @@ private:
      * BUY/SELLの文字幅は描画開始時の計測値を全区間で共用する。
      * 同じM5時刻の順位検索と判定は、この描画内でだけ結果を再利用する。
      * 色が変わっても同方向なら開始の白色を追加しない。
+     *
+     * @param fromPointStartIndex 有効な順位履歴の先頭位置。
      */
     void renderBars(
         const CurrencyStrengthPairRankPoint &fromPoints[],
@@ -314,7 +326,8 @@ private:
         const int fromBarWidth,
         const int fromCanvasWidth,
         const int fromBuyTextWidth,
-        const int fromSellTextWidth
+        const int fromSellTextWidth,
+        const int fromPointStartIndex
     ) {
         int runState = 0;
         int runLeft = 0;
@@ -337,7 +350,8 @@ private:
                 - (long)fromBarTimes[i] % m5Seconds);
             if (!signalCached || cachedM5BarTime != pointM5BarTime) {
                 cachedKnown = this.getSignalState(fromPoints, pointM5BarTime,
-                    fromTargetM5BarTime, fromMinimumDifference, fromLongMediumOnly, cachedState);
+                    fromTargetM5BarTime, fromMinimumDifference, fromLongMediumOnly,
+                    cachedState, fromPointStartIndex);
                 cachedM5BarTime = pointM5BarTime;
                 signalCached = true;
             }
@@ -393,6 +407,8 @@ private:
     /**
      * 指定M5時刻に一致する有効な順位から準備・成立状態を取得する。欠損はfalse。
      * 呼び出し元でチャート足の開始時刻をM5境界へ切り下げて渡す。
+     *
+     * @param fromPointStartIndex 有効な順位履歴の先頭位置。
      */
     bool getSignalState(
         const CurrencyStrengthPairRankPoint &fromPoints[],
@@ -400,33 +416,35 @@ private:
         const datetime fromTargetM5BarTime,
         const int fromMinimumDifference,
         const bool fromLongMediumOnly,
-        int &fromState
+        int &fromState,
+        const int fromPointStartIndex
     ) {
         fromState = 0;
         if (fromM5BarTime <= 0 || fromM5BarTime > fromTargetM5BarTime) {
             return false;
         }
 
-        int left = 0;
+        int left = fromPointStartIndex;
         int right = ArraySize(fromPoints) - 1;
         while (left <= right) {
             int middle = left + (right - left) / 2;
             if (fromPoints[middle].m5BarTime == fromM5BarTime) {
-                CurrencyStrengthPairRankPoint point = fromPoints[middle];
-                if (point.baseLongMediumTermAverageRank < 1 || point.baseLongMediumTermAverageRank > 8
-                        || point.quoteLongMediumTermAverageRank < 1 || point.quoteLongMediumTermAverageRank > 8) {
+                if (fromPoints[middle].baseLongMediumTermAverageRank < 1
+                        || fromPoints[middle].baseLongMediumTermAverageRank > 8
+                        || fromPoints[middle].quoteLongMediumTermAverageRank < 1
+                        || fromPoints[middle].quoteLongMediumTermAverageRank > 8) {
                     return false;
                 }
 
-                if (!fromLongMediumOnly && (point.baseMediumShortTermAverageRank < 1
-                        || point.baseMediumShortTermAverageRank > 8
-                        || point.quoteMediumShortTermAverageRank < 1
-                        || point.quoteMediumShortTermAverageRank > 8)) {
+                if (!fromLongMediumOnly && (fromPoints[middle].baseMediumShortTermAverageRank < 1
+                        || fromPoints[middle].baseMediumShortTermAverageRank > 8
+                        || fromPoints[middle].quoteMediumShortTermAverageRank < 1
+                        || fromPoints[middle].quoteMediumShortTermAverageRank > 8)) {
                     return false;
                 }
 
                 fromState = CurrencyStrengthRankAndSignal::getRibbonState(
-                    point, fromMinimumDifference, fromLongMediumOnly);
+                    fromPoints[middle], fromMinimumDifference, fromLongMediumOnly);
 
                 return true;
             }
