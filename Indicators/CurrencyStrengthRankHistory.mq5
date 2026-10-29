@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.35"
+#property version   "1.37"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -63,6 +63,7 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankPoint.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankAndSignal.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
 #include <Mstng\Util\Util.mqh>
 
@@ -535,7 +536,9 @@ int OnCalculate(
         targetM5BarTime
     );
     bool isTester = Util::isStrategyTester();
-    bool displayChanged = false;
+    bool bufferChanged = false;
+    bool sourceChanged = false;
+    bool ribbonChanged = false;
     datetime changedStartM5BarTime = targetM5BarTime;
 
     if (shouldRefreshRankPoints(targetM5BarTime, isTester)) {
@@ -543,7 +546,9 @@ int OnCalculate(
             displayStartM5BarTime,
             targetM5BarTime,
             changedStartM5BarTime,
-            displayChanged
+            bufferChanged,
+            sourceChanged,
+            ribbonChanged
         );
     }
 
@@ -555,15 +560,8 @@ int OnCalculate(
         || ratesTotal != previousCalculated;
     bool displayRangeChanged = displayStartM5BarTime != gLastDisplayStartM5BarTime;
 
-    if (!fullRefresh && !displayChanged && !chartBarChanged && !displayRangeChanged) {
-        if (gLatestRankLabelsDirty) {
-            drawCachedLatestRankLabels();
-        }
-
-        gChartRedrawRequest.flush(ChartID());
-
-        return ratesTotal;
-    }
+    bool updateBuffers = fullRefresh || bufferChanged || chartBarChanged
+        || displayRangeChanged;
 
     if (fullRefresh) {
         fillAllBuffers(
@@ -572,7 +570,7 @@ int OnCalculate(
             displayStartM5BarTime,
             targetM5BarTime
         );
-    } else {
+    } else if (updateBuffers) {
         int updatedBarCount = fillNewBars(
             ratesTotal,
             previousCalculated,
@@ -581,7 +579,7 @@ int OnCalculate(
             targetM5BarTime
         );
 
-        if (displayChanged) {
+        if (bufferChanged) {
             fillChangedBuffers(
                 ratesTotal,
                 time,
@@ -600,10 +598,20 @@ int OnCalculate(
         );
     }
 
-    gLastDisplayStartM5BarTime = displayStartM5BarTime;
-    gLastCalculatedBarTime = time[0];
-    drawLatestRankLabels(ratesTotal, time, displayStartM5BarTime);
-    drawRankAndRibbon(fullRefresh);
+    if (updateBuffers) {
+        gLastDisplayStartM5BarTime = displayStartM5BarTime;
+        gLastCalculatedBarTime = time[0];
+        drawLatestRankLabels(ratesTotal, time, displayStartM5BarTime);
+    } else if (sourceChanged) {
+        drawLatestRankSourceLabel();
+    } else if (gLatestRankLabelsDirty) {
+        drawCachedLatestRankLabels();
+    }
+
+    if (updateBuffers || ribbonChanged) {
+        drawRankAndRibbon(fullRefresh);
+    }
+
     gChartRedrawRequest.flush(ChartID());
 
     return ratesTotal;
@@ -1076,6 +1084,41 @@ void drawLatestRankLabels(
 }
 
 /**
+ * 保持した最新順位の時刻から取得元だけを更新する。
+ * 未完了のラベル描画がある場合は、取得元の反映後に全ラベルを再試行する。
+ */
+void drawLatestRankSourceLabel() {
+    string sourceMode = "";
+
+    if (gLatestRankBarTime > 0) {
+        int pointIndex = findRankPointIndex(floorToM5(gLatestRankBarTime));
+
+        if (pointIndex >= 0) {
+            sourceMode = gRankPoints[pointIndex].sourceMode;
+        }
+    }
+
+    bool sourceChanged = gLatestRankSourceMode != sourceMode;
+    gLatestRankSourceMode = sourceMode;
+
+    if (gLatestRankLabelsDirty) {
+        drawCachedLatestRankLabels();
+
+        return;
+    }
+
+    if (!sourceChanged) {
+        return;
+    }
+
+    int subWindow = ChartWindowFind();
+
+    if (subWindow <= 0 || !drawRankSourceLabel(subWindow, gLatestRankSourceMode)) {
+        gLatestRankLabelsDirty = true;
+    }
+}
+
+/**
  * 保持した最新順位を使ってラベルを再配置する。画面変更時も履歴を走査しない。
  * 描画に失敗した場合は更新待ち状態を維持し、次のイベントで再試行する。
  */
@@ -1438,16 +1481,22 @@ bool shouldRefreshRankPoints(
  * @param fromDisplayStartM5BarTime 表示開始M5時刻。
  * @param fromTargetM5BarTime 表示終端M5時刻。
  * @param fromChangedStartM5BarTime 変更確認範囲の開始M5時刻。
- * @param fromDisplayChanged 初回取得、表示内容変更または期限切れ削除があった場合true。
+ * @param fromBufferChanged 初回取得、選択期間の順位変更または履歴構成の変更があった場合true。
+ * @param fromSourceChanged 取得元または履歴構成の変更があった場合true。
+ * @param fromRibbonChanged 帯の判定結果または履歴構成の変更があった場合true。
  * @return DB検索に成功した場合true。
  */
 bool refreshRankPoints(
     const datetime fromDisplayStartM5BarTime,
     const datetime fromTargetM5BarTime,
     datetime &fromChangedStartM5BarTime,
-    bool &fromDisplayChanged
+    bool &fromBufferChanged,
+    bool &fromSourceChanged,
+    bool &fromRibbonChanged
 ) {
-    fromDisplayChanged = false;
+    fromBufferChanged = false;
+    fromSourceChanged = false;
+    fromRibbonChanged = false;
     gLastQueryTargetM5BarTime = fromTargetM5BarTime;
     gLastQueryTickCount = GetTickCount64();
 
@@ -1517,11 +1566,15 @@ bool refreshRankPoints(
     }
 
     bool initialLoad = !gRankPointCacheReady;
-    bool rangeDisplayChanged = false;
+    bool rangeBufferChanged = false;
+    bool rangeSourceChanged = false;
+    bool rangeRibbonChanged = false;
     bool rangeChanged = isCacheRangeChanged(
         queryStartM5BarTime,
         queriedPoints,
-        rangeDisplayChanged
+        rangeBufferChanged,
+        rangeSourceChanged,
+        rangeRibbonChanged
     );
 
     if (rangeChanged && !replaceCacheRange(queryStartM5BarTime, queriedPoints)) {
@@ -1530,7 +1583,7 @@ bool refreshRankPoints(
         return false;
     }
 
-    if (rangeDisplayChanged && gRankAndRibbonDraw != NULL) {
+    if (rangeRibbonChanged && gRankAndRibbonDraw != NULL) {
         datetime changedEndM5BarTime = fromTargetM5BarTime;
 
         if (lastCachedM5BarTime > changedEndM5BarTime) {
@@ -1544,8 +1597,10 @@ bool refreshRankPoints(
     int pointCountBeforePrune = getRankPointCount();
     pruneRankPoints(fromDisplayStartM5BarTime);
     gRankPointCacheReady = true;
-    fromDisplayChanged = initialLoad || rangeDisplayChanged
-        || pointCountBeforePrune != getRankPointCount();
+    bool structureChanged = initialLoad || pointCountBeforePrune != getRankPointCount();
+    fromBufferChanged = structureChanged || rangeBufferChanged;
+    fromSourceChanged = structureChanged || rangeSourceChanged;
+    fromRibbonChanged = structureChanged || rangeRibbonChanged;
     fromChangedStartM5BarTime = fromTargetM5BarTime;
 
     if (initialLoad) {
@@ -1567,7 +1622,7 @@ bool refreshRankPoints(
         );
     }
 
-    if (rangeDisplayChanged) {
+    if (rangeBufferChanged) {
         fromChangedStartM5BarTime = queryStartM5BarTime;
     }
 
@@ -1579,33 +1634,71 @@ bool refreshRankPoints(
  *
  * @param fromRangeStartM5BarTime 再取得範囲の開始M5時刻。
  * @param fromPoints 再取得した順位履歴。
- * @param fromDisplayChanged 件数・M5時刻・順位・取得元が異なる場合true。
+ * @param fromBufferChanged 件数・M5時刻・選択期間の順位が異なる場合true。
+ * @param fromSourceChanged 件数・M5時刻・取得元が異なる場合true。
+ * @param fromRibbonChanged 件数・M5時刻・順位の有効性・帯の状態が異なる場合true。
  * @return 管理情報を含めて異なる場合true。
  */
 bool isCacheRangeChanged(
     const datetime fromRangeStartM5BarTime,
     CurrencyStrengthPairRankPoint &fromPoints[],
-    bool &fromDisplayChanged
+    bool &fromBufferChanged,
+    bool &fromSourceChanged,
+    bool &fromRibbonChanged
 ) {
-    fromDisplayChanged = false;
+    fromBufferChanged = false;
+    fromSourceChanged = false;
+    fromRibbonChanged = false;
     int keepCount = getCacheKeepCount(fromRangeStartM5BarTime);
     int cachedTailCount = getRankPointCount() - keepCount;
     int queriedPointCount = ArraySize(fromPoints);
     int replaceStartIndex = gRankPointStartIndex + keepCount;
 
     if (cachedTailCount != queriedPointCount) {
-        fromDisplayChanged = true;
+        fromBufferChanged = true;
+        fromSourceChanged = true;
+        fromRibbonChanged = true;
 
         return true;
     }
 
     bool cacheChanged = false;
+    bool longMediumOnly = PeriodSeconds(_Period) >= PeriodSeconds(PERIOD_H1);
 
     for (int i = 0; i < queriedPointCount; i++) {
-        if (!isSameRankPointDisplay(gRankPoints[replaceStartIndex + i], fromPoints[i])) {
-            fromDisplayChanged = true;
+        if (gRankPoints[replaceStartIndex + i].m5BarTime != fromPoints[i].m5BarTime) {
+            fromBufferChanged = true;
+            fromSourceChanged = true;
+            fromRibbonChanged = true;
 
             return true;
+        }
+
+        if (!isSameRankPointDisplay(gRankPoints[replaceStartIndex + i], fromPoints[i])) {
+            cacheChanged = true;
+
+            if (!fromBufferChanged && !isSameRankPointBuffer(
+                gRankPoints[replaceStartIndex + i], fromPoints[i]
+            )) {
+                fromBufferChanged = true;
+            }
+
+            if (gRankPoints[replaceStartIndex + i].sourceMode != fromPoints[i].sourceMode) {
+                fromSourceChanged = true;
+            }
+
+            if (!fromRibbonChanged && !isSameRankPointRibbon(
+                gRankPoints[replaceStartIndex + i], fromPoints[i], longMediumOnly
+            )) {
+                fromRibbonChanged = true;
+            }
+
+            if (fromBufferChanged && fromSourceChanged && fromRibbonChanged) {
+                return true;
+            }
+
+            // 後続行にある選択期間・取得元・帯の変更も確認する。
+            continue;
         }
 
         // 管理情報だけの変更でも後続の表示内容の比較は続ける。
@@ -1655,6 +1748,70 @@ bool isSameRankPointDisplay(
             == fromRight.quoteLongMediumTermAverageRank
         && fromLeft.quoteMediumShortTermAverageRank
             == fromRight.quoteMediumShortTermAverageRank;
+}
+
+/**
+ * 2つの順位履歴点の選択期間の順位が同じか判定する。
+ *
+ * @param fromLeft 比較対象1。
+ * @param fromRight 比較対象2。
+ * @return 選択期間の基軸通貨・決済通貨の順位が同じ場合true。
+ */
+bool isSameRankPointBuffer(
+    const CurrencyStrengthPairRankPoint &fromLeft,
+    const CurrencyStrengthPairRankPoint &fromRight
+) {
+    if (rankPeriod == CURRENCY_STRENGTH_RANK_PERIOD_MEDIUM_SHORT) {
+        return fromLeft.baseMediumShortTermAverageRank
+                == fromRight.baseMediumShortTermAverageRank
+            && fromLeft.quoteMediumShortTermAverageRank
+                == fromRight.quoteMediumShortTermAverageRank;
+    }
+
+    return fromLeft.baseLongMediumTermAverageRank
+            == fromRight.baseLongMediumTermAverageRank
+        && fromLeft.quoteLongMediumTermAverageRank
+            == fromRight.quoteLongMediumTermAverageRank;
+}
+
+/**
+ * 2つの順位履歴点が、帯の描画に同じ結果を与えるか判定する。
+ * 無効順位と有効な待機状態を区別し、開始位置の白色判定を維持する。
+ *
+ * @param fromLeft 比較対象1。
+ * @param fromRight 比較対象2。
+ * @param fromLongMediumOnly 長中期のみで帯を判定する場合true。
+ * @return M5時刻・順位の有効性・帯の状態が同じ場合true。
+ */
+bool isSameRankPointRibbon(
+    const CurrencyStrengthPairRankPoint &fromLeft,
+    const CurrencyStrengthPairRankPoint &fromRight,
+    const bool fromLongMediumOnly
+) {
+    if (fromLeft.m5BarTime != fromRight.m5BarTime) {
+        return false;
+    }
+
+    bool leftKnown = CurrencyStrengthRankAndSignal::hasValidRibbonRanks(
+        fromLeft, fromLongMediumOnly
+    );
+    bool rightKnown = CurrencyStrengthRankAndSignal::hasValidRibbonRanks(
+        fromRight, fromLongMediumOnly
+    );
+
+    if (leftKnown != rightKnown) {
+        return false;
+    }
+
+    if (!leftKnown) {
+        return true;
+    }
+
+    return CurrencyStrengthRankAndSignal::getRibbonState(
+        fromLeft, rankSignalHighlightDifference, fromLongMediumOnly
+    ) == CurrencyStrengthRankAndSignal::getRibbonState(
+        fromRight, rankSignalHighlightDifference, fromLongMediumOnly
+    );
 }
 
 /**

@@ -562,18 +562,9 @@ private:
             return false;
         }
 
-        if (fromPoints[fromCachedPointIndex].baseLongMediumTermAverageRank < 1
-                || fromPoints[fromCachedPointIndex].baseLongMediumTermAverageRank > 8
-                || fromPoints[fromCachedPointIndex].quoteLongMediumTermAverageRank < 1
-                || fromPoints[fromCachedPointIndex].quoteLongMediumTermAverageRank > 8) {
-            return false;
-        }
-
-        if (!fromLongMediumOnly
-                && (fromPoints[fromCachedPointIndex].baseMediumShortTermAverageRank < 1
-                || fromPoints[fromCachedPointIndex].baseMediumShortTermAverageRank > 8
-                || fromPoints[fromCachedPointIndex].quoteMediumShortTermAverageRank < 1
-                || fromPoints[fromCachedPointIndex].quoteMediumShortTermAverageRank > 8)) {
+        if (!CurrencyStrengthRankAndSignal::hasValidRibbonRanks(
+            fromPoints[fromCachedPointIndex], fromLongMediumOnly
+        )) {
             return false;
         }
 

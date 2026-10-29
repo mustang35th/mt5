@@ -72,6 +72,30 @@ public:
     }
 
     /**
+     * 帯の判定に必要な順位がすべて有効か確認する。
+     *
+     * @param fromPoint 判定する通貨ペア順位。
+     * @param fromLongMediumOnly 長中期のみを判定する場合true。
+     * @return 必要な順位がすべて1位から8位の場合true。
+     */
+    static bool hasValidRibbonRanks(
+        const CurrencyStrengthPairRankPoint &fromPoint,
+        const bool fromLongMediumOnly = false
+    ) {
+        if (!isValidRank(fromPoint.baseLongMediumTermAverageRank)
+                || !isValidRank(fromPoint.quoteLongMediumTermAverageRank)) {
+            return false;
+        }
+
+        if (fromLongMediumOnly) {
+            return true;
+        }
+
+        return isValidRank(fromPoint.baseMediumShortTermAverageRank)
+            && isValidRank(fromPoint.quoteMediumShortTermAverageRank);
+    }
+
+    /**
      * 帯の売買方向と準備・成立状態を取得する。
      *
      * 両期間が同方向で片方だけ順位差の基準に達した場合は準備、両方なら成立とする。
