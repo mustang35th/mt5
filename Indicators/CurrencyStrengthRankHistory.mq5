@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.28"
+#property version   "1.33"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -163,6 +163,9 @@ int gRankPointStartIndex = 0;
 /** キャッシュへ最後に適用した表示開始M5時刻。DB取得失敗時は更新しない。 */
 datetime gRankPointDisplayStartM5BarTime = 0;
 
+/** 初期化時に取得し、M5時刻変換と履歴取得上限の計算で共用する秒数。 */
+int gM5Seconds = 0;
+
 string gBaseCurrency = "";
 string gQuoteCurrency = "";
 string gCalculationVersion = "";
@@ -265,6 +268,14 @@ int OnInit() {
     }
 
     gLogger.setLevel(LOG_INFO);
+    gM5Seconds = PeriodSeconds(PERIOD_M5);
+
+    if (gM5Seconds <= 0) {
+        gLogger.error(__FUNCTION__, "M5 period seconds resolution failed");
+
+        return INIT_FAILED;
+    }
+
     gBaseCurrency = SymbolInfoString(_Symbol, SYMBOL_CURRENCY_BASE);
     gQuoteCurrency = SymbolInfoString(_Symbol, SYMBOL_CURRENCY_PROFIT);
 
@@ -461,6 +472,7 @@ void OnDeinit(const int reason) {
     ArrayFree(gRankPoints);
     gRankPointStartIndex = 0;
     gRankPointDisplayStartM5BarTime = 0;
+    gM5Seconds = 0;
     gCalculationVersion = "";
     gSourceMode = "";
     gRankPointCacheReady = false;
@@ -523,7 +535,7 @@ int OnCalculate(
         targetM5BarTime
     );
     bool isTester = Util::isStrategyTester();
-    bool cacheChanged = false;
+    bool displayChanged = false;
     datetime changedStartM5BarTime = targetM5BarTime;
 
     if (shouldRefreshRankPoints(targetM5BarTime, isTester)) {
@@ -531,7 +543,7 @@ int OnCalculate(
             displayStartM5BarTime,
             targetM5BarTime,
             changedStartM5BarTime,
-            cacheChanged
+            displayChanged
         );
     }
 
@@ -543,7 +555,7 @@ int OnCalculate(
         || ratesTotal != previousCalculated;
     bool displayRangeChanged = displayStartM5BarTime != gLastDisplayStartM5BarTime;
 
-    if (!fullRefresh && !cacheChanged && !chartBarChanged && !displayRangeChanged) {
+    if (!fullRefresh && !displayChanged && !chartBarChanged && !displayRangeChanged) {
         if (gLatestRankLabelsDirty) {
             drawCachedLatestRankLabels();
         }
@@ -569,7 +581,7 @@ int OnCalculate(
             targetM5BarTime
         );
 
-        if (cacheChanged) {
+        if (displayChanged) {
             fillChangedBuffers(
                 ratesTotal,
                 time,
@@ -591,7 +603,7 @@ int OnCalculate(
     gLastDisplayStartM5BarTime = displayStartM5BarTime;
     gLastCalculatedBarTime = time[0];
     drawLatestRankLabels(ratesTotal, time, displayStartM5BarTime);
-    drawRankAndRibbon(fullRefresh || cacheChanged || displayRangeChanged);
+    drawRankAndRibbon(fullRefresh);
     gChartRedrawRequest.flush(ChartID());
 
     return ratesTotal;
@@ -863,7 +875,7 @@ bool isRankAndRibbonOwner() {
 /**
  * 保存済み順位からメインチャート下端のAND帯を更新する。
  *
- * @param fromForce データ更新後など、表示範囲が同じでも再描画する場合true。
+ * @param fromForce 全再構築など、表示範囲が同じでも再描画する場合true。
  */
 void drawRankAndRibbon(const bool fromForce = false) {
     if (gRankAndRibbonDraw == NULL) {
@@ -1374,20 +1386,19 @@ datetime getDisplayStartM5BarTime(const datetime fromTargetM5BarTime) {
 
 /**
  * 日時をM5バー開始時刻へ切り下げる。
+ * M5の秒数は初期化時に取得した値を共用する。
  *
  * @param fromTime 切り下げ対象時刻。
  * @return M5バー開始時刻。
  */
 datetime floorToM5(const datetime fromTime) {
-    int m5Seconds = PeriodSeconds(PERIOD_M5);
-
-    if (fromTime <= 0 || m5Seconds <= 0) {
+    if (fromTime <= 0 || gM5Seconds <= 0) {
         return 0;
     }
 
     long timeSeconds = (long)fromTime;
 
-    return (datetime)(timeSeconds - (timeSeconds % m5Seconds));
+    return (datetime)(timeSeconds - (timeSeconds % gM5Seconds));
 }
 
 /**
@@ -1427,27 +1438,30 @@ bool shouldRefreshRankPoints(
  * @param fromDisplayStartM5BarTime 表示開始M5時刻。
  * @param fromTargetM5BarTime 表示終端M5時刻。
  * @param fromChangedStartM5BarTime 変更確認範囲の開始M5時刻。
- * @param fromCacheChanged 初回取得、内容変更または期限切れ削除があった場合true。
+ * @param fromDisplayChanged 初回取得、表示内容変更または期限切れ削除があった場合true。
  * @return DB検索に成功した場合true。
  */
 bool refreshRankPoints(
     const datetime fromDisplayStartM5BarTime,
     const datetime fromTargetM5BarTime,
     datetime &fromChangedStartM5BarTime,
-    bool &fromCacheChanged
+    bool &fromDisplayChanged
 ) {
-    fromCacheChanged = false;
+    fromDisplayChanged = false;
     gLastQueryTargetM5BarTime = fromTargetM5BarTime;
     gLastQueryTickCount = GetTickCount64();
 
     datetime queryStartM5BarTime = fromDisplayStartM5BarTime;
     int cachedPointCount = getRankPointCount();
+    datetime lastCachedM5BarTime = 0;
+
+    if (cachedPointCount > 0) {
+        lastCachedM5BarTime =
+            gRankPoints[gRankPointStartIndex + cachedPointCount - 1].m5BarTime;
+    }
 
     if (gRankPointCacheReady && cachedPointCount > 0
             && fromDisplayStartM5BarTime >= gRankPointDisplayStartM5BarTime) {
-        datetime lastCachedM5BarTime =
-            gRankPoints[gRankPointStartIndex + cachedPointCount - 1].m5BarTime;
-
         if (lastCachedM5BarTime >= fromDisplayStartM5BarTime
                 && lastCachedM5BarTime <= fromTargetM5BarTime) {
             queryStartM5BarTime = lastCachedM5BarTime;
@@ -1457,7 +1471,7 @@ bool refreshRankPoints(
     CurrencyStrengthPairRankPoint queriedPoints[];
     // 検索範囲の両端のM5足と従来の余裕1件を含め、DAOの予約容量を抑える。
     long queryRangeSeconds = (long)fromTargetM5BarTime - (long)queryStartM5BarTime;
-    int maximumPointCount = (int)(queryRangeSeconds / PeriodSeconds(PERIOD_M5)) + 2;
+    int maximumPointCount = (int)(queryRangeSeconds / gM5Seconds) + 2;
 
     ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS queryStatus =
         CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
@@ -1503,9 +1517,11 @@ bool refreshRankPoints(
     }
 
     bool initialLoad = !gRankPointCacheReady;
+    bool rangeDisplayChanged = false;
     bool rangeChanged = isCacheRangeChanged(
         queryStartM5BarTime,
-        queriedPoints
+        queriedPoints,
+        rangeDisplayChanged
     );
 
     if (rangeChanged && !replaceCacheRange(queryStartM5BarTime, queriedPoints)) {
@@ -1514,10 +1530,21 @@ bool refreshRankPoints(
         return false;
     }
 
+    if (rangeDisplayChanged && gRankAndRibbonDraw != NULL) {
+        datetime changedEndM5BarTime = fromTargetM5BarTime;
+
+        if (lastCachedM5BarTime > changedEndM5BarTime) {
+            changedEndM5BarTime = lastCachedM5BarTime;
+        }
+
+        // 取得上限の後退で削除された旧末尾も、帯の変更範囲に含める。
+        gRankAndRibbonDraw.invalidateDataRange(queryStartM5BarTime, changedEndM5BarTime);
+    }
+
     int pointCountBeforePrune = getRankPointCount();
     pruneRankPoints(fromDisplayStartM5BarTime);
     gRankPointCacheReady = true;
-    fromCacheChanged = initialLoad || rangeChanged
+    fromDisplayChanged = initialLoad || rangeDisplayChanged
         || pointCountBeforePrune != getRankPointCount();
     fromChangedStartM5BarTime = fromTargetM5BarTime;
 
@@ -1540,7 +1567,7 @@ bool refreshRankPoints(
         );
     }
 
-    if (rangeChanged) {
+    if (rangeDisplayChanged) {
         fromChangedStartM5BarTime = queryStartM5BarTime;
     }
 
@@ -1552,28 +1579,43 @@ bool refreshRankPoints(
  *
  * @param fromRangeStartM5BarTime 再取得範囲の開始M5時刻。
  * @param fromPoints 再取得した順位履歴。
- * @return 異なる場合true。
+ * @param fromDisplayChanged 件数・M5時刻・順位・取得元が異なる場合true。
+ * @return 管理情報を含めて異なる場合true。
  */
 bool isCacheRangeChanged(
     const datetime fromRangeStartM5BarTime,
-    CurrencyStrengthPairRankPoint &fromPoints[]
+    CurrencyStrengthPairRankPoint &fromPoints[],
+    bool &fromDisplayChanged
 ) {
+    fromDisplayChanged = false;
     int keepCount = getCacheKeepCount(fromRangeStartM5BarTime);
     int cachedTailCount = getRankPointCount() - keepCount;
     int queriedPointCount = ArraySize(fromPoints);
     int replaceStartIndex = gRankPointStartIndex + keepCount;
 
     if (cachedTailCount != queriedPointCount) {
+        fromDisplayChanged = true;
+
         return true;
     }
 
+    bool cacheChanged = false;
+
     for (int i = 0; i < queriedPointCount; i++) {
-        if (!isSameRankPoint(gRankPoints[replaceStartIndex + i], fromPoints[i])) {
+        if (!isSameRankPointDisplay(gRankPoints[replaceStartIndex + i], fromPoints[i])) {
+            fromDisplayChanged = true;
+
             return true;
+        }
+
+        // 管理情報だけの変更でも後続の表示内容の比較は続ける。
+        if (gRankPoints[replaceStartIndex + i].runId != fromPoints[i].runId
+                || gRankPoints[replaceStartIndex + i].updatedAt != fromPoints[i].updatedAt) {
+            cacheChanged = true;
         }
     }
 
-    return false;
+    return cacheChanged;
 }
 
 /**
@@ -1588,8 +1630,22 @@ bool isSameRankPoint(
     const CurrencyStrengthPairRankPoint &fromRight
 ) {
     return fromLeft.runId == fromRight.runId
-        && fromLeft.m5BarTime == fromRight.m5BarTime
         && fromLeft.updatedAt == fromRight.updatedAt
+        && isSameRankPointDisplay(fromLeft, fromRight);
+}
+
+/**
+ * 2つの順位履歴点の表示に使う内容が同じか判定する。
+ *
+ * @param fromLeft 比較対象1。
+ * @param fromRight 比較対象2。
+ * @return M5時刻・順位・取得元が同じ場合true。
+ */
+bool isSameRankPointDisplay(
+    const CurrencyStrengthPairRankPoint &fromLeft,
+    const CurrencyStrengthPairRankPoint &fromRight
+) {
+    return fromLeft.m5BarTime == fromRight.m5BarTime
         && fromLeft.sourceMode == fromRight.sourceMode
         && fromLeft.baseLongMediumTermAverageRank
             == fromRight.baseLongMediumTermAverageRank
@@ -1679,7 +1735,16 @@ bool replaceCacheRange(
  */
 void pruneRankPoints(const datetime fromDisplayStartM5BarTime) {
     gRankPointDisplayStartM5BarTime = fromDisplayStartM5BarTime;
-    gRankPointStartIndex += getCacheKeepCount(fromDisplayStartM5BarTime);
+    int expiredPointCount = getCacheKeepCount(fromDisplayStartM5BarTime);
+
+    if (expiredPointCount > 0 && gRankAndRibbonDraw != NULL) {
+        gRankAndRibbonDraw.invalidateDataRange(
+            gRankPoints[gRankPointStartIndex].m5BarTime,
+            gRankPoints[gRankPointStartIndex + expiredPointCount - 1].m5BarTime
+        );
+    }
+
+    gRankPointStartIndex += expiredPointCount;
 
     if (gRankPointStartIndex <= 0) {
         return;
@@ -1736,6 +1801,7 @@ void fillAllBuffers(
 
     datetime cachedM5BarTime = 0;
     int cachedBufferIndex = -1;
+    int cachedPointIndex = -1;
 
     for (int i = 0; i < fromRatesTotal; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
@@ -1745,7 +1811,8 @@ void fillAllBuffers(
         }
 
         setCachedBufferValues(
-            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex,
+            cachedPointIndex
         );
     }
 }
@@ -1774,6 +1841,7 @@ int fillNewBars(
 
     datetime cachedM5BarTime = 0;
     int cachedBufferIndex = -1;
+    int cachedPointIndex = -1;
 
     for (int i = 0; i < calculationCount; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
@@ -1785,7 +1853,8 @@ int fillNewBars(
         }
 
         setCachedBufferValues(
-            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex,
+            cachedPointIndex
         );
     }
 
@@ -1807,6 +1876,7 @@ void fillChangedBuffers(
 ) {
     datetime cachedM5BarTime = 0;
     int cachedBufferIndex = -1;
+    int cachedPointIndex = -1;
 
     for (int i = fromStartBufferIndex; i < fromRatesTotal; i++) {
         datetime barM5Time = floorToM5(fromTime[i]);
@@ -1817,7 +1887,8 @@ void fillChangedBuffers(
         }
 
         setCachedBufferValues(
-            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex
+            i, barM5Time, fromTargetM5BarTime, cachedM5BarTime, cachedBufferIndex,
+            cachedPointIndex
         );
     }
 }
@@ -1869,16 +1940,20 @@ void clearExpiredBuffers(
  * @param fromTargetM5BarTime 使用可能なM5時刻の上限。
  * @param fromCachedM5BarTime この更新処理で最後に計算したM5時刻。
  * @param fromCachedBufferIndex 計算済みのバッファ位置。更新処理の開始時は-1。
+ * @param fromCachedPointIndex 前回検索した履歴位置。更新処理の開始時は-1。
  */
 void setCachedBufferValues(
     const int fromBufferIndex,
     const datetime fromBarM5Time,
     const datetime fromTargetM5BarTime,
     datetime &fromCachedM5BarTime,
-    int &fromCachedBufferIndex
+    int &fromCachedBufferIndex,
+    int &fromCachedPointIndex
 ) {
     if (fromCachedBufferIndex < 0 || fromCachedM5BarTime != fromBarM5Time) {
-        setBufferValues(fromBufferIndex, fromBarM5Time, fromTargetM5BarTime);
+        setBufferValues(
+            fromBufferIndex, fromBarM5Time, fromTargetM5BarTime, fromCachedPointIndex
+        );
         fromCachedM5BarTime = fromBarM5Time;
         fromCachedBufferIndex = fromBufferIndex;
 
@@ -1897,19 +1972,24 @@ void setCachedBufferValues(
 
 /**
  * 指定バーへ対応するM5順位を設定する。
+ *
+ * @param fromCachedPointIndex 前回検索した履歴位置。検索結果で更新し、欠損時は-1。
  */
 void setBufferValues(
     const int fromBufferIndex,
     const datetime fromBarM5Time,
-    const datetime fromTargetM5BarTime
+    const datetime fromTargetM5BarTime,
+    int &fromCachedPointIndex
 ) {
     if (fromBarM5Time <= 0 || fromBarM5Time > fromTargetM5BarTime) {
+        fromCachedPointIndex = -1;
         clearBufferValues(fromBufferIndex);
 
         return;
     }
 
-    int pointIndex = findRankPointIndex(fromBarM5Time);
+    int pointIndex = findRankPointIndex(fromBarM5Time, fromCachedPointIndex);
+    fromCachedPointIndex = pointIndex;
 
     if (pointIndex < 0) {
         clearBufferValues(fromBufferIndex);
@@ -1969,13 +2049,23 @@ void clearBufferValues(const int fromBufferIndex) {
 
 /**
  * M5時刻が完全一致する順位履歴点を二分検索する。
+ * 新しい足から古い足へ処理する場合、前回位置の1件前が完全一致すれば再利用する。
  *
  * @param fromM5BarTime 検索対象M5時刻。
+ * @param fromPreviousPointIndex 同じ更新処理内の前回検索位置。単発検索や初回は-1。
  * @return 一致した配列位置。存在しない場合は-1。
  */
-int findRankPointIndex(const datetime fromM5BarTime) {
+int findRankPointIndex(
+    const datetime fromM5BarTime,
+    const int fromPreviousPointIndex = -1
+) {
     int leftIndex = gRankPointStartIndex;
     int rightIndex = ArraySize(gRankPoints) - 1;
+
+    if (fromPreviousPointIndex > leftIndex && fromPreviousPointIndex <= rightIndex
+            && gRankPoints[fromPreviousPointIndex - 1].m5BarTime == fromM5BarTime) {
+        return fromPreviousPointIndex - 1;
+    }
 
     while (leftIndex <= rightIndex) {
         int middleIndex = leftIndex + ((rightIndex - leftIndex) / 2);
