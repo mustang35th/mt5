@@ -35,6 +35,7 @@ public:
         this.objectName = Constant::PREFIX_FIXED
             + "CurrencyStrengthRankAndRibbon_" + fromObjectSuffix;
         this.created = false;
+        this.cleared = false;
         this.lastViewKey = "";
         this.canvasHeight = 34;
     }
@@ -130,10 +131,12 @@ public:
             return false;
         }
 
+        int periodSeconds = PeriodSeconds(chartPeriod);
+        bool longMediumOnly = periodSeconds >= PeriodSeconds(PERIOD_H1);
         string periodTitle = "長中期・中短期 準備/成立";
         string tooltip = "両期間が同方向：片方だけ順位差" + (string)fromMinimumDifference
             + "以上は暗い準備色、両方は明るい成立色。";
-        if (this.isLongMediumOnly()) {
+        if (longMediumOnly) {
             periodTitle = "長中期";
             tooltip = "長中期：順位差" + (string)fromMinimumDifference + "以上。";
         }
@@ -142,7 +145,7 @@ public:
         ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP,
             tooltip + "帯の左端の白色は確認できた開始。準備・成立の切り替え時には追加しません。");
         this.renderBars(fromPoints, barTimes, fromTargetM5BarTime, fromMinimumDifference,
-            PeriodSeconds(chartPeriod), referencePrice, barWidth, chartWidth);
+            periodSeconds, longMediumOnly, newestX, barWidth, chartWidth);
         this.canvas.Update(false);
         this.lastViewKey = viewKey;
         ChartRedraw(this.chartId);
@@ -152,11 +155,17 @@ public:
 
     /**
      * このインスタンスの帯だけを削除する。
+     * オブジェクトの不在を確認済みの場合は、再作成を試すまで探索と解放を省く。
      */
     void clear() {
+        if (this.cleared) {
+            return;
+        }
+
         bool hadCanvas = this.created;
         this.canvas.Destroy();
-        if (ObjectFind(this.chartId, this.objectName) >= 0) {
+        this.cleared = ObjectFind(this.chartId, this.objectName) < 0;
+        if (!this.cleared) {
             ObjectDelete(this.chartId, this.objectName);
             hadCanvas = true;
         }
@@ -181,20 +190,14 @@ private:
     /** Canvasを生成済みの場合true。 */
     bool created;
 
+    /** Canvas解放後にオブジェクトの不在を確認済みの場合true。 */
+    bool cleared;
+
     /** 前回描画した表示範囲とデータ上限の識別子。 */
     string lastViewKey;
 
     /** タイトルと帯を含む描画高さ。 */
     int canvasHeight;
-
-    /**
-     * H1以上のチャートでは長中期だけで帯を判定する。
-     *
-     * @return チャートの時間足がH1以上の場合true。
-     */
-    bool isLongMediumOnly() {
-        return PeriodSeconds(ChartPeriod(this.chartId)) >= PeriodSeconds(PERIOD_H1);
-    }
 
     /**
      * メインチャート下端にCanvasを作成または再配置する。
@@ -207,6 +210,7 @@ private:
         // チャート下端にある既存の時刻ラベル用に32px空ける。
         int top = fromChartHeight - this.canvasHeight - 32;
         if (!this.created) {
+            this.cleared = false;
             if (!this.canvas.CreateBitmapLabel(this.chartId, 0, this.objectName,
                     0, top, fromWidth, this.canvasHeight, COLOR_FORMAT_ARGB_NORMALIZE)) {
                 return false;
@@ -230,6 +234,7 @@ private:
 
     /**
      * 可視足を古い順に判定し、同じ準備・成立状態の連続区間をまとめる。
+     * series配列の足番号と共通の足幅から座標を求め、足ごとの座標変換を省く。
      * 色が変わっても同方向なら開始の白色を追加しない。
      */
     void renderBars(
@@ -238,7 +243,8 @@ private:
         const datetime fromTargetM5BarTime,
         const int fromMinimumDifference,
         const int fromPeriodSeconds,
-        const double fromReferencePrice,
+        const bool fromLongMediumOnly,
+        const int fromNewestX,
         const int fromBarWidth,
         const int fromCanvasWidth
     ) {
@@ -251,11 +257,11 @@ private:
         datetime previousTime = 0;
 
         for (int i = ArraySize(fromBarTimes) - 1; i >= 0; i--) {
-            int pointX = 0;
-            int ignoredY = 0;
+            // 週末や欠損があっても、時間差ではなく取得した足の並びで位置を求める。
+            int pointX = fromNewestX - i * fromBarWidth;
             int state = 0;
             bool known = this.getSignalState(fromPoints, fromBarTimes[i],
-                fromTargetM5BarTime, fromMinimumDifference, state);
+                fromTargetM5BarTime, fromMinimumDifference, fromLongMediumOnly, state);
             int direction = 0;
             if (state > 0) {
                 direction = 1;
@@ -263,8 +269,6 @@ private:
                 direction = -1;
             }
 
-            bool positionKnown = ChartTimePriceToXY(this.chartId, 0, fromBarTimes[i],
-                fromReferencePrice, pointX, ignoredY);
             int left = pointX - fromBarWidth / 2;
             int right = left + fromBarWidth - 1;
             bool timeContinuous = previousTime > 0
@@ -273,13 +277,13 @@ private:
                 previousKnown = false;
             }
 
-            if (runState != 0 && (!known || !positionKnown || !timeContinuous
+            if (runState != 0 && (!known || !timeContinuous
                     || state != runState || left > runRight + 1)) {
                 this.drawRun(runState, runLeft, runRight, runStartX, fromCanvasWidth);
                 runState = 0;
             }
 
-            if (known && positionKnown && state != 0) {
+            if (known && state != 0) {
                 if (runState == 0) {
                     runState = state;
                     runLeft = left;
@@ -293,7 +297,7 @@ private:
             }
 
             previousDirection = direction;
-            previousKnown = known && positionKnown;
+            previousKnown = known;
             previousTime = fromBarTimes[i];
         }
 
@@ -310,6 +314,7 @@ private:
         const datetime fromBarTime,
         const datetime fromTargetM5BarTime,
         const int fromMinimumDifference,
+        const bool fromLongMediumOnly,
         int &fromState
     ) {
         fromState = 0;
@@ -325,13 +330,12 @@ private:
             int middle = left + (right - left) / 2;
             if (fromPoints[middle].m5BarTime == pointTime) {
                 CurrencyStrengthPairRankPoint point = fromPoints[middle];
-                bool longMediumOnly = this.isLongMediumOnly();
                 if (point.baseLongMediumTermAverageRank < 1 || point.baseLongMediumTermAverageRank > 8
                         || point.quoteLongMediumTermAverageRank < 1 || point.quoteLongMediumTermAverageRank > 8) {
                     return false;
                 }
 
-                if (!longMediumOnly && (point.baseMediumShortTermAverageRank < 1
+                if (!fromLongMediumOnly && (point.baseMediumShortTermAverageRank < 1
                         || point.baseMediumShortTermAverageRank > 8
                         || point.quoteMediumShortTermAverageRank < 1
                         || point.quoteMediumShortTermAverageRank > 8)) {
@@ -339,7 +343,7 @@ private:
                 }
 
                 fromState = CurrencyStrengthRankAndSignal::getRibbonState(
-                    point, fromMinimumDifference, longMediumOnly);
+                    point, fromMinimumDifference, fromLongMediumOnly);
 
                 return true;
             }

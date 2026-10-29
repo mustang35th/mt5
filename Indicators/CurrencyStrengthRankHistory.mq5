@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.06"
+#property version   "1.13"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -188,6 +188,9 @@ bool gLatestRankLabelsDirty = false;
 /** 通常チャートのDB再読込間隔を60秒に固定する。M5新足時は即時再読込する。 */
 const int refreshSeconds = 60;
 
+/** 通常チャートで帯の表示・描画担当と描画失敗を再確認する間隔（秒）。 */
+const int displayCheckSeconds = 10;
+
 const double rankSignalDisplayPosition = -9.0;
 
 /** 塗り領域、リボンと右上ラベルを強調する順位差の絶対値。 */
@@ -361,7 +364,7 @@ int OnInit() {
         }
     }
 
-    if (!isTester && !EventSetTimer(1)) {
+    if (!isTester && !EventSetTimer(displayCheckSeconds)) {
         gLogger.error(__FUNCTION__, "rank history timer initialization failed");
 
         return INIT_FAILED;
@@ -548,7 +551,8 @@ int OnCalculate(
 }
 
 /**
- * ティックがない場合も帯の表示変更を確認し、失敗したラベル描画を再試行する。
+ * 通常チャートで10秒ごとに帯の表示・描画担当を確認し、失敗したラベル描画を再試行する。
+ * 画面変更・新足・履歴変更時の更新は各イベントで行う。
  */
 void OnTimer() {
     if (gRankLabelObjectsPrepared && gLatestRankLabelsDirty) {
@@ -1356,7 +1360,9 @@ bool refreshRankPoints(
     }
 
     CurrencyStrengthPairRankPoint queriedPoints[];
-    int maximumPointCount = (historyDays * 288) + 2;
+    // 検索範囲の両端のM5足と従来の余裕1件を含め、DAOの予約容量を抑える。
+    long queryRangeSeconds = (long)fromTargetM5BarTime - (long)queryStartM5BarTime;
+    int maximumPointCount = (int)(queryRangeSeconds / PeriodSeconds(PERIOD_M5)) + 2;
 
     ENUM_CURRENCY_STRENGTH_PAIR_RANK_QUERY_STATUS queryStatus =
         CURRENCY_STRENGTH_PAIR_RANK_QUERY_ERROR;
@@ -1503,25 +1509,31 @@ bool isSameRankPoint(
 }
 
 /**
- * 再取得範囲より前にあるキャッシュ件数を取得する。
+ * 時刻の昇順を利用し、再取得範囲より前にあるキャッシュ件数を二分探索する。
  *
  * @param fromRangeStartM5BarTime 再取得範囲の開始M5時刻。
  * @return 保持するキャッシュ件数。
  */
 int getCacheKeepCount(const datetime fromRangeStartM5BarTime) {
-    int pointCount = ArraySize(gRankPoints);
-    int keepCount = 0;
+    int leftIndex = 0;
+    int rightIndex = ArraySize(gRankPoints);
 
-    while (keepCount < pointCount
-            && gRankPoints[keepCount].m5BarTime < fromRangeStartM5BarTime) {
-        keepCount++;
+    while (leftIndex < rightIndex) {
+        int middleIndex = leftIndex + (rightIndex - leftIndex) / 2;
+
+        if (gRankPoints[middleIndex].m5BarTime < fromRangeStartM5BarTime) {
+            leftIndex = middleIndex + 1;
+        } else {
+            rightIndex = middleIndex;
+        }
     }
 
-    return keepCount;
+    return leftIndex;
 }
 
 /**
- * 指定範囲以降のキャッシュを検索結果で置き換える。
+ * 指定範囲以降のキャッシュへ、変更・追加された履歴点だけを反映する。
+ * 保持部分はコピーせず、必要な配列サイズを確保してから検索結果を反映する。
  *
  * @param fromRangeStartM5BarTime 置換範囲の開始M5時刻。
  * @param fromPoints 置換する順位履歴。
@@ -1531,29 +1543,25 @@ bool replaceCacheRange(
     const datetime fromRangeStartM5BarTime,
     CurrencyStrengthPairRankPoint &fromPoints[]
 ) {
+    int cachedPointCount = ArraySize(gRankPoints);
     int keepCount = getCacheKeepCount(fromRangeStartM5BarTime);
     int queriedPointCount = ArraySize(fromPoints);
     int nextPointCount = keepCount + queriedPointCount;
-    CurrencyStrengthPairRankPoint nextPoints[];
 
-    if (ArrayResize(nextPoints, nextPointCount) != nextPointCount) {
+    if (nextPointCount != cachedPointCount
+            && ArrayResize(gRankPoints, nextPointCount) != nextPointCount) {
         return false;
-    }
-
-    for (int i = 0; i < keepCount; i++) {
-        nextPoints[i] = gRankPoints[i];
     }
 
     for (int i = 0; i < queriedPointCount; i++) {
-        nextPoints[keepCount + i] = fromPoints[i];
-    }
+        int pointIndex = keepCount + i;
 
-    if (ArrayResize(gRankPoints, nextPointCount) != nextPointCount) {
-        return false;
-    }
+        if (pointIndex < cachedPointCount
+                && isSameRankPoint(gRankPoints[pointIndex], fromPoints[i])) {
+            continue;
+        }
 
-    for (int i = 0; i < nextPointCount; i++) {
-        gRankPoints[i] = nextPoints[i];
+        gRankPoints[pointIndex] = fromPoints[i];
     }
 
     return true;

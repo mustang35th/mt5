@@ -40,6 +40,10 @@ public:
         this.lastQuoteLabelTime = 0;
         this.lastBaseRank = 0;
         this.lastQuoteRank = 0;
+        this.lastBaseCurrency = "";
+        this.lastQuoteCurrency = "";
+        this.lastBaseColor = clrNONE;
+        this.lastQuoteColor = clrNONE;
     }
 
     /**
@@ -51,6 +55,7 @@ public:
 
     /**
      * 最新順位を順位線の右側へ描画する。
+     * 固定表示設定は作成時に行い、更新時は位置・文字・色だけを反映する。
      *
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromBaseLabelTime 基軸通貨ラベルを配置する時刻。
@@ -93,7 +98,11 @@ public:
                 && this.lastBaseLabelTime == fromBaseLabelTime
                 && this.lastQuoteLabelTime == fromQuoteLabelTime
                 && this.lastBaseRank == fromBaseRank
-                && this.lastQuoteRank == fromQuoteRank) {
+                && this.lastQuoteRank == fromQuoteRank
+                && this.lastBaseCurrency == fromBaseCurrency
+                && this.lastQuoteCurrency == fromQuoteCurrency
+                && this.lastBaseColor == fromBaseColor
+                && this.lastQuoteColor == fromQuoteColor) {
             return true;
         }
 
@@ -126,6 +135,10 @@ public:
         this.lastQuoteLabelTime = fromQuoteLabelTime;
         this.lastBaseRank = fromBaseRank;
         this.lastQuoteRank = fromQuoteRank;
+        this.lastBaseCurrency = fromBaseCurrency;
+        this.lastQuoteCurrency = fromQuoteCurrency;
+        this.lastBaseColor = fromBaseColor;
+        this.lastQuoteColor = fromQuoteColor;
         ChartRedraw(this.chartId);
 
         return true;
@@ -171,6 +184,18 @@ private:
     /** 前回描画した決済通貨順位。 */
     int lastQuoteRank;
 
+    /** 前回描画した基軸通貨名。 */
+    string lastBaseCurrency;
+
+    /** 前回描画した決済通貨名。 */
+    string lastQuoteCurrency;
+
+    /** 前回描画した基軸通貨の文字色。 */
+    color lastBaseColor;
+
+    /** 前回描画した決済通貨の文字色。 */
+    color lastQuoteColor;
+
     /**
      * 1通貨分の最新順位ラベルを描画する。
      *
@@ -193,7 +218,10 @@ private:
         int objectWindow = ObjectFind(this.chartId, fromObjectName);
 
         if (objectWindow >= 0 && objectWindow != fromSubWindow) {
-            ObjectDelete(this.chartId, fromObjectName);
+            if (!ObjectDelete(this.chartId, fromObjectName)) {
+                return false;
+            }
+
             objectWindow = -1;
         }
 
@@ -209,6 +237,10 @@ private:
             return false;
         }
 
+        if ((objectWindow < 0 || !this.created) && !this.configureObject(fromObjectName)) {
+            return false;
+        }
+
         if (!ObjectMove(
             this.chartId,
             fromObjectName,
@@ -219,68 +251,79 @@ private:
             return false;
         }
 
-        ObjectSetInteger(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_ANCHOR,
-            ANCHOR_LEFT
-        );
-        ObjectSetInteger(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_FONTSIZE,
-            9
-        );
-        ObjectSetInteger(
+        bool configured = ObjectSetInteger(
             this.chartId,
             fromObjectName,
             OBJPROP_COLOR,
             fromColor
         );
-        ObjectSetInteger(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_BACK,
-            false
-        );
-        ObjectSetInteger(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_SELECTABLE,
-            false
-        );
-        ObjectSetInteger(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_SELECTED,
-            false
-        );
-        ObjectSetInteger(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_HIDDEN,
-            true
-        );
-        ObjectSetInteger(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_ZORDER,
-            2
-        );
-        ObjectSetString(
-            this.chartId,
-            fromObjectName,
-            OBJPROP_FONT,
-            "MS Gothic"
-        );
-        ObjectSetString(
+        configured = ObjectSetString(
             this.chartId,
             fromObjectName,
             OBJPROP_TEXT,
             fromText
-        );
+        ) && configured;
 
-        return true;
+        return configured;
+    }
+
+    /**
+     * 最新順位ラベルの固定表示設定を作成時に適用する。
+     *
+     * @param fromObjectName 設定対象のオブジェクト名。
+     * @return すべての設定に成功した場合true。
+     */
+    bool configureObject(const string fromObjectName) {
+        bool configured = ObjectSetInteger(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_ANCHOR,
+            ANCHOR_LEFT
+        );
+        configured = ObjectSetInteger(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_FONTSIZE,
+            9
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_BACK,
+            false
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_SELECTABLE,
+            false
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_SELECTED,
+            false
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_HIDDEN,
+            true
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_ZORDER,
+            2
+        ) && configured;
+        configured = ObjectSetString(
+            this.chartId,
+            fromObjectName,
+            OBJPROP_FONT,
+            "MS Gothic"
+        ) && configured;
+
+        return configured;
     }
 
     /**
@@ -295,6 +338,10 @@ private:
         this.lastQuoteLabelTime = 0;
         this.lastBaseRank = 0;
         this.lastQuoteRank = 0;
+        this.lastBaseCurrency = "";
+        this.lastQuoteCurrency = "";
+        this.lastBaseColor = clrNONE;
+        this.lastQuoteColor = clrNONE;
     }
 };
 

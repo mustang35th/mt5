@@ -69,9 +69,14 @@ public:
         }
 
         int objectWindow = ObjectFind(this.chartId, this.objectName);
+        bool initializeProperties = !this.created || objectWindow != fromSubWindow;
+        this.created = false;
 
         if (objectWindow >= 0 && objectWindow != fromSubWindow) {
-            ObjectDelete(this.chartId, this.objectName);
+            if (!ObjectDelete(this.chartId, this.objectName)) {
+                return false;
+            }
+
             objectWindow = -1;
         }
 
@@ -87,78 +92,38 @@ public:
             return false;
         }
 
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_CORNER,
-            CORNER_RIGHT_UPPER
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_ANCHOR,
-            ANCHOR_RIGHT_UPPER
-        );
-        ObjectSetInteger(
+        if (initializeProperties && !this.configureObject()) {
+            return false;
+        }
+
+        bool updated = ObjectSetInteger(
             this.chartId,
             this.objectName,
             OBJPROP_XDISTANCE,
             48
         );
-        ObjectSetInteger(
+        updated = ObjectSetInteger(
             this.chartId,
             this.objectName,
             OBJPROP_YDISTANCE,
             27
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_FONTSIZE,
-            12
-        );
-        ObjectSetInteger(
+        ) && updated;
+        updated = ObjectSetInteger(
             this.chartId,
             this.objectName,
             OBJPROP_COLOR,
             fromColor
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_SELECTABLE,
-            false
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_SELECTED,
-            false
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_HIDDEN,
-            true
-        );
-        ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_ZORDER,
-            2
-        );
-        ObjectSetString(
-            this.chartId,
-            this.objectName,
-            OBJPROP_FONT,
-            "MS Gothic"
-        );
-        ObjectSetString(
+        ) && updated;
+        updated = ObjectSetString(
             this.chartId,
             this.objectName,
             OBJPROP_TEXT,
             fromText
-        );
+        ) && updated;
+
+        if (!updated) {
+            return false;
+        }
 
         this.created = true;
         this.lastSubWindow = fromSubWindow;
@@ -188,7 +153,7 @@ private:
     /** 売買方向ラベルのオブジェクト名。 */
     string objectName;
 
-    /** ラベル生成済みの場合true。 */
+    /** ラベルの設定と描画が完了した場合true。 */
     bool created;
 
     /** 前回描画したサブウィンドウ番号。 */
@@ -199,6 +164,64 @@ private:
 
     /** 前回描画した文字色。 */
     color lastColor;
+
+    /**
+     * ラベル生成時または設定失敗後の再試行時に固定の表示設定を反映する。
+     *
+     * @return 固定の表示設定に成功した場合true。
+     */
+    bool configureObject() {
+        bool configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_CORNER,
+            CORNER_RIGHT_UPPER
+        );
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_ANCHOR,
+            ANCHOR_RIGHT_UPPER
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_FONTSIZE,
+            12
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_SELECTABLE,
+            false
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_SELECTED,
+            false
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_HIDDEN,
+            true
+        ) && configured;
+        configured = ObjectSetInteger(
+            this.chartId,
+            this.objectName,
+            OBJPROP_ZORDER,
+            2
+        ) && configured;
+        configured = ObjectSetString(
+            this.chartId,
+            this.objectName,
+            OBJPROP_FONT,
+            "MS Gothic"
+        ) && configured;
+
+        return configured;
+    }
 };
 
 #endif // MSTNG_DRAW_CURRENCY_STRENGTH_RANK_SIGNAL_LABEL_MQH
