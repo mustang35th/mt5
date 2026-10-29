@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.04"
+#property version   "1.06"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -101,9 +101,6 @@ input(name="表示する順位") CurrencyStrengthRankPeriod rankPeriod =
 /** 現在のサーバーM5時刻からさかのぼる表示日数。DBの保存・削除には影響しない。 */
 input(name="履歴の表示日数（1～366日）") int historyDays = 30;
 
-/** 通常チャートの計算イベントで確認するDB再読込間隔。M5更新時も再読込し、テスターには適用しない。 */
-input(name="通常チャートの再読込間隔（秒）") int refreshSeconds = 15;
-
 /** サブ画面の高さ。0は高さを指定せず、MT5側のサイズを使用する。 */
 input(name="サブ画面の高さ（px・0＝指定なし）") int subPanelHeight = 120;
 
@@ -188,6 +185,9 @@ string gLatestRankSourceMode = "";
 /** 最新順位ラベルの再配置または描画再試行が必要な場合true。 */
 bool gLatestRankLabelsDirty = false;
 
+/** 通常チャートのDB再読込間隔を60秒に固定する。M5新足時は即時再読込する。 */
+const int refreshSeconds = 60;
+
 const double rankSignalDisplayPosition = -9.0;
 
 /** 塗り領域、リボンと右上ラベルを強調する順位差の絶対値。 */
@@ -209,7 +209,6 @@ int OnInit() {
 
     if (historyDays < 1
             || historyDays > 366
-            || refreshSeconds < 1
             || subPanelHeight < 0
             || !CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
                 voteWeightMode
