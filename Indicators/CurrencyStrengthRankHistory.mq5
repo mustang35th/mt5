@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.16"
+#property version   "1.19"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -1045,18 +1045,26 @@ void drawCachedLatestRankLabels() {
         quotePixelOffset = 66;
     }
 
+    bool positionResolved = false;
     datetime baseLabelTime = getLatestRankLabelTime(
         subWindow,
         gLatestRankBarTime,
         (double)(0 - baseRank),
-        basePixelOffset
+        basePixelOffset,
+        positionResolved
     );
-    datetime quoteLabelTime = getLatestRankLabelTime(
-        subWindow,
-        gLatestRankBarTime,
-        (double)(0 - quoteRank),
-        quotePixelOffset
-    );
+    datetime quoteLabelTime = baseLabelTime;
+
+    // 同じ横位置は成功した配置時刻を共用し、位置ずらしや失敗時だけ個別に計算する。
+    if (quotePixelOffset != basePixelOffset || !positionResolved) {
+        quoteLabelTime = getLatestRankLabelTime(
+            subWindow,
+            gLatestRankBarTime,
+            (double)(0 - quoteRank),
+            quotePixelOffset,
+            positionResolved
+        );
+    }
 
     if (!gLatestRankLabelsDraw.draw(
         subWindow,
@@ -1188,14 +1196,17 @@ bool drawRankSourceLabel(
  * @param fromBarTime 最新順位を持つバー時刻。
  * @param fromDisplayPosition 順位線の表示位置。
  * @param fromPixelOffset 最新足から右へ離すピクセル数。
+ * @param fromPositionResolved 座標変換で配置時刻を取得できた場合true。
  * @return ラベル配置時刻。
  */
 datetime getLatestRankLabelTime(
     const int fromSubWindow,
     const datetime fromBarTime,
     const double fromDisplayPosition,
-    const int fromPixelOffset
+    const int fromPixelOffset,
+    bool &fromPositionResolved
 ) {
+    fromPositionResolved = false;
     int barX = 0;
     int barY = 0;
 
@@ -1220,6 +1231,8 @@ datetime getLatestRankLabelTime(
             resolvedPosition
         ) && resolvedSubWindow == fromSubWindow
                 && resolvedTime > fromBarTime) {
+            fromPositionResolved = true;
+
             return resolvedTime;
         }
     }

@@ -41,6 +41,8 @@ public:
         this.created = false;
         this.cleared = false;
         this.lastViewKey = "";
+        this.lastTop = -1;
+        this.lastTooltip = "";
         this.canvasHeight = 34;
     }
 
@@ -145,9 +147,17 @@ public:
             tooltip = "長中期：順位差" + (string)fromMinimumDifference + "以上。";
         }
 
+        tooltip += "帯の左端の白色は確認できた開始。準備・成立の切り替え時には追加しません。";
         this.canvas.TextOut(8, 1, periodTitle, ColorToARGB(foregroundColor));
-        ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP,
-            tooltip + "帯の左端の白色は確認できた開始。準備・成立の切り替え時には追加しません。");
+        if (this.lastTooltip != tooltip) {
+            if (!ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP, tooltip)) {
+                this.clear();
+
+                return false;
+            }
+
+            this.lastTooltip = tooltip;
+        }
 
         if (!this.canvas.FontSet("MS Gothic", -80)) {
             this.clear();
@@ -195,6 +205,8 @@ public:
 
         this.created = false;
         this.lastViewKey = "";
+        this.lastTop = -1;
+        this.lastTooltip = "";
         if (hadCanvas) {
             if (this.redrawRequest != NULL) {
                 this.redrawRequest.request();
@@ -226,11 +238,18 @@ private:
     /** 前回描画した表示範囲とデータ上限の識別子。 */
     string lastViewKey;
 
+    /** 前回設定に成功した帯のY座標。未設定の場合は-1。 */
+    int lastTop;
+
+    /** 前回設定に成功した帯の説明文。 */
+    string lastTooltip;
+
     /** タイトルと帯を含む描画高さ。 */
     int canvasHeight;
 
     /**
      * メインチャート下端にCanvasを作成または再配置する。
+     * 設定済みのY座標が変わらない場合は再設定を省く。
      */
     bool prepareCanvas(const int fromWidth, const int fromChartHeight) {
         if (this.created && ObjectFind(this.chartId, this.objectName) != 0) {
@@ -245,12 +264,15 @@ private:
         int top = fromChartHeight - this.canvasHeight - 32;
         if (!this.created) {
             this.cleared = false;
+            this.lastTop = -1;
+            this.lastTooltip = "";
             if (!this.canvas.CreateBitmapLabel(this.chartId, 0, this.objectName,
                     0, top, fromWidth, this.canvasHeight, COLOR_FORMAT_ARGB_NORMALIZE)) {
                 return false;
             }
 
             this.created = true;
+            this.lastTop = top;
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_BACK, false);
@@ -263,13 +285,22 @@ private:
             return false;
         }
 
-        return ObjectSetInteger(this.chartId, this.objectName, OBJPROP_YDISTANCE, top);
+        if (this.lastTop != top) {
+            if (!ObjectSetInteger(this.chartId, this.objectName, OBJPROP_YDISTANCE, top)) {
+                return false;
+            }
+
+            this.lastTop = top;
+        }
+
+        return true;
     }
 
     /**
      * 可視足を古い順に判定し、同じ準備・成立状態の連続区間をまとめる。
      * series配列の足番号と共通の足幅から座標を求め、足ごとの座標変換を省く。
      * BUY/SELLの文字幅は描画開始時の計測値を全区間で共用する。
+     * 同じM5時刻の順位検索と判定は、この描画内でだけ結果を再利用する。
      * 色が変わっても同方向なら開始の白色を追加しない。
      */
     void renderBars(
@@ -293,12 +324,26 @@ private:
         bool previousKnown = false;
         datetime previousTime = 0;
 
+        int m5Seconds = PeriodSeconds(PERIOD_M5);
+        bool signalCached = false;
+        datetime cachedM5BarTime = 0;
+        bool cachedKnown = false;
+        int cachedState = 0;
+
         for (int i = ArraySize(fromBarTimes) - 1; i >= 0; i--) {
             // 週末や欠損があっても、時間差ではなく取得した足の並びで位置を求める。
             int pointX = fromNewestX - i * fromBarWidth;
-            int state = 0;
-            bool known = this.getSignalState(fromPoints, fromBarTimes[i],
-                fromTargetM5BarTime, fromMinimumDifference, fromLongMediumOnly, state);
+            datetime pointM5BarTime = (datetime)((long)fromBarTimes[i]
+                - (long)fromBarTimes[i] % m5Seconds);
+            if (!signalCached || cachedM5BarTime != pointM5BarTime) {
+                cachedKnown = this.getSignalState(fromPoints, pointM5BarTime,
+                    fromTargetM5BarTime, fromMinimumDifference, fromLongMediumOnly, cachedState);
+                cachedM5BarTime = pointM5BarTime;
+                signalCached = true;
+            }
+
+            int state = cachedState;
+            bool known = cachedKnown;
             int direction = 0;
             if (state > 0) {
                 direction = 1;
@@ -346,20 +391,19 @@ private:
     }
 
     /**
-     * 足頭に一致する有効なM5順位から準備・成立状態を取得する。欠損はfalse。
+     * 指定M5時刻に一致する有効な順位から準備・成立状態を取得する。欠損はfalse。
+     * 呼び出し元でチャート足の開始時刻をM5境界へ切り下げて渡す。
      */
     bool getSignalState(
         const CurrencyStrengthPairRankPoint &fromPoints[],
-        const datetime fromBarTime,
+        const datetime fromM5BarTime,
         const datetime fromTargetM5BarTime,
         const int fromMinimumDifference,
         const bool fromLongMediumOnly,
         int &fromState
     ) {
         fromState = 0;
-        int m5Seconds = PeriodSeconds(PERIOD_M5);
-        datetime pointTime = (datetime)((long)fromBarTime - (long)fromBarTime % m5Seconds);
-        if (pointTime <= 0 || pointTime > fromTargetM5BarTime) {
+        if (fromM5BarTime <= 0 || fromM5BarTime > fromTargetM5BarTime) {
             return false;
         }
 
@@ -367,7 +411,7 @@ private:
         int right = ArraySize(fromPoints) - 1;
         while (left <= right) {
             int middle = left + (right - left) / 2;
-            if (fromPoints[middle].m5BarTime == pointTime) {
+            if (fromPoints[middle].m5BarTime == fromM5BarTime) {
                 CurrencyStrengthPairRankPoint point = fromPoints[middle];
                 if (point.baseLongMediumTermAverageRank < 1 || point.baseLongMediumTermAverageRank > 8
                         || point.quoteLongMediumTermAverageRank < 1 || point.quoteLongMediumTermAverageRank > 8) {
@@ -387,7 +431,7 @@ private:
                 return true;
             }
 
-            if (fromPoints[middle].m5BarTime < pointTime) {
+            if (fromPoints[middle].m5BarTime < fromM5BarTime) {
                 left = middle + 1;
             } else {
                 right = middle - 1;
