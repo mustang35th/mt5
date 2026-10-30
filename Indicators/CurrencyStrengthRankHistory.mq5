@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.37"
+#property version   "1.38"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -1120,7 +1120,7 @@ void drawLatestRankSourceLabel() {
 
 /**
  * 保持した最新順位を使ってラベルを再配置する。画面変更時も履歴を走査しない。
- * 描画に失敗した場合は更新待ち状態を維持し、次のイベントで再試行する。
+ * 描画または座標変換に失敗した場合は更新待ち状態を維持し、次のイベントで再試行する。
  */
 void drawCachedLatestRankLabels() {
     if (gLatestRankLabelsDraw == NULL) {
@@ -1152,24 +1152,25 @@ void drawCachedLatestRankLabels() {
         quotePixelOffset = 66;
     }
 
-    bool positionResolved = false;
+    bool basePositionResolved = false;
     datetime baseLabelTime = getLatestRankLabelTime(
         subWindow,
         gLatestRankBarTime,
         (double)(0 - baseRank),
         basePixelOffset,
-        positionResolved
+        basePositionResolved
     );
     datetime quoteLabelTime = baseLabelTime;
+    bool quotePositionResolved = basePositionResolved;
 
     // 同じ横位置は成功した配置時刻を共用し、位置ずらしや失敗時だけ個別に計算する。
-    if (quotePixelOffset != basePixelOffset || !positionResolved) {
+    if (quotePixelOffset != basePixelOffset || !basePositionResolved) {
         quoteLabelTime = getLatestRankLabelTime(
             subWindow,
             gLatestRankBarTime,
             (double)(0 - quoteRank),
             quotePixelOffset,
-            positionResolved
+            quotePositionResolved
         );
     }
 
@@ -1189,7 +1190,8 @@ void drawCachedLatestRankLabels() {
         return;
     }
 
-    gLatestRankLabelsDirty = !signalDrawn || !sourceDrawn;
+    gLatestRankLabelsDirty = !signalDrawn || !sourceDrawn
+        || !basePositionResolved || !quotePositionResolved;
 }
 
 /**
