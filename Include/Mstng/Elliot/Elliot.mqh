@@ -539,11 +539,13 @@ private:
         // 既存利用箇所との互換性を維持する
         StringUtil::splitCurrencyPairName(this.marketContext.symbolName, this.symbolNameLeft, this.symbolNameRight);
 
-        this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
-        this.logger.debug(__FUNCTION__, "symbolNameLeft=" + this.symbolNameLeft);
-        this.logger.debug(__FUNCTION__, "symbolNameRight=" + this.symbolNameRight);
-        this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
-        this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
+            this.logger.debug(__FUNCTION__, "symbolNameLeft=" + this.symbolNameLeft);
+            this.logger.debug(__FUNCTION__, "symbolNameRight=" + this.symbolNameRight);
+            this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
+            this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+        }
 
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }

@@ -86,6 +86,19 @@ public:
         return (this.levelThreshold == LOG_DEBUG);
     }
 
+    /**
+     * ログレベルと対象時間足がDEBUGの出力条件を満たすか判定する。
+     *
+     * 呼び出し元でログ文字列を生成する前の確認に使用する。
+     * メッセージ内容による重複抑止はlog()で引き続き判定する。
+     *
+     * @return DEBUG設定かつチャート時間足と一致する場合true。
+     */
+    bool isDebugOutputEnabled() {
+        return this.isDebugMode()
+            && this.marketContext.timeFrame == this.chartMarketContext.timeFrame;
+    }
+
 
     /**
      * 出力対象とする最小ログレベルを設定する。

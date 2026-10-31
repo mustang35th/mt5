@@ -212,11 +212,15 @@ public:
         }
         
         
-        this.logger.debug(__FUNCTION__, this.getCsv());
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, this.getCsv());
+        }
         
         this.execTime = GetTickCount() - startCount;
         
-        this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", this.execTime));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", this.execTime));
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
@@ -254,9 +258,15 @@ public:
             this.lossCut.setData(this.elliotCurrent, this.todayRate);
         }
 
-        this.logger.debug(__FUNCTION__, this.getCsv());
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, this.getCsv());
+        }
+
         this.execTime = GetTickCount() - startCount;
-        this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", this.execTime));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", this.execTime));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, this.isAnalysisSucceeded);
 
         return this.isAnalysisSucceeded;
@@ -461,7 +471,9 @@ public:
      */
     Elliot *getElliot(ENUM_TIMEFRAMES fromTimeFrame) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        this.logger.debug(__FUNCTION__, StringFormat("fromTimeFrame = %s", TimeUtil::convertTimeFrameToString(fromTimeFrame)));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromTimeFrame = %s", TimeUtil::convertTimeFrameToString(fromTimeFrame)));
+        }
         
         for (int i = 0; i < this.elliotList.Total(); i++) {
             Elliot *elliot = this.elliotList.At(i);
@@ -487,12 +499,17 @@ public:
      */
     Elliot *getElliot(ENUM_TIMEFRAMES fromTimeFrame, int upper) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        this.logger.debug(__FUNCTION__, StringFormat("fromTimeFrame = %s, upper = %d", TimeUtil::convertTimeFrameToString(fromTimeFrame), upper));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromTimeFrame = %s, upper = %d", TimeUtil::convertTimeFrameToString(fromTimeFrame), upper));
+        }
         
         int index = this.timeFrameInfoAll.getIndex(fromTimeFrame);
         ENUM_TIMEFRAMES timeFrameTo = this.timeFrameInfoAll.getTimeFrame(index + upper);
         
-        this.logger.debug(__FUNCTION__, StringFormat("timeFrameTo = %s", TimeUtil::convertTimeFrameToString(timeFrameTo)));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("timeFrameTo = %s", TimeUtil::convertTimeFrameToString(timeFrameTo)));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return this.getElliot(timeFrameTo);
@@ -590,8 +607,10 @@ public:
      */
     bool isBuySellCount3(ENUM_TIMEFRAMES fromTimeFrame, bool isBuy) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        this.logger.debug(__FUNCTION__, StringFormat("fromTimeFrame = %s", TimeUtil::convertTimeFrameToString(fromTimeFrame)));
-        this.logger.debug(__FUNCTION__, StringFormat("isBuy = %s", (string)isBuy));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromTimeFrame = %s", TimeUtil::convertTimeFrameToString(fromTimeFrame)));
+            this.logger.debug(__FUNCTION__, StringFormat("isBuy = %s", (string)isBuy));
+        }
         
         if (this.elliotCurrent == NULL) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
@@ -609,12 +628,16 @@ public:
             Elliot *elliot = this.elliotList.At(i);
             
             if (elliot != NULL) {
-                this.logger.debug(__FUNCTION__, StringFormat("elliot.timeFrameLabel = %s", elliot.marketContext.timeFrameLabel));
+                if (this.logger.isDebugOutputEnabled()) {
+                    this.logger.debug(__FUNCTION__, StringFormat("elliot.timeFrameLabel = %s", elliot.marketContext.timeFrameLabel));
+                }
                 
                 if (this.elliotCurrent.marketContext.timeFrame <= elliot.marketContext.timeFrame 
                         && elliot.marketContext.timeFrame <= fromTimeFrame) {
                     
-                    this.logger.debug(__FUNCTION__, StringFormat("elliot.oscillator.oscillatorCount = %d", elliot.oscillator.oscillatorCount));
+                    if (this.logger.isDebugOutputEnabled()) {
+                        this.logger.debug(__FUNCTION__, StringFormat("elliot.oscillator.oscillatorCount = %d", elliot.oscillator.oscillatorCount));
+                    }
                     
                     if (count != elliot.oscillator.oscillatorCount) {
                         this.logger.debug(__FUNCTION__, "return false");
@@ -757,10 +780,13 @@ private:
                     || rates[1].high != elliot.previousOhlcInfo.high
                     || rates[1].low != elliot.previousOhlcInfo.low
                     || rates[1].close != elliot.previousOhlcInfo.close) {
-                this.logger.debug(__FUNCTION__, StringFormat(
-                    "correction input changed. timeFrame=%s",
-                    TimeUtil::convertTimeFrameToString(fromTimeFrames[i])
-                ));
+                if (this.logger.isDebugOutputEnabled()) {
+                    this.logger.debug(__FUNCTION__, StringFormat(
+                        "correction input changed. timeFrame=%s",
+                        TimeUtil::convertTimeFrameToString(fromTimeFrames[i])
+                    ));
+                }
+
                 return false;
             }
         }
@@ -806,11 +832,13 @@ private:
         // 既存利用箇所との互換性を維持する
         StringUtil::splitCurrencyPairName(this.marketContext.symbolName, this.symbolNameLeft, this.symbolNameRight);
 
-        this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
-        this.logger.debug(__FUNCTION__, "symbolNameLeft=" + this.symbolNameLeft);
-        this.logger.debug(__FUNCTION__, "symbolNameRight=" + this.symbolNameRight);
-        this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
-        this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
+            this.logger.debug(__FUNCTION__, "symbolNameLeft=" + this.symbolNameLeft);
+            this.logger.debug(__FUNCTION__, "symbolNameRight=" + this.symbolNameRight);
+            this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
+            this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+        }
 
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
@@ -851,17 +879,23 @@ private:
         
         int total = timeFrameInfoList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        }
         
         int countTarget = 0;
         int countElliot = 0;
         
         for (int i = total - 1; i >= 0; i--) {
-            this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+            }
             
             TimeFrameInfo *timeFrameInfo = timeFrameInfoList.At(i);
             
-            this.logger.debug(__FUNCTION__, StringFormat("timeFrameInfo = %s", timeFrameInfo.toString()));
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, StringFormat("timeFrameInfo = %s", timeFrameInfo.toString()));
+            }
             
             if (timeFrameInfo.isElliotTarget) {
                 countTarget++;
@@ -895,7 +929,9 @@ private:
     Elliot *setElliot(ENUM_TIMEFRAMES fromTimeFrame) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        this.logger.debug(__FUNCTION__, StringFormat("fromTimeFrame = %s", TimeUtil::convertTimeFrameToString(fromTimeFrame)));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromTimeFrame = %s", TimeUtil::convertTimeFrameToString(fromTimeFrame)));
+        }
         
         MarketContext elliotMarketContext = this.marketContext;
         elliotMarketContext.setTimeFrame(fromTimeFrame);
