@@ -766,6 +766,8 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                         'if(this.config.m5D1ToM5EntryPolicyEnabled){'
                         'inputText+="|m5DirectionCorrectionCondition=H4_OR_H1_OR_M15_ONE_WITH_D1_REQUIRED";'
                         'inputText+="|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";'
+                        'inputText+="|m5LongMediumStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME";'
+                        'inputText+="|m5MediumShortStrengthCondition=RANK_DIFFERENCE_REQUIRED";'
                         'inputText+="|m5CurrencyStrengthMinimumRankDifference="'
                         '+(string)this.config.m5CurrencyStrengthMinimumRankDifference;}}',
                         re.sub(r"\s+", "", text),
@@ -782,7 +784,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 if name == "Mtf3In3AlertController":
                     self.assertIn(
                         'if(this.config.m5D1ToM5EntryPolicyEnabled){'
-                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_EMA3_WAVES13_STRENGTH_ONE_CORRECTION_V26";}',
+                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_EMA3_WAVES13_LONG_EXTREME_OR_V27";}',
                         re.sub(r"\s+", "", method(source, "setDatabaseRun")),
                     )
 

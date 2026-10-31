@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.82"
+#property version   "1.84"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -68,12 +68,12 @@ input(name="通貨強弱を使用") bool currencyStrengthEnabled = true;
 input(name="エントリー条件に使用（M5以外）")
 bool currencyStrengthEntryFilterEnabled = false;
 
-/** M5で長中期・中短期の方向一致と最低順位差を必須にする場合true。 */
+/** M5で両期間方向一致、長中期の順位差または端順位、中短期の最低順位差を必須にする場合true。 */
 input(name="M5エントリー条件に使用")
 bool m5CurrencyStrengthEntryFilterEnabled = true;
 
-/** M5で長中期・中短期の両方に要求する最低順位差。 */
-input(name="M5最低順位差（両期間、1～7）")
+/** M5の順位差基準。中短期は必須、長中期は方向に合う1位・8位でも通過。 */
+input(name="M5最低順位差（1～7、長中期はOR判定）")
 int m5CurrencyStrengthMinimumRankDifference = 4;
 
 /** 通貨強弱順位パネルを表示する場合true。 */

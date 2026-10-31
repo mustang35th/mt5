@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.38"
+#property version   "1.39"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -106,7 +106,7 @@ input(name="履歴の表示日数（1～366日）") int historyDays = 30;
 /** サブ画面の高さ。0は高さを指定せず、MT5側のサイズを使用する。 */
 input(name="サブ画面の高さ（px・0＝指定なし）") int subPanelHeight = 120;
 
-/** H1未満は両期間同方向の準備・成立、H1以上は長中期の順位差4以上を下端へ表示する。同時表示時は最上段を優先する。 */
+/** H1未満は長中期の順位差または端順位と中短期の順位差で準備・成立を表示する。H1以上は長中期の順位差4以上、同時表示時は最上段を優先する。 */
 input(name="メインチャートに強弱帯を表示") bool rankAndRibbonVisible = true;
 
 input group "02. データ参照"

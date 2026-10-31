@@ -108,7 +108,7 @@ public:
     /** 通貨強弱をエントリー条件として使用する場合true。 */
     bool currencyStrengthEntryFilterEnabled;
 
-    /** 通常版M5で長中期・中短期の両方に要求する最低順位差。 */
+    /** 通常版M5の順位差基準。中短期は必須、長中期は方向に合う1位・8位でも通過。 */
     int m5CurrencyStrengthMinimumRankDifference;
 
     /** 通貨強弱順位パネルを表示する場合true。 */

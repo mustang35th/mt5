@@ -145,6 +145,8 @@ ON zigzag_elliot_alert_runs(started_at);
 
 通常版の新規Runは`schema_version = 9`を記録します。補正テーブルの`correction_time_frame`制約は`0, 15, 16385, 16388, 16408`、APPLIED行は`15, 16385, 16388, 16408`を許可します。初期化時に旧schema 7・8のテーブルを移行し、全列・既存行・子テーブル・索引・トリガーを保持して外部キー設定を復元します。失敗時はトランザクションを戻します。M5のM15補正をメール・通常チャート・履歴Viewerの検証と表示にも反映し、列数・CSV形式は維持します。
 
+通常版v1.83のM5では、長中期を「最低順位差以上 OR 売買方向に合う1位・8位」、中短期を「最低順位差以上」として両期間方向一致と組み合わせます。RunのCanonical Textへ`m5LongMediumStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME`と`m5MediumShortStrengthCondition=RANK_DIFFERENCE_REQUIRED`を追加し、`strategy_version`を`MTF3IN3_M5_D1_EMA3_WAVES13_LONG_EXTREME_OR_V27`へ更新します。最低順位差・フィルタ有効設定は既存項目で記録し、`schema_version = 9`、DB列・CSV列は維持します。旧Runへ新条件は推測適用しません。
+
 ### 6.3 テスター保存開始設定の記録
 
 通常版v1.45の`mtf3In3AlertTesterSaveStartTime`は、指定値と実効開始日時を既存の`input_text`へ記録し、その内容を`input_hash`へ反映します。通常チャートでは実効開始日時を`0`とします。分析条件を変える設定ではないため、`analysis_input_text`・`analysis_input_hash`は変更しません。Runは初期化時に作成し、指定日時への到達まで作成を遅らせません。既存Runの内容は書き換えません。

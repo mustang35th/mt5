@@ -211,8 +211,9 @@ public:
         int periodSeconds = PeriodSeconds(chartPeriod);
         bool longMediumOnly = periodSeconds >= PeriodSeconds(PERIOD_H1);
         string periodTitle = "長中期・中短期 準備/成立";
-        string tooltip = "両期間が同方向：片方だけ順位差" + (string)fromMinimumDifference
-            + "以上は暗い準備色、両方は明るい成立色。";
+        string tooltip = "両期間が同方向：長中期は順位差" + (string)fromMinimumDifference
+            + "以上またはBUY基軸1位/決済8位・SELL基軸8位/決済1位、中短期は順位差"
+            + (string)fromMinimumDifference + "以上。片方だけ達成は暗い準備色、両方は明るい成立色。";
         if (longMediumOnly) {
             periodTitle = "長中期";
             tooltip = "長中期：順位差" + (string)fromMinimumDifference + "以上。";

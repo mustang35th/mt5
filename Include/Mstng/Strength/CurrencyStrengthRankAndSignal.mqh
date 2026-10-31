@@ -98,8 +98,9 @@ public:
     /**
      * 帯の売買方向と準備・成立状態を取得する。
      *
-     * 両期間が同方向で片方だけ順位差の基準に達した場合は準備、両方なら成立とする。
-     * 長中期のみを使う場合は成立だけを返す。
+     * 両期間が同方向で片方だけ条件を満たした場合は準備、両方なら成立とする。
+     * 長中期は順位差の基準または売買方向に合う1位・8位、中短期は順位差を必須とする。
+     * 長中期のみを使う場合は順位差の基準で成立だけを返す。
      *
      * @param fromPoint 判定する通貨ペア順位。
      * @param fromMinimumDifference 準備・成立の基準となる順位差の絶対値。
@@ -111,12 +112,11 @@ public:
         const int fromMinimumDifference,
         const bool fromLongMediumOnly = false
     ) {
-        int direction = getDirection(fromPoint, fromMinimumDifference, fromLongMediumOnly);
-        if (direction != 0) {
-            return direction * 2;
+        if (fromLongMediumOnly) {
+            return getDirection(fromPoint, fromMinimumDifference, true) * 2;
         }
 
-        if (fromLongMediumOnly || fromMinimumDifference < 1
+        if (fromMinimumDifference < 1
                 || !isValidRank(fromPoint.baseLongMediumTermAverageRank)
                 || !isValidRank(fromPoint.quoteLongMediumTermAverageRank)
                 || !isValidRank(fromPoint.baseMediumShortTermAverageRank)
@@ -128,16 +128,32 @@ public:
             - fromPoint.baseLongMediumTermAverageRank;
         int mediumShortDifference = fromPoint.quoteMediumShortTermAverageRank
             - fromPoint.baseMediumShortTermAverageRank;
-        if (longMediumDifference > 0 && mediumShortDifference > 0
-                && (longMediumDifference >= fromMinimumDifference
-                    || mediumShortDifference >= fromMinimumDifference)) {
-            return 1;
+        if (longMediumDifference > 0 && mediumShortDifference > 0) {
+            bool isLongMediumReady = longMediumDifference >= fromMinimumDifference
+                || fromPoint.baseLongMediumTermAverageRank == 1
+                || fromPoint.quoteLongMediumTermAverageRank == 8;
+            bool isMediumShortReady = mediumShortDifference >= fromMinimumDifference;
+            if (isLongMediumReady && isMediumShortReady) {
+                return 2;
+            }
+
+            if (isLongMediumReady || isMediumShortReady) {
+                return 1;
+            }
         }
 
-        if (longMediumDifference < 0 && mediumShortDifference < 0
-                && (longMediumDifference <= -fromMinimumDifference
-                    || mediumShortDifference <= -fromMinimumDifference)) {
-            return -1;
+        if (longMediumDifference < 0 && mediumShortDifference < 0) {
+            bool isLongMediumReady = longMediumDifference <= -fromMinimumDifference
+                || fromPoint.baseLongMediumTermAverageRank == 8
+                || fromPoint.quoteLongMediumTermAverageRank == 1;
+            bool isMediumShortReady = mediumShortDifference <= -fromMinimumDifference;
+            if (isLongMediumReady && isMediumShortReady) {
+                return -2;
+            }
+
+            if (isLongMediumReady || isMediumShortReady) {
+                return -1;
+            }
         }
 
         return 0;
