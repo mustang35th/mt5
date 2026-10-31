@@ -980,8 +980,9 @@ private:
     /**
      * LIVEとTESTERの時系列順位をM5バー時刻単位で統合する。
      * 片側のみの場合は上限確認後に配列を引き渡し、統合先の確保と全件コピーを省く。
+     * 両側の件数と全M5バー時刻が一致する場合も、LIVE配列をそのまま引き渡す。
      * 引き渡した側の入力配列は空になるため、呼び出し元では統合後に再利用しない。
-     * 両側に履歴がある場合は、合計件数と取得上限の小さい方まで統合先配列を確保する。
+     * それ以外で両側に履歴がある場合は、合計件数と取得上限の小さい方まで統合先配列を確保する。
      *
      * @param fromLivePoints LIVE順位配列。
      * @param fromTesterPoints TESTER順位配列。
@@ -1008,8 +1009,23 @@ private:
             return true;
         }
 
-        if (liveCount == 0 || testerCount == 0) {
-            if (maximumMergedCount > fromMaximumPointCount) {
+        bool sameBarTimes = liveCount == testerCount;
+        if (sameBarTimes) {
+            for (int i = 0; i < liveCount; i++) {
+                if (fromLivePoints[i].m5BarTime != fromTesterPoints[i].m5BarTime) {
+                    sameBarTimes = false;
+                    break;
+                }
+            }
+        }
+
+        if (liveCount == 0 || testerCount == 0 || sameBarTimes) {
+            int transferredCount = liveCount;
+            if (liveCount == 0) {
+                transferredCount = testerCount;
+            }
+
+            if (transferredCount > fromMaximumPointCount) {
                 this.logPointLimitExceeded(
                     fromStartM5BarTime,
                     fromEndM5BarTime,

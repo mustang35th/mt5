@@ -106,7 +106,9 @@ public:
                 && this.lastBaseCurrency == fromBaseCurrency
                 && this.lastQuoteCurrency == fromQuoteCurrency
                 && this.lastBaseColor == fromBaseColor
-                && this.lastQuoteColor == fromQuoteColor) {
+                && this.lastQuoteColor == fromQuoteColor
+                && ObjectFind(this.chartId, this.baseObjectName) == fromSubWindow
+                && ObjectFind(this.chartId, this.quoteObjectName) == fromSubWindow) {
             return true;
         }
 

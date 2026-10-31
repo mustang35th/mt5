@@ -48,6 +48,8 @@ public:
         this.lastTargetM5BarTime = 0;
         this.lastTop = -1;
         this.lastTooltip = "";
+        this.cachedBuyTextWidth = 0;
+        this.cachedSellTextWidth = 0;
         this.canvasHeight = 34;
         ArraySetAsSeries(this.barTimes, false);
     }
@@ -237,18 +239,23 @@ public:
             return false;
         }
 
-        int buyTextWidth = this.canvas.TextWidth("BUY");
-        int sellTextWidth = this.canvas.TextWidth("SELL");
-        if (buyTextWidth <= 0 || sellTextWidth <= 0) {
-            this.clear();
+        if (this.cachedBuyTextWidth <= 0 || this.cachedSellTextWidth <= 0) {
+            int buyTextWidth = this.canvas.TextWidth("BUY");
+            int sellTextWidth = this.canvas.TextWidth("SELL");
+            if (buyTextWidth <= 0 || sellTextWidth <= 0) {
+                this.clear();
 
-            return false;
+                return false;
+            }
+
+            this.cachedBuyTextWidth = buyTextWidth;
+            this.cachedSellTextWidth = sellTextWidth;
         }
 
         this.renderBars(fromPoints, this.barTimes, copiedBars,
             fromTargetM5BarTime, fromMinimumDifference,
             periodSeconds, longMediumOnly, newestX, barWidth, chartWidth,
-            buyTextWidth, sellTextWidth, fromPointStartIndex);
+            this.cachedBuyTextWidth, this.cachedSellTextWidth, fromPointStartIndex);
         this.canvas.Update(false);
         this.lastViewKey = viewKey;
         this.lastRenderKey = renderKey;
@@ -293,6 +300,9 @@ public:
         this.lastTargetM5BarTime = 0;
         this.lastTop = -1;
         this.lastTooltip = "";
+        this.cachedBuyTextWidth = 0;
+        this.cachedSellTextWidth = 0;
+
         if (hadCanvas) {
             if (this.redrawRequest != NULL) {
                 this.redrawRequest.request();
@@ -348,6 +358,12 @@ private:
     /** 前回設定に成功した帯の説明文。 */
     string lastTooltip;
 
+    /** 帯の固定フォントMS Gothic・-80で計測したBUYの幅。未計測の場合は0。 */
+    int cachedBuyTextWidth;
+
+    /** 帯の固定フォントMS Gothic・-80で計測したSELLの幅。未計測の場合は0。 */
+    int cachedSellTextWidth;
+
     /** タイトルと帯を含む描画高さ。 */
     int canvasHeight;
 
@@ -398,6 +414,9 @@ private:
             this.cleared = false;
             this.lastTop = -1;
             this.lastTooltip = "";
+            this.cachedBuyTextWidth = 0;
+            this.cachedSellTextWidth = 0;
+
             if (!this.canvas.CreateBitmapLabel(this.chartId, 0, this.objectName,
                     0, top, fromWidth, this.canvasHeight, COLOR_FORMAT_ARGB_NORMALIZE)) {
                 return false;
@@ -412,9 +431,13 @@ private:
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_SELECTED, false);
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_HIDDEN, true);
             ObjectSetInteger(this.chartId, this.objectName, OBJPROP_ZORDER, 0);
-        } else if (this.canvas.Width() != fromWidth
-                && !this.canvas.Resize(fromWidth, this.canvasHeight)) {
-            return false;
+        } else if (this.canvas.Width() != fromWidth) {
+            this.cachedBuyTextWidth = 0;
+            this.cachedSellTextWidth = 0;
+
+            if (!this.canvas.Resize(fromWidth, this.canvasHeight)) {
+                return false;
+            }
         }
 
         if (this.lastTop != top) {
@@ -431,7 +454,7 @@ private:
     /**
      * 可視足を古い順に判定し、同じ準備・成立状態の連続区間をまとめる。
      * 取得件数から求める足番号と共通の足幅で座標を求め、足ごとの座標変換を省く。
-     * BUY/SELLの文字幅は描画開始時の計測値を全区間で共用する。
+     * BUY/SELLの文字幅はCanvas作成・サイズ変更後の計測値を再描画でも共用する。
      * 同じM5時刻の順位検索と判定は、この描画内でだけ結果を再利用する。
      * 次のM5時刻が隣接する履歴点に一致する場合は、前回の検索位置を再利用する。
      * 色が変わっても同方向なら開始の白色を追加しない。

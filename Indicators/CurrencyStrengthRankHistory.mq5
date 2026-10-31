@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.39"
+#property version   "1.42"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -205,6 +205,15 @@ string gLatestRankSourceMode = "";
 
 /** 最新順位ラベルの再配置または描画再試行が必要な場合true。 */
 bool gLatestRankLabelsDirty = false;
+
+/** 座標変換に成功した最新順位ラベルの画面条件。未確認・変換失敗時は空。 */
+string gLatestRankPositionKey = "";
+
+/** 同じ画面条件で再利用する基軸通貨ラベルの配置時刻。 */
+datetime gCachedBaseLabelTime = 0;
+
+/** 同じ画面条件で再利用する決済通貨ラベルの配置時刻。 */
+datetime gCachedQuoteLabelTime = 0;
 
 /** 通常チャートのDB再読込間隔を60秒に固定する。M5新足時は即時再読込する。 */
 const int refreshSeconds = 60;
@@ -427,6 +436,9 @@ int OnInit() {
     gLatestQuoteRank = 0;
     gLatestRankSourceMode = "";
     gLatestRankLabelsDirty = false;
+    gLatestRankPositionKey = "";
+    gCachedBaseLabelTime = 0;
+    gCachedQuoteLabelTime = 0;
 
     return INIT_SUCCEEDED;
 }
@@ -482,6 +494,9 @@ void OnDeinit(const int reason) {
     gRankAndRibbonOwnerReady = false;
     gRankAndRibbonOwner = false;
     gLatestRankLabelsDirty = false;
+    gLatestRankPositionKey = "";
+    gCachedBaseLabelTime = 0;
+    gCachedQuoteLabelTime = 0;
     gChartRedrawRequest.flush(ChartID());
 }
 
@@ -564,6 +579,7 @@ int OnCalculate(
         || displayRangeChanged;
 
     if (fullRefresh) {
+        gLatestRankPositionKey = "";
         fillAllBuffers(
             ratesTotal,
             time,
@@ -1120,16 +1136,21 @@ void drawLatestRankSourceLabel() {
 
 /**
  * 保持した最新順位を使ってラベルを再配置する。画面変更時も履歴を走査しない。
+ * 同じ画面条件では座標変換に成功した配置時刻を再利用する。
  * 描画または座標変換に失敗した場合は更新待ち状態を維持し、次のイベントで再試行する。
  */
 void drawCachedLatestRankLabels() {
     if (gLatestRankLabelsDraw == NULL) {
+        gLatestRankPositionKey = "";
+
         return;
     }
 
     int subWindow = ChartWindowFind();
 
     if (subWindow <= 0) {
+        gLatestRankPositionKey = "";
+
         return;
     }
 
@@ -1137,6 +1158,7 @@ void drawCachedLatestRankLabels() {
     bool sourceDrawn = drawRankSourceLabel(subWindow, gLatestRankSourceMode);
 
     if (gLatestRankBarTime <= 0) {
+        gLatestRankPositionKey = "";
         gLatestRankLabelsDraw.clear();
         gLatestRankLabelsDirty = !signalDrawn || !sourceDrawn;
 
@@ -1152,26 +1174,40 @@ void drawCachedLatestRankLabels() {
         quotePixelOffset = 66;
     }
 
-    bool basePositionResolved = false;
-    datetime baseLabelTime = getLatestRankLabelTime(
-        subWindow,
-        gLatestRankBarTime,
-        (double)(0 - baseRank),
-        basePixelOffset,
-        basePositionResolved
-    );
-    datetime quoteLabelTime = baseLabelTime;
-    bool quotePositionResolved = basePositionResolved;
-
-    // 同じ横位置は成功した配置時刻を共用し、位置ずらしや失敗時だけ個別に計算する。
-    if (quotePixelOffset != basePixelOffset || !basePositionResolved) {
-        quoteLabelTime = getLatestRankLabelTime(
+    string positionKey = getLatestRankLabelPositionKey(subWindow);
+    bool reusePosition = positionKey != "" && positionKey == gLatestRankPositionKey;
+    bool basePositionResolved = reusePosition;
+    bool quotePositionResolved = reusePosition;
+    datetime baseLabelTime = gCachedBaseLabelTime;
+    datetime quoteLabelTime = gCachedQuoteLabelTime;
+    if (!reusePosition) {
+        gLatestRankPositionKey = "";
+        baseLabelTime = getLatestRankLabelTime(
             subWindow,
             gLatestRankBarTime,
-            (double)(0 - quoteRank),
-            quotePixelOffset,
-            quotePositionResolved
+            (double)(0 - baseRank),
+            basePixelOffset,
+            basePositionResolved
         );
+        quoteLabelTime = baseLabelTime;
+        quotePositionResolved = basePositionResolved;
+
+        // 同じ横位置は成功した配置時刻を共用し、位置ずらしや失敗時だけ個別に計算する。
+        if (quotePixelOffset != basePixelOffset || !basePositionResolved) {
+            quoteLabelTime = getLatestRankLabelTime(
+                subWindow,
+                gLatestRankBarTime,
+                (double)(0 - quoteRank),
+                quotePixelOffset,
+                quotePositionResolved
+            );
+        }
+
+        if (positionKey != "" && basePositionResolved && quotePositionResolved) {
+            gLatestRankPositionKey = positionKey;
+            gCachedBaseLabelTime = baseLabelTime;
+            gCachedQuoteLabelTime = quoteLabelTime;
+        }
     }
 
     if (!gLatestRankLabelsDraw.draw(
@@ -1185,6 +1221,7 @@ void drawCachedLatestRankLabels() {
         quoteRank,
         ConstantCurrency::getColor(gQuoteCurrency)
     )) {
+        gLatestRankLabelsDirty = true;
         gLogger.error(__FUNCTION__, "latest rank label draw failed");
 
         return;
@@ -1192,6 +1229,67 @@ void drawCachedLatestRankLabels() {
 
     gLatestRankLabelsDirty = !signalDrawn || !sourceDrawn
         || !basePositionResolved || !quotePositionResolved;
+}
+
+/**
+ * 最新順位ラベルの配置時刻を再利用できる画面条件を取得する。
+ * 特殊な横縮尺や画面情報の取得失敗時は、従来の座標変換で確認し直す。
+ *
+ * @param fromSubWindow 描画対象サブウィンドウ番号。
+ * @return 画面条件の識別文字列。再利用対象外の場合は空。
+ */
+string getLatestRankLabelPositionKey(const int fromSubWindow) {
+    long chartId = ChartID();
+    long scaleFix11 = 0;
+    long scalePointsPerBar = 0;
+    if (!ChartGetInteger(chartId, CHART_SCALEFIX_11, 0, scaleFix11)
+            || !ChartGetInteger(chartId, CHART_SCALE_PT_PER_BAR, 0, scalePointsPerBar)
+            || scaleFix11 != 0 || scalePointsPerBar != 0) {
+        return "";
+    }
+
+    long firstVisibleBar = 0;
+    long visibleBars = 0;
+    long chartWidth = 0;
+    long chartScale = 0;
+    long chartShift = 0;
+    long windowHeight = 0;
+    long windowYDistance = 0;
+    double shiftSize = 0.0;
+    double priceMin = 0.0;
+    double priceMax = 0.0;
+    if (!ChartGetInteger(chartId, CHART_FIRST_VISIBLE_BAR, 0, firstVisibleBar)
+            || !ChartGetInteger(chartId, CHART_VISIBLE_BARS, 0, visibleBars)
+            || !ChartGetInteger(chartId, CHART_WIDTH_IN_PIXELS, 0, chartWidth)
+            || !ChartGetInteger(chartId, CHART_SCALE, 0, chartScale)
+            || !ChartGetInteger(chartId, CHART_SHIFT, 0, chartShift)
+            || !ChartGetInteger(chartId, CHART_HEIGHT_IN_PIXELS, fromSubWindow, windowHeight)
+            || !ChartGetInteger(chartId, CHART_WINDOW_YDISTANCE, fromSubWindow, windowYDistance)
+            || !ChartGetDouble(chartId, CHART_PRICE_MIN, fromSubWindow, priceMin)
+            || !ChartGetDouble(chartId, CHART_PRICE_MAX, fromSubWindow, priceMax)) {
+        return "";
+    }
+
+    if (chartShift != 0 && !ChartGetDouble(chartId, CHART_SHIFT_SIZE, 0, shiftSize)) {
+        return "";
+    }
+
+    datetime latestBarTime = iTime(_Symbol, _Period, 0);
+    int totalBars = Bars(_Symbol, _Period);
+    if (firstVisibleBar < 0 || visibleBars <= 0 || chartWidth <= 0
+            || chartScale < 0 || windowHeight <= 0 || windowYDistance < 0
+            || latestBarTime <= 0 || totalBars <= 0
+            || !MathIsValidNumber(priceMin) || !MathIsValidNumber(priceMax)
+            || priceMax <= priceMin || !MathIsValidNumber(shiftSize)) {
+        return "";
+    }
+
+    return StringFormat(
+        "%d/%I64d/%d/%d/%I64d/%d/%I64d/%I64d/%I64d/%I64d/%I64d/%I64d/%I64d/%.17g/%.17g/%.17g",
+        fromSubWindow, (long)gLatestRankBarTime, gLatestBaseRank, gLatestQuoteRank,
+        (long)latestBarTime, totalBars, firstVisibleBar, visibleBars, chartWidth,
+        chartScale, chartShift, windowHeight, windowYDistance, shiftSize, priceMin, priceMax
+    );
 }
 
 /**
