@@ -120,6 +120,7 @@ public:
     /**
      * OnCalculateで更新する補助表示を処理する。
      * 通常チャートの履歴再計算では、次のタイマーで日本時間軸を強制更新する。
+     * EMA200は履歴再計算時に全バッファを初期化して再取得する。
      *
      * @param fromTimerMode タイマー実行の場合true
      * @param fromPrevCalculated OnCalculateの前回計算済みバー数
@@ -133,7 +134,7 @@ public:
             this.gmmaIndicator.update(fromPrevCalculated);
         }
 
-        this.updateEma200Indicator(fromTimerMode);
+        this.updateEma200Indicator(fromTimerMode, fromPrevCalculated == 0);
     }
 
     /**
@@ -798,10 +799,11 @@ private:
      * EMA200表示を更新する。
      *
      * @param fromTimerMode タイマー実行の場合true
+     * @param fromResetBuffers 履歴再計算に伴い全バッファを初期化する場合true
      */
-    void updateEma200Indicator(bool fromTimerMode) {
+    void updateEma200Indicator(bool fromTimerMode, bool fromResetBuffers = false) {
         if (this.ema200Indicator != NULL) {
-            this.ema200Indicator.update(fromTimerMode);
+            this.ema200Indicator.update(fromTimerMode, fromResetBuffers);
         }
     }
 };

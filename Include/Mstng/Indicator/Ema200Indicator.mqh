@@ -5,7 +5,7 @@
 #define MSTNG_EMA200_INDICATOR_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
-#include <Mstng\Draw\DrawUtil.mqh>
+#include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 
 /**
@@ -74,6 +74,9 @@ public:
         ArraySetAsSeries(this.buffer3, true);
         ArraySetAsSeries(this.buffer4, true);
 
+        this.bufferResetPending = true;
+        this.lastBufferBarTime = 0;
+        this.lastBufferBarsCount = 0;
         this.initializePlotSettings();
         this.setHandles(oscillatorHandlePool);
     }
@@ -88,15 +91,26 @@ public:
 
         ArrayFree(this.chartBarTimes);
         this.deleteLabels();
+        this.labelsUpdatePending = false;
+        this.lastUpdateM1BarTime = 0;
+        this.bufferResetPending = true;
+        this.lastBufferBarTime = 0;
+        this.lastBufferBarsCount = 0;
         this.clearPlotSettings();
     }
 
     /**
      * 更新
      *
+     * @param isTimer 通常チャートのM1単位で更新する場合true
+     * @param fromResetBuffers 履歴再計算に伴い全バッファを初期化する場合true
      * @return 更新成否
      */
-    bool update(bool isTimer) {
+    bool update(bool isTimer, bool fromResetBuffers = false) {
+        if (fromResetBuffers) {
+            this.bufferResetPending = true;
+        }
+
         ENUM_TIMEFRAMES updateTimeFrame = PERIOD_M1;
         
         if (!isTimer) {
@@ -109,17 +123,41 @@ public:
             return false;
         }
 
-        if (this.lastUpdateM1BarTime == currentM1BarTime) {
-            return true;
+        if (!this.bufferResetPending && this.lastUpdateM1BarTime == currentM1BarTime) {
+            if (this.labelsUpdatePending) {
+                // ラベルだけの失敗では、取得済みのEMAを再計算しない。
+                this.labelsUpdatePending = !this.updateLabels();
+                ChartRedraw(0);
+            }
+
+            return !this.labelsUpdatePending;
         }
 
+        // 同じM1内の履歴再計算が失敗した場合も、次回にデータ取得を再試行する。
+        this.lastUpdateM1BarTime = 0;
         int barsCount = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
 
         if (barsCount <= 0) {
             return false;
         }
 
-        this.clearBuffers();
+        if (ArraySize(this.buffer0) != barsCount
+                || ArraySize(this.buffer1) != barsCount
+                || ArraySize(this.buffer2) != barsCount
+                || ArraySize(this.buffer3) != barsCount
+                || ArraySize(this.buffer4) != barsCount) {
+            // タイマーが表示バッファの拡張より先に動いた場合は、準備後に全体を初期化する。
+            this.bufferResetPending = true;
+
+            return false;
+        }
+
+        datetime currentChartBarTime = currentM1BarTime;
+        if (updateTimeFrame != this.marketContext.timeFrame) {
+            currentChartBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0);
+        }
+
+        this.clearBuffers(barsCount, currentChartBarTime);
 
         bool isSucceeded = true;
 
@@ -144,7 +182,7 @@ public:
             }
         }
 
-        this.updateLabels();
+        this.labelsUpdatePending = !this.updateLabels();
 
         if (isSucceeded) {
             this.lastUpdateM1BarTime = currentM1BarTime;
@@ -152,7 +190,7 @@ public:
 
         ChartRedraw(0);
 
-        return isSucceeded;
+        return isSucceeded && !this.labelsUpdatePending;
     }
 
 private:
@@ -195,6 +233,15 @@ private:
     /** 最終更新したM1バー時刻。 */
     datetime lastUpdateM1BarTime;
 
+    /** 初回・履歴再計算・バッファ本数不一致により全体初期化が必要な場合true。 */
+    bool bufferResetPending;
+
+    /** 前回バッファを初期化した時点のチャート最新足時刻。EMA取得の成否には依存しない。 */
+    datetime lastBufferBarTime;
+
+    /** 前回バッファを初期化した時点のチャート足本数。 */
+    int lastBufferBarsCount;
+
     /** ラベル表示のシフト数。 */
     int labelShiftBars;
 
@@ -203,6 +250,24 @@ private:
 
     /** ラベル文字フォント。 */
     string labelFontFace;
+
+    /** ラベルの設定と表示内容の反映が成功した場合true。 */
+    bool labelReady[5];
+
+    /** ラベルへ最後に反映した表示時刻。 */
+    datetime labelTimes[5];
+
+    /** ラベルへ最後に反映した価格位置。 */
+    double labelPrices[5];
+
+    /** ラベルへ最後に反映した表示文字。 */
+    string labelTexts[5];
+
+    /** ラベルへ最後に反映した文字色。 */
+    color labelColors[5];
+
+    /** ラベルの更新に失敗し、同じ足でも再試行する場合true。 */
+    bool labelsUpdatePending;
 
     /**
      * 市場コンテキストおよび表示設定を初期化する。
@@ -217,14 +282,23 @@ private:
         this.startPlotIndex = 2;
         this.displayCount = 0;
         this.lastUpdateM1BarTime = 0;
+        this.bufferResetPending = true;
+        this.lastBufferBarTime = 0;
+        this.lastBufferBarsCount = 0;
         this.labelShiftBars = 3;
         this.labelFontSize = 10;
         this.labelFontFace = "Arial";
+        this.labelsUpdatePending = false;
         ArraySetAsSeries(this.chartBarTimes, true);
 
         for (int i = 0; i < 5; i++) {
             this.timeFrames[i] = PERIOD_CURRENT;
             this.handles[i] = INVALID_HANDLE;
+            this.labelReady[i] = false;
+            this.labelTimes[i] = 0;
+            this.labelPrices[i] = 0;
+            this.labelTexts[i] = "";
+            this.labelColors[i] = clrNONE;
         }
 
         this.setupTimeFrames();
@@ -364,14 +438,63 @@ private:
     }
 
     /**
-     * バッファ初期化
+     * 表示範囲と新しい足で範囲外へ移動した部分を空にする。
+     * 初回・履歴再計算・足の対応が確認できない場合は全体を初期化する。
+     *
+     * @param fromBarsCount バッファと一致するチャート足本数
+     * @param fromBarTime チャート最新足時刻
      */
-    void clearBuffers() {
-        ArrayInitialize(this.buffer0, EMPTY_VALUE);
-        ArrayInitialize(this.buffer1, EMPTY_VALUE);
-        ArrayInitialize(this.buffer2, EMPTY_VALUE);
-        ArrayInitialize(this.buffer3, EMPTY_VALUE);
-        ArrayInitialize(this.buffer4, EMPTY_VALUE);
+    void clearBuffers(int fromBarsCount, datetime fromBarTime) {
+        int clearCount = fromBarsCount;
+
+        if (!this.bufferResetPending
+                && this.lastBufferBarTime > 0
+                && this.lastBufferBarsCount > 0) {
+            if (fromBarTime == this.lastBufferBarTime && fromBarsCount == this.lastBufferBarsCount) {
+                clearCount = MathMin(fromBarsCount, this.maxBars);
+            } else if (fromBarTime > this.lastBufferBarTime) {
+                int newBars = iBarShift(
+                    this.marketContext.symbolName,
+                    this.marketContext.timeFrame,
+                    this.lastBufferBarTime,
+                    true
+                );
+
+                if (newBars > 0 && newBars < fromBarsCount
+                        && (fromBarsCount - newBars == this.lastBufferBarsCount
+                            || fromBarsCount == this.lastBufferBarsCount)) {
+                    clearCount = MathMin(this.maxBars, fromBarsCount - newBars) + newBars;
+                }
+            }
+        }
+
+        this.clearBuffer(this.buffer0, clearCount);
+        this.clearBuffer(this.buffer1, clearCount);
+        this.clearBuffer(this.buffer2, clearCount);
+        this.clearBuffer(this.buffer3, clearCount);
+        this.clearBuffer(this.buffer4, clearCount);
+
+        // 一部のEMA取得が失敗しても、次回はこの初期化時点からの移動範囲を消去する。
+        this.lastBufferBarTime = fromBarTime;
+        this.lastBufferBarsCount = fromBarsCount;
+        this.bufferResetPending = false;
+    }
+
+    /**
+     * バッファの最新側を指定本数だけ空にする。
+     *
+     * @param fromBuffer series順の表示バッファ
+     * @param fromClearCount 初期化する本数
+     */
+    void clearBuffer(double &fromBuffer[], int fromClearCount) {
+        int bufferSize = ArraySize(fromBuffer);
+
+        if (fromClearCount == bufferSize) {
+            ArrayInitialize(fromBuffer, EMPTY_VALUE);
+        } else {
+            // ArrayFillはseries設定を無視するため、通常順の末尾側を指定する。
+            ArrayFill(fromBuffer, bufferSize - fromClearCount, fromClearCount, EMPTY_VALUE);
+        }
     }
 
     /**
@@ -516,30 +639,109 @@ private:
 
     /**
      * EMA200ラベルを更新します。
+     *
+     * @return 全ラベルの更新成否
      */
-    void updateLabels() {
+    bool updateLabels() {
+        if (this.displayCount <= 0) {
+            return true;
+        }
+
         datetime labelTime = this.getLabelTime();
 
         if (labelTime <= 0) {
-            return;
+            return false;
         }
+
+        bool isSucceeded = true;
 
         for (int i = 0; i < this.displayCount; i++) {
             double labelPrice = this.getBufferValue(i, 0);
 
             if (labelPrice == EMPTY_VALUE || labelPrice <= 0) {
-                this.deleteLabel(i);
+                if (!this.deleteLabel(i)) {
+                    isSucceeded = false;
+                }
+
                 continue;
             }
 
             ENUM_TIMEFRAMES labelTimeFrame = this.timeFrames[i];
             string labelRate = DoubleToString(labelPrice, this.marketContext.digits);
             string labelText = StringFormat("EMA200 %s %s", this.getTimeFrameLabel(labelTimeFrame), labelRate);
-            string objectName = this.getLabelObjectName(labelTimeFrame);
             color labelColor = this.getLineColor(labelTimeFrame);
 
-            DrawUtil::setTextMoveFixed(objectName, this.labelFontFace, labelColor, this.labelFontSize, labelText, labelTime, labelPrice, 0);
+            if (!this.updateLabel(i, labelTime, labelPrice, labelText, labelColor)) {
+                isSucceeded = false;
+            }
         }
+
+        return isSucceeded;
+    }
+
+    /**
+     * EMA200ラベルを再利用し、変更された位置・文字・色だけを反映する。
+     * 固定設定は初期反映・再作成・前回失敗時だけ設定する。
+     *
+     * @param fromLineIndex ライン番号
+     * @param fromTime 表示時刻
+     * @param fromPrice 価格位置
+     * @param fromText 表示文字
+     * @param fromColor 文字色
+     * @return 更新成否
+     */
+    bool updateLabel(int fromLineIndex, datetime fromTime, double fromPrice, string fromText, color fromColor) {
+        string objectName = this.getLabelObjectName(this.timeFrames[fromLineIndex]);
+
+        if (ObjectFind(0, objectName) < 0) {
+            this.labelReady[fromLineIndex] = false;
+
+            if (!ObjectCreate(0, objectName, OBJ_TEXT, 0, fromTime, fromPrice)) {
+                return false;
+            }
+        }
+
+        bool initializeProperties = !this.labelReady[fromLineIndex];
+        // 途中で失敗した場合は、次回に位置・文字・色をすべて反映し直す。
+        this.labelReady[fromLineIndex] = false;
+
+        if (initializeProperties) {
+            if (!ObjectSetString(0, objectName, OBJPROP_FONT, this.labelFontFace)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, this.labelFontSize)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_BACK, false)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_ANCHOR, ANCHOR_LEFT)) {
+                return false;
+            }
+        }
+
+        if (initializeProperties
+                || this.labelTimes[fromLineIndex] != fromTime
+                || this.labelPrices[fromLineIndex] != fromPrice) {
+            if (!ObjectMove(0, objectName, 0, fromTime, fromPrice)) {
+                return false;
+            }
+        }
+
+        if (initializeProperties || this.labelTexts[fromLineIndex] != fromText) {
+            if (!ObjectSetString(0, objectName, OBJPROP_TEXT, fromText)) {
+                return false;
+            }
+        }
+
+        if (initializeProperties || this.labelColors[fromLineIndex] != fromColor) {
+            if (!ObjectSetInteger(0, objectName, OBJPROP_COLOR, fromColor)) {
+                return false;
+            }
+        }
+
+        this.labelTimes[fromLineIndex] = fromTime;
+        this.labelPrices[fromLineIndex] = fromPrice;
+        this.labelTexts[fromLineIndex] = fromText;
+        this.labelColors[fromLineIndex] = fromColor;
+        this.labelReady[fromLineIndex] = true;
+
+        return true;
     }
 
     /**
@@ -555,16 +757,22 @@ private:
      * EMA200ラベルを削除します。
      *
      * @param lineIndex ライン番号
+     * @return 削除済み、または削除要求が成功した場合true
      */
-    void deleteLabel(int lineIndex) {
+    bool deleteLabel(int lineIndex) {
         if (lineIndex < 0 || lineIndex >= 5) {
-            return;
+            return false;
         }
 
+        this.labelReady[lineIndex] = false;
         ENUM_TIMEFRAMES labelTimeFrame = this.timeFrames[lineIndex];
         string objectName = this.getLabelObjectName(labelTimeFrame);
 
-        DrawUtil::deleteFixedObject(objectName, 0);
+        if (ObjectFind(0, objectName) < 0) {
+            return true;
+        }
+
+        return ObjectDelete(0, objectName);
     }
 
     /**
@@ -619,7 +827,7 @@ private:
      * @return ラベル用オブジェクト名
      */
     string getLabelObjectName(ENUM_TIMEFRAMES timeFrameValue) {
-        return StringFormat("Ema200Label%s", this.getTimeFrameLabel(timeFrameValue));
+        return Constant::PREFIX_FIXED + StringFormat("Ema200Label%s", this.getTimeFrameLabel(timeFrameValue));
     }
 
     /**

@@ -193,7 +193,10 @@ private:
             isCorrectionNeeded = true;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isCorrectionNeeded = %s", (string)isCorrectionNeeded));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isCorrectionNeeded = %s", (string)isCorrectionNeeded));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isCorrectionNeeded;
@@ -216,7 +219,9 @@ private:
         CArrayObj *waveListHigher = &(elliotHigher.waveList);
         int waveHigherTotal = waveListHigher.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveListHigher.Total = %d", waveHigherTotal));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveListHigher.Total = %d", waveHigherTotal));
+        }
         
         int waveTotal = (int)MathMin(
             ZigZagElliotAnalysisProfile::getHigherTimeFrameWaveLimit(),
@@ -228,14 +233,18 @@ private:
         for (int i = 0; i < waveTotal; i++) {
             Wave *waveHigher = waveListHigher.At(i);
             
-            this.logger.debug(__FUNCTION__, waveHigher.toString());
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, waveHigher.toString());
+            }
             
             CArrayObj *zigZagPointListHigher = &(waveHigher.orgZigZagPointList);
             
             int startPoint = zigZagPointListHigher.Total() - 1;
             
             for (int j = startPoint; j > 0; j--) {   // 後ろから
-                this.logger.debug(__FUNCTION__, StringFormat("▼▼▼▼▼▼▼▼▼▼ j = %d START ▼▼▼▼▼▼▼▼▼▼", j));
+                if (this.logger.isDebugOutputEnabled()) {
+                    this.logger.debug(__FUNCTION__, StringFormat("▼▼▼▼▼▼▼▼▼▼ j = %d START ▼▼▼▼▼▼▼▼▼▼", j));
+                }
                 
                 ZigZagPoint *zigZagPointHigherRight = zigZagPointListHigher.At(j);    // ポイント右側
                 ZigZagPoint *zigZagPointHigherLeft = zigZagPointListHigher.At(j - 1);    // ポイント左側
@@ -275,9 +284,11 @@ private:
                     return false;
                 }
                 
-                this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
-                
-                this.logger.debug(__FUNCTION__, "上位足からZigZagPointList取得");
+                if (this.logger.isDebugOutputEnabled()) {
+                    this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
+                    this.logger.debug(__FUNCTION__, "上位足からZigZagPointList取得");
+                }
+
                 LogUtil::printZigZagPointList(logger, __FUNCTION__, zigZagPointListWithHigher);
                 
                 int zigZagPointTotal = zigZagPointListWithHigher.Total();
@@ -300,9 +311,11 @@ private:
                         isConfirmedHigherCorrectiveSegment = true;
                     }
 
-                    this.logger.debug(__FUNCTION__, StringFormat("isMotive = %s", (string)isMotive));
-                    this.logger.debug(__FUNCTION__, StringFormat("isUptrend = %s", (string)isUptrend));
-                    this.logger.debug(__FUNCTION__, StringFormat("isLatest = %s", (string)isLatest));
+                    if (this.logger.isDebugOutputEnabled()) {
+                        this.logger.debug(__FUNCTION__, StringFormat("isMotive = %s", (string)isMotive));
+                        this.logger.debug(__FUNCTION__, StringFormat("isUptrend = %s", (string)isUptrend));
+                        this.logger.debug(__FUNCTION__, StringFormat("isLatest = %s", (string)isLatest));
+                    }
                     
                     
                     // 最新ポイントを一時補正する。
@@ -373,13 +386,15 @@ private:
                                 isUptrend
                             );
                         } else {
-                            this.logger.debug(
-                                __FUNCTION__,
-                                StringFormat(
-                                    "Skip post-analysis higher corrective segment grouping. reason=%s",
-                                    pointListBuilder.getErrorMessage()
-                                )
-                            );
+                            if (this.logger.isDebugOutputEnabled()) {
+                                this.logger.debug(
+                                    __FUNCTION__,
+                                    StringFormat(
+                                        "Skip post-analysis higher corrective segment grouping. reason=%s",
+                                        pointListBuilder.getErrorMessage()
+                                    )
+                                );
+                            }
                         }
                     }
                     
@@ -429,8 +444,10 @@ private:
                 }
                 
                 
-                this.logger.debug(__FUNCTION__, StringFormat("▲▲▲▲▲▲▲▲▲▲ j = %d END ▲▲▲▲▲▲▲▲▲▲", j));
-                this.logger.debug(__FUNCTION__, "");
+                if (this.logger.isDebugOutputEnabled()) {
+                    this.logger.debug(__FUNCTION__, StringFormat("▲▲▲▲▲▲▲▲▲▲ j = %d END ▲▲▲▲▲▲▲▲▲▲", j));
+                    this.logger.debug(__FUNCTION__, "");
+                }
             }
             
         }
@@ -485,13 +502,15 @@ private:
                 fromIsMotive,
                 continuationAnchorPointList
             )) {
-            this.logger.debug(
-                __FUNCTION__,
-                StringFormat(
-                    "Skip higher three wave continuation grouping. reason=%s",
-                    pointListBuilder.getErrorMessage()
-                )
-            );
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(
+                    __FUNCTION__,
+                    StringFormat(
+                        "Skip higher three wave continuation grouping. reason=%s",
+                        pointListBuilder.getErrorMessage()
+                    )
+                );
+            }
 
             return true;
         }
@@ -537,10 +556,14 @@ private:
         
         int total = fromZigZagPointList.Total();
         
-        logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        }
         
         if (total == 2) {    // point数=2の場合、再分析不要
-            this.logger.debug(__FUNCTION__, " 分析不要");
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, " 分析不要");
+            }
             
             this.addWavePoint2(fromZigZagPointList, isMotive, isUptrend);
             
@@ -559,7 +582,9 @@ private:
             
             int totalHigher = elliotWithHigher.waveList.Total();
             
-            this.logger.debug(__FUNCTION__, StringFormat("elliotWithHigher.waveList.Total = %d", totalHigher));
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, StringFormat("elliotWithHigher.waveList.Total = %d", totalHigher));
+            }
             
             if (this.isReanalyze && totalHigher > 1) {
                 int maxRounds = ZigZagElliotAnalysisProfile
@@ -754,7 +779,9 @@ private:
         
         int total = fromZigZagPointList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        }
         
         for (int i = 1; i < total - 1; i++) {
             ZigZagPoint *zigZagPoint = fromZigZagPointList.At(i);
@@ -770,7 +797,10 @@ private:
             }
         }
         
-        logger.debug(__FUNCTION__, StringFormat("rate = %f", rate));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("rate = %f", rate));
+        }
+
         LogUtil::printMethodEnd(logger, __FUNCTION__, true);
         
         return rate;
@@ -787,24 +817,32 @@ private:
         
         Wave *wave0 = this.waveList.At(0);
         
-        this.logger.debug(__FUNCTION__, StringFormat("wave0 = %s", wave0.toString()));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("wave0 = %s", wave0.toString()));
+        }
         
         ZigZagPoint *latestZigZagPoint = wave0.getLatestPoint();
         
         int zigZagIndex = ZigZagPointUtil::getIndex(this.logger, this.zigZagPointList, latestZigZagPoint);
         
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
+        }
         
         if (zigZagIndex > 0) {  // 0は追加なし
             if (zigZagIndex == 1) {  // ポイント数=1
-                this.logger.debug(__FUNCTION__, "zigZagIndex 1");
+                if (this.logger.isDebugOutputEnabled()) {
+                    this.logger.debug(__FUNCTION__, "zigZagIndex 1");
+                }
                 
                 ZigZagPoint *zigZagPoint = this.zigZagPointList.At(0);
                 
                 ZigZagPointUtil::addPoint(wave0.zigZagPointList, zigZagPoint);
                 
             } else {    // 2以上
-                this.logger.debug(__FUNCTION__, "zigZagIndex 2以上");
+                if (this.logger.isDebugOutputEnabled()) {
+                    this.logger.debug(__FUNCTION__, "zigZagIndex 2以上");
+                }
                 
                 CArrayObj workZigZagPointList;
         

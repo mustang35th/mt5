@@ -85,7 +85,9 @@ public:
         int position = 0;
 
         if (this.isLatest) {    // 最新波動の場合のみ実行
-            this.logger.debug(__FUNCTION__, "最新波動");
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, "最新波動");
+            }
 
             if (!this.getWave0(this.isMotive)) {
                 this.logger.error(__FUNCTION__, "getWave0 false");
@@ -100,7 +102,9 @@ public:
         }
 
 
-        this.logger.debug(__FUNCTION__, StringFormat("ループ前 position = %d", position));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("ループ前 position = %d", position));
+        }
 
 
         if (!this.makeWaveList(position, this.isMotive)) {
@@ -274,8 +278,10 @@ private:
         this.isMotive = fromIsMotive;
         this.isLatest = fromIsLatest;
         
-        this.logger.debug(__FUNCTION__, StringFormat("isMotive = %s", (string)isMotive));
-        this.logger.debug(__FUNCTION__, StringFormat("isLatest = %s", (string)isLatest));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isMotive = %s", (string)isMotive));
+            this.logger.debug(__FUNCTION__, StringFormat("isLatest = %s", (string)isLatest));
+        }
         
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);

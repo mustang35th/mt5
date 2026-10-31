@@ -61,12 +61,16 @@ public:
         
         ZigZagPoint *zigZagPointHigher = oldestWaveHigher.zigZagPointList.At(0);
         
-        logger.debug(__FUNCTION__, StringFormat("zigZagPointHigher.barIndex = %d", zigZagPointHigher.barIndex));
-        logger.debug(__FUNCTION__, StringFormat("zigZagPointHigher.barTime = %s", TimeToString(zigZagPointHigher.barTime, TIME_DATE | TIME_MINUTES | TIME_SECONDS)));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("zigZagPointHigher.barIndex = %d", zigZagPointHigher.barIndex));
+            logger.debug(__FUNCTION__, StringFormat("zigZagPointHigher.barTime = %s", TimeToString(zigZagPointHigher.barTime, TIME_DATE | TIME_MINUTES | TIME_SECONDS)));
+        }
         
         int bars = iBarShift(marketContext.symbolName, marketContext.timeFrame, zigZagPointHigher.barTime, false);
         
-        logger.debug(__FUNCTION__, StringFormat("bars = %d", bars));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("bars = %d", bars));
+        }
         
         
         double multi = ZigZagElliotAnalysisProfile
@@ -80,11 +84,13 @@ public:
         
         bars = (int)(bars * multi);
         
-        logger.debug(__FUNCTION__, StringFormat("bars multi = %d", bars));
-        
-        
-        datetime time = iTime(marketContext.symbolName, marketContext.timeFrame, bars);
-        logger.debug(__FUNCTION__, StringFormat("bars time = %s", TimeToString(time, TIME_DATE | TIME_MINUTES | TIME_SECONDS)));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("bars multi = %d", bars));
+
+            // この足時刻はログ表示だけに使用する。
+            datetime time = iTime(marketContext.symbolName, marketContext.timeFrame, bars);
+            logger.debug(__FUNCTION__, StringFormat("bars time = %s", TimeToString(time, TIME_DATE | TIME_MINUTES | TIME_SECONDS)));
+        }
         
         LogUtil::printMethodEnd(logger, __FUNCTION__, true);
         
@@ -109,23 +115,28 @@ public:
                                         CArrayObj &zigZagPointList, bool isUpTrend, int &endIndex) {
         LogUtil::printMethodStart(logger, __FUNCTION__);
         
-        logger.debug(__FUNCTION__, "zigZagPointHigherLeft <<<<<");
-        logger.debug(__FUNCTION__, zigZagPointHigherLeft.toString());
-        logger.debug(__FUNCTION__, "zigZagPointHigherRight >>>>>");
-        logger.debug(__FUNCTION__, zigZagPointHigherRight.toString());
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, "zigZagPointHigherLeft <<<<<");
+            logger.debug(__FUNCTION__, zigZagPointHigherLeft.toString());
+            logger.debug(__FUNCTION__, "zigZagPointHigherRight >>>>>");
+            logger.debug(__FUNCTION__, zigZagPointHigherRight.toString());
+        }
         
         datetime datetimeStart = zigZagPointHigherLeft.barTime;
         datetime datetimeEnd = zigZagPointHigherRight.barTimeNext;
         
-        logger.debug(__FUNCTION__, StringFormat("datetime = %s -> %s", 
-            TimeUtil::formatYyyymmddhhmiss(datetimeStart),
-            TimeUtil::formatYyyymmddhhmiss(datetimeEnd)));
-        
-        logger.debug(__FUNCTION__, StringFormat("start = %d", start));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("datetime = %s -> %s",
+                TimeUtil::formatYyyymmddhhmiss(datetimeStart),
+                TimeUtil::formatYyyymmddhhmiss(datetimeEnd)));
+            logger.debug(__FUNCTION__, StringFormat("start = %d", start));
+        }
         
         int orgTotal = orgZigZagPointList.Total();
         
-        logger.debug(__FUNCTION__, StringFormat("orgTotal = %d", orgTotal));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("orgTotal = %d", orgTotal));
+        }
 
         if (start < 0 || start >= orgTotal) {
             logger.error(
@@ -142,7 +153,9 @@ public:
         }
         
         for (int i = start; i < orgTotal; i++) {
-            logger.debug(__FUNCTION__, StringFormat("for i = %d", i));
+            if (logger.isDebugOutputEnabled()) {
+                logger.debug(__FUNCTION__, StringFormat("for i = %d", i));
+            }
             
             ZigZagPoint *zigZagPoint = orgZigZagPointList.At(i);
             
@@ -153,7 +166,7 @@ public:
                 return false;
             }
             
-            if (i == start) {
+            if (i == start && logger.isDebugOutputEnabled()) {
                 logger.debug(__FUNCTION__, zigZagPoint.toString());
             }
             
@@ -182,7 +195,10 @@ public:
         }
         
         
-        logger.debug(__FUNCTION__, StringFormat("endIndex = %d", endIndex));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("endIndex = %d", endIndex));
+        }
+
         LogUtil::printMethodEnd(logger, __FUNCTION__, true);
 
         return true;
@@ -202,7 +218,9 @@ private:
     static bool hasTwoLeftPoints(Logger &logger, CArrayObj &zigZagPointList, ZigZagPoint &zigZagPointHigherLeft, ZigZagPoint &zigZagPoint, bool isUpTrend) {
         LogUtil::printMethodStart(logger, __FUNCTION__);
         
-        logger.debug(__FUNCTION__, StringFormat("isUpTrend = %s", (string)isUpTrend));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("isUpTrend = %s", (string)isUpTrend));
+        }
         
         bool hasTwoLeftPoints = false;
         
@@ -212,15 +230,19 @@ private:
             ZigZagPoint *zigZagPointBefore = ZigZagPointUtil::getLastNode(zigZagPointList);
             
             if (zigZagPointBefore != NULL) {
-                logger.debug(__FUNCTION__, "zigZagPointBefore");
-                logger.debug(__FUNCTION__, zigZagPointBefore.toString());
+                if (logger.isDebugOutputEnabled()) {
+                    logger.debug(__FUNCTION__, "zigZagPointBefore");
+                    logger.debug(__FUNCTION__, zigZagPointBefore.toString());
+                }
                 
                 
                 // １つ前のポイントが上位足左側の中に収まる場合
                 if (zigZagPointHigherLeft.barTime <= zigZagPointBefore.barTime 
                         && zigZagPointBefore.barTime <= zigZagPointHigherLeft.barTimeNext) {
                     
-                    logger.debug(__FUNCTION__, "hasTwoLeftPoints if");
+                    if (logger.isDebugOutputEnabled()) {
+                        logger.debug(__FUNCTION__, "hasTwoLeftPoints if");
+                    }
                     
                     if (isUpTrend) {
                         if (zigZagPoint.isPeak) {
@@ -236,7 +258,10 @@ private:
             
         }
         
-        logger.debug(__FUNCTION__, StringFormat("hasTwoLeftPoints = %s", (string)hasTwoLeftPoints));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("hasTwoLeftPoints = %s", (string)hasTwoLeftPoints));
+        }
+
         LogUtil::printMethodEnd(logger, __FUNCTION__, true);
         
         return hasTwoLeftPoints;
