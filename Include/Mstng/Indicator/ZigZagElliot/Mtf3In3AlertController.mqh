@@ -535,7 +535,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 8;
+        this.databaseRun.schemaVersion = 9;
         this.databaseRun.sourceMode = "LIVE";
 
         if (Util::isStrategyTester()) {
@@ -546,7 +546,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "1.77";
+            this.databaseRun.programVersion = "1.81";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
@@ -565,7 +565,7 @@ private:
                 this.databaseRun.strategyVersion = "MTF3IN3_M5_MN1_W1_AND_V21";
             }
             if (this.config.m5D1ToM5EntryPolicyEnabled) {
-                this.databaseRun.strategyVersion = "MTF3IN3_M5_D1_M5_EMA3_WAVES13_STRENGTH_V24";
+                this.databaseRun.strategyVersion = "MTF3IN3_M5_D1_EMA3_WAVES13_STRENGTH_ONE_CORRECTION_V26";
             }
         }
         if (this.marketContext.timeFrame == PERIOD_M15) {
@@ -627,6 +627,7 @@ private:
             inputText += "|m5D1ToM5EntryPolicyEnabled="
                 + (string)this.config.m5D1ToM5EntryPolicyEnabled;
             if (this.config.m5D1ToM5EntryPolicyEnabled) {
+                inputText += "|m5DirectionCorrectionCondition=H4_OR_H1_OR_M15_ONE_WITH_D1_REQUIRED";
                 inputText += "|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";
                 inputText += "|m5CurrencyStrengthMinimumRankDifference="
                     + (string)this.config.m5CurrencyStrengthMinimumRankDifference;

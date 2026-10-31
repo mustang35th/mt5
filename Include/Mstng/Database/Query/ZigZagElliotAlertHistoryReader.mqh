@@ -443,6 +443,8 @@ private:
                 frame = "H4";
             } else if (correctionTimeFrame == PERIOD_D1) {
                 frame = "D1";
+            } else if (correctionTimeFrame == PERIOD_M15) {
+                frame = "M15";
             }
             fromMarker.correctionText = frame + " " + originalDirection + "→" + correctedDirection;
         } else {
@@ -1075,7 +1077,8 @@ private:
         }
 
         return fromCurrentTimeFrame == PERIOD_M5
-            && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
+            && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1
+                || fromCorrectionTimeFrame == PERIOD_M15);
     }
 
     /**

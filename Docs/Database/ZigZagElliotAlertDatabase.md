@@ -1,4 +1,4 @@
-﻿# ZigZagElliotアラートデータベース仕様書
+# ZigZagElliotアラートデータベース仕様書
 
 ## 1. 文書情報
 
@@ -6,10 +6,10 @@
 |---|---|
 | 対象機能 | `ZigZagElliot`の`MTF_3in3`アラート履歴 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| 現行Alert Runのスキーマバージョン | 7（保存開始日時の追加では変更なし） |
+| 通常版の現行Alert Runスキーマバージョン | 9（v1.81で補正時間足CHECKへM15を追加） |
 | 保存単位 | 実行、アラート、時間足別分析、最新Waveポイント |
 | 重複時の動作 | 最初に保存したスナップショットを維持 |
-| 最終更新日 | 2026-09-19 |
+| 最終更新日 | 2026-10-31 |
 
 本書は、ZigZagElliotがアラートを出した時点の判定情報とElliott波動を、後からSQLで検索および再構成できる形式で保存する第1段階の仕様を定義します。
 
@@ -140,6 +140,10 @@ ON zigzag_elliot_alert_runs(started_at);
 通常版v1.71のM5は、M15・M5両方の主波1・3を必須にします。`strategy_version`は`MTF3IN3_M5_D1_M5_EMA3_WAVES13_V23`です。専用ポリシーが有効なM5のCanonical Textへ`m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3`を加え、`input_text`・`input_hash`でv1.70と区別します。既存Run・DBスキーマ・CSV列は変更しません。
 
 通常版v1.72のM5は`MTF3IN3_M5_D1_M5_EMA3_WAVES13_STRENGTH_V24`を使用し、両期間の最低順位差を`m5CurrencyStrengthMinimumRankDifference`としてCanonical Textへ保存します。既存の`currencyStrengthEnabled`とM5用入力を反映した`currencyStrengthEntryFilterEnabled`も保存し、ON/OFF・閾値の変更を`input_hash`で区別します。初期値は有効・順位差4です。旧Run・DBスキーマ・CSV列は変更しません。
+
+通常版v1.81のM5は、D1とM5の元方向一致を必須にし、H4・H1・M15の逆方向1足だけを補正します。`strategy_version`は`MTF3IN3_M5_D1_EMA3_WAVES13_STRENGTH_ONE_CORRECTION_V26`、Canonical Textの追加値は`m5DirectionCorrectionCondition=H4_OR_H1_OR_M15_ONE_WITH_D1_REQUIRED`です。補正対象・補正前後の分析・採用波動を既存列へ保存します。旧Runの条件・値は書き換えません。
+
+通常版の新規Runは`schema_version = 9`を記録します。補正テーブルの`correction_time_frame`制約は`0, 15, 16385, 16388, 16408`、APPLIED行は`15, 16385, 16388, 16408`を許可します。初期化時に旧schema 7・8のテーブルを移行し、全列・既存行・子テーブル・索引・トリガーを保持して外部キー設定を復元します。失敗時はトランザクションを戻します。M5のM15補正をメール・通常チャート・履歴Viewerの検証と表示にも反映し、列数・CSV形式は維持します。
 
 ### 6.3 テスター保存開始設定の記録
 

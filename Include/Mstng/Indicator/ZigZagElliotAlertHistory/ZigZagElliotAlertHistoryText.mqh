@@ -18,6 +18,7 @@ public:
         StringReplace(text, "[D1補正]", "[D1C]");
         StringReplace(text, "[H4補正]", "[H4C]");
         StringReplace(text, "[H1補正]", "[H1C]");
+        StringReplace(text, "[M15補正]", "[M15C]");
 
         int firstIndex = -1;
         if (fromTimeFrame == PERIOD_M5) {

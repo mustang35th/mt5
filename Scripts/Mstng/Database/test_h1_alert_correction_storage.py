@@ -43,9 +43,12 @@ def replacement_pairs():
         r'StringReplace\(tableSql,\s*("[^"]*"),\s*("[^"]*")\)', method(MIGRATION, "execute"))]
 
 
-def legacy_ddl():
+def legacy_ddl(version=7):
     ddl = correction_ddl()
-    for old, new in replacement_pairs():
+    pairs = replacement_pairs()
+    if len(pairs) != 4 or version not in (7, 8):
+        raise AssertionError("Legacy constraint versions changed; update harness")
+    for old, new in pairs[:2] if version == 7 else pairs[2:]:
         ddl = ddl.replace(new, old)
     return ddl
 
@@ -65,7 +68,7 @@ def migrate(connection, fail_after_drop=False):
         connection.execute(f"UPDATE {TABLE} SET alert_id=alert_id WHERE 0")
         objects = connection.execute("SELECT sql FROM sqlite_master WHERE tbl_name=? "
                                      "AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name", (TABLE,)).fetchall()
-        connection.execute(updated.replace(TABLE, TABLE + "_v8", 1))
+        connection.execute(updated.replace(TABLE, TABLE + "_v9", 1))
         statements = re.findall(r'executeSql\(fromDatabaseHandle,\s*("[^"]*"), fromLogger\)', method(MIGRATION, "rebuildTable"))
         if len(statements) != 3:
             raise AssertionError("Migration SQL sequence changed; update harness")
@@ -146,26 +149,29 @@ class CorrectionMigrationTests(unittest.TestCase):
     def tearDown(self):
         self.connection.close()
 
-    def create_legacy(self):
-        self.connection.execute(legacy_ddl())
+    def create_legacy(self, version=7):
+        self.connection.execute(legacy_ddl(version))
         self.connection.execute(f"ALTER TABLE {TABLE} ADD COLUMN preserved_note TEXT DEFAULT 'kept'")
         insert_correction(self.connection, 1)
         insert_correction(self.connection, 2, CONSTANTS["PERIOD_H4"])
+        if version == 8:
+            insert_correction(self.connection, 4, CONSTANTS["PERIOD_D1"])
         self.connection.execute(f"CREATE TABLE child(id INTEGER PRIMARY KEY, alert_id INTEGER REFERENCES {TABLE}(alert_id) ON DELETE CASCADE)")
         self.connection.execute("INSERT INTO child VALUES(91,2)")
         self.connection.execute(f"CREATE INDEX retained_index ON {TABLE}(selected_analysis)")
         self.connection.execute("CREATE TABLE audit(alert_id INTEGER)")
         self.connection.execute(f"CREATE TRIGGER retained_trigger AFTER UPDATE ON {TABLE} BEGIN INSERT INTO audit VALUES(NEW.alert_id); END")
 
-    def test_fresh_schema_accepts_d1_and_preserves_old_choices(self):
+    def test_fresh_schema_accepts_m15_and_preserves_old_choices(self):
         self.connection.execute(correction_ddl())
-        for alert_id, frame in enumerate((0, CONSTANTS["PERIOD_H1"], CONSTANTS["PERIOD_H4"], CONSTANTS["PERIOD_D1"]), 1):
+        for alert_id, frame in enumerate((0, CONSTANTS["PERIOD_M15"], CONSTANTS["PERIOD_H1"],
+                                          CONSTANTS["PERIOD_H4"], CONSTANTS["PERIOD_D1"]), 1):
             insert_correction(self.connection, alert_id, frame)
         with self.assertRaises(sqlite3.IntegrityError):
-            insert_correction(self.connection, 9, CONSTANTS["PERIOD_M15"])
+            insert_correction(self.connection, 9, CONSTANTS["PERIOD_M5"])
 
-    def test_migration_preserves_rows_children_objects_and_is_idempotent(self):
-        self.create_legacy()
+    def check_migration_preserves_rows_children_objects_and_is_idempotent(self, version):
+        self.create_legacy(version)
         before = self.connection.execute(f"SELECT * FROM {TABLE} ORDER BY alert_id").fetchall()
         migrate(self.connection)
         self.assertEqual(before, self.connection.execute(f"SELECT * FROM {TABLE} ORDER BY alert_id").fetchall())
@@ -179,18 +185,36 @@ class CorrectionMigrationTests(unittest.TestCase):
         self.connection.execute(f"UPDATE {TABLE} SET selected_alert_text='kept' WHERE alert_id=2")
         self.assertEqual([(2,)], self.connection.execute("SELECT * FROM audit").fetchall())
         insert_correction(self.connection, 3, CONSTANTS["PERIOD_D1"])
+        insert_correction(self.connection, 5, CONSTANTS["PERIOD_M15"])
 
-    def test_failure_after_drop_rolls_back_everything_and_restores_fk(self):
-        self.create_legacy()
+    def test_schema7_migration_preserves_rows_children_objects_and_is_idempotent(self):
+        self.check_migration_preserves_rows_children_objects_and_is_idempotent(7)
+
+    def test_schema8_migration_preserves_rows_children_objects_and_is_idempotent(self):
+        self.check_migration_preserves_rows_children_objects_and_is_idempotent(8)
+
+    def check_failure_after_drop_rolls_back_everything_and_restores_fk(self, version):
+        self.create_legacy(version)
         before = self.connection.execute(f"SELECT * FROM {TABLE} ORDER BY alert_id").fetchall()
         with self.assertRaises(sqlite3.OperationalError):
             migrate(self.connection, fail_after_drop=True)
         self.assertEqual(before, self.connection.execute(f"SELECT * FROM {TABLE} ORDER BY alert_id").fetchall())
         self.assertEqual([(91, 2)], self.connection.execute("SELECT * FROM child").fetchall())
         self.assertEqual(1, self.connection.execute("PRAGMA foreign_keys").fetchone()[0])
-        self.assertEqual(0, self.connection.execute(f"SELECT COUNT(*) FROM sqlite_master WHERE name='{TABLE}_v8'").fetchone()[0])
+        self.assertEqual(0, self.connection.execute(f"SELECT COUNT(*) FROM sqlite_master WHERE name='{TABLE}_v9'").fetchone()[0])
         with self.assertRaises(sqlite3.IntegrityError):
+            insert_correction(self.connection, 9, CONSTANTS["PERIOD_M15"])
+        if version == 7:
+            with self.assertRaises(sqlite3.IntegrityError):
+                insert_correction(self.connection, 3, CONSTANTS["PERIOD_D1"])
+        else:
             insert_correction(self.connection, 3, CONSTANTS["PERIOD_D1"])
+
+    def test_schema7_failure_after_drop_rolls_back_everything_and_restores_fk(self):
+        self.check_failure_after_drop_rolls_back_everything_and_restores_fk(7)
+
+    def test_schema8_failure_after_drop_rolls_back_everything_and_restores_fk(self):
+        self.check_failure_after_drop_rolls_back_everything_and_restores_fk(8)
 
     def test_disabled_fk_setting_is_preserved(self):
         self.create_legacy()
@@ -219,7 +243,7 @@ class DirectionContractTests(unittest.TestCase):
         return original, corrected, metadata
 
     def test_m5_m15_and_h1_both_sides_and_allowed_single_corrections(self):
-        for current, corrections in ((CONSTANTS["PERIOD_M5"], ("PERIOD_H4", "PERIOD_H1")),
+        for current, corrections in ((CONSTANTS["PERIOD_M5"], ("PERIOD_H4", "PERIOD_H1", "PERIOD_M15")),
                                      (CONSTANTS["PERIOD_M15"], ("PERIOD_D1", "PERIOD_H4", "PERIOD_H1")),
                                      (CONSTANTS["PERIOD_H1"], ("PERIOD_D1", "PERIOD_H4"))):
             for correction in corrections:
@@ -245,6 +269,21 @@ class DirectionContractTests(unittest.TestCase):
         self.assertFalse(self.profile(CONSTANTS["PERIOD_H1"], CONSTANTS["PERIOD_H1"]))
         self.assertFalse(self.profile(CONSTANTS["PERIOD_M5"], CONSTANTS["PERIOD_D1"]))
         self.assertFalse(self.profile(CONSTANTS["PERIOD_M15"], CONSTANTS["PERIOD_M15"]))
+
+    def test_m5_rejects_second_opposing_leg_for_every_correction(self):
+        targets = (CONSTANTS["PERIOD_H4"], CONSTANTS["PERIOD_H1"], CONSTANTS["PERIOD_M15"])
+        for target in targets:
+            for other in targets:
+                if other == target:
+                    continue
+                for buy in (False, True):
+                    with self.subTest(target=target, other=other, buy=buy):
+                        original, corrected, metadata = self.fixture(5, target, buy)
+                        index = FRAMES.index(other)
+                        for rows in (original, corrected):
+                            rows[index].isBuy = int(not buy)
+                            rows[index].buySellLabel = "SELL" if buy else "BUY"
+                        self.assertFalse(self.direction(original, corrected, metadata, 5))
 
     def test_m15_rejects_second_opposing_leg_for_every_correction(self):
         targets = (CONSTANTS["PERIOD_D1"], CONSTANTS["PERIOD_H4"], CONSTANTS["PERIOD_H1"])

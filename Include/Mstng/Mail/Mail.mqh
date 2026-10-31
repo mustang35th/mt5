@@ -37,7 +37,7 @@ public:
      * @param fromSource 送信設定と共通情報を保持する元分析。
      * @param fromIsSendMail 送信する場合true。
      * @param fromJudgment 採用した補正分析。補正なしの場合はNULL。
-     * @param fromCorrectionTimeFrame 補正したD1・H4・H1のいずれか。補正なしはPERIOD_CURRENT。
+     * @param fromCorrectionTimeFrame 補正したD1・H4・H1・M15のいずれか。補正なしはPERIOD_CURRENT。
      * @param fromAlertText 補正印を含むチャートと同じアラート文言。補正なしは空文字列。
      */
     static void sendMail(
@@ -361,7 +361,7 @@ private:
      *
      * @param fromSource 補正前の元分析。
      * @param fromJudgment 採用した補正分析。
-     * @param fromCorrectionTimeFrame 方向を補正したD1・H4・H1のいずれか。
+     * @param fromCorrectionTimeFrame 方向を補正したD1・H4・H1・M15のいずれか。
      * @param fromAlertText チャートと同じ件名用文言。
      * @return 完全なH1・M15・M5分析で、対象上位足の1足だけ現在足方向へ補正した場合true。
      */
@@ -400,7 +400,8 @@ private:
 
         if (fromCorrectionTimeFrame != higherTimeFrame
                 && fromCorrectionTimeFrame != lowerTimeFrame
-                && (currentTimeFrame != PERIOD_M15 || fromCorrectionTimeFrame != PERIOD_H1)) {
+                && (currentTimeFrame != PERIOD_M15 || fromCorrectionTimeFrame != PERIOD_H1)
+                && (currentTimeFrame != PERIOD_M5 || fromCorrectionTimeFrame != PERIOD_M15)) {
             return false;
         }
 
@@ -447,7 +448,8 @@ private:
             }
 
             if ((timeFrames[i] == higherTimeFrame || timeFrames[i] == lowerTimeFrame
-                    || (currentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1))
+                    || (currentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1)
+                    || (currentTimeFrame == PERIOD_M5 && timeFrames[i] == PERIOD_M15))
                     && timeFrames[i] != fromCorrectionTimeFrame
                     && sourceElliot.isBuy != sourceCurrent.isBuy) {
                 return false;

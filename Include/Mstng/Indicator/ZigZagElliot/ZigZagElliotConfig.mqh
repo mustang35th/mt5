@@ -78,7 +78,7 @@ public:
     /** 通常版M5でMN1方向とW1 EMA200の両方を必須にする場合true。 */
     bool m5Mn1AndW1Ema200Required;
 
-    /** 通常版M5で補正なしのD1〜M5方向一致とH1・M15・M5のEMA200方向一致を必須にする場合true。 */
+    /** 通常版M5でD1必須・H4/H1/M15片足補正とH1・M15・M5のEMA200方向一致を使用する場合true。 */
     bool m5D1ToM5EntryPolicyEnabled;
 
     /** H1表示波ごとのエントリー回数制限を使用する場合true。 */

@@ -17,7 +17,8 @@
  *
  * 通常版はM15・M5の主波1・3、従来ポリシーはM5の1・3・A・C波を対象とし、M5固有の
  * FE上限、H1表示波の重複制限および成立時のメール送信を管理する。
- * 通常版M5ではD1からM5の元方向一致とH1・M15・M5のEMA200一致を使用する。
+ * 通常版M5ではD1とM5の元方向一致を必須にし、H4・H1・M15の逆方向1足を補正する。
+ * 補正後のD1からM5の方向一致と、実測のH1・M15・M5のEMA200一致を使用する。
  * その他の呼び出し元では従来の上位足条件と片足方向補正を維持する。
  */
 class ExpertAdvisorMtf3In3M5 : public ExpertAdvisorMTF_3in3 {
@@ -28,7 +29,7 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
-     * @param fromD1ToM5EntryPolicyEnabled 補正なしのD1～M5方向一致とH1～M5のEMA200一致を使用する場合true。
+     * @param fromD1ToM5EntryPolicyEnabled D1必須・H4/H1/M15片足補正とH1～M5のEMA200一致を使用する場合true。
      * @param fromCurrencyStrengthMinimumRankDifference 通常版M5で両期間に要求する最低順位差。
      */
     ExpertAdvisorMtf3In3M5(
@@ -55,7 +56,7 @@ public:
     /**
      * 直近の判定に採用した補正時間足を取得する。
      *
-     * @return 補正分析の採用時はH4またはH1。それ以外はPERIOD_CURRENT。
+     * @return 補正分析の採用時はH4・H1・M15。それ以外はPERIOD_CURRENT。
      */
     virtual ENUM_TIMEFRAMES getCorrectionTimeFrame() override {
         if (this.correctedElliotAll != NULL
@@ -98,11 +99,11 @@ protected:
     }
 
     /**
-     * 元のH4・H1方向から、今回の全エントリー条件へ使用する分析を選択する。
+     * 元方向から、今回の全エントリー条件へ使用する分析を選択する。
      *
-     * D1～M5ポリシーでは元分析を採用し、方向補正を実行しない。
-     * 両足同方向なら元分析を採用し、片足逆方向ならその足を補正してM5まで
-     * 再分析する。両足逆方向または補正失敗の場合は判定対象外とする。
+     * 通常版はD1とM5の一致を必須とし、H4・H1・M15の逆方向1足だけを補正する。
+     * 従来ポリシーの補正対象はH4・H1とする。全足一致なら元分析を採用し、
+     * 逆方向が2足以上、入力不正または補正失敗の場合は判定対象外とする。
      *
      * @param fromOriginal 補正前の分析結果。所有権は呼び出し元が保持する。
      * @return 採用する分析への非所有参照。判定対象外の場合はNULL。
@@ -115,33 +116,41 @@ protected:
             return NULL;
         }
 
-        if (this.isD1ToM5EntryPolicyEnabled) {
-            return fromOriginal;
-        }
-
-        Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
-        Elliot *originalH1 = fromOriginal.getElliot(PERIOD_H1);
         Elliot *originalCurrent = fromOriginal.getElliot(PERIOD_M5);
-        Mtf3In3HigherTimeFrameDecision decision;
-        if (!decision.isDirectionStateValid(originalH4, PERIOD_H4)
-                || !decision.isDirectionStateValid(originalH1, PERIOD_H1)
-                || !decision.isDirectionStateValid(originalCurrent, PERIOD_M5)) {
-            return NULL;
-        }
+        ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_CURRENT;
 
-        bool isH4Matched = originalH4.isBuy == originalCurrent.isBuy;
-        bool isH1Matched = originalH1.isBuy == originalCurrent.isBuy;
-        if (isH4Matched && isH1Matched) {
-            return fromOriginal;
-        }
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            if (!this.resolveD1ToM5CorrectionTimeFrame(fromOriginal, correctionTimeFrame)) {
+                return NULL;
+            }
 
-        if (!isH4Matched && !isH1Matched) {
-            return NULL;
-        }
+            if (correctionTimeFrame == PERIOD_CURRENT) {
+                return fromOriginal;
+            }
+        } else {
+            Elliot *originalH4 = fromOriginal.getElliot(PERIOD_H4);
+            Elliot *originalH1 = fromOriginal.getElliot(PERIOD_H1);
+            Mtf3In3HigherTimeFrameDecision decision;
+            if (!decision.isDirectionStateValid(originalH4, PERIOD_H4)
+                    || !decision.isDirectionStateValid(originalH1, PERIOD_H1)
+                    || !decision.isDirectionStateValid(originalCurrent, PERIOD_M5)) {
+                return NULL;
+            }
 
-        ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_H1;
-        if (!isH4Matched) {
-            correctionTimeFrame = PERIOD_H4;
+            bool isH4Matched = originalH4.isBuy == originalCurrent.isBuy;
+            bool isH1Matched = originalH1.isBuy == originalCurrent.isBuy;
+            if (isH4Matched && isH1Matched) {
+                return fromOriginal;
+            }
+
+            if (!isH4Matched && !isH1Matched) {
+                return NULL;
+            }
+
+            correctionTimeFrame = PERIOD_H1;
+            if (!isH4Matched) {
+                correctionTimeFrame = PERIOD_H4;
+            }
         }
 
         this.correctedElliotAll = new ElliotAll(this.marketContext);
@@ -196,7 +205,7 @@ protected:
     }
 
     /**
-     * 通常版ではD1・H4・H1・M15・M5の元方向がすべて一致するか判定する。
+     * 通常版では明示した補正1足を含め、D1・H4・H1・M15・M5の方向一致を判定する。
      * 従来ポリシーではM15と、H4またはH1の同方向一致を確認する。
      *
      * @return M5固有の分析方向条件を満たす場合true。
@@ -208,10 +217,21 @@ protected:
 
         if (this.isD1ToM5EntryPolicyEnabled) {
             Mtf3In3HigherTimeFrameDecision decision;
+            ENUM_TIMEFRAMES correctionTimeFrame = this.getCorrectionTimeFrame();
+            ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+            if (correctionTimeFrame != PERIOD_CURRENT && sourceAnalysis == NULL) {
+                return false;
+            }
+
             ENUM_TIMEFRAMES timeFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
             for (int i = 0; i < ArraySize(timeFrames); i++) {
                 Elliot *elliot = this.elliotAll.getElliot(timeFrames[i]);
-                if (!decision.isDirectionStateValid(elliot, timeFrames[i])
+                if (timeFrames[i] == correctionTimeFrame) {
+                    if (!decision.isCorrectedDirectionStateValid(
+                            elliot, sourceAnalysis.getElliot(timeFrames[i]), timeFrames[i], this.isBuy)) {
+                        return false;
+                    }
+                } else if (!decision.isDirectionStateValid(elliot, timeFrames[i])
                         || elliot.isBuy != this.isBuy) {
                     return false;
                 }
@@ -383,7 +403,9 @@ protected:
             return chartAlertText;
         }
 
-        if (this.correctedTimeFrame == PERIOD_H1) {
+        if (this.isD1ToM5EntryPolicyEnabled) {
+            chartAlertText += " [" + TimeUtil::convertTimeFrameToString(this.correctedTimeFrame) + "補正]";
+        } else if (this.correctedTimeFrame == PERIOD_H1) {
             chartAlertText += " [H1C]";
         } else if (this.correctedTimeFrame == PERIOD_H4) {
             chartAlertText += " [H4C]";
@@ -421,7 +443,7 @@ private:
     /** MN1方向とW1 EMA200の両方を必須にする場合true。 */
     bool isMn1AndW1Ema200Required;
 
-    /** 補正なしのD1～M5方向一致とH1・M15・M5のEMA200一致を使用する場合true。 */
+    /** D1必須・H4/H1/M15片足補正とH1・M15・M5のEMA200一致を使用する場合true。 */
     bool isD1ToM5EntryPolicyEnabled;
 
     /** 全エントリー条件の判定に使用する補正分析。本クラスが所有する。 */
@@ -429,6 +451,53 @@ private:
 
     /** 補正分析で方向を変更した時間足。補正なしはPERIOD_CURRENT。 */
     ENUM_TIMEFRAMES correctedTimeFrame;
+
+    /**
+     * 通常版M5の元方向を確認し、逆方向の1足だけを補正対象として返す。
+     *
+     * @param fromOriginal 補正前のM5分析。
+     * @param fromCorrectionTimeFrame 補正対象。全足一致または拒否時はPERIOD_CURRENT。
+     * @return D1とM5が一致し、H4・H1・M15の逆方向が1足以下の場合true。
+     */
+    bool resolveD1ToM5CorrectionTimeFrame(
+        ElliotAll *fromOriginal,
+        ENUM_TIMEFRAMES &fromCorrectionTimeFrame
+    ) {
+        fromCorrectionTimeFrame = PERIOD_CURRENT;
+        Mtf3In3HigherTimeFrameDecision decision;
+        Elliot *originalCurrent = fromOriginal.getElliot(PERIOD_M5);
+        if (!decision.isDirectionStateValid(originalCurrent, PERIOD_M5)
+                || fromOriginal.elliotCurrent != originalCurrent) {
+            return false;
+        }
+
+        ENUM_TIMEFRAMES timeFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15};
+        ENUM_TIMEFRAMES correctionTimeFrame = PERIOD_CURRENT;
+        int mismatchCount = 0;
+        for (int i = 0; i < ArraySize(timeFrames); i++) {
+            Elliot *elliot = fromOriginal.getElliot(timeFrames[i]);
+            if (!decision.isDirectionStateValid(elliot, timeFrames[i])) {
+                return false;
+            }
+
+            if (elliot.isBuy != originalCurrent.isBuy) {
+                if (timeFrames[i] == PERIOD_D1) {
+                    return false;
+                }
+
+                mismatchCount++;
+                correctionTimeFrame = timeFrames[i];
+            }
+        }
+
+        if (mismatchCount > 1) {
+            return false;
+        }
+
+        fromCorrectionTimeFrame = correctionTimeFrame;
+
+        return true;
+    }
 
     /**
      * 所有する補正分析を解放し、次回への持ち越しを防止する。

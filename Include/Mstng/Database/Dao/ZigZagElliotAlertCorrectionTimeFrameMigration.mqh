@@ -4,13 +4,13 @@
 #include <Mstng\Log\Logger.mqh>
 
 /**
- * 補正時間足のCHECK制約へD1を追加する。
+ * 補正時間足のCHECK制約へD1・M15を追加する。
  * 既存行・子テーブル・索引・トリガーを保持し、失敗時はトランザクションを戻す。
  */
 class ZigZagElliotAlertCorrectionTimeFrameMigration {
 public:
     /**
-     * schema 7のH4/H1制約をschema 8のD1/H4/H1制約へ移行する。
+     * schema 7・8の制約をschema 9のD1/H4/H1/M15制約へ移行する。
      *
      * @param fromDatabaseHandle トランザクション外の書込接続。
      * @return 現行制約の確認または移行に成功した場合true。
@@ -29,9 +29,13 @@ public:
         }
 
         StringReplace(tableSql, "correction_time_frame IN (0, 16385, 16388)",
-            "correction_time_frame IN (0, 16385, 16388, 16408)");
+            "correction_time_frame IN (0, 15, 16385, 16388, 16408)");
         StringReplace(tableSql, "correction_time_frame IN (16385, 16388)",
-            "correction_time_frame IN (16385, 16388, 16408)");
+            "correction_time_frame IN (15, 16385, 16388, 16408)");
+        StringReplace(tableSql, "correction_time_frame IN (0, 16385, 16388, 16408)",
+            "correction_time_frame IN (0, 15, 16385, 16388, 16408)");
+        StringReplace(tableSql, "correction_time_frame IN (16385, 16388, 16408)",
+            "correction_time_frame IN (15, 16385, 16388, 16408)");
         if (!hasCurrentConstraints(tableSql)) {
             logger.error(__FUNCTION__, "unsupported correction time frame constraints.");
             return false;
@@ -74,7 +78,7 @@ public:
 
         bool restored = restoreForeignKeys(fromDatabaseHandle, foreignKeys, logger);
         if (succeeded && restored) {
-            logger.info(__FUNCTION__, "Alert correction time frame CHECK expanded to D1/H4/H1.");
+            logger.info(__FUNCTION__, "Alert correction time frame CHECK expanded to D1/H4/H1/M15.");
         }
 
         return succeeded && restored;
@@ -82,11 +86,11 @@ public:
 
 private:
     /**
-     * 列制約と行制約がともにD1を許可しているか確認する。
+     * 列制約と行制約がともにD1・M15を許可しているか確認する。
      */
     static bool hasCurrentConstraints(const string fromTableSql) {
-        return StringFind(fromTableSql, "correction_time_frame IN (0, 16385, 16388, 16408)") >= 0
-            && StringFind(fromTableSql, "correction_time_frame IN (16385, 16388, 16408)") >= 0;
+        return StringFind(fromTableSql, "correction_time_frame IN (0, 15, 16385, 16388, 16408)") >= 0
+            && StringFind(fromTableSql, "correction_time_frame IN (15, 16385, 16388, 16408)") >= 0;
     }
 
     /**
@@ -208,15 +212,15 @@ private:
             return false;
         }
 
-        string createSql = StringSubstr(fromTableSql, 0, nameIndex) + tableName + "_v8"
+        string createSql = StringSubstr(fromTableSql, 0, nameIndex) + tableName + "_v9"
             + StringSubstr(fromTableSql, nameIndex + StringLen(tableName));
 
         if (!executeSql(fromDatabaseHandle, createSql, fromLogger)
                 || !executeSql(fromDatabaseHandle,
-                    "INSERT INTO zigzag_elliot_alert_corrections_v8 SELECT * FROM zigzag_elliot_alert_corrections", fromLogger)
+                    "INSERT INTO zigzag_elliot_alert_corrections_v9 SELECT * FROM zigzag_elliot_alert_corrections", fromLogger)
                 || !executeSql(fromDatabaseHandle, "DROP TABLE zigzag_elliot_alert_corrections", fromLogger)
                 || !executeSql(fromDatabaseHandle,
-                    "ALTER TABLE zigzag_elliot_alert_corrections_v8 RENAME TO zigzag_elliot_alert_corrections", fromLogger)) {
+                    "ALTER TABLE zigzag_elliot_alert_corrections_v9 RENAME TO zigzag_elliot_alert_corrections", fromLogger)) {
             return false;
         }
 

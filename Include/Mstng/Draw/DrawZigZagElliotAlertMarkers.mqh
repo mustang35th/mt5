@@ -363,6 +363,7 @@ private:
             StringReplace(correction, "SELL", "S");
             StringReplace(correction, "H1 ", "H1補正 ");
             StringReplace(correction, "H4 ", "H4補正 ");
+            StringReplace(correction, "M15 ", "M15補正 ");
             StringReplace(correction, "D1 ", "D1補正 ");
             correction = "\n" + this.cellText(correction, 12);
         }

@@ -45,7 +45,8 @@ public:
         marker.correctionText = "";
         if (fromCorrectionTimeFrame != PERIOD_CURRENT) {
             bool isM5Correction = marker.timeFrame == PERIOD_M5
-                && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1);
+                && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1
+                    || fromCorrectionTimeFrame == PERIOD_M15);
             bool isH1Correction = marker.timeFrame == PERIOD_H1
                 && (fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4);
             bool isM15Correction = marker.timeFrame == PERIOD_M15
@@ -67,6 +68,8 @@ public:
                 frameLabel = "H4";
             } else if (fromCorrectionTimeFrame == PERIOD_D1) {
                 frameLabel = "D1";
+            } else if (fromCorrectionTimeFrame == PERIOD_M15) {
+                frameLabel = "M15";
             }
             marker.correctionText = frameLabel + " " + direction(original.isBuy)
                 + "→" + direction(corrected.isBuy);

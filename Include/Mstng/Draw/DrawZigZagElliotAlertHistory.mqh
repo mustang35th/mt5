@@ -367,6 +367,8 @@ private:
             string frame = "H1";
             if (fromSnapshot.correction.correctionTimeFrame == PERIOD_H4) {
                 frame = "H4";
+            } else if (fromSnapshot.correction.correctionTimeFrame == PERIOD_M15) {
+                frame = "M15";
             }
             correctionText = frame + " " + fromSnapshot.correction.originalDirection
                 + " → " + fromSnapshot.correction.correctedDirection + " / 補正後採用";
@@ -506,6 +508,8 @@ private:
             string frame = "H1";
             if (fromSnapshot.correction.correctionTimeFrame == PERIOD_H4) {
                 frame = "H4";
+            } else if (fromSnapshot.correction.correctionTimeFrame == PERIOD_M15) {
+                frame = "M15";
             }
             correctionText = frame + " " + fromSnapshot.correction.originalDirection
                 + "→" + fromSnapshot.correction.correctedDirection;
