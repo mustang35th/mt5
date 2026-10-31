@@ -275,50 +275,21 @@ public:
             return false;
         }
 
-        ENUM_GMMA_TREND trend0 = GmmaUtil::getGmmaTrend(
-            ema30Buffer[1],
-            ema30Buffer[0],
-            ema60Buffer[1],
-            ema60Buffer[0]
-        );
-
-        if (trend0 == GMMA_TREND_NON) {
-            count = 0;
-
+        count = this.calculateTrendCount(ema30Buffer, ema60Buffer, maxCheck);
+        if (count == 0) {
             this.logger.debug(__FUNCTION__, StringFormat("count=%d direction=NON elapsed=%d ms", count, GetTickCount() - startCount));
 
             return true;
         }
 
-        count = 1;
-
-        for (int i = 1; i < maxCheck; i++) {
-            ENUM_GMMA_TREND trend = GmmaUtil::getGmmaTrend(
-                ema30Buffer[i + 1],
-                ema30Buffer[i],
-                ema60Buffer[i + 1],
-                ema60Buffer[i]
-            );
-
-            if (trend == trend0) {
-                count++;
-            } else {
-                break;
-            }
-        }
-
-        if (trend0 == GMMA_TREND_SELL) {
-            count = 0 - count;
-        }
-
         uint elapsed = GetTickCount() - startCount;
         string direction = "NON";
 
-        if (trend0 == GMMA_TREND_BUY) {
+        if (count > 0) {
             direction = "BUY";
         }
 
-        if (trend0 == GMMA_TREND_SELL) {
+        if (count < 0) {
             direction = "SELL";
         }
 
@@ -414,20 +385,7 @@ public:
             return false;
         }
 
-        bool isPlus0 = this.isPlus(ema30Buffer[0], ema60Buffer[0]);
-        count = 1;
-        for (int i = 1; i < maxCheck; i++) {
-            bool isPlus = this.isPlus(ema30Buffer[i], ema60Buffer[i]);
-            if (isPlus == isPlus0) {
-                count++;
-            } else {
-                break;
-            }
-        }
-
-        if (!isPlus0) {
-            count = 0 - count;
-        }
+        count = this.calculateCrossCount(ema30Buffer, ema60Buffer, maxCheck);
 
         uint elapsed = GetTickCount() - startCount;
         string direction = (count < 0 ? "MINUS" : "PLUS");
@@ -527,6 +485,103 @@ public:
         return true;
     }
 
+    /**
+     * EMA30・EMA60を各1回取得し、トレンド・クロス継続件数と現在値をまとめて返す。
+     * 両EMAを2本以上取得できた場合は、個別取得と同じく取得できた本数で判定する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromTrendCount BUY方向は正、SELL方向は負のトレンド継続件数。
+     * @param fromCrossCount プラス方向は正、マイナス方向は負のクロス継続件数。
+     * @param fromEma30Value プロファイルの参照shiftに対応するEMA30値。
+     * @param fromEma60Value プロファイルの参照shiftに対応するEMA60値。
+     * @return 全項目を取得できた場合true。失敗時は出力をすべて0にする。
+     */
+    bool getAnalysisValues(
+        MarketContext &fromMarketContext,
+        int &fromTrendCount,
+        int &fromCrossCount,
+        double &fromEma30Value,
+        double &fromEma60Value
+    ) {
+        this.initializeMarketContext(fromMarketContext);
+        fromTrendCount = 0;
+        fromCrossCount = 0;
+        fromEma30Value = 0.0;
+        fromEma60Value = 0.0;
+
+        if (!this.ensureInitialized(this.marketContext)) {
+            this.logger.error(__FUNCTION__, "initialize failed.");
+
+            return false;
+        }
+
+        int trendLookback = ZigZagElliotAnalysisProfile::getGmmaTrendLookback();
+        int crossLookback = ZigZagElliotAnalysisProfile::getGmmaCrossLookback();
+        int shift = ZigZagElliotAnalysisProfile::getGmmaShift();
+        int bars = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
+        if (bars <= shift + 2) {
+            this.logger.error(__FUNCTION__, StringFormat("not enough bars. bars=%d", bars));
+
+            return false;
+        }
+
+        int barsToCopy = trendLookback + 1;
+        if (crossLookback + 1 > barsToCopy) {
+            barsToCopy = crossLookback + 1;
+        }
+
+        int availableBars = bars - shift;
+        if (barsToCopy > availableBars) {
+            barsToCopy = availableBars;
+        }
+
+        double ema30Buffer[];
+        double ema60Buffer[];
+        ArraySetAsSeries(ema30Buffer, true);
+        ArraySetAsSeries(ema60Buffer, true);
+
+        ResetLastError();
+        int copied30 = CopyBuffer(this.ema30Handle, 0, shift, barsToCopy, ema30Buffer);
+        int copied60 = CopyBuffer(this.ema60Handle, 0, shift, barsToCopy, ema60Buffer);
+        if (copied30 <= 1 || copied60 <= 1) {
+            this.logger.error(__FUNCTION__, StringFormat("CopyBuffer error. copied30=%d copied60=%d code=%d", copied30, copied60, GetLastError()));
+
+            return false;
+        }
+
+        int availableCheckCount = copied30 - 1;
+        if (copied60 - 1 < availableCheckCount) {
+            availableCheckCount = copied60 - 1;
+        }
+
+        int trendMaxCheck = trendLookback;
+        if (trendMaxCheck > availableCheckCount) {
+            trendMaxCheck = availableCheckCount;
+        }
+
+        int crossMaxCheck = crossLookback;
+        if (crossMaxCheck > availableCheckCount) {
+            crossMaxCheck = availableCheckCount;
+        }
+
+        if (trendMaxCheck <= 0 || crossMaxCheck <= 0) {
+            this.logger.error(__FUNCTION__, StringFormat(
+                "maxCheck <= 0. trendMaxCheck=%d crossMaxCheck=%d", trendMaxCheck, crossMaxCheck));
+
+            return false;
+        }
+
+        int trendCount = this.calculateTrendCount(ema30Buffer, ema60Buffer, trendMaxCheck);
+        int crossCount = this.calculateCrossCount(ema30Buffer, ema60Buffer, crossMaxCheck);
+
+        fromTrendCount = trendCount;
+        fromCrossCount = crossCount;
+        fromEma30Value = ema30Buffer[0];
+        fromEma60Value = ema60Buffer[0];
+
+        return true;
+    }
+
 private:
     /** GMMAハンドルに対応する市場コンテキスト。 */
     MarketContext handleMarketContext;
@@ -545,6 +600,76 @@ private:
 
     /** ロガー。 */
     Logger logger;
+
+    /**
+     * 最新値が添字0のEMA配列から、符号付きのトレンド継続件数を求める。
+     *
+     * @param fromEma30Buffer EMA30配列。
+     * @param fromEma60Buffer EMA60配列。
+     * @param fromMaxCheck 判定上限。1以上かつ両配列の取得本数より小さいこと。
+     * @return BUY方向は正、SELL方向は負、トレンドなしは0。
+     */
+    int calculateTrendCount(
+        const double &fromEma30Buffer[],
+        const double &fromEma60Buffer[],
+        const int fromMaxCheck
+    ) {
+        ENUM_GMMA_TREND firstTrend = GmmaUtil::getGmmaTrend(
+            fromEma30Buffer[1], fromEma30Buffer[0],
+            fromEma60Buffer[1], fromEma60Buffer[0]);
+        if (firstTrend == GMMA_TREND_NON) {
+            return 0;
+        }
+
+        int count = 1;
+        for (int i = 1; i < fromMaxCheck; i++) {
+            ENUM_GMMA_TREND trend = GmmaUtil::getGmmaTrend(
+                fromEma30Buffer[i + 1], fromEma30Buffer[i],
+                fromEma60Buffer[i + 1], fromEma60Buffer[i]);
+            if (trend != firstTrend) {
+                break;
+            }
+
+            count++;
+        }
+
+        if (firstTrend == GMMA_TREND_SELL) {
+            count = 0 - count;
+        }
+
+        return count;
+    }
+
+    /**
+     * 最新値が添字0のEMA配列から、符号付きのクロス継続件数を求める。
+     *
+     * @param fromEma30Buffer EMA30配列。
+     * @param fromEma60Buffer EMA60配列。
+     * @param fromMaxCheck 判定上限。1以上かつ両配列の取得本数より小さいこと。
+     * @return EMA30がEMA60以上の場合は正、未満の場合は負の継続件数。
+     */
+    int calculateCrossCount(
+        const double &fromEma30Buffer[],
+        const double &fromEma60Buffer[],
+        const int fromMaxCheck
+    ) {
+        bool firstIsPlus = this.isPlus(fromEma30Buffer[0], fromEma60Buffer[0]);
+        int count = 1;
+        for (int i = 1; i < fromMaxCheck; i++) {
+            bool isPlus = this.isPlus(fromEma30Buffer[i], fromEma60Buffer[i]);
+            if (isPlus != firstIsPlus) {
+                break;
+            }
+
+            count++;
+        }
+
+        if (!firstIsPlus) {
+            count = 0 - count;
+        }
+
+        return count;
+    }
 
     /**
      * 市場コンテキストを初期化する。

@@ -785,6 +785,7 @@ private:
 
     /**
      * GMMA情報（トレンド/クロス/EMA30,60）を更新する。
+     * EMA30・EMA60は各1回取得し、すべての項目で共用する。
      *
      * @param oscillatorHandlePool ハンドルプール。
      * @return 更新できた場合は true。
@@ -806,27 +807,18 @@ private:
         Gmma gmma(this.marketContext, gmmaHandlePool);
         int trendCount = 0;
         int crossCount = 0;
-
-        if (!gmma.getTrendCount(this.marketContext, trendCount)) {
-            this.logger.error(__FUNCTION__, "gmma.getTrendCount failed.");
-            return false;
-        }
-
-        if (!gmma.getCrossCount(this.marketContext, crossCount)) {
-            this.logger.error(__FUNCTION__, "gmma.getCrossCount failed.");
-            return false;
-        }
-
         double ema30Value = 0.0;
         double ema60Value = 0.0;
 
-        if (!gmma.getEmaValues(
+        if (!gmma.getAnalysisValues(
                 this.marketContext,
-                ZigZagElliotAnalysisProfile::getGmmaShift(),
+                trendCount,
+                crossCount,
                 ema30Value,
                 ema60Value
             )) {
-            this.logger.error(__FUNCTION__, "gmma.getEmaValues failed.");
+            this.logger.error(__FUNCTION__, "gmma.getAnalysisValues failed.");
+
             return false;
         }
 

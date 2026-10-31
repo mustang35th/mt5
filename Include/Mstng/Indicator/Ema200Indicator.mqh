@@ -86,6 +86,7 @@ public:
             this.handles[i] = INVALID_HANDLE;
         }
 
+        ArrayFree(this.chartBarTimes);
         this.deleteLabels();
         this.clearPlotSettings();
     }
@@ -122,9 +123,24 @@ public:
 
         bool isSucceeded = true;
 
-        for (int i = 0; i < this.displayCount; i++) {
-            if (!this.updateLine(i, barsCount)) {
+        if (this.displayCount > 0) {
+            int chartBarCount = barsCount;
+            if (chartBarCount > this.maxBars) {
+                chartBarCount = this.maxBars;
+            }
+
+            // 最新足を添字0にそろえた時刻配列を、すべてのEMA線で共用する。
+            if (ArrayResize(this.chartBarTimes, chartBarCount) != chartBarCount
+                    || CopyTime(this.marketContext.symbolName, this.marketContext.timeFrame,
+                        0, chartBarCount, this.chartBarTimes) != chartBarCount) {
+                // 不足時は全線を空表示のままにし、更新済み時刻を進めず再試行する。
                 isSucceeded = false;
+            } else {
+                for (int i = 0; i < this.displayCount; i++) {
+                    if (!this.updateLine(i, this.chartBarTimes)) {
+                        isSucceeded = false;
+                    }
+                }
             }
         }
 
@@ -157,6 +173,9 @@ private:
 
     /** 時間足ごとのEMAハンドル配列。 */
     int handles[5];
+
+    /** 全EMA線で共用するチャート足時刻の作業配列。seriesで最新足が添字0。 */
+    datetime chartBarTimes[];
 
     /** EMAの主軸データバッファ。 */
     double buffer0[];
@@ -201,6 +220,7 @@ private:
         this.labelShiftBars = 3;
         this.labelFontSize = 10;
         this.labelFontFace = "Arial";
+        ArraySetAsSeries(this.chartBarTimes, true);
 
         for (int i = 0; i < 5; i++) {
             this.timeFrames[i] = PERIOD_CURRENT;
@@ -356,12 +376,13 @@ private:
 
     /**
      * 対応する足番号を求め、必要範囲のEMAを一括取得してラインを更新する。
+     * チャート足時刻はupdate()で取得済みの共通配列を参照する。
      *
      * @param lineIndex ライン番号
-     * @param barsCount バー数
+     * @param fromBarTimes 最新足を添字0とする、表示対象範囲のチャート足時刻。
      * @return 更新成否
      */
-    bool updateLine(int lineIndex, int barsCount) {
+    bool updateLine(int lineIndex, const datetime &fromBarTimes[]) {
         if (lineIndex < 0 || lineIndex >= this.displayCount) {
             return false;
         }
@@ -376,12 +397,7 @@ private:
             return false;
         }
 
-        int limit = barsCount;
-
-        if (limit > this.maxBars) {
-            limit = this.maxBars;
-        }
-
+        int limit = ArraySize(fromBarTimes);
         if (limit <= 0) {
             return false;
         }
@@ -399,7 +415,7 @@ private:
         bool isSucceeded = true;
 
         for (int barIndex = 0; barIndex < limit; barIndex++) {
-            datetime barTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, barIndex);
+            datetime barTime = fromBarTimes[barIndex];
 
             if (barTime == 0) {
                 this.setBufferValue(lineIndex, barIndex, EMPTY_VALUE);

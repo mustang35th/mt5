@@ -33,6 +33,8 @@ public:
         this.gmmaIndicator = NULL;
         this.ema200Indicator = NULL;
         this.japanTimeAxisView = NULL;
+        this.timeAxisFullUpdatePending = false;
+        this.lastTimeAxisFullUpdateTick = 0;
         this.drawElliotVerticalFit = NULL;
         this.elliotHigherTimeFrameDisplayCount = 2;
         this.elliotInfoVisible = true;
@@ -97,6 +99,8 @@ public:
         }
 
         this.japanTimeAxisView.create();
+        this.timeAxisFullUpdatePending = false;
+        this.lastTimeAxisFullUpdateTick = GetTickCount64();
         this.drawElliotVerticalFit = new DrawElliotVerticalFit(
             this.isVerticalFitLabelClampMode(),
             this.elliotHigherTimeFrameDisplayCount
@@ -115,11 +119,16 @@ public:
 
     /**
      * OnCalculateで更新する補助表示を処理する。
+     * 通常チャートの履歴再計算では、次のタイマーで日本時間軸を強制更新する。
      *
      * @param fromTimerMode タイマー実行の場合true
      * @param fromPrevCalculated OnCalculateの前回計算済みバー数
      */
     void updateOnCalculate(bool fromTimerMode, int fromPrevCalculated = 0) {
+        if (fromTimerMode && fromPrevCalculated == 0) {
+            this.timeAxisFullUpdatePending = true;
+        }
+
         if (this.gmmaIndicator != NULL) {
             this.gmmaIndicator.update(fromPrevCalculated);
         }
@@ -129,12 +138,26 @@ public:
 
     /**
      * OnTimerで更新する補助表示を処理する。
+     * 同じ画面の日本時間軸は再利用し、残り時間は毎回更新する。
+     * 上位足だけの履歴更新も拾うため、60秒ごとに時間軸を強制確認する。
      *
      * @param fromTimerMode タイマー実行の場合true
      */
     void updateOnTimer(bool fromTimerMode) {
         if (this.japanTimeAxisView != NULL) {
-            this.japanTimeAxisView.update();
+            const ulong fullUpdateIntervalMilliseconds = 60000;
+            ulong currentTick = GetTickCount64();
+            bool forceTimeAxisUpdate = this.timeAxisFullUpdatePending
+                || currentTick - this.lastTimeAxisFullUpdateTick >= fullUpdateIntervalMilliseconds;
+
+            this.japanTimeAxisView.updateTimeAxis(forceTimeAxisUpdate);
+            this.japanTimeAxisView.updateRemainingTime();
+
+            if (forceTimeAxisUpdate) {
+                // 取得・描画失敗後の再試行待ちはView側が保持する。
+                this.timeAxisFullUpdatePending = false;
+                this.lastTimeAxisFullUpdateTick = currentTick;
+            }
         }
 
         this.updateEma200Indicator(fromTimerMode);
@@ -321,6 +344,9 @@ public:
             this.japanTimeAxisView = NULL;
         }
 
+        this.timeAxisFullUpdatePending = false;
+        this.lastTimeAxisFullUpdateTick = 0;
+
         if (this.drawElliotVerticalFit != NULL) {
             this.drawElliotVerticalFit.restore();
             delete this.drawElliotVerticalFit;
@@ -351,6 +377,12 @@ private:
 
     /** 日本時間軸表示。 */
     JapanTimeAxisView *japanTimeAxisView;
+
+    /** 通常チャートの履歴再計算後、日本時間軸の強制更新待ちの場合true。 */
+    bool timeAxisFullUpdatePending;
+
+    /** 日本時間軸の強制更新を最後に試行した経過ミリ秒。 */
+    ulong lastTimeAxisFullUpdateTick;
 
     /** Elliott上下FIT。 */
     DrawElliotVerticalFit *drawElliotVerticalFit;
