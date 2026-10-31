@@ -292,9 +292,10 @@ public:
      * OnCalculateイベントを処理する。
      *
      * @param fromRatesTotal 全バー数
+     * @param fromPrevCalculated OnCalculateの前回計算済みバー数
      * @return 次回計算用の処理済みバー数
      */
-    int onCalculate(const int fromRatesTotal) {
+    int onCalculate(const int fromRatesTotal, const int fromPrevCalculated = 0) {
         if (this.chartController == NULL) {
             return fromRatesTotal;
         }
@@ -310,7 +311,7 @@ public:
             }
         }
 
-        this.chartController.updateOnCalculate(this.timerMode);
+        this.chartController.updateOnCalculate(this.timerMode, fromPrevCalculated);
 
         if (this.timerMode) {
             this.chartController.drawBidAsk();

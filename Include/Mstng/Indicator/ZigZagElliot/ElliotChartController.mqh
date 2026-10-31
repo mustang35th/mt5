@@ -117,10 +117,11 @@ public:
      * OnCalculateで更新する補助表示を処理する。
      *
      * @param fromTimerMode タイマー実行の場合true
+     * @param fromPrevCalculated OnCalculateの前回計算済みバー数
      */
-    void updateOnCalculate(bool fromTimerMode) {
+    void updateOnCalculate(bool fromTimerMode, int fromPrevCalculated = 0) {
         if (this.gmmaIndicator != NULL) {
-            this.gmmaIndicator.update();
+            this.gmmaIndicator.update(fromPrevCalculated);
         }
 
         this.updateEma200Indicator(fromTimerMode);

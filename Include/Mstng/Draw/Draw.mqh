@@ -36,6 +36,11 @@ public:
      */
     Draw() {
         this.logger.setLevel(LOG_INFO);
+
+        for (int i = 0; i < 3; i++) {
+            this.bidAskLabelReady[i] = false;
+            this.bidAskLabelTexts[i] = "";
+        }
     }
     
     /**
@@ -163,10 +168,8 @@ public:
             spread = RateUtil::getDiffPips(tick.bid, tick.ask, fromMarketContext);
         }
         
-        color fontColor = clrWhite;
         string objectName;
         string text;        
-        int fontSize = 20;
         
         
         objectName = "Ask";
@@ -176,7 +179,7 @@ public:
             text = StringFormat("A:%s", DoubleToString(tick.ask, digits));
         }
         
-        DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 130);
+        this.updateBidAskLabel(0, objectName, text, drawProperties.objXRight, 130);
         
         
         objectName = "Bid";
@@ -186,7 +189,7 @@ public:
             text = StringFormat("B:%s", DoubleToString(tick.bid, digits));
         }
         
-        DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 160);
+        this.updateBidAskLabel(1, objectName, text, drawProperties.objXRight, 160);
         
         
         objectName = "Spread";
@@ -196,7 +199,7 @@ public:
             text = StringFormat("S:%s", DoubleToString(spread, 1));
         }
         
-        DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight + 140, 145);
+        this.updateBidAskLabel(2, objectName, text, drawProperties.objXRight + 140, 145);
     }
     
     /**
@@ -276,6 +279,62 @@ private:
 
     /** 描画対象のElliot全体データ。 */
     ElliotAll *elliotAll;
+
+    /** Ask・Bid・Spreadラベルの初期設定および文字反映が成功した場合true。 */
+    bool bidAskLabelReady[3];
+
+    /** Ask・Bid・Spreadラベルへ最後に反映した文字。 */
+    string bidAskLabelTexts[3];
+
+    /**
+     * レートラベルを再利用し、表示文字が変わった場合だけ更新する。
+     *
+     * 全体再描画や手動操作で削除された場合は固定設定ごと復元する。
+     * 設定に失敗した場合はキャッシュを確定せず、次回描画で再試行する。
+     *
+     * @param fromIndex Ask・Bid・Spreadに対応するキャッシュ番号
+     * @param fromObjectName 共通接頭辞を除いたラベル名
+     * @param fromText 表示文字
+     * @param fromX X座標
+     * @param fromY Y座標
+     */
+    void updateBidAskLabel(
+        int fromIndex,
+        string fromObjectName,
+        string fromText,
+        int fromX,
+        int fromY
+    ) {
+        string objectName = Constant::PREFIX + fromObjectName;
+
+        if (ObjectFind(0, objectName) < 0) {
+            this.bidAskLabelReady[fromIndex] = false;
+
+            if (!ObjectCreate(0, objectName, OBJ_LABEL, 0, 0, 0)) {
+                return;
+            }
+        }
+
+        if (!this.bidAskLabelReady[fromIndex]) {
+            if (!ObjectSetInteger(0, objectName, OBJPROP_COLOR, clrWhite)
+                    || !ObjectSetString(0, objectName, OBJPROP_FONT, this.drawProperties.elliotFontFace)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 20)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, fromX)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, fromY)) {
+                return;
+            }
+        }
+
+        if (this.bidAskLabelReady[fromIndex]
+                && this.bidAskLabelTexts[fromIndex] == fromText) {
+            return;
+        }
+
+        if (ObjectSetString(0, objectName, OBJPROP_TEXT, fromText)) {
+            this.bidAskLabelTexts[fromIndex] = fromText;
+            this.bidAskLabelReady[fromIndex] = true;
+        }
+    }
     
     /*void drawBgColor() {
         color bgColor = clrBlack;

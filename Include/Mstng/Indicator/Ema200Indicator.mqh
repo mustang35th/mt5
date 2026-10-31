@@ -355,7 +355,7 @@ private:
     }
 
     /**
-     * ライン更新
+     * 対応する足番号を求め、必要範囲のEMAを一括取得してラインを更新する。
      *
      * @param lineIndex ライン番号
      * @param barsCount バー数
@@ -382,6 +382,20 @@ private:
             limit = this.maxBars;
         }
 
+        if (limit <= 0) {
+            return false;
+        }
+
+        int targetBarIndices[];
+
+        if (ArrayResize(targetBarIndices, limit) != limit) {
+            return false;
+        }
+
+        ArrayInitialize(targetBarIndices, -1);
+
+        int firstTargetBarIndex = calculatedCount;
+        int lastTargetBarIndex = -1;
         bool isSucceeded = true;
 
         for (int barIndex = 0; barIndex < limit; barIndex++) {
@@ -401,17 +415,39 @@ private:
                 continue;
             }
 
-            double values[];
+            targetBarIndices[barIndex] = targetBarIndex;
 
-            ArrayResize(values, 1);
+            if (targetBarIndex < firstTargetBarIndex) {
+                firstTargetBarIndex = targetBarIndex;
+            }
 
-            if (CopyBuffer(this.handles[lineIndex], 0, targetBarIndex, 1, values) <= 0) {
-                this.setBufferValue(lineIndex, barIndex, EMPTY_VALUE);
-                isSucceeded = false;
+            if (targetBarIndex > lastTargetBarIndex) {
+                lastTargetBarIndex = targetBarIndex;
+            }
+        }
+
+        if (lastTargetBarIndex < firstTargetBarIndex) {
+            return false;
+        }
+
+        int copyCount = lastTargetBarIndex - firstTargetBarIndex + 1;
+        double values[];
+
+        ArraySetAsSeries(values, true);
+
+        // 部分取得時は足番号と値の対応を確定せず、次回更新で再試行する。
+        if (CopyBuffer(this.handles[lineIndex], 0, firstTargetBarIndex, copyCount, values) != copyCount) {
+            return false;
+        }
+
+        for (int barIndex = 0; barIndex < limit; barIndex++) {
+            int targetBarIndex = targetBarIndices[barIndex];
+
+            if (targetBarIndex < 0) {
                 continue;
             }
 
-            this.setBufferValue(lineIndex, barIndex, values[0]);
+            this.setBufferValue(lineIndex, barIndex, values[targetBarIndex - firstTargetBarIndex]);
         }
 
         return isSucceeded;

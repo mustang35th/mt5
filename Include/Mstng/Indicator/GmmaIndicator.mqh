@@ -84,6 +84,9 @@ public:
      * 終了処理
      */
     void deinit() {
+        this.lasttimeGmma = 0;
+        this.lastBarsCount = 0;
+
         if (this.drawGmma != NULL) {
             this.drawGmma.clear();
             delete this.drawGmma;
@@ -92,36 +95,89 @@ public:
     }
 
     /**
-     * 更新
+     * 初回・履歴再計算時は全体、新しい足では必要範囲だけ更新する。
      *
+     * @param fromPrevCalculated OnCalculateの前回計算済みバー数
      * @return 更新成否
      */
-    bool update() {
-        datetime temptime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0);
+    bool update(int fromPrevCalculated = 0) {
+        datetime currentBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0);
 
-        if (this.lasttimeGmma == temptime) {
-            return true;
+        if (currentBarTime <= 0) {
+            return false;
         }
 
         int barsCount = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
 
-        if (CopyBuffer(this.handle30, 0, 0, barsCount, buffer30) <= 0) {
+        if (barsCount <= 0
+                || ArraySize(this.buffer30) != barsCount
+                || ArraySize(this.buffer60) != barsCount) {
             return false;
         }
 
-        if (CopyBuffer(this.handle60, 0, 0, barsCount, buffer60) <= 0) {
+        int previousBars = 0;
+        int newBars = 0;
+
+        if (fromPrevCalculated > 0
+                && fromPrevCalculated == this.lastBarsCount
+                && this.lasttimeGmma > 0) {
+            if (currentBarTime == this.lasttimeGmma && barsCount == this.lastBarsCount) {
+                return true;
+            }
+
+            newBars = iBarShift(
+                this.marketContext.symbolName,
+                this.marketContext.timeFrame,
+                this.lasttimeGmma,
+                true
+            );
+
+            if (newBars > 0 && newBars < barsCount
+                    && (barsCount == this.lastBarsCount + newBars
+                        || barsCount == this.lastBarsCount)) {
+                previousBars = barsCount - newBars;
+            }
+        }
+
+        int copyCount = barsCount;
+
+        if (previousBars > 0) {
+            // 新しい足に加え、確定足とトレンド比較用の前足を取得する。
+            copyCount = MathMin(barsCount, newBars + 2);
+        }
+
+        if (BarsCalculated(this.handle30) < barsCount
+                || BarsCalculated(this.handle60) < barsCount) {
+            return false;
+        }
+
+        double values30[];
+        double values60[];
+
+        if (CopyBuffer(this.handle30, 0, 0, copyCount, values30) != copyCount) {
+            return false;
+        }
+
+        if (CopyBuffer(this.handle60, 0, 0, copyCount, values60) != copyCount) {
+            return false;
+        }
+
+        // 通常順の表示バッファ末尾へ反映し、更新対象外の履歴は保持する。
+        int startIndex = barsCount - copyCount;
+
+        if (ArrayCopy(this.buffer30, values30, startIndex, 0, copyCount) != copyCount
+                || ArrayCopy(this.buffer60, values60, startIndex, 0, copyCount) != copyCount) {
             return false;
         }
 
         this.updateLineColors();
 
         if (this.drawGmma != NULL) {
-            //this.drawGmma.drawLongTerm(buffer30, buffer60, barsCount, 0);
-            //this.drawGmma.drawLongTermDiff(buffer30, buffer60, barsCount, 0);
-            this.drawGmma.drawLongTermTrend(buffer30, buffer60, barsCount, 0);
+            this.drawGmma.drawLongTermTrend(buffer30, buffer60, barsCount, previousBars);
         }
 
-        this.lasttimeGmma = temptime;
+        this.lasttimeGmma = currentBarTime;
+        this.lastBarsCount = barsCount;
 
         return true;
     }
@@ -166,6 +222,9 @@ private:
     /** 最終更新日時。 */
     datetime lasttimeGmma;
 
+    /** 最後に更新が成功した表示バッファのバー数。 */
+    int lastBarsCount;
+
     /**
      * 市場コンテキストと表示設定を初期化する。
      *
@@ -185,6 +244,7 @@ private:
         this.handle60 = INVALID_HANDLE;
         this.drawGmma = NULL;
         this.lasttimeGmma = 0;
+        this.lastBarsCount = 0;
     }
 
     /**
