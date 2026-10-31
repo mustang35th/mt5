@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.00"
+#property version   "1.04"
 #property indicator_chart_window
 #property indicator_buffers 0
 #property indicator_plots   0
@@ -108,9 +108,9 @@ int OnCalculate(
     ArraySetAsSeries(time, true);
     datetime currentBarTime = time[0];
 
-    if (currentBarTime != gLastBarTime) {
+    if (previousCalculated == 0 || currentBarTime != gLastBarTime) {
         gLastBarTime = currentBarTime;
-        gJapanTimeAxisView.updateTimeAxis();
+        gJapanTimeAxisView.updateTimeAxis(previousCalculated == 0);
         gJapanTimeAxisView.updateRemainingTime();
     }
 
@@ -125,6 +125,7 @@ void OnTimer() {
         return;
     }
 
+    gJapanTimeAxisView.retryTimeAxisUpdate();
     gJapanTimeAxisView.updateRemainingTime();
 }
 

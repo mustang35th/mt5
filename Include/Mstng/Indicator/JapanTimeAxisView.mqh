@@ -14,6 +14,41 @@
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
 /**
+ * 日本時間軸の描画済みオブジェクトと反映済み属性を保持する。
+ */
+struct JapanTimeAxisObjectState {
+    /** 対応するサーバー時刻。 */
+    datetime barTime;
+
+    /** 縦線の場合true、時刻ラベルの場合false。 */
+    bool isLine;
+
+    /** 描画オブジェクト名。 */
+    string objectName;
+
+    /** 今回の描画で使用する場合true。 */
+    bool isUsed;
+
+    /** 固定設定と表示属性の反映が完了している場合true。 */
+    bool isReady;
+
+    /** 時刻ラベルの反映済み描画価格。 */
+    double price;
+
+    /** 時刻ラベルの反映済み表示文字。 */
+    string text;
+
+    /** 縦線の反映済み色。 */
+    color lineColor;
+
+    /** 縦線の反映済み線種。 */
+    ENUM_LINE_STYLE lineStyle;
+
+    /** 縦線の反映済み幅。 */
+    int lineWidth;
+};
+
+/**
  * チャート上へ日本時間の目安と足の残り時間を表示するクラス。
  */
 class JapanTimeAxisView {
@@ -60,6 +95,12 @@ public:
      * @param fromMarketContext 表示対象の市場コンテキスト
      */
     void setMarketContext(MarketContext &fromMarketContext) {
+        if (this.marketContext.symbolName != fromMarketContext.symbolName
+                || this.marketContext.timeFrame != fromMarketContext.timeFrame) {
+            this.timeAxisViewReady = false;
+            this.timeAxisUpdatePending = true;
+        }
+
         this.marketContext = fromMarketContext;
     }
 
@@ -67,22 +108,38 @@ public:
      * 表示オブジェクトを作成する。
      */
     void create() {
+        this.deleteTimeLabels();
+        this.deleteVerticalLines();
+        ArrayFree(this.timeAxisObjects);
+        this.timeAxisViewReady = false;
+
         this.update();
     }
 
     /**
-     * 表示を更新する。
+     * 全体表示を更新し、共有利用側からの履歴再読込も再判定する。
      */
     void update() {
-        this.updateTimeAxis();
+        this.updateTimeAxis(true);
         this.updateRemainingTime();
     }
 
     /**
      * 日本時間の目安と縦線を更新する。
+     *
+     * @param fromForce 履歴再読込などで同じ画面でも再判定する場合true。
      */
-    void updateTimeAxis() {
-        this.drawTimeLabels();
+    void updateTimeAxis(const bool fromForce = false) {
+        this.drawTimeLabels(fromForce);
+    }
+
+    /**
+     * データ取得または描画の再試行待ちの場合だけ、日本時間軸を更新する。
+     */
+    void retryTimeAxisUpdate() {
+        if (this.timeAxisUpdatePending) {
+            this.updateTimeAxis();
+        }
     }
 
     /**
@@ -99,9 +156,42 @@ public:
         this.deleteTimeLabels();
         this.deleteVerticalLines();
         ObjectDelete(this.chartId, this.remainingObjectName);
+        ArrayFree(this.timeAxisObjects);
+        ArrayFree(this.timeAxisBarTimes);
+        this.timeAxisUpdatePending = false;
+        this.timeAxisViewReady = false;
+        this.remainingLabelReady = false;
+        this.remainingLabelText = "";
     }
 
 private:
+    /** 時刻と種別の順に保持する描画オブジェクト状態。 */
+    JapanTimeAxisObjectState timeAxisObjects[];
+
+    /** 可視範囲と直前の足時刻を古い順で保持する作業配列。 */
+    datetime timeAxisBarTimes[];
+
+    /** データ取得または描画の失敗により時間軸の再更新が必要な場合true。 */
+    bool timeAxisUpdatePending;
+
+    /** 前回の画面状態でデータ取得と描画が完了した場合true。 */
+    bool timeAxisViewReady;
+
+    /** 描画済み画面の左端バー位置。 */
+    int lastFirstVisibleBar;
+
+    /** 描画済み画面の表示バー数。 */
+    int lastVisibleBars;
+
+    /** 描画時の取得可能バー数。 */
+    int lastTotalBars;
+
+    /** 描画時の最新足時刻。 */
+    datetime lastLatestBarTime;
+
+    /** 描画済み時刻ラベルの価格位置。 */
+    double lastDrawPrice;
+
     /** 表示対象の市場コンテキスト */
     MarketContext marketContext;
 
@@ -116,6 +206,12 @@ private:
 
     /** 残り時間ラベル名 */
     string remainingObjectName;
+
+    /** 残り時間ラベルの固定設定と初回文字の反映が完了している場合true。 */
+    bool remainingLabelReady;
+
+    /** 残り時間ラベルへ最後に反映した表示文字。 */
+    string remainingLabelText;
 
     /** フォント名 */
     string fontFace;
@@ -210,6 +306,14 @@ private:
     ) {
         this.marketContext = fromMarketContext;
         this.chartId = 0;
+        ArraySetAsSeries(this.timeAxisBarTimes, false);
+        this.timeAxisUpdatePending = false;
+        this.timeAxisViewReady = false;
+        this.lastFirstVisibleBar = -1;
+        this.lastVisibleBars = 0;
+        this.lastTotalBars = 0;
+        this.lastLatestBarTime = 0;
+        this.lastDrawPrice = 0.0;
         string objectPrefix = fromObjectPrefix;
         StringTrimLeft(objectPrefix);
         StringTrimRight(objectPrefix);
@@ -221,6 +325,8 @@ private:
         this.timeLabelPrefix = objectPrefix + "Time";
         this.verticalLinePrefix = objectPrefix + "Line";
         this.remainingObjectName = objectPrefix + "Remaining";
+        this.remainingLabelReady = false;
+        this.remainingLabelText = "";
         this.fontFace = "Meiryo UI";
         this.timeLabelFontSize = 8;
         this.remainingFontSize = 9;
@@ -251,36 +357,62 @@ private:
     }
 
     /**
-     * 日本時間ラベルを描画する。
+     * 画面状態が変わった場合、または取得・描画の再試行時に日本時間軸を更新する。
+     *
+     * @param fromForce 同じ画面状態でも再判定する場合true。
      */
-    void drawTimeLabels() {
-        this.deleteTimeLabels();
-        this.deleteVerticalLines();
-
+    void drawTimeLabels(const bool fromForce) {
         int firstVisibleBar = (int)ChartGetInteger(this.chartId, CHART_FIRST_VISIBLE_BAR, 0);
         int visibleBars = (int)ChartGetInteger(this.chartId, CHART_VISIBLE_BARS, 0);
+        bool hasVisibleRange = firstVisibleBar >= 0 && visibleBars > 0;
+        int totalBars = 0;
+        datetime latestBarTime = 0;
+        double drawPrice = 0.0;
+        if (hasVisibleRange) {
+            totalBars = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
+            latestBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0);
+            if (totalBars <= 0 || latestBarTime <= 0) {
+                this.timeAxisViewReady = false;
+                this.timeAxisUpdatePending = true;
 
-        if (firstVisibleBar < 0) {
+                return;
+            }
+
+            drawPrice = this.getBottomLabelPrice();
+        }
+
+        if (!fromForce && this.timeAxisViewReady && !this.timeAxisUpdatePending
+                && this.lastFirstVisibleBar == firstVisibleBar
+                && this.lastVisibleBars == visibleBars
+                && this.lastTotalBars == totalBars
+                && this.lastLatestBarTime == latestBarTime
+                && this.lastDrawPrice == drawPrice
+                && this.areTimeAxisObjectsReady(true)) {
             return;
         }
 
-        if (visibleBars <= 0) {
+        this.timeAxisViewReady = false;
+        this.timeAxisUpdatePending = false;
+        int startIndex = 0;
+        int copiedBarCount = 0;
+        if (hasVisibleRange && !this.copyVisibleBarTimes(
+                firstVisibleBar, visibleBars, totalBars, startIndex, copiedBarCount)) {
+            this.timeAxisUpdatePending = true;
+
             return;
         }
 
-        double drawPrice = this.getBottomLabelPrice();
+        int objectCount = ArraySize(this.timeAxisObjects);
+        for (int i = 0; i < objectCount; i++) {
+            this.timeAxisObjects[i].isUsed = false;
+        }
+
         int labelCount = 0;
-        int lastBar = firstVisibleBar - visibleBars + 1;
-
-        if (lastBar < 0) {
-            lastBar = 0;
-        }
-
-        for (int i = firstVisibleBar; i >= lastBar; i--) {
-            datetime barTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, i);
-
-            if (barTime <= 0) {
-                continue;
+        for (int i = startIndex; i < copiedBarCount; i++) {
+            datetime barTime = this.timeAxisBarTimes[i];
+            datetime previousBarTime = 0;
+            if (i > 0) {
+                previousBarTime = this.timeAxisBarTimes[i - 1];
             }
 
             if (this.marketContext.timeFrame == PERIOD_M1) {
@@ -290,43 +422,43 @@ private:
             }
 
             if (this.marketContext.timeFrame == PERIOD_M5) {
-                this.drawM5TimeFrameMark(barTime, drawPrice, visibleBars);
+                this.drawM5TimeFrameMark(barTime, drawPrice, visibleBars, previousBarTime);
 
                 continue;
             }
 
             if (this.marketContext.timeFrame == PERIOD_M15) {
-                this.drawM15TimeFrameMark(barTime, drawPrice, visibleBars);
+                this.drawM15TimeFrameMark(barTime, drawPrice, visibleBars, previousBarTime);
 
                 continue;
             }
 
             if (this.marketContext.timeFrame == PERIOD_H1) {
-                this.drawH1TimeFrameMark(barTime, drawPrice, visibleBars);
+                this.drawH1TimeFrameMark(barTime, drawPrice, visibleBars, previousBarTime);
 
                 continue;
             }
 
             if (this.marketContext.timeFrame == PERIOD_H4) {
-                this.drawH4TimeFrameMark(barTime, drawPrice, visibleBars);
+                this.drawH4TimeFrameMark(barTime, drawPrice, visibleBars, previousBarTime);
 
                 continue;
             }
 
             if (this.marketContext.timeFrame == PERIOD_D1) {
-                this.drawD1TimeFrameMark(barTime, drawPrice, visibleBars);
+                this.drawD1TimeFrameMark(barTime, drawPrice, visibleBars, previousBarTime);
 
                 continue;
             }
 
             if (this.marketContext.timeFrame == PERIOD_W1) {
-                this.drawW1TimeFrameMark(barTime, drawPrice, visibleBars);
+                this.drawW1TimeFrameMark(barTime, drawPrice, visibleBars, previousBarTime);
 
                 continue;
             }
 
             if (this.marketContext.timeFrame == PERIOD_MN1) {
-                this.drawMn1TimeFrameMark(barTime, drawPrice, visibleBars);
+                this.drawMn1TimeFrameMark(barTime, drawPrice, visibleBars, previousBarTime);
 
                 continue;
             }
@@ -340,9 +472,250 @@ private:
             labelCount++;
 
             if (labelCount >= this.maxLabelCount) {
+                break;
+            }
+        }
+
+        this.deleteUnusedTimeAxisObjects();
+        if (this.timeAxisUpdatePending || !this.areTimeAxisObjectsReady(false)) {
+            this.timeAxisUpdatePending = true;
+
+            return;
+        }
+
+        this.lastFirstVisibleBar = firstVisibleBar;
+        this.lastVisibleBars = visibleBars;
+        this.lastTotalBars = totalBars;
+        this.lastLatestBarTime = latestBarTime;
+        this.lastDrawPrice = drawPrice;
+        this.timeAxisViewReady = true;
+    }
+
+    /**
+     * 描画オブジェクトの反映完了と、必要時には削除されていないことを確認する。
+     *
+     * @param fromCheckExistence 同じ画面の更新を省略する前に存在確認する場合true。
+     * @return 全オブジェクトが今回使用され、設定を反映できている場合true。
+     */
+    bool areTimeAxisObjectsReady(const bool fromCheckExistence) {
+        int objectCount = ArraySize(this.timeAxisObjects);
+        for (int i = 0; i < objectCount; i++) {
+            if (!this.timeAxisObjects[i].isUsed || !this.timeAxisObjects[i].isReady) {
+                return false;
+            }
+
+            if (fromCheckExistence && ObjectFind(this.chartId, this.timeAxisObjects[i].objectName) < 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * 可視範囲と存在する直前の1本をまとめて取得する。
+     * 全件が揃わない場合はfalseを返し、描画済みオブジェクトを維持する。
+     *
+     * @param fromFirstVisibleBar 画面左端のバー位置。
+     * @param fromVisibleBars 画面の表示バー数。
+     * @param fromTotalBars 検索時点で取得可能なバー数。
+     * @param fromStartIndex 描画対象が始まる配列位置を返す。
+     * @param fromCopiedBarCount 取得済み本数を返す。表示対象がない場合は0。
+     * @return 必要な足時刻をすべて取得できた場合true。
+     */
+    bool copyVisibleBarTimes(
+        const int fromFirstVisibleBar,
+        const int fromVisibleBars,
+        const int fromTotalBars,
+        int &fromStartIndex,
+        int &fromCopiedBarCount
+    ) {
+        fromStartIndex = 0;
+        fromCopiedBarCount = 0;
+        if (fromTotalBars <= 0) {
+            return false;
+        }
+
+        int lastBar = fromFirstVisibleBar - fromVisibleBars + 1;
+        if (lastBar < 0) {
+            lastBar = 0;
+        }
+
+        int firstBar = fromFirstVisibleBar;
+        if (firstBar >= fromTotalBars) {
+            firstBar = fromTotalBars - 1;
+        }
+
+        if (lastBar > firstBar) {
+            return true;
+        }
+
+        int requestedCount = firstBar - lastBar + 1;
+        if (firstBar < fromTotalBars - 1) {
+            requestedCount++;
+            fromStartIndex = 1;
+        }
+
+        if (ArrayResize(this.timeAxisBarTimes, requestedCount, 256) != requestedCount) {
+            return false;
+        }
+
+        int copiedCount = CopyTime(
+            this.marketContext.symbolName,
+            this.marketContext.timeFrame,
+            lastBar,
+            requestedCount,
+            this.timeAxisBarTimes
+        );
+        if (copiedCount != requestedCount) {
+            return false;
+        }
+
+        for (int i = 0; i < copiedCount; i++) {
+            if (this.timeAxisBarTimes[i] <= 0) {
+                return false;
+            }
+        }
+
+        fromCopiedBarCount = copiedCount;
+
+        return true;
+    }
+
+    /**
+     * 時刻と種別を二分探索し、今回使用する描画状態を取得または追加する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻。
+     * @param fromIsLine 縦線の場合true。
+     * @return 描画状態の位置。確保失敗の場合は-1。
+     */
+    int getTimeAxisObjectIndex(const datetime fromBarTime, const bool fromIsLine) {
+        int objectCount = ArraySize(this.timeAxisObjects);
+        int leftIndex = 0;
+        int rightIndex = objectCount - 1;
+        while (leftIndex <= rightIndex) {
+            int middleIndex = leftIndex + (rightIndex - leftIndex) / 2;
+            datetime barTime = this.timeAxisObjects[middleIndex].barTime;
+            bool isLine = this.timeAxisObjects[middleIndex].isLine;
+            if (barTime == fromBarTime && isLine == fromIsLine) {
+                this.timeAxisObjects[middleIndex].isUsed = true;
+
+                return middleIndex;
+            }
+
+            if (barTime < fromBarTime || (barTime == fromBarTime && !isLine && fromIsLine)) {
+                leftIndex = middleIndex + 1;
+            } else {
+                rightIndex = middleIndex - 1;
+            }
+        }
+
+        if (ArrayResize(this.timeAxisObjects, objectCount + 1, 32) != objectCount + 1) {
+            this.timeAxisUpdatePending = true;
+
+            return -1;
+        }
+
+        for (int i = objectCount; i > leftIndex; i--) {
+            this.timeAxisObjects[i] = this.timeAxisObjects[i - 1];
+        }
+
+        string objectPrefix = this.timeLabelPrefix;
+        if (fromIsLine) {
+            objectPrefix = this.verticalLinePrefix;
+        }
+
+        this.timeAxisObjects[leftIndex].barTime = fromBarTime;
+        this.timeAxisObjects[leftIndex].isLine = fromIsLine;
+        this.timeAxisObjects[leftIndex].objectName = objectPrefix + IntegerToString((int)fromBarTime);
+        this.timeAxisObjects[leftIndex].isUsed = true;
+        this.timeAxisObjects[leftIndex].isReady = false;
+        this.timeAxisObjects[leftIndex].price = 0.0;
+        this.timeAxisObjects[leftIndex].text = "";
+        this.timeAxisObjects[leftIndex].lineColor = clrNONE;
+        this.timeAxisObjects[leftIndex].lineStyle = STYLE_DOT;
+        this.timeAxisObjects[leftIndex].lineWidth = 0;
+
+        return leftIndex;
+    }
+
+    /**
+     * 今回使わなかった描画オブジェクトだけ削除し、保持配列を一度だけ詰める。
+     * 削除に失敗したオブジェクトは保持し、次回更新で再試行する。
+     */
+    void deleteUnusedTimeAxisObjects() {
+        int objectCount = ArraySize(this.timeAxisObjects);
+        int writeIndex = 0;
+        for (int i = 0; i < objectCount; i++) {
+            if (!this.timeAxisObjects[i].isUsed) {
+                string objectName = this.timeAxisObjects[i].objectName;
+                if (ObjectFind(this.chartId, objectName) < 0
+                        || ObjectDelete(this.chartId, objectName)) {
+                    continue;
+                }
+            }
+
+            if (writeIndex != i) {
+                this.timeAxisObjects[writeIndex] = this.timeAxisObjects[i];
+            }
+
+            writeIndex++;
+        }
+
+        if (writeIndex != objectCount) {
+            ArrayResize(this.timeAxisObjects, writeIndex);
+        }
+    }
+
+    /**
+     * 時刻ラベルを再利用し、描画価格と文字を変更時だけ反映する。
+     * 作成・設定に失敗した場合は反映済み状態を進めず、次回更新で再試行する。
+     *
+     * @param fromBarTime サーバー時刻のバー時刻。
+     * @param fromDrawPrice 描画価格。
+     * @param fromText 表示文字。
+     */
+    void updateTimeLabel(const datetime fromBarTime, const double fromDrawPrice, const string fromText) {
+        int objectIndex = this.getTimeAxisObjectIndex(fromBarTime, false);
+        if (objectIndex < 0) {
+            return;
+        }
+
+        string objectName = this.timeAxisObjects[objectIndex].objectName;
+        if (ObjectFind(this.chartId, objectName) < 0) {
+            this.timeAxisObjects[objectIndex].isReady = false;
+
+            if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
                 return;
             }
         }
+
+        bool initializeProperties = !this.timeAxisObjects[objectIndex].isReady;
+        this.timeAxisObjects[objectIndex].isReady = false;
+        if (initializeProperties) {
+            if (!ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor)
+                    || !ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize)
+                    || !ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER)
+                    || !ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false)
+                    || !ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true)
+                    || !ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace)) {
+                return;
+            }
+        }
+
+        if ((initializeProperties || this.timeAxisObjects[objectIndex].price != fromDrawPrice)
+                && !ObjectMove(this.chartId, objectName, 0, fromBarTime, fromDrawPrice)) {
+            return;
+        }
+
+        if ((initializeProperties || this.timeAxisObjects[objectIndex].text != fromText)
+                && !ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText)) {
+            return;
+        }
+
+        this.timeAxisObjects[objectIndex].price = fromDrawPrice;
+        this.timeAxisObjects[objectIndex].text = fromText;
+        this.timeAxisObjects[objectIndex].isReady = true;
     }
 
     /**
@@ -357,19 +730,8 @@ private:
         TimeToStruct(japanTime, japanDateTime);
 
         string labelText = IntegerToString(japanDateTime.hour) + "時";
-        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
-            return;
-        }
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+        this.updateTimeLabel(fromBarTime, fromDrawPrice, labelText);
     }
 
     /**
@@ -380,19 +742,8 @@ private:
      */
     void drawMinuteTimeLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanMinuteTimeLabel(fromBarTime);
-        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
-            return;
-        }
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+        this.updateTimeLabel(fromBarTime, fromDrawPrice, labelText);
     }
 
     /**
@@ -403,19 +754,8 @@ private:
      */
     void drawFourHourLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanFourHourLabel(fromBarTime);
-        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
-            return;
-        }
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+        this.updateTimeLabel(fromBarTime, fromDrawPrice, labelText);
     }
 
     /**
@@ -426,19 +766,8 @@ private:
      */
     void drawDayLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanDateLabel(fromBarTime);
-        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
-            return;
-        }
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+        this.updateTimeLabel(fromBarTime, fromDrawPrice, labelText);
     }
 
     /**
@@ -449,19 +778,8 @@ private:
      */
     void drawWeekLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanWeekLabel(fromBarTime);
-        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
-            return;
-        }
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+        this.updateTimeLabel(fromBarTime, fromDrawPrice, labelText);
     }
 
     /**
@@ -472,19 +790,8 @@ private:
      */
     void drawMonthLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanMonthLabel(fromBarTime);
-        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
-            return;
-        }
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+        this.updateTimeLabel(fromBarTime, fromDrawPrice, labelText);
     }
 
     /**
@@ -495,19 +802,8 @@ private:
      */
     void drawQuarterLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanQuarterLabel(fromBarTime);
-        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
-            return;
-        }
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+        this.updateTimeLabel(fromBarTime, fromDrawPrice, labelText);
     }
 
     /**
@@ -518,19 +814,8 @@ private:
      */
     void drawYearLabel(datetime fromBarTime, double fromDrawPrice) {
         string labelText = this.formatJapanYearLabel(fromBarTime);
-        string objectName = this.timeLabelPrefix + IntegerToString((int)fromBarTime);
 
-        if (!ObjectCreate(this.chartId, objectName, OBJ_TEXT, 0, fromBarTime, fromDrawPrice)) {
-            return;
-        }
-
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.timeLabelFontSize);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, labelText);
+        this.updateTimeLabel(fromBarTime, fromDrawPrice, labelText);
     }
 
     /**
@@ -556,18 +841,49 @@ private:
         ENUM_LINE_STYLE fromLineStyle,
         int fromLineWidth
     ) {
-        string objectName = this.verticalLinePrefix + IntegerToString((int)fromBarTime);
-
-        if (!ObjectCreate(this.chartId, objectName, OBJ_VLINE, 0, fromBarTime, 0)) {
+        int objectIndex = this.getTimeAxisObjectIndex(fromBarTime, true);
+        if (objectIndex < 0) {
             return;
         }
 
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromLineColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_STYLE, fromLineStyle);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_WIDTH, fromLineWidth);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, true);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        string objectName = this.timeAxisObjects[objectIndex].objectName;
+        if (ObjectFind(this.chartId, objectName) < 0) {
+            this.timeAxisObjects[objectIndex].isReady = false;
+
+            if (!ObjectCreate(this.chartId, objectName, OBJ_VLINE, 0, fromBarTime, 0)) {
+                return;
+            }
+        }
+
+        bool initializeProperties = !this.timeAxisObjects[objectIndex].isReady;
+        this.timeAxisObjects[objectIndex].isReady = false;
+        if (initializeProperties) {
+            if (!ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, true)
+                    || !ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false)
+                    || !ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true)) {
+                return;
+            }
+        }
+
+        if ((initializeProperties || this.timeAxisObjects[objectIndex].lineColor != fromLineColor)
+                && !ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromLineColor)) {
+            return;
+        }
+
+        if ((initializeProperties || this.timeAxisObjects[objectIndex].lineStyle != fromLineStyle)
+                && !ObjectSetInteger(this.chartId, objectName, OBJPROP_STYLE, fromLineStyle)) {
+            return;
+        }
+
+        if ((initializeProperties || this.timeAxisObjects[objectIndex].lineWidth != fromLineWidth)
+                && !ObjectSetInteger(this.chartId, objectName, OBJPROP_WIDTH, fromLineWidth)) {
+            return;
+        }
+
+        this.timeAxisObjects[objectIndex].lineColor = fromLineColor;
+        this.timeAxisObjects[objectIndex].lineStyle = fromLineStyle;
+        this.timeAxisObjects[objectIndex].lineWidth = fromLineWidth;
+        this.timeAxisObjects[objectIndex].isReady = true;
     }
 
     /**
@@ -604,25 +920,41 @@ private:
 
     /**
      * 残り時間ラベルを更新する。
+     *
+     * 固定設定は初回と削除後の再作成時に反映し、文字は変更時だけ更新する。
+     * 設定に失敗した場合はキャッシュを確定せず、次回更新で再試行する。
      */
     void updateRemainingTimeLabel() {
         if (ObjectFind(this.chartId, this.remainingObjectName) < 0) {
+            this.remainingLabelReady = false;
+
             if (!ObjectCreate(this.chartId, this.remainingObjectName, OBJ_LABEL, 0, 0, 0)) {
                 return;
             }
         }
 
-        string labelText = this.formatRemainingTime(this.getRemainingSeconds());
+        if (!this.remainingLabelReady) {
+            if (!ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_CORNER, CORNER_RIGHT_LOWER)
+                    || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_XDISTANCE, 280)
+                    || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_YDISTANCE, 16)
+                    || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_COLOR, this.fontColor)
+                    || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_FONTSIZE, this.remainingFontSize)
+                    || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_SELECTABLE, false)
+                    || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_HIDDEN, true)
+                    || !ObjectSetString(this.chartId, this.remainingObjectName, OBJPROP_FONT, this.fontFace)) {
+                return;
+            }
+        }
 
-        ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_CORNER, CORNER_RIGHT_LOWER);
-        ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_XDISTANCE, 280);
-        ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_YDISTANCE, 16);
-        ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_COLOR, this.fontColor);
-        ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_FONTSIZE, this.remainingFontSize);
-        ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_HIDDEN, true);
-        ObjectSetString(this.chartId, this.remainingObjectName, OBJPROP_FONT, this.fontFace);
-        ObjectSetString(this.chartId, this.remainingObjectName, OBJPROP_TEXT, labelText);
+        string labelText = this.formatRemainingTime(this.getRemainingSeconds());
+        if (this.remainingLabelReady && this.remainingLabelText == labelText) {
+            return;
+        }
+
+        if (ObjectSetString(this.chartId, this.remainingObjectName, OBJPROP_TEXT, labelText)) {
+            this.remainingLabelText = labelText;
+            this.remainingLabelReady = true;
+        }
     }
 
     /**
@@ -735,9 +1067,10 @@ private:
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromDrawPrice 描画価格
      * @param fromVisibleBars 表示中のバー数
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 目印を描画した
      */
-    bool drawM5TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+    bool drawM5TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars, datetime fromPreviousBarTime) {
         if (fromVisibleBars <= this.m5HourLabelMaxBars) {
             if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H1)) {
                 this.drawLowerTimeFrameVerticalLine(fromBarTime);
@@ -771,7 +1104,7 @@ private:
             return false;
         }
 
-        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1)) {
+        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1, fromPreviousBarTime)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
             this.drawWeekLabel(fromBarTime, fromDrawPrice);
 
@@ -787,9 +1120,10 @@ private:
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromDrawPrice 描画価格
      * @param fromVisibleBars 表示中のバー数
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 目印を描画した
      */
-    bool drawM15TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+    bool drawM15TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars, datetime fromPreviousBarTime) {
         if (fromVisibleBars <= this.m15FourHourLabelMaxBars) {
             if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H4)) {
                 this.drawVerticalLine(fromBarTime, this.verticalLineColor, STYLE_SOLID, 1);
@@ -802,7 +1136,7 @@ private:
         }
 
         if (fromVisibleBars <= this.m15DayLabelMaxBars) {
-            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_D1)) {
+            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_D1, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawDayLabel(fromBarTime, fromDrawPrice);
 
@@ -813,7 +1147,7 @@ private:
         }
 
         if (fromVisibleBars <= this.m15WeekLabelMaxBars) {
-            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1)) {
+            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawWeekLabel(fromBarTime, fromDrawPrice);
 
@@ -823,7 +1157,7 @@ private:
             return false;
         }
 
-        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1)) {
+        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1, fromPreviousBarTime)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
             this.drawMonthLabel(fromBarTime, fromDrawPrice);
 
@@ -839,9 +1173,10 @@ private:
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromDrawPrice 描画価格
      * @param fromVisibleBars 表示中のバー数
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 目印を描画した
      */
-    bool drawH1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+    bool drawH1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars, datetime fromPreviousBarTime) {
         if (fromVisibleBars <= this.h1FourHourLabelMaxBars) {
             if (this.isTimeFrameOpenBar(fromBarTime, PERIOD_H4)) {
                 this.drawVerticalLine(fromBarTime);
@@ -854,7 +1189,7 @@ private:
         }
 
         if (fromVisibleBars <= this.h1DayLabelMaxBars) {
-            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_D1)) {
+            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_D1, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawDayLabel(fromBarTime, fromDrawPrice);
 
@@ -865,7 +1200,7 @@ private:
         }
 
         if (fromVisibleBars <= this.h1WeekLabelMaxBars) {
-            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1)) {
+            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawWeekLabel(fromBarTime, fromDrawPrice);
 
@@ -875,7 +1210,7 @@ private:
             return false;
         }
 
-        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1)) {
+        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1, fromPreviousBarTime)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
             this.drawMonthLabel(fromBarTime, fromDrawPrice);
 
@@ -891,9 +1226,10 @@ private:
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromDrawPrice 描画価格
      * @param fromVisibleBars 表示中のバー数
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 目印を描画した
      */
-    bool drawH4TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+    bool drawH4TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars, datetime fromPreviousBarTime) {
         if (fromVisibleBars <= this.h4DayLabelMaxBars && this.isTimeFrameOpenBar(fromBarTime, PERIOD_D1)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
             this.drawDayLabel(fromBarTime, fromDrawPrice);
@@ -901,7 +1237,7 @@ private:
             return true;
         }
 
-        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1)) {
+        if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1, fromPreviousBarTime)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
             this.drawWeekLabel(fromBarTime, fromDrawPrice);
 
@@ -923,11 +1259,12 @@ private:
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromDrawPrice 描画価格
      * @param fromVisibleBars 表示中のバー数
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 目印を描画した
      */
-    bool drawD1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+    bool drawD1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars, datetime fromPreviousBarTime) {
         if (fromVisibleBars <= this.d1WeekLabelMaxBars) {
-            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1)) {
+            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_W1, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawWeekLabel(fromBarTime, fromDrawPrice);
 
@@ -938,7 +1275,7 @@ private:
         }
 
         if (fromVisibleBars <= this.d1MonthLabelMaxBars) {
-            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1)) {
+            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawMonthLabel(fromBarTime, fromDrawPrice);
 
@@ -948,7 +1285,7 @@ private:
             return false;
         }
 
-        if (this.isFirstChartBarInQuarter(fromBarTime)) {
+        if (this.isFirstChartBarInQuarter(fromBarTime, fromPreviousBarTime)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
             this.drawQuarterLabel(fromBarTime, fromDrawPrice);
 
@@ -964,11 +1301,12 @@ private:
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromDrawPrice 描画価格
      * @param fromVisibleBars 表示中のバー数
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 目印を描画した
      */
-    bool drawW1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+    bool drawW1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars, datetime fromPreviousBarTime) {
         if (fromVisibleBars <= this.w1MonthLabelMaxBars) {
-            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1)) {
+            if (this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawMonthLabel(fromBarTime, fromDrawPrice);
 
@@ -979,7 +1317,7 @@ private:
         }
 
         if (fromVisibleBars <= this.w1QuarterLabelMaxBars) {
-            if (this.isFirstChartBarInQuarter(fromBarTime)) {
+            if (this.isFirstChartBarInQuarter(fromBarTime, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawQuarterLabel(fromBarTime, fromDrawPrice);
 
@@ -989,7 +1327,7 @@ private:
             return false;
         }
 
-        if (this.isFirstChartBarInYear(fromBarTime)) {
+        if (this.isFirstChartBarInYear(fromBarTime, fromPreviousBarTime)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
             this.drawYearLabel(fromBarTime, fromDrawPrice);
 
@@ -1005,11 +1343,12 @@ private:
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromDrawPrice 描画価格
      * @param fromVisibleBars 表示中のバー数
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 目印を描画した
      */
-    bool drawMn1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars) {
+    bool drawMn1TimeFrameMark(datetime fromBarTime, double fromDrawPrice, int fromVisibleBars, datetime fromPreviousBarTime) {
         if (fromVisibleBars <= this.mn1YearLabelMaxBars) {
-            if (this.isFirstChartBarInYear(fromBarTime)) {
+            if (this.isFirstChartBarInYear(fromBarTime, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawYearLabel(fromBarTime, fromDrawPrice);
 
@@ -1020,7 +1359,7 @@ private:
         }
 
         if (fromVisibleBars <= this.mn1FiveYearLabelMaxBars) {
-            if (this.isFirstChartBarInYearStep(fromBarTime, 5)) {
+            if (this.isFirstChartBarInYearStep(fromBarTime, 5, fromPreviousBarTime)) {
                 this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
                 this.drawYearLabel(fromBarTime, fromDrawPrice);
 
@@ -1030,7 +1369,7 @@ private:
             return false;
         }
 
-        if (this.isFirstChartBarInYearStep(fromBarTime, 10)) {
+        if (this.isFirstChartBarInYearStep(fromBarTime, 10, fromPreviousBarTime)) {
             this.drawVerticalLine(fromBarTime, this.dayLineColor, STYLE_DOT, 1);
             this.drawYearLabel(fromBarTime, fromDrawPrice);
 
@@ -1161,10 +1500,17 @@ private:
         int barIndex = iBarShift(this.marketContext.symbolName, fromTimeFrame, fromBarTime, false);
 
         if (barIndex < 0) {
+            this.timeAxisUpdatePending = true;
+
             return false;
         }
 
         datetime openTime = iTime(this.marketContext.symbolName, fromTimeFrame, barIndex);
+        if (openTime <= 0) {
+            this.timeAxisUpdatePending = true;
+
+            return false;
+        }
 
         if (openTime == fromBarTime) {
             return true;
@@ -1178,34 +1524,27 @@ private:
      *
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromTimeFrame 判定する時間足
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 指定時間足へ切り替わった最初のチャート足
      */
-    bool isFirstChartBarInTimeFrame(datetime fromBarTime, ENUM_TIMEFRAMES fromTimeFrame) {
+    bool isFirstChartBarInTimeFrame(datetime fromBarTime, ENUM_TIMEFRAMES fromTimeFrame, datetime fromPreviousBarTime) {
         int targetBarIndex = iBarShift(this.marketContext.symbolName, fromTimeFrame, fromBarTime, false);
 
         if (targetBarIndex < 0) {
+            this.timeAxisUpdatePending = true;
+
             return false;
         }
 
-        int chartBarIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, fromBarTime, true);
-
-        if (chartBarIndex < 0) {
-            chartBarIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, fromBarTime, false);
-        }
-
-        if (chartBarIndex < 0) {
-            return false;
-        }
-
-        datetime previousChartBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, chartBarIndex + 1);
-
-        if (previousChartBarTime <= 0) {
+        if (fromPreviousBarTime <= 0) {
             return this.isTimeFrameOpenBar(fromBarTime, fromTimeFrame);
         }
 
-        int previousTargetBarIndex = iBarShift(this.marketContext.symbolName, fromTimeFrame, previousChartBarTime, false);
+        int previousTargetBarIndex = iBarShift(this.marketContext.symbolName, fromTimeFrame, fromPreviousBarTime, false);
 
         if (previousTargetBarIndex < 0) {
+            this.timeAxisUpdatePending = true;
+
             return false;
         }
 
@@ -1220,10 +1559,11 @@ private:
      * 四半期へ切り替わった最初のチャート足か判定する。
      *
      * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 四半期へ切り替わった最初のチャート足
      */
-    bool isFirstChartBarInQuarter(datetime fromBarTime) {
-        if (!this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1)) {
+    bool isFirstChartBarInQuarter(datetime fromBarTime, datetime fromPreviousBarTime) {
+        if (!this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1, fromPreviousBarTime)) {
             return false;
         }
 
@@ -1254,10 +1594,11 @@ private:
      * 年へ切り替わった最初のチャート足か判定する。
      *
      * @param fromBarTime サーバー時刻のバー時刻
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 年へ切り替わった最初のチャート足
      */
-    bool isFirstChartBarInYear(datetime fromBarTime) {
-        if (!this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1)) {
+    bool isFirstChartBarInYear(datetime fromBarTime, datetime fromPreviousBarTime) {
+        if (!this.isFirstChartBarInTimeFrame(fromBarTime, PERIOD_MN1, fromPreviousBarTime)) {
             return false;
         }
 
@@ -1277,14 +1618,15 @@ private:
      *
      * @param fromBarTime サーバー時刻のバー時刻
      * @param fromYearStep 年数の刻み
+     * @param fromPreviousBarTime 直前のチャート足時刻。存在しない場合は0。
      * @return true: 指定年数の刻みへ切り替わった最初のチャート足
      */
-    bool isFirstChartBarInYearStep(datetime fromBarTime, int fromYearStep) {
+    bool isFirstChartBarInYearStep(datetime fromBarTime, int fromYearStep, datetime fromPreviousBarTime) {
         if (fromYearStep <= 0) {
             return false;
         }
 
-        if (!this.isFirstChartBarInYear(fromBarTime)) {
+        if (!this.isFirstChartBarInYear(fromBarTime, fromPreviousBarTime)) {
             return false;
         }
 
