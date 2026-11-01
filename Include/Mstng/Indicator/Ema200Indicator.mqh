@@ -90,6 +90,8 @@ public:
         }
 
         ArrayFree(this.chartBarTimes);
+        ArrayFree(this.targetBarIndices);
+        ArrayFree(this.emaValues);
         this.deleteLabels();
         this.labelsUpdatePending = false;
         this.lastUpdateM1BarTime = 0;
@@ -215,6 +217,12 @@ private:
     /** 全EMA線で共用するチャート足時刻の作業配列。seriesで最新足が添字0。 */
     datetime chartBarTimes[];
 
+    /** 各EMA線の更新で共用する、チャート足に対応した対象時間足の足番号。 */
+    int targetBarIndices[];
+
+    /** 各EMA線の更新で共用する取得値。seriesで取得範囲の最新足が添字0。 */
+    double emaValues[];
+
     /** EMAの主軸データバッファ。 */
     double buffer0[];
 
@@ -290,6 +298,7 @@ private:
         this.labelFontFace = "Arial";
         this.labelsUpdatePending = false;
         ArraySetAsSeries(this.chartBarTimes, true);
+        ArraySetAsSeries(this.emaValues, true);
 
         for (int i = 0; i < 5; i++) {
             this.timeFrames[i] = PERIOD_CURRENT;
@@ -525,13 +534,11 @@ private:
             return false;
         }
 
-        int targetBarIndices[];
-
-        if (ArrayResize(targetBarIndices, limit) != limit) {
+        if (ArrayResize(this.targetBarIndices, limit, this.maxBars) != limit) {
             return false;
         }
 
-        ArrayInitialize(targetBarIndices, -1);
+        ArrayInitialize(this.targetBarIndices, -1);
 
         int firstTargetBarIndex = calculatedCount;
         int lastTargetBarIndex = -1;
@@ -554,7 +561,7 @@ private:
                 continue;
             }
 
-            targetBarIndices[barIndex] = targetBarIndex;
+            this.targetBarIndices[barIndex] = targetBarIndex;
 
             if (targetBarIndex < firstTargetBarIndex) {
                 firstTargetBarIndex = targetBarIndex;
@@ -570,23 +577,25 @@ private:
         }
 
         int copyCount = lastTargetBarIndex - firstTargetBarIndex + 1;
-        double values[];
 
-        ArraySetAsSeries(values, true);
+        // 余剰容量を確保し、線ごとの取得本数が増減しても作業領域を再利用する。
+        if (ArrayResize(this.emaValues, copyCount, this.maxBars) != copyCount) {
+            return false;
+        }
 
-        // 部分取得時は足番号と値の対応を確定せず、次回更新で再試行する。
-        if (CopyBuffer(this.handles[lineIndex], 0, firstTargetBarIndex, copyCount, values) != copyCount) {
+        // 失敗・部分取得時は前の線の値を参照せず、次回更新で再試行する。
+        if (CopyBuffer(this.handles[lineIndex], 0, firstTargetBarIndex, copyCount, this.emaValues) != copyCount) {
             return false;
         }
 
         for (int barIndex = 0; barIndex < limit; barIndex++) {
-            int targetBarIndex = targetBarIndices[barIndex];
+            int targetBarIndex = this.targetBarIndices[barIndex];
 
             if (targetBarIndex < 0) {
                 continue;
             }
 
-            this.setBufferValue(lineIndex, barIndex, values[targetBarIndex - firstTargetBarIndex]);
+            this.setBufferValue(lineIndex, barIndex, this.emaValues[targetBarIndex - firstTargetBarIndex]);
         }
 
         return isSucceeded;

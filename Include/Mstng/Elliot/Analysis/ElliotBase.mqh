@@ -85,9 +85,11 @@ public:
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
-        this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
-        this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
-        this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
+            this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
+            this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
@@ -120,11 +122,13 @@ public:
         this.isBuy = fromIsBuy;
         this.buySellLabel = fromBuySellLabel;
         
-        this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
-        this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
-        this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
-        this.logger.debug(__FUNCTION__, "isBuy=" + (string)this.isBuy);
-        this.logger.debug(__FUNCTION__, "buySellLabel=" + this.buySellLabel);
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
+            this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
+            this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+            this.logger.debug(__FUNCTION__, "isBuy=" + (string)this.isBuy);
+            this.logger.debug(__FUNCTION__, "buySellLabel=" + this.buySellLabel);
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
@@ -201,8 +205,10 @@ protected:
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
-        this.logger.debug(__FUNCTION__, StringFormat("fromZigZagIndex = %d", fromZigZagIndex));
-        this.logger.debug(__FUNCTION__, StringFormat("isMotive = %s", (string)isMotive));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromZigZagIndex = %d", fromZigZagIndex));
+            this.logger.debug(__FUNCTION__, StringFormat("isMotive = %s", (string)isMotive));
+        }
         
         int zigZagIndex = fromZigZagIndex;
         
@@ -229,9 +235,9 @@ protected:
         }
         
         
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
-        
-        if (this.logger.isDebugMode()) {
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
+
             ZigZagPoint *zigZagPointLast = this.zigZagPointList.At(this.zigZagPointList.Total() - 1);
         
             this.logger.debug(__FUNCTION__, "Last ZigZagPoint = " + zigZagPointLast.toString());
@@ -239,7 +245,9 @@ protected:
         
         
         for (int i = zigZagIndex; i < this.zigZagPointList.Total(); i += 2) {
-            this.logger.debug(__FUNCTION__, StringFormat("for内 i = %d", i));
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, StringFormat("for内 i = %d", i));
+            }
             
             ZigZagPoint *zigZagPoint = this.zigZagPointList.At(i);
             ZigZagPoint *zigZagPointBefore = this.zigZagPointList.At(i + 1);
@@ -325,7 +333,9 @@ protected:
         
         int total = wave0.zigZagPointList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        }
         
         // 最新Waveの方向が売買方向と違う場合、1つ過去の位置から取得し直す。
         if (total > 2) {    // ポイント数=2が確定なので処理対象外
@@ -393,11 +403,13 @@ protected:
         // D1の3波が長くてH4の波動が複数のWaveとなるケースに備えたデバッグ条件は、
         // 運用時には外部の一時デバッグフラグで制御する。
         
-        this.logger.debug(__FUNCTION__, StringFormat("fromPosition = %d", fromPosition));
-        this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromPosition = %d", fromPosition));
+            this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
         
-        this.logger.debug(__FUNCTION__, zigZagPoint0.toString());
-        this.logger.debug(__FUNCTION__, zigZagPointLast.toString());
+            this.logger.debug(__FUNCTION__, zigZagPoint0.toString());
+            this.logger.debug(__FUNCTION__, zigZagPointLast.toString());
+        }
         
         while (position < total) {
             int previousPosition = position;
@@ -418,7 +430,9 @@ protected:
             Wave *wave = WaveUtil::getLastNode(this.waveList);
             position = startPosition + wave.zigZagPointList.Total();
 
-            this.logger.debug(__FUNCTION__, StringFormat("ループ内 position = %d", position));
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, StringFormat("ループ内 position = %d", position));
+            }
 
             if (position <= previousPosition) {
                 this.logger.error(__FUNCTION__, StringFormat("position not advanced previousPosition = %d position = %d", previousPosition, position));
@@ -450,7 +464,9 @@ protected:
         
         bool isSameTrend = false;
     
-        this.logger.debug(__FUNCTION__, StringFormat("wave.isUptrend = %s fromIsBuy=%s", (string)wave.isUptrend, (string)fromIsBuy));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("wave.isUptrend = %s fromIsBuy=%s", (string)wave.isUptrend, (string)fromIsBuy));
+        }
     
         if (wave.isUptrend) {   // 上昇トレンド
             if (fromIsBuy) {
@@ -462,7 +478,9 @@ protected:
             }
         }
     
-        this.logger.debug(__FUNCTION__, StringFormat("isSameTrend = %s", (string)isSameTrend));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isSameTrend = %s", (string)isSameTrend));
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
@@ -479,7 +497,9 @@ protected:
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
 
-        this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        }
         
         bool isSameTrend = false;
         
@@ -490,7 +510,9 @@ protected:
             isSameTrend = true;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isSameTrend = %s", (string)isSameTrend));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isSameTrend = %s", (string)isSameTrend));
+        }
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isSameTrend;
@@ -506,7 +528,9 @@ protected:
     void setHighLowAtBeforeWave(int fromWaveIndex, double &high, double &low) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        this.logger.debug(__FUNCTION__, StringFormat("fromWaveIndex = %d", fromWaveIndex));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromWaveIndex = %d", fromWaveIndex));
+        }
         
         int waveIndex = fromWaveIndex + 1;
         
@@ -515,7 +539,9 @@ protected:
         
         int total = fromZigZagPointList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        }
         
         ZigZagPoint *zigZagPointLast = fromZigZagPointList.At(total - 1);
         ZigZagPoint *zigZagPointLast2 = fromZigZagPointList.At(total - 2);
@@ -528,8 +554,10 @@ protected:
             low = zigZagPointLast2.rate;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("high = %f", high));
-        this.logger.debug(__FUNCTION__, StringFormat("low = %f", low));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("high = %f", high));
+            this.logger.debug(__FUNCTION__, StringFormat("low = %f", low));
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
@@ -547,8 +575,10 @@ protected:
     bool isUptrend(int zigZagIndex, bool &isUptrend) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagPointList.Total = %d", this.zigZagPointList.Total()));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex = %d", zigZagIndex));
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagPointList.Total = %d", this.zigZagPointList.Total()));
+        }
         
         if (this.zigZagPointList.Total() == 1) {
             LogUtil::printZigZagPointList(logger, __FUNCTION__, this.zigZagPointList);
@@ -564,12 +594,16 @@ protected:
             return false;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagPoint = %s", zigZagPoint.toString()));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagPoint = %s", zigZagPoint.toString()));
+        }
         
         ZigZagPoint *zigZagPointBefore2 = this.zigZagPointList.At(zigZagIndex + 2);
         
         if (zigZagPointBefore2 != NULL) { // 2つ前がある場合
-            this.logger.debug(__FUNCTION__, StringFormat("zigZagPointBefore2 = %s", zigZagPointBefore2.toString()));
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(__FUNCTION__, StringFormat("zigZagPointBefore2 = %s", zigZagPointBefore2.toString()));
+            }
             
             if (zigZagPointBefore2.rate < zigZagPoint.rate) {
                 isUptrend = true;    
@@ -591,7 +625,9 @@ protected:
             }
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isUptrend=%s", (string)isUptrend));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isUptrend=%s", (string)isUptrend));
+        }
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return true;
@@ -636,13 +672,15 @@ protected:
         ZigZagPointUtil::copyZigZagPointList(zigZag.zigZagPointList, this.zigZagPointList);
 
         if (this.zigZagPointList.Total() < 2) {
-            this.logger.debug(
-                __FUNCTION__,
-                StringFormat(
-                    "Insufficient ZigZag points. total=%d",
-                    this.zigZagPointList.Total()
-                )
-            );
+            if (this.logger.isDebugOutputEnabled()) {
+                this.logger.debug(
+                    __FUNCTION__,
+                    StringFormat(
+                        "Insufficient ZigZag points. total=%d",
+                        this.zigZagPointList.Total()
+                    )
+                );
+            }
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
 
             return false;
@@ -717,9 +755,11 @@ private:
     bool isBreak(bool isUpTrend, ZigZagPoint &pointBefore, ZigZagPoint &point) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        this.logger.debug(__FUNCTION__, StringFormat("isUpTrend = %s", (string)isUpTrend));
-        this.logger.debug(__FUNCTION__, StringFormat("pointBefore = %s", pointBefore.toString()));
-        this.logger.debug(__FUNCTION__, StringFormat("point = %s", point.toString()));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isUpTrend = %s", (string)isUpTrend));
+            this.logger.debug(__FUNCTION__, StringFormat("pointBefore = %s", pointBefore.toString()));
+            this.logger.debug(__FUNCTION__, StringFormat("point = %s", point.toString()));
+        }
         
         bool isBreak = false;
         
@@ -733,7 +773,9 @@ private:
             }
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isBreak = %s", (string)isBreak));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isBreak = %s", (string)isBreak));
+        }
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isBreak;
@@ -763,7 +805,9 @@ private:
             }
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isInsertRequired=%s", (string)isInsertRequired));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isInsertRequired=%s", (string)isInsertRequired));
+        }
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isInsertRequired;
@@ -777,13 +821,17 @@ private:
      */
     bool isPeakLastPoint(int zigZagIndex) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex=%d", zigZagIndex));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagIndex=%d", zigZagIndex));
+        }
         
         ZigZagPoint *zigZagPoint = this.zigZagPointList.At(zigZagIndex);
         
         bool isPeak = zigZagPoint.isPeak;
         
-        this.logger.debug(__FUNCTION__, StringFormat("isPeak = %s", (string)isPeak));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isPeak = %s", (string)isPeak));
+        }
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isPeak;
