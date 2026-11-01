@@ -42,6 +42,7 @@ public:
         for (int i = 0; i < 3; i++) {
             this.bidAskLabelReady[i] = false;
             this.bidAskLabelTexts[i] = "";
+            this.bidAskLabelColors[i] = clrNONE;
         }
 
         for (int i = 0; i < 8; i++) {
@@ -202,7 +203,7 @@ public:
             text = StringFormat("A:%s", DoubleToString(tick.ask, digits));
         }
         
-        this.updateBidAskLabel(0, objectName, text, drawProperties.objXRight, 130);
+        this.updateBidAskLabel(0, objectName, text, drawProperties.objXRight, 130, clrAqua);
         
         
         objectName = "Bid";
@@ -212,17 +213,21 @@ public:
             text = StringFormat("B:%s", DoubleToString(tick.bid, digits));
         }
         
-        this.updateBidAskLabel(1, objectName, text, drawProperties.objXRight, 160);
+        this.updateBidAskLabel(1, objectName, text, drawProperties.objXRight, 160, clrHotPink);
         
         
         objectName = "Spread";
         text = "";
+        color spreadColor = clrSilver;
         
         if (isSuccess) {
             text = StringFormat("S:%s", DoubleToString(spread, 1));
+            if (spread > 5.0) {
+                spreadColor = clrOrange;
+            }
         }
         
-        this.updateBidAskLabel(2, objectName, text, drawProperties.objXRight + 140, 145);
+        this.updateBidAskLabel(2, objectName, text, drawProperties.objXRight + 140, 145, spreadColor);
     }
     
     /**
@@ -263,26 +268,26 @@ public:
         );
         int fontSize = 30;
         
-        this.updateInfoLabel(3, objectName, fontColor, fontSize, text, drawProperties.objXRight, 0);
+        this.updateInfoLabel(3, objectName, clrGold, fontSize, text, drawProperties.objXRight, 0);
         
         
         objectName = "High";
         text = StringFormat("H:%s", todayRate.highLabel);
         fontSize = 20;
         
-        this.updateInfoLabel(4, objectName, fontColor, fontSize, text, drawProperties.objXRight, 50);
+        this.updateInfoLabel(4, objectName, clrLightSkyBlue, fontSize, text, drawProperties.objXRight, 50);
         
         
         objectName = "Low";
         text = StringFormat("L:%s", todayRate.lowLabel);
         
-        this.updateInfoLabel(5, objectName, fontColor, fontSize, text, drawProperties.objXRight, 80);
+        this.updateInfoLabel(5, objectName, clrLightPink, fontSize, text, drawProperties.objXRight, 80);
         
         
         objectName = "Diff";
         text = StringFormat("D:%s", todayRate.diffLabel);
         
-        this.updateInfoLabel(6, objectName, fontColor, fontSize, text, drawProperties.objXRight + 140, 65);
+        this.updateInfoLabel(6, objectName, clrKhaki, fontSize, text, drawProperties.objXRight + 140, 65);
         
         if (todayRate.diffJpy > 0) {
             this.diffJpyLabelCleared = false;
@@ -348,11 +353,14 @@ private:
     /** 描画対象のElliot全体データ。 */
     ElliotAll *elliotAll;
 
-    /** Ask・Bid・Spreadラベルの初期設定および文字反映が成功した場合true。 */
+    /** Ask・Bid・Spreadラベルの初期設定および文字・色反映が成功した場合true。 */
     bool bidAskLabelReady[3];
 
     /** Ask・Bid・Spreadラベルへ最後に反映した文字。 */
     string bidAskLabelTexts[3];
+
+    /** Ask・Bid・Spreadラベルへ最後に反映した色。 */
+    color bidAskLabelColors[3];
 
     /** 時計3個と当日レート5個の固定設定・文字反映が成功した場合true。 */
     bool infoLabelReady[8];
@@ -426,7 +434,7 @@ private:
     }
 
     /**
-     * レートラベルを再利用し、表示文字が変わった場合だけ更新する。
+     * レートラベルを再利用し、表示文字と色をそれぞれ変更時だけ更新する。
      *
      * 全体再描画や手動操作で削除された場合は固定設定ごと復元する。
      * 設定に失敗した場合はキャッシュを確定せず、次回描画で再試行する。
@@ -436,13 +444,15 @@ private:
      * @param fromText 表示文字
      * @param fromX X座標
      * @param fromY Y座標
+     * @param fromColor 表示色
      */
     void updateBidAskLabel(
         int fromIndex,
         string fromObjectName,
         string fromText,
         int fromX,
-        int fromY
+        int fromY,
+        color fromColor
     ) {
         string objectName = Constant::PREFIX + fromObjectName;
 
@@ -454,9 +464,10 @@ private:
             }
         }
 
-        if (!this.bidAskLabelReady[fromIndex]) {
-            if (!ObjectSetInteger(0, objectName, OBJPROP_COLOR, clrWhite)
-                    || !ObjectSetString(0, objectName, OBJPROP_FONT, this.drawProperties.elliotFontFace)
+        bool initializeProperties = !this.bidAskLabelReady[fromIndex];
+        this.bidAskLabelReady[fromIndex] = false;
+        if (initializeProperties) {
+            if (!ObjectSetString(0, objectName, OBJPROP_FONT, this.drawProperties.elliotFontFace)
                     || !ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 20)
                     || !ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, fromX)
                     || !ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, fromY)) {
@@ -464,15 +475,21 @@ private:
             }
         }
 
-        if (this.bidAskLabelReady[fromIndex]
-                && this.bidAskLabelTexts[fromIndex] == fromText) {
-            return;
+        if (initializeProperties || this.bidAskLabelColors[fromIndex] != fromColor) {
+            if (!ObjectSetInteger(0, objectName, OBJPROP_COLOR, fromColor)) {
+                return;
+            }
         }
 
-        if (ObjectSetString(0, objectName, OBJPROP_TEXT, fromText)) {
-            this.bidAskLabelTexts[fromIndex] = fromText;
-            this.bidAskLabelReady[fromIndex] = true;
+        if (initializeProperties || this.bidAskLabelTexts[fromIndex] != fromText) {
+            if (!ObjectSetString(0, objectName, OBJPROP_TEXT, fromText)) {
+                return;
+            }
         }
+
+        this.bidAskLabelTexts[fromIndex] = fromText;
+        this.bidAskLabelColors[fromIndex] = fromColor;
+        this.bidAskLabelReady[fromIndex] = true;
     }
     
     /*void drawBgColor() {
