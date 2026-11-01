@@ -15,6 +15,7 @@
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankAndSignal.mqh>
 
 /**
  * 表示中の通貨ペアに対応する通貨強弱順位をチャート右中央へ描画する。
@@ -57,6 +58,10 @@ public:
                 fromVoteWeightMode
             );
         this.created = false;
+        this.decisionReady = false;
+        this.lastDecisionText = "";
+        this.lastDecisionColor = clrNONE;
+        this.lastDecisionTooltip = "";
         this.hasRankData = false;
         this.lastExecutionInfo.reset();
         this.lastBaseCurrency = "";
@@ -72,8 +77,8 @@ public:
         this.reservedBottom = 0;
         this.yDistance = 0;
         this.panelWidth = 244;
-        this.panelHeight = 246;
-        this.rankTopOffset = 69;
+        this.panelHeight = 270;
+        this.rankTopOffset = 93;
         this.rankRowHeight = 19;
         this.fontName = "MS Gothic";
         this.titleFontSize = 15;
@@ -111,6 +116,13 @@ public:
             );
         }
 
+        // 描画に失敗しても、再生成時は今回取得した状態を使用する。
+        this.lastExecutionInfo = fromInfo;
+        this.lastBaseCurrency = fromInfo.pairRankInfo.baseCurrency;
+        this.lastQuoteCurrency = fromInfo.pairRankInfo.quoteCurrency;
+        this.lastDisplayAvailable = true;
+        this.lastDisplayError = false;
+
         if (!this.ensureCreated()) {
             return false;
         }
@@ -125,7 +137,10 @@ public:
             this.calculationModeText,
             this.headerColor
         );
-        this.updateDecision(longMediumDifference, mediumShortDifference);
+        if (!this.updateDecision(fromInfo)) {
+            return false;
+        }
+
         this.setLabelText(
             "LongMediumSignal",
             this.formatSignal(longMediumDifference),
@@ -167,11 +182,6 @@ public:
         }
 
         this.hasRankData = true;
-        this.lastExecutionInfo = fromInfo;
-        this.lastBaseCurrency = pairRankInfo.baseCurrency;
-        this.lastQuoteCurrency = pairRankInfo.quoteCurrency;
-        this.lastDisplayAvailable = true;
-        this.lastDisplayError = false;
         ChartRedraw(this.chartId);
 
         return true;
@@ -202,6 +212,13 @@ public:
      * @return 描画に成功した場合true。
      */
     bool drawUnavailable(string fromBaseCurrency, string fromQuoteCurrency) {
+        this.hasRankData = false;
+        this.lastExecutionInfo.reset();
+        this.lastBaseCurrency = fromBaseCurrency;
+        this.lastQuoteCurrency = fromQuoteCurrency;
+        this.lastDisplayAvailable = false;
+        this.lastDisplayError = false;
+
         if (!this.ensureCreated()) {
             return false;
         }
@@ -212,7 +229,11 @@ public:
             this.calculationModeText,
             this.headerColor
         );
-        this.setLabelText("Decision", "NO DATA", this.mutedColor);
+        if (!this.setDecision("NO DATA", this.mutedColor,
+                "通貨強弱の順位を取得できません。READY／WATCHは判定しません。")) {
+            return false;
+        }
+
         this.setLabelText("StateBadge", " ", this.mutedColor);
         this.setLabelText("LongMediumSignal", "-", this.mutedColor);
         this.setLabelText("MediumShortSignal", "-", this.mutedColor);
@@ -236,12 +257,6 @@ public:
         );
         this.setLabelText("M5BarTime", "M5 -", this.mutedColor);
 
-        this.hasRankData = false;
-        this.lastExecutionInfo.reset();
-        this.lastBaseCurrency = fromBaseCurrency;
-        this.lastQuoteCurrency = fromQuoteCurrency;
-        this.lastDisplayAvailable = false;
-        this.lastDisplayError = false;
         ChartRedraw(this.chartId);
 
         return true;
@@ -253,6 +268,7 @@ public:
      * @return 描画に成功した場合true。
      */
     bool drawError() {
+        this.lastDisplayError = true;
         if (!this.ensureCreated()) {
             return false;
         }
@@ -261,10 +277,15 @@ public:
 
         if (this.hasRankData) {
             errorText = "ERR 前回値";
+            if (!this.updateDecision(this.lastExecutionInfo, true)) {
+                return false;
+            }
+        } else if (!this.setDecision("NO DATA", this.mutedColor,
+                "ERROR：通貨強弱の取得に失敗しました。READY／WATCHは判定しません。")) {
+            return false;
         }
 
         this.setLabelText("StateBadge", errorText, this.errorColor);
-        this.lastDisplayError = true;
         ChartRedraw(this.chartId);
 
         return true;
@@ -293,6 +314,8 @@ public:
             isSuccess = this.drawUnavailable(baseCurrency, quoteCurrency);
         }
 
+        // 再生成の途中で失敗しても、前回値に重ねる取得エラーを保持する。
+        this.lastDisplayError = displayError;
         if (!isSuccess) {
             return false;
         }
@@ -333,13 +356,13 @@ public:
         }
 
         this.repositionRankGrid();
-        this.setLabelPosition("Decision", 70, 5);
-        this.setLabelPosition("StateBadge", 132, 6);
-        this.setLabelPosition("SourceBadge", 192, 6);
-        this.setLabelPosition("LongMediumHeader", 47, 28);
-        this.setLabelPosition("MediumShortHeader", 168, 28);
-        this.setLabelPosition("LongMediumSignal", 45, 47);
-        this.setLabelPosition("MediumShortSignal", 166, 47);
+        this.setLabelPosition("Decision", 10, 5);
+        this.setLabelPosition("StateBadge", 10, 29);
+        this.setLabelPosition("SourceBadge", 164, 29);
+        this.setLabelPosition("LongMediumHeader", 47, 52);
+        this.setLabelPosition("MediumShortHeader", 168, 52);
+        this.setLabelPosition("LongMediumSignal", 45, 71);
+        this.setLabelPosition("MediumShortSignal", 166, 71);
         this.repositionRankColumns();
         this.setLabelPosition(
             "M5BarTime",
@@ -368,6 +391,18 @@ public:
     }
 
 private:
+    /** 判定ラベルの文字・色・説明を反映済みの場合true。 */
+    bool decisionReady;
+
+    /** 最後に反映した判定文字。 */
+    string lastDecisionText;
+
+    /** 最後に反映した判定色。 */
+    color lastDecisionColor;
+
+    /** 最後に反映した判定理由。 */
+    string lastDecisionTooltip;
+
     /** 描画対象チャートID。 */
     long chartId;
 
@@ -383,19 +418,19 @@ private:
     /** 直前の有効な順位を表示中の場合true。 */
     bool hasRankData;
 
-    /** 最後に表示した実行時通貨強弱情報。 */
+    /** 再生成に使用する最新の実行時通貨強弱情報。描画失敗時も保持する。 */
     CurrencyStrengthExecutionInfo lastExecutionInfo;
 
-    /** 最後に表示した基軸通貨コード。 */
+    /** 再生成に使用する基軸通貨コード。 */
     string lastBaseCurrency;
 
-    /** 最後に表示した決済通貨コード。 */
+    /** 再生成に使用する決済通貨コード。 */
     string lastQuoteCurrency;
 
-    /** 最後の表示が有効な順位の場合true。 */
+    /** 再生成時に有効な順位を表示する場合true。 */
     bool lastDisplayAvailable;
 
-    /** 最後の表示に取得エラーを重ねている場合true。 */
+    /** 再生成時に取得エラーを重ねる場合true。描画失敗時も保持する。 */
     bool lastDisplayError;
 
     /** パネル配置基準の角。 */
@@ -498,8 +533,8 @@ private:
 
         if (!this.createLabel(
             "SourceBadge",
-            192,
-            6,
+            164,
+            29,
             this.bodyFontSize,
             this.mutedColor,
             "-"
@@ -511,7 +546,7 @@ private:
 
         if (!this.createLabel(
             "Decision",
-            70,
+            10,
             5,
             this.titleFontSize,
             this.mutedColor,
@@ -524,8 +559,8 @@ private:
 
         if (!this.createLabel(
             "StateBadge",
-            132,
-            6,
+            10,
+            29,
             this.bodyFontSize,
             this.mutedColor,
             " "
@@ -538,7 +573,7 @@ private:
         if (!this.createLabel(
             "LongMediumHeader",
             47,
-            28,
+            52,
             this.bodyFontSize,
             this.headerColor,
             "長中期"
@@ -551,7 +586,7 @@ private:
         if (!this.createLabel(
             "MediumShortHeader",
             168,
-            28,
+            52,
             this.bodyFontSize,
             this.headerColor,
             "中短期"
@@ -564,7 +599,7 @@ private:
         if (!this.createLabel(
             "LongMediumSignal",
             45,
-            47,
+            71,
             this.bodyFontSize,
             this.mutedColor,
             "-"
@@ -577,7 +612,7 @@ private:
         if (!this.createLabel(
             "MediumShortSignal",
             166,
-            47,
+            71,
             this.bodyFontSize,
             this.mutedColor,
             "-"
@@ -701,7 +736,7 @@ private:
             }
         }
 
-        int centerTopOffset = 27;
+        int centerTopOffset = 51;
         int gridBottomOffset = gridTopOffset + 8 * this.rankRowHeight;
 
         return this.createRankGridLine(
@@ -787,7 +822,7 @@ private:
         this.setRankGridLinePosition(
             "RankGridCenter",
             this.panelWidth / 2,
-            27,
+            51,
             1
         );
     }
@@ -860,28 +895,163 @@ private:
     }
 
     /**
-     * 長中期と中短期の方向一致状態を表示する。
+     * 長中期と中短期の方向一致、READY／WATCHと各期間の理由を表示する。
+     * 順位差基準は4固定とし、古い順位・取得エラーでは方向だけを表示する。
      *
-     * @param fromLongMediumDifference 長中期順位差。
-     * @param fromMediumShortDifference 中短期順位差。
+     * @param fromInfo 取得済みの実行時通貨強弱情報。
+     * @param fromError 取得エラーにより前回の順位を表示する場合true。
+     * @return 判定表示に成功した場合true。
      */
-    void updateDecision(
-        const int fromLongMediumDifference,
-        const int fromMediumShortDifference
+    bool updateDecision(
+        const CurrencyStrengthExecutionInfo &fromInfo,
+        const bool fromError = false
     ) {
-        if (fromLongMediumDifference > 0 && fromMediumShortDifference > 0) {
-            this.setLabelText("Decision", "BUY一致", this.buyColor);
-
-            return;
+        int longMediumDifference = fromInfo.getLongMediumRankDifference();
+        int mediumShortDifference = fromInfo.getMediumShortRankDifference();
+        string decisionText = "MIXED";
+        color decisionColor = this.warningColor;
+        bool directionAligned = false;
+        if (longMediumDifference > 0 && mediumShortDifference > 0) {
+            decisionText = "BUY一致";
+            decisionColor = this.buyColor;
+            directionAligned = true;
+        } else if (longMediumDifference < 0 && mediumShortDifference < 0) {
+            decisionText = "SELL一致";
+            decisionColor = this.sellColor;
+            directionAligned = true;
         }
 
-        if (fromLongMediumDifference < 0 && fromMediumShortDifference < 0) {
-            this.setLabelText("Decision", "SELL一致", this.sellColor);
-
-            return;
+        if (fromError) {
+            return this.setDecision(decisionText, this.mutedColor,
+                "ERROR：前回の順位を表示しています。READY／WATCHは判定しません。");
         }
 
-        this.setLabelText("Decision", "MIXED", this.warningColor);
+        string tooltip = "通貨強弱のみの判定（順位差基準4）。";
+        bool currentRanks = fromInfo.targetM5BarTime > 0 && fromInfo.isExactM5Bar();
+        if (!currentRanks) {
+            tooltip += "\n対象M5時刻と一致する順位を未取得のため、READY／WATCHは判定しません。"
+                + "\n以下は表示中の順位による参考情報です。";
+            decisionColor = this.mutedColor;
+        } else if (directionAligned) {
+            int longMediumDirection = CurrencyStrengthRankAndSignal::getLongMediumDirection(
+                fromInfo.pairRankInfo.baseLongMediumTermAverageRank,
+                fromInfo.pairRankInfo.quoteLongMediumTermAverageRank,
+                4
+            );
+            if (longMediumDirection != 0 && MathAbs(mediumShortDifference) >= 4) {
+                decisionText += "｜READY";
+                tooltip += "\nREADY：両期間の方向と順位条件が成立。";
+            } else {
+                decisionText += "｜WATCH";
+                decisionColor = this.warningColor;
+                tooltip += "\nWATCH：両期間の方向は一致、順位条件は未達。";
+            }
+        } else if (longMediumDifference == 0 || mediumShortDifference == 0) {
+            tooltip += "\nMIXED：同順位の期間があり、両期間の方向は一致していません。";
+        } else {
+            tooltip += "\nMIXED：長中期と中短期の方向が逆です。";
+        }
+
+        tooltip += "\n" + this.getPeriodDecisionTooltip(fromInfo.pairRankInfo, true)
+            + "\n" + this.getPeriodDecisionTooltip(fromInfo.pairRankInfo, false);
+
+        return this.setDecision(decisionText, decisionColor, tooltip);
+    }
+
+    /**
+     * 指定期間の順位・方向と、成立または未達の理由を取得する。
+     *
+     * @param fromInfo 表示する通貨ペア順位。
+     * @param fromLongMedium 長中期の端順位OR条件を使用する場合true。
+     * @return 期間名、順位差、条件達成状況の説明。
+     */
+    string getPeriodDecisionTooltip(
+        const CurrencyStrengthPairRankInfo &fromInfo,
+        const bool fromLongMedium
+    ) {
+        string periodLabel = "長中期";
+        int baseRank = fromInfo.baseLongMediumTermAverageRank;
+        int quoteRank = fromInfo.quoteLongMediumTermAverageRank;
+        if (!fromLongMedium) {
+            periodLabel = "中短期";
+            baseRank = fromInfo.baseMediumShortTermAverageRank;
+            quoteRank = fromInfo.quoteMediumShortTermAverageRank;
+        }
+
+        int difference = quoteRank - baseRank;
+        string tooltip = periodLabel + "：" + this.formatSignal(difference)
+            + StringFormat("（%s %d位／%s %d位）",
+                fromInfo.baseCurrency, baseRank, fromInfo.quoteCurrency, quoteRank);
+        if (difference == 0) {
+            return tooltip + "\n未達：同順位です。";
+        }
+
+        if (MathAbs(difference) >= 4) {
+            return tooltip + "\n成立：順位差4以上。";
+        }
+
+        if (fromLongMedium
+                && CurrencyStrengthRankAndSignal::getLongMediumDirection(baseRank, quoteRank, 4) != 0) {
+            string strongCurrency = fromInfo.baseCurrency;
+            string weakCurrency = fromInfo.quoteCurrency;
+            int strongRank = baseRank;
+            if (difference < 0) {
+                strongCurrency = fromInfo.quoteCurrency;
+                weakCurrency = fromInfo.baseCurrency;
+                strongRank = quoteRank;
+            }
+
+            if (strongRank == 1) {
+                return tooltip + "\n成立：買う通貨" + strongCurrency + "が1位。";
+            }
+
+            return tooltip + "\n成立：売る通貨" + weakCurrency + "が8位。";
+        }
+
+        if (fromLongMedium) {
+            return tooltip + "\n未達：差4未満で、強い通貨1位・弱い通貨8位にも該当しません。";
+        }
+
+        return tooltip + "\n未達：順位差4まであと" + (string)(4 - (int)MathAbs(difference)) + "。";
+    }
+
+    /**
+     * 判定ラベルの文字・色・理由を変更時だけ反映する。
+     * 失敗時はキャッシュを確定せず、次回に全項目を再試行する。
+     *
+     * @param fromText 表示する判定文字。
+     * @param fromColor 判定色。
+     * @param fromTooltip 判定理由。
+     * @return 全項目の反映に成功した場合true。
+     */
+    bool setDecision(const string fromText, const color fromColor, const string fromTooltip) {
+        bool initializeProperties = !this.decisionReady;
+        this.decisionReady = false;
+        string objectName = this.objectPrefix + "Decision";
+        if (initializeProperties || this.lastDecisionText != fromText) {
+            if (!ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText)) {
+                return false;
+            }
+        }
+
+        if (initializeProperties || this.lastDecisionColor != fromColor) {
+            if (!ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor)) {
+                return false;
+            }
+        }
+
+        if (initializeProperties || this.lastDecisionTooltip != fromTooltip) {
+            if (!ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, fromTooltip)) {
+                return false;
+            }
+        }
+
+        this.lastDecisionText = fromText;
+        this.lastDecisionColor = fromColor;
+        this.lastDecisionTooltip = fromTooltip;
+        this.decisionReady = true;
+
+        return true;
     }
 
     /**
@@ -1284,6 +1454,7 @@ private:
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
+        this.decisionReady = false;
         this.hasRankData = false;
     }
 
