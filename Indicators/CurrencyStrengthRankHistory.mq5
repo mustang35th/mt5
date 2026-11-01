@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.42"
+#property version   "1.45"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -664,6 +664,10 @@ void OnChartEvent(
 ) {
     if (fromEventId != CHARTEVENT_CHART_CHANGE) {
         return;
+    }
+
+    if (gRankAndRibbonDraw != NULL) {
+        gRankAndRibbonDraw.invalidateViewCache();
     }
 
     gRankAndRibbonOwnerReady = false;

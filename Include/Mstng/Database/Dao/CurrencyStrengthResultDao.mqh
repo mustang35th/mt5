@@ -870,17 +870,30 @@ public:
             return false;
         }
 
+        // 空の検索結果では配列を確保せず、2件目以降は出力配列へ直接読み込む。
+        CurrencyStrengthPairRankPoint firstPoint;
+        firstPoint.reset();
+        int pointCount = 0;
+
         while (true) {
-            CurrencyStrengthPairRankPoint point;
-            point.reset();
             ResetLastError();
-            bool isRead = DatabaseReadBind(requestHandle, point);
+            bool isRead = false;
+            if (pointCount == 0) {
+                isRead = DatabaseReadBind(requestHandle, firstPoint);
+            } else {
+                fromPoints[pointCount].reset();
+                isRead = DatabaseReadBind(requestHandle, fromPoints[pointCount]);
+            }
+
             int readErrorCode = GetLastError();
 
             if (!isRead) {
                 DatabaseFinalize(requestHandle);
 
                 if (readErrorCode == ERR_DATABASE_NO_MORE_DATA) {
+                    // 次の読み込み用に確保した末尾は取得結果に含めない。
+                    ArrayResize(fromPoints, pointCount);
+
                     return true;
                 }
 
@@ -896,27 +909,29 @@ public:
                 return false;
             }
 
-            int pointIndex = ArraySize(fromPoints);
+            pointCount++;
 
             if (ArrayResize(
                 fromPoints,
-                pointIndex + 1,
+                pointCount + 1,
                 readLimit
-            ) != pointIndex + 1) {
+            ) != pointCount + 1) {
                 DatabaseFinalize(requestHandle);
                 ArrayResize(fromPoints, 0);
                 this.logger.error(
                     __FUNCTION__,
                     StringFormat(
                         "ArrayResize failed. requested=%d",
-                        pointIndex + 1
+                        pointCount + 1
                     )
                 );
 
                 return false;
             }
 
-            fromPoints[pointIndex] = point;
+            if (pointCount == 1) {
+                fromPoints[0] = firstPoint;
+            }
         }
     }
 

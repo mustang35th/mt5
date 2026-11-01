@@ -52,6 +52,7 @@ public:
         this.cachedSellTextWidth = 0;
         this.canvasHeight = 34;
         ArraySetAsSeries(this.barTimes, false);
+        this.invalidateViewCache();
     }
 
     /**
@@ -85,6 +86,17 @@ public:
                 && fromEndM5BarTime >= this.lastStartM5BarTime) {
             this.dataDirty = true;
         }
+    }
+
+    /**
+     * 画面変更時に足時刻と横座標の再利用を無効化する。
+     * 作業配列のメモリと描画済みの帯は保持する。
+     */
+    void invalidateViewCache() {
+        this.barGeometryKey = "";
+        this.cachedBarCount = 0;
+        this.cachedNewestX = 0;
+        this.cachedBarWidth = 0;
     }
 
     /**
@@ -145,35 +157,61 @@ public:
             return true;
         }
 
-        // 左端の直前足も取得し、画面の切れ目を成立開始として扱わない。
-        int newestBar = (int)MathMax(0, firstVisibleBar - visibleBars + 1);
-        int requestedBars = firstVisibleBar - newestBar + 2;
-        int copiedBars = CopyTime(
-            symbolName, chartPeriod, newestBar, requestedBars, this.barTimes);
-        if (copiedBars < 2) {
-            this.clear();
+        string nextBarGeometryKey = this.getBarGeometryKey(viewKey);
+        bool reuseBarGeometry = !fromForce && this.created
+            && nextBarGeometryKey != "" && this.barGeometryKey == nextBarGeometryKey
+            && this.cachedBarCount >= 2 && ArraySize(this.barTimes) >= this.cachedBarCount;
+        int copiedBars = this.cachedBarCount;
+        int newestX = this.cachedNewestX;
+        int barWidth = this.cachedBarWidth;
+        if (!reuseBarGeometry) {
+            // CopyTimeが作業配列を書き換える前に、以前の件数と座標を無効にする。
+            this.invalidateViewCache();
 
-            return false;
+            // 左端の直前足も取得し、画面の切れ目を成立開始として扱わない。
+            int newestBar = (int)MathMax(0, firstVisibleBar - visibleBars + 1);
+            int requestedBars = firstVisibleBar - newestBar + 2;
+            copiedBars = CopyTime(
+                symbolName, chartPeriod, newestBar, requestedBars, this.barTimes);
+            if (copiedBars < 2) {
+                this.clear();
+
+                return false;
+            }
+
+            // CopyTimeは物理先頭から古い順に格納するため、取得件数から最新位置を求める。
+            datetime newestTime = this.barTimes[copiedBars - 1];
+            datetime previousTime = this.barTimes[copiedBars - 2];
+            double referencePrice = (ChartGetDouble(this.chartId, CHART_PRICE_MIN, 0)
+                + ChartGetDouble(this.chartId, CHART_PRICE_MAX, 0)) / 2.0;
+            int previousX = 0;
+            int ignoredY = 0;
+            if (!ChartTimePriceToXY(this.chartId, 0, newestTime, referencePrice, newestX, ignoredY)
+                    || !ChartTimePriceToXY(this.chartId, 0, previousTime, referencePrice,
+                        previousX, ignoredY)) {
+                this.clear();
+
+                return false;
+            }
+
+            barWidth = newestX - previousX;
+            if (barWidth <= 0) {
+                this.clear();
+
+                return false;
+            }
+
+            // 部分取得した足時刻は当回の描画だけに使用し、次回の再描画では取り直す。
+            if (copiedBars == requestedBars && nextBarGeometryKey != "") {
+                this.barGeometryKey = nextBarGeometryKey;
+                this.cachedBarCount = copiedBars;
+                this.cachedNewestX = newestX;
+                this.cachedBarWidth = barWidth;
+            }
         }
 
-        // CopyTimeは物理先頭から古い順に格納するため、取得件数から最新位置を求める。
         datetime newestBarTime = this.barTimes[copiedBars - 1];
-        datetime previousBarTime = this.barTimes[copiedBars - 2];
         datetime oldestBarTime = this.barTimes[0];
-        double referencePrice = (ChartGetDouble(this.chartId, CHART_PRICE_MIN, 0)
-            + ChartGetDouble(this.chartId, CHART_PRICE_MAX, 0)) / 2.0;
-        int newestX = 0;
-        int previousX = 0;
-        int ignoredY = 0;
-        if (!ChartTimePriceToXY(this.chartId, 0, newestBarTime, referencePrice, newestX, ignoredY)
-                || !ChartTimePriceToXY(this.chartId, 0, previousBarTime, referencePrice,
-                    previousX, ignoredY)) {
-            this.clear();
-
-            return false;
-        }
-
-        int barWidth = newestX - previousX;
         int m5Seconds = PeriodSeconds(PERIOD_M5);
         if (barWidth <= 0 || m5Seconds <= 0) {
             this.clear();
@@ -181,16 +219,31 @@ public:
             return false;
         }
 
-        // 新足で足番号が変わっても、参照する足と実際の描画位置が同じなら再利用する。
+        // 画像内容の比較から画面の高さを除き、高さだけの変更はY座標へ反映する。
         string renderKey = StringFormat(
-            "%s/%d/%d/%d/%d/%d/%d/%d/%d/%I64d/%I64d/%d/%d",
-            symbolName, (int)chartPeriod, chartWidth, chartHeight,
+            "%s/%d/%d/%d/%d/%d/%d/%d/%I64d/%I64d/%d/%d",
+            symbolName, (int)chartPeriod, chartWidth,
             fromMinimumDifference, (int)backgroundColor, (int)foregroundColor, chartScale,
             copiedBars, (long)newestBarTime, (long)oldestBarTime, newestX, barWidth
         );
         if (!fromForce && !this.dataDirty && !targetChangedInView
                 && this.created && this.lastRenderKey == renderKey
                 && ObjectFind(this.chartId, this.objectName) == 0) {
+            int previousTop = this.lastTop;
+            if (!this.moveCanvas(chartHeight)) {
+                this.clear();
+
+                return false;
+            }
+
+            if (this.lastTop != previousTop) {
+                if (this.redrawRequest != NULL) {
+                    this.redrawRequest.request();
+                } else {
+                    ChartRedraw(this.chartId);
+                }
+            }
+
             this.lastViewKey = viewKey;
             this.lastTargetM5BarTime = fromTargetM5BarTime;
 
@@ -279,6 +332,7 @@ public:
      * 足時刻の作業配列は次の描画で再利用するため保持する。
      */
     void clear() {
+        this.invalidateViewCache();
         if (this.cleared) {
             return;
         }
@@ -328,6 +382,18 @@ private:
     /** CopyTimeの取得先として再利用する足時刻の作業配列。物理先頭から古い順。 */
     datetime barTimes[];
 
+    /** 足時刻と横座標を再利用できる画面条件。再利用できない場合は空。 */
+    string barGeometryKey;
+
+    /** 必要本数を取得できた足時刻配列の有効件数。 */
+    int cachedBarCount;
+
+    /** 足時刻配列の最新足に対応するX座標。 */
+    int cachedNewestX;
+
+    /** 足時刻配列の最新2足から求めた横方向の足幅。 */
+    int cachedBarWidth;
+
     /** Canvasを生成済みの場合true。 */
     bool created;
 
@@ -366,6 +432,33 @@ private:
 
     /** タイトルと帯を含む描画高さ。 */
     int canvasHeight;
+
+    /**
+     * 足時刻と横座標を再利用できる通常の横縮尺・右端余白の条件を取得する。
+     * 特殊縮尺や設定取得の失敗時は、従来どおり取得と座標変換を行う。
+     *
+     * @param fromViewKey 表示範囲・最新足・画面設定の識別子。
+     * @return 再利用条件の識別子。再利用対象外の場合は空。
+     */
+    string getBarGeometryKey(const string fromViewKey) {
+        long scaleFix11 = 0;
+        long scalePointsPerBar = 0;
+        long chartShift = 0;
+        double shiftSize = 0.0;
+        if (!ChartGetInteger(this.chartId, CHART_SCALEFIX_11, 0, scaleFix11)
+                || !ChartGetInteger(this.chartId, CHART_SCALE_PT_PER_BAR, 0, scalePointsPerBar)
+                || scaleFix11 != 0 || scalePointsPerBar != 0
+                || !ChartGetInteger(this.chartId, CHART_SHIFT, 0, chartShift)) {
+            return "";
+        }
+
+        if (chartShift != 0 && (!ChartGetDouble(this.chartId, CHART_SHIFT_SIZE, 0, shiftSize)
+                || !MathIsValidNumber(shiftSize))) {
+            return "";
+        }
+
+        return StringFormat("%s/%I64d/%.17g", fromViewKey, chartShift, shiftSize);
+    }
 
     /**
      * 使用可能なM5時刻の上限変更が、前回描画の参照範囲へ影響するか判定する。
@@ -440,6 +533,18 @@ private:
             }
         }
 
+        return this.moveCanvas(fromChartHeight);
+    }
+
+    /**
+     * 画像内容を変更せず、チャート下端に合わせてCanvasのY座標だけを更新する。
+     * 再描画要求は呼び出し元で行い、成功した位置だけを保持する。
+     *
+     * @param fromChartHeight メインチャートの高さ。
+     * @return 位置が同じ、または位置設定に成功した場合true。
+     */
+    bool moveCanvas(const int fromChartHeight) {
+        int top = fromChartHeight - this.canvasHeight - 32;
         if (this.lastTop != top) {
             if (!ObjectSetInteger(this.chartId, this.objectName, OBJPROP_YDISTANCE, top)) {
                 return false;
