@@ -271,7 +271,9 @@ public:
             + (string)fromMinimumDifference + "以上。片方だけ達成は暗い準備色、両方は明るい成立色。";
         if (longMediumOnly) {
             periodTitle = "長中期";
-            tooltip = "長中期：順位差" + (string)fromMinimumDifference + "以上。";
+            tooltip = "長中期：順位差" + (string)fromMinimumDifference
+                + "以上、または強い通貨が1位、または弱い通貨が8位。"
+                + "同順位は対象外。中短期は判定せず、成立色だけを表示。";
         }
 
         tooltip += "帯の左端の白色は確認できた開始。準備・成立の切り替え時には追加しません。";

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.45"
+#property version   "1.47"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -106,7 +106,7 @@ input(name="履歴の表示日数（1～366日）") int historyDays = 30;
 /** サブ画面の高さ。0は高さを指定せず、MT5側のサイズを使用する。 */
 input(name="サブ画面の高さ（px・0＝指定なし）") int subPanelHeight = 120;
 
-/** H1未満は長中期の順位差または端順位と中短期の順位差で準備・成立を表示する。H1以上は長中期の順位差4以上、同時表示時は最上段を優先する。 */
+/** H1未満は長中期の順位差または端順位と中短期の順位差で準備・成立を表示する。H1以上は長中期の順位差4以上または端順位で成立を表示し、同時表示時は最上段を優先する。 */
 input(name="メインチャートに強弱帯を表示") bool rankAndRibbonVisible = true;
 
 input group "02. データ参照"
@@ -229,7 +229,7 @@ const int rankPointReserveCount = 288;
 
 const double rankSignalDisplayPosition = -9.0;
 
-/** 塗り領域、リボンと右上ラベルを強調する順位差の絶対値。 */
+/** 塗り領域、方向バー、帯と右上ラベルの順位差基準。長中期は方向に合う端順位でも強調する。 */
 const int rankSignalHighlightDifference = 4;
 
 /**
@@ -1300,7 +1300,7 @@ string getLatestRankLabelPositionKey(const int fromSubWindow) {
  * 基軸通貨と決済通貨の順位差から売買方向を描画する。
  *
  * 基軸通貨の順位が上の場合はBUY、決済通貨の順位が上の場合はSELLとする。
- * 順位差の絶対値が強調基準以上の場合は先頭へ◆を付ける。
+ * 選択期間の共通強調条件を満たす場合は先頭へ◆を付け、理由をツールチップで示す。
  *
  * @param fromSubWindow 描画対象サブウィンドウ番号。
  * @param fromBaseRank 基軸通貨の順位。
@@ -1339,7 +1339,7 @@ bool drawRankSignalLabel(
             signalColor = clrHotPink;
         }
 
-        if (MathAbs(rankDifference) >= rankSignalHighlightDifference) {
+        if (isRankSignalHighlighted(fromBaseRank, fromQuoteRank)) {
             signalText = "◆ " + signalText;
         }
     }
@@ -1347,7 +1347,8 @@ bool drawRankSignalLabel(
     if (!gRankSignalLabelDraw.draw(
         fromSubWindow,
         signalText,
-        signalColor
+        signalColor,
+        getRankSignalTooltip(fromBaseRank, fromQuoteRank)
     )) {
         gLogger.error(__FUNCTION__, "rank signal label draw failed");
 
@@ -2288,7 +2289,7 @@ void setBufferValues(
     gBaseRankFillBuffer[fromBufferIndex] = 0.0;
     gQuoteRankFillBuffer[fromBufferIndex] = 0.0;
 
-    if (MathAbs(quoteRank - baseRank) >= rankSignalHighlightDifference) {
+    if (isRankSignalHighlighted(baseRank, quoteRank)) {
         gBaseRankFillBuffer[fromBufferIndex] = gBaseDisplayRankBuffer[fromBufferIndex];
         gQuoteRankFillBuffer[fromBufferIndex] = gQuoteDisplayRankBuffer[fromBufferIndex];
     }
@@ -2371,7 +2372,7 @@ CurrencyStrengthRankSignal getRankSignal(
 }
 
 /**
- * 売買方向と順位差から履歴リボンの色番号を取得する。
+ * 売買方向と選択期間の共通強調条件から方向バーの色番号を取得する。
  *
  * @param fromBaseRank 基軸通貨の順位。
  * @param fromQuoteRank 決済通貨の順位。
@@ -2385,9 +2386,7 @@ int getRankSignalColorIndex(
         fromBaseRank,
         fromQuoteRank
     );
-    int rankDifference = fromQuoteRank - fromBaseRank;
-
-    if (MathAbs(rankDifference) < rankSignalHighlightDifference) {
+    if (!isRankSignalHighlighted(fromBaseRank, fromQuoteRank)) {
         if (rankSignal == CURRENCY_STRENGTH_RANK_SIGNAL_BUY) {
             return 3;
         }
@@ -2398,6 +2397,85 @@ int getRankSignalColorIndex(
     }
 
     return (int)rankSignal;
+}
+
+/**
+ * 選択期間の塗り・方向バー・◆に使用する共通強調条件を判定する。
+ * 長中期は順位差または端順位、中短期は順位差だけを使用する。
+ *
+ * @param fromBaseRank 基軸通貨の順位。
+ * @param fromQuoteRank 決済通貨の順位。
+ * @return 強調対象の場合true。同順位と無効順位は対象外。
+ */
+bool isRankSignalHighlighted(const int fromBaseRank, const int fromQuoteRank) {
+    if (rankPeriod == CURRENCY_STRENGTH_RANK_PERIOD_LONG_MEDIUM) {
+        return CurrencyStrengthRankAndSignal::getLongMediumDirection(
+            fromBaseRank, fromQuoteRank, rankSignalHighlightDifference
+        ) != 0;
+    }
+
+    if (fromBaseRank < 1 || fromBaseRank > 8
+            || fromQuoteRank < 1 || fromQuoteRank > 8) {
+        return false;
+    }
+
+    return MathAbs(fromQuoteRank - fromBaseRank) >= rankSignalHighlightDifference;
+}
+
+/**
+ * 最新の順位と、選択期間の強調条件・成立理由をツールチップへまとめる。
+ *
+ * @param fromBaseRank 基軸通貨の順位。
+ * @param fromQuoteRank 決済通貨の順位。
+ * @return 塗り・方向バー・◆に共通する強調条件と最新順位の理由。
+ */
+string getRankSignalTooltip(const int fromBaseRank, const int fromQuoteRank) {
+    string tooltip = getRankPeriodLabel() + "の塗り・方向バー・◆：順位差"
+        + (string)rankSignalHighlightDifference + "以上";
+    if (rankPeriod == CURRENCY_STRENGTH_RANK_PERIOD_LONG_MEDIUM) {
+        tooltip += "、または強い通貨が1位、または弱い通貨が8位";
+    }
+
+    if (fromBaseRank < 1 || fromBaseRank > 8
+            || fromQuoteRank < 1 || fromQuoteRank > 8) {
+        return tooltip + "\n順位未取得";
+    }
+
+    int rankDifference = fromQuoteRank - fromBaseRank;
+    tooltip += StringFormat("\n%s %d位 / %s %d位（順位差の大きさ%d）",
+        gBaseCurrency, fromBaseRank, gQuoteCurrency, fromQuoteRank,
+        (int)MathAbs(rankDifference));
+    if (!isRankSignalHighlighted(fromBaseRank, fromQuoteRank)) {
+        if (rankDifference == 0) {
+            return tooltip + "\n同順位のため強調なし";
+        }
+
+        return tooltip + "\n強調条件未達";
+    }
+
+    if (MathAbs(rankDifference) >= rankSignalHighlightDifference) {
+        return tooltip + "\n強調理由：順位差" + (string)rankSignalHighlightDifference + "以上";
+    }
+
+    string strongCurrency = gBaseCurrency;
+    string weakCurrency = gQuoteCurrency;
+    int strongRank = fromBaseRank;
+    int weakRank = fromQuoteRank;
+    if (rankDifference < 0) {
+        strongCurrency = gQuoteCurrency;
+        weakCurrency = gBaseCurrency;
+        strongRank = fromQuoteRank;
+        weakRank = fromBaseRank;
+    }
+
+    if (strongRank == 1) {
+        tooltip += "\n強調理由：強い通貨（買う" + strongCurrency + "）が1位";
+    }
+    if (weakRank == 8) {
+        tooltip += "\n強調理由：弱い通貨（売る" + weakCurrency + "）が8位";
+    }
+
+    return tooltip;
 }
 
 /**

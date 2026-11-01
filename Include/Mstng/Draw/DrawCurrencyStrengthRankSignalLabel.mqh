@@ -39,6 +39,7 @@ public:
         this.lastSubWindow = -1;
         this.lastText = "";
         this.lastColor = clrNONE;
+        this.lastTooltip = "";
     }
 
     /**
@@ -50,17 +51,19 @@ public:
 
     /**
      * 指定サブウィンドウの右上へ売買方向を描画する。
-     * 固定座標は初期化時に設定し、文字・色の更新時は再設定しない。
+     * 固定座標は初期化時に設定し、文字・色・説明は変更時だけ反映する。
      *
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromText 表示する売買方向。
      * @param fromColor 文字色。
+     * @param fromTooltip マウスを重ねたときに表示する説明。
      * @return 描画に成功した場合true。
      */
     bool draw(
         const int fromSubWindow,
         const string fromText,
-        const color fromColor
+        const color fromColor,
+        const string fromTooltip = ""
     ) {
         if (fromSubWindow <= 0 || fromText == "") {
             return false;
@@ -69,7 +72,8 @@ public:
         if (this.created
                 && this.lastSubWindow == fromSubWindow
                 && this.lastText == fromText
-                && this.lastColor == fromColor) {
+                && this.lastColor == fromColor
+                && this.lastTooltip == fromTooltip) {
             return true;
         }
 
@@ -105,18 +109,33 @@ public:
             return false;
         }
 
-        bool updated = ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_COLOR,
-            fromColor
-        );
-        updated = ObjectSetString(
-            this.chartId,
-            this.objectName,
-            OBJPROP_TEXT,
-            fromText
-        ) && updated;
+        bool updated = true;
+        if (initializeProperties || this.lastColor != fromColor) {
+            updated = ObjectSetInteger(
+                this.chartId,
+                this.objectName,
+                OBJPROP_COLOR,
+                fromColor
+            );
+        }
+
+        if (initializeProperties || this.lastText != fromText) {
+            updated = ObjectSetString(
+                this.chartId,
+                this.objectName,
+                OBJPROP_TEXT,
+                fromText
+            ) && updated;
+        }
+
+        if (initializeProperties || this.lastTooltip != fromTooltip) {
+            updated = ObjectSetString(
+                this.chartId,
+                this.objectName,
+                OBJPROP_TOOLTIP,
+                fromTooltip
+            ) && updated;
+        }
 
         if (!updated) {
             return false;
@@ -126,6 +145,7 @@ public:
         this.lastSubWindow = fromSubWindow;
         this.lastText = fromText;
         this.lastColor = fromColor;
+        this.lastTooltip = fromTooltip;
 
         if (this.redrawRequest == NULL) {
             ChartRedraw(this.chartId);
@@ -147,6 +167,7 @@ public:
         this.lastSubWindow = -1;
         this.lastText = "";
         this.lastColor = clrNONE;
+        this.lastTooltip = "";
 
         if (this.redrawRequest == NULL) {
             ChartRedraw(this.chartId);
@@ -174,6 +195,9 @@ private:
 
     /** 前回描画した文字色。 */
     color lastColor;
+
+    /** 前回描画したツールチップ。 */
+    string lastTooltip;
 
     /**
      * ラベル生成時または設定失敗後の再試行時に固定座標と表示設定を反映する。

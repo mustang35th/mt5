@@ -18,7 +18,43 @@
 class CurrencyStrengthRankAndSignal {
 public:
     /**
+     * 長中期の順位差または方向に合う1位・8位から強調方向を取得する。
+     * 帯と順位線・方向バー・ラベルで同じ長中期条件を使用する。
+     *
+     * @param fromBaseRank 基軸通貨の長中期順位。
+     * @param fromQuoteRank 決済通貨の長中期順位。
+     * @param fromMinimumDifference 順位差の基準。
+     * @return BUYは1、SELLは-1、未達・同順位・無効順位は0。
+     */
+    static int getLongMediumDirection(
+        const int fromBaseRank,
+        const int fromQuoteRank,
+        const int fromMinimumDifference
+    ) {
+        if (fromMinimumDifference < 1
+                || !isValidRank(fromBaseRank) || !isValidRank(fromQuoteRank)) {
+            return 0;
+        }
+
+        int rankDifference = fromQuoteRank - fromBaseRank;
+        if (rankDifference > 0
+                && (rankDifference >= fromMinimumDifference
+                    || fromBaseRank == 1 || fromQuoteRank == 8)) {
+            return 1;
+        }
+
+        if (rankDifference < 0
+                && (rankDifference <= -fromMinimumDifference
+                    || fromBaseRank == 8 || fromQuoteRank == 1)) {
+            return -1;
+        }
+
+        return 0;
+    }
+
+    /**
      * 同一M5時刻の順位から、指定した期間条件の売買方向を取得する。
+     * 長中期のみの場合は、順位差の基準または方向に合う1位・8位で成立とする。
      *
      * @param fromPoint 判定する通貨ペア順位。
      * @param fromMinimumDifference 判定対象期間に必要な順位差の絶対値。
@@ -30,6 +66,14 @@ public:
         const int fromMinimumDifference,
         const bool fromLongMediumOnly = false
     ) {
+        if (fromLongMediumOnly) {
+            return getLongMediumDirection(
+                fromPoint.baseLongMediumTermAverageRank,
+                fromPoint.quoteLongMediumTermAverageRank,
+                fromMinimumDifference
+            );
+        }
+
         if (fromMinimumDifference < 1
                 || !isValidRank(fromPoint.baseLongMediumTermAverageRank)
                 || !isValidRank(fromPoint.quoteLongMediumTermAverageRank)) {
@@ -38,18 +82,6 @@ public:
 
         int longMediumDifference = fromPoint.quoteLongMediumTermAverageRank
             - fromPoint.baseLongMediumTermAverageRank;
-        if (fromLongMediumOnly) {
-            if (longMediumDifference >= fromMinimumDifference) {
-                return 1;
-            }
-
-            if (longMediumDifference <= -fromMinimumDifference) {
-                return -1;
-            }
-
-            return 0;
-        }
-
         if (!isValidRank(fromPoint.baseMediumShortTermAverageRank)
                 || !isValidRank(fromPoint.quoteMediumShortTermAverageRank)) {
             return 0;
@@ -100,7 +132,7 @@ public:
      *
      * 両期間が同方向で片方だけ条件を満たした場合は準備、両方なら成立とする。
      * 長中期は順位差の基準または売買方向に合う1位・8位、中短期は順位差を必須とする。
-     * 長中期のみを使う場合は順位差の基準で成立だけを返す。
+     * 長中期のみを使う場合も同じOR条件を使い、準備を設けず成立だけを返す。
      *
      * @param fromPoint 判定する通貨ペア順位。
      * @param fromMinimumDifference 準備・成立の基準となる順位差の絶対値。
