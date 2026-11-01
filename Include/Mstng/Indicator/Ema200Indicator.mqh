@@ -77,6 +77,8 @@ public:
         this.bufferResetPending = true;
         this.lastBufferBarTime = 0;
         this.lastBufferBarsCount = 0;
+        this.updatePerformed = false;
+        this.lastUpdateMode = "未計測";
         this.initializePlotSettings();
         this.setHandles(oscillatorHandlePool);
     }
@@ -98,7 +100,27 @@ public:
         this.bufferResetPending = true;
         this.lastBufferBarTime = 0;
         this.lastBufferBarsCount = 0;
+        this.updatePerformed = false;
+        this.lastUpdateMode = "未計測";
         this.clearPlotSettings();
+    }
+
+    /**
+     * 直前の更新で、表示の更新または取得の試行を行ったか取得する。
+     *
+     * @return 同じ足での省略や表示対象外の場合false
+     */
+    bool wasUpdatePerformed() {
+        return this.updatePerformed;
+    }
+
+    /**
+     * 直前の更新処理の種類を取得する。
+     *
+     * @return 計測表示用の更新種別
+     */
+    string getLastUpdateMode() {
+        return this.lastUpdateMode;
     }
 
     /**
@@ -109,6 +131,12 @@ public:
      * @return 更新成否
      */
     bool update(bool isTimer, bool fromResetBuffers = false) {
+        this.updatePerformed = false;
+        this.lastUpdateMode = "対象外";
+        if (this.displayCount > 0) {
+            this.lastUpdateMode = "待機";
+        }
+
         if (fromResetBuffers) {
             this.bufferResetPending = true;
         }
@@ -122,11 +150,18 @@ public:
         datetime currentM1BarTime = iTime(this.marketContext.symbolName, updateTimeFrame, 0);
 
         if (currentM1BarTime <= 0) {
+            if (this.displayCount > 0) {
+                this.updatePerformed = true;
+                this.lastUpdateMode = "準備中";
+            }
+
             return false;
         }
 
         if (!this.bufferResetPending && this.lastUpdateM1BarTime == currentM1BarTime) {
             if (this.labelsUpdatePending) {
+                this.updatePerformed = true;
+                this.lastUpdateMode = "ラベル再試行";
                 // ラベルだけの失敗では、取得済みのEMAを再計算しない。
                 this.labelsUpdatePending = !this.updateLabels();
                 ChartRedraw(0);
@@ -135,11 +170,20 @@ public:
             return !this.labelsUpdatePending;
         }
 
+        if (this.displayCount > 0) {
+            this.updatePerformed = true;
+            this.lastUpdateMode = "通常更新";
+        }
+
         // 同じM1内の履歴再計算が失敗した場合も、次回にデータ取得を再試行する。
         this.lastUpdateM1BarTime = 0;
         int barsCount = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
 
         if (barsCount <= 0) {
+            if (this.updatePerformed) {
+                this.lastUpdateMode = "準備中";
+            }
+
             return false;
         }
 
@@ -150,6 +194,9 @@ public:
                 || ArraySize(this.buffer4) != barsCount) {
             // タイマーが表示バッファの拡張より先に動いた場合は、準備後に全体を初期化する。
             this.bufferResetPending = true;
+            if (this.updatePerformed) {
+                this.lastUpdateMode = "準備中";
+            }
 
             return false;
         }
@@ -196,6 +243,12 @@ public:
     }
 
 private:
+    /** 直前のupdateで表示更新または取得を試行した場合true。 */
+    bool updatePerformed;
+
+    /** 直前のupdateで実行した処理の種類。 */
+    string lastUpdateMode;
+
     /** EMAの期間。 */
     int emaPeriod;
 
@@ -289,6 +342,8 @@ private:
         this.maxBars = 2000;
         this.startPlotIndex = 2;
         this.displayCount = 0;
+        this.updatePerformed = false;
+        this.lastUpdateMode = "未計測";
         this.lastUpdateM1BarTime = 0;
         this.bufferResetPending = true;
         this.lastBufferBarTime = 0;
@@ -482,6 +537,10 @@ private:
         this.clearBuffer(this.buffer2, clearCount);
         this.clearBuffer(this.buffer3, clearCount);
         this.clearBuffer(this.buffer4, clearCount);
+
+        if (this.updatePerformed && clearCount == fromBarsCount) {
+            this.lastUpdateMode = "全体更新";
+        }
 
         // 一部のEMA取得が失敗しても、次回はこの初期化時点からの移動範囲を消去する。
         this.lastBufferBarTime = fromBarTime;

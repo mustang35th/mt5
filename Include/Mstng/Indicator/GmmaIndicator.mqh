@@ -86,6 +86,8 @@ public:
     void deinit() {
         this.lasttimeGmma = 0;
         this.lastBarsCount = 0;
+        this.updatePerformed = false;
+        this.lastUpdateMode = "未計測";
 
         if (this.drawGmma != NULL) {
             this.drawGmma.clear();
@@ -95,15 +97,38 @@ public:
     }
 
     /**
+     * 直前の更新で、表示の更新または取得の試行を行ったか取得する。
+     *
+     * @return 同じ足で更新を省略した場合false
+     */
+    bool wasUpdatePerformed() {
+        return this.updatePerformed;
+    }
+
+    /**
+     * 直前の更新処理の種類を取得する。
+     *
+     * @return 計測表示用の更新種別
+     */
+    string getLastUpdateMode() {
+        return this.lastUpdateMode;
+    }
+
+    /**
      * 初回・履歴再計算時は全体、新しい足では必要範囲だけ更新する。
      *
      * @param fromPrevCalculated OnCalculateの前回計算済みバー数
      * @return 更新成否
      */
     bool update(int fromPrevCalculated = 0) {
+        this.updatePerformed = false;
+        this.lastUpdateMode = "待機";
         datetime currentBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0);
 
         if (currentBarTime <= 0) {
+            this.updatePerformed = true;
+            this.lastUpdateMode = "準備中";
+
             return false;
         }
 
@@ -112,6 +137,9 @@ public:
         if (barsCount <= 0
                 || ArraySize(this.buffer30) != barsCount
                 || ArraySize(this.buffer60) != barsCount) {
+            this.updatePerformed = true;
+            this.lastUpdateMode = "準備中";
+
             return false;
         }
 
@@ -139,9 +167,12 @@ public:
             }
         }
 
+        this.updatePerformed = true;
+        this.lastUpdateMode = "全体更新";
         int copyCount = barsCount;
 
         if (previousBars > 0) {
+            this.lastUpdateMode = "通常更新";
             // 新しい足に加え、確定足とトレンド比較用の前足を取得する。
             copyCount = MathMin(barsCount, newBars + 2);
         }
@@ -183,6 +214,12 @@ public:
     }
 
 private:
+    /** 直前のupdateで表示更新または取得を試行した場合true。 */
+    bool updatePerformed;
+
+    /** 直前のupdateで実行した処理の種類。 */
+    string lastUpdateMode;
+
     /** 30期間EMAハンドル。 */
     int ema30;
 
@@ -245,6 +282,8 @@ private:
         this.drawGmma = NULL;
         this.lasttimeGmma = 0;
         this.lastBarsCount = 0;
+        this.updatePerformed = false;
+        this.lastUpdateMode = "未計測";
     }
 
     /**

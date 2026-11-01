@@ -11,6 +11,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawProperties.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Indicator\ZigZagElliot\CurrencyStrengthPairRankController.mqh>
@@ -512,6 +513,15 @@ private:
             this.config
         );
 
+        // 時計下の集計表と交差する場合だけ、順位パネルを右端のまま表の下へ寄せる。
+        DrawProperties displayProperties;
+        this.currencyStrengthController.setReservedArea(
+            displayProperties.objXRight,
+            278,
+            displayProperties.objXRight + 320,
+            318
+        );
+
         return this.analysisController.initializeOutput();
     }
 
@@ -831,6 +841,12 @@ private:
         );
         ObjectsDeleteAll(
             0,
+            Constant::PREFIX_FIXED + "ZigZagElliotProcessingTime",
+            0,
+            -1
+        );
+        ObjectsDeleteAll(
+            0,
             Constant::PREFIX_FIXED + "TextMTF_3in3",
             0,
             -1
@@ -891,6 +907,22 @@ private:
     }
 
     /**
+     * 更新処理の所要時間と終了状態をチャートへ通知する。
+     * 通知後の統計・ラベル更新時間は計測に含めない。
+     *
+     * @param fromStartMicroseconds 更新開始時の経過マイクロ秒
+     * @param fromSucceeded 正常終了として集計する場合true
+     * @param fromState 更新内容または再試行状態
+     */
+    void recordUpdateProcessingTime(ulong fromStartMicroseconds, bool fromSucceeded, string fromState) {
+        ulong elapsedMicroseconds = GetMicrosecondCount() - fromStartMicroseconds;
+
+        if (this.chartController != NULL) {
+            this.chartController.recordProcessingTime(0, elapsedMicroseconds, fromSucceeded, fromState);
+        }
+    }
+
+    /**
      * 通貨強弱更新、Elliott分析、描画および新規バー処理を実行する。
      *
      * テスターでは表示足の処理済みバーをスキップする。データ準備または
@@ -899,16 +931,20 @@ private:
      * @param fromAnalysisDataReady 同じイベント内でデータ準備確認済みの場合true
      */
     void execute(bool fromAnalysisDataReady = false) {
+        ulong processingStartMicroseconds = GetMicrosecondCount();
         datetime analysisStartBarTime = iTime(
             this.marketContext.symbolName,
             this.marketContext.timeFrame,
             0
         );
 
-        if (analysisStartBarTime == 0
-                || (!this.timerMode
-                    && this.lastProcessedBarTime
-                        == analysisStartBarTime)) {
+        if (analysisStartBarTime == 0) {
+            this.recordUpdateProcessingTime(processingStartMicroseconds, false, "準備中");
+
+            return;
+        }
+
+        if (!this.timerMode && this.lastProcessedBarTime == analysisStartBarTime) {
             return;
         }
 
@@ -930,10 +966,14 @@ private:
 
         if (this.analysisController == NULL
                 || this.currencyStrengthController == NULL) {
+            this.recordUpdateProcessingTime(processingStartMicroseconds, false, "準備中");
+
             return;
         }
 
         if (!fromAnalysisDataReady && !this.isAnalysisDataReady()) {
+            this.recordUpdateProcessingTime(processingStartMicroseconds, false, "準備中");
+
             return;
         }
 
@@ -949,6 +989,8 @@ private:
             );
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
 
+            this.recordUpdateProcessingTime(processingStartMicroseconds, false, "再試行");
+
             return;
         }
 
@@ -962,6 +1004,8 @@ private:
         );
 
         if (analysisEndBarTime == 0) {
+            this.recordUpdateProcessingTime(processingStartMicroseconds, false, "再試行");
+
             return;
         }
 
@@ -999,6 +1043,7 @@ private:
         if (this.lastProcessedBarTime == currentBarTime) {
             this.updateDatabaseAlertDisplay(currentBarTime);
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+            this.recordUpdateProcessingTime(processingStartMicroseconds, true, "通常更新");
 
             return;
         }
@@ -1016,6 +1061,7 @@ private:
         this.lastProcessedBarTime = currentBarTime;
         this.updateDatabaseAlertDisplay(currentBarTime);
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+        this.recordUpdateProcessingTime(processingStartMicroseconds, true, "新しい足");
     }
 };
 

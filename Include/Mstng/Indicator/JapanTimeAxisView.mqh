@@ -130,7 +130,41 @@ public:
      * @param fromForce 履歴再読込などで同じ画面でも再判定する場合true。
      */
     void updateTimeAxis(const bool fromForce = false) {
+        this.lastUpdateMode = "通常更新";
+        if (fromForce) {
+            this.lastUpdateMode = "全体更新";
+        } else if (this.timeAxisUpdatePending) {
+            this.lastUpdateMode = "再試行";
+        }
+
         this.drawTimeLabels(fromForce);
+    }
+
+    /**
+     * 直前の時間軸更新が完了しているか取得する。
+     *
+     * @return 同じ画面の確認で更新を省略した場合もtrue
+     */
+    bool isTimeAxisUpdateSucceeded() {
+        return this.timeAxisViewReady && !this.timeAxisUpdatePending;
+    }
+
+    /**
+     * 直前の残り時間更新でデータ取得と描画が成功したか取得する。
+     *
+     * @return データが有効で、文字変更不要または描画成功の場合true
+     */
+    bool isRemainingTimeUpdateSucceeded() {
+        return this.remainingTimeUpdateSucceeded;
+    }
+
+    /**
+     * 直前の時間軸更新処理の種類を取得する。
+     *
+     * @return 計測表示用の更新種別
+     */
+    string getLastUpdateMode() {
+        return this.lastUpdateMode;
     }
 
     /**
@@ -146,6 +180,8 @@ public:
      * 現在足の残り時間を更新する。
      */
     void updateRemainingTime() {
+        this.remainingTimeUpdateSucceeded = false;
+        this.remainingTimeDataReady = false;
         this.updateRemainingTimeLabel();
     }
 
@@ -162,9 +198,21 @@ public:
         this.timeAxisViewReady = false;
         this.remainingLabelReady = false;
         this.remainingLabelText = "";
+        this.remainingTimeUpdateSucceeded = false;
+        this.remainingTimeDataReady = false;
+        this.lastUpdateMode = "未計測";
     }
 
 private:
+    /** 直前の残り時間更新で、データ取得と描画が成功した場合true。 */
+    bool remainingTimeUpdateSucceeded;
+
+    /** 今回の残り秒数計算に必要な時刻・期間を取得できた場合true。 */
+    bool remainingTimeDataReady;
+
+    /** 直前のupdateTimeAxisで実行した処理の種類。 */
+    string lastUpdateMode;
+
     /** 時刻と種別の順に保持する描画オブジェクト状態。 */
     JapanTimeAxisObjectState timeAxisObjects[];
 
@@ -327,6 +375,9 @@ private:
         this.remainingObjectName = objectPrefix + "Remaining";
         this.remainingLabelReady = false;
         this.remainingLabelText = "";
+        this.remainingTimeUpdateSucceeded = false;
+        this.remainingTimeDataReady = false;
+        this.lastUpdateMode = "未計測";
         this.fontFace = "Meiryo UI";
         this.timeLabelFontSize = 8;
         this.remainingFontSize = 9;
@@ -388,6 +439,8 @@ private:
                 && this.lastLatestBarTime == latestBarTime
                 && this.lastDrawPrice == drawPrice
                 && this.areTimeAxisObjectsReady(true)) {
+            this.lastUpdateMode = "確認のみ";
+
             return;
         }
 
@@ -948,12 +1001,15 @@ private:
 
         string labelText = this.formatRemainingTime(this.getRemainingSeconds());
         if (this.remainingLabelReady && this.remainingLabelText == labelText) {
+            this.remainingTimeUpdateSucceeded = this.remainingTimeDataReady;
+
             return;
         }
 
         if (ObjectSetString(this.chartId, this.remainingObjectName, OBJPROP_TEXT, labelText)) {
             this.remainingLabelText = labelText;
             this.remainingLabelReady = true;
+            this.remainingTimeUpdateSucceeded = this.remainingTimeDataReady;
         }
     }
 
@@ -1680,6 +1736,7 @@ private:
             currentTime = TimeCurrent();
         }
 
+        this.remainingTimeDataReady = currentTime > 0;
         int remainingSeconds = (int)(barTime + periodSeconds - currentTime);
 
         if (remainingSeconds < 0) {

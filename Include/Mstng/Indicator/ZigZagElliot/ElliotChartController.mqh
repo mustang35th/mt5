@@ -10,9 +10,12 @@
 #define MSTNG_INDICATOR_ZIGZAG_ELLIOT_CHART_CONTROLLER_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Common\ProcessingTimeStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\Draw.mqh>
 #include <Mstng\Draw\DrawElliotVerticalFit.mqh>
+#include <Mstng\Draw\DrawProcessingTime.mqh>
+#include <Mstng\Draw\DrawProperties.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Indicator\Ema200Indicator.mqh>
 #include <Mstng\Indicator\GmmaIndicator.mqh>
@@ -114,6 +117,9 @@ public:
         this.createElliotInfoModeButton();
         this.createElliotVerticalFitButton();
 
+        DrawProperties displayProperties;
+        this.processingTimeDraw.initialize(displayProperties.objXRight, displayProperties.elliotFontFace);
+
         return true;
     }
 
@@ -131,7 +137,18 @@ public:
         }
 
         if (this.gmmaIndicator != NULL) {
-            this.gmmaIndicator.update(fromPrevCalculated);
+            ulong startMicroseconds = GetMicrosecondCount();
+            bool isSucceeded = this.gmmaIndicator.update(fromPrevCalculated);
+            ulong elapsedMicroseconds = GetMicrosecondCount() - startMicroseconds;
+
+            if (this.gmmaIndicator.wasUpdatePerformed()) {
+                string updateMode = this.gmmaIndicator.getLastUpdateMode();
+                if (!isSucceeded && updateMode != "準備中") {
+                    updateMode = "再試行";
+                }
+
+                this.recordProcessingTime(2, elapsedMicroseconds, isSucceeded, updateMode);
+            }
         }
 
         this.updateEma200Indicator(fromTimerMode, fromPrevCalculated == 0);
@@ -151,8 +168,18 @@ public:
             bool forceTimeAxisUpdate = this.timeAxisFullUpdatePending
                 || currentTick - this.lastTimeAxisFullUpdateTick >= fullUpdateIntervalMilliseconds;
 
+            ulong startMicroseconds = GetMicrosecondCount();
             this.japanTimeAxisView.updateTimeAxis(forceTimeAxisUpdate);
             this.japanTimeAxisView.updateRemainingTime();
+            ulong elapsedMicroseconds = GetMicrosecondCount() - startMicroseconds;
+            bool isSucceeded = this.japanTimeAxisView.isTimeAxisUpdateSucceeded()
+                && this.japanTimeAxisView.isRemainingTimeUpdateSucceeded();
+            string updateMode = this.japanTimeAxisView.getLastUpdateMode();
+            if (!isSucceeded) {
+                updateMode = "再試行";
+            }
+
+            this.recordProcessingTime(3, elapsedMicroseconds, isSucceeded, updateMode);
 
             if (forceTimeAxisUpdate) {
                 // 取得・描画失敗後の再試行待ちはView側が保持する。
@@ -169,6 +196,23 @@ public:
      */
     void drawBidAsk() {
         this.draw.drawBidAsk(this.marketContext);
+    }
+
+    /**
+     * 処理時間を集計し、時計の下の対応行だけ更新する。
+     *
+     * @param fromIndex 更新処理・EMA200・GMMA・日本時間軸に対応する行番号
+     * @param fromElapsedMicroseconds 今回の処理時間。単位はマイクロ秒
+     * @param fromSucceeded 正常終了として集計する場合true
+     * @param fromState 更新内容または再試行状態
+     */
+    void recordProcessingTime(int fromIndex, ulong fromElapsedMicroseconds, bool fromSucceeded, string fromState) {
+        if (fromIndex < 0 || fromIndex >= 4) {
+            return;
+        }
+
+        this.processingTimes[fromIndex].record(fromElapsedMicroseconds, fromSucceeded, fromState);
+        this.processingTimeDraw.updateRow(fromIndex, this.processingTimes[fromIndex]);
     }
 
     /**
@@ -327,6 +371,12 @@ public:
      * 表示オブジェクト、補助表示および上下FITを解放する。
      */
     void destroy() {
+        this.processingTimeDraw.clear();
+
+        for (int i = 0; i < 4; i++) {
+            this.processingTimes[i].reset();
+        }
+
         if (this.gmmaIndicator != NULL) {
             this.gmmaIndicator.deinit();
             delete this.gmmaIndicator;
@@ -369,6 +419,12 @@ private:
 
     /** 全体描画。 */
     Draw draw;
+
+    /** 更新処理・EMA200・GMMA・日本時間軸の独立した処理時間集計。 */
+    ProcessingTimeStats processingTimes[4];
+
+    /** 時計の下の処理時間表示。 */
+    DrawProcessingTime processingTimeDraw;
 
     /** GMMA表示。 */
     GmmaIndicator *gmmaIndicator;
@@ -803,7 +859,18 @@ private:
      */
     void updateEma200Indicator(bool fromTimerMode, bool fromResetBuffers = false) {
         if (this.ema200Indicator != NULL) {
-            this.ema200Indicator.update(fromTimerMode, fromResetBuffers);
+            ulong startMicroseconds = GetMicrosecondCount();
+            bool isSucceeded = this.ema200Indicator.update(fromTimerMode, fromResetBuffers);
+            ulong elapsedMicroseconds = GetMicrosecondCount() - startMicroseconds;
+
+            if (this.ema200Indicator.wasUpdatePerformed()) {
+                string updateMode = this.ema200Indicator.getLastUpdateMode();
+                if (!isSucceeded && updateMode != "準備中") {
+                    updateMode = "再試行";
+                }
+
+                this.recordProcessingTime(1, elapsedMicroseconds, isSucceeded, updateMode);
+            }
         }
     }
 };

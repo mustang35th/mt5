@@ -65,6 +65,11 @@ public:
         this.lastDisplayError = false;
         this.corner = CORNER_RIGHT_UPPER;
         this.xDistance = fromXDistance;
+        this.reservedAreaEnabled = false;
+        this.reservedLeft = 0;
+        this.reservedTop = 0;
+        this.reservedRight = 0;
+        this.reservedBottom = 0;
         this.yDistance = 0;
         this.panelWidth = 244;
         this.panelHeight = 246;
@@ -300,7 +305,25 @@ public:
     }
 
     /**
-     * 現在のチャート高さに合わせてパネルを右中央へ再配置する。
+     * 他の表示用に予約した領域を設定し、重なる場合は右端位置を保って下へ移す。
+     * 幅または高さが正でない領域を指定すると予約を解除する。
+     *
+     * @param fromLeft チャート左端からの予約領域左辺
+     * @param fromTop チャート上端からの予約領域上辺
+     * @param fromRight チャート左端からの予約領域右辺
+     * @param fromBottom チャート上端からの予約領域下辺
+     */
+    void setReservedArea(int fromLeft, int fromTop, int fromRight, int fromBottom) {
+        this.reservedLeft = fromLeft;
+        this.reservedTop = fromTop;
+        this.reservedRight = fromRight;
+        this.reservedBottom = fromBottom;
+        this.reservedAreaEnabled = fromRight > fromLeft && fromBottom > fromTop;
+        this.reposition();
+    }
+
+    /**
+     * チャートサイズと予約領域に合わせてパネルを再配置する。
      */
     void reposition() {
         this.calculateYDistance();
@@ -380,6 +403,21 @@ private:
 
     /** チャート右端からの距離。 */
     int xDistance;
+
+    /** 他の表示用に予約した領域が有効な場合true。 */
+    bool reservedAreaEnabled;
+
+    /** チャート左端からの予約領域左辺。 */
+    int reservedLeft;
+
+    /** チャート上端からの予約領域上辺。 */
+    int reservedTop;
+
+    /** チャート左端からの予約領域右辺。 */
+    int reservedRight;
+
+    /** チャート上端からの予約領域下辺。 */
+    int reservedBottom;
 
     /** チャート上端からの距離。 */
     int yDistance;
@@ -1154,7 +1192,8 @@ private:
     }
 
     /**
-     * チャート高さから右中央より少し下のY位置を計算する。
+     * 右中央より少し下の位置を求め、予約領域と重なる場合だけ下へ移す。
+     * 下部操作ボタンの上にパネル全体が収まらない場合は、元のY位置を維持する。
      */
     void calculateYDistance() {
         int chartHeight = (int)ChartGetInteger(
@@ -1168,6 +1207,32 @@ private:
 
         if (this.yDistance < 0) {
             this.yDistance = 0;
+        }
+
+        if (!this.reservedAreaEnabled
+                || this.reservedTop >= chartHeight
+                || this.reservedBottom <= 0
+                || this.yDistance >= this.reservedBottom
+                || this.yDistance + this.panelHeight <= this.reservedTop) {
+            return;
+        }
+
+        int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS, 0);
+        if (chartWidth <= 0 || this.reservedLeft >= chartWidth || this.reservedRight <= 0) {
+            return;
+        }
+
+        int panelLeft = chartWidth - this.xDistance - this.panelWidth;
+        int panelRight = chartWidth - this.xDistance;
+        if (panelLeft >= this.reservedRight || panelRight <= this.reservedLeft) {
+            return;
+        }
+
+        int nextYDistance = this.reservedBottom + 8;
+        // 最も上にある下部操作ボタンまでの75pxを確保する。
+        int bottomControlHeight = 75;
+        if (nextYDistance + this.panelHeight <= chartHeight - bottomControlHeight) {
+            this.yDistance = nextYDistance;
         }
     }
 

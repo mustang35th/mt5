@@ -157,6 +157,20 @@ public:
     }
 
     /**
+     * 他の表示用の予約領域を、作成済み順位パネルへ渡す。
+     *
+     * @param fromLeft チャート左端からの予約領域左辺
+     * @param fromTop チャート上端からの予約領域上辺
+     * @param fromRight チャート左端からの予約領域右辺
+     * @param fromBottom チャート上端からの予約領域下辺
+     */
+    void setReservedArea(int fromLeft, int fromTop, int fromRight, int fromBottom) {
+        if (this.pairRankDraw != NULL) {
+            this.pairRankDraw.setReservedArea(fromLeft, fromTop, fromRight, fromBottom);
+        }
+    }
+
+    /**
      * 通常描画後に順位パネルを最前面へ再生成する。
      */
     void redrawOnTop() {
