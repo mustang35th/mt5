@@ -371,6 +371,8 @@ public:
      * 表示オブジェクト、補助表示および上下FITを解放する。
      */
     void destroy() {
+        this.draw.clearInfoLabels();
+        this.draw.clearRoundLines();
         this.processingTimeDraw.clear();
 
         for (int i = 0; i < 4; i++) {

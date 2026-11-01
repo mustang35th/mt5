@@ -817,6 +817,18 @@ private:
         ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
         ObjectsDeleteAll(
             0,
+            Constant::PREFIX_FIXED + "ZigZagElliotRound",
+            0,
+            -1
+        );
+        ObjectsDeleteAll(
+            0,
+            Constant::PREFIX_FIXED + "ZigZagElliotInfo",
+            0,
+            -1
+        );
+        ObjectsDeleteAll(
+            0,
             Constant::PREFIX_FIXED + "ArrowMTF_3in3",
             0,
             -1

@@ -26,6 +26,7 @@
  * Elliotの解析結果に基づき、ZigZag、Elliottラベル、補助線、
  * レート情報、背景色などをまとめて描画する。
  * 再描画時はPREFIXに紐づく既存オブジェクトを削除してから描画する。
+ * 時計・銘柄名・当日高安の情報ラベルは専用の固定接頭辞で再利用する。
  */
 class Draw {
 public:
@@ -36,17 +37,31 @@ public:
      */
     Draw() {
         this.logger.setLevel(LOG_INFO);
+        this.roundLinesDraw = NULL;
 
         for (int i = 0; i < 3; i++) {
             this.bidAskLabelReady[i] = false;
             this.bidAskLabelTexts[i] = "";
         }
+
+        for (int i = 0; i < 8; i++) {
+            this.infoLabelReady[i] = false;
+            this.infoLabelTexts[i] = "";
+        }
+
+        this.diffJpyLabelCleared = false;
     }
     
     /**
      * デストラクタ。
      */
     ~Draw() {
+        this.clearInfoLabels();
+        this.clearRoundLines();
+        if (this.roundLinesDraw != NULL) {
+            delete this.roundLinesDraw;
+            this.roundLinesDraw = NULL;
+        }
     }
     
     /**
@@ -75,9 +90,17 @@ public:
         ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
         
         if (this.elliotAll.marketContext.timeFrame <= PERIOD_H1) {
-            DrawRoundLines drawRoundLines(this.elliotAll.marketContext);
+            if (this.roundLinesDraw == NULL) {
+                this.roundLinesDraw = new DrawRoundLines(this.elliotAll.marketContext);
+            } else {
+                this.roundLinesDraw.setMarketContext(this.elliotAll.marketContext);
+            }
 
-            drawRoundLines.draw();
+            if (this.roundLinesDraw != NULL) {
+                this.roundLinesDraw.draw();
+            }
+        } else {
+            this.clearRoundLines();
         }
         
         
@@ -212,17 +235,17 @@ public:
         
         string text = StringFormat("%s", TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.jstTime) + " JST");
                 
-        DrawUtil::setLabel(objectName + "JST", drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 210);
+        this.updateInfoLabel(0, objectName + "JST", fontColor, fontSize, text, drawProperties.objXRight, 210);
         
         text = StringFormat("%s", TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.serverTime));
                 
-        DrawUtil::setLabel(objectName + "GMT", drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 230);
+        this.updateInfoLabel(1, objectName + "GMT", fontColor, fontSize, text, drawProperties.objXRight, 230);
         
         
         objectName = "execTime";
         text = StringFormat("[%dms]<%ds>", this.elliotAll.execTime, this.elliotAll.timerSeconds);
                 
-        DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 250);
+        this.updateInfoLabel(2, objectName, fontColor, fontSize, text, drawProperties.objXRight, 250);
     }
     
     /**
@@ -240,42 +263,87 @@ public:
         );
         int fontSize = 30;
         
-        DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 0);
+        this.updateInfoLabel(3, objectName, fontColor, fontSize, text, drawProperties.objXRight, 0);
         
         
         objectName = "High";
         text = StringFormat("H:%s", todayRate.highLabel);
         fontSize = 20;
         
-        DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 50);
+        this.updateInfoLabel(4, objectName, fontColor, fontSize, text, drawProperties.objXRight, 50);
         
         
         objectName = "Low";
         text = StringFormat("L:%s", todayRate.lowLabel);
         
-        DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight, 80);
+        this.updateInfoLabel(5, objectName, fontColor, fontSize, text, drawProperties.objXRight, 80);
         
         
         objectName = "Diff";
         text = StringFormat("D:%s", todayRate.diffLabel);
         
-        DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawProperties.objXRight + 140, 65);
+        this.updateInfoLabel(6, objectName, fontColor, fontSize, text, drawProperties.objXRight + 140, 65);
         
         if (todayRate.diffJpy > 0) {
+            this.diffJpyLabelCleared = false;
             objectName = "DiffJpy";
             text = StringFormat("D Jpy:%s", todayRate.diffJpyLabel);
             
-            DrawUtil::setLabel(objectName, drawProperties.elliotFontFace, fontColor, fontSize - 5, text, drawProperties.objXRight + 142, 95);
+            this.updateInfoLabel(7, objectName, fontColor, fontSize - 5, text, drawProperties.objXRight + 142, 95);
+        } else if (!this.diffJpyLabelCleared) {
+            this.infoLabelReady[7] = false;
+            this.infoLabelTexts[7] = "";
+            objectName = this.getInfoLabelObjectName("DiffJpy");
+            this.diffJpyLabelCleared = ObjectFind(0, objectName) < 0;
+            if (!this.diffJpyLabelCleared) {
+                this.diffJpyLabelCleared = ObjectDelete(0, objectName);
+            }
         }
-        
     }
-    
+
+    /**
+     * 時計・銘柄名・当日高安の情報ラベルと反映履歴を初期化する。
+     * 再初期化時と終了時に、専用の固定接頭辞のオブジェクトだけを削除する。
+     */
+    void clearInfoLabels() {
+        ObjectsDeleteAll(0, Constant::PREFIX_FIXED + "ZigZagElliotInfo", 0, -1);
+
+        for (int i = 0; i < 8; i++) {
+            this.infoLabelReady[i] = false;
+            this.infoLabelTexts[i] = "";
+        }
+
+        this.diffJpyLabelCleared = false;
+    }
+
+    /**
+     * 保持するラウンドナンバー線と描画インスタンスを解放する。
+     * 削除に失敗した場合は、次回に再試行できるようインスタンスを保持する。
+     *
+     * @return 削除済み、または解放に成功した場合true。
+     */
+    bool clearRoundLines() {
+        if (this.roundLinesDraw != NULL) {
+            if (!this.roundLinesDraw.clear()) {
+                return false;
+            }
+
+            delete this.roundLinesDraw;
+            this.roundLinesDraw = NULL;
+        }
+
+        return true;
+    }
+
 private:
     /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
     
     /** 表示設定。 */
     DrawProperties drawProperties;
+
+    /** 同じ価格区間のラウンドナンバー線を保持する描画インスタンス。 */
+    DrawRoundLines *roundLinesDraw;
 
     /** 描画対象のElliot全体データ。 */
     ElliotAll *elliotAll;
@@ -285,6 +353,77 @@ private:
 
     /** Ask・Bid・Spreadラベルへ最後に反映した文字。 */
     string bidAskLabelTexts[3];
+
+    /** 時計3個と当日レート5個の固定設定・文字反映が成功した場合true。 */
+    bool infoLabelReady[8];
+
+    /** 情報ラベルへ最後に反映した文字。 */
+    string infoLabelTexts[8];
+
+    /** 非表示の円換算値幅ラベルが存在しない、または削除要求が成功した場合true。 */
+    bool diffJpyLabelCleared;
+
+    /**
+     * 全体描画の削除対象から除外する情報ラベル名を返す。
+     *
+     * @param fromObjectName 接頭辞を除いたラベル名
+     * @return 専用の固定接頭辞を付けたオブジェクト名
+     */
+    string getInfoLabelObjectName(string fromObjectName) {
+        return Constant::PREFIX_FIXED + "ZigZagElliotInfo" + fromObjectName;
+    }
+
+    /**
+     * 情報ラベルを再利用し、表示文字が変わった場合だけ更新する。
+     * 各ラベルの色・フォント・サイズ・座標は固定し、初回と再試行時だけ反映する。
+     * 手動削除時は再作成し、設定に失敗した場合は次回に全属性を再試行する。
+     *
+     * @param fromIndex 時計3個・当日レート5個に対応するキャッシュ番号
+     * @param fromObjectName 接頭辞を除いたラベル名
+     * @param fromColor 文字色
+     * @param fromFontSize 文字サイズ
+     * @param fromText 表示文字
+     * @param fromX X座標
+     * @param fromY Y座標
+     */
+    void updateInfoLabel(
+        int fromIndex,
+        string fromObjectName,
+        color fromColor,
+        int fromFontSize,
+        string fromText,
+        int fromX,
+        int fromY
+    ) {
+        string objectName = this.getInfoLabelObjectName(fromObjectName);
+        if (ObjectFind(0, objectName) < 0) {
+            this.infoLabelReady[fromIndex] = false;
+            if (!ObjectCreate(0, objectName, OBJ_LABEL, 0, 0, 0)) {
+                return;
+            }
+        }
+
+        bool initializeProperties = !this.infoLabelReady[fromIndex];
+        this.infoLabelReady[fromIndex] = false;
+        if (initializeProperties) {
+            if (!ObjectSetInteger(0, objectName, OBJPROP_COLOR, fromColor)
+                    || !ObjectSetString(0, objectName, OBJPROP_FONT, this.drawProperties.elliotFontFace)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, fromFontSize)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, fromX)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, fromY)) {
+                return;
+            }
+        }
+
+        if (initializeProperties || this.infoLabelTexts[fromIndex] != fromText) {
+            if (!ObjectSetString(0, objectName, OBJPROP_TEXT, fromText)) {
+                return;
+            }
+        }
+
+        this.infoLabelTexts[fromIndex] = fromText;
+        this.infoLabelReady[fromIndex] = true;
+    }
 
     /**
      * レートラベルを再利用し、表示文字が変わった場合だけ更新する。

@@ -163,7 +163,12 @@ public:
     bool getCrossCount(MarketContext &fromMarketContext, int start, int &count) {
         this.initializeMarketContext(fromMarketContext);
 
-        uint startCount = GetTickCount();
+        bool debugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startCount = 0;
+        if (debugOutputEnabled) {
+            startCount = GetTickCount();
+        }
+
         count = 0;
         int len = ZigZagElliotAnalysisProfile::getStochasticLookback();
 
@@ -222,7 +227,9 @@ public:
 
         if (!isPlus0) count = 0 - count;
 
-        this.logger.debug(__FUNCTION__, StringFormat("count=%s elapsed=%d ms", StringUtil::addSign(count), GetTickCount() - startCount));
+        if (debugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("count=%s elapsed=%d ms", StringUtil::addSign(count), GetTickCount() - startCount));
+        }
 
         return true;
     }
@@ -328,16 +335,18 @@ private:
 
         value = buffer[0];
 
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "symbol=%s period=%d shift=%d main=%.5f",
-                fromMarketContext.symbolName,
-                fromMarketContext.timeFrame,
-                shift,
-                value
-            )
-        );
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "symbol=%s period=%d shift=%d main=%.5f",
+                    fromMarketContext.symbolName,
+                    fromMarketContext.timeFrame,
+                    shift,
+                    value
+                )
+            );
+        }
 
         return true;
     }
@@ -374,16 +383,18 @@ private:
 
         value = buffer[0];
 
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "symbol=%s period=%d shift=%d signal=%.5f",
-                fromMarketContext.symbolName,
-                fromMarketContext.timeFrame,
-                shift,
-                value
-            )
-        );
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "symbol=%s period=%d shift=%d signal=%.5f",
+                    fromMarketContext.symbolName,
+                    fromMarketContext.timeFrame,
+                    shift,
+                    value
+                )
+            );
+        }
 
         return true;
     }
@@ -421,7 +432,9 @@ private:
 
         this.handle = pooledHandle;
 
-        this.logger.debug(__FUNCTION__, StringFormat("initialized from pool. symbol=%s period=%d handle=%d", fromMarketContext.symbolName, (int)fromMarketContext.timeFrame, this.handle));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("initialized from pool. symbol=%s period=%d handle=%d", fromMarketContext.symbolName, (int)fromMarketContext.timeFrame, this.handle));
+        }
 
         return true;
     }
@@ -434,14 +447,24 @@ private:
      * @return main - signal >= 0 の場合 true。
      */
     bool isPlus(double main, double signal) {
-        this.logger.debug(__FUNCTION__, StringFormat("main=%.5f signal=%.5f", main, signal));
+        bool debugOutputEnabled = this.logger.isDebugOutputEnabled();
+        if (debugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("main=%.5f signal=%.5f", main, signal));
+        }
 
         bool plus = ZigZagElliotAnalysisProfile::isStochasticBuyDirection(
             main,
             signal
         );
 
-        this.logger.debug(__FUNCTION__, StringFormat("plus=%s", plus ? "true" : "false"));
+        if (debugOutputEnabled) {
+            string plusText = "false";
+            if (plus) {
+                plusText = "true";
+            }
+
+            this.logger.debug(__FUNCTION__, StringFormat("plus=%s", plusText));
+        }
 
         return plus;
     }

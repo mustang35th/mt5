@@ -7,11 +7,12 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Common\MarketContext.mqh>
-#include <Mstng\Draw\DrawUtil.mqh>
+#include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Util\RateUtil.mqh>
 
 /**
  * 現在価格を基準に50pips間隔および100pips間隔の水平線を描画するクラス。
+ * 同じ価格区間の線を保持し、全体描画では消去しない。
  */
 class DrawRoundLines {
 public:
@@ -35,6 +36,13 @@ public:
     }
 
     /**
+     * 保持するラウンドナンバー線を解放する。
+     */
+    ~DrawRoundLines() {
+        this.clear();
+    }
+
+    /**
      * 描画対象の市場コンテキストを設定する。
      *
      * @param fromMarketContext 描画対象の市場コンテキスト
@@ -45,18 +53,67 @@ public:
 
     /**
      * 現在価格の上下へラウンドナンバーラインを描画する。
+     * 同じ区間・銘柄・桁数・ポイント値では、削除された線だけを復元する。
      */
     void draw() {
         double basePrice = this.getBasePrice();
+        double point = this.marketContext.getPoint();
         double stepPrice50Pips = RateUtil::pipsToPrice(STEP_50_PIPS, this.marketContext);
+        if (!MathIsValidNumber(basePrice) || basePrice <= 0
+                || !MathIsValidNumber(point) || point <= 0
+                || !MathIsValidNumber(stepPrice50Pips) || stepPrice50Pips <= 0) {
+            this.clear();
+
+            return;
+        }
+
         double anchorPrice = this.getAnchorPrice(basePrice, stepPrice50Pips);
-        
+        bool rebuild = !this.linesReady
+            || this.lastAnchorPrice != anchorPrice
+            || this.lastSymbolName != this.marketContext.symbolName
+            || this.lastDigits != this.getDigits()
+            || this.lastPoint != point;
+        if (rebuild && !this.clear()) {
+            return;
+        }
+
+        bool succeeded = true;
         for (int i = -this.linesEachSide; i <= this.linesEachSide; i++) {
+            int lineIndex = i + this.linesEachSide;
+            if (!rebuild && ObjectFind(this.chartId, this.lineObjectNames[lineIndex]) == 0) {
+                continue;
+            }
+
             double linePrice = NormalizeDouble(anchorPrice + (stepPrice50Pips * i), this.getDigits());
             bool is100PipsLine = this.is100PipsLine(linePrice);
-            
-            this.drawHorizontalLine(linePrice, is100PipsLine);
+            this.lineObjectNames[lineIndex] = this.createObjectName(linePrice, is100PipsLine);
+            if (!this.drawHorizontalLine(linePrice, is100PipsLine, this.lineObjectNames[lineIndex])) {
+                succeeded = false;
+            }
         }
+
+        // 属性設定に失敗した線が存在していても、次回は全体を再試行する。
+        this.linesReady = succeeded;
+        if (succeeded) {
+            this.lastAnchorPrice = anchorPrice;
+            this.lastSymbolName = this.marketContext.symbolName;
+            this.lastDigits = this.getDigits();
+            this.lastPoint = point;
+        }
+    }
+
+    /**
+     * 所有する線を削除し、価格区間の保持状態を無効にする。
+     *
+     * @return 削除処理に成功した場合true。
+     */
+    bool clear() {
+        this.linesReady = false;
+        ResetLastError();
+        int deletedCount = ObjectsDeleteAll(this.chartId,
+            Constant::PREFIX_FIXED + "ZigZagElliotRound", 0, -1);
+
+        return deletedCount >= 0 && GetLastError() == ERR_SUCCESS;
     }
 
 private:
@@ -87,6 +144,24 @@ private:
     /** 描画対象のチャートID。 */
     long chartId;
 
+    /** 11本すべての作成・設定に成功し、価格区間を再利用できる場合true。 */
+    bool linesReady;
+
+    /** 前回の線の基準価格。 */
+    double lastAnchorPrice;
+
+    /** 前回の描画対象銘柄。 */
+    string lastSymbolName;
+
+    /** 前回の小数桁数。 */
+    int lastDigits;
+
+    /** 前回の1ポイントの価格。 */
+    double lastPoint;
+
+    /** 価格の低い順に保持する11本のオブジェクト名。 */
+    string lineObjectNames[11];
+
     /**
      * 描画設定を初期化する。
      *
@@ -109,6 +184,11 @@ private:
         this.linesEachSide = 5;
         this.useBidPrice = true;
         this.chartId = 0;
+        this.linesReady = false;
+        this.lastAnchorPrice = 0;
+        this.lastSymbolName = "";
+        this.lastDigits = -1;
+        this.lastPoint = 0;
     }
 
     /**
@@ -167,18 +247,27 @@ private:
     /**
      * 指定価格へ水平線を描画する。
      *
-     * @param price 描画価格
-     * @param is100PipsLine 100pipsラインの場合true
+     * @param fromPrice 描画価格
+     * @param fromIs100PipsLine 100pipsラインの場合true
+     * @param fromObjectName 専用接頭辞を付けたオブジェクト名
+     * @return 作成と固定属性の設定に成功した場合true
      */
-    void drawHorizontalLine(double price, bool is100PipsLine) {
-        DrawUtil::setHLine(
-            createObjectName(price, is100PipsLine),
-            price,
-            is100PipsLine ? color100Pips : color50Pips,
-            is100PipsLine ? STYLE_SOLID : STYLE_DOT,
-            LINE_WIDTH,
-            (int)chartId
-        );
+    bool drawHorizontalLine(double fromPrice, bool fromIs100PipsLine, string fromObjectName) {
+        color lineColor = this.color50Pips;
+        ENUM_LINE_STYLE lineStyle = STYLE_DOT;
+        if (fromIs100PipsLine) {
+            lineColor = this.color100Pips;
+            lineStyle = STYLE_SOLID;
+        }
+
+        if (!ObjectCreate(this.chartId, fromObjectName, OBJ_HLINE, 0, 0, fromPrice)) {
+            return false;
+        }
+
+        return ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_COLOR, lineColor)
+            && ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STYLE, lineStyle)
+            && ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_WIDTH, LINE_WIDTH)
+            && ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_BACK, false);
     }
 
     /**
@@ -189,9 +278,13 @@ private:
      * @return オブジェクト名
      */
     string createObjectName(double price, bool is100PipsLine) {
-        string prefix = is100PipsLine ? "ROUND_100_" : "ROUND_050_";
+        string prefix = "ROUND_050_";
+        if (is100PipsLine) {
+            prefix = "ROUND_100_";
+        }
 
-        return prefix + IntegerToString((int)MathRound(price / this.marketContext.getPoint()));
+        return Constant::PREFIX_FIXED + "ZigZagElliotRound"
+            + prefix + IntegerToString((int)MathRound(price / this.marketContext.getPoint()));
     }
 };
 
