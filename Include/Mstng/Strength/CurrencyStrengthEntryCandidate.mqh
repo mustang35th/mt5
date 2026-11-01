@@ -101,12 +101,66 @@ struct CurrencyStrengthEntryCandidate {
     }
 
     /**
-     * 両期間の順位差がREADY基準を満たすか判定する。
+     * 長中期の強い通貨が1位、または弱い通貨が8位か判定する。
      *
-     * @return 小さいほうの順位差が4以上の場合true。
+     * @return 候補方向と一致する端順位の場合true。同順位と無効順位は除く。
+     */
+    bool isLongMediumExtremeRankMatched() {
+        if (this.baseLongMediumRank < 1 || this.baseLongMediumRank > 8
+                || this.quoteLongMediumRank < 1 || this.quoteLongMediumRank > 8) {
+            return false;
+        }
+
+        if (this.isBuy) {
+            return this.baseLongMediumRank < this.quoteLongMediumRank
+                && (this.baseLongMediumRank == 1 || this.quoteLongMediumRank == 8);
+        }
+
+        return this.baseLongMediumRank > this.quoteLongMediumRank
+            && (this.baseLongMediumRank == 8 || this.quoteLongMediumRank == 1);
+    }
+
+    /**
+     * 長中期が候補方向と一致し、順位差または端順位の条件を満たすか判定する。
+     *
+     * @param fromMinimumRankDifference 順位差の基準。1から7を指定する。
+     * @return 順位差の基準または方向に合う1位・8位を満たす場合true。
+     */
+    bool isLongMediumRankConditionMatched(const int fromMinimumRankDifference) {
+        if (fromMinimumRankDifference < 1 || fromMinimumRankDifference > 7
+                || this.baseLongMediumRank < 1 || this.baseLongMediumRank > 8
+                || this.quoteLongMediumRank < 1 || this.quoteLongMediumRank > 8) {
+            return false;
+        }
+
+        int rankDifference = this.quoteLongMediumRank - this.baseLongMediumRank;
+        if (this.isBuy) {
+            return rankDifference >= fromMinimumRankDifference
+                || this.isLongMediumExtremeRankMatched();
+        }
+
+        return rankDifference <= 0 - fromMinimumRankDifference
+            || this.isLongMediumExtremeRankMatched();
+    }
+
+    /**
+     * 両期間が候補方向と一致し、READY基準を満たすか判定する。
+     *
+     * @return 長中期は順位差4以上または端順位、中短期は順位差4以上の場合true。
      */
     bool isReady() {
-        return this.minimumRankDifference >= 4;
+        if (!this.isLongMediumRankConditionMatched(4)
+                || this.baseMediumShortRank < 1 || this.baseMediumShortRank > 8
+                || this.quoteMediumShortRank < 1 || this.quoteMediumShortRank > 8) {
+            return false;
+        }
+
+        int rankDifference = this.quoteMediumShortRank - this.baseMediumShortRank;
+        if (this.isBuy) {
+            return rankDifference >= 4;
+        }
+
+        return rankDifference <= -4;
     }
 
     /**

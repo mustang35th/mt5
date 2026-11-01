@@ -39,7 +39,7 @@ public:
      * 全28通貨ペアから方向一致候補を構築する。
      *
      * @param fromCalculator 通貨強弱集計結果。
-     * @param fromMinimumRankDifference 候補とする両期間の最小順位差。
+     * @param fromMinimumRankDifference 候補とする最小順位差。長中期は端順位でも通過する。
      * @return 構築処理に成功した場合true。
      */
     bool build(
@@ -317,8 +317,7 @@ private:
             mediumShortDifference
         );
 
-        if (absoluteLongMediumDifference < this.minimumRankDifference
-                || absoluteMediumShortDifference < this.minimumRankDifference) {
+        if (absoluteMediumShortDifference < this.minimumRankDifference) {
             return true;
         }
 
@@ -332,6 +331,11 @@ private:
         candidate.quoteMediumShortRank = quoteMediumShortRank;
         candidate.longMediumRankDifference = longMediumDifference;
         candidate.mediumShortRankDifference = mediumShortDifference;
+
+        if (!candidate.isLongMediumRankConditionMatched(this.minimumRankDifference)) {
+            return true;
+        }
+
         candidate.minimumRankDifference = absoluteLongMediumDifference;
 
         if (absoluteMediumShortDifference < candidate.minimumRankDifference) {
@@ -353,7 +357,7 @@ private:
     }
 
     /**
-     * 候補一覧を優先度順に並び替える。
+     * READYをWATCHより優先し、同じ状態では従来の順位差順に並び替える。
      */
     void sort() {
         int candidateCount = ArraySize(this.candidates);
@@ -386,6 +390,12 @@ private:
         CurrencyStrengthEntryCandidate &fromCurrentCandidate,
         CurrencyStrengthEntryCandidate &fromPreviousCandidate
     ) {
+        bool currentReady = fromCurrentCandidate.isReady();
+        bool previousReady = fromPreviousCandidate.isReady();
+        if (currentReady != previousReady) {
+            return currentReady;
+        }
+
         if (fromCurrentCandidate.minimumRankDifference
                 != fromPreviousCandidate.minimumRankDifference) {
             return fromCurrentCandidate.minimumRankDifference

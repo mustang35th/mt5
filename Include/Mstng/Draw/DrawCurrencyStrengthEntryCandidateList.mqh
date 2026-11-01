@@ -649,7 +649,7 @@ private:
             footerYDistance,
             this.bodyFontSize,
             this.mutedColor,
-            "READY：両期間の順位差の大きさが4以上 ／ WATCH：4未満の期間あり"
+            "READY：方向一致＋長中期(差4以上or端)＋中短期差4以上 ／ WATCH：未達"
         ) || !this.createLabel(
             this.objectPrefix + "ReadyHint",
             14,
@@ -814,7 +814,7 @@ private:
 
         if (fromCandidateList.isRankingReady()) {
             summaryText = StringFormat(
-                "必要順位差：%d以上 ｜ 候補：%d件 ｜ AND成立：%d件 ｜ 表示：%d件",
+                "候補差：%d以上（長中期は端も可）｜ 候補%d・AND%d・表示%d",
                 fromCandidateList.getMinimumRankDifference(),
                 fromCandidateList.size(),
                 fromAndCount,
@@ -899,16 +899,20 @@ private:
             directionColor
         );
         this.setCell(fromRowIndex, 2, sideText, directionColor);
-        this.setCell(
-            fromRowIndex,
-            3,
-            this.formatRanks(
-                fromCandidate.baseLongMediumRank,
-                fromCandidate.quoteLongMediumRank,
-                fromCandidate.longMediumRankDifference
-            ),
-            this.normalColor
+
+        string longMediumText = this.formatRanks(
+            fromCandidate.baseLongMediumRank,
+            fromCandidate.quoteLongMediumRank,
+            fromCandidate.longMediumRankDifference
         );
+        if (MathAbs(fromCandidate.longMediumRankDifference) < 4
+                && fromCandidate.isLongMediumExtremeRankMatched()) {
+            longMediumText += "端";
+        }
+
+        this.setCell(fromRowIndex, 3, longMediumText, this.normalColor);
+        ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, 3),
+            OBJPROP_TOOLTIP, this.getLongMediumTooltip(fromCandidate));
         this.setCell(
             fromRowIndex,
             4,
@@ -1076,6 +1080,57 @@ private:
         }
 
         return IntegerToString(fromDifference);
+    }
+
+    /**
+     * 長中期の順位条件と、候補方向に合う端順位の成立理由をまとめる。
+     *
+     * @param fromCandidate 表示対象候補。
+     * @return 順位差と端順位の判定理由を含む説明。
+     */
+    string getLongMediumTooltip(CurrencyStrengthEntryCandidate &fromCandidate) {
+        string conditionText = "長中期：差4・端順位条件は未達";
+        if (fromCandidate.isLongMediumRankConditionMatched(4)) {
+            conditionText = "長中期：順位差4以上で成立";
+            if (MathAbs(fromCandidate.longMediumRankDifference) < 4) {
+                conditionText = "長中期：端順位で成立（差4未満）";
+            }
+        }
+
+        string sideText = "BUY";
+        string baseCurrency = StringSubstr(fromCandidate.symbolName, 0, 3);
+        string quoteCurrency = StringSubstr(fromCandidate.symbolName, 3, 3);
+        string strongCurrency = baseCurrency;
+        string weakCurrency = quoteCurrency;
+        int strongRank = fromCandidate.baseLongMediumRank;
+        int weakRank = fromCandidate.quoteLongMediumRank;
+        if (!fromCandidate.isBuy) {
+            sideText = "SELL";
+            strongCurrency = quoteCurrency;
+            weakCurrency = baseCurrency;
+            strongRank = fromCandidate.quoteLongMediumRank;
+            weakRank = fromCandidate.baseLongMediumRank;
+        }
+
+        string tooltip = conditionText + " / " + sideText
+            + StringFormat("\n%s %d位 / %s %d位（差%s）",
+                baseCurrency, fromCandidate.baseLongMediumRank,
+                quoteCurrency, fromCandidate.quoteLongMediumRank,
+                this.formatDifference(fromCandidate.longMediumRankDifference));
+        if (MathAbs(fromCandidate.longMediumRankDifference) < 4
+                && fromCandidate.isLongMediumExtremeRankMatched()) {
+            if (strongRank == 1) {
+                tooltip += "\n強い通貨（買う" + strongCurrency + "）が1位";
+            }
+            if (weakRank == 8) {
+                tooltip += "\n弱い通貨（売る" + weakCurrency + "）が8位";
+            }
+        }
+
+        tooltip += "\n端＝強い通貨1位または弱い通貨8位"
+            + "\nREADYには中短期差4以上も必要";
+
+        return tooltip;
     }
 
     /**
