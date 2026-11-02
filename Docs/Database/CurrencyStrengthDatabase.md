@@ -8,7 +8,7 @@
 | DBMS | MetaTrader 5組み込みSQLite |
 | LIVE集計ルール | `pair-direction-closed-v1`、`pair-direction-weighted-closed-v1` |
 | TESTER集計ルール | `pair-direction-closed-v1`、`pair-direction-weighted-closed-v1` |
-| 最終更新日 | 2026-11-02 |
+| 最終更新日 | 2026-11-03 |
 | 実装 | `CurrencyStrengthElliot`、`CurrencyStrengthYearlyPersistenceService`、`CurrencyStrengthPersistenceService`、`CurrencyStrengthYearlyRankQueryService`、3 Entity・3 DAO |
 
 本書は、通貨強弱集計で使用する3テーブル、1ビュー、インデックス、保存処理および既存DB移行処理を定義します。
@@ -172,6 +172,16 @@ READYの順位差基準4は入力設定とは独立しています。入力設�
 並び順はREADYをWATCHより優先し、同じ状態では従来どおりMIN（両期間の小さいほうの絶対順位差）、TOTAL（絶対順位差合計）の降順、通貨ペア名の昇順とします。MIN/TOTALには実際の順位差を表示し、端順位によって数値を引き上げません。
 
 長中期が端順位条件を満たし、順位差4未満の場合は`1/3(+2)端`のように表示します。ツールチップで買う通貨が1位・売る通貨が8位などの理由を示します。上部の候補閾値表示と下部のREADY説明にも端順位の例外を反映します。AND成立フィルターとREADY＋H1強調は新しいREADY判定を使用し、H1 EMA200の取得・方向判定や通貨順位の計算・DB保存は変更しません。
+
+### 3.3 READY＋H1強調を初回の正常表示時にON（CurrencyStrengthElliot v1.02）
+
+順位比較と売買候補一覧の両方を表示する場合、起動・再読み込み後の最初の正常表示時に`READY＋H1強調`を一度だけONにします。データ待ち・初回の描画失敗では予約を保持し、ONの適用に成功した時点で予約を消費します。対象候補が0件でもONを保持し、後続更新で対象が増えれば強調します。
+
+ボタンのON／OFF、解除、通貨・候補ペアの個別選択を行った場合は初期ON予約を取り消し、通常更新で勝手にONへ戻しません。初回ON後の取得・描画失敗による解除は従来どおりで、自動再開は行いません。再初期化時には改めて初期ONを予約します。inputの追加、AND成立のみの絞り込み、候補条件、通貨強弱の計算・DB保存の変更はありません。
+
+### 3.4 売買候補一覧の初期表示をAND成立のみに変更（CurrencyStrengthElliot v1.03）
+
+起動・再読み込み後は、売買候補一覧を`AND成立のみ`で表示します。対象は通貨強弱READYかつH1 EMA200が候補方向と一致するペアで、該当が0件の場合は候補行を表示しません。既存ボタンで`表示：全候補`へ切り替えられ、通常更新では選択を維持します。inputの追加はなく、READY＋H1強調の初期ONと組み合わせて使用できます。
 
 ## 4. テーブル関係
 

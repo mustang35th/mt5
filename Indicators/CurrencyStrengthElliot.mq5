@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.01"
+#property version   "1.03"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -128,6 +128,10 @@ CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
 CurrencyStrengthEntryCandidateList *gCurrencyStrengthEntryCandidateList = NULL;
 CurrencyStrengthH1EmaProvider *gCurrencyStrengthH1EmaProvider = NULL;
 bool gEntryCandidateSnapshotReady = false;
+
+/** 初回の正常表示時にREADY＋H1強調をONにする予約。手動操作で取り消す。 */
+bool gInitialReadyHighlightPending = false;
+
 CurrencyStrengthYearlyPersistenceService *gCurrencyStrengthPersistenceService;
 datetime gFirstTargetM5BarTime;
 datetime gLastLiveAttemptM5BarTime;
@@ -277,6 +281,7 @@ int OnInit() {
         return INIT_FAILED;
     }
 
+    gInitialReadyHighlightPending = showRankComparison && showEntryCandidates;
     gFirstTargetM5BarTime = 0;
     gLastLiveAttemptM5BarTime = 0;
     gLastTesterAttemptM5BarTime = 0;
@@ -400,6 +405,7 @@ void OnChartEvent(
     }
 
     if (gDrawCurrencyStrengthRankComparison.handleObjectClick(fromStringValue)) {
+        gInitialReadyHighlightPending = false;
         if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
             gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
                 gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
@@ -415,6 +421,7 @@ void OnChartEvent(
     }
 
     if (gDrawCurrencyStrengthEntryCandidateList.isReadyHighlightClick(fromStringValue)) {
+        gInitialReadyHighlightPending = false;
         string readySymbols[];
         gDrawCurrencyStrengthEntryCandidateList.getDisplayedReadySymbols(readySymbols);
         gDrawCurrencyStrengthRankComparison.setReadyHighlight(
@@ -434,6 +441,7 @@ void OnChartEvent(
     if (gDrawCurrencyStrengthEntryCandidateList.getClickedSymbol(
             fromStringValue, symbolName)
             && gDrawCurrencyStrengthRankComparison.togglePairSelection(symbolName)) {
+        gInitialReadyHighlightPending = false;
         gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
             gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
         );
@@ -447,6 +455,7 @@ void OnChartEvent(
  * 最新候補に合わせてペア選択・AND強調とクリック可否を同期する。
  * 表示上限より下の候補も検索し、通貨名からの手動選択は候補の増減で解除しない。
  * AND強調は表示中のREADYかつH1 EMA200が同方向の候補だけを対象にする。
+ * 初期ONは最初の正常表示時に一度だけ適用し、その後の手動操作を優先する。
  *
  * @param fromCandidatesReady 最新候補一覧の構築と描画に成功した場合true。
  */
@@ -467,7 +476,9 @@ void synchronizePairSelection(const bool fromCandidatesReady) {
         return;
     }
 
-    if (gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()) {
+    bool applyInitialReadyHighlight = gInitialReadyHighlightPending
+        && fromCandidatesReady && gDrawCurrencyStrengthEntryCandidateList != NULL;
+    if (applyInitialReadyHighlight || gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()) {
         string readySymbols[];
         bool canHighlightReady = fromCandidatesReady
             && gDrawCurrencyStrengthEntryCandidateList != NULL;
@@ -475,7 +486,12 @@ void synchronizePairSelection(const bool fromCandidatesReady) {
             gDrawCurrencyStrengthEntryCandidateList.getDisplayedReadySymbols(readySymbols);
         }
 
-        gDrawCurrencyStrengthRankComparison.setReadyHighlight(canHighlightReady, readySymbols);
+        bool isHighlightApplied = gDrawCurrencyStrengthRankComparison.setReadyHighlight(
+            canHighlightReady, readySymbols
+        );
+        if (applyInitialReadyHighlight && isHighlightApplied) {
+            gInitialReadyHighlightPending = false;
+        }
     }
 
     string selectedPair = gDrawCurrencyStrengthRankComparison.getSelectedPair();
@@ -1359,6 +1375,7 @@ void releaseResources() {
     }
 
     gEntryCandidateSnapshotReady = false;
+    gInitialReadyHighlightPending = false;
 
     if (gCurrencyStrengthCalculator != NULL) {
         delete gCurrencyStrengthCalculator;

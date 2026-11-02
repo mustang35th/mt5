@@ -22,6 +22,7 @@ class DrawCurrencyStrengthEntryCandidateList {
 public:
     /**
      * 描画対象チャートと表示位置を指定して初期化する。
+     * 初期表示はAND成立候補のみに絞り込む。
      *
      * @param fromChartId 描画対象チャートID。0の場合はカレント。
      * @param fromXDistance チャート左端からの距離。
@@ -60,7 +61,7 @@ public:
         this.created = false;
         this.pairSelectionEnabled = false;
         this.readyHighlightEnabled = false;
-        this.andOnly = false;
+        this.andOnly = true;
         this.selectedSymbol = "";
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
