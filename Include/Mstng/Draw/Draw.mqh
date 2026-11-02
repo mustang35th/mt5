@@ -7,6 +7,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Draw\DrawElliot.mqh>
 #include <Mstng\Draw\DrawFiboExpansion.mqh>
 #include <Mstng\Draw\DrawHorizontalLine.mqh>
@@ -40,6 +41,7 @@ public:
         this.logger.setLevel(LOG_INFO);
         this.roundLinesDraw = NULL;
         this.infoRightDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
+        this.symbolLabelName = "";
 
         for (int i = 0; i < 6; i++) {
             this.bidAskLabelReady[i] = false;
@@ -47,7 +49,7 @@ public:
             this.bidAskLabelColors[i] = clrNONE;
         }
 
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < 19; i++) {
             this.infoLabelReady[i] = false;
             this.infoLabelTexts[i] = "";
             this.infoLabelTooltips[i] = "";
@@ -88,7 +90,7 @@ public:
             this.bidAskLabelReady[i] = false;
         }
 
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < 19; i++) {
             this.infoLabelReady[i] = false;
         }
     }
@@ -307,12 +309,12 @@ public:
         TodayRate todayRate = this.elliotAll.todayRate;
         
         color fontColor = clrWhite;
-        string objectName = "TodayRateSymbol";
-        string text = this.elliotAll.marketContext.symbolName;
+        string objectName;
+        string text;
         int fontSize = 30;
         
-        this.updateInfoLabel(3, objectName, clrGold, fontSize, text, 0, 0);
-        this.updateInfoLabel(8, "TodayRateTimeFrame", clrGold, fontSize,
+        this.drawSymbolName();
+        this.updateInfoLabel(8, "TodayRateTimeFrame", clrWhite, fontSize,
             this.elliotAll.marketContext.timeFrameLabel,
             DrawZigZagElliotInfoLayout::getWidth(), 0, "", ANCHOR_RIGHT_UPPER);
         
@@ -379,13 +381,14 @@ public:
     void clearInfoLabels() {
         ObjectsDeleteAll(0, Constant::PREFIX_FIXED + "ZigZagElliotInfo", 0, -1);
 
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < 19; i++) {
             this.infoLabelReady[i] = false;
             this.infoLabelTexts[i] = "";
             this.infoLabelTooltips[i] = "";
         }
 
         this.diffJpyLabelCleared = false;
+        this.symbolLabelName = "";
     }
 
     /**
@@ -429,20 +432,146 @@ private:
     /** Ask・Bid・Spreadラベルへ最後に反映した色。 */
     color bidAskLabelColors[6];
 
-    /** 時計6個・銘柄2個・当日レート8個の固定設定・文字反映が成功した場合true。 */
-    bool infoLabelReady[16];
+    /** 時計6個・銘柄5個・当日レート8個の固定設定・文字反映が成功した場合true。 */
+    bool infoLabelReady[19];
 
     /** 情報ラベルへ最後に反映した文字。 */
-    string infoLabelTexts[16];
+    string infoLabelTexts[19];
 
     /** 情報ラベルへ最後に反映した説明文。 */
-    string infoLabelTooltips[16];
+    string infoLabelTooltips[19];
 
     /** チャート右端から共通情報欄までの余白。 */
     int infoRightDistance;
 
     /** 非表示の円換算値幅ラベルが存在しない、または削除要求が成功した場合true。 */
     bool diffJpyLabelCleared;
+
+    /** 通貨別の文字列・色・位置を確定した銘柄名。 */
+    string symbolLabelName;
+
+    /** 銘柄名の接頭辞・基軸通貨・決済通貨・接尾辞。 */
+    string symbolLabelTexts[4];
+
+    /** 銘柄名の各部分に対応する表示色。 */
+    color symbolLabelColors[4];
+
+    /** 銘柄名の各部分を描く情報欄左端からの距離。 */
+    int symbolLabelOffsets[4];
+
+    /**
+     * 銘柄名を通貨固有色で分け、順位表と同じ色で描画する。
+     * 文字幅と通貨情報は銘柄変更時だけ取得し、取得失敗時は再試行する。
+     */
+    void drawSymbolName() {
+        string symbolName = this.elliotAll.marketContext.symbolName;
+        if (this.symbolLabelName != symbolName) {
+            this.prepareSymbolLabelLayout(symbolName);
+            this.infoLabelReady[3] = false;
+            for (int i = 16; i < 19; i++) {
+                this.infoLabelReady[i] = false;
+            }
+        }
+
+        for (int i = 0; i < 4; i++) {
+            int cacheIndex = 3;
+            string objectName = "TodayRateSymbol";
+            if (i > 0) {
+                cacheIndex = 15 + i;
+                objectName += IntegerToString(i);
+            }
+
+            // 空文字ではMT5の既定文字が出るため、空の部分には空白を設定する。
+            string text = this.symbolLabelTexts[i];
+            if (text == "") {
+                text = " ";
+            }
+
+            this.updateInfoLabel(cacheIndex, objectName, this.symbolLabelColors[i], 30,
+                text, this.symbolLabelOffsets[i], 0, symbolName);
+        }
+    }
+
+    /**
+     * 銘柄名の通貨部分と各文字の開始位置を保持する。
+     * 分割できない銘柄は元の名前を金色で表示する。
+     *
+     * @param fromSymbolName 接頭辞・接尾辞を含む元の銘柄名。
+     */
+    void prepareSymbolLabelLayout(const string fromSymbolName) {
+        this.symbolLabelName = "";
+        for (int i = 0; i < 4; i++) {
+            this.symbolLabelTexts[i] = "";
+            this.symbolLabelColors[i] = clrGold;
+            this.symbolLabelOffsets[i] = 0;
+        }
+
+        this.symbolLabelTexts[0] = fromSymbolName;
+        string baseCurrency = "";
+        string quoteCurrency = "";
+        if (!SymbolInfoString(fromSymbolName, SYMBOL_CURRENCY_BASE, baseCurrency)
+                || !SymbolInfoString(fromSymbolName, SYMBOL_CURRENCY_PROFIT, quoteCurrency)) {
+            return;
+        }
+
+        StringToUpper(baseCurrency);
+        StringToUpper(quoteCurrency);
+        if (baseCurrency == "" || quoteCurrency == "") {
+            return;
+        }
+
+        string normalizedSymbol = fromSymbolName;
+        StringToUpper(normalizedSymbol);
+        int pairPosition = StringFind(normalizedSymbol, baseCurrency + quoteCurrency);
+        if (pairPosition < 0) {
+            this.symbolLabelName = fromSymbolName;
+
+            return;
+        }
+
+        int positions[4];
+        positions[0] = 0;
+        positions[1] = pairPosition;
+        positions[2] = pairPosition + StringLen(baseCurrency);
+        positions[3] = positions[2] + StringLen(quoteCurrency);
+        int offsets[4] = {0, 0, 0, 0};
+        if (!TextSetFont(this.drawProperties.elliotFontFace, -300)) {
+            return;
+        }
+
+        for (int i = 1; i < 4; i++) {
+            if (positions[i] == 0) {
+                continue;
+            }
+
+            uint textWidth = 0;
+            uint textHeight = 0;
+            if (!TextGetSize(StringSubstr(fromSymbolName, 0, positions[i]), textWidth, textHeight)
+                    || textWidth == 0) {
+                return;
+            }
+
+            offsets[i] = (int)textWidth;
+        }
+
+        for (int i = 0; i < 3; i++) {
+            this.symbolLabelTexts[i] = "";
+            if (positions[i + 1] > positions[i]) {
+                this.symbolLabelTexts[i] = StringSubstr(fromSymbolName, positions[i], positions[i + 1] - positions[i]);
+            }
+
+            this.symbolLabelOffsets[i] = offsets[i];
+        }
+
+        if (positions[3] < StringLen(fromSymbolName)) {
+            this.symbolLabelTexts[3] = StringSubstr(fromSymbolName, positions[3]);
+        }
+
+        this.symbolLabelOffsets[3] = offsets[3];
+        this.symbolLabelColors[1] = ConstantCurrency::getColor(baseCurrency);
+        this.symbolLabelColors[2] = ConstantCurrency::getColor(quoteCurrency);
+        this.symbolLabelName = fromSymbolName;
+    }
 
     /**
      * 全体描画の削除対象から除外する情報ラベル名を返す。
