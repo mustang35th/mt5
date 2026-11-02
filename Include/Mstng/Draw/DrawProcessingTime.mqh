@@ -6,6 +6,7 @@
 
 #include <Mstng\Common\ProcessingTimeStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
 
 /**
  * ZigZagElliotの時計の下へ更新処理の集計を表示し、各処理の詳細を説明文へまとめる。
@@ -34,7 +35,7 @@ public:
     /**
      * 時計と同じX座標・フォントで集計欄を作成する。
      *
-     * @param fromX 時計表示のX座標
+     * @param fromX チャート右端から時計表示の左端までの距離
      * @param fromFont 時計表示のフォント
      * @return 全ラベルの作成要求に成功した場合true
      */
@@ -66,12 +67,12 @@ public:
             return false;
         }
 
-        string text = StringFormat("%s %8s %8s %8s", this.getRowLabel(fromIndex), "--", "--", "--");
+        string text = StringFormat("%s %7s %7s %7s", this.getRowLabel(fromIndex), "--", "--", "--");
         color textColor = clrSilver;
 
         if (fromStats.getCount() > 0) {
             text = StringFormat(
-                "%s %8.1f %8.1f %8.1f",
+                "%s %7.1f %7.1f %7.1f",
                 this.getRowLabel(fromIndex),
                 fromStats.getLatestMilliseconds(),
                 fromStats.getAverageMilliseconds(),
@@ -111,7 +112,7 @@ private:
     /** 時計の位置とフォントが設定済みの場合true。 */
     bool initialized;
 
-    /** 時計と共通のX座標。 */
+    /** チャート右端から時計と共通の左端までの距離。 */
     int positionX;
 
     /** 等幅表示に使用するフォント。 */
@@ -156,7 +157,7 @@ private:
     void resetMetricCache() {
         ProcessingTimeStats emptyStats;
         for (int i = 0; i < 4; i++) {
-            this.metricTexts[i] = StringFormat("%s %8s %8s %8s", this.getRowLabel(i), "--", "--", "--");
+            this.metricTexts[i] = StringFormat("%s %7s %7s %7s", this.getRowLabel(i), "--", "--", "--");
             this.metricTooltips[i] = this.getTooltip(i, emptyStats);
         }
 
@@ -179,7 +180,7 @@ private:
 
         bool headerSucceeded = this.updateLabel(
             0,
-            "処理時間(ms)   直近     平均     最大",
+            "処理時間(ms)  直近    平均    最大",
             tooltip,
             clrSilver
         );
@@ -271,10 +272,11 @@ private:
         this.labelReady[fromIndex] = false;
 
         if (initializeProperties) {
-            if (!ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_LEFT_UPPER)
+            if (!ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_RIGHT_UPPER)
                     || !ObjectSetInteger(0, objectName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER)
                     || !ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, this.positionX)
-                    || !ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 278 + fromIndex * 20)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE,
+                        DrawZigZagElliotInfoLayout::getProcessingTop() + fromIndex * 16)
                     || !ObjectSetString(0, objectName, OBJPROP_FONT, this.fontFace)
                     || !ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 10)
                     || !ObjectSetInteger(0, objectName, OBJPROP_BACK, false)

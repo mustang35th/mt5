@@ -6,6 +6,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawChartTextBounds.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
 
 /**
@@ -54,6 +55,40 @@ public:
         this.deinit();
 
         this.initializeMarketContext(fromMarketContext);
+    }
+
+    /**
+     * EMA文字を描かない右端の幅を設定する。0は従来の配置を使用する。
+     *
+     * @param fromWidth チャート右端から確保する幅。
+     */
+    void setReservedRightWidth(int fromWidth) {
+        int reservedWidth = (int)MathMax(0, fromWidth);
+        if (this.reservedRightWidth == reservedWidth) {
+            return;
+        }
+
+        this.reservedRightWidth = reservedWidth;
+        this.labelsUpdatePending = true;
+    }
+
+    /**
+     * 取得済みEMAバッファから文字だけを再配置する。
+     * データ取得時刻は進めず、失敗時は既存のラベル再試行経路へ引き継ぐ。
+     *
+     * @return ラベルの更新に成功した場合true。
+     */
+    bool refreshLabels() {
+        if (this.lastUpdateM1BarTime <= 0
+                || ArraySize(this.buffer0) < 1 || ArraySize(this.buffer1) < 1
+                || ArraySize(this.buffer2) < 1 || ArraySize(this.buffer3) < 1
+                || ArraySize(this.buffer4) < 1) {
+            return false;
+        }
+
+        this.labelsUpdatePending = !this.updateLabels();
+
+        return !this.labelsUpdatePending;
     }
 
     /**
@@ -330,6 +365,9 @@ private:
     /** ラベルの更新に失敗し、同じ足でも再試行する場合true。 */
     bool labelsUpdatePending;
 
+    /** EMA文字を描かないチャート右端の予約幅。0は制限しない。 */
+    int reservedRightWidth;
+
     /**
      * 市場コンテキストおよび表示設定を初期化する。
      *
@@ -352,6 +390,7 @@ private:
         this.labelFontSize = 10;
         this.labelFontFace = "Arial";
         this.labelsUpdatePending = false;
+        this.reservedRightWidth = 0;
         ArraySetAsSeries(this.chartBarTimes, true);
         ArraySetAsSeries(this.emaValues, true);
 
@@ -760,6 +799,13 @@ private:
      */
     bool updateLabel(int fromLineIndex, datetime fromTime, double fromPrice, string fromText, color fromColor) {
         string objectName = this.getLabelObjectName(this.timeFrames[fromLineIndex]);
+
+        if (!DrawChartTextBounds::fitTime(fromTime, fromPrice, fromText,
+                this.labelFontFace, this.labelFontSize, this.reservedRightWidth, false)) {
+            this.deleteLabel(fromLineIndex);
+
+            return false;
+        }
 
         if (ObjectFind(0, objectName) < 0) {
             this.labelReady[fromLineIndex] = false;

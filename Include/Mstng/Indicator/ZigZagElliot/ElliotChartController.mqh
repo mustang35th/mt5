@@ -16,6 +16,7 @@
 #include <Mstng\Draw\DrawElliotVerticalFit.mqh>
 #include <Mstng\Draw\DrawProcessingTime.mqh>
 #include <Mstng\Draw\DrawProperties.mqh>
+#include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Indicator\Ema200Indicator.mqh>
 #include <Mstng\Indicator\GmmaIndicator.mqh>
@@ -43,6 +44,8 @@ public:
         this.elliotInfoVisible = true;
         this.elliotInfoSimple = true;
         this.initialVerticalFitPending = true;
+        this.infoRightDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
+        this.lastHorizontalViewKey = "";
     }
 
     /**
@@ -58,12 +61,14 @@ public:
      * @param fromMarketContext 市場コンテキスト
      * @param fromOscillatorHandlePool オシレーターハンドルプール
      * @param fromElliotHigherTimeFrameDisplayCount 波動ラベルを表示する上位時間足数
+     * @param fromInfoRightDistance 右側情報欄の右余白。
      * @return 初期化に成功した場合true
      */
     bool initialize(
         MarketContext &fromMarketContext,
         OscillatorHandlePool *fromOscillatorHandlePool,
-        int fromElliotHigherTimeFrameDisplayCount = 2
+        int fromElliotHigherTimeFrameDisplayCount = 2,
+        int fromInfoRightDistance = 10
     ) {
         this.destroy();
 
@@ -79,6 +84,13 @@ public:
         this.elliotInfoVisible = true;
         this.elliotInfoSimple = true;
         this.initialVerticalFitPending = true;
+        this.infoRightDistance = fromInfoRightDistance;
+        if (this.infoRightDistance < DrawZigZagElliotInfoLayout::getMinimumRightDistance()) {
+            this.infoRightDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
+        }
+
+        this.draw.setInfoRightDistance(this.infoRightDistance);
+        this.lastHorizontalViewKey = "";
 
         this.gmmaIndicator = new GmmaIndicator(this.marketContext);
 
@@ -94,6 +106,9 @@ public:
         }
 
         this.ema200Indicator.init(fromOscillatorHandlePool);
+        this.ema200Indicator.setReservedRightWidth(
+            DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance) + 12
+        );
         this.japanTimeAxisView =
             new JapanTimeAxisView(this.marketContext);
 
@@ -101,6 +116,9 @@ public:
             return false;
         }
 
+        this.japanTimeAxisView.setRemainingXDistance(
+            DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance)
+        );
         this.japanTimeAxisView.create();
         this.timeAxisFullUpdatePending = false;
         this.lastTimeAxisFullUpdateTick = GetTickCount64();
@@ -118,7 +136,10 @@ public:
         this.createElliotVerticalFitButton();
 
         DrawProperties displayProperties;
-        this.processingTimeDraw.initialize(displayProperties.objXRight, displayProperties.elliotFontFace);
+        this.processingTimeDraw.initialize(
+            DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance),
+            displayProperties.elliotFontFace
+        );
 
         return true;
     }
@@ -235,6 +256,7 @@ public:
             this.elliotInfoSimple,
             this.elliotHigherTimeFrameDisplayCount
         );
+        this.updateHorizontalView(this.getHorizontalViewKey());
     }
 
     /**
@@ -244,8 +266,15 @@ public:
      * @return 全体を再描画した場合true
      */
     bool onChartChange(ElliotAll *fromElliotAll) {
-        if (!this.updateVerticalFit(fromElliotAll, false)) {
+        string viewKey = this.getHorizontalViewKey();
+        bool horizontalChanged = viewKey != "" && viewKey != this.lastHorizontalViewKey;
+        bool verticalChanged = this.updateVerticalFit(fromElliotAll, false);
+        if (!horizontalChanged && !verticalChanged) {
             return false;
+        }
+
+        if (horizontalChanged) {
+            this.updateHorizontalView(viewKey);
         }
 
         this.redraw(fromElliotAll);
@@ -428,6 +457,12 @@ private:
     /** 時計の下の処理時間表示。 */
     DrawProcessingTime processingTimeDraw;
 
+    /** 右側情報欄に共用するチャート右端からの余白。 */
+    int infoRightDistance;
+
+    /** 波動ラベルを最後に配置した横方向の表示条件。 */
+    string lastHorizontalViewKey;
+
     /** GMMA表示。 */
     GmmaIndicator *gmmaIndicator;
 
@@ -457,6 +492,71 @@ private:
 
     /** 初回上下FITの適用待ちの場合true。 */
     bool initialVerticalFitPending;
+
+    /**
+     * 横方向の表示条件が変わった場合だけ、取得済みEMAの文字位置を更新する。
+     * 通常の全描画と画面変更のどちらが先でも、ラベルの再配置を省略しない。
+     *
+     * @param fromViewKey 今回の横方向の表示条件。
+     */
+    void updateHorizontalView(const string fromViewKey) {
+        if (fromViewKey == "" || this.lastHorizontalViewKey == fromViewKey) {
+            return;
+        }
+
+        if (this.ema200Indicator != NULL) {
+            this.ema200Indicator.refreshLabels();
+        }
+
+        this.lastHorizontalViewKey = fromViewKey;
+    }
+
+    /**
+     * 波動文字の横位置に影響する表示範囲・縮尺・右余白を取得する。
+     * 特殊縮尺の場合だけ、高さと価格範囲の変化も横方向の変更として扱う。
+     *
+     * @return 表示条件の識別子。取得できない場合は空文字。
+     */
+    string getHorizontalViewKey() {
+        long width = 0;
+        long firstVisibleBar = 0;
+        long visibleBars = 0;
+        long scale = 0;
+        long chartShift = 0;
+        long scaleFix11 = 0;
+        long scalePointsPerBar = 0;
+        double shiftSize = 0.0;
+        if (!ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0, width)
+                || !ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR, 0, firstVisibleBar)
+                || !ChartGetInteger(0, CHART_VISIBLE_BARS, 0, visibleBars)
+                || !ChartGetInteger(0, CHART_SCALE, 0, scale)
+                || !ChartGetInteger(0, CHART_SHIFT, 0, chartShift)
+                || !ChartGetInteger(0, CHART_SCALEFIX_11, 0, scaleFix11)
+                || !ChartGetInteger(0, CHART_SCALE_PT_PER_BAR, 0, scalePointsPerBar)
+                || width <= 0 || firstVisibleBar < 0 || visibleBars <= 0) {
+            return "";
+        }
+
+        if (chartShift != 0 && !ChartGetDouble(0, CHART_SHIFT_SIZE, 0, shiftSize)) {
+            return "";
+        }
+
+        long height = 0;
+        double minimumPrice = 0.0;
+        double maximumPrice = 0.0;
+        if ((scaleFix11 != 0 || scalePointsPerBar != 0)
+                && (!ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0, height)
+                    || !ChartGetDouble(0, CHART_PRICE_MIN, 0, minimumPrice)
+                    || !ChartGetDouble(0, CHART_PRICE_MAX, 0, maximumPrice))) {
+            return "";
+        }
+
+        datetime latestBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0);
+
+        return StringFormat("%I64d/%I64d/%I64d/%I64d/%I64d/%.17g/%I64d/%I64d/%I64d/%.17g/%.17g/%I64d",
+            width, firstVisibleBar, visibleBars, scale, chartShift, shiftSize,
+            scaleFix11, scalePointsPerBar, height, minimumPrice, maximumPrice, (long)latestBarTime);
+    }
 
     /**
      * エリオット情報表示ボタン名を取得する。
@@ -503,9 +603,12 @@ private:
             OBJPROP_CORNER,
             CORNER_RIGHT_LOWER
         );
-        ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 140);
+        ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE,
+            DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance,
+                2 * (DrawZigZagElliotInfoLayout::getButtonWidth()
+                    + DrawZigZagElliotInfoLayout::getButtonGap())));
         ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 45);
-        ObjectSetInteger(0, objectName, OBJPROP_XSIZE, 130);
+        ObjectSetInteger(0, objectName, OBJPROP_XSIZE, DrawZigZagElliotInfoLayout::getButtonWidth());
         ObjectSetInteger(0, objectName, OBJPROP_YSIZE, 24);
         ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 9);
         ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
@@ -541,9 +644,10 @@ private:
             OBJPROP_CORNER,
             CORNER_RIGHT_LOWER
         );
-        ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 140);
-        ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 75);
-        ObjectSetInteger(0, objectName, OBJPROP_XSIZE, 130);
+        ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE,
+            DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance));
+        ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 45);
+        ObjectSetInteger(0, objectName, OBJPROP_XSIZE, DrawZigZagElliotInfoLayout::getButtonWidth());
         ObjectSetInteger(0, objectName, OBJPROP_YSIZE, 24);
         ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 9);
         ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
@@ -579,9 +683,12 @@ private:
             OBJPROP_CORNER,
             CORNER_RIGHT_LOWER
         );
-        ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 280);
+        ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE,
+            DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance,
+                DrawZigZagElliotInfoLayout::getButtonWidth()
+                    + DrawZigZagElliotInfoLayout::getButtonGap()));
         ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 45);
-        ObjectSetInteger(0, objectName, OBJPROP_XSIZE, 130);
+        ObjectSetInteger(0, objectName, OBJPROP_XSIZE, DrawZigZagElliotInfoLayout::getButtonWidth());
         ObjectSetInteger(0, objectName, OBJPROP_YSIZE, 24);
         ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 9);
         ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
@@ -609,11 +716,11 @@ private:
             return;
         }
 
-        string text = "波動情報: ON";
+        string text = "波動情報:ON";
         color backgroundColor = clrDarkGreen;
 
         if (!this.elliotInfoVisible) {
-            text = "波動情報: OFF";
+            text = "波動情報:OFF";
             backgroundColor = clrDimGray;
         }
 
@@ -724,6 +831,7 @@ private:
             this.elliotInfoSimple,
             this.elliotHigherTimeFrameDisplayCount
         );
+        this.updateHorizontalView(this.getHorizontalViewKey());
     }
 
     /**

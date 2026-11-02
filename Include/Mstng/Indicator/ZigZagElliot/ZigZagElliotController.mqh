@@ -11,7 +11,6 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
-#include <Mstng\Draw\DrawProperties.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Indicator\ZigZagElliot\CurrencyStrengthPairRankController.mqh>
@@ -496,7 +495,8 @@ private:
                 || !this.chartController.initialize(
                     this.marketContext,
                     this.analysisController.getOscillatorHandlePool(),
-                    (int)this.config.elliotHigherTimeFrameDisplayCount
+                    (int)this.config.elliotHigherTimeFrameDisplayCount,
+                    this.config.currencyStrengthRankPanelXDistance
                 )) {
             return false;
         }
@@ -511,15 +511,6 @@ private:
         this.currencyStrengthController.initialize(
             this.marketContext,
             this.config
-        );
-
-        // 時計下の集計表と交差する場合だけ、順位パネルを右端のまま表の下へ寄せる。
-        DrawProperties displayProperties;
-        this.currencyStrengthController.setReservedArea(
-            displayProperties.objXRight,
-            278,
-            displayProperties.objXRight + 320,
-            318
         );
 
         return this.analysisController.initializeOutput();

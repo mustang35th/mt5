@@ -6,6 +6,7 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Draw\DrawChartTextBounds.mqh>
 #include <Mstng\Draw\DrawProperties.mqh>
 #include <Mstng\Draw\DrawPropertiesElliot.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
@@ -46,6 +47,7 @@ public:
     ) {
         this.logger.setLevel(LOG_INFO);
         this.clampVertical = false;
+        this.reservedRightWidth = 0;
         this.higherTimeFrameDisplayCount = fromHigherTimeFrameDisplayCount;
 
         if (this.higherTimeFrameDisplayCount != 2
@@ -74,6 +76,15 @@ public:
      */
     ~DrawElliot() {
         
+    }
+
+    /**
+     * 波動文字を描かない右端の幅を設定する。0は従来の配置を使用する。
+     *
+     * @param fromWidth チャート右端から確保する幅。
+     */
+    void setReservedRightWidth(int fromWidth) {
+        this.reservedRightWidth = (int)MathMax(0, fromWidth);
     }
 
     /**
@@ -480,6 +491,9 @@ protected:
     /** Elliottラベルをチャート上下端へ収める場合true。 */
     bool clampVertical;
 
+    /** 波動文字を描かないチャート右端の予約幅。0は制限しない。 */
+    int reservedRightWidth;
+
     /** 波動ラベルを表示する設定上の上位時間足数。 */
     int higherTimeFrameDisplayCount;
 
@@ -721,6 +735,12 @@ protected:
                     fromEdgeLane
                 );
                 
+                if (!DrawChartTextBounds::fitTime(drawDatetime, drawPrice, text,
+                        drawProperties.elliotFontFace, fontSize, this.reservedRightWidth, true)) {
+                    ObjectDelete(0, Constant::PREFIX + objectName);
+                    continue;
+                }
+
                 DrawUtil::setText(objectName, drawProperties.elliotFontFace, fontColor, fontSize, text, drawDatetime, drawPrice);
             }
         }

@@ -105,6 +105,22 @@ public:
     }
 
     /**
+     * 残り時間ラベルのチャート右端からの位置を設定する。
+     * 変更した位置は次回の残り時間更新で反映する。
+     *
+     * @param fromXDistance チャート右端からラベル左端までの距離。
+     */
+    void setRemainingXDistance(int fromXDistance) {
+        if (this.remainingXDistance == fromXDistance) {
+            return;
+        }
+
+        this.remainingXDistance = fromXDistance;
+        this.remainingLabelReady = false;
+        this.remainingTimeUpdateSucceeded = false;
+    }
+
+    /**
      * 表示オブジェクトを作成する。
      */
     void create() {
@@ -270,6 +286,9 @@ private:
     /** 残り時間文字サイズ */
     int remainingFontSize;
 
+    /** 残り時間ラベルのチャート右端から左端までの距離。 */
+    int remainingXDistance;
+
     /** 文字色 */
     color fontColor;
 
@@ -381,6 +400,7 @@ private:
         this.fontFace = "Meiryo UI";
         this.timeLabelFontSize = 8;
         this.remainingFontSize = 9;
+        this.remainingXDistance = 280;
         this.fontColor = clrWhite;
         this.verticalLineColor = clrDimGray;
         this.dayLineColor = clrSilver;
@@ -988,7 +1008,7 @@ private:
 
         if (!this.remainingLabelReady) {
             if (!ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_CORNER, CORNER_RIGHT_LOWER)
-                    || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_XDISTANCE, 280)
+                    || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_XDISTANCE, this.remainingXDistance)
                     || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_YDISTANCE, 16)
                     || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_COLOR, this.fontColor)
                     || !ObjectSetInteger(this.chartId, this.remainingObjectName, OBJPROP_FONTSIZE, this.remainingFontSize)

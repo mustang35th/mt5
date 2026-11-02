@@ -13,6 +13,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthExecutionInfoProvider.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthPairRank.mqh>
+#include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
@@ -302,7 +303,7 @@ private:
             return;
         }
 
-        int minimumPanelXDistance = 48;
+        int minimumPanelXDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
 
         if (this.panelXDistance < minimumPanelXDistance) {
             this.panelXDistance = minimumPanelXDistance;

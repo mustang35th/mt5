@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.00"
+#property version   "2.06"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -79,8 +79,8 @@ int m5CurrencyStrengthMinimumRankDifference = 4;
 /** 通貨強弱順位パネルを表示する場合true。 */
 input(name="順位パネルを表示") bool currencyStrengthRankVisible = true;
 
-/** 通貨強弱順位パネルの右端からの距離。 */
-input(name="パネル右位置") int currencyStrengthRankPanelXDistance = 48;
+/** 価格・時計・通貨強弱・操作ボタンで共用する右端からの余白。 */
+input(name="右側情報の右余白（px・最小10）") int currencyStrengthRankPanelXDistance = 10;
 
 /** 通貨強弱情報の再取得間隔秒。 */
 input(name="再取得間隔（秒）") int currencyStrengthRefreshSeconds = 15;

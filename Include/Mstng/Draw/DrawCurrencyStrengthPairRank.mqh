@@ -12,13 +12,15 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
+#include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankAndSignal.mqh>
+#include <Mstng\Util\TimeUtil.mqh>
 
 /**
- * 表示中の通貨ペアに対応する通貨強弱順位をチャート右中央へ描画する。
+ * 表示中の通貨ペアに対応する通貨強弱順位を共通の右情報欄へ描画する。
  */
 class DrawCurrencyStrengthPairRank {
 public:
@@ -31,7 +33,7 @@ public:
      */
     DrawCurrencyStrengthPairRank(
         long fromChartId = 0,
-        int fromXDistance = 48,
+        int fromXDistance = 10,
         CurrencyStrengthVoteWeightMode fromVoteWeightMode =
             CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
     ) {
@@ -70,15 +72,19 @@ public:
         this.lastDisplayError = false;
         this.corner = CORNER_RIGHT_UPPER;
         this.xDistance = fromXDistance;
+        if (this.xDistance < DrawZigZagElliotInfoLayout::getMinimumRightDistance()) {
+            this.xDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
+        }
+
         this.reservedAreaEnabled = false;
         this.reservedLeft = 0;
         this.reservedTop = 0;
         this.reservedRight = 0;
         this.reservedBottom = 0;
         this.yDistance = 0;
-        this.panelWidth = 244;
-        this.panelHeight = 270;
-        this.rankTopOffset = 93;
+        this.panelWidth = DrawZigZagElliotInfoLayout::getWidth();
+        this.panelHeight = 272;
+        this.rankTopOffset = 69;
         this.rankRowHeight = 19;
         this.fontName = "MS Gothic";
         this.titleFontSize = 15;
@@ -154,7 +160,7 @@ public:
         this.updateRankColumn(
             "BaseLongMediumRank",
             "QuoteLongMediumRank",
-            42,
+            this.getColumnCenter(true),
             pairRankInfo.baseCurrency,
             pairRankInfo.baseLongMediumTermAverageRank,
             pairRankInfo.quoteCurrency,
@@ -163,7 +169,7 @@ public:
         this.updateRankColumn(
             "BaseMediumShortRank",
             "QuoteMediumShortRank",
-            164,
+            this.getColumnCenter(false),
             pairRankInfo.baseCurrency,
             pairRankInfo.baseMediumShortTermAverageRank,
             pairRankInfo.quoteCurrency,
@@ -172,7 +178,7 @@ public:
 
         string m5BarTimeText = this.formatM5BarTime(pairRankInfo);
 
-        this.setLabelText("M5BarTime", "M5 " + m5BarTimeText, this.mutedColor);
+        this.setLabelText("M5BarTime", m5BarTimeText, this.mutedColor);
 
         if (fromInfo.targetM5BarTime > 0
                 && pairRankInfo.m5BarTime != fromInfo.targetM5BarTime) {
@@ -240,7 +246,7 @@ public:
         this.updateRankColumn(
             "BaseLongMediumRank",
             "QuoteLongMediumRank",
-            42,
+            this.getColumnCenter(true),
             fromBaseCurrency,
             0,
             fromQuoteCurrency,
@@ -249,13 +255,13 @@ public:
         this.updateRankColumn(
             "BaseMediumShortRank",
             "QuoteMediumShortRank",
-            164,
+            this.getColumnCenter(false),
             fromBaseCurrency,
             0,
             fromQuoteCurrency,
             0
         );
-        this.setLabelText("M5BarTime", "M5 -", this.mutedColor);
+        this.setLabelText("M5BarTime", "-", this.mutedColor);
 
         ChartRedraw(this.chartId);
 
@@ -356,23 +362,33 @@ public:
         }
 
         this.repositionRankGrid();
-        this.setLabelPosition("Decision", 10, 5);
-        this.setLabelPosition("StateBadge", 10, 29);
-        this.setLabelPosition("SourceBadge", 164, 29);
-        this.setLabelPosition("LongMediumHeader", 47, 52);
-        this.setLabelPosition("MediumShortHeader", 168, 52);
-        this.setLabelPosition("LongMediumSignal", 45, 71);
-        this.setLabelPosition("MediumShortSignal", 166, 71);
+        this.setLabelPosition("Decision", 0, 5);
+        this.setLabelPosition("StateBadge", this.panelWidth, this.getModeBadgeTopOffset());
+        this.setLabelPosition("SourceBadge", this.panelWidth, 5);
+        this.setLabelPosition("LongMediumHeader", this.getColumnCenter(true), 28);
+        this.setLabelPosition("MediumShortHeader", this.getColumnCenter(false), 28);
+        this.setLabelPosition("LongMediumSignal", this.getColumnCenter(true), 47);
+        this.setLabelPosition("MediumShortSignal", this.getColumnCenter(false), 47);
         this.repositionRankColumns();
+        this.setLabelPosition(
+            "M5BarTimeTitle",
+            0,
+            this.getM5BarTimeTopOffset()
+        );
         this.setLabelPosition(
             "M5BarTime",
             this.getM5BarTimeLeftOffset(),
             this.getM5BarTimeTopOffset()
         );
         this.setLabelPosition(
+            "ModeBadgeTitle",
+            0,
+            this.getModeBadgeTopOffset()
+        );
+        this.setLabelPosition(
             "ModeBadge",
             this.getModeBadgeLeftOffset(),
-            this.getM5BarTimeTopOffset()
+            this.getModeBadgeTopOffset()
         );
         ChartRedraw(this.chartId);
     }
@@ -533,11 +549,12 @@ private:
 
         if (!this.createLabel(
             "SourceBadge",
-            164,
-            29,
+            this.panelWidth,
+            5,
             this.bodyFontSize,
             this.mutedColor,
-            "-"
+            "-",
+            ANCHOR_RIGHT_UPPER
         )) {
             this.destroyObjects();
 
@@ -546,7 +563,7 @@ private:
 
         if (!this.createLabel(
             "Decision",
-            10,
+            0,
             5,
             this.titleFontSize,
             this.mutedColor,
@@ -559,11 +576,12 @@ private:
 
         if (!this.createLabel(
             "StateBadge",
-            10,
-            29,
+            this.panelWidth,
+            this.getModeBadgeTopOffset(),
             this.bodyFontSize,
             this.mutedColor,
-            " "
+            " ",
+            ANCHOR_RIGHT_UPPER
         )) {
             this.destroyObjects();
 
@@ -572,11 +590,12 @@ private:
 
         if (!this.createLabel(
             "LongMediumHeader",
-            47,
-            52,
+            this.getColumnCenter(true),
+            28,
             this.bodyFontSize,
             this.headerColor,
-            "長中期"
+            "長中期",
+            ANCHOR_UPPER
         )) {
             this.destroyObjects();
 
@@ -585,11 +604,12 @@ private:
 
         if (!this.createLabel(
             "MediumShortHeader",
-            168,
-            52,
+            this.getColumnCenter(false),
+            28,
             this.bodyFontSize,
             this.headerColor,
-            "中短期"
+            "中短期",
+            ANCHOR_UPPER
         )) {
             this.destroyObjects();
 
@@ -598,11 +618,12 @@ private:
 
         if (!this.createLabel(
             "LongMediumSignal",
-            45,
-            71,
+            this.getColumnCenter(true),
+            47,
             this.bodyFontSize,
             this.mutedColor,
-            "-"
+            "-",
+            ANCHOR_UPPER
         )) {
             this.destroyObjects();
 
@@ -611,11 +632,12 @@ private:
 
         if (!this.createLabel(
             "MediumShortSignal",
-            166,
-            71,
+            this.getColumnCenter(false),
+            47,
             this.bodyFontSize,
             this.mutedColor,
-            "-"
+            "-",
+            ANCHOR_UPPER
         )) {
             this.destroyObjects();
 
@@ -624,11 +646,12 @@ private:
 
         if (!this.createLabel(
             "BaseLongMediumRank",
-            42,
+            this.getColumnCenter(true),
             this.rankTopOffset,
             this.bodyFontSize,
             this.mutedColor,
-            "-"
+            "-",
+            ANCHOR_UPPER
         )) {
             this.destroyObjects();
 
@@ -637,11 +660,12 @@ private:
 
         if (!this.createLabel(
             "BaseMediumShortRank",
-            164,
+            this.getColumnCenter(false),
             this.rankTopOffset,
             this.bodyFontSize,
             this.mutedColor,
-            "-"
+            "-",
+            ANCHOR_UPPER
         )) {
             this.destroyObjects();
 
@@ -650,11 +674,12 @@ private:
 
         if (!this.createLabel(
             "QuoteLongMediumRank",
-            42,
+            this.getColumnCenter(true),
             this.rankTopOffset + this.rankRowHeight,
             this.bodyFontSize,
             this.mutedColor,
-            "-"
+            "-",
+            ANCHOR_UPPER
         )) {
             this.destroyObjects();
 
@@ -663,11 +688,25 @@ private:
 
         if (!this.createLabel(
             "QuoteMediumShortRank",
-            164,
+            this.getColumnCenter(false),
             this.rankTopOffset + this.rankRowHeight,
             this.bodyFontSize,
             this.mutedColor,
-            "-"
+            "-",
+            ANCHOR_UPPER
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            "M5BarTimeTitle",
+            0,
+            this.getM5BarTimeTopOffset(),
+            DrawZigZagElliotInfoLayout::getTimeFontSize(),
+            this.mutedColor,
+            "M5"
         )) {
             this.destroyObjects();
 
@@ -678,9 +717,22 @@ private:
             "M5BarTime",
             this.getM5BarTimeLeftOffset(),
             this.getM5BarTimeTopOffset(),
-            this.bodyFontSize,
+            DrawZigZagElliotInfoLayout::getTimeFontSize(),
             this.mutedColor,
-            "M5 -"
+            "-"
+        )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.createLabel(
+            "ModeBadgeTitle",
+            0,
+            this.getModeBadgeTopOffset(),
+            this.bodyFontSize - 3,
+            this.headerColor,
+            "方式"
         )) {
             this.destroyObjects();
 
@@ -690,7 +742,7 @@ private:
         if (!this.createLabel(
             "ModeBadge",
             this.getModeBadgeLeftOffset(),
-            this.getM5BarTimeTopOffset(),
+            this.getModeBadgeTopOffset(),
             this.bodyFontSize - 3,
             this.headerColor,
             this.calculationModeText
@@ -708,14 +760,14 @@ private:
     /**
      * 8順位の横罫線と期間列の中央縦線を生成する。
      *
-     * 外枠は生成せず、罫線をパネル左右端より内側へ収める。
+     * 外枠は生成せず、横罫線を共通情報欄の左右端へ揃える。
      *
      * @return 生成に成功した場合true。
      */
     bool createRankGrid() {
         int gridTopOffset = this.getRankGridTopOffset();
-        int horizontalRightOffset = 10;
-        int horizontalWidth = this.panelWidth - 20;
+        int horizontalRightOffset = 0;
+        int horizontalWidth = this.panelWidth;
 
         for (int i = 0; i <= 8; i++) {
             color lineColor = this.rankGridColor;
@@ -736,7 +788,7 @@ private:
             }
         }
 
-        int centerTopOffset = 51;
+        int centerTopOffset = 27;
         int gridBottomOffset = gridTopOffset + 8 * this.rankRowHeight;
 
         return this.createRankGridLine(
@@ -813,16 +865,16 @@ private:
         for (int i = 0; i <= 8; i++) {
             this.setRankGridLinePosition(
                 "RankGridHorizontal" + IntegerToString(i),
-                10,
+                0,
                 gridTopOffset + i * this.rankRowHeight,
-                this.panelWidth - 20
+                this.panelWidth
             );
         }
 
         this.setRankGridLinePosition(
             "RankGridCenter",
             this.panelWidth / 2,
-            51,
+            27,
             1
         );
     }
@@ -1095,7 +1147,7 @@ private:
      *
      * @param fromBaseLabelName 基軸通貨ラベル名。
      * @param fromQuoteLabelName 決済通貨ラベル名。
-     * @param fromColumnLeftOffset 通常時の列内X位置。
+     * @param fromColumnCenter 期間列の中心X位置。
      * @param fromBaseCurrency 基軸通貨コード。
      * @param fromBaseRank 基軸通貨順位。
      * @param fromQuoteCurrency 決済通貨コード。
@@ -1104,27 +1156,31 @@ private:
     void updateRankColumn(
         const string fromBaseLabelName,
         const string fromQuoteLabelName,
-        const int fromColumnLeftOffset,
+        const int fromColumnCenter,
         const string fromBaseCurrency,
         const int fromBaseRank,
         const string fromQuoteCurrency,
         const int fromQuoteRank
     ) {
+        bool sameRank = this.isValidRank(fromBaseRank)
+            && this.isValidRank(fromQuoteRank)
+            && fromBaseRank == fromQuoteRank;
+
         this.setLabelText(
             fromBaseLabelName,
-            this.formatRankEntry(fromBaseCurrency, fromBaseRank),
+            this.formatRankEntry(fromBaseCurrency, fromBaseRank, sameRank),
             ConstantCurrency::getColor(fromBaseCurrency)
         );
         this.setLabelText(
             fromQuoteLabelName,
-            this.formatRankEntry(fromQuoteCurrency, fromQuoteRank),
+            this.formatRankEntry(fromQuoteCurrency, fromQuoteRank, sameRank),
             ConstantCurrency::getColor(fromQuoteCurrency)
         );
 
         this.positionRankColumn(
             fromBaseLabelName,
             fromQuoteLabelName,
-            fromColumnLeftOffset,
+            fromColumnCenter,
             fromBaseRank,
             fromQuoteRank
         );
@@ -1135,21 +1191,21 @@ private:
      *
      * @param fromBaseLabelName 基軸通貨ラベル名。
      * @param fromQuoteLabelName 決済通貨ラベル名。
-     * @param fromColumnLeftOffset 通常時の列内X位置。
+     * @param fromColumnCenter 期間列の中心X位置。
      * @param fromBaseRank 基軸通貨順位。
      * @param fromQuoteRank 決済通貨順位。
      */
     void positionRankColumn(
         const string fromBaseLabelName,
         const string fromQuoteLabelName,
-        const int fromColumnLeftOffset,
+        const int fromColumnCenter,
         const int fromBaseRank,
         const int fromQuoteRank
     ) {
         bool baseRankValid = this.isValidRank(fromBaseRank);
         bool quoteRankValid = this.isValidRank(fromQuoteRank);
-        int baseLeftOffset = fromColumnLeftOffset;
-        int quoteLeftOffset = fromColumnLeftOffset;
+        int baseCenterOffset = fromColumnCenter;
+        int quoteCenterOffset = fromColumnCenter;
         int baseTopOffset = this.rankTopOffset;
         int quoteTopOffset = this.rankTopOffset + this.rankRowHeight;
 
@@ -1164,18 +1220,18 @@ private:
         if (baseRankValid
                 && quoteRankValid
                 && fromBaseRank == fromQuoteRank) {
-            baseLeftOffset = fromColumnLeftOffset - 34;
-            quoteLeftOffset = fromColumnLeftOffset + 26;
+            baseCenterOffset = fromColumnCenter - this.panelWidth / 8;
+            quoteCenterOffset = fromColumnCenter + this.panelWidth / 8;
         }
 
         this.setLabelPosition(
             fromBaseLabelName,
-            baseLeftOffset,
+            baseCenterOffset,
             baseTopOffset
         );
         this.setLabelPosition(
             fromQuoteLabelName,
-            quoteLeftOffset,
+            quoteCenterOffset,
             quoteTopOffset
         );
     }
@@ -1191,7 +1247,7 @@ private:
             this.updateRankColumn(
                 "BaseLongMediumRank",
                 "QuoteLongMediumRank",
-                42,
+                this.getColumnCenter(true),
                 pairRankInfo.baseCurrency,
                 pairRankInfo.baseLongMediumTermAverageRank,
                 pairRankInfo.quoteCurrency,
@@ -1200,7 +1256,7 @@ private:
             this.updateRankColumn(
                 "BaseMediumShortRank",
                 "QuoteMediumShortRank",
-                164,
+                this.getColumnCenter(false),
                 pairRankInfo.baseCurrency,
                 pairRankInfo.baseMediumShortTermAverageRank,
                 pairRankInfo.quoteCurrency,
@@ -1213,7 +1269,7 @@ private:
         this.updateRankColumn(
             "BaseLongMediumRank",
             "QuoteLongMediumRank",
-            42,
+            this.getColumnCenter(true),
             this.lastBaseCurrency,
             0,
             this.lastQuoteCurrency,
@@ -1222,12 +1278,26 @@ private:
         this.updateRankColumn(
             "BaseMediumShortRank",
             "QuoteMediumShortRank",
-            164,
+            this.getColumnCenter(false),
             this.lastBaseCurrency,
             0,
             this.lastQuoteCurrency,
             0
         );
+    }
+
+    /**
+     * 期間列の中心位置を取得する。
+     *
+     * @param fromLongMedium 長中期列の場合true。
+     * @return パネル左端からの中心X位置。
+     */
+    int getColumnCenter(const bool fromLongMedium) {
+        if (fromLongMedium) {
+            return this.panelWidth / 4;
+        }
+
+        return this.panelWidth * 3 / 4;
     }
 
     /**
@@ -1250,21 +1320,30 @@ private:
     }
 
     /**
-     * M5時刻のパネル左端からの位置を取得する。
+     * M5時刻の値を時計と同じ左位置へ揃える。
      *
      * @return M5時刻のX位置。
      */
     int getM5BarTimeLeftOffset() {
-        return 8 + this.bodyFontSize * 2;
+        return DrawZigZagElliotInfoLayout::getTimeValueLeftOffset();
     }
 
     /**
-     * 投票ウェイト方式のパネル左端からの位置を取得する。
+     * 投票ウェイト方式の値を時計と同じ左位置へ揃える。
      *
      * @return 投票ウェイト方式のX位置。
      */
     int getModeBadgeLeftOffset() {
-        return 174;
+        return DrawZigZagElliotInfoLayout::getTimeValueLeftOffset();
+    }
+
+    /**
+     * 投票ウェイト方式をM5時刻の次の行へ配置する。
+     *
+     * @return 投票ウェイト方式のY位置。
+     */
+    int getModeBadgeTopOffset() {
+        return this.getM5BarTimeTopOffset() + 24;
     }
 
     /**
@@ -1282,9 +1361,14 @@ private:
      *
      * @param fromCurrency 通貨コード。
      * @param fromRank 順位。
+     * @param fromCompact 同順位の横並び表示では空白を省略する。
      * @return 通貨コードと順位。未取得順位の場合はハイフン。
      */
-    string formatRankEntry(const string fromCurrency, const int fromRank) {
+    string formatRankEntry(
+        const string fromCurrency,
+        const int fromRank,
+        const bool fromCompact = false
+    ) {
         string currency = fromCurrency;
 
         if (currency == "") {
@@ -1295,30 +1379,26 @@ private:
             return currency + " -";
         }
 
-        return currency + " " + IntegerToString(fromRank) + "位";
+        string separator = " ";
+        if (fromCompact) {
+            separator = "";
+        }
+
+        return currency + separator + IntegerToString(fromRank) + "位";
     }
 
     /**
-     * M5バー時刻を短い表示文字列へ変換する。
+     * M5バー時刻を時計と共通の年月日・時分秒形式へ変換する。
      *
      * @param fromInfo 通貨ペア順位情報。
-     * @return 月日と時分。未取得の場合はハイフン。
+     * @return サーバー時刻の年月日と時分秒。未取得の場合はハイフン。
      */
     string formatM5BarTime(CurrencyStrengthPairRankInfo &fromInfo) {
         if (fromInfo.m5BarTime <= 0) {
             return "-";
         }
 
-        MqlDateTime barDateTime;
-        TimeToStruct(fromInfo.m5BarTime, barDateTime);
-
-        return StringFormat(
-            "%02d.%02d %02d:%02d",
-            barDateTime.mon,
-            barDateTime.day,
-            barDateTime.hour,
-            barDateTime.min
-        );
+        return TimeUtil::formatYyyymmddhhmiss(fromInfo.m5BarTime);
     }
 
     /**
@@ -1330,6 +1410,7 @@ private:
      * @param fromFontSize フォントサイズ。
      * @param fromColor 文字色。
      * @param fromText 表示文字列。
+     * @param fromAnchor ラベルの配置基準点。
      * @return 生成に成功した場合true。
      */
     bool createLabel(
@@ -1338,7 +1419,8 @@ private:
         int fromTopOffset,
         int fromFontSize,
         color fromColor,
-        string fromText
+        string fromText,
+        ENUM_ANCHOR_POINT fromAnchor = ANCHOR_LEFT_UPPER
     ) {
         string objectName = this.objectPrefix + fromNameSuffix;
 
@@ -1347,7 +1429,7 @@ private:
         }
 
         ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, fromAnchor);
         this.setLabelPosition(fromNameSuffix, fromLeftOffset, fromTopOffset);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, fromFontSize);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
@@ -1362,8 +1444,8 @@ private:
     }
 
     /**
-     * 右中央より少し下の位置を求め、予約領域と重なる場合だけ下へ移す。
-     * 下部操作ボタンの上にパネル全体が収まらない場合は、元のY位置を維持する。
+     * 共通情報欄の処理時間表示の下へ配置し、予約領域と重なる場合だけ下へ移す。
+     * 明示された予約領域には従来の下部余白条件を適用する。
      */
     void calculateYDistance() {
         int chartHeight = (int)ChartGetInteger(
@@ -1371,13 +1453,7 @@ private:
             CHART_HEIGHT_IN_PIXELS,
             0
         );
-        int verticalOffset = 20 + this.rankRowHeight * 3;
-        this.yDistance = (chartHeight - this.panelHeight) / 2
-            + verticalOffset;
-
-        if (this.yDistance < 0) {
-            this.yDistance = 0;
-        }
+        this.yDistance = DrawZigZagElliotInfoLayout::getStrengthTop();
 
         if (!this.reservedAreaEnabled
                 || this.reservedTop >= chartHeight
@@ -1419,7 +1495,8 @@ private:
         int fromTopOffset
     ) {
         string objectName = this.objectPrefix + fromNameSuffix;
-        int labelXDistance = this.xDistance + this.panelWidth - fromLeftOffset;
+        int labelXDistance = DrawZigZagElliotInfoLayout::getXDistance(
+            this.xDistance, fromLeftOffset);
 
         ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE, labelXDistance);
         ObjectSetInteger(

@@ -114,7 +114,7 @@ public:
     /** 通貨強弱順位パネルを表示する場合true。 */
     bool currencyStrengthRankVisible;
 
-    /** 通貨強弱順位パネルの右端からの距離。 */
+    /** 価格・時計・通貨強弱・操作ボタンで共用する右端からの余白。 */
     int currencyStrengthRankPanelXDistance;
 
     /** 通貨強弱情報の再取得間隔秒。 */
@@ -168,7 +168,7 @@ public:
         this.currencyStrengthEntryFilterEnabled = false;
         this.m5CurrencyStrengthMinimumRankDifference = 4;
         this.currencyStrengthRankVisible = true;
-        this.currencyStrengthRankPanelXDistance = 48;
+        this.currencyStrengthRankPanelXDistance = 10;
         this.currencyStrengthRefreshSeconds = 15;
         this.currencyStrengthDatabaseProfile =
             CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER;

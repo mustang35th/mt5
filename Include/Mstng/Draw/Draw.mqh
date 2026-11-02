@@ -13,6 +13,7 @@
 #include <Mstng\Draw\DrawProperties.mqh>
 #include <Mstng\Draw\DrawRoundLines.mqh>
 #include <Mstng\Draw\DrawZigZag.mqh>
+#include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
 #include <Mstng\ExpertAdvisor\Common\ExpertAdvisorBuySell.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorEma200.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorOscillator.mqh>
@@ -38,16 +39,18 @@ public:
     Draw() {
         this.logger.setLevel(LOG_INFO);
         this.roundLinesDraw = NULL;
+        this.infoRightDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 6; i++) {
             this.bidAskLabelReady[i] = false;
             this.bidAskLabelTexts[i] = "";
             this.bidAskLabelColors[i] = clrNONE;
         }
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 16; i++) {
             this.infoLabelReady[i] = false;
             this.infoLabelTexts[i] = "";
+            this.infoLabelTooltips[i] = "";
         }
 
         this.diffJpyLabelCleared = false;
@@ -65,6 +68,31 @@ public:
         }
     }
     
+    /**
+     * 右側情報欄の余白を設定し、変更時だけ固定座標を再反映する。
+     *
+     * @param fromRightDistance チャート右端から情報欄までの距離
+     */
+    void setInfoRightDistance(int fromRightDistance) {
+        int rightDistance = fromRightDistance;
+        if (rightDistance < DrawZigZagElliotInfoLayout::getMinimumRightDistance()) {
+            rightDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
+        }
+
+        if (this.infoRightDistance == rightDistance) {
+            return;
+        }
+
+        this.infoRightDistance = rightDistance;
+        for (int i = 0; i < 6; i++) {
+            this.bidAskLabelReady[i] = false;
+        }
+
+        for (int i = 0; i < 16; i++) {
+            this.infoLabelReady[i] = false;
+        }
+    }
+
     /**
      * すべての描画を実行する。
      *
@@ -113,6 +141,9 @@ public:
         DrawElliot drawElliot(
             fromSimpleElliotInfo,
             fromElliotHigherTimeFrameDisplayCount
+        );
+        drawElliot.setReservedRightWidth(
+            DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance) + 12
         );
         
         drawElliot.draw(
@@ -200,20 +231,24 @@ public:
         text = "";
         
         if (isSuccess) {
-            text = StringFormat("A:%s", DoubleToString(tick.ask, digits));
+            text = DoubleToString(tick.ask, digits);
         }
         
-        this.updateBidAskLabel(0, objectName, text, drawProperties.objXRight, 130, clrAqua);
+        this.updateBidAskLabel(3, "AskTitle", "A:", 0, 116, clrAqua);
+        this.updateBidAskLabel(0, objectName, text,
+            DrawZigZagElliotInfoLayout::getPriceValueRightOffset(), 116, clrAqua, ANCHOR_RIGHT_UPPER);
         
         
         objectName = "Bid";
         text = "";
         
         if (isSuccess) {
-            text = StringFormat("B:%s", DoubleToString(tick.bid, digits));
+            text = DoubleToString(tick.bid, digits);
         }
         
-        this.updateBidAskLabel(1, objectName, text, drawProperties.objXRight, 160, clrHotPink);
+        this.updateBidAskLabel(4, "BidTitle", "B:", 0, 146, clrHotPink);
+        this.updateBidAskLabel(1, objectName, text,
+            DrawZigZagElliotInfoLayout::getPriceValueRightOffset(), 146, clrHotPink, ANCHOR_RIGHT_UPPER);
         
         
         objectName = "Spread";
@@ -221,36 +256,48 @@ public:
         color spreadColor = clrSilver;
         
         if (isSuccess) {
-            text = StringFormat("S:%s", DoubleToString(spread, 1));
+            text = DoubleToString(spread, 1);
             if (spread > 5.0) {
                 spreadColor = clrOrange;
             }
         }
         
-        this.updateBidAskLabel(2, objectName, text, drawProperties.objXRight + 140, 145, spreadColor);
+        this.updateBidAskLabel(5, "SpreadTitle", "S:",
+            DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 116, spreadColor);
+        this.updateBidAskLabel(2, objectName, text,
+            DrawZigZagElliotInfoLayout::getSecondaryValueLeftOffset(), 116, spreadColor);
     }
     
     /**
-     * システム時刻（JST/サーバー）と実行時間を描画する。
+     * システム時刻（JST/サーバー）とJST基準の時差、実行時間を描画する。
      */
     void drawTime() {
         color fontColor = clrWhite;
         string objectName = "Sysdate";
-        int fontSize = 14;
+        int fontSize = DrawZigZagElliotInfoLayout::getTimeFontSize();
         
-        string text = StringFormat("%s", TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.jstTime) + " JST");
+        string text = TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.jstTime);
                 
-        this.updateInfoLabel(0, objectName + "JST", fontColor, fontSize, text, drawProperties.objXRight, 210);
+        this.updateInfoLabel(13, "JstTitle", fontColor, fontSize, "JST", 0, 180);
+        this.updateInfoLabel(0, objectName + "JST", fontColor, fontSize, text,
+            DrawZigZagElliotInfoLayout::getTimeValueLeftOffset(), 180);
         
-        text = StringFormat("%s", TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.serverTime));
+        int serverOffsetHour = -this.elliotAll.tradeTimeInfo.jstOffsetHour;
+        text = TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.serverTime);
+        string tooltip = StringFormat("サーバー時刻 = JST %+d時間", serverOffsetHour);
                 
-        this.updateInfoLabel(1, objectName + "GMT", fontColor, fontSize, text, drawProperties.objXRight, 230);
+        this.updateInfoLabel(14, "ServerTitle", fontColor, fontSize, "SRV", 0, 202, tooltip);
+        this.updateInfoLabel(1, objectName + "GMT", fontColor, fontSize, text,
+            DrawZigZagElliotInfoLayout::getTimeValueLeftOffset(), 202, tooltip);
+        this.updateInfoLabel(15, "ServerOffset", fontColor, fontSize - 2,
+            StringFormat("(%+dh)", serverOffsetHour), DrawZigZagElliotInfoLayout::getWidth(), 204,
+            tooltip, ANCHOR_RIGHT_UPPER);
         
         
         objectName = "execTime";
         text = StringFormat("[%dms]<%ds>", this.elliotAll.execTime, this.elliotAll.timerSeconds);
                 
-        this.updateInfoLabel(2, objectName, fontColor, fontSize, text, drawProperties.objXRight, 250);
+        this.updateInfoLabel(2, objectName, fontColor, fontSize, text, 0, 224);
     }
     
     /**
@@ -261,48 +308,67 @@ public:
         
         color fontColor = clrWhite;
         string objectName = "TodayRateSymbol";
-        string text = StringFormat(
-            "%s,%s",
-            this.elliotAll.marketContext.symbolName,
-            this.elliotAll.marketContext.timeFrameLabel
-        );
+        string text = this.elliotAll.marketContext.symbolName;
         int fontSize = 30;
         
-        this.updateInfoLabel(3, objectName, clrGold, fontSize, text, drawProperties.objXRight, 0);
+        this.updateInfoLabel(3, objectName, clrGold, fontSize, text, 0, 0);
+        this.updateInfoLabel(8, "TodayRateTimeFrame", clrGold, fontSize,
+            this.elliotAll.marketContext.timeFrameLabel,
+            DrawZigZagElliotInfoLayout::getWidth(), 0, "", ANCHOR_RIGHT_UPPER);
         
         
         objectName = "High";
-        text = StringFormat("H:%s", todayRate.highLabel);
+        text = todayRate.highLabel;
         fontSize = 20;
         
-        this.updateInfoLabel(4, objectName, clrLightSkyBlue, fontSize, text, drawProperties.objXRight, 50);
+        this.updateInfoLabel(9, "HighTitle", clrLightSkyBlue, fontSize, "H:", 0, 46);
+        this.updateInfoLabel(4, objectName, clrLightSkyBlue, fontSize, text,
+            DrawZigZagElliotInfoLayout::getPriceValueRightOffset(), 46, "", ANCHOR_RIGHT_UPPER);
         
         
         objectName = "Low";
-        text = StringFormat("L:%s", todayRate.lowLabel);
+        text = todayRate.lowLabel;
         
-        this.updateInfoLabel(5, objectName, clrLightPink, fontSize, text, drawProperties.objXRight, 80);
+        this.updateInfoLabel(10, "LowTitle", clrLightPink, fontSize, "L:", 0, 76);
+        this.updateInfoLabel(5, objectName, clrLightPink, fontSize, text,
+            DrawZigZagElliotInfoLayout::getPriceValueRightOffset(), 76, "", ANCHOR_RIGHT_UPPER);
         
         
         objectName = "Diff";
-        text = StringFormat("D:%s", todayRate.diffLabel);
+        text = todayRate.diffLabel;
         
-        this.updateInfoLabel(6, objectName, clrKhaki, fontSize, text, drawProperties.objXRight + 140, 65);
+        this.updateInfoLabel(11, "DiffTitle", clrKhaki, fontSize, "D:",
+            DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 46);
+        this.updateInfoLabel(6, objectName, clrKhaki, fontSize, text,
+            DrawZigZagElliotInfoLayout::getSecondaryValueLeftOffset(), 46);
         
         if (todayRate.diffJpy > 0) {
             this.diffJpyLabelCleared = false;
             objectName = "DiffJpy";
-            text = StringFormat("D Jpy:%s", todayRate.diffJpyLabel);
+            text = todayRate.diffJpyLabel;
             
-            this.updateInfoLabel(7, objectName, fontColor, fontSize - 5, text, drawProperties.objXRight + 142, 95);
+            this.updateInfoLabel(12, "DiffJpyTitle", fontColor, fontSize - 5, "D Jpy:",
+                DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 76);
+            this.updateInfoLabel(7, objectName, fontColor, fontSize - 5, text,
+                DrawZigZagElliotInfoLayout::getWidth(), 76, "", ANCHOR_RIGHT_UPPER);
         } else if (!this.diffJpyLabelCleared) {
             this.infoLabelReady[7] = false;
             this.infoLabelTexts[7] = "";
+            this.infoLabelReady[12] = false;
+            this.infoLabelTexts[12] = "";
             objectName = this.getInfoLabelObjectName("DiffJpy");
-            this.diffJpyLabelCleared = ObjectFind(0, objectName) < 0;
-            if (!this.diffJpyLabelCleared) {
-                this.diffJpyLabelCleared = ObjectDelete(0, objectName);
+            bool valueCleared = ObjectFind(0, objectName) < 0;
+            if (!valueCleared) {
+                valueCleared = ObjectDelete(0, objectName);
             }
+
+            objectName = this.getInfoLabelObjectName("DiffJpyTitle");
+            bool titleCleared = ObjectFind(0, objectName) < 0;
+            if (!titleCleared) {
+                titleCleared = ObjectDelete(0, objectName);
+            }
+
+            this.diffJpyLabelCleared = valueCleared && titleCleared;
         }
     }
 
@@ -313,9 +379,10 @@ public:
     void clearInfoLabels() {
         ObjectsDeleteAll(0, Constant::PREFIX_FIXED + "ZigZagElliotInfo", 0, -1);
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 16; i++) {
             this.infoLabelReady[i] = false;
             this.infoLabelTexts[i] = "";
+            this.infoLabelTooltips[i] = "";
         }
 
         this.diffJpyLabelCleared = false;
@@ -354,19 +421,25 @@ private:
     ElliotAll *elliotAll;
 
     /** Ask・Bid・Spreadラベルの初期設定および文字・色反映が成功した場合true。 */
-    bool bidAskLabelReady[3];
+    bool bidAskLabelReady[6];
 
     /** Ask・Bid・Spreadラベルへ最後に反映した文字。 */
-    string bidAskLabelTexts[3];
+    string bidAskLabelTexts[6];
 
     /** Ask・Bid・Spreadラベルへ最後に反映した色。 */
-    color bidAskLabelColors[3];
+    color bidAskLabelColors[6];
 
-    /** 時計3個と当日レート5個の固定設定・文字反映が成功した場合true。 */
-    bool infoLabelReady[8];
+    /** 時計6個・銘柄2個・当日レート8個の固定設定・文字反映が成功した場合true。 */
+    bool infoLabelReady[16];
 
     /** 情報ラベルへ最後に反映した文字。 */
-    string infoLabelTexts[8];
+    string infoLabelTexts[16];
+
+    /** 情報ラベルへ最後に反映した説明文。 */
+    string infoLabelTooltips[16];
+
+    /** チャート右端から共通情報欄までの余白。 */
+    int infoRightDistance;
 
     /** 非表示の円換算値幅ラベルが存在しない、または削除要求が成功した場合true。 */
     bool diffJpyLabelCleared;
@@ -382,17 +455,19 @@ private:
     }
 
     /**
-     * 情報ラベルを再利用し、表示文字が変わった場合だけ更新する。
+     * 情報ラベルを再利用し、表示文字と説明文をそれぞれ変更時だけ更新する。
      * 各ラベルの色・フォント・サイズ・座標は固定し、初回と再試行時だけ反映する。
      * 手動削除時は再作成し、設定に失敗した場合は次回に全属性を再試行する。
      *
-     * @param fromIndex 時計3個・当日レート5個に対応するキャッシュ番号
+     * @param fromIndex 時計・銘柄・当日レートの項目名と値に対応するキャッシュ番号
      * @param fromObjectName 接頭辞を除いたラベル名
      * @param fromColor 文字色
      * @param fromFontSize 文字サイズ
      * @param fromText 表示文字
-     * @param fromX X座標
+     * @param fromX 情報欄左端からのX位置
      * @param fromY Y座標
+     * @param fromTooltip 説明文。空文字の場合は標準の説明を使用する。
+     * @param fromAnchor 左揃え・右揃えの基準点
      */
     void updateInfoLabel(
         int fromIndex,
@@ -401,7 +476,9 @@ private:
         int fromFontSize,
         string fromText,
         int fromX,
-        int fromY
+        int fromY,
+        string fromTooltip = "",
+        ENUM_ANCHOR_POINT fromAnchor = ANCHOR_LEFT_UPPER
     ) {
         string objectName = this.getInfoLabelObjectName(fromObjectName);
         if (ObjectFind(0, objectName) < 0) {
@@ -414,10 +491,13 @@ private:
         bool initializeProperties = !this.infoLabelReady[fromIndex];
         this.infoLabelReady[fromIndex] = false;
         if (initializeProperties) {
-            if (!ObjectSetInteger(0, objectName, OBJPROP_COLOR, fromColor)
+            if (!ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_RIGHT_UPPER)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_ANCHOR, fromAnchor)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_COLOR, fromColor)
                     || !ObjectSetString(0, objectName, OBJPROP_FONT, this.drawProperties.elliotFontFace)
                     || !ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, fromFontSize)
-                    || !ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, fromX)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE,
+                        DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance, fromX))
                     || !ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, fromY)) {
                 return;
             }
@@ -429,7 +509,14 @@ private:
             }
         }
 
+        if ((initializeProperties && fromTooltip != "") || this.infoLabelTooltips[fromIndex] != fromTooltip) {
+            if (!ObjectSetString(0, objectName, OBJPROP_TOOLTIP, fromTooltip)) {
+                return;
+            }
+        }
+
         this.infoLabelTexts[fromIndex] = fromText;
+        this.infoLabelTooltips[fromIndex] = fromTooltip;
         this.infoLabelReady[fromIndex] = true;
     }
 
@@ -439,12 +526,13 @@ private:
      * 全体再描画や手動操作で削除された場合は固定設定ごと復元する。
      * 設定に失敗した場合はキャッシュを確定せず、次回描画で再試行する。
      *
-     * @param fromIndex Ask・Bid・Spreadに対応するキャッシュ番号
+     * @param fromIndex Ask・Bid・Spreadの値0～2・項目名3～5に対応するキャッシュ番号
      * @param fromObjectName 共通接頭辞を除いたラベル名
      * @param fromText 表示文字
-     * @param fromX X座標
+     * @param fromX 情報欄左端からのX位置
      * @param fromY Y座標
      * @param fromColor 表示色
+     * @param fromAnchor 左揃え・右揃えの基準点
      */
     void updateBidAskLabel(
         int fromIndex,
@@ -452,7 +540,8 @@ private:
         string fromText,
         int fromX,
         int fromY,
-        color fromColor
+        color fromColor,
+        ENUM_ANCHOR_POINT fromAnchor = ANCHOR_LEFT_UPPER
     ) {
         string objectName = Constant::PREFIX + fromObjectName;
 
@@ -467,9 +556,12 @@ private:
         bool initializeProperties = !this.bidAskLabelReady[fromIndex];
         this.bidAskLabelReady[fromIndex] = false;
         if (initializeProperties) {
-            if (!ObjectSetString(0, objectName, OBJPROP_FONT, this.drawProperties.elliotFontFace)
+            if (!ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_RIGHT_UPPER)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_ANCHOR, fromAnchor)
+                    || !ObjectSetString(0, objectName, OBJPROP_FONT, this.drawProperties.elliotFontFace)
                     || !ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 20)
-                    || !ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, fromX)
+                    || !ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE,
+                        DrawZigZagElliotInfoLayout::getXDistance(this.infoRightDistance, fromX))
                     || !ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, fromY)) {
                 return;
             }
