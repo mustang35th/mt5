@@ -74,10 +74,14 @@ private:
     void draw(Elliot &elliot, bool isOrg, int lineSize, bool isUpper = false) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
-        this.logger.debug(__FUNCTION__, StringFormat("elliot = %s", elliot.toString()));
-        this.logger.debug(__FUNCTION__, StringFormat("isOrg = %s", (string)isOrg));
-        this.logger.debug(__FUNCTION__, StringFormat("lineSize = %d", lineSize));
-        this.logger.debug(__FUNCTION__, StringFormat("isUpper = %s", (string)isUpper));
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("elliot = %s", elliot.toString()));
+            this.logger.debug(__FUNCTION__, StringFormat("isOrg = %s", (string)isOrg));
+            this.logger.debug(__FUNCTION__, StringFormat("lineSize = %d", lineSize));
+            this.logger.debug(__FUNCTION__, StringFormat("isUpper = %s", (string)isUpper));
+        }
 
         string preObjectName;
         StringConcatenate(preObjectName, "ZigZag", elliot.marketContext.timeFrameLabel);
@@ -85,7 +89,9 @@ private:
         CArrayObj *waveList = &(elliot.waveList);
         int waveListTotal = waveList.Total();
 
-        this.logger.debug(__FUNCTION__, StringFormat("waveListTotal = %d", waveListTotal));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveListTotal = %d", waveListTotal));
+        }
 
         for (int i = 0; i < waveListTotal; i++) {
             Wave *wave = waveList.At(i);

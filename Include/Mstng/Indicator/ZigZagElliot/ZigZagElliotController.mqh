@@ -773,16 +773,19 @@ private:
     }
 
     /**
-     * 通常の分析・アラート描画後にDBラベルを更新し、固定パネルを手前に保つ。
+     * 分析・アラート描画後にDBラベルを更新し、固定パネルを最後に一度だけ手前へ戻す。
      */
-    void updateDatabaseAlertDisplay(const datetime fromBarTime) {
-        if (this.databaseAlertDisplayController == NULL) {
-            return;
+    void completeAnalysisDraw(const datetime fromBarTime) {
+        if (this.databaseAlertDisplayController != NULL) {
+            this.databaseAlertDisplayController.update(fromBarTime, TimeCurrent(), AccountInfoString(ACCOUNT_SERVER));
         }
 
-        this.databaseAlertDisplayController.update(fromBarTime, TimeCurrent(), AccountInfoString(ACCOUNT_SERVER));
         if (this.currencyStrengthController != NULL) {
             this.currencyStrengthController.redrawOnTop();
+        }
+
+        if (!Util::isStrategyTester()) {
+            ChartRedraw(0);
         }
     }
 
@@ -1016,12 +1019,6 @@ private:
             this.chartController.drawAll(elliotAll);
         }
 
-        this.currencyStrengthController.redrawOnTop();
-
-        if (!Util::isStrategyTester()) {
-            ChartRedraw(0);
-        }
-
         long endTime = GetTickCount();
         long elapsedTime = endTime - startTime;
         this.logger.debug(
@@ -1044,7 +1041,7 @@ private:
         datetime currentBarTime = analysisEndBarTime;
 
         if (this.lastProcessedBarTime == currentBarTime) {
-            this.updateDatabaseAlertDisplay(currentBarTime);
+            this.completeAnalysisDraw(currentBarTime);
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
             this.recordUpdateProcessingTime(processingStartMicroseconds, true, "通常更新");
 
@@ -1062,7 +1059,7 @@ private:
         }
 
         this.lastProcessedBarTime = currentBarTime;
-        this.updateDatabaseAlertDisplay(currentBarTime);
+        this.completeAnalysisDraw(currentBarTime);
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         this.recordUpdateProcessingTime(processingStartMicroseconds, true, "新しい足");
     }

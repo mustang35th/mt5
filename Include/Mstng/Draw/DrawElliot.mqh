@@ -190,9 +190,13 @@ public:
         
         int waveTotal = waveList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveTotal = %d", waveTotal));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveTotal = %d", waveTotal));
+        }
         
         //LogUtil::printWaveList(this.logger, __FUNCTION__, waveList);
+
+        DrawChartTextContext drawContext;
         
         for (int i = 0; i < waveTotal; i++) {
             Wave *wave = waveList.At(i);
@@ -201,7 +205,7 @@ public:
                 LogUtil::printZigZagPointList(this.logger, __FUNCTION__, wave.zigZagPointList);
             }*/
             
-            this.setWave(wave, fromName, fontSize, upLevel, downLevel, fromEdgeLane);
+            this.setWave(wave, fromName, fontSize, upLevel, downLevel, fromEdgeLane, drawContext);
         }
         
         
@@ -651,6 +655,7 @@ protected:
      * @param upLevel 上方向オフセット
      * @param downLevel 下方向オフセット
      * @param fromEdgeLane 上下端で使用する表示レーン
+     * @param fromContext 同一時間足の描画中だけ共用する画面・フォント情報
      */
     void setWave(
         Wave &wave,
@@ -658,12 +663,17 @@ protected:
         int fontSize,
         double upLevel,
         double downLevel,
-        int fromEdgeLane
+        int fromEdgeLane,
+        DrawChartTextContext &fromContext
     ) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
-        this.logger.debug(__FUNCTION__, wave.toString());
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, wave.toString());
+        }
         
         bool isUpper = false;
         
@@ -671,17 +681,23 @@ protected:
             isUpper = true;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isUpper = %s", (string)isUpper));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("isUpper = %s", (string)isUpper));
+        }
         
         
         CArrayObj *zigZagPointList = &(wave.zigZagPointList);
                         
         int total = zigZagPointList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("total = %d", total));
+        }
         
         for (int i = 1; i < total; i++) {  // ポイント0は対象外
-            this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+            }
             
             ZigZagPoint *zigZagPoint = zigZagPointList.At(i);
             
@@ -732,11 +748,12 @@ protected:
                     zigZagPoint.rate,
                     level,
                     fontSize,
-                    fromEdgeLane
+                    fromEdgeLane,
+                    fromContext
                 );
                 
                 if (!DrawChartTextBounds::fitTime(drawDatetime, drawPrice, text,
-                        drawProperties.elliotFontFace, fontSize, this.reservedRightWidth, true)) {
+                        drawProperties.elliotFontFace, fontSize, this.reservedRightWidth, true, fromContext)) {
                     ObjectDelete(0, Constant::PREFIX + objectName);
                     continue;
                 }
@@ -760,6 +777,7 @@ protected:
      * @param level レベルオフセット
      * @param fromFontSize 文字サイズ
      * @param fromEdgeLane 上下端で使用する表示レーン
+     * @param fromContext 同一時間足の描画中だけ共用する画面情報
      * @return 調整後価格
      */
     double getDrawPrice(
@@ -767,7 +785,8 @@ protected:
         const double price,
         const double level,
         const int fromFontSize,
-        const int fromEdgeLane
+        const int fromEdgeLane,
+        DrawChartTextContext &fromContext
     ) {
         int xPosition = 0;
         int yPosition = 0;
@@ -802,24 +821,14 @@ protected:
             }
         }
 
-        if (!isConverted) {
-            int chartHeight = (int)ChartGetInteger(
-                0,
-                CHART_HEIGHT_IN_PIXELS,
-                0
-            );
-            double priceMin = ChartGetDouble(0, CHART_PRICE_MIN, 0);
-            double priceMax = ChartGetDouble(0, CHART_PRICE_MAX, 0);
-
-            if (chartHeight > 1 && priceMax > priceMin) {
-                double pricePerPixel =
-                    (priceMax - priceMin) / ((double)chartHeight - 1.0);
-                drawPrice = price - (double)pixelDistance * pricePerPixel;
-            }
+        if (!isConverted && fromContext.loadPriceRange()) {
+            double pricePerPixel =
+                (fromContext.priceMax - fromContext.priceMin) / ((double)fromContext.chartHeight - 1.0);
+            drawPrice = price - (double)pixelDistance * pricePerPixel;
         }
 
         if (this.clampVertical) {
-            return this.clampDrawPrice(drawPrice, fromFontSize, fromEdgeLane);
+            return this.clampDrawPrice(drawPrice, fromFontSize, fromEdgeLane, fromContext);
         }
 
         return drawPrice;
@@ -831,20 +840,22 @@ protected:
      * @param fromPrice 補正前価格
      * @param fromFontSize 文字サイズ
      * @param fromEdgeLane 上下端で使用する表示レーン
+     * @param fromContext 同一時間足の描画中だけ共用する画面情報
      * @return 上下端へ収めた価格
      */
     double clampDrawPrice(
         const double fromPrice,
         const int fromFontSize,
-        const int fromEdgeLane
+        const int fromEdgeLane,
+        DrawChartTextContext &fromContext
     ) {
-        int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
-        double priceMin = ChartGetDouble(0, CHART_PRICE_MIN, 0);
-        double priceMax = ChartGetDouble(0, CHART_PRICE_MAX, 0);
-
-        if (chartHeight <= 1 || priceMax <= priceMin) {
+        if (!fromContext.loadPriceRange()) {
             return fromPrice;
         }
+
+        int chartHeight = (int)fromContext.chartHeight;
+        double priceMin = fromContext.priceMin;
+        double priceMax = fromContext.priceMax;
 
         int baseFontSize = drawProperties.elliotFontSize;
 

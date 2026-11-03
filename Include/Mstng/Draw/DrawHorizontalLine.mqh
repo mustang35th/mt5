@@ -66,9 +66,13 @@ private:
     void draw(Elliot &elliot, int lineSize, bool isUpper = false) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        this.logger.debug(__FUNCTION__, StringFormat("elliot = %s", elliot.toString()));
-        this.logger.debug(__FUNCTION__, StringFormat("lineSize = %d", lineSize));
-        this.logger.debug(__FUNCTION__, StringFormat("isUpper = %s", (string)isUpper));
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("elliot = %s", elliot.toString()));
+            this.logger.debug(__FUNCTION__, StringFormat("lineSize = %d", lineSize));
+            this.logger.debug(__FUNCTION__, StringFormat("isUpper = %s", (string)isUpper));
+        }
         
         string preObjectName;
         StringConcatenate(preObjectName, "HorizontalLine", elliot.marketContext.timeFrameLabel);
@@ -78,7 +82,9 @@ private:
         CArrayObj *zigZagPointList = &(elliot.zigZagPointList);
         int zigZagTotal = zigZagPointList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagTotal = %d", zigZagTotal));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagTotal = %d", zigZagTotal));
+        }
         
         for (int i = 1; i < zigZagTotal; i++) {
             string objectName;

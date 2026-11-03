@@ -62,8 +62,12 @@ private:
     void draw(Elliot &elliot, int lineSize) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
-        this.logger.debug(__FUNCTION__, StringFormat("elliot = %s", elliot.toString()));
-        this.logger.debug(__FUNCTION__, StringFormat("lineSize = %d", lineSize));
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("elliot = %s", elliot.toString()));
+            this.logger.debug(__FUNCTION__, StringFormat("lineSize = %d", lineSize));
+        }
 
         string preObjectName;
         StringConcatenate(preObjectName, Constant::PREFIX, "FiboExpansion", elliot.marketContext.timeFrameLabel);
@@ -75,7 +79,9 @@ private:
         CArrayObj *zigZagPointList = &(latestWave.zigZagPointList);
         int zigZagTotal = zigZagPointList.Total();
 
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagTotal = %d", zigZagTotal));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagTotal = %d", zigZagTotal));
+        }
 
         if (zigZagTotal < 4 || Util::isOdd(zigZagTotal)) {
             return;
