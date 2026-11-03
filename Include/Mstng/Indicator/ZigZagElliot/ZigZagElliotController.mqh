@@ -989,15 +989,20 @@ private:
             this.currencyStrengthController.update();
         }
 
-        long startTime = GetTickCount();
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "▼▼▼▼▼　Start Time: %s (MS: %d)",
-                TimeToString(TimeCurrent(), TIME_SECONDS),
-                startTime
-            )
-        );
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        long startTime = 0;
+
+        if (isDebugOutputEnabled) {
+            startTime = GetTickCount();
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "▼▼▼▼▼　Start Time: %s (MS: %d)",
+                    TimeToString(TimeCurrent(), TIME_SECONDS),
+                    startTime
+                )
+            );
+        }
 
         if (this.analysisController == NULL
                 || this.currencyStrengthController == NULL) {
@@ -1052,24 +1057,26 @@ private:
             this.chartController.drawAll(elliotAll);
         }
 
-        long endTime = GetTickCount();
-        long elapsedTime = endTime - startTime;
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "　　　　　　　End Time: %s (MS: %d)",
-                TimeToString(TimeCurrent(), TIME_SECONDS),
-                endTime
-            )
-        );
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "▲▲▲▲▲　Total Elapsed Time: %d ms (%.3f seconds)",
-                elapsedTime,
-                (double)elapsedTime / 1000.0
-            )
-        );
+        if (isDebugOutputEnabled) {
+            long endTime = GetTickCount();
+            long elapsedTime = endTime - startTime;
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "　　　　　　　End Time: %s (MS: %d)",
+                    TimeToString(TimeCurrent(), TIME_SECONDS),
+                    endTime
+                )
+            );
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "▲▲▲▲▲　Total Elapsed Time: %d ms (%.3f seconds)",
+                    elapsedTime,
+                    (double)elapsedTime / 1000.0
+                )
+            );
+        }
 
         datetime currentBarTime = analysisEndBarTime;
 

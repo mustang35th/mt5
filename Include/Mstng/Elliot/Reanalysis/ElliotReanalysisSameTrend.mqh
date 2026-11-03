@@ -55,7 +55,9 @@ public:
 
         int waveTotal = this.waveList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveTotal = %d", waveTotal));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveTotal = %d", waveTotal));
+        }
         
         if (waveTotal < 2) {
             this.logger.debug(__FUNCTION__, "対象外");
@@ -113,7 +115,9 @@ private:
     bool reanalyze(int waveIndex) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        }
         
         double high;
         double low;

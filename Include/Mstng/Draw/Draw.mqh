@@ -477,7 +477,7 @@ private:
     /** 銘柄名とGMO対象の目印を説明するツールチップ。 */
     string symbolLabelTooltip;
 
-    /** GMO目印を含む接頭辞・基軸通貨・決済通貨・接尾辞。 */
+    /** 銘柄の接頭辞・基軸通貨・決済通貨・GMO目印を含む接尾辞。 */
     string symbolLabelTexts[4];
 
     /** 銘柄名の各部分に対応する表示色。 */
@@ -487,7 +487,7 @@ private:
     int symbolLabelOffsets[4];
 
     /**
-     * 銘柄名を通貨固有色で分け、GMO対象には金色の[G]を付ける。
+     * 銘柄名を通貨固有色で分け、GMO対象には末尾へ金色の[G]を付ける。
      * 文字幅と通貨情報は銘柄変更時だけ取得し、取得失敗時は再試行する。
      */
     void drawSymbolName() {
@@ -535,14 +535,14 @@ private:
 
         SymbolNameInfoAll symbolNameInfoAll;
         symbolNameInfoAll.setGmo();
-        string symbolPrefix = "";
+        string gmoSuffix = "";
         this.symbolLabelTooltip = fromSymbolName;
         if (symbolNameInfoAll.isUniqueTarget(fromSymbolName)) {
-            symbolPrefix = "[G]";
+            gmoSuffix = " [G]";
             this.symbolLabelTooltip += "\n[G]: GMO対象通貨ペア（メールと共通の登録一覧）";
         }
 
-        string displaySymbolName = symbolPrefix + fromSymbolName;
+        string displaySymbolName = fromSymbolName + gmoSuffix;
         this.symbolLabelTexts[0] = displaySymbolName;
         string baseCurrency = "";
         string quoteCurrency = "";
@@ -568,7 +568,7 @@ private:
 
         int positions[4];
         positions[0] = 0;
-        positions[1] = StringLen(symbolPrefix) + pairPosition;
+        positions[1] = pairPosition;
         positions[2] = positions[1] + StringLen(baseCurrency);
         positions[3] = positions[2] + StringLen(quoteCurrency);
         int offsets[4] = {0, 0, 0, 0};

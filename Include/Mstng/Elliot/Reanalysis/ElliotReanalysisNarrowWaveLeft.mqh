@@ -56,7 +56,9 @@ public:
         
         int waveTotal = this.waveList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveTotal = %d", waveTotal));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveTotal = %d", waveTotal));
+        }
         
         if (waveTotal < 2) {
             this.logger.debug(__FUNCTION__, "対象外");
@@ -115,9 +117,13 @@ private:
      */
     bool isTarget(int waveIndex) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        }
         
         bool isTarget = false;
         
@@ -132,7 +138,9 @@ private:
             }
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isTarget = %s", (string)isTarget));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("isTarget = %s", (string)isTarget));
+        }
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isTarget;
@@ -150,7 +158,9 @@ private:
     bool reanalyze(int waveIndex) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
                 
-        this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        }
         
         CArrayObj zigZagPointListReanalyze;
         
@@ -236,8 +246,12 @@ private:
      */
     bool isNarrowWave(int waveIndex, double high, double low) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveIndex = %d", waveIndex));
+        }
         
         bool isNarrowWave = false;
         
@@ -255,7 +269,9 @@ private:
             }
         }
                 
-        this.logger.debug(__FUNCTION__, StringFormat("isNarrowWave = %s", (string)isNarrowWave));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("isNarrowWave = %s", (string)isNarrowWave));
+        }
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isNarrowWave;

@@ -73,8 +73,11 @@ public:
             isZigZagConfirmed = true;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("latestPoint = %s", latestPoint.toString()));
-        this.logger.debug(__FUNCTION__, StringFormat("isZigZagConfirmed = %s", (string)isZigZagConfirmed));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("latestPoint = %s", latestPoint.toString()));
+            this.logger.debug(__FUNCTION__, StringFormat("isZigZagConfirmed = %s", (string)isZigZagConfirmed));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 
         return isZigZagConfirmed;

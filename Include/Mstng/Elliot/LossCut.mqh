@@ -140,7 +140,9 @@ public:
         this.lc10 = lc0 + RateUtil::getOffset(this.isBuy, 10, this.marketContext);
         this.lc15 = lc0 + RateUtil::getOffset(this.isBuy, 15, this.marketContext);
         
-        this.logger.debug(__FUNCTION__, StringFormat("%s", this.toString()));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("%s", this.toString()));
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
