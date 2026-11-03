@@ -69,8 +69,9 @@ public:
      *
      * @param elliotHigher 上位足Elliott分析結果
      * @param fromZigZagPointList 補正対象の下位足ポイント列
+     * @return 必要な価格系列を取得して補正できた場合true。
      */
-    void correct(Elliot &elliotHigher, CArrayObj &fromZigZagPointList) {
+    bool correct(Elliot &elliotHigher, CArrayObj &fromZigZagPointList) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         // 分析後に展開したZigZagを補正対象としてコピーする。
@@ -98,12 +99,18 @@ public:
                 
                 this.logger.debug(__FUNCTION__, zigZagPointHigher.toString());
                 
-                this.correctPoint(zigZagPointHigher);
+                if (!this.correctPoint(zigZagPointHigher)) {
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
             }
             
         }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
     }
 
 private:
@@ -133,20 +140,31 @@ private:
      * 下位足ポイントの価格と時刻を合わせる。
      *
      * @param zigZagPointHigher 補正基準となる上位足ポイント
+     * @return 補正できた場合または補正対象がない場合true。価格系列不足はfalse。
      */
-    void correctPoint(ZigZagPoint &zigZagPointHigher) {
+    bool correctPoint(ZigZagPoint &zigZagPointHigher) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
+        int leftIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTime);
+        int rightIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTimeNext);
+
+        if (leftIndex < 0 || rightIndex < 0 || leftIndex < rightIndex) {
+            this.logger.error(__FUNCTION__, "ZigZag correction range is not ready.");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
         // 補正対象のPoint位置検索
-        int correctIndex = this.getCorrectIndex(zigZagPointHigher);
+        int correctIndex = this.getCorrectIndex(zigZagPointHigher, leftIndex, rightIndex);
         
         this.logger.debug(__FUNCTION__, StringFormat("correctIndex = %d", correctIndex));
         
         if (correctIndex == -1) {
-            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
-            
-            return;
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+            return true;
         }
         
         
@@ -155,34 +173,49 @@ private:
         this.logger.debug(__FUNCTION__, "補正前");
         this.logger.debug(__FUNCTION__, zigZagPoint.toString());
         
-        int leftIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTime);
-        int rightIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTimeNext);
-        
+        int requiredCount = leftIndex - rightIndex + 1;
+        double prices[];
+        ArraySetAsSeries(prices, true);
+        int copiedCount = 0;
+
+        if (zigZagPoint.isPeak) {
+            copiedCount = CopyHigh(this.marketContext.symbolName, this.marketContext.timeFrame, rightIndex, requiredCount, prices);
+        } else {
+            copiedCount = CopyLow(this.marketContext.symbolName, this.marketContext.timeFrame, rightIndex, requiredCount, prices);
+        }
+
+        if (copiedCount != requiredCount) {
+            this.logger.error(__FUNCTION__, "ZigZag correction price series is not ready.");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
         int position = rightIndex;
         double rateNew = 0;
-        
+
         if (zigZagPoint.isPeak) {  // 山
-            for (int i = rightIndex; i <= leftIndex; i++) {
-                double rate = iHigh(this.marketContext.symbolName, this.marketContext.timeFrame, i);
-                
+            for (int i = 0; i < requiredCount; i++) {
+                double rate = prices[i];
+
                 if (rate >= rateNew) {
-                    position = i;
+                    position = rightIndex + i;
                     rateNew = rate;
                 }
             }
-            
+
         } else {    // 谷
             rateNew = 1000;
-            
-            for (int i = rightIndex; i <= leftIndex; i++) {
-                double rate = iLow(this.marketContext.symbolName, this.marketContext.timeFrame, i);
-                
+
+            for (int i = 0; i < requiredCount; i++) {
+                double rate = prices[i];
+
                 if (rate <= rateNew) {
-                    position = i;
+                    position = rightIndex + i;
                     rateNew = rate;
                 }
             }
-        
+
         }
         
         zigZagPoint.rate = rateNew;
@@ -193,6 +226,8 @@ private:
         this.logger.debug(__FUNCTION__, zigZagPoint.toString());
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
     }
     
     /**
@@ -226,19 +261,13 @@ private:
      * 下位足ポイントを補正対象として返す。
      *
      * @param zigZagPointHigher 補正基準となる上位足ポイント
+     * @param fromLeftIndex 検証済みの左境界バーインデックス。
+     * @param fromRightIndex 検証済みの右境界バーインデックス。
      * @return 補正対象インデックス。対象がない場合-1
      */
-    int getCorrectIndex(ZigZagPoint &zigZagPointHigher) {
-        int leftIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTime);
-        int rightIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTimeNext);
-
-        if (leftIndex < 0 || rightIndex < 0) {
-            return -1;
-        }
-        
-        
+    int getCorrectIndex(ZigZagPoint &zigZagPointHigher, int fromLeftIndex, int fromRightIndex) {
         // 左側から検索
-        int index = this.getLeftIndex(leftIndex);
+        int index = this.getLeftIndex(fromLeftIndex);
 
         if (index >= 0) {
             ZigZagPoint *zigZagPoint =
@@ -252,7 +281,7 @@ private:
         
         
         // 右側の検索
-        index = this.getRightIndex(rightIndex);
+        index = this.getRightIndex(fromRightIndex);
 
         if (index < 0) {
             return -1;

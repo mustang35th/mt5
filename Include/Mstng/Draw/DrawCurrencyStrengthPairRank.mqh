@@ -39,6 +39,8 @@ public:
             CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
     ) {
         this.chartId = fromChartId;
+        this.redrawBatchDepth = 0;
+        this.redrawPending = false;
         this.destroyLegacyObjects();
 
         string baseObjectPrefix =
@@ -111,6 +113,33 @@ public:
      */
     ~DrawCurrencyStrengthPairRank() {
         this.destroyObjects();
+    }
+
+    /**
+     * 再描画要求の集約を開始する。入れ子の開始でも保留中の要求を維持する。
+     */
+    void beginRedrawBatch() {
+        this.redrawBatchDepth++;
+    }
+
+    /**
+     * 再描画要求の集約を終了し、最も外側の終了時に必要な場合だけ1回再描画する。
+     *
+     * @param fromForceRedraw 保留中の要求がなくても再描画する場合true。
+     */
+    void endRedrawBatch(bool fromForceRedraw = false) {
+        if (fromForceRedraw) {
+            this.redrawPending = true;
+        }
+
+        if (this.redrawBatchDepth > 0) {
+            this.redrawBatchDepth--;
+        }
+
+        if (this.redrawBatchDepth == 0 && this.redrawPending) {
+            ChartRedraw(this.chartId);
+            this.redrawPending = false;
+        }
     }
 
     /**
@@ -197,7 +226,7 @@ public:
         }
 
         this.hasRankData = true;
-        ChartRedraw(this.chartId);
+        this.requestRedraw();
 
         return true;
     }
@@ -276,7 +305,7 @@ public:
             return false;
         }
 
-        ChartRedraw(this.chartId);
+        this.requestRedraw();
 
         return true;
     }
@@ -309,7 +338,7 @@ public:
             return false;
         }
 
-        ChartRedraw(this.chartId);
+        this.requestRedraw();
 
         return true;
     }
@@ -411,7 +440,7 @@ public:
             this.getModeBadgeLeftOffset(),
             this.getModeBadgeTopOffset()
         );
-        ChartRedraw(this.chartId);
+        this.requestRedraw();
     }
 
     /**
@@ -424,7 +453,7 @@ public:
         this.lastQuoteCurrency = "";
         this.lastDisplayAvailable = false;
         this.lastDisplayError = false;
-        ChartRedraw(this.chartId);
+        this.requestRedraw();
     }
 
 private:
@@ -442,6 +471,12 @@ private:
 
     /** 描画対象チャートID。 */
     long chartId;
+
+    /** 再描画要求を集約する処理の入れ子の深さ。 */
+    int redrawBatchDepth;
+
+    /** 集約中に再描画を要求された場合true。 */
+    bool redrawPending;
 
     /** 順位パネル専用オブジェクト名プレフィックス。 */
     string objectPrefix;
@@ -553,6 +588,19 @@ private:
 
     /** 順位領域境界と中央線の色。 */
     color rankGridBoundaryColor;
+
+    /**
+     * 集約中は再描画を保留し、それ以外は直ちに再描画する。
+     */
+    void requestRedraw() {
+        if (this.redrawBatchDepth > 0) {
+            this.redrawPending = true;
+
+            return;
+        }
+
+        ChartRedraw(this.chartId);
+    }
 
     /**
      * 必要に応じて順位パネルを生成する。

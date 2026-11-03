@@ -78,7 +78,12 @@ public:
         }
         
         
-        this.correctZigZagPoint(elliotHigher);  // ZigZag補正
+        if (!this.correctZigZagPoint(elliotHigher)) {
+            this.logger.error(__FUNCTION__, "correctZigZagPoint false");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
         
         
         if (!this.analyzeWithHigher(elliotHigher)) {
@@ -140,17 +145,24 @@ private:
      * 補正後のポイント列は、ZigZagCorrectorの結果を現在の分析対象へ反映する。
      *
      * @param elliotHigher 上位足Elliott分析結果
+     * @return 上位足に合わせた補正に成功した場合true。
      */
-    void correctZigZagPoint(Elliot &elliotHigher) {
+    bool correctZigZagPoint(Elliot &elliotHigher) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         ZigZagCorrector zigZagCorrector(this.marketContext);
         
-        zigZagCorrector.correct(elliotHigher, this.zigZagPointList);
+        if (!zigZagCorrector.correct(elliotHigher, this.zigZagPointList)) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
 
         ZigZagPointUtil::copyZigZagPointList(zigZagCorrector.orgZigZagPointList, this.zigZagPointList);
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
     }
     
     

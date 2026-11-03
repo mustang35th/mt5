@@ -149,6 +149,28 @@ public:
     }
 
     /**
+     * 順位パネルの再描画要求をまとめる処理を開始する。
+     */
+    void beginRedrawBatch() {
+        if (this.pairRankDraw != NULL) {
+            this.pairRankDraw.beginRedrawBatch();
+        }
+    }
+
+    /**
+     * 保留した再描画要求をまとめ、最外側の終了時に一度だけ反映する。
+     *
+     * @param fromForceRedraw パネル以外の変更でも再描画する場合true。
+     */
+    void endRedrawBatch(bool fromForceRedraw = false) {
+        if (this.pairRankDraw != NULL) {
+            this.pairRankDraw.endRedrawBatch(fromForceRedraw);
+        } else if (fromForceRedraw) {
+            ChartRedraw(0);
+        }
+    }
+
+    /**
      * チャートサイズに合わせて順位パネルを再配置する。
      */
     void reposition() {

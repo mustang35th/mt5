@@ -88,24 +88,42 @@ public:
      * 条件成立時に補完ZigZagポイントを先頭へ追加する。
      *
      * @param isBuy 上昇方向判定フラグ
+     * @return 補完不要または追加成功の場合true。価格データ取得などに失敗した場合false。
      */
-    void addPoint(bool isBuy) {
+    bool addPoint(bool isBuy) {
         ZigZagPoint *zigZagPoint0 = this.zigZagPointList.At(0);
+
+        if (zigZagPoint0 == NULL) {
+            return false;
+        }
         
         if (this.isPointAddCondition(isBuy, zigZagPoint0)) {
             ZigZagPoint *zigZagPoint = new ZigZagPoint(this.marketContext);
+
+            if (zigZagPoint == NULL) {
+                return false;
+            }
             
             zigZagPoint.isAddedPoint = true;
             zigZagPoint.isPeak = !zigZagPoint0.isPeak;
+
+            bool isPriceReady = false;
             
             if (zigZagPoint.isPeak) {
-                this.getZigZagHigh(0, zigZagPoint0.barIndex, zigZagPoint);
+                isPriceReady = this.getZigZagHigh(0, zigZagPoint0.barIndex, zigZagPoint);
             } else {
-                this.getZigZagLow(0, zigZagPoint0.barIndex, zigZagPoint);
+                isPriceReady = this.getZigZagLow(0, zigZagPoint0.barIndex, zigZagPoint);
+            }
+
+            if (!isPriceReady || !this.zigZagPointList.Insert(zigZagPoint, 0)) {
+                delete zigZagPoint;
+
+                return false;
             }
             
-            this.zigZagPointList.Insert(zigZagPoint, 0);
         }
+
+        return true;
     }
     
     /**
@@ -208,10 +226,11 @@ private:
      * 指定区間の最高値を取得し、ZigZagPointへ設定する。
      *
      * @param start 取得開始シフト。0が最新足
-     * @param end 取得終了シフト
+     * @param end 取得終了シフト。このシフトは含めない。
      * @param zigZagPoint 設定対象ポイント
+     * @return 対象区間の全価格を取得して設定できた場合true。
      */
-    void getZigZagHigh(int start, int end, ZigZagPoint &zigZagPoint) {
+    bool getZigZagHigh(int start, int end, ZigZagPoint &zigZagPoint) {
         if (start < 0) {
             start = 0;
         }
@@ -221,30 +240,46 @@ private:
             end = start + 1;
         }
     
+        int count = end - start;
+        double highs[];
+        ArraySetAsSeries(highs, true);
+
+        ResetLastError();
+        int copied = CopyHigh(this.marketContext.symbolName, this.marketContext.timeFrame, start, count, highs);
+        if (copied != count) {
+            this.logger.error(__FUNCTION__, StringFormat(
+                "Failed to copy high data. requested=%d copied=%d error=%d", count, copied, GetLastError()));
+
+            return false;
+        }
+
         int position = start;
-        double high = iHigh(this.marketContext.symbolName, this.marketContext.timeFrame, position);
+        double high = highs[0];
     
-        for (int i = start + 1; i < end; i++) {
-            double highCurrent = iHigh(this.marketContext.symbolName, this.marketContext.timeFrame, i);
+        for (int i = 1; i < count; i++) {
+            double highCurrent = highs[i];
     
             if (highCurrent >= high) {
                 high = highCurrent;
-                position = i;
+                position = start + i;
             }
         }
     
         zigZagPoint.rate = high;
         zigZagPoint.setBarIndexAndTime(this.marketContext, position);
+
+        return true;
     }
 
     /**
      * 指定区間の最安値を取得し、ZigZagPointへ設定する。
      *
      * @param start 取得開始シフト。0が最新足
-     * @param end 取得終了シフト
+     * @param end 取得終了シフト。このシフトは含めない。
      * @param zigZagPoint 設定対象ポイント
+     * @return 対象区間の全価格を取得して設定できた場合true。
      */
-    void getZigZagLow(int start, int end, ZigZagPoint &zigZagPoint) {
+    bool getZigZagLow(int start, int end, ZigZagPoint &zigZagPoint) {
         if (start < 0) {
             start = 0;
         }
@@ -254,20 +289,35 @@ private:
             end = start + 1;
         }
     
+        int count = end - start;
+        double lows[];
+        ArraySetAsSeries(lows, true);
+
+        ResetLastError();
+        int copied = CopyLow(this.marketContext.symbolName, this.marketContext.timeFrame, start, count, lows);
+        if (copied != count) {
+            this.logger.error(__FUNCTION__, StringFormat(
+                "Failed to copy low data. requested=%d copied=%d error=%d", count, copied, GetLastError()));
+
+            return false;
+        }
+
         int position = start;
-        double low = iLow(this.marketContext.symbolName, this.marketContext.timeFrame, position);
+        double low = lows[0];
     
-        for (int i = start + 1; i < end; i++) {
-            double lowCurrent = iLow(this.marketContext.symbolName, this.marketContext.timeFrame, i);
+        for (int i = 1; i < count; i++) {
+            double lowCurrent = lows[i];
     
             if (lowCurrent <= low) {
                 low = lowCurrent;
-                position = i;
+                position = start + i;
             }
         }
     
         zigZagPoint.rate = low;
         zigZagPoint.setBarIndexAndTime(this.marketContext, position);
+
+        return true;
     }
 
     /**

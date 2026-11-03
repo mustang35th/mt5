@@ -85,6 +85,14 @@ private:
         if (isDebugOutputEnabled) {
             this.logger.debug(__FUNCTION__, StringFormat("zigZagTotal = %d", zigZagTotal));
         }
+
+        if (zigZagTotal <= 1) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+            return;
+        }
+
+        DrawProperties drawProperties;
         
         for (int i = 1; i < zigZagTotal; i++) {
             string objectName;
@@ -133,7 +141,6 @@ private:
                 false
             );
             
-            DrawProperties drawProperties;
             datetime drawDatetime = TimeUtil::addBars(datetimeTo, elliot.marketContext.timeFrame, 3);
             
             string text = DoubleToString(rateFrom, elliot.marketContext.digits);

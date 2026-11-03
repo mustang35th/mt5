@@ -666,7 +666,12 @@ protected:
         }
         
         // ZigZagの転換点が不足するケースがあるため、売買方向に応じて最新ポイントを補完する。
-        zigZag.addPoint(this.isBuy);
+        if (!zigZag.addPoint(this.isBuy)) {
+            this.logger.error(__FUNCTION__, "ZigZag add point failed.");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
     
         // ZigZagの転換点リストを、解析対象の点列として保持する。
         ZigZagPointUtil::copyZigZagPointList(zigZag.zigZagPointList, this.zigZagPointList);

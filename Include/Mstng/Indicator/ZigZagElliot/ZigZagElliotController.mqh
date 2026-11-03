@@ -260,6 +260,8 @@ public:
         bool isRedrawn = false;
 
         if (fromId == CHARTEVENT_CHART_CHANGE) {
+            this.beginCurrencyStrengthRedrawBatch();
+
             if (this.currencyStrengthController != NULL) {
                 this.currencyStrengthController.reposition();
             }
@@ -270,6 +272,8 @@ public:
             if (isRedrawn || this.databaseAlertDisplayController != NULL) {
                 this.completeRedraw();
             }
+
+            this.endCurrencyStrengthRedrawBatch();
 
             return;
         }
@@ -773,7 +777,30 @@ private:
     }
 
     /**
+     * 通貨強弱パネルの再描画要求を処理終了まで保留する。
+     */
+    void beginCurrencyStrengthRedrawBatch() {
+        if (this.currencyStrengthController != NULL) {
+            this.currencyStrengthController.beginRedrawBatch();
+        }
+    }
+
+    /**
+     * 通貨強弱パネルとチャートの再描画要求をまとめて反映する。
+     *
+     * @param fromForceRedraw パネル以外の変更でも再描画する場合true。
+     */
+    void endCurrencyStrengthRedrawBatch(bool fromForceRedraw = false) {
+        if (this.currencyStrengthController != NULL) {
+            this.currencyStrengthController.endRedrawBatch(fromForceRedraw);
+        } else if (fromForceRedraw) {
+            ChartRedraw(0);
+        }
+    }
+
+    /**
      * 分析・アラート描画後にDBラベルを更新し、固定パネルを最後に一度だけ手前へ戻す。
+     * 分析開始時から保留した再描画要求もここでまとめて反映する。
      */
     void completeAnalysisDraw(const datetime fromBarTime) {
         if (this.databaseAlertDisplayController != NULL) {
@@ -784,15 +811,15 @@ private:
             this.currencyStrengthController.redrawOnTop();
         }
 
-        if (!Util::isStrategyTester()) {
-            ChartRedraw(0);
-        }
+        this.endCurrencyStrengthRedrawBatch(!Util::isStrategyTester());
     }
 
     /**
      * 固定パネルを最前面へ戻してチャートを再描画する。
      */
     void completeRedraw() {
+        this.beginCurrencyStrengthRedrawBatch();
+
         if (this.databaseAlertDisplayController != NULL) {
             this.databaseAlertDisplayController.redraw(TimeCurrent());
         }
@@ -801,7 +828,7 @@ private:
             this.currencyStrengthController.redrawOnTop();
         }
 
-        ChartRedraw(0);
+        this.endCurrencyStrengthRedrawBatch(true);
     }
 
     /**
@@ -956,6 +983,8 @@ private:
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
+        this.beginCurrencyStrengthRedrawBatch();
+
         if (this.currencyStrengthController != NULL) {
             this.currencyStrengthController.update();
         }
@@ -972,12 +1001,14 @@ private:
 
         if (this.analysisController == NULL
                 || this.currencyStrengthController == NULL) {
+            this.endCurrencyStrengthRedrawBatch();
             this.recordUpdateProcessingTime(processingStartMicroseconds, false, "準備中");
 
             return;
         }
 
         if (!fromAnalysisDataReady && !this.isAnalysisDataReady()) {
+            this.endCurrencyStrengthRedrawBatch();
             this.recordUpdateProcessingTime(processingStartMicroseconds, false, "準備中");
 
             return;
@@ -995,6 +1026,7 @@ private:
             );
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
 
+            this.endCurrencyStrengthRedrawBatch();
             this.recordUpdateProcessingTime(processingStartMicroseconds, false, "再試行");
 
             return;
@@ -1010,6 +1042,7 @@ private:
         );
 
         if (analysisEndBarTime == 0) {
+            this.endCurrencyStrengthRedrawBatch();
             this.recordUpdateProcessingTime(processingStartMicroseconds, false, "再試行");
 
             return;
