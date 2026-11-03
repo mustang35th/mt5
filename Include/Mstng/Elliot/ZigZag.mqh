@@ -157,38 +157,108 @@ public:
         if (isDebugOutputEnabled) {
             this.logger.debug(__FUNCTION__, StringFormat("fromMaxBars = %d", fromMaxBars));
         }
-        
+
         ZigZagLogic zigZagLogic(this.marketContext, this.depth, this.deviation, this.backstep);
-        
+        datetime calculationBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0);
         int ratesTotal = zigZagLogic.calculate(fromMaxBars);
-        
+
         if (isDebugOutputEnabled) {
             this.logger.debug(__FUNCTION__, StringFormat("ratesTotal = %d", ratesTotal));
         }
-        
+
         this.clearPoints();
-        
+
+        if (ratesTotal <= 0 || calculationBarTime <= 0) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        // 最新足を添字0にそろえ、全ポイントの足時刻を一度に取得する。
+        datetime barTimes[];
+
+        if (!ArraySetAsSeries(barTimes, true)) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        ResetLastError();
+        int copiedTimes = CopyTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0, ratesTotal, barTimes);
+        int copyTimeError = GetLastError();
+
+        if (copiedTimes != ratesTotal) {
+            this.logger.error(__FUNCTION__, StringFormat("Failed to copy bar times. requested=%d copied=%d error=%d", ratesTotal, copiedTimes, copyTimeError));
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        int periodSeconds = PeriodSeconds(this.marketContext.timeFrame);
+
+        // 計算中に新しい足へ切り替わった場合は、価格と時刻を混在させず次回再試行する。
+        if (barTimes[0] != calculationBarTime || periodSeconds <= 0) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
         for (int i = ratesTotal - 1; i >= 0; i--) {
+            int relativeIndex = (ratesTotal - 1) - i; // 相対インデックス（最新足を0とする）。
+
+            if (barTimes[relativeIndex] <= 0
+                    || (relativeIndex > 0 && barTimes[relativeIndex] >= barTimes[relativeIndex - 1])) {
+                this.clearPoints();
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
+
             if (zigZagLogic.zigZagBuffer[i] != 0.0) {
-                int relativeIndex = (ratesTotal - 1) - i;   // 相対インデックスを計算 (最新バーを0とする)
-                                
                 ZigZagPoint *zigZagPoint = new ZigZagPoint(this.marketContext);
-                
+
+                if (zigZagPoint == NULL) {
+                    this.clearPoints();
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
+
                 zigZagPoint.rate = zigZagLogic.zigZagBuffer[i];
                 zigZagPoint.isPeak = this.isPeak(zigZagLogic.searchModeBuffer[i]);
-                
-                zigZagPoint.setBarIndexAndTime(this.marketContext, relativeIndex);
-                
-                this.zigZagPointList.Add(zigZagPoint);
+                zigZagPoint.barIndex = relativeIndex;
+                zigZagPoint.barTime = barTimes[relativeIndex];
+
+                // 過去足は週末などの間隔を含む実際の隣接足、最新足だけは従来どおり秒数加算とする。
+                if (relativeIndex > 0) {
+                    zigZagPoint.barTimeNext = barTimes[relativeIndex - 1];
+                } else {
+                    zigZagPoint.barTimeNext = barTimes[0] + periodSeconds;
+                }
+
+                if (!this.zigZagPointList.Add(zigZagPoint)) {
+                    delete zigZagPoint;
+                    this.clearPoints();
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
             }
         }
-        
+
+        if (iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0) != calculationBarTime) {
+            this.clearPoints();
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
         if (isDebugOutputEnabled) {
             this.logger.debug(__FUNCTION__, StringFormat("zigZagPointList.Total = %d", this.zigZagPointList.Total()));
         }
-        
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
-        
+
         if (this.zigZagPointList.Total() == 0) {
             return false;
         }

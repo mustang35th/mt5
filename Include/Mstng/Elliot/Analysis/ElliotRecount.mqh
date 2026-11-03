@@ -68,8 +68,10 @@ public:
      *
      * 元のElliott情報を退避した後、削除対象ポイントを判定し、
      * DELETEフラグのポイントを除外した結果をWaveへ反映する。
+     *
+     * @return 全Waveの削除対象除外に成功した場合true。
      */
-    void recount() {
+    bool recount() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
@@ -92,11 +94,18 @@ public:
             this.recount(wave);            
             
             ZigZagPointUtil::copyZigZagPointList(wave.zigZagPointList, wave.orgZigZagPointList);
-            this.deleteZigZagPoint(wave);
+
+            if (!this.deleteZigZagPoint(wave)) {
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
             
         }
                 
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
     }
 
 private:
@@ -134,40 +143,70 @@ private:
      * DELETEフラグが付いたポイントをWaveから除外する。
      *
      * @param wave 処理対象Wave
+     * @return 残存ポイントの複製と移管に成功した場合true。
      */
-    void deleteZigZagPoint(Wave *wave) {
+    bool deleteZigZagPoint(Wave *wave) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
-        
-        
         int total = wave.zigZagPointList.Total();
-        
+
         if (isDebugOutputEnabled) {
             this.logger.debug(__FUNCTION__, StringFormat("wave.zigZagPointList.total = %d", total));
         }
-        
+
         CArrayObj zigZagPointList;
-        
+
         for (int i = 0; i < total; i++) {
             ZigZagPoint *zigZagPoint = wave.zigZagPointList.At(i);
-            
+
+            if (zigZagPoint == NULL) {
+                continue;
+            }
+
             if (zigZagPoint.elliotIndex != Constant::DELETE_FLG) {
                 ZigZagPoint *zigZagPointNew = zigZagPoint.clone();
-                
-                zigZagPointList.Add(zigZagPointNew);
-                
+
+                if (zigZagPointNew == NULL) {
+                    this.logger.error(__FUNCTION__, "Failed to clone recount point.");
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
+
+                if (!zigZagPointList.Add(zigZagPointNew)) {
+                    delete zigZagPointNew;
+                    this.logger.error(__FUNCTION__, "Failed to add recount point.");
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
+
                 if (isDebugOutputEnabled) {
                     this.logger.debug(__FUNCTION__, StringFormat("zigZagPointNew = %s", zigZagPointNew.toString()));
                 }
             }
         }
-        
-        ZigZagPointUtil::copyZigZagPointList(zigZagPointList, wave.zigZagPointList);
-        
+
+        // 複製済みポイントを順序どおり移し、2回目のcloneを省く。
+        // 元リストの容量は残存件数以上あるため、Clear後のAddArrayでは再確保しない。
+        wave.zigZagPointList.Clear();
+
+        if (zigZagPointList.Total() > 0 && !wave.zigZagPointList.AddArray(GetPointer(zigZagPointList))) {
+            this.logger.error(__FUNCTION__, "Failed to transfer recount points.");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        // 所有権はWaveへ移ったため、作業リストの破棄時にポイントを解放しない。
+        zigZagPointList.FreeMode(false);
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
     }
-    
+
     /**
      * 指定Waveの再カウント対象ポイントへDELETEフラグを設定する。
      *

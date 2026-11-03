@@ -103,7 +103,13 @@ public:
         }
         
         if (this.isReanalyze) {
-            this.recount();
+            if (!this.recount()) {
+                this.logger.error(__FUNCTION__, "recount false");
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
+
             this.setSubwaves();
         }
         
@@ -929,14 +935,20 @@ private:
     
     /**
      * 生成した全WaveへElliott再カウントを適用する。
+     *
+     * @return 再カウントの削除対象除外に成功した場合true。
      */
-    void recount() {
+    bool recount() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
         ElliotRecount elliotRecount(this.marketContext, this.waveList);
         
-        elliotRecount.recount();
+        if (!elliotRecount.recount()) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
         
         WaveUtil::copyWaveList(elliotRecount.waveList, this.waveList);
         
@@ -944,6 +956,8 @@ private:
         
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
     }
     
     /**

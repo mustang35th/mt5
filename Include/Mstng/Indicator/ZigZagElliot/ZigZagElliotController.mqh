@@ -306,12 +306,16 @@ public:
             return fromRatesTotal;
         }
 
+        this.chartController.beginProcessingTimeUpdateBatch();
+
         bool isAnalysisDataReady = false;
 
         if (!this.timerMode && this.lastAnalysisWarmUpProgress < 100) {
             isAnalysisDataReady = this.isAnalysisDataReady();
 
             if (!isAnalysisDataReady) {
+                this.chartController.endProcessingTimeUpdateBatch();
+
                 // 表示バッファが未計算の間は処理済みとして返さない。
                 return 0;
             }
@@ -321,6 +325,7 @@ public:
 
         if (this.timerMode) {
             this.chartController.drawBidAsk();
+            this.chartController.endProcessingTimeUpdateBatch();
 
             return fromRatesTotal;
         }
@@ -334,6 +339,8 @@ public:
             this.completeRedraw();
         }
 
+        this.chartController.endProcessingTimeUpdateBatch();
+
         return fromRatesTotal;
     }
 
@@ -345,6 +352,7 @@ public:
             return;
         }
 
+        this.chartController.beginProcessingTimeUpdateBatch();
         this.chartController.updateOnTimer(this.timerMode);
 
         if (!this.timerInitialized) {
@@ -360,11 +368,14 @@ public:
                 this.completeRedraw();
             }
 
+            this.chartController.endProcessingTimeUpdateBatch();
+
             return;
         }
 
         this.lastExecuteTickCount = GetTickCount();
         this.execute();
+        this.chartController.endProcessingTimeUpdateBatch();
     }
 
     /**

@@ -220,7 +220,21 @@ public:
     }
 
     /**
-     * 処理時間を集計し、時計の下の対応行だけ更新する。
+     * イベント内の処理時間ラベル更新をまとめる。
+     */
+    void beginProcessingTimeUpdateBatch() {
+        this.processingTimeDraw.beginUpdateBatch();
+    }
+
+    /**
+     * イベント内で保持した集計を反映し、前回の描画失敗も再試行する。
+     */
+    void endProcessingTimeUpdateBatch() {
+        this.processingTimeDraw.endUpdateBatch();
+    }
+
+    /**
+     * 処理時間を集計して表示内容を保持し、まとめ更新中はイベント終了時に反映する。
      *
      * @param fromIndex 更新処理・EMA200・GMMA・日本時間軸に対応する行番号
      * @param fromElapsedMicroseconds 今回の処理時間。単位はマイクロ秒

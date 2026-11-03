@@ -19,6 +19,8 @@ public:
      */
     DrawProcessingTime() {
         this.initialized = false;
+        this.updateBatchDepth = 0;
+        this.displayUpdatePending = false;
         this.positionX = 0;
         this.fontFace = "MS Gothic";
         this.resetLabelCache();
@@ -43,6 +45,8 @@ public:
         this.positionX = fromX;
         this.fontFace = fromFont;
         this.initialized = true;
+        this.updateBatchDepth = 0;
+        this.displayUpdatePending = true;
         this.resetLabelCache();
         this.resetMetricCache();
 
@@ -51,16 +55,16 @@ public:
             ObjectDelete(0, this.getObjectName(i));
         }
 
-        return this.updateDisplay();
+        return this.flushDisplay();
     }
 
     /**
-     * 指定した処理の集計を保持し、更新処理の行と全処理の説明文を更新する。
+     * 指定した処理の集計を保持し、まとめ更新中は描画を終了時まで保留する。
      * 手動で削除されたラベルは、次の更新時に再作成する。
      *
      * @param fromIndex 更新処理0・EMA200 1・GMMA 2・日本時間軸3
      * @param fromStats 表示する処理時間と実行状態
-     * @return ヘッダーと更新処理行の更新要求に成功した場合true
+     * @return 集計の保持と、必要な描画要求に成功した場合true
      */
     bool updateRow(int fromIndex, ProcessingTimeStats &fromStats) {
         if (!this.initialized || fromIndex < 0 || fromIndex >= 4) {
@@ -88,11 +92,35 @@ public:
 
         this.metricTexts[fromIndex] = text;
         this.metricTooltips[fromIndex] = this.getTooltip(fromIndex, fromStats);
+        this.displayUpdatePending = true;
         if (fromIndex == 0) {
             this.updateTextColor = textColor;
         }
 
-        return this.updateDisplay();
+        return this.flushDisplay();
+    }
+
+    /**
+     * 処理時間ラベルの描画を、対応する終了呼び出しまで保留する。
+     */
+    void beginUpdateBatch() {
+        if (this.initialized) {
+            this.updateBatchDepth++;
+        }
+    }
+
+    /**
+     * 最外側のまとめ更新を終え、保留中の表示を一度だけ反映する。
+     * 前回の描画が失敗している場合は、新しい計測がなくても再試行する。
+     *
+     * @return 保留中、更新不要、または描画要求に成功した場合true
+     */
+    bool endUpdateBatch() {
+        if (this.updateBatchDepth > 0) {
+            this.updateBatchDepth--;
+        }
+
+        return this.flushDisplay();
     }
 
     /**
@@ -104,6 +132,8 @@ public:
         }
 
         this.initialized = false;
+        this.updateBatchDepth = 0;
+        this.displayUpdatePending = false;
         this.resetLabelCache();
         this.resetMetricCache();
     }
@@ -111,6 +141,12 @@ public:
 private:
     /** 時計の位置とフォントが設定済みの場合true。 */
     bool initialized;
+
+    /** 描画を保留するまとめ更新の階層。0の場合は即時反映する。 */
+    int updateBatchDepth;
+
+    /** 未反映の集計、または再試行が必要な描画がある場合true。 */
+    bool displayUpdatePending;
 
     /** チャート右端から時計と共通の左端までの距離。 */
     int positionX;
@@ -162,6 +198,29 @@ private:
         }
 
         this.updateTextColor = clrSilver;
+    }
+
+    /**
+     * まとめ更新の外側で、保留しているラベル表示を反映する。
+     * 描画要求の失敗時は保留状態を残し、次回の反映で再試行する。
+     *
+     * @return 保留中、更新不要、または描画要求に成功した場合true
+     */
+    bool flushDisplay() {
+        if (!this.initialized) {
+            return false;
+        }
+
+        if (this.updateBatchDepth > 0 || !this.displayUpdatePending) {
+            return true;
+        }
+
+        bool isSucceeded = this.updateDisplay();
+        if (isSucceeded) {
+            this.displayUpdatePending = false;
+        }
+
+        return isSucceeded;
     }
 
     /**
