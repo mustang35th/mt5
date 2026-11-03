@@ -69,14 +69,20 @@ public:
      */
     void setSubwaves() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
         int total = this.waveList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveList.total = %d", total));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveList.total = %d", total));
+        }
         
         
         for (int i = 0; i < total; i++) {
-            this.logger.debug(__FUNCTION__, StringFormat("waveList i = %d", i));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("waveList i = %d", i));
+            }
             
             Wave *wave = this.waveList.At(i);
             
@@ -131,23 +137,33 @@ private:
      */
     void setRecount(Wave *wave) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
         int total = wave.recountZigZagPointList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("wave.recountZigZagPointList.Total = %d", total));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("wave.recountZigZagPointList.Total = %d", total));
+        }
         
         this.logger.debug(__FUNCTION__, "wave.zigZagPointListへ設定のループ");
         
         for (int i = 1; i < total; i++) {
-            this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+            }
             
             ZigZagPoint *recountZigZagPoint = wave.recountZigZagPointList.At(i);
             
-            this.logger.debug(__FUNCTION__, StringFormat("recountZigZagPoint = %s", recountZigZagPoint.toString()));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("recountZigZagPoint = %s", recountZigZagPoint.toString()));
+            }
             
             ZigZagPoint *zigZagPoint = ZigZagPointUtil::getFromBarIndex(wave.zigZagPointList, recountZigZagPoint.barIndex, recountZigZagPoint.isPeak);
             
-            this.logger.debug(__FUNCTION__, StringFormat("zigZagPoint = %s", zigZagPoint.toString()));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("zigZagPoint = %s", zigZagPoint.toString()));
+            }
             
             zigZagPoint.elliotIndex = recountZigZagPoint.elliotIndex;
             zigZagPoint.elliotLabel = recountZigZagPoint.elliotLabel;
@@ -168,21 +184,29 @@ private:
      */
     void setSubwaves(Wave *wave) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
         
         int total = wave.zigZagPointList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("wave.zigZagPoint.Total = %d", total));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("wave.zigZagPoint.Total = %d", total));
+        }
         
         int countNon = 0;
         
         for (int i = 1; i < total; i++) {
-            this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
-            this.logger.debug(__FUNCTION__, StringFormat("countNon = %d", countNon));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+                this.logger.debug(__FUNCTION__, StringFormat("countNon = %d", countNon));
+            }
             
             ZigZagPoint *zigZagPoint = wave.zigZagPointList.At(i);
             
-            this.logger.debug(__FUNCTION__, StringFormat("zigZagPoint.elliotIndex = %d", zigZagPoint.elliotIndex));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("zigZagPoint.elliotIndex = %d", zigZagPoint.elliotIndex));
+            }
             
             if (zigZagPoint.elliotIndex == Constant::DELETE_FLG) {
                 countNon++;
@@ -216,13 +240,19 @@ private:
      */
     void setSubwaves(Wave *wave, int endIndex, int countNon) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
-        this.logger.debug(__FUNCTION__, StringFormat("endIndex = %d", endIndex));
-        this.logger.debug(__FUNCTION__, StringFormat("countNon = %d", countNon));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("endIndex = %d", endIndex));
+            this.logger.debug(__FUNCTION__, StringFormat("countNon = %d", countNon));
+        }
                 
         ZigZagPoint *fromZigZagPoint = wave.zigZagPointList.At(endIndex);
         
-        this.logger.debug(__FUNCTION__, StringFormat("fromZigZagPoint = %s", fromZigZagPoint.toString()));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromZigZagPoint = %s", fromZigZagPoint.toString()));
+        }
         
         for (int i = endIndex - 1; i >= endIndex - countNon; i--) {
             ZigZagPoint *zigZagPoint = wave.zigZagPointList.At(i);

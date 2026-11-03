@@ -162,17 +162,19 @@ public:
         this.atrValue = atrValueResult;
         this.atrPips = this.convertPriceToPips(this.marketContext, atrValueResult);
 
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "symbol=%s timeFrame=%s shift=%d atrValue=%.8f atrPips=%.2f",
-                this.marketContext.symbolName,
-                this.marketContext.timeFrameLabel,
-                shiftValue,
-                this.atrValue,
-                this.atrPips
-            )
-        );
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "symbol=%s timeFrame=%s shift=%d atrValue=%.8f atrPips=%.2f",
+                    this.marketContext.symbolName,
+                    this.marketContext.timeFrameLabel,
+                    shiftValue,
+                    this.atrValue,
+                    this.atrPips
+                )
+            );
+        }
 
         return true;
     }

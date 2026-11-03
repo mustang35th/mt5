@@ -347,28 +347,30 @@ public:
 
         this.setTextLabels();
 
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "symbol=%s timeFrame=%s close1=%.8f ema200Shift1=%.8f ema200Compare=%.8f slopePips=%.2f closeEma200DiffPips=%.1f closePosition=%s slopeDirection=%s upCount=%d downCount=%d trendCount=%s isBuy=%s isSell=%s buySellLabel=%s textLabel=%s",
-                this.marketContext.symbolName,
-                this.marketContext.timeFrameLabel,
-                this.close1,
-                this.ema200Shift1,
-                this.ema200Compare,
-                this.slopePips,
-                this.closeEma200DiffPips,
-                this.convertClosePositionText(this.closePosition),
-                this.convertSlopeDirectionText(this.slopeDirection),
-                this.upCount,
-                this.downCount,
-                StringUtil::addSign(this.trendCount),
-                this.convertBoolText(this.isBuy),
-                this.convertBoolText(this.isSell),
-                this.buySellLabel,
-                this.textLabel
-            )
-        );
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "symbol=%s timeFrame=%s close1=%.8f ema200Shift1=%.8f ema200Compare=%.8f slopePips=%.2f closeEma200DiffPips=%.1f closePosition=%s slopeDirection=%s upCount=%d downCount=%d trendCount=%s isBuy=%s isSell=%s buySellLabel=%s textLabel=%s",
+                    this.marketContext.symbolName,
+                    this.marketContext.timeFrameLabel,
+                    this.close1,
+                    this.ema200Shift1,
+                    this.ema200Compare,
+                    this.slopePips,
+                    this.closeEma200DiffPips,
+                    this.convertClosePositionText(this.closePosition),
+                    this.convertSlopeDirectionText(this.slopeDirection),
+                    this.upCount,
+                    this.downCount,
+                    StringUtil::addSign(this.trendCount),
+                    this.convertBoolText(this.isBuy),
+                    this.convertBoolText(this.isSell),
+                    this.buySellLabel,
+                    this.textLabel
+                )
+            );
+        }
 
         return true;
     }

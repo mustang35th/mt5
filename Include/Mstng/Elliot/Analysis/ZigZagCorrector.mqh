@@ -73,6 +73,8 @@ public:
      */
     bool correct(Elliot &elliotHigher, CArrayObj &fromZigZagPointList) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
         // 分析後に展開したZigZagを補正対象としてコピーする。
         ZigZagPointUtil::copyZigZagPointList(fromZigZagPointList, this.orgZigZagPointList);
@@ -87,7 +89,9 @@ public:
         // 上位足ポイント内にあるか判定
         int higherTotal = zigZagPointListHigher.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("higherTotal = %d", higherTotal));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("higherTotal = %d", higherTotal));
+        }
         
         for (int i = 0; i < higherTotal; i++) {
             ZigZagPoint *zigZagPointHigher = zigZagPointListHigher.At(i);
@@ -95,10 +99,12 @@ public:
             bool isInsideHigherPoint = this.isInsideHigherPoint(zigZagPointHigher);
             
             if (!isInsideHigherPoint) {
-                this.logger.debug(__FUNCTION__, StringFormat("上位足ポイントの繰り返し i = %d", i));
-                this.logger.debug(__FUNCTION__, "上位足ポイントの範囲外");
-                
-                this.logger.debug(__FUNCTION__, zigZagPointHigher.toString());
+                if (isDebugOutputEnabled) {
+                    this.logger.debug(__FUNCTION__, StringFormat("上位足ポイントの繰り返し i = %d", i));
+                    this.logger.debug(__FUNCTION__, "上位足ポイントの範囲外");
+
+                    this.logger.debug(__FUNCTION__, zigZagPointHigher.toString());
+                }
                 
                 if (!this.correctPoint(zigZagPointHigher)) {
                     LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
@@ -219,6 +225,8 @@ private:
      */
     bool correctPoint(ZigZagPoint &zigZagPointHigher) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
         
         int leftIndex = iBarShift(this.marketContext.symbolName, this.marketContext.timeFrame, zigZagPointHigher.barTime);
@@ -234,7 +242,9 @@ private:
         // 補正対象のPoint位置検索
         int correctIndex = this.getCorrectIndex(zigZagPointHigher, leftIndex, rightIndex);
         
-        this.logger.debug(__FUNCTION__, StringFormat("correctIndex = %d", correctIndex));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("correctIndex = %d", correctIndex));
+        }
         
         if (correctIndex == -1) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
@@ -245,8 +255,10 @@ private:
         
         ZigZagPoint *zigZagPoint = this.orgZigZagPointList.At(correctIndex);
         
-        this.logger.debug(__FUNCTION__, "補正前");
-        this.logger.debug(__FUNCTION__, zigZagPoint.toString());
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, "補正前");
+            this.logger.debug(__FUNCTION__, zigZagPoint.toString());
+        }
         
         int requiredCount = leftIndex - rightIndex + 1;
         double prices[];
@@ -297,8 +309,10 @@ private:
         zigZagPoint.setBarIndexAndTime(this.marketContext, position);
         zigZagPoint.isCorrect = true;
         
-        this.logger.debug(__FUNCTION__, "補正後");
-        this.logger.debug(__FUNCTION__, zigZagPoint.toString());
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, "補正後");
+            this.logger.debug(__FUNCTION__, zigZagPoint.toString());
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 

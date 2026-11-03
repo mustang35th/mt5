@@ -380,16 +380,20 @@ public:
         const int prev_calculated,
         long chartId = 0
     ) {
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "start. rates_total=%d, prev_calculated=%d, maxBars=%d, chartId=%I64d",
-                rates_total,
-                prev_calculated,
-                this.maxBars,
-                chartId
-            )
-        );
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+
+        if (isDebugOutputEnabled) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "start. rates_total=%d, prev_calculated=%d, maxBars=%d, chartId=%I64d",
+                    rates_total,
+                    prev_calculated,
+                    this.maxBars,
+                    chartId
+                )
+            );
+        }
 
         if (rates_total < 3) {
             this.logger.warn(
@@ -416,12 +420,16 @@ public:
             double previousEma60 = ema60Buffer[i - 1];
 
             if (currentEma30 == EMPTY_VALUE || currentEma60 == EMPTY_VALUE) {
-                emptySkipCount++;
+                if (isDebugOutputEnabled) {
+                    emptySkipCount++;
+                }
                 continue;
             }
 
             if (previousEma30 == EMPTY_VALUE || previousEma60 == EMPTY_VALUE) {
-                emptySkipCount++;
+                if (isDebugOutputEnabled) {
+                    emptySkipCount++;
+                }
                 continue;
             }
 
@@ -432,21 +440,25 @@ public:
                 currentEma60
             );
 
-            this.logger.debug(
-                __FUNCTION__,
-                StringFormat(
-                    "i=%d, previousEma30=%f, currentEma30=%f, previousEma60=%f, currentEma60=%f, trend=%d",
-                    i,
-                    previousEma30,
-                    currentEma30,
-                    previousEma60,
-                    currentEma60,
-                    (int)trend
-                )
-            );
+            if (isDebugOutputEnabled) {
+                this.logger.debug(
+                    __FUNCTION__,
+                    StringFormat(
+                        "i=%d, previousEma30=%f, currentEma30=%f, previousEma60=%f, currentEma60=%f, trend=%d",
+                        i,
+                        previousEma30,
+                        currentEma30,
+                        previousEma60,
+                        currentEma60,
+                        (int)trend
+                    )
+                );
+            }
 
             int timeIndex = rates_total - i - 2;
-            this.logger.debug(__FUNCTION__, StringFormat("timeIndex = %d", timeIndex));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("timeIndex = %d", timeIndex));
+            }
 
             datetime time = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex);
             datetime timeBefore = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex + 1);
@@ -486,18 +498,22 @@ public:
             ObjectSetInteger(chartId, objectName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
             ObjectSetInteger(chartId, objectName, OBJPROP_WIDTH, 0);
 
-            drawCount++;
+            if (isDebugOutputEnabled) {
+                drawCount++;
+            }
         }
 
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "end. start=%d, drawCount=%d, emptySkipCount=%d",
-                start,
-                drawCount,
-                emptySkipCount
-            )
-        );
+        if (isDebugOutputEnabled) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "end. start=%d, drawCount=%d, emptySkipCount=%d",
+                    start,
+                    drawCount,
+                    emptySkipCount
+                )
+            );
+        }
     }
 
 private:

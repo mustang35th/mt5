@@ -71,14 +71,20 @@ public:
      */
     void recount() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
         int total = this.waveList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("waveList.total = %d", total));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("waveList.total = %d", total));
+        }
         
         
         for (int i = 0; i < total; i++) {
-            this.logger.debug(__FUNCTION__, StringFormat("waveList i = %d", i));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("waveList i = %d", i));
+            }
             
             Wave *wave = this.waveList.At(i);
             
@@ -131,11 +137,15 @@ private:
      */
     void deleteZigZagPoint(Wave *wave) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
         
         int total = wave.zigZagPointList.Total();
         
-        this.logger.debug(__FUNCTION__, StringFormat("wave.zigZagPointList.total = %d", total));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("wave.zigZagPointList.total = %d", total));
+        }
         
         CArrayObj zigZagPointList;
         
@@ -147,7 +157,9 @@ private:
                 
                 zigZagPointList.Add(zigZagPointNew);
                 
-                this.logger.debug(__FUNCTION__, StringFormat("zigZagPointNew = %s", zigZagPointNew.toString()));
+                if (isDebugOutputEnabled) {
+                    this.logger.debug(__FUNCTION__, StringFormat("zigZagPointNew = %s", zigZagPointNew.toString()));
+                }
             }
         }
         
@@ -166,6 +178,8 @@ private:
      */
     void recount(Wave *wave) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
     
         if (wave == NULL) {
             this.logger.debug(__FUNCTION__, "wave is NULL");
@@ -173,10 +187,17 @@ private:
             return;
         }
     
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat("wave.isMotive = %s", wave.isMotive ? "true" : "false")
-        );
+        if (isDebugOutputEnabled) {
+            string isMotiveText = "false";
+            if (wave.isMotive) {
+                isMotiveText = "true";
+            }
+
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat("wave.isMotive = %s", isMotiveText)
+            );
+        }
     
         if (!wave.isMotive) {
             this.logger.debug(__FUNCTION__, "修正波なので対象外");
@@ -186,7 +207,9 @@ private:
     
         int total = wave.zigZagPointList.Total();
     
-        this.logger.debug(__FUNCTION__, StringFormat("wave.zigZagPointList.Total = %d", total));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("wave.zigZagPointList.Total = %d", total));
+        }
     
         if (total < 4) {
             this.logger.debug(__FUNCTION__, "3波未満なので対象外");
@@ -195,12 +218,16 @@ private:
         }
     
         for (int i = 2; i < total - 1; i++) {
-            this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+            if (isDebugOutputEnabled) {
+                this.logger.debug(__FUNCTION__, StringFormat("i = %d", i));
+            }
     
             ZigZagPoint *zigZagPoint = wave.zigZagPointList.At(i);
     
             if (zigZagPoint == NULL) {
-                this.logger.debug(__FUNCTION__, StringFormat("zigZagPoint is NULL. i = %d", i));
+                if (isDebugOutputEnabled) {
+                    this.logger.debug(__FUNCTION__, StringFormat("zigZagPoint is NULL. i = %d", i));
+                }
                 continue;
             }
     

@@ -160,12 +160,13 @@ public:
      * ストキャス/GMMAを用いて売買方向フラグとoscillatorCountを設定する。
      */
     void setBuySell() {
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+
         this.isBuy = false;
         int plusCount = 0;
         bool isStochasticShortPlus = this.stochasticShort.isPlus();
         bool isStochasticMiddlePlus = this.stochasticMiddle.isPlus();
         bool isStochasticLongPlus = this.stochasticLong.isPlus();
-        bool isGmmaPlus = (this.gmmaCrossCount > 0);
 
         // 売買判定は 3 本のストキャスのみを対象とする
         if (isStochasticShortPlus) {
@@ -178,18 +179,22 @@ public:
             plusCount++;
         }
 
-        this.logger.debug(__FUNCTION__, StringFormat(
-            "stochShort=%d(%s) stochMiddle=%d(%s) stochLong=%d(%s) gmmaTrend=%d gmmaCross=%d(%s) stochPlusCount=%d",
-            this.stochasticShort.count,
-            this.convertPlusMinusLabel(isStochasticShortPlus),
-            this.stochasticMiddle.count,
-            this.convertPlusMinusLabel(isStochasticMiddlePlus),
-            this.stochasticLong.count,
-            this.convertPlusMinusLabel(isStochasticLongPlus),
-            this.gmmaTrendCount,
-            this.gmmaCrossCount,
-            this.convertPlusMinusLabel(isGmmaPlus),
-            plusCount));
+        if (isDebugOutputEnabled) {
+            bool isGmmaPlus = (this.gmmaCrossCount > 0);
+
+            this.logger.debug(__FUNCTION__, StringFormat(
+                "stochShort=%d(%s) stochMiddle=%d(%s) stochLong=%d(%s) gmmaTrend=%d gmmaCross=%d(%s) stochPlusCount=%d",
+                this.stochasticShort.count,
+                this.convertPlusMinusLabel(isStochasticShortPlus),
+                this.stochasticMiddle.count,
+                this.convertPlusMinusLabel(isStochasticMiddlePlus),
+                this.stochasticLong.count,
+                this.convertPlusMinusLabel(isStochasticLongPlus),
+                this.gmmaTrendCount,
+                this.gmmaCrossCount,
+                this.convertPlusMinusLabel(isGmmaPlus),
+                plusCount));
+        }
 
         // 3 本中 2 本以上がプラスのとき BUY、それ以外は SELL
         if (plusCount
@@ -199,7 +204,9 @@ public:
             this.isBuy = false;
         }
 
-        this.logger.debug(__FUNCTION__, StringFormat("result=%s", this.convertBuySellLabel(isBuy)));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("result=%s", this.convertBuySellLabel(isBuy)));
+        }
 
         if (this.isBuy) {
             this.oscillatorCount = plusCount;
@@ -227,13 +234,15 @@ public:
             ZigZagElliotAnalysisProfile::getStochasticMainOrderEpsilon()
         );
 
-        this.logger.debug(__FUNCTION__, StringFormat(
-            "isBuy=%s shortMain0=%.5f middleMain0=%.5f longMain0=%.5f order=%s",
-            this.convertBuySellLabel(isBuyValue),
-            this.stochasticShort.main0,
-            this.stochasticMiddle.main0,
-            this.stochasticLong.main0,
-            this.convertStochasticMainOrderLabel(this.stochasticMainOrder)));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat(
+                "isBuy=%s shortMain0=%.5f middleMain0=%.5f longMain0=%.5f order=%s",
+                this.convertBuySellLabel(isBuyValue),
+                this.stochasticShort.main0,
+                this.stochasticMiddle.main0,
+                this.stochasticLong.main0,
+                this.convertStochasticMainOrderLabel(this.stochasticMainOrder)));
+        }
     }
 
     /**
@@ -295,7 +304,12 @@ public:
         this.initializeMarketContext(fromMarketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        uint startTick = GetTickCount();
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startTick = 0;
+        if (isDebugOutputEnabled) {
+            startTick = GetTickCount();
+        }
 
         if (oscillatorHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "oscillatorHandlePool is NULL");
@@ -333,8 +347,11 @@ public:
             return false;
         }
 
-        uint elapsed = GetTickCount() - startTick;
-        this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        if (isDebugOutputEnabled) {
+            uint elapsed = GetTickCount() - startTick;
+            this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 
         return true;
@@ -378,7 +395,12 @@ public:
         this.initializeMarketContext(fromMarketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        uint startTick = GetTickCount();
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startTick = 0;
+        if (isDebugOutputEnabled) {
+            startTick = GetTickCount();
+        }
 
         if (fromOscillatorHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "fromOscillatorHandlePool is NULL");
@@ -422,8 +444,11 @@ public:
 
         this.setBuySell();
 
-        uint elapsed = GetTickCount() - startTick;
-        this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        if (isDebugOutputEnabled) {
+            uint elapsed = GetTickCount() - startTick;
+            this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 
         return true;
@@ -791,7 +816,11 @@ private:
      * @return 更新できた場合は true。
      */
     bool setGmma(OscillatorHandlePool *oscillatorHandlePool) {
-        uint startTick = GetTickCount();
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startTick = 0;
+        if (isDebugOutputEnabled) {
+            startTick = GetTickCount();
+        }
 
         if (oscillatorHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "oscillatorHandlePool is NULL.");
@@ -831,21 +860,23 @@ private:
             this.ema30 - this.ema60
         );
 
-        uint elapsed = GetTickCount() - startTick;
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "elapsed=%d ms symbol=%s timeFrame=%s gmmaTrendCount=%d gmmaCrossCount=%d ema30=%.8f ema60=%.8f emaDiffPips=%.1f",
-                elapsed,
-                this.marketContext.symbolName,
-                this.marketContext.timeFrameLabel,
-                this.gmmaTrendCount,
-                this.gmmaCrossCount,
-                this.ema30,
-                this.ema60,
-                this.ema30Ema60DiffPips
-            )
-        );
+        if (isDebugOutputEnabled) {
+            uint elapsed = GetTickCount() - startTick;
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "elapsed=%d ms symbol=%s timeFrame=%s gmmaTrendCount=%d gmmaCrossCount=%d ema30=%.8f ema60=%.8f emaDiffPips=%.1f",
+                    elapsed,
+                    this.marketContext.symbolName,
+                    this.marketContext.timeFrameLabel,
+                    this.gmmaTrendCount,
+                    this.gmmaCrossCount,
+                    this.ema30,
+                    this.ema60,
+                    this.ema30Ema60DiffPips
+                )
+            );
+        }
 
         return true;
     }
@@ -859,7 +890,11 @@ private:
      * @return 設定できた場合は true。
      */
     bool setEma200(OscillatorHandlePool *oscillatorHandlePool) {
-        uint startTick = GetTickCount();
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startTick = 0;
+        if (isDebugOutputEnabled) {
+            startTick = GetTickCount();
+        }
 
         if (ZigZagElliotAnalysisProfile::isEma200SkippedForMn1()
                 && this.marketContext.timeFrame == PERIOD_MN1) {
@@ -896,24 +931,26 @@ private:
             return false;
         }
 
-        uint elapsed = GetTickCount() - startTick;
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "elapsed=%d ms symbol=%s timeFrame=%s closePosition=%s slopePips=%.1f slopeDirection=%s upCount=%d downCount=%d trendCount=%s isBuy=%s isSell=%s",
-                elapsed,
-                this.marketContext.symbolName,
-                this.marketContext.timeFrameLabel,
-                this.ema200.getClosePositionText(),
-                this.ema200.slopePips,
-                this.ema200.getSlopeDirectionText(),
-                this.ema200.upCount,
-                this.ema200.downCount,
-                StringUtil::addSign(this.ema200.trendCount),
-                this.convertBoolLabel(this.ema200.isBuy),
-                this.convertBoolLabel(this.ema200.isSell)
-            )
-        );
+        if (isDebugOutputEnabled) {
+            uint elapsed = GetTickCount() - startTick;
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "elapsed=%d ms symbol=%s timeFrame=%s closePosition=%s slopePips=%.1f slopeDirection=%s upCount=%d downCount=%d trendCount=%s isBuy=%s isSell=%s",
+                    elapsed,
+                    this.marketContext.symbolName,
+                    this.marketContext.timeFrameLabel,
+                    this.ema200.getClosePositionText(),
+                    this.ema200.slopePips,
+                    this.ema200.getSlopeDirectionText(),
+                    this.ema200.upCount,
+                    this.ema200.downCount,
+                    StringUtil::addSign(this.ema200.trendCount),
+                    this.convertBoolLabel(this.ema200.isBuy),
+                    this.convertBoolLabel(this.ema200.isSell)
+                )
+            );
+        }
 
         return true;
     }
@@ -960,7 +997,11 @@ private:
      * @return 設定できた場合は true。
      */
     bool setAtr14(OscillatorHandlePool *oscillatorHandlePool) {
-        uint startTick = GetTickCount();
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startTick = 0;
+        if (isDebugOutputEnabled) {
+            startTick = GetTickCount();
+        }
 
         if (oscillatorHandlePool == NULL) {
             this.logger.error(__FUNCTION__, "oscillatorHandlePool is NULL.");
@@ -991,17 +1032,19 @@ private:
 
         this.atr14 = atr14Pips;
 
-        uint elapsed = GetTickCount() - startTick;
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "elapsed=%d ms symbol=%s timeFrame=%s atr14=%.2f",
-                elapsed,
-                this.marketContext.symbolName,
-                this.marketContext.timeFrameLabel,
-                this.atr14
-            )
-        );
+        if (isDebugOutputEnabled) {
+            uint elapsed = GetTickCount() - startTick;
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "elapsed=%d ms symbol=%s timeFrame=%s atr14=%.2f",
+                    elapsed,
+                    this.marketContext.symbolName,
+                    this.marketContext.timeFrameLabel,
+                    this.atr14
+                )
+            );
+        }
 
         return true;
     }
@@ -1105,7 +1148,11 @@ private:
     bool setStochasticCommon(StochasticHandlePool *stochasticHandlePool,
                              StochasticStatus &outStatus,
                              string label) {
-        uint startTick = GetTickCount();
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startTick = 0;
+        if (isDebugOutputEnabled) {
+            startTick = GetTickCount();
+        }
 
         if (stochasticHandlePool == NULL) {
             this.logger.error(__FUNCTION__, StringFormat("stochasticHandlePool[%s] is NULL.", label));
@@ -1127,9 +1174,11 @@ private:
         outStatus.main0 = stochastic.main0;
         outStatus.signal0 = stochastic.signal0;
 
-        uint elapsed = GetTickCount() - startTick;
-        this.logger.debug(__FUNCTION__, StringFormat("elapsed=%d ms symbol=%s timeFrame=%s label=%s stochasticCount=%d",
-                                                     elapsed, this.marketContext.symbolName, this.marketContext.timeFrameLabel, label, outStatus.count));
+        if (isDebugOutputEnabled) {
+            uint elapsed = GetTickCount() - startTick;
+            this.logger.debug(__FUNCTION__, StringFormat("elapsed=%d ms symbol=%s timeFrame=%s label=%s stochasticCount=%d",
+                                                         elapsed, this.marketContext.symbolName, this.marketContext.timeFrameLabel, label, outStatus.count));
+        }
 
         return true;
     }
