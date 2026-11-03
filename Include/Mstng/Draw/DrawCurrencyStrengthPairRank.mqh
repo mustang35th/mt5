@@ -10,6 +10,7 @@
 #ifndef MSTNG_DRAW_CURRENCY_STRENGTH_PAIR_RANK_MQH
 #define MSTNG_DRAW_CURRENCY_STRENGTH_PAIR_RANK_MQH
 
+#include <Canvas\Canvas.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
@@ -60,6 +61,10 @@ public:
                 fromVoteWeightMode
             );
         this.created = false;
+        this.connectionsReady = false;
+        this.lastConnectionsVisible = false;
+        this.lastConnectionsDimmed = false;
+        this.lastConnectionInfo.reset();
         this.decisionReady = false;
         this.lastDecisionText = "";
         this.lastDecisionColor = clrNONE;
@@ -176,6 +181,10 @@ public:
             pairRankInfo.quoteMediumShortTermAverageRank
         );
 
+        if (!this.updateRankConnections()) {
+            return false;
+        }
+
         string m5BarTimeText = this.formatM5BarTime(pairRankInfo);
 
         this.setLabelText("M5BarTime", m5BarTimeText, this.mutedColor);
@@ -263,6 +272,10 @@ public:
         );
         this.setLabelText("M5BarTime", "-", this.mutedColor);
 
+        if (!this.updateRankConnections()) {
+            return false;
+        }
+
         ChartRedraw(this.chartId);
 
         return true;
@@ -292,6 +305,10 @@ public:
         }
 
         this.setLabelText("StateBadge", errorText, this.errorColor);
+        if (!this.updateRankConnections()) {
+            return false;
+        }
+
         ChartRedraw(this.chartId);
 
         return true;
@@ -362,6 +379,10 @@ public:
         }
 
         this.repositionRankGrid();
+        if (!this.positionRankConnections()) {
+            this.connectionsReady = false;
+        }
+
         this.setLabelPosition("Decision", 0, 5);
         this.setLabelPosition("StateBadge", this.panelWidth, this.getModeBadgeTopOffset());
         this.setLabelPosition("SourceBadge", this.panelWidth, 5);
@@ -430,6 +451,21 @@ private:
 
     /** パネル生成済みの場合true。 */
     bool created;
+
+    /** 通貨別の順位接続線を描く透明Canvas。 */
+    CCanvas connectionCanvas;
+
+    /** 接続線の描画内容を反映済みの場合true。 */
+    bool connectionsReady;
+
+    /** 最後に接続線へ反映した通貨名と4順位。 */
+    CurrencyStrengthPairRankInfo lastConnectionInfo;
+
+    /** 最後に接続線へ反映した順位の取得有無。 */
+    bool lastConnectionsVisible;
+
+    /** 最後に接続線を古いデータ・取得エラーの薄い色で描いた場合true。 */
+    bool lastConnectionsDimmed;
 
     /** 直前の有効な順位を表示中の場合true。 */
     bool hasRankData;
@@ -525,6 +561,11 @@ private:
      */
     bool ensureCreated() {
         if (this.created) {
+            if (ObjectFind(this.chartId, this.objectPrefix + "RankConnections") < 0
+                    || this.connectionCanvas.ResourceName() == "") {
+                return this.createRankConnections();
+            }
+
             return true;
         }
 
@@ -541,7 +582,7 @@ private:
 
         this.calculateYDistance();
 
-        if (!this.createRankGrid()) {
+        if (!this.createRankGrid() || !this.createRankConnections()) {
             this.destroyObjects();
 
             return false;
@@ -755,6 +796,175 @@ private:
         this.created = true;
 
         return true;
+    }
+
+    /**
+     * 順位罫線と文字の間へ透明な接続線Canvasを生成する。
+     *
+     * @return Canvasと固定属性を設定できた場合true。
+     */
+    bool createRankConnections() {
+        this.connectionsReady = false;
+        this.connectionCanvas.Destroy();
+        string objectName = this.objectPrefix + "RankConnections";
+        if (!this.connectionCanvas.CreateBitmapLabel(
+                this.chartId, 0, objectName, 0, 0,
+                this.panelWidth, this.rankRowHeight * 8, COLOR_FORMAT_ARGB_NORMALIZE)) {
+            this.connectionCanvas.Destroy();
+            ObjectDelete(this.chartId, objectName);
+
+            return false;
+        }
+
+        if (!ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner)
+                || !ObjectSetInteger(this.chartId, objectName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER)
+                || !ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false)
+                || !ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false)
+                || !ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false)
+                || !ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true)
+                || !ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, 0)
+                || !ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP,
+                    "同時点の長中期と中短期の順位を通貨色で接続。古いデータ・取得エラー時は薄く表示。")
+                || !this.positionRankConnections()) {
+            this.connectionCanvas.Destroy();
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 画面幅に追従する右上基準で接続線Canvasを配置する。
+     *
+     * @return 位置の設定に成功した場合true。
+     */
+    bool positionRankConnections() {
+        string objectName = this.objectPrefix + "RankConnections";
+
+        return ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE,
+                this.xDistance + this.panelWidth)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE,
+                this.yDistance + this.getRankGridTopOffset());
+    }
+
+    /**
+     * 通貨名・順位・有効性・減衰状態が変わった場合だけ接続線を更新する。
+     * 未取得は透明にし、古いデータと取得エラーの前回値は同じ通貨色で薄く描く。
+     *
+     * @return 接続線の更新に成功、または変更不要の場合true。
+     */
+    bool updateRankConnections() {
+        bool visible = this.lastDisplayAvailable && (!this.lastDisplayError || this.hasRankData);
+        bool dimmed = this.lastDisplayError
+            || (this.lastExecutionInfo.targetM5BarTime > 0
+                && this.lastExecutionInfo.pairRankInfo.m5BarTime
+                    != this.lastExecutionInfo.targetM5BarTime);
+        if (this.isConnectionSnapshotCurrent(
+                this.lastExecutionInfo.pairRankInfo, visible, dimmed)) {
+            return true;
+        }
+
+        this.connectionsReady = false;
+        if (this.connectionCanvas.ResourceName() == "" || !this.positionRankConnections()) {
+            return false;
+        }
+
+        this.connectionCanvas.Erase(0);
+        if (visible) {
+            uchar opacity = 230;
+            if (dimmed) {
+                opacity = 75;
+            }
+
+            this.drawRankConnection(this.lastExecutionInfo.pairRankInfo, true, opacity);
+            this.drawRankConnection(this.lastExecutionInfo.pairRankInfo, false, opacity);
+        }
+
+        ResetLastError();
+        this.connectionCanvas.Update(false);
+        if (GetLastError() != 0) {
+            return false;
+        }
+
+        this.lastConnectionInfo = this.lastExecutionInfo.pairRankInfo;
+        this.lastConnectionsVisible = visible;
+        this.lastConnectionsDimmed = dimmed;
+        this.connectionsReady = true;
+
+        return true;
+    }
+
+    /**
+     * 接続線に必要な値だけを前回の成功内容と比較する。
+     *
+     * @param fromInfo 今回の通貨順位。
+     * @param fromVisible 順位を取得できた場合true。
+     * @param fromDimmed 古いデータ・取得エラーの場合true。
+     * @return Canvasの再描画が不要な場合true。
+     */
+    bool isConnectionSnapshotCurrent(
+        const CurrencyStrengthPairRankInfo &fromInfo,
+        const bool fromVisible,
+        const bool fromDimmed
+    ) {
+        return this.connectionsReady
+            && this.lastConnectionsVisible == fromVisible
+            && this.lastConnectionsDimmed == fromDimmed
+            && this.lastConnectionInfo.baseCurrency == fromInfo.baseCurrency
+            && this.lastConnectionInfo.quoteCurrency == fromInfo.quoteCurrency
+            && this.lastConnectionInfo.baseLongMediumTermAverageRank == fromInfo.baseLongMediumTermAverageRank
+            && this.lastConnectionInfo.baseMediumShortTermAverageRank == fromInfo.baseMediumShortTermAverageRank
+            && this.lastConnectionInfo.quoteLongMediumTermAverageRank == fromInfo.quoteLongMediumTermAverageRank
+            && this.lastConnectionInfo.quoteMediumShortTermAverageRank == fromInfo.quoteMediumShortTermAverageRank;
+    }
+
+    /**
+     * 1通貨の長中期と中短期を細線と端点で結ぶ。
+     * 同順位の列は端点を中央へ寄せ、上下2pxだけ分けて2色を区別する。
+     *
+     * @param fromInfo 今回の通貨順位。
+     * @param fromBase 基軸通貨の場合true。
+     * @param fromOpacity 通貨色の不透明度。
+     */
+    void drawRankConnection(
+        const CurrencyStrengthPairRankInfo &fromInfo,
+        const bool fromBase,
+        const uchar fromOpacity
+    ) {
+        string currency = fromInfo.baseCurrency;
+        int longRank = fromInfo.baseLongMediumTermAverageRank;
+        int shortRank = fromInfo.baseMediumShortTermAverageRank;
+        int tieOffset = -2;
+        if (!fromBase) {
+            currency = fromInfo.quoteCurrency;
+            longRank = fromInfo.quoteLongMediumTermAverageRank;
+            shortRank = fromInfo.quoteMediumShortTermAverageRank;
+            tieOffset = 2;
+        }
+
+        if (currency == "" || !this.isValidRank(longRank) || !this.isValidRank(shortRank)) {
+            return;
+        }
+
+        int leftX = this.getColumnCenter(true) + 42;
+        int rightX = this.getColumnCenter(false) - 42;
+        int leftY = this.getRankTopOffset(longRank) - this.getRankGridTopOffset() + 8;
+        int rightY = this.getRankTopOffset(shortRank) - this.getRankGridTopOffset() + 8;
+        if (fromInfo.baseLongMediumTermAverageRank == fromInfo.quoteLongMediumTermAverageRank) {
+            leftX = this.panelWidth / 2 - 12;
+            leftY += tieOffset;
+        }
+
+        if (fromInfo.baseMediumShortTermAverageRank == fromInfo.quoteMediumShortTermAverageRank) {
+            rightX = this.panelWidth / 2 + 12;
+            rightY += tieOffset;
+        }
+
+        uint lineColor = ColorToARGB(ConstantCurrency::getColor(currency), fromOpacity);
+        this.connectionCanvas.LineAA(leftX, leftY, rightX, rightY, lineColor);
+        this.connectionCanvas.FillCircle(leftX, leftY, 2, lineColor);
+        this.connectionCanvas.FillCircle(rightX, rightY, 2, lineColor);
     }
 
     /**
@@ -1220,8 +1430,15 @@ private:
         if (baseRankValid
                 && quoteRankValid
                 && fromBaseRank == fromQuoteRank) {
-            baseCenterOffset = fromColumnCenter - this.panelWidth / 8;
-            quoteCenterOffset = fromColumnCenter + this.panelWidth / 8;
+            // 文字サイズと実順位の高さを保ち、中央に接続線の通路を確保する。
+            int groupOffset = -8;
+            if (fromColumnCenter > this.panelWidth / 2) {
+                groupOffset = 8;
+            }
+
+            int halfDistance = this.panelWidth / 8 - 3;
+            baseCenterOffset = fromColumnCenter + groupOffset - halfDistance;
+            quoteCenterOffset = fromColumnCenter + groupOffset + halfDistance;
         }
 
         this.setLabelPosition(
@@ -1529,6 +1746,8 @@ private:
      * 順位パネル専用オブジェクトを削除する。
      */
     void destroyObjects() {
+        this.connectionCanvas.Destroy();
+        this.connectionsReady = false;
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
         this.decisionReady = false;

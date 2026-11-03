@@ -256,6 +256,37 @@ public:
     }
 
     /**
+     * 登録済みの通貨ペアが一意に含まれ、そのペアが対象かを判定する。
+     * 大文字・小文字と接頭辞・接尾辞を許容し、複数の既知ペアを含む名前は除外する。
+     *
+     * @param fromSymbolName 接頭辞・接尾辞を含むシンボル名。
+     * @return 一意に一致したペアが対象の場合true。
+     */
+    bool isUniqueTarget(const string fromSymbolName) {
+        string symbolName = fromSymbolName;
+        StringToUpper(symbolName);
+        SymbolNameInfo *matchedSymbol = NULL;
+        for (int i = 0; i < this.size(); i++) {
+            SymbolNameInfo *symbolNameInfo = this.getSymbolNameInfo(i);
+            if (symbolNameInfo == NULL || StringFind(symbolName, symbolNameInfo.symbolName) < 0) {
+                continue;
+            }
+
+            if (matchedSymbol != NULL) {
+                return false;
+            }
+
+            matchedSymbol = symbolNameInfo;
+        }
+
+        if (matchedSymbol == NULL) {
+            return false;
+        }
+
+        return matchedSymbol.isTarget;
+    }
+
+    /**
      * シンボル名から SymbolNameInfo を取得する。
      *
      * @param fromSymbolName シンボル名。例: "USDJPY"。

@@ -8,6 +8,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
+#include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Draw\DrawElliot.mqh>
 #include <Mstng\Draw\DrawFiboExpansion.mqh>
 #include <Mstng\Draw\DrawHorizontalLine.mqh>
@@ -352,7 +353,7 @@ public:
             this.updateInfoLabel(12, "DiffJpyTitle", fontColor, fontSize - 5, "D Jpy:",
                 DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 76);
             this.updateInfoLabel(7, objectName, fontColor, fontSize - 5, text,
-                DrawZigZagElliotInfoLayout::getWidth(), 76, "", ANCHOR_RIGHT_UPPER);
+                DrawZigZagElliotInfoLayout::getJpyValueLeftOffset(), 76);
         } else if (!this.diffJpyLabelCleared) {
             this.infoLabelReady[7] = false;
             this.infoLabelTexts[7] = "";
@@ -450,7 +451,10 @@ private:
     /** 通貨別の文字列・色・位置を確定した銘柄名。 */
     string symbolLabelName;
 
-    /** 銘柄名の接頭辞・基軸通貨・決済通貨・接尾辞。 */
+    /** 銘柄名とGMO対象の目印を説明するツールチップ。 */
+    string symbolLabelTooltip;
+
+    /** GMO目印を含む接頭辞・基軸通貨・決済通貨・接尾辞。 */
     string symbolLabelTexts[4];
 
     /** 銘柄名の各部分に対応する表示色。 */
@@ -460,7 +464,7 @@ private:
     int symbolLabelOffsets[4];
 
     /**
-     * 銘柄名を通貨固有色で分け、順位表と同じ色で描画する。
+     * 銘柄名を通貨固有色で分け、GMO対象には金色の[G]を付ける。
      * 文字幅と通貨情報は銘柄変更時だけ取得し、取得失敗時は再試行する。
      */
     void drawSymbolName() {
@@ -488,12 +492,12 @@ private:
             }
 
             this.updateInfoLabel(cacheIndex, objectName, this.symbolLabelColors[i], 30,
-                text, this.symbolLabelOffsets[i], 0, symbolName);
+                text, this.symbolLabelOffsets[i], 0, this.symbolLabelTooltip);
         }
     }
 
     /**
-     * 銘柄名の通貨部分と各文字の開始位置を保持する。
+     * GMO対象判定と銘柄名の通貨部分・各文字の開始位置を保持する。
      * 分割できない銘柄は元の名前を金色で表示する。
      *
      * @param fromSymbolName 接頭辞・接尾辞を含む元の銘柄名。
@@ -506,7 +510,17 @@ private:
             this.symbolLabelOffsets[i] = 0;
         }
 
-        this.symbolLabelTexts[0] = fromSymbolName;
+        SymbolNameInfoAll symbolNameInfoAll;
+        symbolNameInfoAll.setGmo();
+        string symbolPrefix = "";
+        this.symbolLabelTooltip = fromSymbolName;
+        if (symbolNameInfoAll.isUniqueTarget(fromSymbolName)) {
+            symbolPrefix = "[G]";
+            this.symbolLabelTooltip += "\n[G]: GMO対象通貨ペア（メールと共通の登録一覧）";
+        }
+
+        string displaySymbolName = symbolPrefix + fromSymbolName;
+        this.symbolLabelTexts[0] = displaySymbolName;
         string baseCurrency = "";
         string quoteCurrency = "";
         if (!SymbolInfoString(fromSymbolName, SYMBOL_CURRENCY_BASE, baseCurrency)
@@ -531,8 +545,8 @@ private:
 
         int positions[4];
         positions[0] = 0;
-        positions[1] = pairPosition;
-        positions[2] = pairPosition + StringLen(baseCurrency);
+        positions[1] = StringLen(symbolPrefix) + pairPosition;
+        positions[2] = positions[1] + StringLen(baseCurrency);
         positions[3] = positions[2] + StringLen(quoteCurrency);
         int offsets[4] = {0, 0, 0, 0};
         if (!TextSetFont(this.drawProperties.elliotFontFace, -300)) {
@@ -546,7 +560,7 @@ private:
 
             uint textWidth = 0;
             uint textHeight = 0;
-            if (!TextGetSize(StringSubstr(fromSymbolName, 0, positions[i]), textWidth, textHeight)
+            if (!TextGetSize(StringSubstr(displaySymbolName, 0, positions[i]), textWidth, textHeight)
                     || textWidth == 0) {
                 return;
             }
@@ -557,14 +571,14 @@ private:
         for (int i = 0; i < 3; i++) {
             this.symbolLabelTexts[i] = "";
             if (positions[i + 1] > positions[i]) {
-                this.symbolLabelTexts[i] = StringSubstr(fromSymbolName, positions[i], positions[i + 1] - positions[i]);
+                this.symbolLabelTexts[i] = StringSubstr(displaySymbolName, positions[i], positions[i + 1] - positions[i]);
             }
 
             this.symbolLabelOffsets[i] = offsets[i];
         }
 
-        if (positions[3] < StringLen(fromSymbolName)) {
-            this.symbolLabelTexts[3] = StringSubstr(fromSymbolName, positions[3]);
+        if (positions[3] < StringLen(displaySymbolName)) {
+            this.symbolLabelTexts[3] = StringSubstr(displaySymbolName, positions[3]);
         }
 
         this.symbolLabelOffsets[3] = offsets[3];

@@ -46,6 +46,11 @@ public:
     static int getSecondaryValueLeftOffset() { return getSecondaryTitleLeftOffset() + 32; }
 
     /**
+     * D Jpyの項目名のすぐ右に揃える数値の開始位置を返す。
+     */
+    static int getJpyValueLeftOffset() { return getSecondaryTitleLeftOffset() + 64; }
+
+    /**
      * 情報欄内の左位置を、チャート右端からの距離へ変換する。
      *
      * @param fromRightDistance 情報欄とチャート右端の間の余白

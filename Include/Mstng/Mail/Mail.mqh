@@ -131,26 +131,9 @@ private:
      * @return GMO対象は[G]。対象外・未登録・曖昧なシンボル名は空文字列。
      */
     static string getGmoTitlePrefix(const string fromSymbolName) {
-        string symbolName = fromSymbolName;
-        StringToUpper(symbolName);
         SymbolNameInfoAll symbolNameInfoAll;
         symbolNameInfoAll.setGmo();
-
-        SymbolNameInfo *matchedSymbol = NULL;
-        for (int i = 0; i < symbolNameInfoAll.size(); i++) {
-            SymbolNameInfo *symbolNameInfo = symbolNameInfoAll.getSymbolNameInfo(i);
-            if (symbolNameInfo == NULL || StringFind(symbolName, symbolNameInfo.symbolName) < 0) {
-                continue;
-            }
-
-            if (matchedSymbol != NULL) {
-                return "";
-            }
-
-            matchedSymbol = symbolNameInfo;
-        }
-
-        if (matchedSymbol == NULL || !matchedSymbol.isTarget) {
+        if (!symbolNameInfoAll.isUniqueTarget(fromSymbolName)) {
             return "";
         }
 
