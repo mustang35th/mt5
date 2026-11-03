@@ -439,6 +439,7 @@ public:
         ObjectDelete(0, this.getElliotInfoModeButtonName());
         ObjectDelete(0, this.getElliotVerticalFitButtonName());
         ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
+        this.draw.invalidateBidAskLabels();
     }
 
 private:

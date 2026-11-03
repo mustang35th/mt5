@@ -63,6 +63,9 @@ public:
                 fromVoteWeightMode
             );
         this.created = false;
+        this.positionsReady = false;
+        this.lastPositionXDistance = 0;
+        this.lastPositionYDistance = 0;
         this.connectionsReady = false;
         this.lastConnectionsVisible = false;
         this.lastConnectionsDimmed = false;
@@ -157,6 +160,7 @@ public:
         }
 
         // 描画に失敗しても、再生成時は今回取得した状態を使用する。
+        this.positionsReady = false;
         this.lastExecutionInfo = fromInfo;
         this.lastBaseCurrency = fromInfo.pairRankInfo.baseCurrency;
         this.lastQuoteCurrency = fromInfo.pairRankInfo.quoteCurrency;
@@ -256,6 +260,7 @@ public:
      * @return 描画に成功した場合true。
      */
     bool drawUnavailable(string fromBaseCurrency, string fromQuoteCurrency) {
+        this.positionsReady = false;
         this.hasRankData = false;
         this.lastExecutionInfo.reset();
         this.lastBaseCurrency = fromBaseCurrency;
@@ -399,6 +404,7 @@ public:
 
     /**
      * チャートサイズと予約領域に合わせてパネルを再配置する。
+     * 同じ基準位置へ配置済みの場合は座標設定と再描画要求を省略する。
      */
     void reposition() {
         this.calculateYDistance();
@@ -407,8 +413,17 @@ public:
             return;
         }
 
+        if (this.positionsReady
+                && this.lastPositionXDistance == this.xDistance
+                && this.lastPositionYDistance == this.yDistance) {
+            return;
+        }
+
+        // 位置設定に失敗したヘルパーがfalseへ戻す。すべて成功した場合だけ位置を保存する。
+        this.positionsReady = true;
         this.repositionRankGrid();
-        if (!this.positionRankConnections()) {
+        if (this.connectionCanvas.ResourceName() == "" || !this.positionRankConnections()) {
+            this.positionsReady = false;
             this.connectionsReady = false;
         }
 
@@ -440,6 +455,12 @@ public:
             this.getModeBadgeLeftOffset(),
             this.getModeBadgeTopOffset()
         );
+
+        if (this.positionsReady) {
+            this.lastPositionXDistance = this.xDistance;
+            this.lastPositionYDistance = this.yDistance;
+        }
+
         this.requestRedraw();
     }
 
@@ -486,6 +507,15 @@ private:
 
     /** パネル生成済みの場合true。 */
     bool created;
+
+    /** パネル全体の位置設定を受け付け、同じ基準位置の再配置を省略できる場合true。 */
+    bool positionsReady;
+
+    /** 最後に全体を配置したチャート右端からの距離。 */
+    int lastPositionXDistance;
+
+    /** 最後に全体を配置したチャート上端からの距離。 */
+    int lastPositionYDistance;
 
     /** 通貨別の順位接続線を描く透明Canvas。 */
     CCanvas connectionCanvas;
@@ -852,6 +882,7 @@ private:
      * @return Canvasと固定属性を設定できた場合true。
      */
     bool createRankConnections() {
+        this.positionsReady = false;
         this.connectionsReady = false;
         this.connectionCanvas.Destroy();
         string objectName = this.objectPrefix + "RankConnections";
@@ -890,10 +921,15 @@ private:
     bool positionRankConnections() {
         string objectName = this.objectPrefix + "RankConnections";
 
-        return ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE,
+        bool isSuccess = ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE,
                 this.xDistance + this.panelWidth)
             && ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE,
                 this.yDistance + this.getRankGridTopOffset());
+        if (!isSuccess) {
+            this.positionsReady = false;
+        }
+
+        return isSuccess;
     }
 
     /**
@@ -915,6 +951,8 @@ private:
 
         this.connectionsReady = false;
         if (this.connectionCanvas.ResourceName() == "" || !this.positionRankConnections()) {
+            this.positionsReady = false;
+
             return false;
         }
 
@@ -1170,18 +1208,22 @@ private:
     ) {
         string objectName = this.objectPrefix + fromNameSuffix;
 
-        ObjectSetInteger(
+        bool xSucceeded = ObjectSetInteger(
             this.chartId,
             objectName,
             OBJPROP_XDISTANCE,
             this.xDistance + fromRightOffset + fromWidth
         );
-        ObjectSetInteger(
+        bool ySucceeded = ObjectSetInteger(
             this.chartId,
             objectName,
             OBJPROP_YDISTANCE,
             this.yDistance + fromTopOffset
         );
+
+        if (!xSucceeded || !ySucceeded) {
+            this.positionsReady = false;
+        }
     }
 
     /**
@@ -1721,15 +1763,17 @@ private:
      * 明示された予約領域には従来の下部余白条件を適用する。
      */
     void calculateYDistance() {
+        this.yDistance = DrawZigZagElliotInfoLayout::getStrengthTop();
+        if (!this.reservedAreaEnabled) {
+            return;
+        }
+
         int chartHeight = (int)ChartGetInteger(
             this.chartId,
             CHART_HEIGHT_IN_PIXELS,
             0
         );
-        this.yDistance = DrawZigZagElliotInfoLayout::getStrengthTop();
-
-        if (!this.reservedAreaEnabled
-                || this.reservedTop >= chartHeight
+        if (this.reservedTop >= chartHeight
                 || this.reservedBottom <= 0
                 || this.yDistance >= this.reservedBottom
                 || this.yDistance + this.panelHeight <= this.reservedTop) {
@@ -1771,13 +1815,17 @@ private:
         int labelXDistance = DrawZigZagElliotInfoLayout::getXDistance(
             this.xDistance, fromLeftOffset);
 
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE, labelXDistance);
-        ObjectSetInteger(
+        bool xSucceeded = ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE, labelXDistance);
+        bool ySucceeded = ObjectSetInteger(
             this.chartId,
             objectName,
             OBJPROP_YDISTANCE,
             this.yDistance + fromTopOffset
         );
+
+        if (!xSucceeded || !ySucceeded) {
+            this.positionsReady = false;
+        }
     }
 
     /**
@@ -1794,14 +1842,19 @@ private:
     ) {
         string objectName = this.objectPrefix + fromNameSuffix;
 
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+        bool textSucceeded = ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
+        bool colorSucceeded = ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+
+        if (!textSucceeded || !colorSucceeded) {
+            this.positionsReady = false;
+        }
     }
 
     /**
      * 順位パネル専用オブジェクトを削除する。
      */
     void destroyObjects() {
+        this.positionsReady = false;
         this.connectionCanvas.Destroy();
         this.connectionsReady = false;
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);

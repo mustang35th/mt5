@@ -77,11 +77,12 @@ public:
         // 分析後に展開したZigZagを補正対象としてコピーする。
         ZigZagPointUtil::copyZigZagPointList(fromZigZagPointList, this.orgZigZagPointList);
         
-        CArrayObj waveListHigher;
-        WaveUtil::copyWaveList(&(elliotHigher.waveList), waveListHigher);
-        
         CArrayObj zigZagPointListHigher;
-        ZigZagPointUtil::makeZigZagPointListFromWaveList(this.logger, waveListHigher, zigZagPointListHigher, true);
+        if (!this.copyHigherZigZagPoints(elliotHigher.waveList, zigZagPointListHigher)) {
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
         
         // 上位足ポイント内にあるか判定
         int higherTotal = zigZagPointListHigher.Total();
@@ -133,6 +134,80 @@ private:
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
     
+    /**
+     * 上位Waveの元ポイントだけを補正用に複製する。
+     *
+     * NULLを除いた各Waveの先頭ポイントは境界重複として除外し、
+     * 最後の有効Waveだけ先頭ポイントも末尾へ追加する。
+     * 元Waveと元ポイントの所有権は変更しない。
+     *
+     * @param fromWaveList 上位足のWave一覧。
+     * @param fromPointList 複製したポイントの格納先。
+     * @return 必要なポイントをすべて複製できた場合true。
+     */
+    bool copyHigherZigZagPoints(CArrayObj &fromWaveList, CArrayObj &fromPointList) {
+        LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        fromPointList.Clear();
+        int waveTotal = fromWaveList.Total();
+        while (waveTotal > 0 && fromWaveList.At(waveTotal - 1) == NULL) {
+            waveTotal--;
+        }
+
+        for (int i = 0; i < waveTotal; i++) {
+            Wave *wave = fromWaveList.At(i);
+            if (wave == NULL) {
+                continue;
+            }
+
+            int pointTotal = wave.orgZigZagPointList.Total();
+            int firstPointIndex = 0;
+            while (firstPointIndex < pointTotal
+                    && wave.orgZigZagPointList.At(firstPointIndex) == NULL) {
+                firstPointIndex++;
+            }
+
+            int firstCopyIndex = firstPointIndex + 1;
+            if (i == waveTotal - 1) {
+                if (firstPointIndex >= pointTotal) {
+                    this.logger.error(__FUNCTION__, "Higher wave endpoint is unavailable.");
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
+
+                firstCopyIndex = firstPointIndex;
+            }
+
+            for (int j = pointTotal - 1; j >= firstCopyIndex; j--) {
+                ZigZagPoint *point = wave.orgZigZagPointList.At(j);
+                if (point == NULL) {
+                    continue;
+                }
+
+                ZigZagPoint *pointClone = point.clone();
+                if (pointClone == NULL) {
+                    this.logger.error(__FUNCTION__, "Higher ZigZag point clone failed.");
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
+
+                if (!fromPointList.Add(pointClone)) {
+                    delete pointClone;
+                    this.logger.error(__FUNCTION__, "Higher ZigZag point append failed.");
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
+            }
+        }
+
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
+
+        return true;
+    }
+
     /**
      * 1つの上位足ポイントに対応する下位足ポイントを補正する。
      *

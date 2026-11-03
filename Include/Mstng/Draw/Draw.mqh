@@ -43,6 +43,7 @@ public:
         this.roundLinesDraw = NULL;
         this.infoRightDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
         this.symbolLabelName = "";
+        this.lastBidAskLabelCheckTick = 0;
 
         for (int i = 0; i < 6; i++) {
             this.bidAskLabelReady[i] = false;
@@ -87,12 +88,19 @@ public:
         }
 
         this.infoRightDistance = rightDistance;
-        for (int i = 0; i < 6; i++) {
-            this.bidAskLabelReady[i] = false;
-        }
+        this.invalidateBidAskLabels();
 
         for (int i = 0; i < 19; i++) {
             this.infoLabelReady[i] = false;
+        }
+    }
+
+    /**
+     * レートラベルの作成状態を無効化し、次回描画で存在と固定設定を確認する。
+     */
+    void invalidateBidAskLabels() {
+        for (int i = 0; i < 6; i++) {
+            this.bidAskLabelReady[i] = false;
         }
     }
 
@@ -120,6 +128,7 @@ public:
         
         // 当プロジェクトのオブジェクト接頭辞に該当するもののみ削除して再描画する。
         ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
+        this.invalidateBidAskLabels();
         
         if (this.elliotAll.marketContext.timeFrame <= PERIOD_H1) {
             if (this.roundLinesDraw == NULL) {
@@ -213,9 +222,20 @@ public:
     /**
      * 市場コンテキストを使用してBid、Askおよびスプレッドを描画する。
      *
+     * ラベルの存在は未準備時と1秒経過後の描画時だけ確認する。
+     * 価格・色は描画呼び出しごとに変更を反映する。
+     *
      * @param fromMarketContext 描画対象の市場コンテキスト
      */
     void drawBidAsk(MarketContext &fromMarketContext) {
+        const ulong labelCheckIntervalMilliseconds = 1000;
+        ulong currentTick = GetTickCount64();
+        bool checkLabelExistence =
+            currentTick - this.lastBidAskLabelCheckTick >= labelCheckIntervalMilliseconds;
+        if (checkLabelExistence) {
+            this.lastBidAskLabelCheckTick = currentTick;
+        }
+
         MqlTick tick;
         int digits = fromMarketContext.digits;
         double spread = 0.0;
@@ -237,9 +257,9 @@ public:
             text = DoubleToString(tick.ask, digits);
         }
         
-        this.updateBidAskLabel(3, "AskTitle", "A:", 0, 116, clrAqua);
+        this.updateBidAskLabel(3, "AskTitle", "A:", 0, 116, clrAqua, checkLabelExistence);
         this.updateBidAskLabel(0, objectName, text,
-            DrawZigZagElliotInfoLayout::getPriceValueRightOffset(), 116, clrAqua, ANCHOR_RIGHT_UPPER);
+            DrawZigZagElliotInfoLayout::getPriceValueRightOffset(), 116, clrAqua, checkLabelExistence, ANCHOR_RIGHT_UPPER);
         
         
         objectName = "Bid";
@@ -249,9 +269,9 @@ public:
             text = DoubleToString(tick.bid, digits);
         }
         
-        this.updateBidAskLabel(4, "BidTitle", "B:", 0, 146, clrHotPink);
+        this.updateBidAskLabel(4, "BidTitle", "B:", 0, 146, clrHotPink, checkLabelExistence);
         this.updateBidAskLabel(1, objectName, text,
-            DrawZigZagElliotInfoLayout::getPriceValueRightOffset(), 146, clrHotPink, ANCHOR_RIGHT_UPPER);
+            DrawZigZagElliotInfoLayout::getPriceValueRightOffset(), 146, clrHotPink, checkLabelExistence, ANCHOR_RIGHT_UPPER);
         
         
         objectName = "Spread";
@@ -266,9 +286,9 @@ public:
         }
         
         this.updateBidAskLabel(5, "SpreadTitle", "S:",
-            DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 116, spreadColor);
+            DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 116, spreadColor, checkLabelExistence);
         this.updateBidAskLabel(2, objectName, text,
-            DrawZigZagElliotInfoLayout::getSecondaryValueLeftOffset(), 116, spreadColor);
+            DrawZigZagElliotInfoLayout::getSecondaryValueLeftOffset(), 116, spreadColor, checkLabelExistence);
     }
     
     /**
@@ -426,6 +446,9 @@ private:
 
     /** Ask・Bid・Spreadラベルの初期設定および文字・色反映が成功した場合true。 */
     bool bidAskLabelReady[6];
+
+    /** レートラベル6件の存在を定期確認した最後の単調増加時刻。単位: ミリ秒。 */
+    ulong lastBidAskLabelCheckTick;
 
     /** Ask・Bid・Spreadラベルへ最後に反映した文字。 */
     string bidAskLabelTexts[6];
@@ -666,7 +689,7 @@ private:
     /**
      * レートラベルを再利用し、表示文字と色をそれぞれ変更時だけ更新する。
      *
-     * 全体再描画や手動操作で削除された場合は固定設定ごと復元する。
+     * 全体再描画時は即座に、手動削除時は次回の定期確認で固定設定ごと復元する。
      * 設定に失敗した場合はキャッシュを確定せず、次回描画で再試行する。
      *
      * @param fromIndex Ask・Bid・Spreadの値0～2・項目名3～5に対応するキャッシュ番号
@@ -675,6 +698,7 @@ private:
      * @param fromX 情報欄左端からのX位置
      * @param fromY Y座標
      * @param fromColor 表示色
+     * @param fromCheckExistence 定期的な存在確認を行う場合true。
      * @param fromAnchor 左揃え・右揃えの基準点
      */
     void updateBidAskLabel(
@@ -684,11 +708,13 @@ private:
         int fromX,
         int fromY,
         color fromColor,
+        bool fromCheckExistence,
         ENUM_ANCHOR_POINT fromAnchor = ANCHOR_LEFT_UPPER
     ) {
         string objectName = Constant::PREFIX + fromObjectName;
 
-        if (ObjectFind(0, objectName) < 0) {
+        if ((!this.bidAskLabelReady[fromIndex] || fromCheckExistence)
+                && ObjectFind(0, objectName) < 0) {
             this.bidAskLabelReady[fromIndex] = false;
 
             if (!ObjectCreate(0, objectName, OBJ_LABEL, 0, 0, 0)) {
