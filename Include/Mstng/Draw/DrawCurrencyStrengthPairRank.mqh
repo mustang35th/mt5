@@ -920,8 +920,8 @@ private:
     }
 
     /**
-     * 1通貨の長中期と中短期を細線と端点で結ぶ。
-     * 同順位の列は端点を中央へ寄せ、上下2pxだけ分けて2色を区別する。
+     * 1通貨の長中期と中短期を3px相当の線と端点で結ぶ。
+     * 同順位の列は端点を中央へ寄せ、上下3pxだけ分けて2色を区別する。
      *
      * @param fromInfo 今回の通貨順位。
      * @param fromBase 基軸通貨の場合true。
@@ -935,12 +935,12 @@ private:
         string currency = fromInfo.baseCurrency;
         int longRank = fromInfo.baseLongMediumTermAverageRank;
         int shortRank = fromInfo.baseMediumShortTermAverageRank;
-        int tieOffset = -2;
+        int tieOffset = -3;
         if (!fromBase) {
             currency = fromInfo.quoteCurrency;
             longRank = fromInfo.quoteLongMediumTermAverageRank;
             shortRank = fromInfo.quoteMediumShortTermAverageRank;
-            tieOffset = 2;
+            tieOffset = 3;
         }
 
         if (currency == "" || !this.isValidRank(longRank) || !this.isValidRank(shortRank)) {
@@ -962,7 +962,15 @@ private:
         }
 
         uint lineColor = ColorToARGB(ConstantCurrency::getColor(currency), fromOpacity);
-        this.connectionCanvas.LineAA(leftX, leftY, rightX, rightY, lineColor);
+        // 透明度を保ち、急な傾きでも細くならないよう短い軸方向へ3本重ねる。
+        for (int i = -1; i <= 1; i++) {
+            if (MathAbs(rightY - leftY) > MathAbs(rightX - leftX)) {
+                this.connectionCanvas.LineAA(leftX + i, leftY, rightX + i, rightY, lineColor);
+            } else {
+                this.connectionCanvas.LineAA(leftX, leftY + i, rightX, rightY + i, lineColor);
+            }
+        }
+
         this.connectionCanvas.FillCircle(leftX, leftY, 2, lineColor);
         this.connectionCanvas.FillCircle(rightX, rightY, 2, lineColor);
     }
