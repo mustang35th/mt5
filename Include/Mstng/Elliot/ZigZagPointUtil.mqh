@@ -95,7 +95,10 @@ public:
             }
         }
         
-        logger.debug(__FUNCTION__, StringFormat("ZigZagPointListの検索 index = %d", index));
+        if (logger.isDebugOutputEnabled()) {
+            logger.debug(__FUNCTION__, StringFormat("ZigZagPointListの検索 index = %d", index));
+        }
+
         LogUtil::printMethodEnd(logger, __FUNCTION__, true);
         
         return index;

@@ -151,13 +151,20 @@ public:
      */
     bool update(int fromMaxBars) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        this.logger.debug(__FUNCTION__, StringFormat("fromMaxBars = %d", fromMaxBars));
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromMaxBars = %d", fromMaxBars));
+        }
         
         ZigZagLogic zigZagLogic(this.marketContext, this.depth, this.deviation, this.backstep);
         
         int ratesTotal = zigZagLogic.calculate(fromMaxBars);
         
-        this.logger.debug(__FUNCTION__, StringFormat("ratesTotal = %d", ratesTotal));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("ratesTotal = %d", ratesTotal));
+        }
         
         this.clearPoints();
         
@@ -176,7 +183,9 @@ public:
             }
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("zigZagPointList.Total = %d", this.zigZagPointList.Total()));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("zigZagPointList.Total = %d", this.zigZagPointList.Total()));
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         

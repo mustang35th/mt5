@@ -264,7 +264,10 @@ protected:
             isJudge = true;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isJudge = %s", (string)isJudge));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isJudge = %s", (string)isJudge));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isJudge;
@@ -332,8 +335,10 @@ protected:
             }
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isEntry = %s", (string)this.isEntry));
-        this.logger.debug(__FUNCTION__, StringFormat("isSendMail = %s", (string)this.isSendMail));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isEntry = %s", (string)this.isEntry));
+            this.logger.debug(__FUNCTION__, StringFormat("isSendMail = %s", (string)this.isSendMail));
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }

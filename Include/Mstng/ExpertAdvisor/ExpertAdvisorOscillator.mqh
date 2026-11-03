@@ -118,9 +118,12 @@ public:
         int gmmaTrend = elliot.oscillator.gmmaTrendCount;
         bool isgmmaTrend_2 = this.isValue_2(isBuy, gmmaTrend);
         
-        this.logger.debug(__FUNCTION__, StringFormat("elliot.timeFrameLabel = %s", elliot.marketContext.timeFrameLabel));
-        this.logger.debug(__FUNCTION__, StringFormat("gmmaTrend = %s", StringUtil::addSign(gmmaTrend)));
-        this.logger.debug(__FUNCTION__, StringFormat("isgmmaTrend_2 = %s", (string)isgmmaTrend_2));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("elliot.timeFrameLabel = %s", elliot.marketContext.timeFrameLabel));
+            this.logger.debug(__FUNCTION__, StringFormat("gmmaTrend = %s", StringUtil::addSign(gmmaTrend)));
+            this.logger.debug(__FUNCTION__, StringFormat("isgmmaTrend_2 = %s", (string)isgmmaTrend_2));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isgmmaTrend_2;
@@ -139,9 +142,12 @@ public:
         int gmmaCount = elliot.oscillator.gmmaCrossCount;
         bool isGmmaCross_2 = this.isValue_2(isBuy, gmmaCount);
         
-        this.logger.debug(__FUNCTION__, StringFormat("elliot.timeFrameLabel = %s", elliot.marketContext.timeFrameLabel));
-        this.logger.debug(__FUNCTION__, StringFormat("gmmaCount = %s", StringUtil::addSign(gmmaCount)));
-        this.logger.debug(__FUNCTION__, StringFormat("isGmmaCross_2 = %s", (string)isGmmaCross_2));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("elliot.timeFrameLabel = %s", elliot.marketContext.timeFrameLabel));
+            this.logger.debug(__FUNCTION__, StringFormat("gmmaCount = %s", StringUtil::addSign(gmmaCount)));
+            this.logger.debug(__FUNCTION__, StringFormat("isGmmaCross_2 = %s", (string)isGmmaCross_2));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isGmmaCross_2;

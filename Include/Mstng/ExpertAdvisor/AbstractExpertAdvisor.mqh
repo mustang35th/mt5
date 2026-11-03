@@ -211,7 +211,10 @@ public:
         delete this.expertAdvisorEma200;
         this.expertAdvisorEma200 = NULL;
         
-        this.logger.debug(__FUNCTION__, StringFormat("isEntry = %s", (string)this.isEntry));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("isEntry = %s", (string)this.isEntry));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
 
