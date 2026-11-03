@@ -76,7 +76,12 @@ public:
     void setTimeframesFromMn1To() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
-        uint startTick = GetTickCount();
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startTick = 0;
+
+        if (isDebugOutputEnabled) {
+            startTick = GetTickCount();
+        }
 
         this.stochasticShortHandlePool.setTimeframesFromMn1To(this.marketContext);
         this.stochasticMiddleHandlePool.setTimeframesFromMn1To(this.marketContext);
@@ -85,8 +90,10 @@ public:
         this.ema200HandlePool.setTimeframesFromMn1To(this.marketContext);
         this.averageTrueRangeHandlePool.setTimeframesFromMn1To(this.marketContext);
 
-        uint elapsed = GetTickCount() - startTick;
-        this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        if (isDebugOutputEnabled) {
+            uint elapsed = GetTickCount() - startTick;
+            this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        }
 
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
@@ -97,7 +104,12 @@ public:
     void setTimeframesFromD1To() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
-        uint startTick = GetTickCount();
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        uint startTick = 0;
+
+        if (isDebugOutputEnabled) {
+            startTick = GetTickCount();
+        }
 
         this.stochasticShortHandlePool.setTimeframesFromD1To(this.marketContext);
         this.stochasticMiddleHandlePool.setTimeframesFromD1To(this.marketContext);
@@ -106,8 +118,10 @@ public:
         this.ema200HandlePool.setTimeframesFromD1To(this.marketContext);
         this.averageTrueRangeHandlePool.setTimeframesFromD1To(this.marketContext);
 
-        uint elapsed = GetTickCount() - startTick;
-        this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        if (isDebugOutputEnabled) {
+            uint elapsed = GetTickCount() - startTick;
+            this.logger.debug(__FUNCTION__, StringFormat("<elapsed=%d ms>", elapsed));
+        }
 
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }

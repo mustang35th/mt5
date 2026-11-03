@@ -168,7 +168,9 @@ public:
         // 実際にコピーできたバー数に調整
         ratesTotal = MathMin(copiedHigh, copiedLow);
         
-        this.logger.debug(__FUNCTION__, StringFormat("ratesTotal = %d", ratesTotal));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("ratesTotal = %d", ratesTotal));
+        }
 
         if (ratesTotal <= this.depth) {
             this.logger.error(

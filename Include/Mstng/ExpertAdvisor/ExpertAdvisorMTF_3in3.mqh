@@ -844,8 +844,12 @@ private:
      */
     bool isElliot1or3(Elliot *elliot) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
+
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
         
-        this.logger.debug(__FUNCTION__, StringFormat("elliot.strPeriod = %s", elliot.marketContext.timeFrameLabel));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("elliot.strPeriod = %s", elliot.marketContext.timeFrameLabel));
+        }
         
         bool isElliot1or3 = false;
         
@@ -856,7 +860,10 @@ private:
             isElliot1or3 = true;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("isElliot1or3 = %s", (string)isElliot1or3));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("isElliot1or3 = %s", (string)isElliot1or3));
+        }
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
         return isElliot1or3;

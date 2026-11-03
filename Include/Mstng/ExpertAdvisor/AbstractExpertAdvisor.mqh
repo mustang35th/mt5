@@ -110,9 +110,11 @@ public:
 
         this.isDrawArrow = fromIsDrawArrow;
 
-        this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
-        this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
-        this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, "symbolName=" + this.marketContext.symbolName);
+            this.logger.debug(__FUNCTION__, "timeFrame=" + IntegerToString(this.marketContext.timeFrame));
+            this.logger.debug(__FUNCTION__, "timeFrameLabel=" + this.marketContext.timeFrameLabel);
+        }
 
         this.isDarwText = false;
         this.fontSize = 10;

@@ -543,16 +543,18 @@ private:
         this.downColor = fromDownColor;
         this.maxBars = fromMaxBars;
 
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "initialized. objectPrefix=%s, upColor=%d, downColor=%d, maxBars=%d",
-                this.objectPrefix,
-                (int)this.upColor,
-                (int)this.downColor,
-                this.maxBars
-            )
-        );
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "initialized. objectPrefix=%s, upColor=%d, downColor=%d, maxBars=%d",
+                    this.objectPrefix,
+                    (int)this.upColor,
+                    (int)this.downColor,
+                    this.maxBars
+                )
+            );
+        }
     }
 
     /**

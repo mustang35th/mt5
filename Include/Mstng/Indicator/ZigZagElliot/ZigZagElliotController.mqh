@@ -87,13 +87,15 @@ public:
         this.logger.setMarketContext(this.marketContext);
 
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
-        this.logger.debug(
-            __FUNCTION__,
-            StringFormat(
-                "timerMode = %s",
-                (string)this.timerMode
-            )
-        );
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(
+                __FUNCTION__,
+                StringFormat(
+                    "timerMode = %s",
+                    (string)this.timerMode
+                )
+            );
+        }
 
         if (!isH1W1ConfirmationModeValid(
                 this.config.h1W1ConfirmationMode
