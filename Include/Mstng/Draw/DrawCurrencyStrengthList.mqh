@@ -63,7 +63,7 @@ public:
         this.yDistance = fromYDistance;
         this.sortType = fromSortType;
         this.showTimeFrameScores = fromShowTimeFrameScores;
-        this.panelWidth = 1000;
+        this.panelWidth = 800;
         if (!this.showTimeFrameScores) {
             this.panelWidth -= this.getFullColumnLeftOffset(9)
                 - this.getFullColumnLeftOffset(2);
@@ -1044,35 +1044,35 @@ private:
             case 0:
                 return 14;
             case 1:
-                return 42;
+                return 38;
             case 2:
-                return 96;
+                return 80;
             case 3:
-                return 154;
+                return 122;
             case 4:
-                return 212;
+                return 164;
             case 5:
-                return 270;
+                return 206;
             case 6:
-                return 328;
+                return 248;
             case 7:
-                return 386;
+                return 290;
             case 8:
-                return 444;
+                return 332;
             case 9:
-                return 508;
+                return 380;
             case 10:
-                return 570;
+                return 436;
             case 11:
-                return 660;
+                return 508;
             case 12:
-                return 718;
+                return 564;
             case 13:
-                return 818;
+                return 644;
             case 14:
-                return 884;
+                return 700;
             case 15:
-                return 960;
+                return 760;
         }
 
         return 14;

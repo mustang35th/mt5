@@ -68,7 +68,7 @@ public:
         this.yDistance = fromYDistance;
         this.maximumCount = fromMaximumCount;
         this.gmoSymbolNameInfoAll.setGmo();
-        this.panelWidth = 710;
+        this.panelWidth = 630;
         this.headerHeight = 25;
         this.columnHeaderYDistance = 61;
         this.separatorYDistance = 80;
@@ -657,7 +657,7 @@ private:
             footerYDistance + 19,
             this.bodyFontSize,
             this.mutedColor,
-            "AND成立：READY かつ候補方向とH1 EMA200の共通判定が一致 ／ [G]：GMO対象"
+            "AND成立：READY＋H1 EMA200が候補方向と一致 ／ [G]：GMO対象"
         ) || !this.createLabel(
             this.objectPrefix + "WatchHint",
             14,
@@ -1308,21 +1308,21 @@ private:
             case 0:
                 return 14;
             case 1:
-                return 40;
+                return 36;
             case 2:
-                return 140;
+                return 128;
             case 3:
-                return 194;
+                return 172;
             case 4:
-                return 290;
+                return 258;
             case 5:
-                return 386;
+                return 344;
             case 6:
-                return 482;
+                return 424;
             case 7:
-                return 568;
+                return 482;
             case 8:
-                return 640;
+                return 558;
         }
 
         return 14;

@@ -60,6 +60,8 @@ public:
         this.readyHighlightEnabled = false;
         this.readyCurrencyCount = 0;
         ArrayInitialize(this.readyCurrencyMask, false);
+        this.selectedRegion = "";
+        ArrayInitialize(this.regionCurrencyMask, false);
         this.statusText = "WAITING DATA";
         this.statusColor = clrGold;
 
@@ -119,6 +121,9 @@ public:
         int previousReadyCurrencyCount = this.readyCurrencyCount;
         bool previousReadyCurrencyMask[8];
         ArrayCopy(previousReadyCurrencyMask, this.readyCurrencyMask);
+        string previousRegion = this.selectedRegion;
+        bool previousRegionCurrencyMask[8];
+        ArrayCopy(previousRegionCurrencyMask, this.regionCurrencyMask);
         if (!this.created || (ranksReady && this.displayRowCount != this.requiredRowCount)) {
             if (ranksReady) {
                 this.displayRowCount = this.requiredRowCount;
@@ -136,6 +141,8 @@ public:
             this.readyHighlightEnabled = previousReadyHighlight;
             this.readyCurrencyCount = previousReadyCurrencyCount;
             ArrayCopy(this.readyCurrencyMask, previousReadyCurrencyMask);
+            this.selectedRegion = previousRegion;
+            ArrayCopy(this.regionCurrencyMask, previousRegionCurrencyMask);
         }
 
         this.rankingReady = ranksReady;
@@ -144,6 +151,7 @@ public:
             this.selectedSecondCurrency = "";
             this.selectedPair = "";
             this.resetReadyHighlight();
+            this.resetRegionHighlight();
         }
 
         this.updateTitle(fromCalculator);
@@ -160,6 +168,123 @@ public:
      */
     int getPanelWidth() const {
         return this.panelWidth;
+    }
+
+    /**
+     * 保持中の全通貨順位を利用できるか取得する。
+     */
+    bool isRankingReady() const {
+        return this.created && this.rankingReady;
+    }
+
+    /**
+     * 再集計せずに保持済みの通貨順位を取得する。
+     *
+     * @param fromCurrencyName 通貨コード。
+     * @param fromLongMedium 長中期を取得する場合true。
+     * @return 無効な場合は0。
+     */
+    int getCurrencyRank(const string fromCurrencyName, const bool fromLongMedium) const {
+        int currencyIndex = this.getCurrencyIndex(fromCurrencyName);
+        if (!this.isRankingReady() || currencyIndex < 0) {
+            return 0;
+        }
+
+        if (fromLongMedium) {
+            return this.leftRanks[currencyIndex];
+        }
+
+        return this.rightRanks[currencyIndex];
+    }
+
+    /**
+     * 同順位による拡張を含むパネル高さを取得する。
+     */
+    int getPanelHeight() const {
+        return this.panelHeight;
+    }
+
+    /**
+     * パネル上端から描画領域までの距離を取得する。
+     */
+    int getPlotTop() const {
+        return this.canvasTop;
+    }
+
+    /**
+     * 現在の順位帯の描画高さを取得する。
+     */
+    int getPlotHeight() const {
+        return this.canvasHeight;
+    }
+
+    /**
+     * 平均順位を共通順位帯の中心間へ補間する。欠番も前後の実順位で補間する。
+     *
+     * @param fromRank 1〜8の平均順位。
+     * @return パネル上端からのY座標。順位未準備・範囲外の場合は-1。
+     */
+    int getRankYDistance(const double fromRank) const {
+        if (!this.isRankingReady() || !MathIsValidNumber(fromRank)
+                || fromRank < 1.0 || fromRank > 8.0) {
+            return -1;
+        }
+
+        int lowerIndex = -1;
+        int upperIndex = -1;
+        for (int i = 0; i < 8; i++) {
+            if (this.rankBandSizes[i] <= 0) {
+                continue;
+            }
+
+            if (i + 1 <= fromRank) {
+                lowerIndex = i;
+            }
+
+            if (i + 1 >= fromRank) {
+                upperIndex = i;
+                break;
+            }
+        }
+
+        if (lowerIndex < 0 || upperIndex < 0) {
+            return -1;
+        }
+
+        double displayRow = this.rankBandStarts[lowerIndex]
+            + (this.rankBandSizes[lowerIndex] - 1) / 2.0;
+        if (lowerIndex != upperIndex) {
+            double upperRow = this.rankBandStarts[upperIndex]
+                + (this.rankBandSizes[upperIndex] - 1) / 2.0;
+            displayRow += (upperRow - displayRow)
+                * (fromRank - lowerIndex - 1) / (upperIndex - lowerIndex);
+        }
+
+        return this.firstRowYDistance + 8 + (int)MathRound(displayRow * this.rowHeight);
+    }
+
+    /**
+     * 地域の所属通貨を独立した強調として設定する。手動・READY選択は保持する。
+     *
+     * @param fromRegionName 地域名。空文字は地域強調のみ解除する。
+     * @param fromCurrencies 所属通貨コード。
+     */
+    void setRegionHighlight(const string fromRegionName, const string &fromCurrencies[]) {
+        this.resetRegionHighlight();
+        if (this.isRankingReady() && fromRegionName != "") {
+            for (int i = 0; i < ArraySize(fromCurrencies); i++) {
+                int currencyIndex = this.getCurrencyIndex(fromCurrencies[i]);
+                if (currencyIndex >= 0) {
+                    this.regionCurrencyMask[currencyIndex] = true;
+                    this.selectedRegion = fromRegionName;
+                }
+            }
+        }
+
+        if (this.created) {
+            this.renderComparison();
+            ChartRedraw(this.chartId);
+        }
     }
 
     /**
@@ -261,6 +386,7 @@ public:
         }
 
         this.resetReadyHighlight();
+        this.resetRegionHighlight();
         if (this.selectedPair == fromSymbolName) {
             this.selectedCurrency = "";
             this.selectedSecondCurrency = "";
@@ -320,6 +446,7 @@ public:
             this.selectedSecondCurrency = "";
             this.selectedPair = "";
             this.resetReadyHighlight();
+            this.resetRegionHighlight();
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
             this.renderComparison();
             ChartRedraw(this.chartId);
@@ -338,6 +465,7 @@ public:
             }
 
             this.resetReadyHighlight();
+            this.resetRegionHighlight();
             this.selectedPair = "";
             if (this.selectedCurrency == this.currencyNames[i]) {
                 this.selectedCurrency = this.selectedSecondCurrency;
@@ -464,6 +592,12 @@ private:
 
     /** READY候補に含まれる重複なしの通貨数。 */
     int readyCurrencyCount;
+
+    /** 他の選択状態とは独立して優先表示する地域名。 */
+    string selectedRegion;
+
+    /** 地域に所属する通貨の強調マスク。 */
+    bool regionCurrencyMask[8];
 
     /** 通貨未選択時に表示する集計状態。 */
     string statusText;
@@ -691,8 +825,12 @@ private:
         string displayText = this.statusText;
         color displayColor = this.statusColor;
         bool hasSelection = this.rankingReady
-            && (this.selectedCurrency != "" || this.readyHighlightEnabled);
-        if (this.rankingReady && this.readyHighlightEnabled) {
+            && (this.selectedCurrency != "" || this.readyHighlightEnabled
+                || this.selectedRegion != "");
+        if (this.rankingReady && this.selectedRegion != "") {
+            displayText = "地域：" + this.selectedRegion;
+            displayColor = clrWhite;
+        } else if (this.rankingReady && this.readyHighlightEnabled) {
             displayText = "AND対象なし";
             displayColor = this.mutedColor;
             if (this.readyCurrencyCount > 0) {
@@ -778,6 +916,15 @@ private:
      * @return 強調対象の場合true。
      */
     bool isCurrencySelected(const string fromCurrencyName) {
+        if (this.selectedRegion != "") {
+            int currencyIndex = this.getCurrencyIndex(fromCurrencyName);
+            if (currencyIndex < 0) {
+                return false;
+            }
+
+            return this.regionCurrencyMask[currencyIndex];
+        }
+
         if (this.readyHighlightEnabled) {
             int currencyIndex = this.getCurrencyIndex(fromCurrencyName);
             if (currencyIndex < 0) {
@@ -797,8 +944,16 @@ private:
      * @return 手動選択またはREADY対象通貨がある場合true。
      */
     bool hasHighlightedCurrencies() const {
-        return this.selectedCurrency != ""
+        return this.selectedRegion != "" || this.selectedCurrency != ""
             || (this.readyHighlightEnabled && this.readyCurrencyCount > 0);
+    }
+
+    /**
+     * 地域強調だけを解除する。
+     */
+    void resetRegionHighlight() {
+        this.selectedRegion = "";
+        ArrayInitialize(this.regionCurrencyMask, false);
     }
 
     /**
@@ -875,7 +1030,7 @@ private:
      * @param fromCurrencyName 通貨名。
      * @return 見つからない場合は-1。
      */
-    int getCurrencyIndex(const string fromCurrencyName) {
+    int getCurrencyIndex(const string fromCurrencyName) const {
         for (int i = 0; i < 8; i++) {
             if (this.currencyNames[i] == fromCurrencyName) {
                 return i;
@@ -989,7 +1144,7 @@ private:
         ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, "解除");
         ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP,
-            "手動選択・候補ペア・READY＋H1強調をすべて解除します");
+            "地域・手動選択・候補ペア・READY＋H1強調をすべて解除します");
 
         return true;
     }
@@ -1021,6 +1176,7 @@ private:
         this.selectedSecondCurrency = "";
         this.selectedPair = "";
         this.resetReadyHighlight();
+        this.resetRegionHighlight();
     }
 };
 

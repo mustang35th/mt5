@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.03"
+#property version   "1.06"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -17,6 +17,7 @@
 #include <Mstng\Draw\DrawCurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankComparison.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRegionRankComparison.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthSnapshotHeader.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
@@ -40,8 +41,11 @@ enum CurrencyStrengthExecutionStatus {
 
 input group "01. 画面表示"
 
-/** 長中期と中短期の順位を接続する比較パネルを一番左に表示する場合true。 */
+/** 長中期と中短期の順位を接続する比較パネルを表示する場合true。 */
 input(name="順位比較を表示") bool showRankComparison = true;
+
+/** 通貨順位比較の左に、地域の平均順位比較も表示する場合true。 */
+input(name="地域順位比較を表示（順位比較ON時）") bool showRegionRankComparison = true;
 
 /** MN1からM5までの時間足別スコア列を表示する場合true。 */
 input(name="時間足別スコアを表示（MN1～M5）") bool showTimeFrameScores = true;
@@ -122,6 +126,7 @@ Logger gLogger;
 DrawCurrencyStrengthEntryCandidateList *gDrawCurrencyStrengthEntryCandidateList = NULL;
 DrawCurrencyStrengthList *gDrawCurrencyStrengthList;
 DrawCurrencyStrengthRankComparison *gDrawCurrencyStrengthRankComparison = NULL;
+DrawCurrencyStrengthRegionRankComparison *gDrawCurrencyStrengthRegionRankComparison = NULL;
 DrawCurrencyStrengthSnapshotHeader *gDrawCurrencyStrengthSnapshotHeader = NULL;
 OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
@@ -209,6 +214,19 @@ int OnInit() {
 
     int nextPanelXDistance = panelXDistance;
     int contentYDistance = panelYDistance + snapshotHeaderOffset;
+    if (showRankComparison && showRegionRankComparison) {
+        gDrawCurrencyStrengthRegionRankComparison = new DrawCurrencyStrengthRegionRankComparison(
+            0,
+            nextPanelXDistance,
+            contentYDistance,
+            voteWeightModeText
+        );
+        if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
+            nextPanelXDistance += gDrawCurrencyStrengthRegionRankComparison.getPanelWidth()
+                + panelGap;
+        }
+    }
+
     if (showRankComparison) {
         gDrawCurrencyStrengthRankComparison = new DrawCurrencyStrengthRankComparison(
             0,
@@ -270,6 +288,8 @@ int OnInit() {
     if (gDrawCurrencyStrengthList == NULL
             || gDrawCurrencyStrengthSnapshotHeader == NULL
             || (showRankComparison && gDrawCurrencyStrengthRankComparison == NULL)
+            || (showRankComparison && showRegionRankComparison
+                && gDrawCurrencyStrengthRegionRankComparison == NULL)
             || gOscillatorHandleManager == NULL
             || gCurrencyStrengthCalculator == NULL
             || (showEntryCandidates
@@ -369,7 +389,7 @@ void OnTimer() {
 }
 
 /**
- * 通貨名・候補ペア・解除・AND強調・絞り込みボタンのクリックを処理する。
+ * 地域・通貨名・候補ペア・解除・AND強調・絞り込みボタンのクリックを処理する。
  *
  * @param fromEventId チャートイベントID。
  * @param fromLongValue 整数イベント引数。
@@ -404,8 +424,25 @@ void OnChartEvent(
         return;
     }
 
+    if (gDrawCurrencyStrengthRegionRankComparison != NULL
+            && gDrawCurrencyStrengthRegionRankComparison.handleObjectClick(fromStringValue)) {
+        gInitialReadyHighlightPending = false;
+        string regionCurrencies[];
+        gDrawCurrencyStrengthRegionRankComparison.getSelectedCurrencies(regionCurrencies);
+        gDrawCurrencyStrengthRankComparison.setRegionHighlight(
+            gDrawCurrencyStrengthRegionRankComparison.getSelectedRegionName(), regionCurrencies
+        );
+
+        return;
+    }
+
     if (gDrawCurrencyStrengthRankComparison.handleObjectClick(fromStringValue)) {
         gInitialReadyHighlightPending = false;
+        if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
+            gDrawCurrencyStrengthRegionRankComparison.clearSelection();
+            ChartRedraw(0);
+        }
+
         if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
             gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
                 gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
@@ -422,6 +459,7 @@ void OnChartEvent(
 
     if (gDrawCurrencyStrengthEntryCandidateList.isReadyHighlightClick(fromStringValue)) {
         gInitialReadyHighlightPending = false;
+        clearRegionSelection();
         string readySymbols[];
         gDrawCurrencyStrengthEntryCandidateList.getDisplayedReadySymbols(readySymbols);
         gDrawCurrencyStrengthRankComparison.setReadyHighlight(
@@ -442,12 +480,32 @@ void OnChartEvent(
             fromStringValue, symbolName)
             && gDrawCurrencyStrengthRankComparison.togglePairSelection(symbolName)) {
         gInitialReadyHighlightPending = false;
+        if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
+            gDrawCurrencyStrengthRegionRankComparison.clearSelection();
+            ChartRedraw(0);
+        }
+
         gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
             gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
         );
         gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
             gDrawCurrencyStrengthRankComparison.getSelectedPair()
         );
+    }
+}
+
+/**
+ * 地域強調のみを解除し、手動・READYの選択状態は保持する。
+ */
+void clearRegionSelection() {
+    if (gDrawCurrencyStrengthRegionRankComparison == NULL) {
+        return;
+    }
+
+    gDrawCurrencyStrengthRegionRankComparison.clearSelection();
+    if (gDrawCurrencyStrengthRankComparison != NULL) {
+        string regionCurrencies[];
+        gDrawCurrencyStrengthRankComparison.setRegionHighlight("", regionCurrencies);
     }
 }
 
@@ -1080,6 +1138,16 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         }
     }
 
+    if (isDrawingEnabled && gDrawCurrencyStrengthRegionRankComparison != NULL) {
+        if (!gDrawCurrencyStrengthRegionRankComparison.draw(gDrawCurrencyStrengthRankComparison)) {
+            gLogger.error(__FUNCTION__, "currency strength region rank comparison draw failed");
+            gDrawCurrencyStrengthRegionRankComparison.clear();
+            clearRegionSelection();
+        }
+
+        ChartRedraw(0);
+    }
+
     if (!isCalculated) {
         if (isDrawingEnabled) {
             synchronizePairSelection(false);
@@ -1344,6 +1412,12 @@ void releaseResources() {
         gDrawCurrencyStrengthSnapshotHeader.clear();
         delete gDrawCurrencyStrengthSnapshotHeader;
         gDrawCurrencyStrengthSnapshotHeader = NULL;
+    }
+
+    if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
+        gDrawCurrencyStrengthRegionRankComparison.clear();
+        delete gDrawCurrencyStrengthRegionRankComparison;
+        gDrawCurrencyStrengthRegionRankComparison = NULL;
     }
 
     if (gDrawCurrencyStrengthRankComparison != NULL) {
