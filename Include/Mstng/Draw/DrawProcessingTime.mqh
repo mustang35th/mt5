@@ -71,31 +71,33 @@ public:
             return false;
         }
 
-        string text = StringFormat("%s %7s %7s %7s", this.getRowLabel(fromIndex), "--", "--", "--");
-        color textColor = clrSilver;
-
-        if (fromStats.getCount() > 0) {
-            text = StringFormat(
-                "%s %7.1f %7.1f %7.1f",
-                this.getRowLabel(fromIndex),
-                fromStats.getLatestMilliseconds(),
-                fromStats.getAverageMilliseconds(),
-                fromStats.getMaximumMilliseconds()
-            );
-            textColor = clrWhite;
-        }
-
-        if (fromStats.getLastAttemptTime() > 0 && !fromStats.isLastSucceeded()) {
-            text += " " + fromStats.getState();
-            textColor = clrOrange;
-        }
-
-        this.metricTexts[fromIndex] = text;
-        this.metricTooltips[fromIndex] = this.getTooltip(fromIndex, fromStats);
-        this.displayUpdatePending = true;
+        // 画面に表示する更新処理だけ、桁幅をそろえた行と文字色を用意する。
         if (fromIndex == 0) {
+            string text = StringFormat("%s %7s %7s %7s", this.getRowLabel(fromIndex), "--", "--", "--");
+            color textColor = clrSilver;
+
+            if (fromStats.getCount() > 0) {
+                text = StringFormat(
+                    "%s %7.1f %7.1f %7.1f",
+                    this.getRowLabel(fromIndex),
+                    fromStats.getLatestMilliseconds(),
+                    fromStats.getAverageMilliseconds(),
+                    fromStats.getMaximumMilliseconds()
+                );
+                textColor = clrWhite;
+            }
+
+            if (fromStats.getLastAttemptTime() > 0 && !fromStats.isLastSucceeded()) {
+                text += " " + fromStats.getState();
+                textColor = clrOrange;
+            }
+
+            this.updateText = text;
             this.updateTextColor = textColor;
         }
+
+        this.metricTooltips[fromIndex] = this.getTooltip(fromIndex, fromStats);
+        this.displayUpdatePending = true;
 
         return this.flushDisplay();
     }
@@ -166,8 +168,8 @@ private:
     /** 最後に反映した文字色。 */
     color labelColors[2];
 
-    /** 各処理の最新の表示文字。 */
-    string metricTexts[4];
+    /** 画面に表示する更新処理行の最新の文字。 */
+    string updateText;
 
     /** 各処理の数値と失敗状態を1行にまとめた説明文字。 */
     string metricTooltips[4];
@@ -193,10 +195,10 @@ private:
     void resetMetricCache() {
         ProcessingTimeStats emptyStats;
         for (int i = 0; i < 4; i++) {
-            this.metricTexts[i] = StringFormat("%s %7s %7s %7s", this.getRowLabel(i), "--", "--", "--");
             this.metricTooltips[i] = this.getTooltip(i, emptyStats);
         }
 
+        this.updateText = StringFormat("%s %7s %7s %7s", this.getRowLabel(0), "--", "--", "--");
         this.updateTextColor = clrSilver;
     }
 
@@ -243,7 +245,7 @@ private:
             tooltip,
             clrSilver
         );
-        bool rowSucceeded = this.updateLabel(1, this.metricTexts[0], tooltip, this.updateTextColor);
+        bool rowSucceeded = this.updateLabel(1, this.updateText, tooltip, this.updateTextColor);
 
         return headerSucceeded && rowSucceeded;
     }

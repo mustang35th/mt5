@@ -760,6 +760,8 @@ private:
             return false;
         }
 
+        // 同じラベル更新内で取得した画面情報と計測用フォントを共用する。
+        DrawChartTextContext drawContext;
         bool isSucceeded = true;
 
         for (int i = 0; i < this.displayCount; i++) {
@@ -778,7 +780,7 @@ private:
             string labelText = StringFormat("EMA200 %s %s", this.getTimeFrameLabel(labelTimeFrame), labelRate);
             color labelColor = this.getLineColor(labelTimeFrame);
 
-            if (!this.updateLabel(i, labelTime, labelPrice, labelText, labelColor)) {
+            if (!this.updateLabel(i, labelTime, labelPrice, labelText, labelColor, drawContext)) {
                 isSucceeded = false;
             }
         }
@@ -795,13 +797,21 @@ private:
      * @param fromPrice 価格位置
      * @param fromText 表示文字
      * @param fromColor 文字色
+     * @param fromContext 同一更新内で共用する画面情報と計測用フォント
      * @return 更新成否
      */
-    bool updateLabel(int fromLineIndex, datetime fromTime, double fromPrice, string fromText, color fromColor) {
+    bool updateLabel(
+        int fromLineIndex,
+        datetime fromTime,
+        double fromPrice,
+        string fromText,
+        color fromColor,
+        DrawChartTextContext &fromContext
+    ) {
         string objectName = this.getLabelObjectName(this.timeFrames[fromLineIndex]);
 
         if (!DrawChartTextBounds::fitTime(fromTime, fromPrice, fromText,
-                this.labelFontFace, this.labelFontSize, this.reservedRightWidth, false)) {
+                this.labelFontFace, this.labelFontSize, this.reservedRightWidth, false, fromContext)) {
             this.deleteLabel(fromLineIndex);
 
             return false;

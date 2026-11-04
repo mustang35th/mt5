@@ -738,13 +738,26 @@ private:
         
         zigZagPointLast.rate = rate;
         
-        // ポイント列を逆順へ入れ替える。
+        // 複製済みの作業ポイントを末尾から移し、再複製と先頭挿入による移動を省く。
         CArrayObj reZigZagPointList;
-        
-        for (int i = 0; i < fromZigZagPointList.Total(); i++) {
-            ZigZagPoint *zigZagPoint = fromZigZagPointList.At(i);
-            
-            ZigZagPointUtil::insertPoint(reZigZagPointList, zigZagPoint);
+
+        for (int i = fromZigZagPointList.Total() - 1; i >= 0; i--) {
+            ZigZagPoint *zigZagPoint = fromZigZagPointList.Detach(i);
+
+            if (zigZagPoint == NULL) {
+                this.logger.error(__FUNCTION__, "Failed to detach reverse ZigZag point.");
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
+
+            if (!reZigZagPointList.Add(zigZagPoint)) {
+                delete zigZagPoint;
+                this.logger.error(__FUNCTION__, "Failed to add reverse ZigZag point.");
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
         }
         
         
