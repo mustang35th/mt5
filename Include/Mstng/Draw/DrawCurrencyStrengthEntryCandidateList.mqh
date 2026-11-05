@@ -243,9 +243,10 @@ public:
 
     /**
      * 自身のREADY＋H1強調ボタンのクリックか確認し、押下状態を解除する。
+     * 取得待ち中もON/OFF設定を変更できる。比較パネルの有無は呼び出し元で判定する。
      *
      * @param fromObjectName クリックされたチャートオブジェクト名。
-     * @return 比較パネルとの連携が有効な自身のボタンの場合true。
+     * @return 生成済みの自身のボタンの場合true。
      */
     bool isReadyHighlightClick(const string fromObjectName) {
         if (fromObjectName != this.objectPrefix + "ReadyButton") {
@@ -257,7 +258,7 @@ public:
             ChartRedraw(this.chartId);
         }
 
-        return this.created && this.pairSelectionEnabled;
+        return this.created;
     }
 
     /**
@@ -294,13 +295,13 @@ public:
     }
 
     /**
-     * 比較パネルのREADY強調モードをボタン表示へ反映する。
+     * READY強調のON/OFF設定をボタン表示へ反映する。取得待ちでも設定を保持する。
      * 手動選択している候補行の背景は変更しない。
      *
      * @param fromEnabled READY強調モードが有効な場合true。
      */
     void setReadyHighlightEnabled(const bool fromEnabled) {
-        this.readyHighlightEnabled = fromEnabled && this.pairSelectionEnabled;
+        this.readyHighlightEnabled = fromEnabled;
         if (this.created) {
             this.updateReadyButton();
             ChartRedraw(this.chartId);
@@ -327,10 +328,6 @@ public:
      */
     void setPairSelectionEnabled(const bool fromEnabled) {
         this.pairSelectionEnabled = fromEnabled;
-        if (!fromEnabled) {
-            this.readyHighlightEnabled = false;
-        }
-
         if (this.created) {
             this.updatePairTooltips();
             this.updateSelectionBackground();
@@ -372,7 +369,7 @@ private:
     /** メールと共通のGMO対象判定に使用する通貨ペア定義。 */
     SymbolNameInfoAll gmoSymbolNameInfoAll;
 
-    /** 比較パネルから通知されたREADY強調モード。 */
+    /** READY強調のON設定。取得待ち中も保持する。 */
     bool readyHighlightEnabled;
 
     /** AND成立候補だけを表示する場合true。 */
@@ -780,10 +777,15 @@ private:
         if (this.pairSelectionEnabled) {
             textColor = this.normalColor;
             tooltip = "表示中のAND成立候補に含まれる通貨を比較パネルで強調します";
-            if (this.readyHighlightEnabled) {
-                buttonText = "READY＋H1強調：ON";
-                textColor = this.warningColor;
-                backgroundColor = C'58,62,42';
+        }
+
+        if (this.readyHighlightEnabled) {
+            buttonText = "READY＋H1強調：ON";
+            textColor = this.warningColor;
+            backgroundColor = C'58,62,42';
+            if (!this.pairSelectionEnabled) {
+                buttonText = "READY＋H1強調：ON(待機)";
+                tooltip = "ON設定を保持しています。データ復旧後に強調を再開します。クリックでOFF。";
             }
         }
 

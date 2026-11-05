@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.06"
+#property version   "1.07"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -134,8 +134,8 @@ CurrencyStrengthEntryCandidateList *gCurrencyStrengthEntryCandidateList = NULL;
 CurrencyStrengthH1EmaProvider *gCurrencyStrengthH1EmaProvider = NULL;
 bool gEntryCandidateSnapshotReady = false;
 
-/** 初回の正常表示時にREADY＋H1強調をONにする予約。手動操作で取り消す。 */
-bool gInitialReadyHighlightPending = false;
+/** READY＋H1強調のユーザー設定。一時的な集計・描画失敗では解除しない。 */
+bool gReadyHighlightRequested = false;
 
 CurrencyStrengthYearlyPersistenceService *gCurrencyStrengthPersistenceService;
 datetime gFirstTargetM5BarTime;
@@ -301,7 +301,7 @@ int OnInit() {
         return INIT_FAILED;
     }
 
-    gInitialReadyHighlightPending = showRankComparison && showEntryCandidates;
+    gReadyHighlightRequested = showRankComparison && showEntryCandidates;
     gFirstTargetM5BarTime = 0;
     gLastLiveAttemptM5BarTime = 0;
     gLastTesterAttemptM5BarTime = 0;
@@ -426,7 +426,6 @@ void OnChartEvent(
 
     if (gDrawCurrencyStrengthRegionRankComparison != NULL
             && gDrawCurrencyStrengthRegionRankComparison.handleObjectClick(fromStringValue)) {
-        gInitialReadyHighlightPending = false;
         string regionCurrencies[];
         gDrawCurrencyStrengthRegionRankComparison.getSelectedCurrencies(regionCurrencies);
         gDrawCurrencyStrengthRankComparison.setRegionHighlight(
@@ -437,7 +436,7 @@ void OnChartEvent(
     }
 
     if (gDrawCurrencyStrengthRankComparison.handleObjectClick(fromStringValue)) {
-        gInitialReadyHighlightPending = false;
+        gReadyHighlightRequested = false;
         if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
             gDrawCurrencyStrengthRegionRankComparison.clearSelection();
             ChartRedraw(0);
@@ -445,7 +444,7 @@ void OnChartEvent(
 
         if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
             gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
-                gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
+                gReadyHighlightRequested
             );
             gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol("");
         }
@@ -458,19 +457,9 @@ void OnChartEvent(
     }
 
     if (gDrawCurrencyStrengthEntryCandidateList.isReadyHighlightClick(fromStringValue)) {
-        gInitialReadyHighlightPending = false;
+        gReadyHighlightRequested = !gReadyHighlightRequested;
         clearRegionSelection();
-        string readySymbols[];
-        gDrawCurrencyStrengthEntryCandidateList.getDisplayedReadySymbols(readySymbols);
-        gDrawCurrencyStrengthRankComparison.setReadyHighlight(
-            !gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled(), readySymbols
-        );
-        gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
-            gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
-        );
-        gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
-            gDrawCurrencyStrengthRankComparison.getSelectedPair()
-        );
+        synchronizePairSelection(gEntryCandidateSnapshotReady);
 
         return;
     }
@@ -479,14 +468,14 @@ void OnChartEvent(
     if (gDrawCurrencyStrengthEntryCandidateList.getClickedSymbol(
             fromStringValue, symbolName)
             && gDrawCurrencyStrengthRankComparison.togglePairSelection(symbolName)) {
-        gInitialReadyHighlightPending = false;
+        gReadyHighlightRequested = false;
         if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
             gDrawCurrencyStrengthRegionRankComparison.clearSelection();
             ChartRedraw(0);
         }
 
         gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
-            gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
+            gReadyHighlightRequested
         );
         gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
             gDrawCurrencyStrengthRankComparison.getSelectedPair()
@@ -513,15 +502,18 @@ void clearRegionSelection() {
  * 最新候補に合わせてペア選択・AND強調とクリック可否を同期する。
  * 表示上限より下の候補も検索し、通貨名からの手動選択は候補の増減で解除しない。
  * AND強調は表示中のREADYかつH1 EMA200が同方向の候補だけを対象にする。
- * 初期ONは最初の正常表示時に一度だけ適用し、その後の手動操作を優先する。
+ * ON/OFF設定を保持し、取得・描画待ちでは強調だけを止め、正常表示時に再開する。
  *
  * @param fromCandidatesReady 最新候補一覧の構築と描画に成功した場合true。
  */
 void synchronizePairSelection(const bool fromCandidatesReady) {
-    gEntryCandidateSnapshotReady = fromCandidatesReady;
+    bool canSelectPair = fromCandidatesReady
+        && gDrawCurrencyStrengthRankComparison != NULL
+        && gDrawCurrencyStrengthRankComparison.isRankingReady();
+    gEntryCandidateSnapshotReady = canSelectPair;
     if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
         gDrawCurrencyStrengthEntryCandidateList.setPairSelectionEnabled(
-            fromCandidatesReady && gDrawCurrencyStrengthRankComparison != NULL
+            canSelectPair
         );
     }
 
@@ -534,23 +526,14 @@ void synchronizePairSelection(const bool fromCandidatesReady) {
         return;
     }
 
-    bool applyInitialReadyHighlight = gInitialReadyHighlightPending
-        && fromCandidatesReady && gDrawCurrencyStrengthEntryCandidateList != NULL;
-    if (applyInitialReadyHighlight || gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()) {
-        string readySymbols[];
-        bool canHighlightReady = fromCandidatesReady
-            && gDrawCurrencyStrengthEntryCandidateList != NULL;
-        if (canHighlightReady) {
-            gDrawCurrencyStrengthEntryCandidateList.getDisplayedReadySymbols(readySymbols);
-        }
-
-        bool isHighlightApplied = gDrawCurrencyStrengthRankComparison.setReadyHighlight(
-            canHighlightReady, readySymbols
-        );
-        if (applyInitialReadyHighlight && isHighlightApplied) {
-            gInitialReadyHighlightPending = false;
-        }
+    string readySymbols[];
+    bool canHighlightReady = gReadyHighlightRequested && canSelectPair
+        && gDrawCurrencyStrengthEntryCandidateList != NULL;
+    if (canHighlightReady) {
+        gDrawCurrencyStrengthEntryCandidateList.getDisplayedReadySymbols(readySymbols);
     }
+
+    gDrawCurrencyStrengthRankComparison.setReadyHighlight(canHighlightReady, readySymbols);
 
     string selectedPair = gDrawCurrencyStrengthRankComparison.getSelectedPair();
     if (selectedPair != "") {
@@ -575,7 +558,7 @@ void synchronizePairSelection(const bool fromCandidatesReady) {
 
     if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
         gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
-            gDrawCurrencyStrengthRankComparison.isReadyHighlightEnabled()
+            gReadyHighlightRequested
         );
         gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol(
             gDrawCurrencyStrengthRankComparison.getSelectedPair()
@@ -1449,7 +1432,7 @@ void releaseResources() {
     }
 
     gEntryCandidateSnapshotReady = false;
-    gInitialReadyHighlightPending = false;
+    gReadyHighlightRequested = false;
 
     if (gCurrencyStrengthCalculator != NULL) {
         delete gCurrencyStrengthCalculator;
