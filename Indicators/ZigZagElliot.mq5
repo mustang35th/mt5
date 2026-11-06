@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.45"
+#property version   "2.48"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -303,7 +303,17 @@ int OnCalculate(
         return rates_total;
     }
 
-    return gController.onCalculate(rates_total, prev_calculated);
+    datetime currentBarTime = 0;
+    if (rates_total > 0 && ArraySize(time) == rates_total) {
+        int currentBarIndex = rates_total - 1;
+        if (ArrayGetAsSeries(time)) {
+            currentBarIndex = 0;
+        }
+
+        currentBarTime = time[currentBarIndex];
+    }
+
+    return gController.onCalculate(rates_total, prev_calculated, currentBarTime);
 }
 
 /**

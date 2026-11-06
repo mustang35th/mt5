@@ -373,7 +373,7 @@ public:
      * @param prev_calculated 前回計算済みバー数
      * @param chartId 描画対象チャートID
      * @param fromExpectedBarTime EMA取得前の最新足時刻。0の場合は照合を省略する
-     * @return 描画用時刻を取得できた場合true。取得不足や足切り替わりの場合false
+     * @return 時刻取得と追加属性の設定要求に成功した場合true。描画対象なしもtrue
      */
     bool drawLongTermTrend(
         const double &ema30Buffer[],
@@ -521,12 +521,11 @@ public:
                 (int)chartId
             );
 
-            string objectName = Constant::PREFIX + name;
-            ObjectSetInteger(chartId, objectName, OBJPROP_BACK, true);
-            ObjectSetInteger(chartId, objectName, OBJPROP_SELECTABLE, false);
-            ObjectSetInteger(chartId, objectName, OBJPROP_HIDDEN, true);
-            ObjectSetInteger(chartId, objectName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-            ObjectSetInteger(chartId, objectName, OBJPROP_WIDTH, 0);
+            // 共通描画で設定済みの背面・塗り・線幅は再設定せず、実際の作成名を使う。
+            if (!ObjectSetInteger(chartId, name, OBJPROP_SELECTABLE, false)
+                    || !ObjectSetInteger(chartId, name, OBJPROP_HIDDEN, true)) {
+                return false;
+            }
 
             if (isDebugOutputEnabled) {
                 drawCount++;

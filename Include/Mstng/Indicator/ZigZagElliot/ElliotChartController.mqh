@@ -151,15 +151,19 @@ public:
      *
      * @param fromTimerMode タイマー実行の場合true
      * @param fromPrevCalculated OnCalculateの前回計算済みバー数
+     * @param fromRatesTotal OnCalculateの全バー数。0の場合はGMMA側で取得する
+     * @param fromCurrentBarTime OnCalculateの最新足時刻。0の場合はGMMA側で取得する
      */
-    void updateOnCalculate(bool fromTimerMode, int fromPrevCalculated = 0) {
+    void updateOnCalculate(bool fromTimerMode, int fromPrevCalculated = 0,
+            int fromRatesTotal = 0, datetime fromCurrentBarTime = 0) {
         if (fromTimerMode && fromPrevCalculated == 0) {
             this.timeAxisFullUpdatePending = true;
         }
 
         if (this.gmmaIndicator != NULL) {
             ulong startMicroseconds = GetMicrosecondCount();
-            bool isSucceeded = this.gmmaIndicator.update(fromPrevCalculated);
+            bool isSucceeded = this.gmmaIndicator.update(
+                fromPrevCalculated, fromRatesTotal, fromCurrentBarTime);
             ulong elapsedMicroseconds = GetMicrosecondCount() - startMicroseconds;
 
             if (this.gmmaIndicator.wasUpdatePerformed()) {

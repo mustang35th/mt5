@@ -118,11 +118,23 @@ public:
      * 初回・履歴再計算時は全体、新しい足では必要範囲だけ更新する。
      *
      * @param fromPrevCalculated OnCalculateの前回計算済みバー数
+     * @param fromBarsCount OnCalculateの全バー数。正の時刻と本数がそろう場合だけ待機判定に使用する
+     * @param fromCurrentBarTime OnCalculateの最新足時刻。0の場合は従来どおり取得する
      * @return 更新成否
      */
-    bool update(int fromPrevCalculated = 0) {
+    bool update(int fromPrevCalculated = 0, int fromBarsCount = 0, datetime fromCurrentBarTime = 0) {
         this.updatePerformed = false;
         this.lastUpdateMode = "待機";
+
+        // 同じ足の待機はイベントで受け取った値だけで判断し、系列情報の再取得を省く。
+        if (fromPrevCalculated > 0 && fromPrevCalculated == this.lastBarsCount
+                && fromBarsCount > 0 && fromBarsCount == this.lastBarsCount
+                && fromCurrentBarTime > 0 && fromCurrentBarTime == this.lasttimeGmma
+                && ArraySize(this.buffer30) == fromBarsCount
+                && ArraySize(this.buffer60) == fromBarsCount) {
+            return true;
+        }
+
         datetime currentBarTime = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0);
 
         if (currentBarTime <= 0) {

@@ -583,7 +583,12 @@ private:
                 this.logger.debug(__FUNCTION__, " 分析不要");
             }
             
-            this.addWavePoint2(fromZigZagPointList, isMotive, isUptrend);
+            if (!this.addWavePoint2(fromZigZagPointList, isMotive, isUptrend)) {
+                this.logger.error(__FUNCTION__, "addWavePoint2 false");
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return false;
+            }
             
         } else {
             ElliotWithHigher *elliotWithHigher = new ElliotWithHigher(this.marketContext, this.isBuy, this.buySellLabel,
@@ -685,22 +690,31 @@ private:
     }
     
     /**
-     * 指定ポイント列の先頭2点から最小構成のWaveを追加する。
+     * 2点を逆順の参照リストに並べ、Wave生成時だけ複製して追加する。
      *
      * @param fromZigZagPointList 追加元ポイント列
      * @param isMotive true: 推進波、false: 修正波
      * @param isUptrend true: 上昇波、false: 下降波
+     * @return 逆順の参照リストの準備に成功した場合true
      */
-    void addWavePoint2(CArrayObj &fromZigZagPointList, bool isMotive, bool isUptrend) {
+    bool addWavePoint2(CArrayObj &fromZigZagPointList, bool isMotive, bool isUptrend) {
         CArrayObj zigZagPointListAdd;
-        
-        for (int i = 0; i < fromZigZagPointList.Total(); i++) {
+        zigZagPointListAdd.FreeMode(false);
+
+        // 元ポイントは所有せず、逆順化のためだけの複製を省く。
+        for (int i = fromZigZagPointList.Total() - 1; i >= 0; i--) {
             ZigZagPoint *zigZagPoint = fromZigZagPointList.At(i);
-            
-            ZigZagPointUtil::insertPoint(zigZagPointListAdd, zigZagPoint);
+
+            if (zigZagPoint == NULL || !zigZagPointListAdd.Add(zigZagPoint)) {
+                this.logger.error(__FUNCTION__, "Failed to add reverse ZigZag point reference.");
+
+                return false;
+            }
         }
-        
+
         WaveUtil::addWave(this.logger, this.waveList, this.marketContext, zigZagPointListAdd, isMotive, isUptrend);
+
+        return true;
     }
     
     /**
