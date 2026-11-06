@@ -7,6 +7,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Common\UpdateTimingStats.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Draw\DrawElliot.mqh>
@@ -59,6 +60,7 @@ public:
         }
 
         this.diffJpyLabelCleared = false;
+        this.resetUpdateTimingDisplay();
     }
     
     /**
@@ -307,22 +309,23 @@ public:
     }
     
     /**
-     * システム時刻（JST/サーバー）とJST基準の時差、実行時間を描画する。
+     * 分析開始時の気配時刻（JST/サーバー）とJST基準の時差、実行時間を描画する。
      */
     void drawTime() {
         color fontColor = clrWhite;
         string objectName = "Sysdate";
         int fontSize = DrawZigZagElliotInfoLayout::getTimeFontSize();
         
-        string text = TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.jstTime);
+        string text = TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.jstTime) + " JST";
+        string tooltip = "分析開始時に取得した最終気配の時刻をJSTへ換算しています。";
                 
-        this.updateInfoLabel(13, "JstTitle", fontColor, fontSize, "JST", 0, 180);
+        this.updateInfoLabel(13, "JstTitle", fontColor, fontSize - 1, "分析", 0, 180, tooltip);
         this.updateInfoLabel(0, objectName + "JST", fontColor, fontSize, text,
-            DrawZigZagElliotInfoLayout::getTimeValueLeftOffset(), 180);
+            DrawZigZagElliotInfoLayout::getTimeValueLeftOffset(), 180, tooltip);
         
         int serverOffsetHour = -this.elliotAll.tradeTimeInfo.jstOffsetHour;
         text = TimeUtil::formatYyyymmddhhmiss(this.elliotAll.tradeTimeInfo.serverTime);
-        string tooltip = StringFormat("サーバー時刻 = JST %+d時間", serverOffsetHour);
+        tooltip = StringFormat("同じ分析開始時の最終気配時刻。サーバー時刻 = JST %+d時間", serverOffsetHour);
                 
         this.updateInfoLabel(14, "ServerTitle", fontColor, fontSize, "SRV", 0, 202, tooltip);
         this.updateInfoLabel(1, objectName + "GMT", fontColor, fontSize, text,
@@ -332,10 +335,40 @@ public:
             tooltip, ANCHOR_RIGHT_UPPER);
         
         
-        objectName = "execTime";
-        text = StringFormat("[%dms]<%ds>", this.elliotAll.execTime, this.elliotAll.timerSeconds);
-                
-        this.updateInfoLabel(2, objectName, fontColor, fontSize, text, 0, 224);
+        // 待機中は破棄済みの分析結果を参照せず、この値だけを再利用する。
+        this.timingExecTime = this.elliotAll.execTime;
+        this.timingExecTimeReady = true;
+        this.drawExecutionTimeLabel(this.elliotAll.timerSeconds);
+    }
+
+    /**
+     * 更新診断と成功からの経過を、保持済みの実行時間ラベルへ反映する。
+     * 分析結果を参照せず、全体描画やChartRedrawは行わない。
+     *
+     * @param fromStats 更新間隔・遅延・試行結果の計測値
+     * @param fromIntervalSeconds 設定された分析間隔秒
+     * @param fromCurrentTick 経過秒の計算に使用する単調増加時刻
+     */
+    void updateTimingStatus(UpdateTimingStats &fromStats, int fromIntervalSeconds, ulong fromCurrentTick) {
+        this.timingEnabled = true;
+
+        if (!this.timingTooltipReady
+                || this.timingRevision != fromStats.getRevision()
+                || this.timingIntervalSeconds != fromIntervalSeconds) {
+            this.timingTooltip = this.getUpdateTimingTooltip(fromStats, fromIntervalSeconds);
+            this.timingRevision = fromStats.getRevision();
+            this.timingIntervalSeconds = fromIntervalSeconds;
+            this.timingTooltipReady = true;
+        }
+
+        this.timingAgeText = "更新--";
+
+        if (fromStats.hasSuccess()) {
+            ulong elapsedSeconds = fromStats.getElapsedSinceSuccessMilliseconds(fromCurrentTick) / 1000;
+            this.timingAgeText = StringFormat("更新%I64ds前", (long)elapsedSeconds);
+        }
+
+        this.drawExecutionTimeLabel(fromIntervalSeconds);
     }
     
     /**
@@ -424,6 +457,7 @@ public:
 
         this.diffJpyLabelCleared = false;
         this.symbolLabelName = "";
+        this.resetUpdateTimingDisplay();
     }
 
     /**
@@ -457,6 +491,30 @@ private:
 
     /** 描画対象のElliot全体データ。 */
     ElliotAll *elliotAll;
+
+    /** 更新診断の明示経路が使用されている場合true。 */
+    bool timingEnabled;
+
+    /** 計測値の説明文を生成済みの場合true。 */
+    bool timingTooltipReady;
+
+    /** 説明文を生成した計測値の更新番号。 */
+    ulong timingRevision;
+
+    /** 説明文を生成した設定間隔秒。 */
+    int timingIntervalSeconds;
+
+    /** 計測値または設定間隔の変更時だけ再生成する説明文。 */
+    string timingTooltip;
+
+    /** 最後に計算した成功からの経過表示。 */
+    string timingAgeText;
+
+    /** 分析結果から実行時間を取得済みの場合true。 */
+    bool timingExecTimeReady;
+
+    /** 待機中に分析結果を参照しないため保持する実行時間。単位: ミリ秒。 */
+    uint timingExecTime;
 
     /** Ask・Bid・Spreadラベルの初期設定および文字・色反映が成功した場合true。 */
     bool bidAskLabelReady[6];
@@ -634,6 +692,102 @@ private:
         this.symbolLabelColors[1] = ConstantCurrency::getColor(baseCurrency);
         this.symbolLabelColors[2] = ConstantCurrency::getColor(quoteCurrency);
         this.symbolLabelName = fromSymbolName;
+    }
+
+    /**
+     * 更新診断と実行時間の保持値を初期化する。
+     */
+    void resetUpdateTimingDisplay() {
+        this.timingEnabled = false;
+        this.timingTooltipReady = false;
+        this.timingRevision = 0;
+        this.timingIntervalSeconds = 0;
+        this.timingTooltip = "";
+        this.timingAgeText = "更新--";
+        this.timingExecTimeReady = false;
+        this.timingExecTime = 0;
+    }
+
+    /**
+     * 保持した実行時間と任意の更新診断を1ラベルだけへ反映する。
+     * 診断を使用しない呼び出し元では既存の実行時間表示を維持する。
+     *
+     * @param fromIntervalSeconds 設定された分析間隔秒
+     */
+    void drawExecutionTimeLabel(int fromIntervalSeconds) {
+        string executionText = "[--ms]";
+
+        if (this.timingExecTimeReady) {
+            executionText = StringFormat("[%dms]", this.timingExecTime);
+        }
+
+        string text = StringFormat("%s<%ds>", executionText, fromIntervalSeconds);
+        string tooltip = "";
+
+        if (this.timingEnabled) {
+            text += " " + this.timingAgeText;
+            tooltip = this.timingTooltip;
+        }
+
+        this.updateInfoLabel(2, "execTime", clrWhite,
+            DrawZigZagElliotInfoLayout::getTimeFontSize(), text, 0, 224, tooltip);
+    }
+
+    /**
+     * 更新間隔・前段処理・最終試行の説明文を生成する。
+     * 初回で比較対象がない間隔と遅延は未計測として表示する。
+     *
+     * @param fromStats 更新間隔・遅延・試行結果の計測値
+     * @param fromIntervalSeconds 設定された分析間隔秒
+     * @return 実行時間ラベルの説明文
+     */
+    string getUpdateTimingTooltip(UpdateTimingStats &fromStats, int fromIntervalSeconds) {
+        string attemptInterval = "--";
+        string successInterval = "--";
+        string timerDelay = "--";
+        string startDelay = "--";
+        string auxiliary = "--";
+        string lastAttempt = "未試行 --";
+
+        if (fromStats.hasAttemptInterval()) {
+            attemptInterval = StringFormat("%.1fs", (double)fromStats.getAttemptIntervalMilliseconds() / 1000.0);
+            timerDelay = StringFormat("%I64dms", (long)fromStats.getTimerDelayMilliseconds());
+            startDelay = StringFormat("%I64dms", (long)fromStats.getStartDelayMilliseconds());
+        }
+
+        if (fromStats.hasSuccessInterval()) {
+            successInterval = StringFormat("%.1fs", (double)fromStats.getSuccessIntervalMilliseconds() / 1000.0);
+        }
+
+        if (fromStats.hasAttempt()) {
+            auxiliary = StringFormat("%.1fms", fromStats.getAuxiliaryMilliseconds());
+            string result = "失敗";
+
+            if (fromStats.isLastSucceeded()) {
+                result = "成功";
+            }
+
+            lastAttempt = StringFormat("%s %s %.1fms", result,
+                fromStats.getLastState(), fromStats.getLastAttemptMilliseconds());
+        }
+
+        string timer = "前回Timer未計測";
+        if (fromStats.hasTimer()) {
+            string mode = "待機";
+            if (fromStats.wasTimerAnalysisExecuted()) {
+                mode = "分析";
+            }
+
+            timer = StringFormat("前回Timer(%s) 全体%.1f / ラベル%.1fms",
+                mode, fromStats.getTimerMilliseconds(), fromStats.getTimerLabelMilliseconds());
+        }
+
+        string tooltip = timer;
+        tooltip += StringFormat("\n設定%ds 試行%s 成功%s / 予定超過%s 開始遅延%s",
+            fromIntervalSeconds, attemptInterval, successInterval, timerDelay, startDelay);
+        tooltip += "\n前段 " + auxiliary + " / 最終 " + lastAttempt;
+
+        return tooltip;
     }
 
     /**

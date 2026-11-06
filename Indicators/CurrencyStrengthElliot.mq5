@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.16"
+#property version   "1.17"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -158,6 +158,48 @@ int gLastTesterHistoryWarmUpProgress;
 int gTesterRetryWaitCount;
 int gTesterPersistedSnapshotCount;
 string gLastRetryPreparationFailureReason;
+
+/** LIVEの直近実集計を識別する改訂番号。 */
+ulong gLiveTimingRevision = 0;
+
+/** LIVEの直近calculateAtを計測済みの場合true。 */
+bool gLiveCalculationMeasured = false;
+
+/** LIVEの直近calculateAtの所要ミリ秒。 */
+double gLiveCalculationMilliseconds = 0.0;
+
+/** LIVEの直近execute全体の所要ミリ秒。 */
+double gLiveExecutionMilliseconds = 0.0;
+
+/** LIVEの直近executeの終了状態。 */
+CurrencyStrengthExecutionStatus gLiveTimingStatus = currencyStrengthExecutionNotReady;
+
+/** LIVEのTimer全体を計測済みの場合true。 */
+bool gLiveTimerMeasured = false;
+
+/** 診断反映を含む直近完了Timerの所要ミリ秒。 */
+double gLiveTimerMilliseconds = 0.0;
+
+/** 直近完了Timer内の診断ヘッダー反映の所要ミリ秒。 */
+double gLiveTimerHeaderMilliseconds = 0.0;
+
+/** 初期化後のLIVE集計時間の最大ミリ秒。 */
+double gMaxLiveCalculationMilliseconds = 0.0;
+
+/** 初期化後のLIVE更新全体時間の最大ミリ秒。 */
+double gMaxLiveExecutionMilliseconds = 0.0;
+
+/** 初期化後のLIVE Timer全体時間の最大ミリ秒。 */
+double gMaxLiveTimerMilliseconds = 0.0;
+
+/** 初期化後のLIVE診断ヘッダー反映時間の最大ミリ秒。 */
+double gMaxLiveHeaderMilliseconds = 0.0;
+
+/** LIVEの計測ログを出力済みの場合true。 */
+bool gLiveTimingLogged = false;
+
+/** LIVE計測ログを最後に出力した単調増加ミリ秒。 */
+ulong gLastLiveTimingLogTick = 0;
 
 /**
  * インジケーターを初期化する。
@@ -327,6 +369,8 @@ int OnInit() {
     gTesterPersistedSnapshotCount = 0;
     gLastRetryPreparationFailureReason = "";
 
+    resetLiveTiming();
+
     if (isTester) {
         gLogger.info(
             __FUNCTION__,
@@ -367,7 +411,7 @@ int OnInit() {
             return INIT_FAILED;
         }
 
-        processLiveSnapshot(true);
+        processLiveSnapshot(true, "INIT");
     }
 
     return INIT_SUCCEEDED;
@@ -397,9 +441,25 @@ void OnTimer() {
         return;
     }
 
-    processLiveSnapshot(true);
+    ulong timerStartMicroseconds = GetMicrosecondCount();
+    ulong timingRevision = gLiveTimingRevision;
+    processLiveSnapshot(true, "TIMER");
     if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
         gDrawCurrencyStrengthEntryCandidateList.refreshNewMarkers();
+    }
+
+    double headerMilliseconds = 0.0;
+    if (gLiveTimingRevision != timingRevision) {
+        // このTimerの全体時間は、診断反映を終えてから次回表示用に保持する。
+        headerMilliseconds = updateLiveTimingTooltip("TIMER");
+    }
+
+    gLiveTimerMilliseconds = (double)(GetMicrosecondCount() - timerStartMicroseconds) / 1000.0;
+    gMaxLiveTimerMilliseconds = MathMax(gMaxLiveTimerMilliseconds, gLiveTimerMilliseconds);
+    gLiveTimerHeaderMilliseconds = headerMilliseconds;
+    gLiveTimerMeasured = true;
+    if (gLiveTimingRevision != timingRevision) {
+        logLiveTiming("TIMER", headerMilliseconds);
     }
 }
 
@@ -701,8 +761,9 @@ int OnCalculate(
  * タイマーからの呼び出しでは、同じM5足でも定期更新と失敗再試行を行う。
  *
  * @param fromForceRefresh 同じM5足でも定期更新する場合true。
+ * @param fromTrigger 診断用の呼出元。INIT・TIMER・TICK。
  */
-void processLiveSnapshot(const bool fromForceRefresh) {
+void processLiveSnapshot(const bool fromForceRefresh, const string fromTrigger = "TICK") {
     if (Util::isStrategyTester()) {
         return;
     }
@@ -721,7 +782,130 @@ void processLiveSnapshot(const bool fromForceRefresh) {
     }
 
     gLastLiveAttemptM5BarTime = currentM5BarTime;
-    execute(currentM5BarTime);
+    gLiveCalculationMeasured = false;
+    gLiveCalculationMilliseconds = 0.0;
+    ulong executionStartMicroseconds = GetMicrosecondCount();
+    gLiveTimingStatus = execute(currentM5BarTime);
+    gLiveExecutionMilliseconds =
+        (double)(GetMicrosecondCount() - executionStartMicroseconds) / 1000.0;
+    gMaxLiveExecutionMilliseconds = MathMax(gMaxLiveExecutionMilliseconds, gLiveExecutionMilliseconds);
+    gLiveTimingRevision++;
+
+    if (fromTrigger != "TIMER") {
+        double headerMilliseconds = updateLiveTimingTooltip(fromTrigger);
+        logLiveTiming(fromTrigger, headerMilliseconds);
+    }
+}
+
+/**
+ * LIVE診断値を未計測へ戻す。
+ */
+void resetLiveTiming() {
+    gLiveTimingRevision = 0;
+    gLiveCalculationMeasured = false;
+    gLiveCalculationMilliseconds = 0.0;
+    gLiveExecutionMilliseconds = 0.0;
+    gLiveTimingStatus = currencyStrengthExecutionNotReady;
+    gLiveTimerMeasured = false;
+    gLiveTimerMilliseconds = 0.0;
+    gLiveTimerHeaderMilliseconds = 0.0;
+    gMaxLiveCalculationMilliseconds = 0.0;
+    gMaxLiveExecutionMilliseconds = 0.0;
+    gMaxLiveTimerMilliseconds = 0.0;
+    gMaxLiveHeaderMilliseconds = 0.0;
+    gLiveTimingLogged = false;
+    gLastLiveTimingLogTick = 0;
+}
+
+/**
+ * 直近実集計の結果を診断用の文字列で返す。
+ *
+ * @return SUCCEEDED・NOT_READY・FAILED。
+ */
+string getLiveTimingResult() {
+    if (gLiveTimingStatus == currencyStrengthExecutionSucceeded) {
+        return "SUCCEEDED";
+    }
+
+    if (gLiveTimingStatus == currencyStrengthExecutionNotReady) {
+        return "NOT_READY";
+    }
+
+    return "FAILED";
+}
+
+/**
+ * 直近実集計と直近完了Timerの計測値を既存ヘッダーの説明へ反映する。
+ * Timer内から呼ぶ場合、Timer全体・同診断反映は前回完了分を表示する。
+ *
+ * @param fromTrigger INIT・TIMER・TICK。
+ * @return 説明文の生成と反映にかかったミリ秒。
+ */
+double updateLiveTimingTooltip(const string fromTrigger) {
+    if (gDrawCurrencyStrengthSnapshotHeader == NULL) {
+        return 0.0;
+    }
+
+    ulong headerStartMicroseconds = GetMicrosecondCount();
+    string calculationText = "--";
+    if (gLiveCalculationMeasured) {
+        calculationText = DoubleToString(gLiveCalculationMilliseconds, 1);
+    }
+
+    string timerText = "--";
+    string timerHeaderText = "--";
+    if (gLiveTimerMeasured) {
+        timerText = DoubleToString(gLiveTimerMilliseconds, 1);
+        timerHeaderText = DoubleToString(gLiveTimerHeaderMilliseconds, 1);
+    }
+
+    string tooltip = StringFormat(
+        "集計 %sms / 更新全体 %.1fms\n直近完了Timer %sms / 同診断反映 %sms\n最終 %s %s",
+        calculationText, gLiveExecutionMilliseconds,
+        timerText, timerHeaderText, fromTrigger, getLiveTimingResult()
+    );
+    gDrawCurrencyStrengthSnapshotHeader.updateTimingTooltip(tooltip);
+
+    double headerMilliseconds = (double)(GetMicrosecondCount() - headerStartMicroseconds) / 1000.0;
+    gMaxLiveHeaderMilliseconds = MathMax(gMaxLiveHeaderMilliseconds, headerMilliseconds);
+
+    return headerMilliseconds;
+}
+
+/**
+ * 実集計が発生した回だけ、最大60秒に1回のINFO診断を出力する。
+ * Timer内では診断反映を含む計測完了後に呼び、ログ出力自体は計測しない。
+ *
+ * @param fromTrigger INIT・TIMER・TICK。
+ * @param fromHeaderMilliseconds 今回の診断ヘッダー反映の所要ミリ秒。
+ */
+void logLiveTiming(const string fromTrigger, const double fromHeaderMilliseconds) {
+    ulong currentTick = GetTickCount64();
+    if (gLiveTimingLogged && currentTick >= gLastLiveTimingLogTick
+            && currentTick - gLastLiveTimingLogTick < 60000) {
+        return;
+    }
+
+    gLiveTimingLogged = true;
+    gLastLiveTimingLogTick = currentTick;
+    string calculationText = "--";
+    if (gLiveCalculationMeasured) {
+        calculationText = DoubleToString(gLiveCalculationMilliseconds, 1);
+    }
+
+    string timerText = "--";
+    if (gLiveTimerMeasured) {
+        timerText = DoubleToString(gLiveTimerMilliseconds, 1);
+    }
+
+    gLogger.info(__FUNCTION__, StringFormat(
+        "CSE_TIMING trigger=%s result=%s bar=%s calcMs=%s executeMs=%.1f completedTimerMs=%s headerMs=%.1f maxCalcMs=%.1f maxExecuteMs=%.1f maxTimerMs=%.1f maxHeaderMs=%.1f",
+        fromTrigger, getLiveTimingResult(),
+        TimeToString(gLastLiveAttemptM5BarTime, TIME_DATE | TIME_SECONDS),
+        calculationText, gLiveExecutionMilliseconds, timerText, fromHeaderMilliseconds,
+        gMaxLiveCalculationMilliseconds, gMaxLiveExecutionMilliseconds,
+        gMaxLiveTimerMilliseconds, gMaxLiveHeaderMilliseconds
+    ));
 }
 
 /**
@@ -1235,11 +1419,22 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         m5BarTime = iTime(_Symbol, PERIOD_M5, 0);
     }
 
+    ulong calculationStartMicroseconds = 0;
+    if (!isTester) {
+        calculationStartMicroseconds = GetMicrosecondCount();
+    }
+
     bool isCalculated = gCurrencyStrengthCalculator.calculateAt(
         gOscillatorHandleManager,
         _Symbol,
         m5BarTime
     );
+    if (!isTester) {
+        gLiveCalculationMilliseconds =
+            (double)(GetMicrosecondCount() - calculationStartMicroseconds) / 1000.0;
+        gMaxLiveCalculationMilliseconds = MathMax(gMaxLiveCalculationMilliseconds, gLiveCalculationMilliseconds);
+        gLiveCalculationMeasured = true;
+    }
 
     DrawChartRedrawBatch redrawBatch;
     bool isDrawingEnabled = !isTester || MQLInfoInteger(MQL_VISUAL_MODE);
@@ -1541,6 +1736,7 @@ void cleanupDatabase(const datetime fromCalculatedAt) {
  */
 void releaseResources() {
     releaseDatabaseResources();
+    resetLiveTiming();
 
     gFirstTargetM5BarTime = 0;
     gLastLiveAttemptM5BarTime = 0;

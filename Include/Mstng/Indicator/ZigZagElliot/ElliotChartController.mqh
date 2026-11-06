@@ -11,6 +11,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Common\ProcessingTimeStats.mqh>
+#include <Mstng\Common\UpdateTimingStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\Draw.mqh>
 #include <Mstng\Draw\DrawElliotVerticalFit.mqh>
@@ -222,6 +223,17 @@ public:
      */
     void drawBidAsk() {
         this.draw.drawBidAsk(this.marketContext);
+    }
+
+    /**
+     * 更新間隔・遅延の診断と成功からの経過を既存ラベルへ反映する。
+     *
+     * @param fromStats 更新間隔・遅延・試行結果の計測値
+     * @param fromIntervalSeconds 設定された分析間隔秒
+     * @param fromCurrentTick 経過秒の計算に使用する単調増加時刻
+     */
+    void updateTimingStatus(UpdateTimingStats &fromStats, int fromIntervalSeconds, ulong fromCurrentTick) {
+        this.draw.updateTimingStatus(fromStats, fromIntervalSeconds, fromCurrentTick);
     }
 
     /**

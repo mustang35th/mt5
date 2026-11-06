@@ -10,6 +10,7 @@
 #define MSTNG_INDICATOR_ZIGZAG_ELLIOT_CONTROLLER_MQH
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Common\UpdateTimingStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
@@ -45,6 +46,9 @@ public:
         this.timerSeconds = 30;
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
+        this.updateTimingStats.reset();
+        this.timingLogRecorded = false;
+        this.lastTimingLogTick = 0;
         this.lastProcessedBarTime = 0;
         this.lastAnalysisWarmUpProgress = -1;
         ArrayResize(this.analysisTimeFrames, 0);
@@ -81,6 +85,9 @@ public:
         this.timerSeconds = 30;
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
+        this.updateTimingStats.reset();
+        this.timingLogRecorded = false;
+        this.lastTimingLogTick = 0;
         this.lastProcessedBarTime = 0;
         this.lastAnalysisWarmUpProgress = -1;
         this.logger.setLevel(LOG_INFO);
@@ -351,12 +358,17 @@ public:
      * OnTimerイベントを処理する。
      */
     void onTimer() {
+        ulong timerStartMicroseconds = GetMicrosecondCount();
+        ulong timerEntryTick = GetTickCount64();
+
         if (this.chartController == NULL) {
             return;
         }
 
         this.chartController.beginProcessingTimeUpdateBatch();
+        ulong auxiliaryStartMicroseconds = GetMicrosecondCount();
         this.chartController.updateOnTimer(this.timerMode);
+        ulong auxiliaryMicroseconds = GetMicrosecondCount() - auxiliaryStartMicroseconds;
 
         if (!this.timerInitialized) {
             this.updateTimerSeconds();
@@ -364,6 +376,11 @@ public:
         }
 
         if (!this.isExecuteTimerElapsed()) {
+            ulong labelStartMicroseconds = GetMicrosecondCount();
+            this.chartController.updateTimingStatus(
+                this.updateTimingStats, this.timerSeconds, GetTickCount64());
+            ulong labelMicroseconds = GetMicrosecondCount() - labelStartMicroseconds;
+
             if (this.analysisController != NULL
                     && this.chartController.updateIdle(
                         this.analysisController.getElliotAll()
@@ -371,14 +388,22 @@ public:
                 this.completeRedraw();
             }
 
-            this.chartController.endProcessingTimeUpdateBatch();
+            this.completeTimerTiming(
+                timerEntryTick, timerStartMicroseconds, labelMicroseconds, false);
 
             return;
         }
 
-        this.lastExecuteTickCount = GetTickCount();
+        this.lastExecuteTickCount = GetTickCount64();
+        this.updateTimingStats.beginAttempt(
+            timerEntryTick, this.lastExecuteTickCount, this.timerSeconds, auxiliaryMicroseconds);
         this.execute();
-        this.chartController.endProcessingTimeUpdateBatch();
+        ulong labelStartMicroseconds = GetMicrosecondCount();
+        this.chartController.updateTimingStatus(
+            this.updateTimingStats, this.timerSeconds, GetTickCount64());
+        ulong labelMicroseconds = GetMicrosecondCount() - labelStartMicroseconds;
+        this.completeTimerTiming(
+            timerEntryTick, timerStartMicroseconds, labelMicroseconds, true);
     }
 
     /**
@@ -416,6 +441,9 @@ public:
 
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
+        this.updateTimingStats.reset();
+        this.timingLogRecorded = false;
+        this.lastTimingLogTick = 0;
         this.lastProcessedBarTime = 0;
         this.lastAnalysisWarmUpProgress = -1;
         ArrayResize(this.analysisTimeFrames, 0);
@@ -461,8 +489,17 @@ private:
     /** 時間足別の実行間隔を設定済みの場合true。 */
     bool timerInitialized;
 
-    /** 前回分析実行時のTickCount。 */
-    long lastExecuteTickCount;
+    /** 前回分析実行時の単調増加時刻。単位: ミリ秒。 */
+    ulong lastExecuteTickCount;
+
+    /** 通常チャートの分析試行間隔・成功間隔・遅延を保持する診断値。 */
+    UpdateTimingStats updateTimingStats;
+
+    /** 更新診断を一度でもログへ出力した場合true。 */
+    bool timingLogRecorded;
+
+    /** 更新診断ログを最後に出力した単調増加ミリ秒。 */
+    ulong lastTimingLogTick;
 
     /** テスター分析およびアラート処理済みの最新バー時刻。 */
     datetime lastProcessedBarTime;
@@ -481,6 +518,72 @@ private:
 
     /** 分析対象足ごとの未同期系列を再要求した表示足バー時刻。 */
     datetime seriesWarmUpRequestBarTimes[];
+
+    /**
+     * 既存の処理時間表示を反映し、完了Timerの計測を保存する。
+     * 診断表示は次のTimerへ反映し、自己計測のための二重描画は行わない。
+     *
+     * @param fromEntryTick Timer入口の単調増加ミリ秒
+     * @param fromStartMicroseconds Timer入口の単調増加マイクロ秒
+     * @param fromLabelMicroseconds 先に実行した更新診断ラベルの反映マイクロ秒
+     * @param fromAnalysisExecuted 分析試行を含む場合true
+     */
+    void completeTimerTiming(ulong fromEntryTick, ulong fromStartMicroseconds,
+            ulong fromLabelMicroseconds, bool fromAnalysisExecuted) {
+        ulong labelStartMicroseconds = GetMicrosecondCount();
+        this.chartController.endProcessingTimeUpdateBatch();
+        ulong endMicroseconds = GetMicrosecondCount();
+        ulong endTick = GetTickCount64();
+        ulong labelMicroseconds = fromLabelMicroseconds
+            + endMicroseconds - labelStartMicroseconds;
+        this.updateTimingStats.recordTimer(fromEntryTick, endTick,
+            endMicroseconds - fromStartMicroseconds, labelMicroseconds, fromAnalysisExecuted);
+        this.logTimingDiagnostics(endTick);
+    }
+
+    /**
+     * 完了Timerの診断を最大60秒に1回だけINFOへ記録する。
+     * gapは通常のタイマー待ち・診断ログ出力なども含み、純粋な他処理待ちとは区別する。
+     *
+     * @param fromCurrentTick 今回Timerの計測終了時刻
+     */
+    void logTimingDiagnostics(ulong fromCurrentTick) {
+        if (!this.timerMode || (this.timingLogRecorded
+                && fromCurrentTick >= this.lastTimingLogTick
+                && fromCurrentTick - this.lastTimingLogTick < 60000)) {
+            return;
+        }
+
+        this.timingLogRecorded = true;
+        this.lastTimingLogTick = fromCurrentTick;
+        string mode = "idle";
+        if (this.updateTimingStats.wasTimerAnalysisExecuted()) {
+            mode = "analysis";
+        }
+
+        string gap = "--";
+        if (this.updateTimingStats.hasTimerGap()) {
+            gap = StringFormat("%I64d", (long)this.updateTimingStats.getTimerGapMilliseconds());
+        }
+
+        string attemptInterval = "--";
+        string timerDelay = "--";
+        if (this.updateTimingStats.hasAttemptInterval()) {
+            attemptInterval = StringFormat("%I64d",
+                (long)this.updateTimingStats.getAttemptIntervalMilliseconds());
+            timerDelay = StringFormat("%I64d",
+                (long)this.updateTimingStats.getTimerDelayMilliseconds());
+        }
+
+        this.logger.info(__FUNCTION__, StringFormat(
+            "TIMING timerMs=%.1f labelsMs=%.1f maxTimerMs=%.1f maxLabelsMs=%.1f gapMs=%s mode=%s attemptIntervalMs=%s timerDelayMs=%s state=%s",
+            this.updateTimingStats.getTimerMilliseconds(),
+            this.updateTimingStats.getTimerLabelMilliseconds(),
+            this.updateTimingStats.getMaximumTimerMilliseconds(),
+            this.updateTimingStats.getMaximumTimerLabelMilliseconds(), gap, mode,
+            attemptInterval, timerDelay,
+            this.updateTimingStats.getLastState()));
+    }
 
     /**
      * 各責務のControllerを作成する。
@@ -936,10 +1039,10 @@ private:
             return true;
         }
 
-        long elapsedMilliseconds =
-            GetTickCount() - this.lastExecuteTickCount;
-        long intervalMilliseconds =
-            (long)this.timerSeconds * 1000;
+        ulong elapsedMilliseconds =
+            GetTickCount64() - this.lastExecuteTickCount;
+        ulong intervalMilliseconds =
+            (ulong)this.timerSeconds * 1000;
 
         if (elapsedMilliseconds >= intervalMilliseconds) {
             return true;
@@ -958,6 +1061,11 @@ private:
      */
     void recordUpdateProcessingTime(ulong fromStartMicroseconds, bool fromSucceeded, string fromState) {
         ulong elapsedMicroseconds = GetMicrosecondCount() - fromStartMicroseconds;
+
+        if (this.timerMode) {
+            this.updateTimingStats.finishAttempt(
+                GetTickCount64(), elapsedMicroseconds, fromSucceeded, fromState);
+        }
 
         if (this.chartController != NULL) {
             this.chartController.recordProcessingTime(0, elapsedMicroseconds, fromSucceeded, fromState);

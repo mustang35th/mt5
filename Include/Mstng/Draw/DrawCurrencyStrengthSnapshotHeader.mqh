@@ -42,6 +42,8 @@ public:
         this.width = fromWidth;
         this.height = 24;
         this.created = false;
+        this.timingTooltip = "\n";
+        this.appliedTimingTooltip = "";
 
         // オブジェクト名の63文字制限内に識別子と連番を収める。
         string baseObjectPrefix = Constant::PREFIX_FIXED + "CurrencySnapshot_";
@@ -125,6 +127,33 @@ public:
     }
 
     /**
+     * 集計の計測値を既存ヘッダーの説明へ反映する。
+     * 同じ説明文の再設定と追加の再描画は行わず、未生成時も次回生成用に保持する。
+     *
+     * @param fromTooltip 表示する計測値の説明。
+     * @return 生成済みの両オブジェクトへ反映できた場合true。
+     */
+    bool updateTimingTooltip(const string fromTooltip) {
+        this.timingTooltip = fromTooltip;
+        if (!this.created) {
+            return false;
+        }
+
+        if (this.appliedTimingTooltip == this.timingTooltip) {
+            return true;
+        }
+
+        if (!ObjectSetString(this.chartId, this.objectPrefix + "Panel", OBJPROP_TOOLTIP, this.timingTooltip)
+                || !ObjectSetString(this.chartId, this.objectPrefix + "Text", OBJPROP_TOOLTIP, this.timingTooltip)) {
+            return false;
+        }
+
+        this.appliedTimingTooltip = this.timingTooltip;
+
+        return true;
+    }
+
+    /**
      * 共通日時ヘッダーの固定高さを取得する。
      *
      * @return ピクセル単位の高さ。
@@ -163,6 +192,12 @@ private:
     /** 描画オブジェクト生成済みの場合true。 */
     bool created;
 
+    /** 次回生成・反映時にも使用する診断説明。 */
+    string timingTooltip;
+
+    /** 両オブジェクトへ反映済みの診断説明。 */
+    string appliedTimingTooltip;
+
     /**
      * 固定背景と日時ラベルを生成する。
      *
@@ -181,6 +216,7 @@ private:
         }
 
         this.created = true;
+        this.appliedTimingTooltip = this.timingTooltip;
 
         return true;
     }
@@ -241,7 +277,7 @@ private:
             && ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_SELECTED, false)
             && ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_HIDDEN, true)
             && ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_ZORDER, fromZOrder)
-            && ObjectSetString(this.chartId, fromObjectName, OBJPROP_TOOLTIP, "\n");
+            && ObjectSetString(this.chartId, fromObjectName, OBJPROP_TOOLTIP, this.timingTooltip);
     }
 
     /**
@@ -250,6 +286,7 @@ private:
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
+        this.appliedTimingTooltip = "";
     }
 };
 
