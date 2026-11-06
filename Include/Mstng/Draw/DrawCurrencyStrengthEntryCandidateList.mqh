@@ -26,6 +26,7 @@ public:
     /**
      * 描画対象チャートと表示位置を指定して初期化する。
      * 初期表示はAND成立候補のみに絞り込む。
+     * EMA200初期モードは通常チャートでH1＋M1、テスターではH1を使用する。
      *
      * @param fromChartId 描画対象チャートID。0の場合はカレント。
      * @param fromXDistance チャート左端からの距離。
@@ -65,7 +66,11 @@ public:
         this.pairSelectionEnabled = false;
         this.readyHighlightEnabled = false;
         this.andOnly = true;
-        this.emaMode = currencyStrengthEntryEmaH1;
+        this.emaMode = currencyStrengthEntryEmaH1AndM1;
+        if (Util::isStrategyTester()) {
+            this.emaMode = currencyStrengthEntryEmaH1;
+        }
+
         this.selectedSymbol = "";
         this.hasNewMarkers = false;
         this.displayedSelectedRow = -2;

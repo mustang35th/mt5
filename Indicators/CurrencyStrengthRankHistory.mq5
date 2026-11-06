@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.50"
+#property version   "1.51"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -502,9 +502,8 @@ int OnInit() {
 
     if (!isTester && rankAndRibbonVisible
             && !gRankRibbonMouseMoveSubscription.acquire(ChartID())) {
-        gLogger.error(__FUNCTION__, "rank ribbon mouse event initialization failed");
-
-        return INIT_FAILED;
+        // 帯のマウス説明を準備できなくても順位表示を開始し、タイマーで再試行する。
+        gLogger.error(__FUNCTION__, "rank ribbon mouse events unavailable; retrying from timer");
     }
 
     return INIT_SUCCEEDED;
@@ -715,10 +714,14 @@ int OnCalculate(
 }
 
 /**
- * 通常チャートで10秒ごとに帯の表示・描画担当を確認し、失敗したラベル描画を再試行する。
+ * 通常チャートで10秒ごとに帯の表示・描画担当を確認し、マウスイベントとラベル描画を再試行する。
  * 画面変更・新足・履歴変更時の更新は各イベントで行う。
  */
 void OnTimer() {
+    if (!Util::isStrategyTester() && rankAndRibbonVisible) {
+        gRankRibbonMouseMoveSubscription.acquire(ChartID());
+    }
+
     gRankAndRibbonOwnerReady = false;
 
     if (gRankLabelObjectsPrepared) {

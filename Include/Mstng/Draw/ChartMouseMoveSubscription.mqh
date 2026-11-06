@@ -57,7 +57,10 @@ public:
         }
 
         string key = "Mstng.CsrRibbon.Mouse." + IntegerToString(targetChartId);
-        if (!GlobalVariableTemp(key)) {
+        // 既存の共有値は保持し、同時作成で失敗した場合も存在を再確認する。
+        if (!GlobalVariableCheck(key)
+                && !GlobalVariableTemp(key)
+                && !GlobalVariableCheck(key)) {
             return false;
         }
 
