@@ -723,18 +723,20 @@ void OnTimer() {
     }
 
     gRankAndRibbonOwnerReady = false;
+    int subWindow = -1;
 
     if (gRankLabelObjectsPrepared) {
-        gRankReloadButtonReady = drawRankReloadButton();
+        subWindow = ChartWindowFind();
+        gRankReloadButtonReady = drawRankReloadButton(subWindow);
     }
 
     if (gRankLabelObjectsPrepared && gLatestRankLabelsDirty) {
-        drawCachedLatestRankLabels();
+        drawCachedLatestRankLabels(subWindow);
     } else if (gRankLabelObjectsPrepared && gRankSourceStatusDirty) {
-        drawLatestRankSourceLabel();
+        drawLatestRankSourceLabel(subWindow);
     }
 
-    drawRankAndRibbon();
+    drawRankAndRibbon(false, subWindow);
     gChartRedrawRequest.flush(ChartID());
 }
 
@@ -810,11 +812,12 @@ void OnChartEvent(
         return;
     }
 
-    gRankPeriodLabelReady = drawRankPeriodLabel();
-    gRankReloadButtonReady = drawRankReloadButton();
+    int subWindow = ChartWindowFind();
+    gRankPeriodLabelReady = drawRankPeriodLabel(subWindow);
+    gRankReloadButtonReady = drawRankReloadButton(subWindow);
     gLatestRankLabelsDirty = true;
-    drawCachedLatestRankLabels();
-    drawRankAndRibbon();
+    drawCachedLatestRankLabels(subWindow);
+    drawRankAndRibbon(false, subWindow);
     gChartRedrawRequest.flush(ChartID());
 }
 
@@ -832,9 +835,10 @@ string getRankReloadDescription() {
 /**
  * 通常チャートの再読込ボタンを描画し、必要な場合だけ前回結果を反映する。
  *
+ * @param fromSubWindow 同じイベント内で取得したサブウィンドウ番号。0以下は再取得する。
  * @return 描画成功、またはテスターで表示対象外の場合true。
  */
-bool drawRankReloadButton() {
+bool drawRankReloadButton(const int fromSubWindow = -1) {
     if (Util::isStrategyTester()) {
         return true;
     }
@@ -843,8 +847,13 @@ bool drawRankReloadButton() {
         return false;
     }
 
+    int subWindow = fromSubWindow;
+    if (subWindow <= 0) {
+        subWindow = ChartWindowFind();
+    }
+
     return gRankReloadButtonDraw.draw(
-        ChartWindowFind(), gRankReloadTooltip, gRankReloadColor
+        subWindow, gRankReloadTooltip, gRankReloadColor
     );
 }
 
@@ -1095,9 +1104,10 @@ void configurePlots() {
  * 通常チャートはチャート変更・定期確認まで結果を保持し、テスターは都度判定する。
  * 対象未検出や取得失敗の場合は結果を確定せず、次回に再試行する。
  *
+ * @param fromSubWindow 同じイベント内で取得したサブウィンドウ番号。0以下は再取得する。
  * @return このインスタンスが描画を担当する場合true。
  */
-bool isRankAndRibbonOwner() {
+bool isRankAndRibbonOwner(const int fromSubWindow = -1) {
     bool useCachedOwner = !Util::isStrategyTester();
     if (useCachedOwner && gRankAndRibbonOwnerReady) {
         return gRankAndRibbonOwner;
@@ -1105,7 +1115,10 @@ bool isRankAndRibbonOwner() {
 
     gRankAndRibbonOwnerReady = false;
     gRankAndRibbonOwner = false;
-    int currentSubWindow = ChartWindowFind();
+    int currentSubWindow = fromSubWindow;
+    if (currentSubWindow <= 0) {
+        currentSubWindow = ChartWindowFind();
+    }
 
     if (currentSubWindow <= 0) {
         return false;
@@ -1142,14 +1155,15 @@ bool isRankAndRibbonOwner() {
  * 保存済み順位からメインチャート下端のAND帯を更新する。
  *
  * @param fromForce 全再構築など、表示範囲が同じでも再描画する場合true。
+ * @param fromSubWindow 同じイベント内で取得したサブウィンドウ番号。0以下は担当判定時に再取得する。
  */
-void drawRankAndRibbon(const bool fromForce = false) {
+void drawRankAndRibbon(const bool fromForce = false, const int fromSubWindow = -1) {
     gRankRibbonTooltipDirty = false;
     if (gRankAndRibbonDraw == NULL) {
         return;
     }
 
-    if (!gRankPointCacheReady || !isRankAndRibbonOwner()) {
+    if (!gRankPointCacheReady || !isRankAndRibbonOwner(fromSubWindow)) {
         gRankAndRibbonDraw.clear();
 
         return;
@@ -1277,14 +1291,18 @@ bool clearStaleRankLabelObjects() {
 /**
  * 選択中の順位期間をサブパネル右上へ描画する。
  *
+ * @param fromSubWindow 同じイベント内で取得したサブウィンドウ番号。0以下は再取得する。
  * @return 描画に成功した場合true。
  */
-bool drawRankPeriodLabel() {
+bool drawRankPeriodLabel(const int fromSubWindow = -1) {
     if (gRankPeriodLabelDraw == NULL) {
         return false;
     }
 
-    int subWindow = ChartWindowFind();
+    int subWindow = fromSubWindow;
+    if (subWindow <= 0) {
+        subWindow = ChartWindowFind();
+    }
 
     if (subWindow <= 0) {
         return false;
@@ -1354,8 +1372,10 @@ void drawLatestRankLabels(
 /**
  * 保持した最新順位の時刻から取得元・参照時刻・DB取得状態だけを更新する。
  * 未完了のラベル描画がある場合は、取得元の反映後に全ラベルを再試行する。
+ *
+ * @param fromSubWindow 同じイベント内で取得したサブウィンドウ番号。0以下は再取得する。
  */
-void drawLatestRankSourceLabel() {
+void drawLatestRankSourceLabel(const int fromSubWindow = -1) {
     string sourceMode = "";
 
     if (gLatestRankBarTime > 0) {
@@ -1370,7 +1390,7 @@ void drawLatestRankSourceLabel() {
     gLatestRankSourceMode = sourceMode;
 
     if (gLatestRankLabelsDirty) {
-        drawCachedLatestRankLabels();
+        drawCachedLatestRankLabels(fromSubWindow);
 
         return;
     }
@@ -1379,7 +1399,10 @@ void drawLatestRankSourceLabel() {
         return;
     }
 
-    int subWindow = ChartWindowFind();
+    int subWindow = fromSubWindow;
+    if (subWindow <= 0) {
+        subWindow = ChartWindowFind();
+    }
 
     if (subWindow <= 0 || !drawRankSourceLabel(subWindow, gLatestRankSourceMode)) {
         gRankSourceStatusDirty = true;
@@ -1390,15 +1413,20 @@ void drawLatestRankSourceLabel() {
  * 保持した最新順位を使ってラベルを再配置する。画面変更時も履歴を走査しない。
  * 同じ画面条件では座標変換に成功した配置時刻を再利用する。
  * 描画または座標変換に失敗した場合は更新待ち状態を維持し、次のイベントで再試行する。
+ *
+ * @param fromSubWindow 同じイベント内で取得したサブウィンドウ番号。0以下は再取得する。
  */
-void drawCachedLatestRankLabels() {
+void drawCachedLatestRankLabels(const int fromSubWindow = -1) {
     if (gLatestRankLabelsDraw == NULL) {
         gLatestRankPositionKey = "";
 
         return;
     }
 
-    int subWindow = ChartWindowFind();
+    int subWindow = fromSubWindow;
+    if (subWindow <= 0) {
+        subWindow = ChartWindowFind();
+    }
 
     if (subWindow <= 0) {
         gLatestRankPositionKey = "";
@@ -2670,6 +2698,8 @@ void setBufferValues(
         return;
     }
 
+    bool isHighlighted = isRankSignalHighlighted(baseRank, quoteRank);
+
     gBaseDisplayRankBuffer[fromBufferIndex] = getDisplayRankValue(baseRank);
     gQuoteDisplayRankBuffer[fromBufferIndex] = getDisplayRankValue(quoteRank);
     gBaseActualRankBuffer[fromBufferIndex] = getActualRankValue(baseRank);
@@ -2677,13 +2707,14 @@ void setBufferValues(
     gRankSignalDisplayBuffer[fromBufferIndex] = rankSignalDisplayPosition;
     gRankSignalColorBuffer[fromBufferIndex] = (double)getRankSignalColorIndex(
         baseRank,
-        quoteRank
+        quoteRank,
+        isHighlighted
     );
 
     gBaseRankFillBuffer[fromBufferIndex] = 0.0;
     gQuoteRankFillBuffer[fromBufferIndex] = 0.0;
 
-    if (isRankSignalHighlighted(baseRank, quoteRank)) {
+    if (isHighlighted) {
         gBaseRankFillBuffer[fromBufferIndex] = gBaseDisplayRankBuffer[fromBufferIndex];
         gQuoteRankFillBuffer[fromBufferIndex] = gQuoteDisplayRankBuffer[fromBufferIndex];
     }
@@ -2705,7 +2736,8 @@ void clearBufferValues(const int fromBufferIndex) {
 
 /**
  * M5時刻が完全一致する順位履歴点を二分検索する。
- * 新しい足から古い足へ処理する場合、前回位置の1件前が完全一致すれば再利用する。
+ * 新しい足から古い足へ処理する場合、前回位置の1件前または時刻差から求めた位置を確認する。
+ * 対象時刻が完全一致する場合だけ再利用し、欠損などで一致しなければ二分検索へ戻る。
  *
  * @param fromM5BarTime 検索対象M5時刻。
  * @param fromPreviousPointIndex 同じ更新処理内の前回検索位置。単発検索や初回は-1。
@@ -2718,9 +2750,23 @@ int findRankPointIndex(
     int leftIndex = gRankPointStartIndex;
     int rightIndex = ArraySize(gRankPoints) - 1;
 
-    if (fromPreviousPointIndex > leftIndex && fromPreviousPointIndex <= rightIndex
-            && gRankPoints[fromPreviousPointIndex - 1].m5BarTime == fromM5BarTime) {
-        return fromPreviousPointIndex - 1;
+    if (fromPreviousPointIndex > leftIndex && fromPreviousPointIndex <= rightIndex) {
+        if (gRankPoints[fromPreviousPointIndex - 1].m5BarTime == fromM5BarTime) {
+            return fromPreviousPointIndex - 1;
+        }
+
+        long timeDifference = (long)gRankPoints[fromPreviousPointIndex].m5BarTime
+            - (long)fromM5BarTime;
+        if (gM5Seconds > 0 && timeDifference > gM5Seconds
+                && timeDifference % gM5Seconds == 0) {
+            long pointOffset = timeDifference / gM5Seconds;
+            if (pointOffset <= fromPreviousPointIndex - leftIndex) {
+                int candidateIndex = fromPreviousPointIndex - (int)pointOffset;
+                if (gRankPoints[candidateIndex].m5BarTime == fromM5BarTime) {
+                    return candidateIndex;
+                }
+            }
+        }
     }
 
     while (leftIndex <= rightIndex) {
@@ -2766,21 +2812,23 @@ CurrencyStrengthRankSignal getRankSignal(
 }
 
 /**
- * 売買方向と選択期間の共通強調条件から方向バーの色番号を取得する。
+ * 売買方向と計算済みの強調判定結果から方向バーの色番号を取得する。
  *
  * @param fromBaseRank 基軸通貨の順位。
  * @param fromQuoteRank 決済通貨の順位。
+ * @param fromIsHighlighted 塗りと共用する強調判定結果。
  * @return 強調BUYは0、強調SELLは1、同順位は2、通常BUYは3、通常SELLは4。
  */
 int getRankSignalColorIndex(
     const int fromBaseRank,
-    const int fromQuoteRank
+    const int fromQuoteRank,
+    const bool fromIsHighlighted
 ) {
     CurrencyStrengthRankSignal rankSignal = getRankSignal(
         fromBaseRank,
         fromQuoteRank
     );
-    if (!isRankSignalHighlighted(fromBaseRank, fromQuoteRank)) {
+    if (!fromIsHighlighted) {
         if (rankSignal == CURRENCY_STRENGTH_RANK_SIGNAL_BUY) {
             return 3;
         }
