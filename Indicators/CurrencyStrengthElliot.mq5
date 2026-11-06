@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.13"
+#property version   "1.15"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -312,6 +312,7 @@ int OnInit() {
     }
 
     gReadyHighlightRequested = showRankComparison && showEntryCandidates;
+    loadEntryDisplaySettings();
     gFirstTargetM5BarTime = 0;
     gLastLiveAttemptM5BarTime = 0;
     gLastTesterAttemptM5BarTime = 0;
@@ -397,6 +398,9 @@ void OnTimer() {
     }
 
     processLiveSnapshot(true);
+    if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+        gDrawCurrencyStrengthEntryCandidateList.refreshNewMarkers();
+    }
 }
 
 /**
@@ -421,8 +425,9 @@ void OnChartEvent(
     if (gDrawCurrencyStrengthEntryCandidateList != NULL
             && (gDrawCurrencyStrengthEntryCandidateList.handleFilterClick(fromStringValue)
                 || gDrawCurrencyStrengthEntryCandidateList.handleEmaModeClick(fromStringValue))) {
+        saveEntryDisplaySettings();
         bool isDrawn = gDrawCurrencyStrengthEntryCandidateList.draw(
-            gCurrencyStrengthEntryCandidateList
+            gCurrencyStrengthEntryCandidateList, false
         );
         synchronizePairSelection(gEntryCandidateSnapshotReady && isDrawn);
 
@@ -450,6 +455,7 @@ void OnChartEvent(
 
     if (gDrawCurrencyStrengthRankComparison.handleObjectClick(fromStringValue)) {
         gReadyHighlightRequested = false;
+        saveEntryDisplaySettings();
         if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
             gDrawCurrencyStrengthRegionRankComparison.clearSelection();
             DrawChartRedrawBatch::request(0);
@@ -471,6 +477,7 @@ void OnChartEvent(
 
     if (gDrawCurrencyStrengthEntryCandidateList.isReadyHighlightClick(fromStringValue)) {
         gReadyHighlightRequested = !gReadyHighlightRequested;
+        saveEntryDisplaySettings();
         clearRegionSelection();
         synchronizePairSelection(gEntryCandidateSnapshotReady);
 
@@ -482,6 +489,7 @@ void OnChartEvent(
             fromStringValue, symbolName)
             && gDrawCurrencyStrengthRankComparison.togglePairSelection(symbolName)) {
         gReadyHighlightRequested = false;
+        saveEntryDisplaySettings();
         if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
             gDrawCurrencyStrengthRegionRankComparison.clearSelection();
             DrawChartRedrawBatch::request(0);
@@ -494,6 +502,79 @@ void OnChartEvent(
             gDrawCurrencyStrengthRankComparison.getSelectedPair()
         );
     }
+}
+
+/**
+ * チャートと計算方式ごとの表示設定保存キーを取得する。
+ * 銘柄・時間足の変更後も同じチャートの設定を引き継ぐ。
+ *
+ * @return 端末グローバル変数名。同一チャート・同一計算方式では共通。
+ */
+string getEntryDisplaySettingsKey() {
+    return "Mstng.CSE.Ui.v1." + IntegerToString(ChartID())
+        + "." + IntegerToString((int)voteWeightMode);
+}
+
+/**
+ * 初回描画前に、ユーザーが操作した候補一覧の表示設定を復元する。
+ * 未保存・不正な保存値・テスターでは既定値を維持する。
+ */
+void loadEntryDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthEntryCandidateList == NULL) {
+        return;
+    }
+
+    double savedValue = 0;
+    if (!GlobalVariableGet(getEntryDisplaySettingsKey(), savedValue)
+            || !MathIsValidNumber(savedValue)
+            || savedValue < 0 || savedValue > 11
+            || savedValue != MathFloor(savedValue)) {
+        return;
+    }
+
+    // モードを上位、AND絞り込み・強調を下位2ビットへまとめて保存する。
+    int settings = (int)savedValue;
+    CurrencyStrengthEntryEmaMode emaMode = (CurrencyStrengthEntryEmaMode)(settings / 4);
+    gDrawCurrencyStrengthEntryCandidateList.restoreDisplaySettings(
+        (settings & 1) != 0, emaMode
+    );
+    gReadyHighlightRequested = (settings & 2) != 0;
+}
+
+/**
+ * ユーザー操作後の表示設定を端末へ保存する。
+ * 取得待ちによる一時的な強調OFFは使わず、ユーザーの要求値を保持する。
+ * 通常更新・終了処理では呼び出さず、同じ保存値なら書き込みを省く。
+ */
+void saveEntryDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthEntryCandidateList == NULL) {
+        return;
+    }
+
+    int settings = (int)gDrawCurrencyStrengthEntryCandidateList.getEmaMode() * 4;
+    if (gDrawCurrencyStrengthEntryCandidateList.isAndOnly()) {
+        settings += 1;
+    }
+
+    if (gReadyHighlightRequested) {
+        settings += 2;
+    }
+
+    string settingsKey = getEntryDisplaySettingsKey();
+    double previousValue = 0;
+    if (GlobalVariableGet(settingsKey, previousValue) && previousValue == settings) {
+        return;
+    }
+
+    if (GlobalVariableSet(settingsKey, settings) == 0) {
+        gLogger.error(__FUNCTION__, StringFormat(
+            "entry candidate display settings save failed. error=%d", GetLastError()
+        ));
+
+        return;
+    }
+
+    GlobalVariablesFlush();
 }
 
 /**
@@ -598,11 +679,17 @@ int OnCalculate(
 ) {
     if (!Util::isStrategyTester()) {
         processLiveSnapshot(false);
+        if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.refreshNewMarkers();
+        }
 
         return ratesTotal;
     }
 
     processTesterSnapshots();
+    if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+        gDrawCurrencyStrengthEntryCandidateList.refreshNewMarkers();
+    }
 
     return ratesTotal;
 }
@@ -1134,6 +1221,10 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     if (gCurrencyStrengthCalculator == NULL
             || gOscillatorHandleManager == NULL
             || gDrawCurrencyStrengthList == NULL) {
+        if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.suspendAndTracking();
+        }
+
         return currencyStrengthExecutionFailed;
     }
 
@@ -1187,6 +1278,10 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
 
     if (!isCalculated) {
         if (isDrawingEnabled) {
+            if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+                gDrawCurrencyStrengthEntryCandidateList.suspendAndTracking();
+            }
+
             synchronizePairSelection(false);
         }
 
@@ -1220,6 +1315,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
                     __FUNCTION__,
                     "currency strength entry candidate build failed"
                 );
+                gDrawCurrencyStrengthEntryCandidateList.suspendAndTracking();
                 gDrawCurrencyStrengthEntryCandidateList.clear();
             } else {
                 if (!gCurrencyStrengthEntryCandidateList.updateH1Ema(

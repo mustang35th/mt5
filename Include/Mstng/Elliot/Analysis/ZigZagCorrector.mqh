@@ -103,7 +103,17 @@ public:
                     this.logger.debug(__FUNCTION__, StringFormat("上位足ポイントの繰り返し i = %d", i));
                     this.logger.debug(__FUNCTION__, "上位足ポイントの範囲外");
 
-                    this.logger.debug(__FUNCTION__, zigZagPointHigher.toString());
+                    // 従来の親Wave参照を持たないログ形式をDEBUG時だけ維持する。
+                    ZigZagPoint *logPoint = zigZagPointHigher.clone();
+                    if (logPoint == NULL) {
+                        this.logger.error(__FUNCTION__, "Higher ZigZag point clone failed.");
+                        LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                        return false;
+                    }
+
+                    this.logger.debug(__FUNCTION__, logPoint.toString());
+                    delete logPoint;
                 }
                 
                 if (!this.correctPoint(zigZagPointHigher)) {
@@ -141,20 +151,22 @@ private:
     }
     
     /**
-     * 上位Waveの元ポイントだけを補正用に複製する。
+     * 上位Waveの元ポイントへの非所有参照を補正用に収集する。
      *
      * NULLを除いた各Waveの先頭ポイントは境界重複として除外し、
      * 最後の有効Waveだけ先頭ポイントも末尾へ追加する。
-     * 元Waveと元ポイントの所有権は変更しない。
+     * 格納先は元ポイントを解放せず、参照はcorrect()の同期処理内だけで使用する。
      *
      * @param fromWaveList 上位足のWave一覧。
-     * @param fromPointList 複製したポイントの格納先。
-     * @return 必要なポイントをすべて複製できた場合true。
+     * @param fromPointList 元ポイントへの非所有参照の格納先。
+     * @return 必要なポイントへの参照をすべて追加できた場合true。
      */
     bool copyHigherZigZagPoints(CArrayObj &fromWaveList, CArrayObj &fromPointList) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         fromPointList.Clear();
+        fromPointList.FreeMode(false);
+
         int waveTotal = fromWaveList.Total();
         while (waveTotal > 0 && fromWaveList.At(waveTotal - 1) == NULL) {
             waveTotal--;
@@ -191,16 +203,7 @@ private:
                     continue;
                 }
 
-                ZigZagPoint *pointClone = point.clone();
-                if (pointClone == NULL) {
-                    this.logger.error(__FUNCTION__, "Higher ZigZag point clone failed.");
-                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
-
-                    return false;
-                }
-
-                if (!fromPointList.Add(pointClone)) {
-                    delete pointClone;
+                if (!fromPointList.Add(point)) {
                     this.logger.error(__FUNCTION__, "Higher ZigZag point append failed.");
                     LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
 
@@ -223,7 +226,7 @@ private:
      * @param zigZagPointHigher 補正基準となる上位足ポイント
      * @return 補正できた場合または補正対象がない場合true。価格系列不足はfalse。
      */
-    bool correctPoint(ZigZagPoint &zigZagPointHigher) {
+    bool correctPoint(const ZigZagPoint &zigZagPointHigher) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
@@ -325,7 +328,7 @@ private:
      * @param zigZagPointHigher 判定基準となる上位足ポイント
      * @return 対応する下位足ポイントがある場合true
      */
-    bool isInsideHigherPoint(ZigZagPoint &zigZagPointHigher) {
+    bool isInsideHigherPoint(const ZigZagPoint &zigZagPointHigher) {
             
         for (int i = 0; i < this.orgZigZagPointList.Total(); i++) {
             ZigZagPoint *zigZagPoint = this.orgZigZagPointList.At(i);
@@ -354,7 +357,7 @@ private:
      * @param fromRightIndex 検証済みの右境界バーインデックス。
      * @return 補正対象インデックス。対象がない場合-1
      */
-    int getCorrectIndex(ZigZagPoint &zigZagPointHigher, int fromLeftIndex, int fromRightIndex) {
+    int getCorrectIndex(const ZigZagPoint &zigZagPointHigher, int fromLeftIndex, int fromRightIndex) {
         // 左側から検索
         int index = this.getLeftIndex(fromLeftIndex);
 

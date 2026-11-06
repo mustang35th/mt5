@@ -13,6 +13,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Draw\DrawChartRedrawBatch.mqh>
+#include <Mstng\Strength\CurrencyStrengthEntryAndTracker.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Util\Util.mqh>
 
@@ -66,6 +67,7 @@ public:
         this.andOnly = true;
         this.emaMode = currencyStrengthEntryEmaH1;
         this.selectedSymbol = "";
+        this.hasNewMarkers = false;
         this.displayedSelectedRow = -2;
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
@@ -106,10 +108,13 @@ public:
      * エントリー候補一覧を描画する。
      *
      * @param fromCandidateList 描画対象の候補一覧。
+     * @param fromUpdateTracking 実データ更新としてAND成立の変化を観測する場合true。
      * @return 描画に成功した場合true。
      */
-    bool draw(CurrencyStrengthEntryCandidateList *fromCandidateList) {
+    bool draw(CurrencyStrengthEntryCandidateList *fromCandidateList,
+            const bool fromUpdateTracking = true) {
         if (fromCandidateList == NULL) {
+            this.andTracker.suspend();
             for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
                 this.clearRow(i);
             }
@@ -121,6 +126,19 @@ public:
             return false;
         }
 
+        datetime serverTime = TimeCurrent();
+        ulong nowMs = GetTickCount64();
+        if (Util::isStrategyTester()) {
+            nowMs = (ulong)serverTime * 1000;
+        }
+
+        bool isRankingReady = fromCandidateList.isRankingReady();
+        if (!isRankingReady) {
+            this.andTracker.suspend();
+        } else if (fromUpdateTracking) {
+            this.updateAndTracking(fromCandidateList, serverTime, nowMs);
+        }
+
         if (!this.created && !this.create()) {
             return false;
         }
@@ -129,7 +147,8 @@ public:
         int andCount = 0;
         int visibleCount = 0;
 
-        if (fromCandidateList.isRankingReady()) {
+        this.hasNewMarkers = false;
+        if (isRankingReady) {
             for (int i = 0; i < candidateCount; i++) {
                 CurrencyStrengthEntryCandidate candidate;
                 candidate.reset();
@@ -146,7 +165,7 @@ public:
                 }
 
                 if (visibleCount < this.maximumCount) {
-                    this.drawRow(visibleCount, candidate);
+                    this.drawRow(visibleCount, candidate, serverTime, nowMs);
                     visibleCount++;
                 }
             }
@@ -162,6 +181,65 @@ public:
         DrawChartRedrawBatch::request(this.chartId);
 
         return true;
+    }
+
+    /**
+     * データ取得失敗時にAND成立の比較を止め、残っているNEW表示を解除する。
+     * 次の正常な実データ更新を新しい比較基準とする。
+     */
+    void suspendAndTracking() {
+        this.andTracker.suspend();
+        this.refreshNewMarkers();
+    }
+
+    /**
+     * 分析を行わず、表示中のNEW文字の期限と反映失敗だけを再確認する。
+     */
+    void refreshNewMarkers() {
+        if (!this.created || !this.hasNewMarkers) {
+            return;
+        }
+
+        ulong nowMs = GetTickCount64();
+        if (Util::isStrategyTester()) {
+            nowMs = (ulong)TimeCurrent() * 1000;
+        }
+
+        bool hasPendingMarkers = false;
+        bool isChanged = false;
+        for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
+            if (!this.displayedNewPending[i]) {
+                continue;
+            }
+
+            bool isNew = this.displayedReady[i]
+                && this.andTracker.isNew(this.displayedSymbols[i], this.displayedBuy[i], nowMs);
+            string andText = this.displayedAndTexts[i];
+            if (isNew) {
+                andText += " NEW";
+            }
+
+            int cellIndex = i * this.getColumnCount() + 9;
+            string previousText = this.displayedCellTexts[cellIndex];
+            color previousColor = this.displayedCellColors[cellIndex];
+            this.setCell(i, 9, andText, this.displayedAndColors[i]);
+            if (previousText != this.displayedCellTexts[cellIndex]
+                    || previousColor != this.displayedCellColors[cellIndex]) {
+                isChanged = true;
+            }
+
+            this.displayedNewPending[i] = isNew
+                || this.displayedCellTexts[cellIndex] != andText
+                || this.displayedCellColors[cellIndex] != this.displayedAndColors[i];
+            if (this.displayedNewPending[i]) {
+                hasPendingMarkers = true;
+            }
+        }
+
+        this.hasNewMarkers = hasPendingMarkers;
+        if (isChanged) {
+            DrawChartRedrawBatch::request(this.chartId);
+        }
     }
 
     /**
@@ -212,6 +290,7 @@ public:
             this.emaMode = currencyStrengthEntryEmaH1;
         }
 
+        this.andTracker.reset();
         this.updateEmaModeButton();
         this.updateFilterButton();
         this.updateReadyButton();
@@ -227,6 +306,44 @@ public:
      */
     bool isAndOnly() const {
         return this.andOnly;
+    }
+
+    /**
+     * AND判定に使用するEMA200時間足を取得する。
+     *
+     * @return 現在のEMA200判定モード。
+     */
+    CurrencyStrengthEntryEmaMode getEmaMode() const {
+        return this.emaMode;
+    }
+
+    /**
+     * 保存済みの表示設定を復元し、モードが変わる場合だけAND追跡を初期化する。
+     * 不正なモードの場合は変更せず、未生成時はチャートオブジェクトに触れない。
+     *
+     * @param fromAndOnly AND成立候補だけを表示する場合true。
+     * @param fromEmaMode 保存済みのEMA200判定モード。
+     */
+    void restoreDisplaySettings(const bool fromAndOnly,
+            const CurrencyStrengthEntryEmaMode fromEmaMode) {
+        if (fromEmaMode != currencyStrengthEntryEmaH1
+                && fromEmaMode != currencyStrengthEntryEmaM1
+                && fromEmaMode != currencyStrengthEntryEmaH1AndM1) {
+            return;
+        }
+
+        this.andOnly = fromAndOnly;
+        if (this.emaMode != fromEmaMode) {
+            this.emaMode = fromEmaMode;
+            this.andTracker.reset();
+        }
+
+        if (this.created) {
+            this.updateEmaModeButton();
+            this.updateFilterButton();
+            this.updateReadyButton();
+            DrawChartRedrawBatch::request(this.chartId);
+        }
     }
 
     /**
@@ -407,6 +524,24 @@ private:
     /** 表示行ごとのAND成立状態。空行や未成立はfalse。 */
     bool displayedReady[];
 
+    /** 表示行ごとの候補方向。追跡キーの通貨ペア名と組み合わせて使う。 */
+    bool displayedBuy[];
+
+    /** NEW期限の確認、またはNEWセルの再反映が必要な行。 */
+    bool displayedNewPending[];
+
+    /** 表示行ごとのNEWを付ける前のAND判定文字列。 */
+    string displayedAndTexts[];
+
+    /** 表示行ごとのAND判定文字色。反映失敗時も期待値を保持する。 */
+    color displayedAndColors[];
+
+    /** NEW期限の確認または再反映が必要な表示行がある場合true。 */
+    bool hasNewMarkers;
+
+    /** 表示件数や絞り込みにかかわらず全候補のAND成立変化を保持する。 */
+    CurrencyStrengthEntryAndTracker andTracker;
+
     /** 表示行ごとのGMO対象状態。空行や対象外はfalse。 */
     bool displayedGmo[];
 
@@ -519,6 +654,31 @@ private:
     color selectionBackgroundColor;
 
     /**
+     * 絞り込みや描画成功に依存せず、全候補のAND成立変化を観測する。
+     *
+     * @param fromCandidateList 最新の候補一覧。
+     * @param fromServerTime 今回の観測サーバー時刻。
+     * @param fromNowMs NEW表示期限に使用するミリ秒時刻。
+     */
+    void updateAndTracking(CurrencyStrengthEntryCandidateList *fromCandidateList,
+            const datetime fromServerTime, const ulong fromNowMs) {
+        this.andTracker.beginUpdate(true);
+        for (int i = 0; i < fromCandidateList.size(); i++) {
+            CurrencyStrengthEntryCandidate candidate;
+            candidate.reset();
+            if (!fromCandidateList.get(i, candidate)) {
+                this.andTracker.suspend();
+
+                return;
+            }
+
+            this.andTracker.observe(candidate, this.emaMode, fromServerTime, fromNowMs);
+        }
+
+        this.andTracker.endUpdate();
+    }
+
+    /**
      * 候補一覧パネルを生成する。
      *
      * @return 生成に成功した場合true。
@@ -528,6 +688,10 @@ private:
         int cellCount = this.maximumCount * this.getColumnCount();
         if (ArrayResize(this.displayedSymbols, this.maximumCount) != this.maximumCount
                 || ArrayResize(this.displayedReady, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.displayedBuy, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.displayedNewPending, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.displayedAndTexts, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.displayedAndColors, this.maximumCount) != this.maximumCount
                 || ArrayResize(this.displayedGmo, this.maximumCount) != this.maximumCount
                 || ArrayResize(this.clearedRows, this.maximumCount) != this.maximumCount
                 || ArrayResize(this.displayedGmoTooltips, this.maximumCount) != this.maximumCount
@@ -885,7 +1049,9 @@ private:
         string tooltip = "クリックで H1 → M1 → H1＋M1 の順に切り替えます"
             + "\nAND成立：READY＋選択した時間足のEMA200が候補方向と一致"
             + "\nH1＋M1は両方の一致が必要です"
-            + "\nH1は通貨強弱の集計時点、M1は最新確定足で判定します";
+            + "\nH1は通貨強弱の集計時点、M1は最新確定足で判定します"
+            + "\nNEW：未成立から成立への変化を検出してから60秒間"
+            + "\n初回観測・取得復旧・モード切替後の基準状態にはNEWを付けません";
         if (Util::isStrategyTester()) {
             tooltip += "\nテスターでは下位足参照制限への対応のためM1は取得対象外です";
         }
@@ -894,7 +1060,7 @@ private:
         ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, tooltip);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
         ObjectSetString(this.chartId, this.objectPrefix + "ReadyHint", OBJPROP_TEXT,
-            "AND成立：READY＋" + modeLabel + " EMA200が候補方向と一致");
+            "AND成立：READY＋" + modeLabel + " EMA200が候補方向と一致 ／ NEW：60秒");
     }
 
     /**
@@ -1015,14 +1181,19 @@ private:
      *
      * @param fromRowIndex 表示行番号。
      * @param fromCandidate 表示対象候補。
+     * @param fromServerTime 今回の表示サーバー時刻。
+     * @param fromNowMs NEW表示期限に使用するミリ秒時刻。
      */
     void drawRow(
         const int fromRowIndex,
-        CurrencyStrengthEntryCandidate &fromCandidate
+        CurrencyStrengthEntryCandidate &fromCandidate,
+        const datetime fromServerTime,
+        const ulong fromNowMs
     ) {
         this.clearedRows[fromRowIndex] = false;
         this.displayedSymbols[fromRowIndex] = fromCandidate.symbolName;
         this.displayedReady[fromRowIndex] = fromCandidate.isAndReady(this.emaMode);
+        this.displayedBuy[fromRowIndex] = fromCandidate.isBuy;
         this.displayedGmo[fromRowIndex] =
             this.gmoSymbolNameInfoAll.isTarget(fromCandidate.symbolName);
 
@@ -1128,15 +1299,49 @@ private:
 
         this.setCell(fromRowIndex, 7, fromCandidate.getH1EmaLabel(), emaColor);
         this.setCell(fromRowIndex, 8, fromCandidate.getM1EmaLabel(), m1EmaColor);
-        this.setCell(fromRowIndex, 9, fromCandidate.getAndStatusLabel(this.emaMode), andColor);
+        string andText = fromCandidate.getAndStatusLabel(this.emaMode);
+        this.displayedAndTexts[fromRowIndex] = andText;
+        this.displayedAndColors[fromRowIndex] = andColor;
+        bool isNew = this.displayedReady[fromRowIndex]
+            && this.andTracker.isNew(fromCandidate.symbolName, fromCandidate.isBuy, fromNowMs);
+        if (isNew) {
+            andText += " NEW";
+        }
+
+        int andCellIndex = fromRowIndex * this.getColumnCount() + 9;
+        bool hadNewMarker = this.displayedNewPending[fromRowIndex];
+        this.setCell(fromRowIndex, 9, andText, andColor);
+        this.displayedNewPending[fromRowIndex] = isNew
+            || (hadNewMarker && (this.displayedCellTexts[andCellIndex] != andText
+                || this.displayedCellColors[andCellIndex] != andColor));
+        if (this.displayedNewPending[fromRowIndex]) {
+            this.hasNewMarkers = true;
+        }
+
         string h1EmaTooltip = this.getEmaTooltip(fromCandidate);
         string m1EmaTooltip = this.getM1EmaTooltip(fromCandidate);
         this.setCellTooltip(fromRowIndex, 7, h1EmaTooltip);
         this.setCellTooltip(fromRowIndex, 8, m1EmaTooltip);
+        string andTooltip = "EMA200判定：" + this.getEmaModeLabel()
+            + " ／ AND：" + fromCandidate.getAndStatusLabel(this.emaMode);
+        if (this.displayedReady[fromRowIndex]) {
+            datetime detectedAt = this.andTracker.getDetectedAt(
+                fromCandidate.symbolName, fromCandidate.isBuy);
+            if (detectedAt > 0) {
+                andTooltip += "\n新規成立検出 SERVER："
+                    + TimeToString(detectedAt, TIME_DATE | TIME_SECONDS);
+                if (fromServerTime >= detectedAt) {
+                    long elapsedSeconds = fromServerTime - detectedAt;
+                    andTooltip += StringFormat("\n表示更新時の検出経過：%I64d分%I64d秒",
+                        elapsedSeconds / 60, elapsedSeconds % 60);
+                }
+            } else {
+                andTooltip += "\n成立開始：未検出（初回観測・復旧・モード切替後の基準状態）";
+            }
+        }
+
         this.setCellTooltip(fromRowIndex, 9,
-            "EMA200判定：" + this.getEmaModeLabel()
-                + " ／ AND：" + fromCandidate.getAndStatusLabel(this.emaMode)
-                + "\n" + h1EmaTooltip + "\n\n" + m1EmaTooltip);
+            andTooltip + "\n" + h1EmaTooltip + "\n\n" + m1EmaTooltip);
     }
 
     /**
@@ -1149,8 +1354,13 @@ private:
             return;
         }
 
+        bool hadNewMarker = this.displayedNewPending[fromRowIndex];
         this.displayedSymbols[fromRowIndex] = "";
         this.displayedReady[fromRowIndex] = false;
+        this.displayedBuy[fromRowIndex] = false;
+        this.displayedNewPending[fromRowIndex] = false;
+        this.displayedAndTexts[fromRowIndex] = " ";
+        this.displayedAndColors[fromRowIndex] = this.mutedColor;
         this.displayedGmo[fromRowIndex] = false;
 
         // 空文字はMT5の既定文字Labelになるため、空白1文字で非表示にする。
@@ -1174,6 +1384,14 @@ private:
         this.setGmoTooltip(fromRowIndex, "\n");
         this.clearedRows[fromRowIndex] = isCleared
             && this.displayedGmoTooltips[fromRowIndex] == "\n";
+
+        int andCellIndex = fromRowIndex * this.getColumnCount() + 9;
+        this.displayedNewPending[fromRowIndex] = hadNewMarker
+            && (this.displayedCellTexts[andCellIndex] != " "
+                || this.displayedCellColors[andCellIndex] != this.mutedColor);
+        if (this.displayedNewPending[fromRowIndex]) {
+            this.hasNewMarkers = true;
+        }
     }
 
     /**
@@ -1182,10 +1400,15 @@ private:
     void clearDisplayedSymbols() {
         for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
             this.displayedSymbols[i] = "";
+            this.displayedAndTexts[i] = "";
         }
 
         ArrayInitialize(this.displayedReady, false);
+        ArrayInitialize(this.displayedBuy, false);
+        ArrayInitialize(this.displayedNewPending, false);
+        ArrayInitialize(this.displayedAndColors, this.mutedColor);
         ArrayInitialize(this.displayedGmo, false);
+        this.hasNewMarkers = false;
     }
 
     /**
@@ -1685,8 +1908,13 @@ private:
         this.created = false;
         this.readyHighlightEnabled = false;
         this.displayedSelectedRow = -2;
+        this.hasNewMarkers = false;
         ArrayResize(this.displayedSymbols, 0);
         ArrayResize(this.displayedReady, 0);
+        ArrayResize(this.displayedBuy, 0);
+        ArrayResize(this.displayedNewPending, 0);
+        ArrayResize(this.displayedAndTexts, 0);
+        ArrayResize(this.displayedAndColors, 0);
         ArrayResize(this.displayedGmo, 0);
         ArrayResize(this.clearedRows, 0);
         ArrayResize(this.displayedCellTexts, 0);

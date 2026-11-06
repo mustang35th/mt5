@@ -80,6 +80,207 @@ struct DrawAlignedElliotAllListCellCache {
 };
 
 /**
+ * 時間足セルの説明文と、その生成に使用した値だけを保持する。
+ * 分析オブジェクトへの参照は更新をまたいで保持しない。
+ */
+struct DrawAlignedElliotAllListWaveTooltipCache {
+    /** 説明文を生成済みの場合true。 */
+    bool ready;
+
+    /** Elliot・最新Wave・最新ポイントが揃っている場合true。 */
+    bool hasData;
+
+    /** 生成済みの説明文。ラベルへの反映成功とは別に保持する。 */
+    string text;
+
+    /** M15分類の説明を付加する場合true。 */
+    bool m15Group;
+
+    /** 列の表示対象時間足。MN1ではM15分類の対象外説明を付加する。 */
+    ENUM_TIMEFRAMES displayTimeFrame;
+
+    /** 分析対象の実シンボル名。 */
+    string symbolName;
+
+    /** 分析対象時間足。 */
+    ENUM_TIMEFRAMES timeFrame;
+
+    /** 分析対象時間足の表示名。 */
+    string timeFrameLabel;
+
+    /** 推進波の場合true。 */
+    bool isMotive;
+
+    /** 確定波の場合true。 */
+    bool isConfirmed;
+
+    /** 直前波動のラベル。 */
+    string previousLastElliotLabel;
+
+    /** 最新ポイントの主波ラベル。 */
+    string elliotLabel;
+
+    /** 最新ポイントの副波ラベル。 */
+    string subElliotLabel;
+
+    /** 最新ポイントの元ラベル。 */
+    string orgElliotLabel;
+
+    /** FとFEの表示を決める元波番号。 */
+    int orgElliotIndex;
+
+    /** 補完ポイントの場合true。 */
+    bool isAddedPoint;
+
+    /** 補正済みポイントの場合true。 */
+    bool isCorrect;
+
+    /** 表示可能なFibonacci比率。非表示値は0。 */
+    double fibonacciPercent;
+
+    /** 表示可能なFibonacci拡張比率。非表示値は0。 */
+    double fibonacciExpansionPercent;
+
+    /** 押し戻り深度の表示名。 */
+    string fiboDepthZoneLabel;
+
+    /** 表示可能な値幅。非表示値は0。 */
+    double pipsDiff;
+
+    /** 波動開始からの経過本数。 */
+    int waveBarsFromStart;
+
+    /** 最新ポイントのサーバー時刻。 */
+    datetime barTime;
+
+    /** 表示可能な価格。非表示値は0。 */
+    double rate;
+
+    /** ポイント価格の表示桁数。 */
+    int pointDigits;
+
+    /**
+     * パネル再生成時に説明文の保持状態を初期化する。
+     */
+    void reset() {
+        this.ready = false;
+        this.hasData = false;
+        this.text = "";
+    }
+
+    /**
+     * 現在の表示用データが保持値と一致するか判定する。
+     *
+     * @param fromElliot 対象時間足の分析結果。
+     * @param fromM15Group M15分類の説明を付加する場合true。
+     * @param fromDisplayTimeFrame 列の表示対象時間足。
+     * @return 同じ説明文を再利用できる場合true。
+     */
+    bool matches(Elliot *fromElliot, const bool fromM15Group,
+            const ENUM_TIMEFRAMES fromDisplayTimeFrame) {
+        if (!this.ready || this.m15Group != fromM15Group
+                || this.displayTimeFrame != fromDisplayTimeFrame) {
+            return false;
+        }
+
+        if (fromElliot == NULL) {
+            return !this.hasData;
+        }
+
+        Wave *latestWave = fromElliot.getLatestWave();
+        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
+        if (latestWave == NULL || latestPoint == NULL) {
+            return !this.hasData;
+        }
+
+        return this.hasData
+            && this.symbolName == fromElliot.marketContext.symbolName
+            && this.timeFrame == fromElliot.marketContext.timeFrame
+            && this.timeFrameLabel == fromElliot.marketContext.timeFrameLabel
+            && this.isMotive == latestWave.isMotive
+            && this.isConfirmed == latestWave.isConfirmed
+            && this.previousLastElliotLabel == latestWave.previousLastElliotLabel
+            && this.elliotLabel == latestPoint.elliotLabel
+            && this.subElliotLabel == latestPoint.subElliotLabel
+            && this.orgElliotLabel == latestPoint.orgElliotLabel
+            && this.orgElliotIndex == latestPoint.orgElliotIndex
+            && this.isAddedPoint == latestPoint.isAddedPoint
+            && this.isCorrect == latestPoint.isCorrect
+            && this.fibonacciPercent == this.normalizeNumber(latestPoint.fibonacciPercent)
+            && this.fibonacciExpansionPercent == this.normalizeNumber(latestPoint.fibonacciExpansionPercent)
+            && this.fiboDepthZoneLabel == latestPoint.fiboDepthZoneLabel
+            && this.pipsDiff == this.normalizeNumber(latestPoint.pipsDiff)
+            && this.waveBarsFromStart == latestPoint.waveBarsFromStart
+            && this.barTime == latestPoint.barTime
+            && this.rate == this.normalizeNumber(latestPoint.rate)
+            && this.pointDigits == latestPoint.marketContext.digits;
+    }
+
+    /**
+     * 説明文と生成に使った値を保存する。
+     *
+     * @param fromElliot 対象時間足の分析結果。
+     * @param fromM15Group M15分類の説明を付加する場合true。
+     * @param fromDisplayTimeFrame 列の表示対象時間足。
+     * @param fromText 生成済みの説明文。
+     */
+    void store(Elliot *fromElliot, const bool fromM15Group,
+            const ENUM_TIMEFRAMES fromDisplayTimeFrame, const string fromText) {
+        this.ready = true;
+        this.hasData = false;
+        this.text = fromText;
+        this.m15Group = fromM15Group;
+        this.displayTimeFrame = fromDisplayTimeFrame;
+
+        if (fromElliot == NULL) {
+            return;
+        }
+
+        Wave *latestWave = fromElliot.getLatestWave();
+        ZigZagPoint *latestPoint = fromElliot.getLatestPoint();
+        if (latestWave == NULL || latestPoint == NULL) {
+            return;
+        }
+
+        this.hasData = true;
+        this.symbolName = fromElliot.marketContext.symbolName;
+        this.timeFrame = fromElliot.marketContext.timeFrame;
+        this.timeFrameLabel = fromElliot.marketContext.timeFrameLabel;
+        this.isMotive = latestWave.isMotive;
+        this.isConfirmed = latestWave.isConfirmed;
+        this.previousLastElliotLabel = latestWave.previousLastElliotLabel;
+        this.elliotLabel = latestPoint.elliotLabel;
+        this.subElliotLabel = latestPoint.subElliotLabel;
+        this.orgElliotLabel = latestPoint.orgElliotLabel;
+        this.orgElliotIndex = latestPoint.orgElliotIndex;
+        this.isAddedPoint = latestPoint.isAddedPoint;
+        this.isCorrect = latestPoint.isCorrect;
+        this.fibonacciPercent = this.normalizeNumber(latestPoint.fibonacciPercent);
+        this.fibonacciExpansionPercent = this.normalizeNumber(latestPoint.fibonacciExpansionPercent);
+        this.fiboDepthZoneLabel = latestPoint.fiboDepthZoneLabel;
+        this.pipsDiff = this.normalizeNumber(latestPoint.pipsDiff);
+        this.waveBarsFromStart = latestPoint.waveBarsFromStart;
+        this.barTime = latestPoint.barTime;
+        this.rate = this.normalizeNumber(latestPoint.rate);
+        this.pointDigits = latestPoint.marketContext.digits;
+    }
+
+    /**
+     * 説明文に表示しない数値を同じ比較値へそろえる。
+     *
+     * @param fromValue Fibonacci比率、値幅または価格。
+     * @return 表示可能な正数は元の値、無効数・EMPTY_VALUE・0以下は0。
+     */
+    double normalizeNumber(const double fromValue) {
+        if (!MathIsValidNumber(fromValue) || fromValue == EMPTY_VALUE || fromValue <= 0.0) {
+            return 0.0;
+        }
+
+        return fromValue;
+    }
+};
+
+/**
  * 指定開始足から表示時間足まで売買方向が一致した複数シンボルを描画するクラス。
  *
  * BUYを左、SELLを右のパネルに分け、MN1から各時間足の最新Elliott波動、
@@ -629,6 +830,9 @@ private:
     /** 行・列ごとの上段、EMA200、Fibonacciの順で保持する反映済み状態。 */
     DrawAlignedElliotAllListCellCache cellCache[];
 
+    /** 行・列ごとに、説明文と生成に使った値を保持する。 */
+    DrawAlignedElliotAllListWaveTooltipCache waveTooltipCache[];
+
     /** セル状態の位置計算に使用する生成済みの列数。 */
     int cellCacheColumnCount;
 
@@ -959,6 +1163,17 @@ private:
         this.cellCacheColumnCount = columnCount;
         for (int i = 0; i < cellCacheCount; i++) {
             this.cellCache[i].reset();
+        }
+
+        int tooltipCacheCount = rowCount * columnCount;
+        if (ArrayResize(this.waveTooltipCache, tooltipCacheCount) != tooltipCacheCount) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        for (int i = 0; i < tooltipCacheCount; i++) {
+            this.waveTooltipCache[i].reset();
         }
 
         this.configureColumnWidth(timeFrameCount);
@@ -2643,7 +2858,9 @@ private:
             color waveColor = this.getWaveColor(elliot);
             string emaText = this.getEmaText(elliot);
             color emaColor = this.getEmaColor(emaText);
-            string tooltip = this.getWaveTooltip(elliot);
+            string tooltip = this.getCachedWaveTooltip(
+                fromRowIndex, columnIndex, elliot, isM15Group, fromDisplayTimeFrames[i]
+            );
             if (isM15Group) {
                 if (fromDisplayTimeFrames[i] == m15Result.analysisOppositeTimeFrame) {
                     waveText = "*" + waveText;
@@ -2653,7 +2870,6 @@ private:
                 if (fromDisplayTimeFrames[i] == PERIOD_MN1) {
                     emaText = "-";
                     emaColor = this.mutedColor;
-                    tooltip += "\nMN1 EMA200は判定対象外。";
                 } else if (fromDisplayTimeFrames[i] == m15Result.emaMismatchTimeFrame) {
                     if (m15Result.isEmaNone) {
                         emaText = "NONE";
@@ -2663,10 +2879,6 @@ private:
                         emaColor = this.entryNearColor;
                     }
                 }
-
-                tooltip += "\n基準方向はMN1からM15までのisBuy多数派。"
-                    + "\nisBuy逆は最大1足、EMA逆とNONEは合計1足まで。"
-                    + "\n*は基準方向と逆、NONEは計算済みの方向なし。";
             }
 
             this.setCell(
@@ -2994,6 +3206,43 @@ private:
         }
 
         return prefix + DoubleToString(fibonacciPercent, 1);
+    }
+
+    /**
+     * 説明文の生成に使う値が同じ場合、前回の文字列を再利用する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromColumnIndex 列番号。
+     * @param fromElliot 対象時間足の分析結果。
+     * @param fromM15Group M15分類の説明を付加する場合true。
+     * @param fromDisplayTimeFrame 列の表示対象時間足。
+     * @return M15分類の説明を含む時間足セルのツールチップ。
+     */
+    string getCachedWaveTooltip(int fromRowIndex, int fromColumnIndex,
+            Elliot *fromElliot, const bool fromM15Group,
+            const ENUM_TIMEFRAMES fromDisplayTimeFrame) {
+        int cacheIndex = fromRowIndex * this.cellCacheColumnCount + fromColumnIndex;
+        if (this.waveTooltipCache[cacheIndex].matches(
+                fromElliot, fromM15Group, fromDisplayTimeFrame)) {
+            return this.waveTooltipCache[cacheIndex].text;
+        }
+
+        string tooltip = this.getWaveTooltip(fromElliot);
+        if (fromM15Group) {
+            if (fromDisplayTimeFrame == PERIOD_MN1) {
+                tooltip += "\nMN1 EMA200は判定対象外。";
+            }
+
+            tooltip += "\n基準方向はMN1からM15までのisBuy多数派。"
+                + "\nisBuy逆は最大1足、EMA逆とNONEは合計1足まで。"
+                + "\n*は基準方向と逆、NONEは計算済みの方向なし。";
+        }
+
+        this.waveTooltipCache[cacheIndex].store(
+            fromElliot, fromM15Group, fromDisplayTimeFrame, tooltip
+        );
+
+        return tooltip;
     }
 
     /**
@@ -4073,6 +4322,7 @@ private:
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         ArrayResize(this.cellCache, 0);
+        ArrayResize(this.waveTooltipCache, 0);
         this.cellCacheColumnCount = 0;
         this.created = false;
         this.createdRowCount = 0;
