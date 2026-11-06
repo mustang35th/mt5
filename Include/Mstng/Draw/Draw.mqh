@@ -355,7 +355,14 @@ public:
         if (!this.timingTooltipReady
                 || this.timingRevision != fromStats.getRevision()
                 || this.timingIntervalSeconds != fromIntervalSeconds) {
-            this.timingTooltip = this.getUpdateTimingTooltip(fromStats, fromIntervalSeconds);
+            if (!this.timingTooltipReady
+                    || this.timingAttemptRevision != fromStats.getAttemptRevision()
+                    || this.timingIntervalSeconds != fromIntervalSeconds) {
+                this.timingAttemptTooltip = this.getAttemptTimingTooltip(fromStats, fromIntervalSeconds);
+                this.timingAttemptRevision = fromStats.getAttemptRevision();
+            }
+
+            this.timingTooltip = this.getUpdateTimingTooltip(fromStats);
             this.timingRevision = fromStats.getRevision();
             this.timingIntervalSeconds = fromIntervalSeconds;
             this.timingTooltipReady = true;
@@ -501,11 +508,17 @@ private:
     /** 説明文を生成した計測値の更新番号。 */
     ulong timingRevision;
 
+    /** 分析部分の説明文を生成した分析試行の更新番号。 */
+    ulong timingAttemptRevision;
+
     /** 説明文を生成した設定間隔秒。 */
     int timingIntervalSeconds;
 
     /** 計測値または設定間隔の変更時だけ再生成する説明文。 */
     string timingTooltip;
+
+    /** 分析試行または設定間隔の変更時だけ再生成する説明文の後半2行。 */
+    string timingAttemptTooltip;
 
     /** 最後に計算した成功からの経過表示。 */
     string timingAgeText;
@@ -515,6 +528,9 @@ private:
 
     /** 待機中に分析結果を参照しないため保持する実行時間。単位: ミリ秒。 */
     uint timingExecTime;
+
+    /** 更新診断ラベルの存在を最後に確認した単調増加ミリ秒。 */
+    ulong lastTimingLabelCheckTick;
 
     /** Ask・Bid・Spreadラベルの初期設定および文字・色反映が成功した場合true。 */
     bool bidAskLabelReady[6];
@@ -701,11 +717,14 @@ private:
         this.timingEnabled = false;
         this.timingTooltipReady = false;
         this.timingRevision = 0;
+        this.timingAttemptRevision = 0;
         this.timingIntervalSeconds = 0;
         this.timingTooltip = "";
+        this.timingAttemptTooltip = "";
         this.timingAgeText = "更新--";
         this.timingExecTimeReady = false;
         this.timingExecTime = 0;
+        this.lastTimingLabelCheckTick = 0;
     }
 
     /**
@@ -734,14 +753,14 @@ private:
     }
 
     /**
-     * 更新間隔・前段処理・最終試行の説明文を生成する。
+     * 更新間隔・前段処理・最終試行の説明文2行を先頭改行付きで生成する。
      * 初回で比較対象がない間隔と遅延は未計測として表示する。
      *
      * @param fromStats 更新間隔・遅延・試行結果の計測値
      * @param fromIntervalSeconds 設定された分析間隔秒
-     * @return 実行時間ラベルの説明文
+     * @return 分析試行の変更まで再利用する説明文の後半2行
      */
-    string getUpdateTimingTooltip(UpdateTimingStats &fromStats, int fromIntervalSeconds) {
+    string getAttemptTimingTooltip(UpdateTimingStats &fromStats, int fromIntervalSeconds) {
         string attemptInterval = "--";
         string successInterval = "--";
         string timerDelay = "--";
@@ -771,6 +790,20 @@ private:
                 fromStats.getLastState(), fromStats.getLastAttemptMilliseconds());
         }
 
+        string tooltip = StringFormat("\n設定%ds 試行%s 成功%s / 予定超過%s 開始遅延%s",
+            fromIntervalSeconds, attemptInterval, successInterval, timerDelay, startDelay);
+        tooltip += "\n前段 " + auxiliary + " / 最終 " + lastAttempt;
+
+        return tooltip;
+    }
+
+    /**
+     * 前回Timerの計測値に、保持した分析診断2行を連結する。
+     *
+     * @param fromStats 前回完了Timerの計測値
+     * @return 実行時間ラベルの説明文
+     */
+    string getUpdateTimingTooltip(UpdateTimingStats &fromStats) {
         string timer = "前回Timer未計測";
         if (fromStats.hasTimer()) {
             string mode = "待機";
@@ -782,12 +815,7 @@ private:
                 mode, fromStats.getTimerMilliseconds(), fromStats.getTimerLabelMilliseconds());
         }
 
-        string tooltip = timer;
-        tooltip += StringFormat("\n設定%ds 試行%s 成功%s / 予定超過%s 開始遅延%s",
-            fromIntervalSeconds, attemptInterval, successInterval, timerDelay, startDelay);
-        tooltip += "\n前段 " + auxiliary + " / 最終 " + lastAttempt;
-
-        return tooltip;
+        return timer + this.timingAttemptTooltip;
     }
 
     /**
@@ -804,6 +832,7 @@ private:
      * 情報ラベルを再利用し、表示文字と説明文をそれぞれ変更時だけ更新する。
      * 各ラベルの色・フォント・サイズ・座標は固定し、初回と再試行時だけ反映する。
      * 手動削除時は再作成し、設定に失敗した場合は次回に全属性を再試行する。
+     * 更新診断ラベルだけ、作成済みなら存在確認を5秒ごとに間引く。
      *
      * @param fromIndex 時計・銘柄・当日レートの項目名と値に対応するキャッシュ番号
      * @param fromObjectName 接頭辞を除いたラベル名
@@ -827,7 +856,18 @@ private:
         ENUM_ANCHOR_POINT fromAnchor = ANCHOR_LEFT_UPPER
     ) {
         string objectName = this.getInfoLabelObjectName(fromObjectName);
-        if (ObjectFind(0, objectName) < 0) {
+        bool checkExistence = true;
+        if (fromIndex == 2 && this.timingEnabled) {
+            ulong currentTick = GetTickCount64();
+            checkExistence = !this.infoLabelReady[fromIndex]
+                || currentTick < this.lastTimingLabelCheckTick
+                || currentTick - this.lastTimingLabelCheckTick >= 5000;
+            if (checkExistence) {
+                this.lastTimingLabelCheckTick = currentTick;
+            }
+        }
+
+        if (checkExistence && ObjectFind(0, objectName) < 0) {
             this.infoLabelReady[fromIndex] = false;
             if (!ObjectCreate(0, objectName, OBJ_LABEL, 0, 0, 0)) {
                 return;

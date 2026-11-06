@@ -37,6 +37,7 @@ public:
         this.lastAttemptMilliseconds = 0.0;
         this.lastState = "未計測";
         this.revision = 0;
+        this.attemptRevision = 0;
         this.timerRecorded = false;
         this.timerGapMeasured = false;
         this.lastTimerEndTick = 0;
@@ -98,6 +99,7 @@ public:
         this.auxiliaryMilliseconds = (double)fromAuxiliaryMicroseconds / 1000.0;
         this.attemptStarted = true;
         this.attemptPending = true;
+        this.attemptRevision++;
     }
 
     /**
@@ -137,6 +139,7 @@ public:
         }
 
         this.attemptPending = false;
+        this.attemptRevision++;
         this.revision++;
     }
 
@@ -332,6 +335,14 @@ public:
         return this.revision;
     }
 
+    /**
+     * 分析試行の開始または有効な終了記録で増える改訂番号を返す。初期化時は0。
+     * Timerだけの記録では変更せず、分析診断の説明文を再利用する判定に使う。
+     */
+    ulong getAttemptRevision() {
+        return this.attemptRevision;
+    }
+
 private:
     /** 更新開始を一度でも記録した場合true。 */
     bool attemptStarted;
@@ -407,6 +418,9 @@ private:
 
     /** 終了記録の改訂番号。 */
     ulong revision;
+
+    /** 分析試行の開始・終了記録の改訂番号。 */
+    ulong attemptRevision;
 };
 
 #endif // MSTNG_COMMON_UPDATE_TIMING_STATS_MQH

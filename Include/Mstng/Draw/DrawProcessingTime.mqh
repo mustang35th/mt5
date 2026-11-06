@@ -7,6 +7,7 @@
 #include <Mstng\Common\ProcessingTimeStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * ZigZagElliotの時計の下へ更新処理の集計を表示し、各処理の詳細を説明文へまとめる。
@@ -23,6 +24,7 @@ public:
         this.displayUpdatePending = false;
         this.positionX = 0;
         this.fontFace = "MS Gothic";
+        this.labelCheckThrottled = !Util::isStrategyTester();
         this.resetLabelCache();
         this.resetMetricCache();
     }
@@ -60,7 +62,8 @@ public:
 
     /**
      * 指定した処理の集計を保持し、まとめ更新中は描画を終了時まで保留する。
-     * 手動で削除されたラベルは、次の更新時に再作成する。
+     * 手動で削除されたラベルは、次の定期確認を伴う更新時に再作成する。
+     * 通常チャートでは、丸め後の表示文字・色・説明が同じ場合は反映を追加しない。
      *
      * @param fromIndex 更新処理0・EMA200 1・GMMA 2・日本時間軸3
      * @param fromStats 表示する処理時間と実行状態
@@ -92,12 +95,23 @@ public:
                 textColor = clrOrange;
             }
 
-            this.updateText = text;
-            this.updateTextColor = textColor;
+            if (this.updateText != text || this.updateTextColor != textColor) {
+                this.updateText = text;
+                this.updateTextColor = textColor;
+                this.displayUpdatePending = true;
+            }
         }
 
-        this.metricTooltips[fromIndex] = this.getTooltip(fromIndex, fromStats);
-        this.displayUpdatePending = true;
+        string tooltip = this.getTooltip(fromIndex, fromStats);
+        if (this.metricTooltips[fromIndex] != tooltip) {
+            this.metricTooltips[fromIndex] = tooltip;
+            this.displayUpdatePending = true;
+        }
+
+        // テスターは計測更新ごとの存在確認と、削除後の即時復元を維持する。
+        if (!this.labelCheckThrottled) {
+            this.displayUpdatePending = true;
+        }
 
         return this.flushDisplay();
     }
@@ -159,6 +173,12 @@ private:
     /** 各ラベルの全設定要求が成功済みの場合true。0はヘッダー、1は更新処理。 */
     bool labelReady[2];
 
+    /** 通常チャートで存在確認を5秒ごとに間引く場合true。 */
+    bool labelCheckThrottled;
+
+    /** 各ラベルの存在を最後に確認した単調増加ミリ秒。 */
+    ulong lastLabelCheckTicks[2];
+
     /** 最後に反映した表示文字。 */
     string labelTexts[2];
 
@@ -183,6 +203,7 @@ private:
     void resetLabelCache() {
         for (int i = 0; i < 2; i++) {
             this.labelReady[i] = false;
+            this.lastLabelCheckTicks[i] = 0;
             this.labelTexts[i] = "";
             this.labelTooltips[i] = "";
             this.labelColors[i] = clrNONE;
@@ -205,6 +226,7 @@ private:
     /**
      * まとめ更新の外側で、保留しているラベル表示を反映する。
      * 描画要求の失敗時は保留状態を残し、次回の反映で再試行する。
+     * 通常チャートでは表示変更がなくても、期限に達したラベルの存在を確認する。
      *
      * @return 保留中、更新不要、または描画要求に成功した場合true
      */
@@ -213,14 +235,23 @@ private:
             return false;
         }
 
-        if (this.updateBatchDepth > 0 || !this.displayUpdatePending) {
+        if (this.updateBatchDepth > 0) {
             return true;
         }
 
-        bool isSucceeded = this.updateDisplay();
-        if (isSucceeded) {
-            this.displayUpdatePending = false;
+        if (!this.displayUpdatePending) {
+            if (!this.labelCheckThrottled) {
+                return true;
+            }
+
+            ulong currentTick = GetTickCount64();
+            if (!this.shouldCheckLabel(0, currentTick) && !this.shouldCheckLabel(1, currentTick)) {
+                return true;
+            }
         }
+
+        bool isSucceeded = this.updateDisplay();
+        this.displayUpdatePending = !isSucceeded;
 
         return isSucceeded;
     }
@@ -310,8 +341,23 @@ private:
     }
 
     /**
+     * ラベルの存在を確認する必要があるか判定する。
+     * 初回・設定失敗後・時刻逆行時は、定期確認の期限を待たない。
+     *
+     * @param fromIndex ヘッダー0・更新処理1
+     * @param fromCurrentTick 今回の単調増加ミリ秒
+     * @return 存在確認が必要な場合true
+     */
+    bool shouldCheckLabel(int fromIndex, ulong fromCurrentTick) {
+        return !this.labelCheckThrottled || !this.labelReady[fromIndex]
+            || fromCurrentTick < this.lastLabelCheckTicks[fromIndex]
+            || fromCurrentTick - this.lastLabelCheckTicks[fromIndex] >= 5000;
+    }
+
+    /**
      * ラベルを再利用し、固定属性は初期設定時だけ反映する。
      * 途中で設定要求が失敗した場合は、次回に全属性を反映し直す。
+     * 通常チャートの作成済みラベルは5秒ごとに存在を確認する。
      *
      * @param fromIndex ヘッダー0・更新処理1
      * @param fromText 表示文字
@@ -322,7 +368,13 @@ private:
     bool updateLabel(int fromIndex, string fromText, string fromTooltip, color fromColor) {
         string objectName = this.getObjectName(fromIndex);
 
-        if (ObjectFind(0, objectName) < 0) {
+        ulong currentTick = GetTickCount64();
+        bool checkExistence = this.shouldCheckLabel(fromIndex, currentTick);
+        if (checkExistence) {
+            this.lastLabelCheckTicks[fromIndex] = currentTick;
+        }
+
+        if (checkExistence && ObjectFind(0, objectName) < 0) {
             this.labelReady[fromIndex] = false;
             if (!ObjectCreate(0, objectName, OBJ_LABEL, 0, 0, 0)) {
                 return false;
