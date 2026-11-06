@@ -7,6 +7,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Elliot\Analysis\ElliotBase.mqh>
+#include <Mstng\Elliot\Reanalysis\ElliotReanalysisWaveList.mqh>
 
 /**
  * 同じ方向で連続するWaveを統合して再分析するクラス。
@@ -151,11 +152,48 @@ private:
         
         CArrayObj analyzedZigZagPointList;
         
-        // 前Waveを統合先としてコピーする。
         Wave *waveBefore = this.waveList.At(waveIndex + 1);
-        ZigZagPointUtil::copyZigZagPointList(waveBefore.zigZagPointList, analyzedZigZagPointList);
+        this.buildReanalysisPoints(waveIndex, waveBefore, high, low, analyzedZigZagPointList);
+
+        ElliotReanalysisWaveList::replaceWaveRange(this.logger, this.marketContext, this.waveList,
+                waveIndex, 2, analyzedZigZagPointList, waveBefore.isMotive, waveBefore.isUptrend);
+
+
+        if (!this.makeZigZagPointListAndReanalyze()) {
+            this.logger.error(__FUNCTION__, "makeZigZagPointListAndReanalyze false");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
-        Wave *wave = this.waveList.At(waveIndex);
+        return true;
+    }
+
+    /**
+     * 同方向Waveの統合に使用するポイント列を生成する。
+     *
+     * 前Waveのポイントをコピーし、対象Waveが基準値幅を超えた位置から末尾までを追加する。
+     * 値幅を超える点がない場合も、対象Waveの最終ポイントを保持する。
+     *
+     * @param fromWaveIndex 新しい側の対象Wave位置
+     * @param fromWaveBefore 統合先となる前Wave
+     * @param fromHigh 前Wave終端の高値
+     * @param fromLow 前Wave終端の安値
+     * @param fromResult 生成先。呼び出し元が所有する空のポイント一覧
+     */
+    void buildReanalysisPoints(
+        int fromWaveIndex,
+        Wave &fromWaveBefore,
+        double fromHigh,
+        double fromLow,
+        CArrayObj &fromResult
+    ) {
+        // 前Waveを統合先としてコピーする。
+        ZigZagPointUtil::copyZigZagPointList(fromWaveBefore.zigZagPointList, fromResult);
+
+        Wave *wave = this.waveList.At(fromWaveIndex);
         CArrayObj *fromZigZagPointList = &(wave.zigZagPointList);
         
         int addCount = 0;
@@ -165,15 +203,15 @@ private:
             ZigZagPoint *zigZagPoint = fromZigZagPointList.At(i);
             
             if (isBreak) {
-                ZigZagPointUtil::addPoint(analyzedZigZagPointList, zigZagPoint);
+                ZigZagPointUtil::addPoint(fromResult, zigZagPoint);
             } else {
                 double rate = zigZagPoint.rate;
                 
                 // 前Wave終端レンジを超えた時点から、ポイントを統合リストへ移送する。
-                if (rate > high || low > rate) {
+                if (rate > fromHigh || fromLow > rate) {
                     isBreak = true;
                     
-                    ZigZagPointUtil::addPoint(analyzedZigZagPointList, zigZagPoint);
+                    ZigZagPointUtil::addPoint(fromResult, zigZagPoint);
                     addCount++;
                 }
                 
@@ -184,46 +222,10 @@ private:
             // 追加ポイントがない場合は、対象Waveの最終ポイントだけを必ず保持する。
             ZigZagPoint *zigZagPoint = ZigZagPointUtil::getLastNode(fromZigZagPointList);
             
-            ZigZagPointUtil::addPoint(analyzedZigZagPointList, zigZagPoint);
+            ZigZagPointUtil::addPoint(fromResult, zigZagPoint);
         }
-
-        CArrayObj waveListNew;  // 再構築用Wave一覧。
-        
-        // 右側Waveをコピーする。
-        for (int i = 0; i < waveIndex; i++) {
-            Wave *wave = this.waveList.At(i);
-            
-            WaveUtil::addWave(this.logger, waveListNew, this.marketContext, wave.zigZagPointList, wave.isMotive, wave.isUptrend);
-        }
-        
-        
-        // 再分析Waveを追加する。
-        WaveUtil::addWave(this.logger, waveListNew, this.marketContext, analyzedZigZagPointList, waveBefore.isMotive, waveBefore.isUptrend);
-        
-        
-        // 残りのWaveをコピーする。
-        for (int i = waveIndex + 2; i < this.waveList.Total(); i++) {
-            Wave *wave = this.waveList.At(i);
-            
-            WaveUtil::addWave(this.logger, waveListNew, this.marketContext, wave.zigZagPointList, wave.isMotive, wave.isUptrend);
-        }
-        
-        
-        WaveUtil::copyWaveList(waveListNew, this.waveList);
-        
-        
-        if (!this.makeZigZagPointListAndReanalyze()) {
-            this.logger.error(__FUNCTION__, "makeZigZagPointListAndReanalyze false");
-            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
-            
-            return false;
-        }
-        
-        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
-        
-        return true;
     }
-    
+
 };
 
 

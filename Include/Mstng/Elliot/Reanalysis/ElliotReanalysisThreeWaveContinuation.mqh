@@ -7,6 +7,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Elliot\Analysis\ElliotBase.mqh>
+#include <Mstng\Elliot\Reanalysis\ElliotReanalysisWaveList.mqh>
 
 /**
  * 3分割された同方向の継続波を統合して再分析するクラス。
@@ -206,41 +207,10 @@ private:
         Wave *waveOld = this.waveList.At(waveIndex + 2);
         CArrayObj mergedZigZagPointList;
 
-        int oldPointTotal = waveOld.zigZagPointList.Total();
-        int obsoleteTrendPointIndex = oldPointTotal - 3;
+        this.buildReanalysisPoints(waveNew, waveMiddle, waveOld, mergedZigZagPointList);
 
-        for (int i = 0; i < oldPointTotal; i++) {
-            if (i == obsoleteTrendPointIndex || i == obsoleteTrendPointIndex + 1) {
-                continue;
-            }
-
-            ZigZagPoint *zigZagPoint = waveOld.zigZagPointList.At(i);
-            ZigZagPointUtil::addPoint(mergedZigZagPointList, zigZagPoint);
-        }
-
-        ZigZagPoint *middleLatestPoint = waveMiddle.getLatestPoint();
-        ZigZagPointUtil::addPoint(mergedZigZagPointList, middleLatestPoint);
-
-        for (int i = 1; i < waveNew.zigZagPointList.Total(); i++) {
-            ZigZagPoint *zigZagPoint = waveNew.zigZagPointList.At(i);
-            ZigZagPointUtil::addPoint(mergedZigZagPointList, zigZagPoint);
-        }
-
-        CArrayObj waveListNew;
-
-        for (int i = 0; i < waveIndex; i++) {
-            Wave *wave = this.waveList.At(i);
-            WaveUtil::addWave(this.logger, waveListNew, this.marketContext, wave.zigZagPointList, wave.isMotive, wave.isUptrend);
-        }
-
-        WaveUtil::addWave(this.logger, waveListNew, this.marketContext, mergedZigZagPointList, waveOld.isMotive, waveOld.isUptrend);
-
-        for (int i = waveIndex + 3; i < this.waveList.Total(); i++) {
-            Wave *wave = this.waveList.At(i);
-            WaveUtil::addWave(this.logger, waveListNew, this.marketContext, wave.zigZagPointList, wave.isMotive, wave.isUptrend);
-        }
-
-        WaveUtil::copyWaveList(waveListNew, this.waveList);
+        ElliotReanalysisWaveList::replaceWaveRange(this.logger, this.marketContext, this.waveList,
+                waveIndex, 3, mergedZigZagPointList, waveOld.isMotive, waveOld.isUptrend);
 
         if (!this.makeZigZagPointListAndReanalyze()) {
             this.logger.error(__FUNCTION__, "makeZigZagPointListAndReanalyze false");
@@ -252,6 +222,43 @@ private:
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 
         return true;
+    }
+
+    /**
+     * 3つのWaveを統合するためのポイント列を生成する。
+     *
+     * 古いWaveの最新トレンド極値の直前2点を除き、中央Waveの最新点と新しいWaveの残りを追加する。
+     *
+     * @param fromWaveNew 新しい側のWave
+     * @param fromWaveMiddle 中央のWave
+     * @param fromWaveOld 古い側のWave
+     * @param fromResult 生成先。呼び出し元が所有する空のポイント一覧
+     */
+    void buildReanalysisPoints(
+        Wave &fromWaveNew,
+        Wave &fromWaveMiddle,
+        Wave &fromWaveOld,
+        CArrayObj &fromResult
+    ) {
+        int oldPointTotal = fromWaveOld.zigZagPointList.Total();
+        int obsoleteTrendPointIndex = oldPointTotal - 3;
+
+        for (int i = 0; i < oldPointTotal; i++) {
+            if (i == obsoleteTrendPointIndex || i == obsoleteTrendPointIndex + 1) {
+                continue;
+            }
+
+            ZigZagPoint *zigZagPoint = fromWaveOld.zigZagPointList.At(i);
+            ZigZagPointUtil::addPoint(fromResult, zigZagPoint);
+        }
+
+        ZigZagPoint *middleLatestPoint = fromWaveMiddle.getLatestPoint();
+        ZigZagPointUtil::addPoint(fromResult, middleLatestPoint);
+
+        for (int i = 1; i < fromWaveNew.zigZagPointList.Total(); i++) {
+            ZigZagPoint *zigZagPoint = fromWaveNew.zigZagPointList.At(i);
+            ZigZagPointUtil::addPoint(fromResult, zigZagPoint);
+        }
     }
 
     /**

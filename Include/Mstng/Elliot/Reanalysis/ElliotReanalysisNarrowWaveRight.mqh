@@ -7,6 +7,7 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Elliot\Analysis\ElliotBase.mqh>
+#include <Mstng\Elliot\Reanalysis\ElliotReanalysisWaveList.mqh>
 
 /**
  * 右側Waveの値幅内に収まる狭い波動を再分析するクラス。
@@ -69,8 +70,11 @@ public:
         
         // 最新は未確定のため対象外。最古側を除外し、1から走査する。
         for (int i = 1; i < waveTotal - 1; i++) {
-            if (this.isTarget(i)) {
-                if (!this.reanalyze(i)) {
+            double high = 0.0;
+            double low = 0.0;
+
+            if (this.isTarget(i, high, low)) {
+                if (!this.reanalyze(i, high, low)) {
                     this.logger.error(__FUNCTION__, "reanalyze false");
                     LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
                     
@@ -113,9 +117,11 @@ private:
      * 値幅内へ収まる連続ポイントがある場合に再分析対象とする。
      *
      * @param waveIndex 判定対象Wave位置
+     * @param fromHigh 判定に使用した高値。戻り値がtrueの場合に再分析で使用する
+     * @param fromLow 判定に使用した安値。戻り値がtrueの場合に再分析で使用する
      * @return 右隣が異方向の2ポイントWaveで、狭い波動を含む場合true
      */
-    bool isTarget(int waveIndex) {
+    bool isTarget(int waveIndex, double &fromHigh, double &fromLow) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
         bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
@@ -139,12 +145,9 @@ private:
         if (isTargetWave
                 && isCurrentPointCountValid
                 && isNextPointCountValid) {
-            double high;
-            double low;
-            
-            this.setHighLowAtNextWave(waveIndex, high, low);
+            this.setHighLowAtNextWave(waveIndex, fromHigh, fromLow);
         
-            if (this.isNarrowWave(waveIndex, high, low)) {
+            if (this.isNarrowWave(waveIndex, fromHigh, fromLow)) {
                 isTarget = true;
             }
         }
@@ -210,9 +213,11 @@ private:
      * 中間ポイントを再分析用ポイント列へ追加する。
      *
      * @param waveIndex 再分析対象Wave位置
+     * @param fromHigh 対象判定で取得した基準高値
+     * @param fromLow 対象判定で取得した基準安値
      * @return Wave一覧の再構築に成功した場合true
      */
-    bool reanalyze(int waveIndex) {
+    bool reanalyze(int waveIndex, double fromHigh, double fromLow) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
@@ -224,75 +229,69 @@ private:
         CArrayObj zigZagPointListReanalyze;
         
         Wave *waveCurrent = this.waveList.At(waveIndex);
-        ZigZagPoint *latestZigZagPoint = waveCurrent.getLatestPoint();
+        this.buildReanalysisPoints(waveCurrent, fromHigh, fromLow, zigZagPointListReanalyze);
+
+        LogUtil::printZigZagPointList(this.logger, __FUNCTION__, zigZagPointListReanalyze);
+
+
+
+        ElliotReanalysisWaveList::replaceWaveRange(this.logger, this.marketContext, this.waveList,
+                waveIndex, 1, zigZagPointListReanalyze, waveCurrent.isMotive, waveCurrent.isUptrend);
+
+        if (!this.makeZigZagPointListAndReanalyze()) {
+            this.logger.error(__FUNCTION__, "makeZigZagPointListAndReanalyze false");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
+        }
+
+        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         
-        ZigZagPointUtil::insertPoint(zigZagPointListReanalyze, latestZigZagPoint);
+        return true;
+    }
+
+    /**
+     * 右側基準の狭い波動を除いたポイント列を生成する。
+     *
+     * 両端のポイントを保持し、基準値幅を抜けた位置から残りの中間ポイントを追加する。
+     * 最新側から逆順に走査し、生成先の先頭へ順に挿入する。
+     *
+     * @param fromWaveCurrent 再分析対象Wave
+     * @param fromHigh 対象判定で取得した基準高値
+     * @param fromLow 対象判定で取得した基準安値
+     * @param fromResult 生成先。呼び出し元が所有する空のポイント一覧
+     */
+    void buildReanalysisPoints(
+        Wave &fromWaveCurrent,
+        double fromHigh,
+        double fromLow,
+        CArrayObj &fromResult
+    ) {
+        ZigZagPoint *latestZigZagPoint = fromWaveCurrent.getLatestPoint();
+
+        ZigZagPointUtil::insertPoint(fromResult, latestZigZagPoint);
         
-        CArrayObj *fromZigZagPointList = &(waveCurrent.zigZagPointList);
-        double high;
-        double low;
-            
-        this.setHighLowAtNextWave(waveIndex, high, low);
-        
+        CArrayObj *fromZigZagPointList = &(fromWaveCurrent.zigZagPointList);
         bool isBreak = false;
         
         for (int i = fromZigZagPointList.Total() - 2; i > 0; i--) {
             ZigZagPoint *zigZagPoint = fromZigZagPointList.At(i);
             
             if (isBreak) {
-                ZigZagPointUtil::insertPoint(zigZagPointListReanalyze, zigZagPoint);
+                ZigZagPointUtil::insertPoint(fromResult, zigZagPoint);
             } else {
-                if (!this.isBetweenHighAndLow(high, low, zigZagPoint.rate)) {
+                if (!this.isBetweenHighAndLow(fromHigh, fromLow, zigZagPoint.rate)) {
                     isBreak = true;
                     
-                    ZigZagPointUtil::insertPoint(zigZagPointListReanalyze, zigZagPoint);
+                    ZigZagPointUtil::insertPoint(fromResult, zigZagPoint);
                 }
             }
         }
         
         ZigZagPoint *zigZagPoint0 = fromZigZagPointList.At(0);        
-        ZigZagPointUtil::insertPoint(zigZagPointListReanalyze, zigZagPoint0);
-        
-        LogUtil::printZigZagPointList(this.logger, __FUNCTION__, zigZagPointListReanalyze);
-        
-        
-        
-        CArrayObj waveListNew;  // 再構築用Wave一覧。
-        
-        // 右側Waveをコピーする。
-        for (int i = 0; i < waveIndex; i++) {
-            Wave *wave = this.waveList.At(i);
-            
-            WaveUtil::addWave(this.logger, waveListNew, this.marketContext, wave.zigZagPointList, wave.isMotive, wave.isUptrend);
-        }
-        
-        
-        // 再分析Waveを追加する。
-        WaveUtil::addWave(this.logger, waveListNew, this.marketContext, zigZagPointListReanalyze, waveCurrent.isMotive, waveCurrent.isUptrend);
-        
-        
-        // 残りのWaveをコピーする。
-        for (int i = waveIndex + 1; i < this.waveList.Total(); i++) {
-            Wave *wave = this.waveList.At(i);
-            
-            WaveUtil::addWave(this.logger, waveListNew, this.marketContext, wave.zigZagPointList, wave.isMotive, wave.isUptrend);
-        }
-        
-        
-        WaveUtil::copyWaveList(waveListNew, this.waveList);        
-        
-        if (!this.makeZigZagPointListAndReanalyze()) {
-            this.logger.error(__FUNCTION__, "makeZigZagPointListAndReanalyze false");
-            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
-            
-            return false;
-        }
-        
-        LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
-        
-        return true;
+        ZigZagPointUtil::insertPoint(fromResult, zigZagPoint0);
     }
-    
+
     /**
      * 対象Waveに右隣Waveの値幅内で連続する2ポイントがあるか判定する。
      *
