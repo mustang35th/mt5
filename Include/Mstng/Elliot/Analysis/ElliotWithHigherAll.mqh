@@ -775,16 +775,19 @@ private:
         zigZagPointLast.rate = workRate;
         
         
-        for (int i = 1; i < workWaveList.Total(); i++) {
-            Wave *wave = workWaveList.At(i);
-            Wave *waveClone = wave.clone();
-            
-            waveClone.setParentWave(waveClone);
+        // 再分析前の最新Waveを除き、退避時に複製済みの過去Waveを順序どおり戻す。
+        workWaveList.Delete(0);
 
-            this.waveList.Add(waveClone);
+        if (workWaveList.Total() > 0 && !this.waveList.AddArray(GetPointer(workWaveList))) {
+            this.logger.error(__FUNCTION__, "Failed to transfer historical waves.");
+            LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+            return false;
         }
-        
-        
+
+        // ポイントの親Wave参照は退避時に設定済み。移管後は作業リストから解放しない。
+        workWaveList.FreeMode(false);
+
         this.analyzeWave();
         
         
@@ -901,15 +904,19 @@ private:
                 
                 for (int i = 0; i < workWaveList.Total(); i++) {
                     Wave *wave = workWaveList.At(i);
-                    Wave *waveClone = wave.clone();
-                    
-                    waveClone.setParentWave(waveClone);
-                    
-                    waveClone.index = i + 1;    // indexの再設定
-                    
-                    this.waveList.Add(waveClone);
+                    wave.index = i + 1;    // indexの再設定
                 }
-                
+
+                // 退避時に複製・親Wave参照の設定が済んだWaveをまとめて移す。
+                if (workWaveList.Total() > 0 && !this.waveList.AddArray(GetPointer(workWaveList))) {
+                    this.logger.error(__FUNCTION__, "Failed to transfer historical waves.");
+                    LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                    return false;
+                }
+
+                workWaveList.FreeMode(false);
+
                 LogUtil::printWaveList(this.logger, __FUNCTION__, this.waveList);
 
             }

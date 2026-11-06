@@ -372,13 +372,16 @@ public:
      * @param rates_total 総バー数
      * @param prev_calculated 前回計算済みバー数
      * @param chartId 描画対象チャートID
+     * @param fromExpectedBarTime EMA取得前の最新足時刻。0の場合は照合を省略する
+     * @return 描画用時刻を取得できた場合true。取得不足や足切り替わりの場合false
      */
-    void drawLongTermTrend(
+    bool drawLongTermTrend(
         const double &ema30Buffer[],
         const double &ema60Buffer[],
         const int rates_total,
         const int prev_calculated,
-        long chartId = 0
+        long chartId = 0,
+        datetime fromExpectedBarTime = 0
     ) {
         bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
 
@@ -401,13 +404,40 @@ public:
                 StringFormat("rates_total is too small. rates_total=%d", rates_total)
             );
 
-            return;
+            return true;
         }
 
         int start = MathMax(1, rates_total - this.maxBars);
 
         if (prev_calculated > 0) {
             start = MathMax(start, prev_calculated - 1);
+        }
+
+        // 描画区間の両端に必要な実際の足時刻を、今回の更新分だけ取得する。
+        datetime barTimes[];
+        int timeCount = rates_total - start;
+
+        if (timeCount > 1) {
+            ArraySetAsSeries(barTimes, true);
+
+            if (CopyTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0, timeCount, barTimes) != timeCount) {
+                return false;
+            }
+
+            if (fromExpectedBarTime > 0 && barTimes[0] != fromExpectedBarTime) {
+                return false;
+            }
+
+            for (int i = 0; i < timeCount; i++) {
+                if (barTimes[i] <= 0 || (i > 0 && barTimes[i] >= barTimes[i - 1])) {
+                    return false;
+                }
+            }
+
+            // EMAと矩形の時刻がずれないよう、描画を始める前に足切り替わりを確認する。
+            if (iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0) != barTimes[0]) {
+                return false;
+            }
         }
 
         int drawCount = 0;
@@ -460,8 +490,8 @@ public:
                 this.logger.debug(__FUNCTION__, StringFormat("timeIndex = %d", timeIndex));
             }
 
-            datetime time = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex);
-            datetime timeBefore = iTime(this.marketContext.symbolName, this.marketContext.timeFrame, timeIndex + 1);
+            datetime time = barTimes[timeIndex];
+            datetime timeBefore = barTimes[timeIndex + 1];
 
             string name = this.objectPrefix + "Trend_" + IntegerToString((int)time);
 
@@ -514,6 +544,8 @@ public:
                 )
             );
         }
+
+        return true;
     }
 
 private:

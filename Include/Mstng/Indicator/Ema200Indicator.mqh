@@ -127,6 +127,7 @@ public:
         }
 
         ArrayFree(this.chartBarTimes);
+        ArrayFree(this.targetBarTimes);
         ArrayFree(this.targetBarIndices);
         ArrayFree(this.emaValues);
         this.deleteLabels();
@@ -308,6 +309,9 @@ private:
     /** 各EMA線の更新で共用する、チャート足に対応した対象時間足の足番号。 */
     int targetBarIndices[];
 
+    /** 各EMA線の更新で取得する対象時間足の時刻。seriesで最新足が添字0。 */
+    datetime targetBarTimes[];
+
     /** 各EMA線の更新で共用する取得値。seriesで取得範囲の最新足が添字0。 */
     double emaValues[];
 
@@ -392,6 +396,7 @@ private:
         this.labelsUpdatePending = false;
         this.reservedRightWidth = 0;
         ArraySetAsSeries(this.chartBarTimes, true);
+        ArraySetAsSeries(this.targetBarTimes, true);
         ArraySetAsSeries(this.emaValues, true);
 
         for (int i = 0; i < 5; i++) {
@@ -641,6 +646,16 @@ private:
         int firstTargetBarIndex = calculatedCount;
         int lastTargetBarIndex = -1;
         bool isSucceeded = true;
+        datetime latestTargetBarTime = 0;
+        bool useTargetBarTimes = false;
+        if (this.timeFrames[lineIndex] != this.marketContext.timeFrame) {
+            useTargetBarTimes = this.prepareTargetBarTimes(
+                lineIndex, fromBarTimes[limit - 1], calculatedCount, latestTargetBarTime);
+        }
+
+        int targetTimeIndex = 0;
+        int targetTimeCount = ArraySize(this.targetBarTimes);
+        datetime previousBarTime = 0;
 
         for (int barIndex = 0; barIndex < limit; barIndex++) {
             datetime barTime = fromBarTimes[barIndex];
@@ -651,7 +666,26 @@ private:
                 continue;
             }
 
-            int targetBarIndex = this.getTargetBarIndex(lineIndex, barIndex, barTime);
+            if (useTargetBarTimes && previousBarTime > 0 && barTime >= previousBarTime) {
+                return false;
+            }
+
+            previousBarTime = barTime;
+            int targetBarIndex = -1;
+            if (useTargetBarTimes) {
+                // 実際の開始時刻をたどり、休場や欠損を含めて直前の足へ対応付ける。
+                while (targetTimeIndex < targetTimeCount
+                        && this.targetBarTimes[targetTimeIndex] > barTime) {
+                    targetTimeIndex++;
+                }
+
+                if (targetTimeIndex < targetTimeCount) {
+                    targetBarIndex = targetTimeIndex;
+                }
+            } else {
+                // 履歴不足などで一括取得できない場合も、取得可能な部分は従来どおり描く。
+                targetBarIndex = this.getTargetBarIndex(lineIndex, barIndex, barTime);
+            }
 
             if (targetBarIndex < 0 || targetBarIndex >= calculatedCount) {
                 this.setBufferValue(lineIndex, barIndex, EMPTY_VALUE);
@@ -686,6 +720,17 @@ private:
             return false;
         }
 
+        if (useTargetBarTimes
+                && (iTime(this.marketContext.symbolName, this.timeFrames[lineIndex], 0) != latestTargetBarTime
+                    || BarsCalculated(this.handles[lineIndex]) != calculatedCount)) {
+            return false;
+        }
+
+        if (fromBarTimes[0] > 0
+                && iTime(this.marketContext.symbolName, this.marketContext.timeFrame, 0) != fromBarTimes[0]) {
+            return false;
+        }
+
         for (int barIndex = 0; barIndex < limit; barIndex++) {
             int targetBarIndex = this.targetBarIndices[barIndex];
 
@@ -697,6 +742,57 @@ private:
         }
 
         return isSucceeded;
+    }
+
+    /**
+     * 最新足から表示範囲の最古足までの対象時刻を一括取得する。
+     * 取得できない場合は個別検索を使用し、取得可能な部分の表示を維持する。
+     *
+     * @param fromLineIndex ライン番号。
+     * @param fromOldestChartTime 表示範囲の最古チャート足時刻。
+     * @param fromCalculatedCount EMA計算済み本数。
+     * @param fromLatestBarTime 一括取得の基準となった対象最新足時刻。
+     * @return 有効な時刻列を取得できた場合true。
+     */
+    bool prepareTargetBarTimes(int fromLineIndex, datetime fromOldestChartTime,
+            int fromCalculatedCount, datetime &fromLatestBarTime) {
+        fromLatestBarTime = 0;
+        if (fromOldestChartTime <= 0 || fromCalculatedCount <= 0) {
+            return false;
+        }
+
+        ENUM_TIMEFRAMES targetTimeFrame = this.timeFrames[fromLineIndex];
+        datetime latestBarTime = iTime(this.marketContext.symbolName, targetTimeFrame, 0);
+        if (latestBarTime <= 0) {
+            return false;
+        }
+
+        int oldestBarIndex = iBarShift(this.marketContext.symbolName, targetTimeFrame, fromOldestChartTime, false);
+        if (oldestBarIndex < 0) {
+            return false;
+        }
+
+        int copyCount = (int)MathMin((long)oldestBarIndex + 1, fromCalculatedCount);
+        if (ArrayResize(this.targetBarTimes, copyCount, this.maxBars) != copyCount
+                || CopyTime(this.marketContext.symbolName, targetTimeFrame,
+                    0, copyCount, this.targetBarTimes) != copyCount) {
+            return false;
+        }
+
+        if (this.targetBarTimes[0] != latestBarTime) {
+            return false;
+        }
+
+        for (int i = 0; i < copyCount; i++) {
+            if (this.targetBarTimes[i] <= 0
+                    || (i > 0 && this.targetBarTimes[i] >= this.targetBarTimes[i - 1])) {
+                return false;
+            }
+        }
+
+        fromLatestBarTime = latestBarTime;
+
+        return true;
     }
 
     /**

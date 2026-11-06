@@ -204,7 +204,9 @@ public:
         this.updateLineColors();
 
         if (this.drawGmma != NULL) {
-            this.drawGmma.drawLongTermTrend(buffer30, buffer60, barsCount, previousBars);
+            if (!this.drawGmma.drawLongTermTrend(buffer30, buffer60, barsCount, previousBars, 0, currentBarTime)) {
+                return false;
+            }
         }
 
         this.lasttimeGmma = currentBarTime;
