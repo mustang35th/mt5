@@ -24,7 +24,7 @@ public:
      * インデックス情報をログ出力用の文字列に整形して返す。
      *
      * @param i インデックス番号。
-     * @return インデックス情報を表す文字列。例: "i=0, "。
+     * @return インデックス情報を表す文字列。例: "i = 0, "。
      */
     static string getTextIndex(int i) {
         return StringFormat("i = %d, ", i);

@@ -38,7 +38,7 @@ struct LoggerRepeatScope {
     /** 呼び出し前に抑制区間が有効だったか。 */
     bool wasActive;
 
-    /** 呼び出し前のシンボル・H1開始時刻キー。 */
+    /** 呼び出し前のシンボル・対象足のバー開始時刻キー。 */
     string previousKey;
 };
 
@@ -59,7 +59,7 @@ public:
         this.levelThreshold = threshold;
 
         MarketContext context(_Symbol, (ENUM_TIMEFRAMES)_Period);
-        this.chartMarketContext = context;
+        this.chartTimeFrame = context.timeFrame;
         this.initializeMarketContext(context);
     }
 
@@ -72,8 +72,7 @@ public:
     Logger(MarketContext &fromMarketContext, LogLevel fromThreshold = LOG_DEBUG) {
         this.levelThreshold = fromThreshold;
 
-        MarketContext chartContext(_Symbol, (ENUM_TIMEFRAMES)_Period);
-        this.chartMarketContext = chartContext;
+        this.chartTimeFrame = (ENUM_TIMEFRAMES)_Period;
         this.initializeMarketContext(fromMarketContext);
     }
     
@@ -92,11 +91,11 @@ public:
      * 呼び出し元でログ文字列を生成する前の確認に使用する。
      * メッセージ内容による重複抑止はlog()で引き続き判定する。
      *
-     * @return DEBUG設定かつチャート時間足と一致する場合true。
+     * @return DEBUG設定かつLogger生成時のチャート時間足と一致する場合true。
      */
     bool isDebugOutputEnabled() {
         return this.isDebugMode()
-            && this.marketContext.timeFrame == this.chartMarketContext.timeFrame;
+            && this.marketContext.timeFrame == this.chartTimeFrame;
     }
 
 
@@ -130,11 +129,12 @@ public:
     }
 
     /**
-     * Testerだけで同一シンボル・H1内の重複ログ抑制区間を開始する。
+     * Testerだけでシンボル名と指定バー開始時刻をキーに重複ログ抑制区間を開始する。
+     * H1・M15など呼び出し元の対象足の開始時刻をそのまま使用し、H1への丸めは行わない。
      * 新しいキーの初回ログは出力し、同じキーの再試行では記録を保持する。
      *
      * @param fromSymbol 分析対象シンボル。
-     * @param fromH1BarTime 分析対象H1の開始時刻。
+     * @param fromH1BarTime 分析対象足のバー開始時刻（H1・M15など）。
      * @param fromScope 区間終了時に使用する呼び出し前の状態。
      */
     static void beginTesterRepeatScope(
@@ -156,15 +156,12 @@ public:
         Logger::repeatScopeActive = true;
         Logger::repeatScopeKey = fromSymbol + "|" + IntegerToString((long)fromH1BarTime);
 
-        if (Logger::repeatCacheKey != Logger::repeatScopeKey) {
-            Logger::clearRepeatCache();
-            Logger::repeatCacheKey = Logger::repeatScopeKey;
-        }
+        Logger::updateRepeatCacheKey();
     }
 
     /**
      * 重複ログ抑制区間を終了し、呼び出し前の有効状態を復元する。
-     * 分析成功時は記録を解除し、同じH1内でも次に発生した障害を出力する。
+     * 分析成功時は記録を解除し、同じキーでも次のログを初回として扱う。
      *
      * @param fromScope 対応するbeginが保持した状態。入れ子は逆順に終了する。
      * @param fromSucceeded 分析に成功した場合true。
@@ -187,7 +184,7 @@ public:
      * 指定したログレベルでメッセージを出力する。
      *
      * 最小ログレベル未満のメッセージは出力しない。
-     * DEBUGは対象時間足が現在チャートの時間足と一致する場合のみ出力する。
+     * DEBUGは対象時間足がLogger生成時のチャート時間足と一致する場合のみ出力する。
      * INFO/WARN/ERRORは時間足条件に関係なく出力する。
      *
      * @param level ログレベル。
@@ -200,7 +197,7 @@ public:
         }
         
         if (level == LOG_DEBUG
-                && this.marketContext.timeFrame != this.chartMarketContext.timeFrame) {
+                && this.marketContext.timeFrame != this.chartTimeFrame) {
             return;
         }
         
@@ -264,8 +261,8 @@ private:
     /** 出力対象とする最小ログレベル。 */
     LogLevel levelThreshold;
 
-    /** 現在チャートの市場コンテキスト。 */
-    MarketContext chartMarketContext;
+    /** 生成時のチャート時間足。ログ出力対象の変更では更新しない。 */
+    ENUM_TIMEFRAMES chartTimeFrame;
 
     /** ログ出力対象の市場コンテキスト。 */
     MarketContext marketContext;
@@ -273,7 +270,7 @@ private:
     /** 明示的に開始したTesterの抑制区間だけでtrue。通常はfalse。 */
     static bool repeatScopeActive;
 
-    /** 現在の抑制区間のシンボル・H1開始時刻キー。 */
+    /** 現在の抑制区間のシンボル・対象足のバー開始時刻キー。 */
     static string repeatScopeKey;
 
     /** 保持中のログに対応する区間キー。 */
@@ -302,6 +299,18 @@ private:
     }
 
     /**
+     * 現在の抑制区間へキャッシュキーを合わせ、異なる場合だけ重複記録を消す。
+     *
+     * 区間開始時と、入れ子の区間から戻った後の出力判定時に使用する。
+     */
+    static void updateRepeatCacheKey() {
+        if (Logger::repeatCacheKey != Logger::repeatScopeKey) {
+            Logger::clearRepeatCache();
+            Logger::repeatCacheKey = Logger::repeatScopeKey;
+        }
+    }
+
+    /**
      * 明示区間内のINFO/ERRORで同じ整形済み出力が既に出たか判定する。
      * 固定長リングからあふれた新規ログも抑殺せず出力する。
      */
@@ -310,10 +319,7 @@ private:
             return false;
         }
 
-        if (Logger::repeatCacheKey != Logger::repeatScopeKey) {
-            Logger::clearRepeatCache();
-            Logger::repeatCacheKey = Logger::repeatScopeKey;
-        }
+        Logger::updateRepeatCacheKey();
 
         for (int i = 0; i < Logger::repeatedOutputCount; i++) {
             if (Logger::repeatedOutputs[i] == fromOutput) {
