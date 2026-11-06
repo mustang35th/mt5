@@ -39,6 +39,10 @@ public:
         this.lastSubWindow = -1;
         this.lastText = "";
         this.lastColor = clrNONE;
+        this.lastTooltip = "";
+        this.textReady = false;
+        this.colorReady = false;
+        this.tooltipReady = false;
     }
 
     /**
@@ -50,26 +54,34 @@ public:
 
     /**
      * 指定サブウィンドウの右上へ最新順位の取得元を描画する。
-     * 固定座標は初期化時に設定し、文字・色の更新時は再設定しない。
+     * 固定座標は初期化時に設定し、文字・色・説明は成功値から変わった項目だけ反映する。
      *
      * @param fromSubWindow 描画対象サブウィンドウ番号。
      * @param fromText 表示する取得元。
      * @param fromColor 文字色。
+     * @param fromTooltip 取得状態の説明。空文字の場合は既定ツールチップを非表示にする。
      * @return 描画に成功した場合true。
      */
     bool draw(
         const int fromSubWindow,
         const string fromText,
-        const color fromColor
+        const color fromColor,
+        const string fromTooltip = ""
     ) {
         if (fromSubWindow <= 0 || fromText == "") {
             return false;
         }
 
-        if (this.created
+        string tooltip = fromTooltip;
+        if (tooltip == "") {
+            tooltip = "\n";
+        }
+
+        if (this.created && this.textReady && this.colorReady && this.tooltipReady
                 && this.lastSubWindow == fromSubWindow
                 && this.lastText == fromText
-                && this.lastColor == fromColor) {
+                && this.lastColor == fromColor
+                && this.lastTooltip == tooltip) {
             return true;
         }
 
@@ -78,8 +90,14 @@ public:
         }
 
         int objectWindow = ObjectFind(this.chartId, this.objectName);
-        bool initializeProperties = !this.created || objectWindow != fromSubWindow;
-        this.created = false;
+        bool initializeProperties = !this.created
+            || this.lastSubWindow != fromSubWindow || objectWindow != fromSubWindow;
+        if (initializeProperties) {
+            this.created = false;
+            this.textReady = false;
+            this.colorReady = false;
+            this.tooltipReady = false;
+        }
 
         if (objectWindow >= 0 && objectWindow != fromSubWindow) {
             if (!ObjectDelete(this.chartId, this.objectName)) {
@@ -105,33 +123,42 @@ public:
             return false;
         }
 
-        bool updated = ObjectSetInteger(
-            this.chartId,
-            this.objectName,
-            OBJPROP_COLOR,
-            fromColor
-        );
-        updated = ObjectSetString(
-            this.chartId,
-            this.objectName,
-            OBJPROP_TEXT,
-            fromText
-        ) && updated;
-
-        if (!updated) {
-            return false;
-        }
-
         this.created = true;
         this.lastSubWindow = fromSubWindow;
-        this.lastText = fromText;
-        this.lastColor = fromColor;
+
+        bool updated = true;
+        if (!this.colorReady || this.lastColor != fromColor) {
+            if (ObjectSetInteger(this.chartId, this.objectName, OBJPROP_COLOR, fromColor)) {
+                this.lastColor = fromColor;
+                this.colorReady = true;
+            } else {
+                updated = false;
+            }
+        }
+
+        if (!this.textReady || this.lastText != fromText) {
+            if (ObjectSetString(this.chartId, this.objectName, OBJPROP_TEXT, fromText)) {
+                this.lastText = fromText;
+                this.textReady = true;
+            } else {
+                updated = false;
+            }
+        }
+
+        if (!this.tooltipReady || this.lastTooltip != tooltip) {
+            if (ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP, tooltip)) {
+                this.lastTooltip = tooltip;
+                this.tooltipReady = true;
+            } else {
+                updated = false;
+            }
+        }
 
         if (this.redrawRequest == NULL) {
             ChartRedraw(this.chartId);
         }
 
-        return true;
+        return updated;
     }
 
     /**
@@ -147,6 +174,10 @@ public:
         this.lastSubWindow = -1;
         this.lastText = "";
         this.lastColor = clrNONE;
+        this.lastTooltip = "";
+        this.textReady = false;
+        this.colorReady = false;
+        this.tooltipReady = false;
 
         if (this.redrawRequest == NULL) {
             ChartRedraw(this.chartId);
@@ -163,7 +194,7 @@ private:
     /** 最新順位取得元ラベルのオブジェクト名。 */
     string objectName;
 
-    /** ラベルの設定と描画が完了した場合true。 */
+    /** ラベルの固定属性の設定が完了した場合true。 */
     bool created;
 
     /** 前回描画したサブウィンドウ番号。 */
@@ -174,6 +205,18 @@ private:
 
     /** 前回描画した文字色。 */
     color lastColor;
+
+    /** 前回設定に成功したツールチップ。空指定は改行へ正規化して保持する。 */
+    string lastTooltip;
+
+    /** 文字列を一度以上正常に設定できた場合true。 */
+    bool textReady;
+
+    /** 文字色を一度以上正常に設定できた場合true。 */
+    bool colorReady;
+
+    /** ツールチップを一度以上正常に設定できた場合true。 */
+    bool tooltipReady;
 
     /**
      * ラベル生成時または設定失敗後の再試行時に固定座標と表示設定を反映する。

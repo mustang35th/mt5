@@ -48,6 +48,17 @@ public:
         this.lastTargetM5BarTime = 0;
         this.lastTop = -1;
         this.lastTooltip = "";
+        this.standardTooltip = "";
+        this.mousePositionKnown = false;
+        this.lastMouseX = 0;
+        this.lastMouseY = 0;
+        this.hoverBaseCurrency = "";
+        this.hoverQuoteCurrency = "";
+        this.hoverBarIndex = -1;
+        this.hoverReady = false;
+        this.renderedMinimumDifference = 0;
+        this.renderedChartPeriod = PERIOD_CURRENT;
+        this.renderedLongMediumOnly = false;
         this.cachedBuyTextWidth = 0;
         this.cachedSellTextWidth = 0;
         this.canvasHeight = 34;
@@ -97,6 +108,48 @@ public:
         this.cachedBarCount = 0;
         this.cachedNewestX = 0;
         this.cachedBarWidth = 0;
+        this.renderedBarCount = 0;
+        this.renderedNewestX = 0;
+        this.renderedBarWidth = 0;
+        this.renderedCanvasWidth = 0;
+        this.invalidateHoverData();
+    }
+
+    /**
+     * 順位履歴の変更後、同じ表示足でもマウス位置の説明を再評価する。
+     * 足時刻と描画済み画像は保持し、順位配列への参照は保存しない。
+     */
+    void invalidateHoverData() {
+        this.hoverReady = false;
+    }
+
+    /**
+     * 帯の実矩形内では該当するチャート足の順位と判定理由を表示する。
+     * 同じ足の説明を設定済みなら順位の検索と文字列生成を省く。
+     *
+     * @param fromX チャート左端からのマウスX座標。
+     * @param fromY チャート上端からのマウスY座標。
+     * @param fromPoints M5時刻の昇順で保持した順位履歴。
+     * @param fromBaseCurrency 基軸通貨名。
+     * @param fromQuoteCurrency 決済通貨名。
+     * @param fromPointStartIndex 有効な順位履歴の先頭位置。
+     * @return 説明の設定または変更なしの確認に成功した場合true。
+     */
+    bool handleMouseMove(const int fromX, const int fromY,
+            const CurrencyStrengthPairRankPoint &fromPoints[],
+            const string fromBaseCurrency, const string fromQuoteCurrency,
+            const int fromPointStartIndex = 0) {
+        this.lastMouseX = fromX;
+        this.lastMouseY = fromY;
+        this.mousePositionKnown = true;
+        if (this.hoverBaseCurrency != fromBaseCurrency
+                || this.hoverQuoteCurrency != fromQuoteCurrency) {
+            this.hoverBaseCurrency = fromBaseCurrency;
+            this.hoverQuoteCurrency = fromQuoteCurrency;
+            this.invalidateHoverData();
+        }
+
+        return this.refreshHoverTooltip(fromPoints, fromPointStartIndex);
     }
 
     /**
@@ -148,13 +201,18 @@ public:
             chartWidth, chartHeight, (long)latestBarTime,
             fromMinimumDifference, (int)backgroundColor, (int)foregroundColor, chartScale
         );
+        if (this.lastTargetM5BarTime != fromTargetM5BarTime) {
+            this.invalidateHoverData();
+        }
+
         bool targetChangedInView = this.isTargetChangeVisible(fromTargetM5BarTime);
         if (!fromForce && !this.dataDirty && !targetChangedInView
                 && this.created && this.lastViewKey == viewKey
+                && this.renderedBarCount >= 2
                 && ObjectFind(this.chartId, this.objectName) == 0) {
             this.lastTargetM5BarTime = fromTargetM5BarTime;
 
-            return true;
+            return this.refreshHoverTooltip(fromPoints, fromPointStartIndex);
         }
 
         string nextBarGeometryKey = this.getBarGeometryKey(viewKey);
@@ -246,8 +304,10 @@ public:
 
             this.lastViewKey = viewKey;
             this.lastTargetM5BarTime = fromTargetM5BarTime;
+            this.rememberRenderedGeometry(copiedBars, newestX, barWidth,
+                chartWidth, chartPeriod, fromMinimumDifference);
 
-            return true;
+            return this.refreshHoverTooltip(fromPoints, fromPointStartIndex);
         }
 
         if (!this.prepareCanvas(chartWidth, chartHeight)) {
@@ -278,15 +338,7 @@ public:
 
         tooltip += "帯の左端の白色は確認できた開始。準備・成立の切り替え時には追加しません。";
         this.canvas.TextOut(8, 1, periodTitle, ColorToARGB(foregroundColor));
-        if (this.lastTooltip != tooltip) {
-            if (!ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP, tooltip)) {
-                this.clear();
-
-                return false;
-            }
-
-            this.lastTooltip = tooltip;
-        }
+        this.standardTooltip = tooltip;
 
         if (!this.canvas.FontSet("MS Gothic", -80)) {
             this.clear();
@@ -320,12 +372,14 @@ public:
             - (long)newestBarTime % m5Seconds);
         this.lastTargetM5BarTime = fromTargetM5BarTime;
         this.dataDirty = false;
+        this.rememberRenderedGeometry(copiedBars, newestX, barWidth,
+            chartWidth, chartPeriod, fromMinimumDifference);
 
         if (this.redrawRequest == NULL) {
             ChartRedraw(this.chartId);
         }
 
-        return true;
+        return this.refreshHoverTooltip(fromPoints, fromPointStartIndex);
     }
 
     /**
@@ -356,6 +410,7 @@ public:
         this.lastTargetM5BarTime = 0;
         this.lastTop = -1;
         this.lastTooltip = "";
+        this.standardTooltip = "";
         this.cachedBuyTextWidth = 0;
         this.cachedSellTextWidth = 0;
 
@@ -426,6 +481,51 @@ private:
     /** 前回設定に成功した帯の説明文。 */
     string lastTooltip;
 
+    /** 帯の外・タイトル・右余白で表示する標準説明。 */
+    string standardTooltip;
+
+    /** 実際に描画した足時刻の件数。部分取得時も有効な描画件数を保持する。 */
+    int renderedBarCount;
+
+    /** 描画済み最新足のX座標。 */
+    int renderedNewestX;
+
+    /** 描画済みの横方向の足幅。 */
+    int renderedBarWidth;
+
+    /** 描画済みCanvasの横幅。 */
+    int renderedCanvasWidth;
+
+    /** 描画済み帯の順位差基準。 */
+    int renderedMinimumDifference;
+
+    /** 描画済み帯のチャート時間足。 */
+    ENUM_TIMEFRAMES renderedChartPeriod;
+
+    /** 描画済み帯が長中期だけで判定する場合true。 */
+    bool renderedLongMediumOnly;
+
+    /** 最後のマウス位置を受け取っている場合true。 */
+    bool mousePositionKnown;
+
+    /** 最後に通知されたマウスX座標。 */
+    int lastMouseX;
+
+    /** 最後に通知されたマウスY座標。 */
+    int lastMouseY;
+
+    /** マウス説明で表示する基軸通貨名。 */
+    string hoverBaseCurrency;
+
+    /** マウス説明で表示する決済通貨名。 */
+    string hoverQuoteCurrency;
+
+    /** 説明を最後に設定した足配列位置。帯の外では-1。 */
+    int hoverBarIndex;
+
+    /** 現在の順位とマウス位置に対応する説明を正常に設定済みの場合true。 */
+    bool hoverReady;
+
     /** 帯の固定フォントMS Gothic・-80で計測したBUYの幅。未計測の場合は0。 */
     int cachedBuyTextWidth;
 
@@ -434,6 +534,230 @@ private:
 
     /** タイトルと帯を含む描画高さ。 */
     int canvasHeight;
+
+    /**
+     * 成功した描画の座標と判定条件をマウス説明用に保持する。
+     * CopyTimeの次回再利用可否とは分離し、部分取得した配列にも対応する。
+     */
+    void rememberRenderedGeometry(const int fromBarCount, const int fromNewestX,
+            const int fromBarWidth, const int fromCanvasWidth,
+            const ENUM_TIMEFRAMES fromChartPeriod, const int fromMinimumDifference) {
+        this.renderedBarCount = fromBarCount;
+        this.renderedNewestX = fromNewestX;
+        this.renderedBarWidth = fromBarWidth;
+        this.renderedCanvasWidth = fromCanvasWidth;
+        this.renderedChartPeriod = fromChartPeriod;
+        this.renderedMinimumDifference = fromMinimumDifference;
+        this.renderedLongMediumOnly = PeriodSeconds(fromChartPeriod) >= PeriodSeconds(PERIOD_H1);
+        this.invalidateHoverData();
+    }
+
+    /**
+     * 描画時と同じセル境界からマウス位置に対応する足配列位置を取得する。
+     *
+     * @return 帯の実矩形内にある足の配列位置。それ以外は-1。
+     */
+    int getHoveredBarIndex() {
+        if (!this.mousePositionKnown || !this.created || this.lastTop < 0
+                || this.renderedBarCount < 2 || this.renderedBarWidth <= 0
+                || ArraySize(this.barTimes) < this.renderedBarCount
+                || this.lastMouseX < 0 || this.lastMouseX >= this.renderedCanvasWidth
+                || this.lastMouseY < this.lastTop + 20
+                || this.lastMouseY > this.lastTop + 29) {
+            return -1;
+        }
+
+        long firstLeft = (long)this.renderedNewestX
+            - (long)(this.renderedBarCount - 1) * this.renderedBarWidth
+            - this.renderedBarWidth / 2;
+        long relativeX = (long)this.lastMouseX - firstLeft;
+        if (relativeX < 0) {
+            return -1;
+        }
+
+        long barIndex = relativeX / this.renderedBarWidth;
+        if (barIndex >= this.renderedBarCount) {
+            return -1;
+        }
+
+        return (int)barIndex;
+    }
+
+    /**
+     * 最後のマウス位置の説明を、現在渡された順位配列から更新する。
+     * 説明の更新ではCanvasの再描画や再描画要求を発生させない。
+     */
+    bool refreshHoverTooltip(const CurrencyStrengthPairRankPoint &fromPoints[],
+            const int fromPointStartIndex) {
+        if (!this.created) {
+            return false;
+        }
+
+        int barIndex = this.getHoveredBarIndex();
+        if (this.hoverReady && this.hoverBarIndex == barIndex) {
+            return true;
+        }
+
+        string tooltip = this.standardTooltip;
+        if (barIndex >= 0) {
+            tooltip = this.getBarTooltip(fromPoints, barIndex, fromPointStartIndex);
+        }
+
+        if (tooltip == "") {
+            tooltip = "\n";
+        }
+
+        this.hoverReady = false;
+        if (this.lastTooltip != tooltip) {
+            if (!ObjectSetString(this.chartId, this.objectName, OBJPROP_TOOLTIP, tooltip)) {
+                return false;
+            }
+
+            this.lastTooltip = tooltip;
+        }
+
+        this.hoverBarIndex = barIndex;
+        this.hoverReady = true;
+
+        return true;
+    }
+
+    /**
+     * チャート足と完全一致する参照M5の順位・取得元・判定理由をまとめる。
+     */
+    string getBarTooltip(const CurrencyStrengthPairRankPoint &fromPoints[],
+            const int fromBarIndex, const int fromPointStartIndex) {
+        datetime barTime = this.barTimes[fromBarIndex];
+        string periodText = EnumToString(this.renderedChartPeriod);
+        StringReplace(periodText, "PERIOD_", "");
+        string tooltip = periodText + "足 "
+            + TimeToString(barTime, TIME_DATE | TIME_MINUTES) + " SERVER";
+        int m5Seconds = PeriodSeconds(PERIOD_M5);
+        if (barTime <= 0 || m5Seconds <= 0) {
+            return tooltip + "\n待機：足時刻が未取得";
+        }
+
+        datetime m5BarTime = (datetime)((long)barTime - (long)barTime % m5Seconds);
+        tooltip += "\n参照M5 " + TimeToString(m5BarTime, TIME_DATE | TIME_MINUTES);
+        if (m5BarTime > this.lastTargetM5BarTime || this.lastTargetM5BarTime <= 0) {
+            return tooltip + "\n取得元 —\n待機：使用可能なM5時刻より先";
+        }
+
+        if (fromPointStartIndex < 0 || fromPointStartIndex > ArraySize(fromPoints)) {
+            return tooltip + "\n取得元 —\n待機：順位履歴が未準備";
+        }
+
+        int pointIndex = this.findRankPointIndex(fromPoints, m5BarTime, fromPointStartIndex, -1);
+        if (pointIndex < 0) {
+            return tooltip + "\n取得元 —\n待機：同時刻のM5順位が欠損";
+        }
+
+        string sourceMode = fromPoints[pointIndex].sourceMode;
+        if (sourceMode == "") {
+            sourceMode = "未記録";
+        }
+
+        tooltip += " / " + sourceMode
+            + "\n" + this.formatHoverRanks("長中期",
+                fromPoints[pointIndex].baseLongMediumTermAverageRank,
+                fromPoints[pointIndex].quoteLongMediumTermAverageRank);
+        string mediumShortTitle = "中短期";
+        if (this.renderedLongMediumOnly) {
+            mediumShortTitle += "(参考・判定外)";
+        }
+
+        tooltip += "\n" + this.formatHoverRanks(mediumShortTitle,
+            fromPoints[pointIndex].baseMediumShortTermAverageRank,
+            fromPoints[pointIndex].quoteMediumShortTermAverageRank);
+        if (!CurrencyStrengthRankAndSignal::hasValidRibbonRanks(
+                fromPoints[pointIndex], this.renderedLongMediumOnly)) {
+            return tooltip + "\n待機：判定対象の順位が無効";
+        }
+
+        int state = CurrencyStrengthRankAndSignal::getRibbonState(fromPoints[pointIndex],
+            this.renderedMinimumDifference, this.renderedLongMediumOnly);
+
+        return tooltip + "\n" + this.getHoverReason(fromPoints[pointIndex], state);
+    }
+
+    /**
+     * 通貨名・順位と決済順位から基軸順位を引いた符号付き順位差を表示する。
+     * 無効順位を含む場合は差を計算せず、未取得の目印を表示する。
+     */
+    string formatHoverRanks(const string fromTitle, const int fromBaseRank,
+            const int fromQuoteRank) {
+        string baseRank = "—";
+        string quoteRank = "—";
+        string difference = "—";
+        bool baseValid = fromBaseRank >= 1 && fromBaseRank <= 8;
+        bool quoteValid = fromQuoteRank >= 1 && fromQuoteRank <= 8;
+        if (baseValid) {
+            baseRank = (string)fromBaseRank;
+        }
+
+        if (quoteValid) {
+            quoteRank = (string)fromQuoteRank;
+        }
+
+        if (baseValid && quoteValid) {
+            difference = StringFormat("%+d", fromQuoteRank - fromBaseRank);
+        }
+
+        return fromTitle + " " + this.hoverBaseCurrency + baseRank
+            + "/" + this.hoverQuoteCurrency + quoteRank + " 差" + difference;
+    }
+
+    /**
+     * 共通の帯判定に対応する成立状態と未達理由を短い日本語へ変換する。
+     */
+    string getHoverReason(const CurrencyStrengthPairRankPoint &fromPoint, const int fromState) {
+        string direction = "BUY";
+        if (fromState < 0) {
+            direction = "SELL";
+        }
+
+        if (MathAbs(fromState) == 2) {
+            if (this.renderedLongMediumOnly) {
+                return direction + "成立：長中期条件を達成";
+            }
+
+            return direction + "成立：両期間の条件を達成";
+        }
+
+        if (MathAbs(fromState) == 1) {
+            int longMediumDirection = CurrencyStrengthRankAndSignal::getLongMediumDirection(
+                fromPoint.baseLongMediumTermAverageRank,
+                fromPoint.quoteLongMediumTermAverageRank, this.renderedMinimumDifference);
+            if (longMediumDirection != 0) {
+                return direction + "準備：中短期の差" + (string)this.renderedMinimumDifference + "待ち";
+            }
+
+            return direction + "準備：長中期の順位条件待ち";
+        }
+
+        int longMediumDifference = fromPoint.quoteLongMediumTermAverageRank
+            - fromPoint.baseLongMediumTermAverageRank;
+        if (this.renderedLongMediumOnly) {
+            if (longMediumDifference == 0) {
+                return "待機：長中期が同順位";
+            }
+
+            return "待機：長中期の順位差・端順位が未達";
+        }
+
+        int mediumShortDifference = fromPoint.quoteMediumShortTermAverageRank
+            - fromPoint.baseMediumShortTermAverageRank;
+        if (longMediumDifference == 0 || mediumShortDifference == 0) {
+            return "待機：同順位の期間あり";
+        }
+
+        if ((longMediumDifference > 0 && mediumShortDifference < 0)
+                || (longMediumDifference < 0 && mediumShortDifference > 0)) {
+            return "待機：両期間が逆方向";
+        }
+
+        return "待機：両期間の順位条件が未達";
+    }
 
     /**
      * 足時刻と横座標を再利用できる通常の横縮尺・右端余白の条件を取得する。
