@@ -98,9 +98,18 @@ public:
      * @return 同期済みの場合 true。
      */
     static bool isSeriesSynchronized(string symbolName, ENUM_TIMEFRAMES timeFrame) {
-        MarketContext context(symbolName, timeFrame);
+        long synced = 0;
 
-        return WarmUpSeriesUtil::isSeriesSynchronized(context);
+        if (!SeriesInfoInteger(
+            symbolName,
+            timeFrame,
+            SERIES_SYNCHRONIZED,
+            synced
+        )) {
+            return false;
+        }
+
+        return (synced != 0);
     }
 
     /**
@@ -110,18 +119,10 @@ public:
      * @return 同期済みの場合 true。
      */
     static bool isSeriesSynchronized(MarketContext &fromMarketContext) {
-        long synced = 0;
-
-        if (!SeriesInfoInteger(
+        return WarmUpSeriesUtil::isSeriesSynchronized(
             fromMarketContext.symbolName,
-            fromMarketContext.timeFrame,
-            SERIES_SYNCHRONIZED,
-            synced
-        )) {
-            return false;
-        }
-
-        return (synced != 0);
+            fromMarketContext.timeFrame
+        );
     }
 
 private:

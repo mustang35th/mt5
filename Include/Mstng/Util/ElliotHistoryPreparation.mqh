@@ -129,25 +129,7 @@ public:
             this.checkTimeFrame(timeFrame, requestBars, requiredBars, mayRequest,
                 synchronized, availableBars, requested);
 
-            bool timeFrameReady = synchronized && availableBars >= requiredBars;
-            if (!synchronized) {
-                this.unsynchronizedMask |= 1 << i;
-            }
-
-            string detail = this.createStatusText(timeFrame, synchronized, availableBars,
-                requiredBars, timeFrameReady);
-            if (this.statusText != "") {
-                this.statusText += ", ";
-            }
-            this.statusText += detail;
-            if (!timeFrameReady) {
-                this.ready = false;
-                this.missingMask |= 1 << i;
-                if (this.missingStatusText != "") {
-                    this.missingStatusText += ", ";
-                }
-                this.missingStatusText += detail;
-            }
+            this.applyTimeFrameResult(i, timeFrame, synchronized, availableBars, requiredBars);
         }
 
         if (requested) {
@@ -262,6 +244,46 @@ private:
             fromRequested = true;
             fromSynchronized = WarmUpSeriesUtil::isSeriesSynchronized(this.symbolName, fromTimeFrame);
             fromAvailableBars = Bars(this.symbolName, fromTimeFrame);
+        }
+    }
+
+    /**
+     * 指定時間足の確認結果を準備状態・不足フラグ・診断文へ反映する。
+     *
+     * 未準備の足があれば全体の準備状態をfalseにし、他の足で記録した結果は保持する。
+     * 全足の診断文と不足足だけの診断文には、確認した時間足順で追記する。
+     *
+     * @param fromIndex 上位足からの対象インデックス。不足・未同期フラグのbit位置。
+     * @param fromTimeFrame 確認対象の時間足。
+     * @param fromSynchronized 確認後の同期状態。
+     * @param fromAvailableBars 確認後の履歴本数。
+     * @param fromRequiredBars 準備完了に必要な本数。同期だけを確認する場合は0。
+     */
+    void applyTimeFrameResult(
+        const int fromIndex,
+        const ENUM_TIMEFRAMES fromTimeFrame,
+        const bool fromSynchronized,
+        const int fromAvailableBars,
+        const int fromRequiredBars
+    ) {
+        bool timeFrameReady = fromSynchronized && fromAvailableBars >= fromRequiredBars;
+        if (!fromSynchronized) {
+            this.unsynchronizedMask |= 1 << fromIndex;
+        }
+
+        string detail = this.createStatusText(fromTimeFrame, fromSynchronized, fromAvailableBars,
+            fromRequiredBars, timeFrameReady);
+        if (this.statusText != "") {
+            this.statusText += ", ";
+        }
+        this.statusText += detail;
+        if (!timeFrameReady) {
+            this.ready = false;
+            this.missingMask |= 1 << fromIndex;
+            if (this.missingStatusText != "") {
+                this.missingStatusText += ", ";
+            }
+            this.missingStatusText += detail;
         }
     }
 

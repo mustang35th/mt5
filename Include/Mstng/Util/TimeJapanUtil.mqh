@@ -134,6 +134,33 @@ private:
     }
 
     /**
+     * 指定年月の第n曜日の00:00:00を取得する。
+     *
+     * @param fromYear 年。
+     * @param fromMonth 月。
+     * @param fromWeekday 曜日（0は日曜日）。
+     * @param fromNth 第n。
+     * @return 指定した日の00:00:00。
+     */
+    static datetime getNthWeekdayDatetime(
+        const int fromYear,
+        const int fromMonth,
+        const int fromWeekday,
+        const int fromNth
+    ) {
+        int day = TimeJapanUtil::getNthWeekdayOfMonth(fromYear, fromMonth, fromWeekday, fromNth);
+
+        return StringToTime(
+            StringFormat(
+                "%04d.%02d.%02d 00:00:00",
+                fromYear,
+                fromMonth,
+                day
+            )
+        );
+    }
+
+    /**
      * 夏時間開始日時を取得する。
      *
      * @param yearValue 年。
@@ -141,16 +168,7 @@ private:
      */
     static datetime getDstStartDatetime(const int yearValue) {
         // 3月第2日曜取得
-        int day = TimeJapanUtil::getNthWeekdayOfMonth(yearValue, 3, 0, 2);
-
-        return StringToTime(
-            StringFormat(
-                "%04d.%02d.%02d 00:00:00",
-                yearValue,
-                3,
-                day
-            )
-        );
+        return TimeJapanUtil::getNthWeekdayDatetime(yearValue, 3, 0, 2);
     }
 
     /**
@@ -161,16 +179,7 @@ private:
      */
     static datetime getDstEndDatetime(const int yearValue) {
         // 11月第1日曜取得
-        int day = TimeJapanUtil::getNthWeekdayOfMonth(yearValue, 11, 0, 1);
-
-        return StringToTime(
-            StringFormat(
-                "%04d.%02d.%02d 00:00:00",
-                yearValue,
-                11,
-                day
-            )
-        );
+        return TimeJapanUtil::getNthWeekdayDatetime(yearValue, 11, 0, 1);
     }
 };
 
