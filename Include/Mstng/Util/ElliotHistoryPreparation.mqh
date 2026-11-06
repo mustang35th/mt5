@@ -124,16 +124,10 @@ public:
                 requiredBars = requestBars;
             }
 
-            bool synchronized = WarmUpSeriesUtil::isSeriesSynchronized(this.symbolName, timeFrame);
-            int availableBars = Bars(this.symbolName, timeFrame);
-            if ((!synchronized || availableBars < requiredBars) && mayRequest) {
-                MqlRates rates[];
-                // 取得要求だけで成功扱いせず、Testerから見える履歴を読み直す。
-                CopyRates(this.symbolName, timeFrame, 0, requestBars, rates);
-                requested = true;
-                synchronized = WarmUpSeriesUtil::isSeriesSynchronized(this.symbolName, timeFrame);
-                availableBars = Bars(this.symbolName, timeFrame);
-            }
+            bool synchronized = false;
+            int availableBars = 0;
+            this.checkTimeFrame(timeFrame, requestBars, requiredBars, mayRequest,
+                synchronized, availableBars, requested);
 
             bool timeFrameReady = synchronized && availableBars >= requiredBars;
             if (!synchronized) {
@@ -235,6 +229,41 @@ private:
 
     /** 不足足だけの履歴診断。 */
     string missingStatusText;
+
+    /**
+     * 指定時間足の同期状態と履歴本数を確認し、不足時に再取得を要求する。
+     *
+     * 取得要求後は同期状態と本数を読み直す。要求済みフラグはtrueに更新するだけで、
+     * 他の時間足ですでに行った取得要求の記録を保持する。
+     *
+     * @param fromTimeFrame 確認対象の時間足。
+     * @param fromRequestBars 不足時に取得を要求する本数。
+     * @param fromRequiredBars 準備完了に必要な本数。同期だけを確認する場合は0。
+     * @param fromMayRequest 再取得の間隔を満たし、取得要求が可能な場合true。
+     * @param fromSynchronized 最後に読み取った同期状態。
+     * @param fromAvailableBars 最後に読み取った履歴本数。
+     * @param fromRequested 全時間足の取得要求済みフラグ。今回要求した場合だけtrueに更新。
+     */
+    void checkTimeFrame(
+        const ENUM_TIMEFRAMES fromTimeFrame,
+        const int fromRequestBars,
+        const int fromRequiredBars,
+        const bool fromMayRequest,
+        bool &fromSynchronized,
+        int &fromAvailableBars,
+        bool &fromRequested
+    ) {
+        fromSynchronized = WarmUpSeriesUtil::isSeriesSynchronized(this.symbolName, fromTimeFrame);
+        fromAvailableBars = Bars(this.symbolName, fromTimeFrame);
+        if ((!fromSynchronized || fromAvailableBars < fromRequiredBars) && fromMayRequest) {
+            MqlRates rates[];
+            // 取得要求だけで成功扱いせず、Testerから見える履歴を読み直す。
+            CopyRates(this.symbolName, fromTimeFrame, 0, fromRequestBars, rates);
+            fromRequested = true;
+            fromSynchronized = WarmUpSeriesUtil::isSeriesSynchronized(this.symbolName, fromTimeFrame);
+            fromAvailableBars = Bars(this.symbolName, fromTimeFrame);
+        }
+    }
 
     /**
      * Testerはシミュレーション時刻、LIVEは単調経過時刻を返す。

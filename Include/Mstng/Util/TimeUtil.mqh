@@ -60,10 +60,12 @@ public:
     }
     
     /**
-     * datetime を "yyyymmddhhmi" 形式（例: 202512240915）に変換する。
+     * datetime を区切り文字なし・分までの "yyyymmddhhmi" 形式（例: 202512240915）に整形する。
+     *
+     * 入力日時の秒は出力せず、タイムゾーンの変換は行わない。
      *
      * @param fromDatetime 対象日時。
-     * @return "yyyymmddhhmi" 形式の文字列。
+     * @return 区切り文字を含まない "yyyymmddhhmi" 形式の文字列。
      */
     static string formatYyyymmddhhmi(datetime fromDatetime) {
         MqlDateTime dt;
@@ -78,10 +80,13 @@ public:
     }
     
     /**
-     * datetime を "yyyy/mm/dd hh:mm:ss" 形式（例: 2025/12/24 09:15:30）に変換する。
+     * datetime を区切り文字あり・秒までの "yyyy/mm/dd hh:mm:ss" 形式（例: 2025/12/24 09:15:30）に整形する。
+     *
+     * 日付にスラッシュ、時刻にコロン、その間に空白を入れる。
+     * タイムゾーンの変換は行わない。
      *
      * @param fromDatetime 対象日時。
-     * @return 変換された日時文字列。
+     * @return 区切り文字を含む "yyyy/mm/dd hh:mm:ss" 形式の文字列。
      */
     static string formatYyyymmddhhmiss(datetime fromDatetime) {
         MqlDateTime dt;

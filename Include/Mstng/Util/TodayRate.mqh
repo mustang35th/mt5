@@ -8,9 +8,10 @@
 #property strict
 
 #include <Mstng\Common\MarketContext.mqh>
+#include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Util\PipConverter.mqh>
+#include <Mstng\Util\RateUtil.mqh>
 #include <Mstng\Util\Util.mqh>
-#include <Mstng\Util\UtilAll.mqh>
 
 /**
  * 現在のBid・Ask・スプレッドおよび当日の日足高値・安値を管理するクラス。
@@ -219,19 +220,11 @@ private:
         this.bid = 0.0;
         this.spread = 0.0;
 
-        this.high = 0.0;
-        this.low = 0.0;
-        this.diff = 0;
-        this.diffJpy = 0;
-
         this.askLabel = "";
         this.bidLabel = "";
         this.spreadLabel = "";
 
-        this.highLabel = "";
-        this.lowLabel = "";
-        this.diffLabel = "";
-        this.diffJpyLabel = "";
+        this.clearDailyRange();
     }
 
     /**
@@ -316,31 +309,50 @@ private:
         bool isDailyRangeAvailable = this.canReadDailyRange();
 
         if (isDailyRangeAvailable) {
-            // D1 高値/安値（当日バー：shift=0）
-            this.high = iHigh(this.marketContext.symbolName, PERIOD_D1, 0);
-            this.low  = iLow(this.marketContext.symbolName, PERIOD_D1, 0);
-
-            // Diff（pips、int）
-            double diffPips = RateUtil::getDiffPips(this.low, this.high, this.marketContext);
-            this.diff = (int)MathRound(diffPips);
-
-            if (!this.marketContext.isJpy()) {
-                double jpyAmount = 0.0;
-
-                if (PipConverter::tryConvertPipsToJpy(this.marketContext, this.diff, 100, jpyAmount)) {
-                    this.diffJpy = (int)MathRound(jpyAmount);
-                }
-            }
+            this.updateDailyRange();
         } else {
             this.clearDailyRange();
         }
 
+        this.updateLabels(fromDigits, isDailyRangeAvailable);
+    }
+
+    /**
+     * 日足の高値・安値と値幅を取得し、必要に応じて円換算する。
+     *
+     * 日足を参照できる場合だけ呼び出す。円換算に失敗した場合は前回の換算値を保持する。
+     */
+    void updateDailyRange() {
+        // D1 高値/安値（当日バー：shift=0）
+        this.high = iHigh(this.marketContext.symbolName, PERIOD_D1, 0);
+        this.low  = iLow(this.marketContext.symbolName, PERIOD_D1, 0);
+
+        // Diff（pips、int）
+        double diffPips = RateUtil::getDiffPips(this.low, this.high, this.marketContext);
+        this.diff = (int)MathRound(diffPips);
+
+        if (!this.marketContext.isJpy()) {
+            double jpyAmount = 0.0;
+
+            if (PipConverter::tryConvertPipsToJpy(this.marketContext, this.diff, 100, jpyAmount)) {
+                this.diffJpy = (int)MathRound(jpyAmount);
+            }
+        }
+    }
+
+    /**
+     * 保持している価格情報から表示ラベルを生成する。
+     *
+     * @param fromDigits 価格の表示桁数。
+     * @param fromDailyRangeAvailable 日足を参照可能で、値幅を更新した場合true。
+     */
+    void updateLabels(const int fromDigits, const bool fromDailyRangeAvailable) {
         // ラベル作成
         this.askLabel = DoubleToString(this.ask, fromDigits);
         this.bidLabel = DoubleToString(this.bid, fromDigits);
         this.spreadLabel = DoubleToString(this.spread, 1);
 
-        if (isDailyRangeAvailable) {
+        if (fromDailyRangeAvailable) {
             this.highLabel = DoubleToString(this.high, fromDigits);
             this.lowLabel = DoubleToString(this.low, fromDigits);
             this.diffLabel = IntegerToString(this.diff);

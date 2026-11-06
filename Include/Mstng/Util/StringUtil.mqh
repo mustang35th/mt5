@@ -63,17 +63,18 @@ public:
     /**
      * 通貨ペア名を左右2つの通貨コードに分割する。
      *
-     * 主に "EURUSD" や "USDJPY" のような 6 文字の通貨ペア名を、
-     * 左3文字と右3文字に分割することを想定しています。
-     * 例: "EURUSD" → left="EUR", right="USD"。
+     * 6文字以上の通貨ペア名から、先頭3文字と続く3文字を取り出す。
+     * 7文字目以降のサフィックスは使用しない。
+     * 例: "EURUSD"、"EURUSD.a" → left="EUR", right="USD"。
+     * 通貨コードの妥当性確認や大文字への変換、プレフィックスの除去は行わない。
      *
-     * 6 文字以外の通貨ペア名は分割に失敗し、false を返す。
+     * 6文字未満の場合は、左右の出力を空文字にして false を返す。
      *
      * @param originalCurrencyPairName 元の通貨ペア名（例: "EURUSD"）。
      * @param leftCurrencyName         分割後の左側（例: "EUR"）。
      * @param rightCurrencyName        分割後の右側（例: "USD"）。
      *
-     * @return 分割に成功した場合は true、想定外の形式で分割できなかった場合は false。
+     * @return 6文字以上であれば true、6文字未満であれば false。
      */
     static bool splitCurrencyPairName(const string originalCurrencyPairName,
                                       string &leftCurrencyName,
@@ -97,12 +98,12 @@ public:
     }
     
     /**
-     * 整数(1..99)をローマ数字に変換して返す。
+     * 整数(1..99)を小文字のローマ数字に変換して返す。
      *
-     * 例: 1→"I", 4→"IV", 9→"IX", 40→"XL", 58→"LVIII", 99→"XCIX"
+     * 例: 1→"i", 4→"iv", 9→"ix", 40→"xl", 58→"lviii", 99→"xcix"
      *
      * @param value 変換対象（1..99）。
-     * @return ローマ数字。範囲外(<=0 または >99)は空文字を返す。
+     * @return 小文字のローマ数字。範囲外(<=0 または >99)は空文字を返す。
      */
     static string toRoman(const int value) {
         if (value <= 0 || value > 99) {
