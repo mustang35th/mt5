@@ -45,6 +45,7 @@ public:
         this.validPairCount = 0;
         this.lastCalculationFatalError = false;
         this.lastPreparationFailureReason = "";
+        this.preparedReferenceSymbolName = "";
         this.voteWeightMode = fromVoteWeightMode;
 
         if (!CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
@@ -58,6 +59,8 @@ public:
             this.resolvedSymbolNames,
             symbolCount
         );
+        ArrayResize(this.pairSeriesPrepared, symbolCount);
+        ArrayInitialize(this.pairSeriesPrepared, false);
 
         for (int i = 0; i < symbolCount; i++) {
             this.resolvedSymbolNames[i] = "";
@@ -129,6 +132,7 @@ public:
                     fromTargetM5BarTime,
                     expectedBarTimes
                 )) {
+            ArrayInitialize(this.pairSeriesPrepared, false);
             this.setPreparationFailureReason(
                 StringFormat(
                     "reference bar resolution failed. symbol=%s target=%s",
@@ -146,6 +150,12 @@ public:
         int total = this.symbolNameInfoAll.size();
 
         for (int i = 0; i < total; i++) {
+            bool reusePreparedSeries = false;
+            if (i < ArraySize(this.pairSeriesPrepared)) {
+                reusePreparedSeries = this.pairSeriesPrepared[i];
+                this.pairSeriesPrepared[i] = false;
+            }
+
             SymbolNameInfo *symbolNameInfo = this.symbolNameInfoAll.getSymbolNameInfo(i);
 
             if (symbolNameInfo == NULL) {
@@ -200,6 +210,7 @@ public:
             if (!this.preparePair(
                 symbolName,
                 oscillatorHandlePool,
+                reusePreparedSeries,
                 fromTargetM5BarTime,
                 expectedBarTimes,
                 pairShifts,
@@ -319,6 +330,10 @@ public:
             }
 
             this.resolvedSymbolNames[i] = symbolName;
+            if (i < ArraySize(this.pairSeriesPrepared)) {
+                this.pairSeriesPrepared[i] = true;
+            }
+
             this.validPairCount++;
         }
 
@@ -641,6 +656,12 @@ private:
     /** 正規名に対応する実シンボル名一覧。 */
     string resolvedSymbolNames[];
 
+    /** 前回の全時間足の準備・方向取得に成功したペア。今回の検査は省略しない。 */
+    bool pairSeriesPrepared[];
+
+    /** 前回の全時間足の参照時刻解決に成功した実シンボル名。 */
+    string preparedReferenceSymbolName;
+
     /** 今回の集計へ反映した通貨強弱票一覧。 */
     CurrencyStrengthPairVote pairVotes[];
 
@@ -779,6 +800,8 @@ private:
 
         this.currencyStrengthInfoList.Clear();
         ArrayFree(this.pairVotes);
+        ArrayFree(this.pairSeriesPrepared);
+        this.preparedReferenceSymbolName = "";
     }
 
     /**
@@ -788,16 +811,60 @@ private:
      * 利用可能な最小時間足をM5に固定する。
      *
      * @param fromSymbolName 同期対象シンボル名。
+     * @param fromReusePreparedSeries 前回成功済みなら、今回も同期済みの場合だけコピーを省く。
      * @return M5系列が同期済みの場合true。
      */
-    bool warmUpM5Series(const string fromSymbolName) {
+    bool warmUpM5Series(const string fromSymbolName, const bool fromReusePreparedSeries) {
+        MarketContext warmUpContext(fromSymbolName, PERIOD_M5);
+        if (fromReusePreparedSeries && WarmUpSeriesUtil::isSeriesSynchronized(warmUpContext)) {
+            return true;
+        }
+
         ENUM_TIMEFRAMES timeFrames[1];
         timeFrames[0] = PERIOD_M5;
-
-        MarketContext warmUpContext(fromSymbolName, PERIOD_M5);
         WarmUpSeriesUtil::warmUp(warmUpContext, timeFrames, 200);
 
         return WarmUpSeriesUtil::isSeriesSynchronized(warmUpContext);
+    }
+
+    /**
+     * M5同期後に上位足をまとめて準備する。成功済みの場合は未同期の足だけ要求する。
+     * 200本は同期促進の要求数であり、集計に必要な本数の条件は変更しない。
+     *
+     * @param fromSymbolName 準備対象の実シンボル名。
+     * @param fromReusePreparedSeries 前回の全時間足の取得が成功している場合true。
+     * @return 準備要求を発行できた場合true。各系列の準備完了は呼び出し元で検査する。
+     */
+    bool warmUpHigherSeries(const string fromSymbolName, const bool fromReusePreparedSeries) {
+        ENUM_TIMEFRAMES warmUpTimeFrames[];
+        int timeFrameCount = this.getTimeFrameCount();
+        int requestedCount = 0;
+        for (int i = timeFrameCount - 2; i >= 0; i--) {
+            ENUM_TIMEFRAMES timeFrame = this.getTimeFrame(i);
+            if (fromReusePreparedSeries
+                    && WarmUpSeriesUtil::isSeriesSynchronized(fromSymbolName, timeFrame)) {
+                continue;
+            }
+
+            if (ArrayResize(warmUpTimeFrames, requestedCount + 1, timeFrameCount - 1)
+                    != requestedCount + 1) {
+                this.setPreparationFailureReason(
+                    "series warm-up allocation failed. symbol=" + fromSymbolName
+                );
+
+                return false;
+            }
+
+            warmUpTimeFrames[requestedCount] = timeFrame;
+            requestedCount++;
+        }
+
+        if (requestedCount > 0) {
+            MarketContext warmUpContext(fromSymbolName, PERIOD_M15);
+            WarmUpSeriesUtil::warmUp(warmUpContext, warmUpTimeFrames, 200);
+        }
+
+        return true;
     }
 
     /**
@@ -813,6 +880,9 @@ private:
         const datetime fromTargetM5BarTime,
         datetime &fromBarTimes[]
     ) {
+        bool reusePreparedSeries = this.preparedReferenceSymbolName == fromReferenceSymbolName
+            && fromReferenceSymbolName != "";
+        this.preparedReferenceSymbolName = "";
         if (fromReferenceSymbolName == "" || fromTargetM5BarTime <= 0) {
             return false;
         }
@@ -821,22 +891,16 @@ private:
             return false;
         }
 
-        if (!this.warmUpM5Series(fromReferenceSymbolName)) {
+        if (!this.warmUpM5Series(fromReferenceSymbolName, reusePreparedSeries)) {
             return false;
         }
 
-        ENUM_TIMEFRAMES warmUpTimeFrames[7];
-        int timeFrameCount = this.getTimeFrameCount();
-
-        for (int i = 0; i < timeFrameCount; i++) {
-            int timeFrameIndex = timeFrameCount - 1 - i;
-            warmUpTimeFrames[i] = this.getTimeFrame(timeFrameIndex);
+        if (!this.warmUpHigherSeries(fromReferenceSymbolName, reusePreparedSeries)) {
+            return false;
         }
 
-        MarketContext warmUpContext(fromReferenceSymbolName, PERIOD_M15);
-        WarmUpSeriesUtil::warmUp(warmUpContext, warmUpTimeFrames, 200);
-
         // 配列格納順は維持し、系列参照だけをM5から上位足の順にする。
+        int timeFrameCount = this.getTimeFrameCount();
         for (int i = timeFrameCount - 1; i >= 0; i--) {
             ENUM_TIMEFRAMES timeFrame = this.getTimeFrame(i);
             MarketContext context(fromReferenceSymbolName, timeFrame);
@@ -894,6 +958,8 @@ private:
             fromBarTimes[i] = sourceBarTime;
         }
 
+        this.preparedReferenceSymbolName = fromReferenceSymbolName;
+
         return true;
     }
 
@@ -905,6 +971,7 @@ private:
      *
      * @param fromSymbolName 準備対象の実シンボル名。
      * @param fromOscillatorHandlePool 対象シンボルのハンドルプール。
+     * @param fromReusePreparedSeries 前回の全時間足の準備・方向取得に成功した場合true。
      * @param fromM5BarTime スナップショット対象のM5足開始時刻。0の場合は現在足。
      * @param fromExpectedBarTimes 時間足別の期待する確定バー時刻。
      * @param fromShifts 時間足別の参照シフト格納先。
@@ -914,6 +981,7 @@ private:
     bool preparePair(
         string fromSymbolName,
         OscillatorHandlePool *fromOscillatorHandlePool,
+        const bool fromReusePreparedSeries,
         const datetime fromM5BarTime,
         const datetime &fromExpectedBarTimes[],
         int &fromShifts[],
@@ -927,7 +995,7 @@ private:
             return false;
         }
 
-        if (!this.warmUpM5Series(fromSymbolName)) {
+        if (!this.warmUpM5Series(fromSymbolName, fromReusePreparedSeries)) {
             this.setPreparationFailureReason(
                 "M5 series is not synchronized. symbol=" + fromSymbolName
             );
@@ -935,16 +1003,9 @@ private:
             return false;
         }
 
-        ENUM_TIMEFRAMES warmUpTimeFrames[7];
-        int timeFrameCount = this.getTimeFrameCount();
-
-        for (int i = 0; i < timeFrameCount; i++) {
-            int timeFrameIndex = timeFrameCount - 1 - i;
-            warmUpTimeFrames[i] = this.getTimeFrame(timeFrameIndex);
+        if (!this.warmUpHigherSeries(fromSymbolName, fromReusePreparedSeries)) {
+            return false;
         }
-
-        MarketContext warmUpContext(fromSymbolName, PERIOD_M15);
-        WarmUpSeriesUtil::warmUp(warmUpContext, warmUpTimeFrames, 200);
 
         StochasticHandlePool *shortHandlePool =
             fromOscillatorHandlePool.getStochasticShortHandlePool();
@@ -955,6 +1016,7 @@ private:
         bool isReady = true;
 
         // 始値モデルでは各シンボルの最初の参照時間足をM5に固定する。
+        int timeFrameCount = this.getTimeFrameCount();
         for (int i = timeFrameCount - 1; i >= 0; i--) {
             ENUM_TIMEFRAMES timeFrame = this.getTimeFrame(i);
             MarketContext context(fromSymbolName, timeFrame);

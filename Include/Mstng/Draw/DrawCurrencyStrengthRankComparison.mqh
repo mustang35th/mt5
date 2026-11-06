@@ -13,6 +13,7 @@
 #include <Canvas\Canvas.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 
 /**
@@ -54,6 +55,7 @@ public:
         this.mutedColor = C'130,130,130';
         this.created = false;
         this.rankingReady = false;
+        this.comparisonDirty = true;
         this.selectedCurrency = "";
         this.selectedSecondCurrency = "";
         this.selectedPair = "";
@@ -114,6 +116,10 @@ public:
         }
 
         bool ranksReady = this.readRanks(fromCalculator);
+        if (this.rankingReady != ranksReady) {
+            this.comparisonDirty = true;
+        }
+
         string previousSelection = this.selectedCurrency;
         string previousSecondSelection = this.selectedSecondCurrency;
         string previousPairSelection = this.selectedPair;
@@ -155,8 +161,13 @@ public:
         }
 
         this.updateTitle(fromCalculator);
-        this.renderComparison();
-        ChartRedraw(this.chartId);
+        if (this.comparisonDirty) {
+            this.renderComparison();
+        } else {
+            this.updateSelectionStatus();
+        }
+
+        DrawChartRedrawBatch::request(this.chartId);
 
         return true;
     }
@@ -283,7 +294,7 @@ public:
 
         if (this.created) {
             this.renderComparison();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
         }
     }
 
@@ -292,12 +303,13 @@ public:
      */
     void clear() {
         this.destroyObjects();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
     }
 
     /**
      * 表示中のREADY候補に含まれる通貨をまとめて強調する。
      * 対象が空でもONを保持し、全通貨を通常表示する。
+     * ON状態と対象通貨が同じ場合は、通常描画済みのCanvasを再描画しない。
      *
      * @param fromEnabled READY強調を有効にする場合true。
      * @param fromSymbols 主要8通貨からなる大文字6文字の候補ペア一覧。
@@ -345,6 +357,22 @@ public:
             }
         }
 
+        bool isSameHighlight = this.readyHighlightEnabled
+            && this.selectedCurrency == "" && this.selectedSecondCurrency == ""
+            && this.selectedPair == "" && this.readyCurrencyCount == nextCurrencyCount;
+        if (isSameHighlight) {
+            for (int i = 0; i < 8; i++) {
+                if (this.readyCurrencyMask[i] != nextCurrencyMask[i]) {
+                    isSameHighlight = false;
+                    break;
+                }
+            }
+        }
+
+        if (isSameHighlight) {
+            return true;
+        }
+
         this.selectedCurrency = "";
         this.selectedSecondCurrency = "";
         this.selectedPair = "";
@@ -352,7 +380,7 @@ public:
         this.readyCurrencyCount = nextCurrencyCount;
         ArrayCopy(this.readyCurrencyMask, nextCurrencyMask);
         this.renderComparison();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
 
         return true;
     }
@@ -398,7 +426,7 @@ public:
         }
 
         this.renderComparison();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
 
         return true;
     }
@@ -425,7 +453,7 @@ public:
         this.selectedPair = "";
         if (this.created) {
             this.renderComparison();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
         }
     }
 
@@ -449,7 +477,7 @@ public:
             this.resetRegionHighlight();
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
             this.renderComparison();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
 
             return true;
         }
@@ -482,7 +510,7 @@ public:
             }
 
             this.renderComparison();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
 
             return true;
         }
@@ -502,6 +530,9 @@ private:
 
     /** 全通貨の実順位が利用可能な場合true。 */
     bool rankingReady;
+
+    /** 順位・待機状態・描画オブジェクトが変わり、通常更新で再描画が必要な場合true。 */
+    bool comparisonDirty;
 
     /** パネル左位置。 */
     int xDistance;
@@ -688,6 +719,7 @@ private:
 
     /**
      * 全28ペアが揃った場合だけ、既存APIから8通貨の実順位を取得する。
+     * 全件を確認してから保持値へ反映し、同じ順位の帯・行計算を省く。
      *
      * @param fromCalculator 集計結果。
      * @return 両期間の全順位が有効な場合true。
@@ -700,6 +732,9 @@ private:
 
         bool assigned[8];
         ArrayInitialize(assigned, false);
+        int nextLeftRanks[8];
+        int nextRightRanks[8];
+        bool ranksChanged = !this.rankingReady;
         for (int i = 0; i < 8; i++) {
             CurrencyStrengthInfo *info = fromCalculator.getInfo(i);
             if (info == NULL) {
@@ -718,13 +753,24 @@ private:
             }
 
             assigned[currencyIndex] = true;
-            this.leftRanks[currencyIndex] = leftRank;
-            this.rightRanks[currencyIndex] = rightRank;
+            nextLeftRanks[currencyIndex] = leftRank;
+            nextRightRanks[currencyIndex] = rightRank;
+            if (!ranksChanged && (this.leftRanks[currencyIndex] != leftRank
+                    || this.rightRanks[currencyIndex] != rightRank)) {
+                ranksChanged = true;
+            }
         }
 
+        if (!ranksChanged) {
+            return true;
+        }
+
+        ArrayCopy(this.leftRanks, nextLeftRanks);
+        ArrayCopy(this.rightRanks, nextRightRanks);
         this.buildRankBands();
         this.buildRows(this.leftRanks, this.leftRows);
         this.buildRows(this.rightRanks, this.rightRows);
+        this.comparisonDirty = true;
 
         return true;
     }
@@ -907,6 +953,7 @@ private:
         }
 
         this.lineCanvas.Update(false);
+        this.comparisonDirty = false;
     }
 
     /**
@@ -968,7 +1015,7 @@ private:
         ArrayInitialize(this.readyCurrencyMask, false);
         if (fromRedraw && wasEnabled && this.created) {
             this.renderComparison();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
         }
     }
 
@@ -1172,6 +1219,7 @@ private:
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
         this.rankingReady = false;
+        this.comparisonDirty = true;
         this.selectedCurrency = "";
         this.selectedSecondCurrency = "";
         this.selectedPair = "";

@@ -11,6 +11,7 @@
 #define MSTNG_DRAW_CURRENCY_STRENGTH_LIST_MQH
 
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
@@ -138,7 +139,7 @@ public:
         }
 
         this.updateSummary(fromCalculator);
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
 
         return true;
     }
@@ -148,7 +149,7 @@ public:
      */
     void clear() {
         this.destroyObjects();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
     }
 
     /**
@@ -172,6 +173,18 @@ private:
 
     /** 生成済みの行数。 */
     int createdRowCount;
+
+    /** セルへ反映済みの文字列。行番号と列番号から求めた位置で保持する。 */
+    string cellTexts[];
+
+    /** セルへ反映済みの文字色。 */
+    color cellColors[];
+
+    /** セル文字列の反映済み値を利用できる場合true。 */
+    bool cellTextValid[];
+
+    /** セル文字色の反映済み値を利用できる場合true。 */
+    bool cellColorValid[];
 
     /** パネル配置基準の角。 */
     ENUM_BASE_CORNER corner;
@@ -260,6 +273,19 @@ private:
         CurrencyStrengthCalculator *fromCalculator
     ) {
         this.destroyObjects();
+
+        int cellCount = fromRowCount * this.getColumnCount();
+        if (ArrayResize(this.cellTexts, cellCount) != cellCount
+                || ArrayResize(this.cellColors, cellCount) != cellCount
+                || ArrayResize(this.cellTextValid, cellCount) != cellCount
+                || ArrayResize(this.cellColorValid, cellCount) != cellCount) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        ArrayInitialize(this.cellTextValid, false);
+        ArrayInitialize(this.cellColorValid, false);
 
         int summarySeparatorYDistance = this.firstRowYDistance
             + (fromRowCount * this.rowHeight)
@@ -916,7 +942,7 @@ private:
     }
 
     /**
-     * セルの文字列と色を更新する。
+     * セルの文字列と色のうち、前回の反映値から変わった項目だけ更新する。
      *
      * @param fromRowIndex 行番号。
      * @param fromColumnIndex 列番号。
@@ -933,9 +959,29 @@ private:
             return;
         }
 
+        int cellIndex = fromRowIndex * this.getColumnCount() + fromColumnIndex;
+        if (cellIndex < 0 || cellIndex >= ArraySize(this.cellTexts)) {
+            return;
+        }
+
+        bool updateText = !this.cellTextValid[cellIndex]
+            || this.cellTexts[cellIndex] != fromText;
+        bool updateColor = !this.cellColorValid[cellIndex]
+            || this.cellColors[cellIndex] != fromColor;
+        if (!updateText && !updateColor) {
+            return;
+        }
+
         string objectName = this.getCellObjectName(fromRowIndex, fromColumnIndex);
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+        if (updateText && ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText)) {
+            this.cellTexts[cellIndex] = fromText;
+            this.cellTextValid[cellIndex] = true;
+        }
+
+        if (updateColor && ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor)) {
+            this.cellColors[cellIndex] = fromColor;
+            this.cellColorValid[cellIndex] = true;
+        }
     }
 
     /**
@@ -1164,6 +1210,10 @@ private:
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
         this.createdRowCount = 0;
+        ArrayFree(this.cellTexts);
+        ArrayFree(this.cellColors);
+        ArrayFree(this.cellTextValid);
+        ArrayFree(this.cellColorValid);
     }
 };
 

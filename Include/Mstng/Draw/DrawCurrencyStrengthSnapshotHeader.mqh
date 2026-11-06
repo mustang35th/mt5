@@ -11,6 +11,7 @@
 #define MSTNG_DRAW_CURRENCY_STRENGTH_SNAPSHOT_HEADER_MQH
 
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
 /**
@@ -118,7 +119,7 @@ public:
             return false;
         }
 
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
 
         return true;
     }
@@ -137,7 +138,7 @@ public:
      */
     void clear() {
         this.destroyObjects();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
     }
 
 private:

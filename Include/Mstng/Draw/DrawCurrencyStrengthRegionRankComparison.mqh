@@ -40,6 +40,8 @@ public:
         this.plotHeight = 208;
         this.created = false;
         this.rankingReady = false;
+        this.rankDetailsValid = false;
+        this.renderPending = true;
         this.selectedRegion = -1;
         this.fontName = "MS Gothic";
         this.backgroundColor = C'18,18,18';
@@ -117,12 +119,22 @@ public:
             nextPlotHeight = fromComparison.getPlotHeight();
         }
 
-        bool mustCreate = !this.created || this.panelHeight != nextPanelHeight
+        bool layoutChanged = this.panelHeight != nextPanelHeight
             || this.plotTop != nextPlotTop || this.plotHeight != nextPlotHeight;
+        bool mustCreate = !this.created || layoutChanged;
+        if (layoutChanged) {
+            this.rankDetailsValid = false;
+        }
+
         this.panelHeight = nextPanelHeight;
         this.plotTop = nextPlotTop;
         this.plotHeight = nextPlotHeight;
-        this.rankingReady = this.readRanks(fromComparison);
+        bool ranksReady = this.readRanks(fromComparison);
+        if (this.rankingReady != ranksReady) {
+            this.renderPending = true;
+        }
+
+        this.rankingReady = ranksReady;
         if (!this.rankingReady) {
             this.selectedRegion = -1;
         }
@@ -142,6 +154,7 @@ public:
     void clear() {
         this.destroyObjects();
         this.rankingReady = false;
+        this.rankDetailsValid = false;
         this.selectedRegion = -1;
     }
 
@@ -179,6 +192,7 @@ public:
                 this.selectedRegion = i;
             }
 
+            this.renderPending = true;
             this.render();
 
             return true;
@@ -196,6 +210,7 @@ public:
         }
 
         this.selectedRegion = -1;
+        this.renderPending = true;
         if (this.created) {
             this.render();
         }
@@ -267,6 +282,12 @@ private:
     /** 全通貨の順位を取得済みの場合true。 */
     bool rankingReady;
 
+    /** 現在の順位・座標に対応する地域平均と説明文を保持している場合true。 */
+    bool rankDetailsValid;
+
+    /** 順位・配置・選択の変更または再生成により表示更新が必要な場合true。 */
+    bool renderPending;
+
     /** 選択地域番号。未選択は-1。 */
     int selectedRegion;
 
@@ -332,26 +353,62 @@ private:
 
     /**
      * 通貨順位を取得し、地域ごとの平均とばらつきを算出する。
+     * 順位と実際の描画座標が同じ場合は、地域情報と説明文を再利用する。
      *
      * @param fromComparison 順位取得元。
      * @return 全順位を取得できた場合true。
      */
     bool readRanks(DrawCurrencyStrengthRankComparison *fromComparison) {
         if (fromComparison == NULL || !fromComparison.isRankingReady()) {
+            this.rankDetailsValid = false;
+
             return false;
         }
 
+        int nextLeftRanks[8];
+        int nextRightRanks[8];
+        int nextRankPoints[8];
+        bool ranksChanged = !this.rankDetailsValid;
         for (int i = 0; i < 8; i++) {
-            this.leftRanks[i] = fromComparison.getCurrencyRank(this.currencyNames[i], true);
-            this.rightRanks[i] = fromComparison.getCurrencyRank(this.currencyNames[i], false);
-            if (this.leftRanks[i] < 1 || this.leftRanks[i] > 8
-                    || this.rightRanks[i] < 1 || this.rightRanks[i] > 8) {
+            nextLeftRanks[i] = fromComparison.getCurrencyRank(this.currencyNames[i], true);
+            nextRightRanks[i] = fromComparison.getCurrencyRank(this.currencyNames[i], false);
+            if (nextLeftRanks[i] < 1 || nextLeftRanks[i] > 8
+                    || nextRightRanks[i] < 1 || nextRightRanks[i] > 8) {
+                this.rankDetailsValid = false;
+
                 return false;
             }
 
-            this.rankPoints[i] = (int)MathRound(fromComparison.getRankYDistance(i + 1.0));
+            nextRankPoints[i] = (int)MathRound(fromComparison.getRankYDistance(i + 1.0));
+            if (this.rankDetailsValid
+                    && (this.leftRanks[i] != nextLeftRanks[i]
+                        || this.rightRanks[i] != nextRightRanks[i]
+                        || this.rankPoints[i] != nextRankPoints[i])) {
+                ranksChanged = true;
+            }
         }
 
+        // 整数順位の中心が同じでも、平均順位の補間位置が変わった場合は更新する。
+        if (!ranksChanged) {
+            for (int i = 0; i < 4; i++) {
+                if (this.leftPoints[i] != (int)MathRound(
+                        fromComparison.getRankYDistance(this.leftMeans[i]))
+                        || this.rightPoints[i] != (int)MathRound(
+                            fromComparison.getRankYDistance(this.rightMeans[i]))) {
+                    ranksChanged = true;
+                    break;
+                }
+            }
+        }
+
+        if (!ranksChanged) {
+            return true;
+        }
+
+        this.rankDetailsValid = false;
+        ArrayCopy(this.leftRanks, nextLeftRanks);
+        ArrayCopy(this.rightRanks, nextRightRanks);
+        ArrayCopy(this.rankPoints, nextRankPoints);
         for (int i = 0; i < 4; i++) {
             int count = 0;
             int leftSum = 0;
@@ -404,6 +461,8 @@ private:
 
         this.arrangeLabels(this.leftPoints, this.leftLabelPoints);
         this.arrangeLabels(this.rightPoints, this.rightLabelPoints);
+        this.rankDetailsValid = true;
+        this.renderPending = true;
 
         return true;
     }
@@ -523,6 +582,10 @@ private:
      * 保持済み平均順位からラベル・接続線・選択状態を描画する。
      */
     void render() {
+        if (!this.created || !this.renderPending) {
+            return;
+        }
+
         string status = "WAITING DATA";
         color statusColor = clrGold;
         if (this.rankingReady) {
@@ -591,6 +654,7 @@ private:
         }
 
         this.lineCanvas.Update(false);
+        this.renderPending = false;
     }
 
     /**
@@ -746,6 +810,7 @@ private:
         this.lineCanvas.Destroy();
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
+        this.renderPending = true;
     }
 };
 

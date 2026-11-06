@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.07"
+#property version   "1.12"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -14,6 +14,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyPersistenceService.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankComparison.mqh>
@@ -158,6 +159,7 @@ string gLastRetryPreparationFailureReason;
  * @return 初期化結果。
  */
 int OnInit() {
+    DrawChartRedrawBatch redrawBatch;
     bool isTester = Util::isStrategyTester();
 
     if (MQLInfoInteger(MQL_OPTIMIZATION)) {
@@ -368,6 +370,7 @@ int OnInit() {
  * @param reason 終了理由。
  */
 void OnDeinit(const int reason) {
+    DrawChartRedrawBatch redrawBatch;
     EventKillTimer();
 
     if (Util::isStrategyTester()) {
@@ -406,6 +409,7 @@ void OnChartEvent(
         return;
     }
 
+    DrawChartRedrawBatch redrawBatch;
     if (gDrawCurrencyStrengthEntryCandidateList != NULL
             && gDrawCurrencyStrengthEntryCandidateList.handleFilterClick(fromStringValue)) {
         bool isDrawn = gDrawCurrencyStrengthEntryCandidateList.draw(
@@ -439,7 +443,7 @@ void OnChartEvent(
         gReadyHighlightRequested = false;
         if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
             gDrawCurrencyStrengthRegionRankComparison.clearSelection();
-            ChartRedraw(0);
+            DrawChartRedrawBatch::request(0);
         }
 
         if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
@@ -471,7 +475,7 @@ void OnChartEvent(
         gReadyHighlightRequested = false;
         if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
             gDrawCurrencyStrengthRegionRankComparison.clearSelection();
-            ChartRedraw(0);
+            DrawChartRedrawBatch::request(0);
         }
 
         gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(
@@ -1097,6 +1101,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         m5BarTime
     );
 
+    DrawChartRedrawBatch redrawBatch;
     bool isDrawingEnabled = !isTester || MQLInfoInteger(MQL_VISUAL_MODE);
     if (isDrawingEnabled && gDrawCurrencyStrengthSnapshotHeader != NULL) {
         if (!gDrawCurrencyStrengthSnapshotHeader.draw(
@@ -1128,7 +1133,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
             clearRegionSelection();
         }
 
-        ChartRedraw(0);
+        DrawChartRedrawBatch::request(0);
     }
 
     if (!isCalculated) {
@@ -1191,6 +1196,8 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
 
         synchronizePairSelection(areCandidatesReady && isRankComparisonDrawn);
     }
+
+    redrawBatch.finish();
 
     datetime calculatedAt = TimeCurrent();
 

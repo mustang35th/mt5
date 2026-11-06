@@ -12,6 +12,7 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
 
 /**
@@ -63,6 +64,7 @@ public:
         this.readyHighlightEnabled = false;
         this.andOnly = true;
         this.selectedSymbol = "";
+        this.displayedSelectedRow = -2;
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
@@ -112,7 +114,7 @@ public:
 
             this.updatePairTooltips();
             this.updateSelectionBackground();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
 
             return false;
         }
@@ -155,7 +157,7 @@ public:
         this.updateTitle(fromCandidateList, andCount, visibleCount);
         this.updatePairTooltips();
         this.updateSelectionBackground();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
 
         return true;
     }
@@ -183,7 +185,7 @@ public:
 
         this.andOnly = !this.andOnly;
         this.updateFilterButton();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
 
         return true;
     }
@@ -255,7 +257,7 @@ public:
 
         if (this.created) {
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
         }
 
         return this.created;
@@ -301,10 +303,14 @@ public:
      * @param fromEnabled READY強調モードが有効な場合true。
      */
     void setReadyHighlightEnabled(const bool fromEnabled) {
+        if (this.readyHighlightEnabled == fromEnabled) {
+            return;
+        }
+
         this.readyHighlightEnabled = fromEnabled;
         if (this.created) {
             this.updateReadyButton();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
         }
     }
 
@@ -314,10 +320,14 @@ public:
      * @param fromSymbolName 選択中の通貨ペア名。空文字列の場合は解除する。
      */
     void setSelectedSymbol(const string fromSymbolName) {
+        if (this.selectedSymbol == fromSymbolName) {
+            return;
+        }
+
         this.selectedSymbol = fromSymbolName;
         if (this.created) {
             this.updateSelectionBackground();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
         }
     }
 
@@ -327,12 +337,16 @@ public:
      * @param fromEnabled ペア選択を有効にする場合true。
      */
     void setPairSelectionEnabled(const bool fromEnabled) {
+        if (this.pairSelectionEnabled == fromEnabled) {
+            return;
+        }
+
         this.pairSelectionEnabled = fromEnabled;
         if (this.created) {
             this.updatePairTooltips();
             this.updateSelectionBackground();
             this.updateReadyButton();
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
         }
     }
 
@@ -341,7 +355,7 @@ public:
      */
     void clear() {
         this.destroyObjects();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
     }
 
 private:
@@ -365,6 +379,24 @@ private:
 
     /** 表示行ごとのGMO対象状態。空行や対象外はfalse。 */
     bool displayedGmo[];
+
+    /** 消去済み行の表示状態。再生成時と行描画時に無効化する。 */
+    bool clearedRows[];
+
+    /** セルへ最後に反映した文字列。行と列を一次元で管理する。 */
+    string displayedCellTexts[];
+
+    /** セルへ最後に反映した文字色。 */
+    color displayedCellColors[];
+
+    /** セルへ最後に反映した説明文。 */
+    string displayedCellTooltips[];
+
+    /** GMO目印へ最後に反映した説明文。 */
+    string displayedGmoTooltips[];
+
+    /** 選択背景へ反映済みの行番号。-1は非選択、-2は未反映。 */
+    int displayedSelectedRow;
 
     /** メールと共通のGMO対象判定に使用する通貨ペア定義。 */
     SymbolNameInfoAll gmoSymbolNameInfoAll;
@@ -460,15 +492,31 @@ private:
      */
     bool create() {
         this.destroyObjects();
+        int cellCount = this.maximumCount * this.getColumnCount();
         if (ArrayResize(this.displayedSymbols, this.maximumCount) != this.maximumCount
                 || ArrayResize(this.displayedReady, this.maximumCount) != this.maximumCount
-                || ArrayResize(this.displayedGmo, this.maximumCount) != this.maximumCount) {
+                || ArrayResize(this.displayedGmo, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.clearedRows, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.displayedGmoTooltips, this.maximumCount) != this.maximumCount
+                || ArrayResize(this.displayedCellTexts, cellCount) != cellCount
+                || ArrayResize(this.displayedCellColors, cellCount) != cellCount
+                || ArrayResize(this.displayedCellTooltips, cellCount) != cellCount) {
             this.destroyObjects();
 
             return false;
         }
 
         this.clearDisplayedSymbols();
+        ArrayInitialize(this.clearedRows, false);
+        ArrayInitialize(this.displayedCellColors, clrNONE);
+        for (int i = 0; i < cellCount; i++) {
+            this.displayedCellTexts[i] = "";
+            this.displayedCellTooltips[i] = "";
+        }
+
+        for (int i = 0; i < this.maximumCount; i++) {
+            this.displayedGmoTooltips[i] = "";
+        }
 
         int footerSeparatorYDistance = this.firstRowYDistance
             + this.maximumCount * this.rowHeight + 4;
@@ -856,6 +904,7 @@ private:
         const int fromRowIndex,
         CurrencyStrengthEntryCandidate &fromCandidate
     ) {
+        this.clearedRows[fromRowIndex] = false;
         this.displayedSymbols[fromRowIndex] = fromCandidate.symbolName;
         this.displayedReady[fromRowIndex] = fromCandidate.isAndReady();
         this.displayedGmo[fromRowIndex] =
@@ -914,8 +963,7 @@ private:
         }
 
         this.setCell(fromRowIndex, 3, longMediumText, this.normalColor);
-        ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, 3),
-            OBJPROP_TOOLTIP, this.getLongMediumTooltip(fromCandidate));
+        this.setCellTooltip(fromRowIndex, 3, this.getLongMediumTooltip(fromCandidate));
         this.setCell(
             fromRowIndex,
             4,
@@ -955,10 +1003,8 @@ private:
         this.setCell(fromRowIndex, 7, fromCandidate.getH1EmaLabel(), emaColor);
         this.setCell(fromRowIndex, 8, fromCandidate.getAndStatusLabel(), andColor);
         string emaTooltip = this.getEmaTooltip(fromCandidate);
-        ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, 7),
-            OBJPROP_TOOLTIP, emaTooltip);
-        ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, 8),
-            OBJPROP_TOOLTIP, emaTooltip);
+        this.setCellTooltip(fromRowIndex, 7, emaTooltip);
+        this.setCellTooltip(fromRowIndex, 8, emaTooltip);
     }
 
     /**
@@ -967,21 +1013,35 @@ private:
      * @param fromRowIndex 表示行番号。
      */
     void clearRow(const int fromRowIndex) {
+        if (this.clearedRows[fromRowIndex]) {
+            return;
+        }
+
         this.displayedSymbols[fromRowIndex] = "";
         this.displayedReady[fromRowIndex] = false;
         this.displayedGmo[fromRowIndex] = false;
 
         // 空文字はMT5の既定文字Labelになるため、空白1文字で非表示にする。
+        bool isCleared = true;
         for (int i = 0; i < this.getColumnCount(); i++) {
             this.setCell(fromRowIndex, i, " ", this.mutedColor);
-            ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, i),
-                OBJPROP_TOOLTIP, "\n");
+            this.setCellTooltip(fromRowIndex, i, "\n");
+            int cellIndex = fromRowIndex * this.getColumnCount() + i;
+            if (this.displayedCellTexts[cellIndex] != " "
+                    || this.displayedCellColors[cellIndex] != this.mutedColor
+                    || this.displayedCellTooltips[cellIndex] != "\n") {
+                isCleared = false;
+            }
         }
 
-        ObjectSetString(this.chartId, this.getGmoObjectName(fromRowIndex),
-            OBJPROP_TEXT, " ");
-        ObjectSetString(this.chartId, this.getGmoObjectName(fromRowIndex),
-            OBJPROP_TOOLTIP, "\n");
+        if (!ObjectSetString(this.chartId, this.getGmoObjectName(fromRowIndex),
+                OBJPROP_TEXT, " ")) {
+            isCleared = false;
+        }
+
+        this.setGmoTooltip(fromRowIndex, "\n");
+        this.clearedRows[fromRowIndex] = isCleared
+            && this.displayedGmoTooltips[fromRowIndex] == "\n";
     }
 
     /**
@@ -1018,8 +1078,8 @@ private:
                 }
             }
 
-            ObjectSetString(this.chartId, this.getCellObjectName(i, 1), OBJPROP_TOOLTIP, tooltip);
-            ObjectSetString(this.chartId, this.getGmoObjectName(i), OBJPROP_TOOLTIP, gmoTooltip);
+            this.setCellTooltip(i, 1, tooltip);
+            this.setGmoTooltip(i, gmoTooltip);
         }
     }
 
@@ -1042,16 +1102,24 @@ private:
             }
         }
 
-        if (selectedRow < 0) {
-            ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, this.panelBackgroundColor);
-            ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.panelBackgroundColor);
+        if (selectedRow == this.displayedSelectedRow) {
             return;
         }
 
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE,
-            this.yDistance + this.firstRowYDistance + selectedRow * this.rowHeight - 1);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, this.selectionBackgroundColor);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.selectionBackgroundColor);
+        color backgroundColor = this.panelBackgroundColor;
+        if (selectedRow >= 0) {
+            if (!ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE,
+                    this.yDistance + this.firstRowYDistance + selectedRow * this.rowHeight - 1)) {
+                return;
+            }
+
+            backgroundColor = this.selectionBackgroundColor;
+        }
+
+        if (ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor)
+                && ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, backgroundColor)) {
+            this.displayedSelectedRow = selectedRow;
+        }
     }
 
     /**
@@ -1172,12 +1240,60 @@ private:
         const string fromText,
         const color fromColor
     ) {
+        int cellIndex = fromRowIndex * this.getColumnCount() + fromColumnIndex;
+        bool textChanged = this.displayedCellTexts[cellIndex] != fromText;
+        bool colorChanged = this.displayedCellColors[cellIndex] != fromColor;
+        if (!textChanged && !colorChanged) {
+            return;
+        }
+
         string objectName = this.getCellObjectName(
             fromRowIndex,
             fromColumnIndex
         );
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+        if (textChanged && ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText)) {
+            this.displayedCellTexts[cellIndex] = fromText;
+        }
+
+        if (colorChanged && ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor)) {
+            this.displayedCellColors[cellIndex] = fromColor;
+        }
+    }
+
+    /**
+     * セルの説明文が変わった場合だけ反映する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromColumnIndex 列番号。
+     * @param fromTooltip 説明文。
+     */
+    void setCellTooltip(const int fromRowIndex, const int fromColumnIndex, const string fromTooltip) {
+        int cellIndex = fromRowIndex * this.getColumnCount() + fromColumnIndex;
+        if (this.displayedCellTooltips[cellIndex] == fromTooltip) {
+            return;
+        }
+
+        if (ObjectSetString(this.chartId, this.getCellObjectName(fromRowIndex, fromColumnIndex),
+                OBJPROP_TOOLTIP, fromTooltip)) {
+            this.displayedCellTooltips[cellIndex] = fromTooltip;
+        }
+    }
+
+    /**
+     * GMO目印の説明文が変わった場合だけ反映する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromTooltip 説明文。
+     */
+    void setGmoTooltip(const int fromRowIndex, const string fromTooltip) {
+        if (this.displayedGmoTooltips[fromRowIndex] == fromTooltip) {
+            return;
+        }
+
+        if (ObjectSetString(this.chartId, this.getGmoObjectName(fromRowIndex),
+                OBJPROP_TOOLTIP, fromTooltip)) {
+            this.displayedGmoTooltips[fromRowIndex] = fromTooltip;
+        }
     }
 
     /**
@@ -1406,9 +1522,15 @@ private:
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
         this.readyHighlightEnabled = false;
+        this.displayedSelectedRow = -2;
         ArrayResize(this.displayedSymbols, 0);
         ArrayResize(this.displayedReady, 0);
         ArrayResize(this.displayedGmo, 0);
+        ArrayResize(this.clearedRows, 0);
+        ArrayResize(this.displayedCellTexts, 0);
+        ArrayResize(this.displayedCellColors, 0);
+        ArrayResize(this.displayedCellTooltips, 0);
+        ArrayResize(this.displayedGmoTooltips, 0);
     }
 };
 
