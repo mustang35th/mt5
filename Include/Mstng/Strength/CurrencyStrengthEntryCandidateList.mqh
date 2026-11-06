@@ -14,6 +14,7 @@
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidate.mqh>
 #include <Mstng\Strength\CurrencyStrengthH1EmaProvider.mqh>
+#include <Mstng\Strength\CurrencyStrengthM1EmaProvider.mqh>
 
 /**
  * 長中期と中短期の通貨順位を使用して
@@ -134,6 +135,7 @@ public:
 
         for (int i = 0; i < candidateCount; i++) {
             this.candidates[i].resetH1Ema();
+            this.candidates[i].resolvedSymbolName = "";
         }
 
         if (fromCalculator == NULL
@@ -183,7 +185,41 @@ public:
                 continue;
             }
 
+            this.candidates[i].resolvedSymbolName = pairVote.resolvedSymbolName;
             if (!fromProvider.update(pairVote, fromTargetM5BarTime, this.candidates[i])) {
+                isReady = false;
+            }
+        }
+
+        return isReady;
+    }
+
+    /**
+     * 全候補のM1 EMA200をサーバー時刻までに確定した足の共通判定で更新する。
+     *
+     * H1票から取得した実シンボル名を使用し、順位とH1判定は変更しない。
+     * 取得できなかった候補は未取得へ戻し、次回の更新で再試行する。
+     *
+     * @param fromProvider シンボル別M1 EMA200保持クラス。
+     * @param fromTargetTime LIVEの判定基準となるサーバー時刻。
+     * @return 全候補のM1 EMA200を取得できた場合true。
+     */
+    bool updateM1Ema(
+        CurrencyStrengthM1EmaProvider *fromProvider,
+        const datetime fromTargetTime
+    ) {
+        int candidateCount = ArraySize(this.candidates);
+        for (int i = 0; i < candidateCount; i++) {
+            this.candidates[i].resetM1Ema();
+        }
+
+        if (fromProvider == NULL || fromTargetTime <= 0) {
+            return false;
+        }
+
+        bool isReady = true;
+        for (int i = 0; i < candidateCount; i++) {
+            if (!fromProvider.update(fromTargetTime, this.candidates[i])) {
                 isReady = false;
             }
         }

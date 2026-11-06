@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.12"
+#property version   "1.13"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -26,6 +26,7 @@
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Strength\CurrencyStrengthH1EmaProvider.mqh>
+#include <Mstng\Strength\CurrencyStrengthM1EmaProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 #include <Mstng\Util\Util.mqh>
@@ -133,9 +134,14 @@ OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
 CurrencyStrengthEntryCandidateList *gCurrencyStrengthEntryCandidateList = NULL;
 CurrencyStrengthH1EmaProvider *gCurrencyStrengthH1EmaProvider = NULL;
+CurrencyStrengthM1EmaProvider *gCurrencyStrengthM1EmaProvider = NULL;
+
+/** 最新候補のM1 EMA200を確認したサーバー時刻の分。0は候補未準備。 */
+datetime gLastEntryCandidateM1Minute = 0;
+
 bool gEntryCandidateSnapshotReady = false;
 
-/** READY＋H1強調のユーザー設定。一時的な集計・描画失敗では解除しない。 */
+/** AND強調のユーザー設定。一時的な集計・描画失敗では解除しない。 */
 bool gReadyHighlightRequested = false;
 
 CurrencyStrengthYearlyPersistenceService *gCurrencyStrengthPersistenceService;
@@ -259,6 +265,7 @@ int OnInit() {
         gCurrencyStrengthEntryCandidateList =
             new CurrencyStrengthEntryCandidateList();
         gCurrencyStrengthH1EmaProvider = new CurrencyStrengthH1EmaProvider();
+        gCurrencyStrengthM1EmaProvider = new CurrencyStrengthM1EmaProvider();
     }
 
     gDrawCurrencyStrengthList = new DrawCurrencyStrengthList(
@@ -297,7 +304,8 @@ int OnInit() {
             || (showEntryCandidates
                 && (gDrawCurrencyStrengthEntryCandidateList == NULL
                     || gCurrencyStrengthEntryCandidateList == NULL
-                    || gCurrencyStrengthH1EmaProvider == NULL))) {
+                    || gCurrencyStrengthH1EmaProvider == NULL
+                    || gCurrencyStrengthM1EmaProvider == NULL))) {
         releaseResources();
 
         return INIT_FAILED;
@@ -392,7 +400,7 @@ void OnTimer() {
 }
 
 /**
- * 地域・通貨名・候補ペア・解除・AND強調・絞り込みボタンのクリックを処理する。
+ * 地域・通貨名・候補ペア・解除・AND強調・絞り込み・EMAモードのクリックを処理する。
  *
  * @param fromEventId チャートイベントID。
  * @param fromLongValue 整数イベント引数。
@@ -411,7 +419,8 @@ void OnChartEvent(
 
     DrawChartRedrawBatch redrawBatch;
     if (gDrawCurrencyStrengthEntryCandidateList != NULL
-            && gDrawCurrencyStrengthEntryCandidateList.handleFilterClick(fromStringValue)) {
+            && (gDrawCurrencyStrengthEntryCandidateList.handleFilterClick(fromStringValue)
+                || gDrawCurrencyStrengthEntryCandidateList.handleEmaModeClick(fromStringValue))) {
         bool isDrawn = gDrawCurrencyStrengthEntryCandidateList.draw(
             gCurrencyStrengthEntryCandidateList
         );
@@ -505,7 +514,7 @@ void clearRegionSelection() {
 /**
  * 最新候補に合わせてペア選択・AND強調とクリック可否を同期する。
  * 表示上限より下の候補も検索し、通貨名からの手動選択は候補の増減で解除しない。
- * AND強調は表示中のREADYかつH1 EMA200が同方向の候補だけを対象にする。
+ * AND強調は表示中のREADYかつ選択したEMA200条件が同方向の候補だけを対象にする。
  * ON/OFF設定を保持し、取得・描画待ちでは強調だけを止め、正常表示時に再開する。
  *
  * @param fromCandidatesReady 最新候補一覧の構築と描画に成功した場合true。
@@ -619,11 +628,49 @@ void processLiveSnapshot(const bool fromForceRefresh) {
 
     if (!fromForceRefresh
             && currentM5BarTime == gLastLiveAttemptM5BarTime) {
+        refreshEntryCandidateM1(TimeCurrent());
+
         return;
     }
 
     gLastLiveAttemptM5BarTime = currentM5BarTime;
     execute(currentM5BarTime);
+}
+
+/**
+ * LIVEの分が進んだ場合、候補のM1 EMA200と連動表示だけを更新する。
+ * 通貨強弱の再集計とDB保存は行わない。
+ *
+ * @param fromTargetTime 最新確定足を選ぶ基準のサーバー時刻。
+ */
+void refreshEntryCandidateM1(const datetime fromTargetTime) {
+    if (Util::isStrategyTester()
+            || fromTargetTime <= 0
+            || gLastEntryCandidateM1Minute <= 0
+            || gCurrencyStrengthEntryCandidateList == NULL
+            || gCurrencyStrengthM1EmaProvider == NULL
+            || gDrawCurrencyStrengthEntryCandidateList == NULL
+            || !gCurrencyStrengthEntryCandidateList.isRankingReady()) {
+        return;
+    }
+
+    datetime targetMinute = fromTargetTime - fromTargetTime % 60;
+    if (targetMinute == gLastEntryCandidateM1Minute) {
+        return;
+    }
+
+    if (!gCurrencyStrengthEntryCandidateList.updateM1Ema(
+        gCurrencyStrengthM1EmaProvider, fromTargetTime
+    )) {
+        gLogger.debug(__FUNCTION__, "currency strength M1 EMA200 is not ready");
+    }
+
+    gLastEntryCandidateM1Minute = targetMinute;
+    DrawChartRedrawBatch redrawBatch;
+    bool isDrawn = gDrawCurrencyStrengthEntryCandidateList.draw(
+        gCurrencyStrengthEntryCandidateList
+    );
+    synchronizePairSelection(isDrawn);
 }
 
 /**
@@ -1082,6 +1129,8 @@ string getOptionalTimeText(
  * @return 成功、未準備、または処理失敗。
  */
 CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
+    gLastEntryCandidateM1Minute = 0;
+
     if (gCurrencyStrengthCalculator == NULL
             || gOscillatorHandleManager == NULL
             || gDrawCurrencyStrengthList == NULL) {
@@ -1179,6 +1228,17 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
                     m5BarTime
                 )) {
                     gLogger.debug(__FUNCTION__, "currency strength H1 EMA200 is not ready");
+                }
+
+                if (!isTester) {
+                    datetime m1TargetTime = TimeCurrent();
+                    if (!gCurrencyStrengthEntryCandidateList.updateM1Ema(
+                        gCurrencyStrengthM1EmaProvider, m1TargetTime
+                    )) {
+                        gLogger.debug(__FUNCTION__, "currency strength M1 EMA200 is not ready");
+                    }
+
+                    gLastEntryCandidateM1Minute = m1TargetTime - m1TargetTime % 60;
                 }
 
                 if (!gDrawCurrencyStrengthEntryCandidateList.draw(
@@ -1438,6 +1498,12 @@ void releaseResources() {
         gCurrencyStrengthH1EmaProvider = NULL;
     }
 
+    if (gCurrencyStrengthM1EmaProvider != NULL) {
+        delete gCurrencyStrengthM1EmaProvider;
+        gCurrencyStrengthM1EmaProvider = NULL;
+    }
+
+    gLastEntryCandidateM1Minute = 0;
     gEntryCandidateSnapshotReady = false;
     gReadyHighlightRequested = false;
 

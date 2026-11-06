@@ -14,6 +14,7 @@
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * 通貨強弱のエントリー候補一覧を
@@ -63,6 +64,7 @@ public:
         this.pairSelectionEnabled = false;
         this.readyHighlightEnabled = false;
         this.andOnly = true;
+        this.emaMode = currencyStrengthEntryEmaH1;
         this.selectedSymbol = "";
         this.displayedSelectedRow = -2;
         this.corner = CORNER_LEFT_UPPER;
@@ -135,11 +137,11 @@ public:
                     continue;
                 }
 
-                if (candidate.isAndReady()) {
+                if (candidate.isAndReady(this.emaMode)) {
                     andCount++;
                 }
 
-                if (this.andOnly && !candidate.isAndReady()) {
+                if (this.andOnly && !candidate.isAndReady(this.emaMode)) {
                     continue;
                 }
 
@@ -185,6 +187,34 @@ public:
 
         this.andOnly = !this.andOnly;
         this.updateFilterButton();
+        DrawChartRedrawBatch::request(this.chartId);
+
+        return true;
+    }
+
+    /**
+     * EMA200のAND判定対象をH1、M1、H1＋M1の順に切り替える。
+     * 呼び出し元で一覧を再描画し、比較パネルの強調対象を更新する。
+     *
+     * @param fromObjectName クリックされたチャートオブジェクト名。
+     * @return 自身の生成済みボタンを操作した場合true。
+     */
+    bool handleEmaModeClick(const string fromObjectName) {
+        if (!this.created || fromObjectName != this.objectPrefix + "EmaModeButton") {
+            return false;
+        }
+
+        if (this.emaMode == currencyStrengthEntryEmaH1) {
+            this.emaMode = currencyStrengthEntryEmaM1;
+        } else if (this.emaMode == currencyStrengthEntryEmaM1) {
+            this.emaMode = currencyStrengthEntryEmaH1AndM1;
+        } else {
+            this.emaMode = currencyStrengthEntryEmaH1;
+        }
+
+        this.updateEmaModeButton();
+        this.updateFilterButton();
+        this.updateReadyButton();
         DrawChartRedrawBatch::request(this.chartId);
 
         return true;
@@ -244,7 +274,7 @@ public:
     }
 
     /**
-     * 自身のREADY＋H1強調ボタンのクリックか確認し、押下状態を解除する。
+     * 自身のAND強調ボタンのクリックか確認し、押下状態を解除する。
      * 取得待ち中もON/OFF設定を変更できる。比較パネルの有無は呼び出し元で判定する。
      *
      * @param fromObjectName クリックされたチャートオブジェクト名。
@@ -407,6 +437,9 @@ private:
     /** AND成立候補だけを表示する場合true。 */
     bool andOnly;
 
+    /** AND判定で要求するEMA200時間足。再生成時も保持する。 */
+    CurrencyStrengthEntryEmaMode emaMode;
+
     /** 選択中の通貨ペア名。表示順位の圏外でも保持する。 */
     string selectedSymbol;
 
@@ -567,7 +600,8 @@ private:
             return false;
         }
 
-        if (!this.createReadyButton() || !this.createFilterButton()) {
+        if (!this.createReadyButton() || !this.createFilterButton()
+                || !this.createEmaModeButton()) {
             this.destroyObjects();
 
             return false;
@@ -603,6 +637,12 @@ private:
             if (i == 3 || i == 4) {
                 ObjectSetString(this.chartId, this.getHeaderObjectName(i),
                     OBJPROP_TOOLTIP, "基軸通貨順位/決済通貨順位(符号付き順位差)");
+            } else if (i == 5) {
+                ObjectSetString(this.chartId, this.getHeaderObjectName(i),
+                    OBJPROP_TOOLTIP, "長中期と中短期の小さい絶対順位差／絶対順位差合計");
+            } else if (i == 7 || i == 8) {
+                ObjectSetString(this.chartId, this.getHeaderObjectName(i),
+                    OBJPROP_TOOLTIP, this.getHeaderText(i) + " EMA200の確定足判定");
             }
         }
 
@@ -702,14 +742,14 @@ private:
             footerYDistance + 19,
             this.bodyFontSize,
             this.mutedColor,
-            "AND成立：READY＋H1 EMA200が候補方向と一致 ／ [G]：GMO対象"
+            " "
         ) || !this.createLabel(
             this.objectPrefix + "WatchHint",
             14,
             footerYDistance + 2 * 19,
             this.bodyFontSize,
             this.mutedColor,
-            "H1は確定足 ／ NONE：方向なし ／ —：取得待ち ／ B/Q：基軸/決済"
+            "EMA200は確定足 ／ NONE：方向なし ／ —：取得待ち ／ [G]：GMO対象"
         )) {
             this.destroyObjects();
 
@@ -717,6 +757,7 @@ private:
         }
 
         this.created = true;
+        this.updateEmaModeButton();
         this.updateReadyButton();
         this.updateFilterButton();
 
@@ -724,7 +765,7 @@ private:
     }
 
     /**
-     * タイトル右側へREADY＋H1強調モードを切り替えるボタンを生成する。
+     * タイトル右側へAND強調モードを切り替えるボタンを生成する。
      *
      * @return ボタンを生成できた場合true。
      */
@@ -784,6 +825,79 @@ private:
     }
 
     /**
+     * AND判定に使用するEMA200時間足の切り替えボタンを生成する。
+     *
+     * @return ボタンを生成できた場合true。
+     */
+    bool createEmaModeButton() {
+        string objectName = this.objectPrefix + "EmaModeButton";
+        if (!ObjectCreate(this.chartId, objectName, OBJ_BUTTON, 0, 0, 0)) {
+            return false;
+        }
+
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE, this.xDistance + 132);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE, this.yDistance + 3);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 136);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, 20);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.bodyFontSize);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_COLOR, this.borderColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, 3);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, this.normalColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, C'35,35,35');
+        ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
+
+        return true;
+    }
+
+    /**
+     * 選択中のEMA200時間足を短い表示名へ変換する。
+     *
+     * @return H1、M1、H1＋M1のいずれか。
+     */
+    string getEmaModeLabel() const {
+        if (this.emaMode == currencyStrengthEntryEmaM1) {
+            return "M1";
+        }
+
+        if (this.emaMode == currencyStrengthEntryEmaH1AndM1) {
+            return "H1＋M1";
+        }
+
+        return "H1";
+    }
+
+    /**
+     * EMA200モードボタンとAND成立条件の説明を更新する。
+     */
+    void updateEmaModeButton() {
+        if (!this.created) {
+            return;
+        }
+
+        string objectName = this.objectPrefix + "EmaModeButton";
+        string modeLabel = this.getEmaModeLabel();
+        string tooltip = "クリックで H1 → M1 → H1＋M1 の順に切り替えます"
+            + "\nAND成立：READY＋選択した時間足のEMA200が候補方向と一致"
+            + "\nH1＋M1は両方の一致が必要です"
+            + "\nH1は通貨強弱の集計時点、M1は最新確定足で判定します";
+        if (Util::isStrategyTester()) {
+            tooltip += "\nテスターでは下位足参照制限への対応のためM1は取得対象外です";
+        }
+
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, "EMA200：" + modeLabel);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, tooltip);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+        ObjectSetString(this.chartId, this.objectPrefix + "ReadyHint", OBJPROP_TEXT,
+            "AND成立：READY＋" + modeLabel + " EMA200が候補方向と一致");
+    }
+
+    /**
      * 絞り込みボタンへ現在の表示対象を反映する。
      */
     void updateFilterButton() {
@@ -803,14 +917,15 @@ private:
 
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, buttonText);
         ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP,
-            "全候補／READYかつH1 EMA200が同方向の候補を切り替えます");
+            "全候補／READYかつ" + this.getEmaModeLabel()
+                + " EMA200が候補方向と一致する候補を切り替えます");
         ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
     }
 
     /**
-     * READY＋H1強調ボタンの状態表示と操作可否を更新する。
+     * AND強調ボタンの状態表示と操作可否を更新する。
      */
     void updateReadyButton() {
         if (!this.created) {
@@ -818,21 +933,22 @@ private:
         }
 
         string objectName = this.objectPrefix + "ReadyButton";
-        string buttonText = "READY＋H1強調：OFF";
+        string buttonText = "AND強調：OFF";
         string tooltip = "\n";
         color textColor = this.mutedColor;
         color backgroundColor = C'35,35,35';
         if (this.pairSelectionEnabled) {
             textColor = this.normalColor;
-            tooltip = "表示中のAND成立候補に含まれる通貨を比較パネルで強調します";
+            tooltip = "表示中のAND成立候補に含まれる通貨を比較パネルで強調します"
+                + "\nEMA200判定：" + this.getEmaModeLabel();
         }
 
         if (this.readyHighlightEnabled) {
-            buttonText = "READY＋H1強調：ON";
+            buttonText = "AND強調：ON";
             textColor = this.warningColor;
             backgroundColor = C'58,62,42';
             if (!this.pairSelectionEnabled) {
-                buttonText = "READY＋H1強調：ON(待機)";
+                buttonText = "AND強調：ON(待機)";
                 tooltip = "ON設定を保持しています。データ復旧後に強調を再開します。クリックでOFF。";
             }
         }
@@ -906,7 +1022,7 @@ private:
     ) {
         this.clearedRows[fromRowIndex] = false;
         this.displayedSymbols[fromRowIndex] = fromCandidate.symbolName;
-        this.displayedReady[fromRowIndex] = fromCandidate.isAndReady();
+        this.displayedReady[fromRowIndex] = fromCandidate.isAndReady(this.emaMode);
         this.displayedGmo[fromRowIndex] =
             this.gmoSymbolNameInfoAll.isTarget(fromCandidate.symbolName);
 
@@ -993,18 +1109,34 @@ private:
             }
         }
 
+        color m1EmaColor = this.mutedColor;
+        if (fromCandidate.m1EmaAvailable) {
+            m1EmaColor = this.warningColor;
+            if (fromCandidate.m1EmaIsBuy) {
+                m1EmaColor = this.buyColor;
+            } else if (fromCandidate.m1EmaIsSell) {
+                m1EmaColor = this.sellColor;
+            }
+        }
+
         color andColor = this.mutedColor;
-        if (fromCandidate.isAndReady()) {
+        if (fromCandidate.isAndReady(this.emaMode)) {
             andColor = directionColor;
         } else if (fromCandidate.isReady()) {
             andColor = this.warningColor;
         }
 
         this.setCell(fromRowIndex, 7, fromCandidate.getH1EmaLabel(), emaColor);
-        this.setCell(fromRowIndex, 8, fromCandidate.getAndStatusLabel(), andColor);
-        string emaTooltip = this.getEmaTooltip(fromCandidate);
-        this.setCellTooltip(fromRowIndex, 7, emaTooltip);
-        this.setCellTooltip(fromRowIndex, 8, emaTooltip);
+        this.setCell(fromRowIndex, 8, fromCandidate.getM1EmaLabel(), m1EmaColor);
+        this.setCell(fromRowIndex, 9, fromCandidate.getAndStatusLabel(this.emaMode), andColor);
+        string h1EmaTooltip = this.getEmaTooltip(fromCandidate);
+        string m1EmaTooltip = this.getM1EmaTooltip(fromCandidate);
+        this.setCellTooltip(fromRowIndex, 7, h1EmaTooltip);
+        this.setCellTooltip(fromRowIndex, 8, m1EmaTooltip);
+        this.setCellTooltip(fromRowIndex, 9,
+            "EMA200判定：" + this.getEmaModeLabel()
+                + " ／ AND：" + fromCandidate.getAndStatusLabel(this.emaMode)
+                + "\n" + h1EmaTooltip + "\n\n" + m1EmaTooltip);
     }
 
     /**
@@ -1221,7 +1353,33 @@ private:
             + StringFormat("\n終値－EMA200：%+.1f p\nEMA200傾き：%+.1f p",
                 fromCandidate.h1EmaCloseDiffPips, fromCandidate.h1EmaSlopePips)
             + "\n共通判定：" + fromCandidate.getH1EmaLabel()
-            + " ／ AND：" + fromCandidate.getAndStatusLabel();
+            + "\n通貨強弱のM5集計時点に対応するH1確定足";
+
+        return tooltip;
+    }
+
+    /**
+     * M1 EMA200の最新確定足と値を操作案内へまとめる。
+     *
+     * @param fromCandidate 表示対象候補。
+     * @return 判定時刻、EMA値、終値との差、傾き、未取得理由を含む操作案内。
+     */
+    string getM1EmaTooltip(CurrencyStrengthEntryCandidate &fromCandidate) {
+        if (Util::isStrategyTester()) {
+            return "M1 EMA200：取得対象外\nテスターの下位足参照制限に対応するため取得しません";
+        }
+
+        if (!fromCandidate.m1EmaAvailable) {
+            return "M1 EMA200：取得待ち\n最新確定足の共通判定を取得できていません";
+        }
+
+        string tooltip = "M1確定足 SERVER："
+            + TimeToString(fromCandidate.m1EmaBarTime, TIME_DATE | TIME_MINUTES)
+            + "\nEMA200：" + DoubleToString(fromCandidate.m1EmaValue, fromCandidate.m1EmaDigits)
+            + StringFormat("\n終値－EMA200：%+.1f p\nEMA200傾き：%+.1f p",
+                fromCandidate.m1EmaCloseDiffPips, fromCandidate.m1EmaSlopePips)
+            + "\n共通判定：" + fromCandidate.getM1EmaLabel()
+            + "\nM1は最新確定足。H1の集計基準時刻とは異なります";
 
         return tooltip;
     }
@@ -1412,7 +1570,7 @@ private:
      * @return 全列数。
      */
     int getColumnCount() {
-        return 9;
+        return 10;
     }
 
     /**
@@ -1434,13 +1592,15 @@ private:
             case 4:
                 return 258;
             case 5:
-                return 344;
+                return 336;
             case 6:
-                return 424;
+                return 402;
             case 7:
-                return 482;
+                return 454;
             case 8:
-                return 558;
+                return 500;
+            case 9:
+                return 548;
         }
 
         return 14;
@@ -1465,12 +1625,14 @@ private:
             case 4:
                 return "中短期";
             case 5:
-                return "MIN/TOTAL";
+                return "差/合計";
             case 6:
                 return "強弱";
             case 7:
-                return "H1 EMA200";
+                return "H1";
             case 8:
+                return "M1";
+            case 9:
                 return "AND判定";
         }
 
