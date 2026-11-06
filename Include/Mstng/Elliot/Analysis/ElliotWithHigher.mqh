@@ -79,6 +79,8 @@ public:
      * @return Waveを生成できた場合true
      */
     bool analyze() {
+        this.reanalysisPerformed = false;
+
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
 
@@ -127,13 +129,18 @@ public:
      * @return 再分析に成功した場合true
      */
     bool reanalyzeSameTrend() {
+        this.reanalysisPerformed = false;
+
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
 
         ElliotReanalysisSameTrend *elliotReanalysisSameTrend = new ElliotReanalysisSameTrend(this.marketContext, this.waveList);
 
 
-        if (!elliotReanalysisSameTrend.analyze()) {
+        bool isSucceeded = elliotReanalysisSameTrend.analyze();
+        this.reanalysisPerformed = elliotReanalysisSameTrend.wasReanalysisPerformed();
+
+        if (!isSucceeded) {
             delete elliotReanalysisSameTrend;
 
             this.logger.error(__FUNCTION__, "elliotReanalysisSameTrend.analyze false");
@@ -158,6 +165,8 @@ public:
      * @return 再分析に成功した場合true
      */
     bool reanalyzeThreeWaveContinuation() {
+        this.reanalysisPerformed = false;
+
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
 
@@ -165,7 +174,10 @@ public:
                 = new ElliotReanalysisThreeWaveContinuation(this.marketContext, this.waveList);
 
 
-        if (!elliotReanalysisThreeWaveContinuation.analyze()) {
+        bool isSucceeded = elliotReanalysisThreeWaveContinuation.analyze();
+        this.reanalysisPerformed = elliotReanalysisThreeWaveContinuation.wasReanalysisPerformed();
+
+        if (!isSucceeded) {
             delete elliotReanalysisThreeWaveContinuation;
 
             this.logger.error(__FUNCTION__, "elliotReanalysisThreeWaveContinuation.analyze false");
@@ -190,13 +202,18 @@ public:
      * @return 再分析に成功した場合true
      */
     bool reanalyzeNarrowWaveLeft() {
+        this.reanalysisPerformed = false;
+
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
 
         ElliotReanalysisNarrowWaveLeft *elliotReanalysisNarrowWaveLeft = new ElliotReanalysisNarrowWaveLeft(this.marketContext, this.waveList);
 
 
-        if (!elliotReanalysisNarrowWaveLeft.analyze()) {
+        bool isSucceeded = elliotReanalysisNarrowWaveLeft.analyze();
+        this.reanalysisPerformed = elliotReanalysisNarrowWaveLeft.wasReanalysisPerformed();
+
+        if (!isSucceeded) {
             delete elliotReanalysisNarrowWaveLeft;
 
             this.logger.error(__FUNCTION__, "elliotReanalysisNarrowWaveLeft.analyze false");
@@ -221,13 +238,18 @@ public:
      * @return 再分析に成功した場合true
      */
     bool reanalyzeNarrowWaveRight() {
+        this.reanalysisPerformed = false;
+
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
 
 
         ElliotReanalysisNarrowWaveRight *elliotReanalysisNarrowWaveRight = new ElliotReanalysisNarrowWaveRight(this.marketContext, this.waveList);
 
 
-        if (!elliotReanalysisNarrowWaveRight.analyze()) {
+        bool isSucceeded = elliotReanalysisNarrowWaveRight.analyze();
+        this.reanalysisPerformed = elliotReanalysisNarrowWaveRight.wasReanalysisPerformed();
+
+        if (!isSucceeded) {
             delete elliotReanalysisNarrowWaveRight;
 
             this.logger.error(__FUNCTION__, "elliotReanalysisNarrowWaveRight.analyze false");
@@ -246,7 +268,19 @@ public:
         return true;
     }
 
+    /**
+     * 直前の分析処理で再分析対象を検出したかを返す。
+     *
+     * @return 対象を検出して再分析を試行した場合true。成否とは別に保持する
+     */
+    bool wasReanalysisPerformed() const {
+        return this.reanalysisPerformed;
+    }
+
 private:
+    /** 直前の分析処理で再分析を試行した場合true。 */
+    bool reanalysisPerformed;
+
     /**
      * 市場コンテキストおよび分析条件を初期化する。
      *
@@ -266,6 +300,7 @@ private:
         bool fromIsLatest
     ) {
         this.logger.setLevel(LOG_INFO);
+        this.reanalysisPerformed = false;
 
         this.init(fromMarketContext, fromIsBuy, fromBuySellLabel);
         

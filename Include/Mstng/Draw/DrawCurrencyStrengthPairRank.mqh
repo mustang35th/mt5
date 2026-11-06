@@ -361,7 +361,8 @@ public:
         bool displayAvailable = this.lastDisplayAvailable;
         bool displayError = this.lastDisplayError;
 
-        this.destroyObjects();
+        // 再生成を要求し、旧オブジェクトの削除はcreate()へ集約する。
+        this.created = false;
 
         bool isSuccess = false;
 

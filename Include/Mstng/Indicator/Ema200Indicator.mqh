@@ -164,9 +164,11 @@ public:
      *
      * @param isTimer 通常チャートのM1単位で更新する場合true
      * @param fromResetBuffers 履歴再計算に伴い全バッファを初期化する場合true
+     * @param fromCurrentBarTime OnCalculateの最新足時刻。同じ時間足の待機判定だけに使用し、0は都度取得する
      * @return 更新成否
      */
-    bool update(bool isTimer, bool fromResetBuffers = false) {
+    bool update(bool isTimer, bool fromResetBuffers = false,
+            const datetime fromCurrentBarTime = 0) {
         this.updatePerformed = false;
         this.lastUpdateMode = "対象外";
         if (this.displayCount > 0) {
@@ -183,7 +185,16 @@ public:
             updateTimeFrame = this.marketContext.timeFrame;
         }
         
-        datetime currentM1BarTime = iTime(this.marketContext.symbolName, updateTimeFrame, 0);
+        datetime currentM1BarTime = 0;
+        if (!this.bufferResetPending
+                && updateTimeFrame == this.marketContext.timeFrame
+                && fromCurrentBarTime > 0
+                && this.lastUpdateM1BarTime == fromCurrentBarTime) {
+            // 更新基準と同じ時間足のイベント時刻を、更新済みの同足待機だけに使用する。
+            currentM1BarTime = fromCurrentBarTime;
+        } else {
+            currentM1BarTime = iTime(this.marketContext.symbolName, updateTimeFrame, 0);
+        }
 
         if (currentM1BarTime <= 0) {
             if (this.displayCount > 0) {
@@ -612,6 +623,7 @@ private:
     /**
      * 対応する足番号を求め、必要範囲のEMAを一括取得してラインを更新する。
      * チャート足時刻はupdate()で取得済みの共通配列を参照する。
+     * 足番号は対応付け時に設定し、無効な箇所だけ-1を格納する。
      *
      * @param lineIndex ライン番号
      * @param fromBarTimes 最新足を添字0とする、表示対象範囲のチャート足時刻。
@@ -641,8 +653,6 @@ private:
             return false;
         }
 
-        ArrayInitialize(this.targetBarIndices, -1);
-
         int firstTargetBarIndex = calculatedCount;
         int lastTargetBarIndex = -1;
         bool isSucceeded = true;
@@ -661,6 +671,7 @@ private:
             datetime barTime = fromBarTimes[barIndex];
 
             if (barTime == 0) {
+                this.targetBarIndices[barIndex] = -1;
                 this.setBufferValue(lineIndex, barIndex, EMPTY_VALUE);
                 isSucceeded = false;
                 continue;
@@ -688,6 +699,7 @@ private:
             }
 
             if (targetBarIndex < 0 || targetBarIndex >= calculatedCount) {
+                this.targetBarIndices[barIndex] = -1;
                 this.setBufferValue(lineIndex, barIndex, EMPTY_VALUE);
                 isSucceeded = false;
                 continue;

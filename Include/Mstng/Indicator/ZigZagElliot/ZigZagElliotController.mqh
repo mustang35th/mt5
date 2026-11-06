@@ -299,7 +299,7 @@ public:
      *
      * @param fromRatesTotal 全バー数
      * @param fromPrevCalculated OnCalculateの前回計算済みバー数
-     * @param fromCurrentBarTime OnCalculateの最新足時刻。0の場合はGMMA側で取得する
+     * @param fromCurrentBarTime OnCalculateの最新足時刻。0の場合は各表示側で取得する
      * @return 次回計算用の処理済みバー数
      */
     int onCalculate(const int fromRatesTotal, const int fromPrevCalculated = 0,

@@ -340,10 +340,9 @@ public:
     
     /**
      * シンボル情報と当日高値・安値を描画する。
+     * 当日レートは分析結果を直接参照し、描画用の全体コピーを省く。
      */
     void drawTodayRate() {
-        TodayRate todayRate = this.elliotAll.todayRate;
-        
         color fontColor = clrWhite;
         string objectName;
         string text;
@@ -356,7 +355,7 @@ public:
         
         
         objectName = "High";
-        text = todayRate.highLabel;
+        text = this.elliotAll.todayRate.highLabel;
         fontSize = 20;
         
         this.updateInfoLabel(9, "HighTitle", clrLightSkyBlue, fontSize, "H:", 0, 46);
@@ -365,7 +364,7 @@ public:
         
         
         objectName = "Low";
-        text = todayRate.lowLabel;
+        text = this.elliotAll.todayRate.lowLabel;
         
         this.updateInfoLabel(10, "LowTitle", clrLightPink, fontSize, "L:", 0, 76);
         this.updateInfoLabel(5, objectName, clrLightPink, fontSize, text,
@@ -373,17 +372,17 @@ public:
         
         
         objectName = "Diff";
-        text = todayRate.diffLabel;
+        text = this.elliotAll.todayRate.diffLabel;
         
         this.updateInfoLabel(11, "DiffTitle", clrKhaki, fontSize, "D:",
             DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 46);
         this.updateInfoLabel(6, objectName, clrKhaki, fontSize, text,
             DrawZigZagElliotInfoLayout::getSecondaryValueLeftOffset(), 46);
         
-        if (todayRate.diffJpy > 0) {
+        if (this.elliotAll.todayRate.diffJpy > 0) {
             this.diffJpyLabelCleared = false;
             objectName = "DiffJpy";
-            text = todayRate.diffJpyLabel;
+            text = this.elliotAll.todayRate.diffJpyLabel;
             
             this.updateInfoLabel(12, "DiffJpyTitle", fontColor, fontSize - 5, "D Jpy:",
                 DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 76);

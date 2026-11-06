@@ -152,7 +152,7 @@ public:
      * @param fromTimerMode タイマー実行の場合true
      * @param fromPrevCalculated OnCalculateの前回計算済みバー数
      * @param fromRatesTotal OnCalculateの全バー数。0の場合はGMMA側で取得する
-     * @param fromCurrentBarTime OnCalculateの最新足時刻。0の場合はGMMA側で取得する
+     * @param fromCurrentBarTime OnCalculateの最新足時刻。0の場合は各表示側で取得する
      */
     void updateOnCalculate(bool fromTimerMode, int fromPrevCalculated = 0,
             int fromRatesTotal = 0, datetime fromCurrentBarTime = 0) {
@@ -176,7 +176,8 @@ public:
             }
         }
 
-        this.updateEma200Indicator(fromTimerMode, fromPrevCalculated == 0);
+        this.updateEma200Indicator(
+            fromTimerMode, fromPrevCalculated == 0, fromCurrentBarTime);
     }
 
     /**
@@ -985,11 +986,14 @@ private:
      *
      * @param fromTimerMode タイマー実行の場合true
      * @param fromResetBuffers 履歴再計算に伴い全バッファを初期化する場合true
+     * @param fromCurrentBarTime OnCalculateの最新足時刻。0の場合はEMA側で取得する
      */
-    void updateEma200Indicator(bool fromTimerMode, bool fromResetBuffers = false) {
+    void updateEma200Indicator(bool fromTimerMode, bool fromResetBuffers = false,
+            const datetime fromCurrentBarTime = 0) {
         if (this.ema200Indicator != NULL) {
             ulong startMicroseconds = GetMicrosecondCount();
-            bool isSucceeded = this.ema200Indicator.update(fromTimerMode, fromResetBuffers);
+            bool isSucceeded = this.ema200Indicator.update(
+                fromTimerMode, fromResetBuffers, fromCurrentBarTime);
             ulong elapsedMicroseconds = GetMicrosecondCount() - startMicroseconds;
 
             if (this.ema200Indicator.wasUpdatePerformed()) {

@@ -52,6 +52,8 @@ public:
      * @return 再分析に成功した場合true。対象がない場合もtrue
      */
     bool analyze() {
+        this.reanalysisPerformed = false;
+
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
         
@@ -74,6 +76,8 @@ public:
             double low = 0.0;
 
             if (this.isTarget(i, high, low)) {
+                this.reanalysisPerformed = true;
+
                 if (!this.reanalyze(i, high, low)) {
                     this.logger.error(__FUNCTION__, "reanalyze false");
                     LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
@@ -91,7 +95,19 @@ public:
         return true;
     }
     
+    /**
+     * 直前の分析処理で再分析対象を検出したかを返す。
+     *
+     * @return 対象を検出して再分析を試行した場合true。成否とは別に保持する
+     */
+    bool wasReanalysisPerformed() const {
+        return this.reanalysisPerformed;
+    }
+
 private:
+    /** 直前の分析処理で再分析を試行した場合true。 */
+    bool reanalysisPerformed;
+
     /**
      * 市場コンテキストおよび元Wave一覧を初期化する。
      *
@@ -100,6 +116,7 @@ private:
      */
     void initialize(MarketContext &fromMarketContext, CArrayObj &fromWaveList) {
         this.logger.setLevel(LOG_INFO);
+        this.reanalysisPerformed = false;
 
         this.init(fromMarketContext);
 

@@ -614,6 +614,8 @@ private:
                     ::getHigherReanalyzeMaxRounds();
 
                 for (int i = 0; i < maxRounds; i++) {   // 再分析
+                    bool roundReanalysisPerformed = false;
+
                     // 同じ方向
                     if (!elliotWithHigher.reanalyzeSameTrend()) {
                         delete elliotWithHigher;
@@ -624,6 +626,10 @@ private:
                         return false;
                     }
                     
+                    if (elliotWithHigher.wasReanalysisPerformed()) {
+                        roundReanalysisPerformed = true;
+                    }
+
                     if (elliotWithHigher.waveList.Total() == 1) {    // 波動の数が1の場合終了
                         break;
                     }
@@ -636,6 +642,10 @@ private:
                         LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
 
                         return false;
+                    }
+
+                    if (elliotWithHigher.wasReanalysisPerformed()) {
+                        roundReanalysisPerformed = true;
                     }
 
                     if (elliotWithHigher.waveList.Total() == 1) {    // 波動の数が1の場合終了
@@ -652,6 +662,10 @@ private:
                         return false;
                     }
                     
+                    if (elliotWithHigher.wasReanalysisPerformed()) {
+                        roundReanalysisPerformed = true;
+                    }
+
                     if (elliotWithHigher.waveList.Total() == 1) {    // 波動の数が1の場合終了
                         break;
                     }
@@ -666,7 +680,16 @@ private:
                         return false;
                     }
                     
+                    if (elliotWithHigher.wasReanalysisPerformed()) {
+                        roundReanalysisPerformed = true;
+                    }
+
                     if (elliotWithHigher.waveList.Total() == 1) {    // 波動の数が1の場合終了
+                        break;
+                    }
+
+                    // 4種類とも対象がなければ、同じWave一覧での残りの周回は不要。
+                    if (!roundReanalysisPerformed) {
                         break;
                     }
                 }
