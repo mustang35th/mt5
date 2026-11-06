@@ -13,6 +13,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Draw\DrawAlignedElliotAllList.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
 #include <Mstng\Elliot\ElliotListSortType.mqh>
@@ -1010,6 +1011,8 @@ private:
             this.hasPendingAnalysis = listAnalysisPending;
         }
 
+        // 複数パネルの再描画要求を、一覧全体の描画終了時にまとめて反映する。
+        DrawChartRedrawBatch redrawBatch;
         this.cleanupOrphanedPanelObjects();
 
         int m5PanelYDistance = 12;
@@ -1108,6 +1111,7 @@ private:
             }
         }
 
+        redrawBatch.finish();
         delete elliotAllList;
 
         this.lastProcessedBarTime = currentBarTime;

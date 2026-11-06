@@ -11,6 +11,7 @@
 
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Elliot\D1ElliotEmaSortDecision.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ElliotDirectionAlignmentDecision.mqh>
@@ -29,6 +30,53 @@ enum DrawAlignedElliotAllListColumn {
     drawAlignedElliotAllListColumnSymbol = 0,
     drawAlignedElliotAllListColumnEntryPriority = 1,
     drawAlignedElliotAllListColumnTimeFrameStart = 2
+};
+
+/**
+ * 一覧セルのラベルへ反映済みの値と、成功した文字サイズ計測結果を保持する。
+ */
+struct DrawAlignedElliotAllListCellCache {
+    /** 文字を反映済みの場合true。 */
+    bool textReady;
+
+    /** 反映済みの文字。 */
+    string text;
+
+    /** 色を反映済みの場合true。 */
+    bool colorReady;
+
+    /** 反映済みの文字色。 */
+    color textColor;
+
+    /** ツールチップを反映済みの場合true。 */
+    bool tooltipReady;
+
+    /** 反映済みのツールチップ。 */
+    string tooltip;
+
+    /** 反映済みの文字サイズ。未反映は-1。 */
+    int fontSize;
+
+    /** 波動文字のサイズ計測と反映が成功した場合true。 */
+    bool waveFontReady;
+
+    /** サイズ計測と反映が成功した波動文字。 */
+    string waveText;
+
+    /**
+     * 新しく作成したラベルへ全項目を反映できるよう保持値を初期化する。
+     */
+    void reset() {
+        this.textReady = false;
+        this.text = "";
+        this.colorReady = false;
+        this.textColor = clrNONE;
+        this.tooltipReady = false;
+        this.tooltip = "";
+        this.fontSize = -1;
+        this.waveFontReady = false;
+        this.waveText = "";
+    }
 };
 
 /**
@@ -66,6 +114,7 @@ public:
             + "_" + StringFormat("%I64u", instanceToken) + "_";
 
         this.created = false;
+        this.cellCacheColumnCount = 0;
         this.createdRowCount = 0;
         this.createdBuyCount = 0;
         this.createdSellCount = 0;
@@ -428,7 +477,7 @@ public:
             );
         }
 
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
 
         return true;
     }
@@ -438,7 +487,7 @@ public:
      */
     void clear() {
         this.destroyObjects();
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
     }
 
     /**
@@ -577,6 +626,12 @@ public:
     }
 
 private:
+    /** 行・列ごとの上段、EMA200、Fibonacciの順で保持する反映済み状態。 */
+    DrawAlignedElliotAllListCellCache cellCache[];
+
+    /** セル状態の位置計算に使用する生成済みの列数。 */
+    int cellCacheColumnCount;
+
     /** 描画対象チャートID。 */
     long chartId;
 
@@ -893,6 +948,18 @@ private:
         int rowCount = fromBuyCount + fromSellCount;
         int h1RunnerUpCount = fromH1RunnerUpBuyCount
             + fromH1RunnerUpSellCount;
+
+        int cellCacheCount = rowCount * columnCount * 3;
+        if (ArrayResize(this.cellCache, cellCacheCount) != cellCacheCount) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        this.cellCacheColumnCount = columnCount;
+        for (int i = 0; i < cellCacheCount; i++) {
+            this.cellCache[i].reset();
+        }
 
         this.configureColumnWidth(timeFrameCount);
         this.panelWidth = this.calculatePanelWidth(
@@ -2166,6 +2233,7 @@ private:
      * その他の場合はENTRY優先度順にする。
      * M15の4分類表示ではEMAのNONE候補を逆方向候補の前にまとめる。
      * 従来のM15条件では全一致・H1逆・H4逆・D1逆の順を保つ。
+     * M15の分類順位はソート内で再利用し、配列確保に失敗した場合は都度判定する。
      *
      * @param fromElliotAllList 分析結果一覧。
      * @param fromM15AlignmentGroupingEnabled M15専用条件の一致状態順に並べる場合true。
@@ -2195,6 +2263,24 @@ private:
             return;
         }
 
+        if (displayCount < 2) {
+            return;
+        }
+
+        int alignmentRanks[];
+        bool alignmentRanksReady = false;
+        if (fromM15AlignmentGroupingEnabled
+                && displayCount > 2
+                && ArrayResize(alignmentRanks, displayCount) == displayCount) {
+            for (int i = 0; i < displayCount; i++) {
+                alignmentRanks[i] = this.getM15AlignmentRank(
+                    fromElliotAllList.elliotAllList.At(fromDisplayIndexes[i])
+                );
+            }
+
+            alignmentRanksReady = true;
+        }
+
         for (int i = 1; i < displayCount; i++) {
             int currentIndex = fromDisplayIndexes[i];
             Mtf3In3EntryPriorityResult currentResult = fromPriorityResults[i];
@@ -2206,9 +2292,13 @@ private:
                 fromM15SortResults[i];
             int currentAlignmentRank = 0;
             if (fromM15AlignmentGroupingEnabled) {
-                currentAlignmentRank = this.getM15AlignmentRank(
-                    fromElliotAllList.elliotAllList.At(currentIndex)
-                );
+                if (alignmentRanksReady) {
+                    currentAlignmentRank = alignmentRanks[i];
+                } else {
+                    currentAlignmentRank = this.getM15AlignmentRank(
+                        fromElliotAllList.elliotAllList.At(currentIndex)
+                    );
+                }
             }
 
             int j = i - 1;
@@ -2216,9 +2306,15 @@ private:
                 bool shouldShift = false;
                 bool differentAlignmentGroup = false;
                 if (fromM15AlignmentGroupingEnabled) {
-                    int previousAlignmentRank = this.getM15AlignmentRank(
-                        fromElliotAllList.elliotAllList.At(fromDisplayIndexes[j])
-                    );
+                    int previousAlignmentRank = 0;
+                    if (alignmentRanksReady) {
+                        previousAlignmentRank = alignmentRanks[j];
+                    } else {
+                        previousAlignmentRank = this.getM15AlignmentRank(
+                            fromElliotAllList.elliotAllList.At(fromDisplayIndexes[j])
+                        );
+                    }
+
                     differentAlignmentGroup = currentAlignmentRank != previousAlignmentRank;
                     shouldShift = currentAlignmentRank < previousAlignmentRank;
                 }
@@ -2246,6 +2342,10 @@ private:
                 fromD1SortResults[j + 1] = fromD1SortResults[j];
                 fromH1D1SortResults[j + 1] = fromH1D1SortResults[j];
                 fromM15SortResults[j + 1] = fromM15SortResults[j];
+                if (alignmentRanksReady) {
+                    alignmentRanks[j + 1] = alignmentRanks[j];
+                }
+
                 j--;
             }
 
@@ -2254,6 +2354,9 @@ private:
             fromD1SortResults[j + 1] = currentD1SortResult;
             fromH1D1SortResults[j + 1] = currentH1D1SortResult;
             fromM15SortResults[j + 1] = currentM15SortResult;
+            if (alignmentRanksReady) {
+                alignmentRanks[j + 1] = currentAlignmentRank;
+            }
         }
     }
 
@@ -2452,13 +2555,10 @@ private:
                 emaReferenceColor = this.entryNearColor;
             }
 
-            ObjectSetString(
-                this.chartId,
-                this.getEmaCellObjectName(
-                    fromRowIndex,
-                    drawAlignedElliotAllListColumnSymbol
-                ),
-                OBJPROP_TOOLTIP,
+            this.updateCellTooltip(
+                fromRowIndex,
+                drawAlignedElliotAllListColumnSymbol,
+                1,
                 emaReferenceTooltip
             );
         }
@@ -2820,9 +2920,11 @@ private:
      * 元ラベル付きの波動が隣列と重ならないよう、必要な場合だけ文字サイズを縮小する。
      *
      * @param fromText 波動セルの表示文字列。
+     * @param fromMeasured 文字サイズを取得できた場合true。計測失敗時はfalse（out）。
      * @return 通常サイズから6ptまでの、列幅に収まる文字サイズ。
      */
-    int getWaveFontSize(const string fromText) {
+    int getWaveFontSize(const string fromText, bool &fromMeasured) {
+        fromMeasured = true;
         if (StringFind(fromText, "[") < 0) {
             return this.bodyFontSize;
         }
@@ -2832,6 +2934,8 @@ private:
             uint textHeight = 0;
             if (!TextSetFont(this.fontName, fontSize * -10)
                     || !TextGetSize(fromText, textWidth, textHeight)) {
+                fromMeasured = false;
+
                 return this.bodyFontSize;
             }
             if (textWidth <= (uint)(this.columnWidth - 4)) {
@@ -3473,13 +3577,7 @@ private:
         string fromText,
         color fromColor
     ) {
-        string objectName = this.getCellObjectName(fromRowIndex, fromColumnIndex);
-
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
-        if (fromColumnIndex >= drawAlignedElliotAllListColumnTimeFrameStart) {
-            ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.getWaveFontSize(fromText));
-        }
+        this.updateCellLabel(fromRowIndex, fromColumnIndex, 0, fromText, fromColor);
     }
 
     /**
@@ -3496,10 +3594,7 @@ private:
         string fromText,
         color fromColor
     ) {
-        string objectName = this.getEmaCellObjectName(fromRowIndex, fromColumnIndex);
-
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+        this.updateCellLabel(fromRowIndex, fromColumnIndex, 1, fromText, fromColor);
     }
 
     /**
@@ -3516,19 +3611,13 @@ private:
         string fromText,
         color fromColor
     ) {
-        string objectName = this.getFibonacciCellObjectName(
-            fromRowIndex,
-            fromColumnIndex
-        );
-
         string displayText = fromText;
 
         if (displayText == "") {
             displayText = " ";
         }
 
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, displayText);
-        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
+        this.updateCellLabel(fromRowIndex, fromColumnIndex, 2, displayText, fromColor);
     }
 
     /**
@@ -3543,24 +3632,105 @@ private:
         int fromColumnIndex,
         string fromTooltip
     ) {
-        ObjectSetString(
-            this.chartId,
-            this.getCellObjectName(fromRowIndex, fromColumnIndex),
-            OBJPROP_TOOLTIP,
-            fromTooltip
-        );
-        ObjectSetString(
-            this.chartId,
-            this.getEmaCellObjectName(fromRowIndex, fromColumnIndex),
-            OBJPROP_TOOLTIP,
-            fromTooltip
-        );
-        ObjectSetString(
-            this.chartId,
-            this.getFibonacciCellObjectName(fromRowIndex, fromColumnIndex),
-            OBJPROP_TOOLTIP,
-            fromTooltip
-        );
+        for (int i = 0; i < 3; i++) {
+            this.updateCellTooltip(fromRowIndex, fromColumnIndex, i, fromTooltip);
+        }
+    }
+
+    /**
+     * セル内のラベル名を取得する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromColumnIndex 列番号。
+     * @param fromLayer 上段0、EMA200は1、Fibonacciは2。
+     * @return セル内のラベル名。
+     */
+    string getCellLabelObjectName(int fromRowIndex, int fromColumnIndex, int fromLayer) {
+        if (fromLayer == 1) {
+            return this.getEmaCellObjectName(fromRowIndex, fromColumnIndex);
+        }
+
+        if (fromLayer == 2) {
+            return this.getFibonacciCellObjectName(fromRowIndex, fromColumnIndex);
+        }
+
+        return this.getCellObjectName(fromRowIndex, fromColumnIndex);
+    }
+
+    /**
+     * セル内の文字・色・波動文字サイズを変更時だけ反映する。
+     * 設定と計測に成功した値だけ保持し、失敗した項目は次回に再試行する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromColumnIndex 列番号。
+     * @param fromLayer 上段0、EMA200は1、Fibonacciは2。
+     * @param fromText 表示文字列。
+     * @param fromColor 文字色。
+     */
+    void updateCellLabel(int fromRowIndex, int fromColumnIndex, int fromLayer,
+            string fromText, color fromColor) {
+        int cellIndex = (fromRowIndex * this.cellCacheColumnCount + fromColumnIndex) * 3 + fromLayer;
+        bool textChanged = !this.cellCache[cellIndex].textReady
+            || this.cellCache[cellIndex].text != fromText;
+        bool colorChanged = !this.cellCache[cellIndex].colorReady
+            || this.cellCache[cellIndex].textColor != fromColor;
+        bool updateFontSize = fromLayer == 0
+            && fromColumnIndex >= drawAlignedElliotAllListColumnTimeFrameStart
+            && (!this.cellCache[cellIndex].waveFontReady
+                || this.cellCache[cellIndex].waveText != fromText);
+        if (!textChanged && !colorChanged && !updateFontSize) {
+            return;
+        }
+
+        string objectName = this.getCellLabelObjectName(fromRowIndex, fromColumnIndex, fromLayer);
+        if (textChanged && ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText)) {
+            this.cellCache[cellIndex].text = fromText;
+            this.cellCache[cellIndex].textReady = true;
+        }
+
+        if (colorChanged && ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor)) {
+            this.cellCache[cellIndex].textColor = fromColor;
+            this.cellCache[cellIndex].colorReady = true;
+        }
+
+        if (updateFontSize) {
+            bool measured = false;
+            int fontSize = this.getWaveFontSize(fromText, measured);
+            bool fontSizeApplied = this.cellCache[cellIndex].fontSize == fontSize;
+            if (!fontSizeApplied) {
+                fontSizeApplied = ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, fontSize);
+                if (fontSizeApplied) {
+                    this.cellCache[cellIndex].fontSize = fontSize;
+                }
+            }
+
+            this.cellCache[cellIndex].waveFontReady = measured && fontSizeApplied;
+            if (this.cellCache[cellIndex].waveFontReady) {
+                this.cellCache[cellIndex].waveText = fromText;
+            }
+        }
+    }
+
+    /**
+     * セル内の説明文を変更時だけ反映し、設定が成功した値を保持する。
+     *
+     * @param fromRowIndex 表示行番号。
+     * @param fromColumnIndex 列番号。
+     * @param fromLayer 上段0、EMA200は1、Fibonacciは2。
+     * @param fromTooltip 説明文。
+     */
+    void updateCellTooltip(int fromRowIndex, int fromColumnIndex, int fromLayer, string fromTooltip) {
+        int cellIndex = (fromRowIndex * this.cellCacheColumnCount + fromColumnIndex) * 3 + fromLayer;
+        if (this.cellCache[cellIndex].tooltipReady
+                && this.cellCache[cellIndex].tooltip == fromTooltip) {
+            return;
+        }
+
+        string objectName = this.getCellLabelObjectName(fromRowIndex, fromColumnIndex, fromLayer);
+        if (ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, fromTooltip)) {
+            this.cellCache[cellIndex].tooltip = fromTooltip;
+            this.cellCache[cellIndex].tooltipReady = true;
+        }
     }
 
     /**
@@ -3902,6 +4072,8 @@ private:
      */
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
+        ArrayResize(this.cellCache, 0);
+        this.cellCacheColumnCount = 0;
         this.created = false;
         this.createdRowCount = 0;
         this.createdBuyCount = 0;

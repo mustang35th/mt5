@@ -130,10 +130,13 @@ public:
             return;
         }
         
-        // 処理開始時刻を記録（ミリ秒）
-        long startTime = GetTickCount();
-        
-        this.logger.debug(__FUNCTION__, StringFormat("setList:Start Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), startTime));
+        bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
+        long startTime = 0;
+        if (isDebugOutputEnabled) {
+            // DEBUG出力用の処理開始時刻を記録（ミリ秒）
+            startTime = GetTickCount();
+            this.logger.debug(__FUNCTION__, StringFormat("setList:Start Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), startTime));
+        }
 
         const int total = fromSymbolNameInfoAll.size();
 
@@ -165,15 +168,17 @@ public:
             
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("fromSymbolNameInfoAll isTarget = %d", this.targetCount));
-        this.logger.debug(__FUNCTION__, StringFormat("elliotAllList = %d", this.elliotAllList.Total()));
-        
-        // 処理終了時刻を記録し、実行時間を計算する
-        long endTime = GetTickCount();
-        long elapsedTime = endTime - startTime;
-        
-        this.logger.debug(__FUNCTION__, StringFormat("setList:End Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), endTime));
-        this.logger.debug(__FUNCTION__, StringFormat("setList:Total Elapsed Time: %d ms (%.3f seconds)", elapsedTime, (double)elapsedTime / 1000.0));
+        if (isDebugOutputEnabled) {
+            this.logger.debug(__FUNCTION__, StringFormat("fromSymbolNameInfoAll isTarget = %d", this.targetCount));
+            this.logger.debug(__FUNCTION__, StringFormat("elliotAllList = %d", this.elliotAllList.Total()));
+
+            // DEBUG出力用の処理終了時刻を記録し、実行時間を計算する
+            long endTime = GetTickCount();
+            long elapsedTime = endTime - startTime;
+
+            this.logger.debug(__FUNCTION__, StringFormat("setList:End Time: %s (MS: %d)", TimeToString(TimeCurrent(), TIME_SECONDS), endTime));
+            this.logger.debug(__FUNCTION__, StringFormat("setList:Total Elapsed Time: %d ms (%.3f seconds)", elapsedTime, (double)elapsedTime / 1000.0));
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }
@@ -261,7 +266,9 @@ private:
             return false;
         }
         
-        this.logger.debug(__FUNCTION__, StringFormat("symbol = %s execTime = %dms", elliotAll.marketContext.symbolName, elliotAll.execTime));
+        if (this.logger.isDebugOutputEnabled()) {
+            this.logger.debug(__FUNCTION__, StringFormat("symbol = %s execTime = %dms", elliotAll.marketContext.symbolName, elliotAll.execTime));
+        }
 
         return true;
     }

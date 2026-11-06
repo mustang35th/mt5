@@ -680,7 +680,7 @@ private:
     /**
      * 分析対象の価格系列が準備済みか判定する。
      *
-     * 準備不足の場合は価格系列の取得を再要求し、次回実行へ持ち越す。
+     * 未同期の時間足だけ価格系列の取得を再要求し、次回実行へ持ち越す。
      *
      * @return 分析データが準備済みの場合true
      */
@@ -709,43 +709,36 @@ private:
                 continue;
             }
 
+            bool shouldLogNotReady = isTesterWarmUp || isSynchronized;
             isSynchronized = false;
 
-            if (!isTesterWarmUp) {
-                WarmUpSeriesUtil::warmUp(
-                    this.marketContext,
-                    this.analysisTimeFrames,
-                    500
-                );
-            } else {
-                if (this.seriesWarmUpRequested[i]
-                        && this.seriesWarmUpRequestBarTimes[i]
-                            == currentBarTime) {
-                    continue;
-                }
+            if (isTesterWarmUp && this.seriesWarmUpRequested[i]
+                    && this.seriesWarmUpRequestBarTimes[i] == currentBarTime) {
+                continue;
+            }
 
-                ENUM_TIMEFRAMES timeFrames[1];
-                timeFrames[0] = timeFrame;
-                WarmUpSeriesUtil::warmUp(
-                    this.marketContext,
-                    timeFrames,
-                    500
-                );
+            ENUM_TIMEFRAMES timeFrames[1];
+            timeFrames[0] = timeFrame;
+            WarmUpSeriesUtil::warmUp(
+                this.marketContext,
+                timeFrames,
+                500
+            );
+
+            if (isTesterWarmUp) {
                 this.seriesWarmUpRequested[i] = true;
                 this.seriesWarmUpRequestBarTimes[i] = currentBarTime;
             }
 
-            this.logger.info(
-                __FUNCTION__,
-                StringFormat(
-                    "price series is not ready. symbol=%s timeframe=%s",
-                    this.marketContext.symbolName,
-                    EnumToString(timeFrame)
-                )
-            );
-
-            if (!isTesterWarmUp) {
-                return false;
+            if (shouldLogNotReady) {
+                this.logger.info(
+                    __FUNCTION__,
+                    StringFormat(
+                        "price series is not ready. symbol=%s timeframe=%s",
+                        this.marketContext.symbolName,
+                        EnumToString(timeFrame)
+                    )
+                );
             }
         }
 

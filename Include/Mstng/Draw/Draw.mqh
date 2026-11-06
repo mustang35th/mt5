@@ -44,6 +44,7 @@ public:
         this.infoRightDistance = DrawZigZagElliotInfoLayout::getMinimumRightDistance();
         this.symbolLabelName = "";
         this.lastBidAskLabelCheckTick = 0;
+        this.bidAskTextValuesValid = false;
 
         for (int i = 0; i < 6; i++) {
             this.bidAskLabelReady[i] = false;
@@ -224,6 +225,7 @@ public:
      *
      * ラベルの存在は未準備時と1秒経過後の描画時だけ確認する。
      * 価格・色は描画呼び出しごとに変更を反映する。
+     * 同じ銘柄・小数桁数・数値では、反映済みラベルの文字を再利用する。
      *
      * @param fromMarketContext 描画対象の市場コンテキスト
      */
@@ -245,6 +247,10 @@ public:
         if (isSuccess) {
             spread = RateUtil::getDiffPips(tick.bid, tick.ask, fromMarketContext);
         }
+
+        bool canReuseTextValues = isSuccess && this.bidAskTextValuesValid
+            && this.bidAskTextSymbolName == fromMarketContext.symbolName
+            && this.bidAskTextDigits == digits;
         
         string objectName;
         string text;        
@@ -254,7 +260,7 @@ public:
         text = "";
         
         if (isSuccess) {
-            text = DoubleToString(tick.ask, digits);
+            text = this.getBidAskValueText(0, tick.ask, digits, canReuseTextValues);
         }
         
         this.updateBidAskLabel(3, "AskTitle", "A:", 0, 116, clrAqua, checkLabelExistence);
@@ -266,7 +272,7 @@ public:
         text = "";
         
         if (isSuccess) {
-            text = DoubleToString(tick.bid, digits);
+            text = this.getBidAskValueText(1, tick.bid, digits, canReuseTextValues);
         }
         
         this.updateBidAskLabel(4, "BidTitle", "B:", 0, 146, clrHotPink, checkLabelExistence);
@@ -279,7 +285,7 @@ public:
         color spreadColor = clrSilver;
         
         if (isSuccess) {
-            text = DoubleToString(spread, 1);
+            text = this.getBidAskValueText(2, spread, 1, canReuseTextValues);
             if (spread > 5.0) {
                 spreadColor = clrOrange;
             }
@@ -289,6 +295,15 @@ public:
             DrawZigZagElliotInfoLayout::getSecondaryTitleLeftOffset(), 116, spreadColor, checkLabelExistence);
         this.updateBidAskLabel(2, objectName, text,
             DrawZigZagElliotInfoLayout::getSecondaryValueLeftOffset(), 116, spreadColor, checkLabelExistence);
+
+        this.bidAskTextValuesValid = isSuccess;
+        if (isSuccess) {
+            this.bidAskTextSymbolName = fromMarketContext.symbolName;
+            this.bidAskTextDigits = digits;
+            this.bidAskTextValues[0] = tick.ask;
+            this.bidAskTextValues[1] = tick.bid;
+            this.bidAskTextValues[2] = spread;
+        }
     }
     
     /**
@@ -455,6 +470,18 @@ private:
 
     /** Ask・Bid・Spreadラベルへ最後に反映した色。 */
     color bidAskLabelColors[6];
+
+    /** 直前のティック取得が成功し、文字生成元の数値を保持している場合true。 */
+    bool bidAskTextValuesValid;
+
+    /** 保持した文字生成元の銘柄名。 */
+    string bidAskTextSymbolName;
+
+    /** 保持したAsk・Bidの文字生成元の小数桁数。 */
+    int bidAskTextDigits;
+
+    /** 直前に取得したAsk・Bidと計算したSpreadの数値。 */
+    double bidAskTextValues[3];
 
     /** 時計6個・銘柄5個・当日レート8個の固定設定・文字反映が成功した場合true。 */
     bool infoLabelReady[19];
@@ -684,6 +711,24 @@ private:
         this.infoLabelTexts[fromIndex] = fromText;
         this.infoLabelTooltips[fromIndex] = fromTooltip;
         this.infoLabelReady[fromIndex] = true;
+    }
+
+    /**
+     * 数値が同じ反映済みレートラベルは、文字列へ再変換せずに再利用する。
+     *
+     * @param fromIndex Ask・Bid・Spreadの値0～2に対応するキャッシュ番号。
+     * @param fromValue 表示する数値。
+     * @param fromDigits 表示する小数桁数。
+     * @param fromCanReuse 同じ銘柄・小数桁数の数値を保持している場合true。
+     * @return 今回反映する表示文字。
+     */
+    string getBidAskValueText(int fromIndex, double fromValue, int fromDigits, bool fromCanReuse) {
+        if (fromCanReuse && this.bidAskLabelReady[fromIndex]
+            && this.bidAskTextValues[fromIndex] == fromValue) {
+            return this.bidAskLabelTexts[fromIndex];
+        }
+
+        return DoubleToString(fromValue, fromDigits);
     }
 
     /**

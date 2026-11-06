@@ -65,10 +65,12 @@ protected:
         this.marketContext = fromMarketContext;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
+        this.datetimeCacheValid = false;
     }
 
     /**
      * 上位足で取得した価格が、現在足のどのバー時刻に対応するかを取得する。
+     * 同じ描画内では、直前に取得できた端点時刻を再利用する。
      *
      * @param fromTimeFrame 元になった時間足
      * @param fromDatetime 元になったバー時刻
@@ -118,6 +120,16 @@ protected:
             return fromDatetime;
         }
 
+        bool isHigh = this.isTargetHigh(isBuy, isFrom);
+
+        if (this.datetimeCacheValid
+            && this.datetimeCacheTimeFrame == fromTimeFrame
+            && this.datetimeCacheSourceTime == fromDatetime
+            && this.datetimeCacheRate == fromRate
+            && this.datetimeCacheIsHigh == isHigh) {
+            return this.datetimeCacheResult;
+        }
+
         int shift = iBarShift(this.marketContext.symbolName, currentTimeFrame, fromDatetime, false);
 
         if (shift < 0) {
@@ -133,13 +145,13 @@ protected:
             return fromDatetime;
         }
 
-        bool isHigh = this.isTargetHigh(isBuy, isFrom);
-
         int endIndex = shift - count + 1;
 
         if (endIndex < 0) {
             endIndex = 0;
         }
+
+        bool canCacheDatetime = true;
 
         for (int i = shift; i >= endIndex; i--) {
             double rate = 0.0;
@@ -150,8 +162,23 @@ protected:
                 rate = iLow(this.marketContext.symbolName, currentTimeFrame, i);
             }
 
+            if (rate == 0.0) {
+                canCacheDatetime = false;
+            }
+
             if (this.isSameRate(rate, fromRate, this.marketContext)) {
-                return iTime(this.marketContext.symbolName, currentTimeFrame, i);
+                datetime matchedDatetime = iTime(this.marketContext.symbolName, currentTimeFrame, i);
+
+                if (canCacheDatetime && matchedDatetime > 0) {
+                    this.datetimeCacheTimeFrame = fromTimeFrame;
+                    this.datetimeCacheSourceTime = fromDatetime;
+                    this.datetimeCacheRate = fromRate;
+                    this.datetimeCacheIsHigh = isHigh;
+                    this.datetimeCacheResult = matchedDatetime;
+                    this.datetimeCacheValid = true;
+                }
+
+                return matchedDatetime;
             }
         }
 
@@ -174,6 +201,24 @@ protected:
     }
 
 private:
+
+    /** 同じ描画内で取得できた直前の端点時刻を保持している場合true。 */
+    bool datetimeCacheValid;
+
+    /** 保持した端点の元時間足。 */
+    ENUM_TIMEFRAMES datetimeCacheTimeFrame;
+
+    /** 保持した端点の元バー時刻。 */
+    datetime datetimeCacheSourceTime;
+
+    /** 保持した端点の価格。 */
+    double datetimeCacheRate;
+
+    /** 保持した端点が高値検索の場合true。 */
+    bool datetimeCacheIsHigh;
+
+    /** 保持した端点に対応する現在足バー時刻。 */
+    datetime datetimeCacheResult;
 
     /**
      * 対象とする価格が高値か安値かを判定する。
