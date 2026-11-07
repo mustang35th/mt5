@@ -30,7 +30,7 @@ public:
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
      * @param fromD1ToM5EntryPolicyEnabled D1必須・H4/H1/M15片足補正とH1～M5のEMA200一致を使用する場合true。
-     * @param fromCurrencyStrengthMinimumRankDifference 通常版M5の順位差基準。長中期は方向に合う1位・8位でも通過。
+     * @param fromCurrencyStrengthMinimumRankDifference 通常版M5の順位差基準。各期間は方向に合う1位・8位でも通過。
      */
     ExpertAdvisorMtf3In3M5(
         MarketContext &fromMarketContext,
@@ -71,7 +71,7 @@ protected:
     /**
      * 通常版M5の順位差基準を取得する。従来ポリシーは方向一致のみとする。
      *
-     * @return 中短期に必須、長中期のOR判定に使用する最低順位差。
+     * @return 長中期・中短期の各OR判定に使用する最低順位差。
      */
     virtual int getCurrencyStrengthMinimumRankDifference() override {
         if (this.isD1ToM5EntryPolicyEnabled) {
@@ -85,7 +85,7 @@ protected:
      * 通常版M5の長中期は、順位差または方向に合う1位・8位で通過させる。
      *
      * BUYは基軸1位または決済8位、SELLは基軸8位または決済1位を許可する。
-     * 中短期の最低順位差と両期間の方向一致は共通の呼び出し元で必須とする。
+     * 中短期の順位条件と両期間の方向一致は共通の呼び出し元で必須とする。
      *
      * @param fromExecutionInfo 取得状態・時刻・順位方向を確認済みの通貨強弱。
      * @param fromMinimumDifference 有効範囲を確認済みの最低順位差。
@@ -111,6 +111,38 @@ protected:
 
         return fromExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank == 8
             || fromExecutionInfo.pairRankInfo.quoteLongMediumTermAverageRank == 1;
+    }
+
+    /**
+     * 通常版M5の中短期は、順位差または方向に合う1位・8位で通過させる。
+     *
+     * BUYは基軸1位または決済8位、SELLは基軸8位または決済1位を許可する。
+     * 長中期の順位条件と両期間の方向一致は共通の呼び出し元で必須とする。
+     *
+     * @param fromExecutionInfo 取得状態・時刻・順位方向を確認済みの通貨強弱。
+     * @param fromMinimumDifference 有効範囲を確認済みの最低順位差。
+     * @return 中短期の順位差または端順位条件を満たす場合true。
+     */
+    virtual bool isMediumShortCurrencyStrengthConditionMatched(
+        const CurrencyStrengthExecutionInfo &fromExecutionInfo,
+        const int fromMinimumDifference
+    ) override {
+        if (AbstractExpertAdvisor::isMediumShortCurrencyStrengthConditionMatched(
+                fromExecutionInfo, fromMinimumDifference)) {
+            return true;
+        }
+
+        if (!this.isD1ToM5EntryPolicyEnabled) {
+            return false;
+        }
+
+        if (this.isBuy) {
+            return fromExecutionInfo.pairRankInfo.baseMediumShortTermAverageRank == 1
+                || fromExecutionInfo.pairRankInfo.quoteMediumShortTermAverageRank == 8;
+        }
+
+        return fromExecutionInfo.pairRankInfo.baseMediumShortTermAverageRank == 8
+            || fromExecutionInfo.pairRankInfo.quoteMediumShortTermAverageRank == 1;
     }
 
     /**
@@ -469,7 +501,7 @@ protected:
     }
 
 private:
-    /** 通常版M5の順位差基準。中短期は必須、長中期は方向に合う1位・8位でも通過。 */
+    /** 通常版M5の順位差基準。長中期・中短期はそれぞれ方向に合う1位・8位でも通過。 */
     int currencyStrengthMinimumRankDifference;
 
     /** MN1方向とW1 EMA200の両方を必須にする場合true。 */

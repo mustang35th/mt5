@@ -291,6 +291,23 @@ protected:
         return MathAbs(fromExecutionInfo.getLongMediumRankDifference()) >= fromMinimumDifference;
     }
 
+    /**
+     * 中短期の通貨強弱が戦略ごとの順位条件を満たすか判定する。
+     *
+     * 呼び出し元で取得状態・対象時刻・両期間方向・最低順位差の範囲を確認する。
+     * 標準では順位差を必須とし、必要な戦略だけ派生クラスで条件を追加する。
+     *
+     * @param fromExecutionInfo 今回の判定に使用する通貨強弱。
+     * @param fromMinimumDifference 有効範囲を確認済みの最低順位差。
+     * @return 中短期の順位条件を満たす場合true。
+     */
+    virtual bool isMediumShortCurrencyStrengthConditionMatched(
+        const CurrencyStrengthExecutionInfo &fromExecutionInfo,
+        const int fromMinimumDifference
+    ) {
+        return MathAbs(fromExecutionInfo.getMediumShortRankDifference()) >= fromMinimumDifference;
+    }
+
     /** 処理経過およびエラー出力用ロガー。 */
     Logger logger;
 
@@ -604,7 +621,7 @@ private:
      * 決済通貨が強いSELL方向となる。BUYでは長中期と中短期の順位差が
      * 両方とも正、SELLでは両方とも負の場合に限りtrueを返す。期間ごとの
      * 方向が異なるMIXED状態や、同順位による順位差0は許可しない。
-     * 長中期は戦略ごとの順位条件、中短期は最低順位差以上であることを要求する。
+     * 長中期・中短期の両方が戦略ごとの順位条件を満たすことを要求する。
      *
      * trueは通貨強弱フィルタの通過を表すだけであり、エントリー確定では
      * ない。呼び出し元で後続のElliott条件isJudge()を判定する。
@@ -642,7 +659,7 @@ private:
         }
 
         return this.isLongMediumCurrencyStrengthConditionMatched(executionInfo, minimumDifference)
-            && MathAbs(executionInfo.getMediumShortRankDifference()) >= minimumDifference;
+            && this.isMediumShortCurrencyStrengthConditionMatched(executionInfo, minimumDifference);
     }
 
     /**

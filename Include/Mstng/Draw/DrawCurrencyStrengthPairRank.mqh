@@ -1257,7 +1257,7 @@ private:
 
     /**
      * 長中期と中短期の方向一致、READY／WATCHと各期間の理由を表示する。
-     * 順位差基準は4固定とし、古い順位・取得エラーでは方向だけを表示する。
+     * 両期間に順位差基準4または方向に合う1位・8位を使い、古い順位・取得エラーでは方向だけを表示する。
      *
      * @param fromInfo 取得済みの実行時通貨強弱情報。
      * @param fromError 取得エラーにより前回の順位を表示する場合true。
@@ -1299,7 +1299,12 @@ private:
                 fromInfo.pairRankInfo.quoteLongMediumTermAverageRank,
                 4
             );
-            if (longMediumDirection != 0 && MathAbs(mediumShortDifference) >= 4) {
+            int mediumShortDirection = CurrencyStrengthRankAndSignal::getMediumShortDirection(
+                fromInfo.pairRankInfo.baseMediumShortTermAverageRank,
+                fromInfo.pairRankInfo.quoteMediumShortTermAverageRank,
+                4
+            );
+            if (longMediumDirection != 0 && mediumShortDirection != 0) {
                 decisionText += "｜READY";
                 tooltip += "\nREADY：両期間の方向と順位条件が成立。";
             } else {
@@ -1323,7 +1328,7 @@ private:
      * 指定期間の順位・方向と、成立または未達の理由を取得する。
      *
      * @param fromInfo 表示する通貨ペア順位。
-     * @param fromLongMedium 長中期の端順位OR条件を使用する場合true。
+     * @param fromLongMedium 長中期を説明する場合true。falseは中短期。
      * @return 期間名、順位差、条件達成状況の説明。
      */
     string getPeriodDecisionTooltip(
@@ -1351,8 +1356,14 @@ private:
             return tooltip + "\n成立：順位差4以上。";
         }
 
-        if (fromLongMedium
-                && CurrencyStrengthRankAndSignal::getLongMediumDirection(baseRank, quoteRank, 4) != 0) {
+        int periodDirection = 0;
+        if (fromLongMedium) {
+            periodDirection = CurrencyStrengthRankAndSignal::getLongMediumDirection(baseRank, quoteRank, 4);
+        } else {
+            periodDirection = CurrencyStrengthRankAndSignal::getMediumShortDirection(baseRank, quoteRank, 4);
+        }
+
+        if (periodDirection != 0) {
             string strongCurrency = fromInfo.baseCurrency;
             string weakCurrency = fromInfo.quoteCurrency;
             int strongRank = baseRank;
@@ -1369,11 +1380,7 @@ private:
             return tooltip + "\n成立：売る通貨" + weakCurrency + "が8位。";
         }
 
-        if (fromLongMedium) {
-            return tooltip + "\n未達：差4未満で、強い通貨1位・弱い通貨8位にも該当しません。";
-        }
-
-        return tooltip + "\n未達：順位差4まであと" + (string)(4 - (int)MathAbs(difference)) + "。";
+        return tooltip + "\n未達：差4未満で、強い通貨1位・弱い通貨8位にも該当しません。";
     }
 
     /**

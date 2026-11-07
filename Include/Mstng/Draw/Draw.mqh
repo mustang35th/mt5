@@ -1098,7 +1098,7 @@ private:
      * 通貨強弱とGMMAの準備・成立状態に対応するM5背景色を取得する。
      *
      * 強弱の両期間とGMMAトレンド・クロスが売買方向と一致し、
-     * 長中期は順位差4以上または方向に合う1位・8位、中短期は順位差4以上で達成とする。
+     * 長中期・中短期はそれぞれ順位差4以上または方向に合う1位・8位で達成とする。
      * 少なくとも片方の期間が達成なら準備色とする。
      * 両期間達成かつGMMA両カウントの絶対値が2以上なら成立色とする。
      * 差0・GMMAの0・逆方向・欠損・時刻不一致は黒とする。
@@ -1143,6 +1143,16 @@ private:
         }
 
         bool isMediumShortReady = MathAbs(fromExecutionInfo.getMediumShortRankDifference()) >= 4;
+        if (!isMediumShortReady) {
+            if (fromIsBuy) {
+                isMediumShortReady = fromExecutionInfo.pairRankInfo.baseMediumShortTermAverageRank == 1
+                    || fromExecutionInfo.pairRankInfo.quoteMediumShortTermAverageRank == 8;
+            } else {
+                isMediumShortReady = fromExecutionInfo.pairRankInfo.baseMediumShortTermAverageRank == 8
+                    || fromExecutionInfo.pairRankInfo.quoteMediumShortTermAverageRank == 1;
+            }
+        }
+
         if (isLongMediumReady && isMediumShortReady && isGmmaReady) {
             if (fromIsBuy) {
                 return clrMidnightBlue;

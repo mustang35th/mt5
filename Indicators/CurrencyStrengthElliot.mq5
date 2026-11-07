@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.17"
+#property version   "1.18"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -70,8 +70,8 @@ input(name="売買候補一覧を表示") bool showEntryCandidates = true;
 /** 売買候補一覧の最大表示件数。 */
 input(name="候補の最大表示件数") int entryCandidateMaxCount = 10;
 
-/** 候補に必要な最小順位差。長中期は方向に合う1位・8位でも通過する。 */
-input(name="候補に必要な順位差（1～7・長中期は端順位可）") int entryCandidateMinRankDifference = 2;
+/** 候補に必要な最小順位差。長中期・中短期とも方向に合う1位・8位でも通過する。 */
+input(name="候補に必要な順位差（1～7・各期間は端順位可）") int entryCandidateMinRankDifference = 2;
 
 input group "03. 計算・更新"
 

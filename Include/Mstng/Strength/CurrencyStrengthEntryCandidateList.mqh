@@ -41,7 +41,7 @@ public:
      * 各通貨の長中期・中短期順位は、構築ごとに一度だけ取得する。
      *
      * @param fromCalculator 通貨強弱集計結果。
-     * @param fromMinimumRankDifference 候補とする最小順位差。長中期は端順位でも通過する。
+     * @param fromMinimumRankDifference 候補とする最小順位差。両期間とも方向に合う端順位でも通過する。
      * @return 構築処理に成功した場合true。
      */
     bool build(
@@ -384,10 +384,6 @@ private:
             mediumShortDifference
         );
 
-        if (absoluteMediumShortDifference < this.minimumRankDifference) {
-            return true;
-        }
-
         CurrencyStrengthEntryCandidate candidate;
         candidate.reset();
         candidate.symbolName = symbolName;
@@ -399,7 +395,8 @@ private:
         candidate.longMediumRankDifference = longMediumDifference;
         candidate.mediumShortRankDifference = mediumShortDifference;
 
-        if (!candidate.isLongMediumRankConditionMatched(this.minimumRankDifference)) {
+        if (!candidate.isLongMediumRankConditionMatched(this.minimumRankDifference)
+                || !candidate.isMediumShortRankConditionMatched(this.minimumRankDifference)) {
             return true;
         }
 

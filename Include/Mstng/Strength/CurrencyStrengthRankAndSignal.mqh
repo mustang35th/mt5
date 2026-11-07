@@ -53,6 +53,23 @@ public:
     }
 
     /**
+     * 中短期の順位差または方向に合う1位・8位から成立方向を取得する。
+     * 長中期と同じ順位条件を使用する。
+     *
+     * @param fromBaseRank 基軸通貨の中短期順位。
+     * @param fromQuoteRank 決済通貨の中短期順位。
+     * @param fromMinimumDifference 順位差の基準。
+     * @return BUYは1、SELLは-1、未達・同順位・無効順位は0。
+     */
+    static int getMediumShortDirection(
+        const int fromBaseRank,
+        const int fromQuoteRank,
+        const int fromMinimumDifference
+    ) {
+        return getLongMediumDirection(fromBaseRank, fromQuoteRank, fromMinimumDifference);
+    }
+
+    /**
      * 同一M5時刻の順位から、指定した期間条件の売買方向を取得する。
      * 長中期のみの場合は、順位差の基準または方向に合う1位・8位で成立とする。
      *
@@ -131,7 +148,7 @@ public:
      * 帯の売買方向と準備・成立状態を取得する。
      *
      * 両期間が同方向で片方だけ条件を満たした場合は準備、両方なら成立とする。
-     * 長中期は順位差の基準または売買方向に合う1位・8位、中短期は順位差を必須とする。
+     * 長中期・中短期それぞれで、順位差の基準または売買方向に合う1位・8位を許可する。
      * 長中期のみを使う場合も同じOR条件を使い、準備を設けず成立だけを返す。
      *
      * @param fromPoint 判定する通貨ペア順位。
@@ -164,7 +181,9 @@ public:
             bool isLongMediumReady = longMediumDifference >= fromMinimumDifference
                 || fromPoint.baseLongMediumTermAverageRank == 1
                 || fromPoint.quoteLongMediumTermAverageRank == 8;
-            bool isMediumShortReady = mediumShortDifference >= fromMinimumDifference;
+            bool isMediumShortReady = mediumShortDifference >= fromMinimumDifference
+                || fromPoint.baseMediumShortTermAverageRank == 1
+                || fromPoint.quoteMediumShortTermAverageRank == 8;
             if (isLongMediumReady && isMediumShortReady) {
                 return 2;
             }
@@ -178,7 +197,9 @@ public:
             bool isLongMediumReady = longMediumDifference <= -fromMinimumDifference
                 || fromPoint.baseLongMediumTermAverageRank == 8
                 || fromPoint.quoteLongMediumTermAverageRank == 1;
-            bool isMediumShortReady = mediumShortDifference <= -fromMinimumDifference;
+            bool isMediumShortReady = mediumShortDifference <= -fromMinimumDifference
+                || fromPoint.baseMediumShortTermAverageRank == 8
+                || fromPoint.quoteMediumShortTermAverageRank == 1;
             if (isLongMediumReady && isMediumShortReady) {
                 return -2;
             }

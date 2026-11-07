@@ -773,15 +773,16 @@ void validateM5StrengthEntry(int &fromFailures) {
                 SignalCount signalCount(context);
                 ExpertAdvisorMtf3In3M5 probe(context, false, false, true);
                 probe.analyze(analysis, GetPointer(signalCount));
-                bool expected = j >= 4 && k >= 4;
+                // 基軸は順位差が正なら1位、負なら8位のため、両期間とも方向一致なら端順位条件を満たす。
+                bool expected = j > 0 && k > 0;
                 if (i == 1) {
-                    expected = j <= -4 && k <= -4;
+                    expected = j < 0 && k < 0;
                 }
 
                 Mtf3In3AlertResult result = probe.getAlertResult();
                 string caseName = StringFormat("M5 strength %d/%d/%d", i, j, k);
                 check(result.isEntry == expected && result.isJudge == expected,
-                    caseName + " AND direction and threshold", fromFailures);
+                    caseName + " AND direction and directional extreme", fromFailures);
                 if (!expected) {
                     check(result.signalCount == 0, caseName + " no count consumed", fromFailures);
                     int matchingDifference = 4;
@@ -822,6 +823,7 @@ void validateM5StrengthEntry(int &fromFailures) {
             expected = true;
         } else if (i == 5) {
             minimumDifference = 5;
+            expected = true;
         } else if (i == 6) {
             minimumDifference = 0;
         } else if (i == 7) {

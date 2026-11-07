@@ -196,12 +196,33 @@ struct CurrencyStrengthEntryCandidate {
     }
 
     /**
-     * 両期間が候補方向と一致し、READY基準を満たすか判定する。
+     * 中短期の強い通貨が1位、または弱い通貨が8位か判定する。
      *
-     * @return 長中期は順位差4以上または端順位、中短期は順位差4以上の場合true。
+     * @return 候補方向と一致する端順位の場合true。同順位と無効順位は除く。
      */
-    bool isReady() {
-        if (!this.isLongMediumRankConditionMatched(4)
+    bool isMediumShortExtremeRankMatched() {
+        if (this.baseMediumShortRank < 1 || this.baseMediumShortRank > 8
+                || this.quoteMediumShortRank < 1 || this.quoteMediumShortRank > 8) {
+            return false;
+        }
+
+        if (this.isBuy) {
+            return this.baseMediumShortRank < this.quoteMediumShortRank
+                && (this.baseMediumShortRank == 1 || this.quoteMediumShortRank == 8);
+        }
+
+        return this.baseMediumShortRank > this.quoteMediumShortRank
+            && (this.baseMediumShortRank == 8 || this.quoteMediumShortRank == 1);
+    }
+
+    /**
+     * 中短期が候補方向と一致し、順位差または端順位の条件を満たすか判定する。
+     *
+     * @param fromMinimumRankDifference 順位差の基準。1から7を指定する。
+     * @return 順位差の基準または方向に合う1位・8位を満たす場合true。
+     */
+    bool isMediumShortRankConditionMatched(const int fromMinimumRankDifference) {
+        if (fromMinimumRankDifference < 1 || fromMinimumRankDifference > 7
                 || this.baseMediumShortRank < 1 || this.baseMediumShortRank > 8
                 || this.quoteMediumShortRank < 1 || this.quoteMediumShortRank > 8) {
             return false;
@@ -209,10 +230,22 @@ struct CurrencyStrengthEntryCandidate {
 
         int rankDifference = this.quoteMediumShortRank - this.baseMediumShortRank;
         if (this.isBuy) {
-            return rankDifference >= 4;
+            return rankDifference >= fromMinimumRankDifference
+                || this.isMediumShortExtremeRankMatched();
         }
 
-        return rankDifference <= -4;
+        return rankDifference <= 0 - fromMinimumRankDifference
+            || this.isMediumShortExtremeRankMatched();
+    }
+
+    /**
+     * 両期間が候補方向と一致し、READY基準を満たすか判定する。
+     *
+     * @return 長中期・中短期の両方が順位差4以上または端順位の場合true。
+     */
+    bool isReady() {
+        return this.isLongMediumRankConditionMatched(4)
+            && this.isMediumShortRankConditionMatched(4);
     }
 
     /**
