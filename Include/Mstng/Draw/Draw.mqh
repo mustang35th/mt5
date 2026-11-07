@@ -1083,7 +1083,10 @@ private:
         if (bgColor != clrBlack
                 && this.elliotAll.marketContext.timeFrame == PERIOD_M5
                 && MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot") {
-            bgColor = this.getM5BackgroundColor(isBuy);
+            bgColor = this.getM5BackgroundColor(
+                isBuy,
+                this.elliotAll.currencyStrengthExecutionInfo
+            );
         }
 
         DrawUtil::setBgColor(bgColor);
@@ -1102,14 +1105,16 @@ private:
      * エントリーフィルターの有効状態や最低順位差設定には連動しない。
      *
      * @param fromIsBuy 買い方向の場合true。
+     * @param fromExecutionInfo コピーせずに参照する取得済みの通貨強弱情報。
      * @return BUYは濃紺系、SELLは暗赤系。未成立の場合は黒。
      */
-    color getM5BackgroundColor(const bool fromIsBuy) {
-        CurrencyStrengthExecutionInfo executionInfo =
-            this.elliotAll.currencyStrengthExecutionInfo;
-        if (executionInfo.targetM5BarTime <= 0
-                || !executionInfo.isExactM5Bar()
-                || !executionInfo.isDirectionAligned(fromIsBuy)) {
+    color getM5BackgroundColor(
+        const bool fromIsBuy,
+        const CurrencyStrengthExecutionInfo &fromExecutionInfo
+    ) {
+        if (fromExecutionInfo.targetM5BarTime <= 0
+                || !fromExecutionInfo.isExactM5Bar()
+                || !fromExecutionInfo.isDirectionAligned(fromIsBuy)) {
             return clrBlack;
         }
 
@@ -1126,18 +1131,18 @@ private:
             return clrBlack;
         }
 
-        bool isLongMediumReady = MathAbs(executionInfo.getLongMediumRankDifference()) >= 4;
+        bool isLongMediumReady = MathAbs(fromExecutionInfo.getLongMediumRankDifference()) >= 4;
         if (!isLongMediumReady) {
             if (fromIsBuy) {
-                isLongMediumReady = executionInfo.pairRankInfo.baseLongMediumTermAverageRank == 1
-                    || executionInfo.pairRankInfo.quoteLongMediumTermAverageRank == 8;
+                isLongMediumReady = fromExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank == 1
+                    || fromExecutionInfo.pairRankInfo.quoteLongMediumTermAverageRank == 8;
             } else {
-                isLongMediumReady = executionInfo.pairRankInfo.baseLongMediumTermAverageRank == 8
-                    || executionInfo.pairRankInfo.quoteLongMediumTermAverageRank == 1;
+                isLongMediumReady = fromExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank == 8
+                    || fromExecutionInfo.pairRankInfo.quoteLongMediumTermAverageRank == 1;
             }
         }
 
-        bool isMediumShortReady = MathAbs(executionInfo.getMediumShortRankDifference()) >= 4;
+        bool isMediumShortReady = MathAbs(fromExecutionInfo.getMediumShortRankDifference()) >= 4;
         if (isLongMediumReady && isMediumShortReady && isGmmaReady) {
             if (fromIsBuy) {
                 return clrMidnightBlue;

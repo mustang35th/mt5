@@ -137,15 +137,15 @@ public:
             return true;
         }
 
-        if (!fromForce && !this.isChartViewChanged()) {
+        int firstVisibleBar = 0;
+        int visibleBars = 0;
+        int chartHeight = 0;
+        if (!fromForce && !this.isChartViewChanged(firstVisibleBar, visibleBars, chartHeight)) {
             return false;
         }
 
         double fixedMin = 0;
         double fixedMax = 0;
-        int firstVisibleBar = 0;
-        int visibleBars = 0;
-        int chartHeight = 0;
 
         if (!this.calculateFixedRange(
                 fromElliotAll,
@@ -153,7 +153,8 @@ public:
                 fixedMax,
                 firstVisibleBar,
                 visibleBars,
-                chartHeight
+                chartHeight,
+                !fromForce
         )) {
             return false;
         }
@@ -397,9 +398,10 @@ private:
      * @param fromElliotAll Elliott分析結果
      * @param toFixedMin 固定下限価格
      * @param toFixedMax 固定上限価格
-     * @param toFirstVisibleBar 左端表示バー
-     * @param toVisibleBars 表示バー数
-     * @param toChartHeight チャート高さ
+     * @param toFirstVisibleBar 左端表示バー。取得済みの場合は入力値を再利用する
+     * @param toVisibleBars 表示バー数。取得済みの場合は入力値を再利用する
+     * @param toChartHeight チャート高さ。取得済みの場合は入力値を再利用する
+     * @param fromChartViewReady 同じ更新内の変更判定で画面3項目を取得済みの場合true
      * @return 算出できた場合true
      */
     bool calculateFixedRange(
@@ -408,11 +410,14 @@ private:
             double &toFixedMax,
             int &toFirstVisibleBar,
             int &toVisibleBars,
-            int &toChartHeight
+            int &toChartHeight,
+            bool fromChartViewReady = false
     ) {
-        toFirstVisibleBar = (int)ChartGetInteger(this.chartId, CHART_FIRST_VISIBLE_BAR, 0);
-        toVisibleBars = (int)ChartGetInteger(this.chartId, CHART_VISIBLE_BARS, 0);
-        toChartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
+        if (!fromChartViewReady) {
+            toFirstVisibleBar = (int)ChartGetInteger(this.chartId, CHART_FIRST_VISIBLE_BAR, 0);
+            toVisibleBars = (int)ChartGetInteger(this.chartId, CHART_VISIBLE_BARS, 0);
+            toChartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
+        }
 
         if (toFirstVisibleBar < 0 || toVisibleBars <= 0 || toChartHeight <= 0) {
             return false;
@@ -705,18 +710,21 @@ private:
     /**
      * 前回更新後に表示範囲が変化したか判定する。
      *
+     * @param toFirstVisibleBar 同じ更新内の再計算にも使用する左端表示バー
+     * @param toVisibleBars 同じ更新内の再計算にも使用する表示バー数
+     * @param toChartHeight 同じ更新内の再計算にも使用するチャート高さ
      * @return 変化した場合true
      */
-    bool isChartViewChanged() {
-        int firstVisibleBar = (int)ChartGetInteger(this.chartId, CHART_FIRST_VISIBLE_BAR, 0);
-        int visibleBars = (int)ChartGetInteger(this.chartId, CHART_VISIBLE_BARS, 0);
-        int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
+    bool isChartViewChanged(int &toFirstVisibleBar, int &toVisibleBars, int &toChartHeight) {
+        toFirstVisibleBar = (int)ChartGetInteger(this.chartId, CHART_FIRST_VISIBLE_BAR, 0);
+        toVisibleBars = (int)ChartGetInteger(this.chartId, CHART_VISIBLE_BARS, 0);
+        toChartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
         double priceMin = ChartGetDouble(this.chartId, CHART_PRICE_MIN, 0);
         double priceMax = ChartGetDouble(this.chartId, CHART_PRICE_MAX, 0);
 
-        if (firstVisibleBar != this.lastFirstVisibleBar
-                || visibleBars != this.lastVisibleBars
-                || chartHeight != this.lastChartHeight) {
+        if (toFirstVisibleBar != this.lastFirstVisibleBar
+                || toVisibleBars != this.lastVisibleBars
+                || toChartHeight != this.lastChartHeight) {
             return true;
         }
 
