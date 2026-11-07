@@ -13,10 +13,11 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
+#include <Mstng\Util\TimeUtil.mqh>
 
 /**
  * 通貨強弱の各パネルで共通する集計対象時刻を固定位置に表示する。
- * 同一のサーバー時刻をJSTとSERVERの1行で表示する。
+ * 同一のサーバー時刻を秒までのJSTとSRVの1行で表示する。
  */
 class DrawCurrencyStrengthSnapshotHeader {
 public:
@@ -99,15 +100,14 @@ public:
                 fromExpectedPairCount
             );
             if (fromValidPairCount == fromExpectedPairCount) {
-                displayText = "集計待ち：日時未取得";
+                displayText = "集計対象：—（取得待ち）";
                 if (fromSnapshotTime > 0) {
-                    displayText = "集計対象：JST "
-                        + TimeToString(
-                            TimeJapanUtil::getJapanTime(fromSnapshotTime),
-                            TIME_DATE | TIME_MINUTES
+                    displayText = "集計対象："
+                        + TimeUtil::formatYyyymmddhhmiss(
+                            TimeJapanUtil::getJapanTime(fromSnapshotTime)
                         )
-                        + " ｜ SERVER "
-                        + TimeToString(fromSnapshotTime, TIME_DATE | TIME_MINUTES);
+                        + " JST ｜ "
+                        + TimeUtil::formatYyyymmddhhmiss(fromSnapshotTime) + " SRV";
                     displayColor = clrWhiteSmoke;
                 }
             }

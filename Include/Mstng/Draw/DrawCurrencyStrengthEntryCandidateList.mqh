@@ -13,8 +13,9 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Draw\DrawChartRedrawBatch.mqh>
-#include <Mstng\Strength\CurrencyStrengthEntryAndTracker.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
+#include <Mstng\Strength\CurrencyStrengthEntryEmaState.mqh>
+#include <Mstng\Util\TimeUtil.mqh>
 #include <Mstng\Util\Util.mqh>
 
 /**
@@ -26,7 +27,7 @@ public:
     /**
      * 描画対象チャートと表示位置を指定して初期化する。
      * 初期表示はAND成立候補のみに絞り込む。
-     * EMA200初期モードは通常チャートでH1＋M1、テスターではH1を使用する。
+     * EMA200初期モードは通常チャートでH1＋M1優先、テスターではH1を使用する。
      *
      * @param fromChartId 描画対象チャートID。0の場合はカレント。
      * @param fromXDistance チャート左端からの距離。
@@ -66,11 +67,12 @@ public:
         this.pairSelectionEnabled = false;
         this.readyHighlightEnabled = false;
         this.andOnly = true;
-        this.emaMode = currencyStrengthEntryEmaH1AndM1;
+        CurrencyStrengthEntryEmaMode initialMode = currencyStrengthEntryEmaH1AndM1;
         if (Util::isStrategyTester()) {
-            this.emaMode = currencyStrengthEntryEmaH1;
+            initialMode = currencyStrengthEntryEmaH1;
         }
 
+        this.emaState.setMode(initialMode, !Util::isStrategyTester());
         this.selectedSymbol = "";
         this.hasNewMarkers = false;
         this.displayedSelectedRow = -2;
@@ -119,7 +121,7 @@ public:
     bool draw(CurrencyStrengthEntryCandidateList *fromCandidateList,
             const bool fromUpdateTracking = true) {
         if (fromCandidateList == NULL) {
-            this.andTracker.suspend();
+            this.suspendAndTracking();
             for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
                 this.clearRow(i);
             }
@@ -138,10 +140,16 @@ public:
         }
 
         bool isRankingReady = fromCandidateList.isRankingReady();
-        if (!isRankingReady) {
-            this.andTracker.suspend();
-        } else if (fromUpdateTracking) {
-            this.updateAndTracking(fromCandidateList, serverTime, nowMs);
+        CurrencyStrengthEntryEmaMode previousEffectiveMode = this.emaState.getEffectiveMode();
+        bool wasSelectionPending = this.emaState.isSelectionPending();
+        bool wasDisplayPending = this.emaState.isDisplayPending();
+        this.emaState.update(fromCandidateList, fromUpdateTracking, serverTime, nowMs);
+        if (this.created && (previousEffectiveMode != this.emaState.getEffectiveMode()
+                || wasSelectionPending != this.emaState.isSelectionPending()
+                || wasDisplayPending != this.emaState.isDisplayPending())) {
+            this.updateEmaModeButton();
+            this.updateFilterButton();
+            this.updateReadyButton();
         }
 
         if (!this.created && !this.create()) {
@@ -161,11 +169,11 @@ public:
                     continue;
                 }
 
-                if (candidate.isAndReady(this.emaMode)) {
+                if (candidate.isAndReady(this.emaState.getEffectiveMode())) {
                     andCount++;
                 }
 
-                if (this.andOnly && !candidate.isAndReady(this.emaMode)) {
+                if (this.andOnly && !candidate.isAndReady(this.emaState.getEffectiveMode())) {
                     continue;
                 }
 
@@ -193,8 +201,18 @@ public:
      * 次の正常な実データ更新を新しい比較基準とする。
      */
     void suspendAndTracking() {
-        this.andTracker.suspend();
+        this.emaState.suspend();
+        this.updateEmaModeButton();
+        this.updateFilterButton();
+        this.updateReadyButton();
         this.refreshNewMarkers();
+        if (this.created) {
+            ObjectSetString(this.chartId, this.objectPrefix + "Summary", OBJPROP_TEXT,
+                "取得待ち：候補データを再確認中");
+            ObjectSetInteger(this.chartId, this.objectPrefix + "Summary", OBJPROP_COLOR,
+                this.warningColor);
+            DrawChartRedrawBatch::request(this.chartId);
+        }
     }
 
     /**
@@ -218,7 +236,7 @@ public:
             }
 
             bool isNew = this.displayedReady[i]
-                && this.andTracker.isNew(this.displayedSymbols[i], this.displayedBuy[i], nowMs);
+                && this.emaState.isNew(this.displayedSymbols[i], this.displayedBuy[i], nowMs);
             string andText = this.displayedAndTexts[i];
             if (isNew) {
                 andText += " NEW";
@@ -276,7 +294,7 @@ public:
     }
 
     /**
-     * EMA200のAND判定対象をH1、M1、H1＋M1の順に切り替える。
+     * EMA200のAND判定対象をH1、M1、H1＋M1優先の順に切り替える。
      * 呼び出し元で一覧を再描画し、比較パネルの強調対象を更新する。
      *
      * @param fromObjectName クリックされたチャートオブジェクト名。
@@ -287,15 +305,14 @@ public:
             return false;
         }
 
-        if (this.emaMode == currencyStrengthEntryEmaH1) {
-            this.emaMode = currencyStrengthEntryEmaM1;
-        } else if (this.emaMode == currencyStrengthEntryEmaM1) {
-            this.emaMode = currencyStrengthEntryEmaH1AndM1;
-        } else {
-            this.emaMode = currencyStrengthEntryEmaH1;
+        CurrencyStrengthEntryEmaMode nextMode = currencyStrengthEntryEmaH1;
+        if (this.emaState.getConfiguredMode() == currencyStrengthEntryEmaH1) {
+            nextMode = currencyStrengthEntryEmaM1;
+        } else if (this.emaState.getConfiguredMode() == currencyStrengthEntryEmaM1) {
+            nextMode = currencyStrengthEntryEmaH1AndM1;
         }
 
-        this.andTracker.reset();
+        this.emaState.setMode(nextMode, !Util::isStrategyTester());
         this.updateEmaModeButton();
         this.updateFilterButton();
         this.updateReadyButton();
@@ -314,12 +331,13 @@ public:
     }
 
     /**
-     * AND判定に使用するEMA200時間足を取得する。
+     * 保存対象となるユーザー指定のEMA200時間足を取得する。
+     * M1自動補完中もH1＋M1優先の設定値を返す。
      *
-     * @return 現在のEMA200判定モード。
+     * @return 現在のEMA200設定モード。
      */
     CurrencyStrengthEntryEmaMode getEmaMode() const {
-        return this.emaMode;
+        return this.emaState.getConfiguredMode();
     }
 
     /**
@@ -338,10 +356,7 @@ public:
         }
 
         this.andOnly = fromAndOnly;
-        if (this.emaMode != fromEmaMode) {
-            this.emaMode = fromEmaMode;
-            this.andTracker.reset();
-        }
+        this.emaState.setMode(fromEmaMode, !Util::isStrategyTester());
 
         if (this.created) {
             this.updateEmaModeButton();
@@ -544,8 +559,8 @@ private:
     /** NEW期限の確認または再反映が必要な表示行がある場合true。 */
     bool hasNewMarkers;
 
-    /** 表示件数や絞り込みにかかわらず全候補のAND成立変化を保持する。 */
-    CurrencyStrengthEntryAndTracker andTracker;
+    /** 保存用設定・実効モードと、全候補のモード別AND成立変化を保持する。 */
+    CurrencyStrengthEntryEmaState emaState;
 
     /** 表示行ごとのGMO対象状態。空行や対象外はfalse。 */
     bool displayedGmo[];
@@ -576,9 +591,6 @@ private:
 
     /** AND成立候補だけを表示する場合true。 */
     bool andOnly;
-
-    /** AND判定で要求するEMA200時間足。再生成時も保持する。 */
-    CurrencyStrengthEntryEmaMode emaMode;
 
     /** 選択中の通貨ペア名。表示順位の圏外でも保持する。 */
     string selectedSymbol;
@@ -657,31 +669,6 @@ private:
 
     /** 選択行の背景色。BUY・SELLの文字色は変更しない。 */
     color selectionBackgroundColor;
-
-    /**
-     * 絞り込みや描画成功に依存せず、全候補のAND成立変化を観測する。
-     *
-     * @param fromCandidateList 最新の候補一覧。
-     * @param fromServerTime 今回の観測サーバー時刻。
-     * @param fromNowMs NEW表示期限に使用するミリ秒時刻。
-     */
-    void updateAndTracking(CurrencyStrengthEntryCandidateList *fromCandidateList,
-            const datetime fromServerTime, const ulong fromNowMs) {
-        this.andTracker.beginUpdate(true);
-        for (int i = 0; i < fromCandidateList.size(); i++) {
-            CurrencyStrengthEntryCandidate candidate;
-            candidate.reset();
-            if (!fromCandidateList.get(i, candidate)) {
-                this.andTracker.suspend();
-
-                return;
-            }
-
-            this.andTracker.observe(candidate, this.emaMode, fromServerTime, fromNowMs);
-        }
-
-        this.andTracker.endUpdate();
-    }
 
     /**
      * 候補一覧パネルを生成する。
@@ -1025,20 +1012,51 @@ private:
     }
 
     /**
-     * 選択中のEMA200時間足を短い表示名へ変換する。
+     * 実際にAND判定へ適用しているEMA200時間足を短い表示名へ変換する。
      *
      * @return H1、M1、H1＋M1のいずれか。
      */
     string getEmaModeLabel() const {
-        if (this.emaMode == currencyStrengthEntryEmaM1) {
+        if (this.emaState.getEffectiveMode() == currencyStrengthEntryEmaM1) {
             return "M1";
         }
 
-        if (this.emaMode == currencyStrengthEntryEmaH1AndM1) {
+        if (this.emaState.getEffectiveMode() == currencyStrengthEntryEmaH1AndM1) {
             return "H1＋M1";
         }
 
         return "H1";
+    }
+
+    /**
+     * EMA200の設定と、自動補完または切替保留の理由を説明する。
+     *
+     * @return 実際の判定モードと選択理由を含む説明。
+     */
+    string getEmaSelectionTooltip() const {
+        string tooltip = "適用：" + this.getEmaModeLabel();
+        if (Util::isStrategyTester()
+                || this.emaState.getConfiguredMode() != currencyStrengthEntryEmaH1AndM1) {
+            if (this.emaState.isDisplayPending()) {
+                tooltip += "\n取得待ち：必要な順位・EMAの取得が揃っていません";
+            }
+
+            return tooltip;
+        }
+
+        tooltip = "設定：H1＋M1優先\n" + tooltip;
+        if (this.emaState.isSelectionPending()) {
+            tooltip += "\n取得待ち：H1＋M1成立0件を確認できないため、自動切替を保留します";
+        } else if (this.emaState.isAutoFallback()) {
+            tooltip += "（自動）\nH1＋M1成立が0件のため、M1成立候補を表示します";
+        } else {
+            tooltip += "\nH1＋M1成立を優先し、0件のときだけM1成立候補を表示します";
+        }
+
+        tooltip += "\n表示上限・絞り込み前の全候補で判定し、H1＋M1成立が戻れば自動で復帰します"
+            + "\nM1補完中も通貨強弱READYは必須です。H1の逆向き・NONEは許可します";
+
+        return tooltip;
     }
 
     /**
@@ -1051,18 +1069,37 @@ private:
 
         string objectName = this.objectPrefix + "EmaModeButton";
         string modeLabel = this.getEmaModeLabel();
-        string tooltip = "クリックで H1 → M1 → H1＋M1 の順に切り替えます"
-            + "\nAND成立：READY＋選択した時間足のEMA200が候補方向と一致"
-            + "\nH1＋M1は両方の一致が必要です"
+        string buttonLabel = modeLabel + " 固定";
+        color textColor = clrWhite;
+        color backgroundColor = C'32,60,96';
+        if (this.emaState.isDisplayPending()) {
+            buttonLabel = modeLabel + " 待機";
+            backgroundColor = C'72,72,72';
+        } else if (this.emaState.isAutoFallback()) {
+            buttonLabel = "M1 補完中";
+            textColor = clrBlack;
+            backgroundColor = clrOrange;
+        } else if (!Util::isStrategyTester()
+                && this.emaState.getConfiguredMode() == currencyStrengthEntryEmaH1AndM1) {
+            buttonLabel = "H1＋M1 優先";
+            backgroundColor = C'24,88,48';
+        }
+
+        string tooltip = "EMA200判定：クリックで H1 → M1 → H1＋M1 の順に切り替えます"
+            + "\n" + this.getEmaSelectionTooltip()
+            + "\nAND成立：READY＋適用中の時間足のEMA200が候補方向と一致"
             + "\nH1は通貨強弱の集計時点、M1は最新確定足で判定します"
             + "\nNEW：未成立から成立への変化を検出してから60秒間"
-            + "\n初回観測・取得復旧・モード切替後の基準状態にはNEWを付けません";
+            + "\n条件ごとに成立を追跡し、自動切替だけではNEWを付けません"
+            + "\n初回観測・取得復旧・手動モード切替後の基準状態にはNEWを付けません";
         if (Util::isStrategyTester()) {
             tooltip += "\nテスターでは下位足参照制限への対応のためM1は取得対象外です";
         }
 
-        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, "EMA200：" + modeLabel);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, buttonLabel);
         ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, tooltip);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
         ObjectSetString(this.chartId, this.objectPrefix + "ReadyHint", OBJPROP_TEXT,
             "AND成立：READY＋" + modeLabel + " EMA200が候補方向と一致 ／ NEW：60秒");
@@ -1089,7 +1126,8 @@ private:
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, buttonText);
         ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP,
             "全候補／READYかつ" + this.getEmaModeLabel()
-                + " EMA200が候補方向と一致する候補を切り替えます");
+                + " EMA200が候補方向と一致する候補を切り替えます"
+                + "\n" + this.getEmaSelectionTooltip());
         ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
@@ -1111,7 +1149,7 @@ private:
         if (this.pairSelectionEnabled) {
             textColor = this.normalColor;
             tooltip = "表示中のAND成立候補に含まれる通貨を比較パネルで強調します"
-                + "\nEMA200判定：" + this.getEmaModeLabel();
+                + "\n" + this.getEmaSelectionTooltip();
         }
 
         if (this.readyHighlightEnabled) {
@@ -1129,6 +1167,34 @@ private:
         ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor);
         ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+    }
+
+    /**
+     * 件数行へ表示する実効EMAモードと、補完または取得待ちの理由をまとめる。
+     *
+     * @param fromAndCount 現在の実効モードで成立する全候補の件数。
+     * @return 判定モードと成立件数。未取得は0件と表示しない。
+     */
+    string getEmaSummary(const int fromAndCount) const {
+        string modeLabel = this.getEmaModeLabel();
+        if (this.emaState.isDisplayPending()) {
+            if (this.emaState.isSelectionPending() && this.emaState.isAutoFallback()) {
+                return "H1＋M1：取得待ち → M1維持";
+            }
+
+            return modeLabel + "：取得待ち";
+        }
+
+        if (this.emaState.isAutoFallback()) {
+            return StringFormat("H1＋M1：0件 → M1補完：%d件", fromAndCount);
+        }
+
+        if (!Util::isStrategyTester()
+                && this.emaState.getConfiguredMode() == currencyStrengthEntryEmaH1AndM1) {
+            return StringFormat("H1＋M1優先：%d件", fromAndCount);
+        }
+
+        return modeLabel + StringFormat("固定：%d件", fromAndCount);
     }
 
     /**
@@ -1152,13 +1218,17 @@ private:
 
         if (fromCandidateList.isRankingReady()) {
             summaryText = StringFormat(
-                "候補差：%d以上（各期間は端も可）｜ 候補%d・AND%d・表示%d",
+                "候補差%d以上(端可)｜候補%d・表示%d｜",
                 fromCandidateList.getMinimumRankDifference(),
                 fromCandidateList.size(),
-                fromAndCount,
                 fromVisibleCount
-            );
+            ) + this.getEmaSummary(fromAndCount);
             displayColor = this.headerColor;
+            if (this.emaState.isDisplayPending()) {
+                displayColor = this.warningColor;
+            } else if (this.emaState.isAutoFallback()) {
+                displayColor = clrOrange;
+            }
         }
 
         ObjectSetString(
@@ -1197,7 +1267,7 @@ private:
     ) {
         this.clearedRows[fromRowIndex] = false;
         this.displayedSymbols[fromRowIndex] = fromCandidate.symbolName;
-        this.displayedReady[fromRowIndex] = fromCandidate.isAndReady(this.emaMode);
+        this.displayedReady[fromRowIndex] = fromCandidate.isAndReady(this.emaState.getEffectiveMode());
         this.displayedBuy[fromRowIndex] = fromCandidate.isBuy;
         this.displayedGmo[fromRowIndex] =
             this.gmoSymbolNameInfoAll.isTarget(fromCandidate.symbolName);
@@ -1299,7 +1369,7 @@ private:
         }
 
         color andColor = this.mutedColor;
-        if (fromCandidate.isAndReady(this.emaMode)) {
+        if (fromCandidate.isAndReady(this.emaState.getEffectiveMode())) {
             andColor = directionColor;
         } else if (fromCandidate.isReady()) {
             andColor = this.warningColor;
@@ -1307,11 +1377,11 @@ private:
 
         this.setCell(fromRowIndex, 7, fromCandidate.getH1EmaLabel(), emaColor);
         this.setCell(fromRowIndex, 8, fromCandidate.getM1EmaLabel(), m1EmaColor);
-        string andText = fromCandidate.getAndStatusLabel(this.emaMode);
+        string andText = fromCandidate.getAndStatusLabel(this.emaState.getEffectiveMode());
         this.displayedAndTexts[fromRowIndex] = andText;
         this.displayedAndColors[fromRowIndex] = andColor;
         bool isNew = this.displayedReady[fromRowIndex]
-            && this.andTracker.isNew(fromCandidate.symbolName, fromCandidate.isBuy, fromNowMs);
+            && this.emaState.isNew(fromCandidate.symbolName, fromCandidate.isBuy, fromNowMs);
         if (isNew) {
             andText += " NEW";
         }
@@ -1331,20 +1401,21 @@ private:
         this.setCellTooltip(fromRowIndex, 7, h1EmaTooltip);
         this.setCellTooltip(fromRowIndex, 8, m1EmaTooltip);
         string andTooltip = "EMA200判定：" + this.getEmaModeLabel()
-            + " ／ AND：" + fromCandidate.getAndStatusLabel(this.emaMode);
+            + " ／ AND：" + fromCandidate.getAndStatusLabel(this.emaState.getEffectiveMode())
+            + "\n" + this.getEmaSelectionTooltip();
         if (this.displayedReady[fromRowIndex]) {
-            datetime detectedAt = this.andTracker.getDetectedAt(
+            datetime detectedAt = this.emaState.getDetectedAt(
                 fromCandidate.symbolName, fromCandidate.isBuy);
             if (detectedAt > 0) {
-                andTooltip += "\n新規成立検出 SERVER："
-                    + TimeToString(detectedAt, TIME_DATE | TIME_SECONDS);
+                andTooltip += "\n新規成立検出：" + this.formatServerDateTime(detectedAt);
                 if (fromServerTime >= detectedAt) {
                     long elapsedSeconds = fromServerTime - detectedAt;
                     andTooltip += StringFormat("\n表示更新時の検出経過：%I64d分%I64d秒",
                         elapsedSeconds / 60, elapsedSeconds % 60);
                 }
             } else {
-                andTooltip += "\n成立開始：未検出（初回観測・復旧・モード切替後の基準状態）";
+                andTooltip += "\n新規成立検出：—（未検出）"
+                    + "\n初回観測・復旧・手動モード切替後の基準状態";
             }
         }
 
@@ -1589,6 +1660,20 @@ private:
     }
 
     /**
+     * サーバー日時を秒までの共通表示形式へ整形し、末尾へSRVを付ける。
+     *
+     * @param fromTime サーバー日時。0以下は未取得。
+     * @return 日時とSRV、または未取得の表示。
+     */
+    string formatServerDateTime(const datetime fromTime) {
+        if (fromTime <= 0) {
+            return "—（取得待ち）";
+        }
+
+        return TimeUtil::formatYyyymmddhhmiss(fromTime) + " SRV";
+    }
+
+    /**
      * H1 EMA200の共通判定に使った確定足と値を操作案内へまとめる。
      *
      * @param fromCandidate 表示対象候補。
@@ -1596,11 +1681,11 @@ private:
      */
     string getEmaTooltip(CurrencyStrengthEntryCandidate &fromCandidate) {
         if (!fromCandidate.h1EmaAvailable) {
-            return "H1 EMA200：取得待ち\n確定足の共通判定を取得できていません";
+            return "H1確定足：—（取得待ち）\nH1 EMA200：取得待ち"
+                + "\n確定足の共通判定を取得できていません";
         }
 
-        string tooltip = "H1確定足 SERVER："
-            + TimeToString(fromCandidate.h1EmaBarTime, TIME_DATE | TIME_MINUTES)
+        string tooltip = "H1確定足：" + this.formatServerDateTime(fromCandidate.h1EmaBarTime)
             + "\nEMA200：" + DoubleToString(fromCandidate.h1EmaValue, fromCandidate.h1EmaDigits)
             + StringFormat("\n終値－EMA200：%+.1f p\nEMA200傾き：%+.1f p",
                 fromCandidate.h1EmaCloseDiffPips, fromCandidate.h1EmaSlopePips)
@@ -1618,15 +1703,16 @@ private:
      */
     string getM1EmaTooltip(CurrencyStrengthEntryCandidate &fromCandidate) {
         if (Util::isStrategyTester()) {
-            return "M1 EMA200：取得対象外\nテスターの下位足参照制限に対応するため取得しません";
+            return "M1確定足：—（取得対象外）\nM1 EMA200：取得対象外"
+                + "\nテスターの下位足参照制限に対応するため取得しません";
         }
 
         if (!fromCandidate.m1EmaAvailable) {
-            return "M1 EMA200：取得待ち\n最新確定足の共通判定を取得できていません";
+            return "M1確定足：—（取得待ち）\nM1 EMA200：取得待ち"
+                + "\n最新確定足の共通判定を取得できていません";
         }
 
-        string tooltip = "M1確定足 SERVER："
-            + TimeToString(fromCandidate.m1EmaBarTime, TIME_DATE | TIME_MINUTES)
+        string tooltip = "M1確定足：" + this.formatServerDateTime(fromCandidate.m1EmaBarTime)
             + "\nEMA200：" + DoubleToString(fromCandidate.m1EmaValue, fromCandidate.m1EmaDigits)
             + StringFormat("\n終値－EMA200：%+.1f p\nEMA200傾き：%+.1f p",
                 fromCandidate.m1EmaCloseDiffPips, fromCandidate.m1EmaSlopePips)
