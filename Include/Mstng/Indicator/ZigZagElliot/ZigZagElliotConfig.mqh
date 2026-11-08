@@ -108,6 +108,9 @@ public:
     /** 通貨強弱をエントリー条件として使用する場合true。 */
     bool currencyStrengthEntryFilterEnabled;
 
+    /** 通常版M15で長中期だけの順位差2以上または方向に合う1位・8位を使用する場合true。 */
+    bool m15LongMediumCurrencyStrengthEnabled;
+
     /** 通常版M5の順位差基準。長中期・中短期はそれぞれ方向に合う1位・8位でも通過。 */
     int m5CurrencyStrengthMinimumRankDifference;
 
@@ -166,6 +169,7 @@ public:
         this.applyH1EntryPolicy();
         this.currencyStrengthEnabled = true;
         this.currencyStrengthEntryFilterEnabled = false;
+        this.m15LongMediumCurrencyStrengthEnabled = false;
         this.m5CurrencyStrengthMinimumRankDifference = 4;
         this.currencyStrengthRankVisible = true;
         this.currencyStrengthRankPanelXDistance = 10;

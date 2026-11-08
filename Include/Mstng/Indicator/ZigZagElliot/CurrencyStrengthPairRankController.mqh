@@ -334,7 +334,8 @@ private:
         this.pairRankDraw = new DrawCurrencyStrengthPairRank(
             0,
             this.panelXDistance,
-            this.voteWeightMode
+            this.voteWeightMode,
+            this.marketContext.timeFrame
         );
 
         if (this.pairRankDraw == NULL) {

@@ -324,19 +324,28 @@ public:
         }
 
         int periodSeconds = PeriodSeconds(chartPeriod);
-        bool longMediumOnly = periodSeconds >= PeriodSeconds(PERIOD_H1);
+        bool longMediumOnly = CurrencyStrengthRankAndSignal::isLongMediumOnlyChartPeriod(chartPeriod);
         string periodTitle = "長中期・中短期 準備/成立";
         string tooltip = "両期間が同方向：長中期・中短期はそれぞれ順位差" + (string)fromMinimumDifference
             + "以上またはBUY基軸1位/決済8位・SELL基軸8位/決済1位。"
             + "片方だけ達成は暗い準備色、両方は明るい成立色。";
-        if (longMediumOnly) {
+        if (chartPeriod == PERIOD_M15) {
+            periodTitle = "長中期 差2以上or端順位 / 中短期は参考";
+            tooltip = "M15：長中期の順位差2以上、または買う通貨が1位、または売る通貨が8位で成立。"
+                + "同順位は対象外。中短期は参考表示で判定しません。"
+                + "準備は設けず、成立色だけを表示。";
+        } else if (longMediumOnly) {
             periodTitle = "長中期";
             tooltip = "長中期：順位差" + (string)fromMinimumDifference
                 + "以上、または強い通貨が1位、または弱い通貨が8位。"
                 + "同順位は対象外。中短期は判定せず、成立色だけを表示。";
         }
 
-        tooltip += "帯の左端の白色は確認できた開始。準備・成立の切り替え時には追加しません。";
+        tooltip += "帯の左端の白色は確認できた開始。";
+        if (chartPeriod != PERIOD_M15) {
+            tooltip += "準備・成立の切り替え時には追加しません。";
+        }
+
         this.canvas.TextOut(8, 1, periodTitle, ColorToARGB(foregroundColor));
         this.standardTooltip = tooltip;
 
@@ -361,7 +370,7 @@ public:
 
         this.renderBars(fromPoints, this.barTimes, copiedBars,
             fromTargetM5BarTime, fromMinimumDifference,
-            periodSeconds, longMediumOnly, newestX, barWidth, chartWidth,
+            periodSeconds, chartPeriod, newestX, barWidth, chartWidth,
             this.cachedBuyTextWidth, this.cachedSellTextWidth, fromPointStartIndex);
         this.canvas.Update(false);
         this.lastViewKey = viewKey;
@@ -548,7 +557,8 @@ private:
         this.renderedCanvasWidth = fromCanvasWidth;
         this.renderedChartPeriod = fromChartPeriod;
         this.renderedMinimumDifference = fromMinimumDifference;
-        this.renderedLongMediumOnly = PeriodSeconds(fromChartPeriod) >= PeriodSeconds(PERIOD_H1);
+        this.renderedLongMediumOnly =
+            CurrencyStrengthRankAndSignal::isLongMediumOnlyChartPeriod(fromChartPeriod);
         this.invalidateHoverData();
     }
 
@@ -675,7 +685,7 @@ private:
         }
 
         int state = CurrencyStrengthRankAndSignal::getRibbonState(fromPoints[pointIndex],
-            this.renderedMinimumDifference, this.renderedLongMediumOnly);
+            this.renderedMinimumDifference, this.renderedLongMediumOnly, this.renderedChartPeriod);
 
         return tooltip + "\n" + this.getHoverReason(fromPoints[pointIndex], state);
     }
@@ -714,6 +724,37 @@ private:
         string direction = "BUY";
         if (fromState < 0) {
             direction = "SELL";
+        }
+
+        if (this.renderedChartPeriod == PERIOD_M15) {
+            if (MathAbs(fromState) == 2) {
+                int difference = fromPoint.quoteLongMediumTermAverageRank
+                    - fromPoint.baseLongMediumTermAverageRank;
+                if (MathAbs(difference) >= 2) {
+                    return direction + "成立：長中期の順位差2以上（中短期は参考）";
+                }
+
+                string strongCurrency = this.hoverBaseCurrency;
+                string weakCurrency = this.hoverQuoteCurrency;
+                int strongRank = fromPoint.baseLongMediumTermAverageRank;
+                if (fromState < 0) {
+                    strongCurrency = this.hoverQuoteCurrency;
+                    weakCurrency = this.hoverBaseCurrency;
+                    strongRank = fromPoint.quoteLongMediumTermAverageRank;
+                }
+
+                if (strongRank == 1) {
+                    return direction + "成立：長中期で買う通貨" + strongCurrency + "が1位（中短期は参考）";
+                }
+
+                return direction + "成立：長中期で売る通貨" + weakCurrency + "が8位（中短期は参考）";
+            }
+
+            if (fromPoint.baseLongMediumTermAverageRank == fromPoint.quoteLongMediumTermAverageRank) {
+                return "未成立：長中期が同順位（中短期は参考）";
+            }
+
+            return "未成立：長中期の差2未満で、買う通貨1位・売る通貨8位にも該当しません（中短期は参考）";
         }
 
         if (MathAbs(fromState) == 2) {
@@ -901,7 +942,7 @@ private:
         const datetime fromTargetM5BarTime,
         const int fromMinimumDifference,
         const int fromPeriodSeconds,
-        const bool fromLongMediumOnly,
+        const ENUM_TIMEFRAMES fromChartPeriod,
         const int fromNewestX,
         const int fromBarWidth,
         const int fromCanvasWidth,
@@ -923,6 +964,7 @@ private:
         bool cachedKnown = false;
         int cachedState = 0;
         int cachedPointIndex = -1;
+        bool longMediumOnly = CurrencyStrengthRankAndSignal::isLongMediumOnlyChartPeriod(fromChartPeriod);
 
         for (int i = 0; i < fromBarCount; i++) {
             // 週末や欠損があっても、時間差ではなく取得した足の並びで位置を求める。
@@ -933,7 +975,7 @@ private:
                 - (long)barTime % m5Seconds);
             if (!signalCached || cachedM5BarTime != pointM5BarTime) {
                 cachedKnown = this.getSignalState(fromPoints, pointM5BarTime,
-                    fromTargetM5BarTime, fromMinimumDifference, fromLongMediumOnly,
+                    fromTargetM5BarTime, fromMinimumDifference, longMediumOnly, fromChartPeriod,
                     cachedState, fromPointStartIndex, cachedPointIndex);
                 cachedM5BarTime = pointM5BarTime;
                 signalCached = true;
@@ -1000,6 +1042,7 @@ private:
         const datetime fromTargetM5BarTime,
         const int fromMinimumDifference,
         const bool fromLongMediumOnly,
+        const ENUM_TIMEFRAMES fromChartPeriod,
         int &fromState,
         const int fromPointStartIndex,
         int &fromCachedPointIndex
@@ -1024,7 +1067,7 @@ private:
         }
 
         fromState = CurrencyStrengthRankAndSignal::getRibbonState(
-            fromPoints[fromCachedPointIndex], fromMinimumDifference, fromLongMediumOnly);
+            fromPoints[fromCachedPointIndex], fromMinimumDifference, fromLongMediumOnly, fromChartPeriod);
 
         return true;
     }

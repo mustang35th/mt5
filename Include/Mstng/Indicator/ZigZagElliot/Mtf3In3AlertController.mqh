@@ -101,7 +101,8 @@ public:
             this.config.m5Mn1AndW1Ema200Required,
             this.config.m5D1ToM5EntryPolicyEnabled,
             this.config.m5CurrencyStrengthMinimumRankDifference,
-            this.config.m15CurrencyEma200DistanceEnabled
+            this.config.m15CurrencyEma200DistanceEnabled,
+            this.config.m15LongMediumCurrencyStrengthEnabled
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -546,7 +547,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "2.38";
+            this.databaseRun.programVersion = "2.65";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
@@ -575,6 +576,9 @@ private:
             }
             if (this.config.m15CurrencyEma200DistanceEnabled) {
                 this.databaseRun.strategyVersion = "MTF3IN3_M15_CURRENCY_EMA_DISTANCE_V25";
+            }
+            if (this.config.m15LongMediumCurrencyStrengthEnabled) {
+                this.databaseRun.strategyVersion = "MTF3IN3_M15_LONG_MEDIUM_EXTREME_OR_V30";
             }
         }
         this.databaseRun.analysisVersion =
@@ -657,6 +661,14 @@ private:
                 + (string)this.config.m15CurrencyEma200DistanceEnabled;
             if (this.config.m15CurrencyEma200DistanceEnabled) {
                 inputText += "|m15Ema200DistancePolicy=QUOTE_JPY_50_OTHER_25_PIPS_BEFORE_COUNT";
+            }
+            inputText += "|m15LongMediumCurrencyStrengthEnabled="
+                + (string)this.config.m15LongMediumCurrencyStrengthEnabled;
+            if (this.config.m15LongMediumCurrencyStrengthEnabled) {
+                inputText += "|m15LongMediumStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME";
+                inputText += "|m15CurrencyStrengthMinimumRankDifference=2";
+                inputText += "|m15MediumShortStrengthCondition=NOT_REQUIRED";
+                inputText += "|m15StrengthExtremeRankException=true";
             }
         }
         inputText += "|currencyStrengthEnabled="

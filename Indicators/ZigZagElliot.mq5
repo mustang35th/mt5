@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.63"
+#property version   "2.65"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -64,9 +64,13 @@ input group "04. 通貨強弱"
 /** 通貨強弱を利用する場合true。 */
 input(name="通貨強弱を使用") bool currencyStrengthEnabled = true;
 
-/** M5以外で通貨強弱の方向一致をエントリー条件として使用する場合true。 */
-input(name="エントリー条件に使用（M5以外）")
+/** M5・M15以外で通貨強弱の方向一致をエントリー条件として使用する場合true。 */
+input(name="エントリー条件に使用（M5・M15以外）")
 bool currencyStrengthEntryFilterEnabled = false;
+
+/** M15で長中期の売買方向一致と、順位差2以上または方向に合う1位・8位を必須にする場合true。 */
+input(name="M15エントリー条件に使用（長中期差2または端順位）")
+bool m15CurrencyStrengthEntryFilterEnabled = true;
 
 /** M5で両期間方向一致と、各期間の順位差または端順位を必須にする場合true。 */
 input(name="M5エントリー条件に使用")
@@ -199,6 +203,11 @@ int OnInit() {
     config.currencyStrengthEnabled = currencyStrengthEnabled;
     config.currencyStrengthEntryFilterEnabled =
         currencyStrengthEntryFilterEnabled;
+    config.m15LongMediumCurrencyStrengthEnabled = _Period == PERIOD_M15;
+    if (_Period == PERIOD_M15) {
+        config.currencyStrengthEntryFilterEnabled = m15CurrencyStrengthEntryFilterEnabled;
+    }
+
     if (_Period == PERIOD_M5) {
         config.currencyStrengthEntryFilterEnabled = m5CurrencyStrengthEntryFilterEnabled;
         config.m5CurrencyStrengthMinimumRankDifference = m5CurrencyStrengthMinimumRankDifference;

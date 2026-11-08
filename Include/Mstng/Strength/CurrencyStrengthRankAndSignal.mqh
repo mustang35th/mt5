@@ -18,6 +18,28 @@
 class CurrencyStrengthRankAndSignal {
 public:
     /**
+     * M15の長中期順位差2、または方向に合う1位・8位で成立方向を取得する。
+     *
+     * @param fromBaseRank 基軸通貨の長中期順位。
+     * @param fromQuoteRank 決済通貨の長中期順位。
+     * @return BUY条件成立は1、SELL条件成立は-1、同順位・未達・無効順位は0。
+     */
+    static int getM15LongMediumDirection(const int fromBaseRank, const int fromQuoteRank) {
+        return getLongMediumDirection(fromBaseRank, fromQuoteRank, 2);
+    }
+
+    /**
+     * 帯で中短期を判定対象に含めないチャート時間足か確認する。
+     *
+     * @param fromChartPeriod 判定対象チャートの時間足。
+     * @return M15またはH1以上の場合true。
+     */
+    static bool isLongMediumOnlyChartPeriod(const ENUM_TIMEFRAMES fromChartPeriod) {
+        return fromChartPeriod == PERIOD_M15
+            || PeriodSeconds(fromChartPeriod) >= PeriodSeconds(PERIOD_H1);
+    }
+
+    /**
      * 長中期の順位差または方向に合う1位・8位から強調方向を取得する。
      * 帯と順位線・方向バー・ラベルで同じ長中期条件を使用する。
      *
@@ -150,17 +172,25 @@ public:
      * 両期間が同方向で片方だけ条件を満たした場合は準備、両方なら成立とする。
      * 長中期・中短期それぞれで、順位差の基準または売買方向に合う1位・8位を許可する。
      * 長中期のみを使う場合も同じOR条件を使い、準備を設けず成立だけを返す。
+     * M15は長中期の固定順位差2または方向に合う1位・8位を使い、準備を設けない。
      *
      * @param fromPoint 判定する通貨ペア順位。
      * @param fromMinimumDifference 準備・成立の基準となる順位差の絶対値。
      * @param fromLongMediumOnly 長中期のみを判定する場合true。
+     * @param fromChartPeriod M15専用条件を適用する時間足。省略時は従来条件。
      * @return BUY準備1・成立2、SELL準備-1・成立-2、待機または無効順位0。
      */
     static int getRibbonState(
         const CurrencyStrengthPairRankPoint &fromPoint,
         const int fromMinimumDifference,
-        const bool fromLongMediumOnly = false
+        const bool fromLongMediumOnly = false,
+        const ENUM_TIMEFRAMES fromChartPeriod = PERIOD_CURRENT
     ) {
+        if (fromChartPeriod == PERIOD_M15) {
+            return getM15LongMediumDirection(fromPoint.baseLongMediumTermAverageRank,
+                fromPoint.quoteLongMediumTermAverageRank) * 2;
+        }
+
         if (fromLongMediumOnly) {
             return getDirection(fromPoint, fromMinimumDifference, true) * 2;
         }

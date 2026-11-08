@@ -31,14 +31,17 @@ public:
      * @param fromChartId 描画対象チャートID。0の場合はカレント。
      * @param fromXDistance チャート右端からの距離。
      * @param fromVoteWeightMode 通貨強弱の投票ウェイト方式。
+     * @param fromChartPeriod M15専用の長中期差2または端順位判定を使う時間足。省略時は従来判定。
      */
     DrawCurrencyStrengthPairRank(
         long fromChartId = 0,
         int fromXDistance = 10,
         CurrencyStrengthVoteWeightMode fromVoteWeightMode =
-            CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM
+            CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM,
+        ENUM_TIMEFRAMES fromChartPeriod = PERIOD_CURRENT
     ) {
         this.chartId = fromChartId;
+        this.decisionChartPeriod = fromChartPeriod;
         this.redrawBatchDepth = 0;
         this.redrawPending = false;
         this.destroyLegacyObjects();
@@ -494,6 +497,9 @@ private:
     /** 描画対象チャートID。 */
     long chartId;
 
+    /** READY／WATCH判定に使用するチャート時間足。 */
+    ENUM_TIMEFRAMES decisionChartPeriod;
+
     /** 再描画要求を集約する処理の入れ子の深さ。 */
     int redrawBatchDepth;
 
@@ -708,13 +714,20 @@ private:
             return false;
         }
 
+        string longMediumHeader = "長中期";
+        string mediumShortHeader = "中短期";
+        if (this.decisionChartPeriod == PERIOD_M15) {
+            longMediumHeader = "長中期差2/端";
+            mediumShortHeader = "中短期(参考)";
+        }
+
         if (!this.createLabel(
             "LongMediumHeader",
             this.getColumnCenter(true),
             28,
             this.bodyFontSize,
             this.headerColor,
-            "長中期",
+            longMediumHeader,
             ANCHOR_UPPER
         )) {
             this.destroyObjects();
@@ -728,7 +741,7 @@ private:
             28,
             this.bodyFontSize,
             this.headerColor,
-            "中短期",
+            mediumShortHeader,
             ANCHOR_UPPER
         )) {
             this.destroyObjects();
@@ -1258,6 +1271,7 @@ private:
     /**
      * 長中期と中短期の方向一致、READY／WATCHと各期間の理由を表示する。
      * 両期間に順位差基準4または方向に合う1位・8位を使い、古い順位・取得エラーでは方向だけを表示する。
+     * M15は長中期の固定順位差2または方向に合う1位・8位を判定し、中短期は参考表示とする。
      *
      * @param fromInfo 取得済みの実行時通貨強弱情報。
      * @param fromError 取得エラーにより前回の順位を表示する場合true。
@@ -1267,6 +1281,10 @@ private:
         const CurrencyStrengthExecutionInfo &fromInfo,
         const bool fromError = false
     ) {
+        if (this.decisionChartPeriod == PERIOD_M15) {
+            return this.updateM15Decision(fromInfo, fromError);
+        }
+
         int longMediumDifference = fromInfo.getLongMediumRankDifference();
         int mediumShortDifference = fromInfo.getMediumShortRankDifference();
         string decisionText = "MIXED";
@@ -1325,6 +1343,57 @@ private:
     }
 
     /**
+     * M15の長中期順位差2または方向に合う1位・8位でREADY／WATCHを表示する。
+     * 取得エラー・対象M5時刻との不一致では従来どおり判定を保留する。
+     *
+     * @param fromInfo 取得済みの実行時通貨強弱情報。
+     * @param fromError 取得エラーにより前回順位を表示する場合true。
+     * @return 判定表示に成功した場合true。
+     */
+    bool updateM15Decision(const CurrencyStrengthExecutionInfo &fromInfo, const bool fromError) {
+        int difference = fromInfo.getLongMediumRankDifference();
+        string decisionText = "長中期 同順位";
+        color decisionColor = this.warningColor;
+        if (difference > 0) {
+            decisionText = "長中期 BUY";
+            decisionColor = this.buyColor;
+        } else if (difference < 0) {
+            decisionText = "長中期 SELL";
+            decisionColor = this.sellColor;
+        }
+
+        if (fromError) {
+            return this.setDecision(decisionText, this.mutedColor,
+                "ERROR：前回の順位を表示しています。READY／WATCHは判定しません。"
+                    + "\nM15は長中期の差2以上、または買う通貨1位・売る通貨8位を判定し、中短期は参考です。");
+        }
+
+        string tooltip = "M15通貨強弱のみの判定：長中期の順位差2以上、"
+            + "または買う通貨が1位、または売る通貨が8位。"
+            + "同順位は対象外。中短期は参考（判定外）。";
+        bool currentRanks = fromInfo.targetM5BarTime > 0 && fromInfo.isExactM5Bar();
+        if (!currentRanks) {
+            tooltip += "\n対象M5時刻と一致する順位を未取得のため、READY／WATCHは判定しません。"
+                + "\n以下は表示中の順位による参考情報です。";
+            decisionColor = this.mutedColor;
+        } else if (CurrencyStrengthRankAndSignal::getM15LongMediumDirection(
+                fromInfo.pairRankInfo.baseLongMediumTermAverageRank,
+                fromInfo.pairRankInfo.quoteLongMediumTermAverageRank) != 0) {
+            decisionText += "｜READY";
+            tooltip += "\nREADY：長中期の順位条件が成立。";
+        } else {
+            decisionText += "｜WATCH";
+            decisionColor = this.warningColor;
+            tooltip += "\nWATCH：長中期が同順位、または差2未満で買う通貨1位・売る通貨8位にも該当しません。";
+        }
+
+        tooltip += "\n" + this.getPeriodDecisionTooltip(fromInfo.pairRankInfo, true)
+            + "\n" + this.getPeriodDecisionTooltip(fromInfo.pairRankInfo, false);
+
+        return this.setDecision(decisionText, decisionColor, tooltip);
+    }
+
+    /**
      * 指定期間の順位・方向と、成立または未達の理由を取得する。
      *
      * @param fromInfo 表示する通貨ペア順位。
@@ -1348,19 +1417,30 @@ private:
         string tooltip = periodLabel + "：" + this.formatSignal(difference)
             + StringFormat("（%s %d位／%s %d位）",
                 fromInfo.baseCurrency, baseRank, fromInfo.quoteCurrency, quoteRank);
+        int minimumDifference = 4;
+        if (this.decisionChartPeriod == PERIOD_M15) {
+            if (!fromLongMedium) {
+                return tooltip + "\n参考：M15のREADY／WATCH判定には使用しません。";
+            }
+
+            minimumDifference = 2;
+        }
+
         if (difference == 0) {
             return tooltip + "\n未達：同順位です。";
         }
 
-        if (MathAbs(difference) >= 4) {
-            return tooltip + "\n成立：順位差4以上。";
+        if (MathAbs(difference) >= minimumDifference) {
+            return tooltip + "\n成立：順位差" + (string)minimumDifference + "以上。";
         }
 
         int periodDirection = 0;
         if (fromLongMedium) {
-            periodDirection = CurrencyStrengthRankAndSignal::getLongMediumDirection(baseRank, quoteRank, 4);
+            periodDirection = CurrencyStrengthRankAndSignal::getLongMediumDirection(
+                baseRank, quoteRank, minimumDifference);
         } else {
-            periodDirection = CurrencyStrengthRankAndSignal::getMediumShortDirection(baseRank, quoteRank, 4);
+            periodDirection = CurrencyStrengthRankAndSignal::getMediumShortDirection(
+                baseRank, quoteRank, minimumDifference);
         }
 
         if (periodDirection != 0) {
@@ -1380,7 +1460,8 @@ private:
             return tooltip + "\n成立：売る通貨" + weakCurrency + "が8位。";
         }
 
-        return tooltip + "\n未達：差4未満で、強い通貨1位・弱い通貨8位にも該当しません。";
+        return tooltip + "\n未達：差" + (string)minimumDifference
+            + "未満で、強い通貨1位・弱い通貨8位にも該当しません。";
     }
 
     /**

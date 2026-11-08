@@ -26,6 +26,7 @@
  * 設定時はH4・H1の再カウント前の進行波FE上限も回数加算前に判定する。
  * 通常版M15はMN1方向とW1 EMA200をANDとし、H4の波番号とFEを制限しない。
  * 通貨別EMA200距離制限が有効な場合、JPY建て50pips・その他25pipsを回数加算前に要求する。
+ * 長中期のみの通貨強弱条件が有効な場合、売買方向の一致と順位差2以上または方向に合う1位・8位を要求する。
  */
 class ExpertAdvisorMtf3In3M15 : public ExpertAdvisorMTF_3in3 {
 public:
@@ -40,6 +41,7 @@ public:
      * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
      * @param fromH4WaveRestrictionEnabled H4の波番号と第5波構造を制限する場合true。
      * @param fromCurrencyEma200DistanceEnabled 通貨別EMA200距離上限を使用する場合true。
+     * @param fromLongMediumCurrencyStrengthEnabled 通貨強弱を長中期のみ・順位差2以上または方向に合う1位・8位で判定する場合true。
      */
     ExpertAdvisorMtf3In3M15(
         MarketContext &fromMarketContext,
@@ -49,7 +51,8 @@ public:
         double fromH1MaxFibonacciExpansionPercent = 0.0,
         bool fromRequireMn1AndW1Ema200 = false,
         bool fromH4WaveRestrictionEnabled = true,
-        bool fromCurrencyEma200DistanceEnabled = false
+        bool fromCurrencyEma200DistanceEnabled = false,
+        bool fromLongMediumCurrencyStrengthEnabled = false
     ) : ExpertAdvisorMTF_3in3(
         fromMarketContext,
         fromIsDrawArrow,
@@ -58,6 +61,7 @@ public:
         Mtf3In3H1Policy::getEma200ConfirmationMode()
     ) {
         this.isCurrencyEma200DistanceEnabled = fromCurrencyEma200DistanceEnabled;
+        this.isLongMediumCurrencyStrengthEnabled = fromLongMediumCurrencyStrengthEnabled;
         this.isDirectionCorrectionEnabled = fromDirectionCorrectionEnabled;
         this.isH4WaveRestrictionEnabled = fromH4WaveRestrictionEnabled;
         this.h4MaxFibonacciExpansionPercent = fromH4MaxFibonacciExpansionPercent;
@@ -87,6 +91,94 @@ public:
     }
 
 protected:
+    /**
+     * 通常版M15の専用条件では長中期だけに売買方向の一致を要求する。
+     * 中短期の順位は共通処理で有効性を確認するが、方向は制限しない。
+     *
+     * @param fromExecutionInfo 取得状態・対象時刻・順位を確認済みの通貨強弱。
+     * @return 対象期間の方向が売買方向と一致する場合true。
+     */
+    virtual bool isCurrencyStrengthDirectionConditionMatched(
+        const CurrencyStrengthExecutionInfo &fromExecutionInfo
+    ) override {
+        if (!this.isLongMediumCurrencyStrengthEnabled) {
+            return AbstractExpertAdvisor::isCurrencyStrengthDirectionConditionMatched(fromExecutionInfo);
+        }
+
+        int longMediumDifference = fromExecutionInfo.getLongMediumRankDifference();
+        if (this.isBuy) {
+            return longMediumDifference > 0;
+        }
+
+        return longMediumDifference < 0;
+    }
+
+    /**
+     * 通常版M15の専用条件では長中期の最低順位差を2にする。
+     * 方向に合う1位・8位は長中期の順位条件で別途許可する。
+     *
+     * @return 専用条件が有効なら2、無効なら従来の基準。
+     */
+    virtual int getCurrencyStrengthMinimumRankDifference() override {
+        if (this.isLongMediumCurrencyStrengthEnabled) {
+            return 2;
+        }
+
+        return AbstractExpertAdvisor::getCurrencyStrengthMinimumRankDifference();
+    }
+
+    /**
+     * 通常版M15の長中期は、順位差または方向に合う1位・8位で通過させる。
+     * BUYは基軸1位または決済8位、SELLは基軸8位または決済1位を許可する。
+     * 長中期の方向一致と全順位の有効性は共通の呼び出し元で必須とする。
+     *
+     * @param fromExecutionInfo 取得状態・時刻・順位方向を確認済みの通貨強弱。
+     * @param fromMinimumDifference 有効範囲を確認済みの最低順位差。
+     * @return 長中期の順位差または端順位条件を満たす場合true。
+     */
+    virtual bool isLongMediumCurrencyStrengthConditionMatched(
+        const CurrencyStrengthExecutionInfo &fromExecutionInfo,
+        const int fromMinimumDifference
+    ) override {
+        if (!this.isLongMediumCurrencyStrengthEnabled) {
+            return AbstractExpertAdvisor::isLongMediumCurrencyStrengthConditionMatched(
+                fromExecutionInfo, fromMinimumDifference);
+        }
+
+        if (AbstractExpertAdvisor::isLongMediumCurrencyStrengthConditionMatched(
+                fromExecutionInfo, fromMinimumDifference)) {
+            return true;
+        }
+
+        if (this.isBuy) {
+            return fromExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank == 1
+                || fromExecutionInfo.pairRankInfo.quoteLongMediumTermAverageRank == 8;
+        }
+
+        return fromExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank == 8
+            || fromExecutionInfo.pairRankInfo.quoteLongMediumTermAverageRank == 1;
+    }
+
+    /**
+     * 通常版M15の専用条件では中短期の順位差を制限しない。
+     * 取得状態・時刻・全順位の有効性は共通処理で確認する。
+     *
+     * @param fromExecutionInfo 取得状態・対象時刻・順位を確認済みの通貨強弱。
+     * @param fromMinimumDifference 戦略ごとの最低順位差。
+     * @return 専用条件が有効ならtrue、無効なら従来の中短期判定。
+     */
+    virtual bool isMediumShortCurrencyStrengthConditionMatched(
+        const CurrencyStrengthExecutionInfo &fromExecutionInfo,
+        const int fromMinimumDifference
+    ) override {
+        if (this.isLongMediumCurrencyStrengthEnabled) {
+            return true;
+        }
+
+        return AbstractExpertAdvisor::isMediumShortCurrencyStrengthConditionMatched(
+            fromExecutionInfo, fromMinimumDifference);
+    }
+
     /**
      * 前回の補正分析を解放し、今回の診断結果を初期化する。
      */
@@ -351,6 +443,9 @@ protected:
     }
 
 private:
+    /** 通貨強弱を長中期のみ・順位差2以上または方向に合う1位・8位で判定する場合true。 */
+    bool isLongMediumCurrencyStrengthEnabled;
+
     /** 通貨別EMA200距離上限を回数加算前に判定する場合true。 */
     bool isCurrencyEma200DistanceEnabled;
 

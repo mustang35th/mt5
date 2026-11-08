@@ -266,6 +266,19 @@ public:
     
 protected:
     /**
+     * 通貨強弱の方向が戦略ごとの条件を満たすか判定する。
+     * 標準では長中期・中短期の両方に売買方向との一致を要求する。
+     *
+     * @param fromExecutionInfo 取得状態・対象時刻・順位を確認済みの通貨強弱。
+     * @return 戦略の方向条件を満たす場合true。
+     */
+    virtual bool isCurrencyStrengthDirectionConditionMatched(
+        const CurrencyStrengthExecutionInfo &fromExecutionInfo
+    ) {
+        return fromExecutionInfo.isDirectionAligned(this.isBuy);
+    }
+
+    /**
      * 通貨強弱フィルタの順位差判定に使用する最低値を取得する。
      *
      * @return 従来の方向一致を表す1。
@@ -277,7 +290,7 @@ protected:
     /**
      * 長中期の通貨強弱が戦略ごとの順位条件を満たすか判定する。
      *
-     * 呼び出し元で取得状態・対象時刻・両期間方向・最低順位差の範囲を確認する。
+     * 呼び出し元で取得状態・対象時刻・戦略の方向条件・最低順位差の範囲を確認する。
      * 標準では順位差を必須とし、必要な戦略だけ派生クラスで条件を追加する。
      *
      * @param fromExecutionInfo 今回の判定に使用する通貨強弱。
@@ -294,7 +307,7 @@ protected:
     /**
      * 中短期の通貨強弱が戦略ごとの順位条件を満たすか判定する。
      *
-     * 呼び出し元で取得状態・対象時刻・両期間方向・最低順位差の範囲を確認する。
+     * 呼び出し元で取得状態・対象時刻・戦略の方向条件・最低順位差の範囲を確認する。
      * 標準では順位差を必須とし、必要な戦略だけ派生クラスで条件を追加する。
      *
      * @param fromExecutionInfo 今回の判定に使用する通貨強弱。
@@ -618,10 +631,9 @@ private:
      *
      * 順位差は「決済通貨順位 - 基軸通貨順位」で算出する。順位は1位が
      * 最も強いため、順位差が正の場合は基軸通貨が強いBUY方向、負の場合は
-     * 決済通貨が強いSELL方向となる。BUYでは長中期と中短期の順位差が
-     * 両方とも正、SELLでは両方とも負の場合に限りtrueを返す。期間ごとの
-     * 方向が異なるMIXED状態や、同順位による順位差0は許可しない。
-     * 長中期・中短期の両方が戦略ごとの順位条件を満たすことを要求する。
+     * 決済通貨が強いSELL方向となる。標準では両期間の売買方向一致を要求し、
+     * 通常版M15の長中期のみの条件は派生クラスで指定する。
+     * 戦略の方向条件と、長中期・中短期それぞれの順位条件を確認する。
      *
      * trueは通貨強弱フィルタの通過を表すだけであり、エントリー確定では
      * ない。呼び出し元で後続のElliott条件isJudge()を判定する。
@@ -647,9 +659,8 @@ private:
             return false;
         }
 
-        // 順位差は「決済通貨順位 - 基軸通貨順位」。BUYは両期間とも正、
-        // SELLは両期間とも負の場合だけ許可し、MIXEDと順位差0は拒否する。
-        if (!executionInfo.isDirectionAligned(this.isBuy)) {
+        // 順位差は「決済通貨順位 - 基軸通貨順位」。対象期間の方向条件は戦略に従う。
+        if (!this.isCurrencyStrengthDirectionConditionMatched(executionInfo)) {
             return false;
         }
 

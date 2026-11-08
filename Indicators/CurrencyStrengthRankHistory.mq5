@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.52"
+#property version   "1.54"
 #property indicator_separate_window
 #property indicator_buffers 8
 #property indicator_plots   6
@@ -108,7 +108,7 @@ input(name="履歴の表示日数（1～366日）") int historyDays = 30;
 /** サブ画面の高さ。0は高さを指定せず、MT5側のサイズを使用する。 */
 input(name="サブ画面の高さ（px・0＝指定なし）") int subPanelHeight = 120;
 
-/** H1未満は長中期・中短期それぞれの順位差または端順位で準備・成立を表示する。H1以上は長中期の順位差4以上または端順位で成立を表示し、同時表示時は最上段を優先する。 */
+/** M15は長中期の順位差2以上または端順位で成立を表示する。その他のH1未満は両期間の準備・成立、H1以上は長中期の順位差4以上または端順位で成立を表示し、同時表示時は最上段を優先する。 */
 input(name="メインチャートに強弱帯を表示") bool rankAndRibbonVisible = true;
 
 input group "02. データ参照"
@@ -2188,7 +2188,7 @@ bool isCacheRangeChanged(
     }
 
     bool cacheChanged = false;
-    bool longMediumOnly = PeriodSeconds(_Period) >= PeriodSeconds(PERIOD_H1);
+    bool longMediumOnly = CurrencyStrengthRankAndSignal::isLongMediumOnlyChartPeriod(_Period);
 
     for (int i = 0; i < queriedPointCount; i++) {
         if (gRankPoints[replaceStartIndex + i].m5BarTime != fromPoints[i].m5BarTime) {
@@ -2215,7 +2215,7 @@ bool isCacheRangeChanged(
             }
 
             if (!fromRibbonChanged && !isSameRankPointRibbon(
-                gRankPoints[replaceStartIndex + i], fromPoints[i], longMediumOnly
+                gRankPoints[replaceStartIndex + i], fromPoints[i], longMediumOnly, _Period
             )) {
                 fromRibbonChanged = true;
             }
@@ -2308,12 +2308,14 @@ bool isSameRankPointBuffer(
  * @param fromLeft 比較対象1。
  * @param fromRight 比較対象2。
  * @param fromLongMediumOnly 長中期のみで帯を判定する場合true。
+ * @param fromChartPeriod 帯を表示するチャート時間足。
  * @return M5時刻・順位の有効性・帯の状態が同じ場合true。
  */
 bool isSameRankPointRibbon(
     const CurrencyStrengthPairRankPoint &fromLeft,
     const CurrencyStrengthPairRankPoint &fromRight,
-    const bool fromLongMediumOnly
+    const bool fromLongMediumOnly,
+    const ENUM_TIMEFRAMES fromChartPeriod
 ) {
     if (fromLeft.m5BarTime != fromRight.m5BarTime) {
         return false;
@@ -2335,9 +2337,9 @@ bool isSameRankPointRibbon(
     }
 
     return CurrencyStrengthRankAndSignal::getRibbonState(
-        fromLeft, rankSignalHighlightDifference, fromLongMediumOnly
+        fromLeft, rankSignalHighlightDifference, fromLongMediumOnly, fromChartPeriod
     ) == CurrencyStrengthRankAndSignal::getRibbonState(
-        fromRight, rankSignalHighlightDifference, fromLongMediumOnly
+        fromRight, rankSignalHighlightDifference, fromLongMediumOnly, fromChartPeriod
     );
 }
 
