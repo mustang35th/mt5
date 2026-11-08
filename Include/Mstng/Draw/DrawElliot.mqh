@@ -48,6 +48,7 @@ public:
         this.logger.setLevel(LOG_INFO);
         this.clampVertical = false;
         this.reservedRightWidth = 0;
+        this.adjustRightBoundary = true;
         this.higherTimeFrameDisplayCount = fromHigherTimeFrameDisplayCount;
 
         if (this.higherTimeFrameDisplayCount != 2
@@ -112,6 +113,14 @@ public:
         
         this.layoutHigherTimeFrameDisplayCount =
             this.getLayoutHigherTimeFrameDisplayCount();
+
+        this.adjustRightBoundary = true;
+        if (this.reservedRightWidth > 0) {
+            this.adjustRightBoundary = DrawChartTextBounds::shouldAdjustRightBoundary(
+                this.elliotAll.marketContext.symbolName,
+                this.elliotAll.marketContext.timeFrame
+            );
+        }
 
         for (int higherIndex = this.layoutHigherTimeFrameDisplayCount;
                 higherIndex >= 0;
@@ -498,6 +507,9 @@ protected:
     /** 波動文字を描かないチャート右端の予約幅。0は制限しない。 */
     int reservedRightWidth;
 
+    /** 最新足が表示範囲内にある場合、波動文字を右側情報欄の手前へ補正する。 */
+    bool adjustRightBoundary;
+
     /** 波動ラベルを表示する設定上の上位時間足数。 */
     int higherTimeFrameDisplayCount;
 
@@ -753,7 +765,8 @@ protected:
                 );
                 
                 if (!DrawChartTextBounds::fitTime(drawDatetime, drawPrice, text,
-                        drawProperties.elliotFontFace, fontSize, this.reservedRightWidth, true, fromContext)) {
+                        drawProperties.elliotFontFace, fontSize, this.reservedRightWidth, true, fromContext,
+                        true, this.adjustRightBoundary)) {
                     ObjectDelete(0, Constant::PREFIX + objectName);
                     continue;
                 }

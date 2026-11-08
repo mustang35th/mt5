@@ -135,6 +135,35 @@ private:
 class DrawChartTextBounds {
 public:
     /**
+     * 最新足が横方向の画面内にある場合だけ、右側情報欄を避ける補正を使用する。
+     * 表示価格範囲の中間値で横位置を調べ、取得失敗時は従来の補正を維持する。
+     *
+     * @param fromSymbolName チャートの銘柄。
+     * @param fromTimeFrame チャートの時間足。
+     * @return 最新表示、または表示状態を判定できない場合true。
+     */
+    static bool shouldAdjustRightBoundary(
+        const string fromSymbolName,
+        const ENUM_TIMEFRAMES fromTimeFrame
+    ) {
+        datetime latestBarTime = iTime(fromSymbolName, fromTimeFrame, 0);
+        DrawChartTextContext drawContext;
+        if (latestBarTime <= 0 || !drawContext.loadChartWidth() || drawContext.chartWidth <= 0
+                || !drawContext.loadPriceRange()) {
+            return true;
+        }
+
+        double middlePrice = drawContext.priceMin + (drawContext.priceMax - drawContext.priceMin) / 2.0;
+        int latestBarX = 0;
+        int latestBarY = 0;
+        if (!ChartTimePriceToXY(0, 0, latestBarTime, middlePrice, latestBarX, latestBarY)) {
+            return true;
+        }
+
+        return latestBarX >= 0 && latestBarX < drawContext.chartWidth;
+    }
+
+    /**
      * 文字の右端が予約領域へ入る場合だけ表示時刻を左へ補正する。
      * 座標の丸め後も境界内にあることを確認し、成功時だけ時刻を更新する。
      *
@@ -173,6 +202,8 @@ public:
      * @param fromReservedRightWidth チャート右端から確保する幅。0は補正しない。
      * @param fromCenterAnchor 中央アンカーの場合true、左アンカーの場合false。
      * @param fromContext 呼び出し間で別の計測用フォントを設定しない描画用情報。
+     * @param fromHideRightOutsideAnchor 右端補正時、元の基準位置が画面右端以上なら非表示にする。
+     * @param fromAdjustRightBoundary falseの場合、右画面外の除外だけ行い、表示時刻を補正しない。
      * @return 補正不要、または境界内の表示時刻を取得できた場合true。
      */
     static bool fitTime(
@@ -183,7 +214,9 @@ public:
         const int fromFontSize,
         const int fromReservedRightWidth,
         const bool fromCenterAnchor,
-        DrawChartTextContext &fromContext
+        DrawChartTextContext &fromContext,
+        const bool fromHideRightOutsideAnchor = false,
+        const bool fromAdjustRightBoundary = true
     ) {
         if (fromReservedRightWidth <= 0 || fromText == "") {
             return true;
@@ -199,6 +232,14 @@ public:
                 || textWidth == 0
                 || !ChartTimePriceToXY(0, 0, fromTime, fromPrice, originalX, originalY)) {
             return false;
+        }
+
+        if (fromHideRightOutsideAnchor && originalX >= fromContext.chartWidth) {
+            return false;
+        }
+
+        if (!fromAdjustRightBoundary) {
+            return true;
         }
 
         // フォントの描画端とピクセル変換の丸めに余裕を持たせる。
