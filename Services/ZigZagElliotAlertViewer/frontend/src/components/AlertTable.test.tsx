@@ -106,6 +106,10 @@ describe("AlertTable", () => {
       <AlertTable
         items={[
           { ...alertWithAlignment(1, true), is_entry_evaluated: true,
+            is_currency_strength_available: true, base_currency: "AUD", quote_currency: "USD",
+            base_long_medium_rank: 1, quote_long_medium_rank: 6,
+            base_medium_short_rank: 2, quote_medium_short_rank: 7,
+            long_medium_rank_difference: 5, medium_short_rank_difference: 5,
             close_ema200_diff_pips: 33.99868384499127, max_close_ema200_diff_pips: 25 },
           alertWithAlignment(2, false), alertWithAlignment(3, null),
         ]}
@@ -156,6 +160,13 @@ describe("AlertTable", () => {
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByRole("columnheader", { name: "時間足" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "EMA200距離" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "通貨強弱" })).toBeInTheDocument();
+    const strengthCell = firstRow?.querySelector('.ag-cell[col-id="currency_strength"]');
+    expect(strengthCell).toHaveTextContent("BUY一致");
+    expect(strengthCell).toHaveTextContent("長中期");
+    expect(strengthCell).toHaveTextContent("中短期");
+    expect(strengthCell).toHaveTextContent("差+5");
+    expect(secondRow?.querySelector('.ag-cell[col-id="currency_strength"]')).toHaveTextContent("未記録");
     expect(firstRow?.querySelector('.ag-cell[col-id="ema200_distance"]')).toHaveTextContent("34.0 pips");
     expect(firstRow?.querySelector('.ag-cell[col-id="ema200_distance"]')).toHaveTextContent("超過");
     expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
@@ -281,9 +292,11 @@ describe("AlertTable", () => {
     expect(w1TimeFrameColumnItem).toHaveAttribute("aria-checked", "true");
     fireEvent.click(w1TimeFrameColumnItem);
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "EMA200距離" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "通貨強弱" }));
     await waitFor(() => {
       expect(screen.queryByRole("columnheader", { name: "W1" })).not.toBeInTheDocument();
       expect(screen.queryByRole("columnheader", { name: "EMA200距離" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "通貨強弱" })).not.toBeInTheDocument();
       const storedText = localStorage.getItem(GRID_LAYOUT_STORAGE_KEY);
       expect(storedText).not.toBeNull();
       const stored = JSON.parse(storedText || "{}") as {
@@ -291,6 +304,7 @@ describe("AlertTable", () => {
       };
       expect(stored.columns?.find((column) => column.colId === "tf_w1")?.hide).toBe(true);
       expect(stored.columns?.find((column) => column.colId === "ema200_distance")?.hide).toBe(true);
+      expect(stored.columns?.find((column) => column.colId === "currency_strength")?.hide).toBe(true);
     });
 
     firstView.unmount();
@@ -310,6 +324,7 @@ describe("AlertTable", () => {
       expect(screen.queryByRole("columnheader", { name: "W1" })).not.toBeInTheDocument();
       expect(screen.queryByRole("columnheader", { name: "EMA200距離" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "列を初期化" })).toBeEnabled();
+      expect(screen.queryByRole("columnheader", { name: "通貨強弱" })).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "列を初期化" }));
@@ -320,6 +335,8 @@ describe("AlertTable", () => {
     expect(await screen.findByRole("menuitemcheckbox", { name: /W1 方向 \/ EMA200/ }))
       .toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("menuitemcheckbox", { name: "EMA200距離" }))
+      .toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "通貨強弱" }))
       .toHaveAttribute("aria-checked", "true");
     expect(restoredView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
   });
@@ -381,8 +398,10 @@ describe("AlertTable", () => {
       .toBeLessThan(initialColumnIds.indexOf("time_frame"));
     expect(initialColumnIds.indexOf("time_frame"))
       .toBeLessThan(initialColumnIds.indexOf("side"));
-    expect(initialColumnIds.indexOf("ema200_distance"))
+    expect(initialColumnIds.indexOf("currency_strength"))
       .toBe(initialColumnIds.indexOf("side") + 1);
+    expect(initialColumnIds.indexOf("ema200_distance"))
+      .toBe(initialColumnIds.indexOf("currency_strength") + 1);
     const migratedTimeFrameColumnIds = ["tf_mn1", "tf_w1", "tf_d1", "tf_h4", "tf_h1", "tf_m15", "tf_m5"];
     expect(initialColumnIds.filter((colId) => migratedTimeFrameColumnIds.includes(colId || "")))
       .toEqual(migratedTimeFrameColumnIds);
@@ -398,6 +417,8 @@ describe("AlertTable", () => {
     )).toBe(false);
     expect(migratedStoredLayout.columns?.find((column) => column.colId === "ema200_distance"))
       .toEqual({ colId: "ema200_distance", width: 160, hide: false });
+    expect(migratedStoredLayout.columns?.find((column) => column.colId === "currency_strength"))
+      .toEqual({ colId: "currency_strength", width: 220, hide: false });
     expect(migratedStoredLayout.columns?.filter(
       (column) => migratedTimeFrameColumnIds.includes(column.colId),
     )).toEqual(migratedTimeFrameColumnIds.map((colId) => ({

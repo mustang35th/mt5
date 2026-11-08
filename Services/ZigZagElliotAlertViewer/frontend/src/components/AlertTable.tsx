@@ -30,6 +30,7 @@ import {
   writeGridDensity,
 } from "../lib/gridPreferences";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
+import { CurrencyStrengthCell } from "./CurrencyStrengthCell";
 import { Ema200DistanceCell } from "./Ema200DistanceCell";
 import { ElliottLabelText } from "./ElliottLabelText";
 import "./AlertTable.css";
@@ -85,6 +86,7 @@ const GRID_COLUMN_IDS = [
   "symbol_name",
   "time_frame",
   "side",
+  "currency_strength",
   "ema200_distance",
   "source_mode",
   "judgement",
@@ -114,8 +116,10 @@ const FIXED_COLUMN_IDS: ReadonlySet<string> = new Set([
 ]);
 const TIME_FRAME_COLUMN_WIDTH = 80;
 const ema200DistanceColumnWidth = 160;
+const currencyStrengthColumnWidth = 220;
 
 const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
+  { colId: "currency_strength", label: "通貨強弱" },
   { colId: "ema200_distance", label: "EMA200距離" },
   { colId: "source_mode", label: "実行モード" },
   { colId: "judgement", label: "判定" },
@@ -250,6 +254,21 @@ function includeEma200DistanceColumn(fromLayout: GridColumnLayoutItem[]): GridCo
   return [
     ...fromLayout.slice(0, insertIndex),
     distanceColumn,
+    ...fromLayout.slice(insertIndex),
+  ];
+}
+
+/** Add the saved strength beside direction without changing existing column preferences. */
+function includeCurrencyStrengthColumn(fromLayout: GridColumnLayoutItem[]): GridColumnLayoutItem[] {
+  if (fromLayout.some((column) => column.colId === "currency_strength")) {
+    return fromLayout;
+  }
+
+  const insertIndex = fromLayout.findIndex((column) => column.colId === "side") + 1;
+
+  return [
+    ...fromLayout.slice(0, insertIndex),
+    { colId: "currency_strength", width: currencyStrengthColumnWidth, hide: false },
     ...fromLayout.slice(insertIndex),
   ];
 }
@@ -584,6 +603,12 @@ function H1DirectionAlignmentCell(
   );
 }
 
+function CurrencyStrengthGridCell(params: ICellRendererParams<AlertListItem>) {
+  const alert = dataFrom(params);
+  if (!alert) return null;
+  return <CurrencyStrengthCell alert={alert} />;
+}
+
 function RiskCell(params: ICellRendererParams<AlertListItem>) {
   const alert = dataFrom(params);
   if (!alert) return null;
@@ -700,9 +725,14 @@ export function AlertTable({
       const hasMissingEma200DistanceColumn = !storedLayout.some(
         (column) => column.colId === "ema200_distance",
       );
-      const restoredLayout = includeEma200DistanceColumn(
-        includeTimeFrameColumn(
-          includeLowerTimeFrameColumns(migrateLegacyTimeFrameColumns(storedLayout)),
+      const hasMissingCurrencyStrengthColumn = !storedLayout.some(
+        (column) => column.colId === "currency_strength",
+      );
+      const restoredLayout = includeCurrencyStrengthColumn(
+        includeEma200DistanceColumn(
+          includeTimeFrameColumn(
+            includeLowerTimeFrameColumns(migrateLegacyTimeFrameColumns(storedLayout)),
+          ),
         ),
       );
       event.api.applyColumnState({
@@ -713,7 +743,7 @@ export function AlertTable({
         applyOrder: true,
       });
       if (hasLegacyTimeFrameColumn || hasMissingLowerTimeFrameColumn || hasNarrowTimeFrameColumn
-        || hasMissingEma200DistanceColumn) {
+        || hasMissingEma200DistanceColumn || hasMissingCurrencyStrengthColumn) {
         writeGridColumnLayout(
           window.localStorage,
           restoredLayout.map((column) => ({
@@ -882,6 +912,13 @@ export function AlertTable({
       headerComponent: ServerSortHeader,
       headerComponentParams: sortHeaderParameters("side", sort, order, onSort),
       cellRenderer: SideCell,
+    },
+    {
+      colId: "currency_strength",
+      headerName: "通貨強弱",
+      initialWidth: currencyStrengthColumnWidth,
+      minWidth: 200,
+      cellRenderer: CurrencyStrengthGridCell,
     },
     {
       colId: "ema200_distance",

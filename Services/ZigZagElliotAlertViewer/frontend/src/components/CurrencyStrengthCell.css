@@ -1,0 +1,53 @@
+.currency-strength-cell {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  gap: 2px;
+  padding: 2px 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.currency-strength-cell.buy { color: var(--buy); }
+.currency-strength-cell.sell { color: var(--sell); }
+.currency-strength-cell.mixed { color: #dabb70; }
+.currency-strength-cell.unavailable { color: var(--muted); }
+
+.currency-strength-cell-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+  font-weight: 600;
+}
+
+.currency-strength-cell-stale {
+  padding: 0 4px;
+  border: 1px solid #806b3c;
+  border-radius: 3px;
+  color: #dabb70;
+  font-size: 0.6rem;
+  line-height: 14px;
+}
+
+.currency-strength-cell-period {
+  display: grid;
+  grid-template-columns: 3.4em 3.4em minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.currency-strength-cell-period-label { font-weight: 400; }
+.currency-strength-cell-ranks strong { font-weight: 800; }
+.currency-strength-cell-difference { overflow: hidden; text-overflow: ellipsis; }
+
+.alert-grid.density-compact .currency-strength-cell {
+  gap: 1px;
+  font-size: 0.66rem;
+}

@@ -883,6 +883,30 @@ class AlertDatabase:
         """
 
     @staticmethod
+    def currency_strength_metadata_projection(connection: Connection) -> str:
+        """Return saved strength metadata, preserving absent legacy fields as NULL."""
+
+        actual_columns = AlertDatabase.table_columns(
+            connection,
+            "zigzag_elliot_alerts",
+        )
+        column_names = (
+            "currency_strength_source_mode",
+            "currency_strength_target_m5_bar_time",
+            "currency_strength_m5_bar_time",
+            "currency_strength_calculation_version",
+            "currency_strength_run_id",
+        )
+        projections = []
+        for column_name in column_names:
+            if column_name in actual_columns:
+                projections.append(f"a.{column_name},")
+            else:
+                projections.append(f"NULL AS {column_name},")
+
+        return "\n".join(projections)
+
+    @staticmethod
     def ema200_projection(connection: Connection) -> str:
         """Return list EMA200 flags with legacy-safe defaults."""
 
@@ -3036,6 +3060,9 @@ class AlertDatabase:
                 self.h1_direction_alignment_projection(connection)
             )
             ema200_columns = self.ema200_projection(connection)
+            currency_strength_columns = self.currency_strength_metadata_projection(
+                connection
+            )
 
         return f"""
             WITH alert_rows AS (
@@ -3063,6 +3090,7 @@ class AlertDatabase:
                     a.is_currency_strength_enabled,
                     a.currency_strength_status,
                     a.is_currency_strength_available,
+                    {currency_strength_columns}
                     a.base_currency, a.base_long_medium_rank,
                     a.base_medium_short_rank, a.quote_currency,
                     a.quote_long_medium_rank, a.quote_medium_short_rank,

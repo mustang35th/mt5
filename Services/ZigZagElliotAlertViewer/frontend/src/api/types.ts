@@ -192,6 +192,22 @@ export interface AlertAnalysisSnapshot {
 
 export interface AlertListItem extends W1ConfirmationDiagnostics, H1DirectionAlignmentDiagnostics {
   analysis_snapshot?: AlertAnalysisSnapshot;
+  is_currency_strength_enabled?: boolean | null;
+  currency_strength_status?: number | null;
+  is_currency_strength_available?: boolean | null;
+  currency_strength_source_mode?: string | null;
+  currency_strength_target_m5_bar_time?: number | null;
+  currency_strength_m5_bar_time?: number | null;
+  currency_strength_calculation_version?: string | null;
+  currency_strength_run_id?: number | null;
+  base_currency?: string | null;
+  quote_currency?: string | null;
+  base_long_medium_rank?: number | null;
+  base_medium_short_rank?: number | null;
+  quote_long_medium_rank?: number | null;
+  quote_medium_short_rank?: number | null;
+  long_medium_rank_difference?: number | null;
+  medium_short_rank_difference?: number | null;
   id: number;
   run_id: number;
   source_mode: string;
