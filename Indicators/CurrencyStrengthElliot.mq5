@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.21"
+#property version   "1.25"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -15,6 +15,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyPersistenceService.mqh>
 #include <Mstng\Draw\DrawChartRedrawBatch.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthDailyRangeList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthList.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankComparison.mqh>
@@ -24,6 +25,7 @@
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
+#include <Mstng\Strength\CurrencyStrengthDailyRangeList.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
 #include <Mstng\Strength\CurrencyStrengthH1EmaProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthM1EmaProvider.mqh>
@@ -121,6 +123,10 @@ const int testerStandardHistoryWarmUpBars = 206;
 const int panelGap = 12;
 /** 共通日時欄24pxとパネル上側の余白4px。 */
 const int snapshotHeaderOffset = 28;
+/** JST・SRVの秒付き日時が収まる共通日時欄の幅。 */
+const int snapshotHeaderWidth = 500;
+/** 上段スコアと、その直下の日足値幅の間隔。 */
+const int stackedPanelGap = 4;
 
 double gHiddenBuffer[];
 
@@ -130,6 +136,13 @@ DrawCurrencyStrengthList *gDrawCurrencyStrengthList;
 DrawCurrencyStrengthRankComparison *gDrawCurrencyStrengthRankComparison = NULL;
 DrawCurrencyStrengthRegionRankComparison *gDrawCurrencyStrengthRegionRankComparison = NULL;
 DrawCurrencyStrengthSnapshotHeader *gDrawCurrencyStrengthSnapshotHeader = NULL;
+
+/** 日足の元値幅・円換算値幅を表示する右端パネル。 */
+DrawCurrencyStrengthDailyRangeList *gDrawCurrencyStrengthDailyRangeList = NULL;
+
+/** 日足値幅一覧専用の取得結果。通貨強弱判定・DB保存とは独立する。 */
+CurrencyStrengthDailyRangeList *gCurrencyStrengthDailyRangeList = NULL;
+
 OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
 CurrencyStrengthEntryCandidateList *gCurrencyStrengthEntryCandidateList = NULL;
@@ -140,6 +153,15 @@ CurrencyStrengthM1EmaProvider *gCurrencyStrengthM1EmaProvider = NULL;
 datetime gLastEntryCandidateM1Minute = 0;
 
 bool gEntryCandidateSnapshotReady = false;
+
+/** スコア再展開に利用できる集計結果を保持している場合true。 */
+bool gScoreSnapshotReady = false;
+
+/** 全パネル左端からスコアパネルまでの固定距離。 */
+int gScorePanelOffset = 0;
+
+/** 初期化後に、保存チャート由来の旧スコア・日足値幅描画を一度確認する。 */
+bool gScoreOrphanCleanupPending = true;
 
 /** AND強調のユーザー設定。一時的な集計・描画失敗では解除しない。 */
 bool gReadyHighlightRequested = false;
@@ -310,33 +332,48 @@ int OnInit() {
         gCurrencyStrengthM1EmaProvider = new CurrencyStrengthM1EmaProvider();
     }
 
+    nextPanelXDistance = MathMax(nextPanelXDistance, panelXDistance + snapshotHeaderWidth + panelGap);
     gDrawCurrencyStrengthList = new DrawCurrencyStrengthList(
         0,
         nextPanelXDistance,
-        contentYDistance,
+        panelYDistance,
         sortType,
         voteWeightModeText,
         showTimeFrameScores
     );
+    gScorePanelOffset = nextPanelXDistance - panelXDistance;
+    gScoreSnapshotReady = false;
+    gScoreOrphanCleanupPending = true;
+    loadScoreDisplaySettings();
+    if (gDrawCurrencyStrengthList != NULL) {
+        gDrawCurrencyStrengthDailyRangeList = new DrawCurrencyStrengthDailyRangeList(
+            0,
+            nextPanelXDistance,
+            panelYDistance + gDrawCurrencyStrengthList.getPanelHeight() + stackedPanelGap,
+            voteWeightModeText
+        );
+        gCurrencyStrengthDailyRangeList = new CurrencyStrengthDailyRangeList();
+        loadDailyRangeDisplaySettings();
+    }
+
     gOscillatorHandleManager = new OscillatorHandleManager(PERIOD_M15);
     gCurrencyStrengthCalculator = new CurrencyStrengthCalculator(
         voteWeightMode
     );
 
     if (gDrawCurrencyStrengthList != NULL) {
-        int totalPanelWidth = nextPanelXDistance - panelXDistance
-            + gDrawCurrencyStrengthList.getPanelWidth();
-
         gDrawCurrencyStrengthSnapshotHeader = new DrawCurrencyStrengthSnapshotHeader(
             0,
             panelXDistance,
             panelYDistance,
-            totalPanelWidth,
+            getSnapshotHeaderWidth(),
             voteWeightModeText
         );
     }
 
     if (gDrawCurrencyStrengthList == NULL
+            || gDrawCurrencyStrengthDailyRangeList == NULL
+            || gCurrencyStrengthDailyRangeList == NULL
             || gDrawCurrencyStrengthSnapshotHeader == NULL
             || (showRankComparison && gDrawCurrencyStrengthRankComparison == NULL)
             || (showRankComparison && showRegionRankComparison
@@ -393,6 +430,7 @@ int OnInit() {
     }
 
     if (!isTester || MQLInfoInteger(MQL_VISUAL_MODE)) {
+        drawScorePanel();
         if (!gDrawCurrencyStrengthSnapshotHeader.draw(
             0,
             0,
@@ -412,6 +450,7 @@ int OnInit() {
         }
 
         processLiveSnapshot(true, "INIT");
+        drawDailyRangePanel(true);
     }
 
     return INIT_SUCCEEDED;
@@ -443,7 +482,9 @@ void OnTimer() {
 
     ulong timerStartMicroseconds = GetMicrosecondCount();
     ulong timingRevision = gLiveTimingRevision;
+    cleanupOrphanedScorePanels();
     processLiveSnapshot(true, "TIMER");
+    drawDailyRangePanel(true);
     if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
         gDrawCurrencyStrengthEntryCandidateList.refreshNewMarkers();
     }
@@ -464,7 +505,7 @@ void OnTimer() {
 }
 
 /**
- * 地域・通貨名・候補ペア・解除・AND強調・絞り込み・EMAモードのクリックを処理する。
+ * 日足値幅一覧・スコア開閉・地域・通貨名・候補ペア・各表示条件のクリックを処理する。
  *
  * @param fromEventId チャートイベントID。
  * @param fromLongValue 整数イベント引数。
@@ -482,6 +523,30 @@ void OnChartEvent(
     }
 
     DrawChartRedrawBatch redrawBatch;
+    bool clearedOtherScoreInstances = cleanupOrphanedScorePanels();
+    if (gDrawCurrencyStrengthList != NULL
+            && gDrawCurrencyStrengthList.handleToggleClick(fromStringValue, clearedOtherScoreInstances)) {
+        updateSnapshotHeaderWidth();
+        drawScorePanel();
+        redrawBatch.finish();
+        saveScoreDisplaySettings();
+
+        return;
+    }
+
+    if (gDrawCurrencyStrengthDailyRangeList != NULL) {
+        bool wasCollapsed = gDrawCurrencyStrengthDailyRangeList.isCollapsed();
+        if (gDrawCurrencyStrengthDailyRangeList.handleObjectClick(
+                fromStringValue, clearedOtherScoreInstances)) {
+            updateSnapshotHeaderWidth();
+            drawDailyRangePanel(wasCollapsed && !gDrawCurrencyStrengthDailyRangeList.isCollapsed());
+            redrawBatch.finish();
+            saveDailyRangeDisplaySettings();
+
+            return;
+        }
+    }
+
     if (gDrawCurrencyStrengthEntryCandidateList != NULL
             && (gDrawCurrencyStrengthEntryCandidateList.handleFilterClick(fromStringValue)
                 || gDrawCurrencyStrengthEntryCandidateList.handleEmaModeClick(fromStringValue))) {
@@ -635,6 +700,267 @@ void saveEntryDisplaySettings() {
     }
 
     GlobalVariablesFlush();
+}
+
+/**
+ * スコア開閉専用の保存キーを取得する。候補一覧の設定とは分離する。
+ *
+ * @return チャートIDと計算方式で区別した端末グローバル変数名。
+ */
+string getScoreDisplaySettingsKey() {
+    return "Mstng.CSE.ScoreUi.v1." + IntegerToString(ChartID())
+        + "." + IntegerToString((int)voteWeightMode);
+}
+
+/**
+ * 初回描画前にスコアの開閉状態を復元する。
+ * 未保存・不正値・テスターでは初期の展開状態を維持する。
+ */
+void loadScoreDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthList == NULL) {
+        return;
+    }
+
+    double savedValue = 0;
+    if (!GlobalVariableGet(getScoreDisplaySettingsKey(), savedValue)
+            || !MathIsValidNumber(savedValue)
+            || (savedValue != 0 && savedValue != 1)) {
+        return;
+    }
+
+    gDrawCurrencyStrengthList.setCollapsed(savedValue == 1);
+}
+
+/**
+ * 見出しクリックで変更した開閉状態だけを保存する。
+ * 通常更新・取得失敗・終了処理からは書き込まない。
+ */
+void saveScoreDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthList == NULL) {
+        return;
+    }
+
+    int settings = 0;
+    if (gDrawCurrencyStrengthList.isCollapsed()) {
+        settings = 1;
+    }
+
+    string settingsKey = getScoreDisplaySettingsKey();
+    double previousValue = 0;
+    if (GlobalVariableGet(settingsKey, previousValue) && previousValue == settings) {
+        return;
+    }
+
+    if (GlobalVariableSet(settingsKey, settings) == 0) {
+        gLogger.error(__FUNCTION__, StringFormat(
+            "currency strength score display settings save failed. error=%d", GetLastError()
+        ));
+
+        return;
+    }
+
+    GlobalVariablesFlush();
+}
+
+/**
+ * 稼働中の同系統インジケーターが一つの場合だけ、保存チャート由来の旧描画を除去する。
+ * OnInitでは自己登録が完了していないため、通常Timerまたはクリックから一度だけ確認する。
+ * 複数配置・一覧取得失敗・未登録時は他インスタンスの描画を削除しない。
+ *
+ * @return 単独配置を確認して旧描画を整理できた場合true。
+ */
+bool cleanupOrphanedScorePanels() {
+    if (!gScoreOrphanCleanupPending || Util::isStrategyTester()
+            || gDrawCurrencyStrengthList == NULL || gDrawCurrencyStrengthSnapshotHeader == NULL) {
+        return false;
+    }
+
+    int total = ChartIndicatorsTotal(0, 0);
+    if (total < 0) {
+        return false;
+    }
+
+    int instanceCount = 0;
+    for (int i = 0; i < total; i++) {
+        string indicatorName = ChartIndicatorName(0, 0, i);
+        if (indicatorName == "") {
+            return false;
+        }
+
+        if (StringFind(indicatorName, "Elliot Currency Strength ") == 0) {
+            instanceCount++;
+        }
+    }
+
+    if (instanceCount == 0) {
+        return false;
+    }
+
+    if (instanceCount > 1) {
+        gScoreOrphanCleanupPending = false;
+
+        return false;
+    }
+
+    DrawChartRedrawBatch redrawBatch;
+    bool scoreCleared = gDrawCurrencyStrengthList.clearOtherInstances();
+    bool headerCleared = gDrawCurrencyStrengthSnapshotHeader.clearOtherInstances();
+    bool dailyRangeCleared = true;
+    if (gDrawCurrencyStrengthDailyRangeList != NULL) {
+        dailyRangeCleared = gDrawCurrencyStrengthDailyRangeList.clearOtherInstances();
+    }
+
+    if (!scoreCleared || !headerCleared || !dailyRangeCleared) {
+        return false;
+    }
+
+    gScoreOrphanCleanupPending = false;
+
+    return true;
+}
+
+/**
+ * JST・SRVの日時表示に必要な共通日時欄の固定幅を取得する。
+ *
+ * @return 共通日時欄の幅。
+ */
+int getSnapshotHeaderWidth() {
+    return snapshotHeaderWidth;
+}
+
+/**
+ * 共通日時欄の固定幅を反映する。
+ * 反映失敗は通常更新で再試行する。
+ */
+void updateSnapshotHeaderWidth() {
+    if (gDrawCurrencyStrengthSnapshotHeader != NULL
+            && !gDrawCurrencyStrengthSnapshotHeader.setWidth(getSnapshotHeaderWidth())) {
+        gLogger.error(__FUNCTION__, "currency strength snapshot header width update failed");
+    }
+}
+
+/**
+ * 保持中の集計結果でスコアを描画する。再計算や候補の状態更新は行わない。
+ * 未集計・直近集計失敗時は、途中の値を使わず開閉できる集計待ちを表示する。
+ */
+void drawScorePanel() {
+    if (gDrawCurrencyStrengthList == NULL) {
+        return;
+    }
+
+    CurrencyStrengthCalculator *calculator = NULL;
+    if (gScoreSnapshotReady) {
+        calculator = gCurrencyStrengthCalculator;
+    }
+
+    if (!gDrawCurrencyStrengthList.draw(calculator)) {
+        gLogger.error(__FUNCTION__, "currency strength draw failed");
+    }
+
+    // 確定したスコアの高さで位置を更新し、集計待ちへの切替時も同じ描画内で移動する。
+    drawDailyRangePanel(false);
+}
+
+/**
+ * 日足値幅一覧だけの開閉・並び順設定キーを取得する。
+ *
+ * @return チャートと計算方式ごとに独立した保存キー。
+ */
+string getDailyRangeDisplaySettingsKey() {
+    return "Mstng.CSE.RangeUi.v1." + IntegerToString(ChartID())
+        + "." + IntegerToString((int)voteWeightMode);
+}
+
+/**
+ * 通常チャートで保存済みの日足値幅一覧の表示設定を復元する。
+ */
+void loadDailyRangeDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthDailyRangeList == NULL) {
+        return;
+    }
+
+    double savedValue = 0;
+    if (!GlobalVariableGet(getDailyRangeDisplaySettingsKey(), savedValue)
+            || !MathIsValidNumber(savedValue) || savedValue < 0 || savedValue > 3
+            || savedValue != MathFloor(savedValue)) {
+        return;
+    }
+
+    int settings = (int)savedValue;
+    gDrawCurrencyStrengthDailyRangeList.setCollapsed((settings & 1) != 0);
+    gDrawCurrencyStrengthDailyRangeList.setSortByJpy((settings & 2) != 0);
+}
+
+/**
+ * 日足値幅一覧のユーザー操作による開閉・並び順を保存する。
+ * ページ移動だけで設定値が変わらない場合は保存しない。
+ */
+void saveDailyRangeDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthDailyRangeList == NULL) {
+        return;
+    }
+
+    int settings = 0;
+    if (gDrawCurrencyStrengthDailyRangeList.isCollapsed()) {
+        settings += 1;
+    }
+
+    if (gDrawCurrencyStrengthDailyRangeList.isSortByJpy()) {
+        settings += 2;
+    }
+
+    string settingsKey = getDailyRangeDisplaySettingsKey();
+    double previousValue = 0;
+    if (GlobalVariableGet(settingsKey, previousValue) && previousValue == settings) {
+        return;
+    }
+
+    if (GlobalVariableSet(settingsKey, settings) == 0) {
+        gLogger.error(__FUNCTION__, StringFormat(
+            "currency strength daily range display settings save failed. error=%d", GetLastError()
+        ));
+
+        return;
+    }
+
+    GlobalVariablesFlush();
+}
+
+/**
+ * 日足値幅一覧の表示を更新する。閉状態では取得せず見出しだけ維持する。
+ * 通貨強弱集計の成否とは独立し、並び順・ページ・移動だけなら保持結果を使用する。
+ * テスターでは現在時点の日足・換算レートを取得しない。
+ *
+ * @param fromRefresh 日足と換算レートの再取得を許可する場合true。
+ */
+void drawDailyRangePanel(const bool fromRefresh) {
+    if (gDrawCurrencyStrengthDailyRangeList == NULL) {
+        return;
+    }
+
+    bool isTester = Util::isStrategyTester();
+    if (isTester && !MQLInfoInteger(MQL_VISUAL_MODE)) {
+        return;
+    }
+
+    if (gDrawCurrencyStrengthList != NULL
+            && !gDrawCurrencyStrengthDailyRangeList.setPosition(
+                panelXDistance + gScorePanelOffset,
+                panelYDistance + gDrawCurrencyStrengthList.getPanelHeight() + stackedPanelGap)) {
+        gLogger.error(__FUNCTION__, "currency strength daily range position update failed");
+    }
+
+    CurrencyStrengthDailyRangeList *rangeList = NULL;
+    if (!isTester) {
+        rangeList = gCurrencyStrengthDailyRangeList;
+        if (fromRefresh && rangeList != NULL && !gDrawCurrencyStrengthDailyRangeList.isCollapsed()) {
+            rangeList.update(_Symbol);
+        }
+    }
+
+    if (!gDrawCurrencyStrengthDailyRangeList.draw(rangeList)) {
+        gLogger.error(__FUNCTION__, "currency strength daily range draw failed");
+    }
 }
 
 /**
@@ -1401,6 +1727,7 @@ string getOptionalTimeText(
  */
 CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     gLastEntryCandidateM1Minute = 0;
+    gScoreSnapshotReady = false;
 
     if (gCurrencyStrengthCalculator == NULL
             || gOscillatorHandleManager == NULL
@@ -1429,6 +1756,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         _Symbol,
         m5BarTime
     );
+    gScoreSnapshotReady = isCalculated;
     if (!isTester) {
         gLiveCalculationMilliseconds =
             (double)(GetMicrosecondCount() - calculationStartMicroseconds) / 1000.0;
@@ -1439,6 +1767,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     DrawChartRedrawBatch redrawBatch;
     bool isDrawingEnabled = !isTester || MQLInfoInteger(MQL_VISUAL_MODE);
     if (isDrawingEnabled && gDrawCurrencyStrengthSnapshotHeader != NULL) {
+        updateSnapshotHeaderWidth();
         if (!gDrawCurrencyStrengthSnapshotHeader.draw(
             m5BarTime,
             gCurrencyStrengthCalculator.validPairCount,
@@ -1473,6 +1802,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
 
     if (!isCalculated) {
         if (isDrawingEnabled) {
+            drawScorePanel();
             if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
                 gDrawCurrencyStrengthEntryCandidateList.suspendAndTracking();
             }
@@ -1494,9 +1824,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     }
 
     if (isDrawingEnabled) {
-        if (!gDrawCurrencyStrengthList.draw(gCurrencyStrengthCalculator)) {
-            gLogger.error(__FUNCTION__, "currency strength draw failed");
-        }
+        drawScorePanel();
 
         bool areCandidatesReady = false;
         if (showEntryCandidates
@@ -1780,6 +2108,17 @@ void releaseResources() {
         gDrawCurrencyStrengthList = NULL;
     }
 
+    if (gDrawCurrencyStrengthDailyRangeList != NULL) {
+        gDrawCurrencyStrengthDailyRangeList.clear();
+        delete gDrawCurrencyStrengthDailyRangeList;
+        gDrawCurrencyStrengthDailyRangeList = NULL;
+    }
+
+    if (gCurrencyStrengthDailyRangeList != NULL) {
+        delete gCurrencyStrengthDailyRangeList;
+        gCurrencyStrengthDailyRangeList = NULL;
+    }
+
     if (gCurrencyStrengthEntryCandidateList != NULL) {
         delete gCurrencyStrengthEntryCandidateList;
         gCurrencyStrengthEntryCandidateList = NULL;
@@ -1797,6 +2136,9 @@ void releaseResources() {
 
     gLastEntryCandidateM1Minute = 0;
     gEntryCandidateSnapshotReady = false;
+    gScoreSnapshotReady = false;
+    gScorePanelOffset = 0;
+    gScoreOrphanCleanupPending = true;
     gReadyHighlightRequested = false;
 
     if (gCurrencyStrengthCalculator != NULL) {

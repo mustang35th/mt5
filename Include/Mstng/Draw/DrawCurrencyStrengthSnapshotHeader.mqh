@@ -41,6 +41,7 @@ public:
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
         this.width = fromWidth;
+        this.appliedWidth = 0;
         this.height = 24;
         this.created = false;
         this.timingTooltip = "\n";
@@ -154,6 +155,33 @@ public:
     }
 
     /**
+     * パネルの開閉に合わせて背景幅を更新する。
+     * 日時と診断説明は維持し、同じ幅の再設定を省く。
+     *
+     * @param fromWidth 更新後の幅。
+     * @return 幅を保持し、生成済みなら反映できた場合true。
+     */
+    bool setWidth(const int fromWidth) {
+        if (fromWidth <= 0) {
+            return false;
+        }
+
+        this.width = fromWidth;
+        if (!this.created || this.appliedWidth == this.width) {
+            return true;
+        }
+
+        if (!ObjectSetInteger(this.chartId, this.objectPrefix + "Panel", OBJPROP_XSIZE, this.width)) {
+            return false;
+        }
+
+        this.appliedWidth = this.width;
+        DrawChartRedrawBatch::request(this.chartId);
+
+        return true;
+    }
+
+    /**
      * 共通日時ヘッダーの固定高さを取得する。
      *
      * @return ピクセル単位の高さ。
@@ -168,6 +196,42 @@ public:
     void clear() {
         this.destroyObjects();
         DrawChartRedrawBatch::request(this.chartId);
+    }
+
+    /**
+     * 保存チャートなどに残った別採番の共通日時欄を除去する。
+     * 呼び出し側で、初期化後に同系統インジケーターの単独配置を確認すること。
+     *
+     * @return 旧描画の除去に成功した場合true。
+     */
+    bool clearOtherInstances() {
+        string familyPrefix = Constant::PREFIX_FIXED + "CurrencySnapshot_";
+        bool succeeded = true;
+        bool changed = false;
+        int total = ObjectsTotal(this.chartId, 0, -1);
+        if (total < 0) {
+            return false;
+        }
+
+        for (int i = total - 1; i >= 0; i--) {
+            string objectName = ObjectName(this.chartId, i, 0, -1);
+            if (StringFind(objectName, familyPrefix) != 0
+                    || StringFind(objectName, this.objectPrefix) == 0) {
+                continue;
+            }
+
+            if (ObjectDelete(this.chartId, objectName)) {
+                changed = true;
+            } else {
+                succeeded = false;
+            }
+        }
+
+        if (changed) {
+            DrawChartRedrawBatch::request(this.chartId);
+        }
+
+        return succeeded;
     }
 
 private:
@@ -185,6 +249,9 @@ private:
 
     /** ヘッダー幅。 */
     int width;
+
+    /** 生成済み背景へ反映した幅。失敗時は更新せず次回再試行する。 */
+    int appliedWidth;
 
     /** ヘッダー高さ。 */
     int height;
@@ -216,6 +283,7 @@ private:
         }
 
         this.created = true;
+        this.appliedWidth = this.width;
         this.appliedTimingTooltip = this.timingTooltip;
 
         return true;
@@ -286,6 +354,7 @@ private:
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
+        this.appliedWidth = 0;
         this.appliedTimingTooltip = "";
     }
 };

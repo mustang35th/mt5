@@ -58,6 +58,8 @@ public:
 
         this.created = false;
         this.createdRowCount = 0;
+        this.createdPanelHeight = 0;
+        this.collapsed = false;
 
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
@@ -105,18 +107,22 @@ public:
     /**
      * 通貨強弱ランキングを描画する。
      *
-     * @param fromCalculator 描画対象の集計結果。
+     * @param fromCalculator 描画対象の集計結果。NULLの場合は集計待ちを表示する。
      * @return 描画に成功した場合true。
      */
     bool draw(CurrencyStrengthCalculator *fromCalculator) {
+        if (this.collapsed) {
+            return this.drawHeaderOnly();
+        }
+
         if (fromCalculator == NULL) {
-            return false;
+            return this.drawHeaderOnly();
         }
 
         int total = fromCalculator.size();
 
         if (total <= 0) {
-            return false;
+            return this.drawHeaderOnly();
         }
 
         if (!this.created || this.createdRowCount != total) {
@@ -153,12 +159,115 @@ public:
     }
 
     /**
-     * 表示列に応じたパネル幅を取得する。
+     * 開閉状態を反映し、次回描画でパネルを作り直す。
+     * 再描画要求は呼び出し側の表示更新へまとめる。
+     *
+     * @param fromCollapsed 折りたたむ場合true。
+     */
+    void setCollapsed(const bool fromCollapsed) {
+        if (this.collapsed == fromCollapsed) {
+            return;
+        }
+
+        this.collapsed = fromCollapsed;
+        this.destroyObjects();
+    }
+
+    /**
+     * スコア本文を折りたたんでいるか取得する。
+     *
+     * @return 折りたたみ中の場合true。
+     */
+    bool isCollapsed() const {
+        return this.collapsed;
+    }
+
+    /**
+     * このパネルのタイトル文字・背景のクリックで開閉する。
+     *
+     * @param fromObjectName クリックされたオブジェクト名。
+     * @param fromAllowOtherInstances 単独配置を確認して旧描画を除去した直後のみtrue。
+     * @return 開閉状態を変更した場合true。
+     */
+    bool handleToggleClick(const string fromObjectName, const bool fromAllowOtherInstances = false) {
+        bool isTitle = fromObjectName == this.objectPrefix + "Title"
+            || fromObjectName == this.objectPrefix + "TitleBackground";
+        if (!isTitle && fromAllowOtherInstances
+                && StringFind(fromObjectName, Constant::PREFIX_FIXED + "CurrencyStrengthList_") == 0) {
+            int nameLength = StringLen(fromObjectName);
+            isTitle = StringSubstr(fromObjectName, nameLength - StringLen("_Title")) == "_Title"
+                || StringSubstr(fromObjectName, nameLength - StringLen("_TitleBackground")) == "_TitleBackground";
+        }
+
+        if (!this.created || !isTitle) {
+            return false;
+        }
+
+        this.setCollapsed(!this.collapsed);
+
+        return true;
+    }
+
+    /**
+     * 保存チャートなどに残った別採番のスコア描画を除去する。
+     * 呼び出し側で、初期化後に同系統インジケーターの単独配置を確認すること。
+     *
+     * @return 旧描画の除去に成功した場合true。
+     */
+    bool clearOtherInstances() {
+        string familyPrefix = Constant::PREFIX_FIXED + "CurrencyStrengthList_";
+        bool succeeded = true;
+        bool changed = false;
+        int total = ObjectsTotal(this.chartId, 0, -1);
+        if (total < 0) {
+            return false;
+        }
+
+        for (int i = total - 1; i >= 0; i--) {
+            string objectName = ObjectName(this.chartId, i, 0, -1);
+            if (StringFind(objectName, familyPrefix) != 0
+                    || StringFind(objectName, this.objectPrefix) == 0) {
+                continue;
+            }
+
+            if (ObjectDelete(this.chartId, objectName)) {
+                changed = true;
+            } else {
+                succeeded = false;
+            }
+        }
+
+        if (changed) {
+            DrawChartRedrawBatch::request(this.chartId);
+        }
+
+        return succeeded;
+    }
+
+    /**
+     * 開閉状態と表示列に応じたパネル幅を取得する。
      *
      * @return パネル幅。単位はピクセル。
      */
     int getPanelWidth() const {
+        if (this.collapsed) {
+            return 200;
+        }
+
         return this.panelWidth;
+    }
+
+    /**
+     * 直近の描画で確定した高さを取得する。未描画時は見出し分を返す。
+     *
+     * @return パネルの高さ。単位はピクセル。
+     */
+    int getPanelHeight() const {
+        if (this.createdPanelHeight > 0) {
+            return this.createdPanelHeight;
+        }
+
+        return this.headerHeight + 2;
     }
 
 private:
@@ -173,6 +282,12 @@ private:
 
     /** 生成済みの行数。 */
     int createdRowCount;
+
+    /** 作成したパネル背景の高さ。未描画時は0。 */
+    int createdPanelHeight;
+
+    /** 本文を隠し、開くための見出しだけ表示する場合true。 */
+    bool collapsed;
 
     /** セルへ反映済みの文字列。行番号と列番号から求めた位置で保持する。 */
     string cellTexts[];
@@ -262,6 +377,78 @@ private:
     color warningColor;
 
     /**
+     * 折りたたみ中、または集計未取得時の見出しを表示する。
+     * 同じ見出しだけの状態ではオブジェクトを作り直さない。
+     *
+     * @return 描画に成功した場合true。
+     */
+    bool drawHeaderOnly() {
+        if (this.created && this.createdRowCount == 0) {
+            return true;
+        }
+
+        this.destroyObjects();
+        int panelHeight = this.headerHeight + 2;
+        string titleText = "▶ 通貨強弱スコア";
+        if (!this.collapsed) {
+            panelHeight = this.columnHeaderYDistance + this.rowHeight + this.bottomPadding;
+            titleText = "▼ 通貨強弱スコア";
+        }
+
+        if (!this.createHeader(panelHeight, titleText)) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!this.collapsed && !this.createLabel(
+                this.objectPrefix + "Waiting", 14, this.columnHeaderYDistance,
+                this.bodyFontSize, this.warningColor, "集計待ち")) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        this.created = true;
+        DrawChartRedrawBatch::request(this.chartId);
+
+        return true;
+    }
+
+    /**
+     * パネル背景と開閉操作用の見出しを生成する。
+     *
+     * @param fromPanelHeight 本文を含むパネルの高さ。
+     * @param fromTitleText 見出し文字列。
+     * @return 生成に成功した場合true。
+     */
+    bool createHeader(const int fromPanelHeight, const string fromTitleText) {
+        int displayWidth = this.getPanelWidth();
+        if (!this.createRectangle(
+                this.objectPrefix + "Panel", this.xDistance, this.yDistance,
+                displayWidth, fromPanelHeight, this.panelBackgroundColor, this.borderColor, 0)
+                || !this.createRectangle(
+                    this.objectPrefix + "TitleBackground", this.xDistance + 1, this.yDistance + 1,
+                    displayWidth - 2, this.headerHeight,
+                    this.headerBackgroundColor, this.headerBackgroundColor, 1)
+                || !this.createLabel(
+                    this.objectPrefix + "Title", 14, 5,
+                    this.titleFontSize, this.titleColor, fromTitleText)) {
+            return false;
+        }
+
+        string tooltip = "クリックして通貨強弱スコアを閉じる";
+        if (this.collapsed) {
+            tooltip = "クリックして通貨強弱スコアを開く";
+        }
+
+        this.createdPanelHeight = fromPanelHeight;
+
+        return ObjectSetString(this.chartId, this.objectPrefix + "Title", OBJPROP_TOOLTIP, tooltip)
+            && ObjectSetString(this.chartId, this.objectPrefix + "TitleBackground", OBJPROP_TOOLTIP, tooltip);
+    }
+
+    /**
      * 指定行数の一覧パネルを生成する。
      *
      * @param fromRowCount 生成するデータ行数。
@@ -296,44 +483,7 @@ private:
         int panelHeight = footerYDistance + (4 * this.rowHeight)
             + this.bottomPadding;
 
-        if (!this.createRectangle(
-            this.objectPrefix + "Panel",
-            this.xDistance,
-            this.yDistance,
-            this.panelWidth,
-            panelHeight,
-            this.panelBackgroundColor,
-            this.borderColor,
-            0
-        )) {
-            this.destroyObjects();
-
-            return false;
-        }
-
-        if (!this.createRectangle(
-            this.objectPrefix + "TitleBackground",
-            this.xDistance + 1,
-            this.yDistance + 1,
-            this.panelWidth - 2,
-            this.headerHeight,
-            this.headerBackgroundColor,
-            this.headerBackgroundColor,
-            1
-        )) {
-            this.destroyObjects();
-
-            return false;
-        }
-
-        if (!this.createLabel(
-            this.objectPrefix + "Title",
-            14,
-            5,
-            this.titleFontSize,
-            this.titleColor,
-            "通貨強弱スコア"
-        )) {
+        if (!this.createHeader(panelHeight, "▼ 通貨強弱スコア")) {
             this.destroyObjects();
 
             return false;
@@ -875,7 +1025,7 @@ private:
         }
 
         string titleText = StringFormat(
-            "通貨強弱スコア［%s］  %d/%d  %s",
+            "▼ 通貨強弱スコア［%s］  %d/%d  %s",
             voteWeightModeText,
             fromCalculator.validPairCount,
             fromCalculator.getExpectedPairCount(),
@@ -1210,6 +1360,7 @@ private:
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
         this.createdRowCount = 0;
+        this.createdPanelHeight = 0;
         ArrayFree(this.cellTexts);
         ArrayFree(this.cellColors);
         ArrayFree(this.cellTextValid);
