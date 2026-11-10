@@ -10,8 +10,8 @@
 #include <Mstng\Util\Util.mqh>
 
 /**
- * LIVEの28通貨ペアの日足値幅と円換算をまとめて取得する。
- * 日足は各1本、換算気配は決済通貨ごとに1回だけ取得する。
+ * LIVEの28通貨ペアの当日・5日平均値幅と円換算をまとめて取得する。
+ * 日足は各最大14本、換算気配は決済通貨ごとに1回だけ取得する。
  */
 class CurrencyStrengthDailyRangeList {
 public:
@@ -88,7 +88,7 @@ public:
     }
 
     /**
-     * 当日の日足値幅と、同じ日の最新気配による円換算値を更新する。
+     * 当日・直近5平日の値幅と、現在気配による円換算値を更新する。
      * 取得失敗は行単位で未取得へ戻し、テスターでは市場データを参照しない。
      *
      * @param fromReferenceSymbol 接頭辞・接尾辞の基準となるチャートシンボル。
@@ -131,7 +131,7 @@ public:
         }
 
         for (int i = 0; i < this.size(); i++) {
-            if (this.rows[i].rangeAvailable) {
+            if (this.rows[i].rangeAvailable || this.rows[i].averageAvailable) {
                 this.updateJpyRange(this.rows[i]);
             }
         }
@@ -240,18 +240,10 @@ private:
     }
 
     /**
-     * 日足1本から、既存D表示と同じ丸め順序で値幅を計算する。
+     * 日足をまとめて取得し、当日と平均をそれぞれ独立して計算する。
+     * 履歴の準備待ちで従来の当日表示まで失わないよう、必要な場合だけ1本取得を試す。
      */
     void readDailyRange(CurrencyStrengthDailyRangeInfo &fromInfo) {
-        MqlRates rates[1];
-        if (CopyRates(fromInfo.resolvedSymbolName, PERIOD_D1, 0, 1, rates) != 1
-                || !this.isCurrentDay(rates[0].time)
-                || !this.isPositivePrice(rates[0].high)
-                || !this.isPositivePrice(rates[0].low)
-                || rates[0].high < rates[0].low) {
-            return;
-        }
-
         double point = 0.0;
         long digits = 0;
         if (!SymbolInfoDouble(fromInfo.resolvedSymbolName, SYMBOL_POINT, point)
@@ -266,29 +258,138 @@ private:
             return;
         }
 
-        double pips = NormalizeDouble((rates[0].high - rates[0].low) / pipSize,
-            ZigZagElliotAnalysisProfile::getPipsResultDigits());
-        double roundedPips = MathRound(pips);
+        fromInfo.digits = (int)digits;
+        MqlRates rates[14];
+        int copied = CopyRates(fromInfo.resolvedSymbolName, PERIOD_D1, 0, 14, rates);
+        bool currentBarFound = false;
+        if (copied > 0) {
+            // CopyRatesの物理配列は古い足から並ぶ。
+            currentBarFound = this.isCurrentDay(rates[copied - 1].time);
+            if (currentBarFound) {
+                this.setCurrentRange(fromInfo, rates[copied - 1], pipSize);
+            }
+
+            this.setAverageRange(fromInfo, rates, copied, pipSize);
+        }
+
+        if (!currentBarFound) {
+            MqlRates currentRates[1];
+            if (CopyRates(fromInfo.resolvedSymbolName, PERIOD_D1, 0, 1, currentRates) == 1
+                    && this.isCurrentDay(currentRates[0].time)) {
+                this.setCurrentRange(fromInfo, currentRates[0], pipSize);
+            }
+        }
+    }
+
+    /**
+     * 正常な高値・安値の差を、丸め前のpipsで返す。
+     */
+    bool getRawPips(const MqlRates &fromRate, const double fromPipSize, double &fromPips) const {
+        fromPips = 0.0;
+        if (!this.isPositivePrice(fromRate.high) || !this.isPositivePrice(fromRate.low)
+                || fromRate.high < fromRate.low) {
+            return false;
+        }
+
+        fromPips = (fromRate.high - fromRate.low) / fromPipSize;
+
+        return MathIsValidNumber(fromPips) && fromPips != EMPTY_VALUE && fromPips >= 0.0;
+    }
+
+    /**
+     * 既存D表示と同じ小数1桁の正規化後、整数pipsへ丸める。
+     */
+    bool roundPips(const double fromPips, int &fromRoundedPips) const {
+        if (!MathIsValidNumber(fromPips) || fromPips == EMPTY_VALUE || fromPips < 0.0) {
+            return false;
+        }
+
+        double roundedPips = MathRound(NormalizeDouble(fromPips,
+            ZigZagElliotAnalysisProfile::getPipsResultDigits()));
         if (!MathIsValidNumber(roundedPips) || roundedPips < 0.0 || roundedPips > 2147483647.0) {
+            return false;
+        }
+
+        fromRoundedPips = (int)roundedPips;
+
+        return true;
+    }
+
+    /**
+     * 当日として確認済みの日足を、既存D表示と同じ計算で反映する。
+     */
+    void setCurrentRange(CurrencyStrengthDailyRangeInfo &fromInfo,
+            const MqlRates &fromRate, const double fromPipSize) {
+        double rawPips = 0.0;
+        if (!this.getRawPips(fromRate, fromPipSize, rawPips)
+                || !this.roundPips(rawPips, fromInfo.pips)) {
             return;
         }
 
-        fromInfo.high = rates[0].high;
-        fromInfo.low = rates[0].low;
-        fromInfo.digits = (int)digits;
-        fromInfo.pips = (int)roundedPips;
-        fromInfo.dayTime = rates[0].time;
+        fromInfo.high = fromRate.high;
+        fromInfo.low = fromRate.low;
+        fromInfo.dayTime = fromRate.time;
         fromInfo.rangeAvailable = true;
     }
 
     /**
-     * 丸め済みのDを現在Bidで換算する。JPY建てはDと同じ値を返す。
+     * 当日より前の平日D1を新しい順に5本選び、生pipsを平均する。
+     * 対象内の価格異常は件数不足とし、さらに古い6本目で補わない。
+     */
+    void setAverageRange(CurrencyStrengthDailyRangeInfo &fromInfo,
+            const MqlRates &fromRates[], const int fromCount, const double fromPipSize) {
+        datetime currentDay = this.updatedAt - this.updatedAt % 86400;
+        int selectedCount = 0;
+        double totalPips = 0.0;
+        for (int i = fromCount - 1; i >= 0 && selectedCount < 5; i--) {
+            MqlDateTime dayParts;
+            if (fromRates[i].time <= 0 || !TimeToStruct(fromRates[i].time, dayParts)) {
+                // 日付を分類できない足を飛ばして対象期間を延ばさない。
+                return;
+            }
+
+            if (fromRates[i].time >= currentDay
+                    || dayParts.day_of_week == 0 || dayParts.day_of_week == 6) {
+                continue;
+            }
+
+            selectedCount++;
+            double rawPips = 0.0;
+            if (!this.getRawPips(fromRates[i], fromPipSize, rawPips)) {
+                continue;
+            }
+
+            fromInfo.averageDayCount++;
+            fromInfo.averageStartTime = fromRates[i].time;
+            if (fromInfo.averageEndTime == 0) {
+                fromInfo.averageEndTime = fromRates[i].time;
+            }
+
+            totalPips += rawPips;
+        }
+
+        if (fromInfo.averageDayCount == 5
+                && this.roundPips(totalPips / 5.0, fromInfo.averagePips)) {
+            fromInfo.averageAvailable = true;
+        }
+    }
+
+    /**
+     * 丸め済みの当日・5日平均を、同じ現在Bidでそれぞれ独立して換算する。
      */
     void updateJpyRange(CurrencyStrengthDailyRangeInfo &fromInfo) {
         string quoteCurrency = StringSubstr(fromInfo.symbolName, 3, 3);
         if (quoteCurrency == "JPY") {
-            fromInfo.jpyPips = fromInfo.pips;
-            fromInfo.jpyAvailable = true;
+            if (fromInfo.rangeAvailable) {
+                fromInfo.jpyPips = fromInfo.pips;
+                fromInfo.jpyAvailable = true;
+            }
+
+            if (fromInfo.averageAvailable) {
+                fromInfo.averageJpyPips = fromInfo.averagePips;
+                fromInfo.averageJpyAvailable = true;
+            }
+
             fromInfo.conversionRate = 1.0;
             fromInfo.conversionSymbolName = "JPY";
 
@@ -309,32 +410,53 @@ private:
 
         this.readConversion(quoteIndex);
         datetime quoteTime = this.conversionTimes[quoteIndex];
-        if (!this.conversionAvailable[quoteIndex]
-                || quoteTime < fromInfo.dayTime
-                || quoteTime - quoteTime % 86400 != fromInfo.dayTime - fromInfo.dayTime % 86400) {
+        if (!this.conversionAvailable[quoteIndex]) {
             return;
         }
 
-        double converted = 100.0 * 0.0001 * (double)fromInfo.pips;
-        string symbolName = this.directSymbolNames[quoteIndex];
-        if (this.conversionInverse[quoteIndex]) {
-            converted /= this.conversionBids[quoteIndex];
-            symbolName = this.inverseSymbolNames[quoteIndex];
+        if (fromInfo.rangeAvailable && quoteTime >= fromInfo.dayTime
+                && quoteTime - quoteTime % 86400 == fromInfo.dayTime - fromInfo.dayTime % 86400) {
+            fromInfo.jpyAvailable = this.convertPips(fromInfo.pips, quoteIndex, fromInfo.jpyPips);
+        }
+
+        if (fromInfo.averageAvailable) {
+            fromInfo.averageJpyAvailable = this.convertPips(
+                fromInfo.averagePips, quoteIndex, fromInfo.averageJpyPips);
+        }
+
+        if (!fromInfo.jpyAvailable && !fromInfo.averageJpyAvailable) {
+            return;
+        }
+
+        fromInfo.conversionRate = this.conversionBids[quoteIndex];
+        fromInfo.conversionSymbolName = this.directSymbolNames[quoteIndex];
+        fromInfo.inverseConversion = this.conversionInverse[quoteIndex];
+        if (fromInfo.inverseConversion) {
+            fromInfo.conversionSymbolName = this.inverseSymbolNames[quoteIndex];
+        }
+
+        fromInfo.conversionTime = quoteTime;
+    }
+
+    /**
+     * 既存D Jpyの演算順序で整数pipsを円換算し、整数へ丸める。
+     */
+    bool convertPips(const int fromPips, const int fromQuoteIndex, int &fromJpyPips) const {
+        double converted = 100.0 * 0.0001 * (double)fromPips;
+        if (this.conversionInverse[fromQuoteIndex]) {
+            converted /= this.conversionBids[fromQuoteIndex];
         } else {
-            converted *= this.conversionBids[quoteIndex];
+            converted *= this.conversionBids[fromQuoteIndex];
         }
 
         double roundedPips = MathRound(converted);
         if (!MathIsValidNumber(roundedPips) || roundedPips < 0.0 || roundedPips > 2147483647.0) {
-            return;
+            return false;
         }
 
-        fromInfo.jpyPips = (int)roundedPips;
-        fromInfo.jpyAvailable = true;
-        fromInfo.conversionRate = this.conversionBids[quoteIndex];
-        fromInfo.conversionSymbolName = symbolName;
-        fromInfo.inverseConversion = this.conversionInverse[quoteIndex];
-        fromInfo.conversionTime = quoteTime;
+        fromJpyPips = (int)roundedPips;
+
+        return true;
     }
 
     /**

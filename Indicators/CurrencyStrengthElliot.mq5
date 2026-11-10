@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.25"
+#property version   "1.26"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -881,7 +881,7 @@ void loadDailyRangeDisplaySettings() {
 
     double savedValue = 0;
     if (!GlobalVariableGet(getDailyRangeDisplaySettingsKey(), savedValue)
-            || !MathIsValidNumber(savedValue) || savedValue < 0 || savedValue > 3
+            || !MathIsValidNumber(savedValue) || savedValue < 0 || savedValue > 7
             || savedValue != MathFloor(savedValue)) {
         return;
     }
@@ -889,10 +889,11 @@ void loadDailyRangeDisplaySettings() {
     int settings = (int)savedValue;
     gDrawCurrencyStrengthDailyRangeList.setCollapsed((settings & 1) != 0);
     gDrawCurrencyStrengthDailyRangeList.setSortByJpy((settings & 2) != 0);
+    gDrawCurrencyStrengthDailyRangeList.setAverageMode((settings & 4) != 0);
 }
 
 /**
- * 日足値幅一覧のユーザー操作による開閉・並び順を保存する。
+ * 日足値幅一覧のユーザー操作による開閉・並び順・当日/平均モードを保存する。
  * ページ移動だけで設定値が変わらない場合は保存しない。
  */
 void saveDailyRangeDisplaySettings() {
@@ -907,6 +908,10 @@ void saveDailyRangeDisplaySettings() {
 
     if (gDrawCurrencyStrengthDailyRangeList.isSortByJpy()) {
         settings += 2;
+    }
+
+    if (gDrawCurrencyStrengthDailyRangeList.isAverageMode()) {
+        settings += 4;
     }
 
     string settingsKey = getDailyRangeDisplaySettingsKey();

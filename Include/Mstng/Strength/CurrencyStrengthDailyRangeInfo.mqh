@@ -5,7 +5,7 @@
 #define MSTNG_CURRENCY_STRENGTH_DAILY_RANGE_INFO_MQH
 
 /**
- * 1通貨ペアの日足値幅と、同日の気配による円換算値を保持する。
+ * 1通貨ペアの当日値幅・直近5平日の平均値幅と、現在気配による円換算値を保持する。
  */
 struct CurrencyStrengthDailyRangeInfo {
     /** 6文字の正規通貨ペア名。 */
@@ -19,6 +19,12 @@ struct CurrencyStrengthDailyRangeInfo {
 
     /** 今回の円換算値を取得できた場合true。 */
     bool jpyAvailable;
+
+    /** 対象5本すべての値幅から平均を取得できた場合true。 */
+    bool averageAvailable;
+
+    /** 今回の5日平均の円換算値を取得できた場合true。 */
+    bool averageJpyAvailable;
 
     /** 対象日足の高値。 */
     double high;
@@ -34,6 +40,21 @@ struct CurrencyStrengthDailyRangeInfo {
 
     /** 整数に丸めた円換算pips。 */
     int jpyPips;
+
+    /** 生pipsの5日平均を最後に整数へ丸めた値。 */
+    int averagePips;
+
+    /** 整数に丸めた5日平均の円換算pips。 */
+    int averageJpyPips;
+
+    /** 対象5本のうち、有効な日足値幅を取得できた本数。 */
+    int averageDayCount;
+
+    /** 平均対象のうち有効に取得できた最古の日足開始サーバー時刻。 */
+    datetime averageStartTime;
+
+    /** 平均対象のうち有効に取得できた最新の日足開始サーバー時刻。 */
+    datetime averageEndTime;
 
     /** 換算シンボルのBid。JPY建ての場合は1。 */
     double conversionRate;
@@ -71,11 +92,18 @@ struct CurrencyStrengthDailyRangeInfo {
         this.resolvedSymbolName = "";
         this.rangeAvailable = false;
         this.jpyAvailable = false;
+        this.averageAvailable = false;
+        this.averageJpyAvailable = false;
         this.high = 0.0;
         this.low = 0.0;
         this.digits = 0;
         this.pips = 0;
         this.jpyPips = 0;
+        this.averagePips = 0;
+        this.averageJpyPips = 0;
+        this.averageDayCount = 0;
+        this.averageStartTime = 0;
+        this.averageEndTime = 0;
         this.conversionRate = 0.0;
         this.conversionSymbolName = "";
         this.inverseConversion = false;

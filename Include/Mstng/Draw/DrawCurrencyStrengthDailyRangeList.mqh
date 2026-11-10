@@ -13,7 +13,7 @@
 #include <Mstng\Util\Util.mqh>
 
 /**
- * 当日の日足値幅を円換算順位・元pips・円換算pipsで14件ずつ表示する。
+ * 当日または直近5本の平日確定日足の平均値幅を円換算順位・元pips・円換算pipsで14件ずつ表示する。
  * 市場データの取得は行わず、保持済み一覧の開閉・並び替え・ページ切替を担当する。
  */
 class DrawCurrencyStrengthDailyRangeList {
@@ -38,6 +38,9 @@ public:
         this.created = false;
         this.collapsed = false;
         this.sortByJpy = true;
+        this.averageMode = false;
+        this.modeButtonsValid = false;
+        this.appliedAverageMode = false;
         this.pageIndex = 0;
         this.pageCount = 2;
         ArrayInitialize(this.cellValid, false);
@@ -79,12 +82,19 @@ public:
             return false;
         }
 
+        string titleTooltip = "クリックして日足値幅一覧を閉じる";
+        if (this.collapsed) {
+            titleTooltip = "クリックして日足値幅一覧を開く";
+        }
+
+        bool succeeded = this.updateCell(62, this.objectPrefix + "Title", this.getTitleText(),
+            clrWhite, titleTooltip, changed);
         if (this.collapsed) {
             if (changed) {
                 DrawChartRedrawBatch::request(this.chartId);
             }
 
-            return true;
+            return succeeded;
         }
 
         int displayOrder[];
@@ -96,13 +106,14 @@ public:
         }
 
         this.pageIndex = MathMax(0, MathMin(this.pageIndex, this.pageCount - 1));
-        bool succeeded = true;
         for (int i = 0; i < 14; i++) {
             string rankText = " ";
             string pairText = " ";
             string pipsText = " ";
             string jpyText = " ";
             string tooltip = "\n";
+            string pipsTooltip = "\n";
+            string jpyTooltip = "\n";
             color pipsColor = clrSilver;
             color jpyColor = clrSilver;
             int sourceIndex = this.pageIndex * 14 + i;
@@ -113,13 +124,24 @@ public:
                 pairText = info.symbolName;
                 pipsText = "—";
                 jpyText = "—";
-                if (info.rangeAvailable) {
-                    pipsText = IntegerToString(info.pips);
+                bool rangeAvailable = info.rangeAvailable;
+                bool jpyAvailable = info.jpyAvailable;
+                int pips = info.pips;
+                int jpyPips = info.jpyPips;
+                if (this.averageMode) {
+                    rangeAvailable = info.averageAvailable;
+                    jpyAvailable = info.averageJpyAvailable;
+                    pips = info.averagePips;
+                    jpyPips = info.averageJpyPips;
+                }
+
+                if (rangeAvailable) {
+                    pipsText = IntegerToString(pips);
                     pipsColor = clrWhiteSmoke;
                 }
 
-                if (info.jpyAvailable) {
-                    jpyText = IntegerToString(info.jpyPips);
+                if (jpyAvailable) {
+                    jpyText = IntegerToString(jpyPips);
                     jpyColor = clrGold;
                 }
 
@@ -129,12 +151,14 @@ public:
                 }
 
                 tooltip = this.getRowTooltip(info, rank);
+                pipsTooltip = this.getPipsTooltip(info);
+                jpyTooltip = this.getJpyTooltip(info);
             }
 
             if (!this.updateCell(i * 4, this.getRowName(i, "Rank"), rankText, clrSilver, tooltip, changed)
                     || !this.updateCell(i * 4 + 1, this.getRowName(i, "Pair"), pairText, clrWhiteSmoke, tooltip, changed)
-                    || !this.updateCell(i * 4 + 2, this.getRowName(i, "Pips"), pipsText, pipsColor, tooltip, changed)
-                    || !this.updateCell(i * 4 + 3, this.getRowName(i, "Jpy"), jpyText, jpyColor, tooltip, changed)) {
+                    || !this.updateCell(i * 4 + 2, this.getRowName(i, "Pips"), pipsText, pipsColor, pipsTooltip, changed)
+                    || !this.updateCell(i * 4 + 3, this.getRowName(i, "Jpy"), jpyText, jpyColor, jpyTooltip, changed)) {
                 succeeded = false;
             }
         }
@@ -155,10 +179,24 @@ public:
         if (!this.updateCell(56, this.objectPrefix + "SortButton", sortText, clrWhiteSmoke,
                 "クリックして円換算pipsの大きい順／通貨ペアのアルファベット順を切替", changed)
                 || !this.updateCell(57, this.objectPrefix + "Page",
-                    IntegerToString(this.pageIndex + 1) + " / " + IntegerToString(this.pageCount),
+                    IntegerToString(this.pageIndex + 1) + "/" + IntegerToString(this.pageCount),
                     clrWhiteSmoke, "14件ずつ表示", changed)
                 || !this.updateCell(58, this.objectPrefix + "Updated", updatedText,
                     clrSilver, updatedTooltip, changed)) {
+            succeeded = false;
+        }
+
+        string footerText = "当日D1 高値−安値（SRV基準）";
+        if (this.averageMode) {
+            footerText = "5日平均：直近5本の平日確定D1";
+        }
+
+        if (!this.updateModeButtons(changed)
+                || !this.updateCell(61, this.objectPrefix + "Footer", footerText, clrSilver,
+                    "当日：現在D1の高値−安値。5日平均：当日・土日を除く平日の確定D1 5本。円換算は現在の同じBidレートを使用します。", changed)
+                || !this.updateCell(63, this.objectPrefix + "HeaderRank", "NO", clrSilver,
+                    this.getModeText() + "の全28通貨ペアの円換算pips順位。ペア順でも同じ順位を表示。"
+                    + "同値は同順位（1・2・2・4）、未取得は—。", changed)) {
             succeeded = false;
         }
 
@@ -170,7 +208,7 @@ public:
     }
 
     /**
-     * 見出し・並び順・ページの操作を保持する。再描画は呼び出し側で行う。
+     * 見出し・当日／平均・並び順・ページの操作を保持する。再描画は呼び出し側で行う。
      *
      * @param fromName クリックされたオブジェクト名。
      * @param fromAllowOtherInstances 単独配置確認後に旧描画を除去した直後のみtrue。
@@ -200,7 +238,13 @@ public:
             return false;
         }
 
-        if (fromName == this.objectPrefix + "SortButton") {
+        if (fromName == this.objectPrefix + "TodayButton") {
+            ObjectSetInteger(this.chartId, fromName, OBJPROP_STATE, false);
+            this.setAverageMode(false);
+        } else if (fromName == this.objectPrefix + "AverageButton") {
+            ObjectSetInteger(this.chartId, fromName, OBJPROP_STATE, false);
+            this.setAverageMode(true);
+        } else if (fromName == this.objectPrefix + "SortButton") {
             ObjectSetInteger(this.chartId, fromName, OBJPROP_STATE, false);
             this.setSortByJpy(!this.sortByJpy);
         } else if (fromName == this.objectPrefix + "PreviousButton") {
@@ -253,6 +297,26 @@ public:
         }
 
         this.sortByJpy = fromSortByJpy;
+        this.pageIndex = 0;
+    }
+
+    /**
+     * 直近5本の平日確定日足の平均を表示する場合trueを返す。
+     */
+    bool isAverageMode() const {
+        return this.averageMode;
+    }
+
+    /**
+     * 当日と5日平均を切り替え、最初のページへ戻す。
+     * 開閉と並び順は維持し、市場データを再取得しない。
+     */
+    void setAverageMode(const bool fromAverageMode) {
+        if (this.averageMode == fromAverageMode) {
+            return;
+        }
+
+        this.averageMode = fromAverageMode;
         this.pageIndex = 0;
     }
 
@@ -365,6 +429,15 @@ private:
     /** 円換算pipsの降順の場合true。 */
     bool sortByJpy;
 
+    /** 直近5本の平日確定日足の平均を表示する場合true。 */
+    bool averageMode;
+
+    /** 当日／平均ボタンの背景色を反映済みの場合true。 */
+    bool modeButtonsValid;
+
+    /** ボタン背景へ反映済みの表示モード。 */
+    bool appliedAverageMode;
+
     /** 表示中のページ番号。0始まり。 */
     int pageIndex;
 
@@ -372,16 +445,16 @@ private:
     int pageCount;
 
     /** セル・操作ラベルへ反映済みの文字。 */
-    string cellTexts[59];
+    string cellTexts[64];
 
     /** セル・操作ラベルへ反映済みの文字色。 */
-    color cellColors[59];
+    color cellColors[64];
 
     /** セル・操作ラベルへ反映済みの説明。 */
-    string cellTooltips[59];
+    string cellTooltips[64];
 
     /** 各セルの反映値が有効な場合true。 */
-    bool cellValid[59];
+    bool cellValid[64];
 
     /**
      * 固定部分と空のセルを生成する。
@@ -389,11 +462,10 @@ private:
     bool create() {
         this.destroyObjects();
         int panelHeight = 384;
-        string titleText = "▼ 日足値幅";
+        string titleText = this.getTitleText();
         string titleTooltip = "クリックして日足値幅一覧を閉じる";
         if (this.collapsed) {
             panelHeight = 27;
-            titleText = "▶ 日足値幅";
             titleTooltip = "クリックして日足値幅一覧を開く";
         }
 
@@ -414,10 +486,12 @@ private:
             return true;
         }
 
-        if (!this.createButton("SortButton", 14, 31, 100, "円換算順")
-                || !this.createButton("PreviousButton", 174, 31, 24, "<")
-                || !this.createButton("NextButton", 266, 31, 24, ">")
-                || !this.createLabel("Page", 254, 34, 9, clrWhiteSmoke, "1 / 2", true)
+        if (!this.createButton("TodayButton", 14, 31, 44, "当日")
+                || !this.createButton("AverageButton", 62, 31, 64, "5日平均")
+                || !this.createButton("SortButton", 130, 31, 70, "円換算順")
+                || !this.createButton("PreviousButton", 204, 31, 20, "<")
+                || !this.createButton("NextButton", 270, 31, 20, ">")
+                || !this.createLabel("Page", 262, 34, 9, clrWhiteSmoke, "1/2", true)
                 || !this.createLabel("HeaderRank", 32, 58, 9, clrSilver, "NO", true)
                 || !this.createLabel("HeaderPair", 44, 58, 9, clrSilver, "通貨ペア", false)
                 || !this.createLabel("HeaderPips", 195, 58, 9, clrSilver, "元pips", true)
@@ -431,9 +505,7 @@ private:
         }
 
         string comparisonTooltip = "円換算pipsは円建て1pip＝0.01円を基準にそろえた比較値です。取引損益額ではありません。";
-        if (!ObjectSetString(this.chartId, this.objectPrefix + "HeaderRank", OBJPROP_TOOLTIP,
-                "全28通貨ペアの円換算pips順位。ペア順でも同じ順位を表示。同値は同順位（1・2・2・4）、未取得は—。")
-                || !ObjectSetString(this.chartId, this.objectPrefix + "HeaderJpy", OBJPROP_TOOLTIP, comparisonTooltip)
+        if (!ObjectSetString(this.chartId, this.objectPrefix + "HeaderJpy", OBJPROP_TOOLTIP, comparisonTooltip)
                 || !ObjectSetString(this.chartId, this.objectPrefix + "Footer", OBJPROP_TOOLTIP, comparisonTooltip)
                 || !ObjectSetString(this.chartId, this.objectPrefix + "PreviousButton", OBJPROP_TOOLTIP, "前の14件")
                 || !ObjectSetString(this.chartId, this.objectPrefix + "NextButton", OBJPROP_TOOLTIP, "次の14件")) {
@@ -583,6 +655,44 @@ private:
     }
 
     /**
+     * 当日／平均の選択ボタンは、変更された文字色と背景色だけを更新する。
+     */
+    bool updateModeButtons(bool &fromChanged) {
+        color todayColor = clrBlack;
+        color averageColor = clrWhiteSmoke;
+        color todayBackground = clrGold;
+        color averageBackground = C'45,45,45';
+        if (this.averageMode) {
+            todayColor = clrWhiteSmoke;
+            averageColor = clrBlack;
+            todayBackground = C'45,45,45';
+            averageBackground = clrGold;
+        }
+
+        if (!this.updateCell(59, this.objectPrefix + "TodayButton", "当日", todayColor,
+                "現在のD1バーの高値−安値を表示", fromChanged)
+                || !this.updateCell(60, this.objectPrefix + "AverageButton", "5日平均", averageColor,
+                    "当日・土日を除く平日の確定D1 5本の値幅平均を表示。現在のBidで円換算。", fromChanged)) {
+            return false;
+        }
+
+        if (!this.modeButtonsValid || this.appliedAverageMode != this.averageMode) {
+            if (!ObjectSetInteger(this.chartId, this.objectPrefix + "TodayButton", OBJPROP_BGCOLOR, todayBackground)
+                    || !ObjectSetInteger(this.chartId, this.objectPrefix + "AverageButton", OBJPROP_BGCOLOR, averageBackground)) {
+                this.modeButtonsValid = false;
+
+                return false;
+            }
+
+            this.appliedAverageMode = this.averageMode;
+            this.modeButtonsValid = true;
+            fromChanged = true;
+        }
+
+        return true;
+    }
+
+    /**
      * 全28件の表示順と円換算順位を作る。円換算不明は末尾、同値は通貨ペア名で固定する。
      * 順位は表示順と独立し、同値は同順位、次の順位は同順位件数分を飛ばす。
      *
@@ -618,6 +728,10 @@ private:
                 names[i] = info.symbolName;
                 available[i] = info.jpyAvailable;
                 values[i] = info.jpyPips;
+                if (this.averageMode) {
+                    available[i] = info.averageJpyAvailable;
+                    values[i] = info.averageJpyPips;
+                }
             }
         }
 
@@ -664,48 +778,118 @@ private:
     }
 
     /**
-     * 円換算順位、元値幅と換算に使った値・時刻を説明する。
+     * 選択中の順位、当日と平均の値幅・比率・対象日を短く説明する。
      */
     string getRowTooltip(const CurrencyStrengthDailyRangeInfo &fromInfo, const int fromRank) {
-        string text = fromInfo.symbolName;
-        if (fromInfo.resolvedSymbolName != "" && fromInfo.resolvedSymbolName != fromInfo.symbolName) {
-            text += "（" + fromInfo.resolvedSymbolName + "）";
-        }
-
+        string text = fromInfo.symbolName + " " + this.getModeText() + " 円換算";
         if (fromRank > 0) {
-            text += "\n円換算順位：" + IntegerToString(fromRank) + "位（全28ペア・同値は同順位）";
+            text += IntegerToString(fromRank) + "位";
         } else {
-            text += "\n円換算順位：—（取得待ち）";
+            text += "—位";
         }
 
-        text += "\n日足開始：" + this.formatTime(fromInfo.dayTime);
-        if (fromInfo.rangeAvailable) {
-            text += "\n高値：" + DoubleToString(fromInfo.high, fromInfo.digits)
-                + " / 安値：" + DoubleToString(fromInfo.low, fromInfo.digits)
-                + "\n元値幅：" + IntegerToString(fromInfo.pips) + " pips";
+        text += "\n当日 元" + this.formatPips(fromInfo.rangeAvailable, fromInfo.pips)
+            + "/円" + this.formatPips(fromInfo.jpyAvailable, fromInfo.jpyPips) + " pips"
+            + "\n平均 元" + this.formatPips(fromInfo.averageAvailable, fromInfo.averagePips)
+            + "/円" + this.formatPips(fromInfo.averageJpyAvailable, fromInfo.averageJpyPips) + " pips"
+            + "\n当日÷平均(元):";
+        if (fromInfo.rangeAvailable && fromInfo.averageAvailable && fromInfo.averagePips > 0) {
+            text += DoubleToString(100.0 * fromInfo.pips / fromInfo.averagePips, 1) + "%";
+        } else if (fromInfo.averageAvailable && fromInfo.averagePips == 0) {
+            text += "—(平均0)";
         } else {
-            text += "\n元値幅：—（日足取得待ち）";
+            text += "—(未取得)";
         }
 
-        if (!fromInfo.jpyAvailable) {
-            text += "\n円換算：—（取得待ち）";
-        } else if (StringSubstr(fromInfo.symbolName, 3, 3) == "JPY") {
-            text += "\n円換算：" + IntegerToString(fromInfo.jpyPips) + " pips（JPY建てのため元値幅と同じ）";
-        } else {
-            text += "\n円換算：" + IntegerToString(fromInfo.jpyPips) + " pips"
-                + "\n換算レート：" + fromInfo.conversionSymbolName
-                + " Bid " + DoubleToString(fromInfo.conversionRate, 6);
-            if (fromInfo.inverseConversion) {
-                text += "（逆通貨ペアで除算）";
-            }
-
-            text += "\n換算気配：" + this.formatTime(fromInfo.conversionTime);
-        }
-
-        text += "\n更新：" + this.formatTime(fromInfo.updatedAt)
-            + "\n円建て1pip＝0.01円基準の比較値。取引損益額ではありません。";
+        text += " " + IntegerToString(fromInfo.averageDayCount) + "/5本"
+            + "\n平均SRV " + this.formatDate(fromInfo.averageStartTime)
+            + "～" + this.formatDate(fromInfo.averageEndTime);
 
         return text;
+    }
+
+    /**
+     * 元pipsの算出対象と日足高値・安値を短く説明する。
+     */
+    string getPipsTooltip(const CurrencyStrengthDailyRangeInfo &fromInfo) {
+        string symbolName = fromInfo.symbolName;
+        if (fromInfo.resolvedSymbolName != "") {
+            symbolName = fromInfo.resolvedSymbolName;
+        }
+
+        string text = symbolName + " 元pips\nD1 " + this.formatTime(fromInfo.dayTime);
+        if (fromInfo.rangeAvailable) {
+            text += "\nH" + DoubleToString(fromInfo.high, fromInfo.digits)
+                + " / L" + DoubleToString(fromInfo.low, fromInfo.digits);
+        } else {
+            text += "\nH— / L—";
+        }
+
+        text += "\n当日" + this.formatPips(fromInfo.rangeAvailable, fromInfo.pips)
+            + " / 5日平均" + this.formatPips(fromInfo.averageAvailable, fromInfo.averagePips) + " pips"
+            + "\n平均:当日・土日を除く平日確定D1";
+
+        return text;
+    }
+
+    /**
+     * 円換算に共用する現在Bidと気配・更新時刻を短く説明する。
+     */
+    string getJpyTooltip(const CurrencyStrengthDailyRangeInfo &fromInfo) {
+        string text = fromInfo.symbolName + " 円換算pips(損益額ではない)";
+        if (StringSubstr(fromInfo.symbolName, 3, 3) == "JPY") {
+            text += "\n当日・平均共通:JPY建ては元pipsと同値";
+        } else if (fromInfo.jpyAvailable || fromInfo.averageJpyAvailable) {
+            text += "\n共通 " + fromInfo.conversionSymbolName
+                + " Bid " + DoubleToString(fromInfo.conversionRate, 6);
+            if (fromInfo.inverseConversion) {
+                text += " 除算";
+            } else {
+                text += " 掛算";
+            }
+
+            text += "\n気配 " + this.formatTime(fromInfo.conversionTime);
+        } else {
+            text += "\n換算Bid:—(取得待ち)";
+        }
+
+        text += "\n更新 " + this.formatTime(fromInfo.updatedAt) + "\n1pip=0.01円";
+
+        return text;
+    }
+
+    /**
+     * 取得できたpipsと未取得を区別する。
+     */
+    string formatPips(const bool fromAvailable, const int fromPips) {
+        if (!fromAvailable) {
+            return "—";
+        }
+
+        return IntegerToString(fromPips);
+    }
+
+    /**
+     * 選択中の値幅モード名を返す。
+     */
+    string getModeText() const {
+        if (this.averageMode) {
+            return "5日平均";
+        }
+
+        return "当日";
+    }
+
+    /**
+     * 開閉状態と値幅モードを含む見出しを返す。
+     */
+    string getTitleText() const {
+        string prefix = "▼ ";
+        if (this.collapsed) {
+            prefix = "▶ ";
+        }
+
+        return prefix + "日足値幅【" + this.getModeText() + "】";
     }
 
     /**
@@ -713,10 +897,21 @@ private:
      */
     string formatTime(const datetime fromTime) {
         if (fromTime <= 0) {
-            return "—（取得待ち）";
+            return "—";
         }
 
         return TimeUtil::formatYyyymmddhhmiss(fromTime) + " SRV";
+    }
+
+    /**
+     * 平均対象のサーバー日付を統一書式で短く表示する。
+     */
+    string formatDate(const datetime fromTime) {
+        if (fromTime <= 0) {
+            return "—";
+        }
+
+        return StringSubstr(TimeUtil::formatYyyymmddhhmiss(fromTime), 0, 10);
     }
 
     /**
@@ -732,6 +927,7 @@ private:
     void destroyObjects() {
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
+        this.modeButtonsValid = false;
         ArrayInitialize(this.cellValid, false);
     }
 };
