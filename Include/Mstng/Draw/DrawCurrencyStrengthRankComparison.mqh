@@ -39,13 +39,13 @@ public:
         this.chartId = fromChartId;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
-        this.panelWidth = 360;
+        this.panelWidth = 300;
         this.panelHeight = 350;
         this.firstRowYDistance = 82;
         this.rowHeight = 26;
-        this.canvasLeft = 76;
+        this.canvasLeft = 62;
         this.canvasTop = 80;
-        this.canvasWidth = 208;
+        this.canvasWidth = 172;
         this.canvasHeight = 208;
         this.displayRowCount = 8;
         this.requiredRowCount = 8;
@@ -718,7 +718,7 @@ private:
                 || !this.createLabel("Status", 14, 32, 10, clrGold, "WAITING DATA")
                 || !this.createClearSelectionButton()
                 || !this.createLabel("LeftHeader", 14, 55, 10, C'180,180,180', "LONG-MID")
-                || !this.createLabel("RightHeader", this.panelWidth - 102, 55, 10, C'180,180,180', "MID-SHORT")
+                || !this.createLabel("RightHeader", this.panelWidth - 96, 55, 10, C'180,180,180', "MID-SHORT")
                 || !this.createLabel("Footer", 14, footerTop + 9, 10, this.mutedColor,
                     "同時点の比較・同順位は同じ帯")
                 || !this.createLabel("Hint", 14, footerTop + 30, 10, this.mutedColor,
@@ -736,7 +736,7 @@ private:
         for (int i = 0; i < 8; i++) {
             if (!this.createLabel("Left_" + this.currencyNames[i], 14,
                     this.firstRowYDistance + i * this.rowHeight, 11, this.getCurrencyColor(i), " ")
-                    || !this.createLabel("Right_" + this.currencyNames[i], this.panelWidth - 62,
+                    || !this.createLabel("Right_" + this.currencyNames[i], this.panelWidth - 56,
                         this.firstRowYDistance + i * this.rowHeight, 11, this.getCurrencyColor(i), " ")) {
                 this.destroyObjects();
 

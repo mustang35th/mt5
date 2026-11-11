@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.28"
+#property version   "1.31"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -861,8 +861,13 @@ bool cleanupOrphanedScorePanels() {
         calendarCleared = gDrawEconomicCalendarSchedule.clearOtherInstances();
     }
 
+    bool entryCleared = true;
+    if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+        entryCleared = gDrawCurrencyStrengthEntryCandidateList.clearOtherInstances();
+    }
+
     if (!scoreCleared || !headerCleared || !dailyRangeCleared || !rankCleared
-            || !regionCleared || !calendarCleared) {
+            || !regionCleared || !calendarCleared || !entryCleared) {
         return false;
     }
 
@@ -1023,7 +1028,7 @@ void drawDailyRangePanel(const bool fromRefresh) {
 }
 
 /**
- * 経済指標パネルの開閉・重要度設定の保存キーを取得する。
+ * 経済指標パネルの開閉・重要度・祝日設定の保存キーを取得する。
  *
  * @return チャートと計算方式ごとの保存キー。
  */
@@ -1042,7 +1047,7 @@ void loadEconomicCalendarDisplaySettings() {
 
     double savedValue = 0;
     if (!GlobalVariableGet(getEconomicCalendarDisplaySettingsKey(), savedValue)
-            || !MathIsValidNumber(savedValue) || savedValue < 0 || savedValue > 3
+            || !MathIsValidNumber(savedValue) || savedValue < 0 || savedValue > 7
             || savedValue != MathFloor(savedValue)) {
         return;
     }
@@ -1050,10 +1055,12 @@ void loadEconomicCalendarDisplaySettings() {
     int settings = (int)savedValue;
     gDrawEconomicCalendarSchedule.setCollapsed((settings & 1) != 0);
     gDrawEconomicCalendarSchedule.setIncludeModerate((settings & 2) != 0);
+    // 祝日OFFを保存するため、従来の保存値0～3は祝日ONとして復元する。
+    gDrawEconomicCalendarSchedule.setIncludeHolidays((settings & 4) == 0);
 }
 
 /**
- * 経済指標パネルの開閉・重要度設定が変わった場合だけ保存する。
+ * 経済指標パネルの開閉・重要度・祝日設定が変わった場合だけ保存する。
  */
 void saveEconomicCalendarDisplaySettings() {
     if (Util::isStrategyTester() || gDrawEconomicCalendarSchedule == NULL) {
@@ -1067,6 +1074,10 @@ void saveEconomicCalendarDisplaySettings() {
 
     if (gDrawEconomicCalendarSchedule.isIncludeModerate()) {
         settings += 2;
+    }
+
+    if (!gDrawEconomicCalendarSchedule.isIncludeHolidays()) {
+        settings += 4;
     }
 
     string settingsKey = getEconomicCalendarDisplaySettingsKey();

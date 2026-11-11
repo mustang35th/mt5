@@ -6,7 +6,7 @@
 
 /**
  * 経済指標予定の表示に必要な値を保持する。
- * 終日・時刻未定の予定はjapanTimeを0とし、JSTの日時を断定しない。
+ * 祝日・終日・時刻未定の予定はjapanTimeを0とし、JSTの日時を断定しない。
  */
 struct EconomicCalendarScheduleInfo {
     /** カレンダーの発表値ID。 */
@@ -33,10 +33,13 @@ struct EconomicCalendarScheduleInfo {
     /** 時刻確定・終日・時刻未定などの区分。 */
     ENUM_CALENDAR_EVENT_TIMEMODE timeMode;
 
-    /** 倍率・単位付き予想値。欠損はダッシュ。 */
+    /** 重要度に依存しない祝日予定の場合true。 */
+    bool isHoliday;
+
+    /** 倍率・単位付き予想値。欠損はダッシュ、祝日は空文字列。 */
     string forecastText;
 
-    /** 倍率・単位付き前回値。改定値を使用した場合は改定表示付き。 */
+    /** 倍率・単位付き前回値。改定表示付き、祝日は空文字列。 */
     string previousText;
 };
 

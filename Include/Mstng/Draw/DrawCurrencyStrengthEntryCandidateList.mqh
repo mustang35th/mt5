@@ -518,6 +518,49 @@ public:
     }
 
     /**
+     * 単独配置を確認済みの呼び出し側から、保存チャート由来の旧候補一覧を除去する。
+     * 現在の所有描画は残し、計算方式キーあり・なしの両形式を整理する。
+     *
+     * @return 旧描画の確認と削除に成功した場合true。
+     */
+    bool clearOtherInstances() {
+        string familyPrefix = Constant::PREFIX_FIXED + "CurrencyStrengthEntry_";
+        string legacyFamilyPrefix = Constant::PREFIX_FIXED + "CurrencyStrengthEntryCandidateList_";
+        int total = ObjectsTotal(this.chartId, 0, -1);
+        if (total < 0) {
+            return false;
+        }
+
+        bool succeeded = true;
+        bool changed = false;
+        for (int i = total - 1; i >= 0; i--) {
+            string objectName = ObjectName(this.chartId, i, 0, -1);
+            if (objectName == "") {
+                succeeded = false;
+                continue;
+            }
+
+            if ((StringFind(objectName, familyPrefix) != 0
+                    && StringFind(objectName, legacyFamilyPrefix) != 0)
+                    || StringFind(objectName, this.objectPrefix) == 0) {
+                continue;
+            }
+
+            if (ObjectDelete(this.chartId, objectName)) {
+                changed = true;
+            } else {
+                succeeded = false;
+            }
+        }
+
+        if (changed) {
+            DrawChartRedrawBatch::request(this.chartId);
+        }
+
+        return succeeded;
+    }
+
+    /**
      * 候補一覧専用のチャートオブジェクトを削除する。
      */
     void clear() {

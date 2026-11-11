@@ -15,7 +15,7 @@
 
 /**
  * 保持済みの経済指標予定を、日足値幅の右隣へ8件ずつ表示する。
- * カレンダー取得は行わず、重要度・開閉・ページ・残り時間の表示だけを担当する。
+ * カレンダー取得は行わず、重要度・祝日・開閉・ページ・残り時間の表示だけを担当する。
  */
 class DrawEconomicCalendarSchedule {
 public:
@@ -35,12 +35,16 @@ public:
         this.created = false;
         this.collapsed = false;
         this.includeModerate = false;
+        this.includeHolidays = true;
+        this.holidayButtonValid = false;
+        this.appliedIncludeHolidays = true;
         this.modeButtonsValid = false;
         this.appliedIncludeModerate = false;
         this.pageIndex = 0;
         this.pageCount = 1;
         ArrayInitialize(this.cellValid, false);
         ArrayInitialize(this.nameValid, false);
+        ArrayInitialize(this.rowSeparatorVisible, false);
 
         string basePrefix = Constant::PREFIX_FIXED + "EconomicCalendar_";
         if (fromInstanceKey != "") {
@@ -110,28 +114,47 @@ public:
         datetime serverNow = 0;
         datetime japanNow = 0;
         int total = 0;
+        int holidayCount = 0;
         if (!isTester && fromSchedule != NULL) {
             serverNow = fromSchedule.getServerNow();
             japanNow = fromSchedule.getJapanTime(serverNow);
             hasSnapshot = fromSchedule.hasSnapshot();
             hasError = fromSchedule.hasError();
             if (hasSnapshot) {
-                total = fromSchedule.getCount(this.includeModerate, serverNow);
+                total = fromSchedule.getCount(this.includeModerate, serverNow, this.includeHolidays);
+                if (this.includeHolidays) {
+                    holidayCount = total - fromSchedule.getCount(this.includeModerate, serverNow, false);
+                }
             }
         }
 
         this.pageCount = MathMax(1, (total + 7) / 8);
         this.pageIndex = MathMax(0, MathMin(this.pageIndex, this.pageCount - 1));
+        bool previousRowHoliday = false;
         for (int i = 0; i < 8; i++) {
             EconomicCalendarScheduleInfo info;
             int sourceIndex = this.pageIndex * 8 + i;
             bool hasRow = false;
             if (hasSnapshot && fromSchedule != NULL && sourceIndex < total) {
-                hasRow = fromSchedule.get(sourceIndex, this.includeModerate, serverNow, info);
+                hasRow = fromSchedule.get(sourceIndex, this.includeModerate, serverNow, info, this.includeHolidays);
+            }
+
+            bool showSeparator = false;
+            if (hasRow) {
+                showSeparator = previousRowHoliday && !info.isHoliday;
             }
 
             if (!this.drawRow(i, hasRow, info, serverNow, japanNow, changed)) {
                 succeeded = false;
+            }
+
+            if (i > 0 && !this.updateRowSeparator(i, showSeparator, changed)) {
+                succeeded = false;
+            }
+
+            previousRowHoliday = false;
+            if (hasRow) {
+                previousRowHoliday = info.isHoliday;
             }
         }
 
@@ -146,13 +169,14 @@ public:
             updated = "テスター：取得対象外";
         } else if (fromSchedule != NULL) {
             if (hasSnapshot) {
-                status = IntegerToString(total) + "件・発表予定順";
+                status = "祝日" + IntegerToString(holidayCount) + "件 / 指標"
+                    + IntegerToString(total - holidayCount) + "件";
                 if (total == 0) {
                     status = "対象の予定なし";
                 }
 
-                statusTooltip = "今後24時間・主要8通貨。終日・未定は当日分を含みます。"
-                    + "\n通貨・★：予想/前回、時刻：SRV/JST、指標名：全文/国。";
+                statusTooltip = "今後24時間・主要8通貨。終日・未定は当日分を含みます。祝日ON時は重要度と独立して表示。"
+                    + "\n通貨・★：予想/前回、時刻：SRV/JST、指標名：全文/国。祝日はSRV日付。";
                 datetime updatedJapanTime = fromSchedule.getJapanTime(fromSchedule.getUpdatedAt());
                 if (updatedJapanTime > 0) {
                     updated = "更新 " + TimeUtil::formatYyyymmddhhmiss(updatedJapanTime) + " JST";
@@ -173,6 +197,7 @@ public:
         }
 
         if (!this.updateModeButtons(changed)
+                || !this.updateHolidayButton(changed)
                 || !this.updateCell(43, this.objectPrefix + "Page",
                     IntegerToString(this.pageIndex + 1) + "/" + IntegerToString(this.pageCount),
                     clrWhiteSmoke, "前後の8件へ切り替えます", changed)
@@ -196,7 +221,7 @@ public:
     }
 
     /**
-     * 開閉・重要度・ページのクリックを処理する。再描画は呼び出し側で行う。
+     * 開閉・重要度・祝日・ページのクリックを処理する。再描画は呼び出し側で行う。
      *
      * @param fromName クリックされたオブジェクト名。
      * @param fromAllowOtherInstances 単独配置確認後に旧描画を除去した直後のみtrue。
@@ -232,6 +257,9 @@ public:
         } else if (fromName == this.objectPrefix + "ModerateButton") {
             ObjectSetInteger(this.chartId, fromName, OBJPROP_STATE, false);
             this.setIncludeModerate(true);
+        } else if (fromName == this.objectPrefix + "HolidayButton") {
+            ObjectSetInteger(this.chartId, fromName, OBJPROP_STATE, false);
+            this.setIncludeHolidays(!this.includeHolidays);
         } else if (fromName == this.objectPrefix + "PreviousButton") {
             ObjectSetInteger(this.chartId, fromName, OBJPROP_STATE, false);
             this.pageIndex = MathMax(0, this.pageIndex - 1);
@@ -282,6 +310,25 @@ public:
         }
 
         this.includeModerate = fromIncludeModerate;
+        this.pageIndex = 0;
+    }
+
+    /**
+     * 重要度と独立して祝日も表示する場合trueを返す。
+     */
+    bool isIncludeHolidays() const {
+        return this.includeHolidays;
+    }
+
+    /**
+     * 祝日表示を変更し、最初のページへ戻す。データは再取得しない。
+     */
+    void setIncludeHolidays(const bool fromIncludeHolidays) {
+        if (this.includeHolidays == fromIncludeHolidays) {
+            return;
+        }
+
+        this.includeHolidays = fromIncludeHolidays;
         this.pageIndex = 0;
     }
 
@@ -392,6 +439,15 @@ private:
     /** 中重要度を含める場合true。 */
     bool includeModerate;
 
+    /** 重要度と独立して祝日を表示する場合true。 */
+    bool includeHolidays;
+
+    /** 祝日ボタンの背景色を反映済みの場合true。 */
+    bool holidayButtonValid;
+
+    /** 反映済みの祝日表示条件。 */
+    bool appliedIncludeHolidays;
+
     /** 重要度ボタンの背景色を反映済みの場合true。 */
     bool modeButtonsValid;
 
@@ -404,23 +460,29 @@ private:
     /** 表示ページ数。 */
     int pageCount;
 
+    /** 各行の直前に祝日と指標の区切り線を表示済みの場合true。先頭行は使用しない。 */
+    bool rowSeparatorVisible[8];
+
     /** セルごとの反映キャッシュが有効な場合true。 */
-    bool cellValid[46];
+    bool cellValid[47];
 
     /** 反映済み文字列。 */
-    string cellTexts[46];
+    string cellTexts[47];
 
     /** 反映済み文字色。 */
-    color cellColors[46];
+    color cellColors[47];
 
     /** 反映済み説明文。 */
-    string cellTooltips[46];
+    string cellTooltips[47];
 
     /** 行ごとの省略名キャッシュが有効な場合true。 */
     bool nameValid[8];
 
     /** 省略前の指標名。 */
     string sourceNames[8];
+
+    /** 元の結合文字列のうち、先頭国名の文字数。指標だけの場合0。 */
+    int sourceCountryLengths[8];
 
     /** 幅196px以内に収めた表示名。 */
     string displayNames[8];
@@ -458,14 +520,15 @@ private:
                 || !this.createLabel("Status", 12, 57, 8, clrSilver, "取得待ち", false)
                 || !this.createRectangle("Separator", 12, 73, 196, 1, clrDimGray, clrDimGray, 0)
                 || !this.createLabel("Updated", 12, 343, 8, clrSilver, "更新：取得待ち", false)
-                || !this.createLabel("Footer", 12, 361, 8, clrSilver, "未定・終日：SRV日付", false)) {
+                || !this.createButton("HolidayButton", 12, 359, 74, "祝日:ON")
+                || !this.createLabel("Footer", 96, 363, 8, clrSilver, "祝日:SRV日付", false)) {
             this.destroyObjects();
 
             return false;
         }
 
         if (!ObjectSetString(this.chartId, this.objectPrefix + "Footer", OBJPROP_TOOLTIP,
-                "発表時刻が確定した予定はJSTです。終日・時刻未定の予定にはJSTへの時刻変換や残り時間を表示しません。")
+                "発表時刻が確定した指標はJSTです。祝日・終日・時刻未定はSRV日付を使用し、JSTへの時刻変換や残り時間を表示しません。")
                 || !ObjectSetString(this.chartId, this.objectPrefix + "PreviousButton", OBJPROP_TOOLTIP, "前の8件")
                 || !ObjectSetString(this.chartId, this.objectPrefix + "NextButton", OBJPROP_TOOLTIP, "次の8件")) {
             this.destroyObjects();
@@ -476,6 +539,17 @@ private:
         for (int i = 0; i < 8; i++) {
             int rowTop = 79 + i * 32;
             string rowPrefix = "Row_" + IntegerToString(i) + "_";
+            if (i > 0) {
+                if (!this.createRectangle(rowPrefix + "Separator", 12, rowTop - 3, 196, 1,
+                        clrDimGray, clrDimGray, 0)
+                        || !ObjectSetInteger(this.chartId, this.objectPrefix + rowPrefix + "Separator",
+                            OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS)) {
+                    this.destroyObjects();
+
+                    return false;
+                }
+            }
+
             if (!this.createLabel(rowPrefix + "Time", 12, rowTop, 8, clrWhiteSmoke, " ", false)
                     || !this.createLabel(rowPrefix + "Currency", 82, rowTop, 8, clrWhiteSmoke, " ", false)
                     || !this.createLabel(rowPrefix + "Importance", 108, rowTop, 8, clrGold, " ", false)
@@ -488,6 +562,31 @@ private:
         }
 
         this.created = true;
+
+        return true;
+    }
+
+    /**
+     * 同じページの祝日から指標へ切り替わる行間だけ、区切り線を表示する。
+     * 表示状態が変わった場合だけ反映する。
+     */
+    bool updateRowSeparator(const int fromRow, const bool fromVisible, bool &fromChanged) {
+        if (this.rowSeparatorVisible[fromRow] == fromVisible) {
+            return true;
+        }
+
+        long timeframes = OBJ_NO_PERIODS;
+        if (fromVisible) {
+            timeframes = OBJ_ALL_PERIODS;
+        }
+
+        if (!ObjectSetInteger(this.chartId, this.getRowName(fromRow, "Separator"),
+                OBJPROP_TIMEFRAMES, timeframes)) {
+            return false;
+        }
+
+        this.rowSeparatorVisible[fromRow] = fromVisible;
+        fromChanged = true;
 
         return true;
     }
@@ -513,16 +612,35 @@ private:
             currencyText = fromInfo.currency;
             currencyColor = ConstantCurrency::getColor(fromInfo.currency);
             importanceText = "★★";
-            if (fromInfo.importance == CALENDAR_IMPORTANCE_HIGH) {
+            if (fromInfo.isHoliday) {
+                importanceText = "祝日";
+                importanceColor = clrSilver;
+            } else if (fromInfo.importance == CALENDAR_IMPORTANCE_HIGH) {
                 importanceText = "★★★";
                 importanceColor = clrOrangeRed;
             }
 
             countdownText = this.getCountdownText(fromInfo, fromServerNow, countdownColor);
-            nameText = this.getDisplayName(fromRow, fromInfo.name);
-            nameTooltip = fromInfo.name + "\n" + fromInfo.country + " / " + fromInfo.currency;
-            valuesTooltip = "予想：" + fromInfo.forecastText + "\n前回：" + fromInfo.previousText;
-            if (fromInfo.timeMode == CALENDAR_TIMEMODE_DATETIME) {
+            if (fromInfo.isHoliday) {
+                string countryName = fromInfo.country;
+                if (countryName == "") {
+                    countryName = "国名未取得";
+                }
+
+                nameText = this.getDisplayName(fromRow, countryName + " " + fromInfo.name,
+                    StringLen(countryName));
+                nameTooltip = countryName + "\n" + fromInfo.name;
+                valuesTooltip = nameTooltip + "\n祝日（SRV日付）";
+            } else {
+                nameText = this.getDisplayName(fromRow, fromInfo.name);
+                nameTooltip = fromInfo.name + "\n" + fromInfo.country + " / " + fromInfo.currency;
+                valuesTooltip = "予想：" + fromInfo.forecastText + "\n前回：" + fromInfo.previousText;
+            }
+
+            if (fromInfo.isHoliday) {
+                timeTooltip = "SRV日付 " + this.formatDate(fromInfo.serverTime)
+                    + "\n祝日はJSTへ時刻変換せず、残り時間も表示しません。";
+            } else if (fromInfo.timeMode == CALENDAR_TIMEMODE_DATETIME) {
                 timeTooltip = "JST " + this.formatTime(fromInfo.japanTime)
                     + "\nSRV " + this.formatTime(fromInfo.serverTime);
             } else {
@@ -562,10 +680,10 @@ private:
 
     /**
      * 当日の確定時刻はHH:mm、日付が違う場合はMM/dd HH:mmで表示する。
-     * 未定・終日はSRV日付のみを表示する。
+     * 祝日・未定・終日はSRV日付のみを表示する。
      */
     string getTimeText(const EconomicCalendarScheduleInfo &fromInfo, const datetime fromJapanNow) {
-        if (fromInfo.timeMode != CALENDAR_TIMEMODE_DATETIME) {
+        if (fromInfo.isHoliday || fromInfo.timeMode != CALENDAR_TIMEMODE_DATETIME) {
             if (fromInfo.serverTime <= 0) {
                 return "日付未定";
             }
@@ -586,11 +704,15 @@ private:
     }
 
     /**
-     * 確定時刻までの残り時間と注意色を返す。未定・終日には計算しない。
+     * 確定時刻までの残り時間と注意色を返す。祝日・未定・終日には計算しない。
      */
     string getCountdownText(const EconomicCalendarScheduleInfo &fromInfo, const datetime fromNow,
             color &fromColor) {
         fromColor = clrSilver;
+        if (fromInfo.isHoliday) {
+            return "終日";
+        }
+
         if (fromInfo.timeMode != CALENDAR_TIMEMODE_DATETIME) {
             if (fromInfo.timeMode == CALENDAR_TIMEMODE_DATE) {
                 return "終日";
@@ -624,9 +746,15 @@ private:
 
     /**
      * 指標名が変わった行だけ幅を測り、196px以内へ省略する。
+     * 祝日は結合した国名・祝日名を受け取り、国名を80px以内に収めて祝日名の幅を残す。
+     *
+     * @param fromRow 表示行。
+     * @param fromName 指標名、または国名・空白・祝日名の結合文字列。
+     * @param fromCountryLength 結合文字列の先頭国名の文字数。指標だけの場合0。
      */
-    string getDisplayName(const int fromRow, const string fromName) {
-        if (this.nameValid[fromRow] && this.sourceNames[fromRow] == fromName) {
+    string getDisplayName(const int fromRow, const string fromName, const int fromCountryLength = 0) {
+        if (this.nameValid[fromRow] && this.sourceNames[fromRow] == fromName
+                && this.sourceCountryLengths[fromRow] == fromCountryLength) {
             return this.displayNames[fromRow];
         }
 
@@ -634,35 +762,88 @@ private:
         StringReplace(cleanName, "\r", " ");
         StringReplace(cleanName, "\n", " ");
         StringReplace(cleanName, "\t", " ");
-        string result = cleanName;
-        uint width = 0;
-        uint height = 0;
-        bool canMeasure = TextSetFont("MS Gothic", -90) && TextGetSize(cleanName, width, height);
-        if (!canMeasure) {
-            if (StringLen(cleanName) > 12) {
-                result = StringSubstr(cleanName, 0, 12) + "…";
-            }
-        } else if (width > 196) {
-            int lower = 0;
-            int upper = StringLen(cleanName);
-            while (lower < upper) {
-                int middle = (lower + upper + 1) / 2;
-                string candidate = StringSubstr(cleanName, 0, middle) + "…";
-                if (TextGetSize(candidate, width, height) && width <= 196) {
-                    lower = middle;
-                } else {
-                    upper = middle - 1;
-                }
-            }
-
-            result = StringSubstr(cleanName, 0, lower) + "…";
+        bool canMeasure = TextSetFont("MS Gothic", -90);
+        if (fromCountryLength > 0 && fromCountryLength < StringLen(cleanName)) {
+            string countryName = this.fitTextWidth(StringSubstr(cleanName, 0, fromCountryLength),
+                80, 5, canMeasure);
+            cleanName = countryName + " " + StringSubstr(cleanName, fromCountryLength + 1);
         }
 
+        string result = this.fitTextWidth(cleanName, 196, 12, canMeasure);
         this.sourceNames[fromRow] = fromName;
+        this.sourceCountryLengths[fromRow] = fromCountryLength;
         this.displayNames[fromRow] = result;
         this.nameValid[fromRow] = true;
 
         return result;
+    }
+
+    /**
+     * 設定済みのフォントで文字幅を測り、末尾に省略記号を付けて指定幅へ収める。
+     * 計測できない場合は全角文字でも収まる文字数へ制限する。
+     */
+    string fitTextWidth(const string fromText, const uint fromMaximumWidth,
+            const int fromFallbackLength, const bool fromCanMeasure) {
+        uint width = 0;
+        uint height = 0;
+        if (!fromCanMeasure || !TextGetSize(fromText, width, height)) {
+            if (StringLen(fromText) > fromFallbackLength) {
+                return StringSubstr(fromText, 0, fromFallbackLength) + "…";
+            }
+
+            return fromText;
+        }
+
+        if (width <= fromMaximumWidth) {
+            return fromText;
+        }
+
+        int lower = 0;
+        int upper = StringLen(fromText);
+        while (lower < upper) {
+            int middle = (lower + upper + 1) / 2;
+            string candidate = StringSubstr(fromText, 0, middle) + "…";
+            if (TextGetSize(candidate, width, height) && width <= fromMaximumWidth) {
+                lower = middle;
+            } else {
+                upper = middle - 1;
+            }
+        }
+
+        return StringSubstr(fromText, 0, lower) + "…";
+    }
+
+    /**
+     * 祝日ボタンの文字・色・背景色を変更時だけ反映する。
+     */
+    bool updateHolidayButton(bool &fromChanged) {
+        string text = "祝日:OFF";
+        color textColor = clrWhiteSmoke;
+        color backgroundColor = C'45,45,45';
+        if (this.includeHolidays) {
+            text = "祝日:ON";
+            textColor = clrBlack;
+            backgroundColor = clrGold;
+        }
+
+        if (!this.updateCell(46, this.objectPrefix + "HolidayButton", text, textColor,
+                "祝日表示を切替。重要度とは独立した条件です。祝日はSRV日付の終日予定として表示します。", fromChanged)) {
+            return false;
+        }
+
+        if (!this.holidayButtonValid || this.appliedIncludeHolidays != this.includeHolidays) {
+            if (!ObjectSetInteger(this.chartId, this.objectPrefix + "HolidayButton", OBJPROP_BGCOLOR, backgroundColor)) {
+                this.holidayButtonValid = false;
+
+                return false;
+            }
+
+            this.appliedIncludeHolidays = this.includeHolidays;
+            this.holidayButtonValid = true;
+            fromChanged = true;
+        }
+
+        return true;
     }
 
     /**
@@ -872,8 +1053,10 @@ private:
         ObjectsDeleteAll(this.chartId, this.objectPrefix, 0, -1);
         this.created = false;
         this.modeButtonsValid = false;
+        this.holidayButtonValid = false;
         ArrayInitialize(this.cellValid, false);
         ArrayInitialize(this.nameValid, false);
+        ArrayInitialize(this.rowSeparatorVisible, false);
     }
 };
 

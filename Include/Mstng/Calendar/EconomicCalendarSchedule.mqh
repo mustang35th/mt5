@@ -8,7 +8,7 @@
 #include <Mstng\Util\Util.mqh>
 
 /**
- * 通常チャート用の主要8通貨・中重要度以上の経済指標予定を取得する。
+ * 通常チャート用の主要8通貨・中重要度以上の経済指標予定と祝日を取得する。
  * 取得は完了から5分間隔とし、失敗時には最後の正常な一覧を維持する。
  */
 class EconomicCalendarSchedule {
@@ -30,7 +30,7 @@ public:
 
     /**
      * 当日0時から今後24時間までの予定を取得し、全件成功時だけ一覧を入れ替える。
-     * 期間内の低重要度・対象外通貨は保持しない。終日・未定は当日分も取得する。
+     * 祝日以外の低重要度・対象外通貨は保持しない。祝日・終日・未定は当日分も取得する。
      * テスターでは取得しない。5分以内の再呼出しは直近の取得成否を返す。
      *
      * @return 正常な一覧を取得済みで、直近の取得が失敗していなければtrue。
@@ -90,11 +90,12 @@ public:
                 return false;
             }
 
-            if (this.events[eventIndex].importance < CALENDAR_IMPORTANCE_MODERATE) {
+            bool isHoliday = this.events[eventIndex].type == CALENDAR_TYPE_HOLIDAY;
+            if (!isHoliday && this.events[eventIndex].importance < CALENDAR_IMPORTANCE_MODERATE) {
                 continue;
             }
 
-            if ((this.events[eventIndex].time_mode == CALENDAR_TIMEMODE_NOTIME
+            if (!isHoliday && (this.events[eventIndex].time_mode == CALENDAR_TIMEMODE_NOTIME
                     || this.events[eventIndex].time_mode == CALENDAR_TIMEMODE_TENTATIVE)
                     && values[i].HasActualValue()) {
                 continue;
@@ -111,7 +112,7 @@ public:
 
             this.fillRow(values[i], this.events[eventIndex], this.countries[countryIndex],
                 offsetSeconds, nextRows[count]);
-            if (this.isVisible(nextRows[count], true, serverNow)) {
+            if (this.isVisible(nextRows[count], true, serverNow, true)) {
                 count++;
             }
         }
@@ -141,11 +142,13 @@ public:
      *
      * @param fromIncludeModerate 中重要度も含める場合true。
      * @param fromNow 現在のサーバー日時。
+     * @param fromIncludeHolidays 重要度に依存せず祝日を含める場合true。
      */
-    int getCount(const bool fromIncludeModerate, const datetime fromNow) {
+    int getCount(const bool fromIncludeModerate, const datetime fromNow,
+            const bool fromIncludeHolidays = false) {
         int count = 0;
         for (int i = 0; i < ArraySize(this.rows); i++) {
-            if (this.isVisible(this.rows[i], fromIncludeModerate, fromNow)) {
+            if (this.isVisible(this.rows[i], fromIncludeModerate, fromNow, fromIncludeHolidays)) {
                 count++;
             }
         }
@@ -154,36 +157,53 @@ public:
     }
 
     /**
-     * 表示条件で絞った一覧の指定行を取得する。問い合わせ・並べ替えは行わない。
+     * 当日祝日を先頭に、残りを時刻順で指定行から取得する。
+     * 現在の日付で優先対象を選ぶため、再取得前に日付が変わっても順序を更新する。
      *
      * @param fromIndex 表示対象内での0始まりの行番号。
      * @param fromIncludeModerate 中重要度も含める場合true。
      * @param fromNow 現在のサーバー日時。
      * @param fromInfo 取得行。
+     * @param fromIncludeHolidays 重要度に依存せず祝日を含める場合true。
      * @return 指定行が存在する場合true。
      */
     bool get(const int fromIndex, const bool fromIncludeModerate,
-            const datetime fromNow, EconomicCalendarScheduleInfo &fromInfo) {
+            const datetime fromNow, EconomicCalendarScheduleInfo &fromInfo,
+            const bool fromIncludeHolidays = false) {
         if (fromIndex < 0) {
             return false;
         }
 
-        int index = 0;
-        for (int i = 0; i < ArraySize(this.rows); i++) {
-            if (!this.isVisible(this.rows[i], fromIncludeModerate, fromNow)) {
-                continue;
-            }
+        int firstPass = 1;
+        if (fromIncludeHolidays) {
+            firstPass = 0;
+        }
 
-            if (index == fromIndex) {
-                fromInfo = this.rows[i];
-                if (fromInfo.timeMode == CALENDAR_TIMEMODE_DATETIME) {
-                    fromInfo.japanTime = this.getJapanTime(fromInfo.serverTime);
+        datetime currentDay = this.getDayStart(fromNow);
+        int index = 0;
+        for (int pass = firstPass; pass < 2; pass++) {
+            for (int i = 0; i < ArraySize(this.rows); i++) {
+                if (!this.isVisible(this.rows[i], fromIncludeModerate, fromNow, fromIncludeHolidays)) {
+                    continue;
                 }
 
-                return true;
-            }
+                bool isCurrentHoliday = this.rows[i].isHoliday
+                    && this.getDayStart(this.rows[i].serverTime) == currentDay;
+                if ((pass == 0) != isCurrentHoliday) {
+                    continue;
+                }
 
-            index++;
+                if (index == fromIndex) {
+                    fromInfo = this.rows[i];
+                    if (!fromInfo.isHoliday && fromInfo.timeMode == CALENDAR_TIMEMODE_DATETIME) {
+                        fromInfo.japanTime = this.getJapanTime(fromInfo.serverTime);
+                    }
+
+                    return true;
+                }
+
+                index++;
+            }
         }
 
         return false;
@@ -358,13 +378,19 @@ private:
 
     /**
      * 重要度と経過時間による表示条件を判定する。
-     * 時刻未確定の予定はサーバー日の終わりまで保持し、秒単位で経過と判定しない。
+     * 祝日・時刻未確定の予定はサーバー日の終わりまで保持する。
      */
     bool isVisible(const EconomicCalendarScheduleInfo &fromInfo,
-            const bool fromIncludeModerate, const datetime fromNow) {
+            const bool fromIncludeModerate, const datetime fromNow,
+            const bool fromIncludeHolidays) {
         if (fromNow <= 0 || fromInfo.serverTime <= 0
                 || fromInfo.serverTime >= fromNow + 86400) {
             return false;
+        }
+
+        if (fromInfo.isHoliday) {
+            return fromIncludeHolidays
+                && this.getDayStart(fromInfo.serverTime) >= this.getDayStart(fromNow);
         }
 
         if (fromInfo.importance != CALENDAR_IMPORTANCE_HIGH
@@ -393,6 +419,14 @@ private:
         fromInfo.name = fromEvent.name;
         fromInfo.importance = fromEvent.importance;
         fromInfo.timeMode = fromEvent.time_mode;
+        fromInfo.isHoliday = fromEvent.type == CALENDAR_TYPE_HOLIDAY;
+        if (fromInfo.isHoliday) {
+            fromInfo.forecastText = "";
+            fromInfo.previousText = "";
+
+            return;
+        }
+
         if (fromInfo.timeMode == CALENDAR_TIMEMODE_DATETIME) {
             fromInfo.japanTime = (datetime)(fromInfo.serverTime - fromOffsetSeconds + 9 * 3600);
         }
