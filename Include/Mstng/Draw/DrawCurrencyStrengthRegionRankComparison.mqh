@@ -12,6 +12,7 @@
 
 #include <Canvas\Canvas.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankComparison.mqh>
 
 /**
@@ -146,6 +147,46 @@ public:
         this.render();
 
         return true;
+    }
+
+    /**
+     * 単独配置を確認済みの呼び出し側から、保存チャート由来の旧地域順位比較描画だけを除去する。
+     *
+     * @return 現在の所有描画を除く同系統オブジェクトの整理に成功した場合true。
+     */
+    bool clearOtherInstances() {
+        string familyPrefix = Constant::PREFIX_FIXED + "RegionRank_";
+        int total = ObjectsTotal(this.chartId, 0, -1);
+        if (total < 0) {
+            return false;
+        }
+
+        bool succeeded = true;
+        bool changed = false;
+        for (int i = total - 1; i >= 0; i--) {
+            string objectName = ObjectName(this.chartId, i, 0, -1);
+            if (objectName == "") {
+                succeeded = false;
+                continue;
+            }
+
+            if (StringFind(objectName, familyPrefix) != 0
+                    || StringFind(objectName, this.objectPrefix) == 0) {
+                continue;
+            }
+
+            if (ObjectDelete(this.chartId, objectName)) {
+                changed = true;
+            } else {
+                succeeded = false;
+            }
+        }
+
+        if (changed) {
+            DrawChartRedrawBatch::request(this.chartId);
+        }
+
+        return succeeded;
     }
 
     /**

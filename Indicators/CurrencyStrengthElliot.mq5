@@ -5,13 +5,14 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.26"
+#property version   "1.28"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
 #property indicator_label1  "CurrencyStrengthHidden"
 #property indicator_type1   DRAW_NONE
 
+#include <Mstng\Calendar\EconomicCalendarSchedule.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthYearlyPersistenceService.mqh>
 #include <Mstng\Draw\DrawChartRedrawBatch.mqh>
@@ -21,6 +22,7 @@
 #include <Mstng\Draw\DrawCurrencyStrengthRankComparison.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRegionRankComparison.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthSnapshotHeader.mqh>
+#include <Mstng\Draw\DrawEconomicCalendarSchedule.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
@@ -142,6 +144,12 @@ DrawCurrencyStrengthDailyRangeList *gDrawCurrencyStrengthDailyRangeList = NULL;
 
 /** 日足値幅一覧専用の取得結果。通貨強弱判定・DB保存とは独立する。 */
 CurrencyStrengthDailyRangeList *gCurrencyStrengthDailyRangeList = NULL;
+
+/** 日足値幅の右隣に経済指標の予定を表示する。 */
+DrawEconomicCalendarSchedule *gDrawEconomicCalendarSchedule = NULL;
+
+/** 経済指標の取得結果。通貨強弱集計とは独立して5分間保持する。 */
+EconomicCalendarSchedule *gEconomicCalendarSchedule = NULL;
 
 OscillatorHandleManager *gOscillatorHandleManager;
 CurrencyStrengthCalculator *gCurrencyStrengthCalculator;
@@ -354,6 +362,16 @@ int OnInit() {
         );
         gCurrencyStrengthDailyRangeList = new CurrencyStrengthDailyRangeList();
         loadDailyRangeDisplaySettings();
+        if (gDrawCurrencyStrengthDailyRangeList != NULL) {
+            gDrawEconomicCalendarSchedule = new DrawEconomicCalendarSchedule(
+                0,
+                nextPanelXDistance + gDrawCurrencyStrengthDailyRangeList.getPanelWidth() + panelGap,
+                panelYDistance + gDrawCurrencyStrengthList.getPanelHeight() + stackedPanelGap,
+                voteWeightModeText
+            );
+            gEconomicCalendarSchedule = new EconomicCalendarSchedule();
+            loadEconomicCalendarDisplaySettings();
+        }
     }
 
     gOscillatorHandleManager = new OscillatorHandleManager(PERIOD_M15);
@@ -374,6 +392,8 @@ int OnInit() {
     if (gDrawCurrencyStrengthList == NULL
             || gDrawCurrencyStrengthDailyRangeList == NULL
             || gCurrencyStrengthDailyRangeList == NULL
+            || gDrawEconomicCalendarSchedule == NULL
+            || gEconomicCalendarSchedule == NULL
             || gDrawCurrencyStrengthSnapshotHeader == NULL
             || (showRankComparison && gDrawCurrencyStrengthRankComparison == NULL)
             || (showRankComparison && showRegionRankComparison
@@ -450,6 +470,7 @@ int OnInit() {
         }
 
         processLiveSnapshot(true, "INIT");
+        redrawBatch.finish();
         drawDailyRangePanel(true);
     }
 
@@ -542,6 +563,21 @@ void OnChartEvent(
             drawDailyRangePanel(wasCollapsed && !gDrawCurrencyStrengthDailyRangeList.isCollapsed());
             redrawBatch.finish();
             saveDailyRangeDisplaySettings();
+
+            return;
+        }
+    }
+
+    if (gDrawEconomicCalendarSchedule != NULL) {
+        bool wasCollapsed = gDrawEconomicCalendarSchedule.isCollapsed();
+        if (gDrawEconomicCalendarSchedule.handleObjectClick(
+                fromStringValue, clearedOtherScoreInstances)) {
+            drawEconomicCalendarPanel(false);
+            redrawBatch.finish();
+            saveEconomicCalendarDisplaySettings();
+            if (wasCollapsed && !gDrawEconomicCalendarSchedule.isCollapsed()) {
+                drawEconomicCalendarPanel(true);
+            }
 
             return;
         }
@@ -810,7 +846,23 @@ bool cleanupOrphanedScorePanels() {
         dailyRangeCleared = gDrawCurrencyStrengthDailyRangeList.clearOtherInstances();
     }
 
-    if (!scoreCleared || !headerCleared || !dailyRangeCleared) {
+    bool rankCleared = true;
+    if (gDrawCurrencyStrengthRankComparison != NULL) {
+        rankCleared = gDrawCurrencyStrengthRankComparison.clearOtherInstances();
+    }
+
+    bool regionCleared = true;
+    if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
+        regionCleared = gDrawCurrencyStrengthRegionRankComparison.clearOtherInstances();
+    }
+
+    bool calendarCleared = true;
+    if (gDrawEconomicCalendarSchedule != NULL) {
+        calendarCleared = gDrawEconomicCalendarSchedule.clearOtherInstances();
+    }
+
+    if (!scoreCleared || !headerCleared || !dailyRangeCleared || !rankCleared
+            || !regionCleared || !calendarCleared) {
         return false;
     }
 
@@ -965,6 +1017,109 @@ void drawDailyRangePanel(const bool fromRefresh) {
 
     if (!gDrawCurrencyStrengthDailyRangeList.draw(rangeList)) {
         gLogger.error(__FUNCTION__, "currency strength daily range draw failed");
+    }
+
+    drawEconomicCalendarPanel(fromRefresh);
+}
+
+/**
+ * 経済指標パネルの開閉・重要度設定の保存キーを取得する。
+ *
+ * @return チャートと計算方式ごとの保存キー。
+ */
+string getEconomicCalendarDisplaySettingsKey() {
+    return "Mstng.CSE.CalendarUi.v1." + IntegerToString(ChartID())
+        + "." + IntegerToString((int)voteWeightMode);
+}
+
+/**
+ * 通常チャートの経済指標パネルの表示設定を復元する。
+ */
+void loadEconomicCalendarDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawEconomicCalendarSchedule == NULL) {
+        return;
+    }
+
+    double savedValue = 0;
+    if (!GlobalVariableGet(getEconomicCalendarDisplaySettingsKey(), savedValue)
+            || !MathIsValidNumber(savedValue) || savedValue < 0 || savedValue > 3
+            || savedValue != MathFloor(savedValue)) {
+        return;
+    }
+
+    int settings = (int)savedValue;
+    gDrawEconomicCalendarSchedule.setCollapsed((settings & 1) != 0);
+    gDrawEconomicCalendarSchedule.setIncludeModerate((settings & 2) != 0);
+}
+
+/**
+ * 経済指標パネルの開閉・重要度設定が変わった場合だけ保存する。
+ */
+void saveEconomicCalendarDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawEconomicCalendarSchedule == NULL) {
+        return;
+    }
+
+    int settings = 0;
+    if (gDrawEconomicCalendarSchedule.isCollapsed()) {
+        settings += 1;
+    }
+
+    if (gDrawEconomicCalendarSchedule.isIncludeModerate()) {
+        settings += 2;
+    }
+
+    string settingsKey = getEconomicCalendarDisplaySettingsKey();
+    double previousValue = 0;
+    if (GlobalVariableGet(settingsKey, previousValue) && previousValue == settings) {
+        return;
+    }
+
+    if (GlobalVariableSet(settingsKey, settings) == 0) {
+        gLogger.error(__FUNCTION__, StringFormat(
+            "economic calendar display settings save failed. error=%d", GetLastError()
+        ));
+
+        return;
+    }
+
+    GlobalVariablesFlush();
+}
+
+/**
+ * 日足値幅の右へ経済指標を配置し、開状態だけ取得・表示を更新する。
+ * 取得間隔は取得クラスで制限し、クリック時は保持データで即座に描画する。
+ *
+ * @param fromRefresh 予定の再取得を許可する場合true。
+ */
+void drawEconomicCalendarPanel(const bool fromRefresh) {
+    if (gDrawEconomicCalendarSchedule == NULL || gDrawCurrencyStrengthDailyRangeList == NULL
+            || gDrawCurrencyStrengthList == NULL) {
+        return;
+    }
+
+    bool isTester = Util::isStrategyTester();
+    if (isTester && !MQLInfoInteger(MQL_VISUAL_MODE)) {
+        return;
+    }
+
+    if (!gDrawEconomicCalendarSchedule.setPosition(
+            panelXDistance + gScorePanelOffset
+                + gDrawCurrencyStrengthDailyRangeList.getPanelWidth() + panelGap,
+            panelYDistance + gDrawCurrencyStrengthList.getPanelHeight() + stackedPanelGap)) {
+        gLogger.error(__FUNCTION__, "economic calendar position update failed");
+    }
+
+    EconomicCalendarSchedule *schedule = NULL;
+    if (!isTester) {
+        schedule = gEconomicCalendarSchedule;
+        if (fromRefresh && schedule != NULL && !gDrawEconomicCalendarSchedule.isCollapsed()) {
+            schedule.update();
+        }
+    }
+
+    if (!gDrawEconomicCalendarSchedule.draw(schedule)) {
+        gLogger.error(__FUNCTION__, "economic calendar draw failed");
     }
 }
 
@@ -2117,6 +2272,16 @@ void releaseResources() {
         gDrawCurrencyStrengthDailyRangeList.clear();
         delete gDrawCurrencyStrengthDailyRangeList;
         gDrawCurrencyStrengthDailyRangeList = NULL;
+    }
+
+    if (gDrawEconomicCalendarSchedule != NULL) {
+        delete gDrawEconomicCalendarSchedule;
+        gDrawEconomicCalendarSchedule = NULL;
+    }
+
+    if (gEconomicCalendarSchedule != NULL) {
+        delete gEconomicCalendarSchedule;
+        gEconomicCalendarSchedule = NULL;
     }
 
     if (gCurrencyStrengthDailyRangeList != NULL) {

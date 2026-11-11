@@ -269,6 +269,7 @@ public:
         bool isRedrawn = false;
 
         if (fromId == CHARTEVENT_CHART_CHANGE) {
+            ulong startMicroseconds = this.chartController.startSlowOperation();
             this.beginCurrencyStrengthRedrawBatch();
 
             if (this.currencyStrengthController != NULL) {
@@ -283,6 +284,7 @@ public:
             }
 
             this.endCurrencyStrengthRedrawBatch();
+            this.chartController.completeSlowOperation(stageChartEvent, startMicroseconds);
 
             return;
         }
@@ -291,6 +293,7 @@ public:
             return;
         }
 
+        ulong startMicroseconds = this.chartController.startSlowOperation();
         isRedrawn = this.chartController.onObjectClick(
             fromObjectName,
             elliotAll
@@ -299,6 +302,8 @@ public:
         if (isRedrawn) {
             this.completeRedraw();
         }
+
+        this.chartController.completeSlowOperation(stageChartEvent, startMicroseconds);
     }
 
     /**
@@ -315,6 +320,7 @@ public:
             return fromRatesTotal;
         }
 
+        ulong calculateStartMicroseconds = this.chartController.startSlowOperation();
         this.chartController.beginProcessingTimeUpdateBatch();
 
         bool isAnalysisDataReady = false;
@@ -336,6 +342,7 @@ public:
         if (this.timerMode) {
             this.chartController.drawBidAsk();
             this.chartController.endProcessingTimeUpdateBatch();
+            this.chartController.completeSlowOperation(stageCalculate, calculateStartMicroseconds);
 
             return fromRatesTotal;
         }
@@ -538,7 +545,13 @@ private:
             + endMicroseconds - labelStartMicroseconds;
         this.updateTimingStats.recordTimer(fromEntryTick, endTick,
             endMicroseconds - fromStartMicroseconds, labelMicroseconds, fromAnalysisExecuted);
+        if (this.updateTimingStats.hasTimerGap()) {
+            this.chartController.recordSlowOperation(stageTimerGap,
+                this.updateTimingStats.getTimerGapMilliseconds() * 1000);
+        }
+
         this.logTimingDiagnostics(endTick);
+        this.chartController.flushSlowOperationDiagnostics();
     }
 
     /**
@@ -554,6 +567,7 @@ private:
             return;
         }
 
+        ulong logStartMicroseconds = this.chartController.startSlowOperation();
         this.timingLogRecorded = true;
         this.lastTimingLogTick = fromCurrentTick;
         string mode = "idle";
@@ -583,6 +597,7 @@ private:
             this.updateTimingStats.getMaximumTimerLabelMilliseconds(), gap, mode,
             attemptInterval, timerDelay,
             this.updateTimingStats.getLastState()));
+        this.chartController.completeSlowOperation(stageLogOutput, logStartMicroseconds);
     }
 
     /**
@@ -903,10 +918,19 @@ private:
      * @param fromForceRedraw パネル以外の変更でも再描画する場合true。
      */
     void endCurrencyStrengthRedrawBatch(bool fromForceRedraw = false) {
+        ulong startMicroseconds = 0;
+        if (this.chartController != NULL) {
+            startMicroseconds = this.chartController.startSlowOperation();
+        }
+
         if (this.currencyStrengthController != NULL) {
             this.currencyStrengthController.endRedrawBatch(fromForceRedraw);
         } else if (fromForceRedraw) {
             ChartRedraw(0);
+        }
+
+        if (this.chartController != NULL) {
+            this.chartController.completeSlowOperation(stageRedraw, startMicroseconds);
         }
     }
 

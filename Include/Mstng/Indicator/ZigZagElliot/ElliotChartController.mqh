@@ -11,6 +11,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Common\ProcessingTimeStats.mqh>
+#include <Mstng\Common\SlowOperationTimingStats.mqh>
 #include <Mstng\Common\UpdateTimingStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\Draw.mqh>
@@ -35,6 +36,7 @@ public:
      * 表示状態と保持ポインタを初期化する。
      */
     ElliotChartController() {
+        this.slowTimingEnabled = false;
         this.gmmaIndicator = NULL;
         this.ema200Indicator = NULL;
         this.japanTimeAxisView = NULL;
@@ -77,6 +79,7 @@ public:
             return false;
         }
 
+        this.slowTimingEnabled = !Util::isStrategyTester();
         this.marketContext = fromMarketContext;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
@@ -166,6 +169,7 @@ public:
             bool isSucceeded = this.gmmaIndicator.update(
                 fromPrevCalculated, fromRatesTotal, fromCurrentBarTime);
             ulong elapsedMicroseconds = GetMicrosecondCount() - startMicroseconds;
+            this.recordSlowOperation(stageGmma, elapsedMicroseconds);
 
             if (this.gmmaIndicator.wasUpdatePerformed()) {
                 string updateMode = this.gmmaIndicator.getLastUpdateMode();
@@ -199,6 +203,7 @@ public:
             this.japanTimeAxisView.updateTimeAxis(forceTimeAxisUpdate);
             this.japanTimeAxisView.updateRemainingTime();
             ulong elapsedMicroseconds = GetMicrosecondCount() - startMicroseconds;
+            this.recordSlowOperation(stageJapanTimeAxis, elapsedMicroseconds);
             bool isSucceeded = this.japanTimeAxisView.isTimeAxisUpdateSucceeded()
                 && this.japanTimeAxisView.isRemainingTimeUpdateSucceeded();
             string updateMode = this.japanTimeAxisView.getLastUpdateMode();
@@ -222,7 +227,9 @@ public:
      * BidおよびAskを描画する。
      */
     void drawBidAsk() {
+        ulong startMicroseconds = this.startSlowOperation();
         this.draw.drawBidAsk(this.marketContext);
+        this.completeSlowOperation(stageBidAsk, startMicroseconds);
     }
 
     /**
@@ -233,7 +240,9 @@ public:
      * @param fromCurrentTick 経過秒の計算に使用する単調増加時刻
      */
     void updateTimingStatus(UpdateTimingStats &fromStats, int fromIntervalSeconds, ulong fromCurrentTick) {
+        ulong startMicroseconds = this.startSlowOperation();
         this.draw.updateTimingStatus(fromStats, fromIntervalSeconds, fromCurrentTick);
+        this.completeSlowOperation(stageLabels, startMicroseconds);
     }
 
     /**
@@ -247,7 +256,71 @@ public:
      * イベント内で保持した集計を反映し、前回の描画失敗も再試行する。
      */
     void endProcessingTimeUpdateBatch() {
+        ulong startMicroseconds = this.startSlowOperation();
         this.processingTimeDraw.endUpdateBatch();
+        this.completeSlowOperation(stageLabels, startMicroseconds);
+    }
+
+    /**
+     * 通常チャートの遅延計測を開始する。テスターでは時刻を取得しない。
+     *
+     * @return 計測開始マイクロ秒。無効時は0
+     */
+    ulong startSlowOperation() {
+        if (!this.slowTimingEnabled) {
+            return 0;
+        }
+
+        return GetMicrosecondCount();
+    }
+
+    /**
+     * 遅延計測を終了し、しきい値以上の区間だけ保持する。
+     *
+     * @param fromStage 計測区間
+     * @param fromStartMicroseconds 同じイベント内で取得した開始時刻
+     */
+    void completeSlowOperation(SlowOperationTimingStage fromStage, ulong fromStartMicroseconds) {
+        if (!this.slowTimingEnabled) {
+            return;
+        }
+
+        this.slowOperationTimes.record(fromStage, GetMicrosecondCount() - fromStartMicroseconds);
+    }
+
+    /**
+     * 既存計測を使い、失敗・待機を含む遅い区間を記録する。
+     *
+     * @param fromStage 計測区間
+     * @param fromElapsedMicroseconds 区間の経過マイクロ秒
+     */
+    void recordSlowOperation(SlowOperationTimingStage fromStage, ulong fromElapsedMicroseconds) {
+        if (!this.slowTimingEnabled) {
+            return;
+        }
+
+        this.slowOperationTimes.record(fromStage, fromElapsedMicroseconds);
+    }
+
+    /**
+     * 保持した遅延を最大60秒に1回出力する。出力自身の遅延は次回分に残す。
+     * ログ生成・出力を計測し、完了時刻から次回の出力間隔を数える。
+     */
+    void flushSlowOperationDiagnostics() {
+        if (!this.slowTimingEnabled) {
+            return;
+        }
+
+        ulong currentTick = GetTickCount64();
+        if (!this.slowOperationTimes.isLogDue(currentTick)) {
+            return;
+        }
+
+        ulong startMicroseconds = GetMicrosecondCount();
+        string message = this.slowOperationTimes.takeLog(currentTick);
+        this.logger.info(__FUNCTION__, message);
+        this.completeSlowOperation(stageLogOutput, startMicroseconds);
+        this.slowOperationTimes.markLogCompleted(GetTickCount64());
     }
 
     /**
@@ -431,6 +504,8 @@ public:
      * 表示オブジェクト、補助表示および上下FITを解放する。
      */
     void destroy() {
+        this.slowTimingEnabled = false;
+        this.slowOperationTimes.reset();
         this.draw.clearInfoLabels();
         this.draw.clearRoundLines();
         this.processingTimeDraw.clear();
@@ -479,6 +554,12 @@ private:
 
     /** ロガー。 */
     Logger logger;
+
+    /** 通常チャートで遅延診断を記録する場合true。 */
+    bool slowTimingEnabled;
+
+    /** 未出力の遅延件数・最大経過時間。 */
+    SlowOperationTimingStats slowOperationTimes;
 
     /** 全体描画。 */
     Draw draw;
@@ -1007,6 +1088,7 @@ private:
             bool isSucceeded = this.ema200Indicator.update(
                 fromTimerMode, fromResetBuffers, fromCurrentBarTime);
             ulong elapsedMicroseconds = GetMicrosecondCount() - startMicroseconds;
+            this.recordSlowOperation(stageEma200, elapsedMicroseconds);
 
             if (this.ema200Indicator.wasUpdatePerformed()) {
                 string updateMode = this.ema200Indicator.getLastUpdateMode();
