@@ -11,7 +11,7 @@
 #include <Mstng\Util\RateUtil.mqh>
 
 /**
- * 現在価格を基準に50pips間隔および100pips間隔の水平線を描画するクラス。
+ * 現在価格を基準に、時間足別の主要・補助ラウンドナンバー線を描画するクラス。
  * 同じ価格区間の線を保持し、全体描画では消去しない。
  */
 class DrawRoundLines {
@@ -52,27 +52,39 @@ public:
     }
 
     /**
-     * 現在価格の上下へラウンドナンバーラインを描画する。
-     * 同じ区間・銘柄・桁数・ポイント値では、削除された線だけを復元する。
+     * 現在価格の上下へ最大11本のラウンドナンバーラインを描画する。
+     * 同じ区間・銘柄・桁数・ポイント値・線間隔では、削除された線だけを復元する。
      */
     void draw() {
-        double basePrice = this.getBasePrice();
-        double point = this.marketContext.getPoint();
-        double stepPrice50Pips = RateUtil::pipsToPrice(STEP_50_PIPS, this.marketContext);
-        if (!MathIsValidNumber(basePrice) || basePrice <= 0
-                || !MathIsValidNumber(point) || point <= 0
-                || !MathIsValidNumber(stepPrice50Pips) || stepPrice50Pips <= 0) {
+        int minorStepPips = 0;
+        int majorStepPips = 0;
+        if (!this.getLineSteps(minorStepPips, majorStepPips)) {
             this.clear();
 
             return;
         }
 
-        double anchorPrice = this.getAnchorPrice(basePrice, stepPrice50Pips);
+        double basePrice = this.getBasePrice();
+        double point = this.marketContext.getPoint();
+        double minorStepPrice = RateUtil::pipsToPrice(minorStepPips, this.marketContext);
+        double majorStepPrice = RateUtil::pipsToPrice(majorStepPips, this.marketContext);
+        if (!MathIsValidNumber(basePrice) || basePrice <= 0
+                || !MathIsValidNumber(point) || point <= 0
+                || !MathIsValidNumber(minorStepPrice) || minorStepPrice <= 0
+                || !MathIsValidNumber(majorStepPrice) || majorStepPrice <= 0) {
+            this.clear();
+
+            return;
+        }
+
+        double anchorPrice = this.getAnchorPrice(basePrice, minorStepPrice, point);
         bool rebuild = !this.linesReady
             || this.lastAnchorPrice != anchorPrice
             || this.lastSymbolName != this.marketContext.symbolName
             || this.lastDigits != this.getDigits()
-            || this.lastPoint != point;
+            || this.lastPoint != point
+            || this.lastMinorStepPips != minorStepPips
+            || this.lastMajorStepPips != majorStepPips;
         if (rebuild && !this.clear()) {
             return;
         }
@@ -80,14 +92,21 @@ public:
         bool succeeded = true;
         for (int i = -this.linesEachSide; i <= this.linesEachSide; i++) {
             int lineIndex = i + this.linesEachSide;
-            if (!rebuild && ObjectFind(this.chartId, this.lineObjectNames[lineIndex]) == 0) {
+            if (!rebuild && (this.lineObjectNames[lineIndex] == ""
+                    || ObjectFind(this.chartId, this.lineObjectNames[lineIndex]) == 0)) {
                 continue;
             }
 
-            double linePrice = NormalizeDouble(anchorPrice + (stepPrice50Pips * i), this.getDigits());
-            bool is100PipsLine = this.is100PipsLine(linePrice);
-            this.lineObjectNames[lineIndex] = this.createObjectName(linePrice, is100PipsLine);
-            if (!this.drawHorizontalLine(linePrice, is100PipsLine, this.lineObjectNames[lineIndex])) {
+            double linePrice = NormalizeDouble(anchorPrice + (minorStepPrice * i), this.getDigits());
+            if (linePrice <= 0) {
+                this.lineObjectNames[lineIndex] = "";
+
+                continue;
+            }
+
+            bool isMajorLine = this.isMajorLine(linePrice, majorStepPrice);
+            this.lineObjectNames[lineIndex] = this.createObjectName(linePrice, isMajorLine);
+            if (!this.drawHorizontalLine(linePrice, isMajorLine, this.lineObjectNames[lineIndex])) {
                 succeeded = false;
             }
         }
@@ -99,6 +118,8 @@ public:
             this.lastSymbolName = this.marketContext.symbolName;
             this.lastDigits = this.getDigits();
             this.lastPoint = point;
+            this.lastMinorStepPips = minorStepPips;
+            this.lastMajorStepPips = majorStepPips;
         }
     }
 
@@ -120,20 +141,14 @@ private:
     /** 水平線の太さ。 */
     static const int LINE_WIDTH;
 
-    /** 50pipsラインの間隔。 */
-    static const int STEP_50_PIPS;
-
-    /** 100pipsラインの間隔。 */
-    static const int STEP_100_PIPS;
-    
     /** 描画対象の市場コンテキスト。 */
     MarketContext marketContext;
 
-    /** 100pipsラインの色。 */
-    color color100Pips;
+    /** 主要線の色。 */
+    color majorLineColor;
 
-    /** 50pipsラインの色。 */
-    color color50Pips;
+    /** 補助線の色。 */
+    color minorLineColor;
 
     /** 現在価格の上下へ描画する本数。 */
     int linesEachSide;
@@ -144,7 +159,7 @@ private:
     /** 描画対象のチャートID。 */
     long chartId;
 
-    /** 11本すべての作成・設定に成功し、価格区間を再利用できる場合true。 */
+    /** 正の価格となる最大11本の作成・設定に成功し、価格区間を再利用できる場合true。 */
     bool linesReady;
 
     /** 前回の線の基準価格。 */
@@ -159,7 +174,13 @@ private:
     /** 前回の1ポイントの価格。 */
     double lastPoint;
 
-    /** 価格の低い順に保持する11本のオブジェクト名。 */
+    /** 前回の補助線間隔。単位: pips。 */
+    int lastMinorStepPips;
+
+    /** 前回の主要線間隔。単位: pips。 */
+    int lastMajorStepPips;
+
+    /** 価格の低い順に保持する11本のオブジェクト名。0以下の価格は空文字。 */
     string lineObjectNames[11];
 
     /**
@@ -179,8 +200,8 @@ private:
      */
     void initialize(MarketContext &fromMarketContext) {
         this.initializeMarketContext(fromMarketContext);
-        this.color100Pips = clrGold;
-        this.color50Pips = clrGold;
+        this.majorLineColor = clrGold;
+        this.minorLineColor = clrDarkGoldenrod;
         this.linesEachSide = 5;
         this.useBidPrice = true;
         this.chartId = 0;
@@ -189,6 +210,8 @@ private:
         this.lastSymbolName = "";
         this.lastDigits = -1;
         this.lastPoint = 0;
+        this.lastMinorStepPips = 0;
+        this.lastMajorStepPips = 0;
     }
 
     /**
@@ -200,6 +223,48 @@ private:
         this.marketContext = fromMarketContext;
     }
    
+    /**
+     * 時間足に対応する補助線・主要線の間隔を取得する。
+     * その他のH1以下は従来の50／100pips、未対応の上位足は非表示とする。
+     *
+     * @param fromMinorStepPips 補助線間隔の出力先。単位: pips。
+     * @param fromMajorStepPips 主要線間隔の出力先。単位: pips。
+     * @return 描画対象の時間足の場合true。
+     */
+    bool getLineSteps(int &fromMinorStepPips, int &fromMajorStepPips) {
+        ENUM_TIMEFRAMES timeFrame = this.marketContext.timeFrame;
+        if (timeFrame == PERIOD_CURRENT) {
+            timeFrame = (ENUM_TIMEFRAMES)Period();
+        }
+
+        fromMinorStepPips = 50;
+        fromMajorStepPips = 100;
+        switch (timeFrame) {
+            case PERIOD_M1:
+                fromMinorStepPips = 10;
+                fromMajorStepPips = 50;
+                return true;
+            case PERIOD_M5:
+                fromMinorStepPips = 25;
+                return true;
+            case PERIOD_H4:
+                fromMinorStepPips = 100;
+                fromMajorStepPips = 500;
+                return true;
+            case PERIOD_D1:
+                fromMinorStepPips = 500;
+                fromMajorStepPips = 1000;
+                return true;
+            case PERIOD_W1:
+            case PERIOD_MN1:
+                fromMinorStepPips = 1000;
+                fromMajorStepPips = 5000;
+                return true;
+        }
+
+        return timeFrame > PERIOD_CURRENT && timeFrame <= PERIOD_H1;
+    }
+
     /**
      * 水平線計算の基準価格を取得する。
      *
@@ -223,23 +288,30 @@ private:
     /**
      * 基準価格以下で最も近いライン価格を取得する。
      *
-     * @param basePrice 基準価格
-     * @param stepPrice ライン間隔の価格幅
-     * @return アンカー価格
+     * ポイント単位の整数へ丸め、キリ番ちょうどの価格が小数誤差で1段下がるのを防ぐ。
+     *
+     * @param fromBasePrice 基準価格。
+     * @param fromStepPrice ライン間隔の価格幅。
+     * @param fromPoint 1ポイントの価格幅。
+     * @return アンカー価格。
      */
-    double getAnchorPrice(double basePrice, double stepPrice) {
-        return MathFloor(basePrice / stepPrice) * stepPrice;
+    double getAnchorPrice(double fromBasePrice, double fromStepPrice, double fromPoint) {
+        double basePoints = MathRound(fromBasePrice / fromPoint);
+        double stepPoints = MathRound(fromStepPrice / fromPoint);
+        double anchorPoints = MathFloor(basePoints / stepPoints) * stepPoints;
+
+        return NormalizeDouble(anchorPoints * fromPoint, this.getDigits());
     }
 
     /**
-     * 指定価格が100pipsラインに該当するか判定する。
+     * 指定価格が主要線の間隔の整数倍か判定する。
      *
-     * @param price 判定対象価格
-     * @return 100pipsラインの場合true
+     * @param fromPrice 判定対象価格。
+     * @param fromMajorStepPrice 主要線間隔の価格幅。
+     * @return 主要線の場合true。
      */
-    bool is100PipsLine(double price) {
-        double stepPrice100Pips = RateUtil::pipsToPrice(STEP_100_PIPS, this.marketContext);
-        double ratio = price / stepPrice100Pips;
+    bool isMajorLine(double fromPrice, double fromMajorStepPrice) {
+        double ratio = fromPrice / fromMajorStepPrice;
         
         return MathAbs(ratio - MathRound(ratio)) < 0.0000001;
     }
@@ -248,15 +320,15 @@ private:
      * 指定価格へ水平線を描画する。
      *
      * @param fromPrice 描画価格
-     * @param fromIs100PipsLine 100pipsラインの場合true
+     * @param fromIsMajorLine 主要線の場合true
      * @param fromObjectName 専用接頭辞を付けたオブジェクト名
      * @return 作成と固定属性の設定に成功した場合true
      */
-    bool drawHorizontalLine(double fromPrice, bool fromIs100PipsLine, string fromObjectName) {
-        color lineColor = this.color50Pips;
+    bool drawHorizontalLine(double fromPrice, bool fromIsMajorLine, string fromObjectName) {
+        color lineColor = this.minorLineColor;
         ENUM_LINE_STYLE lineStyle = STYLE_DOT;
-        if (fromIs100PipsLine) {
-            lineColor = this.color100Pips;
+        if (fromIsMajorLine) {
+            lineColor = this.majorLineColor;
             lineStyle = STYLE_SOLID;
         }
 
@@ -274,13 +346,13 @@ private:
      * 水平線のオブジェクト名を生成する。
      *
      * @param price 描画価格
-     * @param is100PipsLine 100pipsラインの場合true
+     * @param fromIsMajorLine 主要線の場合true
      * @return オブジェクト名
      */
-    string createObjectName(double price, bool is100PipsLine) {
-        string prefix = "ROUND_050_";
-        if (is100PipsLine) {
-            prefix = "ROUND_100_";
+    string createObjectName(double price, bool fromIsMajorLine) {
+        string prefix = "ROUND_MINOR_";
+        if (fromIsMajorLine) {
+            prefix = "ROUND_MAJOR_";
         }
 
         return Constant::PREFIX_FIXED + "ZigZagElliotRound"
@@ -289,5 +361,3 @@ private:
 };
 
 const int DrawRoundLines::LINE_WIDTH = 1;
-const int DrawRoundLines::STEP_50_PIPS = 50;
-const int DrawRoundLines::STEP_100_PIPS = 100;

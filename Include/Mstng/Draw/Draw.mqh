@@ -133,7 +133,11 @@ public:
         ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
         this.invalidateBidAskLabels();
         
-        if (this.elliotAll.marketContext.timeFrame <= PERIOD_H1) {
+        if (this.elliotAll.marketContext.timeFrame <= PERIOD_H1
+                || this.elliotAll.marketContext.timeFrame == PERIOD_H4
+                || this.elliotAll.marketContext.timeFrame == PERIOD_D1
+                || this.elliotAll.marketContext.timeFrame == PERIOD_W1
+                || this.elliotAll.marketContext.timeFrame == PERIOD_MN1) {
             if (this.roundLinesDraw == NULL) {
                 this.roundLinesDraw = new DrawRoundLines(this.elliotAll.marketContext);
             } else {
