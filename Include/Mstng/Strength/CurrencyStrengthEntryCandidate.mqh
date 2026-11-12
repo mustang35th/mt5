@@ -10,6 +10,8 @@
 #ifndef MSTNG_CURRENCY_STRENGTH_ENTRY_CANDIDATE_MQH
 #define MSTNG_CURRENCY_STRENGTH_ENTRY_CANDIDATE_MQH
 
+#include <Mstng\Strength\CurrencyStrengthTrendContinuationInfo.mqh>
+
 /**
  * 売買候補のAND成立に使用するEMA200時間足。
  */
@@ -56,6 +58,9 @@ struct CurrencyStrengthEntryCandidate {
 
     /** 長中期と中短期の絶対順位差合計。 */
     int totalRankDifference;
+
+    /** 直近3時間の通貨強弱方向の継続判定。 */
+    CurrencyStrengthTrendContinuationInfo continuation;
 
     /** H1 EMA200の判定値を取得済みの場合true。 */
     bool h1EmaAvailable;
@@ -120,6 +125,7 @@ struct CurrencyStrengthEntryCandidate {
         this.mediumShortRankDifference = 0;
         this.minimumRankDifference = 0;
         this.totalRankDifference = 0;
+        this.continuation.reset();
         this.resetH1Ema();
         this.resetM1Ema();
     }

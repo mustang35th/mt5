@@ -67,6 +67,10 @@ public:
         this.pairSelectionEnabled = false;
         this.readyHighlightEnabled = false;
         this.andOnly = true;
+        this.continuationMode = false;
+        this.continuationStatus = "";
+        this.summarySource = "";
+        this.summaryDisplay = "";
         CurrencyStrengthEntryEmaMode initialMode = currencyStrengthEntryEmaH1AndM1;
         if (Util::isStrategyTester()) {
             initialMode = currencyStrengthEntryEmaH1;
@@ -159,6 +163,16 @@ public:
         int candidateCount = fromCandidateList.size();
         int andCount = 0;
         int visibleCount = 0;
+        int continuationCount = 0;
+        int insufficientCount = 0;
+        int displayOrder[];
+        if (this.continuationMode && ArrayResize(displayOrder, candidateCount) != candidateCount) {
+            this.suspendAndTracking();
+
+            return false;
+        }
+
+        int displayCount = 0;
 
         this.hasNewMarkers = false;
         if (isRankingReady) {
@@ -173,11 +187,39 @@ public:
                     andCount++;
                 }
 
+                if (this.continuationMode) {
+                    if (!candidate.continuation.available || candidate.continuation.validCount < 36) {
+                        insufficientCount++;
+                    }
+
+                    if (!candidate.continuation.isQualified()) {
+                        continue;
+                    }
+
+                    continuationCount++;
+                }
+
                 if (this.andOnly && !candidate.isAndReady(this.emaState.getEffectiveMode())) {
                     continue;
                 }
 
-                if (visibleCount < this.maximumCount) {
+                if (this.continuationMode) {
+                    displayOrder[displayCount] = i;
+                    displayCount++;
+                } else if (visibleCount < this.maximumCount) {
+                    this.drawRow(visibleCount, candidate, serverTime, nowMs);
+                    visibleCount++;
+                }
+            }
+        }
+
+        if (this.continuationMode) {
+            this.sortContinuationOrder(fromCandidateList, displayOrder, displayCount);
+
+            for (int i = 0; i < displayCount && visibleCount < this.maximumCount; i++) {
+                CurrencyStrengthEntryCandidate candidate;
+                candidate.reset();
+                if (fromCandidateList.get(displayOrder[i], candidate)) {
                     this.drawRow(visibleCount, candidate, serverTime, nowMs);
                     visibleCount++;
                 }
@@ -188,7 +230,7 @@ public:
             this.clearRow(i);
         }
 
-        this.updateTitle(fromCandidateList, andCount, visibleCount);
+        this.updateTitle(fromCandidateList, andCount, visibleCount, continuationCount, insufficientCount);
         this.updatePairTooltips();
         this.updateSelectionBackground();
         DrawChartRedrawBatch::request(this.chartId);
@@ -319,6 +361,58 @@ public:
         DrawChartRedrawBatch::request(this.chartId);
 
         return true;
+    }
+
+    /**
+     * 通常一覧と過去3時間の方向継続候補を切り替える。
+     * 候補の再取得・再描画と比較パネル連携は呼び出し元で行う。
+     */
+    bool handleContinuationModeClick(const string fromObjectName) {
+        if (!this.created || fromObjectName != this.objectPrefix + "TrendButton") {
+            return false;
+        }
+
+        this.setContinuationMode(!this.continuationMode);
+
+        return true;
+    }
+
+    /**
+     * 過去3時間の方向継続で表示候補を絞る場合trueを返す。
+     */
+    bool isContinuationMode() const {
+        return this.continuationMode;
+    }
+
+    /**
+     * 表示モードを変更する。EMA判定・NEW追跡・元候補順序は変更しない。
+     */
+    void setContinuationMode(const bool fromEnabled) {
+        if (this.continuationMode == fromEnabled) {
+            return;
+        }
+
+        this.continuationMode = fromEnabled;
+        if (this.created) {
+            this.updateContinuationModeButton();
+            this.updateContinuationHeaders();
+            DrawChartRedrawBatch::request(this.chartId);
+        }
+    }
+
+    /**
+     * 履歴取得失敗・通常チャート専用などの補助状態を保持する。
+     * 空文字列の場合は通常の候補件数を表示する。
+     */
+    void setContinuationStatus(const string fromStatus) {
+        if (this.continuationStatus == fromStatus) {
+            return;
+        }
+
+        this.continuationStatus = fromStatus;
+        if (this.created) {
+            this.updateContinuationModeButton();
+        }
     }
 
     /**
@@ -635,6 +729,18 @@ private:
     /** AND成立候補だけを表示する場合true。 */
     bool andOnly;
 
+    /** 過去3時間の方向継続候補だけを表示する場合true。 */
+    bool continuationMode;
+
+    /** 履歴取得失敗などの補助状態。正常時は空文字列。 */
+    string continuationStatus;
+
+    /** 幅計測済みの件数行の全文。 */
+    string summarySource;
+
+    /** モードボタンの手前に収めた件数行の文字列。 */
+    string summaryDisplay;
+
     /** 選択中の通貨ペア名。表示順位の圏外でも保持する。 */
     string selectedSymbol;
 
@@ -800,7 +906,7 @@ private:
         }
 
         if (!this.createReadyButton() || !this.createFilterButton()
-                || !this.createEmaModeButton()) {
+                || !this.createEmaModeButton() || !this.createContinuationModeButton()) {
             this.destroyObjects();
 
             return false;
@@ -833,12 +939,9 @@ private:
                 return false;
             }
 
-            if (i == 3 || i == 4) {
+            if (i >= 3 && i <= 5) {
                 ObjectSetString(this.chartId, this.getHeaderObjectName(i),
-                    OBJPROP_TOOLTIP, "基軸通貨順位/決済通貨順位(符号付き順位差)");
-            } else if (i == 5) {
-                ObjectSetString(this.chartId, this.getHeaderObjectName(i),
-                    OBJPROP_TOOLTIP, "長中期と中短期の小さい絶対順位差／絶対順位差合計");
+                    OBJPROP_TOOLTIP, this.getContinuationHeaderTooltip(i));
             } else if (i == 7 || i == 8) {
                 ObjectSetString(this.chartId, this.getHeaderObjectName(i),
                     OBJPROP_TOOLTIP, this.getHeaderText(i) + " EMA200の確定足判定");
@@ -959,8 +1062,114 @@ private:
         this.updateEmaModeButton();
         this.updateReadyButton();
         this.updateFilterButton();
+        this.updateContinuationModeButton();
+        this.updateContinuationHeaders();
 
         return true;
+    }
+
+    /**
+     * 件数行の右端へ通常・継続3hの切替ボタンを生成する。
+     */
+    bool createContinuationModeButton() {
+        string objectName = this.objectPrefix + "TrendButton";
+        if (!ObjectCreate(this.chartId, objectName, OBJ_BUTTON, 0, 0, 0)) {
+            return false;
+        }
+
+        return ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE, this.xDistance + this.panelWidth - 104)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE, this.yDistance + 31)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 92)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, 20)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.bodyFontSize)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_COLOR, this.borderColor)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, 3)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false)
+            && ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
+    }
+
+    /**
+     * 履歴条件の表示モードだけをボタンへ反映する。
+     */
+    void updateContinuationModeButton() {
+        if (!this.created) {
+            return;
+        }
+
+        string text = "通常";
+        color textColor = this.normalColor;
+        color backgroundColor = C'35,35,35';
+        if (this.continuationMode) {
+            text = "継続3h";
+            textColor = clrBlack;
+            backgroundColor = clrGold;
+        }
+
+        string tooltip = "クリックして通常／継続3hを切替。継続は直近M5 36本の方向維持80%以上＋直近30分以上連続。"
+            + "\n全36本の取得が必要。維持率は勝率ではありません。AND絞り込みとEMA判定は引き続き適用します。";
+        if (this.continuationMode && this.continuationStatus != "") {
+            tooltip += "\n" + this.continuationStatus;
+        }
+
+        string objectName = this.objectPrefix + "TrendButton";
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, text);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, tooltip);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+    }
+
+    /**
+     * 履歴表示の3列と下部説明だけを切り替える。
+     */
+    void updateContinuationHeaders() {
+        if (!this.created) {
+            return;
+        }
+
+        for (int i = 3; i <= 5; i++) {
+            ObjectSetString(this.chartId, this.getHeaderObjectName(i), OBJPROP_TEXT, this.getHeaderText(i));
+            ObjectSetString(this.chartId, this.getHeaderObjectName(i), OBJPROP_TOOLTIP,
+                this.getContinuationHeaderTooltip(i));
+        }
+
+        string description = "READY：方向一致＋各期間(差4以上or端) ／ WATCH：未達";
+        string watchHint = "EMA200は確定足 ／ NONE：方向なし ／ —：取得待ち ／ [G]：GMO対象";
+        if (this.continuationMode) {
+            description = "継続3h：方向維持80%以上＋直近30分連続（M5全36本が必要）";
+            watchHint = "維持率は勝率ではありません ／ 順位・補完状況・差の平均はツールチップ";
+        }
+
+        ObjectSetString(this.chartId, this.objectPrefix + "Description", OBJPROP_TEXT, description);
+        ObjectSetString(this.chartId, this.objectPrefix + "WatchHint", OBJPROP_TEXT, watchHint);
+    }
+
+    /**
+     * 通常順位と継続条件の列説明を返す。
+     */
+    string getContinuationHeaderTooltip(const int fromColumnIndex) {
+        if (!this.continuationMode) {
+            if (fromColumnIndex == 5) {
+                return "長中期と中短期の小さい絶対順位差／絶対順位差合計";
+            }
+
+            return "基軸通貨順位/決済通貨順位(符号付き順位差)";
+        }
+
+        if (fromColumnIndex == 3) {
+            return "直近3時間のM5 36本中、長中期・中短期が候補方向に一致した割合。全36本取得・29本以上一致が条件。勝率ではありません。";
+        }
+
+        if (fromColumnIndex == 4) {
+            return "直近から候補方向を連続して維持した時間。30分以上が条件、表示上限は3時間です。";
+        }
+
+        return "候補方向に換算した中短期順位差の直近30分平均と、その前30分平均を比較。+0.5以上は拡大、-0.5以下は縮小、それ以外は横ばい。";
     }
 
     /**
@@ -1241,16 +1450,93 @@ private:
     }
 
     /**
+     * 表示用インデックスだけを維持率、連続時間の降順にする。同値は元の候補順を保つ。
+     * 継続候補は全36本が有効なため、維持率は一致本数で比較できる。
+     */
+    void sortContinuationOrder(CurrencyStrengthEntryCandidateList *fromList,
+            int &fromOrder[], const int fromCount) {
+        for (int i = 1; i < fromCount; i++) {
+            int currentIndex = fromOrder[i];
+            CurrencyStrengthEntryCandidate current;
+            if (!fromList.get(currentIndex, current)) {
+                continue;
+            }
+
+            int position = i - 1;
+            while (position >= 0) {
+                CurrencyStrengthEntryCandidate previous;
+                if (!fromList.get(fromOrder[position], previous)) {
+                    break;
+                }
+
+                if (previous.continuation.matchedCount > current.continuation.matchedCount
+                        || (previous.continuation.matchedCount == current.continuation.matchedCount
+                            && previous.continuation.consecutiveSeconds >= current.continuation.consecutiveSeconds)) {
+                    break;
+                }
+
+                fromOrder[position + 1] = fromOrder[position];
+                position--;
+            }
+
+            fromOrder[position + 1] = currentIndex;
+        }
+    }
+
+    /**
+     * 件数行が変わったときだけ幅を測り、右端のモードボタンと重ならないよう省略する。
+     */
+    string fitSummary(const string fromText) {
+        if (this.summarySource == fromText) {
+            return this.summaryDisplay;
+        }
+
+        string result = fromText;
+        uint width = 0;
+        uint height = 0;
+        uint maximumWidth = (uint)MathMax(1, this.panelWidth - 132);
+        if (!TextSetFont(this.fontName, -10 * this.bodyFontSize)
+                || !TextGetSize(fromText, width, height)) {
+            if (StringLen(fromText) > 34) {
+                result = StringSubstr(fromText, 0, 34) + "…";
+            }
+        } else if (width > maximumWidth) {
+            int lower = 0;
+            int upper = StringLen(fromText);
+            while (lower < upper) {
+                int middle = (lower + upper + 1) / 2;
+                string candidate = StringSubstr(fromText, 0, middle) + "…";
+                if (TextGetSize(candidate, width, height) && width <= maximumWidth) {
+                    lower = middle;
+                } else {
+                    upper = middle - 1;
+                }
+            }
+
+            result = StringSubstr(fromText, 0, lower) + "…";
+        }
+
+        this.summarySource = fromText;
+        this.summaryDisplay = result;
+
+        return result;
+    }
+
+    /**
      * 日本語タイトルと、候補条件・件数・集計状態を更新する。
      *
      * @param fromCandidateList 候補一覧。
      * @param fromAndCount 全候補中のAND成立件数。
      * @param fromVisibleCount 現在の表示件数。
+     * @param fromContinuationCount AND絞り込み前の継続条件成立件数。
+     * @param fromInsufficientCount 継続履歴を36本取得できていない候補数。
      */
     void updateTitle(
         CurrencyStrengthEntryCandidateList *fromCandidateList,
         const int fromAndCount,
-        const int fromVisibleCount
+        const int fromVisibleCount,
+        const int fromContinuationCount,
+        const int fromInsufficientCount
     ) {
         string summaryText = StringFormat(
             "集計待ち：%d/%dペア",
@@ -1260,17 +1546,34 @@ private:
         color displayColor = this.warningColor;
 
         if (fromCandidateList.isRankingReady()) {
-            summaryText = StringFormat(
-                "候補差%d以上(端可)｜候補%d・表示%d｜",
-                fromCandidateList.getMinimumRankDifference(),
-                fromCandidateList.size(),
-                fromVisibleCount
-            ) + this.getEmaSummary(fromAndCount);
+            if (this.continuationMode) {
+                summaryText = StringFormat("継続3h 候補%d / 表示%d / データ不足%d",
+                    fromContinuationCount, fromVisibleCount, fromInsufficientCount);
+            } else {
+                summaryText = StringFormat(
+                    "候補差%d以上(端可)｜候補%d・表示%d｜",
+                    fromCandidateList.getMinimumRankDifference(),
+                    fromCandidateList.size(),
+                    fromVisibleCount
+                ) + this.getEmaSummary(fromAndCount);
+            }
+
             displayColor = this.headerColor;
             if (this.emaState.isDisplayPending()) {
                 displayColor = this.warningColor;
             } else if (this.emaState.isAutoFallback()) {
                 displayColor = clrOrange;
+            }
+        }
+
+        string summaryTooltip = summaryText;
+        if (this.continuationMode) {
+            summaryTooltip += "\n候補数は継続条件を満たす件数、表示数はAND条件と表示上限を適用後の件数です。"
+                + "\n" + this.getEmaSummary(fromAndCount);
+            if (this.continuationStatus != "") {
+                summaryText = "継続3h " + this.continuationStatus;
+                summaryTooltip = summaryText + "\n" + summaryTooltip;
+                displayColor = this.warningColor;
             }
         }
 
@@ -1284,7 +1587,7 @@ private:
             this.chartId,
             this.objectPrefix + "Summary",
             OBJPROP_TEXT,
-            summaryText
+            this.fitSummary(summaryText)
         );
         ObjectSetInteger(
             this.chartId,
@@ -1292,6 +1595,7 @@ private:
             OBJPROP_COLOR,
             displayColor
         );
+        ObjectSetString(this.chartId, this.objectPrefix + "Summary", OBJPROP_TOOLTIP, summaryTooltip);
     }
 
     /**
@@ -1357,38 +1661,44 @@ private:
         );
         this.setCell(fromRowIndex, 2, sideText, directionColor);
 
-        string longMediumText = this.formatRanks(
-            fromCandidate.baseLongMediumRank,
-            fromCandidate.quoteLongMediumRank,
-            fromCandidate.longMediumRankDifference
-        );
-        if (MathAbs(fromCandidate.longMediumRankDifference) < 4
-                && fromCandidate.isLongMediumExtremeRankMatched()) {
-            longMediumText += "端";
+        if (this.continuationMode) {
+            this.drawContinuationCells(fromRowIndex, fromCandidate);
+        } else {
+            string longMediumText = this.formatRanks(
+                fromCandidate.baseLongMediumRank,
+                fromCandidate.quoteLongMediumRank,
+                fromCandidate.longMediumRankDifference
+            );
+            if (MathAbs(fromCandidate.longMediumRankDifference) < 4
+                    && fromCandidate.isLongMediumExtremeRankMatched()) {
+                longMediumText += "端";
+            }
+
+            this.setCell(fromRowIndex, 3, longMediumText, this.normalColor);
+            this.setCellTooltip(fromRowIndex, 3, this.getPeriodRankTooltip(fromCandidate, true));
+
+            string mediumShortText = this.formatRanks(
+                fromCandidate.baseMediumShortRank,
+                fromCandidate.quoteMediumShortRank,
+                fromCandidate.mediumShortRankDifference
+            );
+            if (MathAbs(fromCandidate.mediumShortRankDifference) < 4
+                    && fromCandidate.isMediumShortExtremeRankMatched()) {
+                mediumShortText += "端";
+            }
+
+            this.setCell(fromRowIndex, 4, mediumShortText, this.normalColor);
+            this.setCellTooltip(fromRowIndex, 4, this.getPeriodRankTooltip(fromCandidate, false));
+            this.setCell(
+                fromRowIndex,
+                5,
+                StringFormat("%d / %d", fromCandidate.minimumRankDifference,
+                    fromCandidate.totalRankDifference),
+                this.normalColor
+            );
+            this.setCellTooltip(fromRowIndex, 5, "長中期と中短期の小さい絶対順位差／絶対順位差合計");
         }
 
-        this.setCell(fromRowIndex, 3, longMediumText, this.normalColor);
-        this.setCellTooltip(fromRowIndex, 3, this.getPeriodRankTooltip(fromCandidate, true));
-
-        string mediumShortText = this.formatRanks(
-            fromCandidate.baseMediumShortRank,
-            fromCandidate.quoteMediumShortRank,
-            fromCandidate.mediumShortRankDifference
-        );
-        if (MathAbs(fromCandidate.mediumShortRankDifference) < 4
-                && fromCandidate.isMediumShortExtremeRankMatched()) {
-            mediumShortText += "端";
-        }
-
-        this.setCell(fromRowIndex, 4, mediumShortText, this.normalColor);
-        this.setCellTooltip(fromRowIndex, 4, this.getPeriodRankTooltip(fromCandidate, false));
-        this.setCell(
-            fromRowIndex,
-            5,
-            StringFormat("%d / %d", fromCandidate.minimumRankDifference,
-                fromCandidate.totalRankDifference),
-            this.normalColor
-        );
         this.setCell(fromRowIndex, 6, stateText, stateColor);
 
         color emaColor = this.mutedColor;
@@ -1464,6 +1774,65 @@ private:
 
         this.setCellTooltip(fromRowIndex, 9,
             andTooltip + "\n" + h1EmaTooltip + "\n\n" + m1EmaTooltip);
+    }
+
+    /**
+     * 継続表示の3列を更新し、元の順位と履歴の品質をツールチップへ残す。
+     */
+    void drawContinuationCells(const int fromRowIndex, CurrencyStrengthEntryCandidate &fromCandidate) {
+        string rankText = "最新順位（基軸/決済・符号付き差）\n長中期 "
+            + this.formatRanks(fromCandidate.baseLongMediumRank, fromCandidate.quoteLongMediumRank,
+                fromCandidate.longMediumRankDifference)
+            + "\n中短期 " + this.formatRanks(fromCandidate.baseMediumShortRank, fromCandidate.quoteMediumShortRank,
+                fromCandidate.mediumShortRankDifference);
+        string supplementText = "LIVEのみ";
+        if (fromCandidate.continuation.supplemented) {
+            supplementText = "TESTER補完あり";
+        }
+
+        string rateText = "—";
+        if (fromCandidate.continuation.available && fromCandidate.continuation.validCount > 0) {
+            rateText = StringFormat("%.1f%%", 100.0 * fromCandidate.continuation.matchedCount
+                / fromCandidate.continuation.validCount);
+        }
+
+        string rateTooltip = StringFormat("方向維持 %d/%d本（%s）\n全36本・29本以上一致が条件。維持率は勝率ではありません。\n",
+            fromCandidate.continuation.matchedCount, fromCandidate.continuation.validCount, rateText)
+            + supplementText + "\n" + rankText;
+        this.setCell(fromRowIndex, 3, rateText, this.normalColor);
+        this.setCellTooltip(fromRowIndex, 3, rateTooltip);
+
+        int minutes = (int)MathMax(0, MathMin(10800, fromCandidate.continuation.consecutiveSeconds)) / 60;
+        string continuousText = StringFormat("%dh%02dm", minutes / 60, minutes % 60);
+        this.setCell(fromRowIndex, 4, continuousText, this.normalColor);
+        this.setCellTooltip(fromRowIndex, 4,
+            "直近からの方向維持：" + continuousText + "\n30分以上が条件、最大3時間。\n"
+            + supplementText + "\n" + rankText);
+
+        string gapText = "—";
+        string gapTooltip = "差変化：直近・前30分の履歴を取得できていません。";
+        color gapColor = this.mutedColor;
+        if (fromCandidate.continuation.gapAvailable) {
+            gapText = "横ばい";
+            gapColor = this.normalColor;
+            if (fromCandidate.continuation.gapChange > 0) {
+                gapText = "拡大";
+                gapColor = clrLimeGreen;
+            } else if (fromCandidate.continuation.gapChange < 0) {
+                gapText = "縮小";
+                gapColor = this.warningColor;
+            }
+
+            gapTooltip = StringFormat("候補方向の中短期順位差平均\n直近30分 %.2f / 前30分 %.2f\n差分 %+.2f：%s",
+                fromCandidate.continuation.recentAverageDifference,
+                fromCandidate.continuation.previousAverageDifference,
+                fromCandidate.continuation.recentAverageDifference - fromCandidate.continuation.previousAverageDifference,
+                gapText)
+                + "\n+0.5以上は拡大、-0.5以下は縮小、それ以外は横ばい。";
+        }
+
+        this.setCell(fromRowIndex, 5, gapText, gapColor);
+        this.setCellTooltip(fromRowIndex, 5, gapTooltip + "\n" + supplementText);
     }
 
     /**
@@ -2002,10 +2371,22 @@ private:
             case 2:
                 return "SIDE";
             case 3:
+                if (this.continuationMode) {
+                    return "維持率";
+                }
+
                 return "長中期";
             case 4:
+                if (this.continuationMode) {
+                    return "連続";
+                }
+
                 return "中短期";
             case 5:
+                if (this.continuationMode) {
+                    return "差変化";
+                }
+
                 return "差/合計";
             case 6:
                 return "強弱";
@@ -2067,6 +2448,8 @@ private:
         this.readyHighlightEnabled = false;
         this.displayedSelectedRow = -2;
         this.hasNewMarkers = false;
+        this.summarySource = "";
+        this.summaryDisplay = "";
         ArrayResize(this.displayedSymbols, 0);
         ArrayResize(this.displayedReady, 0);
         ArrayResize(this.displayedBuy, 0);

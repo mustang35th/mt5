@@ -11,10 +11,12 @@
 #define MSTNG_CURRENCY_STRENGTH_ENTRY_CANDIDATE_LIST_MQH
 
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Strength\CurrencyStrengthAllRankPoint.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidate.mqh>
 #include <Mstng\Strength\CurrencyStrengthH1EmaProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthM1EmaProvider.mqh>
+#include <Mstng\Strength\CurrencyStrengthTrendContinuationEvaluator.mqh>
 
 /**
  * 長中期と中短期の通貨順位を使用して
@@ -225,6 +227,37 @@ public:
         }
 
         return isReady;
+    }
+
+    /**
+     * 全候補へ同じM5履歴による継続判定を設定する。候補順序は変更しない。
+     *
+     * @param fromPoints 時刻昇順の全通貨順位履歴。
+     * @param fromTargetM5BarTime 現在の候補に対応するM5足開始時刻。
+     */
+    void updateContinuation(
+        const CurrencyStrengthAllRankPoint &fromPoints[],
+        const datetime fromTargetM5BarTime
+    ) {
+        int candidateCount = ArraySize(this.candidates);
+        for (int i = 0; i < candidateCount; i++) {
+            CurrencyStrengthTrendContinuationEvaluator::evaluate(
+                fromPoints,
+                fromTargetM5BarTime,
+                this.candidates[i],
+                this.candidates[i].continuation
+            );
+        }
+    }
+
+    /**
+     * 全候補の継続判定を未取得へ戻す。
+     */
+    void clearContinuation() {
+        int candidateCount = ArraySize(this.candidates);
+        for (int i = 0; i < candidateCount; i++) {
+            this.candidates[i].continuation.reset();
+        }
     }
 
     /**
