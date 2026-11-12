@@ -64,7 +64,9 @@ public:
         this.corner = CORNER_LEFT_UPPER;
         this.xDistance = fromXDistance;
         this.yDistance = fromYDistance;
-        this.sortType = fromSortType;
+        this.sortColumn = this.getInitialSortColumn(fromSortType);
+        this.sortAscending = false;
+        this.sortHeadersDirty = true;
         this.showTimeFrameScores = fromShowTimeFrameScores;
         this.panelWidth = 800;
         if (!this.showTimeFrameScores) {
@@ -129,6 +131,10 @@ public:
             if (!this.create(total, fromCalculator)) {
                 return false;
             }
+        }
+
+        if (!this.updateSortHeaders(fromCalculator)) {
+            return false;
         }
 
         int displayOrder[];
@@ -206,6 +212,71 @@ public:
         this.setCollapsed(!this.collapsed);
 
         return true;
+    }
+
+    /**
+     * 表示中のスコア列見出しで並び替える。別列は降順、同じ列は昇順・降順を切り替える。
+     * 保持済み集計値による再描画は呼び出し側で行う。
+     *
+     * @param fromObjectName クリックされたオブジェクト名。
+     * @return 自分のスコア見出しを処理した場合true。
+     */
+    bool handleSortClick(const string fromObjectName) {
+        if (!this.created || this.collapsed || this.createdRowCount <= 0) {
+            return false;
+        }
+
+        for (int i = 2; i <= 14; i++) {
+            if (!this.isColumnVisible(i) || fromObjectName != this.getHeaderObjectName(i)) {
+                continue;
+            }
+
+            bool ascending = false;
+            if (i == this.sortColumn) {
+                ascending = !this.sortAscending;
+            }
+
+            this.setSortSelection(i, ascending);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 保存対象となる選択列を返す。2～8はMN1～M5、9～14は合成スコア。
+     */
+    int getSortColumn() const {
+        return this.sortColumn;
+    }
+
+    /**
+     * 選択列の小さいスコアから表示する場合trueを返す。
+     */
+    bool isSortAscending() const {
+        return this.sortAscending;
+    }
+
+    /**
+     * 並び替えの保存状態を復元する。非表示・対象外の列はTOTAL降順へ戻す。
+     * 計算結果や他パネルの順位は変更しない。
+     */
+    void setSortSelection(const int fromColumnIndex, const bool fromAscending) {
+        int selectedColumn = fromColumnIndex;
+        bool ascending = fromAscending;
+        if (selectedColumn < 2 || selectedColumn > 14 || !this.isColumnVisible(selectedColumn)) {
+            selectedColumn = 14;
+            ascending = false;
+        }
+
+        if (this.sortColumn == selectedColumn && this.sortAscending == ascending) {
+            return;
+        }
+
+        this.sortColumn = selectedColumn;
+        this.sortAscending = ascending;
+        this.sortHeadersDirty = true;
     }
 
     /**
@@ -310,8 +381,14 @@ private:
     /** チャート上端からの距離。 */
     int yDistance;
 
-    /** 一覧の並び替え基準。 */
-    CurrencyStrengthSortType sortType;
+    /** 一覧の並び替え対象列。2～8は時間足、9～14は合成スコア。 */
+    int sortColumn;
+
+    /** 選択列を昇順にする場合true。同点の比較条件は降順時と共通。 */
+    bool sortAscending;
+
+    /** 列見出しの選択色・方向記号を再反映する場合true。 */
+    bool sortHeadersDirty;
 
     /** MN1からM5までの時間足別スコアを表示する場合true。 */
     bool showTimeFrameScores;
@@ -496,7 +573,7 @@ private:
 
             color columnHeaderColor = this.headerColor;
 
-            if (i == this.getSortColumnIndex()) {
+            if (i == this.sortColumn) {
                 columnHeaderColor = this.warningColor;
             }
 
@@ -508,6 +585,21 @@ private:
                 columnHeaderColor,
                 this.getHeaderText(i, fromCalculator)
             )) {
+                this.destroyObjects();
+
+                return false;
+            }
+
+            string headerTooltip = "クリックで降順、同じ列の再クリックで昇順／降順を切替";
+            if (i == 0) {
+                headerTooltip = "表示順の連番です。同点や昇順表示でも1から表示します。強弱の固定順位ではありません。";
+            } else if (i == 1) {
+                headerTooltip = "通貨コード。文字色はTOTALの正負を示します。並び替え列を変更しても基準は同じです。";
+            } else if (i == 15) {
+                headerTooltip = "集計対象ペア数。並び替えの対象外です。";
+            }
+
+            if (!ObjectSetString(this.chartId, this.getHeaderObjectName(i), OBJPROP_TOOLTIP, headerTooltip)) {
                 this.destroyObjects();
 
                 return false;
@@ -575,6 +667,13 @@ private:
             this.normalColor,
             "-"
         )) {
+            this.destroyObjects();
+
+            return false;
+        }
+
+        if (!ObjectSetString(this.chartId, this.objectPrefix + "Summary", OBJPROP_TOOLTIP,
+                "STRONG／WEAKと通貨ペア候補はTOTAL基準です。選択列の並び順には連動しません。")) {
             this.destroyObjects();
 
             return false;
@@ -766,7 +865,7 @@ private:
     /**
      * 現在要素を直前要素より前へ移動するか判定する。
      *
-     * 選択スコア降順、総合スコア降順、通貨コード昇順の順で比較する。
+     * 選択列の昇降順、総合スコア降順、通貨コード昇順の順で比較する。
      * スコア差が0.000001以内の場合は同点として次の比較条件を使用する。
      *
      * @param fromCurrentInfo 現在要素。
@@ -784,6 +883,9 @@ private:
         const double scoreTolerance = 0.000001;
         double scoreDifference = this.getSortScore(fromCurrentInfo)
             - this.getSortScore(fromPreviousInfo);
+        if (this.sortAscending) {
+            scoreDifference = 0.0 - scoreDifference;
+        }
 
         if (scoreDifference > scoreTolerance) {
             return true;
@@ -821,18 +923,22 @@ private:
             return 0.0;
         }
 
-        switch (this.sortType) {
-            case CURRENCY_STRENGTH_SORT_LONG:
+        if (this.sortColumn >= 2 && this.sortColumn <= 8) {
+            return fromCurrencyStrengthInfo.getScore(this.sortColumn - 2);
+        }
+
+        switch (this.sortColumn) {
+            case 9:
                 return fromCurrencyStrengthInfo.getLongTermAverageScore();
-            case CURRENCY_STRENGTH_SORT_LONG_MEDIUM:
+            case 10:
                 return fromCurrencyStrengthInfo.getLongMediumTermAverageScore();
-            case CURRENCY_STRENGTH_SORT_MEDIUM:
+            case 11:
                 return fromCurrencyStrengthInfo.getMediumTermAverageScore();
-            case CURRENCY_STRENGTH_SORT_MEDIUM_SHORT:
+            case 12:
                 return fromCurrencyStrengthInfo.getMediumShortTermAverageScore();
-            case CURRENCY_STRENGTH_SORT_SHORT:
+            case 13:
                 return fromCurrencyStrengthInfo.getShortTermAverageScore();
-            case CURRENCY_STRENGTH_SORT_TOTAL:
+            case 14:
                 return fromCurrencyStrengthInfo.getTotalScore();
         }
 
@@ -842,34 +948,38 @@ private:
     /**
      * 選択中の並び替え名を取得する。
      *
+     * @param fromCalculator 時間足名を取得する集計クラス。
      * @return タイトル表示用の並び替え名。
      */
-    string getSortTypeText() {
-        switch (this.sortType) {
-            case CURRENCY_STRENGTH_SORT_LONG:
-                return "長期順";
-            case CURRENCY_STRENGTH_SORT_LONG_MEDIUM:
-                return "長中期順";
-            case CURRENCY_STRENGTH_SORT_MEDIUM:
-                return "中期順";
-            case CURRENCY_STRENGTH_SORT_MEDIUM_SHORT:
-                return "中短期順";
-            case CURRENCY_STRENGTH_SORT_SHORT:
-                return "短期順";
-            case CURRENCY_STRENGTH_SORT_TOTAL:
-                return "合計順";
+    string getSortTypeText(CurrencyStrengthCalculator *fromCalculator) {
+        string sortName = "合計";
+        if (this.sortColumn >= 2 && this.sortColumn <= 8) {
+            sortName = TimeUtil::convertTimeFrameToString(fromCalculator.getTimeFrame(this.sortColumn - 2));
+        } else {
+            switch (this.sortColumn) {
+                case 9: sortName = "長期"; break;
+                case 10: sortName = "長中期"; break;
+                case 11: sortName = "中期"; break;
+                case 12: sortName = "中短期"; break;
+                case 13: sortName = "短期"; break;
+            }
         }
 
-        return "合計順";
+        if (this.sortAscending) {
+            return sortName + "昇順";
+        }
+
+        return sortName + "降順";
     }
 
     /**
-     * 選択中の並び替えに対応する列番号を取得する。
+     * 既存の入力設定を初期選択列へ変換する。
      *
-     * @return 強調表示する列番号。
+     * @param fromSortType 従来の並び替え設定。
+     * @return 初期選択列。未知の設定はTOTAL。
      */
-    int getSortColumnIndex() {
-        switch (this.sortType) {
+    int getInitialSortColumn(const CurrencyStrengthSortType fromSortType) {
+        switch (fromSortType) {
             case CURRENCY_STRENGTH_SORT_LONG:
                 return 9;
             case CURRENCY_STRENGTH_SORT_LONG_MEDIUM:
@@ -885,6 +995,45 @@ private:
         }
 
         return 14;
+    }
+
+    /**
+     * 並び替えの変更時と生成後だけ、見出しの選択色と方向記号を反映する。
+     *
+     * @param fromCalculator 時間足名を取得する集計クラス。
+     * @return 対象見出しの反映に成功した場合true。
+     */
+    bool updateSortHeaders(CurrencyStrengthCalculator *fromCalculator) {
+        if (!this.sortHeadersDirty) {
+            return true;
+        }
+
+        for (int i = 2; i <= 14; i++) {
+            if (!this.isColumnVisible(i)) {
+                continue;
+            }
+
+            string text = this.getHeaderText(i, fromCalculator);
+            color textColor = this.headerColor;
+            if (i == this.sortColumn) {
+                textColor = this.warningColor;
+                if (this.sortAscending) {
+                    text += "▲";
+                } else {
+                    text += "▼";
+                }
+            }
+
+            string objectName = this.getHeaderObjectName(i);
+            if (!ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, text)
+                    || !ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor)) {
+                return false;
+            }
+        }
+
+        this.sortHeadersDirty = false;
+
+        return true;
     }
 
     /**
@@ -1029,7 +1178,7 @@ private:
             voteWeightModeText,
             fromCalculator.validPairCount,
             fromCalculator.getExpectedPairCount(),
-            this.getSortTypeText()
+            this.getSortTypeText(fromCalculator)
         );
 
         ObjectSetString(
@@ -1361,6 +1510,7 @@ private:
         this.created = false;
         this.createdRowCount = 0;
         this.createdPanelHeight = 0;
+        this.sortHeadersDirty = true;
         ArrayFree(this.cellTexts);
         ArrayFree(this.cellColors);
         ArrayFree(this.cellTextValid);

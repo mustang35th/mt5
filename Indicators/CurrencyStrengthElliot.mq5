@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.32"
+#property version   "1.33"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -360,6 +360,7 @@ int OnInit() {
     gScoreSnapshotReady = false;
     gScoreOrphanCleanupPending = true;
     loadScoreDisplaySettings();
+    loadScoreSortSettings();
     if (gDrawCurrencyStrengthList != NULL) {
         gDrawCurrencyStrengthDailyRangeList = new DrawCurrencyStrengthDailyRangeList(
             0,
@@ -533,7 +534,7 @@ void OnTimer() {
 }
 
 /**
- * 日足値幅一覧・スコア開閉・地域・通貨名・候補ペア・各表示条件のクリックを処理する。
+ * 日足値幅一覧・スコア開閉とソート・地域・通貨名・候補ペア・各表示条件のクリックを処理する。
  *
  * @param fromEventId チャートイベントID。
  * @param fromLongValue 整数イベント引数。
@@ -558,6 +559,15 @@ void OnChartEvent(
         drawScorePanel();
         redrawBatch.finish();
         saveScoreDisplaySettings();
+
+        return;
+    }
+
+    if (gDrawCurrencyStrengthList != NULL
+            && gDrawCurrencyStrengthList.handleSortClick(fromStringValue)) {
+        drawScorePanel();
+        redrawBatch.finish();
+        saveScoreSortSettings();
 
         return;
     }
@@ -805,6 +815,68 @@ void saveScoreDisplaySettings() {
     if (GlobalVariableSet(settingsKey, settings) == 0) {
         gLogger.error(__FUNCTION__, StringFormat(
             "currency strength score display settings save failed. error=%d", GetLastError()
+        ));
+
+        return;
+    }
+
+    GlobalVariablesFlush();
+}
+
+/**
+ * スコアのソート列・方向専用の保存キーを取得する。
+ *
+ * @return チャートIDと計算方式で区別した端末グローバル変数名。
+ */
+string getScoreSortSettingsKey() {
+    return "Mstng.CSE.ScoreSort.v1." + IntegerToString(ChartID())
+        + "." + IntegerToString((int)voteWeightMode);
+}
+
+/**
+ * 初回描画前にソート列・方向を復元する。
+ * 未保存・不正値・テスターではinput指定列の降順を維持する。
+ */
+void loadScoreSortSettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthList == NULL) {
+        return;
+    }
+
+    double savedValue = 0;
+    if (!GlobalVariableGet(getScoreSortSettingsKey(), savedValue)
+            || !MathIsValidNumber(savedValue)
+            || savedValue < 4 || savedValue > 29
+            || MathFloor(savedValue) != savedValue) {
+        return;
+    }
+
+    int settings = (int)savedValue;
+    gDrawCurrencyStrengthList.setSortSelection(settings / 2, settings % 2 == 1);
+}
+
+/**
+ * 列見出しクリックで変更したソート列・方向を保存する。
+ * 開閉状態とは分離し、通常更新・取得失敗・終了処理からは書き込まない。
+ */
+void saveScoreSortSettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthList == NULL) {
+        return;
+    }
+
+    int settings = gDrawCurrencyStrengthList.getSortColumn() * 2;
+    if (gDrawCurrencyStrengthList.isSortAscending()) {
+        settings++;
+    }
+
+    string settingsKey = getScoreSortSettingsKey();
+    double previousValue = 0;
+    if (GlobalVariableGet(settingsKey, previousValue) && previousValue == settings) {
+        return;
+    }
+
+    if (GlobalVariableSet(settingsKey, settings) == 0) {
+        gLogger.error(__FUNCTION__, StringFormat(
+            "currency strength score sort settings save failed. error=%d", GetLastError()
         ));
 
         return;
