@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.05"
+#property version   "1.06"
 #property indicator_separate_window
 #property indicator_buffers 7
 #property indicator_plots   5
@@ -31,6 +31,7 @@
 #include <Mstng\Draw\ChartRedrawRequest.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankDeltaPanel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankGapFill.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankGapLabels.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
@@ -113,6 +114,9 @@ DrawCurrencyStrengthRankDeltaPanel *gPanel = NULL;
 /** 表示中の区間だけを前足比で塗り分ける。 */
 DrawCurrencyStrengthRankGapFill *gFill = NULL;
 
+/** 長中期の順位差が変化した足に両通貨順位を表示する。 */
+DrawCurrencyStrengthRankGapLabels *gRankLabels = NULL;
+
 /** イベント内の再描画要求をまとめる。 */
 ChartRedrawRequest gRedrawRequest;
 
@@ -151,6 +155,9 @@ bool gPanelDirty = true;
 
 /** 順位差または表示範囲の変更を塗りへ反映する必要がある場合true。 */
 bool gFillDirty = true;
+
+/** 順位または表示範囲の変更を数値ラベルへ反映する場合true。 */
+bool gRankLabelsDirty = true;
 
 /** 再試行用に保持するパネル見出し。 */
 string gPanelTitle = "";
@@ -234,6 +241,14 @@ int OnInit() {
         return INIT_FAILED;
     }
 
+    if (rankPeriod == CURRENCY_STRENGTH_RANK_DELTA_LONG_MEDIUM) {
+        gRankLabels = new DrawCurrencyStrengthRankGapLabels(ChartID(), objectSuffix,
+            gBaseCurrency, gQuoteCurrency, GetPointer(gRedrawRequest));
+        if (gRankLabels == NULL) {
+            return INIT_FAILED;
+        }
+    }
+
     if (!gIsTester && !EventSetTimer(10)) {
         return INIT_FAILED;
     }
@@ -246,6 +261,11 @@ int OnInit() {
  */
 void OnDeinit(const int fromReason) {
     EventKillTimer();
+    if (gRankLabels != NULL) {
+        delete gRankLabels;
+        gRankLabels = NULL;
+    }
+
     if (gFill != NULL) {
         delete gFill;
         gFill = NULL;
@@ -307,6 +327,7 @@ int OnCalculate(
     }
 
     drawFill();
+    drawRankLabels();
     drawPanel();
     gRedrawRequest.flush(ChartID());
 
@@ -319,6 +340,7 @@ int OnCalculate(
 void OnTimer() {
     gPanelDirty = true;
     drawFill(true);
+    drawRankLabels(true);
     drawPanel();
     gRedrawRequest.flush(ChartID());
 }
@@ -337,6 +359,7 @@ void OnChartEvent(const int fromEventId, const long &fromLongValue,
 
     gPanelDirty = true;
     drawFill(true);
+    drawRankLabels(true);
     drawPanel();
     gRedrawRequest.flush(ChartID());
 }
@@ -456,6 +479,7 @@ void updateBuffers(const int fromRatesTotal, const int fromPreviousCalculated,
     const datetime &fromTime[], const datetime fromDisplayStart, const datetime fromTargetTime,
     const bool fromFullRefresh, const bool fromChanged, const datetime fromChangedStart) {
     gFillDirty = true;
+    gRankLabelsDirty = true;
     if (fromFullRefresh) {
         // 公開済みの境界バッファは欠損0、順位差は欠損EMPTY_VALUEを維持する。
         ArrayInitialize(gGapFillBuffer, 0.0);
@@ -588,6 +612,11 @@ void updatePanelText(const datetime fromTargetTime) {
         + "\nその足の両通貨順位がそろえば表示。M1は同じM5枠、M15以上は足開始時点。"
         + "\nM1の同じM5枠内は前足比0でも色を維持。両端とも順位差0なら面積なし。"
         + "\n取得状態：" + gProvider.getStatusText();
+    if (rankPeriod == CURRENCY_STRENGTH_RANK_DELTA_LONG_MEDIUM) {
+        gPanelTooltip += "\n変化点の数値：" + gBaseCurrency + "順位 / " + gQuoteCurrency
+            + "順位（各通貨色）。順位差が変化した足だけ表示。";
+    }
+
     if (sampleTime > 0) {
         gPanelTooltip += "\n基準時刻 SRV：" + TimeUtil::formatYyyymmddhhmiss(sampleTime);
     }
@@ -639,6 +668,18 @@ void drawFill(const bool fromCheckViewport = false) {
     }
 
     gFillDirty = !gFill.draw(ChartWindowFind(), gGapBuffer, gBarTimeBuffer, gFillDirty);
+}
+
+/**
+ * 長中期の数値ラベルをデータ変更時と画面確認時だけ反映する。
+ */
+void drawRankLabels(const bool fromCheckViewport = false) {
+    if (gRankLabels == NULL || (!gRankLabelsDirty && !fromCheckViewport)) {
+        return;
+    }
+
+    gRankLabelsDirty = !gRankLabels.draw(ChartWindowFind(), gGapBuffer,
+        gBaseRankBuffer, gQuoteRankBuffer, gBarTimeBuffer, gRankLabelsDirty);
 }
 
 /**
