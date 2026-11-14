@@ -5,30 +5,32 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.03"
+#property version   "1.05"
 #property indicator_separate_window
-#property indicator_buffers 6
-#property indicator_plots   4
+#property indicator_buffers 7
+#property indicator_plots   5
 #property indicator_minimum -7.0
 #property indicator_maximum 7.0
 #property indicator_level1  0.0
 #property indicator_levelcolor clrDimGray
 #property indicator_levelstyle STYLE_DOT
 #property indicator_levelwidth 1
-#property indicator_label1  "Rank Gap Area"
-#property indicator_type1   DRAW_FILLING
-#property indicator_color1  C'0,51,51', C'51,21,36'
-#property indicator_label2  "Rank Gap"
-#property indicator_type2   DRAW_COLOR_LINE
-#property indicator_color2  clrAqua, clrHotPink, clrGray
-#property indicator_width2  2
-#property indicator_label3  "Base Rank"
-#property indicator_type3   DRAW_NONE
-#property indicator_label4  "Quote Rank"
+#property indicator_label1  "Rank Gap Boundary"
+#property indicator_type1   DRAW_NONE
+#property indicator_label2  "Zero Boundary"
+#property indicator_type2   DRAW_NONE
+#property indicator_label3  "Rank Gap"
+#property indicator_type3   DRAW_COLOR_LINE
+#property indicator_color3  clrAqua, clrHotPink, clrGray
+#property indicator_width3  2
+#property indicator_label4  "Base Rank"
 #property indicator_type4   DRAW_NONE
+#property indicator_label5  "Quote Rank"
+#property indicator_type5   DRAW_NONE
 
 #include <Mstng\Draw\ChartRedrawRequest.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankDeltaPanel.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankGapFill.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
@@ -78,10 +80,10 @@ input(name="年別DBファイルを参照") bool databaseSplitByYear = true;
 /** MT5共通フォルダ内のDBを使用する。テスターでは必須。 */
 input(name="MT5共通フォルダから読み込む") bool databaseUseCommonFolder = true;
 
-/** 順位差側の塗り境界。欠損時は0として塗りを切る。 */
+/** v1.03互換の順位差側境界。Canvas描画からは参照しない。 */
 double gGapFillBuffer[];
 
-/** ゼロ側の塗り境界。欠損時は0として塗りを切る。 */
+/** v1.03互換のゼロ側境界。Canvas描画からは参照しない。 */
 double gZeroFillBuffer[];
 
 /** 各足の符号付き順位差。0も有効値。 */
@@ -96,7 +98,10 @@ double gBaseRankBuffer[];
 /** 同じ足の決済通貨順位。Data Windowへ表示する。 */
 double gQuoteRankBuffer[];
 
-/** 有効な0と欠損の0/0を区別する塗り専用の微小オフセット。 */
+/** 順位差と同じインデックスのチャート足時刻。Canvas座標変換に使う。 */
+double gBarTimeBuffer[];
+
+/** v1.03の境界バッファ値を維持するための微小オフセット。 */
 const double fillZeroOffset = 0.00000001;
 
 /** DB履歴の取得と保持を担当する。 */
@@ -104,6 +109,9 @@ CurrencyStrengthRankDeltaHistoryProvider *gProvider = NULL;
 
 /** 右上の状態表示と再読込ボタン。 */
 DrawCurrencyStrengthRankDeltaPanel *gPanel = NULL;
+
+/** 表示中の区間だけを前足比で塗り分ける。 */
+DrawCurrencyStrengthRankGapFill *gFill = NULL;
 
 /** イベント内の再描画要求をまとめる。 */
 ChartRedrawRequest gRedrawRequest;
@@ -141,10 +149,13 @@ bool gForceRebuild = false;
 /** パネルの反映・再試行が必要な場合true。 */
 bool gPanelDirty = true;
 
+/** 順位差または表示範囲の変更を塗りへ反映する必要がある場合true。 */
+bool gFillDirty = true;
+
 /** 再試行用に保持するパネル見出し。 */
 string gPanelTitle = "";
 
-/** 再試行用に保持する順位差と両通貨順位の文字列。 */
+/** 再試行用に保持する順位差と前足比の文字列。 */
 string gPanelValue = "順位データ待ち";
 
 /** 再試行用に保持する取得元と基準時刻。 */
@@ -216,10 +227,10 @@ int OnInit() {
     gProvider = new CurrencyStrengthRankDeltaHistoryProvider(
         databaseFileName, databaseSplitByYear, databaseUseCommonFolder,
         databaseProfile, voteWeightMode, gIsTester, gBaseCurrency, gQuoteCurrency);
-    gPanel = new DrawCurrencyStrengthRankDeltaPanel(ChartID(),
-        StringFormat("%d_%I64u", (int)rankPeriod, GetMicrosecondCount()),
-        GetPointer(gRedrawRequest));
-    if (gProvider == NULL || gPanel == NULL) {
+    string objectSuffix = StringFormat("%d_%I64u", (int)rankPeriod, GetMicrosecondCount());
+    gPanel = new DrawCurrencyStrengthRankDeltaPanel(ChartID(), objectSuffix, GetPointer(gRedrawRequest));
+    gFill = new DrawCurrencyStrengthRankGapFill(ChartID(), objectSuffix, GetPointer(gRedrawRequest));
+    if (gProvider == NULL || gPanel == NULL || gFill == NULL) {
         return INIT_FAILED;
     }
 
@@ -235,6 +246,11 @@ int OnInit() {
  */
 void OnDeinit(const int fromReason) {
     EventKillTimer();
+    if (gFill != NULL) {
+        delete gFill;
+        gFill = NULL;
+    }
+
     if (gPanel != NULL) {
         delete gPanel;
         gPanel = NULL;
@@ -290,6 +306,7 @@ int OnCalculate(
         updatePanelText(targetTime);
     }
 
+    drawFill();
     drawPanel();
     gRedrawRequest.flush(ChartID());
 
@@ -301,6 +318,7 @@ int OnCalculate(
  */
 void OnTimer() {
     gPanelDirty = true;
+    drawFill(true);
     drawPanel();
     gRedrawRequest.flush(ChartID());
 }
@@ -318,26 +336,26 @@ void OnChartEvent(const int fromEventId, const long &fromLongValue,
     }
 
     gPanelDirty = true;
+    drawFill(true);
     drawPanel();
     gRedrawRequest.flush(ChartID());
 }
 
 /**
- * ゼロとの塗りを先に描き、順位差の折れ線と両通貨順位を登録する。
+ * 公開済みのバッファ番号を維持し、折れ線とCanvas用の足時刻を登録する。
  */
 bool initializeBuffers() {
     // 保存済みの描画設定がある場合も、順位差と両通貨順位の対応を維持する。
-    if (!PlotIndexSetInteger(0, PLOT_DRAW_TYPE, DRAW_FILLING)
-            || !PlotIndexSetInteger(1, PLOT_DRAW_TYPE, DRAW_COLOR_LINE)
-            || !PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_NONE)
+    if (!PlotIndexSetInteger(0, PLOT_DRAW_TYPE, DRAW_NONE)
+            || !PlotIndexSetInteger(1, PLOT_DRAW_TYPE, DRAW_NONE)
+            || !PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_COLOR_LINE)
             || !PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_NONE)
-            || !PlotIndexSetInteger(0, PLOT_LINE_COLOR, 0, C'0,51,51')
-            || !PlotIndexSetInteger(0, PLOT_LINE_COLOR, 1, C'51,21,36')
-            || !PlotIndexSetInteger(1, PLOT_LINE_WIDTH, 2)
-            || !PlotIndexSetInteger(1, PLOT_COLOR_INDEXES, 3)
-            || !PlotIndexSetInteger(1, PLOT_LINE_COLOR, 0, clrAqua)
-            || !PlotIndexSetInteger(1, PLOT_LINE_COLOR, 1, clrHotPink)
-            || !PlotIndexSetInteger(1, PLOT_LINE_COLOR, 2, clrGray)
+            || !PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_NONE)
+            || !PlotIndexSetInteger(2, PLOT_LINE_WIDTH, 2)
+            || !PlotIndexSetInteger(2, PLOT_COLOR_INDEXES, 3)
+            || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 0, clrAqua)
+            || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 1, clrHotPink)
+            || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 2, clrGray)
             || !IndicatorSetDouble(INDICATOR_MINIMUM, -7.0)
             || !IndicatorSetDouble(INDICATOR_MAXIMUM, 7.0)
             || !IndicatorSetInteger(INDICATOR_LEVELSTYLE, 0, STYLE_DOT)
@@ -350,7 +368,8 @@ bool initializeBuffers() {
             || !SetIndexBuffer(2, gGapBuffer, INDICATOR_DATA)
             || !SetIndexBuffer(3, gGapColorBuffer, INDICATOR_COLOR_INDEX)
             || !SetIndexBuffer(4, gBaseRankBuffer, INDICATOR_DATA)
-            || !SetIndexBuffer(5, gQuoteRankBuffer, INDICATOR_DATA)) {
+            || !SetIndexBuffer(5, gQuoteRankBuffer, INDICATOR_DATA)
+            || !SetIndexBuffer(6, gBarTimeBuffer, INDICATOR_CALCULATIONS)) {
         return false;
     }
 
@@ -360,20 +379,23 @@ bool initializeBuffers() {
     ArraySetAsSeries(gGapColorBuffer, true);
     ArraySetAsSeries(gBaseRankBuffer, true);
     ArraySetAsSeries(gQuoteRankBuffer, true);
-    for (int i = 0; i < 4; i++) {
+    ArraySetAsSeries(gBarTimeBuffer, true);
+    for (int i = 0; i < 5; i++) {
         if (!PlotIndexSetDouble(i, PLOT_EMPTY_VALUE, EMPTY_VALUE)) {
             return false;
         }
     }
 
-    if (!PlotIndexSetString(0, PLOT_LABEL, "Rank Gap Area")
-            || !PlotIndexSetString(1, PLOT_LABEL, "Rank Gap")
-            || !PlotIndexSetString(2, PLOT_LABEL, gBaseCurrency + " Rank")
-            || !PlotIndexSetString(3, PLOT_LABEL, gQuoteCurrency + " Rank")
+    if (!PlotIndexSetString(0, PLOT_LABEL, "Rank Gap Boundary")
+            || !PlotIndexSetString(1, PLOT_LABEL, "Zero Boundary")
+            || !PlotIndexSetString(2, PLOT_LABEL, "Rank Gap")
+            || !PlotIndexSetString(3, PLOT_LABEL, gBaseCurrency + " Rank")
+            || !PlotIndexSetString(4, PLOT_LABEL, gQuoteCurrency + " Rank")
             || !PlotIndexSetInteger(0, PLOT_SHOW_DATA, false)
-            || !PlotIndexSetInteger(1, PLOT_SHOW_DATA, true)
+            || !PlotIndexSetInteger(1, PLOT_SHOW_DATA, false)
             || !PlotIndexSetInteger(2, PLOT_SHOW_DATA, true)
-            || !PlotIndexSetInteger(3, PLOT_SHOW_DATA, true)) {
+            || !PlotIndexSetInteger(3, PLOT_SHOW_DATA, true)
+            || !PlotIndexSetInteger(4, PLOT_SHOW_DATA, true)) {
         return false;
     }
 
@@ -433,14 +455,16 @@ bool refreshHistory(const datetime fromTargetTime, const datetime fromDisplaySta
 void updateBuffers(const int fromRatesTotal, const int fromPreviousCalculated,
     const datetime &fromTime[], const datetime fromDisplayStart, const datetime fromTargetTime,
     const bool fromFullRefresh, const bool fromChanged, const datetime fromChangedStart) {
+    gFillDirty = true;
     if (fromFullRefresh) {
-        // DRAW_FILLINGはEMPTY_VALUE区間を接続するため、欠損には両境界0を使う。
+        // 公開済みの境界バッファは欠損0、順位差は欠損EMPTY_VALUEを維持する。
         ArrayInitialize(gGapFillBuffer, 0.0);
         ArrayInitialize(gZeroFillBuffer, 0.0);
         ArrayInitialize(gGapBuffer, EMPTY_VALUE);
         ArrayInitialize(gGapColorBuffer, 0.0);
         ArrayInitialize(gBaseRankBuffer, EMPTY_VALUE);
         ArrayInitialize(gQuoteRankBuffer, EMPTY_VALUE);
+        ArrayInitialize(gBarTimeBuffer, 0.0);
     }
 
     int newCount = MathMax(1, fromRatesTotal - fromPreviousCalculated + 1);
@@ -480,7 +504,7 @@ void updateBuffers(const int fromRatesTotal, const int fromPreviousCalculated,
                     gProvider.points, gProvider.startIndex, barTime,
                     rankPeriod == CURRENCY_STRENGTH_RANK_DELTA_LONG_MEDIUM,
                     baseRank, quoteRank, gap, currentIndex)) {
-                // 有効な0は等値の境界として面積0にし、隣接する有効値との塗りを維持する。
+                // v1.03互換の境界値。塗り自体は順位差と足時刻から描画する。
                 gGapFillBuffer[i] = gap + fillZeroOffset;
                 gZeroFillBuffer[i] = fillZeroOffset;
                 gGapBuffer[i] = gap;
@@ -496,6 +520,9 @@ void updateBuffers(const int fromRatesTotal, const int fromPreviousCalculated,
             cachedTime = barTime;
             cachedBufferIndex = i;
         }
+
+        // M1の順位差は再利用するが、前足比は隣接するチャート足で判定する。
+        gBarTimeBuffer[i] = (double)fromTime[i];
     }
 
     if (!fromFullRefresh && fromDisplayStart > gLastDisplayStart) {
@@ -530,6 +557,7 @@ void clearBuffer(const int fromIndex) {
     gGapColorBuffer[fromIndex] = 0;
     gBaseRankBuffer[fromIndex] = EMPTY_VALUE;
     gQuoteRankBuffer[fromIndex] = EMPTY_VALUE;
+    gBarTimeBuffer[fromIndex] = 0.0;
 }
 
 /**
@@ -551,18 +579,36 @@ void updatePanelText(const datetime fromTargetTime) {
     gPanelSource = gProvider.getStatusText();
     gPanelTooltip = "各足の順位差 = 決済通貨順位 - 基軸通貨順位"
         + StringFormat("\n対象通貨：%s/%s / 縦軸：-7～+7", gBaseCurrency, gQuoteCurrency)
-        + "\n水色：基軸通貨優位 / ピンク：決済通貨優位 / 灰色：同順位"
-        + "\n0ラインと折れ線の間を塗る。正は暗い水色、負は暗いピンク、0は面積なし。"
-        + "\n色は各足の順位差に応じて線分単位で切替。欠損箇所では線をつながない。"
+        + "\n線：水色＝基軸通貨優位 / ピンク＝決済通貨優位 / 灰色＝同順位"
+        + "\n塗り：前足より上昇＝青緑 / 低下＝ピンク / 同じ＝直前の色を維持"
+        + "\n方向不明の横ばいは灰色。欠損区間では色の引き継ぎをリセット。"
+        + "\n前足比 = 今のチャート足の順位差 - 1本前のチャート足の順位差"
+        + "\n前足から今の足までを同じ色で塗る。0をまたいでも増減の色を維持。"
+        + "\n比較できない区間は塗らない。欠損箇所では線もつながない。"
         + "\nその足の両通貨順位がそろえば表示。M1は同じM5枠、M15以上は足開始時点。"
+        + "\nM1の同じM5枠内は前足比0でも色を維持。両端とも順位差0なら面積なし。"
         + "\n取得状態：" + gProvider.getStatusText();
     if (sampleTime > 0) {
         gPanelTooltip += "\n基準時刻 SRV：" + TimeUtil::formatYyyymmddhhmiss(sampleTime);
     }
 
     if (available) {
-        gPanelValue = StringFormat("順位差 %+d｜%s %d位 / %s %d位",
-            gap, gBaseCurrency, baseRank, gQuoteCurrency, quoteRank);
+        gPanelValue = StringFormat("順位差 %+d｜前足比 --", gap);
+        gPanelTooltip += StringFormat("\n通貨順位：%s %d位 / %s %d位",
+            gBaseCurrency, baseRank, gQuoteCurrency, quoteRank);
+        if (!gForceRebuild && ArraySize(gGapBuffer) > 1 && gGapBuffer[0] != EMPTY_VALUE
+                && gGapBuffer[1] != EMPTY_VALUE && (datetime)gBarTimeBuffer[0] == gLastBarTime
+                && gBarTimeBuffer[1] > 0 && gBarTimeBuffer[1] < gBarTimeBuffer[0]) {
+            int change = gap - (int)gGapBuffer[1];
+            gPanelValue = StringFormat("順位差 %+d｜前足比 %+d", gap, change);
+            gPanelTooltip += StringFormat("\n前足の順位差：%+d / 前足比：%+d",
+                (int)gGapBuffer[1], change);
+            gPanelTooltip += "\n前足の基準時刻 SRV："
+                + TimeUtil::formatYyyymmddhhmiss(floorToM5((datetime)gBarTimeBuffer[1]));
+        } else {
+            gPanelTooltip += "\n前足比：比較データなし（塗りなし）";
+        }
+
         if (gap > 0) {
             gPanelValueColor = clrAqua;
         } else if (gap < 0) {
@@ -582,6 +628,17 @@ void updatePanelText(const datetime fromTargetTime) {
     if (gReloadMessage != "") {
         gPanelTooltip += "\n再読込：" + gReloadMessage;
     }
+}
+
+/**
+ * データ変更時と画面確認時だけ塗りを反映し、失敗時は次回に再試行する。
+ */
+void drawFill(const bool fromCheckViewport = false) {
+    if (gFill == NULL || (!gFillDirty && !fromCheckViewport)) {
+        return;
+    }
+
+    gFillDirty = !gFill.draw(ChartWindowFind(), gGapBuffer, gBarTimeBuffer, gFillDirty);
 }
 
 /**
