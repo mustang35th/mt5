@@ -547,7 +547,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "2.67";
+            this.databaseRun.programVersion = "2.72";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
@@ -581,6 +581,10 @@ private:
                 this.databaseRun.strategyVersion = "MTF3IN3_M15_LONG_MEDIUM_EXTREME_OR_V30";
             }
         }
+        if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
+            this.databaseRun.strategyVersion += "_LM_GAP_CARRY_V31";
+        }
+
         this.databaseRun.analysisVersion =
             ZigZagElliotAnalysisProfile::getAnalysisVersion();
         this.databaseRun.analysisInputText =
@@ -671,6 +675,14 @@ private:
                 inputText += "|m15StrengthExtremeRankException=true";
             }
         }
+        if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
+            inputText += "|longMediumGapDirectionEnabled=true";
+            inputText += "|longMediumGapCompareSeconds=300";
+            inputText += "|longMediumGapCarryRule=LAST_NON_ZERO_CHANGE";
+            inputText += "|longMediumGapMissingRule=RESET_UNKNOWN";
+            inputText += "|longMediumGapLookbackDays=30";
+        }
+
         inputText += "|currencyStrengthEnabled="
             + (string)this.config.currencyStrengthEnabled;
         inputText += "|currencyStrengthEntryFilterEnabled="

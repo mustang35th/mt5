@@ -11,6 +11,7 @@
 #define MSTNG_CURRENCY_STRENGTH_EXECUTION_INFO_MQH
 
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankGapDirectionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankInfo.mqh>
 
 /**
@@ -58,6 +59,18 @@ struct CurrencyStrengthExecutionInfo {
     /** 通貨ペア順位検索結果。 */
     CurrencyStrengthPairRankInfo pairRankInfo;
 
+    /** 長中期の増減方向をエントリーフィルタとして使用する場合true。 */
+    bool longMediumGapDirectionFilterEnabled;
+
+    /** 長中期・中短期の増減方向をメールの参考情報へ表示する場合true。 */
+    bool gapDirectionMailEnabled;
+
+    /** 今回の分析と同じ現在順位を使った長中期増減情報。 */
+    CurrencyStrengthRankGapDirectionInfo longMediumGapDirection;
+
+    /** 今回の分析と同じ現在順位を使った中短期増減情報。 */
+    CurrencyStrengthRankGapDirectionInfo mediumShortGapDirection;
+
     /** 同一集計に含まれる全通貨の順位。 */
     CurrencyStrengthRankInfo currencyRankInfos[8];
 
@@ -75,6 +88,10 @@ struct CurrencyStrengthExecutionInfo {
         this.sourceMode = "";
         this.sourceFileName = "";
         this.pairRankInfo.reset();
+        this.longMediumGapDirectionFilterEnabled = false;
+        this.gapDirectionMailEnabled = false;
+        this.longMediumGapDirection.reset();
+        this.mediumShortGapDirection.reset();
         this.currencyRankCount = 0;
 
         for (int i = 0; i < 8; i++) {

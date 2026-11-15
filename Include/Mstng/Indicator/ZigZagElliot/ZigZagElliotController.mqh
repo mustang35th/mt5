@@ -50,6 +50,8 @@ public:
         this.timingLogRecorded = false;
         this.lastTimingLogTick = 0;
         this.lastProcessedBarTime = 0;
+        this.gapWaitingChartBarTime = 0;
+        this.gapWaitingM5BarTime = 0;
         this.lastAnalysisWarmUpProgress = -1;
         ArrayResize(this.analysisTimeFrames, 0);
         ArrayResize(this.seriesWarmUpRequested, 0);
@@ -89,6 +91,8 @@ public:
         this.timingLogRecorded = false;
         this.lastTimingLogTick = 0;
         this.lastProcessedBarTime = 0;
+        this.gapWaitingChartBarTime = 0;
+        this.gapWaitingM5BarTime = 0;
         this.lastAnalysisWarmUpProgress = -1;
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
@@ -452,6 +456,8 @@ public:
         this.timingLogRecorded = false;
         this.lastTimingLogTick = 0;
         this.lastProcessedBarTime = 0;
+        this.gapWaitingChartBarTime = 0;
+        this.gapWaitingM5BarTime = 0;
         this.lastAnalysisWarmUpProgress = -1;
         ArrayResize(this.analysisTimeFrames, 0);
         ArrayResize(this.seriesWarmUpRequested, 0);
@@ -510,6 +516,12 @@ private:
 
     /** テスター分析およびアラート処理済みの最新バー時刻。 */
     datetime lastProcessedBarTime;
+
+    /** 増減判定のデータ到着を待っているチャート足。 */
+    datetime gapWaitingChartBarTime;
+
+    /** 同じチャート足でも、取得待ちを次のM5枠へ持ち越さないための対象時刻。 */
+    datetime gapWaitingM5BarTime;
 
     /** 最後に通知したテスター分析履歴の進捗率。 */
     int lastAnalysisWarmUpProgress;
@@ -1163,6 +1175,23 @@ private:
         CurrencyStrengthExecutionInfo executionInfo =
             this.currencyStrengthController.getExecutionInfo();
 
+        // 初回の対象M5を分析前に固定し、分析中に枠を跨いでも判定時刻をずらさない。
+        if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)
+                && this.lastProcessedBarTime != analysisStartBarTime
+                && this.gapWaitingChartBarTime != analysisStartBarTime) {
+            datetime targetTime = executionInfo.targetM5BarTime;
+            if (targetTime <= 0) {
+                targetTime = TimeCurrent();
+            }
+
+            if (targetTime <= 0) {
+                targetTime = analysisStartBarTime;
+            }
+
+            this.gapWaitingChartBarTime = analysisStartBarTime;
+            this.gapWaitingM5BarTime = (datetime)((long)targetTime - (long)targetTime % 300);
+        }
+
         if (!this.analysisController.analyze(
                 executionInfo,
                 this.timerSeconds)) {
@@ -1229,6 +1258,37 @@ private:
             return;
         }
 
+        if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
+            datetime evaluationTime = TimeCurrent();
+            if (evaluationTime <= 0) {
+                evaluationTime = currentBarTime;
+            }
+
+            datetime evaluationM5Time = (datetime)((long)evaluationTime - (long)evaluationTime % 300);
+            if (analysisStartBarTime != currentBarTime
+                    || (executionInfo.targetM5BarTime > 0
+                        && executionInfo.targetM5BarTime != evaluationM5Time)) {
+                this.completeAnalysisDraw(currentBarTime);
+                this.recordUpdateProcessingTime(processingStartMicroseconds, false, "順位更新待ち");
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return;
+            }
+
+            if (this.deferGapDirectionAlert(currentBarTime, evaluationM5Time, executionInfo)) {
+                this.completeAnalysisDraw(currentBarTime);
+                string state = "順位データ待ち";
+                if (this.lastProcessedBarTime == currentBarTime) {
+                    state = "順位待機期限終了";
+                }
+
+                this.recordUpdateProcessingTime(processingStartMicroseconds, false, state);
+                LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
+
+                return;
+            }
+        }
+
         if (!this.timerMode) {
             this.analysisController.writeCsv();
         }
@@ -1243,6 +1303,44 @@ private:
         this.completeAnalysisDraw(currentBarTime);
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
         this.recordUpdateProcessingTime(processingStartMicroseconds, true, "新しい足");
+    }
+
+    /**
+     * データ待ちだけを同じM5枠内で再確認し、M15の途中枠へ判定をずらさない。
+     * 方向不明や不一致は判定済みとして通常のアラート経路へ渡す。
+     *
+     * @return データ待ち、または待機枠を過ぎて今回の足を見送った場合true。
+     */
+    bool deferGapDirectionAlert(const datetime fromChartBarTime, const datetime fromM5BarTime,
+            const CurrencyStrengthExecutionInfo &fromExecutionInfo) {
+        if (this.gapWaitingChartBarTime != fromChartBarTime) {
+            this.gapWaitingChartBarTime = 0;
+            this.gapWaitingM5BarTime = 0;
+        }
+
+        if (this.gapWaitingChartBarTime == fromChartBarTime
+                && this.gapWaitingM5BarTime != fromM5BarTime) {
+            this.lastProcessedBarTime = fromChartBarTime;
+            this.gapWaitingChartBarTime = 0;
+            this.gapWaitingM5BarTime = 0;
+
+            return true;
+        }
+
+        if (fromExecutionInfo.targetM5BarTime == fromM5BarTime
+                && fromExecutionInfo.longMediumGapDirection.enabled
+                && fromExecutionInfo.longMediumGapDirection.targetM5BarTime == fromM5BarTime
+                && !fromExecutionInfo.longMediumGapDirection.waiting) {
+            this.gapWaitingChartBarTime = 0;
+            this.gapWaitingM5BarTime = 0;
+
+            return false;
+        }
+
+        this.gapWaitingChartBarTime = fromChartBarTime;
+        this.gapWaitingM5BarTime = fromM5BarTime;
+
+        return true;
     }
 };
 

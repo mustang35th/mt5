@@ -616,6 +616,10 @@ private:
         );
         fromEntity.alertTitle = normalizeText(fromElliotAll.mailTitile);
         fromEntity.alertText = normalizeText(fromAlertText);
+        if (executionInfo.longMediumGapDirectionFilterEnabled) {
+            fromEntity.alertText += "\n\n" + executionInfo.longMediumGapDirection.getTooltip();
+        }
+
         fromEntity.waveSummaryText = "";
         fromEntity.elliotCsvText = normalizeText(
             fromElliotAll.getCsv(true)

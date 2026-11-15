@@ -18,7 +18,9 @@
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairRankInfo.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankGapDirectionProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankQueryMode.mqh>
+#include <Mstng\Util\Util.mqh>
 
 /**
  * 通貨強弱情報の取得、変更検知および順位パネル表示を管理するクラス。
@@ -31,6 +33,9 @@ public:
     CurrencyStrengthPairRankController() {
         this.pairRankDraw = NULL;
         this.executionInfoProvider = NULL;
+        this.gapDirectionProvider = NULL;
+        this.gapDirectionEnabled = false;
+        this.gapMailEnabled = false;
         this.enabled = false;
         this.rankVisible = false;
         this.panelXDistance = 48;
@@ -67,6 +72,8 @@ public:
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
         this.enabled = fromConfig.currencyStrengthEnabled;
+        this.gapDirectionEnabled = fromConfig.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame);
+        this.gapMailEnabled = this.enabled && fromConfig.currencyStrengthGapMailEnabled;
         this.rankVisible = fromConfig.currencyStrengthRankVisible;
         this.panelXDistance =
             fromConfig.currencyStrengthRankPanelXDistance;
@@ -99,6 +106,7 @@ public:
     void update() {
         if (!this.enabled || this.executionInfoProvider == NULL) {
             this.executionInfo.reset();
+            this.updateGapDirection();
 
             return;
         }
@@ -120,6 +128,7 @@ public:
                 this.executionInfo
             );
 
+        this.updateGapDirection();
         if (!this.rankVisible || this.pairRankDraw == NULL) {
             return;
         }
@@ -213,6 +222,11 @@ public:
      * Provider、表示オブジェクトおよびキャッシュを解放する。
      */
     void destroy() {
+        if (this.gapDirectionProvider != NULL) {
+            delete this.gapDirectionProvider;
+            this.gapDirectionProvider = NULL;
+        }
+
         if (this.executionInfoProvider != NULL) {
             this.executionInfoProvider.close();
             delete this.executionInfoProvider;
@@ -247,6 +261,15 @@ private:
 
     /** 通貨強弱実行情報Provider。 */
     CurrencyStrengthExecutionInfoProvider *executionInfoProvider;
+
+    /** 増減フィルタまたはメール表示が有効な場合だけ作成する履歴取得先。 */
+    CurrencyStrengthRankGapDirectionProvider *gapDirectionProvider;
+
+    /** 通貨強弱の既存条件へ増減方向を追加する場合true。 */
+    bool gapDirectionEnabled;
+
+    /** 長中期・中短期の増減情報をメール本文へ表示する場合true。 */
+    bool gapMailEnabled;
 
     /** 最新の通貨強弱実行情報。 */
     CurrencyStrengthExecutionInfo executionInfo;
@@ -316,6 +339,9 @@ private:
 
     /** 前回表示した実行状態。 */
     ENUM_CURRENCY_STRENGTH_EXECUTION_STATUS lastDisplayStatus;
+
+    /** 前回表示した長中期増減状態。 */
+    CurrencyStrengthRankGapDirectionInfo lastGapDirection;
 
     /**
      * 順位パネルを作成する。
@@ -394,6 +420,66 @@ private:
                 "currency strength execution info provider allocation failed"
             );
         }
+
+        if (this.gapDirectionEnabled || this.gapMailEnabled) {
+            this.gapDirectionProvider = new CurrencyStrengthRankGapDirectionProvider(
+                this.databaseFileName, this.databaseSplitByYear, this.databaseUseCommonFolder,
+                this.databaseProfile, this.voteWeightMode, Util::isStrategyTester(),
+                this.baseCurrency, this.quoteCurrency, this.refreshSeconds);
+            if (this.gapDirectionProvider == NULL) {
+                this.logger.error(__FUNCTION__, "currency strength gap direction provider allocation failed");
+            }
+        }
+    }
+
+    /**
+     * 現在の分析順位を変更せず、必要な場合だけ過去M5から増減方向を付加する。
+     */
+    void updateGapDirection() {
+        this.executionInfo.longMediumGapDirectionFilterEnabled = this.gapDirectionEnabled;
+        this.executionInfo.gapDirectionMailEnabled = this.gapMailEnabled;
+        if (!this.gapDirectionEnabled && !this.gapMailEnabled) {
+            return;
+        }
+
+        CurrencyStrengthRankGapDirectionInfo result;
+        result.reset();
+        result.enabled = true;
+        result.waiting = true;
+        result.targetM5BarTime = this.executionInfo.targetM5BarTime;
+        CurrencyStrengthRankGapDirectionInfo mediumShortResult;
+        mediumShortResult.reset();
+        if (this.gapMailEnabled) {
+            mediumShortResult.enabled = true;
+            mediumShortResult.waiting = true;
+            mediumShortResult.targetM5BarTime = this.executionInfo.targetM5BarTime;
+        }
+
+        if (this.gapDirectionProvider != NULL) {
+            if (this.gapMailEnabled) {
+                this.gapDirectionProvider.load(this.executionInfo, result, mediumShortResult);
+            } else {
+                this.gapDirectionProvider.load(this.executionInfo, result);
+            }
+        }
+
+        this.executionInfo.longMediumGapDirection = result;
+        this.executionInfo.mediumShortGapDirection = mediumShortResult;
+    }
+
+    /**
+     * 順位自体が同じでも、過去データの到着による増減状態の変化を検知する。
+     */
+    bool isGapDirectionChanged() const {
+        return this.executionInfo.longMediumGapDirection.enabled != this.lastGapDirection.enabled
+            || this.executionInfo.longMediumGapDirection.waiting != this.lastGapDirection.waiting
+            || this.executionInfo.longMediumGapDirection.currentAvailable != this.lastGapDirection.currentAvailable
+            || this.executionInfo.longMediumGapDirection.hasPrevious != this.lastGapDirection.hasPrevious
+            || this.executionInfo.longMediumGapDirection.direction != this.lastGapDirection.direction
+            || this.executionInfo.longMediumGapDirection.currentGap != this.lastGapDirection.currentGap
+            || this.executionInfo.longMediumGapDirection.previousGap != this.lastGapDirection.previousGap
+            || this.executionInfo.longMediumGapDirection.targetM5BarTime != this.lastGapDirection.targetM5BarTime
+            || this.executionInfo.longMediumGapDirection.directionChangedAt != this.lastGapDirection.directionChangedAt;
     }
 
     /**
@@ -458,7 +544,8 @@ private:
         rankInfo = this.executionInfo.pairRankInfo;
         bool isChanged = !this.rankAvailable
             || this.lastDisplayStatus
-                != CURRENCY_STRENGTH_EXECUTION_STATUS_FOUND;
+                != CURRENCY_STRENGTH_EXECUTION_STATUS_FOUND
+            || (this.gapDirectionEnabled && this.isGapDirectionChanged());
 
         if (rankInfo.runId != this.lastRunId
                 || this.executionInfo.targetM5BarTime
@@ -499,6 +586,7 @@ private:
             rankInfo.quoteLongMediumTermAverageRank;
         this.quoteMediumShortRank =
             rankInfo.quoteMediumShortTermAverageRank;
+        this.lastGapDirection = this.executionInfo.longMediumGapDirection;
         this.rankAvailable = true;
         this.lastDisplayStatus = fromExecutionStatus;
     }
@@ -528,6 +616,7 @@ private:
         this.baseMediumShortRank = 0;
         this.quoteLongMediumRank = 0;
         this.quoteMediumShortRank = 0;
+        this.lastGapDirection.reset();
         this.rankAvailable = false;
     }
 };

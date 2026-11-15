@@ -659,6 +659,14 @@ private:
             return false;
         }
 
+        // 増減条件も初回シグナルを数える前に確認し、同じ分析対象時刻だけを使う。
+        if (executionInfo.longMediumGapDirectionFilterEnabled
+                && (!executionInfo.longMediumGapDirection.enabled
+                    || executionInfo.longMediumGapDirection.targetM5BarTime != executionInfo.targetM5BarTime
+                    || !executionInfo.longMediumGapDirection.isMatched(this.isBuy))) {
+            return false;
+        }
+
         // 順位差は「決済通貨順位 - 基軸通貨順位」。対象期間の方向条件は戦略に従う。
         if (!this.isCurrencyStrengthDirectionConditionMatched(executionInfo)) {
             return false;

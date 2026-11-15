@@ -1,11 +1,11 @@
-//+------------------------------------------------------------------+
+﻿//+------------------------------------------------------------------+
 //|                                                 ZigZagElliot.mq5 |
 //|                                  Copyright 2025, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.69"
+#property version   "2.72"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -79,6 +79,18 @@ bool m5CurrencyStrengthEntryFilterEnabled = true;
 /** M5の順位差基準。長中期・中短期はそれぞれ方向に合う1位・8位でも通過。 */
 input(name="M5順位差基準（1～7、各期間は端順位でも可）")
 int m5CurrencyStrengthMinimumRankDifference = 4;
+
+/** M5で長中期順位差の直近増減方向をエントリー条件へ追加する場合true。 */
+input(name="M5長中期の増減方向を条件に追加（横ばいは維持）")
+bool m5LongMediumGapDirectionEnabled = true;
+
+/** M15でM5履歴による長中期順位差の直近増減方向を追加する場合true。 */
+input(name="M15長中期の増減方向を条件に追加（M5履歴）")
+bool m15LongMediumGapDirectionEnabled = true;
+
+/** エントリー条件の有効化と独立して、両期間の増減をメールに表示する場合true。 */
+input(name="メールに順位差の増減を表示（長中期・中短期）")
+bool currencyStrengthGapMailEnabled = true;
 
 /** 通貨強弱順位パネルを表示する場合true。 */
 input(name="順位パネルを表示") bool currencyStrengthRankVisible = true;
@@ -204,6 +216,9 @@ int OnInit() {
     config.currencyStrengthEntryFilterEnabled =
         currencyStrengthEntryFilterEnabled;
     config.m15LongMediumCurrencyStrengthEnabled = _Period == PERIOD_M15;
+    config.m5LongMediumGapDirectionEnabled = m5LongMediumGapDirectionEnabled;
+    config.m15LongMediumGapDirectionEnabled = m15LongMediumGapDirectionEnabled;
+    config.currencyStrengthGapMailEnabled = currencyStrengthGapMailEnabled;
     if (_Period == PERIOD_M15) {
         config.currencyStrengthEntryFilterEnabled = m15CurrencyStrengthEntryFilterEnabled;
     }

@@ -446,14 +446,15 @@ private:
      * 実行時に参照した通貨強弱順位をメール本文へ変換する。
      *
      * @param fromElliotAll 解析結果を保持するインスタンス。
-     * @return 通貨強弱順位。未検索の場合は空文字列。
+     * @return 通貨強弱順位。未検索かつ増減表示OFFの場合は空文字列。
      */
     static string getCurrencyStrengthText(ElliotAll *fromElliotAll) {
         CurrencyStrengthExecutionInfo executionInfo =
             fromElliotAll.currencyStrengthExecutionInfo;
 
         if (executionInfo.status
-                == CURRENCY_STRENGTH_EXECUTION_STATUS_NOT_QUERIED) {
+                == CURRENCY_STRENGTH_EXECUTION_STATUS_NOT_QUERIED
+                && !executionInfo.gapDirectionMailEnabled) {
             return "";
         }
 
@@ -477,7 +478,7 @@ private:
                 voteWeightMode,
                 sourceMode,
                 formatCurrencyStrengthStatus(executionInfo.status)
-            );
+            ) + formatCurrencyStrengthGapPeriods(executionInfo);
         }
 
         string stateSuffix = "";
@@ -497,7 +498,7 @@ private:
                 sourceMode,
                 stateSuffix,
                 formatCurrencyStrengthM5BarTime(executionInfo)
-            );
+            ) + formatCurrencyStrengthGapPeriods(executionInfo);
         }
 
         if (!executionInfo.hasAllCurrencyRanks()) {
@@ -510,7 +511,7 @@ private:
                 stateSuffix,
                 executionInfo.currencyRankCount,
                 formatCurrencyStrengthM5BarTime(executionInfo)
-            );
+            ) + formatCurrencyStrengthGapPeriods(executionInfo);
         }
 
         int longMediumDifference =
@@ -529,23 +530,164 @@ private:
             stateSuffix
         );
 
-        text += StringFormat(
-            "長中期 %s\n",
-            formatCurrencyStrengthSignal(longMediumDifference)
-        );
-        text += formatCurrencyStrengthRankList(executionInfo, true);
+        text += formatCurrencyStrengthPeriod(executionInfo, true, true);
         text += "\n";
-        text += StringFormat(
-            "中短期 %s\n",
-            formatCurrencyStrengthSignal(mediumShortDifference)
-        );
-        text += formatCurrencyStrengthRankList(executionInfo, false);
+        text += formatCurrencyStrengthPeriod(executionInfo, false, true);
         text += StringFormat(
             "\nDB M5:%s\n\n",
             formatCurrencyStrengthM5BarTime(executionInfo)
         );
 
         return text;
+    }
+
+    /**
+     * 全8通貨を表示できない場合も、メール表示が有効なら両期間の増減欄を追加する。
+     */
+    static string formatCurrencyStrengthGapPeriods(CurrencyStrengthExecutionInfo &fromInfo) {
+        if (!fromInfo.gapDirectionMailEnabled) {
+            return "";
+        }
+
+        return formatCurrencyStrengthPeriod(fromInfo, true, false) + "\n"
+            + formatCurrencyStrengthPeriod(fromInfo, false, false) + "\n";
+    }
+
+    /**
+     * 1期間の見出し・増減・任意の全通貨順位を生成する。表示OFF時は従来書式を保つ。
+     */
+    static string formatCurrencyStrengthPeriod(CurrencyStrengthExecutionInfo &fromInfo,
+            const bool fromIsLongMedium, const bool fromShowRanks) {
+        string periodText = "中短期";
+        int difference = fromInfo.getMediumShortRankDifference();
+        if (fromIsLongMedium) {
+            periodText = "長中期";
+            difference = fromInfo.getLongMediumRankDifference();
+        }
+
+        string signal = formatCurrencyStrengthSignal(difference);
+        string suffix = "";
+        if (fromInfo.gapDirectionMailEnabled) {
+            if (!fromInfo.isExactM5Bar()) {
+                signal = "--";
+            }
+
+            suffix = "【参考】";
+            if (fromIsLongMedium) {
+                suffix = "【参考：増減フィルタOFF】";
+                if (fromInfo.longMediumGapDirectionFilterEnabled) {
+                    suffix = "【判定ON】";
+                }
+            }
+        }
+
+        string text = periodText + " " + signal + suffix + "\n";
+        if (fromInfo.gapDirectionMailEnabled) {
+            if (fromIsLongMedium) {
+                text += formatCurrencyStrengthGapText(fromInfo, fromInfo.longMediumGapDirection, difference);
+            } else {
+                text += formatCurrencyStrengthGapText(fromInfo, fromInfo.mediumShortGapDirection, difference);
+            }
+        }
+
+        if (fromShowRanks) {
+            text += formatCurrencyStrengthRankList(fromInfo, fromIsLongMedium);
+        }
+
+        return text;
+    }
+
+    /**
+     * 分析と同じM5の増減値だけを本文へ出す。不足・古い値を0として表示しない。
+     */
+    static string formatCurrencyStrengthGapText(const CurrencyStrengthExecutionInfo &fromInfo,
+            const CurrencyStrengthRankGapDirectionInfo &fromDirection, const int fromCurrentGap) {
+        if (!fromInfo.isExactM5Bar() || !fromDirection.enabled || fromDirection.waiting
+                || !fromDirection.currentAvailable || !fromDirection.hasPrevious
+                || fromDirection.targetM5BarTime != fromInfo.targetM5BarTime
+                || fromDirection.currentGap != fromCurrentGap
+                || fromDirection.previousGap < -7 || fromDirection.previousGap > 7) {
+            return "増減（M5）：--\n直近方向：不明（データ不足・未評価）\n直近増減：--\n";
+        }
+
+        int change = fromDirection.currentGap - fromDirection.previousGap;
+        bool directionAvailable = (fromDirection.direction == 1 || fromDirection.direction == -1)
+            && fromDirection.directionChangedAt > 0
+            && fromDirection.directionChangedAt <= fromDirection.targetM5BarTime;
+        string directionText = "横ばい／方向不明";
+        if (change != 0) {
+            directionText = formatCurrencyStrengthGapChange(fromDirection.previousGap,
+                fromDirection.currentGap);
+        } else if (directionAvailable && fromDirection.direction == 1) {
+            directionText = "横ばい／上昇方向を維持";
+        } else if (directionAvailable && fromDirection.direction == -1) {
+            directionText = "横ばい／下降方向を維持";
+        }
+
+        string changedAt = "--";
+        if (directionAvailable) {
+            changedAt = TimeUtil::formatYyyymmddhhmiss(fromDirection.directionChangedAt) + " SRV";
+        }
+
+        return StringFormat("増減（M5）：%s → %s（%s）\n直近方向：%s\n直近増減：%s\n",
+            formatCurrencyStrengthGapValue(fromDirection.previousGap),
+            formatCurrencyStrengthGapValue(fromDirection.currentGap),
+            formatCurrencyStrengthGapValue(change), directionText, changedAt);
+    }
+
+    /**
+     * 正の順位差・増減には+を付け、横ばいの0は符号を付けずに表示する。
+     */
+    static string formatCurrencyStrengthGapValue(const int fromValue) {
+        if (fromValue == 0) {
+            return "0";
+        }
+
+        return StringFormat("%+d", fromValue);
+    }
+
+    /**
+     * 増減の符号と売買方向の拡大・縮小・転換を区別して説明する。
+     */
+    static string formatCurrencyStrengthGapChange(const int fromPreviousGap, const int fromCurrentGap) {
+        string directionText = "上昇／";
+        if (fromCurrentGap < fromPreviousGap) {
+            directionText = "下降／";
+        }
+
+        if (fromPreviousGap < 0 && fromCurrentGap > 0) {
+            return directionText + "SELL→BUYへ転換";
+        }
+
+        if (fromPreviousGap > 0 && fromCurrentGap < 0) {
+            return directionText + "BUY→SELLへ転換";
+        }
+
+        if (fromCurrentGap == 0) {
+            return directionText + "同順位へ";
+        }
+
+        if (fromPreviousGap == 0) {
+            if (fromCurrentGap > 0) {
+                return directionText + "同順位からBUY方向へ";
+            }
+
+            return directionText + "同順位からSELL方向へ";
+        }
+
+        if (fromCurrentGap > 0) {
+            if (fromCurrentGap > fromPreviousGap) {
+                return directionText + "BUY方向へ拡大";
+            }
+
+            return directionText + "BUY方向の差が縮小";
+        }
+
+        if (fromCurrentGap < fromPreviousGap) {
+            return directionText + "SELL方向へ拡大";
+        }
+
+        return directionText + "SELL方向の差が縮小";
     }
 
     /**

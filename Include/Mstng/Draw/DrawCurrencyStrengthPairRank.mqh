@@ -1338,6 +1338,10 @@ private:
 
         tooltip += "\n" + this.getPeriodDecisionTooltip(fromInfo.pairRankInfo, true)
             + "\n" + this.getPeriodDecisionTooltip(fromInfo.pairRankInfo, false);
+        if (fromInfo.longMediumGapDirectionFilterEnabled) {
+            tooltip += "\n\n" + fromInfo.longMediumGapDirection.getTooltip()
+                + "\n増減フィルタはエントリーの追加条件です。READY／WATCHには含めません。";
+        }
 
         return this.setDecision(decisionText, decisionColor, tooltip);
     }
@@ -1389,6 +1393,10 @@ private:
 
         tooltip += "\n" + this.getPeriodDecisionTooltip(fromInfo.pairRankInfo, true)
             + "\n" + this.getPeriodDecisionTooltip(fromInfo.pairRankInfo, false);
+        if (fromInfo.longMediumGapDirectionFilterEnabled) {
+            tooltip += "\n\n" + fromInfo.longMediumGapDirection.getTooltip()
+                + "\n増減フィルタはエントリーの追加条件です。READY／WATCHには含めません。";
+        }
 
         return this.setDecision(decisionText, decisionColor, tooltip);
     }

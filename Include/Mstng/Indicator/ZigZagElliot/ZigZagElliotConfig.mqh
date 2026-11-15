@@ -114,6 +114,15 @@ public:
     /** 通常版M5の順位差基準。長中期・中短期はそれぞれ方向に合う1位・8位でも通過。 */
     int m5CurrencyStrengthMinimumRankDifference;
 
+    /** M5の長中期順位差に直近増減方向の一致を要求する場合true。 */
+    bool m5LongMediumGapDirectionEnabled;
+
+    /** M15の長中期順位差にM5履歴での直近増減方向一致を要求する場合true。 */
+    bool m15LongMediumGapDirectionEnabled;
+
+    /** 判定の有効化とは独立して、両期間の増減をメールに表示する場合true。 */
+    bool currencyStrengthGapMailEnabled;
+
     /** 通貨強弱順位パネルを表示する場合true。 */
     bool currencyStrengthRankVisible;
 
@@ -171,6 +180,9 @@ public:
         this.currencyStrengthEntryFilterEnabled = false;
         this.m15LongMediumCurrencyStrengthEnabled = false;
         this.m5CurrencyStrengthMinimumRankDifference = 4;
+        this.m5LongMediumGapDirectionEnabled = false;
+        this.m15LongMediumGapDirectionEnabled = false;
+        this.currencyStrengthGapMailEnabled = false;
         this.currencyStrengthRankVisible = true;
         this.currencyStrengthRankPanelXDistance = 10;
         this.currencyStrengthRefreshSeconds = 15;
@@ -197,6 +209,25 @@ public:
             this.h1Mn1AndW1Ema200Required
         );
         this.h1Ema200ConfirmationMode = Mtf3In3H1Policy::getEma200ConfirmationMode();
+    }
+
+    /**
+     * 通貨強弱の既存エントリー条件が有効なM5・M15だけ、増減条件を使用する。
+     */
+    bool isLongMediumGapDirectionEnabled(const ENUM_TIMEFRAMES fromTimeFrame) const {
+        if (!this.currencyStrengthEnabled || !this.currencyStrengthEntryFilterEnabled) {
+            return false;
+        }
+
+        if (fromTimeFrame == PERIOD_M5) {
+            return this.m5LongMediumGapDirectionEnabled;
+        }
+
+        if (fromTimeFrame == PERIOD_M15) {
+            return this.m15LongMediumGapDirectionEnabled;
+        }
+
+        return false;
     }
 };
 
