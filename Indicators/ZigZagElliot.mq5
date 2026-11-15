@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.72"
+#property version   "2.74"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -125,6 +125,9 @@ bool currencyStrengthDatabaseUseCommonFolder = true;
 
 input group "06. チャート表示"
 
+/** 新規ENTRYとDB表示対象の保存済みENTRYへ縦線を表示する場合true。 */
+input(name="ENTRY発生足に縦線を表示") bool entryVerticalLineEnabled = true;
+
 /** チャートへ波動ラベルを表示する上位時間足数。 */
 input(name="波動ラベルの上位足数")
 ElliotHigherTimeFrameDisplayCount elliotHigherTimeFrameDisplayCount =
@@ -138,9 +141,9 @@ ElliotHigherTimeFrameDisplayCount elliotHigherTimeFrameDisplayCount =
 #property indicator_type6   DRAW_LINE
 #property indicator_type7   DRAW_LINE
 
-input group "07. DBアラート表示（M5／H1）"
+input group "07. DBアラート表示（M5／M15／H1）"
 
-/** M5・H1チャートへ保存済みアラートを重ねて表示する場合true。 */
+/** M5・M15・H1チャートへ保存済みアラートを重ねて表示する場合true。 */
 input(name="DBアラートを表示") bool databaseAlertDisplayEnabled = false;
 /** 一つのRunまたは期間内の全Runを表示する。 */
 input(name="表示Run対象") ZigZagElliotDatabaseAlertRunScope databaseAlertDisplayRunScope = DATABASE_ALERT_RUN_SELECTED;
@@ -245,6 +248,7 @@ int OnInit() {
         currencyStrengthDatabaseUseCommonFolder;
     config.elliotHigherTimeFrameDisplayCount =
         elliotHigherTimeFrameDisplayCount;
+    config.entryVerticalLineEnabled = entryVerticalLineEnabled;
     MarketContext marketContext(_Symbol, _Period);
     gController = new ZigZagElliotController();
 

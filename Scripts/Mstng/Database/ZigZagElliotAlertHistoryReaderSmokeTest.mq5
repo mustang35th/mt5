@@ -150,6 +150,8 @@ void initializeAnalysis(const bool fromCorrected, const bool fromApplied, const 
     int frameCount = 7;
     if (fromCurrentTimeFrame == PERIOD_H1) {
         frameCount = 5;
+    } else if (fromCurrentTimeFrame == PERIOD_M15) {
+        frameCount = 6;
     }
     ArrayResize(fromTimeFrames, frameCount);
     ArrayResize(fromPoints, frameCount * 4);
@@ -242,6 +244,8 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     alert.timeFrameText = "M5";
     if (fromCurrentTimeFrame == PERIOD_H1) {
         alert.timeFrameText = "H1";
+    } else if (fromCurrentTimeFrame == PERIOD_M15) {
+        alert.timeFrameText = "M15";
     }
     alert.strategy = "MTF_3in3";
     alert.magicNumber = "0";
@@ -292,7 +296,7 @@ long saveAlert(ZigZagElliotAlertPersistenceService &fromService, const long from
     initializeAnalysis(false, isApplied, fromBuy, fromCorrectionTimeFrame, timeFrames, points, fromCurrentTimeFrame);
     int currentIndex = ArraySize(timeFrames) - 1;
     int referenceIndex = currentIndex * 4 + 2;
-    if (fromSerial != 11) {
+    if (fromSerial != 11 || fromCurrentTimeFrame != PERIOD_M5) {
         timeFrames[currentIndex].currentOpen = 150.125;
     }
     for (int i = 0; i < ArraySize(points); i++) {
@@ -615,7 +619,7 @@ void testRunScopes(ZigZagElliotAlertHistoryReader &fromReader) {
         "TESTER", "qa-server", 1800, PERIOD_M5, true);
     expect(success && ArraySize(ids) == 0, "all Run end time remains exclusive");
     expect(!fromReader.selectMarkers("TESTJPY", 0, 0, 0, false, runId, ids, markers, error,
-        "TESTER", "qa-server", 2000, PERIOD_M15, true) && ArraySize(ids) == 0 && ArraySize(markers) == 0,
+        "TESTER", "qa-server", 2000, PERIOD_M30, true) && ArraySize(ids) == 0 && ArraySize(markers) == 0,
         "unsupported frame rejected without stale data");
 }
 
@@ -797,7 +801,54 @@ void testPeriods() {
 }
 
 /**
- * 専用一時DBで旧補正制約の移行とH1のD1/H4補正保存・採用表示を検証する。
+ * M15の採用6足、補正なし・旧行、Run・日時・ENTRY条件を保存値で検証する。
+ */
+void testM15Markers(ZigZagElliotAlertHistoryReader &fromReader) {
+    long runId = 0;
+    long ids[];
+    ZigZagElliotAlertHistoryMarker markers[];
+    string error = "";
+    bool selected = fromReader.selectMarkers("M15MARKERS", 0, 0, 0, false, runId, ids, markers, error,
+        "LIVE", "qa-server", 2000, PERIOD_M15);
+    if (expect(selected && runId == 1 && ArraySize(markers) == 6, "M15 LIVE marker count " + error)) {
+        expect(markers[0].available && markers[0].timeFrame == PERIOD_M15
+            && markers[0].text == "synthetic APPLIED" && markers[0].price == 150.125
+            && markers[0].correctionText == "D1 SELL→BUY" && markers[0].waves[2].direction == "B"
+            && markers[0].waves[5].wave == "3" && !markers[0].waves[6].recorded,
+            "M15 D1 correction uses selected six frames and M15 open");
+        expect(markers[1].available && markers[1].correctionText == "H4 BUY→SELL"
+            && markers[1].side == "SELL" && markers[1].waves[3].direction == "S",
+            "M15 H4 SELL correction marker");
+        expect(markers[2].available && markers[2].correctionText == "H1 SELL→BUY"
+            && markers[2].waves[4].direction == "B" && markers[2].serverTime == 1250,
+            "M15 H1 correction and saved judgment time");
+        expect(markers[3].available && markers[3].correctionStatus == "NONE"
+            && markers[3].waves[5].wave == "2", "M15 uncorrected marker uses original six frames");
+        expect(markers[4].available && markers[4].isEntry == 0, "M15 non-entry alert retained");
+        expect(markers[5].available && markers[5].correctionStatus == "UNRECORDED"
+            && markers[5].text == "original 12 [元分析]" && markers[5].waves[5].wave == "2",
+            "M15 legacy correction stays explicitly unrecorded");
+    }
+
+    selected = fromReader.selectMarkers("M15MARKERS", 1, 0, 0, true, runId, ids, markers, error,
+        "", "qa-server", 2000, PERIOD_M15, true);
+    expect(selected && runId == 0 && ArraySize(ids) == 6 && ids[0] == 7 && ids[4] == 12 && ids[5] == 13,
+        "all M15 Runs ignore explicit Run and exclude non-entry");
+    selected = fromReader.selectMarkers("M15MARKERS", 0, 0, 0, false, runId, ids, markers, error,
+        "", "qa-server", 2000, PERIOD_M15);
+    expect(selected && runId == 2 && ArraySize(ids) == 1 && ids[0] == 13,
+        "latest M15 Run remains independently selectable");
+    selected = fromReader.selectMarkers("M15MARKERS", 0, 1100, 1500, false, runId, ids, markers, error,
+        "LIVE", "qa-server", 1200, PERIOD_M15, true);
+    expect(selected && ArraySize(ids) == 1 && ids[0] == 8,
+        "M15 date start inclusive and future judgment excluded even when bar is known");
+    selected = fromReader.selectMarkers("M15MARKERS", 0, 1400, 1500, false, runId, ids, markers, error,
+        "LIVE", "qa-server", 2000, PERIOD_M15, true);
+    expect(selected && ArraySize(ids) == 1 && ids[0] == 11, "M15 date end remains exclusive");
+}
+
+/**
+ * 専用一時DBで旧補正制約の移行とH1・M15の補正保存・採用表示を検証する。
  */
 void testH1Corrections(const string fromFileName) {
     if (!expect(isUnusedFixtureName(fromFileName), "unused H1 correction fixture path")) {
@@ -863,6 +914,23 @@ void testH1Corrections(const string fromFileName) {
     }
     expect(saveAlert(service, runId, 6, 1500, "NONE", true, PERIOD_D1, true,
         "H1CORRECTION", PERIOD_H1) == 6, "save H1 without correction");
+
+    int m15CorrectionFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1};
+    for (int i = 0; i < ArraySize(m15CorrectionFrames); i++) {
+        expect(saveAlert(service, runId, i + 7, 1000 + i * 100, "APPLIED", i != 1,
+            m15CorrectionFrames[i], true, "M15MARKERS", PERIOD_M15) == i + 7, "save M15 selected analysis");
+    }
+
+    expect(saveAlert(service, runId, 10, 1300, "NONE", true, PERIOD_H1, true,
+        "M15MARKERS", PERIOD_M15) == 10, "save M15 without correction");
+    expect(saveAlert(service, runId, 11, 1400, "NONE", true, PERIOD_H1, false,
+        "M15MARKERS", PERIOD_M15) == 11, "save M15 non-entry");
+    expect(saveAlert(service, runId, 12, 1500, "UNRECORDED", true, PERIOD_H1, true,
+        "M15MARKERS", PERIOD_M15) == 12, "save M15 legacy row");
+    long laterRun = saveRun(service, 2);
+    expect(saveAlert(service, laterRun, 13, 1600, "NONE", true, PERIOD_H1, true,
+        "M15MARKERS", PERIOD_M15) == 13, "save M15 later TESTER Run");
+    executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET server_time=1250 WHERE id=9");
     database.close();
     ZigZagElliotAlertHistoryReader reader;
     string error = "";
@@ -891,6 +959,8 @@ void testH1Corrections(const string fromFileName) {
             expect(markers[4].available && markers[4].correctionStatus == "NONE"
                 && markers[4].waves[4].wave == "2", "H1 uncorrected marker retains original analysis");
         }
+
+        testM15Markers(reader);
     }
     reader.close();
     removeFixture(fromFileName, true);

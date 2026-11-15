@@ -14,6 +14,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
 #include <Mstng\Database\ZigZagElliotAlertDatabaseContext.mqh>
+#include <Mstng\Draw\DrawZigZagElliotEntryLines.mqh>
 #include <Mstng\Draw\DrawZigZagElliotLiveAlertTooltip.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
@@ -185,6 +186,15 @@ public:
         Mtf3In3AlertResult alertResult =
             this.expertAdvisorMtf3In3.getAlertResult();
 
+        if (this.config.entryVerticalLineEnabled && alertResult.isEntry) {
+            if (!DrawZigZagElliotEntryLines::draw(this.marketContext,
+                    fromElliotAll.elliotCurrent.currentOhlcBarTime,
+                    fromElliotAll.tradeTimeInfo.serverTime,
+                    fromElliotAll.tradeTimeInfo.jstTime, alertResult.isBuy)) {
+                this.logger.error(__FUNCTION__, "entry vertical line drawing failed");
+            }
+        }
+
         if (this.marketContext.timeFrame == PERIOD_M5 || this.marketContext.timeFrame == PERIOD_M15
                 || this.marketContext.timeFrame == PERIOD_H1) {
             string objectName = Constant::PREFIX_FIXED + "TextMTF_3in3"
@@ -275,6 +285,7 @@ public:
     void destroy() {
         this.releaseDatabase();
         this.checkedSignalKeys.Clear();
+        DrawZigZagElliotEntryLines::clear();
 
         if (this.expertAdvisorMtf3In3 != NULL) {
             delete this.expertAdvisorMtf3In3;

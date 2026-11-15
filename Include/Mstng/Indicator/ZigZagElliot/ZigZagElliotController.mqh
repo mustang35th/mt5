@@ -12,6 +12,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Common\UpdateTimingStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawZigZagElliotEntryLines.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Indicator\ZigZagElliot\CurrencyStrengthPairRankController.mqh>
@@ -212,7 +213,8 @@ public:
         }
 
         if (this.config.databaseAlertDisplayEnabled
-                && (this.marketContext.timeFrame == PERIOD_M5 || this.marketContext.timeFrame == PERIOD_H1)) {
+                && (this.marketContext.timeFrame == PERIOD_M5 || this.marketContext.timeFrame == PERIOD_M15
+                    || this.marketContext.timeFrame == PERIOD_H1)) {
             this.databaseAlertDisplayController = new DatabaseAlertDisplayController();
             if (this.databaseAlertDisplayController == NULL
                     || !this.databaseAlertDisplayController.initialize(this.marketContext, this.config)) {
@@ -983,6 +985,7 @@ private:
      * 初期化失敗や異常終了で残った所有オブジェクトを最終削除する。
      */
     void cleanupOrphanedObjects() {
+        DrawZigZagElliotEntryLines::clear();
         ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
         ObjectsDeleteAll(
             0,

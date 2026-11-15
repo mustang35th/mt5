@@ -48,7 +48,7 @@ public:
     /** テスターのAlert DB保存開始サーバー時刻。0は日時制限なし。 */
     datetime mtf3In3AlertTesterSaveStartTime;
 
-    /** M5・H1に保存済みDBアラートを表示する場合true。 */
+    /** M5・M15・H1に保存済みDBアラートを表示する場合true。 */
     bool databaseAlertDisplayEnabled;
 
     /** 表示対象Run。0は最初に一致した最新Runを保持する。 */
@@ -149,6 +149,10 @@ public:
 
     /** チャートへ波動ラベルを表示する上位時間足数。 */
     ElliotHigherTimeFrameDisplayCount elliotHigherTimeFrameDisplayCount;
+
+    /** 新規ENTRYとDB表示対象の保存済みENTRYへ縦線を表示する場合true。 */
+    bool entryVerticalLineEnabled;
+
     /**
      * デフォルト設定で初期化する。
      */
@@ -196,6 +200,7 @@ public:
         this.currencyStrengthDatabaseUseCommonFolder = true;
         this.elliotHigherTimeFrameDisplayCount =
             ELLIOT_HIGHER_TIME_FRAME_DISPLAY_THREE;
+        this.entryVerticalLineEnabled = false;
     }
 
     /**

@@ -1,6 +1,7 @@
 ﻿#ifndef MSTNG_DRAW_ZIGZAG_ELLIOT_ALERT_MARKERS_MQH
 #define MSTNG_DRAW_ZIGZAG_ELLIOT_ALERT_MARKERS_MQH
 
+#include <Mstng\Draw\DrawZigZagElliotEntryLines.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryData.mqh>
 
 /**
@@ -38,7 +39,7 @@ public:
     }
 
     /**
-     * 一覧ラベルと引出線を削除し、通常ラベルのツールチップを戻す。
+     * 一覧ラベル・引出線・DBのENTRY縦線を削除し、通常ラベルのツールチップを戻す。
      */
     void clear() {
         for (int i = 0; i < ArraySize(this.tooltipOverrides); i++) {
@@ -53,6 +54,47 @@ public:
         ArrayFree(this.tooltipOverrides);
         ObjectsDeleteAll(this.chartId, this.prefix + "Marker-");
         ObjectsDeleteAll(this.chartId, this.prefix + "MarkerLink-");
+        DrawZigZagElliotEntryLines::clear(this.chartId, this.prefix + "EntryLine-");
+    }
+
+    /**
+     * 保存済みENTRY縦線だけを再配置する。文字の表示可否や価格座標には依存しない。
+     *
+     * @param fromMarkers DBから取得した発生足・判定日時・方向。
+     * @param fromKnownTime 表示してよい判定時刻の上限。0は制限なし。
+     * @param fromEnabled 縦線を表示する場合true。
+     */
+    void drawEntryLines(const ZigZagElliotAlertHistoryMarker &fromMarkers[],
+            const datetime fromKnownTime, const bool fromEnabled) {
+        string entryLinePrefix = this.prefix + "EntryLine-";
+        DrawZigZagElliotEntryLines::clear(this.chartId, entryLinePrefix);
+        if (!fromEnabled) {
+            return;
+        }
+
+        MarketContext marketContext(ChartSymbol(this.chartId), (ENUM_TIMEFRAMES)ChartPeriod(this.chartId));
+        for (int i = 0; i < ArraySize(fromMarkers); i++) {
+            if (fromMarkers[i].isEntry != 1 || fromMarkers[i].barTime <= 0
+                    || fromMarkers[i].serverTime <= 0
+                    || (fromMarkers[i].side != "BUY" && fromMarkers[i].side != "SELL")
+                    || (fromKnownTime > 0 && (fromMarkers[i].barTime > fromKnownTime
+                        || fromMarkers[i].serverTime > fromKnownTime))) {
+                continue;
+            }
+
+            marketContext.setTimeFrame(fromMarkers[i].timeFrame);
+            DrawZigZagElliotEntryLines::draw(marketContext, fromMarkers[i].barTime,
+                fromMarkers[i].serverTime, fromMarkers[i].jstTime, fromMarkers[i].side == "BUY",
+                this.chartId, entryLinePrefix);
+        }
+    }
+
+    /**
+     * 同一足で遅れて成立した通常ENTRYとの重複だけを取り除く。
+     */
+    void removeLiveEntryDuplicates(const ENUM_TIMEFRAMES fromTimeFrame, const datetime fromBarTime) {
+        DrawZigZagElliotEntryLines::removeLiveDuplicates(this.chartId, this.prefix + "EntryLine-",
+            fromTimeFrame, fromBarTime);
     }
 
     /**
@@ -60,10 +102,13 @@ public:
      *
      * @param fromExistingTextPrefix 重複を避ける通常ラベルの接頭辞。空は重複検査なし。
      * @param fromKnownTime 表示してよい判定時刻の上限。0は制限なし。
+     * @param fromEntryLinesEnabled 保存済みENTRYの縦線を表示する場合true。
      */
     void draw(const ZigZagElliotAlertHistoryMarker &fromMarkers[],
-            const string fromExistingTextPrefix = "", const datetime fromKnownTime = 0) {
+            const string fromExistingTextPrefix = "", const datetime fromKnownTime = 0,
+            const bool fromEntryLinesEnabled = false) {
         this.clear();
+        this.drawEntryLines(fromMarkers, fromKnownTime, fromEntryLinesEnabled);
 
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);

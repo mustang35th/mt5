@@ -148,7 +148,7 @@ public:
      * 同じ検索条件で全ラベルと最新ポイントの元ラベルを一括取得する。詳細分析は読み取らない。
      * 表示値が不足する行もIDを残し、前後移動による詳細確認を可能にする。
      * 任意の実行モード・サーバー・既知時刻はRun選択前に適用する。空文字と0は制限なし。
-     * 全RunではRun ID指定を使わず、解決Run IDは0。M5/H1とも保存された採用分析を使用する。
+     * 全RunではRun ID指定を使わず、解決Run IDは0。M5/M15/H1とも保存された採用分析を使用する。
      */
     bool selectMarkers(
         const string fromSymbol, const long fromRunId,
@@ -174,7 +174,8 @@ public:
 
         if (fromSymbol == "" || fromRunId < 0 || fromStartTime < 0 || fromEndTime < 0 || fromKnownTime < 0
                 || (fromEndTime > 0 && fromEndTime <= fromStartTime)
-                || (fromTimeFrame != PERIOD_M5 && fromTimeFrame != PERIOD_H1)) {
+                || (fromTimeFrame != PERIOD_M5 && fromTimeFrame != PERIOD_M15
+                    && fromTimeFrame != PERIOD_H1)) {
             fromError = "通貨・Run・日時範囲の指定が不正です。";
             return false;
         }

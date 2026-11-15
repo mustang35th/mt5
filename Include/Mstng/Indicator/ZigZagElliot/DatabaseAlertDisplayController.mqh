@@ -11,7 +11,7 @@
 #include <Mstng\Util\Util.mqh>
 
 /**
- * 通常版M5・H1の保存アラート表示を管理する。分析・判定・DB書込は行わない。
+ * 通常版M5・M15・H1の保存アラート表示を管理する。分析・判定・DB書込は行わない。
  * 準備完了後の新バーでのみ読み取り、表示変更では保存済みキャッシュを使う。
  */
 class DatabaseAlertDisplayController {
@@ -21,6 +21,7 @@ public:
      */
     DatabaseAlertDisplayController() {
         this.drawer = NULL;
+        this.entryVerticalLineEnabled = false;
         this.lastBarTime = 0;
         this.lastKnownTime = 0;
         this.resolvedRunId = 0;
@@ -45,6 +46,7 @@ public:
      */
     bool initialize(MarketContext &fromMarketContext, ZigZagElliotConfig &fromConfig) {
         this.marketContext = fromMarketContext;
+        this.entryVerticalLineEnabled = fromConfig.entryVerticalLineEnabled;
         this.config.databaseFileName = fromConfig.mtf3In3AlertDatabaseFileName;
         this.config.useCommonFolder = fromConfig.mtf3In3AlertDatabaseUseCommonFolder;
         this.allRuns = fromConfig.databaseAlertDisplayRunScope == DATABASE_ALERT_RUN_ALL;
@@ -59,7 +61,8 @@ public:
         this.logger.setMarketContext(this.marketContext);
 
         string error = "";
-        if ((this.marketContext.timeFrame != PERIOD_M5 && this.marketContext.timeFrame != PERIOD_H1)
+        if ((this.marketContext.timeFrame != PERIOD_M5 && this.marketContext.timeFrame != PERIOD_M15
+                    && this.marketContext.timeFrame != PERIOD_H1)
                 || (fromConfig.databaseAlertDisplayRunScope != DATABASE_ALERT_RUN_SELECTED
                     && fromConfig.databaseAlertDisplayRunScope != DATABASE_ALERT_RUN_ALL)) {
             this.reportError("DBアラート表示の時間足・Run対象を確認してください。");
@@ -103,6 +106,10 @@ public:
 
         bool contextChanged = this.sourceServer != fromSourceServer || fromKnownTime < this.lastKnownTime;
         if (!contextChanged && this.lastBarTime == fromBarTime) {
+            if (this.entryVerticalLineEnabled) {
+                this.drawer.removeLiveEntryDuplicates(this.marketContext.timeFrame, fromBarTime);
+            }
+
             return;
         }
 
@@ -178,7 +185,8 @@ public:
             return;
         }
 
-        this.drawer.draw(this.markers, Constant::PREFIX_FIXED + "TextMTF_3in3", fromKnownTime);
+        this.drawer.draw(this.markers, Constant::PREFIX_FIXED + "TextMTF_3in3", fromKnownTime,
+            this.entryVerticalLineEnabled);
     }
 
 private:
@@ -193,6 +201,9 @@ private:
 
     /** 保存ラベル描画。 */
     DrawZigZagElliotAlertMarkers *drawer;
+
+    /** DBに保存されたENTRY縦線を復元する場合true。 */
+    bool entryVerticalLineEnabled;
 
     /** 保存ラベルのキャッシュ。 */
     ZigZagElliotAlertHistoryMarker markers[];
