@@ -5,12 +5,12 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.06"
+#property version   "1.15"
 #property indicator_separate_window
 #property indicator_buffers 7
 #property indicator_plots   5
-#property indicator_minimum -7.0
-#property indicator_maximum 7.0
+#property indicator_minimum -8.0
+#property indicator_maximum 8.0
 #property indicator_level1  0.0
 #property indicator_levelcolor clrDimGray
 #property indicator_levelstyle STYLE_DOT
@@ -29,6 +29,7 @@
 #property indicator_type5   DRAW_NONE
 
 #include <Mstng\Draw\ChartRedrawRequest.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankDeltaCleanup.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankDeltaPanel.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankGapFill.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankGapLabels.mqh>
@@ -81,6 +82,11 @@ input(name="年別DBファイルを参照") bool databaseSplitByYear = true;
 /** MT5共通フォルダ内のDBを使用する。テスターでは必須。 */
 input(name="MT5共通フォルダから読み込む") bool databaseUseCommonFolder = true;
 
+input group "04. 順位文字"
+
+/** 順位差1を1目盛りとする、線と順位文字の距離。上下共通。 */
+input(name="線からの距離（目盛り）") double rankLabelGapUnits = 0.5;
+
 /** v1.03互換の順位差側境界。Canvas描画からは参照しない。 */
 double gGapFillBuffer[];
 
@@ -114,7 +120,7 @@ DrawCurrencyStrengthRankDeltaPanel *gPanel = NULL;
 /** 表示中の区間だけを前足比で塗り分ける。 */
 DrawCurrencyStrengthRankGapFill *gFill = NULL;
 
-/** 長中期の順位差が変化した足に両通貨順位を表示する。 */
+/** 長中期の順位差が変化した足に両通貨順位・順位差・前足比を表示する。 */
 DrawCurrencyStrengthRankGapLabels *gRankLabels = NULL;
 
 /** イベント内の再描画要求をまとめる。 */
@@ -159,6 +165,9 @@ bool gFillDirty = true;
 /** 順位または表示範囲の変更を数値ラベルへ反映する場合true。 */
 bool gRankLabelsDirty = true;
 
+/** 初回描画前に以前の表示を回収する必要がある場合true。 */
+bool gDisplayCleanupPending = true;
+
 /** 再試行用に保持するパネル見出し。 */
 string gPanelTitle = "";
 
@@ -186,6 +195,7 @@ const ulong refreshMilliseconds = 60000;
  * @return 初期化結果。
  */
 int OnInit() {
+    gDisplayCleanupPending = true;
     gIsTester = Util::isStrategyTester();
     if (MQLInfoInteger(MQL_OPTIMIZATION)) {
         Print("CurrencyStrengthRankDeltaHistory does not support optimization");
@@ -194,6 +204,7 @@ int OnInit() {
     }
 
     if (historyDays < 1 || historyDays > 366 || subPanelHeight < 0
+            || !MathIsValidNumber(rankLabelGapUnits) || rankLabelGapUnits < 0.0
             || databaseFileName == ""
             || (rankPeriod != CURRENCY_STRENGTH_RANK_DELTA_LONG_MEDIUM
                 && rankPeriod != CURRENCY_STRENGTH_RANK_DELTA_MEDIUM_SHORT)
@@ -243,7 +254,7 @@ int OnInit() {
 
     if (rankPeriod == CURRENCY_STRENGTH_RANK_DELTA_LONG_MEDIUM) {
         gRankLabels = new DrawCurrencyStrengthRankGapLabels(ChartID(), objectSuffix,
-            gBaseCurrency, gQuoteCurrency, GetPointer(gRedrawRequest));
+            gBaseCurrency, gQuoteCurrency, GetPointer(gRedrawRequest), rankLabelGapUnits);
         if (gRankLabels == NULL) {
             return INIT_FAILED;
         }
@@ -379,8 +390,8 @@ bool initializeBuffers() {
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 0, clrAqua)
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 1, clrHotPink)
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 2, clrGray)
-            || !IndicatorSetDouble(INDICATOR_MINIMUM, -7.0)
-            || !IndicatorSetDouble(INDICATOR_MAXIMUM, 7.0)
+            || !IndicatorSetDouble(INDICATOR_MINIMUM, -8.0)
+            || !IndicatorSetDouble(INDICATOR_MAXIMUM, 8.0)
             || !IndicatorSetInteger(INDICATOR_LEVELSTYLE, 0, STYLE_DOT)
             || !IndicatorSetInteger(INDICATOR_LEVELWIDTH, 0, 1)) {
         return false;
@@ -660,10 +671,30 @@ void updatePanelText(const datetime fromTargetTime) {
 }
 
 /**
+ * 初回だけ再初期化前の古い表示を回収する。
+ *
+ * @return 描画を開始できる場合true。
+ */
+bool prepareDisplay() {
+    if (!gDisplayCleanupPending) {
+        return true;
+    }
+
+    if (!DrawCurrencyStrengthRankDeltaCleanup::prepare(ChartID(), ChartWindowFind())) {
+        return false;
+    }
+
+    gDisplayCleanupPending = false;
+    gRedrawRequest.request();
+
+    return true;
+}
+
+/**
  * データ変更時と画面確認時だけ塗りを反映し、失敗時は次回に再試行する。
  */
 void drawFill(const bool fromCheckViewport = false) {
-    if (gFill == NULL || (!gFillDirty && !fromCheckViewport)) {
+    if (gFill == NULL || (!gFillDirty && !fromCheckViewport) || !prepareDisplay()) {
         return;
     }
 
@@ -674,7 +705,7 @@ void drawFill(const bool fromCheckViewport = false) {
  * 長中期の数値ラベルをデータ変更時と画面確認時だけ反映する。
  */
 void drawRankLabels(const bool fromCheckViewport = false) {
-    if (gRankLabels == NULL || (!gRankLabelsDirty && !fromCheckViewport)) {
+    if (gRankLabels == NULL || (!gRankLabelsDirty && !fromCheckViewport) || !prepareDisplay()) {
         return;
     }
 
@@ -686,7 +717,7 @@ void drawRankLabels(const bool fromCheckViewport = false) {
  * 内容変更時と定期確認時だけパネルを反映し、失敗時は次回に再試行する。
  */
 void drawPanel() {
-    if (!gPanelDirty || gPanel == NULL) {
+    if (!gPanelDirty || gPanel == NULL || !prepareDisplay()) {
         return;
     }
 
