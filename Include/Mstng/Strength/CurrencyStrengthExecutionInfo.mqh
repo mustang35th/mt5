@@ -62,6 +62,9 @@ struct CurrencyStrengthExecutionInfo {
     /** 長中期の増減方向をエントリーフィルタとして使用する場合true。 */
     bool longMediumGapDirectionFilterEnabled;
 
+    /** 中短期の増減方向をエントリーフィルタとして使用する場合true。 */
+    bool mediumShortGapDirectionFilterEnabled;
+
     /** 長中期・中短期の増減方向をメールの参考情報へ表示する場合true。 */
     bool gapDirectionMailEnabled;
 
@@ -89,6 +92,7 @@ struct CurrencyStrengthExecutionInfo {
         this.sourceFileName = "";
         this.pairRankInfo.reset();
         this.longMediumGapDirectionFilterEnabled = false;
+        this.mediumShortGapDirectionFilterEnabled = false;
         this.gapDirectionMailEnabled = false;
         this.longMediumGapDirection.reset();
         this.mediumShortGapDirection.reset();

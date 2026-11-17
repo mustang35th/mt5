@@ -103,7 +103,9 @@ public:
             this.config.m5D1ToM5EntryPolicyEnabled,
             this.config.m5CurrencyStrengthMinimumRankDifference,
             this.config.m15CurrencyEma200DistanceEnabled,
-            this.config.m15LongMediumCurrencyStrengthEnabled
+            this.config.m15LongMediumCurrencyStrengthEnabled,
+            this.marketContext.timeFrame == PERIOD_M1,
+            this.config.m1DirectionCorrectionEnabled
         );
 
         if (this.expertAdvisorMtf3In3 == NULL) {
@@ -558,11 +560,18 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "2.72";
+            this.databaseRun.programVersion = "2.80";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
+        if (this.marketContext.timeFrame == PERIOD_M1) {
+            this.databaseRun.strategyVersion = "MTF3IN3_M1_M5_M1_WAVES13_NO_EMA200_V34";
+            if (this.config.m1DirectionCorrectionEnabled) {
+                this.databaseRun.strategyVersion = "MTF3IN3_M1_CORRECTED_WAVES_NO_EMA200_V35";
+            }
+        }
+
         if (this.marketContext.timeFrame == PERIOD_H1
                 && this.config.h1DirectionCorrectionEnabled) {
             this.databaseRun.strategyVersion = "MTF3IN3_H1_CORRECTED_WAVES_V14";
@@ -592,7 +601,14 @@ private:
                 this.databaseRun.strategyVersion = "MTF3IN3_M15_LONG_MEDIUM_EXTREME_OR_V30";
             }
         }
-        if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
+        if (this.marketContext.timeFrame == PERIOD_M1
+                && this.config.isMediumShortGapDirectionEnabled(this.marketContext.timeFrame)) {
+            if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
+                this.databaseRun.strategyVersion += "_BOTH_GAP_CARRY_V36";
+            } else {
+                this.databaseRun.strategyVersion += "_MS_GAP_CARRY_V36";
+            }
+        } else if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
             this.databaseRun.strategyVersion += "_LM_GAP_CARRY_V31";
         }
 
@@ -634,6 +650,20 @@ private:
             + (string)this.config.h1DisplayWaveEntryLimitEnabled;
         inputText += "|h1DirectionCorrectionEnabled="
             + (string)this.config.h1DirectionCorrectionEnabled;
+        if (this.marketContext.timeFrame == PERIOD_M1) {
+            inputText += "|m1MainWaveCondition=M5_1_OR_3_AND_M1_1_OR_3";
+            inputText += "|m1Ema200DirectionPolicy=NONE";
+            inputText += "|m1Ema200DistancePolicy=NONE";
+            inputText += "|m1CurrencyStrengthCondition=BOTH_DIRECTION_AND_MINIMUM_GAP_1";
+            inputText += "|m1CurrencyStrengthGapDirectionMode="
+                + IntegerToString((int)this.config.m1CurrencyStrengthGapDirectionMode);
+            inputText += "|m1DirectionCorrectionEnabled="
+                + (string)this.config.m1DirectionCorrectionEnabled;
+            if (this.config.m1DirectionCorrectionEnabled) {
+                inputText += "|m1DirectionCorrectionCondition=H4_OR_H1_OR_M15_ONE_WITH_D1_M5_REQUIRED";
+            }
+        }
+
         if (this.marketContext.timeFrame == PERIOD_H1
                 || this.marketContext.timeFrame == PERIOD_M15) {
             inputText += "|h1H4WaveRestrictionEnabled="
@@ -692,6 +722,14 @@ private:
             inputText += "|longMediumGapCarryRule=LAST_NON_ZERO_CHANGE";
             inputText += "|longMediumGapMissingRule=RESET_UNKNOWN";
             inputText += "|longMediumGapLookbackDays=30";
+        }
+
+        if (this.config.isMediumShortGapDirectionEnabled(this.marketContext.timeFrame)) {
+            inputText += "|mediumShortGapDirectionEnabled=true";
+            inputText += "|mediumShortGapCompareSeconds=300";
+            inputText += "|mediumShortGapCarryRule=LAST_NON_ZERO_CHANGE";
+            inputText += "|mediumShortGapMissingRule=RESET_UNKNOWN";
+            inputText += "|mediumShortGapLookbackDays=30";
         }
 
         inputText += "|currencyStrengthEnabled="

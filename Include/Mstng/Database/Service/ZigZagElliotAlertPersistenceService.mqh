@@ -661,7 +661,7 @@ private:
                 && ArraySize(fromCorrectedTimeFrames) == 0 && ArraySize(fromCorrectedPoints) == 0;
         }
 
-        bool isCorrectionTimeFrameValid = fromAlert.timeFrame == PERIOD_M5
+        bool isCorrectionTimeFrameValid = (fromAlert.timeFrame == PERIOD_M5 || fromAlert.timeFrame == PERIOD_M1)
             && (fromCorrection.correctionTimeFrame == PERIOD_H4 || fromCorrection.correctionTimeFrame == PERIOD_H1
                 || fromCorrection.correctionTimeFrame == PERIOD_M15);
         if (fromAlert.timeFrame == PERIOD_H1 || fromAlert.timeFrame == PERIOD_M15) {
@@ -795,7 +795,9 @@ private:
     }
 
     /**
-     * M5は7足・H4/H1/M15、H1は5足・D1/H4、M15は6足・D1/H4/H1の指定片足だけの方向変更を確認する。
+     * M1は8足・H4/H1/M15、M5は7足・H4/H1/M15、H1は5足・D1/H4、
+     * M15は6足・D1/H4/H1の指定片足だけの方向変更を確認する。
+     * M1ではD1からM1までの未補正足の元方向も現在足と一致させる。
      */
     bool isAppliedDirectionValid(
         ZigZagElliotAlertTimeFrameEntity &fromOriginal[],
@@ -804,11 +806,15 @@ private:
         const int fromCurrentTimeFrame
     ) {
         ENUM_TIMEFRAMES timeFrames[] = {
-            PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5
+            PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5, PERIOD_M1
         };
         int timeFrameCount = 7;
         ENUM_TIMEFRAMES upperTimeFrame = PERIOD_H4;
         ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
+        if (fromCurrentTimeFrame == PERIOD_M1) {
+            timeFrameCount = 8;
+        }
+
         if (fromCurrentTimeFrame == PERIOD_H1 || fromCurrentTimeFrame == PERIOD_M15) {
             timeFrameCount = 5;
             if (fromCurrentTimeFrame == PERIOD_M15) {
@@ -842,7 +848,10 @@ private:
 
             if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame
                     || (fromCurrentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1)
-                    || (fromCurrentTimeFrame == PERIOD_M5 && timeFrames[i] == PERIOD_M15))
+                    || ((fromCurrentTimeFrame == PERIOD_M5 || fromCurrentTimeFrame == PERIOD_M1)
+                        && timeFrames[i] == PERIOD_M15)
+                    || (fromCurrentTimeFrame == PERIOD_M1
+                        && (timeFrames[i] == PERIOD_D1 || timeFrames[i] == PERIOD_M5)))
                     && timeFrames[i] != fromCorrection.correctionTimeFrame
                     && fromOriginal[i].isBuy != currentIsBuy) {
                 return false;

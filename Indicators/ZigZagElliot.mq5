@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.75"
+#property version   "2.80"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -42,11 +42,15 @@ bool mtf3In3AlertDatabaseUseCommonFolder = true;
 input(name="テスターDB保存開始日時（サーバー時刻、0=制限なし）")
 datetime mtf3In3AlertTesterSaveStartTime = 0;
 
-input group "03. H1・M15エントリー追加条件"
+input group "03. H1・M15・M1エントリー追加条件"
 
 /** 現在足方向を基準に、H1はD1・H4、M15はD1・H4・H1の逆方向1足を補正する。 */
 input(name="H1・M15の上位足片足方向補正")
 bool h1DirectionCorrectionEnabled = true;
+
+/** M1を基準にD1・M5一致を必須とし、H4・H1・M15の逆方向1足を補正する。 */
+input(name="M1の上位足片足方向補正")
+bool m1DirectionCorrectionEnabled = true;
 
 /** H1表示波ごとのエントリー回数制限を使用する場合true。 */
 input(name="H1表示波の回数制限")
@@ -64,9 +68,18 @@ input group "04. 通貨強弱"
 /** 通貨強弱を利用する場合true。 */
 input(name="通貨強弱を使用") bool currencyStrengthEnabled = true;
 
-/** M5・M15以外で通貨強弱の方向一致をエントリー条件として使用する場合true。 */
-input(name="エントリー条件に使用（M5・M15以外）")
+/** M1・M5・M15以外で通貨強弱の方向一致をエントリー条件として使用する場合true。 */
+input(name="エントリー条件に使用（M1・M5・M15以外）")
 bool currencyStrengthEntryFilterEnabled = false;
+
+/** M1で両期間の方向一致と各順位差1以上をエントリー条件として使用する場合true。 */
+input(name="M1エントリー条件に使用（両期間の方向一致）")
+bool m1CurrencyStrengthEntryFilterEnabled = true;
+
+/** M1で順位差の直近増減方向を追加する期間。横ばいは直前方向を維持する。 */
+input(name="M1順位差の増減判定（M5履歴）")
+M1CurrencyStrengthGapDirectionMode m1CurrencyStrengthGapDirectionMode =
+    M1_CURRENCY_STRENGTH_GAP_BOTH;
 
 /** M15で長中期の売買方向一致と、順位差2以上または方向に合う1位・8位を必須にする場合true。 */
 input(name="M15エントリー条件に使用（長中期差2または端順位）")
@@ -165,6 +178,15 @@ ZigZagElliotController *gController = NULL;
  * @return 初期化結果
  */
 int OnInit() {
+    if (_Period == PERIOD_M1
+            && (m1CurrencyStrengthGapDirectionMode < M1_CURRENCY_STRENGTH_GAP_OFF
+                || m1CurrencyStrengthGapDirectionMode > M1_CURRENCY_STRENGTH_GAP_BOTH)) {
+        Logger logger(LOG_ERROR);
+        logger.error(__FUNCTION__, "invalid M1 currency strength gap direction mode");
+
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
     if (_Period == PERIOD_M5
             && (m5CurrencyStrengthMinimumRankDifference < 1
                 || m5CurrencyStrengthMinimumRankDifference > 7)) {
@@ -203,6 +225,7 @@ int OnInit() {
     config.databaseAlertDisplayEndDate = databaseAlertDisplayEndDate;
     config.databaseAlertDisplayEntryOnly = databaseAlertDisplayEntryOnly;
     config.h1DirectionCorrectionEnabled = h1DirectionCorrectionEnabled;
+    config.m1DirectionCorrectionEnabled = m1DirectionCorrectionEnabled;
     config.m15H4MaxFibonacciExpansionPercent = m15H4MaxFibonacciExpansionPercent;
     config.m15H1MaxFibonacciExpansionPercent = m15H1MaxFibonacciExpansionPercent;
     config.m15CurrencyEma200DistanceEnabled = _Period == PERIOD_M15;
@@ -221,7 +244,12 @@ int OnInit() {
     config.m15LongMediumCurrencyStrengthEnabled = _Period == PERIOD_M15;
     config.m5LongMediumGapDirectionEnabled = m5LongMediumGapDirectionEnabled;
     config.m15LongMediumGapDirectionEnabled = m15LongMediumGapDirectionEnabled;
+    config.m1CurrencyStrengthGapDirectionMode = m1CurrencyStrengthGapDirectionMode;
     config.currencyStrengthGapMailEnabled = currencyStrengthGapMailEnabled;
+    if (_Period == PERIOD_M1) {
+        config.currencyStrengthEntryFilterEnabled = m1CurrencyStrengthEntryFilterEnabled;
+    }
+
     if (_Period == PERIOD_M15) {
         config.currencyStrengthEntryFilterEnabled = m15CurrencyStrengthEntryFilterEnabled;
     }

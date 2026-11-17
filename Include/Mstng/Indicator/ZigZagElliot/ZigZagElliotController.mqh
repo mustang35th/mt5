@@ -1208,7 +1208,7 @@ private:
             this.currencyStrengthController.getExecutionInfo();
 
         // 初回の対象M5を分析前に固定し、分析中に枠を跨いでも判定時刻をずらさない。
-        if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)
+        if (this.config.isGapDirectionEnabled(this.marketContext.timeFrame)
                 && this.lastProcessedBarTime != analysisStartBarTime
                 && this.gapWaitingChartBarTime != analysisStartBarTime) {
             datetime targetTime = executionInfo.targetM5BarTime;
@@ -1290,7 +1290,7 @@ private:
             return;
         }
 
-        if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
+        if (this.config.isGapDirectionEnabled(this.marketContext.timeFrame)) {
             datetime evaluationTime = TimeCurrent();
             if (evaluationTime <= 0) {
                 evaluationTime = currentBarTime;
@@ -1338,7 +1338,7 @@ private:
     }
 
     /**
-     * データ待ちだけを同じM5枠内で再確認し、M15の途中枠へ判定をずらさない。
+     * 必要な期間のデータ待ちだけを同じM5枠内で再確認し、M15の途中枠へ判定をずらさない。
      * 方向不明や不一致は判定済みとして通常のアラート経路へ渡す。
      *
      * @return データ待ち、または待機枠を過ぎて今回の足を見送った場合true。
@@ -1359,10 +1359,22 @@ private:
             return true;
         }
 
-        if (fromExecutionInfo.targetM5BarTime == fromM5BarTime
-                && fromExecutionInfo.longMediumGapDirection.enabled
+        bool isLongMediumReady = true;
+        if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
+            isLongMediumReady = fromExecutionInfo.longMediumGapDirection.enabled
                 && fromExecutionInfo.longMediumGapDirection.targetM5BarTime == fromM5BarTime
-                && !fromExecutionInfo.longMediumGapDirection.waiting) {
+                && !fromExecutionInfo.longMediumGapDirection.waiting;
+        }
+
+        bool isMediumShortReady = true;
+        if (this.config.isMediumShortGapDirectionEnabled(this.marketContext.timeFrame)) {
+            isMediumShortReady = fromExecutionInfo.mediumShortGapDirection.enabled
+                && fromExecutionInfo.mediumShortGapDirection.targetM5BarTime == fromM5BarTime
+                && !fromExecutionInfo.mediumShortGapDirection.waiting;
+        }
+
+        if (fromExecutionInfo.targetM5BarTime == fromM5BarTime
+                && isLongMediumReady && isMediumShortReady) {
             this.gapWaitingChartBarTime = 0;
             this.gapWaitingM5BarTime = 0;
 

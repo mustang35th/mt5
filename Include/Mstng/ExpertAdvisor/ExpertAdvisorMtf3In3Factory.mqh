@@ -10,6 +10,7 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_FACTORY_MQH
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3H1.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3M1.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3M15.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3M5.mqh>
 
@@ -21,7 +22,9 @@
  * 確認モード引数はその他の従来互換経路のために維持する。
  * 呼び出し元のH1設定記録も共通ポリシーから生成すること。
  *
- * H1、M15およびM5以外は、従来互換の共通クラスを生成する。
+ * M1は明示指定時だけM5・M1の波動番号条件とEMA200条件なしの専用クラスを生成する。
+ * M1の方向補正は別指定で有効化し、D1・M5必須でH4・H1・M15の逆方向1足を補正する。
+ * H1・M15・M5および明示指定のM1以外は、従来互換の共通クラスを生成する。
  */
 class ExpertAdvisorMtf3In3Factory {
 public:
@@ -43,6 +46,8 @@ public:
      * @param fromM5CurrencyStrengthMinimumRankDifference 通常版M5で両期間の各OR判定に使用する最低順位差。
      * @param fromM15CurrencyEma200DistanceEnabled M15で通貨別EMA200距離上限を使用する場合true。
      * @param fromM15LongMediumCurrencyStrengthEnabled M15の通貨強弱を長中期の順位差2以上または方向に合う1位・8位で判定する場合true。
+     * @param fromM1M5AndM1WavePolicyEnabled M1でM5・M1の主波1・3とEMA200条件なしの専用条件を使用する場合true。
+     * @param fromM1DirectionCorrectionEnabled M1専用条件でH4・H1・M15の逆方向1足を補正する場合true。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */
     static ExpertAdvisorMTF_3in3 *create(
@@ -63,7 +68,9 @@ public:
         bool fromM5D1ToM5EntryPolicyEnabled = false,
         int fromM5CurrencyStrengthMinimumRankDifference = 4,
         bool fromM15CurrencyEma200DistanceEnabled = false,
-        bool fromM15LongMediumCurrencyStrengthEnabled = false
+        bool fromM15LongMediumCurrencyStrengthEnabled = false,
+        bool fromM1M5AndM1WavePolicyEnabled = false,
+        bool fromM1DirectionCorrectionEnabled = false
     ) {
         if (fromMarketContext.timeFrame == PERIOD_H1) {
             return new ExpertAdvisorMtf3In3H1(
@@ -96,6 +103,17 @@ public:
                 fromM5Mn1AndW1Ema200Required,
                 fromM5D1ToM5EntryPolicyEnabled,
                 fromM5CurrencyStrengthMinimumRankDifference
+            );
+        }
+
+        if (fromMarketContext.timeFrame == PERIOD_M1 && fromM1M5AndM1WavePolicyEnabled) {
+            return new ExpertAdvisorMtf3In3M1(
+                fromMarketContext,
+                fromIsDrawArrow,
+                fromH1W1ConfirmationMode,
+                fromH1DirectionAlignmentMode,
+                fromH1Ema200ConfirmationMode,
+                fromM1DirectionCorrectionEnabled
             );
         }
 

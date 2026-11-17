@@ -26,6 +26,15 @@ enum ZigZagElliotDatabaseAlertRunScope {
 };
 
 /**
+ * M1エントリーで順位差の増減を判定する集計期間。
+ */
+enum M1CurrencyStrengthGapDirectionMode {
+    M1_CURRENCY_STRENGTH_GAP_OFF = 0,          // OFF（順位方向一致のみ）
+    M1_CURRENCY_STRENGTH_GAP_MEDIUM_SHORT = 1, // 中短期
+    M1_CURRENCY_STRENGTH_GAP_BOTH = 2          // 両方（長中期・中短期）
+};
+
+/**
  * ZigZagElliotインジケータの設定を保持するクラス。
  */
 class ZigZagElliotConfig {
@@ -68,6 +77,9 @@ public:
 
     /** H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。 */
     bool h1DirectionCorrectionEnabled;
+
+    /** M1でD1・M5の元方向一致を必須にし、H4・H1・M15の逆方向1足を補正する場合true。 */
+    bool m1DirectionCorrectionEnabled;
 
     /** 通常版H1・M15でMN1方向とW1 EMA200の両方を必須にする場合true。 */
     bool h1Mn1AndW1Ema200Required;
@@ -120,6 +132,9 @@ public:
     /** M15の長中期順位差にM5履歴での直近増減方向一致を要求する場合true。 */
     bool m15LongMediumGapDirectionEnabled;
 
+    /** M1で順位差の増減を判定する集計期間。 */
+    M1CurrencyStrengthGapDirectionMode m1CurrencyStrengthGapDirectionMode;
+
     /** 判定の有効化とは独立して、両期間の増減をメールに表示する場合true。 */
     bool currencyStrengthGapMailEnabled;
 
@@ -171,6 +186,7 @@ public:
         this.databaseAlertDisplayEndDate = 0;
         this.databaseAlertDisplayEntryOnly = false;
         this.h1DirectionCorrectionEnabled = false;
+        this.m1DirectionCorrectionEnabled = false;
         this.h1Mn1AndW1Ema200Required = false;
         this.h1H4WaveRestrictionEnabled = true;
         this.m5Mn1AndW1Ema200Required = false;
@@ -186,6 +202,7 @@ public:
         this.m5CurrencyStrengthMinimumRankDifference = 4;
         this.m5LongMediumGapDirectionEnabled = false;
         this.m15LongMediumGapDirectionEnabled = false;
+        this.m1CurrencyStrengthGapDirectionMode = M1_CURRENCY_STRENGTH_GAP_OFF;
         this.currencyStrengthGapMailEnabled = false;
         this.currencyStrengthRankVisible = true;
         this.currencyStrengthRankPanelXDistance = 10;
@@ -217,7 +234,7 @@ public:
     }
 
     /**
-     * 通貨強弱の既存エントリー条件が有効なM5・M15だけ、増減条件を使用する。
+     * 通貨強弱のエントリー条件が有効な対象足で、長中期の増減条件を使用する。
      */
     bool isLongMediumGapDirectionEnabled(const ENUM_TIMEFRAMES fromTimeFrame) const {
         if (!this.currencyStrengthEnabled || !this.currencyStrengthEntryFilterEnabled) {
@@ -232,7 +249,32 @@ public:
             return this.m15LongMediumGapDirectionEnabled;
         }
 
+        if (fromTimeFrame == PERIOD_M1) {
+            return this.m1CurrencyStrengthGapDirectionMode == M1_CURRENCY_STRENGTH_GAP_BOTH;
+        }
+
         return false;
+    }
+
+    /**
+     * M1の中短期または両方モードで、中短期の増減条件を使用する。
+     */
+    bool isMediumShortGapDirectionEnabled(const ENUM_TIMEFRAMES fromTimeFrame) const {
+        if (!this.currencyStrengthEnabled || !this.currencyStrengthEntryFilterEnabled
+                || fromTimeFrame != PERIOD_M1) {
+            return false;
+        }
+
+        return this.m1CurrencyStrengthGapDirectionMode == M1_CURRENCY_STRENGTH_GAP_MEDIUM_SHORT
+            || this.m1CurrencyStrengthGapDirectionMode == M1_CURRENCY_STRENGTH_GAP_BOTH;
+    }
+
+    /**
+     * いずれかの期間の増減条件を使用する場合に、判定時刻固定とデータ待機を行う。
+     */
+    bool isGapDirectionEnabled(const ENUM_TIMEFRAMES fromTimeFrame) const {
+        return this.isLongMediumGapDirectionEnabled(fromTimeFrame)
+            || this.isMediumShortGapDirectionEnabled(fromTimeFrame);
     }
 };
 

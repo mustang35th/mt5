@@ -35,6 +35,7 @@ public:
         this.executionInfoProvider = NULL;
         this.gapDirectionProvider = NULL;
         this.gapDirectionEnabled = false;
+        this.mediumShortGapDirectionEnabled = false;
         this.gapMailEnabled = false;
         this.enabled = false;
         this.rankVisible = false;
@@ -73,6 +74,7 @@ public:
         this.logger.setMarketContext(this.marketContext);
         this.enabled = fromConfig.currencyStrengthEnabled;
         this.gapDirectionEnabled = fromConfig.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame);
+        this.mediumShortGapDirectionEnabled = fromConfig.isMediumShortGapDirectionEnabled(this.marketContext.timeFrame);
         this.gapMailEnabled = this.enabled && fromConfig.currencyStrengthGapMailEnabled;
         this.rankVisible = fromConfig.currencyStrengthRankVisible;
         this.panelXDistance =
@@ -246,6 +248,7 @@ public:
             -1
         );
 
+        this.mediumShortGapDirectionEnabled = false;
         this.resetState();
     }
 
@@ -265,8 +268,11 @@ private:
     /** 増減フィルタまたはメール表示が有効な場合だけ作成する履歴取得先。 */
     CurrencyStrengthRankGapDirectionProvider *gapDirectionProvider;
 
-    /** 通貨強弱の既存条件へ増減方向を追加する場合true。 */
+    /** 通貨強弱の既存条件へ長中期の増減方向を追加する場合true。 */
     bool gapDirectionEnabled;
+
+    /** 通貨強弱の既存条件へ中短期の増減方向を追加する場合true。 */
+    bool mediumShortGapDirectionEnabled;
 
     /** 長中期・中短期の増減情報をメール本文へ表示する場合true。 */
     bool gapMailEnabled;
@@ -342,6 +348,9 @@ private:
 
     /** 前回表示した長中期増減状態。 */
     CurrencyStrengthRankGapDirectionInfo lastGapDirection;
+
+    /** 前回表示した中短期増減状態。 */
+    CurrencyStrengthRankGapDirectionInfo lastMediumShortGapDirection;
 
     /**
      * 順位パネルを作成する。
@@ -421,7 +430,7 @@ private:
             );
         }
 
-        if (this.gapDirectionEnabled || this.gapMailEnabled) {
+        if (this.gapDirectionEnabled || this.mediumShortGapDirectionEnabled || this.gapMailEnabled) {
             this.gapDirectionProvider = new CurrencyStrengthRankGapDirectionProvider(
                 this.databaseFileName, this.databaseSplitByYear, this.databaseUseCommonFolder,
                 this.databaseProfile, this.voteWeightMode, Util::isStrategyTester(),
@@ -437,11 +446,13 @@ private:
      */
     void updateGapDirection() {
         this.executionInfo.longMediumGapDirectionFilterEnabled = this.gapDirectionEnabled;
+        this.executionInfo.mediumShortGapDirectionFilterEnabled = this.mediumShortGapDirectionEnabled;
         this.executionInfo.gapDirectionMailEnabled = this.gapMailEnabled;
-        if (!this.gapDirectionEnabled && !this.gapMailEnabled) {
+        if (!this.gapDirectionEnabled && !this.mediumShortGapDirectionEnabled && !this.gapMailEnabled) {
             return;
         }
 
+        bool isMediumShortRequired = this.mediumShortGapDirectionEnabled || this.gapMailEnabled;
         CurrencyStrengthRankGapDirectionInfo result;
         result.reset();
         result.enabled = true;
@@ -449,14 +460,14 @@ private:
         result.targetM5BarTime = this.executionInfo.targetM5BarTime;
         CurrencyStrengthRankGapDirectionInfo mediumShortResult;
         mediumShortResult.reset();
-        if (this.gapMailEnabled) {
+        if (isMediumShortRequired) {
             mediumShortResult.enabled = true;
             mediumShortResult.waiting = true;
             mediumShortResult.targetM5BarTime = this.executionInfo.targetM5BarTime;
         }
 
         if (this.gapDirectionProvider != NULL) {
-            if (this.gapMailEnabled) {
+            if (isMediumShortRequired) {
                 this.gapDirectionProvider.load(this.executionInfo, result, mediumShortResult);
             } else {
                 this.gapDirectionProvider.load(this.executionInfo, result);
@@ -471,15 +482,30 @@ private:
      * 順位自体が同じでも、過去データの到着による増減状態の変化を検知する。
      */
     bool isGapDirectionChanged() const {
-        return this.executionInfo.longMediumGapDirection.enabled != this.lastGapDirection.enabled
-            || this.executionInfo.longMediumGapDirection.waiting != this.lastGapDirection.waiting
-            || this.executionInfo.longMediumGapDirection.currentAvailable != this.lastGapDirection.currentAvailable
-            || this.executionInfo.longMediumGapDirection.hasPrevious != this.lastGapDirection.hasPrevious
-            || this.executionInfo.longMediumGapDirection.direction != this.lastGapDirection.direction
-            || this.executionInfo.longMediumGapDirection.currentGap != this.lastGapDirection.currentGap
-            || this.executionInfo.longMediumGapDirection.previousGap != this.lastGapDirection.previousGap
-            || this.executionInfo.longMediumGapDirection.targetM5BarTime != this.lastGapDirection.targetM5BarTime
-            || this.executionInfo.longMediumGapDirection.directionChangedAt != this.lastGapDirection.directionChangedAt;
+        return (this.gapDirectionEnabled && this.isGapDirectionInfoChanged(
+                this.executionInfo.longMediumGapDirection, this.lastGapDirection))
+            || (this.mediumShortGapDirectionEnabled && this.isGapDirectionInfoChanged(
+                this.executionInfo.mediumShortGapDirection, this.lastMediumShortGapDirection));
+    }
+
+    /**
+     * 1期間の増減状態が前回表示時から変化したか判定する。
+     *
+     * @param fromCurrent 今回の増減状態。
+     * @param fromPrevious 前回表示した増減状態。
+     * @return 表示に使用する項目が変化した場合true。
+     */
+    bool isGapDirectionInfoChanged(const CurrencyStrengthRankGapDirectionInfo &fromCurrent,
+            const CurrencyStrengthRankGapDirectionInfo &fromPrevious) const {
+        return fromCurrent.enabled != fromPrevious.enabled
+            || fromCurrent.waiting != fromPrevious.waiting
+            || fromCurrent.currentAvailable != fromPrevious.currentAvailable
+            || fromCurrent.hasPrevious != fromPrevious.hasPrevious
+            || fromCurrent.direction != fromPrevious.direction
+            || fromCurrent.currentGap != fromPrevious.currentGap
+            || fromCurrent.previousGap != fromPrevious.previousGap
+            || fromCurrent.targetM5BarTime != fromPrevious.targetM5BarTime
+            || fromCurrent.directionChangedAt != fromPrevious.directionChangedAt;
     }
 
     /**
@@ -545,7 +571,7 @@ private:
         bool isChanged = !this.rankAvailable
             || this.lastDisplayStatus
                 != CURRENCY_STRENGTH_EXECUTION_STATUS_FOUND
-            || (this.gapDirectionEnabled && this.isGapDirectionChanged());
+            || this.isGapDirectionChanged();
 
         if (rankInfo.runId != this.lastRunId
                 || this.executionInfo.targetM5BarTime
@@ -587,6 +613,7 @@ private:
         this.quoteMediumShortRank =
             rankInfo.quoteMediumShortTermAverageRank;
         this.lastGapDirection = this.executionInfo.longMediumGapDirection;
+        this.lastMediumShortGapDirection = this.executionInfo.mediumShortGapDirection;
         this.rankAvailable = true;
         this.lastDisplayStatus = fromExecutionStatus;
     }
@@ -617,6 +644,7 @@ private:
         this.quoteLongMediumRank = 0;
         this.quoteMediumShortRank = 0;
         this.lastGapDirection.reset();
+        this.lastMediumShortGapDirection.reset();
         this.rankAvailable = false;
     }
 };

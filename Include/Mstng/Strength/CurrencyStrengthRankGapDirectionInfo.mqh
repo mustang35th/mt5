@@ -97,13 +97,20 @@ struct CurrencyStrengthRankGapDirectionInfo {
 
     /**
      * 判定で使った順位差と根拠時刻を、表示するときだけ文字列化する。
+     *
+     * @param fromLongMedium 長中期の説明の場合true、中短期の場合false。
      */
-    string getTooltip() const {
-        if (!this.enabled) {
-            return "長中期増減フィルタ：OFF";
+    string getTooltip(const bool fromLongMedium = true) const {
+        string periodLabel = "長中期";
+        if (!fromLongMedium) {
+            periodLabel = "中短期";
         }
 
-        string text = "長中期増減フィルタ：" + this.getStateText()
+        if (!this.enabled) {
+            return periodLabel + "増減フィルタ：OFF";
+        }
+
+        string text = periodLabel + "増減フィルタ：" + this.getStateText()
             + "\nM5単位・横ばいは直近方向を維持・履歴上限30日";
         if (this.currentAvailable) {
             text += StringFormat("\n現在の順位差：%+d", this.currentGap);

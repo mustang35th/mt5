@@ -667,6 +667,13 @@ private:
             return false;
         }
 
+        if (executionInfo.mediumShortGapDirectionFilterEnabled
+                && (!executionInfo.mediumShortGapDirection.enabled
+                    || executionInfo.mediumShortGapDirection.targetM5BarTime != executionInfo.targetM5BarTime
+                    || !executionInfo.mediumShortGapDirection.isMatched(this.isBuy))) {
+            return false;
+        }
+
         // 順位差は「決済通貨順位 - 基軸通貨順位」。対象期間の方向条件は戦略に従う。
         if (!this.isCurrencyStrengthDirectionConditionMatched(executionInfo)) {
             return false;

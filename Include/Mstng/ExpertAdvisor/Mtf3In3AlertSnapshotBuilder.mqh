@@ -55,7 +55,7 @@ public:
      * @param fromAlertText 既存の元分析表示文言
      * @param fromSnapshot 値として固定する保存先
      * @param fromJudgmentElliotAll 判定に採用した分析
-     * @param fromCorrectionTimeFrame M5はH4/H1/M15、H1はD1/H4、M15はD1/H4/H1の補正足。補正なしはPERIOD_CURRENT
+     * @param fromCorrectionTimeFrame M5・M1はH4/H1/M15、H1はD1/H4、M15はD1/H4/H1の補正足。補正なしはPERIOD_CURRENT
      * @param fromJudgmentAlertText 画面と同じ採用分析表示文言
      * @return 整合するスナップショットを生成できた場合true
      */
@@ -235,7 +235,9 @@ private:
         ENUM_TIMEFRAMES upperTimeFrame = PERIOD_H4;
         ENUM_TIMEFRAMES lowerTimeFrame = PERIOD_H1;
         int timeFrameCount = 7;
-        if (currentTimeFrame == PERIOD_H1 || currentTimeFrame == PERIOD_M15) {
+        if (currentTimeFrame == PERIOD_M1) {
+            timeFrameCount = 8;
+        } else if (currentTimeFrame == PERIOD_H1 || currentTimeFrame == PERIOD_M15) {
             upperTimeFrame = PERIOD_D1;
             lowerTimeFrame = PERIOD_H4;
             timeFrameCount = 5;
@@ -244,11 +246,12 @@ private:
             }
         }
 
-        if ((currentTimeFrame != PERIOD_M5 && currentTimeFrame != PERIOD_M15
+        if ((currentTimeFrame != PERIOD_M1 && currentTimeFrame != PERIOD_M5 && currentTimeFrame != PERIOD_M15
                     && currentTimeFrame != PERIOD_H1)
                 || (fromCorrectionTimeFrame != upperTimeFrame && fromCorrectionTimeFrame != lowerTimeFrame
                     && (currentTimeFrame != PERIOD_M15 || fromCorrectionTimeFrame != PERIOD_H1)
-                    && (currentTimeFrame != PERIOD_M5 || fromCorrectionTimeFrame != PERIOD_M15))
+                    && (currentTimeFrame != PERIOD_M5 || fromCorrectionTimeFrame != PERIOD_M15)
+                    && (currentTimeFrame != PERIOD_M1 || fromCorrectionTimeFrame != PERIOD_M15))
                 || fromOriginal == fromJudgment
                 || fromJudgment.marketContext.timeFrame != currentTimeFrame
                 || fromOriginal.marketContext.symbolName == ""
@@ -264,7 +267,7 @@ private:
 
         ENUM_TIMEFRAMES timeFrames[] = {
             PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4,
-            PERIOD_H1, PERIOD_M15, PERIOD_M5
+            PERIOD_H1, PERIOD_M15, PERIOD_M5, PERIOD_M1
         };
         if (fromOriginal.elliotList.Total() != timeFrameCount
                 || fromJudgment.elliotList.Total() != timeFrameCount) {
@@ -297,9 +300,13 @@ private:
                 return false;
             }
 
+            // M1では補正対象以外のD1・M5・M1も元方向の一致を必須とする。
             if ((timeFrames[i] == upperTimeFrame || timeFrames[i] == lowerTimeFrame
                     || (currentTimeFrame == PERIOD_M15 && timeFrames[i] == PERIOD_H1)
-                    || (currentTimeFrame == PERIOD_M5 && timeFrames[i] == PERIOD_M15))
+                    || (currentTimeFrame == PERIOD_M5 && timeFrames[i] == PERIOD_M15)
+                    || (currentTimeFrame == PERIOD_M1
+                        && (timeFrames[i] == PERIOD_D1 || timeFrames[i] == PERIOD_M15
+                            || timeFrames[i] == PERIOD_M5 || timeFrames[i] == PERIOD_M1)))
                     && timeFrames[i] != fromCorrectionTimeFrame
                     && original.isBuy != fromResult.isBuy) {
                 return false;
@@ -618,6 +625,10 @@ private:
         fromEntity.alertText = normalizeText(fromAlertText);
         if (executionInfo.longMediumGapDirectionFilterEnabled) {
             fromEntity.alertText += "\n\n" + executionInfo.longMediumGapDirection.getTooltip();
+        }
+
+        if (executionInfo.mediumShortGapDirectionFilterEnabled) {
+            fromEntity.alertText += "\n\n" + executionInfo.mediumShortGapDirection.getTooltip(false);
         }
 
         fromEntity.waveSummaryText = "";
