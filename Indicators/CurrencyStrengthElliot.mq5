@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.33"
+#property version   "1.35"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -29,6 +29,7 @@
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthDailyRangeList.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidateList.mqh>
+#include <Mstng\Strength\CurrencyStrengthEntryGapDirectionProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthH1EmaProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthM1EmaProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
@@ -160,6 +161,9 @@ CurrencyStrengthM1EmaProvider *gCurrencyStrengthM1EmaProvider = NULL;
 
 /** 継続モードで必要になったときだけ生成する履歴取得担当。 */
 CurrencyStrengthTrendContinuationProvider *gCurrencyStrengthTrendContinuationProvider = NULL;
+
+/** 選択した期間の増減フィルタで全候補に共用する過去M5履歴。 */
+CurrencyStrengthEntryGapDirectionProvider *gCurrencyStrengthEntryGapDirectionProvider = NULL;
 
 /** 最新候補を構築したM5集計時刻。0は候補未準備。 */
 datetime gEntryCandidateM5BarTime = 0;
@@ -603,8 +607,10 @@ void OnChartEvent(
     if (gDrawCurrencyStrengthEntryCandidateList != NULL
             && (gDrawCurrencyStrengthEntryCandidateList.handleFilterClick(fromStringValue)
                 || gDrawCurrencyStrengthEntryCandidateList.handleEmaModeClick(fromStringValue)
-                || gDrawCurrencyStrengthEntryCandidateList.handleContinuationModeClick(fromStringValue))) {
+                || gDrawCurrencyStrengthEntryCandidateList.handleContinuationModeClick(fromStringValue)
+                || gDrawCurrencyStrengthEntryCandidateList.handleGapModeClick(fromStringValue))) {
         saveEntryDisplaySettings();
+        refreshEntryGapDirections();
         refreshEntryContinuation();
         bool isDrawn = gDrawCurrencyStrengthEntryCandidateList.draw(
             gCurrencyStrengthEntryCandidateList, false
@@ -704,6 +710,7 @@ void loadEntryDisplaySettings() {
         return;
     }
 
+    loadEntryGapDisplaySettings();
     double savedValue = 0;
     if (!GlobalVariableGet(getEntryDisplaySettingsKey(), savedValue)
             || !MathIsValidNumber(savedValue)
@@ -733,6 +740,7 @@ void saveEntryDisplaySettings() {
         return;
     }
 
+    saveEntryGapDisplaySettings();
     int settings = (int)gDrawCurrencyStrengthEntryCandidateList.getEmaMode() * 4;
     if (gDrawCurrencyStrengthEntryCandidateList.isAndOnly()) {
         settings += 1;
@@ -755,6 +763,81 @@ void saveEntryDisplaySettings() {
     if (GlobalVariableSet(settingsKey, settings) == 0) {
         gLogger.error(__FUNCTION__, StringFormat(
             "entry candidate display settings save failed. error=%d", GetLastError()
+        ));
+
+        return;
+    }
+
+    GlobalVariablesFlush();
+}
+
+/**
+ * 増減フィルタ専用の保存キーを取得し、既存のEMA・AND設定と分離する。
+ */
+string getEntryGapDisplaySettingsKey() {
+    return "Mstng.CSE.Gap.v2." + IntegerToString(ChartID())
+        + "." + IntegerToString((int)voteWeightMode);
+}
+
+/**
+ * 長中期ON／OFFだけを保存していた旧設定の読み取り用キーを取得する。
+ */
+string getLegacyEntryGapDisplaySettingsKey() {
+    return "Mstng.CSE.Gap.v1." + IntegerToString(ChartID())
+        + "." + IntegerToString((int)voteWeightMode);
+}
+
+/**
+ * 増減の選択期間を復元し、旧ONは長中期、旧OFFはOFFとして引き継ぐ。
+ * 未保存・不正な値は初期の両方を維持し、不正な新設定から旧設定へ戻さない。
+ */
+void loadEntryGapDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthEntryCandidateList == NULL) {
+        return;
+    }
+
+    double savedValue = 0;
+    if (GlobalVariableGet(getEntryGapDisplaySettingsKey(), savedValue)) {
+        if (MathIsValidNumber(savedValue) && savedValue >= 0 && savedValue <= 3
+                && savedValue == MathFloor(savedValue)) {
+            gDrawCurrencyStrengthEntryCandidateList.setGapMode((CurrencyStrengthEntryGapMode)(int)savedValue);
+        }
+
+        return;
+    }
+
+    if (!GlobalVariableGet(getLegacyEntryGapDisplaySettingsKey(), savedValue)
+            || !MathIsValidNumber(savedValue)
+            || (savedValue != 0 && savedValue != 1)) {
+        return;
+    }
+
+    CurrencyStrengthEntryGapMode mode = currencyStrengthEntryGapOff;
+    if (savedValue == 1) {
+        mode = currencyStrengthEntryGapLongMedium;
+    }
+
+    gDrawCurrencyStrengthEntryCandidateList.setGapMode(mode);
+}
+
+/**
+ * 操作した増減フィルタの設定だけを保存し、同じ値の再書き込みを省く。
+ */
+void saveEntryGapDisplaySettings() {
+    if (Util::isStrategyTester() || gDrawCurrencyStrengthEntryCandidateList == NULL) {
+        return;
+    }
+
+    int settings = (int)gDrawCurrencyStrengthEntryCandidateList.getGapMode();
+    string settingsKey = getEntryGapDisplaySettingsKey();
+    double previousValue = 0;
+    if (GlobalVariableGet(settingsKey, previousValue) && previousValue == settings) {
+        return;
+    }
+
+    if (GlobalVariableSet(settingsKey, settings) == 0) {
+        gLogger.error(__FUNCTION__, StringFormat(
+            "entry candidate gap display settings save failed. error=%d", GetLastError()
         ));
 
         return;
@@ -1493,6 +1576,49 @@ void logLiveTiming(const string fromTrigger, const double fromHeaderMilliseconds
 }
 
 /**
+ * 増減フィルタが有効な場合だけ、全候補へ選択した期間の直近増減方向を付与する。
+ * 正常な同一M5履歴は再利用し、候補の現在値は毎回反映する。
+ */
+void refreshEntryGapDirections() {
+    if (gDrawCurrencyStrengthEntryCandidateList == NULL || gCurrencyStrengthEntryCandidateList == NULL) {
+        return;
+    }
+
+    gDrawCurrencyStrengthEntryCandidateList.setGapStatus("");
+    if (!gDrawCurrencyStrengthEntryCandidateList.isGapEnabled()) {
+        gCurrencyStrengthEntryCandidateList.clearGapDirections();
+
+        return;
+    }
+
+    if (!gScoreSnapshotReady || gEntryCandidateM5BarTime <= 0
+            || !gCurrencyStrengthEntryCandidateList.isRankingReady()) {
+        gCurrencyStrengthEntryCandidateList.clearGapDirections();
+        gDrawCurrencyStrengthEntryCandidateList.setGapStatus("集計待ち");
+
+        return;
+    }
+
+    if (gCurrencyStrengthEntryCandidateList.size() == 0) {
+        return;
+    }
+
+    if (gCurrencyStrengthEntryGapDirectionProvider == NULL) {
+        gCurrencyStrengthEntryGapDirectionProvider = new CurrencyStrengthEntryGapDirectionProvider(
+            databaseFileName, databaseSplitByYear, databaseUseCommonFolder, voteWeightMode,
+            AccountInfoString(ACCOUNT_SERVER), AccountInfoInteger(ACCOUNT_LOGIN), Util::isStrategyTester());
+    }
+
+    if (gCurrencyStrengthEntryGapDirectionProvider == NULL
+            || !gCurrencyStrengthEntryGapDirectionProvider.update(
+                gCurrencyStrengthEntryCandidateList, gEntryCandidateM5BarTime,
+                gDrawCurrencyStrengthEntryCandidateList.getGapMode())) {
+        gCurrencyStrengthEntryCandidateList.clearGapDirections();
+        gDrawCurrencyStrengthEntryCandidateList.setGapStatus("履歴取得失敗");
+    }
+}
+
+/**
  * 継続モードでだけ履歴を参照し、現在候補へ3時間の継続判定を付与する。
  * 通常モード・テスター・集計待ちでは履歴検索を行わない。
  */
@@ -1561,6 +1687,7 @@ void refreshEntryCandidateM1(const datetime fromTargetTime) {
     }
 
     gLastEntryCandidateM1Minute = targetMinute;
+    refreshEntryGapDirections();
     refreshEntryContinuation();
     DrawChartRedrawBatch redrawBatch;
     bool isDrawn = gDrawCurrencyStrengthEntryCandidateList.draw(
@@ -2160,6 +2287,7 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
                     gLastEntryCandidateM1Minute = m1TargetTime - m1TargetTime % 60;
                 }
 
+                refreshEntryGapDirections();
                 refreshEntryContinuation();
                 if (!gDrawCurrencyStrengthEntryCandidateList.draw(
                     gCurrencyStrengthEntryCandidateList
@@ -2433,6 +2561,11 @@ void releaseResources() {
     if (gCurrencyStrengthTrendContinuationProvider != NULL) {
         delete gCurrencyStrengthTrendContinuationProvider;
         gCurrencyStrengthTrendContinuationProvider = NULL;
+    }
+
+    if (gCurrencyStrengthEntryGapDirectionProvider != NULL) {
+        delete gCurrencyStrengthEntryGapDirectionProvider;
+        gCurrencyStrengthEntryGapDirectionProvider = NULL;
     }
 
     gEntryCandidateM5BarTime = 0;

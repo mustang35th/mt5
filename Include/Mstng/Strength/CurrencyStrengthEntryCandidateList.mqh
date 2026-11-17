@@ -14,6 +14,7 @@
 #include <Mstng\Strength\CurrencyStrengthAllRankPoint.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
 #include <Mstng\Strength\CurrencyStrengthEntryCandidate.mqh>
+#include <Mstng\Strength\CurrencyStrengthEntryGapDirectionEvaluator.mqh>
 #include <Mstng\Strength\CurrencyStrengthH1EmaProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthM1EmaProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthTrendContinuationEvaluator.mqh>
@@ -227,6 +228,80 @@ public:
         }
 
         return isReady;
+    }
+
+    /**
+     * 全候補の選択期間へ共通のM5履歴による増減方向を設定する。
+     * 非選択期間の結果は未取得へ戻し、候補順序は変更しない。
+     *
+     * @param fromPoints 時刻昇順の全通貨順位履歴。
+     * @param fromTargetM5BarTime 現在候補のM5足開始時刻。
+     * @param fromMode 増減判定に使用する集計期間。
+     */
+    void updateGapDirections(
+        const CurrencyStrengthAllRankPoint &fromPoints[],
+        const datetime fromTargetM5BarTime,
+        const CurrencyStrengthEntryGapMode fromMode
+    ) {
+        bool useLongMedium = fromMode == currencyStrengthEntryGapLongMedium
+            || fromMode == currencyStrengthEntryGapBoth;
+        bool useMediumShort = fromMode == currencyStrengthEntryGapMediumShort
+            || fromMode == currencyStrengthEntryGapBoth;
+        int candidateCount = ArraySize(this.candidates);
+        for (int i = 0; i < candidateCount; i++) {
+            this.candidates[i].longMediumGapDirection.reset();
+            this.candidates[i].mediumShortGapDirection.reset();
+            if (useLongMedium) {
+                CurrencyStrengthEntryGapDirectionEvaluator::evaluate(
+                    fromPoints, fromTargetM5BarTime, this.candidates[i],
+                    this.candidates[i].longMediumGapDirection, true);
+            }
+
+            if (useMediumShort) {
+                CurrencyStrengthEntryGapDirectionEvaluator::evaluate(
+                    fromPoints, fromTargetM5BarTime, this.candidates[i],
+                    this.candidates[i].mediumShortGapDirection, false);
+            }
+        }
+    }
+
+    /**
+     * 全候補の両集計期間の増減方向を未取得へ戻す。
+     */
+    void clearGapDirections() {
+        int candidateCount = ArraySize(this.candidates);
+        for (int i = 0; i < candidateCount; i++) {
+            this.candidates[i].longMediumGapDirection.reset();
+            this.candidates[i].mediumShortGapDirection.reset();
+        }
+    }
+
+    /**
+     * 全候補へ共通のM5履歴による長中期増減方向を設定する。候補順序は変更しない。
+     *
+     * @param fromPoints 時刻昇順の全通貨順位履歴。
+     * @param fromTargetM5BarTime 現在候補のM5足開始時刻。
+     */
+    void updateLongMediumGapDirection(
+        const CurrencyStrengthAllRankPoint &fromPoints[],
+        const datetime fromTargetM5BarTime
+    ) {
+        int candidateCount = ArraySize(this.candidates);
+        for (int i = 0; i < candidateCount; i++) {
+            CurrencyStrengthEntryGapDirectionEvaluator::evaluate(
+                fromPoints, fromTargetM5BarTime, this.candidates[i],
+                this.candidates[i].longMediumGapDirection);
+        }
+    }
+
+    /**
+     * 全候補の長中期増減方向を未取得へ戻す。
+     */
+    void clearLongMediumGapDirection() {
+        int candidateCount = ArraySize(this.candidates);
+        for (int i = 0; i < candidateCount; i++) {
+            this.candidates[i].longMediumGapDirection.reset();
+        }
     }
 
     /**

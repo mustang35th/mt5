@@ -10,6 +10,7 @@
 #ifndef MSTNG_CURRENCY_STRENGTH_ENTRY_CANDIDATE_MQH
 #define MSTNG_CURRENCY_STRENGTH_ENTRY_CANDIDATE_MQH
 
+#include <Mstng\Strength\CurrencyStrengthRankGapDirectionInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthTrendContinuationInfo.mqh>
 
 /**
@@ -19,6 +20,16 @@ enum CurrencyStrengthEntryEmaMode {
     currencyStrengthEntryEmaH1 = 0,
     currencyStrengthEntryEmaM1 = 1,
     currencyStrengthEntryEmaH1AndM1 = 2
+};
+
+/**
+ * 候補一覧の順位差増減フィルタに使用する集計期間。
+ */
+enum CurrencyStrengthEntryGapMode {
+    currencyStrengthEntryGapOff = 0,
+    currencyStrengthEntryGapLongMedium = 1,
+    currencyStrengthEntryGapMediumShort = 2,
+    currencyStrengthEntryGapBoth = 3
 };
 
 /**
@@ -61,6 +72,12 @@ struct CurrencyStrengthEntryCandidate {
 
     /** 直近3時間の通貨強弱方向の継続判定。 */
     CurrencyStrengthTrendContinuationInfo continuation;
+
+    /** 長中期順位差の直近増減方向。横ばいでは連続する過去M5の方向を維持する。 */
+    CurrencyStrengthRankGapDirectionInfo longMediumGapDirection;
+
+    /** 中短期順位差の直近増減方向。横ばいでは連続する過去M5の方向を維持する。 */
+    CurrencyStrengthRankGapDirectionInfo mediumShortGapDirection;
 
     /** H1 EMA200の判定値を取得済みの場合true。 */
     bool h1EmaAvailable;
@@ -126,8 +143,83 @@ struct CurrencyStrengthEntryCandidate {
         this.minimumRankDifference = 0;
         this.totalRankDifference = 0;
         this.continuation.reset();
+        this.longMediumGapDirection.reset();
+        this.mediumShortGapDirection.reset();
         this.resetH1Ema();
         this.resetM1Ema();
+    }
+
+    /**
+     * 取得済みの長中期増減方向と現在順位差が候補方向に一致するか判定する。
+     *
+     * @return 評価済みで、現在順位差と直近増減の両方が候補方向に合う場合true。
+     */
+    bool isLongMediumGapDirectionMatched() {
+        return this.longMediumGapDirection.enabled
+            && this.longMediumGapDirection.isMatched(this.isBuy);
+    }
+
+    /**
+     * 取得済みの中短期増減方向と現在順位差が候補方向に一致するか判定する。
+     *
+     * @return 評価済みで、現在順位差と直近増減の両方が候補方向に合う場合true。
+     */
+    bool isMediumShortGapDirectionMatched() {
+        return this.mediumShortGapDirection.enabled
+            && this.mediumShortGapDirection.isMatched(this.isBuy);
+    }
+
+    /**
+     * 選択した集計期間の順位差と直近増減方向が候補方向に一致するか判定する。
+     *
+     * @param fromMode 増減判定に使用する集計期間。
+     * @return OFFまたは選択した全期間で方向一致の場合true。
+     */
+    bool isGapDirectionMatched(const CurrencyStrengthEntryGapMode fromMode) {
+        if (fromMode == currencyStrengthEntryGapOff) {
+            return true;
+        }
+
+        if (fromMode == currencyStrengthEntryGapLongMedium) {
+            return this.isLongMediumGapDirectionMatched();
+        }
+
+        if (fromMode == currencyStrengthEntryGapMediumShort) {
+            return this.isMediumShortGapDirectionMatched();
+        }
+
+        if (fromMode == currencyStrengthEntryGapBoth) {
+            return this.isLongMediumGapDirectionMatched() && this.isMediumShortGapDirectionMatched();
+        }
+
+        return false;
+    }
+
+    /**
+     * 選択した集計期間の増減方向が、候補方向との一致に関係なく確定しているか判定する。
+     *
+     * @param fromMode 増減判定に使用する集計期間。
+     * @return OFFまたは選択した全期間で増減方向を取得済みの場合true。
+     */
+    bool isGapDirectionAvailable(const CurrencyStrengthEntryGapMode fromMode) {
+        if (fromMode == currencyStrengthEntryGapOff) {
+            return true;
+        }
+
+        if (fromMode == currencyStrengthEntryGapLongMedium) {
+            return this.isDirectionAvailable(this.longMediumGapDirection);
+        }
+
+        if (fromMode == currencyStrengthEntryGapMediumShort) {
+            return this.isDirectionAvailable(this.mediumShortGapDirection);
+        }
+
+        if (fromMode == currencyStrengthEntryGapBoth) {
+            return this.isDirectionAvailable(this.longMediumGapDirection)
+                && this.isDirectionAvailable(this.mediumShortGapDirection);
+        }
+
+        return false;
     }
 
     /**
@@ -410,6 +502,16 @@ struct CurrencyStrengthEntryCandidate {
         }
 
         return "方向なし";
+    }
+
+private:
+    /**
+     * 1集計期間の取得状態と増減方向・根拠時刻が有効か判定する。
+     */
+    bool isDirectionAvailable(const CurrencyStrengthRankGapDirectionInfo &fromInfo) {
+        return fromInfo.enabled && !fromInfo.waiting && fromInfo.currentAvailable
+            && fromInfo.hasPrevious && (fromInfo.direction == 1 || fromInfo.direction == -1)
+            && fromInfo.targetM5BarTime > 0 && fromInfo.directionChangedAt > 0;
     }
 };
 

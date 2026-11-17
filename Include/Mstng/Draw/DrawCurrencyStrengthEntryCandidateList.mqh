@@ -69,6 +69,8 @@ public:
         this.andOnly = true;
         this.continuationMode = false;
         this.continuationStatus = "";
+        this.gapMode = currencyStrengthEntryGapBoth;
+        this.gapStatus = "";
         this.summarySource = "";
         this.summaryDisplay = "";
         CurrencyStrengthEntryEmaMode initialMode = currencyStrengthEntryEmaH1AndM1;
@@ -87,9 +89,9 @@ public:
         this.gmoSymbolNameInfoAll.setGmo();
         this.panelWidth = 630;
         this.headerHeight = 25;
-        this.columnHeaderYDistance = 61;
-        this.separatorYDistance = 80;
-        this.firstRowYDistance = 87;
+        this.columnHeaderYDistance = 87;
+        this.separatorYDistance = 106;
+        this.firstRowYDistance = 113;
         this.rowHeight = 19;
         this.bottomPadding = 10;
         this.fontName = "MS Gothic";
@@ -126,6 +128,7 @@ public:
             const bool fromUpdateTracking = true) {
         if (fromCandidateList == NULL) {
             this.suspendAndTracking();
+            this.updateLongMediumGapSummary(false, 0, 0, 0);
             for (int i = 0; i < ArraySize(this.displayedSymbols); i++) {
                 this.clearRow(i);
             }
@@ -165,6 +168,9 @@ public:
         int visibleCount = 0;
         int continuationCount = 0;
         int insufficientCount = 0;
+        int gapTargetCount = 0;
+        int gapPassedCount = 0;
+        int gapUnknownCount = 0;
         int displayOrder[];
         if (this.continuationMode && ArrayResize(displayOrder, candidateCount) != candidateCount) {
             this.suspendAndTracking();
@@ -203,6 +209,21 @@ public:
                     continue;
                 }
 
+                if (this.isGapEnabled()) {
+                    gapTargetCount++;
+                    if (!candidate.isGapDirectionAvailable(this.gapMode)) {
+                        gapUnknownCount++;
+
+                        continue;
+                    }
+
+                    if (!candidate.isGapDirectionMatched(this.gapMode)) {
+                        continue;
+                    }
+
+                    gapPassedCount++;
+                }
+
                 if (this.continuationMode) {
                     displayOrder[displayCount] = i;
                     displayCount++;
@@ -231,6 +252,8 @@ public:
         }
 
         this.updateTitle(fromCandidateList, andCount, visibleCount, continuationCount, insufficientCount);
+        this.updateLongMediumGapSummary(isRankingReady, gapPassedCount,
+            gapTargetCount, gapUnknownCount);
         this.updatePairTooltips();
         this.updateSelectionBackground();
         DrawChartRedrawBatch::request(this.chartId);
@@ -333,6 +356,132 @@ public:
         DrawChartRedrawBatch::request(this.chartId);
 
         return true;
+    }
+
+    /**
+     * 増減対象をOFF、長中期、中短期、両方の順に切り替える。
+     * 呼び出し元で一覧を再描画し、比較パネルの強調対象を更新する。
+     *
+     * @param fromObjectName クリックされたチャートオブジェクト名。
+     * @return 自身の生成済みボタンを操作した場合true。
+     */
+    bool handleGapModeClick(const string fromObjectName) {
+        if (!this.created || fromObjectName != this.objectPrefix + "LongMediumGapButton") {
+            return false;
+        }
+
+        CurrencyStrengthEntryGapMode nextMode = currencyStrengthEntryGapOff;
+        if (this.gapMode == currencyStrengthEntryGapOff) {
+            nextMode = currencyStrengthEntryGapLongMedium;
+        } else if (this.gapMode == currencyStrengthEntryGapLongMedium) {
+            nextMode = currencyStrengthEntryGapMediumShort;
+        } else if (this.gapMode == currencyStrengthEntryGapMediumShort) {
+            nextMode = currencyStrengthEntryGapBoth;
+        }
+
+        this.setGapMode(nextMode);
+
+        return true;
+    }
+
+    /**
+     * 直近増減方向による追加絞り込みの対象期間を取得する。
+     *
+     * @return 現在の増減対象モード。
+     */
+    CurrencyStrengthEntryGapMode getGapMode() const {
+        return this.gapMode;
+    }
+
+    /**
+     * 直近増減方向で表示候補を絞り込むか取得する。
+     *
+     * @return 追加絞り込みが有効な場合true。
+     */
+    bool isGapEnabled() const {
+        return this.gapMode != currencyStrengthEntryGapOff;
+    }
+
+    /**
+     * 追加絞り込みの設定だけを変更し、EMA判定とNEW追跡は維持する。
+     *
+     * @param fromMode 増減判定の対象期間。不正な値は変更しない。
+     */
+    void setGapMode(const CurrencyStrengthEntryGapMode fromMode) {
+        if (fromMode != currencyStrengthEntryGapOff
+                && fromMode != currencyStrengthEntryGapLongMedium
+                && fromMode != currencyStrengthEntryGapMediumShort
+                && fromMode != currencyStrengthEntryGapBoth) {
+            return;
+        }
+
+        if (this.gapMode == fromMode) {
+            return;
+        }
+
+        this.gapMode = fromMode;
+        if (this.created) {
+            this.updateLongMediumGapButton();
+            DrawChartRedrawBatch::request(this.chartId);
+        }
+    }
+
+    /**
+     * 増減履歴の取得失敗などの補助状態を保持する。
+     *
+     * @param fromStatus 補助状態。正常時は空文字列。
+     */
+    void setGapStatus(const string fromStatus) {
+        if (this.gapStatus == fromStatus) {
+            return;
+        }
+
+        this.gapStatus = fromStatus;
+        if (this.created) {
+            this.updateLongMediumGapButton();
+        }
+    }
+
+    /**
+     * 既存の長中期ボタン操作を4段階の増減対象切替へ引き継ぐ。
+     *
+     * @param fromObjectName クリックされたチャートオブジェクト名。
+     * @return 自身の生成済みボタンを操作した場合true。
+     */
+    bool handleLongMediumGapClick(const string fromObjectName) {
+        return this.handleGapModeClick(fromObjectName);
+    }
+
+    /**
+     * 選択中の増減対象に長中期が含まれるか取得する。
+     *
+     * @return 長中期または両方を選択している場合true。
+     */
+    bool isLongMediumGapEnabled() const {
+        return this.gapMode == currencyStrengthEntryGapLongMedium
+            || this.gapMode == currencyStrengthEntryGapBoth;
+    }
+
+    /**
+     * 既存のON/OFF設定を長中期またはOFFへ変換する。
+     *
+     * @param fromEnabled 長中期を選択する場合true。
+     */
+    void setLongMediumGapEnabled(const bool fromEnabled) {
+        if (fromEnabled) {
+            this.setGapMode(currencyStrengthEntryGapLongMedium);
+        } else {
+            this.setGapMode(currencyStrengthEntryGapOff);
+        }
+    }
+
+    /**
+     * 既存の長中期取得状態を増減対象共通の補助状態として保持する。
+     *
+     * @param fromStatus 補助状態。正常時は空文字列。
+     */
+    void setLongMediumGapStatus(const string fromStatus) {
+        this.setGapStatus(fromStatus);
     }
 
     /**
@@ -735,6 +884,12 @@ private:
     /** 履歴取得失敗などの補助状態。正常時は空文字列。 */
     string continuationStatus;
 
+    /** 直近増減方向による追加絞り込みの対象期間。 */
+    CurrencyStrengthEntryGapMode gapMode;
+
+    /** 増減履歴の取得失敗などの補助状態。正常時は空文字列。 */
+    string gapStatus;
+
     /** 幅計測済みの件数行の全文。 */
     string summarySource;
 
@@ -906,7 +1061,8 @@ private:
         }
 
         if (!this.createReadyButton() || !this.createFilterButton()
-                || !this.createEmaModeButton() || !this.createContinuationModeButton()) {
+                || !this.createEmaModeButton() || !this.createContinuationModeButton()
+                || !this.createLongMediumGapButton()) {
             this.destroyObjects();
 
             return false;
@@ -919,6 +1075,13 @@ private:
             this.bodyFontSize,
             this.headerColor,
             "集計待ち"
+        ) || !this.createLabel(
+            this.objectPrefix + "LongMediumGapSummary",
+            14,
+            58,
+            this.bodyFontSize,
+            this.headerColor,
+            "増減（両方）：集計待ち"
         )) {
             this.destroyObjects();
 
@@ -1063,9 +1226,144 @@ private:
         this.updateReadyButton();
         this.updateFilterButton();
         this.updateContinuationModeButton();
+        this.updateLongMediumGapButton();
         this.updateContinuationHeaders();
 
         return true;
+    }
+
+    /**
+     * 追加件数行の右側へ増減対象の切替ボタンを生成する。
+     *
+     * @return ボタンを生成できた場合true。
+     */
+    bool createLongMediumGapButton() {
+        string objectName = this.objectPrefix + "LongMediumGapButton";
+        if (!ObjectCreate(this.chartId, objectName, OBJ_BUTTON, 0, 0, 0)) {
+            return false;
+        }
+
+        return ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, this.corner)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE, this.xDistance + this.panelWidth - 188)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_YDISTANCE, this.yDistance + 54)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 176)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, 20)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_FONTSIZE, this.bodyFontSize)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_COLOR, this.borderColor)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_BACK, false)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTABLE, false)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_SELECTED, false)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_HIDDEN, true)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, 3)
+            && ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false)
+            && ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
+    }
+
+    /**
+     * 選択中の増減対象を表示する短い名前を返す。
+     *
+     * @return OFF、長中期、中短期または両方。
+     */
+    string getGapModeLabel() const {
+        if (this.gapMode == currencyStrengthEntryGapLongMedium) {
+            return "長中期";
+        }
+
+        if (this.gapMode == currencyStrengthEntryGapMediumShort) {
+            return "中短期";
+        }
+
+        if (this.gapMode == currencyStrengthEntryGapBoth) {
+            return "両方";
+        }
+
+        return "OFF";
+    }
+
+    /**
+     * 選択期間の増減判定規則と取得状態を説明する。
+     *
+     * @return ボタンと件数行に共通の説明。
+     */
+    string getLongMediumGapTooltip() const {
+        string tooltip = "増減対象：" + this.getGapModeLabel()
+            + "\nクリックで OFF → 長中期 → 中短期 → 両方 → OFF。OFFで追加絞り込みを解除。"
+            + "\n選択した期間の直近増減が候補方向に合う場合だけ表示。両方は長中期・中短期の両条件が必要です。"
+            + "\n順位差＝決済通貨順位－基軸通貨順位。BUYは正の順位差かつ直近増加、SELLは負の順位差かつ直近減少。"
+            + "\nM5単位で判定し、横ばいは各期間で最後に増減した方向を引き継ぎます。"
+            + "\n選択期間に履歴未取得・欠損・方向不明があれば除外します。READY・AND成立・EMA自動補完とNEW追跡は変更しません。";
+        if (this.isGapEnabled() && this.gapStatus != "") {
+            tooltip += "\n" + this.gapStatus;
+        }
+
+        return tooltip;
+    }
+
+    /**
+     * 増減対象の表示設定だけをボタンへ反映する。
+     */
+    void updateLongMediumGapButton() {
+        if (!this.created) {
+            return;
+        }
+
+        string text = "増減：" + this.getGapModeLabel();
+        color textColor = this.normalColor;
+        color backgroundColor = C'35,35,35';
+        if (this.isGapEnabled()) {
+            textColor = clrBlack;
+            backgroundColor = clrGold;
+        }
+
+        string objectName = this.objectPrefix + "LongMediumGapButton";
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, text);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, this.getLongMediumGapTooltip());
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, backgroundColor);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false);
+    }
+
+    /**
+     * 既存の表示条件を通過した候補に対する増減判定件数を表示する。
+     *
+     * @param fromRankingReady 通貨順位が集計済みの場合true。
+     * @param fromPassedCount 増減条件を通過した候補数。
+     * @param fromTargetCount 継続・AND条件を適用後の候補数。
+     * @param fromUnknownCount 対象候補中、選択期間の増減方向が不明な候補数。
+     */
+    void updateLongMediumGapSummary(const bool fromRankingReady, const int fromPassedCount,
+            const int fromTargetCount, const int fromUnknownCount) {
+        if (!this.created) {
+            return;
+        }
+
+        string text = "増減：OFF（追加絞り込みなし）";
+        color textColor = this.mutedColor;
+        string tooltip = this.getLongMediumGapTooltip();
+        if (this.isGapEnabled()) {
+            text = "増減（" + this.getGapModeLabel() + "）：集計待ち";
+            textColor = this.warningColor;
+            if (fromRankingReady) {
+                text = StringFormat("%s：通過%d/対象%d・不明%d",
+                    this.getGapModeLabel(), fromPassedCount, fromTargetCount, fromUnknownCount);
+                textColor = this.headerColor;
+                if (fromTargetCount > 0 && fromPassedCount == 0) {
+                    textColor = this.warningColor;
+                }
+
+                tooltip += StringFormat("\n対象%d＝継続・AND条件を適用後、表示上限前。通過%d、不明%d、不一致%d。",
+                    fromTargetCount, fromPassedCount, fromUnknownCount,
+                    fromTargetCount - fromPassedCount - fromUnknownCount);
+                if (fromTargetCount == 0) {
+                    tooltip += "\n追加絞り込み前の候補が0件です。";
+                }
+            }
+        }
+
+        string objectName = this.objectPrefix + "LongMediumGapSummary";
+        ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, text);
+        ObjectSetString(this.chartId, objectName, OBJPROP_TOOLTIP, tooltip);
+        ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, textColor);
     }
 
     /**
@@ -1568,7 +1866,7 @@ private:
 
         string summaryTooltip = summaryText;
         if (this.continuationMode) {
-            summaryTooltip += "\n候補数は継続条件を満たす件数、表示数はAND条件と表示上限を適用後の件数です。"
+            summaryTooltip += "\n候補数は継続条件を満たす件数、表示数はAND・選択期間の増減条件と表示上限を適用後の件数です。"
                 + "\n" + this.getEmaSummary(fromAndCount);
             if (this.continuationStatus != "") {
                 summaryText = "継続3h " + this.continuationStatus;
