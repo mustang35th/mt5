@@ -5,12 +5,12 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.15"
+#property version   "1.16"
 #property indicator_separate_window
 #property indicator_buffers 7
 #property indicator_plots   5
-#property indicator_minimum -8.0
-#property indicator_maximum 8.0
+#property indicator_minimum -10.0
+#property indicator_maximum 10.0
 #property indicator_level1  0.0
 #property indicator_levelcolor clrDimGray
 #property indicator_levelstyle STYLE_DOT
@@ -390,8 +390,8 @@ bool initializeBuffers() {
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 0, clrAqua)
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 1, clrHotPink)
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 2, clrGray)
-            || !IndicatorSetDouble(INDICATOR_MINIMUM, -8.0)
-            || !IndicatorSetDouble(INDICATOR_MAXIMUM, 8.0)
+            || !IndicatorSetDouble(INDICATOR_MINIMUM, -10.0)
+            || !IndicatorSetDouble(INDICATOR_MAXIMUM, 10.0)
             || !IndicatorSetInteger(INDICATOR_LEVELSTYLE, 0, STYLE_DOT)
             || !IndicatorSetInteger(INDICATOR_LEVELWIDTH, 0, 1)) {
         return false;

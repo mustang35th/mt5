@@ -104,11 +104,11 @@ public:
     }
 
     /**
-     * 既存の呼び出し形式を維持し、固定の表示範囲±8を返す。
+     * 既存の呼び出し形式を維持し、固定の表示範囲±10を返す。
      *
      * @param fromHeight サブ画面の高さ。
-     * @param toMinimum 縦軸の最小値−8。
-     * @param toMaximum 縦軸の最大値＋8。
+     * @param toMinimum 縦軸の最小値−10。
+     * @param toMaximum 縦軸の最大値＋10。
      * @return 有効な画面の高さの場合true。
      */
     bool getDisplayRange(const int fromHeight, double &toMinimum, double &toMaximum) {
@@ -116,8 +116,8 @@ public:
             return false;
         }
 
-        toMinimum = -8.0;
-        toMaximum = 8.0;
+        toMinimum = -10.0;
+        toMaximum = 10.0;
 
         return true;
     }
