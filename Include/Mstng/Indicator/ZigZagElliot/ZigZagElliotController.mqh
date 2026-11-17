@@ -40,6 +40,7 @@ public:
     ZigZagElliotController() {
         this.currencyStrengthController = NULL;
         this.databaseAlertDisplayController = NULL;
+        this.databaseAlertCleanupPending = true;
         this.analysisController = NULL;
         this.chartController = NULL;
         this.alertController = NULL;
@@ -265,6 +266,7 @@ public:
         const int fromId,
         const string fromObjectName
     ) {
+        this.prepareDatabaseAlertDisplay();
         if (this.chartController == NULL
                 || this.analysisController == NULL) {
             return;
@@ -322,6 +324,7 @@ public:
      */
     int onCalculate(const int fromRatesTotal, const int fromPrevCalculated = 0,
             const datetime fromCurrentBarTime = 0) {
+        this.prepareDatabaseAlertDisplay();
         if (this.chartController == NULL) {
             return fromRatesTotal;
         }
@@ -374,6 +377,7 @@ public:
         ulong timerStartMicroseconds = GetMicrosecondCount();
         ulong timerEntryTick = GetTickCount64();
 
+        this.prepareDatabaseAlertDisplay();
         if (this.chartController == NULL) {
             return;
         }
@@ -452,6 +456,7 @@ public:
 
         this.cleanupOrphanedObjects();
 
+        this.databaseAlertCleanupPending = true;
         this.timerInitialized = false;
         this.lastExecuteTickCount = 0;
         this.updateTimingStats.reset();
@@ -530,6 +535,9 @@ private:
 
     /** 通常版の保存済みアラート表示。M5で有効時だけ保持する。 */
     DatabaseAlertDisplayController *databaseAlertDisplayController;
+
+    /** 初回の稼働中イベントで旧世代のDB描画を回収する場合true。 */
+    bool databaseAlertCleanupPending;
 
     /** MN1から表示足までの分析対象時間足。 */
     ENUM_TIMEFRAMES analysisTimeFrames[];
@@ -982,9 +990,28 @@ private:
     }
 
     /**
+     * DB表示の設定・履歴準備によらず、単独稼働を確認して旧世代の表示を回収する。
+     */
+    void prepareDatabaseAlertDisplay() {
+        if (!this.databaseAlertCleanupPending) {
+            return;
+        }
+
+        string keepPrefix = "";
+        if (this.databaseAlertDisplayController != NULL) {
+            keepPrefix = this.databaseAlertDisplayController.getObjectPrefix();
+        }
+
+        if (DatabaseAlertDisplayController::cleanupOrphanedObjects(true, keepPrefix)) {
+            this.databaseAlertCleanupPending = false;
+        }
+    }
+
+    /**
      * 初期化失敗や異常終了で残った所有オブジェクトを最終削除する。
      */
     void cleanupOrphanedObjects() {
+        DatabaseAlertDisplayController::cleanupOrphanedObjects(false);
         DrawZigZagElliotEntryLines::clear();
         ObjectsDeleteAll(0, Constant::PREFIX, 0, -1);
         ObjectsDeleteAll(
@@ -1047,6 +1074,8 @@ private:
             0,
             Constant::PREFIX_FIXED + "ElliotVerticalFitButton"
         );
+
+        ChartRedraw();
     }
 
     /**

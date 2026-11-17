@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.74"
+#property version   "2.75"
 #property indicator_chart_window
 
 #property indicator_buffers 7
