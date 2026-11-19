@@ -1,6 +1,6 @@
 ﻿#property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
-#property version "1.06"
+#property version "1.09"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots 1
@@ -15,10 +15,10 @@
 input group "01. GMO18ペア・M1監視"
 input(name="監視を開始") bool monitoringEnabled = true;
 input(name="成立時にチャートを自動表示") bool autoOpenEnabled = true;
-input(name="チャート表示の最大枚数（手動・自動）") int maxOpenCharts = 5;
+input(name="チャート表示の最大枚数（手動・自動）") int maxOpenCharts = 18;
 input(name="新規チャートのテンプレート（空欄=適用なし）")
 string chartTemplateName = "\\Profiles\\Templates\\ZigZagElliot-4.tpl";
-input(name="自動表示時にチャートを前面へ") bool bringToFront = false;
+input(name="自動表示時にチャートを前面へ") bool bringToFront = true;
 input(name="一覧の文字サイズ") int monitorFontSize = 10;
 
 input group "02. 通貨強弱DB"

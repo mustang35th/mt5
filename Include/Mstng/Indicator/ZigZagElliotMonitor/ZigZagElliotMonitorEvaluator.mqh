@@ -5,6 +5,7 @@
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorConfig.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorEvaluationObserver.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSymbolState.mqh>
 
 /**
@@ -18,6 +19,7 @@ public:
      */
     ZigZagElliotMonitorEvaluator() {
         this.initialized = false;
+        this.evaluationStartedMicros = 0;
     }
 
     /**
@@ -46,10 +48,12 @@ public:
      *
      * @param fromState 呼び出し元が所有する通貨ごとの継続状態。
      * @param fromResult 分析オブジェクトに依存しない今回の結果。
+     * @param fromObserver 実際の確認開始を通知する表示担当。省略時は通知しない。
      * @return 今回確認を試みた場合true。完了済み・再試行間隔内はfalse。
      */
     bool evaluate(ZigZagElliotMonitorSymbolState &fromState,
-            ZigZagElliotMonitorResult &fromResult) {
+            ZigZagElliotMonitorResult &fromResult,
+            ZigZagElliotMonitorEvaluationObserver *fromObserver = NULL) {
         if (!this.initialized) {
             return false;
         }
@@ -75,18 +79,26 @@ public:
             fromState.targetM5BarTime = (datetime)((long)currentBarTime - (long)currentBarTime % 300);
         }
 
+        if (fromObserver != NULL) {
+            fromObserver.onEvaluationStarted(fromState);
+        }
+
+        // 開始表示の描画と後続のチャート起動を、確認処理の計測へ含めない。
+        this.evaluationStartedMicros = GetMicrosecondCount();
         fromResult.reset();
         fromResult.barTime = currentBarTime;
         fromResult.targetM5BarTime = fromState.targetM5BarTime;
         if (fromState.symbolName == "") {
             fromResult.status = ZIGZAG_MONITOR_ERROR;
             fromResult.message = "銘柄を解決できません";
+            fromResult.shortMessage = "銘柄不明";
 
             return this.finish(fromState, fromResult);
         }
 
         if (currentBarTime <= 0) {
             fromResult.message = "M1価格履歴の取得待ち";
+            fromResult.shortMessage = "履歴待ち";
 
             return this.finish(fromState, fromResult);
         }
@@ -94,6 +106,7 @@ public:
         MqlTick quote;
         if (!this.getFreshQuote(fromState, quote)) {
             fromResult.message = "最新気配・現在足の更新待ち";
+            fromResult.shortMessage = "気配待ち";
 
             return this.finish(fromState, fromResult);
         }
@@ -101,6 +114,7 @@ public:
         if (!this.prepareStrengthProvider(fromState)) {
             fromResult.status = ZIGZAG_MONITOR_ERROR;
             fromResult.message = "通貨属性・順位取得設定を確認してください";
+            fromResult.shortMessage = "設定エラー";
 
             return this.finish(fromState, fromResult);
         }
@@ -108,9 +122,11 @@ public:
         CurrencyStrengthExecutionInfo executionInfo;
         if (!fromState.strengthProvider.load(fromState.targetM5BarTime, executionInfo)) {
             fromResult.message = "同じM5時刻の通貨順位・増減履歴の取得待ち";
+            fromResult.shortMessage = "順位待ち";
             if (executionInfo.status == CURRENCY_STRENGTH_EXECUTION_STATUS_ERROR) {
                 fromResult.status = ZIGZAG_MONITOR_ERROR;
                 fromResult.message = "通貨順位の読み取りエラー（再確認待ち）";
+                fromResult.shortMessage = "順位エラー";
             }
 
             return this.finish(fromState, fromResult);
@@ -119,6 +135,7 @@ public:
         // データ取得中に別のM1へ移った場合は、古い順位で確定させない。
         if (!this.getFreshQuote(fromState, quote)) {
             fromResult.message = "取得中に足が更新されました";
+            fromResult.shortMessage = "足更新待ち";
 
             return this.finish(fromState, fromResult);
         }
@@ -133,12 +150,14 @@ public:
             fromResult.status = ZIGZAG_MONITOR_NOT_MATCHED;
             fromResult.completed = true;
             fromResult.message = "通貨強弱・両期間増減の条件未達";
+            fromResult.shortMessage = "強弱未達";
 
             return this.finish(fromState, fromResult);
         }
 
         if (!this.prepareHistory(fromState)) {
             fromResult.message = "MN1～M1の分析履歴の準備待ち";
+            fromResult.shortMessage = "履歴待ち";
 
             return this.finish(fromState, fromResult);
         }
@@ -146,6 +165,7 @@ public:
         if (!this.prepareAnalysisResources(fromState)) {
             fromResult.status = ZIGZAG_MONITOR_ERROR;
             fromResult.message = "分析資源の作成に失敗しました";
+            fromResult.shortMessage = "分析エラー";
 
             return this.finish(fromState, fromResult);
         }
@@ -153,12 +173,14 @@ public:
         string oscillatorWaitingMessage = "";
         if (!this.prepareOscillatorData(fromState, oscillatorWaitingMessage)) {
             fromResult.message = oscillatorWaitingMessage;
+            fromResult.shortMessage = "指標待ち";
 
             return this.finish(fromState, fromResult);
         }
 
         if (!this.getFreshQuote(fromState, quote)) {
             fromResult.message = "分析開始時の気配・足更新待ち";
+            fromResult.shortMessage = "気配待ち";
 
             return this.finish(fromState, fromResult);
         }
@@ -173,11 +195,15 @@ public:
      */
     void destroy() {
         this.initialized = false;
+        this.evaluationStartedMicros = 0;
     }
 
 private:
     /** 初期化が完了している場合true。 */
     bool initialized;
+
+    /** 開始表示の更新後に記録した、現在の確認処理の開始時刻。 */
+    ulong evaluationStartedMicros;
 
     /** 通常版M1条件と監視の再確認間隔。 */
     ZigZagElliotMonitorConfig config;
@@ -188,6 +214,7 @@ private:
     bool finish(ZigZagElliotMonitorSymbolState &fromState,
             ZigZagElliotMonitorResult &fromResult) {
         fromResult.evaluatedAtSrv = TimeCurrent();
+        fromResult.durationMs = (double)(GetMicrosecondCount() - this.evaluationStartedMicros) / 1000.0;
         if (fromResult.completed && fromResult.barTime > 0) {
             fromState.lastProcessedBarTime = fromResult.barTime;
         }
@@ -458,6 +485,7 @@ private:
 
             fromResult.status = ZIGZAG_MONITOR_ERROR;
             fromResult.message = "M1判定の作成に失敗しました";
+            fromResult.shortMessage = "分析エラー";
             return;
         }
 
@@ -474,8 +502,10 @@ private:
         if (!original.analyze(fromQuote) || original.elliotCurrent == NULL
                 || original.elliotCurrent.getLatestPoint2() == NULL) {
             fromResult.message = "波動・オシレーターの分析準備待ち";
+            fromResult.shortMessage = "分析待ち";
         } else if (!this.isEvaluationStable(fromState, original)) {
             fromResult.message = "分析対象の足・気配の再確認待ち";
+            fromResult.shortMessage = "再確認待ち";
         } else {
             datetime signalTime = original.elliotCurrent.getLatestPoint2().barTime;
             bool signalIsBuy = original.elliotCurrent.isBuy;
@@ -486,23 +516,28 @@ private:
             // 補正再分析も終了してから確認し、破棄する評価は本物の回数を消費しない。
             if (!this.isEvaluationStable(fromState, original)) {
                 fromResult.message = "判定中の足交代・気配不足（再確認待ち）";
+                fromResult.shortMessage = "再確認待ち";
             } else if (strategy.isJudgmentPreparationPending()) {
                 fromResult.status = ZIGZAG_MONITOR_WAITING;
                 fromResult.completed = false;
                 fromResult.message = "補正分析の準備待ち（再確認します）";
+                fromResult.shortMessage = "補正待ち";
             } else {
                 fromResult.signalTime = signalTime;
                 fromResult.isBuy = signalIsBuy;
                 fromResult.status = ZIGZAG_MONITOR_NOT_MATCHED;
                 fromResult.completed = true;
                 fromResult.message = "M1エントリー条件未達";
+                fromResult.shortMessage = "M1未達";
                 if (alertResult.isJudge) {
                     int signalCount = fromState.signalCount.addCount(signalTime, signalIsBuy);
                     if (signalCount == 1 && alertResult.isEntry) {
                         fromResult.status = ZIGZAG_MONITOR_ENTRY;
                         fromResult.message = strategy.getJudgmentAlertText();
+                        fromResult.shortMessage = "ENTRY";
                     } else if (signalCount > 1) {
                         fromResult.message = "同一シグナルは確認済み";
+                        fromResult.shortMessage = "確認済み";
                     }
                 }
             }

@@ -42,9 +42,9 @@ public:
         this.gmoOnly = true;
         this.monitoringEnabled = true;
         this.autoOpenEnabled = true;
-        this.maxOpenCharts = 5;
+        this.maxOpenCharts = 18;
         this.templateName = "";
-        this.bringToFront = false;
+        this.bringToFront = true;
         this.retrySeconds = 5;
         this.fontSize = 10;
         this.entryConfig.m1DirectionCorrectionEnabled = true;

@@ -3,6 +3,7 @@
 
 #include <Arrays\ArrayObj.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorProgress.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSymbolState.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
@@ -124,10 +125,12 @@ public:
      * @param fromOpenCount 監視機能が現在保持しているチャート枚数。
      * @param fromMaxOpenCharts チャート表示枚数の上限。
      * @param fromLastEvaluationTime 最後に判定・データ確認を試みたサーバー時刻。
+     * @param fromProgress 共通の対象M1に対する進捗と確認処理の状況。
      * @return 描画オブジェクトを変更した場合true。
      */
     bool update(CArrayObj &fromStates, const bool fromMonitoring, const bool fromAutoOpen,
-            const int fromOpenCount, const int fromMaxOpenCharts, const datetime fromLastEvaluationTime) {
+            const int fromOpenCount, const int fromMaxOpenCharts, const datetime fromLastEvaluationTime,
+            const ZigZagElliotMonitorProgress &fromProgress) {
         if (!this.initialized) {
             return false;
         }
@@ -173,7 +176,7 @@ public:
 
         for (int i = 0; i < this.visibleRowCount; i++) {
             ZigZagElliotMonitorSymbolState *state = fromStates.At(indexes[i]);
-            this.drawRow(i, state);
+            this.drawRow(i, state, fromProgress);
         }
 
         for (int i = this.visibleRowCount; i < this.previousRowCount; i++) {
@@ -196,11 +199,50 @@ public:
             this.removeObject(this.objectPrefix + "Empty");
         }
 
-        string summary = StringFormat("確認済み %d / %d  ・ ENTRY %d", confirmedCount, stateCount, entryCount);
+        string summary = "対象M1 " + this.formatServerTime(fromProgress.targetBarTime)
+            + StringFormat(" SRV  ・ 判定済み %d / %d  ・ ENTRY %d",
+                fromProgress.completedCount, fromProgress.totalCount, fromProgress.entryCount);
+        string progressCounts = StringFormat("待機 %d  ・ 未確認 %d  ・ エラー %d  ・ 確認中 %d",
+            fromProgress.waitingCount, fromProgress.uncheckedCount,
+            fromProgress.errorCount, fromProgress.checkingCount);
+        string summaryTooltip = summary + "\n" + progressCounts
+            + "\n判定済みは、この対象M1の成立・不成立が確定した通貨数です。"
+            + StringFormat("\n起動・監視再開後の確認済み %d / %d", confirmedCount, stateCount)
+            + StringFormat("\n保持中のENTRY表示 %d（前回の対象足を含む）", entryCount);
         if (this.visibleRowCount < stateCount) {
-            summary += StringFormat("  ・ 一覧 %d / %d（高さ不足）", this.visibleRowCount, stateCount);
+            summaryTooltip += StringFormat("\n一覧 %d / %d（高さ不足）", this.visibleRowCount, stateCount);
         }
 
+        string activityText = "確認前";
+        color activityColor = C'201,211,222';
+        if (!fromMonitoring) {
+            activityText = "監視停止";
+            activityColor = clrSilver;
+        } else if (fromProgress.activeSymbol != "") {
+            activityText = "確認中 " + fromProgress.activeSymbol;
+            activityColor = C'135,206,250';
+        } else if (fromProgress.lastSymbol != "") {
+            activityText = "直前 " + fromProgress.lastSymbol
+                + "（" + this.formatDuration(fromProgress.lastDurationMs) + "）";
+        }
+
+        if (fromMonitoring) {
+            if (fromProgress.totalCount == 0) {
+                activityText += "  ・ 監視対象なし";
+            } else if (fromProgress.checkingCount > 0 || fromProgress.uncheckedCount > 0) {
+                activityText += "  ・ 順次確認中";
+            } else if (fromProgress.waitingCount > 0 || fromProgress.errorCount > 0) {
+                activityText += "  ・ データ再確認待ち";
+            } else {
+                activityText += "  ・ 次のM1足待ち";
+            }
+        }
+
+        string activityTooltip = activityText + "\n" + progressCounts
+            + "\n直前の確認通貨：" + fromProgress.lastSymbol
+            + "\n直前の確認処理時間：" + this.formatDuration(fromProgress.lastDurationMs)
+            + "\n処理時間にはチャート表示処理を含めません。";
+        activityText += "  ・ " + progressCounts;
         string openCountText = IntegerToString(fromOpenCount);
         if (fromOpenCount < 0) {
             openCountText = "不明";
@@ -215,8 +257,10 @@ public:
         }
 
         this.drawLabel("Summary", this.contentLeft, this.footerTop, this.contentWidth,
-            this.bodyFontSize, C'201,211,222', summary, summary);
-        this.drawLabel("Cycle", this.contentLeft, this.footerTop + 24, this.contentWidth,
+            this.bodyFontSize, C'201,211,222', summary, summaryTooltip);
+        this.drawLabel("Activity", this.contentLeft, this.footerTop + 24, this.contentWidth,
+            this.bodyFontSize, activityColor, activityText, activityTooltip);
+        this.drawLabel("Cycle", this.contentLeft, this.footerTop + 48, this.contentWidth,
             this.bodyFontSize, C'153,167,184', cycleText, cycleTooltip);
 
         return this.changed;
@@ -440,7 +484,7 @@ private:
         }
 
         this.rowsTop = this.headerTop + 27;
-        int availableHeight = (int)MathMax(0, chartHeight - this.rowsTop - 70);
+        int availableHeight = (int)MathMax(0, chartHeight - this.rowsTop - 94);
         this.rowHeight = (int)MathMax(24, this.bodyFontSize * 2 + 4);
         if (fromStateCount > 0 && availableHeight < fromStateCount * this.rowHeight) {
             this.rowHeight = (int)MathMax(MathMax(18, this.bodyFontSize * 2), availableHeight / fromStateCount);
@@ -449,13 +493,13 @@ private:
         this.visibleRowCount = (int)MathMin(fromStateCount, availableHeight / this.rowHeight);
         this.footerTop = this.rowsTop + (int)MathMax(1, this.visibleRowCount) * this.rowHeight + 12;
         this.panelHeight = (int)MathMin(chartHeight - this.panelTop,
-            this.footerTop - this.panelTop + 56);
+            this.footerTop - this.panelTop + 80);
         this.columnWidth[5] = (int)MathMin(this.contentWidth, MathMin(76, MathMax(40, this.contentWidth / 10)));
         int textWidth = this.contentWidth - this.columnWidth[5];
         this.columnWidth[0] = textWidth * 17 / 100;
-        this.columnWidth[1] = textWidth * 14 / 100;
+        this.columnWidth[1] = textWidth * 24 / 100;
         this.columnWidth[2] = textWidth * 9 / 100;
-        this.columnWidth[3] = textWidth * 32 / 100;
+        this.columnWidth[3] = textWidth * 28 / 100;
         this.columnWidth[4] = textWidth - this.columnWidth[0] - this.columnWidth[1]
             - this.columnWidth[2] - this.columnWidth[3];
         this.columnLeft[0] = this.contentLeft;
@@ -478,9 +522,10 @@ private:
     }
 
     /**
-     * 現在判定、直近成立時刻、チャート状態を互いに独立した列へ表示する。
+     * 確認理由と前回の結果を区別し、直近成立時刻とチャート状態を独立した列へ表示する。
      */
-    void drawRow(const int fromRowIndex, ZigZagElliotMonitorSymbolState *fromState) {
+    void drawRow(const int fromRowIndex, ZigZagElliotMonitorSymbolState *fromState,
+            const ZigZagElliotMonitorProgress &fromProgress) {
         if (fromState == NULL) {
             return;
         }
@@ -513,6 +558,34 @@ private:
             statusColor = clrCoral;
         }
 
+        if (fromState.result.shortMessage != "") {
+            statusText = fromState.result.shortMessage;
+        }
+
+        color directionColor = statusColor;
+        bool active = fromProgress.activeSymbol != ""
+            && (fromProgress.activeSymbol == fromState.canonicalSymbolName
+                || fromProgress.activeSymbol == fromState.symbolName);
+        if (active) {
+            statusText = "確認中";
+            statusColor = C'135,206,250';
+            directionColor = statusColor;
+            directionText = "—";
+            rowColor = C'24,42,57';
+        } else if (fromState.result.evaluatedAtSrv == 0) {
+            statusText = "未確認";
+            statusColor = C'158,170,185';
+            directionColor = statusColor;
+            directionText = "—";
+        } else if (fromState.lastAttemptBarTime != fromProgress.targetBarTime) {
+            statusText = "前回 " + statusText;
+            statusColor = C'119,132,148';
+            rowColor = C'12,15,20';
+            if (fromRowIndex % 2 != 0) {
+                rowColor = C'20,24,31';
+            }
+        }
+
         string symbolText = fromState.canonicalSymbolName;
         if (this.isGmo(fromState.canonicalSymbolName)) {
             symbolText += " [G]";
@@ -534,7 +607,7 @@ private:
             }
         }
 
-        string tooltip = this.buildTooltip(fromState);
+        string tooltip = this.buildTooltip(fromState, fromProgress);
         this.drawRectangle(rowPrefix + "Background", this.panelLeft + 1, rowTop - 1,
             (int)MathMax(1, this.panelWidth - 2), this.rowHeight, rowColor, rowColor);
         this.drawLabel(rowPrefix + "Column0", this.columnLeft[0], rowTop + 2,
@@ -542,7 +615,7 @@ private:
         this.drawLabel(rowPrefix + "Column1", this.columnLeft[1], rowTop + 2,
             this.columnWidth[1] - 5, this.bodyFontSize, statusColor, statusText, tooltip);
         this.drawLabel(rowPrefix + "Column2", this.columnLeft[2], rowTop + 2,
-            this.columnWidth[2] - 5, this.bodyFontSize, statusColor, directionText, tooltip);
+            this.columnWidth[2] - 5, this.bodyFontSize, directionColor, directionText, tooltip);
         this.drawLabel(rowPrefix + "Column3", this.columnLeft[3], rowTop + 2,
             this.columnWidth[3] - 5, this.bodyFontSize, entryTimeColor,
             this.formatJapanTime(fromState.lastEntryTime), tooltip);
@@ -558,12 +631,25 @@ private:
     /**
      * 省略された説明と、サーバー時刻の判定根拠をツールチップへまとめる。
      */
-    string buildTooltip(ZigZagElliotMonitorSymbolState *fromState) {
+    string buildTooltip(ZigZagElliotMonitorSymbolState *fromState,
+            const ZigZagElliotMonitorProgress &fromProgress) {
         string text = fromState.canonicalSymbolName + " / " + fromState.symbolName
+            + "\n現在の対象M1：" + this.formatServerTime(fromProgress.targetBarTime) + " SRV"
+            + "\n直近の確認対象M1：" + this.formatServerTime(fromState.lastAttemptBarTime) + " SRV"
             + "\n判定：" + fromState.result.message
             + "\nM1判定足：" + this.formatServerTime(fromState.result.barTime) + " SRV"
             + "\n強弱対象：" + this.formatServerTime(fromState.result.targetM5BarTime) + " SRV"
-            + "\n確認時刻：" + this.formatServerTime(fromState.result.evaluatedAtSrv) + " SRV";
+            + "\n確認時刻：" + this.formatServerTime(fromState.result.evaluatedAtSrv) + " SRV"
+            + "\n確認処理時間：" + this.formatDuration(fromState.result.durationMs);
+        if (fromProgress.activeSymbol != ""
+                && (fromProgress.activeSymbol == fromState.canonicalSymbolName
+                    || fromProgress.activeSymbol == fromState.symbolName)) {
+            text += "\n現在確認中です。判定・処理時間は直前に完了した確認の記録です。";
+        } else if (fromState.result.evaluatedAtSrv > 0
+                && fromState.lastAttemptBarTime != fromProgress.targetBarTime) {
+            text += "\n前回の対象足の結果です。現在の対象M1の結果ではありません。";
+        }
+
         if (fromState.lastEntryTime > 0) {
             string direction = "SELL";
             if (fromState.lastEntryIsBuy) {
@@ -612,6 +698,17 @@ private:
         }
 
         return TimeUtil::formatYyyymmddhhmiss(fromTime);
+    }
+
+    /**
+     * 未計測を区別して確認処理のミリ秒を表示する。
+     */
+    string formatDuration(const double fromDurationMs) {
+        if (fromDurationMs < 0) {
+            return "未計測";
+        }
+
+        return StringFormat("%.1f ms", fromDurationMs);
     }
 
     /**
@@ -677,8 +774,12 @@ private:
         this.setInteger(objectName, OBJPROP_YDISTANCE, fromTop, this.objects[objectIndex].positionY);
         this.setInteger(objectName, OBJPROP_FONTSIZE, fromFontSize, this.objects[objectIndex].fontSize);
         this.setInteger(objectName, OBJPROP_COLOR, fromColor, this.objects[objectIndex].foreground);
-        this.setString(objectName, OBJPROP_TEXT, this.fitText(fromText, fromWidth, fromFontSize),
-            this.objects[objectIndex].text);
+        string text = this.fitText(fromText, fromWidth, fromFontSize);
+        if (text == "") {
+            text = " ";
+        }
+
+        this.setString(objectName, OBJPROP_TEXT, text, this.objects[objectIndex].text);
         this.setString(objectName, OBJPROP_TOOLTIP, fromTooltip, this.objects[objectIndex].tooltip);
     }
 

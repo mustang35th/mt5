@@ -36,6 +36,9 @@ public:
     /** 次に不足データを再確認できる経過ミリ秒。 */
     ulong nextRetryTick;
 
+    /** 最後に確認を開始した時点の共通サーバーM1枠。進捗表示専用。 */
+    datetime lastAttemptBarTime;
+
     /** 一覧に保持する直近の判定結果。 */
     ZigZagElliotMonitorResult result;
 
@@ -77,6 +80,7 @@ public:
         this.evaluationBarTime = 0;
         this.targetM5BarTime = 0;
         this.nextRetryTick = 0;
+        this.lastAttemptBarTime = 0;
         this.result.reset();
         this.lastEntryTime = 0;
         this.lastEntryIsBuy = false;

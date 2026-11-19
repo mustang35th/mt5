@@ -6,7 +6,9 @@
 #include <Mstng\Draw\DrawZigZagElliotMonitor.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorChartManager.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorConfig.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorEvaluationObserver.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorEvaluator.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorProgress.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSymbolState.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\Util.mqh>
@@ -14,7 +16,7 @@
 /**
  * 通貨ペアを1件ずつ監視し、初回確認を含むM1成立を別チャートへ表示する。
  */
-class ZigZagElliotMonitorController {
+class ZigZagElliotMonitorController : public ZigZagElliotMonitorEvaluationObserver {
 public:
     /**
      * 所有資源を初期化する。
@@ -75,7 +77,7 @@ public:
         }
 
         this.executing = true;
-        bool changed = false;
+        bool changed = this.progress.targetBarTime != ZigZagElliotMonitorProgress::getCurrentBarTime();
         int total = this.states.Total();
         if (this.monitoring && total > 0) {
             for (int i = 0; i < total; i++) {
@@ -95,11 +97,15 @@ public:
 
                 ZigZagElliotMonitorResult result;
                 result.reset();
-                if (!this.evaluator.evaluate(*state, result)) {
+                if (!this.evaluator.evaluate(*state, result, GetPointer(this))) {
                     continue;
                 }
 
+                this.progress.activeSymbol = "";
+                this.progress.lastSymbol = state.canonicalSymbolName;
+                this.progress.lastDurationMs = result.durationMs;
                 state.result = result;
+                this.lastEvaluationTime = result.evaluatedAtSrv;
                 if (result.completed) {
                     state.baselineReady = true;
                 }
@@ -107,6 +113,9 @@ public:
                 if (result.status == ZIGZAG_MONITOR_ENTRY) {
                     state.lastEntryTime = result.evaluatedAtSrv;
                     state.lastEntryIsBuy = result.isBuy;
+
+                    // チャート起動の前に確認中を解除し、確定した判定と処理時間を表示する。
+                    this.updateView(false);
                     if (!this.autoOpen) {
                         state.chartStatus = "自動表示OFF";
                     } else {
@@ -115,7 +124,6 @@ public:
                 }
 
                 this.nextIndex = (index + 1) % total;
-                this.lastEvaluationTime = result.evaluatedAtSrv;
                 changed = true;
                 break;
             }
@@ -127,6 +135,16 @@ public:
         }
 
         this.executing = false;
+    }
+
+    /**
+     * スキップされなかった通貨だけを確認中として描画する。
+     * 表示専用の時刻を記録し、判定足・シグナル回数には触れない。
+     */
+    virtual void onEvaluationStarted(ZigZagElliotMonitorSymbolState &fromState) {
+        fromState.lastAttemptBarTime = ZigZagElliotMonitorProgress::getCurrentBarTime();
+        this.progress.activeSymbol = fromState.canonicalSymbolName;
+        this.updateView(false);
     }
 
     /**
@@ -177,6 +195,7 @@ public:
         this.lastEvaluationTime = 0;
         this.lastOpenCount = -2;
         this.executing = false;
+        this.progress.reset();
     }
 
 private:
@@ -200,6 +219,9 @@ private:
 
     /** 一覧描画の担当。 */
     DrawZigZagElliotMonitor view;
+
+    /** 今回のM1足の進捗と直近の確認時間。判定条件には使用しない。 */
+    ZigZagElliotMonitorProgress progress;
 
     /** 監視実行状態。 */
     bool monitoring;
@@ -375,19 +397,27 @@ private:
             state.evaluationBarTime = 0;
             state.targetM5BarTime = 0;
             state.nextRetryTick = 0;
+            state.lastAttemptBarTime = 0;
             state.result.reset();
         }
 
         this.nextIndex = 0;
+        this.progress.reset();
     }
 
     /**
      * 表示に変更がある場合だけまとめて再描画する。
+     *
+     * @param fromRefreshOpenCount 確認開始・完了の中間表示では保持済み枚数を使用する。
      */
-    void updateView() {
-        this.lastOpenCount = this.chartManager.getOpenCount();
+    void updateView(const bool fromRefreshOpenCount = true) {
+        this.progress.updateCounts(this.states, ZigZagElliotMonitorProgress::getCurrentBarTime());
+        if (fromRefreshOpenCount) {
+            this.lastOpenCount = this.chartManager.getOpenCount();
+        }
+
         if (this.view.update(this.states, this.monitoring, this.autoOpen,
-                this.lastOpenCount, this.config.maxOpenCharts, this.lastEvaluationTime)) {
+                this.lastOpenCount, this.config.maxOpenCharts, this.lastEvaluationTime, this.progress)) {
             ChartRedraw(this.chartId);
         }
     }

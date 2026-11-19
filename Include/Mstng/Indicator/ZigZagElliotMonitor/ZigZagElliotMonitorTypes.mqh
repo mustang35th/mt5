@@ -39,6 +39,12 @@ struct ZigZagElliotMonitorResult {
     /** 待機・不成立・失敗の説明。 */
     string message;
 
+    /** 一覧の判定列に表示する短い理由。 */
+    string shortMessage;
+
+    /** 直近の確認処理に要したミリ秒。未計測は-1。 */
+    double durationMs;
+
     /**
      * 未取得の状態へ戻す。
      */
@@ -51,6 +57,8 @@ struct ZigZagElliotMonitorResult {
         this.targetM5BarTime = 0;
         this.evaluatedAtSrv = 0;
         this.message = "準備待ち";
+        this.shortMessage = "準備待ち";
+        this.durationMs = -1.0;
     }
 };
 
