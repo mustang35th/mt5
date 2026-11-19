@@ -526,6 +526,8 @@ private:
                 fromResult.message = "補正分析の準備待ち（再確認します）";
                 fromResult.shortMessage = "補正待ち";
             } else {
+                fromResult.directions.capture(original, strategy.getJudgmentElliotAll(), fromResult.barTime,
+                    strategy.getCorrectionTimeFrame());
                 fromResult.waves.capture(strategy.getJudgmentElliotAll(), fromResult.barTime,
                     strategy.getCorrectionTimeFrame());
 

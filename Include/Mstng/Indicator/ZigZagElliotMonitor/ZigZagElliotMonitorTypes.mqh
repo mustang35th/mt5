@@ -1,6 +1,7 @@
 ﻿#ifndef MSTNG_ZIGZAG_ELLIOT_MONITOR_TYPES_MQH
 #define MSTNG_ZIGZAG_ELLIOT_MONITOR_TYPES_MQH
 
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorDirectionSnapshot.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorStrengthSnapshot.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorWaveSnapshot.mqh>
 
@@ -54,6 +55,9 @@ struct ZigZagElliotMonitorResult {
     /** 安定した確認で採用したM5・M1波動。未分析と未採用を区別する。 */
     ZigZagElliotMonitorWaveSnapshot waves;
 
+    /** 安定した確認で取得した補正前6時間足のBUY・SELL方向。 */
+    ZigZagElliotMonitorDirectionSnapshot directions;
+
     /**
      * 未取得の状態へ戻す。
      */
@@ -70,6 +74,7 @@ struct ZigZagElliotMonitorResult {
         this.durationMs = -1.0;
         this.strength.reset();
         this.waves.reset();
+        this.directions.reset();
     }
 };
 

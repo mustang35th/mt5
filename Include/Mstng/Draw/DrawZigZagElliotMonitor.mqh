@@ -435,11 +435,11 @@ private:
     /** チャートの高さ内へ表示できる行数。 */
     int visibleRowCount;
 
-    /** 既存列IDを維持した9列それぞれの左位置。 */
-    int columnLeft[9];
+    /** 既存列IDを維持した14列それぞれの左位置。 */
+    int columnLeft[14];
 
-    /** 既存列IDを維持した9列それぞれの横幅。 */
-    int columnWidth[9];
+    /** 既存列IDを維持した14列それぞれの横幅。 */
+    int columnWidth[14];
 
     /**
      * 有効な状態を集計し、参照番号だけを選択された表示順へ並べる。
@@ -503,7 +503,7 @@ private:
         chartHeight = (int)MathMax(1, chartHeight);
         this.panelLeft = (int)MathMin(10, chartWidth / 20);
         this.panelTop = (int)MathMin(10, chartHeight / 20);
-        this.panelWidth = (int)MathMax(1, MathMin(1100, chartWidth - this.panelLeft * 2));
+        this.panelWidth = (int)MathMax(1, MathMin(1400, chartWidth - this.panelLeft * 2));
         int padding = (int)MathMin(12, this.panelWidth / 10);
         this.contentLeft = this.panelLeft + padding;
         this.contentWidth = (int)MathMax(1, this.panelWidth - padding * 2);
@@ -547,19 +547,26 @@ private:
             this.footerTop - this.panelTop + 80);
         this.columnWidth[7] = (int)MathMin(this.contentWidth, MathMin(76, MathMax(40, this.contentWidth / 10)));
         int textWidth = this.contentWidth - this.columnWidth[7];
+        int directionBudget = (int)MathMin(textWidth, this.contentWidth * 28 / 100);
+        int directionWidth = (int)MathMin(this.bodyFontSize * 6, directionBudget / 6);
+        this.columnWidth[2] = directionWidth;
+        for (int i = 9; i < 14; i++) {
+            this.columnWidth[i] = directionWidth;
+        }
+
+        textWidth -= directionWidth * 6;
         this.columnWidth[8] = textWidth * 13 / 100;
         textWidth -= this.columnWidth[8];
-        this.columnWidth[0] = textWidth * 13 / 100;
-        this.columnWidth[1] = textWidth * 18 / 100;
-        this.columnWidth[2] = textWidth * 6 / 100;
-        this.columnWidth[3] = textWidth * 10 / 100;
-        this.columnWidth[4] = textWidth * 10 / 100;
-        this.columnWidth[5] = textWidth * 23 / 100;
+        this.columnWidth[0] = textWidth * 13 / 94;
+        this.columnWidth[1] = textWidth * 18 / 94;
+        this.columnWidth[3] = textWidth * 10 / 94;
+        this.columnWidth[4] = textWidth * 10 / 94;
+        this.columnWidth[5] = textWidth * 23 / 94;
         this.columnWidth[6] = textWidth - this.columnWidth[0] - this.columnWidth[1]
-            - this.columnWidth[2] - this.columnWidth[3] - this.columnWidth[4] - this.columnWidth[5];
-        int displayOrder[9] = {0, 1, 2, 8, 3, 4, 5, 6, 7};
+            - this.columnWidth[3] - this.columnWidth[4] - this.columnWidth[5];
+        int displayOrder[14] = {0, 1, 2, 9, 10, 11, 12, 13, 8, 3, 4, 5, 6, 7};
         int nextLeft = this.contentLeft;
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < 14; i++) {
             int columnIndex = displayOrder[i];
             this.columnLeft[columnIndex] = nextLeft;
             nextLeft += this.columnWidth[columnIndex];
@@ -570,10 +577,10 @@ private:
      * ソート対象の見出しをボタンにし、選択列の順序を矢印で表示する。
      */
     void drawColumnHeaders() {
-        string titles[9] = {"通貨ペア [G]", "判定", "方向", "長中期", "中短期", "直近成立時刻 JST", "表示結果", "操作", "波動 M5/M1"};
+        string titles[14] = {"通貨ペア [G]", "判定", "D1", "長中期", "中短期", "直近成立時刻 JST", "表示結果", "操作", "波動 M5/M1", "H4", "H1", "M15", "M5", "M1"};
         this.drawRectangle("Header", this.panelLeft + 1, this.headerTop - 4,
             (int)MathMax(1, this.panelWidth - 2), 27, C'31,39,50', C'31,39,50');
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < 14; i++) {
             string labelSuffix = "Header" + IntegerToString(i);
             string buttonSuffix = "SortHeader" + IntegerToString(i);
             if (i == 0 || i == 3 || i == 4 || i == 5) {
@@ -595,8 +602,15 @@ private:
                     this.getSortTooltip(i), 25);
             } else {
                 this.removeObject(this.objectPrefix + buttonSuffix);
+                string tooltip = titles[i];
+                if (i == 2 || i >= 9) {
+                    tooltip += "：補正前の元分析の売買方向です。BUYは水色、SELLはピンクです。"
+                        + "\n補は、この足で方向補正が採用された印です。補正後の方向は行のツールチップで確認できます。"
+                        + "\n前回M1・確認中の値は灰色で表示します。";
+                }
+
                 this.drawLabel(labelSuffix, this.columnLeft[i], this.headerTop,
-                    this.columnWidth[i] - 5, this.bodyFontSize, C'179,193,210', titles[i], titles[i]);
+                    this.columnWidth[i] - 5, this.bodyFontSize, C'179,193,210', titles[i], tooltip);
             }
         }
     }
@@ -650,15 +664,12 @@ private:
         }
 
         string statusText = "待機";
-        string directionText = "—";
         color statusColor = clrGold;
         if (fromState.result.status == ZIGZAG_MONITOR_ENTRY) {
             statusText = "ENTRY";
-            directionText = "SELL";
             statusColor = clrHotPink;
             rowColor = C'45,23,35';
             if (fromState.result.isBuy) {
-                directionText = "BUY";
                 statusColor = clrAqua;
                 rowColor = C'17,38,43';
             }
@@ -679,25 +690,16 @@ private:
             statusText = fromState.result.shortMessage;
         }
 
-        color directionColor = C'158,170,185';
-        if (fromState.result.status == ZIGZAG_MONITOR_ENTRY) {
-            directionColor = statusColor;
-        }
-
         bool active = fromProgress.activeSymbol != ""
             && (fromProgress.activeSymbol == fromState.canonicalSymbolName
                 || fromProgress.activeSymbol == fromState.symbolName);
         if (active) {
             statusText = "確認中";
             statusColor = C'135,206,250';
-            directionColor = statusColor;
-            directionText = "—";
             rowColor = C'24,42,57';
         } else if (fromState.result.evaluatedAtSrv == 0) {
             statusText = "未確認";
             statusColor = C'201,211,222';
-            directionColor = statusColor;
-            directionText = "—";
         } else if (fromState.lastAttemptBarTime != fromProgress.targetBarTime) {
             statusText = "前回 " + statusText;
             statusColor = C'119,132,148';
@@ -737,8 +739,7 @@ private:
             this.columnWidth[0] - 5, this.bodyFontSize, clrWhiteSmoke, symbolText, tooltip);
         this.drawLabel(rowPrefix + "Column1", this.columnLeft[1], rowTop + 2,
             this.columnWidth[1] - 5, this.bodyFontSize, statusColor, statusText, tooltip);
-        this.drawLabel(rowPrefix + "Column2", this.columnLeft[2], rowTop + 2,
-            this.columnWidth[2] - 5, this.bodyFontSize, directionColor, directionText, tooltip);
+        this.drawDirectionCells(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
         this.drawWaveCell(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
         this.drawLabel(rowPrefix + "Column3", this.columnLeft[3], rowTop + 2,
             this.columnWidth[3] - 5, this.bodyFontSize,
@@ -762,6 +763,113 @@ private:
             fromState.canonicalSymbolName + "のM1チャートを表示して前面へ移動します。"
                 + "\nエントリー成立・監視・自動表示のON/OFFに関係なく操作できます。",
             this.rowHeight - 3);
+    }
+
+    /**
+     * 補正前のD1・H4・H1・M15・M5・M1方向を、成立状態と独立して表示する。
+     */
+    void drawDirectionCells(const string fromRowPrefix, const int fromTop,
+            ZigZagElliotMonitorSymbolState *fromState, const bool fromActive,
+            const datetime fromCurrentM1BarTime) {
+        int directionColumns[6] = {2, 9, 10, 11, 12, 13};
+        ENUM_TIMEFRAMES timeFrames[6] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5, PERIOD_M1};
+        bool fresh = !fromActive && fromCurrentM1BarTime > 0
+            && fromState.result.directions.targetM1BarTime == fromCurrentM1BarTime;
+        for (int i = 0; i < 6; i++) {
+            ZigZagElliotMonitorDirectionInfo directionInfo = fromState.result.directions.items[i];
+            bool available = fromState.result.directions.analyzed && directionInfo.available
+                && directionInfo.timeFrame == timeFrames[i];
+            string text = "—";
+            color directionColor = C'119,132,148';
+            if (available) {
+                text = "SELL";
+                if (directionInfo.isBuy) {
+                    text = "BUY";
+                }
+
+                if (directionInfo.corrected && directionInfo.adoptedAvailable
+                        && directionInfo.isBuy != directionInfo.adoptedIsBuy) {
+                    text += "補";
+                }
+
+                if (fresh) {
+                    directionColor = clrHotPink;
+                    if (directionInfo.isBuy) {
+                        directionColor = clrAqua;
+                    }
+                }
+            }
+
+            int columnIndex = directionColumns[i];
+            this.drawLabel(fromRowPrefix + "Column" + IntegerToString(columnIndex),
+                this.columnLeft[columnIndex], fromTop, this.columnWidth[columnIndex] - 5,
+                this.bodyFontSize, directionColor, text,
+                this.getDirectionTooltip(fromState, directionInfo, timeFrames[i], fromActive,
+                    fromCurrentM1BarTime));
+        }
+    }
+
+    /**
+     * 元分析の売買方向と、採用された方向補正を時刻・判定理由とともに説明する。
+     */
+    string getDirectionTooltip(ZigZagElliotMonitorSymbolState *fromState,
+            const ZigZagElliotMonitorDirectionInfo &fromDirection,
+            const ENUM_TIMEFRAMES fromTimeFrame, const bool fromActive,
+            const datetime fromCurrentM1BarTime) {
+        string timeFrameText = EnumToString(fromTimeFrame);
+        StringReplace(timeFrameText, "PERIOD_", "");
+        string text = fromState.canonicalSymbolName + " / " + timeFrameText + "方向"
+            + "\n一覧は補正前の元分析の売買方向を表示しています。";
+        bool available = fromState.result.directions.analyzed && fromDirection.available
+            && fromDirection.timeFrame == fromTimeFrame;
+        if (available) {
+            string originalDirection = "SELL";
+            if (fromDirection.isBuy) {
+                originalDirection = "BUY";
+            }
+
+            text += "\n元方向：" + originalDirection;
+            if (fromDirection.adoptedAvailable) {
+                string adoptedDirection = "SELL";
+                if (fromDirection.adoptedIsBuy) {
+                    adoptedDirection = "BUY";
+                }
+
+                text += "\n採用方向：" + adoptedDirection;
+                if (fromDirection.corrected && fromDirection.isBuy != fromDirection.adoptedIsBuy) {
+                    text += "\n補：" + originalDirection + " → " + adoptedDirection
+                        + " の方向補正が採用されています。表示色は元方向のままです。";
+                }
+            } else {
+                text += "\n採用方向：—（有効な情報なし）";
+            }
+        } else if (fromState.result.directions.analyzed) {
+            text += "\n元方向：—（未取得）";
+        } else {
+            text += "\n元方向：—（未分析）";
+        }
+
+        string reason = fromState.result.message;
+        if (reason == "") {
+            reason = fromState.result.shortMessage;
+        }
+
+        text += "\n分析対象M1：" + this.formatServerTime(fromState.result.directions.targetM1BarTime)
+            + " SRV / " + this.formatJapanTime(fromState.result.directions.targetM1BarTime) + " JST"
+            + "\n確認時刻：" + this.formatServerTime(fromState.result.evaluatedAtSrv)
+            + " SRV / " + this.formatJapanTime(fromState.result.evaluatedAtSrv) + " JST"
+            + "\n判定理由：" + reason;
+        if (fromState.result.directions.targetM1BarTime > 0
+                && fromState.result.directions.targetM1BarTime != fromCurrentM1BarTime) {
+            text += "\n前回のM1の保存値です。現在の対象M1："
+                + this.formatServerTime(fromCurrentM1BarTime) + " SRV";
+        }
+
+        if (fromActive) {
+            text += "\n現在確認中です。表示は保存済みの元分析で、今回の確認はまだ完了していません。";
+        }
+
+        return text;
     }
 
     /**
@@ -1433,6 +1541,9 @@ private:
 
         this.removeObject(rowPrefix + "Column8");
         this.removeWaveParts("Row" + IntegerToString(fromRowIndex));
+        for (int i = 9; i < 14; i++) {
+            this.removeObject(rowPrefix + "Column" + IntegerToString(i));
+        }
     }
 
     /**
