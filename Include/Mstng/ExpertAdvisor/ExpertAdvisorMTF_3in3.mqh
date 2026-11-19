@@ -170,6 +170,16 @@ public:
     }
 
     /**
+     * 直近のanalyze()で、採用する補正分析の準備に失敗したか取得する。
+     * 方向条件の不一致とは区別するための診断であり、既存判定は変更しない。
+     *
+     * @return 対応する戦略で補正分析の再試行が必要な場合true。
+     */
+    virtual bool isJudgmentPreparationPending() {
+        return false;
+    }
+
+    /**
      * 直近の判定で分析方向を補正した時間足を取得する。
      *
      * @return 補正なしを表すPERIOD_CURRENT。補正戦略で上書きする。

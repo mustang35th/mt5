@@ -51,6 +51,7 @@ public:
         this.isDirectionCorrectionEnabled = fromDirectionCorrectionEnabled;
         this.correctedElliotAll = NULL;
         this.correctedTimeFrame = PERIOD_CURRENT;
+        this.correctionPreparationPending = false;
     }
 
     /**
@@ -58,6 +59,16 @@ public:
      */
     ~ExpertAdvisorMtf3In3M1() {
         this.releaseCorrectedElliotAll();
+    }
+
+    /**
+     * 方向条件通過後の補正分析だけが準備できなかった状態を返す。
+     * 次のanalyze()開始時に初期化し、通常の方向不一致ではtrueにしない。
+     *
+     * @return 補正分析の生成・再分析が失敗した場合true。
+     */
+    virtual bool isJudgmentPreparationPending() override {
+        return this.correctionPreparationPending;
     }
 
     /**
@@ -79,6 +90,7 @@ protected:
      */
     virtual void resetStrategySpecificAnalysisOutcome() override {
         ExpertAdvisorMTF_3in3::resetStrategySpecificAnalysisOutcome();
+        this.correctionPreparationPending = false;
         this.releaseCorrectedElliotAll();
     }
 
@@ -113,6 +125,7 @@ protected:
         if (this.correctedElliotAll == NULL
                 || !this.correctedElliotAll.analyzeWithDirectionCorrection(
                     fromOriginal, correctionTimeFrame, fromOriginal.elliotCurrent.isBuy)) {
+            this.correctionPreparationPending = true;
             this.logger.error(__FUNCTION__, "M1 corrected analysis failed");
             this.releaseCorrectedElliotAll();
 
@@ -233,6 +246,9 @@ private:
 
     /** 補正した時間足。補正なしの場合はPERIOD_CURRENT。 */
     ENUM_TIMEFRAMES correctedTimeFrame;
+
+    /** 直近の分析で方向条件通過後の補正分析準備に失敗した場合true。 */
+    bool correctionPreparationPending;
 
     /**
      * D1・M5・M1の元方向一致を確認し、逆方向1足だけを補正対象として返す。
