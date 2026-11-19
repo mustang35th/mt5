@@ -98,7 +98,7 @@ public:
     /**
      * 対象市場の高値・安値からZigZagを計算する。
      *
-     * @param fromRatesTotal 取得および計算の対象とするバー数
+     * @param fromRatesTotal 取得および計算の対象とする最大バー数
      * @return 実際に計算したバー数。価格データを取得できない場合は0
      */
     int calculate(int fromRatesTotal) {
@@ -122,6 +122,12 @@ public:
         }
         
         int ratesTotal = fromRatesTotal;
+        int availableBars = Bars(this.marketContext.symbolName, this.marketContext.timeFrame);
+        if (availableBars > 0 && availableBars < ratesTotal
+                && SeriesInfoInteger(this.marketContext.symbolName, this.marketContext.timeFrame, SERIES_SYNCHRONIZED)) {
+            // 同期済みでも月足などは上限未満の場合がある。存在する本数だけを要求する。
+            ratesTotal = availableBars;
+        }
 
         // データの取得
         double high[];
@@ -135,7 +141,8 @@ public:
         int copiedLow = CopyLow(this.marketContext.symbolName, this.marketContext.timeFrame, 0, ratesTotal, low);
         int lowError = GetLastError();
 
-        if (copiedHigh <= 0 || copiedLow <= 0) {
+        // 本数が異なると古い側の開始位置がずれるため、高値と安値を組み合わせない。
+        if (copiedHigh <= 0 || copiedLow <= 0 || copiedHigh != copiedLow) {
             long synchronized = 0;
             SeriesInfoInteger(
                 this.marketContext.symbolName,
@@ -143,7 +150,7 @@ public:
                 SERIES_SYNCHRONIZED,
                 synchronized
             );
-            int availableBars = Bars(
+            availableBars = Bars(
                 this.marketContext.symbolName,
                 this.marketContext.timeFrame
             );

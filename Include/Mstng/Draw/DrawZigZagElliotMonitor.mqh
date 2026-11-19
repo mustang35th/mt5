@@ -188,8 +188,14 @@ public:
             emptyText = "一覧表示にはチャートの高さが必要です";
         }
 
-        this.drawLabel("Empty", this.contentLeft, this.rowsTop + 4, this.contentWidth,
-            this.bodyFontSize, clrSilver, emptyText, emptyText);
+        if (emptyText != "") {
+            this.drawLabel("Empty", this.contentLeft, this.rowsTop + 4, this.contentWidth,
+                this.bodyFontSize, clrSilver, emptyText, emptyText);
+        } else {
+            // 空文字のラベルは既定文字が表示されるため、通常表示では削除する。
+            this.removeObject(this.objectPrefix + "Empty");
+        }
+
         string summary = StringFormat("確認済み %d / %d  ・ ENTRY %d", confirmedCount, stateCount, entryCount);
         if (this.visibleRowCount < stateCount) {
             summary += StringFormat("  ・ 一覧 %d / %d（高さ不足）", this.visibleRowCount, stateCount);

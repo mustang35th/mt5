@@ -12,7 +12,7 @@
 #include <Mstng\Util\Util.mqh>
 
 /**
- * 通貨ペアを1件ずつ監視し、初回確認後のM1成立だけを別チャートへ表示する。
+ * 通貨ペアを1件ずつ監視し、初回確認を含むM1成立を別チャートへ表示する。
  */
 class ZigZagElliotMonitorController {
 public:
@@ -99,7 +99,6 @@ public:
                     continue;
                 }
 
-                bool wasReady = state.baselineReady;
                 state.result = result;
                 if (result.completed) {
                     state.baselineReady = true;
@@ -108,9 +107,7 @@ public:
                 if (result.status == ZIGZAG_MONITOR_ENTRY) {
                     state.lastEntryTime = result.evaluatedAtSrv;
                     state.lastEntryIsBuy = result.isBuy;
-                    if (!wasReady) {
-                        state.chartStatus = "初回確認";
-                    } else if (!this.autoOpen) {
+                    if (!this.autoOpen) {
                         state.chartStatus = "自動表示OFF";
                     } else {
                         state.chartStatus = this.chartManager.openEntry(state.symbolName, result);
@@ -364,7 +361,7 @@ private:
     }
 
     /**
-     * 再開後の初回成立を自動表示せず、停止中の成立を遡って開かない。
+     * 確認済み件数と判定対象足をリセットし、シグナル回数を保持して現在の足を再確認する。
      */
     void resetBaselines() {
         for (int i = 0; i < this.states.Total(); i++) {
