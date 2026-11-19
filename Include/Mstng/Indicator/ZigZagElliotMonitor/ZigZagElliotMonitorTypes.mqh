@@ -2,6 +2,7 @@
 #define MSTNG_ZIGZAG_ELLIOT_MONITOR_TYPES_MQH
 
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorStrengthSnapshot.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorWaveSnapshot.mqh>
 
 /**
  * 監視対象1通貨の判定状態。
@@ -50,6 +51,9 @@ struct ZigZagElliotMonitorResult {
     /** この確認で取得した現在順位と両期間の増減。描画専用の値コピー。 */
     ZigZagElliotMonitorStrengthSnapshot strength;
 
+    /** 安定した確認で採用したM5・M1波動。未分析と未採用を区別する。 */
+    ZigZagElliotMonitorWaveSnapshot waves;
+
     /**
      * 未取得の状態へ戻す。
      */
@@ -65,6 +69,7 @@ struct ZigZagElliotMonitorResult {
         this.shortMessage = "準備待ち";
         this.durationMs = -1.0;
         this.strength.reset();
+        this.waves.reset();
     }
 };
 

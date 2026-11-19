@@ -435,11 +435,11 @@ private:
     /** チャートの高さ内へ表示できる行数。 */
     int visibleRowCount;
 
-    /** 8列それぞれの左位置。 */
-    int columnLeft[8];
+    /** 既存列IDを維持した9列それぞれの左位置。 */
+    int columnLeft[9];
 
-    /** 8列それぞれの横幅。 */
-    int columnWidth[8];
+    /** 既存列IDを維持した9列それぞれの横幅。 */
+    int columnWidth[9];
 
     /**
      * 有効な状態を集計し、参照番号だけを選択された表示順へ並べる。
@@ -547,6 +547,8 @@ private:
             this.footerTop - this.panelTop + 80);
         this.columnWidth[7] = (int)MathMin(this.contentWidth, MathMin(76, MathMax(40, this.contentWidth / 10)));
         int textWidth = this.contentWidth - this.columnWidth[7];
+        this.columnWidth[8] = textWidth * 13 / 100;
+        textWidth -= this.columnWidth[8];
         this.columnWidth[0] = textWidth * 13 / 100;
         this.columnWidth[1] = textWidth * 18 / 100;
         this.columnWidth[2] = textWidth * 6 / 100;
@@ -555,9 +557,12 @@ private:
         this.columnWidth[5] = textWidth * 23 / 100;
         this.columnWidth[6] = textWidth - this.columnWidth[0] - this.columnWidth[1]
             - this.columnWidth[2] - this.columnWidth[3] - this.columnWidth[4] - this.columnWidth[5];
-        this.columnLeft[0] = this.contentLeft;
-        for (int i = 1; i < 8; i++) {
-            this.columnLeft[i] = this.columnLeft[i - 1] + this.columnWidth[i - 1];
+        int displayOrder[9] = {0, 1, 2, 8, 3, 4, 5, 6, 7};
+        int nextLeft = this.contentLeft;
+        for (int i = 0; i < 9; i++) {
+            int columnIndex = displayOrder[i];
+            this.columnLeft[columnIndex] = nextLeft;
+            nextLeft += this.columnWidth[columnIndex];
         }
     }
 
@@ -565,10 +570,10 @@ private:
      * ソート対象の見出しをボタンにし、選択列の順序を矢印で表示する。
      */
     void drawColumnHeaders() {
-        string titles[8] = {"通貨ペア [G]", "判定", "方向", "長中期", "中短期", "直近成立時刻 JST", "表示結果", "操作"};
+        string titles[9] = {"通貨ペア [G]", "判定", "方向", "長中期", "中短期", "直近成立時刻 JST", "表示結果", "操作", "波動 M5/M1"};
         this.drawRectangle("Header", this.panelLeft + 1, this.headerTop - 4,
             (int)MathMax(1, this.panelWidth - 2), 27, C'31,39,50', C'31,39,50');
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 9; i++) {
             string labelSuffix = "Header" + IntegerToString(i);
             string buttonSuffix = "SortHeader" + IntegerToString(i);
             if (i == 0 || i == 3 || i == 4 || i == 5) {
@@ -660,16 +665,25 @@ private:
         } else if (fromState.result.status == ZIGZAG_MONITOR_NOT_MATCHED) {
             statusText = "不成立";
             statusColor = C'158,170,185';
+            if (fromState.result.shortMessage == "M1未達") {
+                statusColor = clrOrange;
+            } else if (fromState.result.shortMessage == "確認済み") {
+                statusColor = C'201,211,222';
+            }
         } else if (fromState.result.status == ZIGZAG_MONITOR_ERROR) {
             statusText = "エラー";
-            statusColor = clrCoral;
+            statusColor = clrRed;
         }
 
         if (fromState.result.shortMessage != "") {
             statusText = fromState.result.shortMessage;
         }
 
-        color directionColor = statusColor;
+        color directionColor = C'158,170,185';
+        if (fromState.result.status == ZIGZAG_MONITOR_ENTRY) {
+            directionColor = statusColor;
+        }
+
         bool active = fromProgress.activeSymbol != ""
             && (fromProgress.activeSymbol == fromState.canonicalSymbolName
                 || fromProgress.activeSymbol == fromState.symbolName);
@@ -681,7 +695,7 @@ private:
             rowColor = C'24,42,57';
         } else if (fromState.result.evaluatedAtSrv == 0) {
             statusText = "未確認";
-            statusColor = C'158,170,185';
+            statusColor = C'201,211,222';
             directionColor = statusColor;
             directionText = "—";
         } else if (fromState.lastAttemptBarTime != fromProgress.targetBarTime) {
@@ -725,6 +739,7 @@ private:
             this.columnWidth[1] - 5, this.bodyFontSize, statusColor, statusText, tooltip);
         this.drawLabel(rowPrefix + "Column2", this.columnLeft[2], rowTop + 2,
             this.columnWidth[2] - 5, this.bodyFontSize, directionColor, directionText, tooltip);
+        this.drawWaveCell(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
         this.drawLabel(rowPrefix + "Column3", this.columnLeft[3], rowTop + 2,
             this.columnWidth[3] - 5, this.bodyFontSize,
             this.getStrengthColor(fromState.result.strength, true, currentM5BarTime),
@@ -747,6 +762,181 @@ private:
             fromState.canonicalSymbolName + "のM1チャートを表示して前面へ移動します。"
                 + "\nエントリー成立・監視・自動表示のON/OFFに関係なく操作できます。",
             this.rowHeight - 3);
+    }
+
+    /**
+     * M5・M1の採用波動を、各足の方向色で同じ論理列内へ表示する。
+     * 狭い列と未分析・未採用は単一セルにし、全文をツールチップへ残す。
+     */
+    void drawWaveCell(const string fromRowPrefix, const int fromTop,
+            ZigZagElliotMonitorSymbolState *fromState, const bool fromActive,
+            const datetime fromCurrentM1BarTime) {
+        int cellWidth = (int)MathMax(0, this.columnWidth[8] - 5);
+        string tooltip = this.getWaveTooltip(fromState, fromActive, fromCurrentM1BarTime);
+        string fullText = this.getWaveCellText(fromState.result.waves);
+        bool fresh = !fromActive && fromCurrentM1BarTime > 0
+            && fromState.result.waves.targetM1BarTime == fromCurrentM1BarTime;
+        if (!fromState.result.waves.analyzed || !fromState.result.waves.adopted
+                || cellWidth < this.bodyFontSize * 8) {
+            this.removeWaveParts(fromRowPrefix);
+            this.drawLabel(fromRowPrefix + "Column8", this.columnLeft[8], fromTop,
+                cellWidth, this.bodyFontSize, C'119,132,148', fullText, tooltip);
+
+            return;
+        }
+
+        this.removeObject(this.objectPrefix + fromRowPrefix + "Column8");
+        bool corrected = fromState.result.waves.correctionTimeFrame != PERIOD_CURRENT;
+        int correctionWidth = 0;
+        if (corrected) {
+            correctionWidth = this.bodyFontSize * 2;
+        }
+
+        int separatorWidth = this.bodyFontSize + 4;
+        int waveWidth = cellWidth - separatorWidth - correctionWidth;
+        int m5Width = waveWidth / 2;
+        int m1Width = waveWidth - m5Width;
+        int separatorLeft = this.columnLeft[8] + m5Width;
+        int m1Left = separatorLeft + separatorWidth;
+        this.drawLabel(fromRowPrefix + "Column8M5", this.columnLeft[8], fromTop,
+            m5Width, this.bodyFontSize, this.getWaveColor(fromState.result.waves.m5, fresh),
+            this.getWaveText(fromState.result.waves.m5), tooltip);
+        this.drawLabel(fromRowPrefix + "Column8Separator", separatorLeft, fromTop,
+            separatorWidth, this.bodyFontSize, C'119,132,148', "/", tooltip);
+        this.drawLabel(fromRowPrefix + "Column8M1", m1Left, fromTop,
+            m1Width, this.bodyFontSize, this.getWaveColor(fromState.result.waves.m1, fresh),
+            this.getWaveText(fromState.result.waves.m1), tooltip);
+        if (corrected) {
+            color correctionColor = C'119,132,148';
+            if (fresh) {
+                correctionColor = clrGold;
+            }
+
+            this.drawLabel(fromRowPrefix + "Column8Correction", m1Left + m1Width, fromTop,
+                correctionWidth, this.bodyFontSize, correctionColor, "補", tooltip);
+        } else {
+            this.removeObject(this.objectPrefix + fromRowPrefix + "Column8Correction");
+        }
+    }
+
+    /**
+     * 単一セルとツールチップで共用する波動一覧の全文を返す。
+     */
+    string getWaveCellText(const ZigZagElliotMonitorWaveSnapshot &fromWaves) {
+        if (!fromWaves.analyzed) {
+            return "未分析";
+        }
+
+        if (!fromWaves.adopted) {
+            return "未採用";
+        }
+
+        string text = this.getWaveText(fromWaves.m5) + " / " + this.getWaveText(fromWaves.m1);
+        if (fromWaves.correctionTimeFrame != PERIOD_CURRENT) {
+            text += " 補";
+        }
+
+        return text;
+    }
+
+    /**
+     * 波番号や補正波文字を変えず、実際の波動方向の矢印を付ける。
+     */
+    string getWaveText(const ZigZagElliotMonitorWaveInfo &fromWave) {
+        if (!fromWave.available || fromWave.mainLabel == "") {
+            return "—";
+        }
+
+        if (fromWave.isUptrend) {
+            return "▲" + fromWave.mainLabel;
+        }
+
+        return "▼" + fromWave.mainLabel;
+    }
+
+    /**
+     * 現在足の取得済み波動だけを方向色にし、過去・確認中・未取得は灰色にする。
+     */
+    color getWaveColor(const ZigZagElliotMonitorWaveInfo &fromWave, const bool fromFresh) {
+        if (!fromFresh || !fromWave.available || fromWave.mainLabel == "") {
+            return C'119,132,148';
+        }
+
+        if (fromWave.isUptrend) {
+            return clrAqua;
+        }
+
+        return clrHotPink;
+    }
+
+    /**
+     * 採用状態、両足の詳細、補正対象と分析時刻を説明する。
+     */
+    string getWaveTooltip(ZigZagElliotMonitorSymbolState *fromState, const bool fromActive,
+            const datetime fromCurrentM1BarTime) {
+        string text = fromState.canonicalSymbolName + " / 波動 M5/M1"
+            + "\n表示：" + this.getWaveCellText(fromState.result.waves);
+        if (!fromState.result.waves.analyzed) {
+            text += "\n今回の波動分析結果はまだありません。";
+        } else if (!fromState.result.waves.adopted) {
+            text += "\n分析結果は判定へ採用されていません。";
+        } else {
+            text += this.getWaveDetails(fromState.result.waves.m5, "M5")
+                + this.getWaveDetails(fromState.result.waves.m1, "M1");
+            if (fromState.result.waves.correctionTimeFrame != PERIOD_CURRENT) {
+                string correctionTimeFrame = EnumToString(fromState.result.waves.correctionTimeFrame);
+                StringReplace(correctionTimeFrame, "PERIOD_", "");
+                text += "\n補正対象：" + correctionTimeFrame
+                    + "\n補正後に採用された分析の波動を表示しています。元方向の分析ではありません。";
+            } else {
+                text += "\n方向補正なしで採用された分析の波動です。";
+            }
+        }
+
+        text += "\n分析対象M1：" + this.formatServerTime(fromState.result.waves.targetM1BarTime)
+            + " SRV / " + this.formatJapanTime(fromState.result.waves.targetM1BarTime) + " JST"
+            + "\n確認時刻：" + this.formatServerTime(fromState.result.evaluatedAtSrv)
+            + " SRV / " + this.formatJapanTime(fromState.result.evaluatedAtSrv) + " JST";
+        if (fromState.result.waves.targetM1BarTime > 0
+                && fromState.result.waves.targetM1BarTime != fromCurrentM1BarTime) {
+            text += "\n前回の分析結果です。現在の対象M1："
+                + this.formatServerTime(fromCurrentM1BarTime) + " SRV";
+        }
+
+        if (fromActive) {
+            text += "\n現在確認中です。表示は保存済みの分析結果で、今回の確認はまだ完了していません。";
+        }
+
+        return text;
+    }
+
+    /**
+     * 1時間足の主波・副波、確定・補完状態とポイント時刻を全文で返す。
+     */
+    string getWaveDetails(const ZigZagElliotMonitorWaveInfo &fromWave, const string fromTimeFrame) {
+        if (!fromWave.available) {
+            return "\n" + fromTimeFrame + "：—（波動未取得）";
+        }
+
+        string subLabel = fromWave.subLabel;
+        if (subLabel == "") {
+            subLabel = "—";
+        }
+
+        string confirmation = "未確定";
+        if (fromWave.confirmed) {
+            confirmation = "確定";
+        }
+
+        string addedPoint = "なし";
+        if (fromWave.addedPoint) {
+            addedPoint = "あり";
+        }
+
+        return "\n" + fromTimeFrame + "：" + this.getWaveText(fromWave)
+            + " / 副波：" + subLabel + " / " + confirmation + " / 補完ポイント：" + addedPoint
+            + "\n" + fromTimeFrame + "ポイント：" + this.formatServerTime(fromWave.pointTime)
+            + " SRV / " + this.formatJapanTime(fromWave.pointTime) + " JST";
     }
 
     /**
@@ -1219,6 +1409,19 @@ private:
     }
 
     /**
+     * 単一セルへの切替えや行削除時に、分割表示の波動ラベルを消去する。
+     *
+     * @param fromRowPrefix 固有接頭辞を含まない行名。
+     */
+    void removeWaveParts(const string fromRowPrefix) {
+        string wavePrefix = this.objectPrefix + fromRowPrefix + "Column8";
+        this.removeObject(wavePrefix + "M5");
+        this.removeObject(wavePrefix + "Separator");
+        this.removeObject(wavePrefix + "M1");
+        this.removeObject(wavePrefix + "Correction");
+    }
+
+    /**
      * 表示範囲から外れた行のオブジェクトだけを削除する。
      */
     void removeRow(const int fromRowIndex) {
@@ -1227,6 +1430,9 @@ private:
         for (int i = 0; i < 7; i++) {
             this.removeObject(rowPrefix + "Column" + IntegerToString(i));
         }
+
+        this.removeObject(rowPrefix + "Column8");
+        this.removeWaveParts("Row" + IntegerToString(fromRowIndex));
     }
 
     /**

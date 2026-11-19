@@ -1,6 +1,6 @@
 ﻿#property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
-#property version "1.11"
+#property version "1.13"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots 1

@@ -526,6 +526,9 @@ private:
                 fromResult.message = "補正分析の準備待ち（再確認します）";
                 fromResult.shortMessage = "補正待ち";
             } else {
+                fromResult.waves.capture(strategy.getJudgmentElliotAll(), fromResult.barTime,
+                    strategy.getCorrectionTimeFrame());
+
                 fromResult.signalTime = signalTime;
                 fromResult.isBuy = signalIsBuy;
                 fromResult.status = ZIGZAG_MONITOR_NOT_MATCHED;
