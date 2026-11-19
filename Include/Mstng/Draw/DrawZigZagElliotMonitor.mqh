@@ -4,6 +4,7 @@
 #include <Arrays\ArrayObj.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorProgress.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSort.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSymbolState.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
@@ -80,6 +81,7 @@ public:
         this.measuredFontSize = 0;
         this.previousRowCount = 0;
         this.gmoSymbols.setGmo();
+        this.sortOrder.reset();
     }
 
     /**
@@ -106,6 +108,7 @@ public:
         this.chartId = fromChartId;
         this.objectPrefix = fromPrefix;
         this.requestedFontSize = (int)MathMax(6, MathMin(16, fromFontSize));
+        this.sortOrder.reset();
         this.initialized = true;
         if (this.ensureObject("Panel", OBJ_RECTANGLE_LABEL) < 0) {
             this.destroy();
@@ -117,7 +120,7 @@ public:
     }
 
     /**
-     * ENTRYを先頭、それ以外を通貨名順に並べ、変更した項目だけを反映する。
+     * 選択された表示順へ索引だけを並べ替え、変更した項目だけを反映する。
      *
      * @param fromStates 監視対象の状態一覧。元の並びは変更しない。
      * @param fromMonitoring 監視が有効な場合true。
@@ -141,7 +144,7 @@ public:
         int confirmedCount = 0;
         int entryCount = 0;
         int gmoCount = 0;
-        int stateCount = this.prepareIndexes(fromStates, indexes, confirmedCount, entryCount, gmoCount);
+        int stateCount = this.prepareIndexes(fromStates, indexes, confirmedCount, entryCount, gmoCount, fromProgress);
         this.prepareLayout(stateCount);
         this.drawRectangle("Panel", this.panelLeft, this.panelTop, this.panelWidth,
             this.panelHeight, C'12,15,20', C'65,74,88');
@@ -165,12 +168,23 @@ public:
             autoColor = C'42,75,116';
         }
 
+        string entryPriorityText = "ENTRY優先：OFF";
+        color entryPriorityColor = C'70,75,83';
+        if (this.sortOrder.isEntryPriority()) {
+            entryPriorityText = "ENTRY優先：ON";
+            entryPriorityColor = C'42,75,116';
+        }
+
         this.drawLabel("Title", this.contentLeft, this.panelTop + 11, this.titleWidth,
             this.bodyFontSize + 2, clrWhiteSmoke, title, "M1新バーごとに現行M1条件のエントリー判定を監視します。");
         this.drawButton("MonitorButton", this.monitorButtonLeft, this.buttonTop, this.buttonWidth,
             monitorText, monitorColor, "監視のON/OFF。OFF中は最後の判定を保持します。");
         this.drawButton("AutoButton", this.autoButtonLeft, this.buttonTop, this.buttonWidth,
             autoText, autoColor, "新規成立時のチャート自動表示を切り替えます。");
+        this.drawButton("EntryPriorityButton", this.entryPriorityButtonLeft, this.buttonTop, this.buttonWidth,
+            entryPriorityText, entryPriorityColor,
+            "ONは今回のM1で判定済みのENTRYを先頭にし、各グループ内を選択列で並べます。"
+                + "\nOFFは全通貨を選択列で並べます。前回M1のENTRYは優先しません。");
         this.drawColumnHeaders();
         this.removeHiddenChartButtons(fromStates, indexes);
 
@@ -267,6 +281,42 @@ public:
     }
 
     /**
+     * 自身のソート見出しとENTRY優先ボタンの押下を受け付ける。
+     * 表示更新は呼び出し元に任せ、監視対象の並びは変更しない。
+     *
+     * @param fromObjectName クリックされたオブジェクト名。
+     * @return ソート設定を切り替えた場合true。
+     */
+    bool handleSortClick(const string fromObjectName) {
+        if (!this.initialized) {
+            return false;
+        }
+
+        if (fromObjectName == this.objectPrefix + "EntryPriorityButton") {
+            ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
+            this.sortOrder.toggleEntryPriority();
+
+            return true;
+        }
+
+        for (int i = 0; i < 8; i++) {
+            if (fromObjectName != this.objectPrefix + "SortHeader" + IntegerToString(i)) {
+                continue;
+            }
+
+            if (!this.sortOrder.selectColumn(i)) {
+                return false;
+            }
+
+            ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * 監視切り替えボタンのオブジェクト名を取得する。
      */
     string getMonitorButtonName() { return this.objectPrefix + "MonitorButton"; }
@@ -319,6 +369,9 @@ private:
     /** GMO対象の印を付けるための共通定義。 */
     SymbolNameInfoAll gmoSymbols;
 
+    /** 画面更新と監視切替をまたいで保持する表示順。 */
+    ZigZagElliotMonitorSort sortOrder;
+
     /** 利用者が指定した基準フォントサイズ。 */
     int requestedFontSize;
 
@@ -358,10 +411,13 @@ private:
     /** 自動表示ボタンの左位置。 */
     int autoButtonLeft;
 
-    /** 両ボタンの上位置。 */
+    /** ENTRY優先切替ボタンの左位置。 */
+    int entryPriorityButtonLeft;
+
+    /** 上部3ボタンの上位置。 */
     int buttonTop;
 
-    /** 両ボタンの横幅。 */
+    /** 上部3ボタンの横幅。 */
     int buttonWidth;
 
     /** 列見出しの上位置。 */
@@ -379,17 +435,17 @@ private:
     /** チャートの高さ内へ表示できる行数。 */
     int visibleRowCount;
 
-    /** 6列それぞれの左位置。 */
-    int columnLeft[6];
+    /** 8列それぞれの左位置。 */
+    int columnLeft[8];
 
-    /** 6列それぞれの横幅。 */
-    int columnWidth[6];
+    /** 8列それぞれの横幅。 */
+    int columnWidth[8];
 
     /**
-     * 有効な状態の参照番号をENTRY優先・通貨名順に並べる。
+     * 有効な状態を集計し、参照番号だけを選択された表示順へ並べる。
      */
     int prepareIndexes(CArrayObj &fromStates, int &fromIndexes[], int &fromConfirmedCount,
-            int &fromEntryCount, int &fromGmoCount) {
+            int &fromEntryCount, int &fromGmoCount, const ZigZagElliotMonitorProgress &fromProgress) {
         int totalCount = fromStates.Total();
         if (ArrayResize(fromIndexes, totalCount) != totalCount) {
             return 0;
@@ -423,14 +479,7 @@ private:
             int j = i - 1;
             while (j >= 0) {
                 ZigZagElliotMonitorSymbolState *previous = fromStates.At(fromIndexes[j]);
-                bool currentEntry = current.result.status == ZIGZAG_MONITOR_ENTRY;
-                bool previousEntry = previous.result.status == ZIGZAG_MONITOR_ENTRY;
-                bool movePrevious = StringCompare(current.canonicalSymbolName, previous.canonicalSymbolName) < 0;
-                if (currentEntry != previousEntry) {
-                    movePrevious = currentEntry;
-                }
-
-                if (!movePrevious) {
+                if (!this.sortOrder.comesBefore(*current, *previous, fromProgress.targetBarTime)) {
                     break;
                 }
 
@@ -454,7 +503,7 @@ private:
         chartHeight = (int)MathMax(1, chartHeight);
         this.panelLeft = (int)MathMin(10, chartWidth / 20);
         this.panelTop = (int)MathMin(10, chartHeight / 20);
-        this.panelWidth = (int)MathMax(1, MathMin(900, chartWidth - this.panelLeft * 2));
+        this.panelWidth = (int)MathMax(1, MathMin(1100, chartWidth - this.panelLeft * 2));
         int padding = (int)MathMin(12, this.panelWidth / 10);
         this.contentLeft = this.panelLeft + padding;
         this.contentWidth = (int)MathMax(1, this.panelWidth - padding * 2);
@@ -469,16 +518,18 @@ private:
 
         this.buttonWidth = 116;
         this.buttonTop = this.panelTop + 10;
-        this.autoButtonLeft = this.contentLeft + this.contentWidth - this.buttonWidth;
+        this.entryPriorityButtonLeft = this.contentLeft + this.contentWidth - this.buttonWidth;
+        this.autoButtonLeft = this.entryPriorityButtonLeft - this.buttonWidth - 8;
         this.monitorButtonLeft = this.autoButtonLeft - this.buttonWidth - 8;
         this.titleWidth = this.monitorButtonLeft - this.contentLeft - 12;
         this.headerTop = this.panelTop + 60;
-        if (this.panelWidth < 600) {
+        if (this.panelWidth < 760) {
             int buttonGap = (int)MathMin(8, this.contentWidth / 20);
-            this.buttonWidth = (int)MathMax(1, (this.contentWidth - buttonGap) / 2);
+            this.buttonWidth = (int)MathMax(1, (this.contentWidth - buttonGap * 2) / 3);
             this.buttonTop = this.panelTop + 39;
             this.monitorButtonLeft = this.contentLeft;
             this.autoButtonLeft = this.contentLeft + this.buttonWidth + buttonGap;
+            this.entryPriorityButtonLeft = this.autoButtonLeft + this.buttonWidth + buttonGap;
             this.titleWidth = this.contentWidth;
             this.headerTop = this.panelTop + 80;
         }
@@ -494,31 +545,87 @@ private:
         this.footerTop = this.rowsTop + (int)MathMax(1, this.visibleRowCount) * this.rowHeight + 12;
         this.panelHeight = (int)MathMin(chartHeight - this.panelTop,
             this.footerTop - this.panelTop + 80);
-        this.columnWidth[5] = (int)MathMin(this.contentWidth, MathMin(76, MathMax(40, this.contentWidth / 10)));
-        int textWidth = this.contentWidth - this.columnWidth[5];
-        this.columnWidth[0] = textWidth * 17 / 100;
-        this.columnWidth[1] = textWidth * 24 / 100;
-        this.columnWidth[2] = textWidth * 9 / 100;
-        this.columnWidth[3] = textWidth * 28 / 100;
-        this.columnWidth[4] = textWidth - this.columnWidth[0] - this.columnWidth[1]
-            - this.columnWidth[2] - this.columnWidth[3];
+        this.columnWidth[7] = (int)MathMin(this.contentWidth, MathMin(76, MathMax(40, this.contentWidth / 10)));
+        int textWidth = this.contentWidth - this.columnWidth[7];
+        this.columnWidth[0] = textWidth * 13 / 100;
+        this.columnWidth[1] = textWidth * 18 / 100;
+        this.columnWidth[2] = textWidth * 6 / 100;
+        this.columnWidth[3] = textWidth * 10 / 100;
+        this.columnWidth[4] = textWidth * 10 / 100;
+        this.columnWidth[5] = textWidth * 23 / 100;
+        this.columnWidth[6] = textWidth - this.columnWidth[0] - this.columnWidth[1]
+            - this.columnWidth[2] - this.columnWidth[3] - this.columnWidth[4] - this.columnWidth[5];
         this.columnLeft[0] = this.contentLeft;
-        for (int i = 1; i < 6; i++) {
+        for (int i = 1; i < 8; i++) {
             this.columnLeft[i] = this.columnLeft[i - 1] + this.columnWidth[i - 1];
         }
     }
 
     /**
-     * 6列の見出しを表示する。
+     * ソート対象の見出しをボタンにし、選択列の順序を矢印で表示する。
      */
     void drawColumnHeaders() {
-        string titles[6] = {"通貨ペア [G]", "判定", "方向", "直近成立時刻 JST", "表示結果", "操作"};
+        string titles[8] = {"通貨ペア [G]", "判定", "方向", "長中期", "中短期", "直近成立時刻 JST", "表示結果", "操作"};
         this.drawRectangle("Header", this.panelLeft + 1, this.headerTop - 4,
             (int)MathMax(1, this.panelWidth - 2), 27, C'31,39,50', C'31,39,50');
-        for (int i = 0; i < 6; i++) {
-            this.drawLabel("Header" + IntegerToString(i), this.columnLeft[i], this.headerTop,
-                this.columnWidth[i] - 5, this.bodyFontSize, C'179,193,210', titles[i], titles[i]);
+        for (int i = 0; i < 8; i++) {
+            string labelSuffix = "Header" + IntegerToString(i);
+            string buttonSuffix = "SortHeader" + IntegerToString(i);
+            if (i == 0 || i == 3 || i == 4 || i == 5) {
+                this.removeObject(this.objectPrefix + labelSuffix);
+                string title = titles[i];
+                color background = C'31,39,50';
+                if (this.sortOrder.getColumnIndex() == i) {
+                    background = C'42,75,116';
+                    string directionMark = "▼ ";
+                    if (this.sortOrder.isAscending()) {
+                        directionMark = "▲ ";
+                    }
+
+                    title = directionMark + title;
+                }
+
+                this.drawButton(buttonSuffix, this.columnLeft[i], this.headerTop - 3,
+                    (int)MathMax(1, this.columnWidth[i] - 5), title, background,
+                    this.getSortTooltip(i), 25);
+            } else {
+                this.removeObject(this.objectPrefix + buttonSuffix);
+                this.drawLabel(labelSuffix, this.columnLeft[i], this.headerTop,
+                    this.columnWidth[i] - 5, this.bodyFontSize, C'179,193,210', titles[i], titles[i]);
+            }
         }
+    }
+
+    /**
+     * 列ごとのソート基準と現在の選択状態を説明する。
+     */
+    string getSortTooltip(const int fromColumnIndex) {
+        string text = "通貨名で並べ替えます。初回選択はA→Zです。";
+        if (fromColumnIndex == 3 || fromColumnIndex == 4) {
+            text = "現在M5の順位差で並べ替えます。初回選択は大きい順です。"
+                + "\n増減矢印はソートに使いません。未取得・前回M5の値は末尾にします。";
+        } else if (fromColumnIndex == 5) {
+            text = "直近成立時刻で並べ替えます。初回選択は新しい順です。"
+                + "\n成立記録がない通貨は末尾にします。";
+        }
+
+        if (this.sortOrder.getColumnIndex() == fromColumnIndex) {
+            string direction = "降順 ▼";
+            if (this.sortOrder.isAscending()) {
+                direction = "昇順 ▲";
+            }
+
+            text += "\n現在の選択：" + direction;
+        }
+
+        text += "\nクリックで選択し、同じ見出しを再クリックすると昇順・降順を切り替えます。";
+        if (this.sortOrder.isEntryPriority()) {
+            text += "\nENTRY優先ON：今回M1のENTRYを先頭にし、各グループ内をこの列で並べます。";
+        } else {
+            text += "\nENTRY優先OFF：全通貨をこの列で並べます。";
+        }
+
+        return text;
     }
 
     /**
@@ -608,6 +715,8 @@ private:
         }
 
         string tooltip = this.buildTooltip(fromState, fromProgress);
+        datetime currentM5BarTime = (datetime)((long)fromProgress.targetBarTime
+            - (long)fromProgress.targetBarTime % 300);
         this.drawRectangle(rowPrefix + "Background", this.panelLeft + 1, rowTop - 1,
             (int)MathMax(1, this.panelWidth - 2), this.rowHeight, rowColor, rowColor);
         this.drawLabel(rowPrefix + "Column0", this.columnLeft[0], rowTop + 2,
@@ -617,15 +726,176 @@ private:
         this.drawLabel(rowPrefix + "Column2", this.columnLeft[2], rowTop + 2,
             this.columnWidth[2] - 5, this.bodyFontSize, directionColor, directionText, tooltip);
         this.drawLabel(rowPrefix + "Column3", this.columnLeft[3], rowTop + 2,
-            this.columnWidth[3] - 5, this.bodyFontSize, entryTimeColor,
-            this.formatJapanTime(fromState.lastEntryTime), tooltip);
+            this.columnWidth[3] - 5, this.bodyFontSize,
+            this.getStrengthColor(fromState.result.strength, true, currentM5BarTime),
+            this.getStrengthText(fromState.result.strength, true, currentM5BarTime),
+            this.getStrengthTooltip(fromState.result.strength, fromState.canonicalSymbolName,
+                active, true, currentM5BarTime));
         this.drawLabel(rowPrefix + "Column4", this.columnLeft[4], rowTop + 2,
-            this.columnWidth[4] - 5, this.bodyFontSize, C'201,211,222', chartText, tooltip);
-        this.drawButton("Open" + fromState.canonicalSymbolName, this.columnLeft[5], rowTop + 1,
-            (int)MathMax(1, this.columnWidth[5] - 5), "表示", C'42,75,116',
+            this.columnWidth[4] - 5, this.bodyFontSize,
+            this.getStrengthColor(fromState.result.strength, false, currentM5BarTime),
+            this.getStrengthText(fromState.result.strength, false, currentM5BarTime),
+            this.getStrengthTooltip(fromState.result.strength, fromState.canonicalSymbolName,
+                active, false, currentM5BarTime));
+        this.drawLabel(rowPrefix + "Column5", this.columnLeft[5], rowTop + 2,
+            this.columnWidth[5] - 5, this.bodyFontSize, entryTimeColor,
+            this.formatJapanTime(fromState.lastEntryTime), tooltip);
+        this.drawLabel(rowPrefix + "Column6", this.columnLeft[6], rowTop + 2,
+            this.columnWidth[6] - 5, this.bodyFontSize, C'201,211,222', chartText, tooltip);
+        this.drawButton("Open" + fromState.canonicalSymbolName, this.columnLeft[7], rowTop + 1,
+            (int)MathMax(1, this.columnWidth[7] - 5), "表示", C'42,75,116',
             fromState.canonicalSymbolName + "のM1チャートを表示して前面へ移動します。"
                 + "\nエントリー成立・監視・自動表示のON/OFFに関係なく操作できます。",
             this.rowHeight - 3);
+    }
+
+    /**
+     * 取得済みの順位差と、横ばいへ引き継いだ増減方向を表示する。
+     */
+    string getStrengthText(const ZigZagElliotMonitorStrengthSnapshot &fromStrength,
+            const bool fromLongMedium, const datetime fromCurrentM5BarTime) {
+        if (!fromStrength.hasRanks(fromLongMedium)) {
+            return "—";
+        }
+
+        string text = this.formatRankGap(fromStrength.getRankDifference(fromLongMedium));
+        if (fromStrength.isGapWaiting(fromLongMedium)) {
+            text += " 待";
+        } else {
+            int direction = fromStrength.getDirection(fromLongMedium);
+            if (direction == 1) {
+                text += " ↑";
+            } else if (direction == -1) {
+                text += " ↓";
+            } else {
+                text += " ?";
+            }
+        }
+
+        if (fromStrength.targetM5BarTime != fromCurrentM5BarTime) {
+            text = "前回 " + text;
+        }
+
+        return text;
+    }
+
+    /**
+     * 現在M5の順位差だけを正負の色で示し、未取得・同順位・前回値を灰色にする。
+     */
+    color getStrengthColor(const ZigZagElliotMonitorStrengthSnapshot &fromStrength,
+            const bool fromLongMedium, const datetime fromCurrentM5BarTime) {
+        if (!fromStrength.hasRanks(fromLongMedium)
+                || fromStrength.targetM5BarTime != fromCurrentM5BarTime) {
+            return C'158,170,185';
+        }
+
+        int difference = fromStrength.getRankDifference(fromLongMedium);
+        if (difference > 0) {
+            return clrAqua;
+        }
+
+        if (difference < 0) {
+            return clrHotPink;
+        }
+
+        return C'158,170,185';
+    }
+
+    /**
+     * 期間ごとの順位と増減根拠を、取得時刻・取得元とともに表示する。
+     * レコード更新時刻だけはDBに保存されたUTCとして扱う。
+     */
+    string getStrengthTooltip(const ZigZagElliotMonitorStrengthSnapshot &fromStrength,
+            const string fromSymbolName, const bool fromActive, const bool fromLongMedium,
+            const datetime fromCurrentM5BarTime) {
+        string periodLabel = "長中期";
+        int baseRank = fromStrength.pairRankInfo.baseLongMediumTermAverageRank;
+        int quoteRank = fromStrength.pairRankInfo.quoteLongMediumTermAverageRank;
+        CurrencyStrengthRankGapDirectionInfo gapInfo = fromStrength.longMediumGapDirection;
+        if (!fromLongMedium) {
+            periodLabel = "中短期";
+            baseRank = fromStrength.pairRankInfo.baseMediumShortTermAverageRank;
+            quoteRank = fromStrength.pairRankInfo.quoteMediumShortTermAverageRank;
+            gapInfo = fromStrength.mediumShortGapDirection;
+        }
+
+        string text = fromSymbolName + " / " + periodLabel;
+        bool ranksAvailable = fromStrength.hasRanks(fromLongMedium);
+        if (ranksAvailable) {
+            text += StringFormat("\n基軸 %s：%d位 / 決済 %s：%d位",
+                fromStrength.pairRankInfo.baseCurrency, baseRank,
+                fromStrength.pairRankInfo.quoteCurrency, quoteRank)
+                + "\n現在の順位差：" + this.formatRankGap(fromStrength.getRankDifference(fromLongMedium))
+                + "（決済順位 − 基軸順位）";
+        } else if (fromStrength.queried) {
+            text += "\n現在順位：未取得";
+        } else {
+            text += "\n現在順位：未照会";
+        }
+
+        if (ranksAvailable && gapInfo.enabled && gapInfo.targetM5BarTime == fromStrength.targetM5BarTime
+                && gapInfo.currentAvailable && gapInfo.hasPrevious
+                && gapInfo.currentGap == fromStrength.getRankDifference(fromLongMedium)) {
+            text += "\n直前M5の順位差：" + this.formatRankGap(gapInfo.previousGap)
+                + " / 直前M5からの変化：" + this.formatRankGap(gapInfo.currentGap - gapInfo.previousGap);
+        }
+
+        string directionText = "未取得";
+        if (ranksAvailable) {
+            directionText = "不明";
+            if (fromStrength.isGapWaiting(fromLongMedium)) {
+                directionText = "取得待ち";
+            } else if (fromStrength.getDirection(fromLongMedium) == 1) {
+                directionText = "上昇";
+            } else if (fromStrength.getDirection(fromLongMedium) == -1) {
+                directionText = "下降";
+            }
+        }
+
+        text += "\n増減方向：" + directionText + "（横ばいは直近方向を引き継ぎ）";
+        if (ranksAvailable && fromStrength.getDirection(fromLongMedium) != 0) {
+            text += "\n増減の根拠：" + this.formatServerTime(gapInfo.directionChangedAt) + " SRV";
+        }
+
+        text += "\n対象M5：" + this.formatServerTime(fromStrength.targetM5BarTime) + " SRV"
+            + " / " + this.formatJapanTime(fromStrength.targetM5BarTime) + " JST"
+            + "\n照会時刻：" + this.formatServerTime(fromStrength.retrievedAtSrv) + " SRV"
+            + " / " + this.formatJapanTime(fromStrength.retrievedAtSrv) + " JST";
+        if (ranksAvailable && fromStrength.pairRankInfo.updatedAt > 0) {
+            text += "\nレコード更新：" + this.formatServerTime(fromStrength.pairRankInfo.updatedAt) + " UTC";
+        }
+
+        if (ranksAvailable && (fromStrength.sourceMode == "LIVE" || fromStrength.sourceMode == "TESTER")) {
+            text += "\n現在順位の取得元：" + fromStrength.sourceMode
+                + "\n現在順位のDB：" + fromStrength.sourceFileName;
+        } else if (ranksAvailable) {
+            text += "\n現在順位の取得元：不明";
+        } else {
+            text += "\n現在順位の取得元：未取得";
+        }
+
+        text += "\n取得元表示は現在順位のもので、増減履歴全件の由来を示すものではありません。";
+        if (ranksAvailable && fromStrength.targetM5BarTime != fromCurrentM5BarTime) {
+            text += "\n前回のM5の保存値です。現在の対象M5："
+                + this.formatServerTime(fromCurrentM5BarTime) + " SRV";
+        }
+
+        if (fromActive) {
+            text += "\n現在確認中です。この通貨強弱は直前の確認データです。";
+        }
+
+        return text;
+    }
+
+    /**
+     * 順位差と直前M5からの変化を、正負の符号付きで表示する。
+     */
+    string formatRankGap(const int fromGap) {
+        if (fromGap < 0) {
+            return "−" + IntegerToString(-fromGap);
+        }
+
+        return "+" + IntegerToString(fromGap);
     }
 
     /**
@@ -954,7 +1224,7 @@ private:
     void removeRow(const int fromRowIndex) {
         string rowPrefix = this.objectPrefix + "Row" + IntegerToString(fromRowIndex);
         this.removeObject(rowPrefix + "Background");
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 7; i++) {
             this.removeObject(rowPrefix + "Column" + IntegerToString(i));
         }
     }

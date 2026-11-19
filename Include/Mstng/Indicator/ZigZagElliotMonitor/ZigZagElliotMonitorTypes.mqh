@@ -1,6 +1,8 @@
 ﻿#ifndef MSTNG_ZIGZAG_ELLIOT_MONITOR_TYPES_MQH
 #define MSTNG_ZIGZAG_ELLIOT_MONITOR_TYPES_MQH
 
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorStrengthSnapshot.mqh>
+
 /**
  * 監視対象1通貨の判定状態。
  */
@@ -45,6 +47,9 @@ struct ZigZagElliotMonitorResult {
     /** 直近の確認処理に要したミリ秒。未計測は-1。 */
     double durationMs;
 
+    /** この確認で取得した現在順位と両期間の増減。描画専用の値コピー。 */
+    ZigZagElliotMonitorStrengthSnapshot strength;
+
     /**
      * 未取得の状態へ戻す。
      */
@@ -59,6 +64,7 @@ struct ZigZagElliotMonitorResult {
         this.message = "準備待ち";
         this.shortMessage = "準備待ち";
         this.durationMs = -1.0;
+        this.strength.reset();
     }
 };
 

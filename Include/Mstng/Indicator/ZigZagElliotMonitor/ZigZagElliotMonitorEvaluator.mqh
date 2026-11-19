@@ -120,7 +120,10 @@ public:
         }
 
         CurrencyStrengthExecutionInfo executionInfo;
-        if (!fromState.strengthProvider.load(fromState.targetM5BarTime, executionInfo)) {
+        bool strengthReady = fromState.strengthProvider.load(fromState.targetM5BarTime, executionInfo);
+        // 増減履歴が待機中でも、今回取得できた現在順位は表示へ渡す。
+        fromResult.strength.capture(executionInfo, fromState.targetM5BarTime);
+        if (!strengthReady) {
             fromResult.message = "同じM5時刻の通貨順位・増減履歴の取得待ち";
             fromResult.shortMessage = "順位待ち";
             if (executionInfo.status == CURRENCY_STRENGTH_EXECUTION_STATUS_ERROR) {

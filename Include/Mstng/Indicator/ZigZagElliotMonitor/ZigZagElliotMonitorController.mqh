@@ -148,7 +148,7 @@ public:
     }
 
     /**
-     * 監視と自動表示の切替、通貨別の手動表示、画面サイズ変更を処理する。
+     * 監視・自動表示・表示順の切替、通貨別の手動表示、画面サイズ変更を処理する。
      */
     void handleChartEvent(const int fromId, const string fromObjectName) {
         if (!this.initialized) {
@@ -177,6 +177,8 @@ public:
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
             this.autoOpen = !this.autoOpen;
             this.updateView();
+        } else if (this.view.handleSortClick(fromObjectName)) {
+            this.updateView(false);
         } else {
             this.openManualChart(fromObjectName);
         }
