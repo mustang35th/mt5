@@ -5,16 +5,12 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.16"
+#property version   "1.17"
 #property indicator_separate_window
 #property indicator_buffers 7
 #property indicator_plots   5
 #property indicator_minimum -10.0
 #property indicator_maximum 10.0
-#property indicator_level1  0.0
-#property indicator_levelcolor clrDimGray
-#property indicator_levelstyle STYLE_DOT
-#property indicator_levelwidth 1
 #property indicator_label1  "Rank Gap Boundary"
 #property indicator_type1   DRAW_NONE
 #property indicator_label2  "Zero Boundary"
@@ -376,6 +372,17 @@ void OnChartEvent(const int fromEventId, const long &fromLongValue,
 }
 
 /**
+ * サブ画面の標準水平レベルの位置・色・線種を設定する。
+ */
+bool setRankGapLevel(const int fromIndex, const double fromValue, const color fromColor,
+        const ENUM_LINE_STYLE fromStyle) {
+    return IndicatorSetDouble(INDICATOR_LEVELVALUE, fromIndex, fromValue)
+        && IndicatorSetInteger(INDICATOR_LEVELCOLOR, fromIndex, fromColor)
+        && IndicatorSetInteger(INDICATOR_LEVELSTYLE, fromIndex, fromStyle)
+        && IndicatorSetInteger(INDICATOR_LEVELWIDTH, fromIndex, 1);
+}
+
+/**
  * 公開済みのバッファ番号を維持し、折れ線とCanvas用の足時刻を登録する。
  */
 bool initializeBuffers() {
@@ -392,8 +399,10 @@ bool initializeBuffers() {
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 2, clrGray)
             || !IndicatorSetDouble(INDICATOR_MINIMUM, -10.0)
             || !IndicatorSetDouble(INDICATOR_MAXIMUM, 10.0)
-            || !IndicatorSetInteger(INDICATOR_LEVELSTYLE, 0, STYLE_DOT)
-            || !IndicatorSetInteger(INDICATOR_LEVELWIDTH, 0, 1)) {
+            || !IndicatorSetInteger(INDICATOR_LEVELS, 3)
+            || !setRankGapLevel(0, 0.0, clrDimGray, STYLE_DOT)
+            || !setRankGapLevel(1, 7.0, clrGray, STYLE_DASH)
+            || !setRankGapLevel(2, -7.0, clrGray, STYLE_DASH)) {
         return false;
     }
 
