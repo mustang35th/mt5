@@ -1,6 +1,6 @@
 ﻿#property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
-#property version "1.14"
+#property version "1.15"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots 1
@@ -102,11 +102,11 @@ void OnTimer() {
 }
 
 /**
- * ボタン操作とチャート変更を担当クラスへ渡す。
+ * コンボボックス・ボタン操作とチャート変更を担当クラスへ渡す。
  */
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam) {
     if (monitorController != NULL) {
-        monitorController.handleChartEvent(id, sparam);
+        monitorController.handleChartEvent(id, sparam, lparam, dparam);
     }
 }
 

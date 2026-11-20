@@ -3,6 +3,7 @@
 
 #include <Arrays\ArrayObj.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
+#include <Mstng\Draw\DrawZigZagElliotMonitorSortCombo.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorProgress.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSort.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSymbolState.mqh>
@@ -276,8 +277,42 @@ public:
             this.bodyFontSize, activityColor, activityText, activityTooltip);
         this.drawLabel("Cycle", this.contentLeft, this.footerTop + 48, this.contentWidth,
             this.bodyFontSize, C'153,167,184', cycleText, cycleTooltip);
+        this.drawSortControls();
 
         return this.changed;
+    }
+
+    /**
+     * 標準コンボの通知を先に処理し、背面操作とソート変更を分けて呼び出し元へ返す。
+     *
+     * @param fromSortChanged 表示順を更新する必要がある場合true。
+     * @return このパネルのソート操作として消費した場合true。
+     */
+    bool handleSortControlEvent(const int fromEventId, const long &fromLongParam,
+            const double &fromDoubleParam, const string &fromStringParam, bool &fromSortChanged) {
+        fromSortChanged = false;
+        if (!this.initialized) {
+            return false;
+        }
+
+        bool selectionChanged = false;
+        int selectedColumn = this.sortOrder.getColumnIndex();
+        if (this.sortCombo.handleEvent(fromEventId, fromLongParam, fromDoubleParam,
+                fromStringParam, selectionChanged, selectedColumn)) {
+            if (selectionChanged && selectedColumn != this.sortOrder.getColumnIndex()) {
+                fromSortChanged = this.sortOrder.setColumn(selectedColumn);
+            }
+
+            return true;
+        }
+
+        if (fromEventId == CHARTEVENT_OBJECT_CLICK) {
+            fromSortChanged = this.handleSortClick(fromStringParam);
+
+            return fromSortChanged;
+        }
+
+        return false;
     }
 
     /**
@@ -295,6 +330,13 @@ public:
         if (fromObjectName == this.objectPrefix + "EntryPriorityButton") {
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
             this.sortOrder.toggleEntryPriority();
+
+            return true;
+        }
+
+        if (fromObjectName == this.objectPrefix + "SortDirectionButton") {
+            ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
+            this.sortOrder.toggleDirection();
 
             return true;
         }
@@ -340,6 +382,7 @@ public:
      * 自身の固有接頭辞に一致するオブジェクトだけを削除する。
      */
     void destroy() {
+        this.sortCombo.destroy();
         if (this.initialized && this.objectPrefix != "") {
             ObjectsDeleteAll(this.chartId, this.objectPrefix, -1, -1);
         }
@@ -371,6 +414,9 @@ private:
 
     /** 画面更新と監視切替をまたいで保持する表示順。 */
     ZigZagElliotMonitorSort sortOrder;
+
+    /** 並び順選択の標準コンボボックス。 */
+    DrawZigZagElliotMonitorSortCombo sortCombo;
 
     /** 利用者が指定した基準フォントサイズ。 */
     int requestedFontSize;
@@ -422,6 +468,9 @@ private:
 
     /** 列見出しの上位置。 */
     int headerTop;
+
+    /** 並び順選択行の上位置。 */
+    int sortTop;
 
     /** 最初のデータ行の上位置。 */
     int rowsTop;
@@ -522,7 +571,6 @@ private:
         this.autoButtonLeft = this.entryPriorityButtonLeft - this.buttonWidth - 8;
         this.monitorButtonLeft = this.autoButtonLeft - this.buttonWidth - 8;
         this.titleWidth = this.monitorButtonLeft - this.contentLeft - 12;
-        this.headerTop = this.panelTop + 60;
         if (this.panelWidth < 760) {
             int buttonGap = (int)MathMin(8, this.contentWidth / 20);
             this.buttonWidth = (int)MathMax(1, (this.contentWidth - buttonGap * 2) / 3);
@@ -531,9 +579,10 @@ private:
             this.autoButtonLeft = this.contentLeft + this.buttonWidth + buttonGap;
             this.entryPriorityButtonLeft = this.autoButtonLeft + this.buttonWidth + buttonGap;
             this.titleWidth = this.contentWidth;
-            this.headerTop = this.panelTop + 80;
         }
 
+        this.sortTop = this.buttonTop + 34;
+        this.headerTop = this.sortTop + 34;
         this.rowsTop = this.headerTop + 27;
         int availableHeight = (int)MathMax(0, chartHeight - this.rowsTop - 94);
         this.rowHeight = (int)MathMax(24, this.bodyFontSize * 2 + 4);
@@ -574,6 +623,72 @@ private:
     }
 
     /**
+     * 表の描画後に標準コンボを配置し、展開したリストを既存ラベルより前へ出す。
+     */
+    void drawSortControls() {
+        int labelWidth = (int)MathMin(this.bodyFontSize * 6, this.contentWidth / 5);
+        int gap = (int)MathMin(8, this.contentWidth / 40);
+        int orderWidth = (int)MathMax(1, MathMin(116, (this.contentWidth - labelWidth - gap * 2) / 3));
+        int comboWidth = (int)MathMax(0, MathMin(220, this.contentWidth - labelWidth - orderWidth - gap * 2));
+        int comboLeft = this.contentLeft + labelWidth + gap;
+        this.drawLabel("SortLabel", this.contentLeft, this.sortTop + 3, labelWidth,
+            this.bodyFontSize, C'201,211,222', "並び順", "並び順を選択し、右のボタンで順序を切り替えます。");
+        this.drawButton("SortDirectionButton", comboLeft + comboWidth + gap, this.sortTop,
+            orderWidth, this.getSortDirectionText(), C'42,75,116',
+            this.getSortTooltip(this.sortOrder.getColumnIndex()) + "\nクリックで順序を反転します。", 26);
+
+        bool comboChanged = false;
+        if (this.sortCombo.prepare(this.chartId, this.objectPrefix + "SortBox", comboLeft,
+                this.sortTop, comboWidth, this.bodyFontSize, this.sortOrder.getColumnIndex(), comboChanged)) {
+            this.removeObject(this.objectPrefix + "SortComboError");
+        } else {
+            this.drawLabel("SortComboError", comboLeft, this.sortTop + 3, comboWidth,
+                this.bodyFontSize, clrOrange, "選択欄を表示できません",
+                "並び順の選択欄を作成できません。画面幅を広げるか、列見出しをクリックして並べ替えてください。");
+        }
+
+        if (comboChanged) {
+            this.changed = true;
+        }
+    }
+
+    /**
+     * ソート対象に応じた意味で現在の順序を表示する。
+     */
+    string getSortDirectionText() {
+        int columnIndex = this.sortOrder.getColumnIndex();
+        if (columnIndex == 0) {
+            if (this.sortOrder.isAscending()) {
+                return "A→Z";
+            }
+
+            return "Z→A";
+        }
+
+        if (columnIndex == 1) {
+            if (this.sortOrder.isAscending()) {
+                return "優先順";
+            }
+
+            return "逆順";
+        }
+
+        if (columnIndex == 5) {
+            if (this.sortOrder.isAscending()) {
+                return "古い順";
+            }
+
+            return "新しい順";
+        }
+
+        if (this.sortOrder.isAscending()) {
+            return "小さい順";
+        }
+
+        return "大きい順";
+    }
+
+    /**
      * ソート対象の見出しをボタンにし、選択列の順序を矢印で表示する。
      */
     void drawColumnHeaders() {
@@ -583,7 +698,7 @@ private:
         for (int i = 0; i < 14; i++) {
             string labelSuffix = "Header" + IntegerToString(i);
             string buttonSuffix = "SortHeader" + IntegerToString(i);
-            if (i == 0 || i == 3 || i == 4 || i == 5) {
+            if (i == 0 || i == 1 || i == 3 || i == 4 || i == 5) {
                 this.removeObject(this.objectPrefix + labelSuffix);
                 string title = titles[i];
                 color background = C'31,39,50';
@@ -620,7 +735,13 @@ private:
      */
     string getSortTooltip(const int fromColumnIndex) {
         string text = "通貨名で並べ替えます。初回選択はA→Zです。";
-        if (fromColumnIndex == 3 || fromColumnIndex == 4) {
+        if (fromColumnIndex == 1) {
+            text = "判定状態で並べ替えます。初回選択は優先順です。"
+                + "\nENTRY→M1未達→確認済み→強弱未達→各種待機→エラーの順です。"
+                + "\n前回→未確認は昇降とも末尾固定です。同判定は通貨名A→Zです。"
+                + "\n確認済みは同一シグナルの確認で、ENTRY成立済みとは限りません。"
+                + "\n確認中は保存済みの判定状態を並べ替えに使います。";
+        } else if (fromColumnIndex == 3 || fromColumnIndex == 4) {
             text = "現在M5の順位差で並べ替えます。初回選択は大きい順です。"
                 + "\n増減矢印はソートに使いません。未取得・前回M5の値は末尾にします。";
         } else if (fromColumnIndex == 5) {

@@ -149,9 +149,21 @@ public:
 
     /**
      * 監視・自動表示・表示順の切替、通貨別の手動表示、画面サイズ変更を処理する。
+     * コンボボックスへ座標とコントロール通知を渡し、操作の背面への伝播を防ぐ。
      */
-    void handleChartEvent(const int fromId, const string fromObjectName) {
+    void handleChartEvent(const int fromId, const string fromObjectName,
+            const long fromLongParam = 0, const double fromDoubleParam = 0.0) {
         if (!this.initialized) {
+            return;
+        }
+
+        bool sortChanged = false;
+        if (this.view.handleSortControlEvent(fromId, fromLongParam, fromDoubleParam,
+                fromObjectName, sortChanged)) {
+            if (sortChanged) {
+                this.updateView(false);
+            }
+
             return;
         }
 
