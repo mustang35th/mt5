@@ -28,6 +28,15 @@ struct CurrencyStrengthRankGapDirectionInfo {
     /** 直前M5時刻の選択集計期間の順位差。 */
     int previousGap;
 
+    /** 直近のゼロでない変化の前後値を表示用に保持している場合true。 */
+    bool lastChangeAvailable;
+
+    /** directionChangedAtの変化直前の順位差。表示用で判定には使用しない。 */
+    int lastChangeBeforeGap;
+
+    /** directionChangedAtの変化直後の順位差。表示用で判定には使用しない。 */
+    int lastChangeAfterGap;
+
     /** 判定対象となるM5開始時刻。 */
     datetime targetM5BarTime;
 
@@ -45,6 +54,9 @@ struct CurrencyStrengthRankGapDirectionInfo {
         this.direction = 0;
         this.currentGap = 0;
         this.previousGap = 0;
+        this.lastChangeAvailable = false;
+        this.lastChangeBeforeGap = 0;
+        this.lastChangeAfterGap = 0;
         this.targetM5BarTime = 0;
         this.directionChangedAt = 0;
     }

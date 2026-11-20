@@ -2,14 +2,15 @@
 #define MSTNG_ZIGZAG_ELLIOT_MONITOR_CONFIG_MQH
 
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorTarget.mqh>
 
 /**
- * GMO通貨のM1監視とチャート表示の設定。
+ * 選択した通貨ペアのM1監視とチャート表示の設定。
  */
 class ZigZagElliotMonitorConfig {
 public:
-    /** GMO対象だけを監視する初期版の対象選択。 */
-    bool gmoOnly;
+    /** 分析・一覧・チャート表示の対象にする通貨ペア集合。 */
+    ENUM_ZIGZAG_MONITOR_TARGET targetMode;
 
     /** 起動時から監視を実行する場合true。 */
     bool monitoringEnabled;
@@ -39,7 +40,7 @@ public:
      * 通常版M1の初期条件と、最小構成の表示設定を準備する。
      */
     ZigZagElliotMonitorConfig() {
-        this.gmoOnly = true;
+        this.targetMode = ZIGZAG_MONITOR_TARGET_GMO;
         this.monitoringEnabled = true;
         this.autoOpenEnabled = true;
         this.maxOpenCharts = 18;

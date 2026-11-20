@@ -10,6 +10,7 @@
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorEvaluator.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorProgress.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSymbolState.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorTarget.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\Util.mqh>
 
@@ -30,6 +31,7 @@ public:
         this.autoOpen = false;
         this.initialized = false;
         this.executing = false;
+        this.selectedStates = NULL;
         this.logger.setLevel(LOG_INFO);
     }
 
@@ -45,7 +47,8 @@ public:
      */
     bool initialize(const long fromChartId, ZigZagElliotMonitorConfig &fromConfig) {
         this.destroy();
-        if (Util::isStrategyTester() || fromChartId <= 0) {
+        if (Util::isStrategyTester() || fromChartId <= 0
+                || !ZigZagElliotMonitorTarget::isValid(fromConfig.targetMode)) {
             return false;
         }
 
@@ -72,17 +75,17 @@ public:
      * 1回のイベントでは最大1通貨を分析し、重い分析の連続実行を避ける。
      */
     void processNext() {
-        if (!this.initialized || this.executing) {
+        if (!this.initialized || this.executing || this.selectedStates == NULL) {
             return;
         }
 
         this.executing = true;
         bool changed = this.progress.targetBarTime != ZigZagElliotMonitorProgress::getCurrentBarTime();
-        int total = this.states.Total();
+        int total = this.selectedStates.Total();
         if (this.monitoring && total > 0) {
             for (int i = 0; i < total; i++) {
                 int index = (this.nextIndex + i) % total;
-                ZigZagElliotMonitorSymbolState *state = this.states.At(index);
+                ZigZagElliotMonitorSymbolState *state = this.selectedStates.At(index);
                 if (state == NULL) {
                     continue;
                 }
@@ -148,7 +151,7 @@ public:
     }
 
     /**
-     * 監視・自動表示・表示順の切替、通貨別の手動表示、画面サイズ変更を処理する。
+     * 監視対象・監視・自動表示・表示順の切替、通貨別の手動表示、画面サイズ変更を処理する。
      * コンボボックスへ座標とコントロール通知を渡し、操作の背面への伝播を防ぐ。
      */
     void handleChartEvent(const int fromId, const string fromObjectName,
@@ -158,9 +161,15 @@ public:
         }
 
         bool sortChanged = false;
-        if (this.view.handleSortControlEvent(fromId, fromLongParam, fromDoubleParam,
-                fromObjectName, sortChanged)) {
-            if (sortChanged) {
+        bool targetChanged = false;
+        ENUM_ZIGZAG_MONITOR_TARGET selectedTarget = this.config.targetMode;
+        if (this.view.handleControlEvent(fromId, fromLongParam, fromDoubleParam,
+                fromObjectName, sortChanged, targetChanged, selectedTarget)) {
+            if (targetChanged && !this.applyTargetMode(selectedTarget)) {
+                this.logger.error(__FUNCTION__, "監視対象の切替に失敗しました。現在の対象を維持します。");
+            }
+
+            if (sortChanged || targetChanged) {
                 this.updateView(false);
             }
 
@@ -203,6 +212,11 @@ public:
         this.initialized = false;
         this.view.destroy();
         this.chartManager.destroy();
+        if (this.selectedStates != NULL) {
+            delete this.selectedStates;
+            this.selectedStates = NULL;
+        }
+
         this.states.Clear();
         this.evaluator.destroy();
         this.nextIndex = 0;
@@ -222,8 +236,14 @@ private:
     /** 共通設定。 */
     ZigZagElliotMonitorConfig config;
 
-    /** 通貨ペアごとの状態を所有する一覧。 */
+    /** 全28通貨の状態を所有し、対象を切り替えてもシグナル履歴を保持する一覧。 */
     CArrayObj states;
+
+    /** 選択中のStateを参照する非所有一覧。一覧オブジェクト自体はこのクラスが所有する。 */
+    CArrayObj *selectedStates;
+
+    /** 既存28通貨とGMOフラグによる対象判定。 */
+    ZigZagElliotMonitorTarget targetSelector;
 
     /** 既存M1判定を呼び出す担当。 */
     ZigZagElliotMonitorEvaluator evaluator;
@@ -266,8 +286,12 @@ private:
      * 表示順が変わっても押した通貨を使い、成立時刻・回数・初回状態は変更しない。
      */
     void openManualChart(const string fromObjectName) {
-        for (int i = 0; i < this.states.Total(); i++) {
-            ZigZagElliotMonitorSymbolState *state = this.states.At(i);
+        if (this.selectedStates == NULL) {
+            return;
+        }
+
+        for (int i = 0; i < this.selectedStates.Total(); i++) {
+            ZigZagElliotMonitorSymbolState *state = this.selectedStates.At(i);
             if (state == NULL || fromObjectName != this.view.getChartButtonName(state.canonicalSymbolName)) {
                 continue;
             }
@@ -296,14 +320,12 @@ private:
     }
 
     /**
-     * GMO対象フラグで実際の監視資源を限定し、正規名順に登録する。
+     * 全28通貨の軽い状態を正規名順に所有し、選択した集合だけを監視対象へ登録する。
+     * 非対象の銘柄を気配値へ追加しないよう、銘柄解決は評価・手動表示まで行わない。
      */
     bool buildTargets() {
         SymbolNameInfoAll symbols;
         symbols.setAll();
-        if (this.config.gmoOnly) {
-            symbols.setGmo();
-        }
 
         string targetNames[];
         int count = 0;
@@ -332,9 +354,8 @@ private:
         }
 
         for (int i = 0; i < count; i++) {
-            string resolvedSymbol = this.resolveSymbolName(targetNames[i]);
             ZigZagElliotMonitorSymbolState *state = new ZigZagElliotMonitorSymbolState(
-                targetNames[i], resolvedSymbol);
+                targetNames[i], "");
             if (state == NULL) {
                 return false;
             }
@@ -346,7 +367,80 @@ private:
             }
         }
 
-        return count > 0;
+        return count > 0 && this.applyTargetMode(this.config.targetMode);
+    }
+
+    /**
+     * 次の非所有一覧を完成させてから対象を交換し、追加・除外された通貨だけを更新する。
+     * 準備に失敗した場合は現在の選択と全通貨の状態を変更しない。
+     */
+    bool applyTargetMode(const ENUM_ZIGZAG_MONITOR_TARGET fromTargetMode) {
+        if (!ZigZagElliotMonitorTarget::isValid(fromTargetMode)) {
+            return false;
+        }
+
+        if (this.selectedStates != NULL && this.config.targetMode == fromTargetMode) {
+            return true;
+        }
+
+        CArrayObj *nextStates = new CArrayObj();
+        if (nextStates == NULL) {
+            return false;
+        }
+
+        nextStates.FreeMode(false);
+        for (int i = 0; i < this.states.Total(); i++) {
+            ZigZagElliotMonitorSymbolState *state = this.states.At(i);
+            if (state == NULL || !this.targetSelector.isSelected(state.canonicalSymbolName, fromTargetMode)) {
+                continue;
+            }
+
+            if (!nextStates.Add(state)) {
+                delete nextStates;
+
+                return false;
+            }
+        }
+
+        if (nextStates.Total() == 0) {
+            delete nextStates;
+
+            return false;
+        }
+
+        CArrayObj *previousStates = this.selectedStates;
+        this.selectedStates = nextStates;
+        this.progress.reset();
+        this.lastEvaluationTime = 0;
+        for (int i = 0; i < this.states.Total(); i++) {
+            ZigZagElliotMonitorSymbolState *state = this.states.At(i);
+            if (state == NULL) {
+                continue;
+            }
+
+            bool wasSelected = previousStates != NULL
+                && this.targetSelector.isSelected(state.canonicalSymbolName, this.config.targetMode);
+            bool selected = this.targetSelector.isSelected(state.canonicalSymbolName, fromTargetMode);
+            if (wasSelected && !selected) {
+                state.releaseAnalysisResources();
+            } else if (!wasSelected && selected) {
+                state.resetForMonitoring();
+            }
+
+            if (selected && state.result.evaluatedAtSrv > this.lastEvaluationTime) {
+                this.lastEvaluationTime = state.result.evaluatedAtSrv;
+                this.progress.lastSymbol = state.canonicalSymbolName;
+                this.progress.lastDurationMs = state.result.durationMs;
+            }
+        }
+
+        this.config.targetMode = fromTargetMode;
+        this.nextIndex = 0;
+        if (previousStates != NULL) {
+            delete previousStates;
+        }
+
+        return true;
     }
 
     /**
@@ -400,19 +494,17 @@ private:
      * 確認済み件数と判定対象足をリセットし、シグナル回数を保持して現在の足を再確認する。
      */
     void resetBaselines() {
-        for (int i = 0; i < this.states.Total(); i++) {
-            ZigZagElliotMonitorSymbolState *state = this.states.At(i);
+        if (this.selectedStates == NULL) {
+            return;
+        }
+
+        for (int i = 0; i < this.selectedStates.Total(); i++) {
+            ZigZagElliotMonitorSymbolState *state = this.selectedStates.At(i);
             if (state == NULL) {
                 continue;
             }
 
-            state.baselineReady = false;
-            state.lastProcessedBarTime = 0;
-            state.evaluationBarTime = 0;
-            state.targetM5BarTime = 0;
-            state.nextRetryTick = 0;
-            state.lastAttemptBarTime = 0;
-            state.result.reset();
+            state.resetForMonitoring();
         }
 
         this.nextIndex = 0;
@@ -425,13 +517,18 @@ private:
      * @param fromRefreshOpenCount 確認開始・完了の中間表示では保持済み枚数を使用する。
      */
     void updateView(const bool fromRefreshOpenCount = true) {
-        this.progress.updateCounts(this.states, ZigZagElliotMonitorProgress::getCurrentBarTime());
+        if (this.selectedStates == NULL) {
+            return;
+        }
+
+        this.progress.updateCounts(*this.selectedStates, ZigZagElliotMonitorProgress::getCurrentBarTime());
         if (fromRefreshOpenCount) {
             this.lastOpenCount = this.chartManager.getOpenCount();
         }
 
-        if (this.view.update(this.states, this.monitoring, this.autoOpen,
-                this.lastOpenCount, this.config.maxOpenCharts, this.lastEvaluationTime, this.progress)) {
+        if (this.view.update(*this.selectedStates, this.monitoring, this.autoOpen,
+                this.lastOpenCount, this.config.maxOpenCharts, this.lastEvaluationTime, this.progress,
+                this.config.targetMode)) {
             ChartRedraw(this.chartId);
         }
     }

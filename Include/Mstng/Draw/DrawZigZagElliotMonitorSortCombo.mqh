@@ -42,12 +42,14 @@ public:
      */
     bool prepare(const long fromChartId, const string fromName, const int fromLeft,
             const int fromTop, const int fromWidth, const int fromFontSize,
-            const int fromColumn, bool &fromChanged) {
+            const int fromColumn, bool &fromChanged, const bool fromTargetSelector = false,
+            const bool fromMouseEventsManaged = false) {
         fromChanged = false;
         if (this.attempted && !this.layoutDirty && this.ownerChartId == fromChartId
                 && this.controlName == fromName && this.savedLeft == fromLeft
                 && this.savedTop == fromTop && this.savedWidth == fromWidth
-                && this.savedFontSize == fromFontSize) {
+                && this.savedFontSize == fromFontSize && this.targetSelector == fromTargetSelector
+                && this.mouseEventsManaged == fromMouseEventsManaged) {
             if (this.created) {
                 fromChanged = this.synchronize(fromColumn);
             }
@@ -63,6 +65,8 @@ public:
         this.savedTop = fromTop;
         this.savedWidth = fromWidth;
         this.savedFontSize = fromFontSize;
+        this.targetSelector = fromTargetSelector;
+        this.mouseEventsManaged = fromMouseEventsManaged;
         this.savedChartWidth = (int)ChartGetInteger(fromChartId, CHART_WIDTH_IN_PIXELS, 0);
         this.savedChartHeight = (int)ChartGetInteger(fromChartId, CHART_HEIGHT_IN_PIXELS, 0);
         fromChanged = true;
@@ -70,24 +74,28 @@ public:
             return false;
         }
 
-        long mouseMoveEnabled = 0;
-        if (!ChartGetInteger(fromChartId, CHART_EVENT_MOUSE_MOVE, 0, mouseMoveEnabled)) {
-            return false;
-        }
-
-        if (mouseMoveEnabled == 0) {
-            if (!ChartSetInteger(fromChartId, CHART_EVENT_MOUSE_MOVE, true)) {
+        if (!fromMouseEventsManaged) {
+            long mouseMoveEnabled = 0;
+            if (!ChartGetInteger(fromChartId, CHART_EVENT_MOUSE_MOVE, 0, mouseMoveEnabled)) {
                 return false;
             }
 
-            this.mouseMoveOwned = true;
+            if (mouseMoveEnabled == 0) {
+                if (!ChartSetInteger(fromChartId, CHART_EVENT_MOUSE_MOVE, true)) {
+                    return false;
+                }
+
+                this.mouseMoveOwned = true;
+            }
         }
 
         this.ListViewItems(5);
+        if (fromTargetSelector) {
+            this.ListViewItems(3);
+        }
+
         if (!this.Create(fromChartId, fromName, 0, fromLeft, fromTop, fromLeft + fromWidth, fromTop + 26)
-                || !this.AddItem("通貨名", 0) || !this.AddItem("判定", 1)
-                || !this.AddItem("長中期順位差", 3) || !this.AddItem("中短期順位差", 4)
-                || !this.AddItem("直近成立時刻", 5)) {
+                || !this.addChoices()) {
             this.releaseControls();
 
             return false;
@@ -163,6 +171,7 @@ public:
                 if (this.selectionPending) {
                     this.selectionPending = false;
                     fromColumn = (int)this.Value();
+                    this.appliedColumn = fromColumn;
                     fromSelectionChanged = true;
                 }
 
@@ -248,6 +257,67 @@ public:
     }
 
     /**
+     * このコンボのリストが展開中か確認する。
+     */
+    bool isPopupOpen() {
+        return this.created && this.isListOpen();
+    }
+
+    /**
+     * 別のコンボを開くとき、展開中のリストだけを閉じる。
+     */
+    void closePopup() {
+        if (this.isPopupOpen()) {
+            this.closeList();
+            ChartRedraw(this.ownerChartId);
+        }
+    }
+
+    /**
+     * 他のコンボが消費した操作では選択せず、マウス状態だけを追従する。
+     */
+    void blockEvent(const int fromEventId, const long &fromLongParam,
+            const double &fromDoubleParam, const string &fromStringParam) {
+        if (!this.created) {
+            return;
+        }
+
+        if (fromEventId == CHARTEVENT_MOUSE_MOVE) {
+            bool pressed = (StringToInteger(fromStringParam) & MOUSE_LEFT) != 0;
+            if (pressed && !this.mouseDown) {
+                this.swallowClick = false;
+            }
+
+            this.mouseDown = pressed;
+            long currentHoveredId = this.getHoveredId((int)fromLongParam, (int)fromDoubleParam);
+            bool resetPointer = pressed && this.hoveredId >= 0;
+            bool primePointer = !pressed && currentHoveredId != this.hoveredId;
+            if (resetPointer || primePointer) {
+                long previousHoveredId = this.hoveredId;
+                for (long controlId = this.Id() + 1; controlId < this.controlIdEnd; controlId++) {
+                    CWndObj *control = dynamic_cast<CWndObj *>(this.ControlFind(controlId));
+                    if (control != NULL) {
+                        control.MouseFocusKill();
+                    }
+                }
+
+                this.hoveredId = -1;
+                if (!pressed && currentHoveredId >= 0) {
+                    CComboBox::OnEvent(fromEventId, fromLongParam, fromDoubleParam, fromStringParam);
+                    this.hoveredId = currentHoveredId;
+                }
+
+                if (previousHoveredId != this.hoveredId) {
+                    ChartRedraw(this.ownerChartId);
+                }
+            }
+        } else if (fromEventId == CHARTEVENT_OBJECT_CLICK && this.ownsObject(fromStringParam)) {
+            this.closeList();
+            ChartRedraw(this.ownerChartId);
+        }
+    }
+
+    /**
      * 保持した選択設定を破棄し、所有するコントロールだけを解放する。
      */
     void destroy() {
@@ -284,6 +354,12 @@ private:
 
     /** マウス通知を自身が有効へ変更した場合true。 */
     bool mouseMoveOwned;
+
+    /** 監視対象の選択肢を表示する場合true。 */
+    bool targetSelector;
+
+    /** 呼び出し元がマウス通知の設定を共有管理する場合true。 */
+    bool mouseEventsManaged;
 
     /** モデル側の選択を同期している場合true。 */
     bool synchronizing;
@@ -332,6 +408,20 @@ private:
 
     /** マウス下にある所有コントロールID。 */
     long hoveredId;
+
+    /**
+     * 用途ごとの選択肢と値を標準リストへ登録する。
+     */
+    bool addChoices() {
+        if (this.targetSelector) {
+            return this.AddItem("全28ペア", 0) && this.AddItem("GMO18ペア", 1)
+                && this.AddItem("GMO以外10ペア", 2);
+        }
+
+        return this.AddItem("通貨名", 0) && this.AddItem("判定", 1)
+            && this.AddItem("長中期順位差", 3) && this.AddItem("中短期順位差", 4)
+            && this.AddItem("直近成立時刻", 5);
+    }
 
     /**
      * 作成済みの子コントロールと変更した通知設定を解放する。

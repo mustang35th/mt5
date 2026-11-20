@@ -99,6 +99,14 @@ public:
             this.signalCount = NULL;
         }
 
+        this.releaseAnalysisResources();
+    }
+
+    /**
+     * 対象から外れた通貨の重い取得資源だけを解放する。
+     * シグナル回数・直近成立・表示結果は保持し、次の対象参加時に資源を再作成する。
+     */
+    void releaseAnalysisResources() {
         if (this.strengthProvider != NULL) {
             delete this.strengthProvider;
             this.strengthProvider = NULL;
@@ -108,6 +116,19 @@ public:
             delete this.oscillatorHandlePool;
             this.oscillatorHandlePool = NULL;
         }
+    }
+
+    /**
+     * 現在足を再確認できる状態へ戻し、シグナル回数と直近成立の記録は維持する。
+     */
+    void resetForMonitoring() {
+        this.baselineReady = false;
+        this.lastProcessedBarTime = 0;
+        this.evaluationBarTime = 0;
+        this.targetM5BarTime = 0;
+        this.nextRetryTick = 0;
+        this.lastAttemptBarTime = 0;
+        this.result.reset();
     }
 };
 

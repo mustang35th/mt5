@@ -80,6 +80,9 @@ public:
         if (direction != 0) {
             fromResult.direction = direction;
             fromResult.directionChangedAt = targetTime;
+            fromResult.lastChangeAvailable = true;
+            fromResult.lastChangeBeforeGap = previousGap;
+            fromResult.lastChangeAfterGap = fromResult.currentGap;
 
             return;
         }
@@ -108,6 +111,9 @@ public:
             if (direction != 0) {
                 fromResult.direction = direction;
                 fromResult.directionChangedAt = newerTime;
+                fromResult.lastChangeAvailable = true;
+                fromResult.lastChangeBeforeGap = olderGap;
+                fromResult.lastChangeAfterGap = newerGap;
 
                 return;
             }

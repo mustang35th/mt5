@@ -1,6 +1,6 @@
 ﻿#property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
-#property version "1.15"
+#property version "1.18"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots 1
@@ -9,10 +9,12 @@
 
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorController.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorTarget.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\Util.mqh>
 
-input group "01. GMO18ペア・M1監視"
+input group "01. 通貨ペア・M1監視"
+input(name="起動時の監視対象") ENUM_ZIGZAG_MONITOR_TARGET monitorTargetMode = ZIGZAG_MONITOR_TARGET_GMO;
 input(name="監視を開始") bool monitoringEnabled = true;
 input(name="成立時にチャートを自動表示") bool autoOpenEnabled = true;
 input(name="チャート表示の最大枚数（手動・自動）") int maxOpenCharts = 18;
@@ -38,7 +40,7 @@ double monitorHiddenBuffer[];
 ZigZagElliotMonitorController *monitorController = NULL;
 
 /**
- * 通常チャートでGMO18ペアのM1監視を初期化する。
+ * 通常チャートで選択した通貨ペアのM1監視を初期化する。
  */
 int OnInit() {
     Logger logger(LOG_INFO);
@@ -48,7 +50,8 @@ int OnInit() {
         return INIT_PARAMETERS_INCORRECT;
     }
 
-    if (maxOpenCharts < 1 || maxOpenCharts > 28 || monitorFontSize < 8 || monitorFontSize > 16
+    if (!ZigZagElliotMonitorTarget::isValid(monitorTargetMode)
+            || maxOpenCharts < 1 || maxOpenCharts > 28 || monitorFontSize < 8 || monitorFontSize > 16
             || currencyStrengthDatabaseFileName == "") {
         logger.error(__FUNCTION__, "Invalid monitor display or database settings.");
 
@@ -61,6 +64,7 @@ int OnInit() {
 
     IndicatorSetString(INDICATOR_SHORTNAME, "ZigZagElliotMonitor");
     ZigZagElliotMonitorConfig config;
+    config.targetMode = monitorTargetMode;
     config.monitoringEnabled = monitoringEnabled;
     config.autoOpenEnabled = autoOpenEnabled;
     config.maxOpenCharts = maxOpenCharts;

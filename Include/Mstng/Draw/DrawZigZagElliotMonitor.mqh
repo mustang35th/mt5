@@ -7,6 +7,7 @@
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorProgress.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSort.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSymbolState.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorTarget.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
@@ -65,7 +66,7 @@ struct DrawZigZagElliotMonitorObject {
 };
 
 /**
- * GMO通貨のM1判定とチャート表示状況を、独立した固定パネルに表示する。
+ * 選択した対象通貨のM1判定とチャート表示状況を、独立した固定パネルに表示する。
  * 現在の判定と保持された直近成立時刻を区別し、描画変更だけを呼び出し元へ通知する。
  */
 class DrawZigZagElliotMonitor {
@@ -81,6 +82,8 @@ public:
         this.requestedFontSize = 10;
         this.measuredFontSize = 0;
         this.previousRowCount = 0;
+        this.mouseMoveOwned = false;
+        this.targetMode = ZIGZAG_MONITOR_TARGET_GMO;
         this.gmoSymbols.setGmo();
         this.sortOrder.reset();
     }
@@ -110,8 +113,9 @@ public:
         this.objectPrefix = fromPrefix;
         this.requestedFontSize = (int)MathMax(6, MathMin(16, fromFontSize));
         this.sortOrder.reset();
+        this.targetMode = ZIGZAG_MONITOR_TARGET_GMO;
         this.initialized = true;
-        if (this.ensureObject("Panel", OBJ_RECTANGLE_LABEL) < 0) {
+        if (!this.enableMouseMove() || this.ensureObject("Panel", OBJ_RECTANGLE_LABEL) < 0) {
             this.destroy();
 
             return false;
@@ -130,16 +134,19 @@ public:
      * @param fromMaxOpenCharts チャート表示枚数の上限。
      * @param fromLastEvaluationTime 最後に判定・データ確認を試みたサーバー時刻。
      * @param fromProgress 共通の対象M1に対する進捗と確認処理の状況。
+     * @param fromTargetMode コントローラーが監視している通貨ペア範囲。
      * @return 描画オブジェクトを変更した場合true。
      */
     bool update(CArrayObj &fromStates, const bool fromMonitoring, const bool fromAutoOpen,
             const int fromOpenCount, const int fromMaxOpenCharts, const datetime fromLastEvaluationTime,
-            const ZigZagElliotMonitorProgress &fromProgress) {
+            const ZigZagElliotMonitorProgress &fromProgress,
+            const ENUM_ZIGZAG_MONITOR_TARGET fromTargetMode = ZIGZAG_MONITOR_TARGET_GMO) {
         if (!this.initialized) {
             return false;
         }
 
         this.changed = false;
+        this.targetMode = fromTargetMode;
         this.measuredFontSize = 0;
         int indexes[];
         int confirmedCount = 0;
@@ -150,10 +157,8 @@ public:
         this.drawRectangle("Panel", this.panelLeft, this.panelTop, this.panelWidth,
             this.panelHeight, C'12,15,20', C'65,74,88');
 
-        string title = StringFormat("通貨監視 %dペア / M1", stateCount);
-        if (stateCount > 0 && gmoCount == stateCount) {
-            title = StringFormat("GMO監視 %dペア / M1", stateCount);
-        }
+        string title = "通貨監視 " + ZigZagElliotMonitorTarget::getLabel(this.targetMode)
+            + StringFormat(" / 対象%d / M1", stateCount);
 
         string monitorText = "監視：OFF";
         color monitorColor = C'70,75,83';
@@ -290,19 +295,72 @@ public:
      */
     bool handleSortControlEvent(const int fromEventId, const long &fromLongParam,
             const double &fromDoubleParam, const string &fromStringParam, bool &fromSortChanged) {
+        bool targetChanged = false;
+        ENUM_ZIGZAG_MONITOR_TARGET selectedTarget = this.targetMode;
+
+        return this.handleControlEvent(fromEventId, fromLongParam, fromDoubleParam,
+            fromStringParam, fromSortChanged, targetChanged, selectedTarget);
+    }
+
+    /**
+     * 展開中のコンボへ優先配送し、監視対象と並び順の変更を別々に通知する。
+     *
+     * @return コンボまたはソート操作として消費した場合true。
+     */
+    bool handleControlEvent(const int fromEventId, const long &fromLongParam,
+            const double &fromDoubleParam, const string &fromStringParam, bool &fromSortChanged,
+            bool &fromTargetChanged, ENUM_ZIGZAG_MONITOR_TARGET &fromSelectedTarget) {
         fromSortChanged = false;
+        fromTargetChanged = false;
+        fromSelectedTarget = this.targetMode;
         if (!this.initialized) {
             return false;
         }
 
-        bool selectionChanged = false;
+        bool sortSelectionChanged = false;
+        bool targetSelectionChanged = false;
+        bool sortHandled = false;
+        bool targetHandled = false;
         int selectedColumn = this.sortOrder.getColumnIndex();
-        if (this.sortCombo.handleEvent(fromEventId, fromLongParam, fromDoubleParam,
-                fromStringParam, selectionChanged, selectedColumn)) {
-            if (selectionChanged && selectedColumn != this.sortOrder.getColumnIndex()) {
-                fromSortChanged = this.sortOrder.setColumn(selectedColumn);
+        int selectedTarget = (int)this.targetMode;
+        if (this.targetCombo.isPopupOpen()) {
+            targetHandled = this.targetCombo.handleEvent(fromEventId, fromLongParam, fromDoubleParam,
+                fromStringParam, targetSelectionChanged, selectedTarget);
+            if (targetHandled) {
+                this.sortCombo.blockEvent(fromEventId, fromLongParam, fromDoubleParam, fromStringParam);
+            } else {
+                sortHandled = this.sortCombo.handleEvent(fromEventId, fromLongParam, fromDoubleParam,
+                    fromStringParam, sortSelectionChanged, selectedColumn);
             }
+        } else {
+            sortHandled = this.sortCombo.handleEvent(fromEventId, fromLongParam, fromDoubleParam,
+                fromStringParam, sortSelectionChanged, selectedColumn);
+            if (sortHandled) {
+                this.targetCombo.blockEvent(fromEventId, fromLongParam, fromDoubleParam, fromStringParam);
+            } else {
+                targetHandled = this.targetCombo.handleEvent(fromEventId, fromLongParam, fromDoubleParam,
+                    fromStringParam, targetSelectionChanged, selectedTarget);
+            }
+        }
 
+        if (sortHandled && this.sortCombo.isPopupOpen()) {
+            this.targetCombo.closePopup();
+        } else if (targetHandled && this.targetCombo.isPopupOpen()) {
+            this.sortCombo.closePopup();
+        }
+
+        if (sortSelectionChanged && selectedColumn != this.sortOrder.getColumnIndex()) {
+            fromSortChanged = this.sortOrder.setColumn(selectedColumn);
+        }
+
+        ENUM_ZIGZAG_MONITOR_TARGET selectedMode = (ENUM_ZIGZAG_MONITOR_TARGET)selectedTarget;
+        if (targetSelectionChanged && ZigZagElliotMonitorTarget::isValid(selectedMode)
+                && selectedMode != this.targetMode) {
+            fromSelectedTarget = selectedMode;
+            fromTargetChanged = true;
+        }
+
+        if (sortHandled || targetHandled) {
             return true;
         }
 
@@ -383,6 +441,12 @@ public:
      */
     void destroy() {
         this.sortCombo.destroy();
+        this.targetCombo.destroy();
+        if (this.mouseMoveOwned) {
+            ChartSetInteger(this.chartId, CHART_EVENT_MOUSE_MOVE, false);
+            this.mouseMoveOwned = false;
+        }
+
         if (this.initialized && this.objectPrefix != "") {
             ObjectsDeleteAll(this.chartId, this.objectPrefix, -1, -1);
         }
@@ -417,6 +481,15 @@ private:
 
     /** 並び順選択の標準コンボボックス。 */
     DrawZigZagElliotMonitorSortCombo sortCombo;
+
+    /** 監視対象選択の標準コンボボックス。 */
+    DrawZigZagElliotMonitorSortCombo targetCombo;
+
+    /** 最後に描画した監視対象。 */
+    ENUM_ZIGZAG_MONITOR_TARGET targetMode;
+
+    /** 2つの標準コンボに必要なマウス通知を自身が有効にした場合true。 */
+    bool mouseMoveOwned;
 
     /** 利用者が指定した基準フォントサイズ。 */
     int requestedFontSize;
@@ -472,6 +545,9 @@ private:
     /** 並び順選択行の上位置。 */
     int sortTop;
 
+    /** 監視対象選択行の上位置。 */
+    int targetTop;
+
     /** 最初のデータ行の上位置。 */
     int rowsTop;
 
@@ -489,6 +565,26 @@ private:
 
     /** 既存列IDを維持した14列それぞれの横幅。 */
     int columnWidth[14];
+
+    /**
+     * 2つの標準コンボが共用するマウス通知を、作成時に一度だけ確保する。
+     */
+    bool enableMouseMove() {
+        long mouseMoveEnabled = 0;
+        if (!ChartGetInteger(this.chartId, CHART_EVENT_MOUSE_MOVE, 0, mouseMoveEnabled)) {
+            return false;
+        }
+
+        if (mouseMoveEnabled == 0) {
+            if (!ChartSetInteger(this.chartId, CHART_EVENT_MOUSE_MOVE, true)) {
+                return false;
+            }
+
+            this.mouseMoveOwned = true;
+        }
+
+        return true;
+    }
 
     /**
      * 有効な状態を集計し、参照番号だけを選択された表示順へ並べる。
@@ -581,7 +677,12 @@ private:
             this.titleWidth = this.contentWidth;
         }
 
-        this.sortTop = this.buttonTop + 34;
+        this.targetTop = this.buttonTop + 34;
+        this.sortTop = this.targetTop;
+        if (this.panelWidth < 760) {
+            this.sortTop += 34;
+        }
+
         this.headerTop = this.sortTop + 34;
         this.rowsTop = this.headerTop + 27;
         int availableHeight = (int)MathMax(0, chartHeight - this.rowsTop - 94);
@@ -607,9 +708,9 @@ private:
         this.columnWidth[8] = textWidth * 13 / 100;
         textWidth -= this.columnWidth[8];
         this.columnWidth[0] = textWidth * 13 / 94;
-        this.columnWidth[1] = textWidth * 18 / 94;
-        this.columnWidth[3] = textWidth * 10 / 94;
-        this.columnWidth[4] = textWidth * 10 / 94;
+        this.columnWidth[1] = textWidth * 16 / 94;
+        this.columnWidth[3] = textWidth * 12 / 94;
+        this.columnWidth[4] = textWidth * 12 / 94;
         this.columnWidth[5] = textWidth * 23 / 94;
         this.columnWidth[6] = textWidth - this.columnWidth[0] - this.columnWidth[1]
             - this.columnWidth[3] - this.columnWidth[4] - this.columnWidth[5];
@@ -626,12 +727,24 @@ private:
      * 表の描画後に標準コンボを配置し、展開したリストを既存ラベルより前へ出す。
      */
     void drawSortControls() {
-        int labelWidth = (int)MathMin(this.bodyFontSize * 6, this.contentWidth / 5);
         int gap = (int)MathMin(8, this.contentWidth / 40);
-        int orderWidth = (int)MathMax(1, MathMin(116, (this.contentWidth - labelWidth - gap * 2) / 3));
-        int comboWidth = (int)MathMax(0, MathMin(220, this.contentWidth - labelWidth - orderWidth - gap * 2));
-        int comboLeft = this.contentLeft + labelWidth + gap;
-        this.drawLabel("SortLabel", this.contentLeft, this.sortTop + 3, labelWidth,
+        int targetLabelWidth = (int)MathMin(this.bodyFontSize * 8, this.contentWidth / 4);
+        int targetComboWidth = (int)MathMax(0, MathMin(180, this.contentWidth - targetLabelWidth - gap));
+        int targetComboLeft = this.contentLeft + targetLabelWidth + gap;
+        int sortLeft = this.contentLeft;
+        int sortWidth = this.contentWidth;
+        if (this.targetTop == this.sortTop) {
+            sortLeft = targetComboLeft + targetComboWidth + 24;
+            sortWidth = (int)MathMax(0, this.contentWidth - (sortLeft - this.contentLeft));
+        }
+
+        int labelWidth = (int)MathMin(this.bodyFontSize * 6, sortWidth / 5);
+        int orderWidth = (int)MathMax(1, MathMin(116, (sortWidth - labelWidth - gap * 2) / 3));
+        int comboWidth = (int)MathMax(0, MathMin(220, sortWidth - labelWidth - orderWidth - gap * 2));
+        int comboLeft = sortLeft + labelWidth + gap;
+        this.drawLabel("TargetLabel", this.contentLeft, this.targetTop + 3, targetLabelWidth,
+            this.bodyFontSize, C'201,211,222', "監視対象", "監視する通貨ペア範囲を選びます。並び順とENTRY優先は維持します。");
+        this.drawLabel("SortLabel", sortLeft, this.sortTop + 3, labelWidth,
             this.bodyFontSize, C'201,211,222', "並び順", "並び順を選択し、右のボタンで順序を切り替えます。");
         this.drawButton("SortDirectionButton", comboLeft + comboWidth + gap, this.sortTop,
             orderWidth, this.getSortDirectionText(), C'42,75,116',
@@ -639,12 +752,27 @@ private:
 
         bool comboChanged = false;
         if (this.sortCombo.prepare(this.chartId, this.objectPrefix + "SortBox", comboLeft,
-                this.sortTop, comboWidth, this.bodyFontSize, this.sortOrder.getColumnIndex(), comboChanged)) {
+                this.sortTop, comboWidth, this.bodyFontSize, this.sortOrder.getColumnIndex(), comboChanged,
+                false, true)) {
             this.removeObject(this.objectPrefix + "SortComboError");
         } else {
             this.drawLabel("SortComboError", comboLeft, this.sortTop + 3, comboWidth,
                 this.bodyFontSize, clrOrange, "選択欄を表示できません",
                 "並び順の選択欄を作成できません。画面幅を広げるか、列見出しをクリックして並べ替えてください。");
+        }
+
+        if (comboChanged) {
+            this.changed = true;
+        }
+
+        if (this.targetCombo.prepare(this.chartId, this.objectPrefix + "PairBox", targetComboLeft,
+                this.targetTop, targetComboWidth, this.bodyFontSize, (int)this.targetMode, comboChanged,
+                true, true)) {
+            this.removeObject(this.objectPrefix + "TargetComboError");
+        } else {
+            this.drawLabel("TargetComboError", targetComboLeft, this.targetTop + 3, targetComboWidth,
+                this.bodyFontSize, clrOrange, "選択欄を表示できません",
+                "監視対象の選択欄を作成できません。画面幅を広げて再確認してください。");
         }
 
         if (comboChanged) {
@@ -862,18 +990,8 @@ private:
             this.columnWidth[1] - 5, this.bodyFontSize, statusColor, statusText, tooltip);
         this.drawDirectionCells(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
         this.drawWaveCell(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
-        this.drawLabel(rowPrefix + "Column3", this.columnLeft[3], rowTop + 2,
-            this.columnWidth[3] - 5, this.bodyFontSize,
-            this.getStrengthColor(fromState.result.strength, true, currentM5BarTime),
-            this.getStrengthText(fromState.result.strength, true, currentM5BarTime),
-            this.getStrengthTooltip(fromState.result.strength, fromState.canonicalSymbolName,
-                active, true, currentM5BarTime));
-        this.drawLabel(rowPrefix + "Column4", this.columnLeft[4], rowTop + 2,
-            this.columnWidth[4] - 5, this.bodyFontSize,
-            this.getStrengthColor(fromState.result.strength, false, currentM5BarTime),
-            this.getStrengthText(fromState.result.strength, false, currentM5BarTime),
-            this.getStrengthTooltip(fromState.result.strength, fromState.canonicalSymbolName,
-                active, false, currentM5BarTime));
+        this.drawStrengthCell(rowPrefix, rowTop + 2, fromState, active, true, currentM5BarTime);
+        this.drawStrengthCell(rowPrefix, rowTop + 2, fromState, active, false, currentM5BarTime);
         this.drawLabel(rowPrefix + "Column5", this.columnLeft[5], rowTop + 2,
             this.columnWidth[5] - 5, this.bodyFontSize, entryTimeColor,
             this.formatJapanTime(fromState.lastEntryTime), tooltip);
@@ -1169,6 +1287,46 @@ private:
     }
 
     /**
+     * 順位差・判定方向の右に直近の変化時点の増減を別色で並べる。
+     * 文字幅を測って配置し、列幅を超える部分は省略して全文をツールチップへ残す。
+     */
+    void drawStrengthCell(const string fromRowPrefix, const int fromTop,
+            ZigZagElliotMonitorSymbolState *fromState, const bool fromActive,
+            const bool fromLongMedium, const datetime fromCurrentM5BarTime) {
+        int columnIndex = 3;
+        if (!fromLongMedium) {
+            columnIndex = 4;
+        }
+
+        string suffix = fromRowPrefix + "Column" + IntegerToString(columnIndex);
+        int cellWidth = (int)MathMax(0, this.columnWidth[columnIndex] - 5);
+        string text = this.getStrengthText(fromState.result.strength, fromLongMedium, fromCurrentM5BarTime);
+        string tooltip = this.getStrengthTooltip(fromState.result.strength, fromState.canonicalSymbolName,
+            fromActive, fromLongMedium, fromCurrentM5BarTime);
+        int rankWidth = cellWidth;
+        int changeWidth = 0;
+        if (fromState.result.strength.hasRanks(fromLongMedium)) {
+            int measuredWidth = this.measureTextWidth(text, this.bodyFontSize);
+            if (measuredWidth >= 0) {
+                rankWidth = (int)MathMin(cellWidth, measuredWidth + 1);
+                changeWidth = cellWidth - rankWidth;
+            }
+        }
+
+        this.drawLabel(suffix, this.columnLeft[columnIndex], fromTop, rankWidth,
+            this.bodyFontSize, this.getStrengthColor(fromState.result.strength, fromLongMedium,
+                fromCurrentM5BarTime), text, tooltip);
+        if (changeWidth > 0) {
+            this.drawLabel(suffix + "Delta", this.columnLeft[columnIndex] + rankWidth,
+                fromTop, changeWidth, this.bodyFontSize,
+                this.getStrengthChangeColor(fromState.result.strength, fromLongMedium, fromCurrentM5BarTime),
+                this.getStrengthChangeText(fromState.result.strength, fromLongMedium), tooltip);
+        } else {
+            this.removeObject(this.objectPrefix + suffix + "Delta");
+        }
+    }
+
+    /**
      * 取得済みの順位差と、横ばいへ引き継いだ増減方向を表示する。
      */
     string getStrengthText(const ZigZagElliotMonitorStrengthSnapshot &fromStrength,
@@ -1196,6 +1354,41 @@ private:
         }
 
         return text;
+    }
+
+    /**
+     * 直近の変化時点の増減を括弧付きで返し、横ばいでも値を維持する。
+     */
+    string getStrengthChangeText(const ZigZagElliotMonitorStrengthSnapshot &fromStrength,
+            const bool fromLongMedium) {
+        if (!fromStrength.hasGapChange(fromLongMedium)) {
+            return "（—）";
+        }
+
+        int change = fromStrength.getGapChange(fromLongMedium);
+        return "（" + this.formatRankGap(change) + "）";
+    }
+
+    /**
+     * 増減数値の符号で色を選び、根拠不明・前回M5を灰色にする。
+     */
+    color getStrengthChangeColor(const ZigZagElliotMonitorStrengthSnapshot &fromStrength,
+            const bool fromLongMedium, const datetime fromCurrentM5BarTime) {
+        if (!fromStrength.hasGapChange(fromLongMedium)
+                || fromStrength.targetM5BarTime != fromCurrentM5BarTime) {
+            return C'158,170,185';
+        }
+
+        int change = fromStrength.getGapChange(fromLongMedium);
+        if (change > 0) {
+            return clrAqua;
+        }
+
+        if (change < 0) {
+            return clrHotPink;
+        }
+
+        return C'158,170,185';
     }
 
     /**
@@ -1241,7 +1434,9 @@ private:
         string text = fromSymbolName + " / " + periodLabel;
         bool ranksAvailable = fromStrength.hasRanks(fromLongMedium);
         if (ranksAvailable) {
-            text += StringFormat("\n基軸 %s：%d位 / 決済 %s：%d位",
+            text += "\n一覧：" + this.getStrengthText(fromStrength, fromLongMedium, fromCurrentM5BarTime)
+                + this.getStrengthChangeText(fromStrength, fromLongMedium)
+                + StringFormat("\n基軸 %s：%d位 / 決済 %s：%d位",
                 fromStrength.pairRankInfo.baseCurrency, baseRank,
                 fromStrength.pairRankInfo.quoteCurrency, quoteRank)
                 + "\n現在の順位差：" + this.formatRankGap(fromStrength.getRankDifference(fromLongMedium))
@@ -1252,13 +1447,18 @@ private:
             text += "\n現在順位：未照会";
         }
 
-        if (ranksAvailable && gapInfo.enabled && gapInfo.targetM5BarTime == fromStrength.targetM5BarTime
-                && gapInfo.currentAvailable && gapInfo.hasPrevious
-                && gapInfo.currentGap == fromStrength.getRankDifference(fromLongMedium)) {
-            text += "\n直前M5の順位差：" + this.formatRankGap(gapInfo.previousGap)
-                + " / 直前M5からの変化：" + this.formatRankGap(gapInfo.currentGap - gapInfo.previousGap);
+        if (fromStrength.hasGapChange(fromLongMedium)) {
+            text += "\n直近変化の順位差：" + this.formatRankGap(gapInfo.lastChangeBeforeGap)
+                + " → " + this.formatRankGap(gapInfo.lastChangeAfterGap)
+                + " / 増減：" + this.getStrengthChangeText(fromStrength, fromLongMedium)
+                + "\n変化時刻：" + this.formatServerTime(gapInfo.directionChangedAt)
+                + " SRV / " + this.formatJapanTime(gapInfo.directionChangedAt) + " JST";
+        } else if (ranksAvailable) {
+            text += "\n直近変化の増減：—（根拠データ未取得・不整合、または履歴内に変化なし）";
         }
 
+        text += "\n括弧内は最後に順位差が変化したM5の増減（変化後 − 変化前）。"
+            + "横ばいでは値を維持し、新しい変化で更新します。根拠不明は—です。";
         string directionText = "未取得";
         if (ranksAvailable) {
             directionText = "不明";
@@ -1272,7 +1472,8 @@ private:
         }
 
         text += "\n増減方向：" + directionText + "（横ばいは直近方向を引き継ぎ）";
-        if (ranksAvailable && fromStrength.getDirection(fromLongMedium) != 0) {
+        if (ranksAvailable && !fromStrength.hasGapChange(fromLongMedium)
+                && fromStrength.getDirection(fromLongMedium) != 0) {
             text += "\n増減の根拠：" + this.formatServerTime(gapInfo.directionChangedAt) + " SRV";
         }
 
@@ -1307,7 +1508,7 @@ private:
     }
 
     /**
-     * 順位差と直前M5からの変化を、正負の符号付きで表示する。
+     * 順位差と変化時点の増減を、正負の符号付きで表示する。
      */
     string formatRankGap(const int fromGap) {
         if (fromGap < 0) {
@@ -1401,13 +1602,9 @@ private:
     }
 
     /**
-     * 全文を測定し、列幅に収まらない場合だけ末尾を省略する。
+     * ラベルと同じフォントの文字幅を返す。測定できない場合は-1。
      */
-    string fitText(const string fromText, const int fromWidth, const int fromFontSize) {
-        if (fromText == "" || fromWidth <= 0) {
-            return "";
-        }
-
+    int measureTextWidth(const string fromText, const int fromFontSize) {
         uint textWidth = 0;
         uint textHeight = 0;
         bool fontReady = true;
@@ -1419,15 +1616,33 @@ private:
         }
 
         if (!fontReady || !TextGetSize(fromText, textWidth, textHeight)) {
+            return -1;
+        }
+
+        return (int)textWidth;
+    }
+
+    /**
+     * 全文を測定し、列幅に収まらない場合だけ末尾を省略する。
+     */
+    string fitText(const string fromText, const int fromWidth, const int fromFontSize) {
+        if (fromText == "" || fromWidth <= 0) {
+            return "";
+        }
+
+        int fullWidth = this.measureTextWidth(fromText, fromFontSize);
+        if (fullWidth < 0) {
             int maximumCount = fromWidth / (fromFontSize * 2);
 
             return StringSubstr(fromText, 0, maximumCount);
         }
 
-        if ((int)textWidth <= fromWidth) {
+        if (fullWidth <= fromWidth) {
             return fromText;
         }
 
+        uint textWidth = 0;
+        uint textHeight = 0;
         if (!TextGetSize("…", textWidth, textHeight) || (int)textWidth > fromWidth) {
             return "";
         }
@@ -1661,6 +1876,8 @@ private:
         }
 
         this.removeObject(rowPrefix + "Column8");
+        this.removeObject(rowPrefix + "Column3Delta");
+        this.removeObject(rowPrefix + "Column4Delta");
         this.removeWaveParts("Row" + IntegerToString(fromRowIndex));
         for (int i = 9; i < 14; i++) {
             this.removeObject(rowPrefix + "Column" + IntegerToString(i));

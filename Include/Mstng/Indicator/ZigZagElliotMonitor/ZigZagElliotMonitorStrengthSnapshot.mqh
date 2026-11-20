@@ -134,6 +134,56 @@ public:
     }
 
     /**
+     * 現在順位と整合する直近の変化時点の増減を表示できるか判定する。
+     * 横ばいでは判定方向の根拠となった変化前後の順位差を使用する。
+     *
+     * @param fromLongMedium 長中期の場合true、中短期の場合false。
+     * @return 直近変化の前後順位差・時刻・方向が現在値と整合する場合true。
+     */
+    bool hasGapChange(const bool fromLongMedium) const {
+        int direction = this.getDirection(fromLongMedium);
+        if (direction == 0) {
+            return false;
+        }
+
+        CurrencyStrengthRankGapDirectionInfo gapInfo = this.longMediumGapDirection;
+        if (!fromLongMedium) {
+            gapInfo = this.mediumShortGapDirection;
+        }
+
+        if (!gapInfo.lastChangeAvailable || gapInfo.directionChangedAt <= 300
+                || gapInfo.directionChangedAt % 300 != 0
+                || gapInfo.lastChangeBeforeGap < -7 || gapInfo.lastChangeBeforeGap > 7
+                || gapInfo.lastChangeAfterGap < -7 || gapInfo.lastChangeAfterGap > 7
+                || gapInfo.lastChangeAfterGap != gapInfo.currentGap) {
+            return false;
+        }
+
+        int change = gapInfo.lastChangeAfterGap - gapInfo.lastChangeBeforeGap;
+
+        return (direction == 1 && change > 0) || (direction == -1 && change < 0);
+    }
+
+    /**
+     * 直近の変化時点における、変化後の順位差から変化前の順位差を引いた値を返す。
+     * 横ばいでも変化時の値を維持し、無効時の0はhasGapChangeで区別する。
+     *
+     * @param fromLongMedium 長中期の場合true、中短期の場合false。
+     * @return 直近変化の増減値。根拠が無効の場合0。
+     */
+    int getGapChange(const bool fromLongMedium) const {
+        if (!this.hasGapChange(fromLongMedium)) {
+            return 0;
+        }
+
+        if (fromLongMedium) {
+            return this.longMediumGapDirection.lastChangeAfterGap - this.longMediumGapDirection.lastChangeBeforeGap;
+        }
+
+        return this.mediumShortGapDirection.lastChangeAfterGap - this.mediumShortGapDirection.lastChangeBeforeGap;
+    }
+
+    /**
      * 現在順位と整合する増減情報をまだ取得できていないか判定する。
      * 過去履歴の欠損などで確定した方向不明は、取得待ちに含めない。
      *
