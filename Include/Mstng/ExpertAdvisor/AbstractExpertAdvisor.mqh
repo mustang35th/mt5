@@ -436,7 +436,7 @@ protected:
      */
     virtual void sendAlertMail() {
         ElliotAll *sourceAnalysis = this.getSourceElliotAll();
-        Mail::sendMail(sourceAnalysis, this.isSendMail);
+        Mail::sendMail(sourceAnalysis, this.isSendMail, this.isEntry);
     }
 
     /**
@@ -660,10 +660,7 @@ private:
         }
 
         // 増減条件も初回シグナルを数える前に確認し、同じ分析対象時刻だけを使う。
-        if (executionInfo.longMediumGapDirectionFilterEnabled
-                && (!executionInfo.longMediumGapDirection.enabled
-                    || executionInfo.longMediumGapDirection.targetM5BarTime != executionInfo.targetM5BarTime
-                    || !executionInfo.longMediumGapDirection.isMatched(this.isBuy))) {
+        if (!executionInfo.isLongMediumGapDirectionMatched(this.isBuy, this.marketContext.timeFrame == PERIOD_M1)) {
             return false;
         }
 

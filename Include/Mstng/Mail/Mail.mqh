@@ -23,9 +23,10 @@ public:
      *
      * @param fromElliotAll 解析結果を保持するインスタンス。
      * @param isSendMail 送信する場合true。
+     * @param fromIsEntry エントリー成立時の本文を生成する場合true。
      */
-    static void sendMail(ElliotAll *fromElliotAll, bool isSendMail = false) {
-        sendMail(fromElliotAll, isSendMail, NULL, PERIOD_CURRENT, "");
+    static void sendMail(ElliotAll *fromElliotAll, bool isSendMail = false, const bool fromIsEntry = false) {
+        sendMail(fromElliotAll, isSendMail, NULL, PERIOD_CURRENT, "", fromIsEntry);
     }
 
     /**
@@ -39,13 +40,15 @@ public:
      * @param fromJudgment 採用した補正分析。補正なしの場合はNULL。
      * @param fromCorrectionTimeFrame 補正したD1・H4・H1・M15のいずれか。補正なしはPERIOD_CURRENT。
      * @param fromAlertText 補正印を含むチャートと同じアラート文言。補正なしは空文字列。
+     * @param fromIsEntry エントリー成立時の本文を生成する場合true。
      */
     static void sendMail(
         ElliotAll *fromSource,
         bool fromIsSendMail,
         ElliotAll *fromJudgment,
         const ENUM_TIMEFRAMES fromCorrectionTimeFrame,
-        const string fromAlertText
+        const string fromAlertText,
+        const bool fromIsEntry = false
     ) {
         if (fromSource == NULL || fromSource.elliotCurrent == NULL) {
             Print(__FUNCTION__, " mail skipped: source analysis is unavailable.");
@@ -71,7 +74,7 @@ public:
             body = getCorrectionBody(fromSource, fromJudgment, fromCorrectionTimeFrame);
         } else {
             title = getTitle(fromSource);
-            body = getBody(fromSource);
+            body = getBody(fromSource, fromIsEntry);
         }
 
         ElliotAll *selectedAnalysis = fromSource;
@@ -249,10 +252,18 @@ private:
      * メール本文を生成する。
      *
      * @param fromElliotAll 解析結果を保持するインスタンス。
+     * @param fromIsEntry エントリーが成立した場合true。
      * @return メール本文文字列。
      */
-    static string getBody(ElliotAll *fromElliotAll) {
-        return getCommonBody(fromElliotAll) + getAnalysisBody(fromElliotAll);
+    static string getBody(ElliotAll *fromElliotAll, const bool fromIsEntry) {
+        string text = getCommonBody(fromElliotAll);
+        if (fromIsEntry && fromElliotAll.marketContext.timeFrame == PERIOD_M1
+                && fromElliotAll.isCurrencyStrengthEntryFilterEnabled
+                && fromElliotAll.currencyStrengthExecutionInfo.isM1LongMediumPullbackApplied(fromElliotAll.elliotCurrent.isBuy)) {
+            text += fromElliotAll.currencyStrengthExecutionInfo.longMediumGapDirection.getM1LongMediumPullbackText() + "\n\n";
+        }
+
+        return text + getAnalysisBody(fromElliotAll);
     }
 
     /**

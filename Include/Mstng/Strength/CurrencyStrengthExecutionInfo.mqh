@@ -208,6 +208,38 @@ struct CurrencyStrengthExecutionInfo {
     }
 
     /**
+     * M1の両期間モードで、現在順位と同じM5の長中期が逆行1の例外を満たすか確認する。
+     * 中短期の増減、波動など他の条件は呼び出し側で判定する。
+     */
+    bool isM1LongMediumPullbackApplied(const bool fromIsBuy) const {
+        return this.longMediumGapDirectionFilterEnabled && this.mediumShortGapDirectionFilterEnabled
+            && this.longMediumGapDirection.targetM5BarTime == this.targetM5BarTime
+            && this.longMediumGapDirection.isM1LongMediumPullbackAllowed(fromIsBuy)
+            && this.isExactM5Bar()
+            && this.longMediumGapDirection.currentGap == this.getLongMediumRankDifference();
+    }
+
+    /**
+     * 長中期の増減条件を確認する。M1の両期間モードでは逆行1の例外も適用する。
+     *
+     * @param fromIsBuy BUYの判定である場合true。
+     * @param fromAllowM1Pullback M1の長中期で逆行を許容する場合true。
+     */
+    bool isLongMediumGapDirectionMatched(const bool fromIsBuy, const bool fromAllowM1Pullback) const {
+        if (!this.longMediumGapDirectionFilterEnabled) {
+            return true;
+        }
+
+        if (!this.longMediumGapDirection.enabled
+                || this.longMediumGapDirection.targetM5BarTime != this.targetM5BarTime) {
+            return false;
+        }
+
+        return this.longMediumGapDirection.isMatched(fromIsBuy)
+            || (fromAllowM1Pullback && this.isM1LongMediumPullbackApplied(fromIsBuy));
+    }
+
+    /**
      * 長中期平均順位の通貨ペア差を取得する。
      *
      * @return 決済通貨順位から基軸通貨順位を引いた値。未取得の場合0。

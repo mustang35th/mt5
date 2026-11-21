@@ -83,6 +83,7 @@ public:
         this.measuredFontSize = 0;
         this.previousRowCount = 0;
         this.mouseMoveOwned = false;
+        this.detailView = false;
         this.targetMode = ZIGZAG_MONITOR_TARGET_GMO;
         this.gmoSymbols.setGmo();
         this.sortOrder.reset();
@@ -115,6 +116,7 @@ public:
         this.sortOrder.reset();
         this.targetMode = ZIGZAG_MONITOR_TARGET_GMO;
         this.initialized = true;
+        this.detailView = false;
         if (!this.enableMouseMove() || this.ensureObject("Panel", OBJ_RECTANGLE_LABEL) < 0) {
             this.destroy();
 
@@ -183,6 +185,13 @@ public:
 
         this.drawLabel("Title", this.contentLeft, this.panelTop + 11, this.titleWidth,
             this.bodyFontSize + 2, clrWhiteSmoke, title, "M1新バーごとに現行M1条件のエントリー判定を監視します。");
+        string viewText = "監視一覧";
+        if (this.detailView) {
+            viewText = "判定内訳";
+        }
+
+        this.drawButton("ViewButton", this.viewButtonLeft, this.buttonTop, this.buttonWidth,
+            viewText, C'42,75,116', "監視一覧と判定内訳を切り替えます。");
         this.drawButton("MonitorButton", this.monitorButtonLeft, this.buttonTop, this.buttonWidth,
             monitorText, monitorColor, "監視のON/OFF。OFF中は最後の判定を保持します。");
         this.drawButton("AutoButton", this.autoButtonLeft, this.buttonTop, this.buttonWidth,
@@ -417,6 +426,28 @@ public:
     }
 
     /**
+     * 表示切替だけを処理し、判定内訳で使用しない方向列を取り除く。
+     */
+    bool handleViewClick(const string fromObjectName) {
+        if (!this.initialized || fromObjectName != this.objectPrefix + "ViewButton") {
+            return false;
+        }
+
+        ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
+        this.detailView = !this.detailView;
+        if (this.detailView) {
+            for (int i = 11; i < 14; i++) {
+                this.removeObject(this.objectPrefix + "Header" + IntegerToString(i));
+                for (int j = 0; j < this.previousRowCount; j++) {
+                    this.removeObject(this.objectPrefix + "Row" + IntegerToString(j) + "Column" + IntegerToString(i));
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * 監視切り替えボタンのオブジェクト名を取得する。
      */
     string getMonitorButtonName() { return this.objectPrefix + "MonitorButton"; }
@@ -488,6 +519,9 @@ private:
     /** 最後に描画した監視対象。 */
     ENUM_ZIGZAG_MONITOR_TARGET targetMode;
 
+    /** 判定で使った値を1行に表示する場合true。 */
+    bool detailView;
+
     /** 2つの標準コンボに必要なマウス通知を自身が有効にした場合true。 */
     bool mouseMoveOwned;
 
@@ -524,6 +558,9 @@ private:
     /** タイトルの表示可能幅。 */
     int titleWidth;
 
+    /** 表示切替ボタンの左位置。 */
+    int viewButtonLeft;
+
     /** 監視ボタンの左位置。 */
     int monitorButtonLeft;
 
@@ -533,10 +570,10 @@ private:
     /** ENTRY優先切替ボタンの左位置。 */
     int entryPriorityButtonLeft;
 
-    /** 上部3ボタンの上位置。 */
+    /** 上部ボタンの上位置。 */
     int buttonTop;
 
-    /** 上部3ボタンの横幅。 */
+    /** 上部ボタンの横幅。 */
     int buttonWidth;
 
     /** 列見出しの上位置。 */
@@ -666,13 +703,15 @@ private:
         this.entryPriorityButtonLeft = this.contentLeft + this.contentWidth - this.buttonWidth;
         this.autoButtonLeft = this.entryPriorityButtonLeft - this.buttonWidth - 8;
         this.monitorButtonLeft = this.autoButtonLeft - this.buttonWidth - 8;
-        this.titleWidth = this.monitorButtonLeft - this.contentLeft - 12;
+        this.viewButtonLeft = this.monitorButtonLeft - this.buttonWidth - 8;
+        this.titleWidth = this.viewButtonLeft - this.contentLeft - 12;
         if (this.panelWidth < 760) {
             int buttonGap = (int)MathMin(8, this.contentWidth / 20);
-            this.buttonWidth = (int)MathMax(1, (this.contentWidth - buttonGap * 2) / 3);
+            this.buttonWidth = (int)MathMax(1, (this.contentWidth - buttonGap * 3) / 4);
             this.buttonTop = this.panelTop + 39;
-            this.monitorButtonLeft = this.contentLeft;
-            this.autoButtonLeft = this.contentLeft + this.buttonWidth + buttonGap;
+            this.viewButtonLeft = this.contentLeft;
+            this.monitorButtonLeft = this.viewButtonLeft + this.buttonWidth + buttonGap;
+            this.autoButtonLeft = this.monitorButtonLeft + this.buttonWidth + buttonGap;
             this.entryPriorityButtonLeft = this.autoButtonLeft + this.buttonWidth + buttonGap;
             this.titleWidth = this.contentWidth;
         }
@@ -697,6 +736,12 @@ private:
             this.footerTop - this.panelTop + 80);
         this.columnWidth[7] = (int)MathMin(this.contentWidth, MathMin(76, MathMax(40, this.contentWidth / 10)));
         int textWidth = this.contentWidth - this.columnWidth[7];
+        if (this.detailView) {
+            this.prepareDetailColumns(textWidth);
+
+            return;
+        }
+
         int directionBudget = (int)MathMin(textWidth, this.contentWidth * 28 / 100);
         int directionWidth = (int)MathMin(this.bodyFontSize * 6, directionBudget / 6);
         this.columnWidth[2] = directionWidth;
@@ -721,6 +766,26 @@ private:
             this.columnLeft[columnIndex] = nextLeft;
             nextLeft += this.columnWidth[columnIndex];
         }
+    }
+
+    /**
+     * 判定内訳の見出しと値に共通の列幅を設定する。操作ボタンは常に右端に置く。
+     */
+    void prepareDetailColumns(const int fromTextWidth) {
+        int displayOrder[10] = {0, 1, 2, 8, 3, 4, 9, 10, 6, 5};
+        int widths[10] = {9, 16, 10, 10, 12, 12, 7, 7, 8, 9};
+        int percent = 0;
+        int left = this.contentLeft;
+        for (int i = 0; i < ArraySize(displayOrder); i++) {
+            int column = displayOrder[i];
+            percent += widths[i];
+            int right = this.contentLeft + fromTextWidth * percent / 100;
+            this.columnLeft[column] = left;
+            this.columnWidth[column] = right - left;
+            left = right;
+        }
+
+        this.columnLeft[7] = left;
     }
 
     /**
@@ -821,12 +886,23 @@ private:
      */
     void drawColumnHeaders() {
         string titles[14] = {"通貨ペア [G]", "判定", "D1", "長中期", "中短期", "直近成立時刻 JST", "表示結果", "操作", "波動 M5/M1", "H4", "H1", "M15", "M5", "M1"};
+        int count = ArraySize(titles);
+        if (this.detailView) {
+            count = 11;
+            titles[1] = "判定・理由";
+            titles[2] = "方向";
+            titles[5] = "SP (pips)";
+            titles[6] = "M1 ZigZag";
+            titles[9] = "GMMA T";
+            titles[10] = "GMMA C";
+        }
+
         this.drawRectangle("Header", this.panelLeft + 1, this.headerTop - 4,
             (int)MathMax(1, this.panelWidth - 2), 27, C'31,39,50', C'31,39,50');
-        for (int i = 0; i < 14; i++) {
+        for (int i = 0; i < count; i++) {
             string labelSuffix = "Header" + IntegerToString(i);
             string buttonSuffix = "SortHeader" + IntegerToString(i);
-            if (i == 0 || i == 1 || i == 3 || i == 4 || i == 5) {
+            if (i == 0 || i == 1 || i == 3 || i == 4 || (!this.detailView && i == 5)) {
                 this.removeObject(this.objectPrefix + labelSuffix);
                 string title = titles[i];
                 color background = C'31,39,50';
@@ -846,7 +922,19 @@ private:
             } else {
                 this.removeObject(this.objectPrefix + buttonSuffix);
                 string tooltip = titles[i];
-                if (i == 2 || i >= 9) {
+                if (this.detailView) {
+                    if (i == 2) {
+                        tooltip = "M1判定に採用した売買方向と補正時間足。";
+                    } else if (i == 5) {
+                        tooltip = "判定時のスプレッド（pips）。上限は3 pipsです。";
+                    } else if (i == 6) {
+                        tooltip = "M1の最新ZigZagポイントが追加途中かを確認します。";
+                    } else if (i == 9) {
+                        tooltip = "M1 GMMAトレンドカウント。BUYは＋2以上、SELLは−2以下。";
+                    } else if (i == 10) {
+                        tooltip = "M1 GMMAクロスカウント。BUYは＋2以上、SELLは−2以下。";
+                    }
+                } else if (i == 2 || i >= 9) {
                     tooltip += "：補正前の元分析の売買方向です。BUYは水色、SELLはピンクです。"
                         + "\n補は、この足で方向補正が採用された印です。補正後の方向は行のツールチップで確認できます。"
                         + "\n前回M1・確認中の値は灰色で表示します。";
@@ -939,6 +1027,10 @@ private:
             statusText = fromState.result.shortMessage;
         }
 
+        if (this.detailView && fromState.result.details.reason != "") {
+            statusText = fromState.result.details.reason;
+        }
+
         bool active = fromProgress.activeSymbol != ""
             && (fromProgress.activeSymbol == fromState.canonicalSymbolName
                 || fromProgress.activeSymbol == fromState.symbolName);
@@ -963,6 +1055,38 @@ private:
             symbolText += " [G]";
         }
 
+        string tooltip = this.buildTooltip(fromState, fromProgress);
+        datetime currentM5BarTime = (datetime)((long)fromProgress.targetBarTime
+            - (long)fromProgress.targetBarTime % 300);
+        this.drawRectangle(rowPrefix + "Background", this.panelLeft + 1, rowTop - 1,
+            (int)MathMax(1, this.panelWidth - 2), this.rowHeight, rowColor, rowColor);
+        this.drawLabel(rowPrefix + "Column0", this.columnLeft[0], rowTop + 2,
+            this.columnWidth[0] - 5, this.bodyFontSize, clrWhiteSmoke, symbolText, tooltip);
+        this.drawLabel(rowPrefix + "Column1", this.columnLeft[1], rowTop + 2,
+            this.columnWidth[1] - 5, this.bodyFontSize, statusColor, statusText, tooltip);
+        bool fresh = !active && fromProgress.targetBarTime > 0 && fromState.result.barTime == fromProgress.targetBarTime;
+        if (this.detailView) {
+            this.drawEntryDetailCells(rowPrefix, rowTop + 2, fromState.result, fresh, tooltip);
+        } else {
+            this.drawDirectionCells(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
+            this.drawChartStatusCells(rowPrefix, rowTop + 2, fromState, tooltip);
+        }
+
+        this.drawWaveCell(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
+        this.drawStrengthCell(rowPrefix, rowTop + 2, fromState, active, true, currentM5BarTime, this.detailView && !fresh);
+        this.drawStrengthCell(rowPrefix, rowTop + 2, fromState, active, false, currentM5BarTime, this.detailView && !fresh);
+        this.drawButton("Open" + fromState.canonicalSymbolName, this.columnLeft[7], rowTop + 1,
+            (int)MathMax(1, this.columnWidth[7] - 5), "表示", C'42,75,116',
+            fromState.canonicalSymbolName + "のM1チャートを表示して前面へ移動します。"
+                + "\nエントリー成立・監視・自動表示のON/OFFに関係なく操作できます。",
+            this.rowHeight - 3);
+    }
+
+    /**
+     * 監視一覧の直近成立時刻と直近のチャート表示結果を描画する。
+     */
+    void drawChartStatusCells(const string fromRowPrefix, const int fromTop,
+            ZigZagElliotMonitorSymbolState *fromState, const string fromTooltip) {
         string chartText = fromState.chartStatus;
         if (chartText == "") {
             chartText = "—";
@@ -979,29 +1103,116 @@ private:
             }
         }
 
-        string tooltip = this.buildTooltip(fromState, fromProgress);
-        datetime currentM5BarTime = (datetime)((long)fromProgress.targetBarTime
-            - (long)fromProgress.targetBarTime % 300);
-        this.drawRectangle(rowPrefix + "Background", this.panelLeft + 1, rowTop - 1,
-            (int)MathMax(1, this.panelWidth - 2), this.rowHeight, rowColor, rowColor);
-        this.drawLabel(rowPrefix + "Column0", this.columnLeft[0], rowTop + 2,
-            this.columnWidth[0] - 5, this.bodyFontSize, clrWhiteSmoke, symbolText, tooltip);
-        this.drawLabel(rowPrefix + "Column1", this.columnLeft[1], rowTop + 2,
-            this.columnWidth[1] - 5, this.bodyFontSize, statusColor, statusText, tooltip);
-        this.drawDirectionCells(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
-        this.drawWaveCell(rowPrefix, rowTop + 2, fromState, active, fromProgress.targetBarTime);
-        this.drawStrengthCell(rowPrefix, rowTop + 2, fromState, active, true, currentM5BarTime);
-        this.drawStrengthCell(rowPrefix, rowTop + 2, fromState, active, false, currentM5BarTime);
-        this.drawLabel(rowPrefix + "Column5", this.columnLeft[5], rowTop + 2,
+        this.drawLabel(fromRowPrefix + "Column5", this.columnLeft[5], fromTop,
             this.columnWidth[5] - 5, this.bodyFontSize, entryTimeColor,
-            this.formatJapanTime(fromState.lastEntryTime), tooltip);
-        this.drawLabel(rowPrefix + "Column6", this.columnLeft[6], rowTop + 2,
-            this.columnWidth[6] - 5, this.bodyFontSize, C'201,211,222', chartText, tooltip);
-        this.drawButton("Open" + fromState.canonicalSymbolName, this.columnLeft[7], rowTop + 1,
-            (int)MathMax(1, this.columnWidth[7] - 5), "表示", C'42,75,116',
-            fromState.canonicalSymbolName + "のM1チャートを表示して前面へ移動します。"
-                + "\nエントリー成立・監視・自動表示のON/OFFに関係なく操作できます。",
-            this.rowHeight - 3);
+            this.formatJapanTime(fromState.lastEntryTime), fromTooltip);
+        this.drawLabel(fromRowPrefix + "Column6", this.columnLeft[6], fromTop,
+            this.columnWidth[6] - 5, this.bodyFontSize, C'201,211,222', chartText, fromTooltip);
+    }
+
+    /**
+     * 採用した方向と、戦略の評価が到達したM1条件の値を描画する。
+     */
+    void drawEntryDetailCells(const string fromRowPrefix, const int fromTop,
+            const ZigZagElliotMonitorResult &fromResult, const bool fromFresh, const string fromTooltip) {
+        string direction = "—";
+        color directionColor = C'119,132,148';
+        if (fromResult.waves.adopted) {
+            direction = "SELL";
+            if (fromResult.isBuy) {
+                direction = "BUY";
+            }
+
+            if (fromResult.waves.correctionTimeFrame != PERIOD_CURRENT) {
+                string correction = EnumToString(fromResult.waves.correctionTimeFrame);
+                StringReplace(correction, "PERIOD_", "");
+                direction += "（" + correction + "補正）";
+            }
+
+            if (fromFresh) {
+                directionColor = clrHotPink;
+                if (fromResult.isBuy) {
+                    directionColor = clrAqua;
+                }
+            }
+        }
+
+        this.drawLabel(fromRowPrefix + "Column2", this.columnLeft[2], fromTop,
+            this.columnWidth[2] - 5, this.bodyFontSize, directionColor, direction,
+            this.getDetailDirectionTooltip(fromResult.directions, direction) + "\n" + fromTooltip);
+
+        this.drawEntryValue(fromRowPrefix, 9, fromTop, fromFresh,
+            fromResult.details.gmmaTrendEvaluated(), fromResult.details.gmmaTrendMatched(),
+            this.formatRankGap(fromResult.details.gmmaTrendCount),
+            "M1 GMMAトレンド（BUYは＋2以上、SELLは−2以下）", fromTooltip);
+        this.drawEntryValue(fromRowPrefix, 10, fromTop, fromFresh,
+            fromResult.details.gmmaCrossEvaluated(), fromResult.details.gmmaCrossMatched(),
+            this.formatRankGap(fromResult.details.gmmaCrossCount),
+            "M1 GMMAクロス（BUYは＋2以上、SELLは−2以下）", fromTooltip);
+
+        string zigZagText = "追加中";
+        if (fromResult.details.zigZagMatched()) {
+            zigZagText = "確定";
+        }
+
+        this.drawEntryValue(fromRowPrefix, 6, fromTop, fromFresh,
+            fromResult.details.zigZagEvaluated(), fromResult.details.zigZagMatched(), zigZagText,
+            "M1の最新ZigZagポイント", fromTooltip);
+        this.drawEntryValue(fromRowPrefix, 5, fromTop, fromFresh,
+            fromResult.details.spreadEvaluated(), fromResult.details.spreadMatched(),
+            DoubleToString(fromResult.details.spreadPips, 1), "判定時のスプレッド（上限3 pips）", fromTooltip);
+    }
+
+    /**
+     * 判定内訳の方向セルに、採用方向と各時間足の元方向を表示する。
+     */
+    string getDetailDirectionTooltip(const ZigZagElliotMonitorDirectionSnapshot &fromDirections,
+            const string fromDirectionText) {
+        string tooltip = "採用した方向：" + fromDirectionText;
+        if (!fromDirections.analyzed) {
+            return tooltip + "\n元方向：未分析";
+        }
+
+        for (int i = 0; i < ArraySize(fromDirections.items); i++) {
+            string periodText = EnumToString(fromDirections.items[i].timeFrame);
+            StringReplace(periodText, "PERIOD_", "");
+            string text = "—";
+            if (fromDirections.items[i].available) {
+                text = "SELL";
+                if (fromDirections.items[i].isBuy) {
+                    text = "BUY";
+                }
+            }
+
+            tooltip += "\n" + periodText + " 元方向：" + text;
+        }
+
+        return tooltip;
+    }
+
+    /**
+     * 未評価をダッシュで示し、現在足で実際に評価して未達だった値を強調する。
+     */
+    void drawEntryValue(const string fromRowPrefix, const int fromColumn, const int fromTop,
+            const bool fromFresh, const bool fromEvaluated, const bool fromMatched, const string fromValue,
+            const string fromDescription, const string fromTooltip) {
+        string text = "—";
+        string detail = "未評価";
+        color valueColor = C'119,132,148';
+        if (fromEvaluated) {
+            text = fromValue;
+            detail = text;
+            if (fromFresh) {
+                valueColor = clrWhiteSmoke;
+                if (!fromMatched) {
+                    valueColor = clrOrange;
+                }
+            }
+        }
+
+        this.drawLabel(fromRowPrefix + "Column" + IntegerToString(fromColumn), this.columnLeft[fromColumn],
+            fromTop, this.columnWidth[fromColumn] - 5, this.bodyFontSize, valueColor, text,
+            fromDescription + "：" + detail + "\n" + fromTooltip);
     }
 
     /**
@@ -1121,6 +1332,10 @@ private:
         int cellWidth = (int)MathMax(0, this.columnWidth[8] - 5);
         string tooltip = this.getWaveTooltip(fromState, fromActive, fromCurrentM1BarTime);
         string fullText = this.getWaveCellText(fromState.result.waves);
+        if (this.detailView && !fromState.result.waves.analyzed) {
+            fullText = "—";
+        }
+
         bool fresh = !fromActive && fromCurrentM1BarTime > 0
             && fromState.result.waves.targetM1BarTime == fromCurrentM1BarTime;
         if (!fromState.result.waves.analyzed || !fromState.result.waves.adopted
@@ -1292,7 +1507,7 @@ private:
      */
     void drawStrengthCell(const string fromRowPrefix, const int fromTop,
             ZigZagElliotMonitorSymbolState *fromState, const bool fromActive,
-            const bool fromLongMedium, const datetime fromCurrentM5BarTime) {
+            const bool fromLongMedium, const datetime fromCurrentM5BarTime, const bool fromPreviousEvaluation) {
         int columnIndex = 3;
         if (!fromLongMedium) {
             columnIndex = 4;
@@ -1303,6 +1518,21 @@ private:
         string text = this.getStrengthText(fromState.result.strength, fromLongMedium, fromCurrentM5BarTime);
         string tooltip = this.getStrengthTooltip(fromState.result.strength, fromState.canonicalSymbolName,
             fromActive, fromLongMedium, fromCurrentM5BarTime);
+        string changeText = this.getStrengthChangeText(fromState.result.strength, fromLongMedium);
+        bool showPullback = fromState.result.status == ZIGZAG_MONITOR_ENTRY;
+        if (this.detailView) {
+            showPullback = fromState.result.details.longMediumPullback && !fromPreviousEvaluation;
+        }
+
+        if (fromLongMedium && !fromActive && showPullback
+                && fromState.result.strength.targetM5BarTime == fromCurrentM5BarTime
+                && (this.detailView || fromState.result.strength.longMediumGapDirection.isM1LongMediumPullbackAllowed(fromState.result.isBuy))) {
+            tooltip = fromState.result.strength.longMediumGapDirection.getM1LongMediumPullbackText() + "\n" + tooltip;
+            if (this.detailView) {
+                changeText += "※";
+            }
+        }
+
         int rankWidth = cellWidth;
         int changeWidth = 0;
         if (fromState.result.strength.hasRanks(fromLongMedium)) {
@@ -1313,14 +1543,17 @@ private:
             }
         }
 
-        this.drawLabel(suffix, this.columnLeft[columnIndex], fromTop, rankWidth,
-            this.bodyFontSize, this.getStrengthColor(fromState.result.strength, fromLongMedium,
-                fromCurrentM5BarTime), text, tooltip);
+        color rankColor = this.getStrengthColor(fromState.result.strength, fromLongMedium, fromCurrentM5BarTime);
+        color changeColor = this.getStrengthChangeColor(fromState.result.strength, fromLongMedium, fromCurrentM5BarTime);
+        if (fromPreviousEvaluation) {
+            rankColor = C'119,132,148';
+            changeColor = C'119,132,148';
+        }
+
+        this.drawLabel(suffix, this.columnLeft[columnIndex], fromTop, rankWidth, this.bodyFontSize, rankColor, text, tooltip);
         if (changeWidth > 0) {
             this.drawLabel(suffix + "Delta", this.columnLeft[columnIndex] + rankWidth,
-                fromTop, changeWidth, this.bodyFontSize,
-                this.getStrengthChangeColor(fromState.result.strength, fromLongMedium, fromCurrentM5BarTime),
-                this.getStrengthChangeText(fromState.result.strength, fromLongMedium), tooltip);
+                fromTop, changeWidth, this.bodyFontSize, changeColor, changeText, tooltip);
         } else {
             this.removeObject(this.objectPrefix + suffix + "Delta");
         }
@@ -1523,8 +1756,18 @@ private:
      */
     string buildTooltip(ZigZagElliotMonitorSymbolState *fromState,
             const ZigZagElliotMonitorProgress &fromProgress) {
-        string text = fromState.canonicalSymbolName + " / " + fromState.symbolName
-            + "\n現在の対象M1：" + this.formatServerTime(fromProgress.targetBarTime) + " SRV"
+        string text = fromState.canonicalSymbolName + " / " + fromState.symbolName;
+        if (this.detailView) {
+            if (fromState.result.details.reason != "") {
+                text += "\n判定内訳：" + fromState.result.details.reason;
+            }
+
+            if (fromState.result.details.signalCount > 0) {
+                text += "\n同一シグナルの確認回数：" + IntegerToString(fromState.result.details.signalCount);
+            }
+        }
+
+        text += "\n現在の対象M1：" + this.formatServerTime(fromProgress.targetBarTime) + " SRV"
             + "\n直近の確認対象M1：" + this.formatServerTime(fromState.lastAttemptBarTime) + " SRV"
             + "\n判定：" + fromState.result.message
             + "\nM1判定足：" + this.formatServerTime(fromState.result.barTime) + " SRV"

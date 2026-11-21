@@ -199,7 +199,7 @@ public:
             ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
             this.autoOpen = !this.autoOpen;
             this.updateView();
-        } else if (this.view.handleSortClick(fromObjectName)) {
+        } else if (this.view.handleViewClick(fromObjectName) || this.view.handleSortClick(fromObjectName)) {
             this.updateView(false);
         } else {
             this.openManualChart(fromObjectName);

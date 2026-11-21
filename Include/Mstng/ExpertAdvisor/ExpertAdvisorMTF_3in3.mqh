@@ -90,6 +90,13 @@ public:
     }
 
     /**
+     * 直近のanalyze()で最初に未達となったシグナル条件、未評価または全通過を返す。
+     */
+    Mtf3In3JudgeStep getJudgeStep() const {
+        return this.judgeStep;
+    }
+
+    /**
      * 直近のMTF_3in3アラート判定結果を取得する。
      *
      * @return analyze()で確定したアラートおよびエントリー判定結果。
@@ -221,6 +228,7 @@ protected:
      * W1確認診断を今回の分析用の未判定状態へ初期化する。
      */
     virtual void resetStrategySpecificAnalysisOutcome() override {
+        this.judgeStep = MTF3IN3_JUDGE_NOT_EVALUATED;
         this.resetTimeFrameDirectionAlignmentResult();
         this.resetTimeFrameHigherConfirmationResult();
     }
@@ -233,47 +241,9 @@ protected:
     bool isJudge() {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
-        bool isJudge = false;
-        
-        if (1 == 1
-                && this.isSpread()
-                
-                && this.isBuy == this.isUptrend
-                
-                //&& this.expertAdvisorElliot.isSameTrend(this.elliotHigher1, this.isUptrend)
-                
-                //&& this.expertAdvisorElliot.isBuySell(this.elliotHigher1, this.isBuy)
-                
-                //&& this.isBuySell()
-                
-                //&& this.expertAdvisorElliot.isBuySellFromH4(this.elliotAll, this.isBuy)
-                //&& this.expertAdvisorElliot.isBuySellFromH1(this.elliotAll, this.isBuy)
+        this.judgeStep = this.evaluateJudgeStep();
+        bool isJudge = this.judgeStep == MTF3IN3_JUDGE_PASSED;
 
-                && this.isTimeFrameAnalysisDirectionConditionMatched()
-
-                && this.isTimeFrameDirectionAlignmentConditionMatched()
-
-                //&& this.expertAdvisorElliot.isWaveUnconfirmed(this.elliotH1)
-
-                && this.isTimeFrameZigZagConfirmedConditionMatched()
-                
-                && this.isTimeFrameWaveConditionMatched()
-                
-                //&& this.expertAdvisorOscillator.isGmmaTrend_1(this.elliotHigher1, this.isBuy)
-                
-                && this.expertAdvisorOscillator.isGmmaTrend_2(this.elliotCurrent, this.isBuy)
-                && this.expertAdvisorOscillator.isGmmaCross_2(this.elliotCurrent, this.isBuy)
-                
-                && this.isTimeFrameEma200ConditionMatched()
-
-                && this.isTimeFrameHigherConfirmationConditionMatched()
-                
-                //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher2, this.elliotHigher1)
-                //&& this.expertAdvisorEma200.isEma200CurrentAndHigher(this.elliotHigher1, this.elliotCurrent)
-        ) {            
-            isJudge = true;
-        }
-        
         if (this.logger.isDebugOutputEnabled()) {
             this.logger.debug(__FUNCTION__, StringFormat("isJudge = %s", (string)isJudge));
         }
@@ -594,6 +564,57 @@ protected:
     
     
 private:
+    /** 最後に実行した共通シグナル判定の停止位置。 */
+    Mtf3In3JudgeStep judgeStep;
+
+    /**
+     * シグナル条件を順に評価し、初めて不通過になった位置で終了する。
+     * 各条件は一度だけ呼び、評価されなかった条件の状態は更新しない。
+     */
+    Mtf3In3JudgeStep evaluateJudgeStep() {
+        if (!this.isSpread()) {
+            return MTF3IN3_JUDGE_SPREAD;
+        }
+
+        if (this.isBuy != this.isUptrend) {
+            return MTF3IN3_JUDGE_WAVE_DIRECTION;
+        }
+
+        if (!this.isTimeFrameAnalysisDirectionConditionMatched()) {
+            return MTF3IN3_JUDGE_ANALYSIS_DIRECTION;
+        }
+
+        if (!this.isTimeFrameDirectionAlignmentConditionMatched()) {
+            return MTF3IN3_JUDGE_DIRECTION_ALIGNMENT;
+        }
+
+        if (!this.isTimeFrameZigZagConfirmedConditionMatched()) {
+            return MTF3IN3_JUDGE_ZIGZAG;
+        }
+
+        if (!this.isTimeFrameWaveConditionMatched()) {
+            return MTF3IN3_JUDGE_WAVE;
+        }
+
+        if (!this.expertAdvisorOscillator.isGmmaTrend_2(this.elliotCurrent, this.isBuy)) {
+            return MTF3IN3_JUDGE_GMMA_TREND;
+        }
+
+        if (!this.expertAdvisorOscillator.isGmmaCross_2(this.elliotCurrent, this.isBuy)) {
+            return MTF3IN3_JUDGE_GMMA_CROSS;
+        }
+
+        if (!this.isTimeFrameEma200ConditionMatched()) {
+            return MTF3IN3_JUDGE_EMA200;
+        }
+
+        if (!this.isTimeFrameHigherConfirmationConditionMatched()) {
+            return MTF3IN3_JUDGE_HIGHER_CONFIRMATION;
+        }
+
+        return MTF3IN3_JUDGE_PASSED;
+    }
+
     /**
      * チャート用に、変更がある場合だけ再カウント前の主波ラベルを併記する。
      *
@@ -661,6 +682,7 @@ private:
         this.h1DirectionAlignmentMode = fromH1DirectionAlignmentMode;
         this.h1Ema200ConfirmationMode = fromH1Ema200ConfirmationMode;
         this.h1W1ConfirmationMode = fromH1W1ConfirmationMode;
+        this.judgeStep = MTF3IN3_JUDGE_NOT_EVALUATED;
         this.h1DirectionAlignmentResult.reset();
         this.w1ConfirmationResult.reset();
         this.isDarwText = true;

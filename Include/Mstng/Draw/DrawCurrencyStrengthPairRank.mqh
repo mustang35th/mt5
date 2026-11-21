@@ -1307,6 +1307,13 @@ private:
 
         string tooltip = "通貨強弱のみの判定（順位差基準4）。";
         bool currentRanks = fromInfo.targetM5BarTime > 0 && fromInfo.isExactM5Bar();
+        if (this.decisionChartPeriod == PERIOD_M1 && directionAligned
+                && fromInfo.isM1LongMediumPullbackApplied(longMediumDifference > 0)
+                && fromInfo.mediumShortGapDirection.targetM5BarTime == fromInfo.targetM5BarTime
+                && fromInfo.mediumShortGapDirection.enabled && fromInfo.mediumShortGapDirection.isMatched(longMediumDifference > 0)) {
+            tooltip += "\nM1の通貨強弱条件：" + fromInfo.longMediumGapDirection.getM1LongMediumPullbackText();
+        }
+
         if (!currentRanks) {
             tooltip += "\n対象M5時刻と一致する順位を未取得のため、READY／WATCHは判定しません。"
                 + "\n以下は表示中の順位による参考情報です。";

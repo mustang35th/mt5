@@ -625,6 +625,11 @@ private:
         fromEntity.alertText = normalizeText(fromAlertText);
         if (executionInfo.longMediumGapDirectionFilterEnabled) {
             fromEntity.alertText += "\n\n" + executionInfo.longMediumGapDirection.getTooltip();
+            if (fromResult.isEntry && fromElliotAll.marketContext.timeFrame == PERIOD_M1
+                    && fromElliotAll.isCurrencyStrengthEntryFilterEnabled
+                    && executionInfo.isM1LongMediumPullbackApplied(fromResult.isBuy)) {
+                fromEntity.alertText += "\n" + executionInfo.longMediumGapDirection.getM1LongMediumPullbackText();
+            }
         }
 
         if (executionInfo.mediumShortGapDirectionFilterEnabled) {

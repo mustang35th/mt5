@@ -1,6 +1,12 @@
-﻿#property copyright "Copyright 2026, MetaQuotes Ltd."
+﻿//+------------------------------------------------------------------+
+//|                                          ZigZagElliotMonitor.mq5 |
+//|                                  Copyright 2026, MetaQuotes Ltd. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+// 複数通貨ペアのM1エントリーを監視し、自動表示がONなら成立したペアのチャートを開く。
+#property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
-#property version "1.18"
+#property version "1.20"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots 1

@@ -28,13 +28,13 @@ struct CurrencyStrengthRankGapDirectionInfo {
     /** 直前M5時刻の選択集計期間の順位差。 */
     int previousGap;
 
-    /** 直近のゼロでない変化の前後値を表示用に保持している場合true。 */
+    /** 直近のゼロでない変化の前後値を保持している場合true。 */
     bool lastChangeAvailable;
 
-    /** directionChangedAtの変化直前の順位差。表示用で判定には使用しない。 */
+    /** directionChangedAtの変化直前の順位差。 */
     int lastChangeBeforeGap;
 
-    /** directionChangedAtの変化直後の順位差。表示用で判定には使用しない。 */
+    /** directionChangedAtの変化直後の順位差。 */
     int lastChangeAfterGap;
 
     /** 判定対象となるM5開始時刻。 */
@@ -82,6 +82,47 @@ struct CurrencyStrengthRankGapDirectionInfo {
         }
 
         return this.currentGap < 0 && this.direction == -1;
+    }
+
+    /**
+     * 現在順位と整合する、最後に順位差が変わったM5の増減を返す。
+     * 横ばいの間はその変化を保持し、根拠がない場合は0を返す。
+     */
+    int getLastGapChange() const {
+        if (!this.enabled || this.waiting || !this.currentAvailable || !this.hasPrevious
+                || !this.lastChangeAvailable || this.targetM5BarTime % 300 != 0
+                || this.directionChangedAt <= 300 || this.directionChangedAt > this.targetM5BarTime
+                || this.directionChangedAt % 300 != 0 || this.lastChangeAfterGap != this.currentGap
+                || this.lastChangeBeforeGap < -7 || this.lastChangeBeforeGap > 7
+                || this.lastChangeAfterGap < -7 || this.lastChangeAfterGap > 7) {
+            return 0;
+        }
+
+        int change = this.lastChangeAfterGap - this.lastChangeBeforeGap;
+        if ((this.direction == 1 && change > 0) || (this.direction == -1 && change < 0)) {
+            return change;
+        }
+
+        return 0;
+    }
+
+    /**
+     * M1の長中期で、売買方向の順位差が4以上残った直近1順位の逆行を許容する。
+     */
+    bool isM1LongMediumPullbackAllowed(const bool fromIsBuy) const {
+        if (fromIsBuy) {
+            return this.currentGap >= 4 && this.getLastGapChange() == -1;
+        }
+
+        return this.currentGap <= -4 && this.getLastGapChange() == 1;
+    }
+
+    /**
+     * M1の長中期で逆行1を許容した理由を、判定に使用した前後の順位差で示す。
+     */
+    string getM1LongMediumPullbackText() const {
+        return StringFormat("長中期は逆行1を許容（%+d → %+d）",
+            this.lastChangeBeforeGap, this.lastChangeAfterGap);
     }
 
     /**

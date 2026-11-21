@@ -141,27 +141,7 @@ public:
      * @return 直近変化の前後順位差・時刻・方向が現在値と整合する場合true。
      */
     bool hasGapChange(const bool fromLongMedium) const {
-        int direction = this.getDirection(fromLongMedium);
-        if (direction == 0) {
-            return false;
-        }
-
-        CurrencyStrengthRankGapDirectionInfo gapInfo = this.longMediumGapDirection;
-        if (!fromLongMedium) {
-            gapInfo = this.mediumShortGapDirection;
-        }
-
-        if (!gapInfo.lastChangeAvailable || gapInfo.directionChangedAt <= 300
-                || gapInfo.directionChangedAt % 300 != 0
-                || gapInfo.lastChangeBeforeGap < -7 || gapInfo.lastChangeBeforeGap > 7
-                || gapInfo.lastChangeAfterGap < -7 || gapInfo.lastChangeAfterGap > 7
-                || gapInfo.lastChangeAfterGap != gapInfo.currentGap) {
-            return false;
-        }
-
-        int change = gapInfo.lastChangeAfterGap - gapInfo.lastChangeBeforeGap;
-
-        return (direction == 1 && change > 0) || (direction == -1 && change < 0);
+        return this.getGapChange(fromLongMedium) != 0;
     }
 
     /**
@@ -172,15 +152,15 @@ public:
      * @return 直近変化の増減値。根拠が無効の場合0。
      */
     int getGapChange(const bool fromLongMedium) const {
-        if (!this.hasGapChange(fromLongMedium)) {
+        if (this.isGapWaiting(fromLongMedium)) {
             return 0;
         }
 
         if (fromLongMedium) {
-            return this.longMediumGapDirection.lastChangeAfterGap - this.longMediumGapDirection.lastChangeBeforeGap;
+            return this.longMediumGapDirection.getLastGapChange();
         }
 
-        return this.mediumShortGapDirection.lastChangeAfterGap - this.mediumShortGapDirection.lastChangeBeforeGap;
+        return this.mediumShortGapDirection.getLastGapChange();
     }
 
     /**

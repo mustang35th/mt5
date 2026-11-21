@@ -504,6 +504,9 @@ private:
             || fromCurrent.direction != fromPrevious.direction
             || fromCurrent.currentGap != fromPrevious.currentGap
             || fromCurrent.previousGap != fromPrevious.previousGap
+            || fromCurrent.lastChangeAvailable != fromPrevious.lastChangeAvailable
+            || fromCurrent.lastChangeBeforeGap != fromPrevious.lastChangeBeforeGap
+            || fromCurrent.lastChangeAfterGap != fromPrevious.lastChangeAfterGap
             || fromCurrent.targetM5BarTime != fromPrevious.targetM5BarTime
             || fromCurrent.directionChangedAt != fromPrevious.directionChangedAt;
     }

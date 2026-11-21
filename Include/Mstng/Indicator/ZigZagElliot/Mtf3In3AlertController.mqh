@@ -560,7 +560,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "2.80";
+            this.databaseRun.programVersion = "2.81";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
@@ -604,7 +604,7 @@ private:
         if (this.marketContext.timeFrame == PERIOD_M1
                 && this.config.isMediumShortGapDirectionEnabled(this.marketContext.timeFrame)) {
             if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
-                this.databaseRun.strategyVersion += "_BOTH_GAP_CARRY_V36";
+                this.databaseRun.strategyVersion += "_BOTH_GAP_LM_PULLBACK_V37";
             } else {
                 this.databaseRun.strategyVersion += "_MS_GAP_CARRY_V36";
             }
@@ -657,6 +657,10 @@ private:
             inputText += "|m1CurrencyStrengthCondition=BOTH_DIRECTION_AND_MINIMUM_GAP_1";
             inputText += "|m1CurrencyStrengthGapDirectionMode="
                 + IntegerToString((int)this.config.m1CurrencyStrengthGapDirectionMode);
+            if (this.config.isLongMediumGapDirectionEnabled(PERIOD_M1)) {
+                inputText += "|m1LongMediumPullback=MIN_GAP_4_LAST_ADVERSE_CHANGE_1";
+            }
+
             inputText += "|m1DirectionCorrectionEnabled="
                 + (string)this.config.m1DirectionCorrectionEnabled;
             if (this.config.m1DirectionCorrectionEnabled) {

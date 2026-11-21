@@ -143,13 +143,7 @@ public:
             return this.finish(fromState, fromResult);
         }
 
-        bool buyStrengthMatched = executionInfo.isDirectionAligned(true)
-            && executionInfo.longMediumGapDirection.isMatched(true)
-            && executionInfo.mediumShortGapDirection.isMatched(true);
-        bool sellStrengthMatched = executionInfo.isDirectionAligned(false)
-            && executionInfo.longMediumGapDirection.isMatched(false)
-            && executionInfo.mediumShortGapDirection.isMatched(false);
-        if (!buyStrengthMatched && !sellStrengthMatched) {
+        if (!fromResult.details.checkStrength(executionInfo)) {
             fromResult.status = ZIGZAG_MONITOR_NOT_MATCHED;
             fromResult.completed = true;
             fromResult.message = "通貨強弱・両期間増減の条件未達";
@@ -531,6 +525,8 @@ private:
                 fromResult.waves.capture(strategy.getJudgmentElliotAll(), fromResult.barTime,
                     strategy.getCorrectionTimeFrame());
 
+                fromResult.details.capture(strategy.getJudgmentElliotAll(), strategy.getJudgeStep(),
+                    fromExecutionInfo.isDirectionAligned(signalIsBuy));
                 fromResult.signalTime = signalTime;
                 fromResult.isBuy = signalIsBuy;
                 fromResult.status = ZIGZAG_MONITOR_NOT_MATCHED;
@@ -539,6 +535,7 @@ private:
                 fromResult.shortMessage = "M1未達";
                 if (alertResult.isJudge) {
                     int signalCount = fromState.signalCount.addCount(signalTime, signalIsBuy);
+                    fromResult.details.signalCount = signalCount;
                     if (signalCount == 1 && alertResult.isEntry) {
                         fromResult.status = ZIGZAG_MONITOR_ENTRY;
                         fromResult.message = strategy.getJudgmentAlertText();
