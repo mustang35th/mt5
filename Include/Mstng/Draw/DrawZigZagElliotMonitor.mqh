@@ -102,9 +102,11 @@ public:
      * @param fromChartId 描画対象チャート。0は現在のチャート。
      * @param fromPrefix 他の描画と重複しない40文字以内の接頭辞。
      * @param fromFontSize 一覧の基準フォントサイズ。
+     * @param fromTerminalDisplayName 監視パネルに表示する端末名。空欄なら省略する。
      * @return パネルを作成できた場合true。
      */
-    bool initialize(const long fromChartId, const string fromPrefix, const int fromFontSize) {
+    bool initialize(const long fromChartId, const string fromPrefix, const int fromFontSize,
+            const string fromTerminalDisplayName = "") {
         if (fromPrefix == "" || StringLen(fromPrefix) > 40 || fromChartId < 0) {
             return false;
         }
@@ -112,6 +114,13 @@ public:
         this.destroy();
         this.chartId = fromChartId;
         this.objectPrefix = fromPrefix;
+        this.titlePrefix = fromTerminalDisplayName;
+        StringTrimLeft(this.titlePrefix);
+        StringTrimRight(this.titlePrefix);
+        if (this.titlePrefix != "") {
+            this.titlePrefix = "【" + this.titlePrefix + "】 ";
+        }
+
         this.requestedFontSize = (int)MathMax(6, MathMin(16, fromFontSize));
         this.sortOrder.reset();
         this.targetMode = ZIGZAG_MONITOR_TARGET_GMO;
@@ -159,7 +168,7 @@ public:
         this.drawRectangle("Panel", this.panelLeft, this.panelTop, this.panelWidth,
             this.panelHeight, C'12,15,20', C'65,74,88');
 
-        string title = "通貨監視 " + ZigZagElliotMonitorTarget::getLabel(this.targetMode)
+        string title = this.titlePrefix + "通貨監視 " + ZigZagElliotMonitorTarget::getLabel(this.targetMode)
             + StringFormat(" / 対象%d / M1", stateCount);
 
         string monitorText = "監視：OFF";
@@ -184,7 +193,7 @@ public:
         }
 
         this.drawLabel("Title", this.contentLeft, this.panelTop + 11, this.titleWidth,
-            this.bodyFontSize + 2, clrWhiteSmoke, title, "M1新バーごとに現行M1条件のエントリー判定を監視します。");
+            this.bodyFontSize + 2, clrWhiteSmoke, title, title + "\nM1新バーごとに現行M1条件のエントリー判定を監視します。");
         string viewText = "監視一覧";
         if (this.detailView) {
             viewText = "判定内訳";
@@ -495,6 +504,9 @@ private:
     /** 他の描画と共有しないオブジェクト名接頭辞。 */
     string objectPrefix;
 
+    /** 端末表示名を設定したときにタイトルへ付ける「【端末名】 」。 */
+    string titlePrefix;
+
     /** initializeに成功している場合true。 */
     bool initialized;
 
@@ -596,6 +608,9 @@ private:
 
     /** チャートの高さ内へ表示できる行数。 */
     int visibleRowCount;
+
+    /** 両方の表示で通貨ペアの左側に確保する行番号列の横幅。 */
+    int rowNumberWidth;
 
     /** 既存列IDを維持した14列それぞれの左位置。 */
     int columnLeft[14];
@@ -734,15 +749,18 @@ private:
         this.footerTop = this.rowsTop + (int)MathMax(1, this.visibleRowCount) * this.rowHeight + 12;
         this.panelHeight = (int)MathMin(chartHeight - this.panelTop,
             this.footerTop - this.panelTop + 80);
-        this.columnWidth[7] = (int)MathMin(this.contentWidth, MathMin(76, MathMax(40, this.contentWidth / 10)));
-        int textWidth = this.contentWidth - this.columnWidth[7];
+        this.rowNumberWidth = (int)MathMin(this.bodyFontSize * 3 + 5, this.contentWidth / 10);
+        int dataLeft = this.contentLeft + this.rowNumberWidth;
+        int dataWidth = this.contentWidth - this.rowNumberWidth;
+        this.columnWidth[7] = (int)MathMin(dataWidth, MathMin(76, MathMax(40, dataWidth / 10)));
+        int textWidth = dataWidth - this.columnWidth[7];
         if (this.detailView) {
-            this.prepareDetailColumns(textWidth);
+            this.prepareDetailColumns(dataLeft, textWidth);
 
             return;
         }
 
-        int directionBudget = (int)MathMin(textWidth, this.contentWidth * 28 / 100);
+        int directionBudget = (int)MathMin(textWidth, dataWidth * 28 / 100);
         int directionWidth = (int)MathMin(this.bodyFontSize * 6, directionBudget / 6);
         this.columnWidth[2] = directionWidth;
         for (int i = 9; i < 14; i++) {
@@ -760,7 +778,7 @@ private:
         this.columnWidth[6] = textWidth - this.columnWidth[0] - this.columnWidth[1]
             - this.columnWidth[3] - this.columnWidth[4] - this.columnWidth[5];
         int displayOrder[14] = {0, 1, 2, 9, 10, 11, 12, 13, 8, 3, 4, 5, 6, 7};
-        int nextLeft = this.contentLeft;
+        int nextLeft = dataLeft;
         for (int i = 0; i < 14; i++) {
             int columnIndex = displayOrder[i];
             this.columnLeft[columnIndex] = nextLeft;
@@ -771,15 +789,15 @@ private:
     /**
      * 判定内訳の見出しと値に共通の列幅を設定する。操作ボタンは常に右端に置く。
      */
-    void prepareDetailColumns(const int fromTextWidth) {
+    void prepareDetailColumns(const int fromLeft, const int fromTextWidth) {
         int displayOrder[10] = {0, 1, 2, 8, 3, 4, 9, 10, 6, 5};
         int widths[10] = {9, 16, 10, 10, 12, 12, 7, 7, 8, 9};
         int percent = 0;
-        int left = this.contentLeft;
+        int left = fromLeft;
         for (int i = 0; i < ArraySize(displayOrder); i++) {
             int column = displayOrder[i];
             percent += widths[i];
-            int right = this.contentLeft + fromTextWidth * percent / 100;
+            int right = fromLeft + fromTextWidth * percent / 100;
             this.columnLeft[column] = left;
             this.columnWidth[column] = right - left;
             left = right;
@@ -899,6 +917,8 @@ private:
 
         this.drawRectangle("Header", this.panelLeft + 1, this.headerTop - 4,
             (int)MathMax(1, this.panelWidth - 2), 27, C'31,39,50', C'31,39,50');
+        this.drawLabel("HeaderNo", this.contentLeft, this.headerTop, this.rowNumberWidth - 5,
+            this.bodyFontSize, C'179,193,210', "NO", "現在の表示順で上から付けた行番号です。");
         for (int i = 0; i < count; i++) {
             string labelSuffix = "Header" + IntegerToString(i);
             string buttonSuffix = "SortHeader" + IntegerToString(i);
@@ -1060,6 +1080,8 @@ private:
             - (long)fromProgress.targetBarTime % 300);
         this.drawRectangle(rowPrefix + "Background", this.panelLeft + 1, rowTop - 1,
             (int)MathMax(1, this.panelWidth - 2), this.rowHeight, rowColor, rowColor);
+        this.drawLabel(rowPrefix + "No", this.contentLeft, rowTop + 2, this.rowNumberWidth - 5,
+            this.bodyFontSize, C'158,170,185', IntegerToString(fromRowIndex + 1), tooltip);
         this.drawLabel(rowPrefix + "Column0", this.columnLeft[0], rowTop + 2,
             this.columnWidth[0] - 5, this.bodyFontSize, clrWhiteSmoke, symbolText, tooltip);
         this.drawLabel(rowPrefix + "Column1", this.columnLeft[1], rowTop + 2,
@@ -2114,6 +2136,7 @@ private:
     void removeRow(const int fromRowIndex) {
         string rowPrefix = this.objectPrefix + "Row" + IntegerToString(fromRowIndex);
         this.removeObject(rowPrefix + "Background");
+        this.removeObject(rowPrefix + "No");
         for (int i = 0; i < 7; i++) {
             this.removeObject(rowPrefix + "Column" + IntegerToString(i));
         }

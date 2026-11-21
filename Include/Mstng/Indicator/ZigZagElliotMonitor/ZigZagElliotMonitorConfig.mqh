@@ -37,6 +37,9 @@ public:
     /** 一覧文字のフォントサイズ。 */
     int fontSize;
 
+    /** 監視パネルのタイトル先頭に表示する端末名。 */
+    string terminalDisplayName;
+
     /** 既存のM1判定と通貨強弱取得に使用する設定。 */
     ZigZagElliotConfig entryConfig;
 
@@ -53,6 +56,7 @@ public:
         this.bringToFront = true;
         this.retrySeconds = 5;
         this.fontSize = 10;
+        this.terminalDisplayName = "";
         this.entryConfig.m1DirectionCorrectionEnabled = true;
         this.entryConfig.currencyStrengthEnabled = true;
         this.entryConfig.currencyStrengthEntryFilterEnabled = true;

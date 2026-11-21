@@ -6,7 +6,7 @@
 // 複数通貨ペアのM1エントリーを監視し、新規成立を通知する。自動表示がONならそのペアのチャートを開く。
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
-#property version "1.21"
+#property version "1.23"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots 1
@@ -40,6 +40,9 @@ input(name="投票方式") CurrencyStrengthVoteWeightMode currencyStrengthVoteWe
 input(name="DBファイル名") string currencyStrengthDatabaseFileName = "mstng-currency-strength.sqlite";
 input(name="年別DBを使用") bool currencyStrengthDatabaseSplitByYear = true;
 input(name="Commonフォルダを使用") bool currencyStrengthDatabaseUseCommonFolder = true;
+
+input group "03. パネル表示"
+input(name="端末表示名") string terminalDisplayName = "";
 
 /** 非表示バッファ。 */
 double monitorHiddenBuffer[];
@@ -80,6 +83,7 @@ int OnInit() {
     config.templateName = chartTemplateName;
     config.bringToFront = bringToFront;
     config.fontSize = monitorFontSize;
+    config.terminalDisplayName = terminalDisplayName;
     config.entryConfig.currencyStrengthDatabaseProfile = currencyStrengthDatabaseProfile;
     config.entryConfig.currencyStrengthVoteWeightMode = currencyStrengthVoteWeightMode;
     config.entryConfig.currencyStrengthDatabaseFileName = currencyStrengthDatabaseFileName;

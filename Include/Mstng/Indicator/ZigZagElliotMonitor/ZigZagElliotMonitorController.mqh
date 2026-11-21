@@ -61,7 +61,8 @@ public:
         this.prefix = "ZzeMon" + (string)this.chartId + "-" + (string)GetTickCount() + "-";
         if (!this.buildTargets() || !this.evaluator.initialize(this.config)
                 || !this.chartManager.initialize(this.chartId, this.config)
-                || !this.view.initialize(this.chartId, this.prefix, this.config.fontSize)) {
+                || !this.view.initialize(this.chartId, this.prefix, this.config.fontSize,
+                    this.config.terminalDisplayName)) {
             this.destroy();
 
             return false;
