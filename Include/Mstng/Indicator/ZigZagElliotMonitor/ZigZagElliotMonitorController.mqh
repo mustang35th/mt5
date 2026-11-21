@@ -8,6 +8,7 @@
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorEvaluationObserver.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorEvaluator.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorNotification.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorProgress.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorSymbolState.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorTarget.mqh>
@@ -120,6 +121,10 @@ public:
 
                     // チャート起動の前に確認中を解除し、確定した判定と処理時間を表示する。
                     this.updateView(false);
+                    bool isGmo = this.targetSelector.isSelected(state.canonicalSymbolName, ZIGZAG_MONITOR_TARGET_GMO);
+                    ZigZagElliotMonitorNotification::notify(this.config.entryNotificationMode,
+                        state.canonicalSymbolName, isGmo, result);
+
                     if (!this.autoOpen) {
                         state.chartStatus = "自動表示OFF";
                     } else {

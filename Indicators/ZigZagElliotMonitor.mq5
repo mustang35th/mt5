@@ -3,10 +3,10 @@
 //|                                  Copyright 2026, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
-// 複数通貨ペアのM1エントリーを監視し、自動表示がONなら成立したペアのチャートを開く。
+// 複数通貨ペアのM1エントリーを監視し、新規成立を通知する。自動表示がONならそのペアのチャートを開く。
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
-#property version "1.20"
+#property version "1.21"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots 1
@@ -15,6 +15,7 @@
 
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorController.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorNotification.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorTarget.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Util\Util.mqh>
@@ -22,6 +23,7 @@
 input group "01. 通貨ペア・M1監視"
 input(name="起動時の監視対象") ENUM_ZIGZAG_MONITOR_TARGET monitorTargetMode = ZIGZAG_MONITOR_TARGET_GMO;
 input(name="監視を開始") bool monitoringEnabled = true;
+input(name="ENTRY通知") ENUM_ZIGZAG_MONITOR_NOTIFY entryNotificationMode = ZIGZAG_MONITOR_NOTIFY_POPUP;
 input(name="成立時にチャートを自動表示") bool autoOpenEnabled = true;
 input(name="チャート表示の最大枚数（手動・自動）") int maxOpenCharts = 18;
 input(name="新規チャートのテンプレート（空欄=適用なし）")
@@ -72,6 +74,7 @@ int OnInit() {
     ZigZagElliotMonitorConfig config;
     config.targetMode = monitorTargetMode;
     config.monitoringEnabled = monitoringEnabled;
+    config.entryNotificationMode = entryNotificationMode;
     config.autoOpenEnabled = autoOpenEnabled;
     config.maxOpenCharts = maxOpenCharts;
     config.templateName = chartTemplateName;

@@ -2,6 +2,7 @@
 #define MSTNG_ZIGZAG_ELLIOT_MONITOR_CONFIG_MQH
 
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
+#include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorNotification.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorTarget.mqh>
 
 /**
@@ -14,6 +15,9 @@ public:
 
     /** 起動時から監視を実行する場合true。 */
     bool monitoringEnabled;
+
+    /** 新規M1エントリーの通知方法。 */
+    ENUM_ZIGZAG_MONITOR_NOTIFY entryNotificationMode;
 
     /** 新規成立時にチャートを自動表示する場合true。 */
     bool autoOpenEnabled;
@@ -42,6 +46,7 @@ public:
     ZigZagElliotMonitorConfig() {
         this.targetMode = ZIGZAG_MONITOR_TARGET_GMO;
         this.monitoringEnabled = true;
+        this.entryNotificationMode = ZIGZAG_MONITOR_NOTIFY_POPUP;
         this.autoOpenEnabled = true;
         this.maxOpenCharts = 18;
         this.templateName = "";
