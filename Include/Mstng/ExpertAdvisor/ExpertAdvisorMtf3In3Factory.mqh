@@ -46,7 +46,7 @@ public:
      * @param fromM5CurrencyStrengthMinimumRankDifference 通常版M5で両期間の各OR判定に使用する最低順位差。
      * @param fromM15CurrencyEma200DistanceEnabled M15で通貨別EMA200距離上限を使用する場合true。
      * @param fromM15LongMediumCurrencyStrengthEnabled M15の通貨強弱を長中期の順位差2以上または方向に合う1位・8位で判定する場合true。
-     * @param fromM1M5AndM1WavePolicyEnabled M1でM5・M1の主波1・3とEMA200条件なしの専用条件を使用する場合true。
+     * @param fromM1M5AndM1WavePolicyEnabled M1でM5の主波1・3とM1の主波1・3・条件付き5を用いる専用条件を使用する場合true。
      * @param fromM1DirectionCorrectionEnabled M1専用条件でH4・H1・M15の逆方向1足を補正する場合true。
      * @return 呼び出し側が所有するMTF_3in3判定クラス。
      */

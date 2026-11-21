@@ -560,15 +560,15 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "2.81";
+            this.databaseRun.programVersion = "2.82";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_M1) {
-            this.databaseRun.strategyVersion = "MTF3IN3_M1_M5_M1_WAVES13_NO_EMA200_V34";
+            this.databaseRun.strategyVersion = "MTF3IN3_M1_CONDITIONAL_WAVE5_V38";
             if (this.config.m1DirectionCorrectionEnabled) {
-                this.databaseRun.strategyVersion = "MTF3IN3_M1_CORRECTED_WAVES_NO_EMA200_V35";
+                this.databaseRun.strategyVersion += "_CORRECTED";
             }
         }
 
@@ -604,9 +604,9 @@ private:
         if (this.marketContext.timeFrame == PERIOD_M1
                 && this.config.isMediumShortGapDirectionEnabled(this.marketContext.timeFrame)) {
             if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
-                this.databaseRun.strategyVersion += "_BOTH_GAP_LM_PULLBACK_V37";
+                this.databaseRun.strategyVersion += "_BOTH_GAP_LM_PULLBACK";
             } else {
-                this.databaseRun.strategyVersion += "_MS_GAP_CARRY_V36";
+                this.databaseRun.strategyVersion += "_MS_GAP_CARRY";
             }
         } else if (this.config.isLongMediumGapDirectionEnabled(this.marketContext.timeFrame)) {
             this.databaseRun.strategyVersion += "_LM_GAP_CARRY_V31";
@@ -651,7 +651,7 @@ private:
         inputText += "|h1DirectionCorrectionEnabled="
             + (string)this.config.h1DirectionCorrectionEnabled;
         if (this.marketContext.timeFrame == PERIOD_M1) {
-            inputText += "|m1MainWaveCondition=M5_1_OR_3_AND_M1_1_OR_3";
+            inputText += "|m1MainWaveCondition=M5_1_OR_3_AND_M1_1_OR_3_OR_5_WITHOUT_WAVE3_SUB";
             inputText += "|m1Ema200DirectionPolicy=NONE";
             inputText += "|m1Ema200DistancePolicy=NONE";
             inputText += "|m1CurrencyStrengthCondition=BOTH_DIRECTION_AND_MINIMUM_GAP_1";

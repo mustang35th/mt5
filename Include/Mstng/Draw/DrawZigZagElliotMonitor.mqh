@@ -1076,6 +1076,14 @@ private:
         }
 
         string tooltip = this.buildTooltip(fromState, fromProgress);
+        bool fresh = !active && fromProgress.targetBarTime > 0 && fromState.result.barTime == fromProgress.targetBarTime;
+        if (this.detailView && fresh && fromState.result.details.judgeStep > MTF3IN3_JUDGE_WAVE
+                && fromState.result.waves.m1.mainLabel == "5") {
+            string waveReason = "M1 第5波（第3波に副次波なし）";
+            statusText += " / " + waveReason;
+            tooltip = waveReason + "\n" + tooltip;
+        }
+
         datetime currentM5BarTime = (datetime)((long)fromProgress.targetBarTime
             - (long)fromProgress.targetBarTime % 300);
         this.drawRectangle(rowPrefix + "Background", this.panelLeft + 1, rowTop - 1,
@@ -1086,7 +1094,6 @@ private:
             this.columnWidth[0] - 5, this.bodyFontSize, clrWhiteSmoke, symbolText, tooltip);
         this.drawLabel(rowPrefix + "Column1", this.columnLeft[1], rowTop + 2,
             this.columnWidth[1] - 5, this.bodyFontSize, statusColor, statusText, tooltip);
-        bool fresh = !active && fromProgress.targetBarTime > 0 && fromState.result.barTime == fromProgress.targetBarTime;
         if (this.detailView) {
             this.drawEntryDetailCells(rowPrefix, rowTop + 2, fromState.result, fresh, tooltip);
         } else {

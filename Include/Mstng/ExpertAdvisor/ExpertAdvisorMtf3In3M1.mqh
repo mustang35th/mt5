@@ -10,10 +10,11 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_M1_MQH
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
+#include <Mstng\ExpertAdvisor\H1EntryWaveDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3HigherTimeFrameDecision.mqh>
 
 /**
- * M1エントリーの波動番号をM5・M1の第1波または第3波で判定する。
+ * M5の第1・3波を必須とし、M1の第1・3波または条件付き第5波でエントリーを判定する。
  *
  * M15の波動番号は制限せず、EMA200の方向・距離をエントリー条件に使用しない。
  * 方向補正が有効な場合はD1・M5・M1の元方向一致を必須とし、
@@ -181,18 +182,31 @@ protected:
     }
 
     /**
-     * M5・M1の最新主波がそれぞれ第1波または第3波か判定する。
+     * 採用したM5が第1・3波で、M1がエントリー対象の主波か判定する。
      *
      * @return 両時間足が波動番号条件を満たす場合true。
      */
     virtual bool isTimeFrameWaveConditionMatched() override {
-        if (this.elliotM5 == NULL || this.elliotM1 == NULL
-                || this.elliotM5.getLatestPoint() == NULL || this.elliotM1.getLatestPoint() == NULL) {
+        if (this.elliotM5 == NULL || this.elliotM5.marketContext.timeFrame != PERIOD_M5
+                || this.elliotM5.getLatestPoint() == NULL) {
             return false;
         }
 
-        return this.isEntryWave(this.elliotM5)
+        return ExpertAdvisorMTF_3in3::isEntryWave(this.elliotM5)
             && this.isEntryWave(this.elliotM1);
+    }
+
+    /**
+     * M1は第1・3波と、同じ推進波内の第3波に副次波がない第5波を許可する。
+     *
+     * @param fromElliot 判定に採用したM1分析。
+     * @return M1の主波がエントリー対象の場合true。
+     */
+    virtual bool isEntryWave(Elliot *fromElliot) override {
+        H1EntryWaveDecision decision;
+        H1EntryWaveResult result;
+
+        return decision.evaluate(fromElliot, PERIOD_M1, result);
     }
 
     /**
