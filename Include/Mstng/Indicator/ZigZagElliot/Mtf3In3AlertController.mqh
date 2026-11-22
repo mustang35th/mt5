@@ -29,6 +29,20 @@
 #include <Mstng\Util\Util.mqh>
 
 /**
+ * 今回のM1アラート判定からチャート背景へ渡す表示状態。
+ */
+struct M1EntryBackgroundResult {
+    /** 買い方向の場合true。 */
+    bool isBuy;
+
+    /** ZigZag確定またはGMMAの成立を待つ場合true。 */
+    bool isPreparing;
+
+    /** 今回のM1足に新規ENTRYが発生した場合true。 */
+    bool isEntry;
+};
+
+/**
  * MTF_3in3アラート判定、シグナル回数および検証CSVを管理するクラス。
  */
 class Mtf3In3AlertController {
@@ -128,28 +142,31 @@ public:
      * MTF_3in3アラートを分析し、必要に応じて検証CSVを出力する。
      *
      * @param fromElliotAll Elliott分析結果
+     * @param fromShowM1Background M1の背景を表示する場合true。
+     * @return 同じ判定で決まったM1の背景表示状態。
      */
-    void execute(ElliotAll *fromElliotAll) {
+    M1EntryBackgroundResult execute(ElliotAll *fromElliotAll, const bool fromShowM1Background = false) {
+        M1EntryBackgroundResult background = {};
         if (
             fromElliotAll == NULL
             || this.expertAdvisorMtf3In3 == NULL
             || this.signalCount == NULL
         ) {
-            return;
+            return background;
         }
 
         if (this.marketContext.timeFrame > PERIOD_H1) {
-            return;
+            return background;
         }
 
         if (!fromElliotAll.isAnalysisSucceeded || fromElliotAll.elliotCurrent == NULL) {
-            return;
+            return background;
         }
 
         ZigZagPoint *sourceSignalPoint = fromElliotAll.elliotCurrent.getLatestPoint2();
         if (sourceSignalPoint == NULL || !this.restoreAlertSignalCount(
                 sourceSignalPoint.barTime, fromElliotAll.elliotCurrent.isBuy)) {
-            return;
+            return background;
         }
 
         this.expertAdvisorMtf3In3.analyze(fromElliotAll, this.signalCount);
@@ -182,11 +199,22 @@ public:
         }
 
         if (!this.expertAdvisorMtf3In3.isAlert) {
-            return;
+            if (fromShowM1Background) {
+                int direction = this.expertAdvisorMtf3In3.getM1BackgroundPreparationDirection();
+                background.isPreparing = direction != 0;
+                background.isBuy = direction > 0;
+            }
+
+            return background;
         }
 
         Mtf3In3AlertResult alertResult =
             this.expertAdvisorMtf3In3.getAlertResult();
+
+        if (fromShowM1Background) {
+            background.isEntry = alertResult.isEntry;
+            background.isBuy = alertResult.isBuy;
+        }
 
         if (this.config.entryVerticalLineEnabled && alertResult.isEntry) {
             if (!DrawZigZagElliotEntryLines::draw(this.marketContext,
@@ -279,6 +307,8 @@ public:
                 );
             }
         }
+
+        return background;
     }
 
     /**
@@ -560,7 +590,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "2.82";
+            this.databaseRun.programVersion = "2.83";
         }
 
         this.databaseRun.strategy = "MTF_3in3";

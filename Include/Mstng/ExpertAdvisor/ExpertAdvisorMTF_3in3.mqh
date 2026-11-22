@@ -97,6 +97,15 @@ public:
     }
 
     /**
+     * 今回のM1エントリー判定で背景を準備色にする方向を取得する。
+     *
+     * @return BUYは1、SELLは-1、準備対象外は0。
+     */
+    virtual int getM1BackgroundPreparationDirection() {
+        return 0;
+    }
+
+    /**
      * 直近のMTF_3in3アラート判定結果を取得する。
      *
      * @return analyze()で確定したアラートおよびエントリー判定結果。

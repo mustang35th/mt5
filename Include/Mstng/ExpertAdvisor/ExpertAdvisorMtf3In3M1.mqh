@@ -63,6 +63,42 @@ public:
     }
 
     /**
+     * 確定待ちのZigZagまたはGMMAだけが準備色の対象か、今回の判定結果から確認する。
+     * 回数管理はエントリー判定と同じ元分析の基準時刻・方向を参照する。
+     *
+     * @return 未消費のBUYは1、SELLは-1、準備対象外は0。
+     */
+    virtual int getM1BackgroundPreparationDirection() override {
+        Mtf3In3JudgeStep step = this.getJudgeStep();
+        if (step != MTF3IN3_JUDGE_ZIGZAG && step != MTF3IN3_JUDGE_GMMA_TREND
+                && step != MTF3IN3_JUDGE_GMMA_CROSS) {
+            return 0;
+        }
+
+        // ZigZagで止まった場合だけ、まだ評価されていないM5・M1の波動を確認する。
+        if (step == MTF3IN3_JUDGE_ZIGZAG && !this.isTimeFrameWaveConditionMatched()) {
+            return 0;
+        }
+
+        ElliotAll *sourceAnalysis = this.getSourceElliotAll();
+        if (sourceAnalysis == NULL || sourceAnalysis.elliotCurrent == NULL || this.analysisSignalCount == NULL) {
+            return 0;
+        }
+
+        ZigZagPoint *point = sourceAnalysis.elliotCurrent.getLatestPoint2();
+        if (point == NULL || point.barTime <= 0 || this.analysisSignalCount.getCount(
+                point.barTime, sourceAnalysis.elliotCurrent.isBuy) >= this.entryCountResult) {
+            return 0;
+        }
+
+        if (this.isBuy) {
+            return 1;
+        }
+
+        return -1;
+    }
+
+    /**
      * 方向条件通過後の補正分析だけが準備できなかった状態を返す。
      * 次のanalyze()開始時に初期化し、通常の方向不一致ではtrueにしない。
      *

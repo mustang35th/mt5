@@ -1328,7 +1328,12 @@ private:
         this.logger.debug(__FUNCTION__, "exec EA!!!");
 
         if (this.alertController != NULL) {
-            this.alertController.execute(elliotAll);
+            bool showM1Background = this.chartController != NULL && this.chartController.isM1EntryBackgroundEnabled();
+            M1EntryBackgroundResult background = this.alertController.execute(elliotAll, showM1Background);
+            if (showM1Background && elliotAll != NULL && elliotAll.elliotCurrent != NULL) {
+                this.chartController.updateM1EntryBackground(elliotAll.elliotCurrent.currentOhlcBarTime,
+                    background.isBuy, background.isPreparing, background.isEntry);
+            }
         }
 
         this.lastProcessedBarTime = currentBarTime;

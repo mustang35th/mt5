@@ -34,6 +34,13 @@ public:
     }
 
     /**
+     * 登録済みのシグナル検出回数を返す。
+     */
+    int getCount() const {
+        return this.count;
+    }
+
+    /**
      * シグナル検出回数を加算する。
      *
      * @return 加算後の検出回数。

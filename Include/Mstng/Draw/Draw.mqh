@@ -117,13 +117,15 @@ public:
      * @param fromClampElliotVertical Elliottラベルを上下端へ収める場合true
      * @param fromSimpleElliotInfo Elliott情報を簡易表示する場合true
      * @param fromElliotHigherTimeFrameDisplayCount 波動ラベルを表示する上位時間足数
+     * @param fromDrawBackground 共通の背景判定を描画する場合true
      */
     void drawAll(
         ElliotAll *fromElliotAll,
         bool fromIsElliotInfoVisible = true,
         bool fromClampElliotVertical = false,
         bool fromSimpleElliotInfo = false,
-        int fromElliotHigherTimeFrameDisplayCount = 2
+        int fromElliotHigherTimeFrameDisplayCount = 2,
+        bool fromDrawBackground = true
     ) {
         LogUtil::printMethodStart(this.logger, __FUNCTION__);
         
@@ -188,7 +190,9 @@ public:
         
         //this.drawMarketActivityAnalyzer();
         
-        this.drawBgColor();
+        if (fromDrawBackground) {
+            this.drawBgColor();
+        }
         
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
     }

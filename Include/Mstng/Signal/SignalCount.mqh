@@ -64,6 +64,20 @@ public:
     }
 
     /**
+     * 指定した時刻・方向のシグナル回数を取得する。
+     *
+     * @return 現在の検出回数。未登録の場合は0。
+     */
+    int getCount(const datetime fromTime, const bool fromIsBuy) {
+        SignalInfo *signalInfo = this.getSignalInfo(fromTime, fromIsBuy);
+        if (signalInfo == NULL) {
+            return 0;
+        }
+
+        return signalInfo.getCount();
+    }
+
+    /**
      * 指定シグナルの検出回数を加算する。
      *
      * 同じ時刻と売買方向のSignalInfoがない場合は新規作成する。

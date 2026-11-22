@@ -37,6 +37,9 @@ public:
      */
     ElliotChartController() {
         this.slowTimingEnabled = false;
+        this.m1EntryBackgroundEnabled = false;
+        this.m1EntryBackgroundBarTime = 0;
+        this.m1EntryBackgroundColor = clrNONE;
         this.gmmaIndicator = NULL;
         this.ema200Indicator = NULL;
         this.japanTimeAxisView = NULL;
@@ -79,8 +82,16 @@ public:
             return false;
         }
 
-        this.slowTimingEnabled = !Util::isStrategyTester();
+        bool isTester = Util::isStrategyTester();
+        this.slowTimingEnabled = !isTester;
         this.marketContext = fromMarketContext;
+        this.m1EntryBackgroundEnabled = this.marketContext.timeFrame == PERIOD_M1
+            && MQLInfoString(MQL_PROGRAM_NAME) == "ZigZagElliot"
+            && (!isTester || MQLInfoInteger(MQL_VISUAL_MODE));
+        if (this.m1EntryBackgroundEnabled) {
+            this.setM1EntryBackgroundColor(0, clrBlack);
+        }
+
         this.logger.setLevel(LOG_INFO);
         this.logger.setMarketContext(this.marketContext);
         this.elliotHigherTimeFrameDisplayCount =
@@ -160,6 +171,7 @@ public:
      */
     void updateOnCalculate(bool fromTimerMode, int fromPrevCalculated = 0,
             int fromRatesTotal = 0, datetime fromCurrentBarTime = 0) {
+        this.expireM1EntryBackground(fromCurrentBarTime);
         if (fromTimerMode && fromPrevCalculated == 0) {
             this.timeAxisFullUpdatePending = true;
         }
@@ -193,6 +205,7 @@ public:
      * @param fromTimerMode タイマー実行の場合true
      */
     void updateOnTimer(bool fromTimerMode) {
+        this.expireM1EntryBackground();
         if (this.japanTimeAxisView != NULL) {
             const ulong fullUpdateIntervalMilliseconds = 60000;
             ulong currentTick = GetTickCount64();
@@ -341,6 +354,55 @@ public:
     }
 
     /**
+     * 通常版M1で、エントリー判定の背景色を画面に表示する場合true。
+     */
+    bool isM1EntryBackgroundEnabled() const {
+        return this.m1EntryBackgroundEnabled;
+    }
+
+    /**
+     * 採用したM1判定を現在足の背景へ反映する。成立色はその足が終わるまで保持する。
+     *
+     * @param fromBarTime 判定対象M1足の開始時刻。
+     * @param fromIsBuy BUY方向の場合true。
+     * @param fromIsPreparing ZigZag確定またはGMMA待ちの場合true。
+     * @param fromIsEntry 新規ENTRYが成立した場合true。
+     */
+    void updateM1EntryBackground(const datetime fromBarTime, const bool fromIsBuy,
+            const bool fromIsPreparing, const bool fromIsEntry) {
+        if (!this.m1EntryBackgroundEnabled) {
+            return;
+        }
+
+        datetime currentBarTime = iTime(this.marketContext.symbolName, PERIOD_M1, 0);
+        if (fromBarTime <= 0 || fromBarTime != currentBarTime) {
+            this.expireM1EntryBackground(currentBarTime);
+
+            return;
+        }
+
+        if (this.m1EntryBackgroundBarTime == fromBarTime
+                && (this.m1EntryBackgroundColor == clrMidnightBlue || this.m1EntryBackgroundColor == clrMaroon)) {
+            return;
+        }
+
+        color backgroundColor = clrBlack;
+        if (fromIsEntry) {
+            backgroundColor = clrMaroon;
+            if (fromIsBuy) {
+                backgroundColor = clrMidnightBlue;
+            }
+        } else if (fromIsPreparing) {
+            backgroundColor = C'64,0,0';
+            if (fromIsBuy) {
+                backgroundColor = C'12,12,56';
+            }
+        }
+
+        this.setM1EntryBackgroundColor(fromBarTime, backgroundColor);
+    }
+
+    /**
      * 分析結果に合わせて上下FITを更新し、チャート全体を描画する。
      *
      * @param fromElliotAll Elliott分析結果
@@ -358,7 +420,8 @@ public:
             this.elliotInfoVisible,
             this.isVerticalFitLabelClampEnabled(),
             this.elliotInfoSimple,
-            this.elliotHigherTimeFrameDisplayCount
+            this.elliotHigherTimeFrameDisplayCount,
+            !this.m1EntryBackgroundEnabled
         );
         this.updateHorizontalView(this.getHorizontalViewKey());
     }
@@ -504,6 +567,13 @@ public:
      * 表示オブジェクト、補助表示および上下FITを解放する。
      */
     void destroy() {
+        if (this.m1EntryBackgroundEnabled) {
+            this.setM1EntryBackgroundColor(0, clrBlack);
+            this.m1EntryBackgroundEnabled = false;
+        }
+
+        this.m1EntryBackgroundColor = clrNONE;
+        this.m1EntryBackgroundBarTime = 0;
         this.slowTimingEnabled = false;
         this.slowOperationTimes.reset();
         this.draw.clearInfoLabels();
@@ -558,6 +628,15 @@ private:
     /** 通常チャートで遅延診断を記録する場合true。 */
     bool slowTimingEnabled;
 
+    /** 通常版M1でエントリー判定に連動して背景を管理する場合true。 */
+    bool m1EntryBackgroundEnabled;
+
+    /** 最後に背景を設定した判定対象M1足の開始時刻。 */
+    datetime m1EntryBackgroundBarTime;
+
+    /** 直近でチャートに設定したM1背景色。 */
+    color m1EntryBackgroundColor;
+
     /** 未出力の遅延件数・最大経過時間。 */
     SlowOperationTimingStats slowOperationTimes;
 
@@ -605,6 +684,38 @@ private:
 
     /** 初回上下FITの適用待ちの場合true。 */
     bool initialVerticalFitPending;
+
+    /**
+     * 新足に切り替わったら、次の判定を待つ間の背景を黒に戻す。
+     */
+    void expireM1EntryBackground(datetime fromCurrentBarTime = 0) {
+        if (!this.m1EntryBackgroundEnabled || this.m1EntryBackgroundColor == clrBlack) {
+            return;
+        }
+
+        if (fromCurrentBarTime == 0) {
+            fromCurrentBarTime = iTime(this.marketContext.symbolName, PERIOD_M1, 0);
+        }
+
+        if (this.m1EntryBackgroundBarTime != fromCurrentBarTime || this.m1EntryBackgroundColor == clrNONE) {
+            this.setM1EntryBackgroundColor(0, clrBlack);
+        }
+    }
+
+    /**
+     * 対象時刻を更新し、色が変わった場合だけチャートへ反映する。
+     */
+    void setM1EntryBackgroundColor(const datetime fromBarTime, const color fromColor) {
+        if (this.m1EntryBackgroundColor != fromColor) {
+            if (!ChartSetInteger(0, CHART_COLOR_BACKGROUND, fromColor)) {
+                return;
+            }
+
+            this.m1EntryBackgroundColor = fromColor;
+        }
+
+        this.m1EntryBackgroundBarTime = fromBarTime;
+    }
 
     /**
      * 横方向の表示条件が変わった場合だけ、取得済みEMAの文字位置を更新する。
@@ -942,7 +1053,8 @@ private:
             this.elliotInfoVisible,
             this.isVerticalFitLabelClampEnabled(),
             this.elliotInfoSimple,
-            this.elliotHigherTimeFrameDisplayCount
+            this.elliotHigherTimeFrameDisplayCount,
+            !this.m1EntryBackgroundEnabled
         );
         this.updateHorizontalView(this.getHorizontalViewKey());
     }
