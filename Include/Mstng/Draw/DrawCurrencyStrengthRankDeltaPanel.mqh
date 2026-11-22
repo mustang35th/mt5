@@ -10,6 +10,7 @@
 #ifndef MSTNG_DRAW_CURRENCY_STRENGTH_RANK_DELTA_PANEL_MQH
 #define MSTNG_DRAW_CURRENCY_STRENGTH_RANK_DELTA_PANEL_MQH
 
+#include <Controls\Rect.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\ChartRedrawRequest.mqh>
 
@@ -68,6 +69,49 @@ public:
         }
 
         return succeeded;
+    }
+
+    /**
+     * 描画済みの各行と再読込ボタンの占有矩形をサブ画面内の座標で返す。
+     * 呼び出し元は描画と同じMS Gothic 9ptを選択する。非表示の項目は幅0。
+     */
+    bool getOccupiedBounds(const int fromSubWindow, const int fromChartWidth, CRect &toBounds[]) {
+        if (ArraySize(toBounds) < 4) {
+            return false;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            toBounds[i].SetBound(0, 0, 0, 0);
+            if (!this.created[i] || this.lastSubWindows[i] != fromSubWindow) {
+                continue;
+            }
+
+            int distance = 0;
+            int top = 0;
+            int width = 0;
+            int height = 0;
+            this.getItemPosition(i, distance, top, width, height);
+            int left = fromChartWidth - distance;
+            if (i != 3) {
+                if (this.lastTexts[i] == "") {
+                    continue;
+                }
+
+                uint textWidth = 0;
+                uint textHeight = 0;
+                if (!TextGetSize(this.lastTexts[i], textWidth, textHeight)) {
+                    return false;
+                }
+
+                width = (int)textWidth;
+                height = (int)textHeight;
+                left -= width;
+            }
+
+            toBounds[i].SetBound(left, top, left + width, top + height);
+        }
+
+        return true;
     }
 
     /**
@@ -227,16 +271,31 @@ private:
     }
 
     /**
+     * 描画と重なり判定で共有する右上基準の位置とボタンの寸法を返す。
+     */
+    void getItemPosition(const int fromIndex, int &toDistance, int &toTop, int &toWidth, int &toHeight) {
+        toDistance = 12;
+        toTop = 8 + fromIndex * 19;
+        toWidth = 0;
+        toHeight = 0;
+        if (fromIndex == 3) {
+            toDistance = 360;
+            toTop = 8;
+            toWidth = 64;
+            toHeight = 18;
+        }
+    }
+
+    /**
      * 位置・フォント・選択可否などの固定項目を生成時だけ反映する。
      */
     bool configureItem(const int fromIndex) {
         string objectName = this.objectNames[fromIndex];
-        int distance = 12;
-        int top = 8 + fromIndex * 19;
-        if (fromIndex == 3) {
-            distance = 360;
-            top = 8;
-        }
+        int distance = 0;
+        int top = 0;
+        int width = 0;
+        int height = 0;
+        this.getItemPosition(fromIndex, distance, top, width, height);
 
         bool configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
         configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_XDISTANCE, distance) && configured;
@@ -249,8 +308,8 @@ private:
         configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_ZORDER, 3) && configured;
         configured = ObjectSetString(this.chartId, objectName, OBJPROP_FONT, "MS Gothic") && configured;
         if (fromIndex == 3) {
-            configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, 64) && configured;
-            configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, 18) && configured;
+            configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_XSIZE, width) && configured;
+            configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_YSIZE, height) && configured;
             configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_BGCOLOR, C'35,35,35') && configured;
             configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_BORDER_COLOR, clrDimGray) && configured;
             configured = ObjectSetInteger(this.chartId, objectName, OBJPROP_STATE, false) && configured;

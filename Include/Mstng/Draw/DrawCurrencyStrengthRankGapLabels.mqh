@@ -13,6 +13,7 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Draw\ChartRedrawRequest.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankDeltaPanel.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
 /**
@@ -71,7 +72,7 @@ struct CurrencyStrengthRankGapLabelState {
 };
 
 /**
- * 変化点の上下に両通貨順位と矢印を表示し、画面端では内側へ配置する。
+ * 変化点で0ラインと順位差線に挟まれた領域の上に基軸順位、下に決済順位を表示する。
  * 順位文字の横に現在の順位差と前足比を表示し、前足比の増減で色分けする。
  * 保持済みバッファだけを参照し、同一画面・同一データの再配置を省く。
  */
@@ -82,7 +83,8 @@ public:
      */
     DrawCurrencyStrengthRankGapLabels(const long fromChartId, const string fromObjectSuffix,
             const string fromBaseCurrency, const string fromQuoteCurrency,
-            ChartRedrawRequest *fromRedrawRequest, const double fromLineGapUnits = 0.5) {
+            ChartRedrawRequest *fromRedrawRequest, const double fromLineGapUnits = 0.5,
+            DrawCurrencyStrengthRankDeltaPanel *fromPanel = NULL, const string fromShortName = "") {
         this.chartId = fromChartId;
         this.prefix = Constant::PREFIX_FIXED + "GapRanks_" + StringSubstr(fromObjectSuffix, 0, 30) + "_";
         this.baseCurrency = fromBaseCurrency;
@@ -93,7 +95,12 @@ public:
         this.colors[3] = clrHotPink;
         this.lineGapUnits = MathMax(0.0, fromLineGapUnits);
         this.redrawRequest = fromRedrawRequest;
+        this.panel = fromPanel;
+        this.shortName = fromShortName;
         this.lastViewKey = "";
+        for (int i = 0; i < ArraySize(this.obstacles); i++) {
+            this.obstacles[i].SetBound(0, 0, 0, 0);
+        }
     }
 
     /**
@@ -104,11 +111,11 @@ public:
     }
 
     /**
-     * 既存の呼び出し形式を維持し、固定の表示範囲±10を返す。
+     * 順位文字の余白を含む固定の表示範囲±11を返す。
      *
      * @param fromHeight サブ画面の高さ。
-     * @param toMinimum 縦軸の最小値−10。
-     * @param toMaximum 縦軸の最大値＋10。
+     * @param toMinimum 縦軸の最小値−11。
+     * @param toMaximum 縦軸の最大値＋11。
      * @return 有効な画面の高さの場合true。
      */
     bool getDisplayRange(const int fromHeight, double &toMinimum, double &toMaximum) {
@@ -116,8 +123,8 @@ public:
             return false;
         }
 
-        toMinimum = -10.0;
-        toMaximum = 10.0;
+        toMinimum = -11.0;
+        toMaximum = 11.0;
 
         return true;
     }
@@ -158,14 +165,14 @@ public:
         string viewKey = StringFormat("%d:%d:%d:%d:%d:%d:%d:%d:%.12f:%.12f:%.8f:%d",
             fromSubWindow, width, height, offset, firstVisible, visibleBars, scale, count,
             minimum, maximum, shiftSize, (int)shifted);
-        if (!fromDataChanged && this.lastViewKey == viewKey && this.objectsReady(fromSubWindow)) {
-            return true;
-        }
-
-        if (!TextSetFont("MS Gothic", -90)) {
+        if (!TextSetFont("MS Gothic", -90) || !this.prepareObstacles(fromSubWindow, width, viewKey)) {
             this.lastViewKey = "";
 
             return false;
+        }
+
+        if (!fromDataChanged && this.lastViewKey == viewKey && this.objectsReady(fromSubWindow)) {
+            return true;
         }
 
         int newest = MathMax(0, firstVisible - visibleBars - 1);
@@ -188,6 +195,8 @@ public:
 
         int used = 0;
         bool succeeded = true;
+        int zeroY = 0;
+        bool zeroReady = false;
         for (int i = newest; i <= oldest; i++) {
             if (!this.isChangedPoint(fromGap, fromBaseRank, fromQuoteRank, fromBarTime, i)) {
                 continue;
@@ -205,6 +214,19 @@ public:
                 continue;
             }
 
+            if (!zeroReady) {
+                int ignoredX = 0;
+                if (!ChartTimePriceToXY(this.chartId, fromSubWindow, linePoints[pointIndex].time,
+                        0.0, ignoredX, zeroY)) {
+                    this.lastViewKey = "";
+
+                    return false;
+                }
+
+                zeroY -= offset;
+                zeroReady = true;
+            }
+
             datetime rankTime = (datetime)((long)fromBarTime[i] / 300 * 300);
             string tooltip = StringFormat("%s（基軸）%d→%d位 / %s（決済）%d→%d位｜順位差 %+d｜前足比 %+d\n%s SRV",
                 this.baseCurrency, (int)fromBaseRank[i + 1], (int)fromBaseRank[i],
@@ -218,10 +240,6 @@ public:
             int labelTops[2];
             int labelWidths[2];
             int labelHeights[2];
-            int baseTops[];
-            int quoteTops[];
-            int baseNormalCount = 0;
-            int quoteNormalCount = 0;
             bool pairReady = true;
             for (int j = 0; j < 2; j++) {
                 uint labelWidth = 0;
@@ -243,22 +261,8 @@ public:
                 // 線幅2の縁も含め、実際の文字位置の左右2pxまで確認する。
                 this.findLineBounds(linePoints, left - 2, left + (int)labelWidth + 2,
                     pointY, lineTop, lineBottom);
-                int topCount = 0;
-                if (j == 0) {
-                    topCount = this.findTops(linePoints, left, lineTop, lineBottom, (int)labelWidth,
-                        (int)labelHeight, width, height, maximum - minimum, used, true,
-                        baseTops, baseNormalCount);
-                } else {
-                    topCount = this.findTops(linePoints, left, lineTop, lineBottom, (int)labelWidth,
-                        (int)labelHeight, width, height, maximum - minimum, used, false,
-                        quoteTops, quoteNormalCount);
-                }
-
-                if (topCount <= 0) {
-                    if (topCount < 0) {
-                        succeeded = false;
-                    }
-
+                if (!this.findRankTop(left, lineTop, lineBottom, zeroY, (int)labelWidth,
+                        (int)labelHeight, height, maximum - minimum, used, j == 0, labelTops[j])) {
                     pairReady = false;
                     break;
                 }
@@ -270,35 +274,6 @@ public:
 
             // 片方だけを残さず、上下の配置を確保できた変化点を一組で反映する。
             if (!pairReady) {
-                continue;
-            }
-
-            // 通常の上下配置を優先し、端の例外でも基軸を決済より上に保つ。
-            int bestScore = 1000;
-            for (int j = 0; j < ArraySize(baseTops); j++) {
-                for (int k = 0; k < ArraySize(quoteTops); k++) {
-                    if (baseTops[j] + labelHeights[0] + 3 > quoteTops[k]) {
-                        continue;
-                    }
-
-                    int score = j + k;
-                    if (j >= baseNormalCount) {
-                        score += 16;
-                    }
-
-                    if (k >= quoteNormalCount) {
-                        score += 16;
-                    }
-
-                    if (score < bestScore) {
-                        bestScore = score;
-                        labelTops[0] = baseTops[j];
-                        labelTops[1] = quoteTops[k];
-                    }
-                }
-            }
-
-            if (bestScore == 1000) {
                 continue;
             }
 
@@ -412,11 +387,57 @@ private:
     /** 所有ラベルの設定と今回の配置位置。 */
     CurrencyStrengthRankGapLabelState items[];
 
+    /** 右上の状態欄と再読込ボタンを描画するパネル。 */
+    DrawCurrencyStrengthRankDeltaPanel *panel;
+
+    /** MT5が左上の見出しに表示する短縮名。 */
+    string shortName;
+
+    /** 右上の3行、再読込ボタン、左上の見出しの順の占有矩形。 */
+    CRect obstacles[5];
+
     /** 最後に正常配置した画面構成。 */
     string lastViewKey;
 
     /** イベント末尾でまとめる再描画要求先。 */
     ChartRedrawRequest *redrawRequest;
+
+    /**
+     * パネルと標準見出しの領域を求め、領域が変化した場合だけ再配置できるようにする。
+     */
+    bool prepareObstacles(const int fromSubWindow, const int fromWidth, string &toViewKey) {
+        if (this.panel != NULL && !this.panel.getOccupiedBounds(fromSubWindow, fromWidth, this.obstacles)) {
+            return false;
+        }
+
+        // MT5の標準見出しはオブジェクトではないため、短縮名と末尾の順位差・両順位の幅を見積もる。
+        if (this.shortName != "") {
+            uint textWidth = 0;
+            uint textHeight = 0;
+            if (!TextGetSize(this.shortName + "  -7  8  8", textWidth, textHeight)) {
+                return false;
+            }
+
+            this.obstacles[4].SetBound(0, 0, 6 + (int)textWidth, 2 + (int)textHeight);
+        }
+
+        for (int i = 0; i < ArraySize(this.obstacles); i++) {
+            toViewKey += StringFormat(":%d,%d,%d,%d", this.obstacles[i].left, this.obstacles[i].top,
+                this.obstacles[i].right, this.obstacles[i].bottom);
+        }
+
+        return true;
+    }
+
+    /**
+     * 候補となる文字の矩形が、表示中の見出し・パネルの項目と3pxの余白内で交わるか調べる。
+     */
+    bool overlapsObstacle(const int fromLeft, const int fromTop, const int fromWidth,
+            const int fromHeight, const CRect &fromArea) {
+        return fromArea.right > fromArea.left && fromArea.bottom > fromArea.top
+            && fromLeft < fromArea.right + 3 && fromLeft + fromWidth + 3 > fromArea.left
+            && fromTop < fromArea.bottom + 3 && fromTop + fromHeight + 3 > fromArea.top;
+    }
 
     /**
      * 可視範囲の頂点を一度だけ座標化し、欠損は無効な頂点として残す。
@@ -542,85 +563,69 @@ private:
     }
 
     /**
-     * 通常の上下候補を優先し、端で入らない場合だけ内側の候補を追加する。
+     * 文字幅の塗り上端または下端から、既に配置した順位文字と重ならない最も近い位置を探す。
+     * @param fromAbove 基軸順位を塗りの上側に置く場合true、決済順位を下側に置く場合false。
+     * @param toTop 文字の上端のサブ画面内座標。
+     * @return 指定側の画面内に文字が収まる場合true。
      */
-    int findTops(const CurrencyStrengthRankGapLinePoint &fromPoints[], const int fromLeft,
-            const int fromLineTop, const int fromLineBottom, const int fromLabelWidth,
-            const int fromLabelHeight, const int fromWidth, const int fromHeight,
-            const double fromValueRange, const int fromUsed, const bool fromAbove,
-            int &toTops[], int &toNormalCount) {
-        toNormalCount = 0;
-        ArrayResize(toTops, 0);
+    bool findRankTop(const int fromLeft, const int fromLineTop, const int fromLineBottom,
+            const int fromZeroY, const int fromLabelWidth,
+            const int fromLabelHeight, const int fromHeight,
+            const double fromValueRange, const int fromUsed, const bool fromAbove, int &toTop) {
         if (this.lineGapUnits > fromValueRange) {
-            return 0;
+            return false;
         }
 
         // 縦軸の表示範囲に合わせて換算し、狭い画面でも文字高さの半分を空ける。
         double scaledGap = fromHeight * (this.lineGapUnits / fromValueRange);
         int lineGap = (int)MathCeil(MathMax(scaledGap, fromLabelHeight / 2.0));
         if (lineGap > fromHeight) {
-            return 0;
+            return false;
         }
 
-        // 左上のインジケーター名と右上の3行・再読込ボタンを避ける。
-        int minimumTop = 18;
-        if (fromLeft + fromLabelWidth > fromWidth - 428) {
-            minimumTop = 66;
-        }
-
+        const int minimumTop = 4;
         int maximumTop = fromHeight - 4 - fromLabelHeight;
-        int normalTop = fromLineTop - lineGap - fromLabelHeight;
-        if (!fromAbove) {
-            normalTop = MathMax(fromLineBottom + lineGap, minimumTop);
+        int top = MathMax(minimumTop, MathMax(fromLineBottom, fromZeroY) + lineGap);
+        if (fromAbove) {
+            top = MathMin(maximumTop, MathMin(fromLineTop, fromZeroY) - lineGap - fromLabelHeight);
         }
 
-        bool needsInner = normalTop < minimumTop || normalTop > maximumTop;
-        if (ArrayResize(toTops, 8) != 8) {
-            return -1;
-        }
-
-        int count = 0;
-        for (int i = 0; i < 2; i++) {
-            if (i == 1) {
-                toNormalCount = count;
-                if (!needsInner) {
-                    break;
-                }
-            }
-
-            for (int j = 0; j < 4; j++) {
-                int distance = j * (fromLabelHeight + 4);
-                int top = normalTop - distance;
-                if (!fromAbove) {
-                    top = normalTop + distance;
-                }
-
-                // 通常側の端に残る空きを、段階移動の刻み幅で飛び越さない。
-                if (i == 0 && !needsInner) {
-                    top = MathMax(minimumTop, MathMin(maximumTop, top));
-                }
-
-                if (i == 1) {
-                    top = minimumTop + distance;
-                    if (!fromAbove) {
-                        top = maximumTop - distance;
-                    }
-                }
-
-                if (top < minimumTop || top > maximumTop
-                        || !this.isTopFree(fromPoints, fromLeft, top, fromLabelWidth,
-                            fromLabelHeight, lineGap, fromUsed)) {
+        while (top >= minimumTop && top <= maximumTop) {
+            int nextTop = top;
+            for (int i = 0; i < ArraySize(this.obstacles); i++) {
+                if (!this.overlapsObstacle(fromLeft, top, fromLabelWidth, fromLabelHeight, this.obstacles[i])) {
                     continue;
                 }
 
-                toTops[count] = top;
-                count++;
+                if (fromAbove) {
+                    nextTop = MathMin(nextTop, this.obstacles[i].top - 3 - fromLabelHeight);
+                } else {
+                    nextTop = MathMax(nextTop, this.obstacles[i].bottom + 3);
+                }
             }
+
+            for (int i = 0; i < fromUsed; i++) {
+                if (!this.overlapsLabel(fromLeft, top, fromLabelWidth, fromLabelHeight, this.items[i])) {
+                    continue;
+                }
+
+                if (fromAbove) {
+                    nextTop = MathMin(nextTop, this.items[i].top - 3 - fromLabelHeight);
+                } else {
+                    nextTop = MathMax(nextTop, this.items[i].top + this.items[i].height + 3);
+                }
+            }
+
+            if (nextTop == top) {
+                toTop = top;
+
+                return true;
+            }
+
+            top = nextTop;
         }
 
-        ArrayResize(toTops, count);
-
-        return count;
+        return false;
     }
 
     /**
@@ -638,7 +643,12 @@ private:
         double scaledGap = fromHeight * (this.lineGapUnits / fromValueRange);
         int lineGap = (int)MathCeil(MathMax(scaledGap, fromLabelHeight / 2.0));
         int textGap = (int)MathCeil(fromLabelHeight / 2.0);
+        const int minimumTop = 4;
         int maximumTop = fromHeight - 4 - fromLabelHeight;
+        if (maximumTop < minimumTop) {
+            return false;
+        }
+
         for (int i = 0; i < 2; i++) {
             int left = MathMax(this.items[fromBaseIndex].left + this.items[fromBaseIndex].width,
                 this.items[fromBaseIndex + 1].left + this.items[fromBaseIndex + 1].width) + textGap;
@@ -648,15 +658,6 @@ private:
             }
 
             if (left < 4 || left + fromLabelWidth > fromWidth - 4) {
-                continue;
-            }
-
-            int minimumTop = 18;
-            if (left + fromLabelWidth > fromWidth - 428) {
-                minimumTop = 66;
-            }
-
-            if (maximumTop < minimumTop) {
                 continue;
             }
 
@@ -698,16 +699,19 @@ private:
     }
 
     /**
-     * 内側候補も含め、文字の実矩形と余白が既存文字や有効線分に重ならないか調べる。
+     * 文字の実矩形と余白が既存文字や有効線分に重ならないか調べる。
      */
     bool isTopFree(const CurrencyStrengthRankGapLinePoint &fromPoints[], const int fromLeft,
             const int fromTop, const int fromWidth, const int fromHeight,
             const int fromLineGap, const int fromUsed) {
+        for (int i = 0; i < ArraySize(this.obstacles); i++) {
+            if (this.overlapsObstacle(fromLeft, fromTop, fromWidth, fromHeight, this.obstacles[i])) {
+                return false;
+            }
+        }
+
         for (int i = 0; i < fromUsed; i++) {
-            if (fromLeft < this.items[i].left + this.items[i].width + 3
-                    && fromLeft + fromWidth + 3 > this.items[i].left
-                    && fromTop < this.items[i].top + this.items[i].height + 3
-                    && fromTop + fromHeight + 3 > this.items[i].top) {
+            if (this.overlapsLabel(fromLeft, fromTop, fromWidth, fromHeight, this.items[i])) {
                 return false;
             }
         }
@@ -724,6 +728,15 @@ private:
         }
 
         return true;
+    }
+
+    /**
+     * 配置済み文字の矩形と3pxの余白が重なるか判定する。
+     */
+    bool overlapsLabel(const int fromLeft, const int fromTop, const int fromWidth,
+            const int fromHeight, const CurrencyStrengthRankGapLabelState &fromItem) {
+        return fromLeft < fromItem.left + fromItem.width + 3 && fromLeft + fromWidth + 3 > fromItem.left
+            && fromTop < fromItem.top + fromItem.height + 3 && fromTop + fromHeight + 3 > fromItem.top;
     }
 
     /**

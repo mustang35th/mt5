@@ -5,12 +5,12 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.17"
+#property version   "1.19"
 #property indicator_separate_window
 #property indicator_buffers 7
 #property indicator_plots   5
-#property indicator_minimum -10.0
-#property indicator_maximum 10.0
+#property indicator_minimum -11.0
+#property indicator_maximum 11.0
 #property indicator_label1  "Rank Gap Boundary"
 #property indicator_type1   DRAW_NONE
 #property indicator_label2  "Zero Boundary"
@@ -231,8 +231,8 @@ int OnInit() {
     gPanelTitle = periodText + " / "
         + CurrencyStrengthCalculationProfile::getVoteWeightModeText(voteWeightMode)
         + "｜順位差";
-    IndicatorSetString(INDICATOR_SHORTNAME,
-        "Rank Gap " + gBaseCurrency + "/" + gQuoteCurrency + " " + gPanelTitle);
+    string shortName = "Rank Gap " + gBaseCurrency + "/" + gQuoteCurrency + " " + gPanelTitle;
+    IndicatorSetString(INDICATOR_SHORTNAME, shortName);
     IndicatorSetInteger(INDICATOR_DIGITS, 0);
     if (subPanelHeight > 0 && !IndicatorSetInteger(INDICATOR_HEIGHT, subPanelHeight)) {
         return INIT_FAILED;
@@ -250,7 +250,7 @@ int OnInit() {
 
     if (rankPeriod == CURRENCY_STRENGTH_RANK_DELTA_LONG_MEDIUM) {
         gRankLabels = new DrawCurrencyStrengthRankGapLabels(ChartID(), objectSuffix,
-            gBaseCurrency, gQuoteCurrency, GetPointer(gRedrawRequest), rankLabelGapUnits);
+            gBaseCurrency, gQuoteCurrency, GetPointer(gRedrawRequest), rankLabelGapUnits, gPanel, shortName);
         if (gRankLabels == NULL) {
             return INIT_FAILED;
         }
@@ -333,9 +333,10 @@ int OnCalculate(
         updatePanelText(targetTime);
     }
 
+    bool checkPanelBounds = gPanelDirty;
     drawFill();
-    drawRankLabels();
     drawPanel();
+    drawRankLabels(checkPanelBounds);
     gRedrawRequest.flush(ChartID());
 
     return ratesTotal;
@@ -347,8 +348,8 @@ int OnCalculate(
 void OnTimer() {
     gPanelDirty = true;
     drawFill(true);
-    drawRankLabels(true);
     drawPanel();
+    drawRankLabels(true);
     gRedrawRequest.flush(ChartID());
 }
 
@@ -366,8 +367,8 @@ void OnChartEvent(const int fromEventId, const long &fromLongValue,
 
     gPanelDirty = true;
     drawFill(true);
-    drawRankLabels(true);
     drawPanel();
+    drawRankLabels(true);
     gRedrawRequest.flush(ChartID());
 }
 
@@ -397,8 +398,8 @@ bool initializeBuffers() {
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 0, clrAqua)
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 1, clrHotPink)
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 2, clrGray)
-            || !IndicatorSetDouble(INDICATOR_MINIMUM, -10.0)
-            || !IndicatorSetDouble(INDICATOR_MAXIMUM, 10.0)
+            || !IndicatorSetDouble(INDICATOR_MINIMUM, -11.0)
+            || !IndicatorSetDouble(INDICATOR_MAXIMUM, 11.0)
             || !IndicatorSetInteger(INDICATOR_LEVELS, 3)
             || !setRankGapLevel(0, 0.0, clrDimGray, STYLE_DOT)
             || !setRankGapLevel(1, 7.0, clrGray, STYLE_DASH)
@@ -622,7 +623,7 @@ void updatePanelText(const datetime fromTargetTime) {
     gPanelValueColor = clrSilver;
     gPanelSource = gProvider.getStatusText();
     gPanelTooltip = "各足の順位差 = 決済通貨順位 - 基軸通貨順位"
-        + StringFormat("\n対象通貨：%s/%s / 縦軸：-7～+7", gBaseCurrency, gQuoteCurrency)
+        + StringFormat("\n対象通貨：%s/%s / 順位差：-7～+7 / 縦軸：-11～+11", gBaseCurrency, gQuoteCurrency)
         + "\n線：水色＝基軸通貨優位 / ピンク＝決済通貨優位 / 灰色＝同順位"
         + "\n塗り：前足より上昇＝青緑 / 低下＝ピンク / 同じ＝直前の色を維持"
         + "\n方向不明の横ばいは灰色。欠損区間では色の引き継ぎをリセット。"
@@ -633,8 +634,8 @@ void updatePanelText(const datetime fromTargetTime) {
         + "\nM1の同じM5枠内は前足比0でも色を維持。両端とも順位差0なら面積なし。"
         + "\n取得状態：" + gProvider.getStatusText();
     if (rankPeriod == CURRENCY_STRENGTH_RANK_DELTA_LONG_MEDIUM) {
-        gPanelTooltip += "\n変化点の数値：" + gBaseCurrency + "順位 / " + gQuoteCurrency
-            + "順位（各通貨色）。順位差が変化した足だけ表示。";
+        gPanelTooltip += "\n順位差の変化点：塗りの上に" + gBaseCurrency + "順位、下に"
+            + gQuoteCurrency + "順位を各通貨色で表示。";
     }
 
     if (sampleTime > 0) {

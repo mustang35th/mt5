@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.83"
+#property version   "2.84"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -169,6 +169,11 @@ input(name="表示終了日（当日を含む、0=制限なし）") datetime dat
 /** DB表示をENTRY成立だけに限定する場合true。 */
 input(name="ENTRY成立のみ表示") bool databaseAlertDisplayEntryOnly = false;
 
+input group "08. 通貨強弱の順位差帯"
+
+/** 長中期・中短期の順位差の前足比をメインチャート下部に表示する。 */
+input(name="順位差の増減帯を表示（長中期・中短期）") bool currencyStrengthRankDeltaBandVisible = true;
+
 /** ZigZagElliot全体制御。 */
 ZigZagElliotController *gController = NULL;
 
@@ -260,6 +265,7 @@ int OnInit() {
     }
 
     config.currencyStrengthRankVisible = currencyStrengthRankVisible;
+    config.currencyStrengthRankDeltaBandVisible = currencyStrengthRankDeltaBandVisible;
     config.currencyStrengthRankPanelXDistance =
         currencyStrengthRankPanelXDistance;
     config.currencyStrengthRefreshSeconds =
@@ -324,7 +330,7 @@ void OnChartEvent(
     const string &sparam
 ) {
     if (gController != NULL) {
-        gController.onChartEvent(id, sparam);
+        gController.onChartEvent(id, sparam, (int)lparam, (int)dparam);
     }
 }
 
@@ -368,6 +374,8 @@ int OnCalculate(
 
         currentBarTime = time[currentBarIndex];
     }
+
+    gController.updateRankDeltaBand(rates_total, prev_calculated, time);
 
     return gController.onCalculate(rates_total, prev_calculated, currentBarTime);
 }

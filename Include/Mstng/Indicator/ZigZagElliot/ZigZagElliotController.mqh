@@ -12,6 +12,8 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Common\UpdateTimingStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\ChartMouseMoveSubscription.mqh>
+#include <Mstng\Draw\DrawCurrencyStrengthRankDeltaRibbon.mqh>
 #include <Mstng\Draw\DrawZigZagElliotEntryLines.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
@@ -21,6 +23,7 @@
 #include <Mstng\Indicator\ZigZagElliot\ElliotChartController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\Mtf3In3AlertController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
+#include <Mstng\Indicator\ZigZagElliot\ZigZagElliotRankDeltaBandHistory.mqh>
 #include <Mstng\Log\LogUtil.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
@@ -39,6 +42,9 @@ public:
      */
     ZigZagElliotController() {
         this.currencyStrengthController = NULL;
+        this.rankDeltaBandHistory = NULL;
+        this.rankDeltaRibbon = NULL;
+        this.lastRankDeltaBandCheck = 0;
         this.databaseAlertDisplayController = NULL;
         this.databaseAlertCleanupPending = true;
         this.analysisController = NULL;
@@ -261,11 +267,23 @@ public:
      *
      * @param fromId イベントID
      * @param fromObjectName オブジェクト名
+     * @param fromMouseX マウス移動時のチャート内の横位置。
+     * @param fromMouseY マウス移動時のチャート内の縦位置。
      */
     void onChartEvent(
         const int fromId,
-        const string fromObjectName
+        const string fromObjectName,
+        const int fromMouseX = 0,
+        const int fromMouseY = 0
     ) {
+        if (fromId == CHARTEVENT_MOUSE_MOVE) {
+            if (this.rankDeltaRibbon != NULL) {
+                this.rankDeltaRibbon.handleMouseMove(fromMouseX, fromMouseY, this.rankDeltaBandHistory);
+            }
+
+            return;
+        }
+
         this.prepareDatabaseAlertDisplay();
         if (this.chartController == NULL
                 || this.analysisController == NULL) {
@@ -279,6 +297,7 @@ public:
         if (fromId == CHARTEVENT_CHART_CHANGE) {
             ulong startMicroseconds = this.chartController.startSlowOperation();
             this.beginCurrencyStrengthRedrawBatch();
+            this.drawRankDeltaBand();
 
             if (this.currencyStrengthController != NULL) {
                 this.currencyStrengthController.reposition();
@@ -312,6 +331,25 @@ public:
         }
 
         this.chartController.completeSlowOperation(stageChartEvent, startMicroseconds);
+    }
+
+    /**
+     * チャート足の時刻から帯を更新し、波動分析の待機中も順位の変化を反映する。
+     */
+    void updateRankDeltaBand(const int fromRatesTotal, const int fromPrevCalculated, const datetime &fromTime[]) {
+        if (this.rankDeltaBandHistory == NULL || this.rankDeltaRibbon == NULL) {
+            return;
+        }
+
+        int revision = this.rankDeltaBandHistory.getRevision();
+        if (!this.rankDeltaBandHistory.update(fromRatesTotal, fromPrevCalculated, fromTime, TimeCurrent())) {
+            return;
+        }
+
+        if (revision != this.rankDeltaBandHistory.getRevision() || this.lastRankDeltaBandCheck == 0
+                || GetTickCount64() - this.lastRankDeltaBandCheck >= 10000) {
+            this.drawRankDeltaBand();
+        }
     }
 
     /**
@@ -385,6 +423,10 @@ public:
         this.chartController.beginProcessingTimeUpdateBatch();
         ulong auxiliaryStartMicroseconds = GetMicrosecondCount();
         this.chartController.updateOnTimer(this.timerMode);
+        if (this.rankDeltaRibbon != NULL && timerEntryTick - this.lastRankDeltaBandCheck >= 10000) {
+            this.drawRankDeltaBand();
+        }
+
         ulong auxiliaryMicroseconds = GetMicrosecondCount() - auxiliaryStartMicroseconds;
 
         if (!this.timerInitialized) {
@@ -428,6 +470,19 @@ public:
      */
     void destroy() {
         EventKillTimer();
+
+        this.rankDeltaBandMouseMove.release();
+        if (this.rankDeltaRibbon != NULL) {
+            delete this.rankDeltaRibbon;
+            this.rankDeltaRibbon = NULL;
+        }
+
+        if (this.rankDeltaBandHistory != NULL) {
+            delete this.rankDeltaBandHistory;
+            this.rankDeltaBandHistory = NULL;
+        }
+
+        this.lastRankDeltaBandCheck = 0;
 
         if (this.databaseAlertDisplayController != NULL) {
             delete this.databaseAlertDisplayController;
@@ -490,6 +545,18 @@ private:
 
     /** 通貨強弱制御。 */
     CurrencyStrengthPairRankController *currencyStrengthController;
+
+    /** 長中期・中短期をまとめたチャート足ごとの順位差履歴。 */
+    ZigZagElliotRankDeltaBandHistory *rankDeltaBandHistory;
+
+    /** メインチャートの2段の順位差増減帯。 */
+    DrawCurrencyStrengthRankDeltaRibbon *rankDeltaRibbon;
+
+    /** 同一チャート内で共有するツールチップ用のマウス移動通知。 */
+    ChartMouseMoveSubscription rankDeltaBandMouseMove;
+
+    /** 最後に帯の表示位置とマウス通知を確認した時刻（ミリ秒）。 */
+    ulong lastRankDeltaBandCheck;
 
     /** Elliott分析制御。 */
     ElliotAnalysisController *analysisController;
@@ -673,7 +740,46 @@ private:
             this.config
         );
 
-        return this.analysisController.initializeOutput();
+        return this.initializeRankDeltaBand() && this.analysisController.initializeOutput();
+    }
+
+    /**
+     * 通常チャートとビジュアルテスターの表示に限り、順位差帯の履歴と描画を用意する。
+     */
+    bool initializeRankDeltaBand() {
+        if (!this.config.currencyStrengthEnabled || !this.config.currencyStrengthRankDeltaBandVisible
+                || (!this.timerMode && !MQLInfoInteger(MQL_VISUAL_MODE))) {
+            return true;
+        }
+
+        string baseCurrency = SymbolInfoString(this.marketContext.symbolName, SYMBOL_CURRENCY_BASE);
+        string quoteCurrency = SymbolInfoString(this.marketContext.symbolName, SYMBOL_CURRENCY_PROFIT);
+        if (baseCurrency == "" || quoteCurrency == "" || baseCurrency == quoteCurrency) {
+            return true;
+        }
+
+        this.rankDeltaBandHistory = new ZigZagElliotRankDeltaBandHistory(
+            this.config.currencyStrengthDatabaseFileName, this.config.currencyStrengthDatabaseSplitByYear,
+            this.config.currencyStrengthDatabaseUseCommonFolder, this.config.currencyStrengthDatabaseProfile,
+            this.config.currencyStrengthVoteWeightMode, !this.timerMode, baseCurrency, quoteCurrency,
+            this.config.currencyStrengthRefreshSeconds);
+        string suffix = StringFormat("%I64u", GetMicrosecondCount());
+        this.rankDeltaRibbon = new DrawCurrencyStrengthRankDeltaRibbon(ChartID(), suffix, baseCurrency, quoteCurrency);
+
+        return this.rankDeltaBandHistory != NULL && this.rankDeltaRibbon != NULL;
+    }
+
+    /**
+     * 表示範囲の変更や描画失敗を確認する。履歴のDB取得は行わない。
+     */
+    void drawRankDeltaBand() {
+        if (this.rankDeltaRibbon == NULL || this.rankDeltaBandHistory == NULL) {
+            return;
+        }
+
+        this.lastRankDeltaBandCheck = GetTickCount64();
+        this.rankDeltaBandMouseMove.acquire(ChartID());
+        this.rankDeltaRibbon.draw(this.rankDeltaBandHistory);
     }
 
     /**

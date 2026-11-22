@@ -141,6 +141,9 @@ public:
     /** 通貨強弱順位パネルを表示する場合true。 */
     bool currencyStrengthRankVisible;
 
+    /** 通常版チャートに両期間の順位差増減帯を表示する場合true。 */
+    bool currencyStrengthRankDeltaBandVisible;
+
     /** 価格・時計・通貨強弱・操作ボタンで共用する右端からの余白。 */
     int currencyStrengthRankPanelXDistance;
 
@@ -205,6 +208,7 @@ public:
         this.m1CurrencyStrengthGapDirectionMode = M1_CURRENCY_STRENGTH_GAP_OFF;
         this.currencyStrengthGapMailEnabled = false;
         this.currencyStrengthRankVisible = true;
+        this.currencyStrengthRankDeltaBandVisible = false;
         this.currencyStrengthRankPanelXDistance = 10;
         this.currencyStrengthRefreshSeconds = 15;
         this.currencyStrengthDatabaseProfile =
