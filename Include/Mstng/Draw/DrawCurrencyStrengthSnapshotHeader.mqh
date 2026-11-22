@@ -79,12 +79,14 @@ public:
      * @param fromSnapshotTime 集計対象のサーバー時刻。
      * @param fromValidPairCount 集計できた通貨ペア数。
      * @param fromExpectedPairCount 集計に必要な通貨ペア数。
+     * @param fromWaitingForH1 H1確認中の場合true。このとき日時は表示中の前回集計を示す。
      * @return 描画に成功した場合true。集計待ちは正常表示としてtrue。
      */
     bool draw(
         datetime fromSnapshotTime,
         int fromValidPairCount,
-        int fromExpectedPairCount
+        int fromExpectedPairCount,
+        const bool fromWaitingForH1 = false
     ) {
         if (!this.created && !this.create()) {
             return false;
@@ -92,7 +94,14 @@ public:
 
         string displayText = "集計待ち：件数未確定";
         color displayColor = clrYellow;
-        if (fromExpectedPairCount > 0
+        if (fromWaitingForH1) {
+            displayText = StringFormat("H1確認中 %d/%d", fromValidPairCount, fromExpectedPairCount);
+            if (fromSnapshotTime > 0) {
+                displayText += " ｜ 前回確定 " + TimeUtil::formatYyyymmddhhmiss(
+                    TimeJapanUtil::getJapanTime(fromSnapshotTime)
+                ) + " JST";
+            }
+        } else if (fromExpectedPairCount > 0
                 && fromValidPairCount >= 0
                 && fromValidPairCount <= fromExpectedPairCount) {
             displayText = StringFormat(

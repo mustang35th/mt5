@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.35"
+#property version   "1.36"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -117,6 +117,9 @@ datetime databaseSaveStartTime = D'2026.07.16 00:00';
 /** LIVEデータの保持日数。0は削除せず、TESTERデータは対象外。 */
 input(name="LIVEデータの保持日数（0＝削除なし）") int databaseRetentionDays = 0;
 
+/** LIVEで未取得の確定H1票を再確認する間隔（秒）。 */
+const int liveH1RetrySeconds = 2;
+
 /** テスター診断ログを約1日ごとに出力するM5足数。 */
 const int testerDiagnosticLogIntervalBars = 288;
 /** ZigZagElliotと揃えるMN1履歴のウォームアップ必要本数。 */
@@ -199,6 +202,24 @@ int gLastTesterHistoryWarmUpProgress;
 int gTesterRetryWaitCount;
 int gTesterPersistedSnapshotCount;
 string gLastRetryPreparationFailureReason;
+
+/** 28ペアのH1票を待っているM5対象時刻。 */
+datetime gPendingH1M5BarTime = 0;
+
+/** 前回ヘッダーに表示した確認済みH1ペア数。 */
+int gReadyH1PairCount = -1;
+
+/** 現在表示中の完全な順位に対応するM5時刻。 */
+datetime gDisplayedCompleteM5BarTime = 0;
+
+/** LIVEで直近に集計を試みた単調増加ミリ秒。 */
+ulong gLastLiveAttemptTick = 0;
+
+/** 通常の集計と日足・カレンダーなどを次回更新する単調増加ミリ秒。 */
+ulong gNextRegularTimerTick = 0;
+
+/** 現在登録されているLIVEタイマーの周期。 */
+int gLiveTimerSeconds = 0;
 
 /** LIVEの直近実集計を識別する改訂番号。 */
 ulong gLiveTimingRevision = 0;
@@ -474,6 +495,7 @@ int OnInit() {
     }
 
     if (!isTester) {
+        gNextRegularTimerTick = GetTickCount64() + (ulong)refreshSeconds * 1000;
         if (!EventSetTimer(refreshSeconds)) {
             gLogger.error(__FUNCTION__, "EventSetTimer failed");
             releaseResources();
@@ -481,6 +503,7 @@ int OnInit() {
             return INIT_FAILED;
         }
 
+        gLiveTimerSeconds = refreshSeconds;
         processLiveSnapshot(true, "INIT");
         redrawBatch.finish();
         drawDailyRangePanel(true);
@@ -513,10 +536,23 @@ void OnTimer() {
         return;
     }
 
+    ulong timerTick = GetTickCount64();
+    if (timerTick < gNextRegularTimerTick) {
+        if (gPendingH1M5BarTime > 0) {
+            processLiveSnapshot(false, "H1_RETRY");
+        }
+
+        updateLiveTimer();
+
+        return;
+    }
+
+    gNextRegularTimerTick = timerTick + (ulong)refreshSeconds * 1000;
     ulong timerStartMicroseconds = GetMicrosecondCount();
     ulong timingRevision = gLiveTimingRevision;
     cleanupOrphanedScorePanels();
     processLiveSnapshot(true, "TIMER");
+    updateLiveTimer();
     drawDailyRangePanel(true);
     if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
         gDrawCurrencyStrengthEntryCandidateList.refreshNewMarkers();
@@ -1428,7 +1464,7 @@ int OnCalculate(
  * タイマーからの呼び出しでは、同じM5足でも定期更新と失敗再試行を行う。
  *
  * @param fromForceRefresh 同じM5足でも定期更新する場合true。
- * @param fromTrigger 診断用の呼出元。INIT・TIMER・TICK。
+ * @param fromTrigger 診断用の呼出元。INIT・TIMER・TICK・H1_RETRY。
  */
 void processLiveSnapshot(const bool fromForceRefresh, const string fromTrigger = "TICK") {
     if (Util::isStrategyTester()) {
@@ -1441,18 +1477,35 @@ void processLiveSnapshot(const bool fromForceRefresh, const string fromTrigger =
         return;
     }
 
-    if (!fromForceRefresh
-            && currentM5BarTime == gLastLiveAttemptM5BarTime) {
-        refreshEntryCandidateM1(TimeCurrent());
+    ulong nowTick = GetTickCount64();
+    if (currentM5BarTime == gLastLiveAttemptM5BarTime) {
+        if (gPendingH1M5BarTime == currentM5BarTime) {
+            if (nowTick - gLastLiveAttemptTick < (ulong)liveH1RetrySeconds * 1000) {
+                return;
+            }
+        } else if (!fromForceRefresh
+                || nowTick - gLastLiveAttemptTick < (ulong)MathMin(refreshSeconds, liveH1RetrySeconds) * 1000) {
+            refreshEntryCandidateM1(TimeCurrent());
 
-        return;
+            return;
+        }
     }
 
+    bool wasWaitingForH1 = gPendingH1M5BarTime > 0;
     gLastLiveAttemptM5BarTime = currentM5BarTime;
+    gLastLiveAttemptTick = nowTick;
     gLiveCalculationMeasured = false;
     gLiveCalculationMilliseconds = 0.0;
     ulong executionStartMicroseconds = GetMicrosecondCount();
     gLiveTimingStatus = execute(currentM5BarTime);
+    if (gPendingH1M5BarTime > 0 || wasWaitingForH1) {
+        updateLiveTimer();
+    }
+
+    if (gPendingH1M5BarTime > 0) {
+        return;
+    }
+
     gLiveExecutionMilliseconds =
         (double)(GetMicrosecondCount() - executionStartMicroseconds) / 1000.0;
     gMaxLiveExecutionMilliseconds = MathMax(gMaxLiveExecutionMilliseconds, gLiveExecutionMilliseconds);
@@ -1505,7 +1558,7 @@ string getLiveTimingResult() {
  * 直近実集計と直近完了Timerの計測値を既存ヘッダーの説明へ反映する。
  * Timer内から呼ぶ場合、Timer全体・同診断反映は前回完了分を表示する。
  *
- * @param fromTrigger INIT・TIMER・TICK。
+ * @param fromTrigger INIT・TIMER・TICK・H1_RETRY。
  * @return 説明文の生成と反映にかかったミリ秒。
  */
 double updateLiveTimingTooltip(const string fromTrigger) {
@@ -1543,7 +1596,7 @@ double updateLiveTimingTooltip(const string fromTrigger) {
  * 実集計が発生した回だけ、最大60秒に1回のINFO診断を出力する。
  * Timer内では診断反映を含む計測完了後に呼び、ログ出力自体は計測しない。
  *
- * @param fromTrigger INIT・TIMER・TICK。
+ * @param fromTrigger INIT・TIMER・TICK・H1_RETRY。
  * @param fromHeaderMilliseconds 今回の診断ヘッダー反映の所要ミリ秒。
  */
 void logLiveTiming(const string fromTrigger, const double fromHeaderMilliseconds) {
@@ -1694,6 +1747,33 @@ void refreshEntryCandidateM1(const datetime fromTargetTime) {
         gCurrencyStrengthEntryCandidateList
     );
     synchronizePairSelection(isDrawn);
+}
+
+/**
+ * H1待機中だけ短周期にし、完了後は通常更新の残り時間に合わせる。
+ */
+void updateLiveTimer() {
+    ulong nowTick = GetTickCount64();
+    int seconds = 1;
+    if (gNextRegularTimerTick > nowTick) {
+        seconds = (int)((gNextRegularTimerTick - nowTick + 999) / 1000);
+    }
+
+    if (gPendingH1M5BarTime > 0) {
+        seconds = MathMin(seconds, liveH1RetrySeconds);
+    }
+
+    if (seconds == gLiveTimerSeconds) {
+        return;
+    }
+
+    if (!EventSetTimer(seconds)) {
+        gLogger.error(__FUNCTION__, "EventSetTimer failed");
+
+        return;
+    }
+
+    gLiveTimerSeconds = seconds;
 }
 
 /**
@@ -2070,6 +2150,14 @@ void logTesterSnapshotRetryWait(const datetime fromM5BarTime) {
         return;
     }
 
+    if (gPendingH1M5BarTime == fromM5BarTime) {
+        gLogger.info(__FUNCTION__, StringFormat(
+            "tester snapshot waiting for H1 votes. m5=%s retryWaits=%d reason=%s",
+            TimeToString(fromM5BarTime, TIME_DATE | TIME_MINUTES), gTesterRetryWaitCount, reason));
+
+        return;
+    }
+
     gLogger.error(
         __FUNCTION__,
         StringFormat(
@@ -2092,6 +2180,11 @@ void logTesterSnapshotRetryWait(const datetime fromM5BarTime) {
 string getPreparationFailureReason() {
     if (gCurrencyStrengthCalculator == NULL) {
         return "calculator is NULL";
+    }
+
+    if (gPendingH1M5BarTime > 0) {
+        return StringFormat("closed H1 votes ready=%d/%d", gReadyH1PairCount,
+            gCurrencyStrengthCalculator.getExpectedPairCount());
     }
 
     string reason = gCurrencyStrengthCalculator.getLastPreparationFailureReason();
@@ -2152,9 +2245,6 @@ string getOptionalTimeText(
  * @return 成功、未準備、または処理失敗。
  */
 CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
-    gLastEntryCandidateM1Minute = 0;
-    gScoreSnapshotReady = false;
-
     if (gCurrencyStrengthCalculator == NULL
             || gOscillatorHandleManager == NULL
             || gDrawCurrencyStrengthList == NULL) {
@@ -2177,6 +2267,26 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
         calculationStartMicroseconds = GetMicrosecondCount();
     }
 
+    bool isDrawingEnabled = !isTester || MQLInfoInteger(MQL_VISUAL_MODE);
+    int readyH1PairCount = 0;
+    if (!gCurrencyStrengthCalculator.prepareClosedH1Votes(_Symbol, m5BarTime, readyH1PairCount)) {
+        if (isDrawingEnabled && gDrawCurrencyStrengthSnapshotHeader != NULL
+                && (gPendingH1M5BarTime != m5BarTime || gReadyH1PairCount != readyH1PairCount)) {
+            if (!gDrawCurrencyStrengthSnapshotHeader.draw(gDisplayedCompleteM5BarTime,
+                    readyH1PairCount, gCurrencyStrengthCalculator.getExpectedPairCount(), true)) {
+                gLogger.error(__FUNCTION__, "currency strength H1 waiting header draw failed");
+            }
+        }
+
+        gReadyH1PairCount = readyH1PairCount;
+        gPendingH1M5BarTime = m5BarTime;
+
+        return currencyStrengthExecutionNotReady;
+    }
+
+    gPendingH1M5BarTime = 0;
+    gReadyH1PairCount = -1;
+    gLastEntryCandidateM1Minute = 0;
     bool isCalculated = gCurrencyStrengthCalculator.calculateAt(
         gOscillatorHandleManager,
         _Symbol,
@@ -2191,7 +2301,13 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     }
 
     DrawChartRedrawBatch redrawBatch;
-    bool isDrawingEnabled = !isTester || MQLInfoInteger(MQL_VISUAL_MODE);
+    bool isComplete = gCurrencyStrengthCalculator.validPairCount
+        == gCurrencyStrengthCalculator.getExpectedPairCount();
+    gDisplayedCompleteM5BarTime = 0;
+    if (isCalculated && isComplete) {
+        gDisplayedCompleteM5BarTime = m5BarTime;
+    }
+
     if (isDrawingEnabled && gDrawCurrencyStrengthSnapshotHeader != NULL) {
         updateSnapshotHeaderWidth();
         if (!gDrawCurrencyStrengthSnapshotHeader.draw(
@@ -2316,10 +2432,6 @@ CurrencyStrengthExecutionStatus execute(const datetime fromM5BarTime) {
     }
 
     bool saveDatabase = shouldSaveDatabase(m5BarTime);
-    bool isComplete = (
-        gCurrencyStrengthCalculator.validPairCount
-            == gCurrencyStrengthCalculator.getExpectedPairCount()
-    );
 
     if (isTester) {
         if (!databaseEnabled) {
@@ -2497,6 +2609,12 @@ void releaseResources() {
 
     gFirstTargetM5BarTime = 0;
     gLastLiveAttemptM5BarTime = 0;
+    gPendingH1M5BarTime = 0;
+    gReadyH1PairCount = -1;
+    gDisplayedCompleteM5BarTime = 0;
+    gLastLiveAttemptTick = 0;
+    gNextRegularTimerTick = 0;
+    gLiveTimerSeconds = 0;
     gLastTesterAttemptM5BarTime = 0;
     gLastProcessedM5BarTime = 0;
     gPendingTesterM5BarTime = 0;

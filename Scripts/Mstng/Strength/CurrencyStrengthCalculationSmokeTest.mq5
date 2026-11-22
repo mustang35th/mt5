@@ -18,6 +18,7 @@
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
+#include <Mstng\Strength\CurrencyStrengthClosedH1Vote.mqh>
 #include <Mstng\Strength\CurrencyStrengthInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairVote.mqh>
 #include <Mstng\Util\StringUtil.mqh>
@@ -1215,6 +1216,67 @@ bool saveDatabaseSnapshot(
 }
 
 /**
+ * 確定H1票の必要本数、同値、全会一致、多数決を固定価格列で検証する。
+ *
+ * @param fromLogger ロガー。
+ * @return 固定価格列の票がすべて期待どおりの場合true。
+ */
+bool validateClosedH1Votes(Logger &fromLogger) {
+    int requiredBars = CurrencyStrengthClosedH1Vote::getRequiredBarCount();
+    MqlRates rates[];
+    int vote = 0;
+    if (requiredBars != 29 || ArrayResize(rates, requiredBars) != requiredBars) {
+        fromLogger.error(__FUNCTION__, "closed H1 vote history length mismatch");
+
+        return false;
+    }
+
+    int previousCloses[] = {150, 150, 150, 120, 180, 150};
+    int lastCloses[] = {150, 190, 110, 172, 128, 150};
+    int expectedVotes[] = {3, 3, -3, 2, -2, 3};
+    for (int i = 0; i < ArraySize(expectedVotes); i++) {
+        bool zeroRange = i == ArraySize(expectedVotes) - 1;
+        for (int j = 0; j < requiredBars; j++) {
+            rates[j].time = D'2026.11.01 00:00' + j * 3600;
+            rates[j].open = 150;
+            rates[j].close = 150;
+            rates[j].high = 200;
+            rates[j].low = 100;
+            if (zeroRange) {
+                rates[j].high = 150;
+                rates[j].low = 150;
+            }
+        }
+
+        rates[requiredBars - 2].close = previousCloses[i];
+        rates[requiredBars - 1].close = lastCloses[i];
+        if (!CurrencyStrengthClosedH1Vote::calculate(rates, vote) || vote != expectedVotes[i]) {
+            fromLogger.error(__FUNCTION__, StringFormat(
+                "closed H1 vote mismatch. case=%d vote=%d expected=%d", i, vote, expectedVotes[i]
+            ));
+
+            return false;
+        }
+    }
+
+    rates[requiredBars - 1].time = rates[requiredBars - 2].time;
+    if (CurrencyStrengthClosedH1Vote::calculate(rates, vote)) {
+        fromLogger.error(__FUNCTION__, "closed H1 vote accepted duplicate bar times");
+
+        return false;
+    }
+
+    if (ArrayResize(rates, requiredBars - 1) != requiredBars - 1
+            || CurrencyStrengthClosedH1Vote::calculate(rates, vote)) {
+        fromLogger.error(__FUNCTION__, "closed H1 vote accepted insufficient history");
+
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * 28通貨ペアの実isBuy判定動作確認を実行する。
  */
 void OnStart() {
@@ -1246,7 +1308,7 @@ void OnStart() {
         return;
     }
 
-    if (!validateVoteWeightProfiles(logger)) {
+    if (!validateVoteWeightProfiles(logger) || !validateClosedH1Votes(logger)) {
         logger.error(
             __FUNCTION__,
             "Currency strength calculation smoke test FAILED: vote profiles."

@@ -19,9 +19,11 @@
 #include <Mstng\Oscillator\Oscillator.mqh>
 #include <Mstng\Oscillator\OscillatorHandleManager.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
+#include <Mstng\Strength\CurrencyStrengthClosedH1Vote.mqh>
 #include <Mstng\Strength\CurrencyStrengthInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthPairVote.mqh>
 #include <Mstng\Util\StringUtil.mqh>
+#include <Mstng\Util\Util.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
 
 /**
@@ -60,6 +62,7 @@ public:
             symbolCount
         );
         ArrayResize(this.pairSeriesPrepared, symbolCount);
+        ArrayResize(this.closedH1Votes, symbolCount);
         ArrayInitialize(this.pairSeriesPrepared, false);
 
         for (int i = 0; i < symbolCount; i++) {
@@ -96,6 +99,65 @@ public:
     }
 
     /**
+     * 表示中の集計結果に触れず、対象M5で使う全ペアの確定H1票を準備する。
+     *
+     * @param fromReferenceSymbolName 基準銘柄名。
+     * @param fromTargetM5BarTime 集計対象のM5開始時刻。
+     * @param fromReadyPairCount 準備済みペア数の格納先。
+     * @return 全ペアの票が揃った場合true。
+     */
+    bool prepareClosedH1Votes(const string fromReferenceSymbolName,
+            const datetime fromTargetM5BarTime, int &fromReadyPairCount) {
+        fromReadyPairCount = 0;
+        int pairCount = this.getExpectedPairCount();
+        bool tester = Util::isStrategyTester();
+        if (fromReferenceSymbolName == "" || fromTargetM5BarTime <= 0
+                || ArraySize(this.closedH1Votes) != pairCount
+                || (tester && !this.warmUpM5Series(fromReferenceSymbolName,
+                    this.preparedReferenceSymbolName == fromReferenceSymbolName))) {
+            return false;
+        }
+
+        datetime expectedBarTime = 0;
+        if (!this.resolveReferenceClosedH1Time(fromReferenceSymbolName, fromTargetM5BarTime, expectedBarTime)) {
+            return false;
+        }
+
+        for (int i = 0; i < pairCount; i++) {
+            string symbolName = this.resolvedSymbolNames[i];
+            if (this.closedH1Votes[i].isPrepared(symbolName, expectedBarTime)) {
+                fromReadyPairCount++;
+                continue;
+            }
+
+            if (symbolName == "") {
+                SymbolNameInfo *symbolInfo = this.symbolNameInfoAll.getSymbolNameInfo(i);
+                if (symbolInfo == NULL) {
+                    continue;
+                }
+
+                symbolName = this.resolveSymbolName(symbolInfo.symbolName);
+            }
+
+            if (symbolName == "" || !SymbolSelect(symbolName, true)) {
+                this.resolvedSymbolNames[i] = "";
+                continue;
+            }
+
+            this.resolvedSymbolNames[i] = symbolName;
+            if (tester && !this.warmUpM5Series(symbolName, this.pairSeriesPrepared[i])) {
+                continue;
+            }
+
+            if (this.closedH1Votes[i].prepare(symbolName, expectedBarTime)) {
+                fromReadyPairCount++;
+            }
+        }
+
+        return fromReadyPairCount == pairCount;
+    }
+
+    /**
      * 指定M5足開始時点で確定済みの各時間足から売買方向を集計する。
      *
      * 1通貨ペア内の全時間足を取得できた場合だけ票へ反映する。
@@ -116,6 +178,13 @@ public:
         if (fromOscillatorHandleManager == NULL) {
             this.lastCalculationFatalError = true;
             this.logger.error(__FUNCTION__, "fromOscillatorHandleManager is NULL");
+
+            return false;
+        }
+
+        if (fromTargetM5BarTime > 0 && ArraySize(this.closedH1Votes) != this.getExpectedPairCount()) {
+            this.lastCalculationFatalError = true;
+            this.logger.error(__FUNCTION__, "closed H1 vote allocation failed");
 
             return false;
         }
@@ -208,6 +277,7 @@ public:
             datetime pairBarTimes[7];
 
             if (!this.preparePair(
+                i,
                 symbolName,
                 oscillatorHandlePool,
                 reusePreparedSeries,
@@ -254,40 +324,39 @@ public:
             // 始値モデルの時間足制約に合わせ、M5から上位足の順に参照する。
             for (int j = this.getTimeFrameCount() - 1; j >= 0; j--) {
                 ENUM_TIMEFRAMES timeFrame = this.getTimeFrame(j);
-                MarketContext context(symbolName, timeFrame);
-                Oscillator oscillator(context);
+                if (timeFrame == PERIOD_H1 && fromTargetM5BarTime > 0) {
+                    pairOscillatorCounts[j] = this.closedH1Votes[i].getOscillatorCount();
+                    pairIsBuyList[j] = pairOscillatorCounts[j] > 0;
+                } else {
+                    MarketContext context(symbolName, timeFrame);
+                    Oscillator oscillator(context);
+                    if (!oscillator.updateBuySell(context, oscillatorHandlePool, pairShifts[j])) {
+                        this.setPreparationFailureReason(
+                            StringFormat(
+                                "oscillator update failed. symbol=%s timeFrame=%s shift=%d",
+                                symbolName, EnumToString(timeFrame), pairShifts[j]
+                            )
+                        );
+                        isPairValid = false;
+                        break;
+                    }
 
-                if (!oscillator.updateBuySell(
-                    context,
-                    oscillatorHandlePool,
-                    pairShifts[j]
-                )) {
-                    this.setPreparationFailureReason(
-                        StringFormat(
-                            "oscillator update failed. symbol=%s timeFrame=%s shift=%d",
-                            symbolName,
-                            EnumToString(timeFrame),
-                            pairShifts[j]
-                        )
-                    );
-                    isPairValid = false;
-                    break;
+                    pairOscillatorCounts[j] = oscillator.oscillatorCount;
+                    pairIsBuyList[j] = oscillator.isBuy;
                 }
 
                 int voteWeight =
                     CurrencyStrengthCalculationProfile::getVoteWeight(
                         this.voteWeightMode,
-                        oscillator.oscillatorCount
+                        pairOscillatorCounts[j]
                     );
                 pairScores[j] = 0 - voteWeight;
 
-                if (oscillator.isBuy) {
+                if (pairIsBuyList[j]) {
                     pairScores[j] = voteWeight;
                 }
 
                 pairVoteWeights[j] = voteWeight;
-                pairIsBuyList[j] = oscillator.isBuy;
-                pairOscillatorCounts[j] = oscillator.oscillatorCount;
             }
 
             if (!isPairValid) {
@@ -659,6 +728,9 @@ private:
     /** 前回の全時間足の準備・方向取得に成功したペア。今回の検査は省略しない。 */
     bool pairSeriesPrepared[];
 
+    /** 実銘柄別に最後に確定したH1票。M5集計値を初期化しても保持する。 */
+    CurrencyStrengthClosedH1Vote closedH1Votes[];
+
     /** 前回の全時間足の参照時刻解決に成功した実シンボル名。 */
     string preparedReferenceSymbolName;
 
@@ -801,6 +873,7 @@ private:
         this.currencyStrengthInfoList.Clear();
         ArrayFree(this.pairVotes);
         ArrayFree(this.pairSeriesPrepared);
+        ArrayFree(this.closedH1Votes);
         this.preparedReferenceSymbolName = "";
     }
 
@@ -909,6 +982,15 @@ private:
                 return false;
             }
 
+            if (timeFrame == PERIOD_H1) {
+                if (!this.resolveReferenceClosedH1Time(fromReferenceSymbolName,
+                        fromTargetM5BarTime, fromBarTimes[i])) {
+                    return false;
+                }
+
+                continue;
+            }
+
             int containingShift = iBarShift(
                 fromReferenceSymbolName,
                 timeFrame,
@@ -964,11 +1046,34 @@ private:
     }
 
     /**
-     * 指定ペアの価格系列と3本のストキャスハンドルを準備する。
+     * 対象M5を含む基準銘柄のH1と直前足を時刻指定で一括取得する。
+     * 新しいH1が未生成の間は前の足を「現在足」として扱わない。
+     */
+    bool resolveReferenceClosedH1Time(const string fromReferenceSymbolName,
+            const datetime fromTargetM5BarTime, datetime &fromBarTime) {
+        datetime barTimes[2];
+        if (CopyTime(fromReferenceSymbolName, PERIOD_H1, fromTargetM5BarTime, 2, barTimes) != 2
+                || !WarmUpSeriesUtil::isSeriesSynchronized(fromReferenceSymbolName, PERIOD_H1)) {
+            return false;
+        }
+
+        int hourSeconds = PeriodSeconds(PERIOD_H1);
+        if (barTimes[0] <= 0 || barTimes[0] + hourSeconds > barTimes[1]
+                || barTimes[1] > fromTargetM5BarTime || fromTargetM5BarTime >= barTimes[1] + hourSeconds) {
+            return false;
+        }
+
+        fromBarTime = barTimes[0];
+
+        return true;
+    }
+
+    /**
+     * 指定ペアの価格系列と時間足ごとの票取得に必要なデータを準備する。
      *
-     * M5、M15、H1、H4、D1、W1、MN1の順で全ハンドルを一括生成しておくことで、
-     * 最初に未準備だったハンドルだけがタイマーごとに順次生成されることを防ぐ。
+     * M5から上位足へ順に準備し、時刻指定のH1は確定価格の票を保持する。
      *
+     * @param fromPairIndex 銘柄ごとのH1票の保持位置。
      * @param fromSymbolName 準備対象の実シンボル名。
      * @param fromOscillatorHandlePool 対象シンボルのハンドルプール。
      * @param fromReusePreparedSeries 前回の全時間足の準備・方向取得に成功した場合true。
@@ -976,9 +1081,10 @@ private:
      * @param fromExpectedBarTimes 時間足別の期待する確定バー時刻。
      * @param fromShifts 時間足別の参照シフト格納先。
      * @param fromBarTimes 時間足別の足開始時刻格納先。
-     * @return 全価格系列と全ストキャスバッファが準備済みの場合true。
+     * @return 全時間足の票取得に必要な価格・バッファが揃った場合true。
      */
     bool preparePair(
+        const int fromPairIndex,
         string fromSymbolName,
         OscillatorHandlePool *fromOscillatorHandlePool,
         const bool fromReusePreparedSeries,
@@ -1019,6 +1125,17 @@ private:
         int timeFrameCount = this.getTimeFrameCount();
         for (int i = timeFrameCount - 1; i >= 0; i--) {
             ENUM_TIMEFRAMES timeFrame = this.getTimeFrame(i);
+            if (timeFrame == PERIOD_H1 && fromM5BarTime > 0) {
+                if (!this.closedH1Votes[fromPairIndex].prepare(fromSymbolName, fromExpectedBarTimes[i])) {
+                    this.setPreparationFailureReason("closed H1 prices are not ready. symbol=" + fromSymbolName);
+                    isReady = false;
+                } else {
+                    fromBarTimes[i] = this.closedH1Votes[fromPairIndex].getBarTime();
+                }
+
+                continue;
+            }
+
             MarketContext context(fromSymbolName, timeFrame);
 
             if (!WarmUpSeriesUtil::isSeriesSynchronized(context)) {
