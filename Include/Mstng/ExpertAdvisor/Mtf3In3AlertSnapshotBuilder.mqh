@@ -13,6 +13,7 @@
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertSnapshot.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3H1ElliotStructureDecision.mqh>
+#include <Mstng\Oscillator\PriceMovementInfo.mqh>
 #include <Mstng\Util\RateUtil.mqh>
 
 /**
@@ -830,6 +831,25 @@ private:
         fromEntity.ema60 = oscillator.ema60;
         fromEntity.ema30Ema60DiffPips = oscillator.ema30Ema60DiffPips;
         fromEntity.atr14Pips = oscillator.atr14;
+
+        // 表示・メールと同じ確定済み結果を保存し、ここでは再計算しない。
+        PriceMovementInfo priceMovement = oscillator.priceMovement;
+        if (isPriceMovementSnapshotValid(priceMovement)) {
+            fromEntity.isPriceMovementValid = 1;
+            fromEntity.priceMovementLevel = (int)priceMovement.level;
+            fromEntity.priceMovementAverageRangePips = priceMovement.averageRangePips;
+            fromEntity.priceMovementReferenceAtrPips = priceMovement.referenceAtrPips;
+            fromEntity.priceMovementActivityRatio = priceMovement.activityRatio;
+            fromEntity.priceMovementReferenceBarTime = (long)priceMovement.referenceBarTime;
+            if (priceMovement.isSpreadValid
+                    && MathIsValidNumber(priceMovement.rangeSpreadRatio)
+                    && priceMovement.rangeSpreadRatio != EMPTY_VALUE
+                    && priceMovement.rangeSpreadRatio >= 0.0) {
+                fromEntity.isPriceMovementSpreadValid = 1;
+                fromEntity.priceMovementRangeSpreadRatio = priceMovement.rangeSpreadRatio;
+            }
+        }
+
         fromEntity.ema200Close1 = ema200.close1;
         fromEntity.ema200Shift1 = ema200.ema200Shift1;
         fromEntity.ema200Compare = ema200.ema200Compare;
@@ -847,6 +867,28 @@ private:
         fromEntity.createdAtText = formatDateTime(fromCreatedAt);
 
         return fromEntity.pointCount > 0;
+    }
+
+    /**
+     * 任意項目の値動きを保存可能か確認する。不正値は他の分析の保存を妨げない。
+     *
+     * @param fromInfo 分析時に確定した値動き。
+     * @return 値幅・ATR・活動度・対象足時刻が有効な場合true。
+     */
+    static bool isPriceMovementSnapshotValid(PriceMovementInfo &fromInfo) {
+        return fromInfo.isValid
+            && fromInfo.level >= PRICE_MOVEMENT_CALM
+            && fromInfo.level <= PRICE_MOVEMENT_ACTIVE
+            && MathIsValidNumber(fromInfo.averageRangePips)
+            && fromInfo.averageRangePips != EMPTY_VALUE
+            && fromInfo.averageRangePips >= 0.0
+            && MathIsValidNumber(fromInfo.referenceAtrPips)
+            && fromInfo.referenceAtrPips != EMPTY_VALUE
+            && fromInfo.referenceAtrPips > 0.0
+            && MathIsValidNumber(fromInfo.activityRatio)
+            && fromInfo.activityRatio != EMPTY_VALUE
+            && fromInfo.activityRatio >= 0.0
+            && fromInfo.referenceBarTime > 0;
     }
 
     /**
@@ -1179,6 +1221,7 @@ private:
                 fromTimeFrameEntities[i].timeFrameOrder
             );
             sourceText += ":" + fromTimeFrameEntities[i].rawCsvText;
+            appendPriceMovementHashValues(fromTimeFrameEntities[i], sourceText);
         }
 
         for (int i = 0; i < ArraySize(fromPointEntities); i++) {
@@ -1326,6 +1369,26 @@ private:
     }
 
     /**
+     * CSVに含めない値動き8項目を保存スナップショットの比較対象へ追加する。
+     *
+     * @param fromEntity 時間足別分析。
+     * @param fromText ハッシュ入力文字列。
+     */
+    static void appendPriceMovementHashValues(
+        ZigZagElliotAlertTimeFrameEntity &fromEntity,
+        string &fromText
+    ) {
+        appendHashValue(IntegerToString((long)fromEntity.isPriceMovementValid), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.priceMovementLevel), fromText);
+        appendHashValue(DoubleToString(fromEntity.priceMovementAverageRangePips, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.priceMovementReferenceAtrPips, 16), fromText);
+        appendHashValue(DoubleToString(fromEntity.priceMovementActivityRatio, 16), fromText);
+        appendHashValue(IntegerToString((long)fromEntity.isPriceMovementSpreadValid), fromText);
+        appendHashValue(DoubleToString(fromEntity.priceMovementRangeSpreadRatio, 16), fromText);
+        appendHashValue(IntegerToString(fromEntity.priceMovementReferenceBarTime), fromText);
+    }
+
+    /**
      * 時間足分析の値を比較ハッシュの入力へ連結する。
      */
     static void appendTimeFrameHashValues(
@@ -1385,6 +1448,7 @@ private:
         appendHashValue(DoubleToString(fromEntity.ema60, 16), fromText);
         appendHashValue(DoubleToString(fromEntity.ema30Ema60DiffPips, 16), fromText);
         appendHashValue(DoubleToString(fromEntity.atr14Pips, 16), fromText);
+        appendPriceMovementHashValues(fromEntity, fromText);
         appendHashValue(DoubleToString(fromEntity.ema200Close1, 16), fromText);
         appendHashValue(DoubleToString(fromEntity.ema200Shift1, 16), fromText);
         appendHashValue(DoubleToString(fromEntity.ema200Compare, 16), fromText);

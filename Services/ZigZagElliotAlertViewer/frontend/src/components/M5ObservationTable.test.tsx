@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { M5ObservationItem } from "../api/m5Types";
+import type { PriceMovementSnapshot } from "../api/types";
 import { M5_DENSITY_KEY, M5_LAYOUT_KEY } from "../lib/m5ObservationPreferences";
 import { M5_TIME_FRAMES } from "../lib/m5TimeFrame";
 import { M5ObservationTable } from "./M5ObservationTable";
@@ -27,6 +28,13 @@ function observation(id = 1, symbol = "EURUSD"): M5ObservationItem {
 const props = { databaseKey: "m5-A", loading: false, sort: "anchor_jst_time" as const,
   order: "desc" as const, onSort: vi.fn(), onOpenDetail: vi.fn() };
 
+const savedMovement: PriceMovementSnapshot = {
+  is_price_movement_valid: true, price_movement_level: 3, price_movement_average_range_pips: 7,
+  price_movement_reference_atr_pips: 5, price_movement_activity_ratio: 1.4,
+  is_price_movement_spread_valid: true, price_movement_range_spread_ratio: 3.5,
+  price_movement_reference_bar_time: 1700000100, price_movement_status: "VALID",
+};
+
 function cell(container: HTMLElement, id: number, column: string, databaseKey = "m5-A"): HTMLElement | null {
   return container.querySelector(`[row-id="${databaseKey}:${id}"] [col-id="${column}"]`);
 }
@@ -35,6 +43,47 @@ beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("M5ObservationTable with AG Grid", () => {
+  it("shows saved M5 movement independently of H1 and does not sort the new column", async () => {
+    const item = observation();
+    Object.assign(item.timeframes.find((row) => row.time_frame === 5)!, savedMovement);
+    Object.assign(item.timeframes.find((row) => row.time_frame === 16385)!, savedMovement, {
+      price_movement_level: 1, price_movement_activity_ratio: .6,
+    });
+    const { container } = render(<M5ObservationTable {...props} items={[item]} />);
+    await waitFor(() => expect(cell(container, 1, "price_movement")).toHaveTextContent("活発 1.40倍"));
+    const movement = cell(container, 1, "price_movement")!.querySelector(".price-movement-cell")!;
+    expect(movement).toHaveClass("price-movement-active");
+    expect(movement).toHaveAttribute("title", expect.stringContaining("M5 値動き：活発 1.40倍"));
+    expect(movement).toHaveAttribute("title", expect.stringContaining("平均値幅：7.0 pips"));
+    expect(movement).toHaveAttribute("title", expect.stringContaining("2023/11/14 22:15:00 Server"));
+    const header = container.querySelector('.ag-header-cell[col-id="price_movement"]')!;
+    fireEvent.click(header);
+    expect(props.onSort).not.toHaveBeenCalled();
+    expect(header).not.toHaveAttribute("aria-sort", "ascending");
+    const headers = Array.from(container.querySelectorAll('.ag-header-row [col-id]')).map((column) => column.getAttribute("col-id"));
+    expect(headers.indexOf("price_movement")).toBe(headers.indexOf("tf_M5") + 1);
+  });
+
+  it.each(["missing", "duplicate"])("does not substitute H1 movement when the M5 slot is %s", async (kind) => {
+    const item = observation();
+    Object.assign(item.timeframes.find((row) => row.time_frame === 16385)!, savedMovement);
+    if (kind === "missing") item.timeframes = item.timeframes.filter((row) => row.time_frame !== 5);
+    else item.timeframes.push({ ...item.timeframes.find((row) => row.time_frame === 5)!, ...savedMovement });
+    const { container } = render(<M5ObservationTable {...props} items={[item]} />);
+    await waitFor(() => expect(cell(container, 1, "price_movement")).toHaveTextContent("未記録／判定不能"));
+    expect(cell(container, 1, "price_movement")).not.toHaveTextContent("活発");
+  });
+
+  it("distinguishes legacy unrecorded movement from an unavailable saved result", async () => {
+    const unavailable = observation(2);
+    Object.assign(unavailable.timeframes.find((row) => row.time_frame === 5)!, {
+      is_price_movement_valid: false, price_movement_status: "UNAVAILABLE",
+    });
+    const { container } = render(<M5ObservationTable {...props} items={[observation(), unavailable]} />);
+    await waitFor(() => expect(cell(container, 1, "price_movement")).toHaveTextContent(/^未記録$/));
+    expect(cell(container, 2, "price_movement")).toHaveTextContent(/^判定不能$/);
+  });
+
   it("renders seven saved summaries and keeps M5 SELL despite H1 BUY", async () => {
     const { container } = render(<M5ObservationTable {...props} items={[observation()]} />);
     await screen.findByRole("button", { name: /EURUSD .* の詳細/ });
@@ -131,19 +180,41 @@ describe("M5ObservationTable with AG Grid", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "M5行密度" }), { target: { value: "comfortable" } });
     fireEvent.click(screen.getByText("表示設定"));
     fireEvent.click(screen.getByRole("checkbox", { name: /^H4$/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "値動き（M5）" }));
     await waitFor(() => expect(cell(first.container, 1, "tf_H4")).toBeNull());
     expect(JSON.parse(localStorage.getItem(M5_DENSITY_KEY)!)).toBe("comfortable");
     expect(JSON.parse(localStorage.getItem(M5_LAYOUT_KEY)!)).toEqual(expect.arrayContaining([
       expect.objectContaining({ colId: "tf_H4", hide: true }),
+      expect.objectContaining({ colId: "price_movement", hide: true }),
     ]));
     first.unmount();
     const second = render(<M5ObservationTable {...props} items={[observation()]} />);
     await screen.findByRole("button", { name: /EURUSD .* の詳細/ });
     expect(screen.getByRole("combobox", { name: "M5行密度" })).toHaveValue("comfortable");
     expect(cell(second.container, 1, "tf_H4")).toBeNull();
+    expect(cell(second.container, 1, "price_movement")).toBeNull();
     expect(cell(second.container, 1, "anchor_jst_time")).not.toBeNull();
     expect(cell(second.container, 1, "symbol_name")).not.toBeNull();
     expect(cell(second.container, 1, "detail")).not.toBeNull();
+  });
+
+  it("migrates old column preferences once while retaining widths, order and hidden columns", async () => {
+    const oldLayout = ["anchor_jst_time", "symbol_name", "m5_direction", "tf_M5", "tf_H4", "tf_H1", "tf_M15", "tf_D1", "tf_W1", "tf_MN1", "spread_pips", "quality", "detail"]
+      .map((colId) => ({ colId, width: colId === "detail" ? 78 : colId === "quality" ? 315 : 181, hide: colId === "tf_H4" }));
+    localStorage.setItem(M5_LAYOUT_KEY, JSON.stringify(oldLayout));
+    const first = render(<M5ObservationTable {...props} items={[observation()]} />);
+    await waitFor(() => expect(cell(first.container, 1, "price_movement")).toHaveTextContent("未記録"));
+    const migrated = JSON.parse(localStorage.getItem(M5_LAYOUT_KEY)!);
+    expect(migrated.filter((column: { colId: string }) => column.colId !== "price_movement")).toEqual(oldLayout);
+    expect(migrated[4]).toEqual({ colId: "price_movement", width: 155, hide: false });
+    expect(cell(first.container, 1, "tf_H4")).toBeNull();
+    first.unmount();
+    migrated[4] = { colId: "price_movement", width: 192, hide: true };
+    localStorage.setItem(M5_LAYOUT_KEY, JSON.stringify(migrated));
+    const second = render(<M5ObservationTable {...props} items={[observation()]} />);
+    await screen.findByRole("button", { name: /EURUSD .* の詳細/ });
+    expect(cell(second.container, 1, "price_movement")).toBeNull();
+    expect(JSON.parse(localStorage.getItem(M5_LAYOUT_KEY)!)).toEqual(migrated);
   });
 
   it("pins context/detail on wide layout and unpins them when the media query becomes narrow", async () => {

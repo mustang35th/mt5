@@ -9,6 +9,7 @@
 #ifndef MSTNG_ELLIOT_ZIGZAG_ELLIOT_OBSERVATION_PROFILE_MQH
 #define MSTNG_ELLIOT_ZIGZAG_ELLIOT_OBSERVATION_PROFILE_MQH
 
+#include <Mstng\Analysis\PriceMovementAnalyzer.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 
 /**
@@ -164,7 +165,7 @@ public:
      */
     string getSnapshotHashVersion() const {
         if (this.isM5()) {
-            return "M5_OBSERVATION_V2";
+            return "M5_OBSERVATION_V3";
         }
 
         return "H1_OBSERVATION_V5";
@@ -203,6 +204,7 @@ public:
         );
         text += "|CAPTURE_PHASE=" + this.getCapturePhase();
         text += "|SPREAD_QUOTE_RULE=SINGLE_MQL_TICK_AT_ANALYSIS_START";
+        text += "|" + PriceMovementAnalyzer::getCalculationProfileText();
 
         return text;
     }

@@ -4,12 +4,14 @@
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
+#include <Mstng\Analysis\PriceMovementAnalyzer.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Oscillator\AverageTrueRange.mqh>
 #include <Mstng\Oscillator\Ema200.mqh>
 #include <Mstng\Oscillator\Gmma.mqh>
 #include <Mstng\Oscillator\OscillatorHandlePool.mqh>
+#include <Mstng\Oscillator\PriceMovementInfo.mqh>
 #include <Mstng\Oscillator\Stochastic.mqh>
 #include <Mstng\Oscillator\StochasticStatus.mqh>
 #include <Mstng\Util\UtilAll.mqh>
@@ -87,6 +89,9 @@ public:
     /** ATR14 pips値。 */
     double atr14;
 
+    /** 確定足の値幅と基準ATRによる表示用の値動き判定結果。 */
+    PriceMovementInfo priceMovement;
+
     /** ストキャス/GMMAの総合判定値（売買での補助指標）。 */
     int oscillatorCount;
 
@@ -151,6 +156,7 @@ public:
         this.ema30Ema60DiffPips = fromOriginal.ema30Ema60DiffPips;
         this.ema200.copySnapshotFrom(fromOriginal.ema200);
         this.atr14 = fromOriginal.atr14;
+        this.priceMovement = fromOriginal.priceMovement;
         this.oscillatorCount = fromOriginal.oscillatorCount;
         this.isBuy = fromOriginal.isBuy;
         this.stochasticMainOrder = fromOriginal.stochasticMainOrder;
@@ -345,6 +351,14 @@ public:
         if (!this.setAtr14(oscillatorHandlePool)) {
             LogUtil::printMethodEnd(this.logger, __FUNCTION__, false);
             return false;
+        }
+
+        PriceMovementAnalyzer priceMovementAnalyzer;
+        if (!priceMovementAnalyzer.update(
+                this.marketContext,
+                oscillatorHandlePool.getAverageTrueRangeHandlePool(),
+                this.priceMovement)) {
+            this.logger.debug(__FUNCTION__, "price movement is unavailable");
         }
 
         if (isDebugOutputEnabled) {
@@ -763,6 +777,7 @@ private:
         this.ema30Ema60DiffPips = 0.0;
         this.ema200.clear();
         this.atr14 = 0.0;
+        this.priceMovement.resetValues();
         this.oscillatorCount = 0;
         this.isBuy = false;
         this.stochasticMainOrder = STOCH_MAIN_ORDER_NONE;

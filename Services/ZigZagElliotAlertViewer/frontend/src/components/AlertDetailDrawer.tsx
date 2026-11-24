@@ -47,6 +47,7 @@ import {
 import { H1EntryCheckPanel } from "./H1EntryCheckPanel";
 import { AlertCorrectionSnapshot, M5AlertSnapshot } from "./M5AlertSnapshot";
 import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
+import { PriceMovementCell } from "./PriceMovementCell";
 import {
   W1ConfirmationBadge,
   w1ConfirmationModeLabel,
@@ -230,6 +231,8 @@ function TimeFrameCard({ timeFrame, points }: { timeFrame: AlertTimeFrame; point
         <div><span>ポイント</span><b>{timeFrame.point_count} / wave {timeFrame.latest_wave_index}</b></div>
         <div><span>Stochastic</span><b>{displayValue(timeFrame.stochastic_main_order_text)} / {displayValue(timeFrame.stochastic_main_direction_text)}</b></div>
         <div><span>GMMA</span><b>trend {formatSignedNumber(timeFrame.gmma_trend_count, 0)} / cross {formatSignedNumber(timeFrame.gmma_cross_count, 0)}</b></div>
+        <div className="timeframe-price-movement"><span>値動き</span><PriceMovementCell
+          snapshot={timeFrame} detailed timeFrame={timeFrame.time_frame_text} /></div>
         <div><span>ATR14</span><b>{formatNumber(timeFrame.atr14_pips)} pips</b></div>
         <div>
           <span>FE200距離</span>
@@ -816,6 +819,7 @@ function ComparisonContent({ bundle, gridStateRef, navigation, styleNonce, showC
   const comparisonGrid = <ObservationTimeFrameSnapshotGrid
     ariaLabel="アラート時間足比較スナップショットグリッド"
     showOriginalElliottLabel
+    showPriceMovement
     stateRef={gridStateRef}
     styleNonce={styleNonce}
     timeFrames={timeFrames}

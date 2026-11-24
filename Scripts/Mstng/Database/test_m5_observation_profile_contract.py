@@ -75,6 +75,9 @@ def canonical(m5=False):
     if m5:
         output += "|CAPTURE_PHASE=BAR_OPEN_FIRST_SUCCESS"
         output += "|SPREAD_QUOTE_RULE=SINGLE_MQL_TICK_AT_ANALYSIS_START"
+        movement = read("Analysis/PriceMovementAnalyzer.mqh")
+        movement = movement.split("static string getCalculationProfileText()", 1)[1].split(";", 1)[0]
+        output += "|" + "".join(json.loads(value) for value in re.findall(r'"[^"\n]*"', movement))
     return output
 
 
@@ -123,7 +126,7 @@ class ObservationProfileContractTest(unittest.TestCase):
         self.assertNotRegex(profile, r"static\s+ENUM_TIMEFRAMES\s+anchorTimeFrame")
         self.assertIn("return PERIOD_M15;", profile)
         self.assertIn("return PERIOD_M5;", profile)
-        self.assertIn('return "M5_OBSERVATION_V2";', profile)
+        self.assertIn('return "M5_OBSERVATION_V3";', profile)
         self.assertNotIn("PERIOD_M30", profile)
 
     def test_quality_is_not_part_of_snapshot_hash(self):

@@ -10,6 +10,7 @@ import { M5_DENSITY_KEY, M5_LAYOUT_KEY, readM5Preference, validM5Layout, writeM5
   type M5ColumnLayout } from "../lib/m5ObservationPreferences";
 import { m5DateTime } from "../lib/m5ObservationSearchState";
 import { ElliottLabelText } from "./ElliottLabelText";
+import { PriceMovementCell } from "./PriceMovementCell";
 import "./M5Observation.css";
 
 interface Props {
@@ -33,8 +34,17 @@ const mandatoryColumns = ["anchor_jst_time", "symbol_name", "detail"];
 const columnLabels = [
   { id: "m5_direction", label: "M5分析方向" },
   ...M5_TIME_FRAMES.map((frame) => ({ id: `tf_${frame.label}`, label: frame.label })),
+  { id: "price_movement", label: "値動き（M5）" },
   { id: "spread_pips", label: "Spread" }, { id: "quality", label: "取得品質" },
 ];
+
+function includePriceMovementColumn(layout: M5ColumnLayout[]): M5ColumnLayout[] {
+  if (!layout.length || layout.some((column) => column.colId === "price_movement")) return layout;
+  const next = [...layout];
+  const anchor = next.findIndex((column) => column.colId === "tf_M5");
+  next.splice(anchor < 0 ? next.length : anchor + 1, 0, { colId: "price_movement", width: 155, hide: false });
+  return next;
+}
 
 export function M5ObservationTable({ items, databaseKey, loading, sort, order, styleNonce, toolbarStart, onSort, onOpenDetail }: Props) {
   const grid = useRef<GridApi<M5ObservationItem> | null>(null);
@@ -87,6 +97,13 @@ export function M5ObservationTable({ items, databaseKey, loading, sort, order, s
           </div>;
         },
       })),
+      { colId: "price_movement", headerName: "値動き", initialWidth: 155, minWidth: 140, sortable: false,
+        cellRenderer: ({ data }: ICellRendererParams<M5ObservationItem>) => {
+          if (!data) return null;
+          const slot = m5TimeFrameSlots(data.timeframes).slots.find((frame) => frame.id === 5);
+          const snapshot = slot?.timeFrame ?? { price_movement_status: "UNKNOWN" as const };
+          return <span title={slot?.warning || undefined}><PriceMovementCell snapshot={snapshot} timeFrame="M5" /></span>;
+        } },
       { colId: "spread_pips", headerName: "Spread", initialWidth: 100, minWidth: 90,
         cellRenderer: ({ data }: ICellRendererParams<M5ObservationItem>) => m5Number(data?.spread_pips, 1, "p") },
       { colId: "quality", headerName: "取得品質", initialWidth: 315, minWidth: 230,
@@ -105,7 +122,7 @@ export function M5ObservationTable({ items, databaseKey, loading, sort, order, s
         setDensity(event.target.value); writeM5Preference(M5_DENSITY_KEY, event.target.value);
       }}><option value="compact">コンパクト</option><option value="comfortable">ゆったり</option></select></label>
       <details className="m5-column-settings"><summary>表示設定</summary><div>
-        <p className="m5-muted">各足：分析方向 / 波動（▲上昇・▼下降） / EMA200。[ ]＝再カウント前の主波ラベル。M5はH1から独立した保存値です。</p>
+        <p className="m5-muted">各足：分析方向 / 波動（▲上昇・▼下降） / EMA200。[ ]＝再カウント前の主波ラベル。値動きはM5の保存済み判定です。M5はH1から独立した保存値です。</p>
         {columnLabels.map((column) => <label key={column.id}><input type="checkbox" checked={!layout.find((item) => item.colId === column.id)?.hide}
           onChange={(event) => { grid.current?.setColumnsVisible([column.id], event.target.checked); saveLayout(); }} />{column.label}</label>)}
       </div></details>
@@ -123,8 +140,10 @@ export function M5ObservationTable({ items, databaseKey, loading, sort, order, s
         noRowsOverlayComponent={() => <span>該当するM5観測はありません。</span>}
         onGridReady={({ api }) => {
           grid.current = api; restoring.current = true;
-          api.applyColumnState({ state: layout.map((column) => ({ ...column, hide: mandatoryColumns.includes(column.colId) ? false : column.hide })), applyOrder: true });
+          const restoredLayout = includePriceMovementColumn(layout);
+          api.applyColumnState({ state: restoredLayout.map((column) => ({ ...column, hide: mandatoryColumns.includes(column.colId) ? false : column.hide })), applyOrder: true });
           pinColumns(api); restoring.current = false;
+          if (restoredLayout !== layout) saveLayout();
         }}
         onGridPreDestroyed={() => { grid.current = null; }}
         onColumnMoved={(event) => { if (event.finished) saveLayout(); }}

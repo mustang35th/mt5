@@ -160,6 +160,7 @@ describe("AlertTable", () => {
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByRole("columnheader", { name: "時間足" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "EMA200距離" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "値動き" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "通貨強弱" })).toBeInTheDocument();
     const strengthCell = firstRow?.querySelector('.ag-cell[col-id="currency_strength"]');
     expect(strengthCell).toHaveTextContent("BUY一致");
@@ -169,6 +170,7 @@ describe("AlertTable", () => {
     expect(secondRow?.querySelector('.ag-cell[col-id="currency_strength"]')).toHaveTextContent("未記録");
     expect(firstRow?.querySelector('.ag-cell[col-id="ema200_distance"]')).toHaveTextContent("34.0 pips");
     expect(firstRow?.querySelector('.ag-cell[col-id="ema200_distance"]')).toHaveTextContent("超過");
+    expect(firstRow?.querySelector('.ag-cell[col-id="price_movement"]')).toHaveTextContent("未記録");
     expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
     await waitFor(() => {
       const timeFrameCells = view.container.querySelectorAll('.ag-cell[col-id="time_frame"]');
@@ -247,6 +249,11 @@ describe("AlertTable", () => {
     fireEvent.focus(symbolHeader);
     fireEvent.keyDown(symbolHeader, { key: "Enter" });
     expect(onSort).toHaveBeenCalledTimes(3);
+    const movementHeader = screen.getByRole("columnheader", { name: "値動き" });
+    expect(within(movementHeader).queryByRole("button")).not.toBeInTheDocument();
+    fireEvent.click(movementHeader);
+    fireEvent.keyDown(movementHeader, { key: "Enter" });
+    expect(onSort).toHaveBeenCalledTimes(3);
     await waitFor(() => {
       const rows = Array.from(view.container.querySelectorAll<HTMLElement>(".ag-row[row-id]"));
       expect(rows).toHaveLength(2);
@@ -293,10 +300,12 @@ describe("AlertTable", () => {
     fireEvent.click(w1TimeFrameColumnItem);
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "EMA200距離" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "通貨強弱" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "値動き" }));
     await waitFor(() => {
       expect(screen.queryByRole("columnheader", { name: "W1" })).not.toBeInTheDocument();
       expect(screen.queryByRole("columnheader", { name: "EMA200距離" })).not.toBeInTheDocument();
       expect(screen.queryByRole("columnheader", { name: "通貨強弱" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "値動き" })).not.toBeInTheDocument();
       const storedText = localStorage.getItem(GRID_LAYOUT_STORAGE_KEY);
       expect(storedText).not.toBeNull();
       const stored = JSON.parse(storedText || "{}") as {
@@ -305,6 +314,7 @@ describe("AlertTable", () => {
       expect(stored.columns?.find((column) => column.colId === "tf_w1")?.hide).toBe(true);
       expect(stored.columns?.find((column) => column.colId === "ema200_distance")?.hide).toBe(true);
       expect(stored.columns?.find((column) => column.colId === "currency_strength")?.hide).toBe(true);
+      expect(stored.columns?.find((column) => column.colId === "price_movement")?.hide).toBe(true);
     });
 
     firstView.unmount();
@@ -325,6 +335,7 @@ describe("AlertTable", () => {
       expect(screen.queryByRole("columnheader", { name: "EMA200距離" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "列を初期化" })).toBeEnabled();
       expect(screen.queryByRole("columnheader", { name: "通貨強弱" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "値動き" })).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "列を初期化" }));
@@ -337,6 +348,8 @@ describe("AlertTable", () => {
     expect(screen.getByRole("menuitemcheckbox", { name: "EMA200距離" }))
       .toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("menuitemcheckbox", { name: "通貨強弱" }))
+      .toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "値動き" }))
       .toHaveAttribute("aria-checked", "true");
     expect(restoredView.container.querySelector(".alert-grid")).toHaveClass("density-compact");
   });
@@ -402,6 +415,8 @@ describe("AlertTable", () => {
       .toBe(initialColumnIds.indexOf("side") + 1);
     expect(initialColumnIds.indexOf("ema200_distance"))
       .toBe(initialColumnIds.indexOf("currency_strength") + 1);
+    expect(initialColumnIds.indexOf("price_movement"))
+      .toBe(initialColumnIds.indexOf("ema200_distance") + 1);
     const migratedTimeFrameColumnIds = ["tf_mn1", "tf_w1", "tf_d1", "tf_h4", "tf_h1", "tf_m15", "tf_m5"];
     expect(initialColumnIds.filter((colId) => migratedTimeFrameColumnIds.includes(colId || "")))
       .toEqual(migratedTimeFrameColumnIds);
@@ -419,6 +434,8 @@ describe("AlertTable", () => {
       .toEqual({ colId: "ema200_distance", width: 160, hide: false });
     expect(migratedStoredLayout.columns?.find((column) => column.colId === "currency_strength"))
       .toEqual({ colId: "currency_strength", width: 220, hide: false });
+    expect(migratedStoredLayout.columns?.find((column) => column.colId === "price_movement"))
+      .toEqual({ colId: "price_movement", width: 155, hide: false });
     expect(migratedStoredLayout.columns?.filter(
       (column) => migratedTimeFrameColumnIds.includes(column.colId),
     )).toEqual(migratedTimeFrameColumnIds.map((colId) => ({
@@ -503,6 +520,82 @@ function snapshotAlert(overrides: Partial<AlertListItem> = {}): AlertListItem {
 
 describe("AlertTable saved analysis snapshot", () => {
   beforeEach(() => localStorage.clear());
+
+  it.each(["H1", "M15", "M1"])("uses only the adopted %s movement snapshot for the alert time frame", async (timeFrame) => {
+    const movement = snapshotTimeFrame(timeFrame, {
+      price_movement_status: "VALID",
+      is_price_movement_valid: true,
+      price_movement_level: 3,
+      price_movement_average_range_pips: 7.1,
+      price_movement_reference_atr_pips: 5,
+      price_movement_activity_ratio: 1.42,
+      is_price_movement_spread_valid: true,
+      price_movement_range_spread_ratio: 7.9,
+      price_movement_reference_bar_time: 1795470300,
+    });
+    const view = renderSnapshotAlert(snapshotAlert({ time_frame_text: timeFrame, analysis_snapshot: {
+      status: "APPLIED", correction_time_frame_text: "H1",
+      timeframes: [snapshotTimeFrame("H4", {
+        ...movement, time_frame_text: "H4", price_movement_level: 1, price_movement_activity_ratio: 0.41,
+      }), movement],
+    } }));
+
+    await screen.findByRole("columnheader", { name: "値動き" });
+    const cell = view.container.querySelector('.ag-cell[col-id="price_movement"]') as HTMLElement;
+    expect(cell).toHaveTextContent("活発");
+    expect(cell).toHaveTextContent("1.42");
+    expect(cell).not.toHaveTextContent("静か");
+    expect(cell).not.toHaveTextContent("0.41");
+  });
+
+  it.each(["INCOMPLETE", "missing", "duplicate"])("shows unknown movement for %s adopted data without using another frame", async (scenario) => {
+    const recorded = snapshotTimeFrame("M15", {
+      price_movement_status: "VALID", is_price_movement_valid: true,
+      price_movement_level: 3, price_movement_activity_ratio: 1.42,
+      price_movement_average_range_pips: 7.1, price_movement_reference_atr_pips: 5,
+      is_price_movement_spread_valid: true, price_movement_range_spread_ratio: 7.9,
+      price_movement_reference_bar_time: 1795470300,
+    });
+    const timeframes = scenario === "missing" ? [{ ...recorded, time_frame_text: "H1" }]
+      : scenario === "duplicate" ? [recorded, recorded] : [recorded];
+    const view = renderSnapshotAlert(snapshotAlert({ analysis_snapshot: {
+      status: scenario === "INCOMPLETE" ? "INCOMPLETE" : "APPLIED",
+      correction_time_frame_text: "H1", timeframes,
+    } }));
+
+    await screen.findByRole("columnheader", { name: "値動き" });
+    const cell = view.container.querySelector('.ag-cell[col-id="price_movement"]') as HTMLElement;
+    expect(cell).toHaveTextContent("未記録／判定不能");
+    expect(cell).not.toHaveTextContent("活発");
+    expect(cell).not.toHaveTextContent("1.42");
+  });
+
+  it("keeps a saved movement column's custom order, width and hidden preference", async () => {
+    writeGridColumnLayout(localStorage, [
+      { colId: "entry_result", width: 170, hide: false },
+      { colId: "price_movement", width: 205, hide: true },
+      { colId: "ema200_distance", width: 190, hide: false },
+      { colId: "currency_strength", width: 235, hide: false },
+    ]);
+    const view = renderSnapshotAlert(snapshotAlert());
+    await waitFor(() => expect(screen.getByRole("button", { name: "列を初期化" })).toBeEnabled());
+    expect(view.container.querySelector('[role="columnheader"][col-id="price_movement"]')).toBeNull();
+    const stored = JSON.parse(localStorage.getItem(GRID_LAYOUT_STORAGE_KEY) || "{}");
+    expect(stored.columns.find((column: { colId: string }) => column.colId === "price_movement"))
+      .toEqual({ colId: "price_movement", width: 205, hide: true });
+    expect(stored.columns.filter((column: { colId: string }) => [
+      "entry_result", "price_movement", "ema200_distance", "currency_strength",
+    ].includes(column.colId)).map((column: { colId: string }) => column.colId))
+      .toEqual(["entry_result", "price_movement", "ema200_distance", "currency_strength"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "表示列" }));
+    const movementOption = await screen.findByRole("menuitemcheckbox", { name: "値動き" });
+    expect(movementOption).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(movementOption);
+    await waitFor(() => expect(view.container.querySelector(
+      '[role="columnheader"][col-id="price_movement"]',
+    )).toHaveStyle({ width: "205px" }));
+  });
 
   it("renders adopted correction fields together and keeps wave direction distinct from analysis side", async () => {
     const corrected = snapshotTimeFrame("D1", { side: "SELL", is_ema200_buy: false, is_ema200_sell: true,

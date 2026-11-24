@@ -11,6 +11,7 @@
 
 #include <Arrays\ArrayObj.mqh>
 #include <Object.mqh>
+#include <Mstng\Analysis\PriceMovementAnalyzer.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
@@ -1449,7 +1450,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 8;
+        this.databaseRun.schemaVersion = 10;
         this.databaseRun.sourceMode = "TESTER";
         this.databaseRun.source = "ZIGZAG_ELLIOT";
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
@@ -1555,6 +1556,8 @@ private:
                 inputText += state.symbolName;
             }
         }
+
+        inputText += "|" + PriceMovementAnalyzer::getCalculationProfileText();
 
         return inputText;
     }

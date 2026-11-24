@@ -20,7 +20,7 @@ import {
 import { AgGridReact } from "ag-grid-react";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ObservationDetailTimeFrame } from "../api/types";
+import type { ObservationDetailTimeFrame, PriceMovementSnapshot } from "../api/types";
 import {
   displayValue,
   elliottDirectionSymbol,
@@ -30,6 +30,7 @@ import {
   formatSignedNumber,
   sideClass,
 } from "../lib/format";
+import { priceMovementLabel } from "../lib/priceMovement";
 import {
   clearTimeFrameComparisonColumnGroupState,
   defaultTimeFrameComparisonColumnGroupState,
@@ -41,13 +42,17 @@ import {
 } from "../lib/timeFrameComparisonPreferences";
 import { ElliottLabelText } from "./ElliottLabelText";
 import { Ema200SignalBadge } from "./Ema200SignalBadge";
+import { PriceMovementCell } from "./PriceMovementCell";
+
+type PriceMovementTimeFrame = ObservationDetailTimeFrame & PriceMovementSnapshot;
 
 export interface ObservationTimeFrameSnapshotGridProps {
   ariaLabel?: string;
   showLatestPointDetails?: boolean;
   showOriginalElliottLabel?: boolean;
+  showPriceMovement?: boolean;
   stateRef?: RefObject<GridState | undefined>;
-  timeFrames: readonly ObservationDetailTimeFrame[];
+  timeFrames: readonly PriceMovementTimeFrame[];
   styleNonce?: string;
 }
 
@@ -65,6 +70,7 @@ const GRID_MODULES = [
 
 const TIME_FRAME_COLUMN_ID = "time_frame_text";
 const EMA200_DIRECTION_COLUMN_ID = "ema200_direction";
+const PRICE_MOVEMENT_COLUMN_ID = "price_movement";
 const WAVE_DIRECTION_COLUMN_ID = "wave_direction";
 const LATEST_POINT_SUMMARY_COLUMN_ID = "latest_point_summary";
 const LATEST_POINT_SHAPE_COLUMN_ID = "latest_point_shape";
@@ -662,6 +668,18 @@ const ema200DirectionColumn: ColDef<ObservationDetailTimeFrame, string> = {
   cellRenderer: Ema200DirectionCell,
 };
 
+const priceMovementColumn: ColDef<ObservationDetailTimeFrame, string> = {
+  ...pinnedSnapshotColumn(
+    PRICE_MOVEMENT_COLUMN_ID,
+    "値動き",
+    148,
+    (timeFrame) => priceMovementLabel(timeFrame as PriceMovementTimeFrame),
+  ),
+  cellRenderer: ({ data }: ICellRendererParams<ObservationDetailTimeFrame, string>) => (
+    <PriceMovementCell snapshot={data as PriceMovementTimeFrame | undefined} timeFrame={data?.time_frame_text} />
+  ),
+};
+
 const latestZigZagPointColumnGroup: ColGroupDef<ObservationDetailTimeFrame> = {
   groupId: "zigzag_point",
   headerName: "最新ZigZag Point",
@@ -1118,6 +1136,7 @@ const COLUMN_DEFS: Array<
 function columnDefs(
   showLatestPointDetails: boolean,
   showOriginalElliottLabel: boolean,
+  showPriceMovement: boolean,
 ): Array<ColDef<ObservationDetailTimeFrame> | ColGroupDef<ObservationDetailTimeFrame>> {
   const columns = showLatestPointDetails ? [
     COLUMN_DEFS[0],
@@ -1125,18 +1144,21 @@ function columnDefs(
     latestZigZagPointColumnGroup,
     ...COLUMN_DEFS.slice(2),
   ] : COLUMN_DEFS;
-  if (!showOriginalElliottLabel) return columns;
+  if (!showOriginalElliottLabel && !showPriceMovement) return columns;
   return columns.map((group) => {
     if (!("children" in group) || group.groupId !== "comparison_key") return group;
     return {
       ...group,
-      children: group.children.map((column) => {
-        if (!("colId" in column) || column.colId !== "elliott_sub") return column;
-        return {
+      children: group.children.flatMap((column) => {
+        if ("colId" in column && column.colId === EMA200_DIRECTION_COLUMN_ID && showPriceMovement) {
+          return [column, priceMovementColumn];
+        }
+        if (!showOriginalElliottLabel || !("colId" in column) || column.colId !== "elliott_sub") return [column];
+        return [{
           ...column,
           valueGetter: ({ data }) => data ? observationWaveLabel(data) : "—",
           cellRendererParams: { showOriginalLabel: true },
-        } satisfies ColDef<ObservationDetailTimeFrame>;
+        } satisfies ColDef<ObservationDetailTimeFrame>];
       }),
     };
   });
@@ -1182,6 +1204,7 @@ export function ObservationTimeFrameSnapshotGrid({
   ariaLabel = "時間足別 H1新規足スナップショットグリッド",
   showLatestPointDetails = false,
   showOriginalElliottLabel = false,
+  showPriceMovement = false,
   stateRef,
   timeFrames,
   styleNonce,
@@ -1206,8 +1229,8 @@ export function ObservationTimeFrameSnapshotGrid({
     [showLatestPointDetails],
   );
   const gridColumnDefs = useMemo(
-    () => columnDefs(showLatestPointDetails, showOriginalElliottLabel),
-    [showLatestPointDetails, showOriginalElliottLabel],
+    () => columnDefs(showLatestPointDetails, showOriginalElliottLabel, showPriceMovement),
+    [showLatestPointDetails, showOriginalElliottLabel, showPriceMovement],
   );
   const rowData = useMemo(() => orderedTimeFrames(timeFrames), [timeFrames]);
   const activePresetId = useMemo(
@@ -1216,12 +1239,14 @@ export function ObservationTimeFrameSnapshotGrid({
   );
 
   const applyPinning = useCallback((api: GridApi<ObservationDetailTimeFrame>) => {
-    api.setColumnsPinned([...DESKTOP_PINNED_COLUMN_IDS], null);
+    const pinnedColumnIds: string[] = [...DESKTOP_PINNED_COLUMN_IDS];
+    if (showPriceMovement) pinnedColumnIds.splice(3, 0, PRICE_MOVEMENT_COLUMN_ID);
+    api.setColumnsPinned(pinnedColumnIds, null);
     api.setColumnsPinned(
-      wideLayout ? [...DESKTOP_PINNED_COLUMN_IDS] : [TIME_FRAME_COLUMN_ID],
+      wideLayout ? pinnedColumnIds : [TIME_FRAME_COLUMN_ID],
       "left",
     );
-  }, [wideLayout]);
+  }, [wideLayout, showPriceMovement]);
 
   const handleGridReady = useCallback((event: GridReadyEvent<ObservationDetailTimeFrame>) => {
     gridApiRef.current = event.api;

@@ -158,7 +158,14 @@ class ObservationCollectorContractTest(unittest.TestCase):
         }
         for signature, expected in golden.items():
             with self.subTest(signature=signature):
-                self.assertEqual(hashlib.sha256(body(self.source, signature).encode()).hexdigest(), expected)
+                actual = body(self.source, signature)
+                if signature == "string createInputText()":
+                    m5_only = ('        if (this.observationProfile.isM5()) {\n'
+                               '            inputText += "|" + PriceMovementAnalyzer::getCalculationProfileText();\n'
+                               '        }\n\n')
+                    self.assertIn(m5_only, actual)
+                    actual = actual.replace(m5_only, "", 1)
+                self.assertEqual(hashlib.sha256(actual.encode()).hexdigest(), expected)
 
     def test_h1_event_paths_unchanged(self):
         golden = {

@@ -19,6 +19,7 @@ enum ElliotColmun {
     COLMUN_TIME_FRAME,
     COLMUN_BUYSELL,
     COLMUN_EMA200_BUYSELL,
+    COLMUN_PRICE_MOVEMENT,
     COLMUN_STOCHASTIC_MAIN_ORDER,
     COLMUN_STOCHASTIC_SHORT,
     COLMUN_STOCHASTIC_MIDDLE,
@@ -61,6 +62,7 @@ public:
         this.addDrawPropertiesElliotList(true, 90); // COLMUN_TIME_FRAME
         this.addDrawPropertiesElliotList(true, 110);    // COLMUN_BUYSELL
         this.addDrawPropertiesElliotList(true, 110);    // COLMUN_EMA200_BUYSELL
+        this.addDrawPropertiesElliotList(true, 160);    // COLMUN_PRICE_MOVEMENT
         this.addDrawPropertiesElliotList(false, 70);     // COLMUN_STOCHASTIC_MAIN_ORDER
         this.addDrawPropertiesElliotList(!fromSimpleDisplay, 50);    // COLMUN_STOCHASTIC_SHORT
         this.addDrawPropertiesElliotList(!fromSimpleDisplay, 50);    // COLMUN_STOCHASTIC_MIDDLE
@@ -308,6 +310,31 @@ public:
             objX += width;
         }
         
+        if (this.isVisible(COLMUN_PRICE_MOVEMENT, width)) {
+            string objectName = preName + "PriceMovement";
+            string movementText = this.getPriceMovementLevelText(elliot.oscillator.priceMovement);
+            if (elliot.oscillator.priceMovement.isValid) {
+                movementText += " " + DoubleToString(elliot.oscillator.priceMovement.activityRatio, 2);
+            }
+
+            DrawUtil::setLabel(
+                objectName,
+                this.drawProperties.elliotFontFace,
+                this.getPriceMovementColor(elliot.oscillator.priceMovement),
+                this.drawProperties.elliotAlertSize / 2,
+                movementText,
+                objX,
+                objY + 10
+            );
+            ObjectSetString(
+                0,
+                Constant::PREFIX + objectName,
+                OBJPROP_TOOLTIP,
+                this.getPriceMovementTooltip(elliot.oscillator.priceMovement)
+            );
+            objX += width;
+        }
+
         if (this.isVisible(COLMUN_STOCHASTIC_MAIN_ORDER, width)) {
             string text = "SMO";
             
@@ -581,6 +608,11 @@ protected:
             DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, size, text, objX, objY + 10);
             objX += width;
         }        
+
+        if (this.isVisible(COLMUN_PRICE_MOVEMENT, width)) {
+            DrawUtil::setLabel(preName + "PriceMovement", drawProperties.elliotFontFace, fontColor, size, "値動き", objX, objY + 10);
+            objX += width;
+        }
         
         if (this.isVisible(COLMUN_STOCHASTIC_MAIN_ORDER, width)) {
             text = "SMO";
@@ -921,6 +953,77 @@ protected:
     }
 
 private:
+    /**
+     * 値動きの判定状態を表示文字列へ変換する。
+     *
+     * @param fromPriceMovement 表示対象の値動き判定結果
+     * @return 値動きの状態文字列
+     */
+    string getPriceMovementLevelText(PriceMovementInfo &fromPriceMovement) {
+        if (!fromPriceMovement.isValid) {
+            return "判定不能";
+        }
+
+        switch (fromPriceMovement.level) {
+            case PRICE_MOVEMENT_CALM:
+                return "静か";
+            case PRICE_MOVEMENT_NORMAL:
+                return "通常";
+            case PRICE_MOVEMENT_ACTIVE:
+                return "活発";
+        }
+
+        return "判定不能";
+    }
+
+    /**
+     * 値動きの判定状態に対応する表示色を返す。
+     *
+     * @param fromPriceMovement 表示対象の値動き判定結果
+     * @return 値動き欄の文字色
+     */
+    color getPriceMovementColor(PriceMovementInfo &fromPriceMovement) {
+        if (!fromPriceMovement.isValid) {
+            return clrSilver;
+        }
+
+        switch (fromPriceMovement.level) {
+            case PRICE_MOVEMENT_NORMAL:
+                return clrWhite;
+            case PRICE_MOVEMENT_ACTIVE:
+                return clrDodgerBlue;
+        }
+
+        return clrSilver;
+    }
+
+    /**
+     * 値動き判定の計算値と対象足をツールチップへまとめる。
+     *
+     * @param fromPriceMovement 表示対象の値動き判定結果
+     * @return 値動き欄のツールチップ
+     */
+    string getPriceMovementTooltip(PriceMovementInfo &fromPriceMovement) {
+        string text = "値動き：" + this.getPriceMovementLevelText(fromPriceMovement);
+        if (!fromPriceMovement.isValid) {
+            return text + "\n計算に必要なデータを取得できません。";
+        }
+
+        text += StringFormat("\n直近3本の平均値幅：%.1f pips", fromPriceMovement.averageRangePips);
+        text += StringFormat("\n基準ATR14（直近3本より前）：%.1f pips", fromPriceMovement.referenceAtrPips);
+        text += StringFormat("\n活動度：%.2f倍", fromPriceMovement.activityRatio);
+        if (fromPriceMovement.isSpreadValid) {
+            text += StringFormat("\n値幅／スプレッド：%.2f倍", fromPriceMovement.rangeSpreadRatio);
+        } else {
+            text += "\n値幅／スプレッド：取得不能";
+        }
+
+        text += "\n最新確定足（サーバー時刻）："
+            + TimeToString(fromPriceMovement.referenceBarTime, TIME_DATE | TIME_MINUTES);
+
+        return text;
+    }
+
     /**
      * 情報表とチャート用に再カウント前の主波ラベルを含むポイント情報を取得する。
      *

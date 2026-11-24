@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
 from m5_currency_strength import M5CurrencyStrengthReader
+from price_movement import price_movement_snapshot
 
 RUN_TABLE = "zigzag_elliot_alert_runs"
 OBSERVATION_TABLE = "zigzag_elliot_observations"
@@ -309,8 +310,11 @@ class M5ObservationDatabase:
 
     @staticmethod
     def _selected_run(connection: Connection, run_id: int, mode: str | None, columns: set[str]) -> dict[str, Any]:
+        projection = M5ObservationDatabase._run_projection(columns)
+        if "input_text" in columns:
+            projection += ", r.input_text"
         row = connection.execute(text(f"""
-            SELECT {M5ObservationDatabase._run_projection(columns)}
+            SELECT {projection}
             FROM {RUN_TABLE} AS r WHERE r.id = :run_id AND {M5_RUN_PREDICATE}
         """), {"run_id": run_id}).mappings().one_or_none()
         if row is None:
@@ -393,11 +397,14 @@ class M5ObservationDatabase:
         return result
 
     @staticmethod
-    def _children(connection: Connection, ids: list[int], columns: dict[str, set[str]]) -> tuple[dict[int, list[dict[str, Any]]], dict[int, dict[str, Any]]]:
+    def _children(connection: Connection, ids: list[int], columns: dict[str, set[str]], run: dict[str, Any]) -> tuple[dict[int, list[dict[str, Any]]], dict[int, dict[str, Any]]]:
         timeframes: dict[int, list[dict[str, Any]]] = {identifier: [] for identifier in ids}
         metrics: dict[int, dict[str, Any]] = {}
         if not ids:
             return timeframes, metrics
+        # M5 schema versions are independent of Alert versions. Its input marker
+        # identifies movement-enabled runs; schema 1 remains the legacy baseline.
+        movement_run = {"schema_version": 1, "input_text": run.get("input_text")}
         parameters = {f"id{index}": identifier for index, identifier in enumerate(ids)}
         placeholders = ", ".join(":" + name for name in parameters)
         rows = connection.execute(text(f"""
@@ -408,6 +415,7 @@ class M5ObservationDatabase:
             item = dict(row)
             # Legacy databases remain readable without a viewer-side migration.
             item.setdefault("previous_motive_sub_elliot_index", None)
+            item.update(price_movement_snapshot(row, movement_run))
             timeframes[row["observation_id"]].append(item)
         if columns[METRICS_TABLE]:
             projection = ["observation_id"]
@@ -478,7 +486,7 @@ class M5ObservationDatabase:
         try:
             with self._snapshot() as (connection, info, columns):
                 self._check_database_key(values, info)
-                self._selected_run(connection, run_id, mode, columns[RUN_TABLE])
+                run = self._selected_run(connection, run_id, mode, columns[RUN_TABLE])
                 total = int(connection.execute(text("SELECT COUNT(*) " + source), parameters).scalar_one())
                 total_pages = (total + page_size - 1) // page_size
                 page = min(page, max(1, total_pages))
@@ -487,7 +495,7 @@ class M5ObservationDatabase:
                     "SELECT o.* " + source + f" ORDER BY {order_sql} LIMIT :limit OFFSET :offset"
                 ), parameters).mappings()
                 items = [dict(row) for row in rows]
-                timeframes, metrics = self._children(connection, [item["id"] for item in items], columns)
+                timeframes, metrics = self._children(connection, [item["id"] for item in items], columns, run)
                 for item in items:
                     item["timeframes"] = timeframes[item["id"]]
                     item["captureMetrics"] = metrics.get(item["id"])
@@ -516,7 +524,8 @@ class M5ObservationDatabase:
                     raise M5RequestError("M5 observation was not found", 404)
                 observation = dict(row)
                 run = self._selected_run(connection, row["run_id"], row["source_mode"], columns[RUN_TABLE])
-                timeframes, metrics = self._children(connection, [observation_id], columns)
+                timeframes, metrics = self._children(connection, [observation_id], columns, run)
+                run.pop("input_text", None)
                 navigation = self._navigation(connection, observation, display_interval)
                 # Account identity stays server-side; it is not exposed in the detail response.
                 source_login = None

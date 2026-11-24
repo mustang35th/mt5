@@ -15,3 +15,4 @@
 .alert-snapshot-heading h2:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 .alert-snapshot-heading .alert-snapshot-jst { font-weight: 700; }
 .alert-snapshot-heading .alert-snapshot-server { color: var(--muted); font-weight: 400; }
+.timeframe-values > .timeframe-price-movement { align-items: flex-start; gap: 8px; }

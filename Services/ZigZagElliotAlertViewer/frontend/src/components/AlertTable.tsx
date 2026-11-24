@@ -37,6 +37,7 @@ import "./AlertTable.css";
 import { GmoTargetBadge } from "./GmoTargetBadge";
 import { GridControls, type GridColumnOption } from "./GridControls";
 import { H1DirectionAlignmentBadge } from "./H1DirectionAlignmentBadge";
+import { PriceMovementCell } from "./PriceMovementCell";
 import { W1ConfirmationBadge } from "./W1ConfirmationBadge";
 
 interface AlertTableProps {
@@ -88,6 +89,7 @@ const GRID_COLUMN_IDS = [
   "side",
   "currency_strength",
   "ema200_distance",
+  "price_movement",
   "source_mode",
   "judgement",
   "h1_structure_rank",
@@ -116,11 +118,13 @@ const FIXED_COLUMN_IDS: ReadonlySet<string> = new Set([
 ]);
 const TIME_FRAME_COLUMN_WIDTH = 80;
 const ema200DistanceColumnWidth = 160;
+const priceMovementColumnWidth = 155;
 const currencyStrengthColumnWidth = 220;
 
 const CONFIGURABLE_COLUMNS: ReadonlyArray<Omit<GridColumnOption, "visible">> = [
   { colId: "currency_strength", label: "通貨強弱" },
   { colId: "ema200_distance", label: "EMA200距離" },
+  { colId: "price_movement", label: "値動き" },
   { colId: "source_mode", label: "実行モード" },
   { colId: "judgement", label: "判定" },
   { colId: "h1_structure_rank", label: "構造・波動" },
@@ -269,6 +273,21 @@ function includeCurrencyStrengthColumn(fromLayout: GridColumnLayoutItem[]): Grid
   return [
     ...fromLayout.slice(0, insertIndex),
     { colId: "currency_strength", width: currencyStrengthColumnWidth, hide: false },
+    ...fromLayout.slice(insertIndex),
+  ];
+}
+
+/** Add movement beside the saved EMA200 distance without changing existing preferences. */
+function includePriceMovementColumn(fromLayout: GridColumnLayoutItem[]): GridColumnLayoutItem[] {
+  if (fromLayout.some((column) => column.colId === "price_movement")) {
+    return fromLayout;
+  }
+
+  const insertIndex = fromLayout.findIndex((column) => column.colId === "ema200_distance") + 1;
+
+  return [
+    ...fromLayout.slice(0, insertIndex),
+    { colId: "price_movement", width: priceMovementColumnWidth, hide: false },
     ...fromLayout.slice(insertIndex),
   ];
 }
@@ -535,6 +554,19 @@ function Ema200DistanceGridCell(params: ICellRendererParams<AlertListItem>) {
   return <Ema200DistanceCell alert={alert} />;
 }
 
+/** Render only the adopted snapshot for the alert's own time frame. */
+function PriceMovementGridCell(params: ICellRendererParams<AlertListItem>) {
+  const alert = dataFrom(params);
+  if (!alert) return null;
+
+  const frame = snapshotFrame(alert, alert.time_frame_text);
+  const snapshot = frame ?? (alert.analysis_snapshot
+    ? { price_movement_status: "UNKNOWN" as const }
+    : undefined);
+
+  return <PriceMovementCell snapshot={snapshot} timeFrame={alert.time_frame_text} />;
+}
+
 function JudgementCell(params: ICellRendererParams<AlertListItem>) {
   const alert = dataFrom(params);
   if (!alert) return null;
@@ -728,10 +760,15 @@ export function AlertTable({
       const hasMissingCurrencyStrengthColumn = !storedLayout.some(
         (column) => column.colId === "currency_strength",
       );
-      const restoredLayout = includeCurrencyStrengthColumn(
-        includeEma200DistanceColumn(
-          includeTimeFrameColumn(
-            includeLowerTimeFrameColumns(migrateLegacyTimeFrameColumns(storedLayout)),
+      const hasMissingPriceMovementColumn = !storedLayout.some(
+        (column) => column.colId === "price_movement",
+      );
+      const restoredLayout = includePriceMovementColumn(
+        includeCurrencyStrengthColumn(
+          includeEma200DistanceColumn(
+            includeTimeFrameColumn(
+              includeLowerTimeFrameColumns(migrateLegacyTimeFrameColumns(storedLayout)),
+            ),
           ),
         ),
       );
@@ -743,7 +780,7 @@ export function AlertTable({
         applyOrder: true,
       });
       if (hasLegacyTimeFrameColumn || hasMissingLowerTimeFrameColumn || hasNarrowTimeFrameColumn
-        || hasMissingEma200DistanceColumn || hasMissingCurrencyStrengthColumn) {
+        || hasMissingEma200DistanceColumn || hasMissingCurrencyStrengthColumn || hasMissingPriceMovementColumn) {
         writeGridColumnLayout(
           window.localStorage,
           restoredLayout.map((column) => ({
@@ -927,6 +964,14 @@ export function AlertTable({
       initialWidth: ema200DistanceColumnWidth,
       minWidth: 144,
       cellRenderer: Ema200DistanceGridCell,
+    },
+    {
+      colId: "price_movement",
+      headerName: "値動き",
+      initialWidth: priceMovementColumnWidth,
+      minWidth: 140,
+      sortable: false,
+      cellRenderer: PriceMovementGridCell,
     },
     {
       colId: "source_mode",

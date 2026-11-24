@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AlertCorrectionMetadata, AlertDetail, AlertDetailResponse, AlertPoint, AlertTimeFrame } from "../api/types";
-import { M5AlertSnapshot } from "./M5AlertSnapshot";
+import { AlertCorrectionSnapshot, M5AlertSnapshot } from "./M5AlertSnapshot";
 
 const frames = [[49153, "MN1"], [32769, "W1"], [16408, "D1"], [16388, "H4"], [16385, "H1"], [15, "M15"], [5, "M5"]] as const;
 function fixture() {
@@ -53,6 +53,53 @@ function row(frame: string, analysis: string): HTMLElement {
 afterEach(cleanup);
 
 describe("M5 Alert corrected snapshots", () => {
+  it.each(["M5", "M15", "H1"] as const)("keeps %s price movement tied to the selected original or corrected snapshot", (currentTimeFrame) => {
+    const data = fixture();
+    const original = data.timeFrames.find((item) => item.time_frame_text === currentTimeFrame)!;
+    const corrected = data.detail.correction!.timeframes.find((item) => item.time_frame_text === currentTimeFrame)!;
+    Object.assign(original, {
+      price_movement_status: "VALID", is_price_movement_valid: true, price_movement_level: 1,
+      price_movement_average_range_pips: 1.2, price_movement_reference_atr_pips: 2,
+      price_movement_activity_ratio: 0.6, is_price_movement_spread_valid: false,
+      price_movement_range_spread_ratio: 0, price_movement_reference_bar_time: 1700000000,
+    });
+    Object.assign(corrected, {
+      ...Object.fromEntries(Object.entries(original).filter(([key]) => key.includes("price_movement"))),
+      price_movement_level: 3, price_movement_average_range_pips: 2.8,
+      price_movement_activity_ratio: 1.4, is_price_movement_spread_valid: true,
+      price_movement_range_spread_ratio: 5.6,
+    });
+    render(<AlertCorrectionSnapshot {...data} currentTimeFrame={currentTimeFrame} />);
+    const table = screen.getByRole("table", { name: new RegExp(`^${currentTimeFrame}アラート.*時間足比較$`) });
+    const cell = (analysis: string) => table.querySelector(
+      `[data-timeframe="${currentTimeFrame}"][data-analysis="${analysis}"] [data-column="price_movement"]`,
+    ) as HTMLElement;
+    const headers = within(table).getAllByRole("columnheader").map((item) => item.textContent);
+    expect(headers[headers.indexOf("EMA200距離 (pips)") + 1]).toBe("値動き");
+    expect(cell("CORRECTED")).toHaveTextContent("活発 1.40倍");
+    expect(cell("CORRECTED")).toHaveAttribute("title", expect.stringContaining("平均値幅：2.8 pips"));
+    expect(cell("CORRECTED")).toHaveAttribute("title", expect.stringContaining("2023/11/14 22:13:20 Server"));
+    fireEvent.click(screen.getByRole("button", { name: "補正前" }));
+    expect(cell("ORIGINAL")).toHaveTextContent("静か 0.60倍");
+    expect(cell("ORIGINAL")).toHaveAttribute("title", expect.stringContaining("スプレッド倍率：取得不能"));
+    fireEvent.click(screen.getByRole("button", { name: "前後比較" }));
+    expect(cell("ORIGINAL")).toHaveTextContent("静か 0.60倍");
+    expect(cell("CORRECTED")).toHaveTextContent("活発 1.40倍");
+    expect(cell("CORRECTED")).toHaveClass("m5-alert-changed");
+  });
+
+  it("shows unrecorded and unavailable movement without turning either into calm zero", () => {
+    const data = fixture();
+    Object.assign(data.detail.correction!.timeframes[6], {
+      price_movement_status: "UNAVAILABLE", is_price_movement_valid: false,
+      price_movement_level: 0, price_movement_activity_ratio: 0,
+    });
+    render(<M5AlertSnapshot {...data} />);
+    expect(row("M5", "CORRECTED").querySelector('[data-column="price_movement"]')).toHaveTextContent(/^判定不能$/);
+    expect(row("M15", "CORRECTED").querySelector('[data-column="price_movement"]')).toHaveTextContent(/^未記録$/);
+    expect(within(grid()).queryByText("静か 0.00倍")).not.toBeInTheDocument();
+  });
+
   it("shows previous motive subwaves in summary and compares each analysis independently", () => {
     const data = fixture();
     data.detail.correction!.metadata!.original_analysis_text = "H1/SELL/[1副] ▲3/\r\nEMA200/SELL/\r\nM5/BUY/▲3/";

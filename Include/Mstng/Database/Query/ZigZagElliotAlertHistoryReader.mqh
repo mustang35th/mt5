@@ -5,6 +5,7 @@
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryData.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryText.mqh>
 #include <Mstng\Log\Logger.mqh>
+#include <Mstng\Oscillator\PriceMovementInfo.mqh>
 
 /**
  * M5・H1の保存済み分析とアラートラベルを読み取り専用で取得する。
@@ -733,7 +734,7 @@ private:
      * 必須列を確認し固定順のSELECT列を構成する。欠損理由はDBエラーと分離する。
      */
     bool projection(const string fromTable, const string fromRequired, const string fromAlias,
-                    const bool fromAllowLegacyEma, string &fromProjection, string &fromReason, string &fromError) {
+                    const bool fromAllowLegacyTimeFrame, string &fromProjection, string &fromReason, string &fromError) {
         fromProjection = "";
         fromReason = "";
 
@@ -742,15 +743,32 @@ private:
             return false;
         }
 
+        // 値動き列が一部だけ存在するDBでも、未記録の項目を有効値として扱わない。
+        string priceMovementColumns = "," + this.getPriceMovementColumns() + ",";
+        bool hasPriceMovementColumns = true;
+        if (fromAllowLegacyTimeFrame) {
+            string movementColumns[];
+            int movementColumnCount = StringSplit(this.getPriceMovementColumns(), ',', movementColumns);
+            for (int i = 0; i < movementColumnCount; i++) {
+                if (StringFind(columns, "," + movementColumns[i] + ",") < 0) {
+                    hasPriceMovementColumns = false;
+                    break;
+                }
+            }
+        }
+
         string required[];
         int count = StringSplit(fromRequired, ',', required);
         for (int i = 0; i < count; i++) {
             if (i > 0) {
                 fromProjection += ",";
             }
-            if (StringFind(columns, "," + required[i] + ",") >= 0) {
+            if (fromAllowLegacyTimeFrame && !hasPriceMovementColumns
+                    && StringFind(priceMovementColumns, "," + required[i] + ",") >= 0) {
+                fromProjection += "0 AS " + required[i];
+            } else if (StringFind(columns, "," + required[i] + ",") >= 0) {
                 fromProjection += fromAlias + required[i];
-            } else if (fromAllowLegacyEma && (required[i] == "is_ema200_buy" || required[i] == "is_ema200_sell")) {
+            } else if (fromAllowLegacyTimeFrame && (required[i] == "is_ema200_buy" || required[i] == "is_ema200_sell")) {
                 fromProjection += "0 AS " + required[i];
             } else {
                 fromReason = "保存形式に必要な項目がありません: " + required[i];
@@ -1426,10 +1444,21 @@ private:
     }
 
     /**
+     * 値動きの読取列を固定順で取得する。
+     *
+     * @return 有効性・判定値・根拠時刻の8列。
+     */
+    string getPriceMovementColumns() {
+        return "is_price_movement_valid,price_movement_level,price_movement_average_range_pips,"
+            + "price_movement_reference_atr_pips,price_movement_activity_ratio,is_price_movement_spread_valid,"
+            + "price_movement_range_spread_ratio,price_movement_reference_bar_time";
+    }
+
+    /**
      * TimeFrameの読取列を固定順で取得する。
      */
     string getTimeFrameColumns() {
-        return "id,alert_id,time_frame,time_frame_text,time_frame_order,is_current_time_frame,is_buy,buy_sell_label,wave_count,latest_wave_index,is_wave_confirmed,is_wave_motive,is_wave_uptrend,wave_trend_label,previous_last_elliot_label,point_count,latest_elliot_index,latest_elliot_label,latest_sub_elliot_index,latest_sub_elliot_label,previous_open,previous_high,previous_low,previous_close,current_open,current_high,current_low,current_close,is_fibo_expansion_available,fe618_price,fe1000_price,fe1272_price,fe1618_price,fe2000_price,distance_to_fe2000_pips,oscillator_count,is_oscillator_buy,stochastic_short_count,stochastic_middle_count,stochastic_long_count,gmma_trend_count,gmma_cross_count,ema200_shift1,is_ema200_buy,is_ema200_sell";
+        return "id,alert_id,time_frame,time_frame_text,time_frame_order,is_current_time_frame,is_buy,buy_sell_label,wave_count,latest_wave_index,is_wave_confirmed,is_wave_motive,is_wave_uptrend,wave_trend_label,previous_last_elliot_label,point_count,latest_elliot_index,latest_elliot_label,latest_sub_elliot_index,latest_sub_elliot_label,previous_open,previous_high,previous_low,previous_close,current_open,current_high,current_low,current_close,is_fibo_expansion_available,fe618_price,fe1000_price,fe1272_price,fe1618_price,fe2000_price,distance_to_fe2000_pips,oscillator_count,is_oscillator_buy,stochastic_short_count,stochastic_middle_count,stochastic_long_count,gmma_trend_count,gmma_cross_count,ema200_shift1,is_ema200_buy,is_ema200_sell," + this.getPriceMovementColumns();
     }
 
     /**
@@ -1438,7 +1467,7 @@ private:
     bool readTimeFrame(const int fromRequest, ZigZagElliotAlertTimeFrameEntity &fromEntity) {
         ZeroMemory(fromEntity);
 
-        return this.readLongValue(fromRequest, 0, fromEntity.id)
+        bool isTimeFrameValid = this.readLongValue(fromRequest, 0, fromEntity.id)
             && this.readLongValue(fromRequest, 1, fromEntity.alertId)
             && this.readIntValue(fromRequest, 2, fromEntity.timeFrame)
             && this.readTextValue(fromRequest, 3, fromEntity.timeFrameText)
@@ -1483,6 +1512,58 @@ private:
             && this.readDoubleValue(fromRequest, 42, fromEntity.ema200Shift1)
             && this.readIntValue(fromRequest, 43, fromEntity.isEma200Buy, true)
             && this.readIntValue(fromRequest, 44, fromEntity.isEma200Sell, true);
+        if (!isTimeFrameValid) {
+            return false;
+        }
+
+        this.readPriceMovement(fromRequest, fromEntity);
+
+        return true;
+    }
+
+    /**
+     * 初期化済みTimeFrameへ有効な値動きだけを復元する。
+     * 値動きの未保存・不正値で既存の波動履歴を破棄しない。
+     *
+     * @param fromRequest 時間足別SELECTのリクエスト。
+     * @param fromEntity 値動きが未知状態に初期化された時間足別分析。
+     */
+    void readPriceMovement(const int fromRequest, ZigZagElliotAlertTimeFrameEntity &fromEntity) {
+        int isValid = 0;
+        int level = 0;
+        double averageRangePips = 0.0;
+        double referenceAtrPips = 0.0;
+        double activityRatio = 0.0;
+        long referenceBarTime = 0;
+        if (!this.readIntValue(fromRequest, 45, isValid, true) || isValid != 1
+                || !this.readIntValue(fromRequest, 46, level)
+                || level < PRICE_MOVEMENT_CALM || level > PRICE_MOVEMENT_ACTIVE
+                || !this.readDoubleValue(fromRequest, 47, averageRangePips)
+                || averageRangePips < 0.0 || averageRangePips == EMPTY_VALUE
+                || !this.readDoubleValue(fromRequest, 48, referenceAtrPips)
+                || referenceAtrPips <= 0.0 || referenceAtrPips == EMPTY_VALUE
+                || !this.readDoubleValue(fromRequest, 49, activityRatio)
+                || activityRatio < 0.0 || activityRatio == EMPTY_VALUE
+                || !this.readLongValue(fromRequest, 52, referenceBarTime) || referenceBarTime <= 0) {
+            return;
+        }
+
+        fromEntity.isPriceMovementValid = 1;
+        fromEntity.priceMovementLevel = level;
+        fromEntity.priceMovementAverageRangePips = averageRangePips;
+        fromEntity.priceMovementReferenceAtrPips = referenceAtrPips;
+        fromEntity.priceMovementActivityRatio = activityRatio;
+        fromEntity.priceMovementReferenceBarTime = referenceBarTime;
+
+        // スプレッド比較の取得可否は、値幅とATRの判定結果から独立して扱う。
+        int isSpreadValid = 0;
+        double rangeSpreadRatio = 0.0;
+        if (this.readIntValue(fromRequest, 50, isSpreadValid, true) && isSpreadValid == 1
+                && this.readDoubleValue(fromRequest, 51, rangeSpreadRatio)
+                && rangeSpreadRatio >= 0.0 && rangeSpreadRatio != EMPTY_VALUE) {
+            fromEntity.isPriceMovementSpreadValid = 1;
+            fromEntity.priceMovementRangeSpreadRatio = rangeSpreadRatio;
+        }
     }
 
     /**

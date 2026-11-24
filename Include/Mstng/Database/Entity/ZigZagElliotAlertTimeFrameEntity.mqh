@@ -180,6 +180,30 @@ struct ZigZagElliotAlertTimeFrameEntity {
     /** ATR14 pips。 */
     double atr14Pips;
 
+    /** 値動き判定結果が利用可能な場合1。 */
+    int isPriceMovementValid;
+
+    /** 値動きレベル。0:未取得、1:静か、2:通常、3:活発。 */
+    int priceMovementLevel;
+
+    /** 値動き判定に使用した直近確定足の平均値幅pips。 */
+    double priceMovementAverageRangePips;
+
+    /** 値動き判定に使用した基準ATR pips。 */
+    double priceMovementReferenceAtrPips;
+
+    /** 直近平均値幅を基準ATRで割った活動度。 */
+    double priceMovementActivityRatio;
+
+    /** 値幅とスプレッドの比率が利用可能な場合1。 */
+    int isPriceMovementSpreadValid;
+
+    /** 直近平均値幅をスプレッドで割った倍率。 */
+    double priceMovementRangeSpreadRatio;
+
+    /** 値動き判定に使用した最新確定足の開始時刻。 */
+    long priceMovementReferenceBarTime;
+
     /** EMA200判定の確定足終値。 */
     double ema200Close1;
 

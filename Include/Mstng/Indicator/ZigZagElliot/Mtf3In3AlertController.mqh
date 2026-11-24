@@ -10,6 +10,7 @@
 #define MSTNG_INDICATOR_ZIGZAG_ELLIOT_MTF3_IN3_ALERT_CONTROLLER_MQH
 
 #include <Arrays\ArrayString.mqh>
+#include <Mstng\Analysis\PriceMovementAnalyzer.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
@@ -579,7 +580,7 @@ private:
             GetTickCount64(),
             ChartID()
         );
-        this.databaseRun.schemaVersion = 9;
+        this.databaseRun.schemaVersion = 10;
         this.databaseRun.sourceMode = "LIVE";
 
         if (Util::isStrategyTester()) {
@@ -786,6 +787,8 @@ private:
             + this.formatDatabaseSaveStartTime(
                 this.getEffectiveDatabaseSaveStartTime()
             );
+
+        inputText += "|" + PriceMovementAnalyzer::getCalculationProfileText();
 
         return inputText;
     }

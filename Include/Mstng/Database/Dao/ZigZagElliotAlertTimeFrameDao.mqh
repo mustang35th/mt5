@@ -9,6 +9,7 @@
 #ifndef MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_TIME_FRAME_DAO_MQH
 #define MSTNG_DATABASE_DAO_ZIGZAG_ELLIOT_ALERT_TIME_FRAME_DAO_MQH
 
+#include <Mstng\Database\Dao\ZigZagElliotAlertPriceMovementMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertTimeFrameEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -110,6 +111,17 @@ public:
         sql += "ema60 REAL NOT NULL,";
         sql += "ema30_ema60_diff_pips REAL NOT NULL,";
         sql += "atr14_pips REAL NOT NULL,";
+        sql += "is_price_movement_valid INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_price_movement_valid IN (0, 1)),";
+        sql += "price_movement_level INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(price_movement_level IN (0, 1, 2, 3)),";
+        sql += "price_movement_average_range_pips REAL NOT NULL DEFAULT 0,";
+        sql += "price_movement_reference_atr_pips REAL NOT NULL DEFAULT 0,";
+        sql += "price_movement_activity_ratio REAL NOT NULL DEFAULT 0,";
+        sql += "is_price_movement_spread_valid INTEGER NOT NULL DEFAULT 0 ";
+        sql += "CHECK(is_price_movement_spread_valid IN (0, 1)),";
+        sql += "price_movement_range_spread_ratio REAL NOT NULL DEFAULT 0,";
+        sql += "price_movement_reference_bar_time INTEGER NOT NULL DEFAULT 0,";
         sql += "ema200_close1 REAL NOT NULL,";
         sql += "ema200_shift1 REAL NOT NULL,";
         sql += "ema200_compare REAL NOT NULL,";
@@ -137,6 +149,12 @@ public:
         sql += ")";
 
         if (!this.executeSql(sql, this.tableName + " table")) {
+            return false;
+        }
+
+        if (!ZigZagElliotAlertPriceMovementMigration::execute(
+                this.databaseHandle,
+                this.tableName)) {
             return false;
         }
 
@@ -258,7 +276,12 @@ private:
         sql += " stochastic_middle_signal, stochastic_long_count,";
         sql += " stochastic_long_main, stochastic_long_signal,";
         sql += " gmma_trend_count, gmma_cross_count, ema30, ema60,";
-        sql += " ema30_ema60_diff_pips, atr14_pips, ema200_close1,";
+        sql += " ema30_ema60_diff_pips, atr14_pips,";
+        sql += " is_price_movement_valid, price_movement_level,";
+        sql += " price_movement_average_range_pips, price_movement_reference_atr_pips,";
+        sql += " price_movement_activity_ratio, is_price_movement_spread_valid,";
+        sql += " price_movement_range_spread_ratio, price_movement_reference_bar_time,";
+        sql += " ema200_close1,";
         sql += " ema200_shift1, ema200_compare, ema200_slope_pips,";
         sql += " ema200_close_diff_pips, ema200_close_position,";
         sql += " ema200_slope_direction, ema200_up_count, ema200_down_count,";
@@ -271,7 +294,7 @@ private:
         sql += " ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45,";
         sql += " ?46, ?47, ?48, ?49, ?50, ?51, ?52, ?53, ?54, ?55, ?56,";
         sql += " ?57, ?58, ?59, ?60, ?61, ?62, ?63, ?64, ?65, ?66, ?67,";
-        sql += " ?68, ?69";
+        sql += " ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77";
         sql += ")";
 
         return sql;
@@ -507,6 +530,62 @@ private:
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.atr14Pips);
         }
         if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isPriceMovementValid
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.priceMovementLevel
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.priceMovementAverageRangePips
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.priceMovementReferenceAtrPips
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.priceMovementActivityRatio
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.isPriceMovementSpreadValid
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.priceMovementRangeSpreadRatio
+            );
+        }
+        if (isBound) {
+            isBound = DatabaseBind(
+                fromRequestHandle,
+                index++,
+                fromEntity.priceMovementReferenceBarTime
+            );
+        }
+        if (isBound) {
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.ema200Close1);
         }
         if (isBound) {
@@ -564,7 +643,7 @@ private:
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.createdAtText);
         }
 
-        return isBound && index == 69;
+        return isBound && index == 77;
     }
 
     /**

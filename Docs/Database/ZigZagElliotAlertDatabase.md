@@ -6,10 +6,10 @@
 |---|---|
 | 対象機能 | `ZigZagElliot`の`MTF_3in3`アラート履歴 |
 | DBMS | MetaTrader 5組み込みSQLite |
-| 通常版の現行Alert Runスキーマバージョン | 9（v1.81で補正時間足CHECKへM15を追加） |
+| 通常版・List版の現行Alert Runスキーマバージョン | 10（時間足別の値動き8項目を追加） |
 | 保存単位 | 実行、アラート、時間足別分析、最新Waveポイント |
 | 重複時の動作 | 最初に保存したスナップショットを維持 |
-| 最終更新日 | 2026-10-31 |
+| 最終更新日 | 2026-11-24 |
 
 本書は、ZigZagElliotがアラートを出した時点の判定情報とElliott波動を、後からSQLで検索および再構成できる形式で保存する第1段階の仕様を定義します。
 
@@ -259,9 +259,35 @@ UNIQUE(alert_id, time_frame_order)
 | Oscillator | 総合方向、3本ストキャスの並び・値・継続数 |
 | GMMA | trend count、cross count、EMA30、EMA60、距離 |
 | ATR・EMA200 | ATR14、EMA200価格・傾き・方向・継続数 |
+| 値動き | 判定有効性、分類、平均値幅、基準ATR、活動度、スプレッド比較、対象確定足時刻 |
 | 監査 | `raw_csv_text`, `created_at`, `created_at_text` |
 
 `point_count`は同じ時間足行に紐づくPoint実件数と一致しなければなりません。
+
+### 8.3 値動きの保存（schema 10）
+
+`zigzag_elliot_alert_timeframes` と `zigzag_elliot_alert_corrected_timeframes` に同じ8項目を保存します。M5だけに限定せず、アラートに含まれる各時間足の `Oscillator.priceMovement` を保存時にコピーします。DB保存のための価格再取得や再計算は行いません。通常版・List版の新規Alert Runはschema 10、過去Runのバージョンは維持します。
+
+| 列 | SQLite型 | 内容 |
+|---|---|---|
+| `is_price_movement_valid` | INTEGER | 1＝有効、0＝未保存・判定不能 |
+| `price_movement_level` | INTEGER | 0＝不明、1＝静か、2＝通常、3＝活発 |
+| `price_movement_average_range_pips` | REAL | 直近3本の確定足（shift 1～3）の平均高安差 |
+| `price_movement_reference_atr_pips` | REAL | 直近3本より前のATR14（shift 4） |
+| `price_movement_activity_ratio` | REAL | 平均高安差÷基準ATR |
+| `is_price_movement_spread_valid` | INTEGER | 1＝スプレッド倍率取得済み、0＝取得不能 |
+| `price_movement_range_spread_ratio` | REAL | 平均高安差÷分析時のスプレッド |
+| `price_movement_reference_bar_time` | INTEGER | 最新確定足（shift 1）の開始時刻。サーバー時刻 |
+
+数値は表示用の丸めをせず保存します。既存の `atr14_pips` は現在足のATRであり、値動き用の基準ATRとは別です。分類は活動度0.8未満が静か、0.8以上1.2未満が通常、1.2以上が活発です。値幅0は有効な静かな相場として扱います。
+
+新規Runの `input_text` と対応する `input_hash` に `priceMovementVersion=PRICE_MOVEMENT_V1`、確定足本数3、ATR期間14、参照shift 4、分類閾値0.8・1.2を含めます。共通のElliott分析ProfileとObservationのバージョンは変更しません。
+
+既存DBは初期化時に不足列だけをトランザクション内で追加します。既存行は8項目とも既定値0となり、過去履歴から推測して埋めません。既存の一部列がある場合は保存値を維持し、不足列だけ追加します。旧列構成のDBを履歴Readerで開いた場合も読み取り専用のまま対応し、8列が揃わない場合は値動き全体を未保存として復元します。
+
+値動きが判定不能でも他の分析結果は保存します。スプレッド比較だけ取得できない場合は、値幅・ATR・活動度の有効な結果を残します。集計では必ず `is_price_movement_valid = 1`、スプレッド比較にはさらに `is_price_movement_spread_valid = 1` を指定し、未取得の0値を有効データへ混ぜないようにします。
+
+通常・補正後のスナップショット比較ハッシュにも8項目を含めます。`raw_csv_text` と既存CSVの列数は変更しません。今回の対象はアラートDBのみで、28通貨のM5/H1 Observationテーブルへの値動き保存は含みません。
 
 ## 9. `zigzag_elliot_alert_points`
 

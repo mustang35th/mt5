@@ -3,6 +3,7 @@ import type { M5TimeFrame } from "../api/m5Types";
 import { m5StoredServerTime } from "../lib/m5CaptureQuality";
 import { m5Boolean, m5DepthLabel, m5Direction, m5EmaLabel, m5FibonacciLabel, m5FlagLabel, m5Number, m5Text, m5TimeFrameSlots, m5WaveLabel } from "../lib/m5TimeFrame";
 import { ElliottLabelText } from "./ElliottLabelText";
+import { PriceMovementCell } from "./PriceMovementCell";
 
 const STORAGE_KEY = "m5Observation.comparisonSections.v1";
 type Section = "point" | "ohlc" | "indicators";
@@ -62,6 +63,7 @@ function IndicatorFields({ row }: { row: M5TimeFrame }) {
   ];
   return <div className="m5-extra-fields">
     {emaFields.map(([label, field, digits, unit]) => <Field key={field} label={label} value={row.time_frame === 49153 ? "対象外（MN1は計算省略）" : m5Number(row[field], digits, unit)} />)}
+    <div className="m5-price-movement-field"><span>値動き</span><PriceMovementCell snapshot={row} timeFrame={row.time_frame_text ?? undefined} detailed /></div>
     <Field label="EMA30 / EMA60" value={`${m5Number(row.ema30, 5)} / ${m5Number(row.ema60, 5)}`} />
     <Field label="EMA30-60距離" value={m5Number(row.ema30_ema60_diff_pips, 1, " pips")} />
     <Field label="GMMA Trend / Cross" value={`${m5Number(row.gmma_trend_count, 0)} / ${m5Number(row.gmma_cross_count, 0)}`} />
@@ -86,15 +88,16 @@ export function M5TimeFrameComparison({ timeFrames }: { timeFrames: readonly M5T
     <h3 className="eyebrow">TIMEFRAME COMPARISON</h3>
     {warnings.length > 0 && <div className="m5-warning" role="alert"><strong>足構成を要確認（正常 {slots.filter((slot) => !slot.warning).length}/7足）</strong><ul>{warnings.map((warning, index) => <li key={`${index}:${warning}`}>{warning}</li>)}</ul></div>}
     <div className="m5-comparison-scroll" role="region" aria-label="7時間足比較表" tabIndex={0}>
-      <table className="m5-comparison"><thead><tr>{["時間足", "分析方向", "Elliott / 副次波", "Wave方向", "Wave状態・種別", "ZigZag Point", "EMA200", "GMMA Trend/Cross", "Stochastic", "ATR14"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+      <table className="m5-comparison"><thead><tr>{["時間足", "分析方向", "Elliott / 副次波", "Wave方向", "Wave状態・種別", "ZigZag Point", "EMA200", "値動き", "GMMA Trend/Cross", "Stochastic", "ATR14"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{slots.map(({ id, label, timeFrame: row, warning }) => <tr key={id} data-timeframe={label} className={id === 5 ? "m5-anchor-row" : ""}>
           <th scope="row">{label}{id === 5 && <small>基準足</small>}{warning && <small className="m5-warning" title={warning}>要確認</small>}</th>
-          {!row ? <td colSpan={9}>{warning.includes("重複") ? "複数記録・要確認" : "未記録"}</td> : <>
+          {!row ? <td colSpan={10}>{warning.includes("重複") ? "複数記録・要確認" : "未記録"}</td> : <>
             <td><span className={`badge ${m5Direction(row.is_buy).toLowerCase()}`}>{m5Direction(row.is_buy)}</span></td>
             <td><ElliottLabelText label={m5WaveLabel(row)} mainLabel={row.latest_elliot_label}
               originalLabel={row.latest_point_org_elliot_label} /></td><td>{m5FlagLabel(row.is_wave_uptrend, "▲ 上昇", "▼ 下降")}</td>
             <td>{m5FlagLabel(row.is_wave_confirmed, "確定", "形成中")} / {m5FlagLabel(row.is_wave_motive, "推進波", "修正波")}</td>
             <td>{m5FlagLabel(row.latest_point_is_added, "追加ポイント", "通常")}</td><td>{m5EmaLabel(row)}</td>
+            <td><PriceMovementCell snapshot={row} timeFrame={label} /></td>
             <td>{m5Number(row.gmma_trend_count, 0)} / {m5Number(row.gmma_cross_count, 0)}</td>
             <td>{m5Text(row.stochastic_main_order_text)} / {m5Text(row.stochastic_main_direction_text)}</td><td>{m5Number(row.atr14_pips, 1, " pips")}</td>
           </>}

@@ -13,6 +13,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from price_movement import PRICE_MOVEMENT_COLUMNS, price_movement_snapshot
+
 CORRECTION_TABLE = "zigzag_elliot_alert_corrections"
 TIME_FRAME_TABLE = "zigzag_elliot_alert_corrected_timeframes"
 POINT_TABLE = "zigzag_elliot_alert_corrected_points"
@@ -175,6 +177,9 @@ def _analysis_reason(timeframes: list[dict[str, Any]], points: list[dict[str, An
         return "時間足または波動ポイントが保存されていません。"
     for row in [*timeframes, *points]:
         for name, value in row.items():
+            # Optional movement corruption must not discard the wave comparison.
+            if name in PRICE_MOVEMENT_COLUMNS:
+                continue
             if value is not None and not isinstance(value, (str, int, float)):
                 return "分析値の保存形式が不正です。"
             if isinstance(value, float) and not math.isfinite(value):
@@ -250,6 +255,7 @@ class _AlertPageReader:
         self.column_cache: dict[str, set[str]] = {}
         self.metadata_cache: dict[int, list[dict[str, Any]]] | None = None
         self.analysis_cache: dict[tuple[str, str], tuple[dict, dict]] = {}
+        self.run_cache: dict[int, dict[str, Any]] | None = None
 
     def columns(self, table: str) -> set[str]:
         if table not in self.column_cache:
@@ -267,6 +273,32 @@ class _AlertPageReader:
             ).mappings():
                 self.metadata_cache[row["alert_id"]].append(dict(row))
         return self.metadata_cache.get(alert_id, [])
+
+    def run(self, alert_id: int) -> dict[str, Any] | None:
+        """Load optional movement provenance once for the requested page."""
+        if self.run_cache is None:
+            self.run_cache = {}
+            table = "zigzag_elliot_alert_runs"
+            if table not in self.tables:
+                return None
+            columns = self.columns(table)
+            if "id" not in columns:
+                return None
+            projection = ["a.id AS alert_id", "r.id AS id"]
+            for name in ("schema_version", "input_text"):
+                projection.append(f"r.{name} AS {name}" if name in columns else f"NULL AS {name}")
+            statement = text(f"""
+                SELECT {','.join(projection)}
+                FROM zigzag_elliot_alerts AS a
+                LEFT JOIN {table} AS r ON r.id = a.run_id
+                WHERE a.id IN :alert_ids
+            """).bindparams(bindparam("alert_ids", expanding=True))
+            for row in self.connection.execute(
+                statement, {"alert_ids": self.alert_ids}
+            ).mappings():
+                if row["id"] is not None:
+                    self.run_cache[row["alert_id"]] = dict(row)
+        return self.run_cache.get(alert_id)
 
     def analysis(self, timeframe_table: str, point_table: str,
                  alert_id: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -326,7 +358,7 @@ def _snapshot_text(value: Any) -> str | None:
 
 
 def _compact_timeframes(timeframes: list[dict[str, Any]], points: list[dict[str, Any]],
-                        ema_available: bool) -> list[dict[str, Any]]:
+                        ema_available: bool, run: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     """Keep missing values distinct and use one unambiguous latest point per frame."""
     latest: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for point in points:
@@ -373,6 +405,7 @@ def _compact_timeframes(timeframes: list[dict[str, Any]], points: list[dict[str,
             item["is_ema200_sell"] = _snapshot_boolean(timeframe.get("is_ema200_sell"))
         if original_available is True:
             item["org_elliot_label"] = _snapshot_text(point.get("org_elliot_label"))
+        item.update(price_movement_snapshot(timeframe, run))
         for prefix in ("fibonacci", "fibonacci_expansion"):
             available = _snapshot_boolean(point.get(f"is_{prefix}_available"))
             value = point.get(f"{prefix}_percent")
@@ -400,7 +433,8 @@ def load_alert_analysis_snapshots(
     try:
         reader = _AlertPageReader(connection, [alert["id"] for alert in alerts])
         for alert in alerts:
-            correction = _load_alert_correction(connection, alert, normalize, reader)
+            run = reader.run(alert["id"])
+            correction = _load_alert_correction(connection, alert, normalize, reader, run)
             status = correction["status"]
             if status == "INCOMPLETE":
                 continue
@@ -418,7 +452,7 @@ def load_alert_analysis_snapshots(
                 "status": status,
                 "correction_time_frame_text": correction_frame,
                 "timeframes": _compact_timeframes(
-                    timeframes, points, EMA_COLUMNS.issubset(reader.columns(frame_table))
+                    timeframes, points, EMA_COLUMNS.issubset(reader.columns(frame_table)), run
                 ),
             }
     except SQLAlchemyError:
@@ -427,10 +461,11 @@ def load_alert_analysis_snapshots(
 
 
 def load_alert_correction(session: Session, alert: Mapping[str, Any],
-                          normalize: Callable[[Mapping[str, Any]], dict[str, Any]]) -> dict[str, Any]:
+                          normalize: Callable[[Mapping[str, Any]], dict[str, Any]],
+                          run: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Keep optional correction read failures separate from the original alert."""
     try:
-        return _load_alert_correction(session, alert, normalize)
+        return _load_alert_correction(session, alert, normalize, run=run)
     except SQLAlchemyError:
         logging.getLogger(__name__).warning("Unable to read alert correction snapshot", exc_info=True)
         return _response("INCOMPLETE", "補正データを確認できません。")
@@ -438,7 +473,8 @@ def load_alert_correction(session: Session, alert: Mapping[str, Any],
 
 def _load_alert_correction(session: Session | Connection, alert: Mapping[str, Any],
                            normalize: Callable[[Mapping[str, Any]], dict[str, Any]],
-                           reader: _AlertPageReader | None = None) -> dict[str, Any]:
+                           reader: _AlertPageReader | None = None,
+                           run: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Read one comparison using the caller's read transaction and fixed SQL identifiers."""
     if reader is None:
         tables = set(session.execute(text("SELECT name FROM sqlite_schema WHERE type='table'")).scalars())
@@ -514,6 +550,7 @@ def _load_alert_correction(session: Session | Connection, alert: Mapping[str, An
     normalized_frames = []
     for row in corrected:
         item = normalize(row)
+        item.update(price_movement_snapshot(row, run))
         item["is_ema200_available"] = EMA_COLUMNS.issubset(frame_columns)
         if not item["is_ema200_available"]:
             item["is_ema200_buy"] = False

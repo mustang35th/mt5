@@ -10,6 +10,7 @@
 #define MSTNG_ZZE_H1_OBSERVATION_ALL_CONTROLLER_MQH
 
 #include <Arrays\ArrayObj.mqh>
+#include <Mstng\Analysis\PriceMovementAnalyzer.mqh>
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\SymbolNameInfoAll.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotAlertRunEntity.mqh>
@@ -2110,7 +2111,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.06";
         if (this.observationProfile.isM5()) {
-            this.databaseRun.programVersion = "1.05";
+            this.databaseRun.programVersion = "1.06";
         }
         this.databaseRun.strategy = this.observationProfile.getStrategy();
         this.databaseRun.strategyVersion = this.observationProfile.getStrategyVersion();
@@ -2165,6 +2166,10 @@ private:
         for (int i = 0; i < ArraySize(this.symbolNames); i++) {
             inputText += "|symbol" + IntegerToString(i) + "="
                 + this.symbolNames[i];
+        }
+
+        if (this.observationProfile.isM5()) {
+            inputText += "|" + PriceMovementAnalyzer::getCalculationProfileText();
         }
 
         return inputText;

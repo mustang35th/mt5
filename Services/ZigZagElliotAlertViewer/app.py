@@ -40,6 +40,7 @@ except ModuleNotFoundError as error:
 from alert_corrections import load_alert_analysis_snapshots, load_alert_correction
 from h1_ea_results import EaRequestError, H1EaResultsDatabase
 from m5_observations import M5ObservationDatabase, M5RequestError
+from price_movement import price_movement_snapshot
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -3291,7 +3292,7 @@ class AlertDatabase:
             self.apply_w1_confirmation_defaults(alert)
             self.apply_h1_direction_alignment_defaults(alert)
             run = model_to_dict(run_entity)
-            correction = load_alert_correction(session, alert, values_to_dict)
+            correction = load_alert_correction(session, alert, values_to_dict, run)
             w1: dict[str, Any] | None = None
             if w1_entity is not None:
                 w1 = values_to_dict(
@@ -3319,6 +3320,7 @@ class AlertDatabase:
         """Return all timeframe snapshots for an alert."""
 
         alert_model = self.model("zigzag_elliot_alerts")
+        run_model = self.model("zigzag_elliot_alert_runs")
         time_frame_model = self.model("zigzag_elliot_alert_timeframes")
         time_frame_columns = {
             column.key for column in time_frame_model.__table__.columns
@@ -3333,8 +3335,11 @@ class AlertDatabase:
                 "zigzag_elliot_alert_points",
             )
         with Session(self.engine) as session:
-            if session.get(alert_model, alert_id) is None:
+            session.execute(text("BEGIN"))
+            alert_entity = session.get(alert_model, alert_id)
+            if alert_entity is None:
                 raise RequestError("alert was not found", HTTPStatus.NOT_FOUND)
+            run = model_to_dict(session.get(run_model, alert_entity.run_id))
             entities = list(session.scalars(
                 select(time_frame_model)
                 .where(time_frame_model.alert_id == alert_id)
@@ -3367,6 +3372,7 @@ class AlertDatabase:
             items: list[dict[str, Any]] = []
             for entity in entities:
                 item = model_to_dict(entity) or {}
+                item.update(price_movement_snapshot(item, run))
                 item["is_ema200_available"] = is_ema200_available
                 item["is_ema200_buy"] = bool(item.get("is_ema200_buy", False))
                 item["is_ema200_sell"] = bool(item.get("is_ema200_sell", False))

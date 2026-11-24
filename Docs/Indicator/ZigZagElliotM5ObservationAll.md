@@ -4,11 +4,11 @@
 
 | 項目 | 内容 |
 |---|---|
-| 対象プログラム | `Indicators/ZigZagElliotM5ObservationAll.mq5` v1.05 |
+| 対象プログラム | `Indicators/ZigZagElliotM5ObservationAll.mq5` v1.06 |
 | 文書バージョン | `1.0` |
 | 状態 | v1.02で28通貨・1日分の実収集、進捗ログ、DB完全性を確認済み。Viewer初版は実装・自動テスト・r3読取確認済み、実ブラウザ表示は未確認。長期間・LIVE・障害復旧の検証は残る |
 | 作成日 | 2026-09-10 |
-| 最終更新日 | 2026-10-17 |
+| 最終更新日 | 2026-11-24 |
 | 設計元 | `ZigZagElliotH1ObservationAll` v1.05 |
 | 参照ソース | 本書作成時のコミット `a52991b` |
 | 主な対象工程 | ①DB・観測設定の設計、および②M5収集に必要な基本動作 |
@@ -89,7 +89,7 @@ M5専用SQLite
 | Run `strategy` | `M5_OBSERVATION_ALL` |
 | Run `strategy_version` | `M5_OBSERVATION_ALL_V1` |
 | 観測Profile識別子 | `M5_OBSERVATION_PROFILE_V1` |
-| Snapshot Hash形式識別子 | `M5_OBSERVATION_V2`（v1.03以降。旧観測はV1） |
+| Snapshot Hash形式識別子 | `M5_OBSERVATION_V3`（値動き保存対応。旧観測はV1／V2） |
 
 ### 4.1 保存時間足と順序
 
@@ -234,7 +234,13 @@ v1.03は初版4テーブルと、`previous_motive_sub_elliot_index`列追加後�
 | OHLC | 各時間足の現在形成足と直前確定足のOpen／High／Low／Close |
 | 指標 | Stochastic、GMMA、ATR14、EMA200の位置・傾き・距離・方向など |
 
-v1.03では7足それぞれに`previous_motive_sub_elliot_index INTEGER NULL`を追加し、観測時点の`Wave.getPreviousMotiveSubElliotIndex()`を保存する。現在2・3波では1波、現在4・5波では3波の副次波を確認し、該当する波番号`1`または`3`、副次波なし・対象外なら`0`を保存する。過去行は`NULL`（未記録）のままとする。保存時とDB制約で値を`0・1・3`に制限し、NULLは過去行用に許可する。M5のINSERT・bind数は88、H1は従来の87を維持する。
+v1.03では7足それぞれに`previous_motive_sub_elliot_index INTEGER NULL`を追加し、観測時点の`Wave.getPreviousMotiveSubElliotIndex()`を保存する。現在2・3波では1波、現在4・5波では3波の副次波を確認し、該当する波番号`1`または`3`、副次波なし・対象外なら`0`を保存する。過去行は`NULL`（未記録）のままとする。保存時とDB制約で値を`0・1・3`に制限し、NULLは過去行用に許可する。v1.03のM5 INSERT・bind数は88。値動き8項目の追加後は96となり、H1は従来の87を維持する。
+
+値動き対応版はM5観測の各時間足に、`is_price_movement_valid`、`price_movement_level`、`price_movement_average_range_pips`、`price_movement_reference_atr_pips`、`price_movement_activity_ratio`、`is_price_movement_spread_valid`、`price_movement_range_spread_ratio`、`price_movement_reference_bar_time`を保存する。`Oscillator.priceMovement`の保存時点の値を使用し、取得不能でも他の観測項目の保存は続ける。平均値幅・活動度の有効な0と未取得をフラグで区別し、スプレッド比較の有効性は別に保持する。
+
+値動き8列は、用途検査を通ったM5専用DBのスキーマ準備トランザクション内で追加する。旧行・旧Runの内容とhashは変更しない。新Runの`input_text`へ計算方式 `priceMovementVersion=PRICE_MOVEMENT_V1` と本数・ATR参照位置・閾値を保存し、旧観測の未記録と新観測の取得不能を区別する。Runの`schema_version=1`と観測Profile識別子は維持する。更新済みCollectorを再起動すると、新しく保存する観測から値動きが記録される。過去足の自動再取得は行わない。
+
+M5のCanonical Textにも値動き計算方式を加えるため、更新後の`analysis_input_hash`は変わる。同一自然キーのfirst-write規則は維持するが、旧版と同じ通貨・時刻でも分析hashが異なれば同じDBに別分析として保存できる。旧観測の置換は行わず、ViewerのRun選択で区別する。テスターモデルなどが異なる比較は従来どおり別DBを使用する。
 
 各時間足の最新点1件を中心とする構造化スカラーであり、全ポイントの保存ではない。追加項目は同じWave内の直前推進波に副次波があるかを表し、前のWaveの最終ラベルとは別である。過去推進波の個々の副次波番号・ラベル・価格・F／FEの完全な復元には、別の保存設計が必要となる。
 
@@ -348,6 +354,8 @@ M5のCanonical Textには、実際の基準足・分析開始足・足数・足�
 `analysis_input_hash`は既存同様SHA-256で生成し、M5の識別子を含めてH1と区別する。Snapshot Hashは既存の非暗号学的な内容比較方式を利用し、M5専用の形式識別子と7足の固定順序を使用する。
 
 v1.03はM5 Snapshot Hash形式を`M5_OBSERVATION_V2`とし、各時間足の既存スカラーの後に`previousMotiveSubElliotIndex`を追加する。Elliott計算・分析Profile・Runのschema_versionは変更しない。H1 Snapshot Hashの形式・値の構築順序は維持する。
+
+値動き保存対応ではM5 Snapshot Hash形式を`M5_OBSERVATION_V3`とし、M5の各時間足に値動き8項目を追加する。H1のSnapshot Hashと保存列は変更しない。過去のV1／V2の観測hashを再計算しない。
 
 取得品質5項目は`analysis_input_hash`と`snapshot_hash`へ含めない。同じ分析値でも実行環境・待ち時間・試行回数が変わるためである。品質行の整合は外部キー、同一トランザクション、Snapshot固定および保存テストで確認する。
 

@@ -13,6 +13,7 @@
 #include <Mstng\Database\Dao\ZigZagElliotObservationJstMigration.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationPointDetailsMigration.mqh>
 #include <Mstng\Database\Dao\ZigZagElliotObservationPreviousMotiveSubMigration.mqh>
+#include <Mstng\Database\Dao\ZigZagElliotObservationPriceMovementMigration.mqh>
 #include <Mstng\Database\Entity\ZigZagElliotObservationTimeFrameEntity.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -29,6 +30,7 @@ public:
     ZigZagElliotObservationTimeFrameDao(const int fromDatabaseHandle) {
         this.databaseHandle = fromDatabaseHandle;
         this.savePreviousMotiveSubElliot = false;
+        this.savePriceMovement = false;
         this.logger.setLevel(LOG_INFO);
     }
 
@@ -189,7 +191,13 @@ public:
             return false;
         }
 
+        if (fromCurrentSchemaOnly
+                && !ZigZagElliotObservationPriceMovementMigration::execute(this.databaseHandle)) {
+            return false;
+        }
+
         this.savePreviousMotiveSubElliot = fromCurrentSchemaOnly;
+        this.savePriceMovement = fromCurrentSchemaOnly;
 
         sql = "CREATE UNIQUE INDEX IF NOT EXISTS ";
         sql += "idx_zigzag_elliot_observation_timeframes_anchor ";
@@ -278,6 +286,9 @@ private:
     /** M5専用の直前推進波副次波列を保存する場合true。 */
     bool savePreviousMotiveSubElliot;
 
+    /** M5専用の値動き列を保存する場合true。 */
+    bool savePriceMovement;
+
     /** ロガー。 */
     Logger logger;
 
@@ -327,6 +338,13 @@ private:
         if (this.savePreviousMotiveSubElliot) {
             sql += ", previous_motive_sub_elliot_index";
         }
+        if (this.savePriceMovement) {
+            sql += ", is_price_movement_valid, price_movement_level";
+            sql += ", price_movement_average_range_pips, price_movement_reference_atr_pips";
+            sql += ", price_movement_activity_ratio, is_price_movement_spread_valid";
+            sql += ", price_movement_range_spread_ratio, price_movement_reference_bar_time";
+        }
+
         sql += ") VALUES (";
 
         for (int i = 1; i <= this.getInsertParameterCount(); i++) {
@@ -807,20 +825,49 @@ private:
             isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.previousMotiveSubElliotIndex);
         }
 
+        if (isBound && this.savePriceMovement) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.isPriceMovementValid);
+        }
+        if (isBound && this.savePriceMovement) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.priceMovementLevel);
+        }
+        if (isBound && this.savePriceMovement) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.priceMovementAverageRangePips);
+        }
+        if (isBound && this.savePriceMovement) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.priceMovementReferenceAtrPips);
+        }
+        if (isBound && this.savePriceMovement) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.priceMovementActivityRatio);
+        }
+        if (isBound && this.savePriceMovement) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.isPriceMovementSpreadValid);
+        }
+        if (isBound && this.savePriceMovement) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.priceMovementRangeSpreadRatio);
+        }
+        if (isBound && this.savePriceMovement) {
+            isBound = DatabaseBind(fromRequestHandle, index++, fromEntity.priceMovementReferenceBarTime);
+        }
+
         return isBound && index == this.getInsertParameterCount();
     }
 
     /**
      * 保存用途に対応するINSERTパラメーター数を返す。
      *
-     * @return H1は87、M5は88。
+     * @return H1は87、M5は96。
      */
     int getInsertParameterCount() {
+        int count = 87;
         if (this.savePreviousMotiveSubElliot) {
-            return 88;
+            count++;
+        }
+        if (this.savePriceMovement) {
+            count += 8;
         }
 
-        return 87;
+        return count;
     }
 
     /**

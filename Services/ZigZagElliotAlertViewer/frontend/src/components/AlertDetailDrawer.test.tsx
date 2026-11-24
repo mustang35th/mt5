@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AlertTimeFrame } from "../api/types";
+import type { AlertTimeFrame, ObservationDetailTimeFrame } from "../api/types";
 import { AlertDetailDrawer } from "./AlertDetailDrawer";
+import { ObservationTimeFrameSnapshotGrid } from "./ObservationTimeFrameSnapshotGrid";
 
 function jsonResponse(payload: unknown): Response {
   return {
@@ -222,6 +223,47 @@ afterEach(() => {
 });
 
 describe("AlertDetailDrawer", () => {
+  it.each(["detail", "comparison"] as const)("shows saved price movement in the %s view", async (initialView) => {
+    provideGridLayoutSize();
+    const timeFrames = [timeFrame(1, "H1", 4, {
+      price_movement_status: "VALID", is_price_movement_valid: true, price_movement_level: 3,
+      price_movement_average_range_pips: 2.8, price_movement_reference_atr_pips: 2,
+      price_movement_activity_ratio: 1.4, is_price_movement_spread_valid: true,
+      price_movement_range_spread_ratio: 5.6, price_movement_reference_bar_time: 1700000000,
+    })];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/alerts/74") return jsonResponse(detailPayload());
+      if (path === "/api/alerts/74/timeframes") return jsonResponse({ items: timeFrames, count: 1 });
+      if (path === "/api/alerts/74/points") return jsonResponse({ items: [], count: 0 });
+      throw new Error(`unexpected path: ${path}`);
+    }));
+    render(<AlertDetailDrawer alertId={74} initialView={initialView} onClose={vi.fn()} />);
+    const summary = await screen.findByText("活発 1.40倍");
+    expect(summary.closest(".price-movement-cell")).toHaveAttribute("title", expect.stringContaining("基準ATR14：2.0 pips"));
+    expect(summary.closest(".price-movement-cell")).toHaveAttribute("title", expect.stringContaining("2023/11/14 22:13:20 Server"));
+    if (initialView === "detail") {
+      const card = screen.getByRole("article", { name: "H1 時間足スナップショット（現在足）" });
+      expect(within(card).getByText("平均値幅：2.8 pips（確定足3本）")).toBeInTheDocument();
+    } else {
+      const grid = screen.getByRole("grid", { name: "アラート時間足比較スナップショットグリッド" });
+      const headers = Array.from(grid.querySelectorAll(".ag-header-cell-text")).map((item) => item.textContent);
+      expect(headers[headers.indexOf("EMA200判定") + 1]).toBe("値動き");
+    }
+  });
+
+  it("keeps price movement absent from the shared observation grid by default", () => {
+    provideGridLayoutSize();
+    const snapshot: ObservationDetailTimeFrame = {
+      ...timeFrame(1, "H1", 4), observation_id: 1, is_anchor_time_frame: true,
+      latest_point_time: 0, latest_point_time_text: "", latest_point_jst_time: 0,
+      latest_point_jst_time_text: "", latest_point_rate: 0,
+    };
+    render(<ObservationTimeFrameSnapshotGrid timeFrames={[snapshot]} />);
+    expect(screen.queryByRole("columnheader", { name: "値動き" })).not.toBeInTheDocument();
+    expect(document.querySelector('[col-id="price_movement"]')).toBeNull();
+  });
+
   it.each(["detail", "comparison"] as const)("shows the saved bar start in JST and Server in the %s heading", async (initialView) => {
     const payload = detailPayload();
     const alert = {

@@ -1,0 +1,23 @@
+.price-movement-cell {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  gap: 3px;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.price-movement-summary { white-space: nowrap; }
+.price-movement-active { color: #c4a0ff; }
+.price-movement-normal { color: var(--text, #edf5f5); }
+.price-movement-calm, .price-movement-unknown { color: var(--muted, #8ba0aa); }
+.price-movement-detail {
+  color: var(--muted, #8ba0aa);
+  font-size: 0.75rem;
+  font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -14,6 +14,7 @@
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Elliot\ZigZagElliotObservationProfile.mqh>
 #include <Mstng\ExpertAdvisor\ZigZagElliotObservationSnapshot.mqh>
+#include <Mstng\Oscillator\PriceMovementInfo.mqh>
 #include <Mstng\Util\RateUtil.mqh>
 #include <Mstng\Util\TimeJapanUtil.mqh>
 
@@ -618,6 +619,27 @@ private:
         fromEntity.ema60 = oscillator.ema60;
         fromEntity.ema30Ema60DiffPips = oscillator.ema30Ema60DiffPips;
         fromEntity.atr14Pips = oscillator.atr14;
+
+        if (fromProfile.isM5()) {
+            // 表示・メールと同じ確定済み結果を保存し、ここでは再計算しない。
+            PriceMovementInfo priceMovement = oscillator.priceMovement;
+            if (isPriceMovementSnapshotValid(priceMovement)) {
+                fromEntity.isPriceMovementValid = 1;
+                fromEntity.priceMovementLevel = (int)priceMovement.level;
+                fromEntity.priceMovementAverageRangePips = priceMovement.averageRangePips;
+                fromEntity.priceMovementReferenceAtrPips = priceMovement.referenceAtrPips;
+                fromEntity.priceMovementActivityRatio = priceMovement.activityRatio;
+                fromEntity.priceMovementReferenceBarTime = (long)priceMovement.referenceBarTime;
+                if (priceMovement.isSpreadValid
+                        && MathIsValidNumber(priceMovement.rangeSpreadRatio)
+                        && priceMovement.rangeSpreadRatio != EMPTY_VALUE
+                        && priceMovement.rangeSpreadRatio >= 0.0) {
+                    fromEntity.isPriceMovementSpreadValid = 1;
+                    fromEntity.priceMovementRangeSpreadRatio = priceMovement.rangeSpreadRatio;
+                }
+            }
+        }
+
         fromEntity.ema200Close1 = ema200.close1;
         fromEntity.ema200Shift1 = ema200.ema200Shift1;
         fromEntity.ema200Compare = ema200.ema200Compare;
@@ -634,6 +656,28 @@ private:
         fromEntity.createdAtText = formatDateTime(fromCreatedAt);
 
         return fromEntity.pointCount > 0;
+    }
+
+    /**
+     * 任意項目の値動きを保存可能か確認する。不正値は他の分析の保存を妨げない。
+     *
+     * @param fromInfo 分析時に確定した値動き。
+     * @return 値幅・ATR・活動度・対象足時刻が有効な場合true。
+     */
+    static bool isPriceMovementSnapshotValid(PriceMovementInfo &fromInfo) {
+        return fromInfo.isValid
+            && fromInfo.level >= PRICE_MOVEMENT_CALM
+            && fromInfo.level <= PRICE_MOVEMENT_ACTIVE
+            && MathIsValidNumber(fromInfo.averageRangePips)
+            && fromInfo.averageRangePips != EMPTY_VALUE
+            && fromInfo.averageRangePips >= 0.0
+            && MathIsValidNumber(fromInfo.referenceAtrPips)
+            && fromInfo.referenceAtrPips != EMPTY_VALUE
+            && fromInfo.referenceAtrPips > 0.0
+            && MathIsValidNumber(fromInfo.activityRatio)
+            && fromInfo.activityRatio != EMPTY_VALUE
+            && fromInfo.activityRatio >= 0.0
+            && fromInfo.referenceBarTime > 0;
     }
 
     /**
@@ -671,6 +715,7 @@ private:
             );
             if (fromProfile.isM5()) {
                 appendInteger(sourceText, fromTimeFrameEntities[i].previousMotiveSubElliotIndex);
+                appendPriceMovementHashValues(sourceText, fromTimeFrameEntities[i]);
             }
         }
 
@@ -695,6 +740,26 @@ private:
         }
 
         return StringFormat("%08X%08X", hash1, hash2);
+    }
+
+    /**
+     * M5だけの値動きを保存値の精度でハッシュ元へ追加する。
+     *
+     * @param fromSourceText ハッシュ元文字列。
+     * @param fromEntity 時間足別観測。
+     */
+    static void appendPriceMovementHashValues(
+        string &fromSourceText,
+        ZigZagElliotObservationTimeFrameEntity &fromEntity
+    ) {
+        appendInteger(fromSourceText, fromEntity.isPriceMovementValid);
+        appendInteger(fromSourceText, fromEntity.priceMovementLevel);
+        fromSourceText += "|D" + DoubleToString(fromEntity.priceMovementAverageRangePips, 16);
+        fromSourceText += "|D" + DoubleToString(fromEntity.priceMovementReferenceAtrPips, 16);
+        fromSourceText += "|D" + DoubleToString(fromEntity.priceMovementActivityRatio, 16);
+        appendInteger(fromSourceText, fromEntity.isPriceMovementSpreadValid);
+        fromSourceText += "|D" + DoubleToString(fromEntity.priceMovementRangeSpreadRatio, 16);
+        appendDateTime(fromSourceText, (datetime)fromEntity.priceMovementReferenceBarTime);
     }
 
     /**

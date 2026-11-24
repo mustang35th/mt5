@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { m5Api } from "../api/m5Client";
 import type { M5DetailResponse } from "../api/m5Types";
+import type { PriceMovementSnapshot } from "../api/types";
 import { M5_TIME_FRAMES } from "../lib/m5TimeFrame";
 import { TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY } from "../lib/timeFrameComparisonPreferences";
 import { M5ObservationDetailDrawer } from "./M5ObservationDetailDrawer";
@@ -75,6 +76,57 @@ beforeEach(() => { localStorage.clear(); localStorage.setItem("m5Observation.det
 afterEach(() => { cleanup(); vi.restoreAllMocks(); document.body.classList.remove("drawer-open"); });
 
 describe("M5 observation detail", () => {
+  it("shows each timeframe's saved movement and evidence in both detail views without another request", async () => {
+    const value = detail();
+    const movement: PriceMovementSnapshot = {
+      is_price_movement_valid: true, price_movement_level: 3, price_movement_average_range_pips: 7,
+      price_movement_reference_atr_pips: 5, price_movement_activity_ratio: 1.4,
+      is_price_movement_spread_valid: true, price_movement_range_spread_ratio: 3.5,
+      price_movement_reference_bar_time: 1700000100, price_movement_status: "VALID",
+    };
+    Object.assign(value.timeframes.find((row) => row.time_frame === 5)!, movement);
+    Object.assign(value.timeframes.find((row) => row.time_frame === 16385)!, movement, {
+      price_movement_level: 2, price_movement_activity_ratio: 1, is_price_movement_spread_valid: false,
+    });
+    Object.assign(value.timeframes.find((row) => row.time_frame === 15)!, movement, {
+      price_movement_level: 1, price_movement_activity_ratio: .6,
+    });
+    Object.assign(value.timeframes.find((row) => row.time_frame === 16388)!, { is_price_movement_valid: false, price_movement_status: "UNAVAILABLE" });
+    Object.assign(value.timeframes.find((row) => row.time_frame === 32769)!, { is_price_movement_valid: false, price_movement_status: "UNKNOWN" });
+    const request = vi.spyOn(m5Api, "detail").mockResolvedValue(value);
+    render(<M5ObservationDetailDrawer {...props} />);
+    await screen.findByText("TIMEFRAME COMPARISON");
+    for (const mode of ["通常表示", "全画面グリッド"]) {
+      fireEvent.click(screen.getByRole("button", { name: mode }));
+      const table = mode === "通常表示"
+        ? within(screen.getByRole("region", { name: "7時間足比較表" })).getByRole("table")
+        : screen.getByRole("table", { name: "M5詳細7時間足比較" });
+      const cell = (frame: string) => table.querySelector(`[data-timeframe="${frame}"] .price-movement-cell`)!;
+      expect(cell("M5")).toHaveTextContent("活発 1.40倍");
+      expect(cell("M5")).toHaveClass("price-movement-active");
+      expect(cell("H1")).toHaveTextContent("通常 1.00倍");
+      expect(cell("H1")).toHaveAttribute("title", expect.stringContaining("スプレッド倍率：取得不能"));
+      expect(cell("M15")).toHaveTextContent("静か 0.60倍");
+      expect(cell("H4")).toHaveTextContent(/^判定不能$/);
+      expect(cell("D1")).toHaveTextContent(/^未記録$/);
+      expect(cell("W1")).toHaveTextContent(/^未記録／判定不能$/);
+      expect(cell("M5")).toHaveAttribute("title", expect.stringContaining("M5 値動き：活発 1.40倍"));
+      expect(cell("M5")).toHaveAttribute("title", expect.stringContaining("2023/11/14 22:15:00 Server"));
+      if (mode === "通常表示") {
+        fireEvent.click(screen.getByRole("button", { name: "指標詳細" }));
+        const details = screen.getByRole("article", { name: "M5 保存値の詳細" });
+        expect(within(details).getByText("平均値幅：7.0 pips（確定足3本）")).toBeInTheDocument();
+        expect(within(details).getByText("基準ATR14：5.0 pips（対象3本より前）")).toBeInTheDocument();
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "すべて表示" }));
+        expect(cell("M5")).toHaveTextContent("平均値幅：7.0 pips（確定足3本）");
+        expect(cell("M5")).toHaveTextContent("スプレッド倍率：3.50倍");
+      }
+    }
+    expect(request).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(TIME_FRAME_COMPARISON_COLUMN_GROUP_STORAGE_KEY)).toBeNull();
+  });
+
   it("keeps original Elliott label suffixes consistent in normal and full-screen details", async () => {
     const value = detail();
     Object.assign(value.timeframes.find((row) => row.time_frame === 5)!, {
@@ -314,10 +366,10 @@ describe("M5 full-screen detail grid", () => {
     const table = screen.getByRole("table", { name: "M5詳細7時間足比較" });
     expect(Array.from(table.querySelectorAll("tbody tr")).map((row) => row.getAttribute("data-timeframe"))).toEqual(["MN1", "W1", "D1", "H4", "H1", "M15", "M5"]);
     const summaryLabels = ["時間足", "分析方向", "EMA200方向", "Elliott / Sub", "Wave状態", "直前推進波の副次波", "最新点の取得種別",
-      "F / FE（元番号に対応）", "pips差", "最新点価格", "Oscillator Count", "Stochastic 短期 Count", "Stochastic 中期 Count", "Stochastic 長期 Count", "GMMA Trend", "GMMA Cross"];
+      "F / FE（元番号に対応）", "pips差", "最新点価格", "値動き判定", "Oscillator Count", "Stochastic 短期 Count", "Stochastic 中期 Count", "Stochastic 長期 Count", "GMMA Trend", "GMMA Cross"];
     const columnLabels = () => Array.from(table.querySelectorAll("thead tr:last-child th")).map((header) => header.textContent);
     expect(columnLabels()).toEqual(summaryLabels);
-    expect(Array.from(table.querySelectorAll("tbody tr")).every((row) => row.children.length === 16)).toBe(true);
+    expect(Array.from(table.querySelectorAll("tbody tr")).every((row) => row.children.length === 17)).toBe(true);
     expect(within(table).getByRole("columnheader", { name: "Wave状態" })).toHaveAttribute("title", expect.stringContaining("\n形成中：最新Waveは未確定です。"));
     expect(table.querySelector("td[title]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "その他指標" }));

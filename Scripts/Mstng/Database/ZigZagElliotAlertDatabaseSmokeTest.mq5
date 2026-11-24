@@ -422,6 +422,14 @@ void initializeTimeFrameEntity(
     fromEntity.ema60 = priceBase + 0.00200;
     fromEntity.ema30Ema60DiffPips = 10.0;
     fromEntity.atr14Pips = 80.0 + fromTimeFrameOrder;
+    fromEntity.isPriceMovementValid = 1;
+    fromEntity.priceMovementLevel = 3;
+    fromEntity.priceMovementAverageRangePips = 4.2;
+    fromEntity.priceMovementReferenceAtrPips = 3.0;
+    fromEntity.priceMovementActivityRatio = 1.4;
+    fromEntity.isPriceMovementSpreadValid = 1;
+    fromEntity.priceMovementRangeSpreadRatio = 7.0;
+    fromEntity.priceMovementReferenceBarTime = D'2026.08.08 11:00:00';
     fromEntity.ema200Close1 = priceBase + 0.00100;
     fromEntity.ema200Shift1 = priceBase - 0.00100;
     fromEntity.ema200Compare = priceBase - 0.00200;

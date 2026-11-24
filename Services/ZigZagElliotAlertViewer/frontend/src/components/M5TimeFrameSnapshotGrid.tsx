@@ -2,10 +2,12 @@ import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObj
 import type { M5TimeFrame } from "../api/m5Types";
 import { m5StoredServerTime } from "../lib/m5CaptureQuality";
 import { m5Boolean, m5DepthLabel, m5Direction, m5EmaLabel, m5FibonacciLabel, m5FlagLabel, m5Number, m5PreviousMotiveSubLabel, m5Text, m5TimeFrameSlots, m5WaveLabel } from "../lib/m5TimeFrame";
+import { priceMovementLabel } from "../lib/priceMovement";
 import { ElliottLabelText } from "./ElliottLabelText";
+import { PriceMovementCell } from "./PriceMovementCell";
 import "./M5TimeFrameSnapshotGrid.css";
 
-interface Column { label: string; tooltip?: string; summary?: boolean; minWidth?: number; numeric?: boolean; signed?: boolean; colorValue?: (row: M5TimeFrame) => string; value: (row: M5TimeFrame) => string; render?: (row: M5TimeFrame, value: string) => ReactNode }
+interface Column { label: string; tooltip?: string; summary?: boolean; minWidth?: number; numeric?: boolean; signed?: boolean; colorValue?: (row: M5TimeFrame) => string; value: (row: M5TimeFrame) => string; render?: (row: M5TimeFrame, value: string, expanded: boolean) => ReactNode }
 interface Group { id: string; label: string; columns: Column[] }
 export interface M5GridScroll { left: number; top: number }
 
@@ -87,6 +89,11 @@ const groups: Group[] = [
     numberColumn("傾き pips", "ema200_slope_pips", 1), numberColumn("終値距離 pips", "ema200_close_diff_pips", 1),
     numberColumn("上昇本数", "ema200_up_count"), numberColumn("下降本数", "ema200_down_count"), numberColumn("Trend Count", "ema200_trend_count"),
   ].map((column) => ({ ...column, value: (row: M5TimeFrame) => row.time_frame === 49153 ? "対象外（MN1）" : column.value(row) })) },
+  { id: "movement", label: "値動き", columns: [
+    { label: "値動き判定", summary: true, minWidth: 155, value: priceMovementLabel,
+      tooltip: "各時間足の保存済み判定。平均値幅・基準ATR・スプレッド倍率・対象確定足はセルで確認できます。",
+      render: (row, _value, expanded) => <PriceMovementCell snapshot={row} timeFrame={row.time_frame_text ?? undefined} detailed={expanded} /> },
+  ] },
   { id: "indicators", label: "その他指標", columns: [
     { ...numberColumn("Oscillator Count", "oscillator_count"), summary: true },
     ...(["short", "middle", "long"] as const).map((period, index) => ({
@@ -164,7 +171,7 @@ export function M5TimeFrameSnapshotGrid({ timeFrames, expanded, onExpandedChange
             const value = groupIndex === 0 && index === 0 ? slot.label : slot.timeFrame ? column.value(slot.timeFrame) : "未記録・足構成を要確認";
             return <td key={`${group.id}-${index}`} className={groupIndex === 0 ? `m5-snapshot-key-${index}` : column.numeric ? "m5-snapshot-number" : undefined}
               style={{ minWidth: column.minWidth ?? (column.summary ? 110 : undefined) }}>
-              <span className={cellColor(column, value, slot.timeFrame)}>{slot.timeFrame && column.render ? column.render(slot.timeFrame, value) : value}</span>
+              <span className={cellColor(column, value, slot.timeFrame)}>{slot.timeFrame && column.render ? column.render(slot.timeFrame, value, expanded) : value}</span>
               {groupIndex === 0 && index === 0 && <>{slot.id === 5 && <small>基準足</small>}{slot.warning && <small className="m5-warning">要確認</small>}</>}
             </td>;
           }))}

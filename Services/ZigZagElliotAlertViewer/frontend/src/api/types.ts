@@ -166,7 +166,19 @@ export interface H1DirectionAlignmentDiagnostics {
   is_h1_direction_alignment_legacy: boolean;
 }
 
-export interface AlertAnalysisTimeFrame {
+export interface PriceMovementSnapshot {
+  price_movement_status?: "VALID" | "UNRECORDED" | "UNAVAILABLE" | "UNKNOWN";
+  is_price_movement_valid?: boolean | null;
+  price_movement_level?: number | null;
+  price_movement_average_range_pips?: number | null;
+  price_movement_reference_atr_pips?: number | null;
+  price_movement_activity_ratio?: number | null;
+  is_price_movement_spread_valid?: boolean | null;
+  price_movement_range_spread_ratio?: number | null;
+  price_movement_reference_bar_time?: number | null;
+}
+
+export interface AlertAnalysisTimeFrame extends PriceMovementSnapshot {
   time_frame_text: string;
   side: string | null;
   is_ema200_available: boolean | null;
@@ -429,7 +441,7 @@ export type AlertTimeFrame = Omit<
   | "latest_point_jst_time_text"
   | "latest_point_rate"
   | "latest_point_is_added"
-> & {
+> & PriceMovementSnapshot & {
   alert_id: number;
   is_current_time_frame: boolean;
   is_ema200_available: boolean;

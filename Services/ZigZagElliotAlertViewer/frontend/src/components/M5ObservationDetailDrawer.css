@@ -15,7 +15,7 @@
 .m5-warning[role="alert"] { padding: 12px; border: 1px solid var(--warn, #e9bc70); border-radius: 8px; margin: 12px 0; }
 .m5-warning ul { padding-left: 20px; margin: 6px 0 0; }
 .m5-comparison-scroll { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
-.m5-comparison { width: 100%; min-width: 1240px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.m5-comparison { width: 100%; min-width: 1395px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .m5-comparison th, .m5-comparison td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .m5-comparison thead th { color: var(--muted); background: #11212c; font-size: .75rem; }
 .m5-comparison tbody th { position: sticky; left: 0; z-index: 1; background: #0b151c; }
@@ -28,6 +28,8 @@
 .m5-extra-timeframe h4 { margin: 0 0 12px; }
 .m5-extra-fields, .m5-quality-fields, .m5-record-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .m5-quality-fields .detail-field, .m5-record-fields .detail-field, .m5-extra-fields .detail-field { min-width: 0; overflow-wrap: anywhere; }
+.m5-price-movement-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.m5-price-movement-field > span:first-child { color: var(--muted); font-size: .75rem; }
 .m5-quality-fields small { font-size: .72rem; color: var(--muted); line-height: 1.6; }
 .m5-ohlc { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .m5-ohlc td, .m5-ohlc th { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; }

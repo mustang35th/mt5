@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import type { AlertCorrectionMetadata, AlertCorrectionResponse, AlertDetailResponse, AlertPoint, AlertTimeFrame } from "../api/types";
 import { formatElliottLabel } from "../lib/format";
+import { priceMovementLabel, priceMovementTooltip } from "../lib/priceMovement";
 import { H4_FE_UNRESTRICTED_DESCRIPTION, H4_WAVE_UNRESTRICTED_DESCRIPTION, M5_MN1_AND_W1_EMA200_DESCRIPTION, isH4WaveRestrictionDisabled, isM15H4FeLimitDisabled, isM5Mn1AndW1Ema200Required } from "../lib/h1EntryPolicy";
 import { CurrencyStrengthSnapshotPanel } from "./CurrencyStrengthSnapshotPanel";
 import { ElliottLabelText } from "./ElliottLabelText";
+import { PriceMovementCell } from "./PriceMovementCell";
 import "./M5AlertSnapshot.css";
 
 type Analysis = "ORIGINAL" | "CORRECTED";
@@ -233,6 +235,13 @@ const keyColumns: Column[] = [
   { id: "direction", label: "分析方向", get: (row) => row.timeFrame?.is_buy, display: direction },
   { id: "ema-direction", label: "EMA200方向", get: (row) => [row.timeFrame?.is_ema200_available, row.timeFrame?.is_ema200_buy, row.timeFrame?.is_ema200_sell], display: emaDirection },
   { id: "ema200_close_diff_pips", label: "EMA200距離 (pips)", numeric: true, signed: true, get: emaDistance, display: emaDistanceLabel, tooltip: emaDistanceTooltip },
+  { id: "price_movement", label: "値動き", get: (row) => [
+    row.timeFrame?.price_movement_status, row.timeFrame?.is_price_movement_valid,
+    row.timeFrame?.price_movement_level, row.timeFrame?.price_movement_average_range_pips,
+    row.timeFrame?.price_movement_reference_atr_pips, row.timeFrame?.price_movement_activity_ratio,
+    row.timeFrame?.is_price_movement_spread_valid, row.timeFrame?.price_movement_range_spread_ratio,
+    row.timeFrame?.price_movement_reference_bar_time,
+  ], display: (row) => priceMovementLabel(row.timeFrame), tooltip: (row) => priceMovementTooltip(row.timeFrame) },
   { id: "wave", label: "Elliott / Sub", get: (row) => [row.timeFrame?.is_wave_uptrend, row.timeFrame?.latest_elliot_label, row.timeFrame?.latest_sub_elliot_label, row.point?.org_elliot_label], display: wave, direction },
 ];
 function rowsFor(timeFrames: AlertTimeFrame[], points: AlertPoint[], analysis: Analysis, snapshotFrames: typeof frames, analysisText?: string): SnapshotRow[] {
@@ -410,6 +419,9 @@ function SnapshotContent({ detail, timeFrames, points, currentTimeFrame }: Alert
             if (column.id === "wave") {
               content = <span className={color}><ElliottLabelText label={value}
                 mainLabel={row.timeFrame?.latest_elliot_label} originalLabel={row.point?.org_elliot_label} /></span>;
+            }
+            if (column.id === "price_movement") {
+              content = <PriceMovementCell snapshot={row.timeFrame} timeFrame={row.label} />;
             }
             return <td key={column.id} data-column={column.id} className={classes.join(" ")} title={column.tooltip?.(row)}>{content}</td>;
           })}

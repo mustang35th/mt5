@@ -185,10 +185,10 @@ class AlertListSnapshotsTest(unittest.TestCase):
         ids = {row["id"] for row in page["items"]}
         self.assertEqual(2, len(ids))
         snapshot_queries = [(sql, parameters) for sql, parameters in statements if " IN (?, ?)" in sql]
-        self.assertEqual(5, len(snapshot_queries))
+        self.assertEqual(6, len(snapshot_queries))
         for sql, parameters in snapshot_queries:
             self.assertEqual(ids, set(parameters), sql)
-        for table in (CORRECTION_TABLE, TIME_FRAME_TABLE, POINT_TABLE,
+        for table in ("zigzag_elliot_alert_runs", CORRECTION_TABLE, TIME_FRAME_TABLE, POINT_TABLE,
                       ORIGINAL_TIME_FRAME_TABLE, ORIGINAL_POINT_TABLE):
             self.assertEqual(1, sum(f'PRAGMA table_info("{table}")' in sql for sql, _ in statements), table)
 

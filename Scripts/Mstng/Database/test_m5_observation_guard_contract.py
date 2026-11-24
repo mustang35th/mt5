@@ -103,7 +103,8 @@ def is_allowed(db):
     if not text:
         return True
     if hashlib.sha256(text.encode()).hexdigest() not in (
-            expected_schema_hash(), expected_schema_hash("getPreviousMotiveSubSchemaHash")):
+            expected_schema_hash(), expected_schema_hash("getPreviousMotiveSubSchemaHash"),
+            expected_schema_hash("getPriceMovementSchemaHash")):
         return False
     return not any(db.execute(sql).fetchone()[0] for sql in guard_queries())
 
@@ -159,16 +160,18 @@ class M5ObservationGuardContractTest(unittest.TestCase):
         bindings = dao.split("bool bindEntity(", 1)[1].split("int getInsertParameterCount()", 1)[0]
         fields = re.findall(r"DatabaseBind\(\s*fromRequestHandle,\s*index\+\+,\s*fromEntity\.(\w+)\s*\)", bindings)
         bound_columns = [re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", field).lower() for field in fields]
-        for m5, count in ((False, 87), (True, 88)):
+        for m5, count in ((False, 87), (True, 96)):
             with self.subTest(m5=m5):
                 body = prefix
                 if not m5:
-                    body = re.sub(r"if \(this.savePreviousMotiveSubElliot\) \{.*?\}", "", body, flags=re.S)
+                    body = re.sub(r"if \(this.(?:savePreviousMotiveSubElliot|savePriceMovement)\) \{.*?\}", "", body, flags=re.S)
                 sql = "".join(re.findall(r'(?:string sql =|sql \+=) "([^"]*)";', body))
                 columns = [part.strip() for part in sql.split("(", 1)[1].split(",")]
                 self.assertEqual(len(columns), count)
                 self.assertEqual(columns, bound_columns[:count])
-        self.assertRegex(dao, r"if \(this.savePreviousMotiveSubElliot\) \{\s*return 88;\s*\}\s*return 87;")
+        self.assertIn("int count = 87;", dao)
+        self.assertRegex(dao, r"if \(this.savePreviousMotiveSubElliot\) \{\s*count\+\+;")
+        self.assertRegex(dao, r"if \(this.savePriceMovement\) \{\s*count \+= 8;")
 
     def test_previous_motive_sub_migration_preserves_history_and_guards_schema(self):
         table = "zigzag_elliot_observation_timeframes"

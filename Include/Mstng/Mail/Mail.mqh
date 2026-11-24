@@ -11,6 +11,7 @@
 #include <Mstng\ExpertAdvisor\AbstractExpertAdvisor.mqh>
 #include <Mstng\Mail\Ema200DistanceMailPolicy.mqh>
 #include <Mstng\Mail\MailValidationFileWriter.mqh>
+#include <Mstng\Oscillator\PriceMovementInfo.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 
 /**
@@ -299,24 +300,107 @@ private:
     }
 
     /**
-     * 1つの分析結果から損切り候補と再カウント前ラベル付きの全時間足Elliott本文を生成する。
+     * 1つの分析結果から損切り候補、値動きおよび全時間足Elliott本文を生成する。
      *
      * @param fromElliotAll 表示する分析結果。
-     * @return 損切り候補とElliott本文。
+     * @param fromIncludePriceMovement 値動き一覧と通知対象足の詳細を掲載する場合true。
+     * @return 損切り候補と再カウント前ラベル付きElliott本文。
      */
-    static string getAnalysisBody(ElliotAll *fromElliotAll) {
+    static string getAnalysisBody(
+        ElliotAll *fromElliotAll,
+        const bool fromIncludePriceMovement = true
+    ) {
         string text = "";
         // ロスカット。
         text += StringFormat("%s\n", fromElliotAll.lossCut.getText());
 
-        // 市場分析。
-        //text += StringFormat("%s\n\n", fromElliotAll.marketActivityAnalyzer.toString());
+        if (fromIncludePriceMovement) {
+            text += getPriceMovementBody(fromElliotAll);
+        }
 
         // エリオット。
         text += "エリオット\n";
         text += StringFormat("%s\n", fromElliotAll.getText(true));
 
         return text;
+    }
+
+    /**
+     * 保存済みの値動き結果から時間足別一覧と通知対象足の詳細を生成する。
+     *
+     * @param fromElliotAll 掲載する分析結果。補正メールでは採用した補正後の分析。
+     * @return 値動きの本文。分析結果がない場合は空文字列。
+     */
+    static string getPriceMovementBody(ElliotAll *fromElliotAll) {
+        if (fromElliotAll == NULL) {
+            return "";
+        }
+
+        string text = "値動き（確定足）\n";
+        for (int i = fromElliotAll.elliotList.Total() - 1; i >= 0; i--) {
+            Elliot *elliot = fromElliotAll.elliotList.At(i);
+            if (elliot == NULL) {
+                continue;
+            }
+
+            text += elliot.marketContext.timeFrameLabel + "："
+                + getPriceMovementSummary(elliot.oscillator.priceMovement);
+            if (elliot.marketContext.timeFrame == fromElliotAll.marketContext.timeFrame) {
+                text += "［通知対象］";
+            }
+
+            text += "\n";
+        }
+
+        Elliot *currentElliot = fromElliotAll.elliotCurrent;
+        if (currentElliot != NULL) {
+            text += "\n" + currentElliot.marketContext.timeFrameLabel + "詳細\n";
+            PriceMovementInfo priceMovement = currentElliot.oscillator.priceMovement;
+            if (priceMovement.isValid) {
+                text += StringFormat("平均値幅：%.1fpips\n", priceMovement.averageRangePips);
+                text += StringFormat("基準ATR14：%.1fpips\n", priceMovement.referenceAtrPips);
+                if (priceMovement.isSpreadValid) {
+                    text += StringFormat("値幅／スプレッド：%.2f倍\n", priceMovement.rangeSpreadRatio);
+                } else {
+                    text += "値幅／スプレッド：取得不能\n";
+                }
+            } else {
+                text += "判定不能\n";
+            }
+        }
+
+        text += "\n";
+
+        return text;
+    }
+
+    /**
+     * チャートと同じ状態名と小数2桁のATR比をメール用に整形する。
+     *
+     * @param fromPriceMovement 保存済みの値動き結果。
+     * @return 状態名とATR比。未取得の場合は判定不能。
+     */
+    static string getPriceMovementSummary(PriceMovementInfo &fromPriceMovement) {
+        if (!fromPriceMovement.isValid) {
+            return "判定不能";
+        }
+
+        string levelText = "";
+        switch (fromPriceMovement.level) {
+            case PRICE_MOVEMENT_CALM:
+                levelText = "静か";
+                break;
+            case PRICE_MOVEMENT_NORMAL:
+                levelText = "通常";
+                break;
+            case PRICE_MOVEMENT_ACTIVE:
+                levelText = "活発";
+                break;
+            default:
+                return "判定不能";
+        }
+
+        return StringFormat("%s %.2f倍", levelText, fromPriceMovement.activityRatio);
     }
 
     /**
@@ -336,6 +420,7 @@ private:
         Elliot *judgmentCorrection = fromJudgment.getElliot(fromCorrectionTimeFrame);
 
         string text = getCommonBody(fromSource);
+        text += getPriceMovementBody(fromJudgment);
         text += "補正内容\n";
         text += StringFormat("%s：%s → %s\n\n",
             TimeUtil::convertTimeFrameToString(fromCorrectionTimeFrame),
@@ -343,9 +428,9 @@ private:
             judgmentCorrection.buySellLabel
         );
         text += "【補正後全体：判定・損切りに採用】\n";
-        text += getAnalysisBody(fromJudgment);
+        text += getAnalysisBody(fromJudgment, false);
         text += "\n【補正前全体：比較用】\n";
-        text += getAnalysisBody(fromSource);
+        text += getAnalysisBody(fromSource, false);
 
         return text;
     }

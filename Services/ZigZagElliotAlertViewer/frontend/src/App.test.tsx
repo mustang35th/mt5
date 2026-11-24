@@ -1391,8 +1391,8 @@ describe("App", () => {
       expect(parameters.get("page")).toBe("1");
     });
 
-    const secondHeader = screen.getByRole("columnheader", { name: /通貨/ });
-    fireEvent.click(within(secondHeader).getByRole("button", { name: /通貨/ }));
+    const secondHeader = screen.getByRole("columnheader", { name: /^通貨(?:\s|$)/ });
+    fireEvent.click(within(secondHeader).getByRole("button", { name: /^通貨(?:\s|$)/ }));
     await waitFor(() => {
       const parameters = new URLSearchParams(window.location.search);
       expect(parameters.get("sort")).toBe("symbol_name");
