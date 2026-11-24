@@ -21,6 +21,7 @@
 #include <Mstng\Indicator\ZigZagElliot\DatabaseAlertDisplayController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotAnalysisController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ElliotChartController.mqh>
+#include <Mstng\Indicator\ZigZagElliot\M5ObservationDisplayController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\Mtf3In3AlertController.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotRankDeltaBandHistory.mqh>
@@ -46,6 +47,7 @@ public:
         this.rankDeltaRibbon = NULL;
         this.lastRankDeltaBandCheck = 0;
         this.databaseAlertDisplayController = NULL;
+        this.m5ObservationDisplayController = NULL;
         this.databaseAlertCleanupPending = true;
         this.analysisController = NULL;
         this.chartController = NULL;
@@ -229,6 +231,16 @@ public:
             }
         }
 
+        if (this.config.m5ObservationDisplayEnabled
+                && (this.marketContext.timeFrame == PERIOD_M1 || this.marketContext.timeFrame == PERIOD_M5)) {
+            this.m5ObservationDisplayController = new M5ObservationDisplayController();
+            if (this.m5ObservationDisplayController == NULL
+                    || !this.m5ObservationDisplayController.initialize(this.marketContext, this.config)) {
+                this.logger.error(__FUNCTION__, "M5 observation display settings are invalid");
+                return INIT_PARAMETERS_INCORRECT;
+            }
+        }
+
         SymbolSelect(this.marketContext.symbolName, true);
 
         int analysisTimeFrameCount = ArraySize(this.analysisTimeFrames);
@@ -282,6 +294,16 @@ public:
             }
 
             return;
+        }
+
+        if (this.m5ObservationDisplayController != NULL) {
+            if (fromId == CHARTEVENT_CHART_CHANGE) {
+                this.m5ObservationDisplayController.update(true);
+            } else if (fromId == CHARTEVENT_OBJECT_CLICK
+                    && this.m5ObservationDisplayController.onObjectClick(fromObjectName)) {
+                ChartRedraw(0);
+                return;
+            }
         }
 
         this.prepareDatabaseAlertDisplay();
@@ -362,6 +384,10 @@ public:
      */
     int onCalculate(const int fromRatesTotal, const int fromPrevCalculated = 0,
             const datetime fromCurrentBarTime = 0) {
+        if (this.m5ObservationDisplayController != NULL) {
+            this.m5ObservationDisplayController.update();
+        }
+
         this.prepareDatabaseAlertDisplay();
         if (this.chartController == NULL) {
             return fromRatesTotal;
@@ -414,6 +440,10 @@ public:
     void onTimer() {
         ulong timerStartMicroseconds = GetMicrosecondCount();
         ulong timerEntryTick = GetTickCount64();
+
+        if (this.m5ObservationDisplayController != NULL) {
+            this.m5ObservationDisplayController.update();
+        }
 
         this.prepareDatabaseAlertDisplay();
         if (this.chartController == NULL) {
@@ -483,6 +513,11 @@ public:
         }
 
         this.lastRankDeltaBandCheck = 0;
+
+        if (this.m5ObservationDisplayController != NULL) {
+            delete this.m5ObservationDisplayController;
+            this.m5ObservationDisplayController = NULL;
+        }
 
         if (this.databaseAlertDisplayController != NULL) {
             delete this.databaseAlertDisplayController;
@@ -602,6 +637,9 @@ private:
 
     /** 通常版の保存済みアラート表示。M5で有効時だけ保持する。 */
     DatabaseAlertDisplayController *databaseAlertDisplayController;
+
+    /** 通常版M1・M5の保存済みM5観測表示。有効時だけ保持する。 */
+    M5ObservationDisplayController *m5ObservationDisplayController;
 
     /** 初回の稼働中イベントで旧世代のDB描画を回収する場合true。 */
     bool databaseAlertCleanupPending;
@@ -1073,6 +1111,10 @@ private:
 
         if (this.currencyStrengthController != NULL) {
             this.currencyStrengthController.redrawOnTop();
+        }
+
+        if (this.m5ObservationDisplayController != NULL) {
+            this.m5ObservationDisplayController.redraw();
         }
 
         this.endCurrencyStrengthRedrawBatch(!Util::isStrategyTester());

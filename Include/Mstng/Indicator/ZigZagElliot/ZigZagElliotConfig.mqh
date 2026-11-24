@@ -75,6 +75,21 @@ public:
     /** DB表示をENTRY成立だけに絞る場合true。 */
     bool databaseAlertDisplayEntryOnly;
 
+    /** M1・M5チャートへ保存済みM5観測を表示する場合true。 */
+    bool m5ObservationDisplayEnabled;
+
+    /** 表示用のM5観測DBファイル名。 */
+    string m5ObservationDisplayFileName;
+
+    /** M5観測DBを共通フォルダから読む場合true。 */
+    bool m5ObservationDisplayUseCommonFolder;
+
+    /** 通常チャートでTESTERのM5観測を読む場合true。 */
+    bool m5ObservationDisplayTesterData;
+
+    /** 表示するM5観測Run。0は最初に一致した最新Runを保持する。 */
+    long m5ObservationDisplayRunId;
+
     /** H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。 */
     bool h1DirectionCorrectionEnabled;
 
@@ -188,6 +203,11 @@ public:
         this.databaseAlertDisplayStartDate = 0;
         this.databaseAlertDisplayEndDate = 0;
         this.databaseAlertDisplayEntryOnly = false;
+        this.m5ObservationDisplayEnabled = false;
+        this.m5ObservationDisplayFileName = "mstng-zigzag-elliot-m5-observation.sqlite";
+        this.m5ObservationDisplayUseCommonFolder = true;
+        this.m5ObservationDisplayTesterData = false;
+        this.m5ObservationDisplayRunId = 0;
         this.h1DirectionCorrectionEnabled = false;
         this.m1DirectionCorrectionEnabled = false;
         this.h1Mn1AndW1Ema200Required = false;

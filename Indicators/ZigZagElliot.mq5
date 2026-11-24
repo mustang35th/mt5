@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "2.85"
+#property version   "2.86"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -174,6 +174,24 @@ input group "08. 通貨強弱の順位差帯"
 /** 長中期・中短期の順位差の前足比をメインチャート下部に表示する。 */
 input(name="順位差の増減帯を表示（長中期・中短期）") bool currencyStrengthRankDeltaBandVisible = true;
 
+input group "09. M5観測の保存波動（M1／M5）"
+
+/** M5観測の目印・ツールチップ・クリック詳細を表示する場合true。 */
+input(name="M5観測の保存波動を表示") bool m5ObservationDisplayEnabled = true;
+
+/** 読み取り専用で参照するM5観測DB。 */
+input(name="M5観測DBファイル名") string m5ObservationDisplayFileName =
+    "mstng-zigzag-elliot-m5-observation.sqlite";
+
+/** M5観測DBで共通フォルダを使用する場合true。 */
+input(name="M5観測DBのCommonフォルダを使用") bool m5ObservationDisplayUseCommonFolder = true;
+
+/** 通常チャートでもTESTERの記録を選択する場合true。 */
+input(name="TESTERのM5記録を表示（通常チャート）") bool m5ObservationDisplayTesterData = false;
+
+/** 0は銘柄・サーバー・モードが一致する最新Runを保持する。 */
+input(name="M5観測Run ID（0=最新Run）") long m5ObservationDisplayRunId = 0;
+
 /** ZigZagElliot全体制御。 */
 ZigZagElliotController *gController = NULL;
 
@@ -229,6 +247,11 @@ int OnInit() {
     config.databaseAlertDisplayStartDate = databaseAlertDisplayStartDate;
     config.databaseAlertDisplayEndDate = databaseAlertDisplayEndDate;
     config.databaseAlertDisplayEntryOnly = databaseAlertDisplayEntryOnly;
+    config.m5ObservationDisplayEnabled = m5ObservationDisplayEnabled;
+    config.m5ObservationDisplayFileName = m5ObservationDisplayFileName;
+    config.m5ObservationDisplayUseCommonFolder = m5ObservationDisplayUseCommonFolder;
+    config.m5ObservationDisplayTesterData = m5ObservationDisplayTesterData;
+    config.m5ObservationDisplayRunId = m5ObservationDisplayRunId;
     config.h1DirectionCorrectionEnabled = h1DirectionCorrectionEnabled;
     config.m1DirectionCorrectionEnabled = m1DirectionCorrectionEnabled;
     config.m15H4MaxFibonacciExpansionPercent = m15H4MaxFibonacciExpansionPercent;
