@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.19"
+#property version   "1.20"
 #property indicator_separate_window
 #property indicator_buffers 7
 #property indicator_plots   5
@@ -400,10 +400,12 @@ bool initializeBuffers() {
             || !PlotIndexSetInteger(2, PLOT_LINE_COLOR, 2, clrGray)
             || !IndicatorSetDouble(INDICATOR_MINIMUM, -11.0)
             || !IndicatorSetDouble(INDICATOR_MAXIMUM, 11.0)
-            || !IndicatorSetInteger(INDICATOR_LEVELS, 3)
+            || !IndicatorSetInteger(INDICATOR_LEVELS, 5)
             || !setRankGapLevel(0, 0.0, clrDimGray, STYLE_DOT)
             || !setRankGapLevel(1, 7.0, clrGray, STYLE_DASH)
-            || !setRankGapLevel(2, -7.0, clrGray, STYLE_DASH)) {
+            || !setRankGapLevel(2, -7.0, clrGray, STYLE_DASH)
+            || !setRankGapLevel(3, 4.0, clrCadetBlue, STYLE_DOT)
+            || !setRankGapLevel(4, -4.0, clrPaleVioletRed, STYLE_DOT)) {
         return false;
     }
 
