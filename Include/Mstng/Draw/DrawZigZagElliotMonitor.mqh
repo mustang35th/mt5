@@ -1077,9 +1077,8 @@ private:
 
         string tooltip = this.buildTooltip(fromState, fromProgress);
         bool fresh = !active && fromProgress.targetBarTime > 0 && fromState.result.barTime == fromProgress.targetBarTime;
-        if (this.detailView && fresh && fromState.result.details.judgeStep > MTF3IN3_JUDGE_WAVE
-                && fromState.result.waves.m1.mainLabel == "5") {
-            string waveReason = "M1 第5波（第3波に副次波なし）";
+        if (this.detailView && fresh && fromState.result.details.judgeStep > MTF3IN3_JUDGE_WAVE) {
+            string waveReason = "M5/M1 主波1・3・5";
             statusText += " / " + waveReason;
             tooltip = waveReason + "\n" + tooltip;
         }

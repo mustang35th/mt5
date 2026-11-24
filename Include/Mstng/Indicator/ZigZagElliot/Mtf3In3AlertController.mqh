@@ -591,13 +591,13 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "2.83";
+            this.databaseRun.programVersion = "2.85";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
         this.databaseRun.strategyVersion = "MTF3IN3_V6";
         if (this.marketContext.timeFrame == PERIOD_M1) {
-            this.databaseRun.strategyVersion = "MTF3IN3_M1_CONDITIONAL_WAVE5_V38";
+            this.databaseRun.strategyVersion = "MTF3IN3_M1_ODD_WAVES_V39";
             if (this.config.m1DirectionCorrectionEnabled) {
                 this.databaseRun.strategyVersion += "_CORRECTED";
             }
@@ -682,7 +682,7 @@ private:
         inputText += "|h1DirectionCorrectionEnabled="
             + (string)this.config.h1DirectionCorrectionEnabled;
         if (this.marketContext.timeFrame == PERIOD_M1) {
-            inputText += "|m1MainWaveCondition=M5_1_OR_3_AND_M1_1_OR_3_OR_5_WITHOUT_WAVE3_SUB";
+            inputText += "|m1MainWaveCondition=M5_1_OR_3_OR_5_AND_M1_1_OR_3_OR_5";
             inputText += "|m1Ema200DirectionPolicy=NONE";
             inputText += "|m1Ema200DistancePolicy=NONE";
             inputText += "|m1CurrencyStrengthCondition=BOTH_DIRECTION_AND_MINIMUM_GAP_1";

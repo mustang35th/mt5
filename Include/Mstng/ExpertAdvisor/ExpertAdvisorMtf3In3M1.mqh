@@ -10,11 +10,10 @@
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_M1_MQH
 
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMTF_3in3.mqh>
-#include <Mstng\ExpertAdvisor\H1EntryWaveDecision.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3HigherTimeFrameDecision.mqh>
 
 /**
- * M5の第1・3波を必須とし、M1の第1・3波または条件付き第5波でエントリーを判定する。
+ * M5・M1の主波がそれぞれ第1・3・5波のいずれかでエントリーを判定する。
  *
  * M15の波動番号は制限せず、EMA200の方向・距離をエントリー条件に使用しない。
  * 方向補正が有効な場合はD1・M5・M1の元方向一致を必須とし、
@@ -218,31 +217,37 @@ protected:
     }
 
     /**
-     * 採用したM5が第1・3波で、M1がエントリー対象の主波か判定する。
+     * 採用したM5・M1がそれぞれ第1・3・5波のいずれかか判定する。
      *
      * @return 両時間足が波動番号条件を満たす場合true。
      */
     virtual bool isTimeFrameWaveConditionMatched() override {
         if (this.elliotM5 == NULL || this.elliotM5.marketContext.timeFrame != PERIOD_M5
-                || this.elliotM5.getLatestPoint() == NULL) {
+                || this.elliotM1 == NULL || this.elliotM1.marketContext.timeFrame != PERIOD_M1) {
             return false;
         }
 
-        return ExpertAdvisorMTF_3in3::isEntryWave(this.elliotM5)
+        return this.isEntryWave(this.elliotM5)
             && this.isEntryWave(this.elliotM1);
     }
 
     /**
-     * M1は第1・3波と、同じ推進波内の第3波に副次波がない第5波を許可する。
+     * M5・M1の主波が第1・3・5波なら、副次波の有無にかかわらず許可する。
      *
-     * @param fromElliot 判定に採用したM1分析。
-     * @return M1の主波がエントリー対象の場合true。
+     * @param fromElliot 判定に採用したM5またはM1分析。
+     * @return 主波がエントリー対象の場合true。
      */
     virtual bool isEntryWave(Elliot *fromElliot) override {
-        H1EntryWaveDecision decision;
-        H1EntryWaveResult result;
+        if (fromElliot == NULL
+                || (fromElliot.marketContext.timeFrame != PERIOD_M5
+                    && fromElliot.marketContext.timeFrame != PERIOD_M1)
+                || fromElliot.getLatestWave() == NULL || fromElliot.getLatestPoint() == NULL) {
+            return false;
+        }
 
-        return decision.evaluate(fromElliot, PERIOD_M1, result);
+        string mainWaveLabel = fromElliot.getLatestPoint().elliotLabel;
+
+        return mainWaveLabel == "1" || mainWaveLabel == "3" || mainWaveLabel == "5";
     }
 
     /**
@@ -264,24 +269,36 @@ protected:
     }
 
     /**
-     * 補正後のM5・M1波動と補正時間足をチャートのアラートへ表示する。
+     * 元分析のM15・M5・M1から時間足名なしのアラート文字列を生成する。
      *
-     * @return 補正なしの場合は従来の表示文字列。
+     * @return 上位足から順に並べた3足の波動ラベル。
+     */
+    virtual string buildAlertText() override {
+        return this.getThreeTimeFrameAlertText();
+    }
+
+    /**
+     * 採用したM15・M5・M1波動と補正時間足をチャートのアラートへ表示する。
+     *
+     * @return 3足の波動ラベル。補正分析の場合は補正した時間足を末尾へ付ける。
      */
     virtual string getChartAlertText() override {
         if (this.getCorrectionTimeFrame() == PERIOD_CURRENT) {
             return this.alertText;
         }
 
-        if (this.elliotM5 == NULL || this.elliotM1 == NULL
+        if (this.elliotM15 == NULL || this.elliotM5 == NULL || this.elliotM1 == NULL
+                || this.elliotM15.getLatestPoint() == NULL
                 || this.elliotM5.getLatestWave() == NULL
                 || this.elliotM5.getLatestPoint() == NULL || this.elliotM1.getLatestPoint() == NULL) {
             return "";
         }
 
-        string text = this.elliotM5.getLatestWave().trendLabel;
-        text += this.elliotM5.getLatestPointElliotLabel();
-        text += "-" + this.elliotM1.getLatestPointElliotLabel();
+        string text = this.getThreeTimeFrameAlertText(this.elliotAll);
+        if (text == "") {
+            return "";
+        }
+
         text += " [" + TimeUtil::convertTimeFrameToString(this.correctedTimeFrame) + "補正]";
 
         return text;
