@@ -202,6 +202,31 @@ public:
     }
 
     /**
+     * 通常チャートと同じパネルを保存観測の表示先として接続する。
+     */
+    void setPanel(DrawElliotPanel *fromPanel) {
+        if (this.drawer != NULL) {
+            this.drawer.setPanel(fromPanel);
+        }
+    }
+
+    /**
+     * 読込済みの表示範囲内で前後の保存時刻へ移動する。
+     */
+    bool navigatePanel(const int fromDirection) {
+        if (this.drawer == NULL) {
+            return false;
+        }
+
+        bool changed = this.drawer.navigatePanel(this.records, fromDirection, this.marketContext.digits);
+        if (changed) {
+            this.redraw();
+        }
+
+        return changed;
+    }
+
+    /**
      * 取得済みの保存値だけを再描画する。
      */
     void redraw() {

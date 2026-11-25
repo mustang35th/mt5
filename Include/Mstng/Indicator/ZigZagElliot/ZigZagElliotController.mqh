@@ -14,7 +14,9 @@
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\ChartMouseMoveSubscription.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankDeltaRibbon.mqh>
+#include <Mstng\Draw\DrawElliotPanel.mqh>
 #include <Mstng\Draw\DrawZigZagElliotEntryLines.mqh>
+#include <Mstng\Draw\ElliotPanelLiveAdapter.mqh>
 #include <Mstng\Elliot\ElliotTimeFrameRange.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\Indicator\ZigZagElliot\CurrencyStrengthPairRankController.mqh>
@@ -48,6 +50,7 @@ public:
         this.lastRankDeltaBandCheck = 0;
         this.databaseAlertDisplayController = NULL;
         this.m5ObservationDisplayController = NULL;
+        this.elliotPanel = NULL;
         this.databaseAlertCleanupPending = true;
         this.analysisController = NULL;
         this.chartController = NULL;
@@ -269,6 +272,23 @@ public:
             return INIT_FAILED;
         }
 
+        this.elliotPanel = new DrawElliotPanel(0,
+            "ZzePanel-" + IntegerToString((long)GetMicrosecondCount()) + "-");
+        if (this.elliotPanel == NULL) {
+            return INIT_FAILED;
+        }
+
+        this.chartController.setElliotPanel(this.elliotPanel);
+        if (this.m5ObservationDisplayController != NULL) {
+            this.m5ObservationDisplayController.setPanel(this.elliotPanel);
+        }
+
+        ElliotPanelData waitingPanel;
+        waitingPanel.symbolName = this.marketContext.symbolName;
+        waitingPanel.digits = this.marketContext.digits;
+        waitingPanel.status = "分析データの準備待ち";
+        this.elliotPanel.updateLive(waitingPanel);
+
         LogUtil::printMethodEnd(this.logger, __FUNCTION__, true);
 
         return INIT_SUCCEEDED;
@@ -300,11 +320,40 @@ public:
             return;
         }
 
+        if (fromId == CHARTEVENT_OBJECT_CLICK && this.elliotPanel != NULL) {
+            ENUM_ELLIOT_PANEL_ACTION action = this.elliotPanel.onObjectClick(fromObjectName);
+            if (action != ELLIOT_PANEL_ACTION_NONE) {
+                if (this.m5ObservationDisplayController != NULL) {
+                    if (action == ELLIOT_PANEL_ACTION_PREVIOUS) {
+                        this.m5ObservationDisplayController.navigatePanel(-1);
+                    } else if (action == ELLIOT_PANEL_ACTION_NEXT) {
+                        this.m5ObservationDisplayController.navigatePanel(1);
+                    } else {
+                        this.m5ObservationDisplayController.redraw();
+                    }
+                }
+
+                if (this.chartController != NULL) {
+                    this.chartController.syncElliotPanelState();
+                }
+
+                this.elliotPanel.draw();
+                ChartRedraw(0);
+
+                return;
+            }
+        }
+
         if (this.m5ObservationDisplayController != NULL) {
             if (fromId == CHARTEVENT_CHART_CHANGE) {
                 this.m5ObservationDisplayController.update(true);
             } else if (fromId == CHARTEVENT_OBJECT_CLICK
                     && this.m5ObservationDisplayController.onObjectClick(fromObjectName)) {
+                this.m5ObservationDisplayController.redraw();
+                if (this.chartController != NULL) {
+                    this.chartController.syncElliotPanelState();
+                }
+
                 ChartRedraw(0);
                 return;
             }
@@ -332,7 +381,7 @@ public:
             isRedrawn =
                 this.chartController.onChartChange(elliotAll);
 
-            if (isRedrawn || this.databaseAlertDisplayController != NULL) {
+            if (isRedrawn || this.databaseAlertDisplayController != NULL || this.elliotPanel != NULL) {
                 this.completeRedraw();
             }
 
@@ -538,6 +587,11 @@ public:
             this.chartController = NULL;
         }
 
+        if (this.elliotPanel != NULL) {
+            delete this.elliotPanel;
+            this.elliotPanel = NULL;
+        }
+
         if (this.currencyStrengthController != NULL) {
             delete this.currencyStrengthController;
             this.currencyStrengthController = NULL;
@@ -644,6 +698,9 @@ private:
 
     /** 通常版M1・M5の保存済みM5観測表示。有効時だけ保持する。 */
     M5ObservationDisplayController *m5ObservationDisplayController;
+
+    /** 現在値と保存値を切り替える、単一のエリオットパネル。 */
+    DrawElliotPanel *elliotPanel;
 
     /** 初回の稼働中イベントで旧世代のDB描画を回収する場合true。 */
     bool databaseAlertCleanupPending;
@@ -1121,7 +1178,34 @@ private:
             this.m5ObservationDisplayController.redraw();
         }
 
+        this.updateElliotPanelLive();
+        if (this.elliotPanel != NULL && this.elliotPanel.isSavedMode()) {
+            this.elliotPanel.draw();
+        }
+
         this.endCurrencyStrengthRedrawBatch(!Util::isStrategyTester());
+    }
+
+    /**
+     * 計算済みの最新値をパネルの現在用キャッシュへ渡す。保存表示は変更しない。
+     */
+    void updateElliotPanelLive() {
+        if (this.elliotPanel == NULL || this.analysisController == NULL
+                || this.currencyStrengthController == NULL) {
+            return;
+        }
+
+        CurrencyStrengthExecutionInfo strength = this.currencyStrengthController.getExecutionInfo();
+        string weightLabel = "均等";
+        if (this.config.currencyStrengthVoteWeightMode == CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED) {
+            weightLabel = "加重";
+        }
+
+        ElliotPanelData data;
+        if (ElliotPanelLiveAdapter::build(this.analysisController.getElliotAll(), strength,
+                this.config.currencyStrengthEnabled, weightLabel, data)) {
+            this.elliotPanel.updateLive(data);
+        }
     }
 
     /**
@@ -1136,6 +1220,10 @@ private:
 
         if (this.currencyStrengthController != NULL) {
             this.currencyStrengthController.redrawOnTop();
+        }
+
+        if (this.elliotPanel != NULL) {
+            this.elliotPanel.draw();
         }
 
         this.endCurrencyStrengthRedrawBatch(true);

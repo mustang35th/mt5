@@ -116,6 +116,7 @@ def extracted_methods(source, names):
             raise AssertionError(f"Missing method: {name}")
         parameters = re.sub(r"\bconst\s+|&", "", signature[3])
         parameters = re.sub(r"\bdatetime\b", "long", parameters)
+        parameters = re.sub(r"\bcolor\b", "int", parameters)
         parameters = re.sub(r"\b(\w+)\s+(\w+)\[\]", r"\1[] \2", parameters)
         opening = signature.end() - 1
         body = source[opening + 1:block_end(code_only(source), opening)]
@@ -126,6 +127,7 @@ def extracted_methods(source, names):
         body = re.sub(r"\bcolor\b", "int", body)
         body = body.replace("::", ".")
         body = re.sub(r"\b(CurrencyStrengthPairRankPoint)\s+(\w+)\s*;", r"\1 \2 = new \1();", body)
+        body = re.sub(r"\b(ElliotTableRowData|ElliotTablePalette)\s+(\w+)\s*;", r"\1 \2 = new \1();", body)
         result_type = "int" if signature[2] == "color" else signature[2]
         result.append("public " + (signature[1] or "") + result_type + " " + name + "(" + parameters + ") {" + body + "}")
     return "\n".join(result)
@@ -176,6 +178,55 @@ def struct_fixture(source, name, reset="clear"):
 def frame_fixture():
     source = READER.with_name("ZigZagElliotM5ObservationHistoryData.mqh").read_text(encoding="utf-8-sig")
     return struct_fixture(source, "M5ObservationHistoryFrame")
+
+
+def table_fixture():
+    """Execute the neutral row defaults, palette and production shared formatter."""
+    directory = ROOT / "Include/Mstng/Draw"
+    source = (directory / "ElliotTableRowData.mqh").read_text(encoding="utf-8-sig")
+    result = struct_fixture(source, "ElliotTableRowData")
+    palette_body = source[source.index("struct ElliotTablePalette"):]
+    fields = re.findall(r"^\s*color\s+(\w+);", palette_body, re.M)
+    result += "public class ElliotTablePalette {\n"
+    result += "".join(f"public int {field};\n" for field in fields)
+    constructor = method(source, "ElliotTablePalette")
+    colors = ("clrSilver", "clrWhite", "clrAqua", "clrHotPink", "clrDodgerBlue",
+              "clrMagenta", "clrDeepSkyBlue", "clrPlum")
+    for value, name in enumerate(colors, 1):
+        constructor = re.sub(r"\b" + name + r"\b", str(value), constructor)
+    result += "public ElliotTablePalette() {" + constructor + "}\n}\n"
+    result += r'''
+public class ElliotTableFormatter {
+    static int ArraySize<T>(T[] values) { return values.Length; }
+    static int StringLen(string value) { return value==null ? 0 : value.Length; }
+    static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
+    static string DoubleToString(double value,int digits) { return value.ToString("F"+digits,CultureInfo.InvariantCulture); }
+    static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
+    static int MathMax(int first,int second) { return Math.Max(first,second); }
+    static int MathMin(int first,int second) { return Math.Min(first,second); }
+'''
+    formatter = (directory / "ElliotTableFormatter.mqh").read_text(encoding="utf-8-sig")
+    names = re.findall(r"\bstatic\s+(?:string|color|int|bool)\s+(\w+)\s*\(", formatter)
+    return result + extracted_methods(formatter, names) + "\n}\n"
+
+
+def table_layout_fixture(source):
+    """Keep renderer layout defaults; adapt only fixed arrays and MQL color literals."""
+    opening = re.search(r"\bstruct ElliotTableLayout\s*\{", source).end() - 1
+    body = source[opening + 1:block_end(code_only(source), opening)]
+    fields = re.findall(r"^\s*(int|long|bool|string|color)\s+(\w+)(?:\[(\d+)\])?;", body, re.M)
+    result = "public class ElliotTableLayout { const int clrWhite=2;\n"
+    for kind, name, count in fields:
+        kind = "int" if kind == "color" else kind
+        if count:
+            result += f"public {kind}[] {name}=new {kind}[{count}];\n"
+        else:
+            initial = '= ""' if kind == "string" else ""
+            result += f"public {kind} {name}{initial};\n"
+    constructor = method(source, "ElliotTableLayout")
+    constructor = re.sub(r"C'(\d+),(\d+),(\d+)'",
+                         lambda match: str(int(match[1]) + 256 * int(match[2]) + 65536 * int(match[3])), constructor)
+    return result + "public ElliotTableLayout() {" + constructor + "}\n}\n"
 
 
 def strength_fixture():
@@ -530,35 +581,25 @@ using System.Globalization;
 public class M5ObservationHistoryRecord {
     public long id,barTime;
 }
+public class PanelNavigationStub {
+    public long savedTime;public bool savedMode=true;public int selectedTimeFrame=15;
+    public bool isSavedMode() { return savedMode; }
+    public long getSavedTime() { return savedTime; }
+}
 public class NavigationFixture {
     const long Bar=1795500000;
-    const int OBJPROP_STATE=1;
-    long chartId=0,selectedTime;
     string prefix="Fixture-";
-    int selectedFrameIndex=6,markerCount,chartWidth=1200,chartHeight=600;
+    int markerCount,checks,showCalls,shownDigits;
     int[] markerIndexes=new int[0];
-    bool drawingSucceeded;
-    int checks,drawCalls,panelCalls,stateChanges;
-    long drawnTime;
-    int drawnFrame;
-    M5ObservationHistoryRecord[] drawnRecords;
-    string stateObject="";
-    bool stateValue=true;
+    PanelNavigationStub panel=new PanelNavigationStub();
+    M5ObservationHistoryRecord[] shownRecords;
     static int ArraySize<T>(T[] values) { return values.Length; }
     static int MathMin(int first,int second) { return Math.Min(first,second); }
     static int StringFind(string text,string value) { return text.IndexOf(value,StringComparison.Ordinal); }
     static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
     void Check(bool condition,string message) { checks++;if(!condition) throw new Exception(message); }
-    bool ObjectSetInteger(long chart,string name,int property,bool value) {
-        Check(property==OBJPROP_STATE,"only button state changed");
-        stateChanges++;stateObject=name;stateValue=value;return true;
-    }
-    void ObjectsDeleteAll(long chart,string name,int window,int type) {}
-    bool draw(M5ObservationHistoryRecord[] records,string status,int digits) {
-        drawCalls++;drawnRecords=records;drawnTime=selectedTime;drawnFrame=selectedFrameIndex;return true;
-    }
-    void drawPanel(M5ObservationHistoryRecord[] records,int index,int digits,int width,int height) {
-        panelCalls++;drawnRecords=records;drawnTime=records[index].barTime;drawnFrame=selectedFrameIndex;
+    void showRecord(M5ObservationHistoryRecord[] records,int index,int digits) {
+        showCalls++;shownRecords=records;shownDigits=digits;panel.savedTime=records[index].barTime;
     }
     M5ObservationHistoryRecord Record(long time,long id) {
         return new M5ObservationHistoryRecord { barTime=time,id=id };
@@ -583,31 +624,30 @@ public class NavigationFixture {
         markerCount=0;
         Check(findAdjacentRecordIndex(records,Bar,1)==-1,"no drawn markers disables navigation");
         markerIndexes=new int[]{5,1,3,7,0,6,2};markerCount=markerIndexes.Length;
-        selectedTime=Bar+900;selectedFrameIndex=5;
-        Check(onObjectClick(prefix+"PanelPrevious",records,"ready",3),"previous click handled");
-        Check(selectedTime==Bar && selectedFrameIndex==5,"previous skips gaps without resetting M15 selection");
-        Check(drawCalls==1 && drawnRecords==records && drawnTime==Bar && drawnFrame==5,"full redraw receives selected record cache and preserved detail frame");
-        int redraws=drawCalls;
-        Check(onObjectClick(prefix+"PanelPrevious",records,"ready",3),"disabled previous click consumed");
-        Check(selectedTime==Bar && selectedFrameIndex==5 && drawCalls==redraws,"oldest edge preserves panel and selection");
-        Check(stateChanges>0 && stateObject==prefix+"PanelPrevious" && !stateValue,"disabled button press released");
-        Check(onObjectClick(prefix+"PanelNext",records,"ready",3) && selectedTime==Bar+900,"next returns to the same saved observation");
-        Check(onObjectClick(prefix+"PanelNext",records,"ready",3) && selectedTime==Bar+1200,"next visits nearest newer observation");
-        Check(onObjectClick(prefix+"PanelNext",records,"ready",3) && selectedTime==Bar+1800,"next skips missing slot");
-        redraws=drawCalls;
-        Check(onObjectClick(prefix+"PanelNext",records,"ready",3),"disabled next click consumed");
-        Check(selectedTime==Bar+1800 && selectedFrameIndex==5 && drawCalls==redraws,"newest edge preserves M15 detail and record");
-        Check(stateObject==prefix+"PanelNext" && !stateValue,"newest button press released");
-        selectedTime=Bar+300;
-        Check(onObjectClick(prefix+"PanelNext",records,"ready",3) && selectedTime==Bar+900 && selectedFrameIndex==5,"missing detail can move to a saved observation");
+        panel.savedTime=Bar+900;
+        Check(navigatePanel(records,-1,3),"previous navigation handled");
+        Check(panel.savedTime==Bar && panel.selectedTimeFrame==15,"previous skips gaps without changing selected timeframe");
+        Check(showCalls==1 && shownRecords==records && shownDigits==3,"neutral-panel conversion receives the cached record and symbol precision");
+        int previousCalls=showCalls;
+        Check(!navigatePanel(records,-1,3) && panel.savedTime==Bar && showCalls==previousCalls,"oldest edge does not redraw or change selection");
+        Check(navigatePanel(records,1,3) && panel.savedTime==Bar+900,"next returns to same observation");
+        Check(navigatePanel(records,1,3) && panel.savedTime==Bar+1200,"next visits nearest newer observation");
+        Check(navigatePanel(records,1,3) && panel.savedTime==Bar+1800,"next skips missing slot");
+        previousCalls=showCalls;
+        Check(!navigatePanel(records,1,3) && panel.savedTime==Bar+1800 && showCalls==previousCalls,"newest edge leaves existing panel untouched");
+        panel.savedTime=Bar+300;
+        Check(navigatePanel(records,1,3) && panel.savedTime==Bar+900,"missing observation can navigate to saved neighbor");
         M5ObservationHistoryRecord[] refreshed={records[3],records[0],records[1]};
         markerIndexes=new int[]{0,1,2};markerCount=3;
-        Check(onObjectClick(prefix+"PanelPrevious",refreshed,"ready",3) && selectedTime==Bar,"reload with changed array indexes resolves selection by time");
-        Check(drawnRecords==refreshed,"navigation redraw uses current cache");
-        Check(onObjectClick(prefix+"PanelRow3Elliot",refreshed,"ready",3),"timeframe row click handled");
-        Check(selectedFrameIndex==3 && panelCalls==1 && drawnTime==Bar && drawingSucceeded,"row click preserves observation after navigation");
-        Check(!onObjectClick("Other-PanelNext",refreshed,"ready",3),"other indicator buttons ignored");
-        Check(onObjectClick(prefix+"PanelClose",refreshed,"ready",3) && selectedTime==0 && selectedFrameIndex==6,"closing resets selection normally");
+        Check(navigatePanel(refreshed,-1,3) && panel.savedTime==Bar && shownRecords==refreshed,"refresh resolves observation by time despite different array indexes");
+        panel.savedMode=false;
+        Check(!navigatePanel(refreshed,1,3) && panel.savedTime==Bar,"current mode cannot be moved through saved observations");
+        Check(!onObjectClick("Other-Marker-"+Bar,refreshed,"ready",3),"other indicator markers ignored");
+        Check(!onObjectClick(prefix+"PanelNext",refreshed,"ready",3),"panel actions belong to the shared view, not the marker drawer");
+        Check(onObjectClick(markerName(Bar+900),refreshed,"ready",3) && panel.savedTime==Bar+900,"marker selection routes its saved record to shared panel");
+        Check(!onObjectClick(markerName(Bar+999),refreshed,"ready",3),"unknown marker cannot create an observation");
+        panel=null;
+        Check(!navigatePanel(refreshed,1,3) && !onObjectClick(markerName(Bar),refreshed,"ready",3),"unbound panel is safe");
         Check(navigationGapText(Bar,0,Bar+300)=="","normal five-minute interval has no gap warning");
         Check(navigationGapText(Bar+600,Bar,0)=="前まで 10分","previous gap remains visible");
         Check(navigationGapText(Bar,0,Bar+600)=="次まで 10分","next gap remains visible");
@@ -616,11 +656,182 @@ public class NavigationFixture {
         return "PASS "+checks+" navigation assertions";
     }
 '''
-        adapted += extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), (
-            "findAdjacentRecordIndex", "onObjectClick", "markerName", "navigationGapText",
-        )) + "\n}"
+        methods = extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), (
+            "findAdjacentRecordIndex", "navigatePanel", "onObjectClick", "markerName", "navigationGapText",
+        ))
+        adapted += methods.replace("NULL", "null") + "\n}"
         output = run_csharp(adapted, "(New-Object NavigationFixture).Run()\n")
         self.assertRegex(output, r"PASS \d+ navigation assertions")
+
+
+class SharedElliotTableTests(unittest.TestCase):
+    def test_shared_renderer_preserves_layout_names_clipping_and_custom_tooltips(self):
+        renderer = (ROOT / "Include/Mstng/Draw/DrawElliotTable.mqh").read_text(encoding="utf-8-sig")
+        adapted = "using System;using System.Globalization;using System.Collections.Generic;\n"
+        adapted += table_fixture() + table_layout_fixture(renderer) + r'''
+public class DrawElliotTable {
+    const int OBJ_LABEL=1,OBJ_RECTANGLE_LABEL=2,CORNER_LEFT_UPPER=0,ANCHOR_LEFT_UPPER=0,BORDER_FLAT=0,clrSlateGray=9;
+    const int OBJPROP_CORNER=1,OBJPROP_ANCHOR=2,OBJPROP_XDISTANCE=3,OBJPROP_YDISTANCE=4,OBJPROP_COLOR=5,
+        OBJPROP_FONTSIZE=6,OBJPROP_BACK=7,OBJPROP_SELECTABLE=8,OBJPROP_HIDDEN=9,OBJPROP_ZORDER=10,
+        OBJPROP_FONT=11,OBJPROP_TEXT=12,OBJPROP_TOOLTIP=13,OBJPROP_XSIZE=14,OBJPROP_YSIZE=15,
+        OBJPROP_BGCOLOR=16,OBJPROP_BORDER_TYPE=17;
+    class ChartObject {
+        public int kind;
+        public Dictionary<int,long> numbers=new Dictionary<int,long>();
+        public Dictionary<int,string> texts=new Dictionary<int,string>();
+    }
+    static Dictionary<string,ChartObject> objects=new Dictionary<string,ChartObject>();
+    static string failName="";
+    static bool failMeasure;
+    static int checks;
+    static void Check(bool value,string message) { checks++;if(!value) throw new Exception(message); }
+    static int ObjectFind(long chart,string name) { return objects.ContainsKey(name) ? 0 : -1; }
+    static bool ObjectCreate(long chart,string name,int kind,int subwindow,long time,double price) {
+        if(name==failName) return false;
+        objects.Add(name,new ChartObject { kind=kind });return true;
+    }
+    static bool ObjectSetInteger(long chart,string name,int property,long value) { objects[name].numbers[property]=value;return true; }
+    static bool ObjectSetInteger(long chart,string name,int property,bool value) { return ObjectSetInteger(chart,name,property,value ? 1L : 0L); }
+    static bool ObjectSetString(long chart,string name,int property,string value) { objects[name].texts[property]=value;return true; }
+    static bool TextSetFont(string face,int size) { return !failMeasure; }
+    static bool TextGetSize(string text,out uint width,out uint height) { width=(uint)text.Length*10;height=10;return true; }
+    static int MathMax(int first,int second) { return Math.Max(first,second); }
+    static int StringLen(string value) { return value.Length; }
+    static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
+    static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
+    public static string Run() {
+        ElliotTableRowData row=new ElliotTableRowData { hasData=true,timeFrameLabel="M15",isBuy=1,isUptrend=0,
+            isAdded=0,isConfirmed=1,mainWave=new string('3',180),subWave="i",originalWaveIndex=1,
+            hasPointRate=true,pointRate=1.23456,hasPointPipsDiff=true,pointPipsDiff=12.5,
+            isEma200Buy=0,isEma200Sell=1,isPriceMovementValid=1,priceMovementLevel=3,
+            hasPriceMovementActivityRatio=true,priceMovementActivityRatio=1.375 };
+        ElliotTablePalette palette=new ElliotTablePalette();ElliotTableLayout panel=new ElliotTableLayout();
+        panel.originX=10;panel.originY=20;panel.paddingX=8;panel.paddingY=5;panel.rowHeight=26;
+        panel.showBackground=true;panel.showSeparators=true;panel.clipText=true;panel.textZOrder=22;
+        int position=0;for(int i=0;i<5;i++) { panel.columnXs[i]=position;panel.columnWidths[i]=50+i*10;position+=panel.columnWidths[i]; }
+        Check(drawHeader(0,"Header-",panel),"header draws successfully");
+        Check(objects.Count==10 && objects["Header-Background"].kind==OBJ_RECTANGLE_LABEL,"header uses shared background and four separators");
+        Check(objects["Header-Background"].numbers[OBJPROP_XSIZE]==350,"background spans all five columns");
+        Check(objects["Header-TimeFrame"].numbers[OBJPROP_XDISTANCE]==18 && objects["Header-TimeFrame"].numbers[OBJPROP_YDISTANCE]==25,"header position uses configured origin and padding");
+        Check(objects["Header-PriceMovement"].texts[OBJPROP_TEXT]=="値動き","shared Japanese column title");
+        Check(drawRow(0,"PanelRow5",row,5,palette,panel),"saved panel row draws successfully");
+        ChartObject cell=objects["PanelRow5Elliot"];
+        Check(cell.texts[OBJPROP_TEXT].EndsWith("…") && cell.texts[OBJPROP_TEXT].Length*10<=74,"measured cell text stays within its column");
+        Check(cell.texts[OBJPROP_TOOLTIP].StartsWith("▼333") && cell.texts[OBJPROP_TOOLTIP].Length<=159,"full-value tooltip remains bounded and keeps wave direction");
+        Check(cell.numbers[OBJPROP_COLOR]==3 && cell.numbers[OBJPROP_ZORDER]==22,"table analysis color and click priority preserved");
+        int objectCount=objects.Count;row.mainWave="5";drawRow(0,"PanelRow5",row,5,palette,panel);
+        Check(objects.Count==objectCount && objects["PanelRow5Elliot"].texts[OBJPROP_TOOLTIP].Contains("▼5.i"),"redraw updates its objects without duplicates");
+        ElliotTableLayout live=new ElliotTableLayout();live.originY=70;live.fontFace="Custom Font";
+        for(int i=0;i<5;i++) { live.columnXs[i]=i*110;live.columnWidths[i]=110;live.columnFontSizes[i]=35; }
+        live.columnXs[4]=900;live.columnFontSizes[3]=17;live.columnYOffsets[3]=10;live.tooltips[3]="ATR and spread details";
+        Check(drawRow(0,"Live-ElliotM15",row,5,palette,live),"live row uses same renderer");
+        Check(!objects.ContainsKey("Live-ElliotM15Background") && !objects.ContainsKey("Live-ElliotM15Line0"),"live style leaves chart background visible");
+        Check(objects["Live-ElliotM15Elliot"].numbers[OBJPROP_XDISTANCE]==900,"space for chart-only oscillator columns is retained");
+        cell=objects["Live-ElliotM15PriceMovement"];
+        Check(cell.numbers[OBJPROP_FONTSIZE]==17 && cell.numbers[OBJPROP_YDISTANCE]==80 && cell.texts[OBJPROP_FONT]=="Custom Font","chart font settings and movement vertical offset retained");
+        Check(cell.texts[OBJPROP_TOOLTIP]=="ATR and spread details","chart-only movement tooltip survives shared drawing");
+        live.columnVisible[2]=false;drawRow(0,"Hidden-",row,5,palette,live);
+        Check(!objects.ContainsKey("Hidden-EMA200") && objects.ContainsKey("Hidden-Elliot"),"hidden column does not affect other cells");
+        failName="Failed-BuySell";
+        Check(!drawRow(0,"Failed-",row,5,palette,live),"object creation failure is reported");
+        Check(objects.ContainsKey("Failed-Elliot"),"one failed cell does not suppress later cells");
+        failMeasure=true;
+        Check(fitText("abcdef",20,"Custom Font",10)=="a…","font measurement failure uses bounded fallback");
+        Check(fitText("abcdef",0,"Custom Font",10)=="","zero width never overflows");
+        return "PASS "+checks+" shared renderer assertions";
+    }
+'''
+        names = re.findall(r"\bstatic\s+(?:string|bool)\s+(\w+)\s*\(", renderer)
+        methods = extracted_methods(renderer, names)
+        methods = re.sub(r"TextGetSize\(([^,]+),\s*(\w+),\s*(\w+)\)", r"TextGetSize(\1, out \2, out \3)", methods)
+        adapted += methods + "\n}"
+        output = run_csharp(adapted, "[DrawElliotTable]::Run()\n")
+        self.assertRegex(output, r"PASS \d+ shared renderer assertions")
+        live = code_only((ROOT / "Include/Mstng/Draw/DrawElliot.mqh").read_text(encoding="utf-8-sig"))
+        panel = code_only((ROOT / "Include/Mstng/Draw/DrawElliotPanel.mqh").read_text(encoding="utf-8-sig"))
+        for source in (live, panel):
+            self.assertIn("DrawElliotTable::drawRow(", source)
+            self.assertIn("DrawElliotTable::drawHeader(", source)
+
+    def test_live_and_saved_adapters_produce_the_same_five_columns(self):
+        adapted = "using System;using System.Globalization;\n" + frame_fixture() + table_fixture() + r'''
+public class MarketContext { public string timeFrameLabel="M15"; }
+public class PriceMovementInfo { public bool isValid=true;public int level=3;public double activityRatio=1.375; }
+public class Ema { public bool isBuy=false,isSell=true; }
+public class Oscillator { public Ema ema200=new Ema();public PriceMovementInfo priceMovement=new PriceMovementInfo(); }
+public class Elliot { public bool isBuy=true;public MarketContext marketContext=new MarketContext();public Oscillator oscillator=new Oscillator(); }
+public class ZigZagPoint {
+    public string elliotLabel="3",subElliotLabel="i",orgElliotLabel="2";
+    public int orgElliotIndex=2;public bool isAddedPoint=true;
+    public double pipsDiff=-12.5,fibonacciPercent=61.8,fibonacciExpansionPercent=161.8,rate=1.23456;
+}
+public class Wave {
+    public bool isUptrend=false,isConfirmed=false;public int previous=3;public ZigZagPoint point=new ZigZagPoint();
+    public ZigZagPoint getLatestPoint() { return point; }
+    public int getPreviousMotiveSubElliotIndex() { return previous; }
+}
+public class LiveAdapter {
+'''
+        live_source = (ROOT / "Include/Mstng/Draw/ElliotPanelLiveAdapter.mqh").read_text(encoding="utf-8-sig")
+        live = extracted_methods(live_source, ("fillTableRow", "fillPriceMovementRow"))
+        live = re.sub(r"\b(Wave|ZigZagPoint)\s*\*", r"\1 ", live).replace("NULL", "null")
+        live = re.sub(r"\(int\)((?:fromElliot|fromWave|point|fromPriceMovement)\.[\w.]+)",
+                      r"Convert.ToInt32(\1)", live)
+        adapted += live.replace("public static ", "public ") + "\n}\npublic class SavedAdapter {\n"
+        adapted += extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), ("fillTableRow",))
+        adapted += r'''
+}
+public class SharedAdapterFixture {
+    static int checks;
+    static void Check(bool condition,string message) { checks++;if(!condition) throw new Exception(message); }
+    public static string Run() {
+        Elliot elliot=new Elliot();Wave wave=new Wave();LiveAdapter adapter=new LiveAdapter();
+        ElliotTableRowData live=new ElliotTableRowData(),saved=new ElliotTableRowData();
+        ElliotTablePalette palette=new ElliotTablePalette();
+        M5ObservationHistoryFrame frame=new M5ObservationHistoryFrame {
+            hasData=true,mainWave="3",subWave="i",originalWave="2",isBuy=1,isUptrend=0,isConfirmed=0,isAdded=1,
+            isEma200Buy=0,isEma200Sell=1,isPriceMovementValid=1,priceMovementLevel=3,
+            priceMovementActivityRatio=1.375,hasPriceMovementActivityRatio=true,originalWaveIndex=2,
+            previousMotiveSubElliotIndex=3,pointPipsDiff=-12.5,hasPointPipsDiff=true,
+            pointFibonacciPercent=61.8,hasPointFibonacciPercent=true,pointFibonacciExpansionPercent=161.8,
+            hasPointFibonacciExpansionPercent=true,pointRate=1.23456,hasPointRate=true
+        };
+        Check(adapter.fillTableRow(elliot,wave,live),"live latest point is available");
+        SavedAdapter.fillTableRow(frame,"M15",saved);
+        string[] expected={"M15","BUY","SELL","活発 1.38","[3副] 【未】★▼3.i[2][F61.8%]<-12.5p>1.23456"};
+        int[] colors={3,3,4,5,2};
+        for(int i=0;i<5;i++) {
+            Check(ElliotTableFormatter.cellText(live,i,5)==expected[i],"live expected cell "+i);
+            Check(ElliotTableFormatter.cellText(saved,i,5)==expected[i],"saved expected cell "+i);
+            Check(ElliotTableFormatter.cellColor(live,i,palette)==colors[i] && ElliotTableFormatter.cellColor(saved,i,palette)==colors[i],"same palette and rules for cell "+i);
+        }
+        Check(ElliotTableFormatter.waveText(live,0)=="▼3.i" && ElliotTableFormatter.waveColor(saved,palette)==8,"hover uses downward wave, independent of BUY analysis");
+        palette.upColor=101;palette.unconfirmedUpColor=102;wave.point.isAddedPoint=false;frame.isAdded=0;
+        adapter.fillTableRow(elliot,wave,live);SavedAdapter.fillTableRow(frame,"M15",saved);
+        Check(ElliotTableFormatter.cellColor(live,1,palette)==101 && ElliotTableFormatter.cellColor(saved,4,palette)==102,"custom chart colors shared with saved table");
+        elliot.oscillator.priceMovement.isValid=false;frame.isPriceMovementValid=0;frame.hasPriceMovementActivityRatio=false;
+        adapter.fillTableRow(elliot,wave,live);SavedAdapter.fillTableRow(frame,"M15",saved);
+        Check(ElliotTableFormatter.cellText(live,3,5)=="判定不能" && ElliotTableFormatter.cellText(saved,3,5)=="判定不能","invalid movement is consistent");
+        frame.pointRate=0;frame.hasPointRate=true;wave.point.rate=0;
+        adapter.fillTableRow(elliot,wave,live);SavedAdapter.fillTableRow(frame,"M15",saved);
+        Check(ElliotTableFormatter.cellText(live,4,5).EndsWith("0.00000") && ElliotTableFormatter.cellText(saved,4,5).EndsWith("0.00000"),"recorded zero is preserved by both adapters");
+        frame.hasPointRate=false;SavedAdapter.fillTableRow(frame,"M15",saved);
+        Check(ElliotTableFormatter.cellText(saved,4,5).EndsWith("未記録"),"saved missing price is never filled with live zero");
+        wave.point.subElliotLabel=null;frame.subWave=null;
+        adapter.fillTableRow(elliot,wave,live);SavedAdapter.fillTableRow(frame,"M15",saved);
+        Check(ElliotTableFormatter.waveText(live,0)=="▼3" && ElliotTableFormatter.waveText(saved,0)=="▼3","null subwave from either source never adds a trailing dot");
+        wave.point=null;
+        Check(!adapter.fillTableRow(elliot,wave,live) && !live.hasData && !live.hasPointRate,"missing live point clears stale row");
+        frame.clear();SavedAdapter.fillTableRow(frame,"M5",saved);
+        Check(ElliotTableFormatter.cellText(saved,0,5)=="M5" && ElliotTableFormatter.cellText(saved,1,5)=="未記録","missing saved row retains its timeframe only");
+        elliot.marketContext.timeFrameLabel="M1";wave.point=new ZigZagPoint();adapter.fillTableRow(elliot,wave,live);
+        Check(ElliotTableFormatter.cellText(live,0,5)=="M1","live M1 remains available without inventing a saved M1 row");
+        return "PASS "+checks+" shared adapter assertions";
+    }
+}
+'''
+        output = run_csharp(adapted, "[SharedAdapterFixture]::Run()\n")
+        self.assertRegex(output, r"PASS \d+ shared adapter assertions")
 
 
 class M5ObservationTooltipTests(unittest.TestCase):
@@ -675,26 +886,16 @@ public class StrengthTextFixture {
         self.assertRegex(output, r"PASS \d+ strength text assertions")
 
     def test_chart_table_formatters_match_saved_directions_states_and_numbers(self):
-        adapted = "using System;using System.Globalization;\n" + frame_fixture() + r'''
+        adapted = "using System;using System.Globalization;\n" + table_fixture() + r'''
 public class TableFixture {
     const int clrSilver=1,clrWhite=2,clrAqua=3,clrHotPink=4,clrDodgerBlue=5,clrMagenta=6;
-    static int StringLen(string value) { return value.Length; }
-    static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
-    static string DoubleToString(double value,int digits) { return value.ToString("F"+digits,CultureInfo.InvariantCulture); }
-    static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
-    static int MathMax(int first,int second) { return Math.Max(first,second); }
-    static int MathMin(int first,int second) { return Math.Min(first,second); }
-    static class TimeUtil {
-        public static string formatYyyymmddhhmiss(long value) {
-            return new DateTime(1970,1,1).AddSeconds(value).ToString("yyyy/MM/dd HH:mm:ss",CultureInfo.InvariantCulture);
-        }
-    }
     static int checks;
     static void Check(bool condition,string message) { checks++;if(!condition) throw new Exception(message); }
     public static string Run() {
-        M5ObservationHistoryFrame frame=new M5ObservationHistoryFrame();
-        Check(tableElliotText(frame,5)=="未記録","missing timeframe");
-        Check(emaText(frame)=="未記録" && movementText(frame)=="未記録","missing indicators");
+        ElliotTableRowData frame=new ElliotTableRowData();
+        ElliotTablePalette palette=new ElliotTablePalette();
+        Check(ElliotTableFormatter.cellText(frame,4,5)=="未記録","missing timeframe");
+        Check(ElliotTableFormatter.cellText(frame,2,5)=="未記録" && ElliotTableFormatter.cellText(frame,3,5)=="未記録","missing indicators");
         frame.hasData=true;frame.mainWave="3";frame.subWave="i";frame.originalWave="2";
         frame.isUptrend=0;frame.isBuy=1;frame.isConfirmed=0;frame.isAdded=1;
         frame.originalWaveIndex=2;frame.previousMotiveSubElliotIndex=3;
@@ -702,68 +903,67 @@ public class TableFixture {
         frame.pointFibonacciPercent=61.8;frame.hasPointFibonacciPercent=true;
         frame.pointFibonacciExpansionPercent=161.8;frame.hasPointFibonacciExpansionPercent=true;
         frame.pointRate=1.23456;frame.hasPointRate=true;
-        string text=tableElliotText(frame,5);
+        string text=ElliotTableFormatter.cellText(frame,4,5);
         Check(text.Contains("[3副]") && text.Contains("【未】") && text.Contains("★▼3.i[2]"),"saved wave and states");
         Check(text.Contains("[F61.8%]") && !text.Contains("[FE"),"F uses original even index, not current main wave");
         Check(text.Contains("<-12.5p>") && text.EndsWith("1.23456"),"signed pips and symbol price precision");
-        Check(analysisColor(frame.isBuy)==clrAqua && elliotColor(frame)==clrWhite,"added point white has priority");
-        frame.isAdded=0;Check(elliotColor(frame)==clrDodgerBlue,"unconfirmed BUY blue despite downward wave");
-        frame.isConfirmed=1;Check(elliotColor(frame)==clrAqua,"confirmed BUY aqua");
-        frame.isBuy=0;Check(elliotColor(frame)==clrHotPink,"confirmed SELL pink");
-        frame.isConfirmed=0;Check(elliotColor(frame)==clrMagenta,"unconfirmed SELL magenta");
-        frame.isAdded=-1;Check(elliotColor(frame)==clrSilver,"unknown point state is not invented");
+        Check(ElliotTableFormatter.cellColor(frame,1,palette)==clrAqua && ElliotTableFormatter.cellColor(frame,4,palette)==clrWhite,"added point white has priority");
+        frame.isAdded=0;Check(ElliotTableFormatter.cellColor(frame,4,palette)==clrDodgerBlue,"unconfirmed BUY blue despite downward wave");
+        frame.isConfirmed=1;Check(ElliotTableFormatter.cellColor(frame,4,palette)==clrAqua,"confirmed BUY aqua");
+        frame.isBuy=0;Check(ElliotTableFormatter.cellColor(frame,4,palette)==clrHotPink,"confirmed SELL pink");
+        frame.isConfirmed=0;Check(ElliotTableFormatter.cellColor(frame,4,palette)==clrMagenta,"unconfirmed SELL magenta");
+        frame.isAdded=-1;Check(ElliotTableFormatter.cellColor(frame,4,palette)==clrSilver,"unknown point state is not invented");
         frame.originalWaveIndex=3;frame.originalWave="3";frame.previousMotiveSubElliotIndex=0;
-        text=tableElliotText(frame,5);
+        text=ElliotTableFormatter.cellText(frame,4,5);
         Check(text.Contains("[FE161.8%]") && !text.Contains("[F61.8%]"),"FE uses original odd index");
         Check(!text.Contains("副]") && !text.Contains("[3]"),"zero preceding wave and unchanged original omitted");
-        frame.originalWaveIndex=1;text=tableElliotText(frame,5);
+        frame.originalWaveIndex=1;text=ElliotTableFormatter.cellText(frame,4,5);
         Check(!text.Contains("[F"),"wave one has no F/FE display");
         frame.originalWaveIndex=2;frame.hasPointFibonacciPercent=false;
-        Check(tableElliotText(frame,5).Contains("[F未記録]"),"missing F is not zero percent");
+        Check(ElliotTableFormatter.cellText(frame,4,5).Contains("[F未記録]"),"missing F is not zero percent");
         frame.originalWaveIndex=-1;
-        Check(tableElliotText(frame,5).Contains("[F/FE未記録]"),"unknown original index not inferred from label");
+        Check(ElliotTableFormatter.cellText(frame,4,5).Contains("[F/FE未記録]"),"unknown original index not inferred from label");
         frame.originalWaveIndex=2;frame.hasPointFibonacciPercent=true;frame.pointFibonacciPercent=0;
-        Check(tableElliotText(frame,5).Contains("[F0.0%]"),"recorded zero percent retained");
+        Check(ElliotTableFormatter.cellText(frame,4,5).Contains("[F0.0%]"),"recorded zero percent retained");
         frame.isEma200Buy=0;frame.isEma200Sell=1;
-        Check(emaText(frame)=="SELL" && emaColor(frame)==clrHotPink,"EMA independent SELL");
+        Check(ElliotTableFormatter.cellText(frame,2,5)=="SELL" && ElliotTableFormatter.cellColor(frame,2,palette)==clrHotPink,"EMA independent SELL");
         frame.isEma200Sell=0;
-        Check(emaText(frame)=="NONE" && emaColor(frame)==clrWhite,"EMA NONE distinct from missing");
+        Check(ElliotTableFormatter.cellText(frame,2,5)=="NONE" && ElliotTableFormatter.cellColor(frame,2,palette)==clrWhite,"EMA NONE distinct from missing");
         frame.isEma200Buy=-1;
-        Check(emaText(frame)=="未記録" && emaColor(frame)==clrSilver,"EMA missing flag not NONE");
+        Check(ElliotTableFormatter.cellText(frame,2,5)=="未記録" && ElliotTableFormatter.cellColor(frame,2,palette)==clrSilver,"EMA missing flag not NONE");
         frame.isEma200Buy=1;frame.isEma200Sell=1;
-        Check(emaText(frame)=="判定不能" && emaColor(frame)==clrSilver,"contradictory EMA flags are not BUY");
+        Check(ElliotTableFormatter.cellText(frame,2,5)=="判定不能" && ElliotTableFormatter.cellColor(frame,2,palette)==clrSilver,"contradictory EMA flags are not BUY");
         frame.isPriceMovementValid=0;
-        Check(movementText(frame)=="判定不能" && movementColor(frame)==clrSilver,"saved invalid movement");
+        Check(ElliotTableFormatter.cellText(frame,3,5)=="判定不能" && ElliotTableFormatter.cellColor(frame,3,palette)==clrSilver,"saved invalid movement");
         frame.isPriceMovementValid=1;frame.priceMovementLevel=3;
         frame.hasPriceMovementActivityRatio=true;frame.priceMovementActivityRatio=1.375;
-        Check(movementText(frame)=="活発 1.38" && movementColor(frame)==clrDodgerBlue,"active movement and two decimals");
+        Check(ElliotTableFormatter.cellText(frame,3,5)=="活発 1.38" && ElliotTableFormatter.cellColor(frame,3,palette)==clrDodgerBlue,"active movement and two decimals");
         frame.priceMovementLevel=2;frame.priceMovementActivityRatio=0;
-        Check(movementText(frame)=="通常 0.00" && movementColor(frame)==clrWhite,"zero activity is recorded");
+        Check(ElliotTableFormatter.cellText(frame,3,5)=="通常 0.00" && ElliotTableFormatter.cellColor(frame,3,palette)==clrWhite,"zero activity is recorded");
         frame.hasPriceMovementActivityRatio=false;
-        Check(movementText(frame).Contains("未記録"),"missing activity not zero");
+        Check(ElliotTableFormatter.cellText(frame,3,5).Contains("未記録"),"missing activity not zero");
         frame.priceMovementLevel=-1;
-        Check(movementText(frame)=="未記録" && movementColor(frame)==clrSilver,"missing movement level not invalid");
+        Check(ElliotTableFormatter.cellText(frame,3,5)=="未記録" && ElliotTableFormatter.cellColor(frame,3,palette)==clrSilver,"missing movement level not invalid");
+        frame.mainWave="B";frame.subWave=null;frame.originalWave=null;frame.originalWaveIndex=0;
+        Check(ElliotTableFormatter.waveText(frame,0)=="▼B","null subwave produces no trailing dot");
+        string nullLabels=ElliotTableFormatter.cellText(frame,4,5);
+        Check(!nullLabels.Contains("B.") && !nullLabels.Contains("[]"),"null subwave and original wave add no punctuation");
+        frame.subWave="";frame.originalWave="";
+        Check(ElliotTableFormatter.cellText(frame,4,5)==nullLabels,"empty and null optional labels are equivalent");
+        frame.mainWave=null;
+        Check(ElliotTableFormatter.waveText(frame,0)=="▼—","null main wave is explicitly unknown");
+        frame.mainWave="";
+        Check(ElliotTableFormatter.waveText(frame,0)=="▼—","empty main wave uses the same unknown label");
         return "PASS "+checks+" table assertions";
     }
 '''
-        adapted += extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), (
-            "tableElliotText", "analysisColor", "elliotColor", "emaText", "emaColor",
-            "movementText", "movementColor", "numberText", "recordedText", "waveText",
-            "stateText", "timeText", "shorten",
-        )) + "\n}"
+        adapted += "\n}"
         output = run_csharp(adapted, "[TableFixture]::Run()\n")
         self.assertRegex(output, r"PASS \d+ table assertions")
 
     def test_production_formatter_with_saved_missing_and_long_labels(self):
         source = DRAWER.read_text(encoding="utf-8-sig")
-        adapted = r'''
-using System;
-using System.Globalization;
-public class M5ObservationHistoryFrame {
-    public bool hasData;
-    public int isUptrend=-1, isBuy=-1;
-    public string mainWave="",subWave="";
-}
+        adapted = "using System;using System.Globalization;\n" + frame_fixture() + table_fixture() + r'''
 public class M5ObservationHistoryRecord {
     public long id,barTime,jstTime,captureTime;
     public M5ObservationHistoryFrame[] frames=new M5ObservationHistoryFrame[7];
@@ -808,7 +1008,7 @@ public class TooltipFixture {
         return "PASS "+checks+" tooltip assertions";
     }
 '''
-        adapted += extracted_methods(source, ("formatTooltip", "frameName", "waveText", "timeText", "shorten")) + "\n}"
+        adapted += extracted_methods(source, ("formatTooltip", "frameName", "waveText", "fillTableRow", "timeText", "shorten")) + "\n}"
         output = run_csharp(adapted, "[TooltipFixture]::Run()\n")
         self.assertRegex(output, r"PASS \d+ tooltip assertions")
 

@@ -7,8 +7,10 @@
 #property link      "https://www.mql5.com"
 
 #include <Mstng\Draw\DrawChartTextBounds.mqh>
+#include <Mstng\Draw\DrawElliotTable.mqh>
 #include <Mstng\Draw\DrawProperties.mqh>
 #include <Mstng\Draw\DrawPropertiesElliot.mqh>
+#include <Mstng\Draw\ElliotPanelLiveAdapter.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Util\UtilAll.mqh>
 
@@ -258,82 +260,44 @@ public:
         color fontColorAll = clrWhite;
         string timeFrameLabel = elliot.marketContext.timeFrameLabel;
         string preName = "Elliot" + timeFrameLabel;
-        //string text = "";
         int width = 0;
-        
         Wave *latestWave = elliot.getLatestWave();
-        
         if (latestWave == NULL) {
             return;
         }
-        
-        //Print(latestWave.toString());
-        
-        if (elliot.isBuy) {
-            fontColorAll = drawProperties.elliotUpColor;
-        } else {
-            fontColorAll = drawProperties.elliotDownColor;
-        }
-        
-        if (this.isVisible(COLMUN_TIME_FRAME, width)) {
-            string text = "TimeFrame";
-            DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColorAll, 
-                                drawProperties.elliotAlertSize, timeFrameLabel, objX, objY);
-            objX += width;
-        }
-        
-        if (this.isVisible(COLMUN_BUYSELL, width)) {
-            string text = "BuySell";
-            DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColorAll, 
-                                drawProperties.elliotAlertSize, elliot.buySellLabel, objX, objY);
-            objX += width;
-        }
-        
-        
-        if (this.isVisible(COLMUN_EMA200_BUYSELL, width)) {
-            string text = "EMA200";
-            
-            string signalTextLabel = elliot.oscillator.ema200.getBuySellLabel();
-            
-            color fontColor = clrWhite;
-            
-            if (signalTextLabel == "BUY") {
-                fontColor = drawProperties.elliotUpColor;
-            }
-            
-            if (signalTextLabel == "SELL") {
-                fontColor = drawProperties.elliotDownColor;
-            }
-            
-            DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, 
-                                drawProperties.elliotAlertSize, signalTextLabel, objX, objY);
-            objX += width;
-        }
-        
-        if (this.isVisible(COLMUN_PRICE_MOVEMENT, width)) {
-            string objectName = preName + "PriceMovement";
-            string movementText = this.getPriceMovementLevelText(elliot.oscillator.priceMovement);
-            if (elliot.oscillator.priceMovement.isValid) {
-                movementText += " " + DoubleToString(elliot.oscillator.priceMovement.activityRatio, 2);
-            }
 
-            DrawUtil::setLabel(
-                objectName,
-                this.drawProperties.elliotFontFace,
-                this.getPriceMovementColor(elliot.oscillator.priceMovement),
-                this.drawProperties.elliotAlertSize / 2,
-                movementText,
-                objX,
-                objY + 10
-            );
-            ObjectSetString(
-                0,
-                Constant::PREFIX + objectName,
-                OBJPROP_TOOLTIP,
-                this.getPriceMovementTooltip(elliot.oscillator.priceMovement)
-            );
-            objX += width;
+        ElliotTableRowData row;
+        if (!this.fillTableRow(elliot, latestWave, row)) {
+            return;
         }
+
+        ElliotTablePalette palette;
+        palette.upColor = this.drawProperties.elliotUpColor;
+        palette.downColor = this.drawProperties.elliotDownColor;
+        palette.unconfirmedUpColor = this.drawProperties.elliotMikakuteiUpColor;
+        palette.unconfirmedDownColor = this.drawProperties.elliotMikakuteiDownColor;
+        fontColorAll = ElliotTableFormatter::cellColor(row, 1, palette);
+
+        ElliotTableLayout layout;
+        layout.originY = objY;
+        layout.fontFace = this.drawProperties.elliotFontFace;
+        for (int i = 0; i < 5; i++) {
+            layout.columnVisible[i] = false;
+            layout.columnFontSizes[i] = this.drawProperties.elliotAlertSize;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            layout.columnVisible[i] = this.isVisible(i, width);
+            if (layout.columnVisible[i]) {
+                layout.columnXs[i] = objX;
+                layout.columnWidths[i] = width;
+                objX += width;
+            }
+        }
+
+        layout.columnFontSizes[3] = this.drawProperties.elliotAlertSize / 2;
+        layout.columnYOffsets[3] = 10;
+        layout.tooltips[3] = this.getPriceMovementTooltip(elliot.oscillator.priceMovement);
 
         if (this.isVisible(COLMUN_STOCHASTIC_MAIN_ORDER, width)) {
             string text = "SMO";
@@ -441,46 +405,15 @@ public:
             objX += width;
         }
         
-        if (this.isVisible(COLMUN_ELLIOT, width)) {
-            string text = "Elliot";
-            color fontColor = fontColorAll;
-            
-            ZigZagPoint *zigZagPoint = latestWave.getLatestPoint();
-            
-            // 未確定の場合色変更
-            if (!latestWave.isConfirmed) {
-                if (elliot.isBuy) {
-                    fontColor = drawProperties.elliotMikakuteiUpColor;
-                } else {
-                    fontColor = drawProperties.elliotMikakuteiDownColor;
-                }
-            }
-            
-            if (zigZagPoint.isAddedPoint) {
-                fontColor = clrWhite;
-            }
-
-            string elliotText = this.getPointInfoText(zigZagPoint);
-
-            if (!latestWave.isConfirmed) {
-                elliotText = latestWave.getConfirmedLabel() + elliotText;
-            }
-
-            int previousMotiveSubElliotIndex =
-                latestWave.getPreviousMotiveSubElliotIndex();
-
-            if (previousMotiveSubElliotIndex > 0) {
-                elliotText = StringFormat(
-                    "[%d副] %s",
-                    previousMotiveSubElliotIndex,
-                    elliotText
-                );
-            }
-            
-            DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, 
-                                drawProperties.elliotAlertSize, elliotText, objX, objY);
+        layout.columnVisible[4] = this.isVisible(COLMUN_ELLIOT, width);
+        if (layout.columnVisible[4]) {
+            layout.columnXs[4] = objX;
+            layout.columnWidths[4] = width;
         }
-        
+
+        DrawElliotTable::drawRow(0, Constant::PREFIX + preName, row,
+            elliot.marketContext.digits, palette, layout);
+
         // エリオット
         /*if (arrayAlertFlg[++pipeIndex]) {
             objectName = PREFIX + "ElliotAlert" + strPeriod;
@@ -587,33 +520,29 @@ protected:
         int size = 20;
         int objX = 0;
         int objY = 10;
-        
         string text = "";
         int width = 0;
-        
-        if (this.isVisible(COLMUN_TIME_FRAME, width)) {
-            text = "TimeFrame";
-            DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, size - 6, text, objX, objY + 15);
-            objX += width;
-        }
-        
-        if (this.isVisible(COLMUN_BUYSELL, width)) {
-            text = "BuySell";
-            DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, size, text, objX, objY + 10);
-            objX += width;
-        }
-        
-        if (this.isVisible(COLMUN_EMA200_BUYSELL, width)) {
-            text = "EMA200";
-            DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, size, text, objX, objY + 10);
-            objX += width;
-        }        
 
-        if (this.isVisible(COLMUN_PRICE_MOVEMENT, width)) {
-            DrawUtil::setLabel(preName + "PriceMovement", drawProperties.elliotFontFace, fontColor, size, "値動き", objX, objY + 10);
-            objX += width;
+        ElliotTableLayout layout;
+        layout.originY = objY;
+        layout.fontFace = this.drawProperties.elliotFontFace;
+        for (int i = 0; i < 5; i++) {
+            layout.columnVisible[i] = false;
+            layout.columnFontSizes[i] = size;
+            layout.columnYOffsets[i] = 10;
         }
-        
+
+        layout.columnFontSizes[0] = size - 6;
+        layout.columnYOffsets[0] = 15;
+        for (int i = 0; i < 4; i++) {
+            layout.columnVisible[i] = this.isVisible(i, width);
+            if (layout.columnVisible[i]) {
+                layout.columnXs[i] = objX;
+                layout.columnWidths[i] = width;
+                objX += width;
+            }
+        }
+
         if (this.isVisible(COLMUN_STOCHASTIC_MAIN_ORDER, width)) {
             text = "SMO";
             DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, size, text, objX, objY + 10);
@@ -662,12 +591,13 @@ protected:
             objX += width;
         }
         
-        if (this.isVisible(COLMUN_ELLIOT, width)) {
-            text = "Elliot";
-            DrawUtil::setLabel(preName + text, drawProperties.elliotFontFace, fontColor, size, text, objX, objY + 10);
-            objX += width;
+        layout.columnVisible[4] = this.isVisible(COLMUN_ELLIOT, width);
+        if (layout.columnVisible[4]) {
+            layout.columnXs[4] = objX;
+            layout.columnWidths[4] = width;
         }
-        
+
+        DrawElliotTable::drawHeader(0, Constant::PREFIX + preName, layout);
         this.setPipeAll(preName, objY);
     }
     
@@ -954,47 +884,35 @@ protected:
 
 private:
     /**
-     * 値動きの判定状態を表示文字列へ変換する。
+     * 計算済みの最新波動・オシレーターを、保存表と共通の表示用データへ写す。
+     * 価格や波動の再計算は行わない。
      *
-     * @param fromPriceMovement 表示対象の値動き判定結果
-     * @return 値動きの状態文字列
+     * @param fromElliot 表示対象の分析結果。
+     * @param fromWave 表示対象の最新波動。
+     * @param fromRow 共通の表示用データ。
+     * @return 最新ポイントを取得できた場合true。
      */
-    string getPriceMovementLevelText(PriceMovementInfo &fromPriceMovement) {
-        if (!fromPriceMovement.isValid) {
-            return "判定不能";
-        }
-
-        switch (fromPriceMovement.level) {
-            case PRICE_MOVEMENT_CALM:
-                return "静か";
-            case PRICE_MOVEMENT_NORMAL:
-                return "通常";
-            case PRICE_MOVEMENT_ACTIVE:
-                return "活発";
-        }
-
-        return "判定不能";
+    bool fillTableRow(Elliot &fromElliot, Wave *fromWave, ElliotTableRowData &fromRow) {
+        return ElliotPanelLiveAdapter::fillTableRow(fromElliot, fromWave, fromRow);
     }
 
     /**
-     * 値動きの判定状態に対応する表示色を返す。
-     *
-     * @param fromPriceMovement 表示対象の値動き判定結果
-     * @return 値動き欄の文字色
+     * 計算済みの値動き判定を共通表示用データへ写す。
      */
-    color getPriceMovementColor(PriceMovementInfo &fromPriceMovement) {
-        if (!fromPriceMovement.isValid) {
-            return clrSilver;
-        }
+    void fillPriceMovementRow(PriceMovementInfo &fromPriceMovement, ElliotTableRowData &fromRow) {
+        ElliotPanelLiveAdapter::fillPriceMovementRow(fromPriceMovement, fromRow);
+    }
 
-        switch (fromPriceMovement.level) {
-            case PRICE_MOVEMENT_NORMAL:
-                return clrWhite;
-            case PRICE_MOVEMENT_ACTIVE:
-                return clrDodgerBlue;
-        }
+    /**
+     * 詳細ツールチップの値動き名にも、共通表と同じ表記を使用する。
+     */
+    string getPriceMovementLevelText(PriceMovementInfo &fromPriceMovement) {
+        ElliotTableRowData row;
+        row.clear();
+        row.hasData = true;
+        this.fillPriceMovementRow(fromPriceMovement, row);
 
-        return clrSilver;
+        return ElliotTableFormatter::movementLevelText(row);
     }
 
     /**
@@ -1004,24 +922,7 @@ private:
      * @return 値動き欄のツールチップ
      */
     string getPriceMovementTooltip(PriceMovementInfo &fromPriceMovement) {
-        string text = "値動き：" + this.getPriceMovementLevelText(fromPriceMovement);
-        if (!fromPriceMovement.isValid) {
-            return text + "\n計算に必要なデータを取得できません。";
-        }
-
-        text += StringFormat("\n直近3本の平均値幅：%.1f pips", fromPriceMovement.averageRangePips);
-        text += StringFormat("\n基準ATR14（直近3本より前）：%.1f pips", fromPriceMovement.referenceAtrPips);
-        text += StringFormat("\n活動度：%.2f倍", fromPriceMovement.activityRatio);
-        if (fromPriceMovement.isSpreadValid) {
-            text += StringFormat("\n値幅／スプレッド：%.2f倍", fromPriceMovement.rangeSpreadRatio);
-        } else {
-            text += "\n値幅／スプレッド：取得不能";
-        }
-
-        text += "\n最新確定足（サーバー時刻）："
-            + TimeToString(fromPriceMovement.referenceBarTime, TIME_DATE | TIME_MINUTES);
-
-        return text;
+        return ElliotPanelLiveAdapter::getPriceMovementTooltip(fromPriceMovement);
     }
 
     /**

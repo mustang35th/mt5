@@ -15,6 +15,7 @@
 #include <Mstng\Common\UpdateTimingStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\Draw.mqh>
+#include <Mstng\Draw\DrawElliotPanel.mqh>
 #include <Mstng\Draw\DrawElliotVerticalFit.mqh>
 #include <Mstng\Draw\DrawProcessingTime.mqh>
 #include <Mstng\Draw\DrawProperties.mqh>
@@ -47,6 +48,7 @@ public:
         this.lastTimeAxisFullUpdateTick = 0;
         this.drawElliotVerticalFit = NULL;
         this.elliotHigherTimeFrameDisplayCount = 2;
+        this.elliotPanel = NULL;
         this.elliotInfoVisible = true;
         this.elliotInfoSimple = true;
         this.initialVerticalFitPending = true;
@@ -417,7 +419,7 @@ public:
 
         this.draw.drawAll(
             fromElliotAll,
-            this.elliotInfoVisible,
+            this.elliotInfoVisible && this.elliotPanel == NULL,
             this.isVerticalFitLabelClampEnabled(),
             this.elliotInfoSimple,
             this.elliotHigherTimeFrameDisplayCount,
@@ -450,6 +452,28 @@ public:
     }
 
     /**
+     * 通常表に代えて使う共通パネルを接続する。所有権は受け取らない。
+     */
+    void setElliotPanel(DrawElliotPanel *fromPanel) {
+        this.elliotPanel = fromPanel;
+        this.syncElliotPanelState();
+    }
+
+    /**
+     * パネル内の開閉・展開操作を、既存チャートボタンへ反映する。
+     */
+    void syncElliotPanelState() {
+        if (this.elliotPanel == NULL) {
+            return;
+        }
+
+        this.elliotInfoVisible = this.elliotPanel.isVisible();
+        this.elliotInfoSimple = !this.elliotPanel.isExpanded();
+        this.updateElliotInfoButton();
+        this.updateElliotInfoModeButton();
+    }
+
+    /**
      * 操作ボタンのクリックを処理する。
      *
      * @param fromObjectName クリックされたオブジェクト名
@@ -466,6 +490,10 @@ public:
 
         if (fromObjectName == this.getElliotInfoModeButtonName()) {
             this.elliotInfoSimple = !this.elliotInfoSimple;
+            if (this.elliotPanel != NULL) {
+                this.elliotPanel.setExpanded(!this.elliotInfoSimple);
+            }
+
             this.updateElliotInfoModeButton();
             this.redraw(fromElliotAll);
 
@@ -474,6 +502,10 @@ public:
 
         if (fromObjectName == this.getElliotInfoButtonName()) {
             this.elliotInfoVisible = !this.elliotInfoVisible;
+            if (this.elliotPanel != NULL) {
+                this.elliotPanel.setVisible(this.elliotInfoVisible);
+            }
+
             this.updateElliotInfoButton();
             this.redraw(fromElliotAll);
 
@@ -567,6 +599,7 @@ public:
      * 表示オブジェクト、補助表示および上下FITを解放する。
      */
     void destroy() {
+        this.elliotPanel = NULL;
         if (this.m1EntryBackgroundEnabled) {
             this.setM1EntryBackgroundColor(0, clrBlack);
             this.m1EntryBackgroundEnabled = false;
@@ -619,6 +652,9 @@ public:
     }
 
 private:
+    /** 通常版が所有する共通パネル。 */
+    DrawElliotPanel *elliotPanel;
+
     /** 市場コンテキスト。 */
     MarketContext marketContext;
 
@@ -1050,7 +1086,7 @@ private:
 
         this.draw.drawAll(
             fromElliotAll,
-            this.elliotInfoVisible,
+            this.elliotInfoVisible && this.elliotPanel == NULL,
             this.isVerticalFitLabelClampEnabled(),
             this.elliotInfoSimple,
             this.elliotHigherTimeFrameDisplayCount,
