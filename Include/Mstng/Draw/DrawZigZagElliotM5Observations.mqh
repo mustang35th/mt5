@@ -2,6 +2,7 @@
 #define MSTNG_DRAW_ZIGZAG_ELLIOT_M5_OBSERVATIONS_MQH
 
 #include <Mstng\Database\Query\ZigZagElliotM5ObservationHistoryData.mqh>
+#include <Mstng\Util\TimeUtil.mqh>
 
 /**
  * 保存済みM5観測を時刻別の目印と7時間足の詳細へ描画する。
@@ -235,9 +236,9 @@ public:
      * @return 最大159文字の目印用ツールチップ。
      */
     static string formatTooltip(const M5ObservationHistoryRecord &fromRecord) {
-        string stamp = "SV " + timeText(fromRecord.barTime, false);
+        string stamp = "SRV " + timeText(fromRecord.barTime);
         if (fromRecord.jstTime > 0) {
-            stamp = "JST " + timeText(fromRecord.jstTime, false);
+            stamp = "JST " + timeText(fromRecord.jstTime);
         }
 
         if (fromRecord.id <= 0) {
@@ -245,7 +246,7 @@ public:
         }
 
         string header = "M5保存 " + stamp;
-        string tail = "\n取得SV " + timeText(fromRecord.captureTime, true);
+        string tail = "\n取得 SRV " + timeText(fromRecord.captureTime);
         string result = "";
         for (int i = 10; i >= 1; i--) {
             result = header;
@@ -422,9 +423,9 @@ private:
         this.drawBackground(left, top, panelWidth, panelHeight, "HoverBackground", 30);
         this.drawLabel("HoverTitle", "M5保存波動", left + 10, top + 8,
             9, clrWhiteSmoke, "\n", 31);
-        string stamp = "SV " + timeText(fromRecord.barTime, false);
+        string stamp = "SRV " + timeText(fromRecord.barTime);
         if (fromRecord.jstTime > 0) {
-            stamp = "JST " + timeText(fromRecord.jstTime, false);
+            stamp = "JST " + timeText(fromRecord.jstTime);
         }
 
         this.drawLabel("HoverTime", shorten(stamp, textLimit), left + 10, top + 28,
@@ -438,7 +439,7 @@ private:
             this.drawLabel("HoverMessage", shorten(explanation, textLimit), left + 10, top + 50,
                 9, clrSilver, "\n", 31);
         } else {
-            string capture = "取得SV " + timeText(fromRecord.captureTime, true);
+            string capture = "取得 SRV " + timeText(fromRecord.captureTime);
             this.drawLabel("HoverCapture", shorten(capture, textLimit), left + 10, top + 46,
                 8, clrSilver, "\n", 31);
             for (int i = 0; i < 7; i++) {
@@ -492,14 +493,14 @@ private:
         this.drawLabel("PanelTitle", fitText("保存時点のエリオット表 / " + ChartSymbol(this.chartId),
             panelWidth - 64, 12), left + 12, top + 9, 12, clrWhiteSmoke, "\n", 21);
         this.drawCloseButton(left + panelWidth - 34, top + 6);
-        string stamp = "観測 SV " + timeText(fromRecord.barTime, false);
+        string stamp = "観測 SRV " + timeText(fromRecord.barTime);
         if (fromRecord.jstTime > 0) {
-            stamp = "観測 JST " + timeText(fromRecord.jstTime, false);
+            stamp = "観測 JST " + timeText(fromRecord.jstTime);
         }
 
         this.drawLabel("PanelTime", fitText(stamp, panelWidth - 24, 14), left + 12, top + 32,
             14, clrWhite, stamp, 21);
-        string metadata = "取得 SV " + timeText(fromRecord.captureTime, true)
+        string metadata = "取得 SRV " + timeText(fromRecord.captureTime)
             + " / Run " + IntegerToString(fromRecord.runId) + " / ID " + IntegerToString(fromRecord.id);
         this.drawLabel("PanelMetadata", fitText(metadata, panelWidth - 24, 9), left + 12, top + 58,
             9, clrSilver, shorten(metadata, 159), 21);
@@ -835,9 +836,9 @@ private:
                 fromFrame.hasPointFibonacciExpansionPercent, 1, "%");
             values[8] = numberText(fromFrame.pointPipsDiff, fromFrame.hasPointPipsDiff, 1, " pips");
             values[9] = numberText(fromFrame.pointRate, fromFrame.hasPointRate, fromDigits);
-            values[10] = "SV " + timeText(fromFrame.pointTime, false);
+            values[10] = "SRV " + timeText(fromFrame.pointTime);
             if (fromFrame.pointJstTime > 0) {
-                values[10] = "JST " + timeText(fromFrame.pointJstTime, false);
+                values[10] = "JST " + timeText(fromFrame.pointJstTime);
             }
 
             values[11] = stateText(fromFrame.isUptrend, "上昇 ▲", "下降 ▼");
@@ -1222,19 +1223,14 @@ private:
     }
 
     /**
-     * 保存時刻を表示し、時刻0は未記録として扱う。
+     * 保存時刻をチャート共通のyyyy/MM/dd HH:mm:ss形式で表示し、時刻0は未記録として扱う。
      */
-    static string timeText(const datetime fromTime, const bool fromSeconds) {
+    static string timeText(const datetime fromTime) {
         if (fromTime <= 0) {
             return "未記録";
         }
 
-        int flags = TIME_DATE | TIME_MINUTES;
-        if (fromSeconds) {
-            flags = TIME_DATE | TIME_SECONDS;
-        }
-
-        return TimeToString(fromTime, flags);
+        return TimeUtil::formatYyyymmddhhmiss(fromTime);
     }
 
     /**

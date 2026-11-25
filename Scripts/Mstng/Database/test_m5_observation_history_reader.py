@@ -577,15 +577,16 @@ public class StrengthTextFixture {
         adapted = "using System;using System.Globalization;\n" + frame_fixture() + r'''
 public class TableFixture {
     const int clrSilver=1,clrWhite=2,clrAqua=3,clrHotPink=4,clrDodgerBlue=5,clrMagenta=6;
-    const int TIME_DATE=1,TIME_MINUTES=2,TIME_SECONDS=4;
     static int StringLen(string value) { return value.Length; }
     static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
     static string DoubleToString(double value,int digits) { return value.ToString("F"+digits,CultureInfo.InvariantCulture); }
     static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
     static int MathMax(int first,int second) { return Math.Max(first,second); }
     static int MathMin(int first,int second) { return Math.Min(first,second); }
-    static string TimeToString(long value,int flags) {
-        return new DateTime(1970,1,1).AddSeconds(value).ToString((flags&TIME_SECONDS)!=0 ? "yyyy.MM.dd HH:mm:ss" : "yyyy.MM.dd HH:mm",CultureInfo.InvariantCulture);
+    static class TimeUtil {
+        public static string formatYyyymmddhhmiss(long value) {
+            return new DateTime(1970,1,1).AddSeconds(value).ToString("yyyy/MM/dd HH:mm:ss",CultureInfo.InvariantCulture);
+        }
     }
     static int checks;
     static void Check(bool condition,string message) { checks++;if(!condition) throw new Exception(message); }
@@ -668,12 +669,13 @@ public class M5ObservationHistoryRecord {
     public M5ObservationHistoryRecord() { for(int i=0;i<7;i++) frames[i]=new M5ObservationHistoryFrame(); }
 }
 public class TooltipFixture {
-    const int TIME_DATE=1,TIME_MINUTES=2,TIME_SECONDS=4;
     static int StringLen(string value) { return value.Length; }
     static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
     static int ArraySize(string[] value) { return value.Length; }
-    static string TimeToString(long value,int flags) {
-        return new DateTime(1970,1,1).AddSeconds(value).ToString((flags&TIME_SECONDS)!=0 ? "yyyy.MM.dd HH:mm:ss" : "yyyy.MM.dd HH:mm",CultureInfo.InvariantCulture);
+    static class TimeUtil {
+        public static string formatYyyymmddhhmiss(long value) {
+            return new DateTime(1970,1,1).AddSeconds(value).ToString("yyyy/MM/dd HH:mm:ss",CultureInfo.InvariantCulture);
+        }
     }
     static int checks;
     static void Check(bool condition,string message) { checks++; if(!condition) throw new Exception(message); }
@@ -682,6 +684,8 @@ public class TooltipFixture {
     }
     public static string Run() {
         checks=0;
+        long stamp=(long)(new DateTime(2026,11,25,11,35,0)-new DateTime(1970,1,1)).TotalSeconds;
+        Check(timeText(stamp)=="2026/11/25 11:35:00","chart date format includes seconds");
         M5ObservationHistoryRecord record=new M5ObservationHistoryRecord { id=1,barTime=1795500000,jstTime=1795525200,captureTime=1795500012 };
         foreach(M5ObservationHistoryFrame frame in record.frames) { frame.hasData=true;frame.mainWave="3";frame.subWave="i";frame.isUptrend=0;frame.isBuy=1; }
         string text=formatTooltip(record);
@@ -689,7 +693,7 @@ public class TooltipFixture {
         Check(text.Contains("▼3.i"),"wave direction from saved wave");
         Check(!text.Contains("▲"),"analysis BUY must not replace downward wave");
         Check(text.Contains("JST "),"saved JST preferred");
-        Check(text.Contains("取得SV "),"capture time separated");
+        Check(text.Contains("取得 SRV "),"capture time separated");
         foreach(M5ObservationHistoryFrame frame in record.frames) { frame.mainWave=new string('3',100);frame.subWave=new string('i',100); }
         text=formatTooltip(record); Check(text.Length<=159,"long label size"); AllFrames(text);
         Check(text.Contains("…"),"long labels visibly shortened");
@@ -697,7 +701,7 @@ public class TooltipFixture {
         record.jstTime=0;record.captureTime=0;text=formatTooltip(record);
         Check(text.Length<=159,"missing fields size");AllFrames(text);
         Check(text.Contains("未記録"),"missing values explicit");Check(!text.Contains("1970"),"unknown timestamp not epoch");
-        Check(text.Contains("SV "),"server fallback labelled");
+        Check(text.Contains("SRV "),"server fallback labelled");
         record.id=0;text=formatTooltip(record);
         Check(text.Contains("記録なし"),"missing observation");Check(!text.Contains("MN1"),"missing observation not invented");
         return "PASS "+checks+" tooltip assertions";
