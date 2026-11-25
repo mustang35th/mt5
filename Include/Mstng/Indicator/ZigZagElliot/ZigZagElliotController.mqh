@@ -293,6 +293,10 @@ public:
                 this.rankDeltaRibbon.handleMouseMove(fromMouseX, fromMouseY, this.rankDeltaBandHistory);
             }
 
+            if (this.m5ObservationDisplayController != NULL) {
+                this.m5ObservationDisplayController.onMouseMove(fromMouseX, fromMouseY);
+            }
+
             return;
         }
 

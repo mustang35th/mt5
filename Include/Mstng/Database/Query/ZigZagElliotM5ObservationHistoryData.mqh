@@ -42,6 +42,51 @@ struct M5ObservationHistoryFrame {
     /** 保存価格が利用可能な場合true。 */
     bool hasPointRate;
 
+    /** EMA200のBUY判定。BUY1、それ以外0、未記録-1。 */
+    int isEma200Buy;
+
+    /** EMA200のSELL判定。SELL1、それ以外0、未記録-1。 */
+    int isEma200Sell;
+
+    /** 値動き判定の取得状態。有効1、判定不能0、未記録-1。 */
+    int isPriceMovementValid;
+
+    /** 保存された値動きレベル。未記録-1、未取得0、静か1、通常2、活発3。 */
+    int priceMovementLevel;
+
+    /** 保存された値動き活動度。 */
+    double priceMovementActivityRatio;
+
+    /** 保存された値動き活動度が利用可能な場合true。 */
+    bool hasPriceMovementActivityRatio;
+
+    /** F・FEの表示選択に使用する元波動番号。未記録-1。 */
+    int originalWaveIndex;
+
+    /** 直前推進波の副次波番号。該当なし0、1または3、未記録-1。 */
+    int previousMotiveSubElliotIndex;
+
+    /** 最新ポイントと前回ポイントの保存値幅pips。 */
+    double pointPipsDiff;
+
+    /** 保存された値幅が利用可能な場合true。 */
+    bool hasPointPipsDiff;
+
+    /** 最新ポイントの保存リトレースメント%。 */
+    double pointFibonacciPercent;
+
+    /** 保存されたリトレースメントが利用可能な場合true。 */
+    bool hasPointFibonacciPercent;
+
+    /** 最新ポイントの保存エクスパンション%。 */
+    double pointFibonacciExpansionPercent;
+
+    /** 保存されたエクスパンションが利用可能な場合true。 */
+    bool hasPointFibonacciExpansionPercent;
+
+    /** 最新ポイントの保存日本時刻。未記録は0。 */
+    datetime pointJstTime;
+
     /**
      * 保存値を未取得状態へ戻す。
      */
@@ -58,6 +103,21 @@ struct M5ObservationHistoryFrame {
         this.pointTime = 0;
         this.pointRate = 0.0;
         this.hasPointRate = false;
+        this.isEma200Buy = -1;
+        this.isEma200Sell = -1;
+        this.isPriceMovementValid = -1;
+        this.priceMovementLevel = -1;
+        this.priceMovementActivityRatio = 0.0;
+        this.hasPriceMovementActivityRatio = false;
+        this.originalWaveIndex = -1;
+        this.previousMotiveSubElliotIndex = -1;
+        this.pointPipsDiff = 0.0;
+        this.hasPointPipsDiff = false;
+        this.pointFibonacciPercent = 0.0;
+        this.hasPointFibonacciPercent = false;
+        this.pointFibonacciExpansionPercent = 0.0;
+        this.hasPointFibonacciExpansionPercent = false;
+        this.pointJstTime = 0;
     }
 };
 

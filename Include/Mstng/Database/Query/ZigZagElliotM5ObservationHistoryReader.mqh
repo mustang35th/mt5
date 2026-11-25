@@ -258,8 +258,19 @@ private:
         sql += ",f.is_wave_uptrend,f.is_buy,f.is_wave_confirmed,";
         sql += this.optionalColumn(fromFrameColumns, "latest_point_is_added", "f.");
         sql += ",f.latest_point_time,f.latest_point_rate,o.anchor_time_frame,o.capture_phase,";
-        sql += "o.time_frame_count,o.analysis_version,o.analysis_input_hash,f.is_anchor_time_frame ";
-        sql += "FROM selected o LEFT JOIN zigzag_elliot_observation_timeframes f ON f.observation_id=o.id ";
+        sql += "o.time_frame_count,o.analysis_version,o.analysis_input_hash,f.is_anchor_time_frame,";
+        sql += this.optionalColumn(fromFrameColumns, "is_ema200_buy", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "is_ema200_sell", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "is_price_movement_valid", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "price_movement_level", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "price_movement_activity_ratio", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "latest_point_org_elliot_index", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "previous_motive_sub_elliot_index", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "latest_point_pips_diff", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "latest_point_fibonacci_percent", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "latest_point_fibonacci_expansion_percent", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "latest_point_jst_time", "f.");
+        sql += " FROM selected o LEFT JOIN zigzag_elliot_observation_timeframes f ON f.observation_id=o.id ";
         sql += "ORDER BY o.anchor_bar_time,o.id,f.time_frame_order,f.id";
 
         return sql;
@@ -507,8 +518,51 @@ private:
             frame.hasPointRate = true;
         }
 
+        if (!this.readFrameDetails(fromRequest, frame, fromError)) {
+            return false;
+        }
+
         frame.hasData = true;
         fromRecord.frames[(int)order] = frame;
+
+        return true;
+    }
+
+    /**
+     * 表形式の詳細表示に使う任意列を取得し、旧DBの欠損を未記録のまま保持する。
+     */
+    bool readFrameDetails(const int fromRequest, M5ObservationHistoryFrame &fromFrame,
+            string &fromError) {
+        if (!this.readOptionalFlag(fromRequest, 25, fromFrame.isEma200Buy)
+                || !this.readOptionalFlag(fromRequest, 26, fromFrame.isEma200Sell)) {
+            fromError = "M5観測のEMA200方向が不正です。";
+
+            return false;
+        }
+
+        if (!this.readOptionalFlag(fromRequest, 27, fromFrame.isPriceMovementValid)
+                || !this.readOptionalInteger(fromRequest, 28, 3, fromFrame.priceMovementLevel)
+                || !this.readOptionalDouble(fromRequest, 29, fromFrame.priceMovementActivityRatio,
+                    fromFrame.hasPriceMovementActivityRatio)
+                || (fromFrame.hasPriceMovementActivityRatio && fromFrame.priceMovementActivityRatio < 0.0)) {
+            fromError = "M5観測の値動き判定が不正です。";
+
+            return false;
+        }
+
+        if (!this.readOptionalInteger(fromRequest, 30, INT_MAX, fromFrame.originalWaveIndex)
+                || !this.readOptionalInteger(fromRequest, 31, 3, fromFrame.previousMotiveSubElliotIndex)
+                || fromFrame.previousMotiveSubElliotIndex == 2
+                || !this.readOptionalDouble(fromRequest, 32, fromFrame.pointPipsDiff, fromFrame.hasPointPipsDiff)
+                || !this.readOptionalDouble(fromRequest, 33, fromFrame.pointFibonacciPercent,
+                    fromFrame.hasPointFibonacciPercent)
+                || !this.readOptionalDouble(fromRequest, 34, fromFrame.pointFibonacciExpansionPercent,
+                    fromFrame.hasPointFibonacciExpansionPercent)
+                || !this.readOptionalTime(fromRequest, 35, fromFrame.pointJstTime)) {
+            fromError = "M5観測の元波動・値幅・フィボナッチ・日本時刻が不正です。";
+
+            return false;
+        }
 
         return true;
     }
@@ -577,6 +631,38 @@ private:
     }
 
     /**
+     * 未記録フラグを-1とし、記録がある場合は0・1だけを取得する。
+     */
+    bool readOptionalFlag(const int fromRequest, const int fromColumn, int &fromValue) {
+        fromValue = -1;
+        if (DatabaseColumnType(fromRequest, fromColumn) == DATABASE_FIELD_TYPE_NULL) {
+            return true;
+        }
+
+        return this.readFlag(fromRequest, fromColumn, fromValue);
+    }
+
+    /**
+     * 未記録番号を-1とし、記録がある場合は型変換せず非負の整数を取得する。
+     */
+    bool readOptionalInteger(const int fromRequest, const int fromColumn, const int fromMaximum,
+            int &fromValue) {
+        fromValue = -1;
+        if (DatabaseColumnType(fromRequest, fromColumn) == DATABASE_FIELD_TYPE_NULL) {
+            return true;
+        }
+
+        long value = 0;
+        if (!this.readLongValue(fromRequest, fromColumn, value) || value < 0 || value > fromMaximum) {
+            return false;
+        }
+
+        fromValue = (int)value;
+
+        return true;
+    }
+
+    /**
      * 保存された非負の日時を取得する。
      */
     bool readTimeValue(const int fromRequest, const int fromColumn, datetime &fromValue) {
@@ -610,6 +696,26 @@ private:
 
         return (fieldType == DATABASE_FIELD_TYPE_INTEGER || fieldType == DATABASE_FIELD_TYPE_FLOAT)
             && DatabaseColumnDouble(fromRequest, fromColumn, fromValue) && MathIsValidNumber(fromValue);
+    }
+
+    /**
+     * 任意数値の有無を分離し、未記録と保存済みのゼロを区別する。
+     */
+    bool readOptionalDouble(const int fromRequest, const int fromColumn, double &fromValue,
+            bool &fromHasValue) {
+        fromValue = 0.0;
+        fromHasValue = false;
+        if (DatabaseColumnType(fromRequest, fromColumn) == DATABASE_FIELD_TYPE_NULL) {
+            return true;
+        }
+
+        if (!this.readDoubleValue(fromRequest, fromColumn, fromValue)) {
+            return false;
+        }
+
+        fromHasValue = true;
+
+        return true;
     }
 
     /**

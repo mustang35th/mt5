@@ -3,6 +3,7 @@
 
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Query\ZigZagElliotM5ObservationHistoryReader.mqh>
+#include <Mstng\Draw\ChartMouseMoveSubscription.mqh>
 #include <Mstng\Draw\DrawZigZagElliotM5Observations.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Util\Util.mqh>
@@ -33,6 +34,7 @@ public:
      * 表示用接続と自分のオブジェクトを解放する。
      */
     ~M5ObservationDisplayController() {
+        this.mouseMoveSubscription.release();
         this.reader.close();
         if (this.drawer != NULL) {
             delete this.drawer;
@@ -60,6 +62,9 @@ public:
         this.resolvedRunId = this.config.m5ObservationDisplayRunId;
         string prefix = "ZzeM5Obs-" + IntegerToString((long)GetMicrosecondCount()) + "-";
         this.drawer = new DrawZigZagElliotM5Observations(0, prefix);
+        if (this.drawer != NULL) {
+            this.mouseMoveSubscription.acquire(ChartID());
+        }
 
         return this.drawer != NULL;
     }
@@ -84,6 +89,7 @@ public:
         }
 
         this.lastCheckTick = nowTick;
+        this.mouseMoveSubscription.acquire(ChartID());
         datetime startTime = 0;
         datetime endTime = 0;
         bool limited = false;
@@ -195,6 +201,16 @@ public:
     }
 
     /**
+     * 描画済みの目印に重なった時だけ、保存値の色付き説明を更新する。
+     * DBの追加取得やチャート時系列の参照は行わない。
+     */
+    void onMouseMove(const int fromX, const int fromY) {
+        if (this.drawer != NULL && this.drawer.onMouseMove(fromX, fromY, this.records)) {
+            ChartRedraw(0);
+        }
+    }
+
+    /**
      * 自分の目印・詳細閉じるボタンだけを処理する。DBの追加取得は行わない。
      */
     bool onObjectClick(const string fromObjectName) {
@@ -217,6 +233,9 @@ private:
 
     /** このインスタンスが所有する目印・パネル。 */
     DrawZigZagElliotM5Observations *drawer;
+
+    /** 順位帯などと共同管理する、ホバー用のマウス移動通知。 */
+    ChartMouseMoveSubscription mouseMoveSubscription;
 
     /** 表示範囲のM5足。未収録足もid=0として保持する。 */
     M5ObservationHistoryRecord records[];
