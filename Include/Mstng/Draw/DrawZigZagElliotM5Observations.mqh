@@ -103,7 +103,7 @@ public:
         this.drawLabel("Status", this.shorten(status, MathMax(8, (width - 24) / 11)),
             12, statusY, 8, clrSilver, this.shorten(status, 159), 8);
         if (selectedIndex >= 0) {
-            this.drawPanel(fromRecords[selectedIndex], fromDigits, width, height);
+            this.drawPanel(fromRecords, selectedIndex, fromDigits, width, height);
         } else {
             this.selectedTime = 0;
             this.selectedFrameIndex = 6;
@@ -114,7 +114,7 @@ public:
     }
 
     /**
-     * この表示の目印選択または詳細を閉じる操作だけを処理する。
+     * この表示の目印選択、詳細の前後移動・時間足選択・閉じる操作を処理する。
      *
      * @return この表示がクリックを処理した場合true。
      */
@@ -133,6 +133,26 @@ public:
                 return true;
             }
 
+            if (fromObjectName == this.prefix + "PanelPrevious"
+                    || fromObjectName == this.prefix + "PanelNext") {
+                int direction = 1;
+                if (fromObjectName == this.prefix + "PanelPrevious") {
+                    direction = -1;
+                }
+
+                int targetIndex = this.findAdjacentRecordIndex(fromRecords, this.selectedTime, direction);
+                if (targetIndex < 0) {
+                    ObjectSetInteger(this.chartId, fromObjectName, OBJPROP_STATE, false);
+
+                    return true;
+                }
+
+                this.selectedTime = fromRecords[targetIndex].barTime;
+                this.draw(fromRecords, fromStatus, fromDigits);
+
+                return true;
+            }
+
             for (int i = 0; i < 7; i++) {
                 if (StringFind(fromObjectName, this.prefix + "PanelRow" + IntegerToString(i)) != 0) {
                     continue;
@@ -143,7 +163,7 @@ public:
                         this.selectedFrameIndex = i;
                         ObjectsDeleteAll(this.chartId, this.prefix + "Panel", 0, -1);
                         this.drawingSucceeded = true;
-                        this.drawPanel(fromRecords[j], fromDigits, this.chartWidth, this.chartHeight);
+                        this.drawPanel(fromRecords, j, fromDigits, this.chartWidth, this.chartHeight);
 
                         return true;
                     }
@@ -326,6 +346,65 @@ private:
     }
 
     /**
+     * 描画済み目印の中から、指定方向で最も近い保存済み観測を探す。
+     * 未記録枠と同時刻を除外し、キャッシュの添字順には依存しない。
+     *
+     * @param fromDirection 古い観測は-1、新しい観測は1。
+     * @return 対象のキャッシュ添字。移動先がなければ-1。
+     */
+    int findAdjacentRecordIndex(const M5ObservationHistoryRecord &fromRecords[],
+            const datetime fromTime, const int fromDirection) {
+        if (fromTime <= 0 || (fromDirection != -1 && fromDirection != 1)) {
+            return -1;
+        }
+
+        int nearestIndex = -1;
+        int count = MathMin(this.markerCount, ArraySize(this.markerIndexes));
+        for (int i = 0; i < count; i++) {
+            int recordIndex = this.markerIndexes[i];
+            if (recordIndex < 0 || recordIndex >= ArraySize(fromRecords)) {
+                continue;
+            }
+            if (fromRecords[recordIndex].id <= 0 || fromRecords[recordIndex].barTime <= 0) {
+                continue;
+            }
+
+            datetime recordTime = fromRecords[recordIndex].barTime;
+            if (fromDirection < 0 && recordTime < fromTime) {
+                if (nearestIndex < 0 || recordTime > fromRecords[nearestIndex].barTime) {
+                    nearestIndex = recordIndex;
+                }
+            } else if (fromDirection > 0 && recordTime > fromTime) {
+                if (nearestIndex < 0 || recordTime < fromRecords[nearestIndex].barTime) {
+                    nearestIndex = recordIndex;
+                }
+            }
+        }
+
+        return nearestIndex;
+    }
+
+    /**
+     * 前後の保存済み観測との間隔が5分を超える場合だけ、移動間隔を明示する。
+     */
+    static string navigationGapText(const datetime fromTime, const datetime fromPreviousTime,
+            const datetime fromNextTime) {
+        string result = "";
+        if (fromPreviousTime > 0 && fromTime - fromPreviousTime > 300) {
+            result = "前まで " + IntegerToString((long)(fromTime - fromPreviousTime) / 60) + "分";
+        }
+        if (fromNextTime > 0 && fromNextTime - fromTime > 300) {
+            if (result != "") {
+                result += " / ";
+            }
+
+            result += "次まで " + IntegerToString((long)(fromNextTime - fromTime) / 60) + "分";
+        }
+
+        return result;
+    }
+
+    /**
      * 保存されたM5開始時刻の足を探し、安値の下へ目印を配置する。
      * 保存値の価格や波動にはチャートの現在値を混ぜない。
      */
@@ -479,8 +558,8 @@ private:
     /**
      * 保存時点の5列表と、選択した時間足の項目別詳細を表示する。
      */
-    void drawPanel(const M5ObservationHistoryRecord &fromRecord, const int fromDigits,
-            const int fromWidth, const int fromHeight) {
+    void drawPanel(const M5ObservationHistoryRecord &fromRecords[], const int fromIndex,
+            const int fromDigits, const int fromWidth, const int fromHeight) {
         int panelWidth = MathMin(1160, fromWidth - 24);
         int panelHeight = MathMin(540, fromHeight - 24);
         int left = MathMax(0, (fromWidth - panelWidth) / 2);
@@ -489,22 +568,43 @@ private:
             return;
         }
 
+        int previousIndex = this.findAdjacentRecordIndex(fromRecords, fromRecords[fromIndex].barTime, -1);
+        int nextIndex = this.findAdjacentRecordIndex(fromRecords, fromRecords[fromIndex].barTime, 1);
+        datetime previousTime = 0;
+        datetime nextTime = 0;
+        if (previousIndex >= 0) {
+            previousTime = fromRecords[previousIndex].barTime;
+        }
+        if (nextIndex >= 0) {
+            nextTime = fromRecords[nextIndex].barTime;
+        }
+
         this.drawBackground(left, top, panelWidth, panelHeight);
         this.drawLabel("PanelTitle", fitText("保存時点のエリオット表 / " + ChartSymbol(this.chartId),
-            panelWidth - 64, 12), left + 12, top + 9, 12, clrWhiteSmoke, "\n", 21);
+            panelWidth - 194, 12), left + 12, top + 9, 12, clrWhiteSmoke, "\n", 21);
+        this.drawNavigationButton("PanelPrevious", "◀ 前", "古い", left + panelWidth - 174,
+            top + 6, previousIndex >= 0);
+        this.drawNavigationButton("PanelNext", "次 ▶", "新しい", left + panelWidth - 104,
+            top + 6, nextIndex >= 0);
         this.drawCloseButton(left + panelWidth - 34, top + 6);
-        string stamp = "観測 SRV " + timeText(fromRecord.barTime);
-        if (fromRecord.jstTime > 0) {
-            stamp = "観測 JST " + timeText(fromRecord.jstTime);
+        string stamp = "観測 SRV " + timeText(fromRecords[fromIndex].barTime);
+        if (fromRecords[fromIndex].jstTime > 0) {
+            stamp = "観測 JST " + timeText(fromRecords[fromIndex].jstTime);
         }
 
         this.drawLabel("PanelTime", fitText(stamp, panelWidth - 24, 14), left + 12, top + 32,
             14, clrWhite, stamp, 21);
-        string metadata = "取得 SRV " + timeText(fromRecord.captureTime)
-            + " / Run " + IntegerToString(fromRecord.runId) + " / ID " + IntegerToString(fromRecord.id);
+        string metadata = "取得 SRV " + timeText(fromRecords[fromIndex].captureTime);
+        string gap = navigationGapText(fromRecords[fromIndex].barTime, previousTime, nextTime);
+        if (gap != "") {
+            metadata += " / " + gap;
+        }
+
+        metadata += " / Run " + IntegerToString(fromRecords[fromIndex].runId)
+            + " / ID " + IntegerToString(fromRecords[fromIndex].id);
         this.drawLabel("PanelMetadata", fitText(metadata, panelWidth - 24, 9), left + 12, top + 58,
             9, clrSilver, shorten(metadata, 159), 21);
-        if (fromRecord.id <= 0) {
+        if (fromRecords[fromIndex].id <= 0) {
             if (panelHeight >= 140) {
                 this.drawLabel("PanelMissing", fitText("このM5時刻の記録はありません。", panelWidth - 24, 11),
                     left + 12, top + 96, 11, clrSilver, "\n", 21);
@@ -551,19 +651,19 @@ private:
         }
 
         for (int i = 0; i < 7; i++) {
-            this.drawTableRow(fromRecord.frames[i], i, fromDigits, left + 12,
+            this.drawTableRow(fromRecords[fromIndex].frames[i], i, fromDigits, left + 12,
                 tableTop + (i + 1) * rowHeight, rowHeight, columnWidths);
         }
 
         int detailTop = tableTop + 8 * rowHeight + 10;
         this.drawLabel("PanelDetailTitle", frameName(this.selectedFrameIndex) + " の詳細",
             left + 12, detailTop, 11, clrWhiteSmoke, "行をクリックして時間足を切り替えます。", 21);
-        this.drawFrameDetails(fromRecord.frames[this.selectedFrameIndex], fromDigits,
+        this.drawFrameDetails(fromRecords[fromIndex].frames[this.selectedFrameIndex], fromDigits,
             left + 12, detailTop + 24, innerWidth, detailColumns, detailRowHeight);
         int strengthTop = detailTop + 24 + detailRows * detailRowHeight + 8;
-        this.drawStrengthTable(fromRecord.strength, "PanelStrength", left + 12, strengthTop,
+        this.drawStrengthTable(fromRecords[fromIndex].strength, "PanelStrength", left + 12, strengthTop,
             MathMin(620, innerWidth), 10, 21, false);
-        this.drawLabel("PanelHint", "行をクリックして項目別表示 / M1は未収録", left + 12,
+        this.drawLabel("PanelHint", "前・次：表示範囲内 / 行選択で詳細 / M1は未収録", left + 12,
             top + panelHeight - 21, 9, clrSilver, "保存値を表示します。現在の波動を再計算していません。", 21);
     }
 
@@ -1087,6 +1187,42 @@ private:
             && ObjectSetInteger(this.chartId, name, OBJPROP_BACK, false)
             && ObjectSetInteger(this.chartId, name, OBJPROP_ZORDER, fromZOrder)
             && ObjectSetString(this.chartId, name, OBJPROP_TOOLTIP, "\n");
+        this.drawingSucceeded = this.drawingSucceeded && success;
+    }
+
+    /**
+     * 表示範囲内の保存済み観測を移動するボタンを描画する。
+     * 移動先がない場合は灰色にし、クリック処理でも移動を抑止する。
+     */
+    void drawNavigationButton(const string fromKey, const string fromText, const string fromDirection,
+            const int fromX, const int fromY, const bool fromEnabled) {
+        string name = this.prefix + fromKey;
+        if (!this.createObject(name, OBJ_BUTTON)) {
+            return;
+        }
+
+        color textColor = clrDimGray;
+        color backgroundColor = C'30,35,44';
+        string tooltip = "表示範囲内に" + fromDirection + "保存済み観測がありません。";
+        if (fromEnabled) {
+            textColor = clrWhiteSmoke;
+            backgroundColor = C'45,53,66';
+            tooltip = "表示範囲内の" + fromDirection + "保存済み観測へ移動します。";
+        }
+
+        bool success = ObjectSetInteger(this.chartId, name, OBJPROP_CORNER, CORNER_LEFT_UPPER)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_XDISTANCE, fromX)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_YDISTANCE, fromY)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_XSIZE, 64)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_YSIZE, 22)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_BGCOLOR, backgroundColor)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, textColor)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_STATE, false)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_FONTSIZE, 9)
+            && ObjectSetInteger(this.chartId, name, OBJPROP_ZORDER, 22)
+            && ObjectSetString(this.chartId, name, OBJPROP_FONT, "MS Gothic")
+            && ObjectSetString(this.chartId, name, OBJPROP_TEXT, fromText)
+            && ObjectSetString(this.chartId, name, OBJPROP_TOOLTIP, tooltip);
         this.drawingSucceeded = this.drawingSucceeded && success;
     }
 

@@ -522,6 +522,107 @@ public class DetailReaderFixture {
         self.assertRegex(output, r"PASS \d+ detail value assertions")
 
 
+class M5ObservationNavigationTests(unittest.TestCase):
+    def test_navigation_skips_missing_and_offscreen_records_and_keeps_selected_frame(self):
+        adapted = r'''
+using System;
+using System.Globalization;
+public class M5ObservationHistoryRecord {
+    public long id,barTime;
+}
+public class NavigationFixture {
+    const long Bar=1795500000;
+    const int OBJPROP_STATE=1;
+    long chartId=0,selectedTime;
+    string prefix="Fixture-";
+    int selectedFrameIndex=6,markerCount,chartWidth=1200,chartHeight=600;
+    int[] markerIndexes=new int[0];
+    bool drawingSucceeded;
+    int checks,drawCalls,panelCalls,stateChanges;
+    long drawnTime;
+    int drawnFrame;
+    M5ObservationHistoryRecord[] drawnRecords;
+    string stateObject="";
+    bool stateValue=true;
+    static int ArraySize<T>(T[] values) { return values.Length; }
+    static int MathMin(int first,int second) { return Math.Min(first,second); }
+    static int StringFind(string text,string value) { return text.IndexOf(value,StringComparison.Ordinal); }
+    static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
+    void Check(bool condition,string message) { checks++;if(!condition) throw new Exception(message); }
+    bool ObjectSetInteger(long chart,string name,int property,bool value) {
+        Check(property==OBJPROP_STATE,"only button state changed");
+        stateChanges++;stateObject=name;stateValue=value;return true;
+    }
+    void ObjectsDeleteAll(long chart,string name,int window,int type) {}
+    bool draw(M5ObservationHistoryRecord[] records,string status,int digits) {
+        drawCalls++;drawnRecords=records;drawnTime=selectedTime;drawnFrame=selectedFrameIndex;return true;
+    }
+    void drawPanel(M5ObservationHistoryRecord[] records,int index,int digits,int width,int height) {
+        panelCalls++;drawnRecords=records;drawnTime=records[index].barTime;drawnFrame=selectedFrameIndex;
+    }
+    M5ObservationHistoryRecord Record(long time,long id) {
+        return new M5ObservationHistoryRecord { barTime=time,id=id };
+    }
+    public string Run() {
+        M5ObservationHistoryRecord[] records={
+            Record(Bar+1800,6),Record(Bar,1),Record(Bar+300,0),Record(Bar+900,3),
+            Record(Bar+600,2),Record(Bar+1200,4),Record(0,7),Record(Bar+1500,0)
+        };
+        markerIndexes=new int[]{5,1,-1,3,7,0,6,2,99};markerCount=markerIndexes.Length;
+        Check(findAdjacentRecordIndex(records,Bar+900,-1)==1,"previous uses nearest visible saved time, independent of array order");
+        Check(findAdjacentRecordIndex(records,Bar+900,1)==5,"next uses nearest visible saved time");
+        Check(findAdjacentRecordIndex(records,Bar,1)==3,"missing and offscreen records skipped");
+        Check(findAdjacentRecordIndex(records,Bar+1200,1)==0,"missing later slot skipped");
+        Check(findAdjacentRecordIndex(records,Bar,-1)==-1,"oldest has no previous record");
+        Check(findAdjacentRecordIndex(records,Bar+1800,1)==-1,"newest has no next record");
+        Check(findAdjacentRecordIndex(records,Bar+300,-1)==1 && findAdjacentRecordIndex(records,Bar+300,1)==3,"missing observation can navigate to either saved neighbor");
+        Check(findAdjacentRecordIndex(records,0,1)==-1 && findAdjacentRecordIndex(records,Bar,0)==-1 && findAdjacentRecordIndex(records,Bar,2)==-1,"invalid selection and direction rejected");
+        Check(findAdjacentRecordIndex(new M5ObservationHistoryRecord[0],Bar,1)==-1,"stale marker indexes do not access empty records");
+        markerIndexes=new int[]{1,3,5,0};markerCount=2;
+        Check(findAdjacentRecordIndex(records,Bar+900,1)==-1,"stale markers after markerCount excluded");
+        markerCount=0;
+        Check(findAdjacentRecordIndex(records,Bar,1)==-1,"no drawn markers disables navigation");
+        markerIndexes=new int[]{5,1,3,7,0,6,2};markerCount=markerIndexes.Length;
+        selectedTime=Bar+900;selectedFrameIndex=5;
+        Check(onObjectClick(prefix+"PanelPrevious",records,"ready",3),"previous click handled");
+        Check(selectedTime==Bar && selectedFrameIndex==5,"previous skips gaps without resetting M15 selection");
+        Check(drawCalls==1 && drawnRecords==records && drawnTime==Bar && drawnFrame==5,"full redraw receives selected record cache and preserved detail frame");
+        int redraws=drawCalls;
+        Check(onObjectClick(prefix+"PanelPrevious",records,"ready",3),"disabled previous click consumed");
+        Check(selectedTime==Bar && selectedFrameIndex==5 && drawCalls==redraws,"oldest edge preserves panel and selection");
+        Check(stateChanges>0 && stateObject==prefix+"PanelPrevious" && !stateValue,"disabled button press released");
+        Check(onObjectClick(prefix+"PanelNext",records,"ready",3) && selectedTime==Bar+900,"next returns to the same saved observation");
+        Check(onObjectClick(prefix+"PanelNext",records,"ready",3) && selectedTime==Bar+1200,"next visits nearest newer observation");
+        Check(onObjectClick(prefix+"PanelNext",records,"ready",3) && selectedTime==Bar+1800,"next skips missing slot");
+        redraws=drawCalls;
+        Check(onObjectClick(prefix+"PanelNext",records,"ready",3),"disabled next click consumed");
+        Check(selectedTime==Bar+1800 && selectedFrameIndex==5 && drawCalls==redraws,"newest edge preserves M15 detail and record");
+        Check(stateObject==prefix+"PanelNext" && !stateValue,"newest button press released");
+        selectedTime=Bar+300;
+        Check(onObjectClick(prefix+"PanelNext",records,"ready",3) && selectedTime==Bar+900 && selectedFrameIndex==5,"missing detail can move to a saved observation");
+        M5ObservationHistoryRecord[] refreshed={records[3],records[0],records[1]};
+        markerIndexes=new int[]{0,1,2};markerCount=3;
+        Check(onObjectClick(prefix+"PanelPrevious",refreshed,"ready",3) && selectedTime==Bar,"reload with changed array indexes resolves selection by time");
+        Check(drawnRecords==refreshed,"navigation redraw uses current cache");
+        Check(onObjectClick(prefix+"PanelRow3Elliot",refreshed,"ready",3),"timeframe row click handled");
+        Check(selectedFrameIndex==3 && panelCalls==1 && drawnTime==Bar && drawingSucceeded,"row click preserves observation after navigation");
+        Check(!onObjectClick("Other-PanelNext",refreshed,"ready",3),"other indicator buttons ignored");
+        Check(onObjectClick(prefix+"PanelClose",refreshed,"ready",3) && selectedTime==0 && selectedFrameIndex==6,"closing resets selection normally");
+        Check(navigationGapText(Bar,0,Bar+300)=="","normal five-minute interval has no gap warning");
+        Check(navigationGapText(Bar+600,Bar,0)=="前まで 10分","previous gap remains visible");
+        Check(navigationGapText(Bar,0,Bar+600)=="次まで 10分","next gap remains visible");
+        Check(navigationGapText(Bar+900,Bar,Bar+1500)=="前まで 15分 / 次まで 10分","both gaps shown independently");
+        Check(navigationGapText(Bar+300,Bar,Bar+600)=="" && navigationGapText(Bar,0,0)=="","normal intervals and absent neighbors are not gaps");
+        return "PASS "+checks+" navigation assertions";
+    }
+'''
+        adapted += extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), (
+            "findAdjacentRecordIndex", "onObjectClick", "markerName", "navigationGapText",
+        )) + "\n}"
+        output = run_csharp(adapted, "(New-Object NavigationFixture).Run()\n")
+        self.assertRegex(output, r"PASS \d+ navigation assertions")
+
+
 class M5ObservationTooltipTests(unittest.TestCase):
     def test_strength_text_preserves_source_missing_values_and_independent_delta(self):
         adapted = "using System;using System.Globalization;\n" + strength_fixture() + r'''
