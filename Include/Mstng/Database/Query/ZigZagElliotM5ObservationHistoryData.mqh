@@ -122,6 +122,97 @@ struct M5ObservationHistoryFrame {
 };
 
 /**
+ * 同じM5時刻の通貨強弱履歴にある一集計期間の順位と前M5比を保持する。
+ */
+struct M5ObservationHistoryStrengthPeriod {
+    /** 両通貨の順位が有効な場合true。 */
+    bool valid;
+
+    /** 同じ参照元の直前M5と比較できた場合true。 */
+    bool comparable;
+
+    /** 基軸通貨の順位。未記録は0。 */
+    int baseRank;
+
+    /** 決済通貨の順位。未記録は0。 */
+    int quoteRank;
+
+    /** 決済通貨順位から基軸通貨順位を引いた値。 */
+    int gap;
+
+    /** 現在の順位差から直前M5の順位差を引いた値。 */
+    int delta;
+
+    /**
+     * 数値と取得状態を未記録へ戻す。
+     */
+    void clear() {
+        this.valid = false;
+        this.comparable = false;
+        this.baseRank = 0;
+        this.quoteRank = 0;
+        this.gap = 0;
+        this.delta = 0;
+    }
+};
+
+/**
+ * 観測と同じM5時刻の通貨強弱DB履歴を保持する。
+ * 観測保存時点のスナップショットとは区別し、強弱DBの取得元を併記する。
+ */
+struct M5ObservationHistoryStrength {
+    /** 通貨強弱の参照設定が有効な場合true。 */
+    bool enabled;
+
+    /** 読取結果。未記録・取得失敗・無効などを区別する。 */
+    string status;
+
+    /** 基軸通貨名。 */
+    string baseCurrency;
+
+    /** 決済通貨名。 */
+    string quoteCurrency;
+
+    /** 選択した投票方式の表示名。 */
+    string weightLabel;
+
+    /** 実際に選択した通貨強弱履歴のLIVEまたはTESTER。 */
+    string sourceMode;
+
+    /** 通貨強弱DB内の集計ID。観測Run IDとは別の識別子。 */
+    long runId;
+
+    /** 通貨強弱履歴のM5開始サーバー時刻。 */
+    datetime barTime;
+
+    /** 通貨強弱DBの更新Unix時刻。観測取得サーバー時刻とは区別する。 */
+    datetime updatedAt;
+
+    /** 長中期の順位と前M5比。 */
+    M5ObservationHistoryStrengthPeriod longMedium;
+
+    /** 中短期の順位と前M5比。 */
+    M5ObservationHistoryStrengthPeriod mediumShort;
+
+    /**
+     * 履歴と取得状態を初期化する。
+     */
+    void clear() {
+        this.enabled = false;
+        this.status = "未記録";
+        this.baseCurrency = "";
+        this.quoteCurrency = "";
+        this.weightLabel = "";
+        this.sourceMode = "";
+        this.runId = 0;
+        this.barTime = 0;
+        this.updatedAt = 0;
+        this.longMedium.clear();
+        this.mediumShort.clear();
+    }
+};
+
+/**
  * 一つのM5観測と、MN1からM5までの固定7足を保持する。
  * M1波動や保存されていない日時は再計算で補完しない。
  */
@@ -144,6 +235,9 @@ struct M5ObservationHistoryRecord {
     /** MN1・W1・D1・H4・H1・M15・M5の固定順。 */
     M5ObservationHistoryFrame frames[7];
 
+    /** 別DBから取得した、同M5時刻の通貨強弱履歴。 */
+    M5ObservationHistoryStrength strength;
+
     /**
      * 観測を未取得状態へ戻し、7時間足の順序を固定する。
      */
@@ -153,6 +247,7 @@ struct M5ObservationHistoryRecord {
         this.barTime = 0;
         this.jstTime = 0;
         this.captureTime = 0;
+        this.strength.clear();
         int timeFrames[] = {PERIOD_MN1, PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
         for (int i = 0; i < 7; i++) {
             this.frames[i].clear();

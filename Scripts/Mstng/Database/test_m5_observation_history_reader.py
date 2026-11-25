@@ -111,11 +111,12 @@ def extracted_methods(source, names):
     """Keep builder/formatter branches; adapt only MQL parameter/array syntax."""
     result = []
     for name in names:
-        signature = re.search(r"\b(static\s+)?(string|bool|color)\s+" + name + r"\s*\(([^)]*)\)\s*\{", source)
+        signature = re.search(r"\b(static\s+)?(string|bool|color|int|void)\s+" + name + r"\s*\(([^)]*)\)\s*\{", source)
         if signature is None:
             raise AssertionError(f"Missing method: {name}")
         parameters = re.sub(r"\bconst\s+|&", "", signature[3])
         parameters = re.sub(r"\bdatetime\b", "long", parameters)
+        parameters = re.sub(r"\b(\w+)\s+(\w+)\[\]", r"\1[] \2", parameters)
         opening = signature.end() - 1
         body = source[opening + 1:block_end(code_only(source), opening)]
         body = re.sub(r"\bstring\s+(\w+)\[\]\s*=\s*\{", r"string[] \1 = new string[] {", body)
@@ -123,6 +124,8 @@ def extracted_methods(source, names):
         body = re.sub(r"StringSplit\(([^,]+),\s*('[^']'),\s*(\w+)\)", r"StringSplit(\1, \2, out \3)", body)
         body = re.sub(r"\bdatetime\b", "long", body)
         body = re.sub(r"\bcolor\b", "int", body)
+        body = body.replace("::", ".")
+        body = re.sub(r"\b(CurrencyStrengthPairRankPoint)\s+(\w+)\s*;", r"\1 \2 = new \1();", body)
         result_type = "int" if signature[2] == "color" else signature[2]
         result.append("public " + (signature[1] or "") + result_type + " " + name + "(" + parameters + ") {" + body + "}")
     return "\n".join(result)
@@ -151,16 +154,35 @@ def run_csharp(source, script, payload=None):
     return completed.stdout
 
 
-def frame_fixture():
-    """Adapt the production snapshot fields and their unknown-value defaults."""
-    source = READER.with_name("ZigZagElliotM5ObservationHistoryData.mqh").read_text(encoding="utf-8-sig")
-    body = source.split("struct M5ObservationHistoryFrame {", 1)[1].split("\n};", 1)[0]
-    fields = re.findall(r"^\s*(int|bool|string|datetime|double)\s+(\w+);", body, re.M)
-    result = "public class M5ObservationHistoryFrame { const int PERIOD_CURRENT=0;\n"
-    result += "\n".join(f"public {'long' if kind == 'datetime' else kind} {name};" for kind, name in fields)
-    result += "\npublic M5ObservationHistoryFrame() { clear(); }\npublic void clear() {"
-    result += method(source, "clear") + "\n} }\n"
+def struct_fixture(source, name, reset="clear"):
+    """Keep production scalar/nested DTO fields and unknown-value defaults."""
+    opening = re.search(r"\bstruct " + name + r"\s*\{", source).end() - 1
+    body = source[opening + 1:block_end(code_only(source), opening)]
+    fields = re.findall(r"^\s*(\w+)\s+(\w+);", body, re.M)
+    result = "public class " + name + " { const int PERIOD_CURRENT=0;\n"
+    for kind, field in fields:
+        adapted = "long" if kind == "datetime" else kind
+        initial = ""
+        if kind == "string":
+            initial = '=""'
+        elif kind not in ("int", "long", "bool", "datetime", "double"):
+            initial = "=new " + kind + "()"
+        result += f"public {adapted} {field}{initial};\n"
+    result += f"public {name}() {{ {reset}(); }}\npublic void {reset}() {{"
+    result += method(body, reset) + "\n} }\n"
     return result
+
+
+def frame_fixture():
+    source = READER.with_name("ZigZagElliotM5ObservationHistoryData.mqh").read_text(encoding="utf-8-sig")
+    return struct_fixture(source, "M5ObservationHistoryFrame")
+
+
+def strength_fixture():
+    source = READER.with_name("ZigZagElliotM5ObservationHistoryData.mqh").read_text(encoding="utf-8-sig")
+    return "".join(struct_fixture(source, name) for name in (
+        "M5ObservationHistoryStrengthPeriod", "M5ObservationHistoryStrength",
+    ))
 
 
 def reader_value_methods(source):
@@ -369,9 +391,87 @@ class M5ObservationHistorySqlTests(unittest.TestCase):
 
 
 DRAWER = ROOT / "Include/Mstng/Draw/DrawZigZagElliotM5Observations.mqh"
+DISPLAY = ROOT / "Include/Mstng/Indicator/ZigZagElliot/M5ObservationDisplayController.mqh"
 
 
 class M5ObservationDetailValueTests(unittest.TestCase):
+    def test_strength_history_joins_exact_m5_and_compares_only_valid_previous_source(self):
+        point_source = (ROOT / "Include/Mstng/Strength/CurrencyStrengthPairRankPoint.mqh").read_text(encoding="utf-8-sig")
+        evaluator_source = (ROOT / "Include/Mstng/Strength/CurrencyStrengthRankDeltaEvaluator.mqh").read_text(encoding="utf-8-sig")
+        adapted = "using System;\n" + strength_fixture()
+        adapted += struct_fixture(point_source, "CurrencyStrengthPairRankPoint", "reset")
+        adapted += "public class CurrencyStrengthRankDeltaEvaluator {\n"
+        adapted += "static int ArraySize<T>(T[] values) { return values.Length; }\n"
+        adapted += extracted_methods(evaluator_source, ("findIndex",)) + "}\n"
+        adapted += r'''
+public class StrengthJoinFixture {
+    const long Bar=1795500000;
+    static int checks;
+    static void Check(bool condition,string message) { checks++;if(!condition) throw new Exception(message); }
+    static CurrencyStrengthPairRankPoint Point(long time,long run,int baseLong,int quoteLong,int baseShort,int quoteShort) {
+        return new CurrencyStrengthPairRankPoint {
+            m5BarTime=time,runId=run,updatedAt=123456,sourceMode="LIVE",
+            baseLongMediumTermAverageRank=baseLong,quoteLongMediumTermAverageRank=quoteLong,
+            baseMediumShortTermAverageRank=baseShort,quoteMediumShortTermAverageRank=quoteShort
+        };
+    }
+    public static string Run() {
+        CurrencyStrengthPairRankPoint[] points={Point(Bar-600,10,7,2,6,3),Point(Bar-300,11,3,7,1,6),Point(Bar,12,2,7,3,6),Point(Bar+300,13,1,8,1,8)};
+        M5ObservationHistoryStrength strength=new M5ObservationHistoryStrength();
+        strength.enabled=true;strength.baseCurrency="USD";strength.quoteCurrency="JPY";strength.weightLabel="加重";
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(strength.status=="取得済み" && strength.runId==12 && strength.barTime==Bar,"exact M5 and independent strength Run selected");
+        Check(strength.updatedAt==123456 && strength.sourceMode=="LIVE","source metadata preserved");
+        Check(strength.longMedium.valid && strength.longMedium.baseRank==2 && strength.longMedium.quoteRank==7,"saved long-medium ranks retained");
+        Check(strength.longMedium.gap==5 && strength.longMedium.comparable && strength.longMedium.delta==1,"long-medium uses exact previous M5");
+        Check(strength.mediumShort.gap==3 && strength.mediumShort.comparable && strength.mediumShort.delta==-2,"medium-short has independent ranks and delta");
+        applyStrengthPoint(points,0,Bar+600,strength);
+        Check(strength.status=="未記録" && !strength.longMedium.valid && !strength.mediumShort.valid,"missing M5 never filled with neighboring ranks");
+        Check(strength.runId==0 && strength.sourceMode=="" && strength.barTime==0 && strength.updatedAt==0,"failed join clears previous source metadata");
+        Check(strength.enabled && strength.baseCurrency=="USD" && strength.quoteCurrency=="JPY" && strength.weightLabel=="加重","display configuration survives join reset");
+        applyStrengthPoint(points,0,Bar+1,strength);
+        Check(!strength.longMedium.valid,"non-M5 timestamp not rounded into data");
+        applyStrengthPoint(points,2,Bar,strength);
+        Check(strength.longMedium.valid && !strength.longMedium.comparable,"pruned previous M5 not reused");
+        CurrencyStrengthPairRankPoint[] missingPrevious={points[0],points[2],points[3]};
+        applyStrengthPoint(missingPrevious,0,Bar,strength);
+        Check(strength.longMedium.valid && !strength.longMedium.comparable && strength.longMedium.delta==0,"600-second gap not treated as previous M5");
+        points[1].sourceMode="TESTER";
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(strength.sourceMode=="LIVE" && !strength.longMedium.comparable && !strength.mediumShort.comparable,"LIVE and TESTER never compared across boundary");
+        points[2].sourceMode="TESTER";
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(strength.sourceMode=="TESTER" && strength.longMedium.comparable,"matching TESTER history allowed");
+        points[2].baseLongMediumTermAverageRank=0;
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(!strength.longMedium.valid && strength.mediumShort.valid && strength.status=="取得済み","one missing period does not hide the other");
+        points[2].baseLongMediumTermAverageRank=9;
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(!strength.longMedium.valid && strength.longMedium.baseRank==0 && !strength.longMedium.comparable,"out-of-range rank not displayed as strength");
+        points[2].baseLongMediumTermAverageRank=4;points[2].quoteLongMediumTermAverageRank=4;
+        points[1].baseLongMediumTermAverageRank=4;points[1].quoteLongMediumTermAverageRank=4;
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(strength.longMedium.valid && strength.longMedium.gap==0 && strength.longMedium.comparable && strength.longMedium.delta==0,"recorded zero gap and zero delta distinct from missing");
+        points[1].quoteLongMediumTermAverageRank=9;
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(strength.longMedium.valid && !strength.longMedium.comparable && strength.mediumShort.comparable,"invalid previous rank disables only its period comparison");
+        points[2].runId=0;
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(!strength.longMedium.valid && !strength.mediumShort.valid && strength.status=="未記録","unrecorded strength Run rejected");
+        points[2].runId=12;points[2].sourceMode="UNKNOWN";
+        applyStrengthPoint(points,0,Bar,strength);
+        Check(!strength.longMedium.valid && strength.sourceMode=="","unknown source mode rejected");
+        applyStrengthPoint(new CurrencyStrengthPairRankPoint[0],0,Bar,strength);
+        Check(strength.status=="未記録" && !strength.longMedium.valid,"empty history remains explicit");
+        return "PASS "+checks+" strength join assertions";
+    }
+'''
+        adapted += extracted_methods(DISPLAY.read_text(encoding="utf-8-sig"), (
+            "applyStrengthPoint", "fillStrengthPeriod",
+        )) + "\n}"
+        output = run_csharp(adapted, "[StrengthJoinFixture]::Run()\n")
+        self.assertRegex(output, r"PASS \d+ strength join assertions")
+
     def test_production_reader_distinguishes_missing_zero_and_invalid_fields(self):
         adapted = "using System;\n" + frame_fixture() + r'''
 public class DetailReaderFixture {
@@ -423,6 +523,56 @@ public class DetailReaderFixture {
 
 
 class M5ObservationTooltipTests(unittest.TestCase):
+    def test_strength_text_preserves_source_missing_values_and_independent_delta(self):
+        adapted = "using System;using System.Globalization;\n" + strength_fixture() + r'''
+public class StrengthTextFixture {
+    const int clrSilver=1,clrWhite=2,clrAqua=3,clrHotPink=4;
+    static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
+    static string StringFormat(string format,int value) {
+        return format.Replace("%+d",value.ToString("+0;-0;+0",CultureInfo.InvariantCulture)).Replace("%d",IntegerToString(value));
+    }
+    static int checks;
+    static void Check(bool condition,string message) { checks++;if(!condition) throw new Exception(message); }
+    public static string Run() {
+        M5ObservationHistoryStrength strength=new M5ObservationHistoryStrength();
+        Check(strengthStatusText(strength)=="通貨強弱OFF","disabled setting is explicit");
+        strength.enabled=true;strength.status="未記録";
+        Check(strengthStatusText(strength)=="未記録","missing history is not zero strength");
+        strength.status="DB未検出";
+        Check(strengthStatusText(strength)=="DB未検出","missing database distinct from missing observation");
+        strength.status="取得失敗";
+        Check(strengthStatusText(strength)=="取得失敗","query failure not a successful cached value");
+        strength.status="取得済み";strength.weightLabel="加重";strength.sourceMode="TESTER";
+        string title=strengthTitle(strength);
+        Check(title.Contains("同M5") && title.Contains("履歴"),"history source distinct from saved wave snapshot");
+        Check(title.Contains("加重") && title.Contains("TESTER"),"actual weight and data source visible");
+        Check(strengthStatusText(strength)=="","successful status leaves room for rank rows");
+        M5ObservationHistoryStrengthPeriod period=strength.longMedium;
+        Check(strengthRankText(0,false)=="未記録" && strengthGapText(period)=="未記録","missing ranks and gap");
+        Check(strengthValueColor(0,false)==clrSilver,"missing zero is gray");
+        period.valid=true;period.baseRank=2;period.quoteRank=7;period.gap=5;
+        Check(strengthRankText(2,true)=="2位" && strengthGapText(period)=="+5","positive gap retains sign");
+        Check(strengthDeltaText(period)=="比較なし","missing previous M5 is not zero delta");
+        period.comparable=true;period.delta=-2;
+        Check(strengthDeltaText(period)=="↓ -2","positive gap can shrink");
+        Check(strengthValueColor(period.gap,true)==clrAqua && strengthValueColor(period.delta,true)==clrHotPink,"gap and delta have independent colors");
+        period.gap=-5;period.delta=1;
+        Check(strengthGapText(period)=="-5" && strengthDeltaText(period)=="↑ +1","negative gap can rise");
+        period.gap=0;period.delta=0;
+        Check(strengthGapText(period)=="0" && strengthDeltaText(period)=="→ 0","recorded flat values are explicit");
+        Check(strengthValueColor(0,true)==clrWhite,"recorded neutral is white");
+        period.clear();
+        Check(!period.valid && !period.comparable && period.baseRank==0 && period.quoteRank==0,"clearing restores unknown state");
+        return "PASS "+checks+" strength text assertions";
+    }
+'''
+        adapted += extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), (
+            "strengthTitle", "strengthStatusText", "strengthRankText", "strengthGapText",
+            "strengthDeltaText", "strengthValueColor",
+        )) + "\n}"
+        output = run_csharp(adapted, "[StrengthTextFixture]::Run()\n")
+        self.assertRegex(output, r"PASS \d+ strength text assertions")
+
     def test_chart_table_formatters_match_saved_directions_states_and_numbers(self):
         adapted = "using System;using System.Globalization;\n" + frame_fixture() + r'''
 public class TableFixture {

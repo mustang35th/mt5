@@ -6,10 +6,12 @@
 #include <Mstng\Draw\ChartMouseMoveSubscription.mqh>
 #include <Mstng\Draw\DrawZigZagElliotM5Observations.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankDeltaEvaluator.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankDeltaHistoryProvider.mqh>
 #include <Mstng\Util\Util.mqh>
 
 /**
- * 表示範囲内のM5観測を読み、保存値だけを目印・詳細パネルへ渡す。
+ * 表示範囲内の保存波動と、同M5時刻の通貨強弱履歴を目印・詳細パネルへ渡す。
  * 表示Runを保持し、マウス操作ではDBを参照せずキャッシュを使用する。
  */
 class M5ObservationDisplayController {
@@ -19,6 +21,8 @@ public:
      */
     M5ObservationDisplayController() {
         this.drawer = NULL;
+        this.strengthProvider = NULL;
+        this.sourceLogin = 0;
         this.connected = false;
         this.resolvedRunId = 0;
         this.loadedStart = 0;
@@ -36,6 +40,7 @@ public:
     ~M5ObservationDisplayController() {
         this.mouseMoveSubscription.release();
         this.reader.close();
+        this.clearStrengthProvider();
         if (this.drawer != NULL) {
             delete this.drawer;
             this.drawer = NULL;
@@ -59,6 +64,7 @@ public:
         }
 
         this.sourceServer = AccountInfoString(ACCOUNT_SERVER);
+        this.sourceLogin = AccountInfoInteger(ACCOUNT_LOGIN);
         this.resolvedRunId = this.config.m5ObservationDisplayRunId;
         string prefix = "ZzeM5Obs-" + IntegerToString((long)GetMicrosecondCount()) + "-";
         this.drawer = new DrawZigZagElliotM5Observations(0, prefix);
@@ -101,15 +107,18 @@ public:
         }
 
         bool rangeChanged = startTime != this.loadedStart || endTime != this.loadedEnd;
-        bool serverChanged = this.sourceServer != AccountInfoString(ACCOUNT_SERVER);
-        if (serverChanged || clockRewound) {
+        bool sourceChanged = this.sourceServer != AccountInfoString(ACCOUNT_SERVER)
+            || this.sourceLogin != AccountInfoInteger(ACCOUNT_LOGIN);
+        if (sourceChanged || clockRewound) {
             this.reader.close();
+            this.clearStrengthProvider();
             this.connected = false;
             this.resolvedRunId = this.config.m5ObservationDisplayRunId;
             this.sourceServer = AccountInfoString(ACCOUNT_SERVER);
+            this.sourceLogin = AccountInfoInteger(ACCOUNT_LOGIN);
         }
 
-        bool refresh = rangeChanged || serverChanged || clockRewound || this.lastAttemptTick == 0
+        bool refresh = rangeChanged || sourceChanged || clockRewound || this.lastAttemptTick == 0
             || nowTick - this.lastAttemptTick >= 15000 || (Util::isStrategyTester() && barChanged);
         if (!refresh) {
             if (fromViewChanged) {
@@ -120,9 +129,9 @@ public:
         }
 
         // 連続スクロール中のクエリを間引き、別範囲の保存値を残さない。
-        if (!barChanged && !serverChanged && !clockRewound && this.lastAttemptTick > 0
+        if (!barChanged && !sourceChanged && !clockRewound && this.lastAttemptTick > 0
                 && nowTick - this.lastAttemptTick < 250) {
-            if (rangeChanged || serverChanged) {
+            if (rangeChanged || sourceChanged) {
                 this.clearDisplay("M5観測：表示範囲を読込中");
             }
 
@@ -178,6 +187,8 @@ public:
             }
         }
 
+        this.updateStrength(startTime, endTime, knownTime);
+
         this.status = "M5保存 " + this.sourceMode + " Run " + IntegerToString(this.resolvedRunId)
             + " / " + IntegerToString(matched) + "件 ●詳細・?記録なし";
         if (this.resolvedRunId <= 0) {
@@ -231,6 +242,9 @@ private:
     /** 読み取り専用の観測DB接続。 */
     ZigZagElliotM5ObservationHistoryReader reader;
 
+    /** 表示範囲だけの通貨強弱履歴を読む専用キャッシュ。 */
+    CurrencyStrengthRankDeltaHistoryProvider *strengthProvider;
+
     /** このインスタンスが所有する目印・パネル。 */
     DrawZigZagElliotM5Observations *drawer;
 
@@ -248,6 +262,9 @@ private:
 
     /** 読取対象の取引サーバー。 */
     string sourceServer;
+
+    /** 通貨強弱DBの参照口座。切替時に別口座のキャッシュを破棄する。 */
+    long sourceLogin;
 
     /** 最初に解決した一つのRun ID。 */
     long resolvedRunId;
@@ -272,6 +289,161 @@ private:
 
     /** DB・Run・取得状態の表示文。 */
     string status;
+
+    /**
+     * 通貨強弱の表示範囲と直前M5をまとめて読み、観測時刻へ厳密に対応付ける。
+     * 失敗時は古いキャッシュを表示せず、波動とは独立した取得状態を残す。
+     */
+    void updateStrength(const datetime fromStart, const datetime fromEnd, const datetime fromKnownTime) {
+        M5ObservationHistoryStrength strength;
+        strength.clear();
+        strength.enabled = this.config.currencyStrengthEnabled;
+        strength.baseCurrency = SymbolInfoString(this.marketContext.symbolName, SYMBOL_CURRENCY_BASE);
+        strength.quoteCurrency = SymbolInfoString(this.marketContext.symbolName, SYMBOL_CURRENCY_PROFIT);
+        strength.weightLabel = "均等";
+        if (this.config.currencyStrengthVoteWeightMode == CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED) {
+            strength.weightLabel = "加重";
+        }
+
+        bool loaded = false;
+        if (!strength.enabled) {
+            strength.status = "無効";
+        } else if (strength.baseCurrency == "" || strength.quoteCurrency == ""
+                || strength.baseCurrency == strength.quoteCurrency) {
+            strength.status = "対象外";
+        } else if (!CurrencyStrengthCalculationProfile::isVoteWeightModeValid(
+                this.config.currencyStrengthVoteWeightMode)) {
+            strength.status = "設定エラー";
+        } else {
+            if (this.strengthProvider == NULL) {
+                this.strengthProvider = new CurrencyStrengthRankDeltaHistoryProvider(
+                    this.config.currencyStrengthDatabaseFileName, this.config.currencyStrengthDatabaseSplitByYear,
+                    this.config.currencyStrengthDatabaseUseCommonFolder, this.config.currencyStrengthDatabaseProfile,
+                    this.config.currencyStrengthVoteWeightMode, Util::isStrategyTester(),
+                    strength.baseCurrency, strength.quoteCurrency);
+            }
+
+            datetime startTime = (datetime)MathMax(300, (long)fromStart - 300);
+            datetime targetTime = (datetime)MathMin((long)fromEnd - 300, (long)fromKnownTime / 300 * 300);
+            if (this.strengthProvider == NULL) {
+                strength.status = "取得失敗";
+            } else if (targetTime >= startTime) {
+                datetime changedStart = startTime;
+                bool changed = false;
+                // 遅延保存や同一M5の更新も反映するため、表示範囲を毎回読み直す。
+                loaded = this.strengthProvider.refresh(startTime, targetTime, true, changedStart, changed);
+                if (!loaded) {
+                    strength.status = this.strengthProvider.getStatusText();
+                    int retainedSuffix = StringFind(strength.status, "（前回履歴を保持）");
+                    if (retainedSuffix >= 0) {
+                        strength.status = StringSubstr(strength.status, 0, retainedSuffix);
+                    }
+
+                    this.strengthProvider.reopenDatabase();
+                }
+            }
+        }
+
+        for (int i = 0; i < ArraySize(this.records); i++) {
+            this.records[i].strength = strength;
+            if (loaded) {
+                applyStrengthPoint(this.strengthProvider.points, this.strengthProvider.startIndex,
+                    this.records[i].barTime, this.records[i].strength);
+            }
+        }
+    }
+
+    /**
+     * 同時刻の履歴だけを割り当て、300秒前が欠けている場合は比較しない。
+     * 通貨強弱の集計IDは観測Run IDと結合せず、そのまま出典として保持する。
+     */
+    static void applyStrengthPoint(const CurrencyStrengthPairRankPoint &fromPoints[],
+            const int fromStartIndex, const datetime fromTime, M5ObservationHistoryStrength &fromStrength) {
+        fromStrength.longMedium.clear();
+        fromStrength.mediumShort.clear();
+        fromStrength.sourceMode = "";
+        fromStrength.runId = 0;
+        fromStrength.barTime = 0;
+        fromStrength.updatedAt = 0;
+        fromStrength.status = "未記録";
+        if (fromTime <= 0 || fromTime % 300 != 0) {
+            return;
+        }
+
+        int currentIndex = CurrencyStrengthRankDeltaEvaluator::findIndex(fromPoints, fromStartIndex, fromTime);
+        if (currentIndex < 0 || fromPoints[currentIndex].runId <= 0
+                || (fromPoints[currentIndex].sourceMode != "LIVE" && fromPoints[currentIndex].sourceMode != "TESTER")) {
+            return;
+        }
+
+        int previousIndex = CurrencyStrengthRankDeltaEvaluator::findIndex(fromPoints, fromStartIndex, fromTime - 300);
+        CurrencyStrengthPairRankPoint previous;
+        previous.reset();
+        if (previousIndex >= 0) {
+            previous = fromPoints[previousIndex];
+        }
+
+        fillStrengthPeriod(fromPoints[currentIndex], previous, previousIndex >= 0, true, fromStrength.longMedium);
+        fillStrengthPeriod(fromPoints[currentIndex], previous, previousIndex >= 0, false, fromStrength.mediumShort);
+        fromStrength.sourceMode = fromPoints[currentIndex].sourceMode;
+        fromStrength.runId = fromPoints[currentIndex].runId;
+        fromStrength.barTime = fromPoints[currentIndex].m5BarTime;
+        fromStrength.updatedAt = fromPoints[currentIndex].updatedAt;
+        if (fromStrength.longMedium.valid || fromStrength.mediumShort.valid) {
+            fromStrength.status = "取得済み";
+        }
+    }
+
+    /**
+     * 順位1～8を検証し、同じ参照元の直前M5に対する順位差の増減を求める。
+     * 同順位による差0や前M5比0も、有効な数値として保持する。
+     */
+    static void fillStrengthPeriod(const CurrencyStrengthPairRankPoint &fromCurrent,
+            const CurrencyStrengthPairRankPoint &fromPrevious, const bool fromHasPrevious,
+            const bool fromLongMedium, M5ObservationHistoryStrengthPeriod &fromPeriod) {
+        fromPeriod.clear();
+        if (fromCurrent.runId <= 0 || fromCurrent.m5BarTime <= 0 || fromCurrent.m5BarTime % 300 != 0
+                || (fromCurrent.sourceMode != "LIVE" && fromCurrent.sourceMode != "TESTER")) {
+            return;
+        }
+
+        int baseRank = fromCurrent.baseMediumShortTermAverageRank;
+        int quoteRank = fromCurrent.quoteMediumShortTermAverageRank;
+        int previousBaseRank = fromPrevious.baseMediumShortTermAverageRank;
+        int previousQuoteRank = fromPrevious.quoteMediumShortTermAverageRank;
+        if (fromLongMedium) {
+            baseRank = fromCurrent.baseLongMediumTermAverageRank;
+            quoteRank = fromCurrent.quoteLongMediumTermAverageRank;
+            previousBaseRank = fromPrevious.baseLongMediumTermAverageRank;
+            previousQuoteRank = fromPrevious.quoteLongMediumTermAverageRank;
+        }
+        if (baseRank < 1 || baseRank > 8 || quoteRank < 1 || quoteRank > 8) {
+            return;
+        }
+
+        fromPeriod.valid = true;
+        fromPeriod.baseRank = baseRank;
+        fromPeriod.quoteRank = quoteRank;
+        fromPeriod.gap = quoteRank - baseRank;
+        if (!fromHasPrevious || fromPrevious.runId <= 0 || fromPrevious.sourceMode != fromCurrent.sourceMode
+                || fromPrevious.m5BarTime != fromCurrent.m5BarTime - 300
+                || previousBaseRank < 1 || previousBaseRank > 8 || previousQuoteRank < 1 || previousQuoteRank > 8) {
+            return;
+        }
+
+        fromPeriod.comparable = true;
+        fromPeriod.delta = fromPeriod.gap - (previousQuoteRank - previousBaseRank);
+    }
+
+    /**
+     * 口座・サーバー変更や時刻巻戻りで、以前の通貨強弱履歴を破棄する。
+     */
+    void clearStrengthProvider() {
+        if (this.strengthProvider != NULL) {
+            delete this.strengthProvider;
+            this.strengthProvider = NULL;
+        }
+    }
 
     /**
      * 可視チャート足の時刻をM5枠へ対応付け、最大2000枠に制限する。

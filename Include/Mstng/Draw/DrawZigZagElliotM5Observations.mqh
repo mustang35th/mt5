@@ -376,11 +376,14 @@ private:
     }
 
     /**
-     * 目印を覆わない位置に、保存時刻と7時間足の主波・副次波を表示する。
+     * 目印を覆わない位置に、保存波動と同じM5時刻の通貨強弱履歴を表示する。
      */
     bool drawHover(const M5ObservationHistoryRecord &fromRecord, const int fromX, const int fromY) {
-        int panelWidth = MathMin(400, this.chartWidth - 16);
-        int panelHeight = 220;
+        int panelWidth = MathMin(460, this.chartWidth - 16);
+        int panelHeight = 310;
+        if (this.chartHeight < panelHeight + 16) {
+            panelHeight = 220;
+        }
         if (fromRecord.id <= 0 || this.chartHeight < panelHeight + 16) {
             panelHeight = 100;
         }
@@ -443,9 +446,19 @@ private:
                 this.drawLabel("HoverFrame" + IntegerToString(i), text,
                     left + 10, top + 66 + i * 18, 9, waveColor(fromRecord.frames[i]), "\n", 31);
             }
+
+            if (panelHeight >= 310) {
+                this.drawStrengthTable(fromRecord.strength, "HoverStrength", left + 10, top + 198,
+                    panelWidth - 20, 9, 31, true);
+            }
         }
 
-        this.drawLabel("HoverHint", shorten("クリックで詳細を固定表示", textLimit),
+        string hint = "クリックで詳細を固定表示";
+        if (panelHeight == 220) {
+            hint = "クリック詳細で通貨強弱を確認";
+        }
+
+        this.drawLabel("HoverHint", shorten(hint, textLimit),
             left + 10, top + panelHeight - 21, 8, clrSilver, "\n", 31);
 
         bool hoverSucceeded = this.drawingSucceeded;
@@ -504,18 +517,19 @@ private:
             detailColumns = 3;
         }
 
-        int rowHeight = 28;
-        int detailRowHeight = 26;
-        if (panelHeight < 525) {
+        int rowHeight = 26;
+        int detailRowHeight = 24;
+        int detailRows = 12 / detailColumns;
+        int requiredHeight = 80 + 8 * rowHeight + 34 + detailRows * detailRowHeight + 88 + 25;
+        if (requiredHeight > panelHeight) {
             rowHeight = 24;
-            detailRowHeight = 22;
+            detailRowHeight = 20;
+            requiredHeight = 80 + 8 * rowHeight + 34 + detailRows * detailRowHeight + 88 + 25;
         }
 
-        int detailRows = 12 / detailColumns;
-        int requiredHeight = 80 + 8 * rowHeight + 38 + detailRows * detailRowHeight + 25;
         if (panelWidth < 640 || panelHeight < requiredHeight) {
             if (panelHeight >= 140) {
-                string message = "5列表と項目別詳細を見るにはチャートを広げてください。";
+                string message = "波動表・項目別詳細・通貨強弱を見るにはチャートを広げてください。";
                 this.drawLabel("PanelSmall", fitText(message, panelWidth - 24, 11),
                     left + 12, top + 96, 11, clrSilver, message, 21);
             }
@@ -540,13 +554,196 @@ private:
                 tableTop + (i + 1) * rowHeight, rowHeight, columnWidths);
         }
 
-        int detailTop = tableTop + 8 * rowHeight + 12;
+        int detailTop = tableTop + 8 * rowHeight + 10;
         this.drawLabel("PanelDetailTitle", frameName(this.selectedFrameIndex) + " の詳細",
             left + 12, detailTop, 11, clrWhiteSmoke, "行をクリックして時間足を切り替えます。", 21);
         this.drawFrameDetails(fromRecord.frames[this.selectedFrameIndex], fromDigits,
-            left + 12, detailTop + 26, innerWidth, detailColumns, detailRowHeight);
+            left + 12, detailTop + 24, innerWidth, detailColumns, detailRowHeight);
+        int strengthTop = detailTop + 24 + detailRows * detailRowHeight + 8;
+        this.drawStrengthTable(fromRecord.strength, "PanelStrength", left + 12, strengthTop,
+            MathMin(620, innerWidth), 10, 21, false);
         this.drawLabel("PanelHint", "行をクリックして項目別表示 / M1は未収録", left + 12,
             top + panelHeight - 21, 9, clrSilver, "保存値を表示します。現在の波動を再計算していません。", 21);
+    }
+
+    /**
+     * 観測と同じM5時刻の通貨強弱を、両順位・順位差・前M5比の2行で表示する。
+     */
+    void drawStrengthTable(const M5ObservationHistoryStrength &fromStrength, const string fromKey,
+            const int fromX, const int fromY, const int fromWidth, const int fromSize,
+            const long fromZOrder, const bool fromHover) {
+        string tooltip = "同じM5時刻の通貨強弱DB履歴です。観測保存時点の値とは限りません。";
+        if (fromStrength.runId > 0) {
+            tooltip += "\n通貨強弱 Run " + IntegerToString(fromStrength.runId);
+        }
+        if (fromHover) {
+            tooltip = "\n";
+        }
+
+        this.drawLabel(fromKey + "Title", fitText(strengthTitle(fromStrength), fromWidth, fromSize),
+            fromX, fromY, fromSize, clrWhiteSmoke, tooltip, fromZOrder);
+        string status = strengthStatusText(fromStrength);
+        if (status != "") {
+            this.drawLabel(fromKey + "Status", fitText(status, fromWidth, fromSize),
+                fromX, fromY + 28, fromSize, clrSilver, tooltip, fromZOrder);
+
+            return;
+        }
+        if (fromWidth < 340) {
+            this.drawLabel(fromKey + "Small", fitText("通貨強弱はクリック詳細で確認", fromWidth, fromSize),
+                fromX, fromY + 28, fromSize, clrSilver, tooltip, fromZOrder);
+
+            return;
+        }
+
+        int columnWidths[5];
+        columnWidths[0] = fromWidth * 22 / 100;
+        columnWidths[1] = fromWidth * 18 / 100;
+        columnWidths[2] = fromWidth * 18 / 100;
+        columnWidths[3] = fromWidth * 18 / 100;
+        columnWidths[4] = fromWidth - columnWidths[0] - columnWidths[1] - columnWidths[2] - columnWidths[3];
+        string headers[5];
+        headers[0] = "期間";
+        headers[1] = fromStrength.baseCurrency;
+        headers[2] = fromStrength.quoteCurrency;
+        headers[3] = "順位差";
+        headers[4] = "前M5比";
+        int positionX = fromX;
+        for (int i = 0; i < 5; i++) {
+            this.drawLabel(fromKey + "Header" + IntegerToString(i), fitText(headers[i], columnWidths[i] - 6, 9),
+                positionX, fromY + 20, 9, clrSilver, tooltip, fromZOrder);
+            positionX += columnWidths[i];
+        }
+
+        this.drawStrengthRow(fromStrength.longMedium, "長中期", fromKey + "LongMedium",
+            fromX, fromY + 38, columnWidths, fromSize, fromZOrder, fromHover);
+        this.drawStrengthRow(fromStrength.mediumShort, "中短期", fromKey + "MediumShort",
+            fromX, fromY + 58, columnWidths, fromSize, fromZOrder, fromHover);
+    }
+
+    /**
+     * 順位差と前M5比を別々の色にし、優位方向と増減方向を区別する。
+     */
+    void drawStrengthRow(const M5ObservationHistoryStrengthPeriod &fromPeriod, const string fromTitle,
+            const string fromKey, const int fromX, const int fromY, const int &fromWidths[],
+            const int fromSize, const long fromZOrder, const bool fromHover) {
+        string values[5];
+        values[0] = fromTitle;
+        values[1] = strengthRankText(fromPeriod.baseRank, fromPeriod.valid);
+        values[2] = strengthRankText(fromPeriod.quoteRank, fromPeriod.valid);
+        values[3] = strengthGapText(fromPeriod);
+        values[4] = strengthDeltaText(fromPeriod);
+        color colors[5];
+        colors[0] = clrWhiteSmoke;
+        colors[1] = strengthValueColor(0, fromPeriod.valid);
+        colors[2] = strengthValueColor(0, fromPeriod.valid);
+        colors[3] = strengthValueColor(fromPeriod.gap, fromPeriod.valid);
+        colors[4] = strengthValueColor(fromPeriod.delta, fromPeriod.valid && fromPeriod.comparable);
+        int positionX = fromX;
+        for (int i = 0; i < 5; i++) {
+            string tooltip = values[i];
+            if (fromHover) {
+                tooltip = "\n";
+            }
+
+            this.drawLabel(fromKey + "Cell" + IntegerToString(i), fitText(values[i], fromWidths[i] - 6, fromSize),
+                positionX, fromY, fromSize, colors[i], tooltip, fromZOrder);
+            positionX += fromWidths[i];
+        }
+    }
+
+    /**
+     * 同時刻の別DB履歴であることと、実際の参照方式・モードを示す。
+     */
+    static string strengthTitle(const M5ObservationHistoryStrength &fromStrength) {
+        string text = "同M5の通貨強弱履歴";
+        if (fromStrength.weightLabel != "") {
+            text += " / " + fromStrength.weightLabel;
+        }
+        if (fromStrength.sourceMode != "") {
+            text += " / " + fromStrength.sourceMode;
+        }
+
+        return text;
+    }
+
+    /**
+     * 強弱取得の失敗・設定OFF・未記録を、成功した順位表と区別する。
+     */
+    static string strengthStatusText(const M5ObservationHistoryStrength &fromStrength) {
+        if (!fromStrength.enabled) {
+            return "通貨強弱OFF";
+        }
+        if (fromStrength.status == "取得済み") {
+            return "";
+        }
+        if (fromStrength.status == "") {
+            return "未記録";
+        }
+
+        return fromStrength.status;
+    }
+
+    /**
+     * 保存された有効な通貨順位だけを表示する。
+     */
+    static string strengthRankText(const int fromRank, const bool fromValid) {
+        if (!fromValid) {
+            return "未記録";
+        }
+
+        return IntegerToString(fromRank) + "位";
+    }
+
+    /**
+     * 基軸通貨に対する強弱を符号付きの順位差で表示する。
+     */
+    static string strengthGapText(const M5ObservationHistoryStrengthPeriod &fromPeriod) {
+        if (!fromPeriod.valid) {
+            return "未記録";
+        }
+        if (fromPeriod.gap == 0) {
+            return "0";
+        }
+
+        return StringFormat("%+d", fromPeriod.gap);
+    }
+
+    /**
+     * 直前M5との比較可否を明示し、順位差の増減を矢印で示す。
+     */
+    static string strengthDeltaText(const M5ObservationHistoryStrengthPeriod &fromPeriod) {
+        if (!fromPeriod.valid) {
+            return "未記録";
+        }
+        if (!fromPeriod.comparable) {
+            return "比較なし";
+        }
+        if (fromPeriod.delta > 0) {
+            return StringFormat("↑ +%d", fromPeriod.delta);
+        }
+        if (fromPeriod.delta < 0) {
+            return StringFormat("↓ %d", fromPeriod.delta);
+        }
+
+        return "→ 0";
+    }
+
+    /**
+     * 順位差・増減の正負を水色・ピンクにし、ゼロと欠損を区別する。
+     */
+    static color strengthValueColor(const int fromValue, const bool fromValid) {
+        if (!fromValid) {
+            return clrSilver;
+        }
+        if (fromValue > 0) {
+            return clrAqua;
+        }
+        if (fromValue < 0) {
+            return clrHotPink;
+        }
+
+        return clrWhite;
     }
 
     /**
