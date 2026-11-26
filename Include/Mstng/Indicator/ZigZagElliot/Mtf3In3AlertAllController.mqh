@@ -27,6 +27,7 @@
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
+#include <Mstng\Util\TextHashUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 #include <Mstng\Util\Util.mqh>
 
@@ -1741,14 +1742,7 @@ private:
      * @return Unsigned 64-bit decimal text.
      */
     string createTextHash(const string fromText) {
-        ulong hashValue = 14695981039346656037;
-
-        for (int i = 0; i < StringLen(fromText); i++) {
-            hashValue ^= (ulong)StringGetCharacter(fromText, i);
-            hashValue *= 1099511628211;
-        }
-
-        return StringFormat("%I64u", hashValue);
+        return TextHashUtil::createFnv1a64(fromText);
     }
 
     /**

@@ -1,5 +1,9 @@
 # ZigZagElliot
 
+## 設定ハッシュ生成を共通化（v3.01）
+
+通常版とList／Allの設定ハッシュ生成を `TextHashUtil::createFnv1a64()` へまとめました。既存の `createTextHash()` は共通メソッドへ委譲します。MQL5文字列のUTF-16コード単位で計算する方式と符号なし64bit整数の10進文字列を維持し、同じ設定文字列から従来と同じハッシュ値を生成します。ハッシュ対象の設定項目とDB保存形式は変更しません。
+
 ## 判定クラスの生成設定を構造体へ集約（v3.00）
 
 Factoryの設定16項目を `ExpertAdvisorMtf3In3Config` にまとめ、通常版・List・Monitorは `create(context, config)` で判定クラスを生成します。設定は名前付きフィールドへ代入し、従来の17引数形式は既定値を保った互換呼び出しとして残します。

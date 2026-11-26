@@ -27,6 +27,7 @@
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
+#include <Mstng\Util\TextHashUtil.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 #include <Mstng\Util\Util.mqh>
 
@@ -593,7 +594,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "3.00";
+            this.databaseRun.programVersion = "3.01";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
@@ -802,14 +803,7 @@ private:
      * @return 符号なし64bit整数の10進文字列
      */
     string createTextHash(const string fromText) {
-        ulong hashValue = 14695981039346656037;
-
-        for (int i = 0; i < StringLen(fromText); i++) {
-            hashValue ^= (ulong)StringGetCharacter(fromText, i);
-            hashValue *= 1099511628211;
-        }
-
-        return StringFormat("%I64u", hashValue);
+        return TextHashUtil::createFnv1a64(fromText);
     }
 
     /**
