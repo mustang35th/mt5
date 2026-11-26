@@ -26,13 +26,15 @@ public:
     M5EaController() {
         this.initializationAttempted = false;
         this.started = false;
+        this.deferredWarmup = false;
         this.timerReady = false;
         this.databaseReady = false;
         this.countsRestored = false;
         this.executorInitialized = false;
+        this.executorRestored = false;
         this.auditStateLost = false;
         this.leaseLost = false;
-        this.lockAcquiredAt = 0;
+        this.connectionStartedAt = 0;
         this.nextMaintenanceTick = 0;
         this.nextEntryTick = 0;
         this.lastTrailObservedBar = 0;
@@ -74,8 +76,6 @@ public:
             return false;
         }
 
-        this.lockAcquiredAt = TimeLocal();
-
         this.initializeRun();
         if (StringLen(this.run.configHash) != 64 || StringLen(this.run.analysisInputHash) != 64) {
             this.logger.error("M5EaController.initialize", "CONFIG_HASH_UNAVAILABLE");
@@ -88,7 +88,15 @@ public:
         this.lastTrailObservedBar = iTime(this.config.symbolName, PERIOD_M5, 0);
         this.nextEntryTick = GetTickCount64() + 1000;
 
-        if (!this.connectAndRestore()) {
+        this.deferredWarmup = this.config.isBeforeTesterTradeStart(TimeCurrent())
+            && PositionsTotal() == 0 && OrdersTotal() == 0;
+        if (this.deferredWarmup) {
+            this.logger.info("M5EaController.initialize", "PREPARING DB_AND_TIMER_DEFERRED");
+        } else {
+            this.connectionStartedAt = TimeLocal();
+        }
+
+        if (!this.deferredWarmup && !this.connectAndRestore()) {
             this.logger.error("M5EaController.initialize", "DB制限状態: " + this.persistence.getLastError());
         }
 
@@ -111,33 +119,28 @@ public:
             return false;
         }
 
-        return this.updateEventTimer(this.canUseFastTesterWarmup());
+        if (this.deferredWarmup) {
+            return true;
+        }
+
+        return this.updateEventTimer(false);
     }
 
     /**
      * SL保護を先に実行し、Testerだけ新規判定を行う。
-     * リスクのないTester準備中は履歴確認と低頻度のLease維持だけを行う。
+     * 空のTester準備中はDBとTimerを開始せず履歴だけを確認する。
      */
     void onTick() {
         if (!this.started) {
             return;
         }
 
-        bool fastWarmup = this.canUseFastTesterWarmup();
-        if (!this.updateEventTimer(fastWarmup)) {
-            fastWarmup = false;
+        if (this.continueDeferredWarmup()) {
+            this.processTesterWarmup();
+            return;
         }
 
-        if (fastWarmup) {
-            this.maintainFastTesterWarmup();
-            if (this.canUseFastTesterWarmup()) {
-                this.processTesterWarmup();
-                return;
-            }
-
-            this.updateEventTimer(false);
-        }
-
+        this.updateEventTimer(false);
         this.maintainPersistence();
 
         datetime barTime = iTime(this.config.symbolName, PERIOD_M5, 0);
@@ -155,27 +158,18 @@ public:
 
     /**
      * Leaseと保存を保守し、LIVEは初回1秒・以降30秒で判定する。
-     * リスクのないTester準備中は30秒TimerでLeaseを維持する。
+     * Timer未開始の準備中は永続化・取引を処理しない。
      */
     void onTimer() {
         if (!this.started) {
             return;
         }
 
-        bool fastWarmup = this.canUseFastTesterWarmup();
-        if (!this.updateEventTimer(fastWarmup)) {
-            fastWarmup = false;
+        if (this.continueDeferredWarmup()) {
+            return;
         }
 
-        if (fastWarmup) {
-            this.maintainFastTesterWarmup();
-            if (this.canUseFastTesterWarmup()) {
-                return;
-            }
-
-            this.updateEventTimer(false);
-        }
-
+        this.updateEventTimer(false);
         this.maintainPersistence();
 
         if (this.executorInitialized) {
@@ -239,10 +233,12 @@ public:
                 this.logger.error("M5EaController.shutdown", "RUN_END_UNSAVED " + this.persistence.getLastError());
             }
 
-            this.logger.info("M5EaController.shutdown", "STOP reason=" + IntegerToString(fromReason));
+            this.logger.info("M5EaController.shutdown", "STOP reason=" + IntegerToString(fromReason)
+                + " runId=" + IntegerToString(this.run.id));
         }
 
         this.started = false;
+        this.deferredWarmup = false;
         this.databaseReady = false;
         this.persistence.close();
         this.strategy.destroy();
@@ -256,6 +252,9 @@ private:
     /** 設定と排他取得が完了した場合true。 */
     bool started;
 
+    /** Testerの空の準備期間だけDBとTimerの開始を保留する。通常管理へ移行後は戻さない。 */
+    bool deferredWarmup;
+
     /** Timer設定成功状態。 */
     bool timerReady;
 
@@ -268,14 +267,17 @@ private:
     /** 共通実行部の接続完了状態。 */
     bool executorInitialized;
 
+    /** 初回の取引復元が完了するまではEntryの評価を始めない。 */
+    bool executorRestored;
+
     /** 消費回数または監査情報の欠落がある場合true。 */
     bool auditStateLost;
 
     /** 一度失効した管理権は同Run内で復活させない。 */
     bool leaseLost;
 
-    /** 排他取得時刻。初回DB復旧の期限に使う。 */
-    datetime lockAcquiredAt;
+    /** DB接続を開始した時刻。初回復旧の60秒期限は準備期間を含めない。 */
+    datetime connectionStartedAt;
 
     /** 次回DB再接続・保存の試行時刻。 */
     ulong nextMaintenanceTick;
@@ -313,7 +315,7 @@ private:
     /** M5専用運用ログ。 */
     M5EaOperationLogger logger;
 
-    /** 通常・Tester準備中のTimer設定と再試行管理。 */
+    /** 通常管理開始後のTimer設定と再試行管理。 */
     M5EaEventTimer eventTimer;
 
     /** M5同一scopeの排他ハンドル。 */
@@ -341,45 +343,41 @@ private:
     M5EaDecisionEntity decisionQueue[];
 
     /**
-     * Tester売買開始前かつ、DB・排他・照合済み取引状態がすべて安全な場合だけ軽量化する。
-     * ポジション・注文の総数は他銘柄も含め、存在時は通常管理へ戻す。
+     * Tester準備中は履歴確認だけを許可する。売買開始かbrokerの保有・注文で通常管理へ移る。
+     * DB接続期限を移行時に一度だけ開始し、失敗後の再試行でも延長しない。
      */
-    bool canUseFastTesterWarmup() {
-        if (!this.started || !this.config.isBeforeTesterTradeStart(TimeCurrent())
-                || !this.databaseReady || !this.countsRestored || !this.executorInitialized
-                || this.auditStateLost || this.leaseLost || !this.instanceLock.isHeld()
-                || this.run.id <= 0 || this.run.leaseExpiresAt <= TimeLocal()
-                || ArraySize(this.decisionQueue) > 0) {
+    bool continueDeferredWarmup() {
+        if (!this.deferredWarmup) {
             return false;
         }
 
-        return this.executor.isIdleForTesterWarmup()
-            && PositionsTotal() == 0 && OrdersTotal() == 0;
+        if (this.config.isBeforeTesterTradeStart(TimeCurrent())
+                && this.instanceLock.isHeld() && PositionsTotal() == 0 && OrdersTotal() == 0) {
+            return true;
+        }
+
+        this.deferredWarmup = false;
+        this.connectionStartedAt = TimeLocal();
+        this.run.startedAt = this.connectionStartedAt;
+        this.nextMaintenanceTick = 0;
+        this.logger.info("M5EaController.continueDeferredWarmup", "ACTIVATING DB_AND_TIMER");
+
+        return false;
     }
 
     /**
-     * 準備中30秒・通常1秒へ切り替え、更新失敗中は新規Entryを保留する。
+     * 通常管理の1秒Timerを設定し、更新失敗中は新規Entryを保留する。
      * 既存ポジションのTick起点の保護はTimer復旧待ちでも止めない。
      */
     bool updateEventTimer(const bool fromFastWarmup) {
         bool resetMaintenance = false;
         this.timerReady = this.eventTimer.update(fromFastWarmup, this.logger, resetMaintenance);
         if (resetMaintenance) {
-            // Timer設定失敗時も高速期間の保守待ちを解除する。
+            // Timer設定失敗時もDB復旧・未保存イベントの保守待ちを解除する。
             this.nextMaintenanceTick = 0;
         }
 
         return this.timerReady;
-    }
-
-    /**
-     * 空のTester準備期間だけ、DB更新とキュー確認を最短30秒間隔にまとめる。
-     * Leaseの有効期限60秒や失効時の停止条件は緩和しない。
-     */
-    void maintainFastTesterWarmup() {
-        if (TimeLocal() >= this.run.heartbeatAt + 30) {
-            this.maintainPersistence(true);
-        }
     }
 
     /**
@@ -412,7 +410,7 @@ private:
             return false;
         }
 
-        if (this.run.id == 0 && TimeLocal() >= this.lockAcquiredAt + 60) {
+        if (this.run.id == 0 && TimeLocal() >= this.connectionStartedAt + 60) {
             this.leaseLost = true;
             this.logger.error("M5EaController.connectAndRestore", "INITIAL_DB_RECOVERY_DEADLINE_EXPIRED");
             return false;
@@ -490,6 +488,7 @@ private:
         }
 
         this.executor.setBlockedEntryBar(blockedBar);
+        this.executorRestored = true;
         this.databaseReady = true;
 
         this.updateManagementAuthority();
@@ -500,16 +499,11 @@ private:
     }
 
     /**
-     * 通常は10秒でLease更新、5秒でDB再接続・未保存監査を再試行する。
-     * 空のTester準備期間だけ両方を30秒間隔にまとめる。
+     * 10秒でLease更新、5秒でDB再接続・未保存監査を再試行する。
      */
-    void maintainPersistence(const bool fromFastWarmup = false) {
+    void maintainPersistence() {
         int heartbeatSeconds = 10;
         ulong maintenanceMilliseconds = 5000;
-        if (fromFastWarmup) {
-            heartbeatSeconds = 30;
-            maintenanceMilliseconds = 30000;
-        }
 
         datetime now = TimeLocal();
         if (this.run.id > 0 && this.run.leaseExpiresAt <= now && !this.leaseLost) {
@@ -600,7 +594,7 @@ private:
         }
 
         if (!this.timerReady || !this.eventTimer.isNormalReady()
-                || !this.countsRestored || !this.executorInitialized || this.run.id <= 0) {
+                || !this.countsRestored || !this.executorRestored || this.run.id <= 0) {
             return;
         }
 

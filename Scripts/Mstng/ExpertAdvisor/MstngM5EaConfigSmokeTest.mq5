@@ -85,7 +85,7 @@ void OnStart() {
         && settings.currencyStrengthVoteWeightMode == CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED,
         "normal indicator source and weighting defaults");
     verify(config.databaseFileName == "mstng-m5-ea.sqlite", "dedicated M5 database");
-    verify(M5EaConfig::getProgramVersion() == "1.01", "program version");
+    verify(M5EaConfig::getProgramVersion() == "1.02", "program version");
     MarketContext m5Context("GBPAUD", PERIOD_M5, "M5", 5);
     MarketContext m15Context("GBPAUD", PERIOD_M15, "M15", 5);
     MarketContext h1Context("GBPAUD", PERIOD_H1, "H1", 5);

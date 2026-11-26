@@ -123,6 +123,33 @@ int reconcileCount;
 /** 保護処理境界の呼出回数。 */
 int protectionCount;
 
+/** DB接続失敗のfixture。 */
+bool rejectOpen;
+
+/** 取引復元失敗のfixture。 */
+bool rejectRestore;
+
+/** LIVE初期化経路を選ぶ場合true。 */
+bool fixtureLive;
+
+/** Run取得件数。 */
+int acquireCount;
+
+/** Run終了件数。 */
+int finishCount;
+
+/** 準備開始ログ件数。 */
+int preparingLogCount;
+
+/** 通常管理への移行ログ件数。 */
+int activationLogCount;
+
+/** 初回DB接続の期限切れログ件数。 */
+int deadlineLogCount;
+
+/** DBの実行開始時刻。 */
+datetime acquiredStartedAt;
+
 /**
  * ケースの結果を記録する。
  */
@@ -247,7 +274,7 @@ public:
         this.tickSize = 0.00001;
         this.pipSize = 0.0001;
         this.digits = 5;
-        this.isTester = true;
+        this.isTester = !fixtureLive;
         this.sourceMode = "TESTER";
         this.testerTradeStartTime = fromSettings.testerTradeStartTime;
         this.runUid = EaTextUtil::hash("M5_CONTROLLER_SMOKE");
@@ -303,11 +330,21 @@ public:
         if (StringFind(fromMessage, "ANALYSIS_HISTORY_UNAVAILABLE") >= 0) {
             historyWaitLogCount++;
         }
+        if (StringFind(fromMessage, "PREPARING ") == 0) {
+            preparingLogCount++;
+        }
+        if (StringFind(fromMessage, "ACTIVATING ") == 0) {
+            activationLogCount++;
+        }
     }
     /**
      * 想定された失敗経路のログを実ファイルへ出さない。
      */
-    void error(const string fromMethod, const string fromMessage) {}
+    void error(const string fromMethod, const string fromMessage) {
+        if (fromMessage == "INITIAL_DB_RECOVERY_DEADLINE_EXPIRED") {
+            deadlineLogCount++;
+        }
+    }
 };
 
 /**
@@ -403,7 +440,7 @@ public:
     /**
      * 接続試行だけを数える。
      */
-    bool open(const string fromFile, const bool fromInitialize) { openCount++; return true; }
+    bool open(const string fromFile, const bool fromInitialize) { openCount++; return !rejectOpen; }
     /**
      * DBリソースは所有しない。
      */
@@ -412,9 +449,11 @@ public:
      * 固定Runと有効Leaseを返す。
      */
     bool acquireRun(M5EaRunEntity &fromRun) {
+        acquireCount++;
+        acquiredStartedAt = (datetime)fromRun.startedAt;
         fromRun.id = 1;
-        fromRun.heartbeatAt = fixtureNow;
-        fromRun.leaseExpiresAt = fixtureNow + 60;
+        fromRun.heartbeatAt = fixtureLeaseNow;
+        fromRun.leaseExpiresAt = fixtureLeaseNow + 60;
         return true;
     }
     /**
@@ -474,7 +513,7 @@ public:
     /**
      * 外部DBへ終了状態を書かない。
      */
-    bool finishRun(const long fromId, const string fromStatus, const string fromError) { return true; }
+    bool finishRun(const long fromId, const string fromStatus, const string fromError) { finishCount++; return true; }
     /**
      * 原子的保存成功だけに採番し、送信より先に完了したことを記録する。
      */
@@ -535,7 +574,7 @@ public:
     /**
      * DB参照は別smokeで検証し、ここでは成功を返す。
      */
-    bool restoreFromDatabase() { return true; }
+    bool restoreFromDatabase() { return !rejectRestore; }
     /**
      * fixtureの禁止バーを受け取る。
      */
@@ -719,6 +758,15 @@ void resetFixture() {
     heartbeatCount = 0;
     reconcileCount = 0;
     protectionCount = 0;
+    rejectOpen = false;
+    rejectRestore = false;
+    fixtureLive = false;
+    acquireCount = 0;
+    finishCount = 0;
+    preparingLogCount = 0;
+    activationLogCount = 0;
+    deadlineLogCount = 0;
+    acquiredStartedAt = 0;
 }
 
 /**
@@ -940,8 +988,8 @@ void verifyWarmupLifecycle() {
     settings.testerTradeStartTime = fixtureNow + 60;
     M5EaController controller;
     verify(controller.initialize("EURUSD", settings) && controller.startTimer()
-        && fixtureTimerSeconds == 30 && timerSetCount == 1,
-        "idle warmup starts a 30 second timer");
+        && fixtureTimerSeconds == 0 && timerSetCount == 0 && openCount == 0,
+        "idle warmup defers database and timer");
     int initialReconciliations = reconcileCount;
     controller.onTick();
     advanceClock(29);
@@ -951,16 +999,16 @@ void verifyWarmupLifecycle() {
         "warmup below 30 seconds only prepares history without reconciliation or heartbeat");
     advanceClock(1);
     controller.onTimer();
-    verify(heartbeatCount == 1 && reconcileCount == initialReconciliations && protectionCount == 0
-        && fixtureTimerSeconds == 30 && entrySaveCount == 0,
-        "warmup heartbeat occurs at 30 seconds without trade processing");
+    verify(heartbeatCount == 0 && openCount == 0 && reconcileCount == initialReconciliations && protectionCount == 0
+        && fixtureTimerSeconds == 0 && entrySaveCount == 0,
+        "warmup does not connect or heartbeat at 30 seconds");
     advanceClock(29);
     controller.onTick();
-    verify(heartbeatCount == 1 && analyzeCount == 0 && ArraySize(observedPreviousCounts) == 0
+    verify(heartbeatCount == 0 && analyzeCount == 0 && ArraySize(observedPreviousCounts) == 0
         && sendCount == 0, "one second before start does not consume or enter");
     advanceClock(1);
     controller.onTick();
-    verify(fixtureTimerSeconds == 1 && timerSetCount == 2 && heartbeatCount == 2
+    verify(fixtureTimerSeconds == 1 && timerSetCount == 1 && heartbeatCount == 0 && openCount == 1
         && reconcileCount > initialReconciliations && protectionCount > 0
         && ArraySize(observedPreviousCounts) == 1 && observedPreviousCounts[0] == 0
         && sendCount == 1 && !sentBeforeCommit,
@@ -968,7 +1016,7 @@ void verifyWarmupLifecycle() {
     advanceClock(1);
     controller.onTimer();
     controller.onTick();
-    verify(fixtureTimerSeconds == 1 && timerSetCount == 2 && sendCount == 1 && analyzeCount == 1,
+    verify(fixtureTimerSeconds == 1 && timerSetCount == 1 && sendCount == 1 && analyzeCount == 1,
         "after start normal timer remains active without duplicate same bar entry");
     controller.shutdown(REASON_REMOVE);
 }
@@ -991,15 +1039,18 @@ void verifyUnsafeWarmupStates() {
         } else if (i == 1) {
             fixtureOrderCount = 1;
         } else if (i == 2) {
+            fixturePositionCount = 1;
             activeTrade = true;
         } else if (i == 3) {
+            fixturePositionCount = 1;
             unsavedEvents = true;
         } else {
+            fixturePositionCount = 1;
             pendingDealAudit = true;
         }
 
         controller.onTick();
-        verify(initialized && fixtureTimerSeconds == 1 && timerSetCount == 2
+        verify(initialized && fixtureTimerSeconds == 1 && timerSetCount == 1
             && reconcileCount > initialReconciliations && protectionCount > 0
             && analyzeCount == 0 && sendCount == 0,
             "warmup exits lightweight processing for " + names[i]);
@@ -1026,18 +1077,18 @@ void verifyNormalTimerRecovery() {
     advanceClock(20);
     int initialReconciliations = reconcileCount;
     controller.onTick();
-    verify(requestedTimerSeconds == 1 && timerSetCount == 2 && analyzeCount == 0
+    verify(requestedTimerSeconds == 1 && timerSetCount == 1 && analyzeCount == 0
         && ArraySize(observedPreviousCounts) == 0 && entrySaveCount == 0 && sendCount == 0
         && reconcileCount > initialReconciliations && protectionCount > 0,
         "normal timer failure blocks entry while tick protection continues");
     rejectNormalTimer = false;
     advanceClock(4);
     controller.onTick();
-    verify(timerSetCount == 2 && analyzeCount == 0 && sendCount == 0,
+    verify(timerSetCount == 1 && analyzeCount == 0 && sendCount == 0,
         "timer recovery does not retry before five seconds");
     advanceClock(1);
     controller.onTick();
-    verify(timerSetCount == 3 && fixtureTimerSeconds == 1
+    verify(timerSetCount == 2 && fixtureTimerSeconds == 1
         && ArraySize(observedPreviousCounts) == 1 && observedPreviousCounts[0] == 0
         && entrySaveCount == 1 && sendCount == 1 && !sentBeforeCommit,
         "timer recovery at five seconds permits one saved entry with unconsumed count");
@@ -1084,7 +1135,102 @@ void verifyWarmupHistoryLogging() {
 }
 
 /**
- * Verify the actual controller with synthetic clocks and order boundaries.
+ * 長期準備後のDB接続・取引復元の失敗と再試行、および初回接続期限を検証する。
+ */
+void verifyDeferredActivationFailures() {
+    for (int i = 0; i < 3; i++) {
+        resetFixture();
+        M5EaSettings settings;
+        settings.testerTradeStartTime = fixtureNow + 86400;
+        M5EaController controller;
+        bool initialized = controller.initialize("EURUSD", settings) && controller.startTimer();
+        advanceClock(86399);
+        controller.onTick();
+        verify(initialized && openCount == 0 && timerSetCount == 0 && preparingLogCount == 1,
+            "day long preparation has no database or timer work");
+        rejectOpen = i != 2;
+        rejectRestore = i == 2;
+        advanceClock(1);
+        controller.onTick();
+        verify(openCount == 1 && activationLogCount == 1 && deadlineLogCount == 0
+            && analyzeCount == 0 && sendCount == 0,
+            "activation failure blocks analysis and starts a fresh connection deadline");
+        if (i == 1) {
+            advanceClock(59);
+            controller.onTick();
+            verify(openCount == 2 && deadlineLogCount == 0 && sendCount == 0,
+                "initial database retry remains allowed at 59 seconds");
+            advanceClock(1);
+            // Timerの再設定による保守解除がなくても、次の5秒周期で期限を判定する。
+            controller.onTick();
+            advanceClock(4);
+            controller.onTick();
+            rejectOpen = false;
+            advanceClock(5);
+            controller.onTick();
+            verify(openCount == 2 && deadlineLogCount == 1 && acquireCount == 0 && sendCount == 0,
+                "expired initial connection deadline never revives");
+        } else {
+            advanceClock(4);
+            controller.onTick();
+            verify(openCount == 1 && sendCount == 0, "connection retry waits five seconds");
+            rejectOpen = false;
+            rejectRestore = false;
+            advanceClock(1);
+            controller.onTick();
+            verify(openCount == 2 && acquireCount == 1 && activationLogCount == 1
+                && acquiredStartedAt == settings.testerTradeStartTime
+                && sendCount == 1 && !sentBeforeCommit && observedPreviousCounts[0] == 0,
+                "activation recovery restores before exactly one committed entry");
+        }
+
+        controller.shutdown(REASON_REMOVE);
+    }
+}
+
+/**
+ * 準備中の終了と、開始制限なし・LIVE・起動時に保有がある場合の通常起動を検証する。
+ */
+void verifyDeferredInitializationModes() {
+    resetFixture();
+    M5EaSettings settings;
+    settings.testerTradeStartTime = fixtureNow + 86400;
+    M5EaController preparing;
+    bool initialized = preparing.initialize("EURUSD", settings) && preparing.startTimer();
+    preparing.onTick();
+    preparing.shutdown(REASON_REMOVE);
+    verify(initialized && preparingLogCount == 1 && openCount == 0 && acquireCount == 0
+        && finishCount == 0 && timerSetCount == 0 && sendCount == 0,
+        "stopping preparation creates no phantom running or finished database row");
+    for (int i = 0; i < 4; i++) {
+        resetFixture();
+        settings.testerTradeStartTime = fixtureNow + 86400;
+        if (i == 0) {
+            settings.testerTradeStartTime = 0;
+        } else if (i == 1) {
+            fixtureLive = true;
+        } else if (i == 2) {
+            fixturePositionCount = 1;
+        } else {
+            fixtureOrderCount = 1;
+        }
+
+        M5EaController controller;
+        initialized = controller.initialize("EURUSD", settings) && controller.startTimer();
+        verify(initialized && openCount == 1 && acquireCount == 1
+            && timerSetCount == 1 && fixtureTimerSeconds == 1 && preparingLogCount == 0,
+            "unrestricted tester live or existing broker risk initializes normal management");
+        fixturePositionCount = 0;
+        fixtureOrderCount = 0;
+        controller.onTick();
+        verify(openCount == 1 && fixtureTimerSeconds == 1 && preparingLogCount == 0,
+            "normal management never returns to deferred preparation");
+        controller.shutdown(REASON_REMOVE);
+    }
+}
+
+/**
+ * 実Controllerを合成時刻と発注境界fixtureで検証する。
  */
 void OnStart() {
     verifyEntryConnection();
@@ -1098,5 +1244,7 @@ void OnStart() {
     verifyUnsafeWarmupStates();
     verifyNormalTimerRecovery();
     verifyWarmupHistoryLogging();
+    verifyDeferredActivationFailures();
+    verifyDeferredInitializationModes();
     Print("INFO M5EaControllerSmokeTest SUMMARY passed=", passedCount, " failed=", failedCount);
 }

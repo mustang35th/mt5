@@ -320,7 +320,7 @@ public:
             + "|CURRENCY_STRENGTH_DATABASE_USE_COMMON_FOLDER=" + IntegerToString((int)this.currencyStrengthDatabaseUseCommonFolder)
             + "|CURRENCY_STRENGTH_REFRESH_SECONDS=15"
             + "|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30"
-            + "|TESTER_WARMUP_TIMER_SECONDS=30|TESTER_WARMUP_HEARTBEAT_SECONDS=30"
+            + "|TESTER_WARMUP_DEFER_DB_TIMER=1"
             + "|TESTER_EVALUATION_TRIGGER=TICK|TESTER_TRADE_START_TIME=" + IntegerToString(this.testerTradeStartTime);
         EaTextUtil::appendField(text, "CURRENCY_STRENGTH_DATABASE_FILE_NAME", this.currencyStrengthDatabaseFileName);
 
@@ -345,7 +345,7 @@ public:
     /**
      * M5単一通貨EAのプログラム世代を返す。
      */
-    static string getProgramVersion() { return "1.01"; }
+    static string getProgramVersion() { return "1.02"; }
 
     /**
      * 通常版M5判定・通貨強弱・確定ZigZag SLを含む戦略世代を返す。

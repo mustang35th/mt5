@@ -3,7 +3,7 @@
 //|                                            Copyright 2026, Mstng |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Mstng"
-#property version "1.01"
+#property version "1.02"
 #property strict
 #property description "通常版ZigZagElliot M5判定 / 通貨強弱 / ZigZag SL / 専用SQLite"
 

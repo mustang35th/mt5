@@ -45,9 +45,11 @@ M5固有の設定・Controller・Strategy・保存処理は `Include/MstngM5Ea` 
 
 テスターでは既存Providerが同一M5の取得結果をキャッシュします。欠損後にそのM5のデータを追記しても同じ枠では再取得しないため、テスト開始前に対象期間の通貨強弱DBを用意してください。
 
-v1.01ではテスターの売買開始前の安全な空状態だけ、Timer・Lease更新・保存保守を30秒周期へ切り替え、Tickでは履歴準備と低頻度保守だけを行います。DB正常・復元完了・排他とLease有効・監査欠落や保存待ちなし・Executorの空状態照合済み・口座全体の保有と注文なしが条件です。Leaseの有効期限60秒は変更しません。
+v1.02ではテスターの売買開始前に口座全体の保有・注文がなければ、取引DBへの接続・Run/Leaseの取得・Timerの開始を保留します。ファイル排他は初期化時から保持し、TickでM5バーごとの履歴準備を続けます。通貨強弱DBの読み取り設定や必要な履歴本数は変更しません。
 
-開始日時への到達や安全条件の不成立で通常の1秒Timerへ戻します。復帰失敗時はEntryを止め、Tickによる既存取引の保護を続けながら最短5秒後に再試行します。履歴待ちログは準備中だけ、内容変更時は最短1時間、同一内容は1日間隔にまとめます。売買開始後のM5ごとの診断は維持します。
+開始日時への到達、または他銘柄を含む保有・注文の検出で通常管理へ移り、以後は準備状態へ戻りません。DB接続・回数/判定/取引の復元・1秒Timer設定が完了するまでEntryの評価を始めません。Timer失敗時もTickでの保護処理は継続し、DB接続とTimer設定は最短5秒で再試行します。初回DB接続期限は通常管理への移行から60秒で、再試行では延長しません。取得後のLease有効期限60秒・更新10秒は従来どおりです。LIVE・開始日時0・起動時に保有や注文がある場合は、初期化時から通常管理を行います。
+
+準備中は運用ログに`PREPARING`と`START`を残し、DBにはRun行を作りません。通常管理への移行を`ACTIVATING`で記録し、DBの`started_at`には移行時刻を保存します。準備中に終了した場合は`STOP ... runId=0`だけを記録し、架空のRUNNING/STOPPED行を作りません。履歴待ちログは準備中だけ、内容変更時は最短1時間、同一内容は1日間隔にまとめます。売買開始後のM5ごとの診断は維持します。
 
 ## 注文・SL・復元
 
@@ -73,20 +75,20 @@ Decision・Trade・ENTRY_REQUESTを同一transactionで保存できた場合だ�
 
 Config、既存M5戦略との一致、M5トレイル、専用DBの原子的保存・復元、Controllerの保存から発注への接続を専用SmokeTestで確認します。発注境界はfixtureへ差し替え、テストから実注文を送りません。
 
-2026-11-27時点の確認結果です。初版v1.00で関連EA・インジケーターと各fixtureを確認し、v1.01では変更対象のEA・Config・Controllerを再検証しました。
+2026-11-27時点の確認結果です。初版v1.00で関連EA・インジケーターと各fixtureを確認し、v1.02では変更対象のEA・Config・Controllerを再検証しました。
 
 | 対象 | 確認時点 | 結果 |
 |---|---|---|
-| MstngM5Ea | v1.01 | MetaEditorコンパイル: エラー0・警告0 |
+| MstngM5Ea | v1.02 | MetaEditorコンパイル: エラー0・警告0 |
 | ZigZagElliot・既存H1/M15 EA | 初版v1.00 | MetaEditorコンパイル: エラー0・警告0 |
-| MstngM5EaConfigSmokeTest | v1.01 | MT5実行: 失敗0 |
+| MstngM5EaConfigSmokeTest | v1.02 | MT5実行: 失敗0 |
 | MstngM5StrategySmokeTest | 初版v1.00 | 通常M5判定との比較46ケース: 失敗0 |
 | M5EaTradePolicySmokeTest | 初版v1.00 | MT5実行: 失敗0 |
-| M5EaControllerSmokeTest | v1.01 | MT5実行: 48項目成功・失敗0 |
+| M5EaControllerSmokeTest | v1.02 | MT5実行: 69項目成功・失敗0 |
 | M5EaPersistenceSmokeTest | 初版v1.00 | MT5実行: 55項目成功・失敗0 |
 | test_mtf3in3_factory_config.py | 初版v1.00 | 4テスト成功 |
 
-Controllerには22項目を追加し、開始前・開始境界・開始後、保有や保存待ち時の通常経路、Timer復帰失敗中のEntry停止と保護継続・再試行、準備中だけのログ間引きを検証しました。
+Controllerでは開始前・開始境界・開始後、保有や保存待ち時の通常経路、Timer失敗中のEntry停止と保護継続・再試行、準備中だけのログ間引きを検証しています。v1.02では長期間の準備中のDB/Timer未使用、DB接続・取引復元の失敗と回復、初回接続期限の失効、準備中の終了、LIVEや開始日時0での通常起動も確認しました。
 
 SmokeTestは認証情報を持たない隔離したMT5で実行しました。判定比較には合成した波動・通貨強弱データを使い、実データからの再分析と通貨強弱DBの取得はfixtureによる検証範囲に含めていません。保存テストのDB配置は隔離先のFilesへ置き換え、SQL・transaction・復元処理は実装を使用しています。実口座での発注・約定・broker上のSL執行は未検証です。実データのバックテストは下記のRun 2で完走しました。空行整形後のEAも再コンパイルし、エラー0・警告0を確認しています。
 
@@ -94,7 +96,7 @@ SmokeTestは認証情報を持たない隔離したMT5で実行しました。�
 
 ## 最初の実データ検証: USDJPY・2026年9月7～11日
 
-以下は初回の比較基準設定です。この対象期間の今後の標準には、末尾で同等性を確認した[2021年12月開始プリセット](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.USDJPY.20260907_20260911.Warmup20211201.ini)を使用します。
+以下は初回の比較基準設定です。この対象期間の今後の標準には、末尾で同等性を確認した[v1.02準備処理短縮プリセット](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.USDJPY.20260907_20260911.WarmupDeferred.ini)を使用します。
 
 入力用[SET](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.USDJPY.20260907_20260911.set)と、テスター設定用[INI](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.USDJPY.20260907_20260911.ini)を用意しています。今回はGUIの「設定読み込み」でINIを読み込みました。SETはEA入力のみを設定するため、テスター画面の期間・モデル・口座条件も以下に合わせます。
 
@@ -182,3 +184,24 @@ Run 3ではテスト開始日を2021.12.01へ変更し、売買開始2026.09.07�
 判定1,440件は評価時刻・理由・シグナル回数・スナップショット全文とハッシュを含め一致しました。取引5件の約定時刻・価格・損益、およびイベント1,489件の比較項目も一致しています。イベント比較では、実行ごとのID・チケット・アクション識別子と、それらを含む診断メッセージ等を除外し、要求・結果、時刻、価格、SL値、戻りコードなどを比較しました。SL変更13件はすべて成功し、未完了取引・保存エラー・外部キー違反は0件、SQLite整合性確認も正常です。
 
 [比較結果JSON](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-Warmup20211201-comparison.json)に比較列・除外列・差分件数を保存しています。[監査結果](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-Warmup20211201-audit.json)と[標準レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-Warmup20211201.html)も保存しました。標準レポートのヒストリー品質は12%で、短縮した準備期間を含む全期間の値です。他通貨・他期間の同等性は今回の比較に含みません。
+
+## ウォームアップ短縮B: DB・Timerの開始を遅らせる
+
+Run 4（v1.02）はRun 3と同じUSDJPY・M5・2021.12.01〜2026.09.12未満・売買開始2026.09.07・リアルティック・入力13項目で実行しました。通常の判定・発注・SL条件は維持し、準備期間の取引DBとTimerの開始だけを遅らせています。
+
+| 項目 | Run 3（v1.01） | Run 4（v1.02） |
+|---|---|---|
+| テスター処理時間 | 28分55.813秒 | 1分42.397秒 |
+| 生成Tick／M5バー | 188,329,337／357,273 | 同一 |
+| M5判定／取引／イベント | 1,440／5／1,489 | 同一・比較列の差分0 |
+| SL変更要求・結果 | 各13件 | 各13件 |
+| 純損益／PF | 1,359円／2.07 | 同一 |
+| 終了状態／監査エラー | STOPPED／0件 | STOPPED／0件 |
+
+処理時間は27分13.416秒（94.1%）短縮し、約17倍の速度でした。同じ端末・保存済み履歴を使った各1回の実測で、起動や環境同期を含めず、テスターログの`Test passed in`を比較しています。将来の実行時間や他通貨での短縮率を保証する値ではありません。
+
+準備開始は2021.12.01 00:00:00、通常管理への移行・1秒Timer設定・DBの実行開始は2026.09.07 00:00:00でした。終了は2026.09.11 23:59:58、Leaseの有効期限は60秒のままです。PREPARING・ACTIVATING・START・STOPは各1件、Timer設定は1秒が1件、ERRORは0件でした。
+
+判定はID・Run/contextを除いた全列、取引とイベントは実行固有ID・brokerチケット・UID・それらを含む説明文などを除いた列を照合し、差分0でした。分析設定と分析ハッシュは同一です。実行設定は旧Timer/Heartbeat周期の2項目を`TESTER_WARMUP_DEFER_DB_TIMER=1`へ置き換えた分だけ変わり、設定ハッシュも変わります。履歴確認ログ19,223件も、時刻・7時間足の状態・本数・必要本数・始点がすべて一致しました。
+
+[比較結果JSON](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-WarmupDeferred-v102-comparison.json)に比較列と除外列を保存し、[監査結果](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-WarmupDeferred-v102-audit.json)・[標準レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-WarmupDeferred-v102.html)も保存しました。v1.01用プリセットは比較基準として残し、現在の標準は[WarmupDeferred.ini](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.USDJPY.20260907_20260911.WarmupDeferred.ini)です。入力SETは共用できます。今回の同等性確認はUSDJPYの対象週に限ります。
