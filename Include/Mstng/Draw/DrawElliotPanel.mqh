@@ -3,6 +3,7 @@
 
 #include <Mstng\Draw\DrawElliotTable.mqh>
 #include <Mstng\Draw\ElliotPanelData.mqh>
+#include <Mstng\Draw\ElliotPanelLayout.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
 /**
@@ -247,65 +248,26 @@ public:
         this.previousPanelHeight = this.panelHeight;
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS, 0);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
-        this.panelLeft = 12;
-        this.panelTop = 12;
-        this.panelWidth = MathMin(960, chartWidth - 24);
-        int availableHeight = chartHeight - 24;
-        if (this.panelWidth < 160 || availableHeight < 80) {
+        ElliotPanelLayout layout;
+        bool sizeAvailable = layout.setChartSize(chartWidth, chartHeight);
+        this.panelLeft = layout.panelLeft;
+        this.panelTop = layout.panelTop;
+        this.panelWidth = layout.panelWidth;
+        if (!sizeAvailable) {
             this.clear();
 
             return false;
         }
 
-        int rowCount = MathMax(0, MathMin(8, data.rowCount));
         int selectedIndex = this.resolveSelectedIndex(data);
-        int headerHeight = 80;
-        if (this.panelWidth < 760) {
-            headerHeight = 104;
-        }
-
-        int rowHeight = 24;
-        int tableGroupHeaderHeight = 20;
-        int detailRowHeight = 22;
-        int detailColumns = 3;
-        if (this.panelWidth < 960) {
-            detailColumns = 2;
-        }
-
         int extraCount = 0;
         if (selectedIndex >= 0) {
-            extraCount = MathMax(0, MathMin(8, data.frames[selectedIndex].extraCount));
+            extraCount = data.frames[selectedIndex].extraCount;
         }
 
-        int extraRows = (extraCount + detailColumns - 1) / detailColumns;
-        int detailHeight = 28 + (12 / detailColumns) * detailRowHeight + 82;
-        if (extraCount > 0) {
-            detailHeight += 20 + extraRows * detailRowHeight;
-        }
-
-        int listHeight = headerHeight + tableGroupHeaderHeight + (rowCount + 1) * rowHeight + 26;
-        if (this.expanded && listHeight + detailHeight > availableHeight) {
-            rowHeight = 20;
-            detailRowHeight = 18;
-            detailHeight = 26 + (12 / detailColumns) * detailRowHeight + 76;
-            if (extraCount > 0) {
-                detailHeight += 20 + extraRows * detailRowHeight;
-            }
-
-            listHeight = headerHeight + tableGroupHeaderHeight + (rowCount + 1) * rowHeight + 26;
-        }
-
-        bool showDetails = this.expanded && selectedIndex >= 0
-            && listHeight + detailHeight <= availableHeight && this.panelWidth >= 640;
-        int desiredHeight = listHeight;
-        if (showDetails) {
-            desiredHeight += detailHeight;
-        }
-
-        this.panelHeight = MathMin(availableHeight, MathMax(140, desiredHeight));
-        int requiredListHeight = headerHeight + tableGroupHeaderHeight + (rowCount + 1) * rowHeight + 24;
-        bool showTable = rowCount > 0 && this.panelWidth >= 640 && requiredListHeight <= this.panelHeight;
-        if (!this.prepareObjects(data, rowCount, showTable)) {
+        layout.calculate(data.rowCount, selectedIndex >= 0, extraCount, this.expanded);
+        this.panelHeight = layout.panelHeight;
+        if (!this.prepareObjects(data, layout.rowCount, layout.showTable)) {
             this.panelWidth = this.previousPanelWidth;
             this.panelHeight = this.previousPanelHeight;
             this.drawPending = true;
@@ -316,49 +278,44 @@ public:
         this.drawingSucceeded = true;
         this.drawBackground("Background", this.panelLeft, this.panelTop,
             this.panelWidth, this.panelHeight, C'25,31,41', 30);
-        this.drawHeader(data, headerHeight);
-        if (rowCount == 0) {
+        this.drawHeader(data, layout);
+        if (layout.rowCount == 0) {
             string message = data.status;
             if (StringLen(message) == 0) {
                 message = "分析結果を待っています。";
             }
 
-            this.drawText("Empty", message, this.panelLeft + 12, this.panelTop + headerHeight + 6,
-                this.panelWidth - 24, 11, clrSilver);
+            this.drawText("Empty", message, layout.contentLeft, layout.getMessageTop(),
+                layout.contentWidth, 11, clrSilver);
 
             return this.completeDraw();
         }
 
-        int tableTop = this.panelTop + headerHeight;
-        if (!showTable) {
+        if (!layout.showTable) {
             this.drawText("Small", "一覧を見るにはチャートを広げてください。",
-                this.panelLeft + 12, tableTop + 6, this.panelWidth - 24, 11, clrSilver);
+                layout.contentLeft, layout.getMessageTop(), layout.contentWidth, 11, clrSilver);
 
             return this.completeDraw();
         }
 
-        this.drawTable(data, rowCount, tableTop, rowHeight, tableGroupHeaderHeight);
-        if (showDetails) {
-            int detailTop = tableTop + tableGroupHeaderHeight + (rowCount + 1) * rowHeight + 8;
-            this.drawDetails(data.frames[selectedIndex], data.digits, detailTop,
-                detailColumns, detailRowHeight);
-            int strengthTop = detailTop + 24 + (12 / detailColumns) * detailRowHeight;
-            this.drawStrength(data.strength, strengthTop, this.panelWidth - 24);
-            if (extraCount > 0) {
-                this.drawExtras(data.frames[selectedIndex], strengthTop + 76,
-                    detailColumns, detailRowHeight);
+        this.drawTable(data, layout);
+        if (layout.showDetails) {
+            this.drawDetails(data.frames[selectedIndex], data.digits, layout);
+            this.drawStrength(data.strength, layout);
+            if (layout.extraCount > 0) {
+                this.drawExtras(data.frames[selectedIndex], layout);
             }
         }
 
         string hint = data.hint;
-        if (this.expanded && !showDetails) {
+        if (this.expanded && !layout.showDetails) {
             hint = "詳細を見るにはチャートを広げるか、サブウィンドウを縮めてください。";
         } else if (StringLen(hint) == 0) {
             hint = "行をクリックして時間足を選択 / 詳細ボタンで展開・折り畳み";
         }
 
-        this.drawText("Hint", hint, this.panelLeft + 12,
-            this.panelTop + this.panelHeight - 20, this.panelWidth - 24, 9, clrSilver);
+        this.drawText("Hint", hint, layout.contentLeft,
+            layout.hintTop, layout.contentWidth, 9, clrSilver);
 
         return this.completeDraw();
     }
@@ -599,7 +556,7 @@ private:
     /**
      * 現在・保存を明示した見出しと共通操作を描画する。
      */
-    void drawHeader(const ElliotPanelData &fromData, const int fromHeaderHeight) {
+    void drawHeader(const ElliotPanelData &fromData, const ElliotPanelLayout &fromLayout) {
         string mode = "現在";
         color modeColor = clrAqua;
         if (this.savedMode) {
@@ -607,103 +564,77 @@ private:
             modeColor = clrGold;
         }
 
-        int buttonTop = this.panelTop + 6;
-        int titleWidth = this.panelWidth - 390;
-        int timeTop = this.panelTop + 32;
-        int metadataTop = this.panelTop + 58;
-        if (fromHeaderHeight > 80) {
-            titleWidth = this.panelWidth - 140;
-            buttonTop = this.panelTop + 32;
-            timeTop = this.panelTop + 60;
-            metadataTop = this.panelTop + 82;
-        }
-
         this.drawText("Title", "Elliot / " + fromData.symbolName + " / " + mode,
-            this.panelLeft + 12, this.panelTop + 9, titleWidth, 12, modeColor);
-        int closeLeft = this.panelLeft + this.panelWidth - 34;
-        this.drawButton("Close", "×", "パネルを閉じる", closeLeft, this.panelTop + 6, 24, true);
+            fromLayout.contentLeft, fromLayout.getTitleTop(), fromLayout.titleWidth, 12, modeColor);
+        this.drawButton("Close", "×", "パネルを閉じる",
+            fromLayout.closeLeft, fromLayout.getButtonTop(), 24, true);
         string expandText = "詳細 ▼";
         if (this.expanded) {
             expandText = "一覧 ▲";
         }
 
         this.drawButton("Expand", expandText, "項目別詳細・通貨強弱・追加指標の表示を切り替えます。",
-            closeLeft - 86, this.panelTop + 6, 80, true);
-        int navigationLeft = closeLeft - 86 - 230;
-        if (fromHeaderHeight > 80) {
-            navigationLeft = this.panelLeft + 12;
-        }
+            fromLayout.getExpandLeft(), fromLayout.getButtonTop(), 80, true);
 
         if (this.savedMode) {
-            int navigationWidth = MathMax(20, MathMin(60, (this.panelWidth - 114) / 2));
             this.drawButton("Previous", "◀ 前", "表示範囲内の古い保存データへ移動します。",
-                navigationLeft, buttonTop, navigationWidth, fromData.canPrevious);
+                fromLayout.getNavigationLeft(0), fromLayout.navigationTop,
+                fromLayout.navigationWidth, fromData.canPrevious);
             this.drawButton("Next", "次 ▶", "表示範囲内の新しい保存データへ移動します。",
-                navigationLeft + navigationWidth + 6, buttonTop, navigationWidth, fromData.canNext);
+                fromLayout.getNavigationLeft(1), fromLayout.navigationTop,
+                fromLayout.navigationWidth, fromData.canNext);
             this.drawButton("Live", "現在へ", "最新の分析結果へ戻ります。",
-                navigationLeft + 2 * (navigationWidth + 6), buttonTop, 78, true);
+                fromLayout.getNavigationLeft(2), fromLayout.navigationTop, 78, true);
         }
 
-        this.drawText("Time", fromData.headerTime, this.panelLeft + 12, timeTop,
-            this.panelWidth - 24, 12, clrWhite);
+        this.drawText("Time", fromData.headerTime, fromLayout.contentLeft, fromLayout.timeTop,
+            fromLayout.contentWidth, 12, clrWhite);
         string metadata = fromData.metadata;
         if (StringLen(fromData.status) > 0 && fromData.rowCount > 0) {
             metadata = fromData.status + " / " + metadata;
         }
 
-        this.drawText("Metadata", metadata, this.panelLeft + 12, metadataTop,
-            this.panelWidth - 24, 9, clrSilver);
+        this.drawText("Metadata", metadata, fromLayout.contentLeft, fromLayout.metadataTop,
+            fromLayout.contentWidth, 9, clrSilver);
     }
 
     /**
      * GMMA付きの一覧を2段見出しで描画し、幅に余裕がある場合はElliot列を項目別に表示する。
      */
-    void drawTable(const ElliotPanelData &fromData, const int fromRowCount,
-            const int fromTop, const int fromRowHeight, const int fromGroupHeaderHeight) {
+    void drawTable(const ElliotPanelData &fromData, const ElliotPanelLayout &fromLayout) {
         ElliotTableLayout layout;
         layout.objects = this.objects;
-        layout.originX = this.panelLeft + 12;
-        layout.originY = fromTop;
+        layout.originX = fromLayout.contentLeft;
+        layout.originY = fromLayout.tableTop;
         layout.paddingX = 3;
         layout.paddingY = 3;
-        layout.rowHeight = fromRowHeight;
+        layout.rowHeight = fromLayout.rowHeight;
         layout.showBackground = true;
         layout.showSeparators = false;
         layout.clipText = true;
-        layout.splitElliot = this.panelWidth >= 960;
+        layout.splitElliot = fromLayout.splitElliot;
         layout.showGmma = true;
-        layout.groupHeaderHeight = fromGroupHeaderHeight;
+        layout.groupHeaderHeight = fromLayout.groupHeaderHeight;
         layout.headerColor = clrWhiteSmoke;
         layout.backgroundColor = C'38,47,62';
         layout.backgroundZOrder = 31;
         layout.textZOrder = 32;
-        int widths[] = {64, 64, 64, 96, this.panelWidth - 424};
-        int positionX = 0;
         for (int i = 0; i < 5; i++) {
-            if (i == 4) {
-                positionX += 112;
-            }
-
-            layout.columnXs[i] = positionX;
-            layout.columnWidths[i] = widths[i];
-            layout.columnFontSizes[i] = 11;
-            if (fromRowHeight < 24) {
-                layout.columnFontSizes[i] = 10;
-            }
-
-            positionX += widths[i];
+            layout.columnXs[i] = fromLayout.columnXs[i];
+            layout.columnWidths[i] = fromLayout.columnWidths[i];
+            layout.columnFontSizes[i] = fromLayout.tableFontSize;
         }
 
-        layout.gmmaColumnXs[0] = layout.columnXs[3] + layout.columnWidths[3];
-        layout.gmmaColumnWidths[0] = 56;
-        layout.gmmaColumnXs[1] = layout.gmmaColumnXs[0] + layout.gmmaColumnWidths[0];
-        layout.gmmaColumnWidths[1] = 56;
+        for (int i = 0; i < 2; i++) {
+            layout.gmmaColumnXs[i] = fromLayout.gmmaColumnXs[i];
+            layout.gmmaColumnWidths[i] = fromLayout.gmmaColumnWidths[i];
+        }
 
         bool drawn = DrawElliotTable::drawHeader(this.chartId, this.objectPrefix + "Header", layout);
         this.drawingSucceeded = drawn && this.drawingSucceeded;
         layout.showSeparators = true;
-        for (int i = 0; i < fromRowCount; i++) {
-            layout.originY = fromTop + fromGroupHeaderHeight + (i + 1) * fromRowHeight;
+        for (int i = 0; i < fromLayout.rowCount; i++) {
+            layout.originY = fromLayout.getTableRowTop(i);
             layout.backgroundColor = C'25,31,41';
             if (i % 2 == 1) {
                 layout.backgroundColor = C'31,38,49';
@@ -723,76 +654,67 @@ private:
     /**
      * 選択行の12項目を現在・保存で同じ順序に表示する。
      */
-    void drawDetails(const ElliotPanelFrame &fromFrame, const int fromDigits, const int fromTop,
-            const int fromColumns, const int fromRowHeight) {
+    void drawDetails(const ElliotPanelFrame &fromFrame, const int fromDigits, const ElliotPanelLayout &fromLayout) {
         this.drawText("DetailTitle", fromFrame.row.timeFrameLabel + " の詳細",
-            this.panelLeft + 12, fromTop, this.panelWidth - 24, 11, clrWhiteSmoke);
+            fromLayout.contentLeft, fromLayout.detailTop, fromLayout.contentWidth, 11, clrWhiteSmoke);
         string labels[] = {"主波", "副次波", "元波", "確定状態", "補完状態", "前推進波の副",
             "F", "FE", "値幅", "ポイント価格", "ポイント時刻", "波動方向"};
-        int itemWidth = (this.panelWidth - 24) / fromColumns;
         for (int i = 0; i < 12; i++) {
-            int positionX = this.panelLeft + 12 + (i % fromColumns) * itemWidth;
-            int positionY = fromTop + 24 + (i / fromColumns) * fromRowHeight;
             string value = detailValue(fromFrame, i, fromDigits);
-            this.drawText("DetailLabel" + IntegerToString(i), labels[i], positionX, positionY, 100, 10, clrSilver);
-            this.drawText("DetailValue" + IntegerToString(i), value, positionX + 104,
-                positionY, itemWidth - 112, 10, clrWhiteSmoke, labels[i] + ": " + value);
+            this.drawText("DetailLabel" + IntegerToString(i), labels[i], fromLayout.getDetailLeft(i),
+                fromLayout.getDetailRowTop(i), 100, 10, clrSilver);
+            this.drawText("DetailValue" + IntegerToString(i), value, fromLayout.getDetailValueLeft(i),
+                fromLayout.getDetailRowTop(i), fromLayout.getDetailValueWidth(), 10, clrWhiteSmoke, labels[i] + ": " + value);
         }
     }
 
     /**
      * 追加オシレーターを選択行の詳細末尾へ表示する。
      */
-    void drawExtras(const ElliotPanelFrame &fromFrame, const int fromTop,
-            const int fromColumns, const int fromRowHeight) {
-        this.drawText("ExtraTitle", "追加指標", this.panelLeft + 12, fromTop,
-            this.panelWidth - 24, 10, clrWhiteSmoke);
-        int itemWidth = (this.panelWidth - 24) / fromColumns;
-        int count = MathMax(0, MathMin(8, fromFrame.extraCount));
-        for (int i = 0; i < count; i++) {
-            int positionX = this.panelLeft + 12 + (i % fromColumns) * itemWidth;
-            int positionY = fromTop + 20 + (i / fromColumns) * fromRowHeight;
+    void drawExtras(const ElliotPanelFrame &fromFrame, const ElliotPanelLayout &fromLayout) {
+        this.drawText("ExtraTitle", "追加指標", fromLayout.contentLeft, fromLayout.extrasTop,
+            fromLayout.contentWidth, 10, clrWhiteSmoke);
+        for (int i = 0; i < fromLayout.extraCount; i++) {
             this.drawText("ExtraLabel" + IntegerToString(i), fromFrame.extraLabels[i],
-                positionX, positionY, 100, 10, clrSilver);
+                fromLayout.getDetailLeft(i), fromLayout.getExtraRowTop(i), 100, 10, clrSilver);
             this.drawText("ExtraValue" + IntegerToString(i), fromFrame.extraValues[i],
-                positionX + 104, positionY, itemWidth - 112, 10, fromFrame.extraColors[i]);
+                fromLayout.getDetailValueLeft(i), fromLayout.getExtraRowTop(i),
+                fromLayout.getDetailValueWidth(), 10, fromFrame.extraColors[i]);
         }
     }
 
     /**
      * 取得元を明示した長中期・中短期の通貨強弱を描画する。
      */
-    void drawStrength(const ElliotPanelStrength &fromStrength, const int fromTop, const int fromWidth) {
-        this.drawText("StrengthTitle", fromStrength.title, this.panelLeft + 12, fromTop,
-            fromWidth, 10, clrWhiteSmoke, fromStrength.tooltip);
+    void drawStrength(const ElliotPanelStrength &fromStrength, const ElliotPanelLayout &fromLayout) {
+        this.drawText("StrengthTitle", fromStrength.title, fromLayout.contentLeft, fromLayout.strengthTop,
+            fromLayout.contentWidth, 10, clrWhiteSmoke, fromStrength.tooltip);
         string status = fromStrength.status;
         if (!fromStrength.enabled) {
             status = "通貨強弱OFF";
         }
         if (status != "取得済み" && StringLen(status) > 0) {
-            this.drawText("StrengthStatus", status, this.panelLeft + 12, fromTop + 24,
-                fromWidth, 10, clrSilver, fromStrength.tooltip);
+            this.drawText("StrengthStatus", status, fromLayout.contentLeft, fromLayout.getStrengthStatusTop(),
+                fromLayout.contentWidth, 10, clrSilver, fromStrength.tooltip);
 
             return;
         }
 
-        int width = MathMin(620, fromWidth);
         string headers[] = {"期間", fromStrength.baseCurrency, fromStrength.quoteCurrency, "順位差", "前M5比"};
-        int itemWidth = width / 5;
         for (int i = 0; i < 5; i++) {
             this.drawText("StrengthHeader" + IntegerToString(i), headers[i],
-                this.panelLeft + 12 + i * itemWidth, fromTop + 20, itemWidth - 6, 9, clrSilver);
+                fromLayout.getStrengthLeft(i), fromLayout.getStrengthHeaderTop(), fromLayout.getStrengthTextWidth(), 9, clrSilver);
         }
 
-        this.drawStrengthRow(fromStrength.longMedium, "長中期", "LongMedium", fromTop + 38, itemWidth);
-        this.drawStrengthRow(fromStrength.mediumShort, "中短期", "MediumShort", fromTop + 56, itemWidth);
+        this.drawStrengthRow(fromStrength.longMedium, "長中期", "LongMedium", fromLayout.getStrengthRowTop(0), fromLayout);
+        this.drawStrengthRow(fromStrength.mediumShort, "中短期", "MediumShort", fromLayout.getStrengthRowTop(1), fromLayout);
     }
 
     /**
      * 順位差と前M5比を独立した色で表示する。
      */
     void drawStrengthRow(const ElliotPanelStrengthPeriod &fromPeriod, const string fromTitle,
-            const string fromKey, const int fromTop, const int fromWidth) {
+            const string fromKey, const int fromTop, const ElliotPanelLayout &fromLayout) {
         string values[5];
         values[0] = fromTitle;
         values[1] = "未記録";
@@ -827,7 +749,7 @@ private:
             }
 
             this.drawText("Strength" + fromKey + IntegerToString(i), values[i],
-                this.panelLeft + 12 + i * fromWidth, fromTop, fromWidth - 6, 10, textColor);
+                fromLayout.getStrengthLeft(i), fromTop, fromLayout.getStrengthTextWidth(), 10, textColor);
         }
     }
 

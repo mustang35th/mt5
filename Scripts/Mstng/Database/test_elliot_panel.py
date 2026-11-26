@@ -10,7 +10,7 @@ import unittest
 
 from test_m5_observation_history_reader import (
     ROOT, block_end, code_only, method, run_csharp, table_fixture, extracted_methods,
-    table_layout_fixture, frame_fixture, strength_fixture, DRAWER,
+    table_layout_fixture, frame_fixture, strength_fixture, DRAWER, SAVED_ADAPTER,
     registry_fixture,
 )
 
@@ -85,6 +85,20 @@ def panel_data_fixture():
         declaration += "public void clear() {" + syntax(method(body, "clear")) + "}\n}\n"
         result.append(declaration)
     return "\n".join(result)
+
+
+def panel_layout_fixture():
+    """Execute the production layout math independently of chart objects."""
+    source = (DRAW / "ElliotPanelLayout.mqh").read_text(encoding="utf-8-sig")
+    opening = re.search(r"\bclass ElliotPanelLayout\s*\{", source).end() - 1
+    body = source[opening + 1:block_end(code_only(source), opening)]
+    body = re.sub(r"\b(?:public|protected|private)\s*:", "", body)
+    body = syntax(body)
+    body = re.sub(r"^(\s{4})(?=(?:static\s+)?(?:bool|void|int|ElliotPanelLayout)\b[^\n;=]*\()",
+                  r"\1public ", body, flags=re.M)
+    body = re.sub(r"^(\s{4})((?:int|bool)(?:\[\])?\s+\w+(?:\s*=\s*[^;\n]+)?;)",
+                  r"\1public \2", body, flags=re.M)
+    return "public class ElliotPanelLayout : MqlApi {\n" + body + "\n}\n"
 
 
 API = r'''
@@ -312,9 +326,105 @@ def run_panel_csharp(source, script):
 
 
 class ElliotPanelViewTests(unittest.TestCase):
+    def layout_source(self):
+        return ("using System;using System.Globalization;using System.Collections.Generic;using System.Linq;\n"
+                + API + panel_layout_fixture())
+
     def panel_source(self):
         return ("using System;using System.Globalization;using System.Collections.Generic;using System.Linq;\n"
-                + API + registry_fixture() + table_fixture() + panel_data_fixture() + table_renderer_fixture() + panel_fixture())
+                + API + registry_fixture() + table_fixture() + panel_data_fixture() + table_renderer_fixture()
+                + panel_layout_fixture() + panel_fixture())
+
+    def test_layout_size_and_column_boundaries_without_chart_objects(self):
+        source = self.layout_source() + r'''
+public class LayoutFixture : MqlApi {
+    static int checks;
+    static void Check(bool value,string message) { checks++;if(!value) throw new Exception(message); }
+    public static string Run() {
+        ElliotPanelLayout layout=new ElliotPanelLayout();ResetCounts();
+        Check(!layout.setChartSize(183,800),"chart width 183 leaves less than the minimum panel width");
+        Check(!layout.setChartSize(184,103),"chart height 103 leaves less than the minimum available height");
+        Check(layout.setChartSize(184,104),"minimum chart dimensions accept a 160 by 80 available panel");
+        layout.calculate(8,true,0,false);
+        Check(layout.panelLeft==12 && layout.panelTop==12 && layout.panelWidth==160 && layout.panelHeight==80 && !layout.showTable,"minimum panel bounds and hidden table");
+        foreach(int width in new int[]{639,640,759,760,959,960}) {
+            Check(layout.setChartSize(width+24,1000),"valid chart width "+width);
+            layout.calculate(8,true,0,true);
+            Check(layout.panelWidth==width && layout.showTable==(width>=640) && layout.showDetails==(width>=640),"640-pixel list and details threshold: "+width);
+            Check(layout.headerHeight==(width<760 ? 104 : 80),"760-pixel header threshold: "+width);
+            Check(layout.detailColumns==(width<960 ? 2 : 3),"960-pixel detail column threshold: "+width);
+            Check(layout.contentLeft==24 && layout.contentWidth==width-24,"content retains inner margins: "+width);
+            int[] positions={0,64,128,192,400};int[] widths={64,64,64,96,width-424};
+            for(int i=0;i<5;i++) Check(layout.columnXs[i]==positions[i] && layout.columnWidths[i]==widths[i],"stable column boundary "+width+"/"+i);
+            Check(layout.gmmaColumnXs[0]==288 && layout.gmmaColumnXs[1]==344 && layout.gmmaColumnWidths[0]==56 && layout.gmmaColumnWidths[1]==56,"GMMA columns remain between movement and Elliot");
+        }
+        layout.setChartSize(1400,1000);layout.calculate(8,true,0,false);
+        Check(layout.panelWidth==960 && layout.panelHeight==342 && layout.tableTop==92 && layout.hintTop==334,"maximum width and eight-row collapsed panel geometry");
+        Check(CreateCalls==0 && DeleteCalls==0 && BulkDeleteCalls==0 && SetIntegerCalls==0 && SetStringCalls==0 && RedrawCalls==0,"layout calculations have no chart-object side effects");
+        return "PASS "+checks+" layout size assertions";
+    }
+}
+'''
+        self.assertRegex(run_csharp(source, "[LayoutFixture]::Run()\n"), r"PASS \d+ layout size assertions")
+
+    def test_layout_height_boundaries_and_reused_result_clear_details(self):
+        source = self.layout_source() + r'''
+public class LayoutFixture : MqlApi {
+    static int checks;
+    static void Check(bool value,string message) { checks++;if(!value) throw new Exception(message); }
+    public static string Run() {
+        ElliotPanelLayout layout=new ElliotPanelLayout();
+        layout.setChartSize(984,564);layout.calculate(8,true,0,true);
+        Check(layout.showDetails && layout.rowHeight==24 && layout.detailRowHeight==22 && layout.panelHeight==540,"full-height details fit exactly");
+        Check(layout.detailTop==336 && layout.strengthTop==448 && layout.extrasTop==524,"details and strength retain their full-height positions");
+        layout.setChartSize(984,563);layout.calculate(8,true,0,true);
+        Check(layout.showDetails && layout.rowHeight==20 && layout.detailRowHeight==18 && layout.panelHeight==480,"one pixel less switches to compressed rows");
+        Check(layout.detailTop==300 && layout.strengthTop==396 && layout.extrasTop==472,"compressed details and strength positions");
+        layout.setChartSize(984,504);layout.calculate(8,true,0,true);
+        Check(layout.showDetails && layout.panelHeight==480,"compressed details fit exactly");
+        layout.setChartSize(984,503);layout.calculate(8,true,0,true);
+        Check(!layout.showDetails && layout.showTable && layout.panelHeight==306,"below compressed-detail threshold returns to list only");
+        layout.setChartSize(984,364);layout.calculate(8,true,0,false);
+        Check(layout.showTable && layout.panelHeight==340,"table may fit two pixels below desired list height");
+        layout.setChartSize(984,363);layout.calculate(8,true,0,false);
+        Check(!layout.showTable,"one pixel below required list height hides table");
+        layout.setChartSize(984,650);layout.calculate(8,true,8,true);
+        Check(layout.showDetails && layout.rowHeight==24 && layout.panelHeight==626 && layout.extraCount==8,"eight extras reserve three detail rows at full width");
+        layout.setChartSize(983,716);layout.calculate(8,true,8,true);
+        Check(layout.showDetails && layout.rowHeight==24 && layout.panelHeight==692 && layout.detailColumns==2,"eight extras reserve four rows below full width");
+        layout.setChartSize(984,540);layout.calculate(7,true,0,true);
+        Check(layout.showDetails && layout.rowHeight==24 && layout.panelHeight==516,"seven saved rows fit at their own boundary");
+        layout.setChartSize(984,180);layout.calculate(0,false,0,true);
+        Check(layout.rowCount==0 && !layout.showTable && !layout.showDetails && layout.rowHeight==20 && layout.extraCount==0 && layout.panelHeight==146,"empty expanded data still uses legacy compression and clears prior detail state");
+        layout.setChartSize(984,1000);layout.calculate(-1,false,0,false);
+        Check(layout.rowCount==0 && !layout.showTable && !layout.showDetails,"negative row count clamps to zero");
+        layout.calculate(99,true,99,true);
+        Check(layout.rowCount==8 && layout.extraCount==8 && layout.showTable && layout.showDetails && layout.rowHeight==24,"reusing layout restores full geometry and clamps capacities");
+        return "PASS "+checks+" layout height assertions";
+    }
+}
+'''
+        self.assertRegex(run_csharp(source, "[LayoutFixture]::Run()\n"), r"PASS \d+ layout height assertions")
+
+    def test_tiny_chart_keeps_selection_until_layout_can_be_drawn(self):
+        source = self.panel_source() + PANEL_SETUP + r'''
+    public static string Run() {
+        DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");
+        ElliotPanelData live=Data("USDJPY");panel.updateLive(live);
+        panel.onObjectClick("Panel-Row1-TimeFrame");
+        Check(panel.getSelectedTimeFrame()==PERIOD_M1,"current M1 row can be selected");
+        Width=183;ElliotPanelData saved=Data("USDJPY",true);
+        Check(!panel.showSaved(saved) && panel.getSelectedTimeFrame()==PERIOD_M1,"too narrow chart defers saved-row fallback");
+        Check(Objects.Count==0 && !panel.containsPoint(20,20),"too narrow chart clears its frame and hover bounds");
+        Width=1400;Height=103;
+        Check(!panel.draw() && panel.getSelectedTimeFrame()==PERIOD_M1,"too short chart also preserves selection");
+        Height=800;Check(panel.draw(),"restoring chart dimensions renders saved data");
+        Check(panel.getSelectedTimeFrame()==PERIOD_M5 && Objects.ContainsKey("Panel-Row5-TimeFrame"),"saved M5 fallback occurs only once layout is drawable");
+        return "PASS "+checks+" tiny-chart selection assertions";
+    }
+}
+'''
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ tiny-chart selection assertions")
 
     def test_nested_batches_flush_latest_panel_once_before_one_chart_redraw(self):
         controller = (ROOT / "Include/Mstng/Indicator/ZigZagElliot/ZigZagElliotController.mqh").read_text(encoding="utf-8-sig")
@@ -1048,6 +1158,13 @@ public class SavedPanelFixture : MqlApi {
         M5ObservationHistoryRecord previous=new M5ObservationHistoryRecord { barTime=record.barTime-900 },
             next=new M5ObservationHistoryRecord { barTime=record.barTime+300 };
         M5ObservationHistoryRecord[] records={previous,record,next};
+        ElliotPanelData converted=new ElliotPanelData();
+        converted.canPrevious=true;converted.canNext=true;converted.frames[7].extraCount=1;
+        ResetCounts();
+        ElliotPanelSavedAdapter.build(record,"EURUSD",5,converted);
+        Check(converted.symbolName=="EURUSD" && converted.digits==5 && converted.savedTime==record.barTime,"adapter uses supplied symbol and digits without chart lookup");
+        Check(converted.rowCount==7 && !converted.canPrevious && !converted.canNext && converted.frames[7].extraCount==0,"adapter clears prior state and leaves navigation to drawer");
+        Check(CreateCalls==0 && DeleteCalls==0 && BulkDeleteCalls==0 && RedrawCalls==0,"saved conversion has no drawing side effects");
         showRecord(records,1,3);
         ElliotPanelData shown=panel.shown;
         Check(panel.shows==1 && shown.symbolName=="USDJPY" && shown.digits==3 && shown.savedTime==record.barTime,"selected saved record reaches the shared panel");
@@ -1076,10 +1193,13 @@ public class SavedPanelFixture : MqlApi {
 '''
         methods = extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), (
             "showRecord", "updatePanelNavigation", "findAdjacentRecordIndex", "navigationGapText",
+        ))
+        source += methods + "}\npublic class ElliotPanelSavedAdapter : MqlApi {\n"
+        source += extracted_methods(SAVED_ADAPTER.read_text(encoding="utf-8-sig"), (
+            "build",
             "fillPanelStrength", "fillPanelStrengthPeriod", "strengthTitle", "strengthStatusText",
             "fillTableRow", "frameName", "timeText",
-        ))
-        source += methods + "}\n"
+        )) + "}\n"
         self.assertRegex(run_csharp(source, "(New-Object SavedPanelFixture).Run()\n"),
                          r"PASS \d+ saved panel adapter assertions")
 

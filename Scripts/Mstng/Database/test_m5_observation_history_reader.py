@@ -492,6 +492,7 @@ class M5ObservationHistorySqlTests(unittest.TestCase):
 
 
 DRAWER = ROOT / "Include/Mstng/Draw/DrawZigZagElliotM5Observations.mqh"
+SAVED_ADAPTER = ROOT / "Include/Mstng/Draw/ElliotPanelSavedAdapter.mqh"
 DISPLAY = ROOT / "Include/Mstng/Indicator/ZigZagElliot/M5ObservationDisplayController.mqh"
 
 
@@ -844,7 +845,7 @@ public class LiveAdapter {
         live = re.sub(r"\(int\)((?:fromElliot|fromWave|point|fromPriceMovement)\.[\w.]+)",
                       r"Convert.ToInt32(\1)", live)
         adapted += live.replace("public static ", "public ") + "\n}\npublic class SavedAdapter {\n"
-        adapted += extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), ("fillTableRow",))
+        adapted += extracted_methods(SAVED_ADAPTER.read_text(encoding="utf-8-sig"), ("fillTableRow",))
         adapted += r'''
 }
 public class SharedAdapterFixture {
@@ -950,8 +951,11 @@ public class StrengthTextFixture {
         return "PASS "+checks+" strength text assertions";
     }
 '''
+        adapted += extracted_methods(SAVED_ADAPTER.read_text(encoding="utf-8-sig"), (
+            "strengthTitle", "strengthStatusText",
+        ))
         adapted += extracted_methods(DRAWER.read_text(encoding="utf-8-sig"), (
-            "strengthTitle", "strengthStatusText", "strengthRankText", "strengthGapText",
+            "strengthRankText", "strengthGapText",
             "strengthDeltaText", "strengthValueColor",
         )) + "\n}"
         output = run_csharp(adapted, "[StrengthTextFixture]::Run()\n")
@@ -1058,7 +1062,7 @@ public class TooltipFixture {
     public static string Run() {
         checks=0;
         long stamp=(long)(new DateTime(2026,11,25,11,35,0)-new DateTime(1970,1,1)).TotalSeconds;
-        Check(timeText(stamp)=="2026/11/25 11:35:00","chart date format includes seconds");
+        Check(ElliotPanelSavedAdapter.timeText(stamp)=="2026/11/25 11:35:00","chart date format includes seconds");
         M5ObservationHistoryRecord record=new M5ObservationHistoryRecord { id=1,barTime=1795500000,jstTime=1795525200,captureTime=1795500012 };
         foreach(M5ObservationHistoryFrame frame in record.frames) { frame.hasData=true;frame.mainWave="3";frame.subWave="i";frame.isUptrend=0;frame.isBuy=1; }
         string text=formatTooltip(record);
@@ -1080,7 +1084,11 @@ public class TooltipFixture {
         return "PASS "+checks+" tooltip assertions";
     }
 '''
-        adapted += extracted_methods(source, ("formatTooltip", "frameName", "waveText", "fillTableRow", "timeText", "shorten")) + "\n}"
+        adapted += extracted_methods(source, ("formatTooltip", "waveText", "shorten"))
+        adapted += "\nstatic class ElliotPanelSavedAdapter {\n"
+        adapted += extracted_methods(SAVED_ADAPTER.read_text(encoding="utf-8-sig"), (
+            "frameName", "fillTableRow", "timeText",
+        )) + "\n}\n}"
         output = run_csharp(adapted, "[TooltipFixture]::Run()\n")
         self.assertRegex(output, r"PASS \d+ tooltip assertions")
 

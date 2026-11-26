@@ -3,7 +3,7 @@
 
 #include <Mstng\Database\Query\ZigZagElliotM5ObservationHistoryData.mqh>
 #include <Mstng\Draw\DrawElliotPanel.mqh>
-#include <Mstng\Util\TimeUtil.mqh>
+#include <Mstng\Draw\ElliotPanelSavedAdapter.mqh>
 
 /**
  * 保存済みM5観測を時刻別の目印と7時間足の詳細へ描画する。
@@ -248,9 +248,9 @@ public:
      * @return 最大159文字の目印用ツールチップ。
      */
     static string formatTooltip(const M5ObservationHistoryRecord &fromRecord) {
-        string stamp = "SRV " + timeText(fromRecord.barTime);
+        string stamp = "SRV " + ElliotPanelSavedAdapter::timeText(fromRecord.barTime);
         if (fromRecord.jstTime > 0) {
-            stamp = "JST " + timeText(fromRecord.jstTime);
+            stamp = "JST " + ElliotPanelSavedAdapter::timeText(fromRecord.jstTime);
         }
 
         if (fromRecord.id <= 0) {
@@ -258,12 +258,12 @@ public:
         }
 
         string header = "M5保存 " + stamp;
-        string tail = "\n取得 SRV " + timeText(fromRecord.captureTime);
+        string tail = "\n取得 SRV " + ElliotPanelSavedAdapter::timeText(fromRecord.captureTime);
         string result = "";
         for (int i = 10; i >= 1; i--) {
             result = header;
             for (int j = 0; j < 7; j++) {
-                result += "\n" + frameName(j) + " " + waveText(fromRecord.frames[j], i);
+                result += "\n" + ElliotPanelSavedAdapter::frameName(j) + " " + waveText(fromRecord.frames[j], i);
             }
 
             result += tail;
@@ -497,9 +497,9 @@ private:
         this.drawBackground(left, top, panelWidth, panelHeight, "HoverBackground", 30);
         this.drawLabel("HoverTitle", "M5保存波動", left + 10, top + 8,
             9, clrWhiteSmoke, "\n", 31);
-        string stamp = "SRV " + timeText(fromRecord.barTime);
+        string stamp = "SRV " + ElliotPanelSavedAdapter::timeText(fromRecord.barTime);
         if (fromRecord.jstTime > 0) {
-            stamp = "JST " + timeText(fromRecord.jstTime);
+            stamp = "JST " + ElliotPanelSavedAdapter::timeText(fromRecord.jstTime);
         }
 
         this.drawLabel("HoverTime", shorten(stamp, textLimit), left + 10, top + 28,
@@ -513,11 +513,12 @@ private:
             this.drawLabel("HoverMessage", shorten(explanation, textLimit), left + 10, top + 50,
                 9, clrSilver, "\n", 31);
         } else {
-            string capture = "取得 SRV " + timeText(fromRecord.captureTime);
+            string capture = "取得 SRV " + ElliotPanelSavedAdapter::timeText(fromRecord.captureTime);
             this.drawLabel("HoverCapture", shorten(capture, textLimit), left + 10, top + 46,
                 8, clrSilver, "\n", 31);
             for (int i = 0; i < 7; i++) {
-                string text = frameName(i) + "  " + waveText(fromRecord.frames[i], textLimit - 6);
+                string text = ElliotPanelSavedAdapter::frameName(i) + "  "
+                    + waveText(fromRecord.frames[i], textLimit - 6);
                 this.drawLabel("HoverFrame" + IntegerToString(i), text,
                     left + 10, top + 66 + i * 18, 9, waveColor(fromRecord.frames[i]), "\n", 31);
             }
@@ -551,36 +552,12 @@ private:
     }
 
     /**
-     * 選択した保存値を共通パネル形式へ変換して表示する。
+     * 選択した保存値の表示データを受け取り、前後移動とホバー状態を更新して表示する。
      */
     void showRecord(const M5ObservationHistoryRecord &fromRecords[], const int fromIndex,
             const int fromDigits) {
-        this.savedPanelData.clear();
-        this.savedPanelData.symbolName = ChartSymbol(this.chartId);
-        this.savedPanelData.digits = fromDigits;
-        this.savedPanelData.savedTime = fromRecords[fromIndex].barTime;
-        this.savedPanelData.headerTime = "観測 SRV " + timeText(fromRecords[fromIndex].barTime);
-        if (fromRecords[fromIndex].jstTime > 0) {
-            this.savedPanelData.headerTime = "観測 JST " + timeText(fromRecords[fromIndex].jstTime);
-        }
-
-        this.savedPanelData.metadata = "取得 SRV " + timeText(fromRecords[fromIndex].captureTime)
-            + " / Run " + IntegerToString(fromRecords[fromIndex].runId)
-            + " / ID " + IntegerToString(fromRecords[fromIndex].id);
-        this.savedPanelData.hint = "前・次：表示範囲内 / 行選択で詳細 / M1は未収録";
-        if (fromRecords[fromIndex].id <= 0) {
-            this.savedPanelData.status = "このM5時刻の記録はありません。";
-        } else {
-            this.savedPanelData.rowCount = 7;
-            for (int i = 0; i < 7; i++) {
-                fillTableRow(fromRecords[fromIndex].frames[i], frameName(i), this.savedPanelData.frames[i].row);
-                this.savedPanelData.frames[i].timeFrame = fromRecords[fromIndex].frames[i].timeFrame;
-                this.savedPanelData.frames[i].pointTime = fromRecords[fromIndex].frames[i].pointTime;
-                this.savedPanelData.frames[i].pointJstTime = fromRecords[fromIndex].frames[i].pointJstTime;
-            }
-
-            fillPanelStrength(fromRecords[fromIndex].strength, this.savedPanelData.strength);
-        }
+        ElliotPanelSavedAdapter::build(fromRecords[fromIndex], ChartSymbol(this.chartId),
+            fromDigits, this.savedPanelData);
 
         this.updatePanelNavigation(fromRecords);
         this.selectedTime = fromRecords[fromIndex].barTime;
@@ -613,35 +590,6 @@ private:
     }
 
     /**
-     * 同M5の強弱を、取得元の説明とともに共通表示へ渡す。
-     */
-    static void fillPanelStrength(const M5ObservationHistoryStrength &fromStrength,
-            ElliotPanelStrength &fromTarget) {
-        fromTarget.clear();
-        fromTarget.enabled = fromStrength.enabled;
-        fromTarget.title = strengthTitle(fromStrength);
-        fromTarget.tooltip = "同じM5時刻の通貨強弱DB履歴です。観測保存時点の値とは限りません。";
-        fromTarget.status = strengthStatusText(fromStrength);
-        fromTarget.baseCurrency = fromStrength.baseCurrency;
-        fromTarget.quoteCurrency = fromStrength.quoteCurrency;
-        fillPanelStrengthPeriod(fromStrength.longMedium, fromTarget.longMedium);
-        fillPanelStrengthPeriod(fromStrength.mediumShort, fromTarget.mediumShort);
-    }
-
-    /**
-     * 順位と前M5比の取得状態をそのままコピーする。
-     */
-    static void fillPanelStrengthPeriod(const M5ObservationHistoryStrengthPeriod &fromPeriod,
-            ElliotPanelStrengthPeriod &fromTarget) {
-        fromTarget.valid = fromPeriod.valid;
-        fromTarget.comparable = fromPeriod.comparable;
-        fromTarget.baseRank = fromPeriod.baseRank;
-        fromTarget.quoteRank = fromPeriod.quoteRank;
-        fromTarget.gap = fromPeriod.gap;
-        fromTarget.delta = fromPeriod.delta;
-    }
-
-    /**
      * 観測と同じM5時刻の通貨強弱を、両順位・順位差・前M5比の2行で表示する。
      */
     void drawStrengthTable(const M5ObservationHistoryStrength &fromStrength, const string fromKey,
@@ -655,9 +603,10 @@ private:
             tooltip = "\n";
         }
 
-        this.drawLabel(fromKey + "Title", fitText(strengthTitle(fromStrength), fromWidth, fromSize),
+        string title = ElliotPanelSavedAdapter::strengthTitle(fromStrength);
+        this.drawLabel(fromKey + "Title", fitText(title, fromWidth, fromSize),
             fromX, fromY, fromSize, clrWhiteSmoke, tooltip, fromZOrder);
-        string status = strengthStatusText(fromStrength);
+        string status = ElliotPanelSavedAdapter::strengthStatusText(fromStrength);
         if (status != "") {
             this.drawLabel(fromKey + "Status", fitText(status, fromWidth, fromSize),
                 fromX, fromY + 28, fromSize, clrSilver, tooltip, fromZOrder);
@@ -728,38 +677,6 @@ private:
     }
 
     /**
-     * 同時刻の別DB履歴であることと、実際の参照方式・モードを示す。
-     */
-    static string strengthTitle(const M5ObservationHistoryStrength &fromStrength) {
-        string text = "同M5の通貨強弱履歴";
-        if (fromStrength.weightLabel != "") {
-            text += " / " + fromStrength.weightLabel;
-        }
-        if (fromStrength.sourceMode != "") {
-            text += " / " + fromStrength.sourceMode;
-        }
-
-        return text;
-    }
-
-    /**
-     * 強弱取得の失敗・設定OFF・未記録を、成功した順位表と区別する。
-     */
-    static string strengthStatusText(const M5ObservationHistoryStrength &fromStrength) {
-        if (!fromStrength.enabled) {
-            return "通貨強弱OFF";
-        }
-        if (fromStrength.status == "取得済み") {
-            return "";
-        }
-        if (fromStrength.status == "") {
-            return "未記録";
-        }
-
-        return fromStrength.status;
-    }
-
-    /**
      * 保存された有効な通貨順位だけを表示する。
      */
     static string strengthRankText(const int fromRank, const bool fromValid) {
@@ -820,49 +737,6 @@ private:
 
         return clrWhite;
     }
-
-
-
-    /**
-     * 保存値を共通表示データへ写し、欠損フラグをそのまま保持する。
-     */
-    static void fillTableRow(const M5ObservationHistoryFrame &fromFrame, const string fromTimeFrame,
-            ElliotTableRowData &fromRow) {
-        fromRow.clear();
-        fromRow.timeFrameLabel = fromTimeFrame;
-        fromRow.hasData = fromFrame.hasData;
-        fromRow.mainWave = fromFrame.mainWave;
-        fromRow.subWave = fromFrame.subWave;
-        fromRow.originalWave = fromFrame.originalWave;
-        fromRow.isUptrend = fromFrame.isUptrend;
-        fromRow.isBuy = fromFrame.isBuy;
-        fromRow.isConfirmed = fromFrame.isConfirmed;
-        fromRow.isAdded = fromFrame.isAdded;
-        fromRow.isEma200Buy = fromFrame.isEma200Buy;
-        fromRow.isEma200Sell = fromFrame.isEma200Sell;
-        fromRow.isPriceMovementValid = fromFrame.isPriceMovementValid;
-        fromRow.priceMovementLevel = fromFrame.priceMovementLevel;
-        fromRow.priceMovementActivityRatio = fromFrame.priceMovementActivityRatio;
-        fromRow.hasPriceMovementActivityRatio = fromFrame.hasPriceMovementActivityRatio;
-        fromRow.gmmaTrendCount = fromFrame.gmmaTrendCount;
-        fromRow.hasGmmaTrendCount = fromFrame.hasGmmaTrendCount;
-        fromRow.gmmaCrossCount = fromFrame.gmmaCrossCount;
-        fromRow.hasGmmaCrossCount = fromFrame.hasGmmaCrossCount;
-        fromRow.originalWaveIndex = fromFrame.originalWaveIndex;
-        fromRow.previousMotiveSubElliotIndex = fromFrame.previousMotiveSubElliotIndex;
-        fromRow.pointPipsDiff = fromFrame.pointPipsDiff;
-        fromRow.hasPointPipsDiff = fromFrame.hasPointPipsDiff;
-        fromRow.pointFibonacciPercent = fromFrame.pointFibonacciPercent;
-        fromRow.hasPointFibonacciPercent = fromFrame.hasPointFibonacciPercent;
-        fromRow.pointFibonacciExpansionPercent = fromFrame.pointFibonacciExpansionPercent;
-        fromRow.hasPointFibonacciExpansionPercent = fromFrame.hasPointFibonacciExpansionPercent;
-        fromRow.pointRate = fromFrame.pointRate;
-        fromRow.hasPointRate = fromFrame.hasPointRate;
-    }
-
-
-
-
 
     /**
      * 保存有無を維持し、取得済みのゼロを未記録と混同しない。
@@ -972,22 +846,10 @@ private:
      */
     static color waveColor(const M5ObservationHistoryFrame &fromFrame) {
         ElliotTableRowData row;
-        fillTableRow(fromFrame, "", row);
+        ElliotPanelSavedAdapter::fillTableRow(fromFrame, "", row);
         ElliotTablePalette palette;
 
         return ElliotTableFormatter::waveColor(row, palette);
-    }
-
-    /**
-     * 表示順に対応する固定の時間足名を返す。
-     */
-    static string frameName(const int fromIndex) {
-        string names[] = {"MN1", "W1", "D1", "H4", "H1", "M15", "M5"};
-        if (fromIndex < 0 || fromIndex >= ArraySize(names)) {
-            return "—";
-        }
-
-        return names[fromIndex];
     }
 
     /**
@@ -995,7 +857,7 @@ private:
      */
     static string waveText(const M5ObservationHistoryFrame &fromFrame, const int fromLimit) {
         ElliotTableRowData row;
-        fillTableRow(fromFrame, "", row);
+        ElliotPanelSavedAdapter::fillTableRow(fromFrame, "", row);
 
         return ElliotTableFormatter::waveText(row, fromLimit);
     }
@@ -1012,17 +874,6 @@ private:
         }
 
         return "未記録";
-    }
-
-    /**
-     * 保存時刻をチャート共通のyyyy/MM/dd HH:mm:ss形式で表示し、時刻0は未記録として扱う。
-     */
-    static string timeText(const datetime fromTime) {
-        if (fromTime <= 0) {
-            return "未記録";
-        }
-
-        return TimeUtil::formatYyyymmddhhmiss(fromTime);
     }
 
     /**
