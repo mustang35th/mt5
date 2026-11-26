@@ -53,6 +53,9 @@ struct ElliotTableLayout {
     /** 列幅を超える文字を省略する場合true。 */
     bool clipText;
 
+    /** Elliot列を10項目に分割して表示する場合true。 */
+    bool splitElliot;
+
     /** 行または見出しの背景色。 */
     color backgroundColor;
 
@@ -81,6 +84,7 @@ struct ElliotTableLayout {
         this.showBackground = false;
         this.showSeparators = false;
         this.clipText = false;
+        this.splitElliot = false;
         this.backgroundColor = C'25,31,41';
         this.separatorColor = C'51,61,77';
         this.headerColor = clrWhite;
@@ -181,6 +185,14 @@ private:
                 continue;
             }
 
+            if (i == 4 && fromLayout.splitElliot) {
+                bool drawn = drawElliotCells(fromChartId, fromPrefix, fromRow, fromDigits,
+                    fromPalette, fromLayout, fromHeader);
+                success = drawn && success;
+
+                continue;
+            }
+
             string text = ElliotTableFormatter::columnName(i);
             color textColor = fromLayout.headerColor;
             string tooltip = "\n";
@@ -208,6 +220,53 @@ private:
                     fromLayout.originX + fromLayout.columnXs[i] + fromLayout.columnWidths[i] - 1,
                     fromLayout.originY, 1, fromLayout.rowHeight, fromLayout.separatorColor,
                     fromLayout.backgroundZOrder);
+                success = drawn && success;
+            }
+        }
+
+        return success;
+    }
+
+    /**
+     * Elliot列の領域内に、波動・状態・数値を同じ行の独立した10セルで描画する。
+     * 項目ごとの値と説明は、連結文字列ではなく共通データから取得する。
+     */
+    static bool drawElliotCells(const long fromChartId, const string fromPrefix,
+            const ElliotTableRowData &fromRow, const int fromDigits,
+            const ElliotTablePalette &fromPalette, const ElliotTableLayout &fromLayout,
+            const bool fromHeader) {
+        int widths[] = {44, 44, 48, 44, 60, 44, 44, 98, 72, 78};
+        int position = 0;
+        bool success = true;
+        for (int i = 0; i < ArraySize(widths); i++) {
+            int left = fromLayout.columnWidths[4] * position / 576;
+            position += widths[i];
+            int right = fromLayout.columnWidths[4] * position / 576;
+            int positionX = fromLayout.originX + fromLayout.columnXs[4] + left;
+            string key = fromPrefix + "Elliot" + ElliotTableFormatter::elliotColumnKey(i);
+            string text = ElliotTableFormatter::elliotColumnName(i);
+            string tooltip = text;
+            color textColor = fromLayout.headerColor;
+            if (!fromHeader) {
+                text = ElliotTableFormatter::elliotCellText(fromRow, i, fromDigits);
+                tooltip = ElliotTableFormatter::elliotCellTooltip(fromRow, i, fromDigits);
+                textColor = ElliotTableFormatter::cellColor(fromRow, 4, fromPalette);
+            }
+
+            if (fromLayout.clipText) {
+                text = fitText(text, right - left - 2 * fromLayout.paddingX,
+                    fromLayout.fontFace, fromLayout.columnFontSizes[4]);
+            }
+
+            bool drawn = drawLabel(fromChartId, key, text, positionX + fromLayout.paddingX,
+                fromLayout.originY + fromLayout.columnYOffsets[4] + fromLayout.paddingY,
+                fromLayout.fontFace, fromLayout.columnFontSizes[4], textColor, tooltip,
+                fromLayout.textZOrder);
+            success = drawn && success;
+            if (fromLayout.showSeparators && i < ArraySize(widths) - 1) {
+                drawn = drawRectangle(fromChartId, fromPrefix + "ElliotLine" + IntegerToString(i),
+                    positionX + right - left - 1, fromLayout.originY, 1, fromLayout.rowHeight,
+                    fromLayout.separatorColor, fromLayout.backgroundZOrder);
                 success = drawn && success;
             }
         }

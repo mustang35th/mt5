@@ -187,7 +187,7 @@ def panel_fixture():
 
 def table_renderer_fixture():
     source = (DRAW / "DrawElliotTable.mqh").read_text(encoding="utf-8-sig")
-    names = re.findall(r"\bstatic\s+(?:string|bool)\s+(\w+)\s*\(", source)
+    names = re.findall(r"\bstatic\s+(?:string|bool|int)\s+(\w+)\s*\(", source)
     methods = syntax(extracted_methods(source, names))
     return table_layout_fixture(source) + "public class DrawElliotTable : MqlApi {\n" + methods + "}\n"
 
@@ -226,6 +226,132 @@ class ElliotPanelViewTests(unittest.TestCase):
         return ("using System;using System.Globalization;using System.Collections.Generic;using System.Linq;\n"
                 + API + table_fixture() + panel_data_fixture() + table_renderer_fixture() + panel_fixture())
 
+    def test_split_elliot_cells_keep_values_tooltips_selection_and_narrow_fallback(self):
+        source = self.panel_source() + PANEL_SETUP + r'''
+    public static string Run() {
+        DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");
+        ElliotPanelData live=Data("USDJPY");
+        ElliotTableRowData row=live.frames[6].row;
+        row.mainWave="3";row.subWave="iii";row.originalWave="5";row.isConfirmed=0;row.isAdded=1;
+        row.previousMotiveSubElliotIndex=3;row.originalWaveIndex=5;
+        row.hasPointFibonacciExpansionPercent=true;row.pointFibonacciExpansionPercent=161.8;
+        row.pointPipsDiff=-12.5;row.pointRate=159.234;
+        Check(panel.updateLive(live),"wide live panel draws split wave cells");
+        string[] keys={"Direction","MainWave","SubWave","OriginalWave","Confirmed","Added","PreviousSub","Fibonacci","Pips","Price"};
+        string[] values={"▼","3","iii","5","未確定","★","3","FE 161.8%","-12.5p","159.234"};
+        string[] headers={"方向","主波","副波","元波","確定","補完","前副","F／FE","値幅","価格"};
+        for(int i=0;i<keys.Length;i++) {
+            string name="Panel-Row5-Elliot"+keys[i];
+            Check(Text(name)==values[i],"independent wave cell value: "+keys[i]);
+            Check(Text("Panel-HeaderElliot"+keys[i])==headers[i],"independent wave header: "+keys[i]);
+            Check(Number(name,OBJPROP_FONTSIZE)==11,"split cells preserve configured font size: "+keys[i]);
+            Check(Objects[name].texts[OBJPROP_TOOLTIP].Contains(values[i]),"cell tooltip preserves complete value: "+keys[i]);
+        }
+        Check(!Objects.ContainsKey("Panel-Row5-Elliot") && Text("Panel-Row5-BuySell")=="BUY","split wave direction stays separate from unchanged analysis column");
+        string[] liveNames=Objects.Keys.Where(name=>name.StartsWith("Panel-Row5-Elliot",StringComparison.Ordinal)).OrderBy(name=>name).ToArray();
+        ElliotPanelData saved=Data("USDJPY",true);saved.frames[6].row=Clone(row);
+        panel.showSaved(saved);
+        string[] savedNames=Objects.Keys.Where(name=>name.StartsWith("Panel-Row5-Elliot",StringComparison.Ordinal)).OrderBy(name=>name).ToArray();
+        Check(liveNames.SequenceEqual(savedNames),"live and saved use identical split object names and separators");
+        for(int i=0;i<keys.Length;i++) Check(Text("Panel-Row5-Elliot"+keys[i])==values[i],"saved adapter data uses same visible cells: "+keys[i]);
+        panel.setExpanded(false);
+        Check(panel.onObjectClick("Panel-Row15-ElliotPrice")==DrawElliotPanel.ELLIOT_PANEL_ACTION_HANDLED && panel.getSelectedTimeFrame()==PERIOD_M15 && panel.isExpanded(),"split price cell retains row selection and detail expansion");
+        Check(Text("Panel-DetailTitle")=="M15 の詳細","split selection shows the correct detail timeframe");
+        panel.setExpanded(false);panel.onObjectClick("Panel-Row5-ElliotSubWave");
+        Check(panel.getSelectedTimeFrame()==PERIOD_M5,"any split cell selects the corresponding timeframe");
+        Width=983;panel.draw();
+        Check(Objects.ContainsKey("Panel-Row5-Elliot") && !Objects.ContainsKey("Panel-Row5-ElliotDirection"),"panel width below 960 restores one wave column and removes split cells");
+        Check(Objects["Panel-Row5-Elliot"].texts[OBJPROP_TOOLTIP].Contains("▼3.iii[5][FE161.8%]<-12.5p>159.234"),"narrow fallback keeps the full established wave summary in its tooltip");
+        Check(Text("Panel-HeaderElliot")=="Elliot" && panel.getSelectedTimeFrame()==PERIOD_M5,"narrow fallback preserves selected timeframe and original header");
+        Width=984;panel.draw();
+        Check(!Objects.ContainsKey("Panel-Row5-Elliot") && Objects.ContainsKey("Panel-Row5-ElliotDirection"),"960-pixel panel threshold restores split columns");
+        Check(panel.getSelectedTimeFrame()==PERIOD_M5 && panel.isSavedMode(),"resize never changes selected data source");
+        return "PASS "+checks+" split panel assertions";
+    }
+}
+'''
+        self.assertRegex(run_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ split panel assertions")
+
+    def test_split_elliot_renderer_fits_the_full_576_pixel_region_and_retains_long_tooltips(self):
+        source = self.panel_source() + PANEL_SETUP + r'''
+    public static string Run() {
+        ElliotTableRowData row=new ElliotTableRowData { hasData=true,mainWave="3",subWave=new string('i',24),
+            originalWave="5",isUptrend=0,isBuy=1,isConfirmed=0,isAdded=1,previousMotiveSubElliotIndex=3,
+            originalWaveIndex=5,hasPointFibonacciExpansionPercent=true,pointFibonacciExpansionPercent=161.8,
+            hasPointPipsDiff=true,pointPipsDiff=-12.5,hasPointRate=true,pointRate=159.234 };
+        ElliotTablePalette palette=new ElliotTablePalette();ElliotTableLayout layout=new ElliotTableLayout();
+        layout.originX=40;layout.originY=70;layout.columnXs[4]=400;layout.columnWidths[4]=576;
+        layout.paddingX=8;layout.paddingY=3;layout.clipText=true;layout.showSeparators=true;layout.splitElliot=true;
+        for(int i=0;i<4;i++) layout.columnVisible[i]=false;
+        Check(DrawElliotTable.drawHeader(0,"Header-",layout) && DrawElliotTable.drawRow(0,"Row-",row,3,palette,layout),"576-pixel split area draws header and row");
+        string[] keys={"Direction","MainWave","SubWave","OriginalWave","Confirmed","Added","PreviousSub","Fibonacci","Pips","Price"};
+        int[] widths={44,44,48,44,60,44,44,98,72,78};
+        long start=Number("Row-ElliotDirection",OBJPROP_XDISTANCE),position=start;
+        for(int i=0;i<keys.Length;i++) {
+            string name="Row-Elliot"+keys[i];
+            Check(Number(name,OBJPROP_XDISTANCE)==position,"successive cell position matches allocated width: "+keys[i]);
+            Check(Number("Header-Elliot"+keys[i],OBJPROP_XDISTANCE)==position,"header aligns with its data cell: "+keys[i]);
+            Check(Text(name).Length*8<=widths[i],"measured text stays inside subcolumn: "+keys[i]);
+            Check(Number(name,OBJPROP_YDISTANCE)==73 && Number(name,OBJPROP_FONTSIZE)==11,"split labels retain row position and font");
+            position+=widths[i];
+        }
+        Check(position-start==576 && Number("Row-ElliotPrice",OBJPROP_XDISTANCE)+Text("Row-ElliotPrice").Length*8<=40+400+576,"final price text stays inside the complete 576-pixel region");
+        Check(Text("Row-ElliotSubWave").EndsWith("…") && Objects["Row-ElliotSubWave"].texts[OBJPROP_TOOLTIP].Contains(row.subWave),"long subwave is clipped but complete value remains in tooltip");
+        Check(!Objects.ContainsKey("Row-Elliot") && !Objects.ContainsKey("Header-Elliot"),"split rendering creates no overlapping composite wave label");
+        ElliotTableLayout legacy=new ElliotTableLayout();legacy.columnXs[4]=400;legacy.columnWidths[4]=576;
+        for(int i=0;i<4;i++) legacy.columnVisible[i]=false;
+        Check(!legacy.splitElliot && DrawElliotTable.drawRow(0,"Legacy-",row,3,palette,legacy),"nonpanel callers keep original default layout");
+        Check(Text("Legacy-Elliot").Contains("▼3."+row.subWave) && !Objects.ContainsKey("Legacy-ElliotMainWave"),"legacy chart table retains its composite wave text");
+        FailName="Failed-ElliotSubWave";
+        Check(!DrawElliotTable.drawRow(0,"Failed-",row,3,palette,layout) && Objects.ContainsKey("Failed-ElliotPrice"),"split-cell creation failure is reported while later cells still draw");
+        return "PASS "+checks+" split renderer assertions";
+    }
+}
+'''
+        self.assertRegex(run_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ split renderer assertions")
+
+    def test_split_elliot_formatter_distinguishes_unknown_absent_and_recorded_zero(self):
+        source = "using System;using System.Globalization;\n" + table_fixture() + r'''
+public class SplitFormatterFixture {
+    static int checks;
+    static void Check(bool value,string message) { checks++;if(!value) throw new Exception(message); }
+    public static string Run() {
+        ElliotTableRowData row=new ElliotTableRowData();
+        for(int i=0;i<10;i++) Check(ElliotTableFormatter.elliotCellText(row,i,3)=="?","missing entire row remains unknown: "+i);
+        row.hasData=true;row.mainWave=null;row.subWave=null;row.originalWave=null;
+        Check(ElliotTableFormatter.elliotCellText(row,1,3)=="?" && ElliotTableFormatter.elliotCellText(row,2,3)=="—" && ElliotTableFormatter.elliotCellText(row,3,3)=="?","unknown main/original wave differs from absent optional subwave");
+        row.isUptrend=0;row.isConfirmed=0;row.isAdded=0;row.previousMotiveSubElliotIndex=0;row.originalWaveIndex=1;
+        Check(ElliotTableFormatter.elliotCellText(row,0,3)=="▼" && ElliotTableFormatter.elliotCellText(row,4,3)=="未確定","false flags have meaningful display values");
+        Check(ElliotTableFormatter.elliotCellText(row,5,3)=="—" && ElliotTableFormatter.elliotCellText(row,6,3)=="—" && ElliotTableFormatter.elliotCellText(row,7,3)=="—","normal point, no preceding subwave and wave one use absence marker");
+        row.originalWaveIndex=2;row.pointFibonacciPercent=0;row.hasPointFibonacciPercent=true;
+        row.hasPointFibonacciExpansionPercent=true;row.pointFibonacciExpansionPercent=161.8;
+        Check(ElliotTableFormatter.elliotCellText(row,7,3)=="F 0.0%","even original wave selects recorded zero retracement");
+        row.originalWaveIndex=3;
+        Check(ElliotTableFormatter.elliotCellText(row,7,3)=="FE 161.8%","odd original wave selects expansion independently of current label");
+        row.hasPointFibonacciExpansionPercent=false;
+        Check(ElliotTableFormatter.elliotCellText(row,7,3)=="FE ?","missing expansion is explicit without inventing zero");
+        row.originalWaveIndex=2;row.hasPointFibonacciPercent=false;
+        Check(ElliotTableFormatter.elliotCellText(row,7,3)=="F ?","missing retracement retains known F type");
+        row.originalWaveIndex=-1;
+        Check(ElliotTableFormatter.elliotCellText(row,7,3)=="?","unknown original wave does not infer F or FE");
+        row.hasPointPipsDiff=true;row.pointPipsDiff=0;row.hasPointRate=true;row.pointRate=0;
+        Check(ElliotTableFormatter.elliotCellText(row,8,3)=="0.0p" && ElliotTableFormatter.elliotCellText(row,9,3)=="0.000","recorded zeros remain numeric in split cells");
+        row.hasPointPipsDiff=false;row.hasPointRate=false;
+        Check(ElliotTableFormatter.elliotCellText(row,8,3)=="?" && ElliotTableFormatter.elliotCellText(row,9,3)=="?","missing numeric metrics differ from zero");
+        Check(ElliotTableFormatter.elliotCellTooltip(row,8,3).Contains("?") && ElliotTableFormatter.elliotCellTooltip(row,8,3).Contains("未記録"),"unknown marker tooltip explains missing value");
+        Check(ElliotTableFormatter.elliotCellTooltip(row,5,3).Contains("該当なし"),"absence tooltip explains normal point");
+        row.isAdded=1;
+        Check(ElliotTableFormatter.elliotCellText(row,5,3)=="★" && ElliotTableFormatter.elliotCellTooltip(row,5,3).Contains("補完"),"added marker has an explanatory tooltip");
+        row.mainWave="3";row.subWave=new string('i',40);
+        Check(ElliotTableFormatter.elliotCellTooltip(row,2,3).Contains(row.subWave),"formatter preserves full subwave for renderer tooltip");
+        row.pointRate=1.234567891;row.hasPointRate=true;
+        Check(ElliotTableFormatter.elliotCellText(row,9,11)=="1.23456789","price precision retains existing eight-digit limit");
+        return "PASS "+checks+" split formatter assertions";
+    }
+}
+'''
+        self.assertRegex(run_csharp(source, "[SplitFormatterFixture]::Run()\n"), r"PASS \d+ split formatter assertions")
+
     def test_saved_selection_survives_live_updates_and_returns_to_latest_cache(self):
         source = self.panel_source() + PANEL_SETUP + r'''
     public static string Run() {
@@ -236,14 +362,14 @@ class ElliotPanelViewTests(unittest.TestCase):
         Check(Objects.ContainsKey("Panel-Row1-TimeFrame") && !Objects.ContainsKey("Panel-DetailTitle"),"live M1 appears in compact list");
         Check(!Objects.ContainsKey("Panel-Previous") && !Objects.ContainsKey("Panel-Live"),"current mode does not show history navigation");
         Check(!Objects.ContainsKey("Panel-Metadata"),"empty text does not create MT5's default Label object");
-        panel.onObjectClick("Panel-Row1-Elliot");
+        panel.onObjectClick("Panel-Row1-ElliotMainWave");
         Check(panel.getSelectedTimeFrame()==PERIOD_M1,"row click stores timeframe rather than array index");
         Check(panel.showSaved(saved) && panel.isSavedMode() && panel.isExpanded(),"marker selection opens saved details");
         Check(panel.getSelectedTimeFrame()==PERIOD_M5 && !Objects.ContainsKey("Panel-Row1-TimeFrame"),"saved source without M1 falls back to M5 without inventing a row");
         Check(Text("Panel-Title").Contains("保存") && Text("Panel-DetailTitle")=="M5 の詳細","same panel switches title, rows and selected details");
         Check(Objects.ContainsKey("Panel-Previous") && Objects.ContainsKey("Panel-Next") && Objects.ContainsKey("Panel-Live"),"saved navigation and current button appear together");
         Check(Text("Panel-StrengthTitle").Contains("履歴") && Number("Panel-StrengthLongMedium3",OBJPROP_COLOR)==clrAqua && Number("Panel-StrengthLongMedium4",OBJPROP_COLOR)==clrHotPink,"saved strength source and independent gap/delta colors retained");
-        panel.onObjectClick("Panel-Row15-Elliot");
+        panel.onObjectClick("Panel-Row15-ElliotMainWave");
         int objectCount=Objects.Count;
         live.symbolName="LIVE-B";live.frames[7].row.mainWave="5";
         panel.updateLive(live);
@@ -261,7 +387,7 @@ class ElliotPanelViewTests(unittest.TestCase):
         Check(panel.onObjectClick("Panel-Live")==DrawElliotPanel.ELLIOT_PANEL_ACTION_HANDLED && !panel.isSavedMode(),"current button restores current mode");
         Check(Text("Panel-Title").Contains("LIVE-B") && !Text("Panel-Title").Contains("CALLER-MUTATED"),"return displays latest copied live cache");
         Check(panel.getSelectedTimeFrame()==PERIOD_M15 && panel.getSavedTime()==0 && !Objects.ContainsKey("Panel-Next"),"return preserves timeframe and clears saved navigation display");
-        Check(Text("Panel-Row1-Elliot").Contains("▼5"),"live values updated while history was selected");
+        Check(Text("Panel-Row1-ElliotDirection")=="▼" && Text("Panel-Row1-ElliotMainWave")=="5","live values updated while history was selected");
         panel.showSaved(saved);
         Check(panel.onObjectClick("Panel-Close")==DrawElliotPanel.ELLIOT_PANEL_ACTION_CLOSED && !panel.isVisible(),"close hides one shared panel");
         Check(Objects.Count==0 && !panel.containsPoint(20,20),"closed panel removes its objects and no longer intercepts hover");
@@ -271,7 +397,7 @@ class ElliotPanelViewTests(unittest.TestCase):
         Check(panel.isSavedMode() && Text("Panel-Title").Contains("SAVED-B"),"reopen preserves selected mode");
         panel.showLive();
         Check(Text("Panel-Title").Contains("LIVE-C"),"current button after close uses the newest cache");
-        panel.onObjectClick("Panel-Row1-Elliot");
+        panel.onObjectClick("Panel-Row1-ElliotMainWave");
         ElliotPanelData shorter=Data("H1");shorter.rowCount=5;
         panel.updateLive(shorter);
         Check(panel.getSelectedTimeFrame()==PERIOD_H1,"missing selected timeframe and M5 fall back to final available row");

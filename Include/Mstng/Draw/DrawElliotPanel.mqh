@@ -467,7 +467,7 @@ private:
     }
 
     /**
-     * 可変行数の一覧を共通表描画へ渡す。
+     * 可変行数の一覧を共通表描画へ渡し、幅に余裕がある場合はElliot列を項目別に表示する。
      */
     void drawTable(const ElliotPanelData &fromData, const int fromRowCount,
             const int fromTop, const int fromRowHeight) {
@@ -480,6 +480,7 @@ private:
         layout.showBackground = true;
         layout.showSeparators = false;
         layout.clipText = true;
+        layout.splitElliot = this.panelWidth >= 960;
         layout.headerColor = clrWhiteSmoke;
         layout.backgroundColor = C'38,47,62';
         layout.backgroundZOrder = 31;

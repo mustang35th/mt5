@@ -4,7 +4,7 @@
 #include <Mstng\Draw\ElliotTableRowData.mqh>
 
 /**
- * 現在値の表と保存波動パネルで共有する、5列の文字列・配色規則。
+ * 現在値の表と保存波動パネルで共有する、5列と項目別Elliotの文字列・配色規則。
  * 表示元の取得・再分析やオブジェクト描画は行わない。
  */
 class ElliotTableFormatter {
@@ -66,6 +66,158 @@ public:
         }
 
         return "";
+    }
+
+    /**
+     * Elliotを項目別に表示する10列の短い見出しを返す。
+     *
+     * @param fromColumn 方向から価格までの列番号。0から9。
+     * @return 列見出し。範囲外は空文字列。
+     */
+    static string elliotColumnName(const int fromColumn) {
+        string names[] = {"方向", "主波", "副波", "元波", "確定", "補完", "前副", "F／FE", "値幅", "価格"};
+        if (fromColumn < 0 || fromColumn >= ArraySize(names)) {
+            return "";
+        }
+
+        return names[fromColumn];
+    }
+
+    /**
+     * 分割したElliot列の、表示文字に依存しないオブジェクト名用キーを返す。
+     */
+    static string elliotColumnKey(const int fromColumn) {
+        string keys[] = {"Direction", "MainWave", "SubWave", "OriginalWave", "Confirmed",
+            "Added", "PreviousSub", "Fibonacci", "Pips", "Price"};
+        if (fromColumn < 0 || fromColumn >= ArraySize(keys)) {
+            return "";
+        }
+
+        return keys[fromColumn];
+    }
+
+    /**
+     * 波動情報を一項目ずつ返し、未知の「?」と該当なしの「—」を区別する。
+     * F・FEの選択と数値の精度は、既存のElliot複合表示と同じ規則を使用する。
+     *
+     * @param fromRow 表示元の波動情報。
+     * @param fromColumn 方向から価格までの列番号。0から9。
+     * @param fromDigits ポイント価格の小数桁数。
+     * @return 省略前のセル文字列。範囲外は空文字列。
+     */
+    static string elliotCellText(const ElliotTableRowData &fromRow, const int fromColumn,
+            const int fromDigits) {
+        if (fromColumn < 0 || fromColumn >= 10) {
+            return "";
+        }
+
+        if (!fromRow.hasData) {
+            return "?";
+        }
+
+        if (fromColumn == 0) {
+            return compactText(stateText(fromRow.isUptrend, "▲", "▼"));
+        }
+
+        if (fromColumn == 1) {
+            if (StringLen(fromRow.mainWave) == 0) {
+                return "?";
+            }
+
+            return fromRow.mainWave;
+        }
+
+        if (fromColumn == 2) {
+            if (StringLen(fromRow.subWave) == 0) {
+                return "—";
+            }
+
+            return fromRow.subWave;
+        }
+
+        if (fromColumn == 3) {
+            if (StringLen(fromRow.originalWave) == 0) {
+                return "?";
+            }
+
+            return fromRow.originalWave;
+        }
+
+        if (fromColumn == 4) {
+            return compactText(stateText(fromRow.isConfirmed, "確定", "未確定"));
+        }
+
+        if (fromColumn == 5) {
+            return compactText(stateText(fromRow.isAdded, "★", "—"));
+        }
+
+        if (fromColumn == 6) {
+            if (fromRow.previousMotiveSubElliotIndex < 0) {
+                return "?";
+            }
+
+            if (fromRow.previousMotiveSubElliotIndex == 0) {
+                return "—";
+            }
+
+            return IntegerToString(fromRow.previousMotiveSubElliotIndex);
+        }
+
+        if (fromColumn == 7) {
+            if (fromRow.originalWaveIndex < 0) {
+                return "?";
+            }
+
+            if (fromRow.originalWaveIndex <= 1) {
+                return "—";
+            }
+
+            if (fromRow.originalWaveIndex % 2 == 0) {
+                return "F " + compactText(numberText(fromRow.pointFibonacciPercent,
+                    fromRow.hasPointFibonacciPercent, 1, "%"));
+            }
+
+            return "FE " + compactText(numberText(fromRow.pointFibonacciExpansionPercent,
+                fromRow.hasPointFibonacciExpansionPercent, 1, "%"));
+        }
+
+        if (fromColumn == 8) {
+            return compactText(numberText(fromRow.pointPipsDiff, fromRow.hasPointPipsDiff, 1, "p"));
+        }
+
+        return compactText(numberText(fromRow.pointRate, fromRow.hasPointRate, fromDigits));
+    }
+
+    /**
+     * 正式項目名と省略前の値、短縮記号の意味をセルの補足として返す。
+     */
+    static string elliotCellTooltip(const ElliotTableRowData &fromRow, const int fromColumn,
+            const int fromDigits) {
+        string names[] = {"波動方向", "主波", "副次波", "元波（再分析前の主波）", "確定状態",
+            "補完状態", "前推進波の副次波", "F／FE", "値幅（pips）", "ポイント価格"};
+        if (fromColumn < 0 || fromColumn >= ArraySize(names)) {
+            return "";
+        }
+
+        string value = elliotCellText(fromRow, fromColumn, fromDigits);
+        string text = names[fromColumn] + "：" + value;
+        if (value == "?" || StringFind(value, " ?") >= 0) {
+            text += "（未記録・不明）";
+        } else if (value == "—") {
+            text += "（該当なし）";
+        } else if (fromColumn == 0 && value == "▲") {
+            text += "（上昇）";
+        } else if (fromColumn == 0 && value == "▼") {
+            text += "（下降）";
+        } else if (fromColumn == 5 && value == "★") {
+            text += "（補完ポイント）";
+        }
+
+        if (fromColumn == 7) {
+            text += "\nF：リトレースメント / FE：エクスパンション";
+        }
+
+        return text;
     }
 
     /**
@@ -172,6 +324,17 @@ public:
     }
 
 private:
+    /**
+     * 既存の数値・状態整形を再利用し、未記録表示だけを狭いセル向けに短縮する。
+     */
+    static string compactText(const string fromText) {
+        if (fromText == "未記録") {
+            return "?";
+        }
+
+        return fromText;
+    }
+
     /**
      * 前推進波の副次波・確定状態・波動・F／FE・値幅・価格を同じ順序で整形する。
      */

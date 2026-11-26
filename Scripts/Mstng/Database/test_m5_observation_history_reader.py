@@ -120,7 +120,11 @@ def extracted_methods(source, names):
         parameters = re.sub(r"\b(\w+)\s+(\w+)\[\]", r"\1[] \2", parameters)
         opening = signature.end() - 1
         body = source[opening + 1:block_end(code_only(source), opening)]
-        body = re.sub(r"\bstring\s+(\w+)\[\]\s*=\s*\{", r"string[] \1 = new string[] {", body)
+        # MQL permits the branch-local name to recur later in the enclosing
+        # block; C# forbids it even when the branch exits with continue.
+        body = re.sub(r"if \(i == 4 && fromLayout\.splitElliot\) \{[^}]+\}",
+                      lambda match: re.sub(r"\bdrawn\b", "splitDrawn", match[0]), body)
+        body = re.sub(r"\b(string|int|double|bool|long)\s+(\w+)\[\]\s*=\s*\{", r"\1[] \2 = new \1[] {", body)
         body = re.sub(r"\bstring\s+(\w+)\[\]\s*;", r"string[] \1;", body)
         body = re.sub(r"StringSplit\(([^,]+),\s*('[^']'),\s*(\w+)\)", r"StringSplit(\1, \2, out \3)", body)
         body = re.sub(r"\bdatetime\b", "long", body)
@@ -199,6 +203,7 @@ def table_fixture():
 public class ElliotTableFormatter {
     static int ArraySize<T>(T[] values) { return values.Length; }
     static int StringLen(string value) { return value==null ? 0 : value.Length; }
+    static int StringFind(string value,string part) { return value.IndexOf(part,StringComparison.Ordinal); }
     static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
     static string DoubleToString(double value,int digits) { return value.ToString("F"+digits,CultureInfo.InvariantCulture); }
     static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
@@ -695,6 +700,7 @@ public class DrawElliotTable {
     static bool ObjectSetString(long chart,string name,int property,string value) { objects[name].texts[property]=value;return true; }
     static bool TextSetFont(string face,int size) { return !failMeasure; }
     static bool TextGetSize(string text,out uint width,out uint height) { width=(uint)text.Length*10;height=10;return true; }
+    static int ArraySize<T>(T[] values) { return values.Length; }
     static int MathMax(int first,int second) { return Math.Max(first,second); }
     static int StringLen(string value) { return value.Length; }
     static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
