@@ -9,6 +9,7 @@
 #ifndef MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_FACTORY_MQH
 #define MSTNG_EXPERT_ADVISOR_EXPERT_ADVISOR_MTF3_IN3_FACTORY_MQH
 
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Config.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3H1.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3M1.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3M15.mqh>
@@ -29,7 +30,72 @@
 class ExpertAdvisorMtf3In3Factory {
 public:
     /**
-     * 市場コンテキストに対応するMTF_3in3判定クラスを生成する。
+     * 名前付きの設定から、対象時間足に対応するMTF_3in3判定クラスを生成する。
+     *
+     * @param fromMarketContext 分析対象の市場コンテキスト。
+     * @param fromConfig 判定クラスの生成設定。
+     * @return 呼び出し側が所有するMTF_3in3判定クラス。
+     */
+    static ExpertAdvisorMTF_3in3 *create(
+        MarketContext &fromMarketContext,
+        const ExpertAdvisorMtf3In3Config &fromConfig
+    ) {
+        if (fromMarketContext.timeFrame == PERIOD_H1) {
+            return new ExpertAdvisorMtf3In3H1(
+                fromMarketContext,
+                fromConfig.isDrawArrow,
+                fromConfig.h1DirectionCorrectionEnabled,
+                fromConfig.h1Mn1AndW1Ema200Required,
+                fromConfig.h1H4WaveRestrictionEnabled
+            );
+        }
+
+        if (fromMarketContext.timeFrame == PERIOD_M15) {
+            return new ExpertAdvisorMtf3In3M15(
+                fromMarketContext,
+                fromConfig.isDrawArrow,
+                fromConfig.h1DirectionCorrectionEnabled,
+                fromConfig.m15H4MaxFibonacciExpansionPercent,
+                fromConfig.m15H1MaxFibonacciExpansionPercent,
+                fromConfig.h1Mn1AndW1Ema200Required,
+                fromConfig.h1H4WaveRestrictionEnabled,
+                fromConfig.m15CurrencyEma200DistanceEnabled,
+                fromConfig.m15LongMediumCurrencyStrengthEnabled
+            );
+        }
+
+        if (fromMarketContext.timeFrame == PERIOD_M5) {
+            return new ExpertAdvisorMtf3In3M5(
+                fromMarketContext,
+                fromConfig.isDrawArrow,
+                fromConfig.m5Mn1AndW1Ema200Required,
+                fromConfig.m5D1ToM5EntryPolicyEnabled,
+                fromConfig.m5CurrencyStrengthMinimumRankDifference
+            );
+        }
+
+        if (fromMarketContext.timeFrame == PERIOD_M1 && fromConfig.m1M5AndM1WavePolicyEnabled) {
+            return new ExpertAdvisorMtf3In3M1(
+                fromMarketContext,
+                fromConfig.isDrawArrow,
+                fromConfig.h1W1ConfirmationMode,
+                fromConfig.h1DirectionAlignmentMode,
+                fromConfig.h1Ema200ConfirmationMode,
+                fromConfig.m1DirectionCorrectionEnabled
+            );
+        }
+
+        return new ExpertAdvisorMTF_3in3(
+            fromMarketContext,
+            fromConfig.isDrawArrow,
+            fromConfig.h1W1ConfirmationMode,
+            fromConfig.h1DirectionAlignmentMode,
+            fromConfig.h1Ema200ConfirmationMode
+        );
+    }
+
+    /**
+     * 従来の位置引数を名前付き設定へ写し、互換呼び出しとして判定クラスを生成する。
      *
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
@@ -72,58 +138,25 @@ public:
         bool fromM1M5AndM1WavePolicyEnabled = false,
         bool fromM1DirectionCorrectionEnabled = false
     ) {
-        if (fromMarketContext.timeFrame == PERIOD_H1) {
-            return new ExpertAdvisorMtf3In3H1(
-                fromMarketContext,
-                fromIsDrawArrow,
-                fromH1DirectionCorrectionEnabled,
-                fromH1Mn1AndW1Ema200Required,
-                fromH1H4WaveRestrictionEnabled
-            );
-        }
+        ExpertAdvisorMtf3In3Config config;
+        config.isDrawArrow = fromIsDrawArrow;
+        config.h1W1ConfirmationMode = fromH1W1ConfirmationMode;
+        config.h1DirectionAlignmentMode = fromH1DirectionAlignmentMode;
+        config.h1Ema200ConfirmationMode = fromH1Ema200ConfirmationMode;
+        config.h1DirectionCorrectionEnabled = fromH1DirectionCorrectionEnabled;
+        config.m15H4MaxFibonacciExpansionPercent = fromM15H4MaxFibonacciExpansionPercent;
+        config.m15H1MaxFibonacciExpansionPercent = fromM15H1MaxFibonacciExpansionPercent;
+        config.h1Mn1AndW1Ema200Required = fromH1Mn1AndW1Ema200Required;
+        config.h1H4WaveRestrictionEnabled = fromH1H4WaveRestrictionEnabled;
+        config.m5Mn1AndW1Ema200Required = fromM5Mn1AndW1Ema200Required;
+        config.m5D1ToM5EntryPolicyEnabled = fromM5D1ToM5EntryPolicyEnabled;
+        config.m5CurrencyStrengthMinimumRankDifference = fromM5CurrencyStrengthMinimumRankDifference;
+        config.m15CurrencyEma200DistanceEnabled = fromM15CurrencyEma200DistanceEnabled;
+        config.m15LongMediumCurrencyStrengthEnabled = fromM15LongMediumCurrencyStrengthEnabled;
+        config.m1M5AndM1WavePolicyEnabled = fromM1M5AndM1WavePolicyEnabled;
+        config.m1DirectionCorrectionEnabled = fromM1DirectionCorrectionEnabled;
 
-        if (fromMarketContext.timeFrame == PERIOD_M15) {
-            return new ExpertAdvisorMtf3In3M15(
-                fromMarketContext,
-                fromIsDrawArrow,
-                fromH1DirectionCorrectionEnabled,
-                fromM15H4MaxFibonacciExpansionPercent,
-                fromM15H1MaxFibonacciExpansionPercent,
-                fromH1Mn1AndW1Ema200Required,
-                fromH1H4WaveRestrictionEnabled,
-                fromM15CurrencyEma200DistanceEnabled,
-                fromM15LongMediumCurrencyStrengthEnabled
-            );
-        }
-
-        if (fromMarketContext.timeFrame == PERIOD_M5) {
-            return new ExpertAdvisorMtf3In3M5(
-                fromMarketContext,
-                fromIsDrawArrow,
-                fromM5Mn1AndW1Ema200Required,
-                fromM5D1ToM5EntryPolicyEnabled,
-                fromM5CurrencyStrengthMinimumRankDifference
-            );
-        }
-
-        if (fromMarketContext.timeFrame == PERIOD_M1 && fromM1M5AndM1WavePolicyEnabled) {
-            return new ExpertAdvisorMtf3In3M1(
-                fromMarketContext,
-                fromIsDrawArrow,
-                fromH1W1ConfirmationMode,
-                fromH1DirectionAlignmentMode,
-                fromH1Ema200ConfirmationMode,
-                fromM1DirectionCorrectionEnabled
-            );
-        }
-
-        return new ExpertAdvisorMTF_3in3(
-            fromMarketContext,
-            fromIsDrawArrow,
-            fromH1W1ConfirmationMode,
-            fromH1DirectionAlignmentMode,
-            fromH1Ema200ConfirmationMode
-        );
+        return ExpertAdvisorMtf3In3Factory::create(fromMarketContext, config);
     }
 };
 

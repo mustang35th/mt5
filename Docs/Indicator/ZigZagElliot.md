@@ -1,5 +1,11 @@
 # ZigZagElliot
 
+## 判定クラスの生成設定を構造体へ集約（v3.00）
+
+Factoryの設定16項目を `ExpertAdvisorMtf3In3Config` にまとめ、通常版・List・Monitorは `create(context, config)` で判定クラスを生成します。設定は名前付きフィールドへ代入し、従来の17引数形式は既定値を保った互換呼び出しとして残します。
+
+通常版の矢印ON・M1チャートだけの専用条件、Monitorの矢印OFF・M1専用条件ONを維持します。List／AllはH1固定・矢印OFFと3つの確認モードを指定し、その他は従来どおりFactoryの既定値を使用します。H1・M15の共通ポリシーとエントリー判定条件は変更しません。
+
 ## 分析履歴の準備確認を分離（v2.99）
 
 通常版の分析履歴の同期確認・必要本数・再要求・テスターの進捗管理を `ElliotHistoryReadiness` へ移しました。`ZigZagElliotController` は準備状態を確認し、従来の順序で分析・描画・アラート処理を実行します。

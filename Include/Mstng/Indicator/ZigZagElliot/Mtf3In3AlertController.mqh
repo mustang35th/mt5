@@ -19,6 +19,7 @@
 #include <Mstng\Draw\DrawZigZagElliotLiveAlertTooltip.mqh>
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Config.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertSnapshot.mqh>
@@ -103,25 +104,26 @@ public:
             return false;
         }
 
+        ExpertAdvisorMtf3In3Config strategyConfig;
+        strategyConfig.isDrawArrow = true;
+        strategyConfig.h1W1ConfirmationMode = this.config.h1W1ConfirmationMode;
+        strategyConfig.h1DirectionAlignmentMode = this.config.h1DirectionAlignmentMode;
+        strategyConfig.h1Ema200ConfirmationMode = this.config.h1Ema200ConfirmationMode;
+        strategyConfig.h1DirectionCorrectionEnabled = this.config.h1DirectionCorrectionEnabled;
+        strategyConfig.m15H4MaxFibonacciExpansionPercent = this.config.m15H4MaxFibonacciExpansionPercent;
+        strategyConfig.m15H1MaxFibonacciExpansionPercent = this.config.m15H1MaxFibonacciExpansionPercent;
+        strategyConfig.h1Mn1AndW1Ema200Required = this.config.h1Mn1AndW1Ema200Required;
+        strategyConfig.h1H4WaveRestrictionEnabled = this.config.h1H4WaveRestrictionEnabled;
+        strategyConfig.m5Mn1AndW1Ema200Required = this.config.m5Mn1AndW1Ema200Required;
+        strategyConfig.m5D1ToM5EntryPolicyEnabled = this.config.m5D1ToM5EntryPolicyEnabled;
+        strategyConfig.m5CurrencyStrengthMinimumRankDifference = this.config.m5CurrencyStrengthMinimumRankDifference;
+        strategyConfig.m15CurrencyEma200DistanceEnabled = this.config.m15CurrencyEma200DistanceEnabled;
+        strategyConfig.m15LongMediumCurrencyStrengthEnabled = this.config.m15LongMediumCurrencyStrengthEnabled;
+        strategyConfig.m1M5AndM1WavePolicyEnabled = this.marketContext.timeFrame == PERIOD_M1;
+        strategyConfig.m1DirectionCorrectionEnabled = this.config.m1DirectionCorrectionEnabled;
+
         this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
-            this.marketContext,
-            true,
-            this.config.h1W1ConfirmationMode,
-            this.config.h1DirectionAlignmentMode,
-            this.config.h1Ema200ConfirmationMode,
-            this.config.h1DirectionCorrectionEnabled,
-            this.config.m15H4MaxFibonacciExpansionPercent,
-            this.config.m15H1MaxFibonacciExpansionPercent,
-            this.config.h1Mn1AndW1Ema200Required,
-            this.config.h1H4WaveRestrictionEnabled,
-            this.config.m5Mn1AndW1Ema200Required,
-            this.config.m5D1ToM5EntryPolicyEnabled,
-            this.config.m5CurrencyStrengthMinimumRankDifference,
-            this.config.m15CurrencyEma200DistanceEnabled,
-            this.config.m15LongMediumCurrencyStrengthEnabled,
-            this.marketContext.timeFrame == PERIOD_M1,
-            this.config.m1DirectionCorrectionEnabled
-        );
+            this.marketContext, strategyConfig);
 
         if (this.expertAdvisorMtf3In3 == NULL) {
             this.logger.error(
@@ -591,7 +593,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "2.99";
+            this.databaseRun.programVersion = "3.00";
         }
 
         this.databaseRun.strategy = "MTF_3in3";

@@ -3,6 +3,7 @@
 
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Config.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliotMonitor\ZigZagElliotMonitorEvaluationObserver.mqh>
@@ -444,23 +445,26 @@ private:
      * 通常版と同じM1専用クラスを、描画・メール経路なしで生成する。
      */
     ExpertAdvisorMTF_3in3 *createStrategy(MarketContext &fromMarketContext) {
+        ExpertAdvisorMtf3In3Config strategyConfig;
+        strategyConfig.isDrawArrow = false;
+        strategyConfig.h1W1ConfirmationMode = this.config.entryConfig.h1W1ConfirmationMode;
+        strategyConfig.h1DirectionAlignmentMode = this.config.entryConfig.h1DirectionAlignmentMode;
+        strategyConfig.h1Ema200ConfirmationMode = this.config.entryConfig.h1Ema200ConfirmationMode;
+        strategyConfig.h1DirectionCorrectionEnabled = this.config.entryConfig.h1DirectionCorrectionEnabled;
+        strategyConfig.m15H4MaxFibonacciExpansionPercent = this.config.entryConfig.m15H4MaxFibonacciExpansionPercent;
+        strategyConfig.m15H1MaxFibonacciExpansionPercent = this.config.entryConfig.m15H1MaxFibonacciExpansionPercent;
+        strategyConfig.h1Mn1AndW1Ema200Required = this.config.entryConfig.h1Mn1AndW1Ema200Required;
+        strategyConfig.h1H4WaveRestrictionEnabled = this.config.entryConfig.h1H4WaveRestrictionEnabled;
+        strategyConfig.m5Mn1AndW1Ema200Required = this.config.entryConfig.m5Mn1AndW1Ema200Required;
+        strategyConfig.m5D1ToM5EntryPolicyEnabled = this.config.entryConfig.m5D1ToM5EntryPolicyEnabled;
+        strategyConfig.m5CurrencyStrengthMinimumRankDifference = this.config.entryConfig.m5CurrencyStrengthMinimumRankDifference;
+        strategyConfig.m15CurrencyEma200DistanceEnabled = this.config.entryConfig.m15CurrencyEma200DistanceEnabled;
+        strategyConfig.m15LongMediumCurrencyStrengthEnabled = this.config.entryConfig.m15LongMediumCurrencyStrengthEnabled;
+        strategyConfig.m1M5AndM1WavePolicyEnabled = true;
+        strategyConfig.m1DirectionCorrectionEnabled = this.config.entryConfig.m1DirectionCorrectionEnabled;
+
         return ExpertAdvisorMtf3In3Factory::create(
-            fromMarketContext, false,
-            this.config.entryConfig.h1W1ConfirmationMode,
-            this.config.entryConfig.h1DirectionAlignmentMode,
-            this.config.entryConfig.h1Ema200ConfirmationMode,
-            this.config.entryConfig.h1DirectionCorrectionEnabled,
-            this.config.entryConfig.m15H4MaxFibonacciExpansionPercent,
-            this.config.entryConfig.m15H1MaxFibonacciExpansionPercent,
-            this.config.entryConfig.h1Mn1AndW1Ema200Required,
-            this.config.entryConfig.h1H4WaveRestrictionEnabled,
-            this.config.entryConfig.m5Mn1AndW1Ema200Required,
-            this.config.entryConfig.m5D1ToM5EntryPolicyEnabled,
-            this.config.entryConfig.m5CurrencyStrengthMinimumRankDifference,
-            this.config.entryConfig.m15CurrencyEma200DistanceEnabled,
-            this.config.entryConfig.m15LongMediumCurrencyStrengthEnabled,
-            true, this.config.entryConfig.m1DirectionCorrectionEnabled
-        );
+            fromMarketContext, strategyConfig);
     }
 
     /**

@@ -19,6 +19,7 @@
 #include <Mstng\Elliot\ElliotAll.mqh>
 #include <Mstng\Elliot\ElliotAllList.mqh>
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Config.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertResult.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertSnapshot.mqh>
@@ -100,13 +101,14 @@ public:
 
         this.symbolName = fromSymbolName;
         MarketContext context(this.symbolName, PERIOD_H1);
+        ExpertAdvisorMtf3In3Config strategyConfig;
+        strategyConfig.isDrawArrow = false;
+        strategyConfig.h1W1ConfirmationMode = fromConfig.h1W1ConfirmationMode;
+        strategyConfig.h1DirectionAlignmentMode = fromConfig.h1DirectionAlignmentMode;
+        strategyConfig.h1Ema200ConfirmationMode = fromConfig.h1Ema200ConfirmationMode;
+
         this.expertAdvisor = ExpertAdvisorMtf3In3Factory::create(
-            context,
-            false,
-            fromConfig.h1W1ConfirmationMode,
-            fromConfig.h1DirectionAlignmentMode,
-            fromConfig.h1Ema200ConfirmationMode
-        );
+            context, strategyConfig);
         this.signalCount = new SignalCount(context);
 
         if (this.expertAdvisor == NULL || this.signalCount == NULL) {

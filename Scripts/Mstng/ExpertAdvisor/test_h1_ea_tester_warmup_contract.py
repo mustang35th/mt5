@@ -443,12 +443,13 @@ class EmaConfigurationWiringTests(unittest.TestCase):
         )
         branches = (
             ("M5", "ExpertAdvisorMtf3In3M5",
-             "fromMarketContext,fromIsDrawArrow,fromM5Mn1AndW1Ema200Required,"
-             "fromM5D1ToM5EntryPolicyEnabled,fromM5CurrencyStrengthMinimumRankDifference"),
+             "fromMarketContext,fromConfig.isDrawArrow,fromConfig.m5Mn1AndW1Ema200Required,"
+             "fromConfig.m5D1ToM5EntryPolicyEnabled,fromConfig.m5CurrencyStrengthMinimumRankDifference"),
             ("M15", "ExpertAdvisorMtf3In3M15",
-             "fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled,"
-             "fromM15H4MaxFibonacciExpansionPercent,fromM15H1MaxFibonacciExpansionPercent,"
-             "fromH1Mn1AndW1Ema200Required,fromH1H4WaveRestrictionEnabled"),
+             "fromMarketContext,fromConfig.isDrawArrow,fromConfig.h1DirectionCorrectionEnabled,"
+             "fromConfig.m15H4MaxFibonacciExpansionPercent,fromConfig.m15H1MaxFibonacciExpansionPercent,"
+             "fromConfig.h1Mn1AndW1Ema200Required,fromConfig.h1H4WaveRestrictionEnabled,"
+             "fromConfig.m15CurrencyEma200DistanceEnabled,fromConfig.m15LongMediumCurrencyStrengthEnabled"),
         )
         for timeframe, class_name, arguments in branches:
             with self.subTest(timeframe=timeframe):
@@ -653,15 +654,17 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
         factory = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh")))
         self.assertIn(
             "if(fromMarketContext.timeFrame==PERIOD_H1){"
-            "returnnewExpertAdvisorMtf3In3H1(fromMarketContext,fromIsDrawArrow,fromH1DirectionCorrectionEnabled,"
-            "fromH1Mn1AndW1Ema200Required,fromH1H4WaveRestrictionEnabled);}", factory,
+            "returnnewExpertAdvisorMtf3In3H1(fromMarketContext,fromConfig.isDrawArrow,fromConfig.h1DirectionCorrectionEnabled,"
+            "fromConfig.h1Mn1AndW1Ema200Required,fromConfig.h1H4WaveRestrictionEnabled);}", factory,
         )
         self.assertIn("boolfromH1DirectionCorrectionEnabled=false", factory)
         self.assertIn("boolfromH1Mn1AndW1Ema200Required=false", factory)
-        self.assertEqual(factory.count("fromH1Mn1AndW1Ema200Required"), 3)
+        self.assertIn("config.h1Mn1AndW1Ema200Required=fromH1Mn1AndW1Ema200Required;", factory)
+        self.assertEqual(factory.count("fromConfig.h1Mn1AndW1Ema200Required"), 2)
         self.assertIn("this.isH4WaveRestrictionEnabled=fromH4WaveRestrictionEnabled;", compact)
         self.assertIn("boolfromH1H4WaveRestrictionEnabled=true", factory)
-        self.assertEqual(factory.count("fromH1H4WaveRestrictionEnabled"), 3)
+        self.assertIn("config.h1H4WaveRestrictionEnabled=fromH1H4WaveRestrictionEnabled;", factory)
+        self.assertEqual(factory.count("fromConfig.h1H4WaveRestrictionEnabled"), 2)
         # The other-timeframe compatibility signature is intentionally retained.
         for argument in ("fromH1W1ConfirmationMode", "fromH1DirectionAlignmentMode", "fromH1Ema200ConfirmationMode"):
             self.assertIn(argument, factory)
@@ -719,9 +722,11 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
         self.assertIn("this.isD1ToM5EntryPolicyEnabled=fromD1ToM5EntryPolicyEnabled;", strategy)
         factory = re.sub(r"\s+", "", code_only(self.read("Include/Mstng/ExpertAdvisor/ExpertAdvisorMtf3In3Factory.mqh")))
         self.assertIn("boolfromM5Mn1AndW1Ema200Required=false", factory)
-        self.assertEqual(factory.count("fromM5Mn1AndW1Ema200Required"), 2)
+        self.assertIn("config.m5Mn1AndW1Ema200Required=fromM5Mn1AndW1Ema200Required;", factory)
+        self.assertEqual(factory.count("fromConfig.m5Mn1AndW1Ema200Required"), 1)
         self.assertIn("boolfromM5D1ToM5EntryPolicyEnabled=false", factory)
-        self.assertEqual(factory.count("fromM5D1ToM5EntryPolicyEnabled"), 2)
+        self.assertIn("config.m5D1ToM5EntryPolicyEnabled=fromM5D1ToM5EntryPolicyEnabled;", factory)
+        self.assertEqual(factory.count("fromConfig.m5D1ToM5EntryPolicyEnabled"), 1)
 
     def test_normal_and_list_normalize_before_factory_and_run_record(self):
         for name in ("Mtf3In3AlertController", "Mtf3In3AlertAllController"):
@@ -735,14 +740,17 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 if name == "Mtf3In3AlertController":
                     self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
                                     initialize.index("ExpertAdvisorMtf3In3Factory::create("))
-                    self.assertRegex(
-                        initialize,
-                        r"ExpertAdvisorMtf3In3Factory::create\([^;]*,\s*this\.config\.h1Mn1AndW1Ema200Required"
-                        r"\s*,\s*this\.config\.h1H4WaveRestrictionEnabled"
-                        r"\s*,\s*this\.config\.m5Mn1AndW1Ema200Required"
-                        r"\s*,\s*this\.config\.m5D1ToM5EntryPolicyEnabled"
-                        r"\s*,\s*this\.config\.m5CurrencyStrengthMinimumRankDifference\s*\);",
-                    )
+                    for field in ("h1Mn1AndW1Ema200Required", "h1H4WaveRestrictionEnabled",
+                                  "m5Mn1AndW1Ema200Required", "m5D1ToM5EntryPolicyEnabled",
+                                  "m5CurrencyStrengthMinimumRankDifference"):
+                        assignment = f"strategyConfig.{field} = this.config.{field};"
+                        self.assertIn(assignment, initialize)
+                        self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
+                                        initialize.index(assignment))
+                        self.assertLess(initialize.index(assignment),
+                                        initialize.index("ExpertAdvisorMtf3In3Factory::create("))
+                    self.assertIn("ExpertAdvisorMtf3In3Factory::create(this.marketContext,strategyConfig)",
+                                  re.sub(r"\s+", "", initialize))
                 else:
                     self.assertLess(initialize.index("this.config.applyH1EntryPolicy();"),
                                     initialize.index("state.initialize(info.symbolName, this.config)"))
