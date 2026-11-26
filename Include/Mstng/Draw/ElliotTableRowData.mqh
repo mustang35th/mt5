@@ -51,6 +51,18 @@ struct ElliotTableRowData {
     /** 活動度が取得済みの場合true。 */
     bool hasPriceMovementActivityRatio;
 
+    /** GMMAのトレンド継続カウント。正は上昇、負は下降。 */
+    int gmmaTrendCount;
+
+    /** GMMAトレンド継続カウントが取得済みの場合true。 */
+    bool hasGmmaTrendCount;
+
+    /** EMA30とEMA60の上下関係の継続カウント。 */
+    int gmmaCrossCount;
+
+    /** GMMAクロス継続カウントが取得済みの場合true。 */
+    bool hasGmmaCrossCount;
+
     /** F・FEの表示選択に使う元波動番号。未記録-1。 */
     int originalWaveIndex;
 
@@ -107,6 +119,10 @@ struct ElliotTableRowData {
         this.priceMovementLevel = -1;
         this.priceMovementActivityRatio = 0.0;
         this.hasPriceMovementActivityRatio = false;
+        this.gmmaTrendCount = 0;
+        this.hasGmmaTrendCount = false;
+        this.gmmaCrossCount = 0;
+        this.hasGmmaCrossCount = false;
         this.originalWaveIndex = -1;
         this.previousMotiveSubElliotIndex = -1;
         this.pointPipsDiff = 0.0;

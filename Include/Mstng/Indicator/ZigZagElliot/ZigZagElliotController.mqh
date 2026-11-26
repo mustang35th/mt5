@@ -13,6 +13,7 @@
 #include <Mstng\Common\UpdateTimingStats.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Draw\ChartMouseMoveSubscription.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthRankDeltaRibbon.mqh>
 #include <Mstng\Draw\DrawElliotPanel.mqh>
 #include <Mstng\Draw\DrawZigZagElliotEntryLines.mqh>
@@ -34,6 +35,50 @@
 #include <Mstng\Util\TimeUtil.mqh>
 #include <Mstng\Util\Util.mqh>
 #include <Mstng\Util\WarmUpSeriesUtil.mqh>
+
+/**
+ * 一つのイベントで発生したパネル更新とチャート再描画を、終了時に順番に反映する。
+ */
+class ZigZagElliotDrawBatch {
+public:
+    /**
+     * パネルの描画要求を保留する。チャート再描画はメンバーのスコープで保留する。
+     *
+     * @param fromPanel 共有パネル。未初期化の場合はNULL。
+     */
+    ZigZagElliotDrawBatch(DrawElliotPanel *fromPanel) {
+        this.panel = fromPanel;
+        if (this.panel != NULL) {
+            this.panel.beginDrawBatch();
+        }
+    }
+
+    /**
+     * 早期returnでもパネルを先に描画し、最後にチャートへ一度だけ反映する。
+     */
+    ~ZigZagElliotDrawBatch() {
+        this.finish();
+    }
+
+    /**
+     * 計測終了前に保留中の描画を反映する。複数回呼ばれても再描画しない。
+     */
+    void finish() {
+        if (this.panel != NULL) {
+            this.panel.endDrawBatch();
+            this.panel = NULL;
+        }
+
+        this.redrawBatch.finish();
+    }
+
+private:
+    /** イベント中だけ参照する共有パネル。 */
+    DrawElliotPanel *panel;
+
+    /** パネルの反映が済むまでチャート再描画を保留する。 */
+    DrawChartRedrawBatch redrawBatch;
+};
 
 /**
  * ZigZagElliotインジケータのライフサイクルと実行順序を管理するクラス。
@@ -89,6 +134,7 @@ public:
         MarketContext &fromMarketContext,
         ZigZagElliotConfig &fromConfig
     ) {
+        DrawChartRedrawBatch redrawBatch;
         this.destroy();
 
         this.marketContext = fromMarketContext;
@@ -278,6 +324,7 @@ public:
             return INIT_FAILED;
         }
 
+        ZigZagElliotDrawBatch drawBatch(this.elliotPanel);
         this.chartController.setElliotPanel(this.elliotPanel);
         if (this.m5ObservationDisplayController != NULL) {
             this.m5ObservationDisplayController.setPanel(this.elliotPanel);
@@ -308,6 +355,7 @@ public:
         const int fromMouseX = 0,
         const int fromMouseY = 0
     ) {
+        ZigZagElliotDrawBatch drawBatch(this.elliotPanel);
         if (fromId == CHARTEVENT_MOUSE_MOVE) {
             if (this.rankDeltaRibbon != NULL) {
                 this.rankDeltaRibbon.handleMouseMove(fromMouseX, fromMouseY, this.rankDeltaBandHistory);
@@ -338,7 +386,7 @@ public:
                 }
 
                 this.elliotPanel.draw();
-                ChartRedraw(0);
+                DrawChartRedrawBatch::request(0);
 
                 return;
             }
@@ -354,7 +402,7 @@ public:
                     this.chartController.syncElliotPanelState();
                 }
 
-                ChartRedraw(0);
+                DrawChartRedrawBatch::request(0);
                 return;
             }
         }
@@ -437,6 +485,7 @@ public:
      */
     int onCalculate(const int fromRatesTotal, const int fromPrevCalculated = 0,
             const datetime fromCurrentBarTime = 0) {
+        ZigZagElliotDrawBatch drawBatch(this.elliotPanel);
         if (this.m5ObservationDisplayController != NULL) {
             this.m5ObservationDisplayController.update();
         }
@@ -491,6 +540,7 @@ public:
      * OnTimerイベントを処理する。
      */
     void onTimer() {
+        ZigZagElliotDrawBatch drawBatch(this.elliotPanel);
         ulong timerStartMicroseconds = GetMicrosecondCount();
         ulong timerEntryTick = GetTickCount64();
 
@@ -530,6 +580,7 @@ public:
                 this.completeRedraw();
             }
 
+            drawBatch.finish();
             this.completeTimerTiming(
                 timerEntryTick, timerStartMicroseconds, labelMicroseconds, false);
 
@@ -544,6 +595,7 @@ public:
         this.chartController.updateTimingStatus(
             this.updateTimingStats, this.timerSeconds, GetTickCount64());
         ulong labelMicroseconds = GetMicrosecondCount() - labelStartMicroseconds;
+        drawBatch.finish();
         this.completeTimerTiming(
             timerEntryTick, timerStartMicroseconds, labelMicroseconds, true);
     }
@@ -1153,7 +1205,7 @@ private:
         if (this.currencyStrengthController != NULL) {
             this.currencyStrengthController.endRedrawBatch(fromForceRedraw);
         } else if (fromForceRedraw) {
-            ChartRedraw(0);
+            DrawChartRedrawBatch::request(0);
         }
 
         if (this.chartController != NULL) {
@@ -1176,6 +1228,10 @@ private:
 
         if (this.m5ObservationDisplayController != NULL) {
             this.m5ObservationDisplayController.redraw();
+        }
+
+        if (this.elliotPanel != NULL) {
+            this.elliotPanel.requestBringToFront();
         }
 
         this.updateElliotPanelLive();
@@ -1223,7 +1279,7 @@ private:
         }
 
         if (this.elliotPanel != NULL) {
-            this.elliotPanel.draw();
+            this.elliotPanel.requestBringToFront();
         }
 
         this.endCurrencyStrengthRedrawBatch(true);
@@ -1315,7 +1371,7 @@ private:
             Constant::PREFIX_FIXED + "ElliotVerticalFitButton"
         );
 
-        ChartRedraw();
+        DrawChartRedrawBatch::request();
     }
 
     /**

@@ -69,6 +69,73 @@ public:
     }
 
     /**
+     * GMMAのTrend・Cross継続本数を符号付きで表示し、取得済みゼロと欠損を区別する。
+     *
+     * @param fromColumn Trendは0、Crossは1。
+     */
+    static string gmmaCellText(const ElliotTableRowData &fromRow, const int fromColumn) {
+        if (fromColumn < 0 || fromColumn > 1) {
+            return "";
+        }
+
+        int count = 0;
+        if (!readGmmaCount(fromRow, fromColumn, count)) {
+            return "?";
+        }
+
+        if (count == 0) {
+            return "0";
+        }
+
+        return StringFormat("%+d", count);
+    }
+
+    /**
+     * GMMA継続本数の符号を、Elliotの方向とは独立した色へ変換する。
+     */
+    static color gmmaCellColor(const ElliotTableRowData &fromRow, const int fromColumn,
+            const ElliotTablePalette &fromPalette) {
+        int count = 0;
+        if (!readGmmaCount(fromRow, fromColumn, count)) {
+            return fromPalette.unknownColor;
+        }
+
+        if (count > 0) {
+            return fromPalette.upColor;
+        }
+
+        if (count < 0) {
+            return fromPalette.downColor;
+        }
+
+        return fromPalette.neutralColor;
+    }
+
+    /**
+     * GMMAの項目名・省略前の本数と、符号が表す継続条件を説明する。
+     */
+    static string gmmaCellTooltip(const ElliotTableRowData &fromRow, const int fromColumn) {
+        if (fromColumn < 0 || fromColumn > 1) {
+            return "";
+        }
+
+        string name = "GMMA Trend";
+        string definition = "EMA30・EMA60の傾きが同方向に続いた本数。\n正：両方上昇 / 負：両方下降 / 0：同方向なし";
+        if (fromColumn == 1) {
+            name = "GMMA Cross";
+            definition = "EMA30とEMA60の位置関係が続いた本数。\n正：EMA30 >= EMA60 / 負：EMA30 < EMA60 / 0：継続なし";
+        }
+
+        string value = gmmaCellText(fromRow, fromColumn);
+        string text = name + "：" + value;
+        if (value == "?") {
+            text += "（未記録・不明）";
+        }
+
+        return text + "\n" + definition;
+    }
+
+    /**
      * Elliotを項目別に表示する10列の短い見出しを返す。
      *
      * @param fromColumn 方向から価格までの列番号。0から9。
@@ -324,6 +391,30 @@ public:
     }
 
 private:
+    /**
+     * 指定したGMMA項目の取得状態を確認し、本数を返す。
+     */
+    static bool readGmmaCount(const ElliotTableRowData &fromRow, const int fromColumn, int &fromCount) {
+        fromCount = 0;
+        if (!fromRow.hasData) {
+            return false;
+        }
+
+        if (fromColumn == 0 && fromRow.hasGmmaTrendCount) {
+            fromCount = fromRow.gmmaTrendCount;
+
+            return true;
+        }
+
+        if (fromColumn == 1 && fromRow.hasGmmaCrossCount) {
+            fromCount = fromRow.gmmaCrossCount;
+
+            return true;
+        }
+
+        return false;
+    }
+
     /**
      * 既存の数値・状態整形を再利用し、未記録表示だけを狭いセル向けに短縮する。
      */

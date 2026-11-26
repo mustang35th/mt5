@@ -13,6 +13,7 @@
 #include <Canvas\Canvas.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Constant\ConstantCurrency.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthExecutionInfo.mqh>
@@ -143,7 +144,7 @@ public:
         }
 
         if (this.redrawBatchDepth == 0 && this.redrawPending) {
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
             this.redrawPending = false;
         }
     }
@@ -636,7 +637,7 @@ private:
             return;
         }
 
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
     }
 
     /**

@@ -74,7 +74,7 @@ public:
     }
 
     /**
-     * 計算済みの最新波動を、チャート表とパネル共通の五列データへ写す。
+     * 計算済みの最新波動とGMMAを、チャート表とパネル共通の表示データへ写す。
      */
     static bool fillTableRow(Elliot &fromElliot, Wave *fromWave, ElliotTableRowData &fromRow) {
         fromRow.clear();
@@ -110,6 +110,10 @@ public:
 
         fromRow.isEma200Buy = (int)fromElliot.oscillator.ema200.isBuy;
         fromRow.isEma200Sell = (int)fromElliot.oscillator.ema200.isSell;
+        fromRow.gmmaTrendCount = fromElliot.oscillator.gmmaTrendCount;
+        fromRow.hasGmmaTrendCount = true;
+        fromRow.gmmaCrossCount = fromElliot.oscillator.gmmaCrossCount;
+        fromRow.hasGmmaCrossCount = true;
         fillPriceMovementRow(fromElliot.oscillator.priceMovement, fromRow);
 
         return true;
@@ -177,8 +181,6 @@ private:
         setCountExtra(fromFrame, 1, "Stoch 短期", fromElliot.oscillator.stochasticShort.count, fromPalette);
         setCountExtra(fromFrame, 2, "Stoch 中期", fromElliot.oscillator.stochasticMiddle.count, fromPalette);
         setCountExtra(fromFrame, 3, "Stoch 長期", fromElliot.oscillator.stochasticLong.count, fromPalette);
-        setCountExtra(fromFrame, 4, "GMMA Trend", fromElliot.oscillator.gmmaTrendCount, fromPalette);
-        setCountExtra(fromFrame, 5, "GMMA Cross", fromElliot.oscillator.gmmaCrossCount, fromPalette);
         string previousLabel = wave.previousLastElliotLabel;
         color previousColor = fromPalette.downColor;
         if (fromElliot.isBuy) {
@@ -191,8 +193,8 @@ private:
             previousColor = fromPalette.neutralColor;
         }
 
-        setExtra(fromFrame, 6, "PLE", previousLabel, previousColor);
-        fromFrame.extraCount = 7;
+        setExtra(fromFrame, 4, "PLE", previousLabel, previousColor);
+        fromFrame.extraCount = 5;
     }
 
     /**

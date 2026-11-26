@@ -269,7 +269,9 @@ private:
         sql += this.optionalColumn(fromFrameColumns, "latest_point_pips_diff", "f.") + ",";
         sql += this.optionalColumn(fromFrameColumns, "latest_point_fibonacci_percent", "f.") + ",";
         sql += this.optionalColumn(fromFrameColumns, "latest_point_fibonacci_expansion_percent", "f.") + ",";
-        sql += this.optionalColumn(fromFrameColumns, "latest_point_jst_time", "f.");
+        sql += this.optionalColumn(fromFrameColumns, "latest_point_jst_time", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "gmma_trend_count", "f.") + ",";
+        sql += this.optionalColumn(fromFrameColumns, "gmma_cross_count", "f.");
         sql += " FROM selected o LEFT JOIN zigzag_elliot_observation_timeframes f ON f.observation_id=o.id ";
         sql += "ORDER BY o.anchor_bar_time,o.id,f.time_frame_order,f.id";
 
@@ -564,6 +566,15 @@ private:
             return false;
         }
 
+        if (!this.readOptionalSignedInteger(fromRequest, 36, fromFrame.gmmaTrendCount,
+                fromFrame.hasGmmaTrendCount)
+                || !this.readOptionalSignedInteger(fromRequest, 37, fromFrame.gmmaCrossCount,
+                    fromFrame.hasGmmaCrossCount)) {
+            fromError = "M5観測のGMMA継続数が不正です。";
+
+            return false;
+        }
+
         return true;
     }
 
@@ -658,6 +669,28 @@ private:
         }
 
         fromValue = (int)value;
+
+        return true;
+    }
+
+    /**
+     * 任意の符号付き整数の有無を分離し、未記録と保存済みのゼロ・負数を区別する。
+     */
+    bool readOptionalSignedInteger(const int fromRequest, const int fromColumn, int &fromValue,
+            bool &fromHasValue) {
+        fromValue = 0;
+        fromHasValue = false;
+        if (DatabaseColumnType(fromRequest, fromColumn) == DATABASE_FIELD_TYPE_NULL) {
+            return true;
+        }
+
+        long value = 0;
+        if (!this.readLongValue(fromRequest, fromColumn, value) || value < INT_MIN || value > INT_MAX) {
+            return false;
+        }
+
+        fromValue = (int)value;
+        fromHasValue = true;
 
         return true;
     }

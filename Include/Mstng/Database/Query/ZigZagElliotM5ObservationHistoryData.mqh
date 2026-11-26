@@ -48,6 +48,18 @@ struct M5ObservationHistoryFrame {
     /** EMA200のSELL判定。SELL1、それ以外0、未記録-1。 */
     int isEma200Sell;
 
+    /** 保存されたGMMAトレンド継続数。 */
+    int gmmaTrendCount;
+
+    /** 保存されたGMMAトレンド継続数が利用可能な場合true。 */
+    bool hasGmmaTrendCount;
+
+    /** 保存されたGMMAクロス継続数。 */
+    int gmmaCrossCount;
+
+    /** 保存されたGMMAクロス継続数が利用可能な場合true。 */
+    bool hasGmmaCrossCount;
+
     /** 値動き判定の取得状態。有効1、判定不能0、未記録-1。 */
     int isPriceMovementValid;
 
@@ -105,6 +117,10 @@ struct M5ObservationHistoryFrame {
         this.hasPointRate = false;
         this.isEma200Buy = -1;
         this.isEma200Sell = -1;
+        this.gmmaTrendCount = 0;
+        this.hasGmmaTrendCount = false;
+        this.gmmaCrossCount = 0;
+        this.hasGmmaCrossCount = false;
         this.isPriceMovementValid = -1;
         this.priceMovementLevel = -1;
         this.priceMovementActivityRatio = 0.0;

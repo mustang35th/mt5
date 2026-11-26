@@ -12,6 +12,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Database\Service\CurrencyStrengthExecutionInfoProvider.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Draw\DrawCurrencyStrengthPairRank.mqh>
 #include <Mstng\Draw\DrawZigZagElliotInfoLayout.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
@@ -177,7 +178,7 @@ public:
         if (this.pairRankDraw != NULL) {
             this.pairRankDraw.endRedrawBatch(fromForceRedraw);
         } else if (fromForceRedraw) {
-            ChartRedraw(0);
+            DrawChartRedrawBatch::request(0);
         }
     }
 

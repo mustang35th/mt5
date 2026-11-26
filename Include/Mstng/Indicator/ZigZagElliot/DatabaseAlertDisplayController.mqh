@@ -4,6 +4,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Constant\Constant.mqh>
 #include <Mstng\Database\Query\ZigZagElliotAlertHistoryReader.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Draw\DrawZigZagElliotAlertMarkers.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryConfig.mqh>
@@ -124,7 +125,7 @@ public:
         }
 
         if (changed) {
-            ChartRedraw();
+            DrawChartRedrawBatch::request();
         }
 
         return succeeded;

@@ -4,6 +4,7 @@
 #include <Mstng\Common\MarketContext.mqh>
 #include <Mstng\Database\Query\ZigZagElliotM5ObservationHistoryReader.mqh>
 #include <Mstng\Draw\ChartMouseMoveSubscription.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Draw\DrawZigZagElliotM5Observations.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDeltaEvaluator.mqh>
@@ -232,7 +233,7 @@ public:
     void redraw() {
         if (this.drawer != NULL) {
             this.drawer.draw(this.records, this.status, this.marketContext.digits);
-            ChartRedraw(0);
+            DrawChartRedrawBatch::request(0);
         }
     }
 
@@ -242,7 +243,7 @@ public:
      */
     void onMouseMove(const int fromX, const int fromY) {
         if (this.drawer != NULL && this.drawer.onMouseMove(fromX, fromY, this.records)) {
-            ChartRedraw(0);
+            DrawChartRedrawBatch::request(0);
         }
     }
 

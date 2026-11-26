@@ -1,6 +1,7 @@
 ﻿#ifndef MSTNG_DRAW_ELLIOT_TABLE_MQH
 #define MSTNG_DRAW_ELLIOT_TABLE_MQH
 
+#include <Mstng\Draw\DrawChartObjectRegistry.mqh>
 #include <Mstng\Draw\ElliotTableFormatter.mqh>
 
 /**
@@ -56,6 +57,18 @@ struct ElliotTableLayout {
     /** Elliot列を10項目に分割して表示する場合true。 */
     bool splitElliot;
 
+    /** GMMAのTrend・Cross列を表示する場合true。 */
+    bool showGmma;
+
+    /** GMMA2列の相対横位置。 */
+    int gmmaColumnXs[2];
+
+    /** GMMA2列の幅。 */
+    int gmmaColumnWidths[2];
+
+    /** 見出し上段のグループ名領域の高さ。0は従来の一段見出し。 */
+    int groupHeaderHeight;
+
     /** 行または見出しの背景色。 */
     color backgroundColor;
 
@@ -71,6 +84,9 @@ struct ElliotTableLayout {
     /** セル文字のクリック優先度。 */
     long textZOrder;
 
+    /** パネルが所有名を管理する場合の描画先。未指定時は従来の表として描画する。 */
+    DrawChartObjectRegistry *objects;
+
     /**
      * 背景なし・省略なしの5列表示で初期化する。
      */
@@ -85,11 +101,14 @@ struct ElliotTableLayout {
         this.showSeparators = false;
         this.clipText = false;
         this.splitElliot = false;
+        this.showGmma = false;
+        this.groupHeaderHeight = 0;
         this.backgroundColor = C'25,31,41';
         this.separatorColor = C'51,61,77';
         this.headerColor = clrWhite;
         this.backgroundZOrder = 20;
         this.textZOrder = 0;
+        this.objects = NULL;
         for (int i = 0; i < 5; i++) {
             this.columnXs[i] = 0;
             this.columnWidths[i] = 0;
@@ -97,6 +116,11 @@ struct ElliotTableLayout {
             this.columnYOffsets[i] = 0;
             this.columnVisible[i] = true;
             this.tooltips[i] = "";
+        }
+
+        for (int i = 0; i < 2; i++) {
+            this.gmmaColumnXs[i] = 0;
+            this.gmmaColumnWidths[i] = 0;
         }
     }
 };
@@ -173,11 +197,24 @@ private:
             }
         }
 
+        if (fromLayout.showGmma) {
+            for (int i = 0; i < 2; i++) {
+                right = MathMax(right, fromLayout.gmmaColumnXs[i] + fromLayout.gmmaColumnWidths[i]);
+            }
+        }
+
+        int groupHeight = 0;
+        if (fromHeader) {
+            groupHeight = MathMax(0, fromLayout.groupHeaderHeight);
+        }
+
+        int height = fromLayout.rowHeight + groupHeight;
+        bool showSeparators = fromLayout.showSeparators || groupHeight > 0;
         bool success = true;
         if (fromLayout.showBackground && right > 0) {
             success = drawRectangle(fromChartId, fromPrefix + "Background", fromLayout.originX,
-                fromLayout.originY, right, fromLayout.rowHeight, fromLayout.backgroundColor,
-                fromLayout.backgroundZOrder);
+                fromLayout.originY, right, height, fromLayout.backgroundColor,
+                fromLayout.backgroundZOrder, fromLayout.objects);
         }
 
         for (int i = 0; i < 5; i++) {
@@ -211,17 +248,84 @@ private:
 
             bool drawn = drawLabel(fromChartId, fromPrefix + ElliotTableFormatter::columnKey(i),
                 text, fromLayout.originX + fromLayout.columnXs[i] + fromLayout.paddingX,
-                fromLayout.originY + fromLayout.columnYOffsets[i] + fromLayout.paddingY,
+                fromLayout.originY + fromLayout.columnYOffsets[i] + fromLayout.paddingY + groupHeight / 2,
                 fromLayout.fontFace, fromLayout.columnFontSizes[i], textColor, tooltip,
-                fromLayout.textZOrder);
+                fromLayout.textZOrder, fromLayout.objects);
             success = drawn && success;
-            if (fromLayout.showSeparators && i != lastColumn) {
+            if (showSeparators && i != lastColumn) {
                 drawn = drawRectangle(fromChartId, fromPrefix + "Line" + IntegerToString(i),
                     fromLayout.originX + fromLayout.columnXs[i] + fromLayout.columnWidths[i] - 1,
-                    fromLayout.originY, 1, fromLayout.rowHeight, fromLayout.separatorColor,
-                    fromLayout.backgroundZOrder);
+                    fromLayout.originY, 1, height, fromLayout.separatorColor,
+                    fromLayout.backgroundZOrder, fromLayout.objects);
                 success = drawn && success;
             }
+        }
+
+        if (fromLayout.showGmma) {
+            bool drawn = drawGmmaCells(fromChartId, fromPrefix, fromRow, fromPalette, fromLayout, fromHeader);
+            success = drawn && success;
+        }
+
+        return success;
+    }
+
+    /**
+     * GMMAの独立したTrend・Cross列と、必要に応じて上段グループ名を描画する。
+     */
+    static bool drawGmmaCells(const long fromChartId, const string fromPrefix,
+            const ElliotTableRowData &fromRow, const ElliotTablePalette &fromPalette,
+            const ElliotTableLayout &fromLayout, const bool fromHeader) {
+        int groupHeight = 0;
+        if (fromHeader) {
+            groupHeight = MathMax(0, fromLayout.groupHeaderHeight);
+        }
+
+        bool showSeparators = fromLayout.showSeparators || groupHeight > 0;
+        bool success = true;
+        string names[] = {"Trend", "Cross"};
+        for (int i = 0; i < 2; i++) {
+            string text = names[i];
+            string tooltip = "GMMA " + names[i];
+            color textColor = fromLayout.headerColor;
+            if (!fromHeader) {
+                text = ElliotTableFormatter::gmmaCellText(fromRow, i);
+                tooltip = ElliotTableFormatter::gmmaCellTooltip(fromRow, i);
+                textColor = ElliotTableFormatter::gmmaCellColor(fromRow, i, fromPalette);
+            }
+
+            if (fromLayout.clipText) {
+                text = fitText(text, fromLayout.gmmaColumnWidths[i] - 2 * fromLayout.paddingX,
+                    fromLayout.fontFace, fromLayout.columnFontSizes[4]);
+            }
+
+            int positionX = fromLayout.originX + fromLayout.gmmaColumnXs[i];
+            bool drawn = drawLabel(fromChartId, fromPrefix + "Gmma" + names[i], text,
+                positionX + fromLayout.paddingX, fromLayout.originY + groupHeight + fromLayout.paddingY,
+                fromLayout.fontFace, fromLayout.columnFontSizes[4], textColor, tooltip,
+                fromLayout.textZOrder, fromLayout.objects);
+            success = drawn && success;
+            if (showSeparators) {
+                int lineTop = fromLayout.originY;
+                int lineHeight = fromLayout.rowHeight + groupHeight;
+                if (i == 0) {
+                    lineTop += groupHeight;
+                    lineHeight = fromLayout.rowHeight;
+                }
+
+                drawn = drawRectangle(fromChartId, fromPrefix + "GmmaLine" + IntegerToString(i),
+                    positionX + fromLayout.gmmaColumnWidths[i] - 1, lineTop, 1, lineHeight,
+                    fromLayout.separatorColor, fromLayout.backgroundZOrder, fromLayout.objects);
+                success = drawn && success;
+            }
+        }
+
+        if (groupHeight > 0) {
+            int left = MathMin(fromLayout.gmmaColumnXs[0], fromLayout.gmmaColumnXs[1]);
+            int right = MathMax(fromLayout.gmmaColumnXs[0] + fromLayout.gmmaColumnWidths[0],
+                fromLayout.gmmaColumnXs[1] + fromLayout.gmmaColumnWidths[1]);
+            bool drawn = drawGroupHeader(fromChartId, fromPrefix + "GroupGmma", "GMMA",
+                fromLayout.originX + left, right - left, fromLayout);
+            success = drawn && success;
         }
 
         return success;
@@ -236,12 +340,26 @@ private:
             const ElliotTablePalette &fromPalette, const ElliotTableLayout &fromLayout,
             const bool fromHeader) {
         int widths[] = {44, 44, 48, 44, 60, 44, 44, 98, 72, 78};
+        int totalWidth = 576;
+        if (fromLayout.showGmma) {
+            totalWidth = 536;
+            for (int i = 0; i < ArraySize(widths); i++) {
+                widths[i] -= 4;
+            }
+        }
+
+        int groupHeight = 0;
+        if (fromHeader) {
+            groupHeight = MathMax(0, fromLayout.groupHeaderHeight);
+        }
+
+        bool showSeparators = fromLayout.showSeparators || groupHeight > 0;
         int position = 0;
         bool success = true;
         for (int i = 0; i < ArraySize(widths); i++) {
-            int left = fromLayout.columnWidths[4] * position / 576;
+            int left = fromLayout.columnWidths[4] * position / totalWidth;
             position += widths[i];
-            int right = fromLayout.columnWidths[4] * position / 576;
+            int right = fromLayout.columnWidths[4] * position / totalWidth;
             int positionX = fromLayout.originX + fromLayout.columnXs[4] + left;
             string key = fromPrefix + "Elliot" + ElliotTableFormatter::elliotColumnKey(i);
             string text = ElliotTableFormatter::elliotColumnName(i);
@@ -259,19 +377,47 @@ private:
             }
 
             bool drawn = drawLabel(fromChartId, key, text, positionX + fromLayout.paddingX,
-                fromLayout.originY + fromLayout.columnYOffsets[4] + fromLayout.paddingY,
+                fromLayout.originY + groupHeight + fromLayout.columnYOffsets[4] + fromLayout.paddingY,
                 fromLayout.fontFace, fromLayout.columnFontSizes[4], textColor, tooltip,
-                fromLayout.textZOrder);
+                fromLayout.textZOrder, fromLayout.objects);
             success = drawn && success;
-            if (fromLayout.showSeparators && i < ArraySize(widths) - 1) {
+            if (showSeparators && i < ArraySize(widths) - 1) {
                 drawn = drawRectangle(fromChartId, fromPrefix + "ElliotLine" + IntegerToString(i),
-                    positionX + right - left - 1, fromLayout.originY, 1, fromLayout.rowHeight,
-                    fromLayout.separatorColor, fromLayout.backgroundZOrder);
+                    positionX + right - left - 1, fromLayout.originY + groupHeight, 1, fromLayout.rowHeight,
+                    fromLayout.separatorColor, fromLayout.backgroundZOrder, fromLayout.objects);
                 success = drawn && success;
             }
         }
 
+        if (groupHeight > 0) {
+            bool drawn = drawGroupHeader(fromChartId, fromPrefix + "GroupElliot", "Elliot",
+                fromLayout.originX + fromLayout.columnXs[4], fromLayout.columnWidths[4], fromLayout);
+            success = drawn && success;
+        }
+
         return success;
+    }
+
+    /**
+     * グループ名を上段の中央に置き、その下だけを水平線で区切る。
+     */
+    static bool drawGroupHeader(const long fromChartId, const string fromName, const string fromText,
+            const int fromX, const int fromWidth, const ElliotTableLayout &fromLayout) {
+        string text = fitText(fromText, fromWidth - 2 * fromLayout.paddingX,
+            fromLayout.fontFace, fromLayout.columnFontSizes[4]);
+        bool drawn = drawLabel(fromChartId, fromName, text, fromX + fromWidth / 2,
+            fromLayout.originY + 1, fromLayout.fontFace, fromLayout.columnFontSizes[4],
+            fromLayout.headerColor, fromText, fromLayout.textZOrder, fromLayout.objects);
+        bool success = drawn;
+        if (drawn && StringLen(text) > 0) {
+            success = ObjectSetInteger(fromChartId, fromName, OBJPROP_ANCHOR, ANCHOR_UPPER);
+        }
+
+        drawn = drawRectangle(fromChartId, fromName + "Line", fromX,
+            fromLayout.originY + fromLayout.groupHeaderHeight - 1, fromWidth, 1,
+            fromLayout.separatorColor, fromLayout.backgroundZOrder, fromLayout.objects);
+
+        return drawn && success;
     }
 
     /**
@@ -279,8 +425,25 @@ private:
      */
     static bool drawLabel(const long fromChartId, const string fromName, const string fromText,
             const int fromX, const int fromY, const string fromFontFace, const int fromSize,
-            const color fromColor, const string fromTooltip, const long fromZOrder) {
-        if (ObjectFind(fromChartId, fromName) < 0
+            const color fromColor, const string fromTooltip, const long fromZOrder,
+            DrawChartObjectRegistry *fromObjects = NULL) {
+        if (StringLen(fromText) == 0) {
+            if (fromObjects != NULL) {
+                return true;
+            }
+
+            if (ObjectFind(fromChartId, fromName) >= 0) {
+                return ObjectDelete(fromChartId, fromName);
+            }
+
+            return true;
+        }
+
+        if (fromObjects != NULL) {
+            if (!fromObjects.ensure(fromName, OBJ_LABEL)) {
+                return false;
+            }
+        } else if (ObjectFind(fromChartId, fromName) < 0
                 && !ObjectCreate(fromChartId, fromName, OBJ_LABEL, 0, 0, 0)) {
             return false;
         }
@@ -305,8 +468,12 @@ private:
      */
     static bool drawRectangle(const long fromChartId, const string fromName, const int fromX,
             const int fromY, const int fromWidth, const int fromHeight, const color fromColor,
-            const long fromZOrder) {
-        if (ObjectFind(fromChartId, fromName) < 0
+            const long fromZOrder, DrawChartObjectRegistry *fromObjects = NULL) {
+        if (fromObjects != NULL) {
+            if (!fromObjects.ensure(fromName, OBJ_RECTANGLE_LABEL)) {
+                return false;
+            }
+        } else if (ObjectFind(fromChartId, fromName) < 0
                 && !ObjectCreate(fromChartId, fromName, OBJ_RECTANGLE_LABEL, 0, 0, 0)) {
             return false;
         }

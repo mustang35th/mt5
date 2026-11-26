@@ -28,6 +28,15 @@ public:
     DrawElliotPanel(const long fromChartId, const string fromPrefix) {
         this.chartId = fromChartId;
         this.prefix = fromPrefix;
+        this.objectPrefix = fromPrefix;
+        this.objects = new DrawChartObjectRegistry();
+        this.previousObjects = NULL;
+        this.previousObjectPrefix = "";
+        this.drawBatchDepth = 0;
+        this.drawPending = false;
+        this.frontPending = false;
+        this.previousPanelWidth = 0;
+        this.previousPanelHeight = 0;
         this.visible = true;
         this.expanded = false;
         this.savedMode = false;
@@ -44,6 +53,9 @@ public:
      */
     ~DrawElliotPanel() {
         this.clear();
+        if (this.objects != NULL) {
+            delete this.objects;
+        }
     }
 
     /**
@@ -143,6 +155,43 @@ public:
     int getSelectedTimeFrame() { return this.selectedTimeFrame; }
 
     /**
+     * 現在表示中の世代に使うオブジェクト接頭辞を返す。
+     */
+    string getObjectPrefix() { return this.objectPrefix; }
+
+    /**
+     * 複数の更新要求を一回の描画へまとめる。
+     */
+    void beginDrawBatch() {
+        this.drawBatchDepth++;
+    }
+
+    /**
+     * 最外の更新区間を抜けた時だけ保留した描画を反映する。
+     */
+    bool endDrawBatch() {
+        if (this.drawBatchDepth <= 0) {
+            return true;
+        }
+
+        this.drawBatchDepth--;
+        if (this.drawBatchDepth == 0 && this.drawPending) {
+            return this.draw();
+        }
+
+        return true;
+    }
+
+    /**
+     * 後から作成されたチャート要素より手前へ、完成した次世代を配置する。
+     */
+    bool requestBringToFront() {
+        this.frontPending = true;
+
+        return this.draw();
+    }
+
+    /**
      * パネルの背後にある目印のホバーを抑止する。
      */
     bool containsPoint(const int fromX, const int fromY) {
@@ -155,10 +204,19 @@ public:
      * 描画オブジェクトだけを消す。キャッシュと操作状態は維持する。
      */
     void clear() {
-        if (StringLen(this.prefix) > 0) {
-            ObjectsDeleteAll(this.chartId, this.prefix, 0, -1);
+        if (this.objects != NULL) {
+            this.objects.clear();
+        }
+        if (this.previousObjects != NULL) {
+            this.previousObjects.clear();
+            delete this.previousObjects;
+            this.previousObjects = NULL;
         }
 
+        this.objectPrefix = this.prefix;
+        this.previousObjectPrefix = "";
+        this.drawPending = false;
+        this.frontPending = false;
         this.panelWidth = 0;
         this.panelHeight = 0;
     }
@@ -167,8 +225,16 @@ public:
      * 枠・操作・一覧・項目別詳細・通貨強弱を同じレイアウトで描画する。
      */
     bool draw() {
-        this.clear();
+        if (this.drawBatchDepth > 0) {
+            this.drawPending = true;
+
+            return true;
+        }
+
+        this.drawPending = false;
         if (!this.visible || StringLen(this.prefix) == 0) {
+            this.clear();
+
             return true;
         }
 
@@ -177,6 +243,8 @@ public:
             data = this.savedData;
         }
 
+        this.previousPanelWidth = this.panelWidth;
+        this.previousPanelHeight = this.panelHeight;
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS, 0);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
         this.panelLeft = 12;
@@ -184,7 +252,7 @@ public:
         this.panelWidth = MathMin(960, chartWidth - 24);
         int availableHeight = chartHeight - 24;
         if (this.panelWidth < 160 || availableHeight < 80) {
-            this.panelWidth = 0;
+            this.clear();
 
             return false;
         }
@@ -197,6 +265,7 @@ public:
         }
 
         int rowHeight = 24;
+        int tableGroupHeaderHeight = 20;
         int detailRowHeight = 22;
         int detailColumns = 3;
         if (this.panelWidth < 960) {
@@ -214,7 +283,7 @@ public:
             detailHeight += 20 + extraRows * detailRowHeight;
         }
 
-        int listHeight = headerHeight + (rowCount + 1) * rowHeight + 26;
+        int listHeight = headerHeight + tableGroupHeaderHeight + (rowCount + 1) * rowHeight + 26;
         if (this.expanded && listHeight + detailHeight > availableHeight) {
             rowHeight = 20;
             detailRowHeight = 18;
@@ -223,7 +292,7 @@ public:
                 detailHeight += 20 + extraRows * detailRowHeight;
             }
 
-            listHeight = headerHeight + (rowCount + 1) * rowHeight + 26;
+            listHeight = headerHeight + tableGroupHeaderHeight + (rowCount + 1) * rowHeight + 26;
         }
 
         bool showDetails = this.expanded && selectedIndex >= 0
@@ -234,6 +303,16 @@ public:
         }
 
         this.panelHeight = MathMin(availableHeight, MathMax(140, desiredHeight));
+        int requiredListHeight = headerHeight + tableGroupHeaderHeight + (rowCount + 1) * rowHeight + 24;
+        bool showTable = rowCount > 0 && this.panelWidth >= 640 && requiredListHeight <= this.panelHeight;
+        if (!this.prepareObjects(data, rowCount, showTable)) {
+            this.panelWidth = this.previousPanelWidth;
+            this.panelHeight = this.previousPanelHeight;
+            this.drawPending = true;
+
+            return false;
+        }
+
         this.drawingSucceeded = true;
         this.drawBackground("Background", this.panelLeft, this.panelTop,
             this.panelWidth, this.panelHeight, C'25,31,41', 30);
@@ -247,21 +326,20 @@ public:
             this.drawText("Empty", message, this.panelLeft + 12, this.panelTop + headerHeight + 6,
                 this.panelWidth - 24, 11, clrSilver);
 
-            return this.drawingSucceeded;
+            return this.completeDraw();
         }
 
         int tableTop = this.panelTop + headerHeight;
-        int requiredListHeight = headerHeight + (rowCount + 1) * rowHeight + 24;
-        if (this.panelWidth < 640 || requiredListHeight > this.panelHeight) {
+        if (!showTable) {
             this.drawText("Small", "一覧を見るにはチャートを広げてください。",
                 this.panelLeft + 12, tableTop + 6, this.panelWidth - 24, 11, clrSilver);
 
-            return this.drawingSucceeded;
+            return this.completeDraw();
         }
 
-        this.drawTable(data, rowCount, tableTop, rowHeight);
+        this.drawTable(data, rowCount, tableTop, rowHeight, tableGroupHeaderHeight);
         if (showDetails) {
-            int detailTop = tableTop + (rowCount + 1) * rowHeight + 8;
+            int detailTop = tableTop + tableGroupHeaderHeight + (rowCount + 1) * rowHeight + 8;
             this.drawDetails(data.frames[selectedIndex], data.digits, detailTop,
                 detailColumns, detailRowHeight);
             int strengthTop = detailTop + 24 + (12 / detailColumns) * detailRowHeight;
@@ -282,43 +360,43 @@ public:
         this.drawText("Hint", hint, this.panelLeft + 12,
             this.panelTop + this.panelHeight - 20, this.panelWidth - 24, 9, clrSilver);
 
-        return this.drawingSucceeded;
+        return this.completeDraw();
     }
 
     /**
      * 自分の操作を処理し、保存の前後移動だけを呼び出し側へ返す。
      */
     ENUM_ELLIOT_PANEL_ACTION onObjectClick(const string fromName) {
-        if (!this.visible || StringLen(this.prefix) == 0 || StringFind(fromName, this.prefix) != 0) {
+        if (!this.visible || StringLen(this.objectPrefix) == 0 || StringFind(fromName, this.objectPrefix) != 0) {
             return ELLIOT_PANEL_ACTION_NONE;
         }
 
-        if (fromName == this.prefix + "Close") {
+        if (fromName == this.objectPrefix + "Close") {
             this.visible = false;
             this.clear();
 
             return ELLIOT_PANEL_ACTION_CLOSED;
         }
 
-        if (fromName == this.prefix + "Live") {
+        if (fromName == this.objectPrefix + "Live") {
             this.showLive();
 
             return ELLIOT_PANEL_ACTION_HANDLED;
         }
 
-        if (fromName == this.prefix + "Expand") {
+        if (fromName == this.objectPrefix + "Expand") {
             this.expanded = !this.expanded;
             this.draw();
 
             return ELLIOT_PANEL_ACTION_HANDLED;
         }
 
-        if (fromName == this.prefix + "Previous" || fromName == this.prefix + "Next") {
+        if (fromName == this.objectPrefix + "Previous" || fromName == this.objectPrefix + "Next") {
             ObjectSetInteger(this.chartId, fromName, OBJPROP_STATE, false);
-            if (this.savedMode && fromName == this.prefix + "Previous" && this.savedData.canPrevious) {
+            if (this.savedMode && fromName == this.objectPrefix + "Previous" && this.savedData.canPrevious) {
                 return ELLIOT_PANEL_ACTION_PREVIOUS;
             }
-            if (this.savedMode && fromName == this.prefix + "Next" && this.savedData.canNext) {
+            if (this.savedMode && fromName == this.objectPrefix + "Next" && this.savedData.canNext) {
                 return ELLIOT_PANEL_ACTION_NEXT;
             }
 
@@ -332,7 +410,7 @@ public:
 
         int rowCount = MathMax(0, MathMin(8, data.rowCount));
         for (int i = 0; i < rowCount; i++) {
-            string rowPrefix = this.prefix + "Row" + IntegerToString(data.frames[i].timeFrame) + "-";
+            string rowPrefix = this.objectPrefix + "Row" + IntegerToString(data.frames[i].timeFrame) + "-";
             if (StringFind(fromName, rowPrefix) == 0) {
                 this.selectedTimeFrame = data.frames[i].timeFrame;
                 this.expanded = true;
@@ -351,6 +429,33 @@ private:
 
     /** このパネルだけが所有する接頭辞。 */
     string prefix;
+
+    /** 現在描画する世代の接頭辞。 */
+    string objectPrefix;
+
+    /** 現在の世代が所有する描画要素。 */
+    DrawChartObjectRegistry *objects;
+
+    /** 新世代が完成するまで保持する旧世代。 */
+    DrawChartObjectRegistry *previousObjects;
+
+    /** 新世代の作成に失敗した場合に戻す接頭辞。 */
+    string previousObjectPrefix;
+
+    /** 描画を保留する更新区間の深さ。 */
+    int drawBatchDepth;
+
+    /** 更新区間の終了時に描画する場合true。 */
+    bool drawPending;
+
+    /** 新しい世代で前面へ配置する場合true。 */
+    bool frontPending;
+
+    /** 新世代の作成に失敗した場合に戻す表示幅。 */
+    int previousPanelWidth;
+
+    /** 新世代の作成に失敗した場合に戻す表示高さ。 */
+    int previousPanelHeight;
 
     /** 最新の分析結果の表示用キャッシュ。 */
     ElliotPanelData liveData;
@@ -384,6 +489,90 @@ private:
 
     /** 今回の描画で全オブジェクトを作成できた場合true。 */
     bool drawingSucceeded;
+
+    /**
+     * 背景を追加する時と前面化する時だけ、旧表示を残して次世代を準備する。
+     */
+    bool prepareObjects(const ElliotPanelData &fromData, const int fromRowCount, const bool fromShowTable) {
+        if (this.objects == NULL) {
+            this.objects = new DrawChartObjectRegistry();
+            if (this.objects == NULL) {
+                return false;
+            }
+        }
+
+        bool replace = false;
+        if (!this.objects.isEmpty()) {
+            replace = this.frontPending || ObjectFind(this.chartId, this.objectPrefix + "Background") < 0;
+            if (!replace && fromShowTable) {
+                replace = ObjectFind(this.chartId, this.objectPrefix + "HeaderBackground") < 0;
+                for (int i = 0; i < fromRowCount && !replace; i++) {
+                    string name = this.objectPrefix + "Row" + IntegerToString(fromData.frames[i].timeFrame)
+                        + "-Background";
+                    replace = ObjectFind(this.chartId, name) < 0;
+                }
+            }
+        }
+
+        if (replace) {
+            DrawChartObjectRegistry *replacement = new DrawChartObjectRegistry();
+            if (replacement == NULL) {
+                return false;
+            }
+
+            this.previousObjects = this.objects;
+            this.previousObjectPrefix = this.objectPrefix;
+            this.objects = replacement;
+            this.objectPrefix = this.prefix + "L1-";
+            if (this.previousObjectPrefix == this.objectPrefix) {
+                this.objectPrefix = this.prefix + "L0-";
+            }
+        }
+
+        this.objects.begin(this.chartId, replace);
+
+        return true;
+    }
+
+    /**
+     * 不要な要素だけを回収し、完成した新世代がある場合だけ旧世代を解放する。
+     */
+    bool completeDraw() {
+        bool success = this.drawingSucceeded;
+        if (success) {
+            success = this.objects.finish();
+        }
+
+        if (this.previousObjects != NULL) {
+            if (success) {
+                success = this.objects.show();
+            }
+            if (success) {
+                this.previousObjects.clear();
+                delete this.previousObjects;
+                this.previousObjects = NULL;
+                this.previousObjectPrefix = "";
+            } else {
+                this.objects.clear();
+                delete this.objects;
+                this.objects = this.previousObjects;
+                this.previousObjects = NULL;
+                this.objectPrefix = this.previousObjectPrefix;
+                this.previousObjectPrefix = "";
+                this.panelWidth = this.previousPanelWidth;
+                this.panelHeight = this.previousPanelHeight;
+                this.frontPending = true;
+            }
+        }
+
+        if (success) {
+            this.frontPending = false;
+        } else {
+            this.drawPending = true;
+        }
+
+        return success;
+    }
 
     /**
      * 切替先に同じ時間足がなければM5、さらに無ければ最後の行を選択する。
@@ -467,27 +656,34 @@ private:
     }
 
     /**
-     * 可変行数の一覧を共通表描画へ渡し、幅に余裕がある場合はElliot列を項目別に表示する。
+     * GMMA付きの一覧を2段見出しで描画し、幅に余裕がある場合はElliot列を項目別に表示する。
      */
     void drawTable(const ElliotPanelData &fromData, const int fromRowCount,
-            const int fromTop, const int fromRowHeight) {
+            const int fromTop, const int fromRowHeight, const int fromGroupHeaderHeight) {
         ElliotTableLayout layout;
+        layout.objects = this.objects;
         layout.originX = this.panelLeft + 12;
         layout.originY = fromTop;
-        layout.paddingX = 6;
+        layout.paddingX = 3;
         layout.paddingY = 3;
         layout.rowHeight = fromRowHeight;
         layout.showBackground = true;
         layout.showSeparators = false;
         layout.clipText = true;
         layout.splitElliot = this.panelWidth >= 960;
+        layout.showGmma = true;
+        layout.groupHeaderHeight = fromGroupHeaderHeight;
         layout.headerColor = clrWhiteSmoke;
         layout.backgroundColor = C'38,47,62';
         layout.backgroundZOrder = 31;
         layout.textZOrder = 32;
-        int widths[] = {80, 80, 80, 120, this.panelWidth - 384};
+        int widths[] = {64, 64, 64, 96, this.panelWidth - 424};
         int positionX = 0;
         for (int i = 0; i < 5; i++) {
+            if (i == 4) {
+                positionX += 112;
+            }
+
             layout.columnXs[i] = positionX;
             layout.columnWidths[i] = widths[i];
             layout.columnFontSizes[i] = 11;
@@ -498,11 +694,16 @@ private:
             positionX += widths[i];
         }
 
-        bool drawn = DrawElliotTable::drawHeader(this.chartId, this.prefix + "Header", layout);
+        layout.gmmaColumnXs[0] = layout.columnXs[3] + layout.columnWidths[3];
+        layout.gmmaColumnWidths[0] = 56;
+        layout.gmmaColumnXs[1] = layout.gmmaColumnXs[0] + layout.gmmaColumnWidths[0];
+        layout.gmmaColumnWidths[1] = 56;
+
+        bool drawn = DrawElliotTable::drawHeader(this.chartId, this.objectPrefix + "Header", layout);
         this.drawingSucceeded = drawn && this.drawingSucceeded;
         layout.showSeparators = true;
         for (int i = 0; i < fromRowCount; i++) {
-            layout.originY = fromTop + (i + 1) * fromRowHeight;
+            layout.originY = fromTop + fromGroupHeaderHeight + (i + 1) * fromRowHeight;
             layout.backgroundColor = C'25,31,41';
             if (i % 2 == 1) {
                 layout.backgroundColor = C'31,38,49';
@@ -511,7 +712,7 @@ private:
                 layout.backgroundColor = C'42,59,83';
             }
 
-            string rowPrefix = this.prefix + "Row" + IntegerToString(fromData.frames[i].timeFrame) + "-";
+            string rowPrefix = this.objectPrefix + "Row" + IntegerToString(fromData.frames[i].timeFrame) + "-";
             layout.tooltips[3] = fromData.frames[i].movementTooltip;
             drawn = DrawElliotTable::drawRow(this.chartId, rowPrefix, fromData.frames[i].row,
                 fromData.digits, fromData.palette, layout);
@@ -761,8 +962,8 @@ private:
             return;
         }
 
-        string name = this.prefix + fromKey;
-        if (!ObjectCreate(this.chartId, name, OBJ_LABEL, 0, 0, 0)) {
+        string name = this.objectPrefix + fromKey;
+        if (!this.objects.ensure(name, OBJ_LABEL)) {
             this.drawingSucceeded = false;
             return;
         }
@@ -796,8 +997,8 @@ private:
      */
     void drawBackground(const string fromKey, const int fromX, const int fromY, const int fromWidth,
             const int fromHeight, const color fromColor, const long fromZOrder) {
-        string name = this.prefix + fromKey;
-        if (!ObjectCreate(this.chartId, name, OBJ_RECTANGLE_LABEL, 0, 0, 0)) {
+        string name = this.objectPrefix + fromKey;
+        if (!this.objects.ensure(name, OBJ_RECTANGLE_LABEL)) {
             this.drawingSucceeded = false;
             return;
         }
@@ -823,8 +1024,8 @@ private:
      */
     void drawButton(const string fromKey, const string fromText, const string fromTooltip,
             const int fromX, const int fromY, const int fromWidth, const bool fromEnabled) {
-        string name = this.prefix + fromKey;
-        if (!ObjectCreate(this.chartId, name, OBJ_BUTTON, 0, 0, 0)) {
+        string name = this.objectPrefix + fromKey;
+        if (!this.objects.ensure(name, OBJ_BUTTON)) {
             this.drawingSucceeded = false;
             return;
         }

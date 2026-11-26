@@ -11,6 +11,7 @@ import unittest
 from test_m5_observation_history_reader import (
     ROOT, block_end, code_only, method, run_csharp, table_fixture, extracted_methods,
     table_layout_fixture, frame_fixture, strength_fixture, DRAWER,
+    registry_fixture,
 )
 
 
@@ -23,6 +24,8 @@ def syntax(source):
     source = re.sub(r"\b(datetime|color|ENUM_ELLIOT_PANEL_ACTION|ENUM_TIMEFRAMES)\b",
                     lambda match: "long" if match[1] == "datetime" else "int", source)
     source = source.replace("::", ".").replace("NULL", "null")
+    source = re.sub(r"\bDrawChartObjectRegistry\s*\*", "DrawChartObjectRegistry ", source)
+    source = re.sub(r"\bdelete\s+(this\.\w+)\s*;", r"\1 = null;", source)
     source = re.sub(r"\b(\w+)\s*&\s*(\w+)", r"\1 \2", source)
     source = re.sub(r"\b(\w+)\s+(\w+)\[\]\s*=\s*\{", r"\1[] \2 = new \1[] {", source)
     source = re.sub(r"\b(string|int|double|bool|long|Elliot\w+|M5\w+)\s+(\w+)\[\]", r"\1[] \2", source)
@@ -34,6 +37,29 @@ def syntax(source):
     source = re.sub(r"TextGetSize\(([^,]+),\s*(\w+),\s*(\w+)\)",
                     r"TextGetSize(\1, out \2, out \3)", source)
     return source
+
+
+def scoped_class_fixture(source, name):
+    """Keep scope batching logic; map MQL automatic destruction to IDisposable."""
+    opening = re.search(r"\bclass " + name + r"\s*\{", source).end() - 1
+    body = source[opening + 1:block_end(code_only(source), opening)]
+    body = re.sub(r"\b(?:public|protected|private)\s*:", "", body)
+    body = re.sub(r"~" + name + r"\s*\(\)", "void Dispose()", body)
+    body = re.sub(r"\bDrawElliotPanel\s*\*", "DrawElliotPanel ", body)
+    body = re.sub(r"\bDrawChartRedrawBatch\s+(\w+)\s*;",
+                  r"DrawChartRedrawBatch \1 = new DrawChartRedrawBatch();", body)
+    body = syntax(body)
+    body = re.sub(r"^(\s{4})(?=(?:static\s+)?(?:bool|void|string|int|long|" + name + r")\b[^\n;=]*\()",
+                  r"\1public ", body, flags=re.M)
+    for kind, field, value in re.findall(r"\b(long|int|bool)\s+" + name + r"::(\w+)\s*=\s*([^;]+);", source):
+        body = re.sub(r"\bstatic " + kind + " " + field + ";",
+                      "static " + kind + " " + field + "=" + value + ";", body)
+    return "public class " + name + " : MqlApi, IDisposable {\n" + body + "\n}\n"
+
+
+def redraw_batch_fixture():
+    source = (DRAW / "DrawChartRedrawBatch.mqh").read_text(encoding="utf-8-sig")
+    return scoped_class_fixture(source, "DrawChartRedrawBatch")
 
 
 def panel_data_fixture():
@@ -68,49 +94,98 @@ public class MqlApi {
     public const int clrSilver=1,clrWhite=2,clrAqua=3,clrHotPink=4,clrDodgerBlue=5,clrMagenta=6,
         clrDeepSkyBlue=7,clrPlum=8,clrSlateGray=9,clrWhiteSmoke=10,clrGray=11,clrGold=12;
     public const int OBJ_LABEL=1,OBJ_RECTANGLE_LABEL=2,OBJ_BUTTON=3,CORNER_LEFT_UPPER=0,
-        ANCHOR_LEFT_UPPER=0,BORDER_FLAT=0;
+        ANCHOR_LEFT_UPPER=0,ANCHOR_UPPER=1,BORDER_FLAT=0;
     public const int OBJPROP_CORNER=1,OBJPROP_ANCHOR=2,OBJPROP_XDISTANCE=3,OBJPROP_YDISTANCE=4,
         OBJPROP_COLOR=5,OBJPROP_FONTSIZE=6,OBJPROP_BACK=7,OBJPROP_SELECTABLE=8,OBJPROP_HIDDEN=9,
         OBJPROP_ZORDER=10,OBJPROP_FONT=11,OBJPROP_TEXT=12,OBJPROP_TOOLTIP=13,OBJPROP_XSIZE=14,
         OBJPROP_YSIZE=15,OBJPROP_BGCOLOR=16,OBJPROP_BORDER_TYPE=17,OBJPROP_SELECTED=18,
-        OBJPROP_STATE=19,OBJPROP_BORDER_COLOR=20;
+        OBJPROP_STATE=19,OBJPROP_BORDER_COLOR=20,OBJPROP_TIMEFRAMES=21;
+    public const long OBJ_NO_PERIODS=0,OBJ_ALL_PERIODS=-1;
     public const int CHART_WIDTH_IN_PIXELS=1,CHART_HEIGHT_IN_PIXELS=2;
     public static int Width=1400,Height=800;
+    public static long ChartID() { return 42; }
     public class ChartObject {
         public int kind;
+        public long paintOrder;
+        public bool visible=true;
         public Dictionary<int,long> numbers=new Dictionary<int,long>();
         public Dictionary<int,string> texts=new Dictionary<int,string>();
     }
     public static Dictionary<string,ChartObject> Objects=new Dictionary<string,ChartObject>();
-    public static string FailName="";
+    public static string FailName="",FailSuffix="";
+    public static int CreateCalls,CreatedCount,DeleteCalls,DeletedCount,BulkDeleteCalls,SetIntegerCalls,SetStringCalls,RedrawCalls,DrawPasses,DrawPassesAtRedraw;
+    public static List<string> Events=new List<string>();
+    static long nextPaintOrder;
+    public static void ResetCounts() {
+        CreateCalls=CreatedCount=DeleteCalls=DeletedCount=BulkDeleteCalls=SetIntegerCalls=SetStringCalls=RedrawCalls=0;
+        DrawPasses=DrawPassesAtRedraw=0;Events.Clear();
+    }
     public static long ChartGetInteger(long chart,int property,int subwindow=0) {
         return property==CHART_WIDTH_IN_PIXELS ? Width : Height;
     }
     public static int ObjectFind(long chart,string name) { return Objects.ContainsKey(name) ? 0 : -1; }
     public static bool ObjectCreate(long chart,string name,int kind,int subwindow,long time,double price) {
-        if(name==FailName) return false;
-        if(!Objects.ContainsKey(name)) Objects.Add(name,new ChartObject { kind=kind });
+        CreateCalls++;
+        if(name==FailName || (FailSuffix.Length>0 && name.EndsWith(FailSuffix,StringComparison.Ordinal))) return false;
+        if(!Objects.ContainsKey(name)) { Objects.Add(name,new ChartObject { kind=kind,paintOrder=++nextPaintOrder });CreatedCount++;Events.Add("create:"+name); }
         return true;
     }
     public static bool ObjectSetInteger(long chart,string name,int property,long value) {
-        if(!Objects.ContainsKey(name)) return false;Objects[name].numbers[property]=value;return true;
+        SetIntegerCalls++;
+        if(property==OBJPROP_TIMEFRAMES) Events.Add((value==OBJ_NO_PERIODS ? "hide:" : "show:")+name);
+        if(!Objects.ContainsKey(name)) return false;
+        ChartObject item=Objects[name];
+        if(property==OBJPROP_TIMEFRAMES) {
+            bool visible=value!=OBJ_NO_PERIODS;
+            // MT5 reintroduces a hidden object into the paint order when it
+            // becomes visible; click priority (ZORDER) does not prevent cover.
+            if(visible && !item.visible) item.paintOrder=++nextPaintOrder;
+            item.visible=visible;
+        }
+        item.numbers[property]=value;return true;
     }
     public static bool ObjectSetInteger(long chart,string name,int property,bool value) {
         return ObjectSetInteger(chart,name,property,value ? 1L : 0L);
     }
     public static bool ObjectSetString(long chart,string name,int property,string value) {
+        SetStringCalls++;
         if(!Objects.ContainsKey(name)) return false;Objects[name].texts[property]=value;return true;
     }
     public static int ObjectsDeleteAll(long chart,string prefix,int subwindow=0,int type=-1) {
+        BulkDeleteCalls++;
         string[] names=Objects.Keys.Where(value=>value.StartsWith(prefix,StringComparison.Ordinal)).ToArray();
-        foreach(string name in names) Objects.Remove(name);return names.Length;
+        foreach(string name in names) Objects.Remove(name);DeletedCount+=names.Length;return names.Length;
     }
-    public static bool ObjectDelete(long chart,string name) { return Objects.Remove(name); }
-    public static void ChartRedraw(long chart=0) {}
+    public static bool ObjectDelete(long chart,string name) {
+        DeleteCalls++;bool removed=Objects.Remove(name);if(removed) { DeletedCount++;Events.Add("delete:"+name); }return removed;
+    }
+    public static void ChartRedraw(long chart=0) { RedrawCalls++;DrawPassesAtRedraw=DrawPasses;Events.Add("redraw"); }
+    public static string[] CoveredTextNames(string prefix) {
+        List<string> covered=new List<string>();
+        foreach(KeyValuePair<string,ChartObject> pair in Objects) {
+            ChartObject item=pair.Value;
+            if(!pair.Key.StartsWith(prefix,StringComparison.Ordinal) || !item.visible || (item.kind!=OBJ_LABEL && item.kind!=OBJ_BUTTON)) continue;
+            long x=item.numbers[OBJPROP_XDISTANCE],y=item.numbers[OBJPROP_YDISTANCE];
+            if(item.kind==OBJ_BUTTON) { x+=item.numbers[OBJPROP_XSIZE]/2;y+=item.numbers[OBJPROP_YSIZE]/2; }
+            else {
+                if(item.numbers[OBJPROP_ANCHOR]!=ANCHOR_UPPER) x+=StringLen(item.texts[OBJPROP_TEXT])*4;
+                y+=6;
+            }
+            foreach(ChartObject rectangle in Objects.Values) {
+                if(!rectangle.visible || rectangle.kind!=OBJ_RECTANGLE_LABEL || rectangle.paintOrder<=item.paintOrder) continue;
+                long left=rectangle.numbers[OBJPROP_XDISTANCE],top=rectangle.numbers[OBJPROP_YDISTANCE];
+                long width=rectangle.numbers[OBJPROP_XSIZE],height=rectangle.numbers[OBJPROP_YSIZE];
+                if(width>2 && height>2 && x>=left && x<left+width && y>=top && y<top+height) { covered.Add(pair.Key);break; }
+            }
+        }
+        return covered.ToArray();
+    }
     public static int MathMin(int first,int second) { return Math.Min(first,second); }
     public static int MathMax(int first,int second) { return Math.Max(first,second); }
     public static double MathMax(double first,double second) { return Math.Max(first,second); }
     public static int ArraySize<T>(T[] values) { return values.Length; }
+    public static int ArrayResize<T>(ref T[] values,int length) { Array.Resize(ref values,length);return length; }
+    public static void ArrayFree<T>(ref T[] values) { values=new T[0]; }
     public static int StringLen(string value) { return value==null ? 0 : value.Length; }
     public static int StringFind(string value,string needle) { return value.IndexOf(needle,StringComparison.Ordinal); }
     public static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
@@ -169,6 +244,9 @@ def panel_fixture():
     # MQL DTO assignments copy values, including fixed arrays. C# fixture DTOs
     # are reference types, so clone only these assignment boundaries.
     body = re.sub(r"(this\.(?:liveData|savedData)\s*=\s*)(fromData)(\s*;)", r"\1Clone(\2)\3", body)
+    # Count completed drawing passes at the header entry without replacing any
+    # branch or chart-object operation in the production renderer.
+    body = re.sub(r"(void drawHeader\([^)]*\)\s*\{)", r"\1 DrawPasses++;", body)
     enum_source = (DRAW / "ElliotPanelData.mqh").read_text(encoding="utf-8-sig") + source
     constants = []
     for enum in re.finditer(r"\benum ENUM_ELLIOT_PANEL_ACTION\s*\{([^}]+)\}", code_only(enum_source)):
@@ -194,6 +272,8 @@ def table_renderer_fixture():
 
 PANEL_SETUP = r'''
 public class PanelFixture : MqlApi {
+    static DrawElliotPanel ActivePanel=null;
+    static string PanelName(string suffix) { return ActivePanel.getObjectPrefix()+suffix; }
     static int checks;
     static void Check(bool value,string message) { checks++;if(!value) throw new Exception(message); }
     static string Text(string name) { return Objects[name].texts[OBJPROP_TEXT]; }
@@ -221,10 +301,324 @@ public class PanelFixture : MqlApi {
 '''
 
 
+def run_panel_csharp(source, script):
+    """Resolve fixture labels against the production panel's active generation."""
+    start = source.index("public class PanelFixture : MqlApi")
+    body = source[start:]
+    body = body.replace('DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");',
+                        'DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");ActivePanel=panel;')
+    body = re.sub(r'"Panel-([^"\r\n]+)"', r'PanelName("\1")', body)
+    return run_csharp(source[:start] + body, script)
+
+
 class ElliotPanelViewTests(unittest.TestCase):
     def panel_source(self):
         return ("using System;using System.Globalization;using System.Collections.Generic;using System.Linq;\n"
-                + API + table_fixture() + panel_data_fixture() + table_renderer_fixture() + panel_fixture())
+                + API + registry_fixture() + table_fixture() + panel_data_fixture() + table_renderer_fixture() + panel_fixture())
+
+    def test_nested_batches_flush_latest_panel_once_before_one_chart_redraw(self):
+        controller = (ROOT / "Include/Mstng/Indicator/ZigZagElliot/ZigZagElliotController.mqh").read_text(encoding="utf-8-sig")
+        source = (self.panel_source() + redraw_batch_fixture()
+                  + scoped_class_fixture(controller, "ZigZagElliotDrawBatch") + PANEL_SETUP + r'''
+    public static string Run() {
+        DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");ElliotPanelData data=Data("USDJPY");
+        panel.updateLive(data);ResetCounts();
+        using(ZigZagElliotDrawBatch outer=new ZigZagElliotDrawBatch(panel)) {
+            data.frames[6].row.mainWave="4";panel.updateLive(data);panel.draw();DrawChartRedrawBatch.request();
+            using(ZigZagElliotDrawBatch inner=new ZigZagElliotDrawBatch(panel)) {
+                data.frames[6].row.mainWave="5";panel.updateLive(data);panel.draw();DrawChartRedrawBatch.request(42);
+                Check(DrawPasses==0 && RedrawCalls==0 && Text("Panel-Row5-ElliotMainWave")=="3","nested requests defer object updates and chart redraw");
+            }
+            Check(DrawPasses==0 && RedrawCalls==0,"inner scope cannot flush the outer event");
+            outer.finish();
+            Check(DrawPasses==1 && RedrawCalls==1 && DrawPassesAtRedraw==1,"outer event renders once before one chart redraw");
+            Check(Text("Panel-Row5-ElliotMainWave")=="5" && CreatedCount==0 && DeletedCount==0,"one flush applies the latest queued values without recreating objects");
+            outer.finish();
+            Check(DrawPasses==1 && RedrawCalls==1,"explicit finish is idempotent");
+        }
+        Check(DrawPasses==1 && RedrawCalls==1,"destruction after explicit finish does not redraw again");
+        ResetCounts();EarlyReturn(panel);
+        Check(DrawPasses==1 && RedrawCalls==1 && DrawPassesAtRedraw==1,"early return flushes pending panel and redraw requests in order");
+        ResetCounts();using(ZigZagElliotDrawBatch empty=new ZigZagElliotDrawBatch(panel)) {}
+        Check(DrawPasses==0 && RedrawCalls==0,"an event without changes performs no rendering");
+        ResetCounts();using(DrawChartRedrawBatch batch=new DrawChartRedrawBatch()) {
+            DrawChartRedrawBatch.request(99);Check(RedrawCalls==1,"other chart redraw is independent of this chart batch");
+            DrawChartRedrawBatch.request();DrawChartRedrawBatch.request(42);
+        }
+        Check(RedrawCalls==2,"same chart alias zero and concrete id share one redraw");
+        return "PASS "+checks+" draw batching assertions";
+    }
+    static void EarlyReturn(DrawElliotPanel panel) {
+        using(ZigZagElliotDrawBatch batch=new ZigZagElliotDrawBatch(panel)) {
+            panel.draw();panel.draw();DrawChartRedrawBatch.request();return;
+        }
+    }
+}
+''')
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ draw batching assertions")
+
+    def test_controller_event_routes_coalesce_duplicate_panel_and_redraw_requests(self):
+        controller = (ROOT / "Include/Mstng/Indicator/ZigZagElliot/ZigZagElliotController.mqh").read_text(encoding="utf-8-sig")
+        body = syntax(method(controller, "onChartEvent"))
+        body = re.sub(r"\bElliotAll\s*\*", "ElliotAll ", body)
+        body = re.sub(r"\bELLIOT_PANEL_ACTION_(\w+)\b", r"DrawElliotPanel.ELLIOT_PANEL_ACTION_\1", body)
+        body = body.replace("ulong startMicroseconds", "ulong chartStartMicroseconds", 1)
+        body = body.replace("completeSlowOperation(stageChartEvent, startMicroseconds)",
+                            "completeSlowOperation(stageChartEvent, chartStartMicroseconds)", 1)
+        body = body.replace("ZigZagElliotDrawBatch drawBatch(this.elliotPanel);",
+                            "using(ZigZagElliotDrawBatch drawBatch=new ZigZagElliotDrawBatch(this.elliotPanel)) {") + "}"
+        source = (self.panel_source() + redraw_batch_fixture()
+                  + scoped_class_fixture(controller, "ZigZagElliotDrawBatch") + r'''
+public class ElliotAll {}
+public class EventDependency : MqlApi {
+    public DrawElliotPanel panel;public ElliotPanelData saved;
+    public void redraw() { panel.draw();panel.draw();DrawChartRedrawBatch.request(); }
+    public void onMouseMove(int x,int y) { DrawChartRedrawBatch.request(); }
+    public void handleMouseMove(int x,int y,object history) { DrawChartRedrawBatch.request(); }
+    public void syncElliotPanelState() { panel.draw(); }
+    public void navigatePanel(int direction) { saved.savedTime+=direction*300;panel.showSaved(saved);redraw(); }
+    public bool onObjectClick(string name) { if(name!="Marker") return false;panel.showSaved(saved);redraw();return true; }
+    public bool onObjectClick(string name,ElliotAll data) { redraw();return true; }
+    public bool onChartChange(ElliotAll data) { redraw();return true; }
+    public void update(bool changed) { redraw(); }
+    public void reposition() { DrawChartRedrawBatch.request(); }
+    public ulong startSlowOperation() { return 1; }
+    public void completeSlowOperation(string name,ulong started) {}
+    public ElliotAll getElliotAll() { return new ElliotAll(); }
+}
+public class EventFixture : MqlApi {
+    public const int CHARTEVENT_MOUSE_MOVE=1,CHARTEVENT_OBJECT_CLICK=2,CHARTEVENT_CHART_CHANGE=3;
+    const string stageChartEvent="event";
+    DrawElliotPanel elliotPanel;
+    EventDependency rankDeltaRibbon,m5ObservationDisplayController,chartController,analysisController,currencyStrengthController;
+    object rankDeltaBandHistory=null,databaseAlertDisplayController=new object();
+    public EventFixture(DrawElliotPanel panel,ElliotPanelData saved) {
+        elliotPanel=panel;EventDependency dependency=new EventDependency { panel=panel,saved=saved };
+        rankDeltaRibbon=m5ObservationDisplayController=chartController=analysisController=currencyStrengthController=dependency;
+    }
+    void prepareDatabaseAlertDisplay() {}
+    void beginCurrencyStrengthRedrawBatch() {}
+    void endCurrencyStrengthRedrawBatch() {}
+    void drawRankDeltaBand() { DrawChartRedrawBatch.request(); }
+    void completeRedraw() { elliotPanel.draw();DrawChartRedrawBatch.request(); }
+    public void onChartEvent(int fromId,string fromObjectName,int fromMouseX=0,int fromMouseY=0) {
+''' + body + "}\n}\n" + PANEL_SETUP + r'''
+    public static string Run() {
+        DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");panel.updateLive(Data("USDJPY"));
+        EventFixture controller=new EventFixture(panel,Data("SAVED",true));
+        ResetCounts();controller.onChartEvent(EventFixture.CHARTEVENT_OBJECT_CLICK,"Panel-Row15-GmmaTrend");
+        Check(DrawPasses==1 && RedrawCalls==1 && DrawPassesAtRedraw==1,"panel click merges panel, history and sync redraw requests before early return");
+        Check(panel.getSelectedTimeFrame()==PERIOD_M15 && panel.isExpanded(),"coalesced click preserves selected timeframe and expansion");
+        ResetCounts();controller.onChartEvent(EventFixture.CHARTEVENT_OBJECT_CLICK,"Marker");
+        Check(DrawPasses==1 && RedrawCalls==1 && panel.isSavedMode(),"saved marker branch flushes once despite multiple lower-level requests");
+        long savedTime=panel.getSavedTime();
+        ResetCounts();controller.onChartEvent(EventFixture.CHARTEVENT_OBJECT_CLICK,"Panel-Previous");
+        Check(DrawPasses==1 && RedrawCalls==1 && panel.getSavedTime()==savedTime-300,"previous navigation updates saved snapshot in one drawing pass");
+        ResetCounts();controller.onChartEvent(EventFixture.CHARTEVENT_CHART_CHANGE,"");
+        Check(DrawPasses==1 && RedrawCalls==1 && DrawPassesAtRedraw==1,"chart resize coalesces history, strength and complete redraw into one final pass");
+        ResetCounts();controller.onChartEvent(EventFixture.CHARTEVENT_MOUSE_MOVE,"",20,30);
+        Check(DrawPasses==0 && RedrawCalls==1,"two hover redraw requests merge without drawing the unchanged panel");
+        ResetCounts();controller.onChartEvent(99,"");
+        Check(DrawPasses==0 && RedrawCalls==0,"unhandled event does not flush nonexistent work");
+        return "PASS "+checks+" event batching assertions";
+    }
+}
+''')
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ event batching assertions")
+
+    def test_repeated_updates_reuse_objects_and_restore_missing_or_failed_cells(self):
+        source = self.panel_source() + PANEL_SETUP + r'''
+    public static string Run() {
+        DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");
+        ElliotPanelData live=Data("USDJPY");
+        live.frames[6].row.hasGmmaTrendCount=true;live.frames[6].row.gmmaTrendCount=4;
+        Check(panel.updateLive(live),"initial current view draws successfully");
+        int objectCount=Objects.Count;
+        Dictionary<string,ChartObject> initial=new Dictionary<string,ChartObject>(Objects);
+        ResetCounts();Check(panel.updateLive(live),"same current snapshot refresh succeeds");
+        Check(CreateCalls==0 && CreatedCount==0 && DeleteCalls==0 && DeletedCount==0 && BulkDeleteCalls==0,"same layout refresh issues no creation or deletion calls");
+        Check(Objects.Count==objectCount && initial.All(pair=>Object.ReferenceEquals(pair.Value,Objects[pair.Key])),"same layout preserves every object identity");
+        int unchangedSetCalls=SetIntegerCalls+SetStringCalls;
+        live.frames[6].row.mainWave="5";live.frames[6].row.gmmaTrendCount=-7;live.headerTime="JST 2026/11/25 12:01:00";
+        ResetCounts();Check(panel.updateLive(live),"changed current snapshot refresh succeeds");
+        Check(CreatedCount==0 && DeletedCount==0 && Objects.Count==objectCount,"value and color updates retain the same objects");
+        Check(Text("Panel-Row5-ElliotMainWave")=="5" && Text("Panel-Row5-GmmaTrend")=="-7" && Number("Panel-Row5-GmmaTrend",OBJPROP_COLOR)==clrHotPink,"reused cells update value and sign color");
+        Check(Text("Panel-Time")==live.headerTime && Objects["Panel-Row5-GmmaTrend"].texts[OBJPROP_TOOLTIP].Contains("-7"),"reused time and tooltip properties refresh with the snapshot");
+        ObjectDelete(0,"Panel-Row5-GmmaTrend");
+        ResetCounts();Check(panel.draw(),"externally deleted cell is restored");
+        Check(CreatedCount==1 && DeletedCount==0 && Text("Panel-Row5-GmmaTrend")=="-7","external deletion recreates only the missing cell with current value");
+        Check(Object.ReferenceEquals(initial["Panel-Background"],Objects["Panel-Background"]),"external cell recovery retains the original frame");
+        ObjectDelete(0,"Panel-Row5-ElliotPrice");FailName="Panel-Row5-ElliotPrice";
+        ResetCounts();Check(!panel.draw(),"failed replacement is reported");
+        Check(!Objects.ContainsKey(FailName) && Objects.ContainsKey("Panel-Row1-ElliotPrice") && DeletedCount==0,"one failed cell does not remove the remaining table");
+        FailName="";ResetCounts();Check(panel.draw(),"later refresh recovers failed replacement");
+        Check(CreatedCount==1 && DeletedCount==0 && Text("Panel-Row5-ElliotPrice")=="159.234","recovery creates only the missing cell");
+        panel.clear();FailName="Panel-Title";ResetCounts();
+        Check(!panel.draw() && Objects.ContainsKey("Panel-Close") && !Objects.ContainsKey("Panel-Title"),"partial initial drawing failure leaves usable controls");
+        ChartObject partialFrame=Objects["Panel-Background"];
+        FailName="";ResetCounts();Check(panel.draw(),"initial failure retries successfully");
+        Check(CreatedCount==1 && DeletedCount==0 && Object.ReferenceEquals(partialFrame,Objects["Panel-Background"]),"initial failure recovery preserves objects already created");
+        ObjectDelete(0,"Panel-Row1-ElliotPrice");FailName="Panel-Row1-ElliotPrice";
+        Check(!panel.draw(),"a cell can fail before its timeframe becomes absent");
+        FailName="";live.rowCount=7;
+        Check(panel.updateLive(live) && !Objects.ContainsKey("Panel-Row1-ElliotPrice"),"uncreated stale cell is discarded without an endless deletion failure");
+        ResetCounts();Check(panel.draw() && CreatedCount==0 && DeletedCount==0,"failed then absent cell does not leave repeated cleanup work");
+        return "PASS "+checks+" reuse assertions; objects="+objectCount+"; same-layout create=0 delete=0; unchanged property sets="+unchangedSetCalls;
+    }
+}
+'''
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ reuse assertions; objects=\d+; same-layout create=0 delete=0")
+
+    def test_front_generation_is_published_before_retiring_old_view_and_failed_generation_recovers(self):
+        source = self.panel_source() + PANEL_SETUP + r'''
+    public static string Run() {
+        DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");panel.updateLive(Data("USDJPY"));
+        panel.onObjectClick("Panel-Row15-GmmaTrend");
+        Check(CoveredTextNames(panel.getObjectPrefix()).Length==0,"initial labels and controls are visible above their backgrounds");
+        string oldPrefix=panel.getObjectPrefix();
+        Dictionary<string,ChartObject> original=new Dictionary<string,ChartObject>(Objects);
+        int count=Objects.Count;ResetCounts();
+        panel.beginDrawBatch();panel.requestBringToFront();panel.requestBringToFront();
+        Check(CreatedCount==0 && DeletedCount==0,"front requests wait for the event boundary");
+        Check(panel.endDrawBatch(),"completed replacement generation is published");
+        string prefix=panel.getObjectPrefix();
+        Check(prefix!=oldPrefix && CreatedCount==count && DeletedCount==count && DrawPasses==1,"multiple front requests build and retire one complete generation");
+        Check(Objects.Count==count && Objects.Keys.All(name=>name.StartsWith(prefix,StringComparison.Ordinal)),"successful replacement leaves no prior generation objects");
+        string[] created=Events.Where(item=>item.StartsWith("create:",StringComparison.Ordinal)).Select(item=>item.Substring(7)).ToArray();
+        string[] shown=Events.Where(item=>item.StartsWith("show:",StringComparison.Ordinal)).Select(item=>item.Substring(5)).ToArray();
+        Check(created.SequenceEqual(shown),"new objects become visible in creation order with backgrounds before their contents");
+        Check(CoveredTextNames(prefix).Length==0,"published generation has no labels or controls covered by later-visible opaque rectangles");
+        int firstShow=Events.FindIndex(item=>item.StartsWith("show:",StringComparison.Ordinal));
+        int lastShow=Events.FindLastIndex(item=>item.StartsWith("show:",StringComparison.Ordinal));
+        int firstDelete=Events.FindIndex(item=>item.StartsWith("delete:",StringComparison.Ordinal));
+        Check(created.All(name=>Events.IndexOf("hide:"+name)>=0 && Events.IndexOf("hide:"+name)<firstShow),"every replacement object is hidden while the new generation is built");
+        Check(firstDelete>lastShow && !original.Keys.Any(name=>Events.Contains("hide:"+name)),"the old generation stays visible until every replacement is published");
+        Check(panel.getSelectedTimeFrame()==PERIOD_M15 && panel.isExpanded() && Text("Panel-DetailTitle")=="M15 の詳細","front generation preserves selected details");
+        original=new Dictionary<string,ChartObject>(Objects);oldPrefix=panel.getObjectPrefix();
+        FailSuffix="Row5-ElliotPrice";ResetCounts();
+        Check(!panel.requestBringToFront(),"a mid-generation creation failure is reported");
+        Check(panel.getObjectPrefix()==oldPrefix && Objects.Count==count && original.All(pair=>Objects.ContainsKey(pair.Key)&&Object.ReferenceEquals(pair.Value,Objects[pair.Key])),"failed replacement leaves the complete original generation intact");
+        Check(!Events.Any(item=>item.StartsWith("show:",StringComparison.Ordinal)) && original.Keys.All(name=>!Events.Contains("delete:"+name)),"an incomplete generation is never published and never retires the visible generation");
+        FailSuffix="";ResetCounts();Check(panel.draw(),"pending replacement retries after the failure clears");
+        Check(panel.getObjectPrefix()!=oldPrefix && Objects.Count==count && CreatedCount==count && DeletedCount==count,"retry replaces the view once without leftover failed objects");
+        oldPrefix=panel.getObjectPrefix();ObjectDelete(0,"Panel-Background");ResetCounts();
+        Check(panel.draw() && panel.getObjectPrefix()!=oldPrefix,"externally deleted background triggers a complete layer-safe rebuild");
+        Check(Objects.Count==count && CreatedCount==count && DeletedCount==count-1,"background recovery rebuilds the complete view and retires every surviving old object");
+        Check(CoveredTextNames(panel.getObjectPrefix()).Length==0,"background recovery leaves all contents visible");
+        ObjectSetInteger(0,"Panel-Background",OBJPROP_TIMEFRAMES,OBJ_NO_PERIODS);
+        ObjectSetInteger(0,"Panel-Background",OBJPROP_TIMEFRAMES,OBJ_ALL_PERIODS);
+        Check(CoveredTextNames(panel.getObjectPrefix()).Length>0,"fixture detects the observed regression when an opaque background is made visible last");
+        Check(panel.requestBringToFront() && CoveredTextNames(panel.getObjectPrefix()).Length==0,"production generation order restores visible contents after the reproduced layering failure");
+        return "PASS "+checks+" generation assertions";
+    }
+}
+'''
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ generation assertions")
+
+    def test_structure_changes_delete_only_stale_owned_objects_and_keep_cached_selection(self):
+        source = self.panel_source() + PANEL_SETUP + r'''
+    public static string Run() {
+        DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");ElliotPanelData live=Data("USDJPY");
+        panel.updateLive(live);ChartObject frame=Objects["Panel-Background"],close=Objects["Panel-Close"];
+        ObjectCreate(0,"Other-Label",OBJ_LABEL,0,0,0);
+        panel.onObjectClick("Panel-Row15-GmmaTrend");
+        Check(panel.isExpanded() && Text("Panel-DetailTitle")=="M15 の詳細","row click expands reusable details");
+        ResetCounts();panel.setExpanded(false);
+        Check(DeletedCount>0 && !Objects.ContainsKey("Panel-DetailTitle") && !Objects.ContainsKey("Panel-ExtraTitle"),"collapse removes details and extras that are no longer drawn");
+        Check(Objects.ContainsKey("Panel-Background") && Objects.ContainsKey("Panel-Close"),"collapse keeps a complete frame and controls");
+        ObjectDelete(0,"Panel-Row1-TimeFrame");
+        ElliotPanelData saved=Data("HISTORY",true);Check(panel.showSaved(saved),"already removed stale cell does not make mode transition fail");
+        Check(panel.isSavedMode() && panel.getSelectedTimeFrame()==PERIOD_M15 && !Objects.ContainsKey("Panel-Row1-TimeFrame"),"saved transition removes only absent M1 while retaining selection");
+        Check(!Objects.ContainsKey("Panel-ExtraTitle") && Objects.ContainsKey("Panel-Live") && Objects.ContainsKey("Panel-Previous"),"saved transition replaces current-only extras with history controls");
+        ChartObject savedWave=Objects["Panel-Row5-ElliotMainWave"];
+        live.frames[6].row.mainWave="5";ResetCounts();panel.updateLive(live);
+        Check(CreatedCount==0 && DeletedCount==0 && Text("Panel-Row5-ElliotMainWave")=="3" && Object.ReferenceEquals(savedWave,Objects["Panel-Row5-ElliotMainWave"]),"background current update leaves saved objects untouched");
+        panel.showLive();
+        Check(!panel.isSavedMode() && panel.getSelectedTimeFrame()==PERIOD_M15 && Text("Panel-Row5-ElliotMainWave")=="5","return uses latest current cache and preserves timeframe");
+        Check(Objects.ContainsKey("Panel-Row1-TimeFrame") && !Objects.ContainsKey("Panel-Live") && !Objects.ContainsKey("Panel-Previous") && !Objects.ContainsKey("Panel-Next"),"return creates M1 and removes stale saved controls");
+        Width=983;panel.draw();
+        Check(Objects.ContainsKey("Panel-Row5-Elliot") && !Objects.ContainsKey("Panel-Row5-ElliotMainWave") && !Objects.ContainsKey("Panel-HeaderGroupElliot"),"narrow view removes all obsolete split labels and group heading");
+        Check(!Objects.Keys.Any(name=>name.StartsWith("Panel-Row5-ElliotLine",StringComparison.Ordinal)),"narrow view removes split separators too");
+        Width=984;panel.draw();
+        Check(!Objects.ContainsKey("Panel-Row5-Elliot") && Objects.ContainsKey("Panel-Row5-ElliotMainWave"),"wide view removes obsolete composite cell");
+        live.rowCount=0;live.status="準備待ち";panel.updateLive(live);
+        Check(Objects.ContainsKey("Panel-Empty") && !Objects.Keys.Any(name=>name.StartsWith("Panel-Row",StringComparison.Ordinal)||name.StartsWith("Panel-Header",StringComparison.Ordinal)),"empty view removes all stale rows and table headers");
+        Check(Objects.ContainsKey("Panel-Background") && Objects.ContainsKey("Other-Label"),"every structure change retains a frame and unrelated chart objects");
+        panel.onObjectClick("Panel-Close");
+        Check(!Objects.Keys.Any(name=>name.StartsWith("Panel-",StringComparison.Ordinal)) && Objects.ContainsKey("Other-Label"),"close removes only panel-owned objects");
+        ResetCounts();panel.updateLive(Data("NEW"));
+        Check(!panel.isVisible() && CreatedCount==0 && DeletedCount==0,"closed panel stays closed during background updates");
+        return "PASS "+checks+" stale object assertions";
+    }
+}
+'''
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ stale object assertions")
+
+    def test_gmma_columns_share_saved_layout_and_group_headers_do_not_overlap_rows(self):
+        source = self.panel_source() + PANEL_SETUP + r'''
+    public static string Run() {
+        DrawElliotPanel panel=new DrawElliotPanel(0,"Panel-");
+        ElliotPanelData live=Data("USDJPY");
+        ElliotTableRowData row=live.frames[6].row;
+        row.hasGmmaTrendCount=true;row.gmmaTrendCount=4;row.hasGmmaCrossCount=true;row.gmmaCrossCount=-1;
+        row.isBuy=0;row.isUptrend=0;row.isAdded=1;
+        live.frames[5].row.hasGmmaTrendCount=true;live.frames[5].row.gmmaTrendCount=0;
+        live.frames[4].row.hasData=false;live.frames[4].row.hasGmmaCrossCount=true;live.frames[4].row.gmmaCrossCount=12;
+        Check(panel.updateLive(live),"GMMA current table draws");
+        Check(Text("Panel-Row5-GmmaTrend")=="+4" && Text("Panel-Row5-GmmaCross")=="-1","separate GMMA columns retain positive and negative-one counts");
+        Check(Number("Panel-Row5-GmmaTrend",OBJPROP_COLOR)==clrAqua && Number("Panel-Row5-GmmaCross",OBJPROP_COLOR)==clrHotPink,"GMMA colors use their own signs despite SELL and added wave state");
+        Check(Text("Panel-Row15-GmmaTrend")=="0" && Number("Panel-Row15-GmmaTrend",OBJPROP_COLOR)==clrWhite,"recorded zero is visible and neutral");
+        Check(Text("Panel-Row15-GmmaCross")=="?" && Number("Panel-Row15-GmmaCross",OBJPROP_COLOR)==live.palette.unknownColor,"missing cross is unknown instead of zero");
+        Check(Text("Panel-Row16385-GmmaCross")=="?","missing entire frame cannot expose stale GMMA fields");
+        string trendTooltip=Objects["Panel-Row5-GmmaTrend"].texts[OBJPROP_TOOLTIP];
+        string crossTooltip=Objects["Panel-Row5-GmmaCross"].texts[OBJPROP_TOOLTIP];
+        Check(trendTooltip.Contains("GMMA Trend：+4") && trendTooltip.Contains("傾き"),"trend tooltip names the signed value and its slope meaning");
+        Check(crossTooltip.Contains("GMMA Cross：-1") && crossTooltip.Contains("EMA30 < EMA60"),"cross tooltip explains the independently negative relationship");
+        Check(Objects["Panel-Row15-GmmaCross"].texts[OBJPROP_TOOLTIP].Contains("未記録"),"missing count tooltip explains the question mark");
+        Check(Text("Panel-HeaderGroupGmma")=="GMMA" && Text("Panel-HeaderGroupElliot")=="Elliot","group header titles are displayed once above their columns");
+        Check(Text("Panel-HeaderGmmaTrend")=="Trend" && Text("Panel-HeaderGmmaCross")=="Cross","lower GMMA headings identify the two counts");
+        long headerTop=Number("Panel-HeaderBackground",OBJPROP_YDISTANCE);
+        long rowHeight=Number("Panel-Row49153-Background",OBJPROP_YSIZE);
+        long headerBottom=headerTop+Number("Panel-HeaderBackground",OBJPROP_YSIZE);
+        Check(Number("Panel-HeaderBackground",OBJPROP_YSIZE)==rowHeight+20,"header background includes both levels");
+        Check(Number("Panel-HeaderGroupGmma",OBJPROP_YDISTANCE)==headerTop+1 && Number("Panel-HeaderGroupElliot",OBJPROP_YDISTANCE)==headerTop+1,"both group names share the top header level");
+        Check(Number("Panel-HeaderTimeFrame",OBJPROP_YDISTANCE)==headerTop+13 && Number("Panel-HeaderPriceMovement",OBJPROP_YDISTANCE)==headerTop+13,"un-grouped headings are vertically centered across both levels");
+        Check(Number("Panel-HeaderGmmaTrend",OBJPROP_YDISTANCE)==headerTop+23 && Number("Panel-HeaderElliotDirection",OBJPROP_YDISTANCE)==headerTop+23,"GMMA and Elliott child headings share the lower header level");
+        long trendLeft=Number("Panel-HeaderGmmaTrend",OBJPROP_XDISTANCE)-3;
+        long crossLeft=Number("Panel-HeaderGmmaCross",OBJPROP_XDISTANCE)-3;
+        long elliotLeft=Number("Panel-HeaderElliotDirection",OBJPROP_XDISTANCE)-3;
+        long tableRight=Number("Panel-HeaderBackground",OBJPROP_XDISTANCE)+Number("Panel-HeaderBackground",OBJPROP_XSIZE);
+        Check(crossLeft-trendLeft==56 && elliotLeft-crossLeft==56 && tableRight-elliotLeft==536,"GMMA fits between movement and the complete Elliott region");
+        Check(Number("Panel-HeaderGroupGmma",OBJPROP_XDISTANCE)==(trendLeft+elliotLeft)/2 && Number("Panel-HeaderGroupElliot",OBJPROP_XDISTANCE)==(elliotLeft+tableRight)/2,"group labels are centered over their actual child columns");
+        Check(Number("Panel-HeaderGroupGmma",OBJPROP_ANCHOR)==ANCHOR_UPPER && Number("Panel-HeaderGroupElliot",OBJPROP_ANCHOR)==ANCHOR_UPPER,"center anchors keep group names centered as text widths differ");
+        Check(Number("Panel-HeaderGmmaLine0",OBJPROP_YDISTANCE)==headerTop+20 && Number("Panel-HeaderGmmaLine0",OBJPROP_YSIZE)==rowHeight,"internal GMMA divider starts below its group label");
+        Check(Number("Panel-HeaderGmmaLine1",OBJPROP_YDISTANCE)==headerTop && Number("Panel-HeaderGmmaLine1",OBJPROP_YSIZE)==rowHeight+20,"GMMA group boundary spans both header levels");
+        Check(Number("Panel-HeaderElliotLine0",OBJPROP_YDISTANCE)==headerTop+20 && Number("Panel-HeaderGroupElliotLine",OBJPROP_YDISTANCE)==headerTop+19,"Elliott group is separated from its child headings without crossing the title");
+        Check(Number("Panel-Row49153-Background",OBJPROP_YDISTANCE)==headerBottom && Number("Panel-Row49153-GmmaTrend",OBJPROP_YDISTANCE)==headerBottom+3,"first data row begins immediately below both header levels");
+        Check(Number("Panel-Row1-Background",OBJPROP_YDISTANCE)==headerBottom+7*rowHeight,"eight current rows remain evenly spaced after the enlarged header");
+        string[] currentNames=Objects.Keys.Where(name=>name.StartsWith("Panel-Row5-",StringComparison.Ordinal)).Select(name=>name.Replace(panel.getObjectPrefix(),"Panel-")).OrderBy(name=>name).ToArray();
+        panel.onObjectClick("Panel-Row15-GmmaCross");
+        Check(panel.getSelectedTimeFrame()==PERIOD_M15 && panel.isExpanded() && Text("Panel-DetailTitle")=="M15 の詳細","GMMA cell click selects and expands its timeframe through the existing row prefix");
+        Check(Number("Panel-DetailTitle",OBJPROP_YDISTANCE)>=Number("Panel-Row1-Background",OBJPROP_YDISTANCE)+Number("Panel-Row1-Background",OBJPROP_YSIZE),"expanded details start after every current row");
+        ElliotPanelData saved=Data("USDJPY",true);saved.frames[6].row=Clone(row);
+        Check(panel.showSaved(saved),"GMMA saved table draws");
+        string[] savedNames=Objects.Keys.Where(name=>name.StartsWith("Panel-Row5-",StringComparison.Ordinal)).Select(name=>name.Replace(panel.getObjectPrefix(),"Panel-")).OrderBy(name=>name).ToArray();
+        Check(currentNames.SequenceEqual(savedNames),"current and saved rows have identical objects including both GMMA columns");
+        Check(Text("Panel-Row5-GmmaTrend")=="+4" && Text("Panel-Row5-GmmaCross")=="-1" && Number("Panel-Row5-GmmaCross",OBJPROP_COLOR)==clrHotPink,"saved counts use the same value and sign color rules");
+        Check(Objects["Panel-Row5-GmmaTrend"].texts[OBJPROP_TOOLTIP]==trendTooltip && Objects["Panel-Row5-GmmaCross"].texts[OBJPROP_TOOLTIP]==crossTooltip,"current and saved GMMA cells have identical explanatory tooltips");
+        Check(Number("Panel-DetailTitle",OBJPROP_YDISTANCE)>=Number("Panel-Row5-Background",OBJPROP_YDISTANCE)+Number("Panel-Row5-Background",OBJPROP_YSIZE),"saved details also start after the last of seven rows");
+        panel.setExpanded(false);panel.onObjectClick("Panel-Row5-GmmaTrend");
+        Check(panel.isExpanded() && panel.getSelectedTimeFrame()==PERIOD_M5,"trend cell retains saved row selection");
+        Width=983;Check(panel.draw(),"narrow saved table redraws");
+        Check(Text("Panel-Row5-GmmaTrend")=="+4" && Text("Panel-Row5-GmmaCross")=="-1" && Objects.ContainsKey("Panel-Row5-Elliot"),"narrow fallback retains both GMMA values alongside the composite Elliott cell");
+        Check(Objects.ContainsKey("Panel-HeaderGroupGmma") && !Objects.ContainsKey("Panel-HeaderGroupElliot") && !Objects.ContainsKey("Panel-HeaderElliotDirection"),"narrow fallback removes split Elliott group objects while retaining GMMA headings");
+        Check(Number("Panel-HeaderBackground",OBJPROP_XDISTANCE)+Number("Panel-HeaderBackground",OBJPROP_XSIZE)<=Number("Panel-Background",OBJPROP_XDISTANCE)+Number("Panel-Background",OBJPROP_XSIZE),"narrow table ends within the shared frame");
+        Check(panel.getSelectedTimeFrame()==PERIOD_M5 && panel.isSavedMode(),"header fallback preserves selection and data source");
+        return "PASS "+checks+" GMMA grouped header assertions";
+    }
+}
+'''
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ GMMA grouped header assertions")
 
     def test_split_elliot_cells_keep_values_tooltips_selection_and_narrow_fallback(self):
         source = self.panel_source() + PANEL_SETUP + r'''
@@ -248,10 +642,10 @@ class ElliotPanelViewTests(unittest.TestCase):
             Check(Objects[name].texts[OBJPROP_TOOLTIP].Contains(values[i]),"cell tooltip preserves complete value: "+keys[i]);
         }
         Check(!Objects.ContainsKey("Panel-Row5-Elliot") && Text("Panel-Row5-BuySell")=="BUY","split wave direction stays separate from unchanged analysis column");
-        string[] liveNames=Objects.Keys.Where(name=>name.StartsWith("Panel-Row5-Elliot",StringComparison.Ordinal)).OrderBy(name=>name).ToArray();
+        string[] liveNames=Objects.Keys.Where(name=>name.StartsWith("Panel-Row5-Elliot",StringComparison.Ordinal)).Select(name=>name.Replace(panel.getObjectPrefix(),"Panel-")).OrderBy(name=>name).ToArray();
         ElliotPanelData saved=Data("USDJPY",true);saved.frames[6].row=Clone(row);
         panel.showSaved(saved);
-        string[] savedNames=Objects.Keys.Where(name=>name.StartsWith("Panel-Row5-Elliot",StringComparison.Ordinal)).OrderBy(name=>name).ToArray();
+        string[] savedNames=Objects.Keys.Where(name=>name.StartsWith("Panel-Row5-Elliot",StringComparison.Ordinal)).Select(name=>name.Replace(panel.getObjectPrefix(),"Panel-")).OrderBy(name=>name).ToArray();
         Check(liveNames.SequenceEqual(savedNames),"live and saved use identical split object names and separators");
         for(int i=0;i<keys.Length;i++) Check(Text("Panel-Row5-Elliot"+keys[i])==values[i],"saved adapter data uses same visible cells: "+keys[i]);
         panel.setExpanded(false);
@@ -270,9 +664,9 @@ class ElliotPanelViewTests(unittest.TestCase):
     }
 }
 '''
-        self.assertRegex(run_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ split panel assertions")
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ split panel assertions")
 
-    def test_split_elliot_renderer_fits_the_full_576_pixel_region_and_retains_long_tooltips(self):
+    def test_split_elliot_renderer_fits_the_full_536_pixel_region_and_retains_long_tooltips(self):
         source = self.panel_source() + PANEL_SETUP + r'''
     public static string Run() {
         ElliotTableRowData row=new ElliotTableRowData { hasData=true,mainWave="3",subWave=new string('i',24),
@@ -280,12 +674,14 @@ class ElliotPanelViewTests(unittest.TestCase):
             originalWaveIndex=5,hasPointFibonacciExpansionPercent=true,pointFibonacciExpansionPercent=161.8,
             hasPointPipsDiff=true,pointPipsDiff=-12.5,hasPointRate=true,pointRate=159.234 };
         ElliotTablePalette palette=new ElliotTablePalette();ElliotTableLayout layout=new ElliotTableLayout();
-        layout.originX=40;layout.originY=70;layout.columnXs[4]=400;layout.columnWidths[4]=576;
-        layout.paddingX=8;layout.paddingY=3;layout.clipText=true;layout.showSeparators=true;layout.splitElliot=true;
+        layout.originX=40;layout.originY=70;layout.columnXs[4]=400;layout.columnWidths[4]=536;
+        layout.paddingX=3;layout.paddingY=3;layout.clipText=true;layout.showSeparators=true;layout.splitElliot=true;
+        layout.showGmma=true;layout.gmmaColumnXs[0]=288;layout.gmmaColumnXs[1]=344;
+        layout.gmmaColumnWidths[0]=56;layout.gmmaColumnWidths[1]=56;
         for(int i=0;i<4;i++) layout.columnVisible[i]=false;
-        Check(DrawElliotTable.drawHeader(0,"Header-",layout) && DrawElliotTable.drawRow(0,"Row-",row,3,palette,layout),"576-pixel split area draws header and row");
+        Check(DrawElliotTable.drawHeader(0,"Header-",layout) && DrawElliotTable.drawRow(0,"Row-",row,3,palette,layout),"536-pixel split area draws header and row");
         string[] keys={"Direction","MainWave","SubWave","OriginalWave","Confirmed","Added","PreviousSub","Fibonacci","Pips","Price"};
-        int[] widths={44,44,48,44,60,44,44,98,72,78};
+        int[] widths={40,40,44,40,56,40,40,94,68,74};
         long start=Number("Row-ElliotDirection",OBJPROP_XDISTANCE),position=start;
         for(int i=0;i<keys.Length;i++) {
             string name="Row-Elliot"+keys[i];
@@ -295,20 +691,24 @@ class ElliotPanelViewTests(unittest.TestCase):
             Check(Number(name,OBJPROP_YDISTANCE)==73 && Number(name,OBJPROP_FONTSIZE)==11,"split labels retain row position and font");
             position+=widths[i];
         }
-        Check(position-start==576 && Number("Row-ElliotPrice",OBJPROP_XDISTANCE)+Text("Row-ElliotPrice").Length*8<=40+400+576,"final price text stays inside the complete 576-pixel region");
+        Check(position-start==536 && Number("Row-ElliotPrice",OBJPROP_XDISTANCE)+Text("Row-ElliotPrice").Length*8<=40+400+536,"final price text stays inside the complete 536-pixel region");
         Check(Text("Row-ElliotSubWave").EndsWith("…") && Objects["Row-ElliotSubWave"].texts[OBJPROP_TOOLTIP].Contains(row.subWave),"long subwave is clipped but complete value remains in tooltip");
         Check(!Objects.ContainsKey("Row-Elliot") && !Objects.ContainsKey("Header-Elliot"),"split rendering creates no overlapping composite wave label");
-        ElliotTableLayout legacy=new ElliotTableLayout();legacy.columnXs[4]=400;legacy.columnWidths[4]=576;
+        ElliotTableLayout legacy=new ElliotTableLayout();legacy.columnXs[4]=400;legacy.columnWidths[4]=536;
         for(int i=0;i<4;i++) legacy.columnVisible[i]=false;
-        Check(!legacy.splitElliot && DrawElliotTable.drawRow(0,"Legacy-",row,3,palette,legacy),"nonpanel callers keep original default layout");
+        Check(!legacy.splitElliot && !legacy.showGmma && legacy.groupHeaderHeight==0 && DrawElliotTable.drawRow(0,"Legacy-",row,3,palette,legacy),"nonpanel callers keep original default layout");
         Check(Text("Legacy-Elliot").Contains("▼3."+row.subWave) && !Objects.ContainsKey("Legacy-ElliotMainWave"),"legacy chart table retains its composite wave text");
+        Check(!Objects.ContainsKey("Legacy-GmmaTrend") && !Objects.ContainsKey("Legacy-GmmaCross"),"legacy five-column drawing does not add duplicate GMMA labels");
+        layout.columnWidths[4]=0;
+        Check(DrawElliotTable.drawRow(0,"Row-",row,3,palette,layout) && !Objects.ContainsKey("Row-ElliotPrice"),"empty fitted label removes its prior object instead of retaining a stale value or MT5 Label");
+        layout.columnWidths[4]=536;
         FailName="Failed-ElliotSubWave";
         Check(!DrawElliotTable.drawRow(0,"Failed-",row,3,palette,layout) && Objects.ContainsKey("Failed-ElliotPrice"),"split-cell creation failure is reported while later cells still draw");
         return "PASS "+checks+" split renderer assertions";
     }
 }
 '''
-        self.assertRegex(run_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ split renderer assertions")
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ split renderer assertions")
 
     def test_split_elliot_formatter_distinguishes_unknown_absent_and_recorded_zero(self):
         source = "using System;using System.Globalization;\n" + table_fixture() + r'''
@@ -346,6 +746,16 @@ public class SplitFormatterFixture {
         Check(ElliotTableFormatter.elliotCellTooltip(row,2,3).Contains(row.subWave),"formatter preserves full subwave for renderer tooltip");
         row.pointRate=1.234567891;row.hasPointRate=true;
         Check(ElliotTableFormatter.elliotCellText(row,9,11)=="1.23456789","price precision retains existing eight-digit limit");
+        ElliotTablePalette palette=new ElliotTablePalette();
+        row.hasGmmaTrendCount=true;row.gmmaTrendCount=int.MinValue;
+        row.hasGmmaCrossCount=true;row.gmmaCrossCount=int.MaxValue;
+        Check(ElliotTableFormatter.gmmaCellText(row,0)=="-2147483648" && ElliotTableFormatter.gmmaCellText(row,1)=="+2147483647","GMMA formatter preserves the full signed integer range");
+        Check(ElliotTableFormatter.gmmaCellColor(row,0,palette)==palette.downColor && ElliotTableFormatter.gmmaCellColor(row,1,palette)==palette.upColor,"GMMA extreme counts retain sign colors without overflow");
+        Check(ElliotTableFormatter.gmmaCellTooltip(row,1).Contains("+2147483647"),"GMMA tooltip preserves the full unclipped signed value");
+        Check(ElliotTableFormatter.gmmaCellText(row,-1)=="" && ElliotTableFormatter.gmmaCellTooltip(row,2)=="","invalid GMMA columns are not displayed");
+        row.clear();
+        Check(!row.hasGmmaTrendCount && !row.hasGmmaCrossCount && row.gmmaTrendCount==0 && row.gmmaCrossCount==0,"row reset clears both previous GMMA values and availability flags");
+        Check(ElliotTableFormatter.gmmaCellText(row,0)=="?" && ElliotTableFormatter.gmmaCellColor(row,1,palette)==palette.unknownColor,"reset count defaults cannot be mistaken for recorded zero");
         return "PASS "+checks+" split formatter assertions";
     }
 }
@@ -405,7 +815,7 @@ public class SplitFormatterFixture {
     }
 }
 '''
-        self.assertRegex(run_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ shared panel state assertions")
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ shared panel state assertions")
 
     def test_panel_layout_details_missing_values_and_narrow_chart_controls(self):
         source = self.panel_source() + PANEL_SETUP + r'''
@@ -430,6 +840,8 @@ public class SplitFormatterFixture {
         Check(Objects.ContainsKey("Other-Label"),"redraw only removes owned prefix");
         Width=700;Height=430;panel.draw();
         Check(Objects.ContainsKey("Panel-Row5-TimeFrame") && !Objects.ContainsKey("Panel-DetailTitle") && Text("Panel-Hint").Contains("広げる"),"short chart retains list and explains hidden details");
+        Check(Number("Panel-Row5-Background",OBJPROP_YSIZE)==20 && Number("Panel-HeaderBackground",OBJPROP_YSIZE)==40,"compressed rows preserve the extra group heading height");
+        Check(Number("Panel-Row49153-Background",OBJPROP_YDISTANCE)==Number("Panel-HeaderBackground",OBJPROP_YDISTANCE)+Number("Panel-HeaderBackground",OBJPROP_YSIZE),"compressed first row still starts below the complete two-level header");
         Check(Number("Panel-Background",OBJPROP_XDISTANCE)+Number("Panel-Background",OBJPROP_XSIZE)<=Width && Number("Panel-Background",OBJPROP_YDISTANCE)+Number("Panel-Background",OBJPROP_YSIZE)<=Height,"panel frame fits chart bounds");
         Width=400;Height=220;panel.draw();
         Check(Objects.ContainsKey("Panel-Small") && !Objects.ContainsKey("Panel-Row5-TimeFrame"),"narrow chart shows explicit list size message");
@@ -437,7 +849,8 @@ public class SplitFormatterFixture {
         foreach(string key in new string[]{"Live","Close","Expand","Previous","Next"}) {
             Check(Number("Panel-"+key,OBJPROP_XDISTANCE)>=0 && Number("Panel-"+key,OBJPROP_XDISTANCE)+Number("Panel-"+key,OBJPROP_XSIZE)<=Width,"narrow button inside chart: "+key);
         }
-        Width=1400;Height=800;FailName="Panel-Title";
+        Width=1400;Height=800;panel.draw();FailName="Panel-Title";
+        ObjectDelete(0,"Panel-Title");
         Check(!panel.draw() && Objects.ContainsKey("Panel-Close"),"drawing failure reported without suppressing remaining controls");
         FailName="";saved.rowCount=0;saved.status="このM5時刻の記録はありません。";
         panel.showSaved(saved);
@@ -446,7 +859,7 @@ public class SplitFormatterFixture {
     }
 }
 '''
-        self.assertRegex(run_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ shared panel layout assertions")
+        self.assertRegex(run_panel_csharp(source, "[PanelFixture]::Run()\n"), r"PASS \d+ shared panel layout assertions")
 
 
 LIVE_API = r'''
@@ -550,10 +963,12 @@ public class LivePanelFixture : MqlApi {
         Check(data.symbolName=="USDJPY" && data.digits==3 && data.headerTime.StartsWith("分析 JST ") && data.metadata.Contains("チャート M1"),"symbol, precision and analysis timestamp retained");
         Check(data.frames[1].pointTime==first.wave.point.barTime && data.frames[1].pointJstTime==first.wave.point.barTime+7*3600,"point timestamp is separate from analysis timestamp");
         Check(data.frames[1].movementTooltip.Contains("2.5 pips") && data.frames[1].movementTooltip.Contains("ATR14") && data.frames[1].movementTooltip.Contains("5.00倍"),"live movement details remain available through panel cells");
-        Check(data.frames[1].extraCount==7 && data.frames[1].extraValues[0]=="SMO fixture" && data.frames[1].extraColors[0]==42,"existing stochastic order text and color copied");
+        Check(data.frames[1].extraCount==5 && data.frames[1].extraValues[0]=="SMO fixture" && data.frames[1].extraColors[0]==42,"non-GMMA extra indicators remain in detail view");
         Check(data.frames[1].extraValues[1]=="+2" && data.frames[1].extraValues[2]=="-3" && data.frames[1].extraValues[3]=="0","oscillator counts preserve sign and recorded zero");
         Check(data.frames[1].extraColors[1]==data.palette.upColor && data.frames[1].extraColors[2]==data.palette.downColor && data.frames[1].extraColors[3]==data.palette.neutralColor,"extra indicator colors share the table palette");
-        Check(data.frames[1].extraValues[6]=="A" && data.frames[1].extraColors[6]==data.palette.neutralColor,"previous corrective wave preserves its neutral color");
+        Check(data.frames[1].extraValues[4]=="A" && data.frames[1].extraColors[4]==data.palette.neutralColor,"previous corrective wave preserves its neutral color");
+        Check(data.frames[1].row.hasGmmaTrendCount && data.frames[1].row.gmmaTrendCount==4 && data.frames[1].row.hasGmmaCrossCount && data.frames[1].row.gmmaCrossCount==-5,"GMMA counts move to the common table data");
+        Check(!data.frames[1].extraLabels.Take(data.frames[1].extraCount).Any(label=>label.Contains("GMMA")),"GMMA is not duplicated in expanded extra indicators");
         Check(data.strength.status=="" && data.strength.longMedium.gap==5 && data.strength.mediumShort.gap==-3,"current rank direction is retained independently by period");
         Check(!data.strength.longMedium.comparable && !data.strength.mediumShort.comparable,"no previous cache is never invented as zero delta");
         Check(data.strength.title.Contains("現在") && data.strength.title.Contains("LIVE") && data.strength.tooltip.Contains("Run 19"),"current source is explicit");
@@ -624,6 +1039,7 @@ public class SavedPanelFixture : MqlApi {
             frame.hasData=true;frame.mainWave="3";frame.isUptrend=0;frame.isBuy=1;
             frame.isAdded=0;frame.isConfirmed=1;frame.hasPointRate=true;frame.pointRate=0;
             frame.pointTime=1795499700;frame.pointJstTime=1795524900;
+            frame.gmmaTrendCount=-1;frame.hasGmmaTrendCount=true;frame.gmmaCrossCount=0;frame.hasGmmaCrossCount=true;
         }
         record.strength.enabled=true;record.strength.status="取得済み";record.strength.sourceMode="TESTER";
         record.strength.weightLabel="加重";record.strength.baseCurrency="USD";record.strength.quoteCurrency="JPY";
@@ -639,15 +1055,18 @@ public class SavedPanelFixture : MqlApi {
         Check(shown.headerTime.StartsWith("観測 JST ") && shown.metadata.StartsWith("取得 SRV ") && shown.metadata.Contains("Run 17") && shown.metadata.Contains("ID 1"),"observation and capture timestamps are distinct and source metadata retained");
         Check(shown.frames[6].pointTime==record.frames[6].pointTime && shown.frames[6].pointJstTime==record.frames[6].pointJstTime,"saved point timestamps are copied without conversion or reanalysis");
         Check(shown.frames[6].row.hasPointRate && shown.frames[6].row.pointRate==0,"saved zero price remains recorded");
+        Check(shown.frames[6].row.hasGmmaTrendCount && shown.frames[6].row.gmmaTrendCount==-1 && shown.frames[6].row.hasGmmaCrossCount && shown.frames[6].row.gmmaCrossCount==0,"saved adapter preserves negative-one and recorded-zero GMMA values with availability");
         Check(shown.frames[6].extraCount==0 && StringLen(shown.frames[6].movementTooltip)==0,"unsaved extras and live-only movement metrics are not invented");
         Check(shown.strength.title.Contains("同M5") && shown.strength.title.Contains("TESTER") && shown.strength.tooltip.Contains("保存時点の値とは限りません"),"same-M5 historical strength source is explicit");
         Check(shown.strength.longMedium.valid && shown.strength.longMedium.comparable && shown.strength.longMedium.gap==5 && shown.strength.longMedium.delta==-2,"saved ranks preserve independent gap and delta");
         Check(shown.canPrevious && shown.canNext && shown.hint.Contains("前まで 15分"),"visible navigation availability and gaps copied");
         Check(selectedTime==record.barTime && hoverTime==0,"opening panel updates marker selection and dismisses compact hover");
         record.frames[6].hasPointRate=false;record.frames[5].hasData=false;
+        record.frames[6].hasGmmaCrossCount=false;
         record.jstTime=0;record.captureTime=0;showRecord(records,1,3);
         Check(panel.shown.headerTime.StartsWith("観測 SRV ") && panel.shown.metadata.Contains("取得 SRV 未記録"),"unknown saved JST/capture time uses explicit fallback rather than epoch");
         Check(!panel.shown.frames[6].row.hasPointRate && !panel.shown.frames[5].row.hasData,"missing metrics and whole saved timeframe remain unknown");
+        Check(!panel.shown.frames[6].row.hasGmmaCrossCount && ElliotTableFormatter.gmmaCellText(panel.shown.frames[6].row,1)=="?","saved adapter preserves missing GMMA even when its stored numeric field is zero");
         markerCount=0;updatePanelNavigation(records);
         Check(!savedPanelData.canPrevious && !savedPanelData.canNext,"no drawn records disables both navigation directions without replacing snapshot");
         record.id=0;showRecord(records,1,3);

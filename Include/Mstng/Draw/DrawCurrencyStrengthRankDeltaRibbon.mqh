@@ -6,6 +6,7 @@
 
 #include <Canvas\Canvas.mqh>
 #include <Mstng\Constant\Constant.mqh>
+#include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotRankDeltaBandHistory.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
 
@@ -152,7 +153,7 @@ public:
         this.viewKey = key;
         this.renderedRevision = fromHistory.getRevision();
         this.hoverIndex = -2;
-        ChartRedraw(this.chartId);
+        DrawChartRedrawBatch::request(this.chartId);
 
         return this.handleMouseMove(this.mouseX, this.mouseY, fromHistory);
     }
@@ -220,7 +221,7 @@ public:
         this.hoverIndex = -1;
         this.hoverRow = -1;
         if (hadCanvas) {
-            ChartRedraw(this.chartId);
+            DrawChartRedrawBatch::request(this.chartId);
         }
     }
 

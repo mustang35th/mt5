@@ -38,6 +38,7 @@ DETAIL_COLUMNS = (
     "latest_point_pips_diff", "latest_point_fibonacci_percent",
     "latest_point_fibonacci_expansion_percent", "latest_point_jst_time",
 )
+GMMA_COLUMNS = ("gmma_trend_count", "gmma_cross_count")
 
 
 def create_database():
@@ -115,6 +116,7 @@ def extracted_methods(source, names):
         if signature is None:
             raise AssertionError(f"Missing method: {name}")
         parameters = re.sub(r"\bconst\s+|&", "", signature[3])
+        parameters = parameters.replace("DrawChartObjectRegistry *", "DrawChartObjectRegistry ").replace("NULL", "null")
         parameters = re.sub(r"\bdatetime\b", "long", parameters)
         parameters = re.sub(r"\bcolor\b", "int", parameters)
         parameters = re.sub(r"\b(\w+)\s+(\w+)\[\]", r"\1[] \2", parameters)
@@ -133,7 +135,7 @@ def extracted_methods(source, names):
         body = re.sub(r"\b(CurrencyStrengthPairRankPoint)\s+(\w+)\s*;", r"\1 \2 = new \1();", body)
         body = re.sub(r"\b(ElliotTableRowData|ElliotTablePalette)\s+(\w+)\s*;", r"\1 \2 = new \1();", body)
         result_type = "int" if signature[2] == "color" else signature[2]
-        result.append("public " + (signature[1] or "") + result_type + " " + name + "(" + parameters + ") {" + body + "}")
+        result.append("public " + (signature[1] or "") + result_type + " " + name + "(" + parameters + ") {" + body.replace("NULL", "null") + "}")
     return "\n".join(result)
 
 
@@ -207,19 +209,42 @@ public class ElliotTableFormatter {
     static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
     static string DoubleToString(double value,int digits) { return value.ToString("F"+digits,CultureInfo.InvariantCulture); }
     static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
+    static string StringFormat(string format,int value) {
+        return format.Replace("%+d",value.ToString("+0;-0;+0",CultureInfo.InvariantCulture));
+    }
     static int MathMax(int first,int second) { return Math.Max(first,second); }
     static int MathMin(int first,int second) { return Math.Min(first,second); }
 '''
     formatter = (directory / "ElliotTableFormatter.mqh").read_text(encoding="utf-8-sig")
     names = re.findall(r"\bstatic\s+(?:string|color|int|bool)\s+(\w+)\s*\(", formatter)
-    return result + extracted_methods(formatter, names) + "\n}\n"
+    methods = extracted_methods(formatter, names)
+    # Preserve the scalar output parameter in the production GMMA reader.
+    methods = re.sub(r"\breadGmmaCount\(([^)]*)\)",
+                     lambda match: "readGmmaCount(" + ",".join(
+                         ("ref " if index == 2 else "") + value.strip()
+                         for index, value in enumerate(match[1].split(","))) + ")", methods)
+    return result + methods + "\n}\n"
+
+
+def registry_fixture(base="MqlApi"):
+    """Keep ownership/generation branches and adapt only dynamic MQL arrays."""
+    source = (ROOT / "Include/Mstng/Draw/DrawChartObjectRegistry.mqh").read_text(encoding="utf-8-sig")
+    opening = source.index("class DrawChartObjectRegistry {") + len("class DrawChartObjectRegistry {")
+    body = source[opening:block_end(code_only(source), opening - 1)]
+    body = re.sub(r"\b(?:public|protected|private)\s*:", "", body)
+    body = re.sub(r"\bconst\s+", "", body).replace("ENUM_OBJECT", "int")
+    body = re.sub(r"\b(string|bool)\s+(\w+)\[\]\s*;", r"\1[] \2 = new \1[0];", body)
+    body = re.sub(r"Array(Resize|Free)\((this\.\w+)", r"Array\1(ref \2", body)
+    body = re.sub(r"^(\s{4})(?=(?:bool|void|DrawChartObjectRegistry)\b[^\n;=]*\()",
+                  r"\1public ", body, flags=re.M)
+    return "public class DrawChartObjectRegistry : " + base + " {\n" + body + "\n}\n"
 
 
 def table_layout_fixture(source):
     """Keep renderer layout defaults; adapt only fixed arrays and MQL color literals."""
     opening = re.search(r"\bstruct ElliotTableLayout\s*\{", source).end() - 1
     body = source[opening + 1:block_end(code_only(source), opening)]
-    fields = re.findall(r"^\s*(int|long|bool|string|color)\s+(\w+)(?:\[(\d+)\])?;", body, re.M)
+    fields = re.findall(r"^\s*(int|long|bool|string|color|DrawChartObjectRegistry)\s+\*?(\w+)(?:\[(\d+)\])?;", body, re.M)
     result = "public class ElliotTableLayout { const int clrWhite=2;\n"
     for kind, name, count in fields:
         kind = "int" if kind == "color" else kind
@@ -231,7 +256,7 @@ def table_layout_fixture(source):
     constructor = method(source, "ElliotTableLayout")
     constructor = re.sub(r"C'(\d+),(\d+),(\d+)'",
                          lambda match: str(int(match[1]) + 256 * int(match[2]) + 65536 * int(match[3])), constructor)
-    return result + "public ElliotTableLayout() {" + constructor + "}\n}\n"
+    return result + "public ElliotTableLayout() {" + constructor.replace("NULL", "null") + "}\n}\n"
 
 
 def strength_fixture():
@@ -243,7 +268,7 @@ def strength_fixture():
 
 def reader_value_methods(source):
     """Keep validation branches; adapt references and stub only the MT5 column API."""
-    names = ("readFrameDetails", "readOptionalFlag", "readOptionalInteger", "readOptionalDouble",
+    names = ("readFrameDetails", "readOptionalFlag", "readOptionalInteger", "readOptionalSignedInteger", "readOptionalDouble",
              "readFlag", "readLongValue", "readDoubleValue", "readOptionalTime", "readTimeValue")
     references = {"DatabaseColumnLong": [2], "DatabaseColumnDouble": [2]}
     signatures = {}
@@ -354,6 +379,25 @@ class M5ObservationHistorySqlTests(unittest.TestCase):
         self.assertIsNone(row[30])
         self.assertEqual(tuple(row[32:35]), (None,) * 3)
 
+    def test_gmma_query_preserves_negative_counts_zero_and_nullable_legacy_values(self):
+        add_observation(self.database)
+        self.database.execute(f"UPDATE {FRAMES} SET gmma_trend_count=-1,gmma_cross_count=0")
+        rows = self.rows()
+        self.assertEqual(len(rows), 7)
+        for row in rows:
+            self.assertEqual(tuple(row[36:38]), (-1, 0))
+        self.database.execute(f"UPDATE {FRAMES} SET gmma_trend_count=12,gmma_cross_count=-5")
+        self.assertEqual(tuple(self.rows()[0][36:38]), (12, -5))
+        # Older imports may contain nullable GMMA columns even though current
+        # writers require integers. Exercise the SELECT against that schema.
+        self.database.commit()
+        self.database.execute("PRAGMA foreign_keys=OFF")
+        self.database.execute(f"CREATE TABLE nullable_copy AS SELECT * FROM {FRAMES}")
+        self.database.execute(f"DROP TABLE {FRAMES}")
+        self.database.execute(f"ALTER TABLE nullable_copy RENAME TO {FRAMES}")
+        self.database.execute(f"UPDATE {FRAMES} SET gmma_trend_count=NULL,gmma_cross_count=NULL")
+        self.assertEqual(tuple(self.rows()[0][36:38]), (None, None))
+
     def test_explicit_missing_run_never_falls_back(self):
         add_observation(self.database)
         self.assertIsNone(self.resolve_run(requested=999))
@@ -414,7 +458,7 @@ class M5ObservationHistorySqlTests(unittest.TestCase):
         self.database.execute(f"DROP INDEX IF EXISTS idx_zigzag_elliot_observations_anchor_jst_time")
         for table, omitted in ((OBS, {"anchor_jst_time", "anchor_jst_time_text"}),
                                (FRAMES, {"latest_point_org_elliot_label", "latest_point_is_added"}
-                                | set(DETAIL_COLUMNS))):
+                                | set(DETAIL_COLUMNS) | set(GMMA_COLUMNS))):
             names = [row[1] for row in self.database.execute(f"PRAGMA table_info({table})") if row[1] not in omitted]
             self.database.execute(f"CREATE TABLE old_copy AS SELECT {','.join(names)} FROM {table}")
             self.database.execute(f"DROP TABLE {table}")
@@ -425,6 +469,7 @@ class M5ObservationHistorySqlTests(unittest.TestCase):
         self.assertIsNone(rows[0][12])
         self.assertIsNone(rows[0][16])
         self.assertEqual(tuple(rows[0][25:36]), (None,) * 11)
+        self.assertEqual(tuple(rows[0][36:38]), (None, None))
 
     def test_missing_child_rows_preserve_parent_for_explicit_unrecorded_display(self):
         identifier = add_observation(self.database)
@@ -532,8 +577,8 @@ public class StrengthJoinFixture {
         adapted = "using System;\n" + frame_fixture() + r'''
 public class DetailReaderFixture {
     const int DATABASE_FIELD_TYPE_NULL=0,DATABASE_FIELD_TYPE_INTEGER=1,DATABASE_FIELD_TYPE_FLOAT=2,DATABASE_FIELD_TYPE_TEXT=3;
-    const int INT_MAX=int.MaxValue;
-    object[] columns=new object[36];
+    const int INT_MAX=int.MaxValue,INT_MIN=int.MinValue;
+    object[] columns=new object[38];
     int checks;
     int DatabaseColumnType(int request,int column) {
         object value=columns[column];
@@ -546,7 +591,7 @@ public class DetailReaderFixture {
     bool DatabaseColumnDouble(int request,int column,ref double value) { value=Convert.ToDouble(columns[column]);return true; }
     bool MathIsValidNumber(double value) { return !Double.IsNaN(value) && !Double.IsInfinity(value); }
     void Check(bool condition,string message) { checks++;if(!condition) throw new Exception(message); }
-    void ZeroColumns() { for(int i=25;i<36;i++) columns[i]=0L; }
+    void ZeroColumns() { for(int i=25;i<38;i++) columns[i]=0L; }
     public string Run() {
         string error="";
         M5ObservationHistoryFrame frame=new M5ObservationHistoryFrame();
@@ -556,15 +601,23 @@ public class DetailReaderFixture {
         Check(frame.originalWaveIndex==-1 && frame.previousMotiveSubElliotIndex==-1,"missing wave indexes");
         Check(!frame.hasPriceMovementActivityRatio && !frame.hasPointPipsDiff && !frame.hasPointFibonacciPercent && !frame.hasPointFibonacciExpansionPercent,"missing numbers");
         Check(frame.pointJstTime==0,"missing JST remains unknown");
+        Check(!frame.hasGmmaTrendCount && !frame.hasGmmaCrossCount && frame.gmmaTrendCount==0 && frame.gmmaCrossCount==0,"NULL GMMA is unknown despite its zero storage default");
         ZeroColumns();frame=new M5ObservationHistoryFrame();
         Check(readFrameDetails(0,frame,ref error),"recorded zero accepted");
         Check(frame.isEma200Buy==0 && frame.isEma200Sell==0 && frame.originalWaveIndex==0 && frame.previousMotiveSubElliotIndex==0,"zero flags are not missing");
         Check(frame.hasPriceMovementActivityRatio && frame.hasPointPipsDiff && frame.hasPointFibonacciPercent && frame.hasPointFibonacciExpansionPercent,"zero numbers have values");
+        Check(frame.hasGmmaTrendCount && frame.hasGmmaCrossCount && frame.gmmaTrendCount==0 && frame.gmmaCrossCount==0,"recorded zero GMMA remains valid");
         columns[31]=3L;columns[32]=-12.5;columns[33]=-2.5;columns[34]=161.8;columns[35]=1795524900L;
         Check(readFrameDetails(0,frame,ref error),"signed recorded values accepted");
         Check(frame.pointPipsDiff==-12.5 && frame.pointFibonacciPercent==-2.5 && frame.pointJstTime==1795524900L,"recorded values preserved");
-        int[] invalidColumns={25,26,27,28,29,29,29,30,30,31,32,33,34,35,35};
-        object[] invalidValues={2L,"1",1.0,4L,-0.1,Double.NaN,Double.PositiveInfinity,2147483648L,-1L,2L,"12.5",Double.NaN,Double.NegativeInfinity,-1L,"123"};
+        columns[36]=-1L;columns[37]=-5L;
+        Check(readFrameDetails(0,frame,ref error) && frame.hasGmmaTrendCount && frame.gmmaTrendCount==-1 && frame.hasGmmaCrossCount && frame.gmmaCrossCount==-5,"negative one is a recorded GMMA count, not a missing sentinel");
+        columns[36]=-2147483648L;columns[37]=2147483647L;
+        Check(readFrameDetails(0,frame,ref error) && frame.gmmaTrendCount==int.MinValue && frame.gmmaCrossCount==int.MaxValue,"full signed MQL integer range is accepted");
+        columns[36]=null;columns[37]=null;
+        Check(readFrameDetails(0,frame,ref error) && !frame.hasGmmaTrendCount && !frame.hasGmmaCrossCount && frame.gmmaTrendCount==0 && frame.gmmaCrossCount==0,"later NULL clears previous signed values");
+        int[] invalidColumns={25,26,27,28,29,29,29,30,30,31,32,33,34,35,35,36,36,36,37,37,37};
+        object[] invalidValues={2L,"1",1.0,4L,-0.1,Double.NaN,Double.PositiveInfinity,2147483648L,-1L,2L,"12.5",Double.NaN,Double.NegativeInfinity,-1L,"123","-1",1.0,2147483648L,"0",-1.0,-2147483649L};
         for(int i=0;i<invalidColumns.Length;i++) {
             ZeroColumns();columns[invalidColumns[i]]=invalidValues[i];frame=new M5ObservationHistoryFrame();error="";
             Check(!readFrameDetails(0,frame,ref error),"reject invalid column "+invalidColumns[i]+" case "+i);
@@ -675,7 +728,9 @@ class SharedElliotTableTests(unittest.TestCase):
         adapted = "using System;using System.Globalization;using System.Collections.Generic;\n"
         adapted += table_fixture() + table_layout_fixture(renderer) + r'''
 public class DrawElliotTable {
-    const int OBJ_LABEL=1,OBJ_RECTANGLE_LABEL=2,CORNER_LEFT_UPPER=0,ANCHOR_LEFT_UPPER=0,BORDER_FLAT=0,clrSlateGray=9;
+    public const int OBJ_LABEL=1,OBJ_RECTANGLE_LABEL=2,CORNER_LEFT_UPPER=0,ANCHOR_LEFT_UPPER=0,ANCHOR_UPPER=1,BORDER_FLAT=0,clrSlateGray=9;
+    public const long OBJ_NO_PERIODS=0,OBJ_ALL_PERIODS=-1;
+    public const int OBJPROP_TIMEFRAMES=21;
     const int OBJPROP_CORNER=1,OBJPROP_ANCHOR=2,OBJPROP_XDISTANCE=3,OBJPROP_YDISTANCE=4,OBJPROP_COLOR=5,
         OBJPROP_FONTSIZE=6,OBJPROP_BACK=7,OBJPROP_SELECTABLE=8,OBJPROP_HIDDEN=9,OBJPROP_ZORDER=10,
         OBJPROP_FONT=11,OBJPROP_TEXT=12,OBJPROP_TOOLTIP=13,OBJPROP_XSIZE=14,OBJPROP_YSIZE=15,
@@ -691,6 +746,7 @@ public class DrawElliotTable {
     static int checks;
     static void Check(bool value,string message) { checks++;if(!value) throw new Exception(message); }
     static int ObjectFind(long chart,string name) { return objects.ContainsKey(name) ? 0 : -1; }
+    static bool ObjectDelete(long chart,string name) { return objects.Remove(name); }
     static bool ObjectCreate(long chart,string name,int kind,int subwindow,long time,double price) {
         if(name==failName) return false;
         objects.Add(name,new ChartObject { kind=kind });return true;
@@ -701,7 +757,10 @@ public class DrawElliotTable {
     static bool TextSetFont(string face,int size) { return !failMeasure; }
     static bool TextGetSize(string text,out uint width,out uint height) { width=(uint)text.Length*10;height=10;return true; }
     static int ArraySize<T>(T[] values) { return values.Length; }
+    public static int ArrayResize<T>(ref T[] values,int length) { Array.Resize(ref values,length);return length; }
+    public static void ArrayFree<T>(ref T[] values) { values=new T[0]; }
     static int MathMax(int first,int second) { return Math.Max(first,second); }
+    static int MathMin(int first,int second) { return Math.Min(first,second); }
     static int StringLen(string value) { return value.Length; }
     static string StringSubstr(string value,int start,int count) { return value.Substring(start,count); }
     static string IntegerToString(long value) { return value.ToString(CultureInfo.InvariantCulture); }
@@ -750,7 +809,8 @@ public class DrawElliotTable {
         names = re.findall(r"\bstatic\s+(?:string|bool)\s+(\w+)\s*\(", renderer)
         methods = extracted_methods(renderer, names)
         methods = re.sub(r"TextGetSize\(([^,]+),\s*(\w+),\s*(\w+)\)", r"TextGetSize(\1, out \2, out \3)", methods)
-        adapted += methods + "\n}"
+        adapted = re.sub(r"^    static (int|bool) (Object\w+|ArraySize)", r"    public static \1 \2", adapted, flags=re.M)
+        adapted += methods + "\n}" + registry_fixture("DrawElliotTable")
         output = run_csharp(adapted, "[DrawElliotTable]::Run()\n")
         self.assertRegex(output, r"PASS \d+ shared renderer assertions")
         live = code_only((ROOT / "Include/Mstng/Draw/DrawElliot.mqh").read_text(encoding="utf-8-sig"))
@@ -764,7 +824,7 @@ public class DrawElliotTable {
 public class MarketContext { public string timeFrameLabel="M15"; }
 public class PriceMovementInfo { public bool isValid=true;public int level=3;public double activityRatio=1.375; }
 public class Ema { public bool isBuy=false,isSell=true; }
-public class Oscillator { public Ema ema200=new Ema();public PriceMovementInfo priceMovement=new PriceMovementInfo(); }
+public class Oscillator { public Ema ema200=new Ema();public PriceMovementInfo priceMovement=new PriceMovementInfo();public int gmmaTrendCount=4,gmmaCrossCount=-1; }
 public class Elliot { public bool isBuy=true;public MarketContext marketContext=new MarketContext();public Oscillator oscillator=new Oscillator(); }
 public class ZigZagPoint {
     public string elliotLabel="3",subElliotLabel="i",orgElliotLabel="2";
@@ -800,7 +860,8 @@ public class SharedAdapterFixture {
             priceMovementActivityRatio=1.375,hasPriceMovementActivityRatio=true,originalWaveIndex=2,
             previousMotiveSubElliotIndex=3,pointPipsDiff=-12.5,hasPointPipsDiff=true,
             pointFibonacciPercent=61.8,hasPointFibonacciPercent=true,pointFibonacciExpansionPercent=161.8,
-            hasPointFibonacciExpansionPercent=true,pointRate=1.23456,hasPointRate=true
+            hasPointFibonacciExpansionPercent=true,pointRate=1.23456,hasPointRate=true,
+            gmmaTrendCount=4,hasGmmaTrendCount=true,gmmaCrossCount=-1,hasGmmaCrossCount=true
         };
         Check(adapter.fillTableRow(elliot,wave,live),"live latest point is available");
         SavedAdapter.fillTableRow(frame,"M15",saved);
@@ -811,6 +872,11 @@ public class SharedAdapterFixture {
             Check(ElliotTableFormatter.cellText(saved,i,5)==expected[i],"saved expected cell "+i);
             Check(ElliotTableFormatter.cellColor(live,i,palette)==colors[i] && ElliotTableFormatter.cellColor(saved,i,palette)==colors[i],"same palette and rules for cell "+i);
         }
+        Check(ElliotTableFormatter.gmmaCellText(live,0)=="+4" && ElliotTableFormatter.gmmaCellText(saved,0)=="+4","current and saved trend count use the same signed display");
+        Check(ElliotTableFormatter.gmmaCellText(live,1)=="-1" && ElliotTableFormatter.gmmaCellText(saved,1)=="-1","negative one remains a valid cross count in both adapters");
+        Check(ElliotTableFormatter.gmmaCellColor(live,0,palette)==3 && ElliotTableFormatter.gmmaCellColor(saved,1,palette)==4,"GMMA colors follow each count independently of wave direction");
+        frame.hasGmmaCrossCount=false;SavedAdapter.fillTableRow(frame,"M15",saved);
+        Check(ElliotTableFormatter.gmmaCellText(saved,1)=="?" && ElliotTableFormatter.gmmaCellText(live,1)=="-1","missing saved GMMA never borrows the current value");
         Check(ElliotTableFormatter.waveText(live,0)=="▼3.i" && ElliotTableFormatter.waveColor(saved,palette)==8,"hover uses downward wave, independent of BUY analysis");
         palette.upColor=101;palette.unconfirmedUpColor=102;wave.point.isAddedPoint=false;frame.isAdded=0;
         adapter.fillTableRow(elliot,wave,live);SavedAdapter.fillTableRow(frame,"M15",saved);

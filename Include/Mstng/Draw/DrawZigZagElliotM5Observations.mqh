@@ -133,17 +133,23 @@ public:
         int statusY = MathMax(20, height - 142);
         this.drawLabel("Status", this.shorten(status, MathMax(8, (width - 24) / 11)),
             12, statusY, 8, clrSilver, this.shorten(status, 159), 8);
-        if (this.panel != NULL && this.panel.isSavedMode()
-                && this.savedPanelData.savedTime == this.panel.getSavedTime()) {
-            this.savedPanelData.hint = "前・次：表示範囲内 / 行選択で詳細 / M1は未収録";
-            this.updatePanelNavigation(fromRecords);
-            if (selectedIndex < 0) {
-                this.savedPanelData.hint += " / 選択時刻は表示範囲外、または読込待ち";
+        if (this.panel != NULL) {
+            this.panel.beginDrawBatch();
+            this.panel.requestBringToFront();
+            if (this.panel.isSavedMode()
+                    && this.savedPanelData.savedTime == this.panel.getSavedTime()) {
+                this.savedPanelData.hint = "前・次：表示範囲内 / 行選択で詳細 / M1は未収録";
+                this.updatePanelNavigation(fromRecords);
+                if (selectedIndex < 0) {
+                    this.savedPanelData.hint += " / 選択時刻は表示範囲外、または読込待ち";
+                }
+
+                this.panel.updateSaved(this.savedPanelData);
+            } else {
+                this.panel.draw();
             }
 
-            this.panel.updateSaved(this.savedPanelData);
-        } else if (this.panel != NULL) {
-            this.panel.draw();
+            this.panel.endDrawBatch();
         }
 
         this.onMouseMove(this.mouseX, this.mouseY, fromRecords);
@@ -838,6 +844,10 @@ private:
         fromRow.priceMovementLevel = fromFrame.priceMovementLevel;
         fromRow.priceMovementActivityRatio = fromFrame.priceMovementActivityRatio;
         fromRow.hasPriceMovementActivityRatio = fromFrame.hasPriceMovementActivityRatio;
+        fromRow.gmmaTrendCount = fromFrame.gmmaTrendCount;
+        fromRow.hasGmmaTrendCount = fromFrame.hasGmmaTrendCount;
+        fromRow.gmmaCrossCount = fromFrame.gmmaCrossCount;
+        fromRow.hasGmmaCrossCount = fromFrame.hasGmmaCrossCount;
         fromRow.originalWaveIndex = fromFrame.originalWaveIndex;
         fromRow.previousMotiveSubElliotIndex = fromFrame.previousMotiveSubElliotIndex;
         fromRow.pointPipsDiff = fromFrame.pointPipsDiff;
