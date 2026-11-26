@@ -19,6 +19,7 @@ from test_m5_observation_history_reader import block_end, code_only, method, run
 DIRECTORY = ROOT / "Include/Mstng/ExpertAdvisor"
 FACTORY = DIRECTORY / "ExpertAdvisorMtf3In3Factory.mqh"
 CONFIG = DIRECTORY / "ExpertAdvisorMtf3In3Config.mqh"
+M5_POLICY = DIRECTORY / "Mtf3In3M5Policy.mqh"
 FIELDS = (
     "isDrawArrow", "h1W1ConfirmationMode", "h1DirectionAlignmentMode", "h1Ema200ConfirmationMode",
     "h1DirectionCorrectionEnabled", "m15H4MaxFibonacciExpansionPercent", "m15H1MaxFibonacciExpansionPercent",
@@ -93,6 +94,7 @@ public class ExpertAdvisorMtf3In3M1 : ExpertAdvisorMTF_3in3 {
 
 def production_fixture():
     return (API + class_fixture(CONFIG.read_text(encoding="utf-8-sig"), "ExpertAdvisorMtf3In3Config")
+            + class_fixture(M5_POLICY.read_text(encoding="utf-8-sig"), "Mtf3In3M5Policy")
             + class_fixture(FACTORY.read_text(encoding="utf-8-sig"), "ExpertAdvisorMtf3In3Factory"))
 
 
@@ -233,8 +235,9 @@ class Mtf3In3FactoryConfigTests(unittest.TestCase):
                 MarketContext context=new MarketContext(frame);
                 ExpertAdvisorMtf3In3Config input=Config(mask),expected=Config(mask);
                 expected.isDrawArrow=true;expected.m1M5AndM1WavePolicyEnabled=frame==PERIOD_M1;
+                if(frame==PERIOD_M5 && input.m5D1ToM5EntryPolicyEnabled) expected.m5Mn1AndW1Ema200Required=false;
                 Check(normal.Run(context,input).Signature()==ExpertAdvisorMtf3In3Factory.create(context,expected).Signature(),"normal caller copies settings and selects M1 only on M1");
-                expected.isDrawArrow=false;expected.m1M5AndM1WavePolicyEnabled=true;
+                expected=Config(mask);expected.isDrawArrow=false;expected.m1M5AndM1WavePolicyEnabled=true;
                 Check(monitor.Run(context,input).Signature()==ExpertAdvisorMtf3In3Factory.create(context,expected).Signature(),"monitor caller disables arrows and enables M1 policy");
             }
             MarketContext h1=new MarketContext(PERIOD_H1);

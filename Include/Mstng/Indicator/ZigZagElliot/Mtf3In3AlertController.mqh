@@ -24,6 +24,7 @@
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertSnapshot.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertSnapshotBuilder.mqh>
+#include <Mstng\ExpertAdvisor\Mtf3In3M5Policy.mqh>
 #include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <Mstng\Log\Logger.mqh>
 #include <Mstng\Signal\SignalCount.mqh>
@@ -122,6 +123,10 @@ public:
         strategyConfig.m15LongMediumCurrencyStrengthEnabled = this.config.m15LongMediumCurrencyStrengthEnabled;
         strategyConfig.m1M5AndM1WavePolicyEnabled = this.marketContext.timeFrame == PERIOD_M1;
         strategyConfig.m1DirectionCorrectionEnabled = this.config.m1DirectionCorrectionEnabled;
+
+        if (this.marketContext.timeFrame == PERIOD_M5 && this.config.m5D1ToM5EntryPolicyEnabled) {
+            Mtf3In3M5Policy::apply(strategyConfig, true, this.config.m5CurrencyStrengthMinimumRankDifference);
+        }
 
         this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
             this.marketContext, strategyConfig);
@@ -594,7 +599,7 @@ private:
         this.databaseRun.programName = MQLInfoString(MQL_PROGRAM_NAME);
         this.databaseRun.programVersion = "1.62";
         if (this.databaseRun.programName == "ZigZagElliot") {
-            this.databaseRun.programVersion = "3.01";
+            this.databaseRun.programVersion = "3.02";
         }
 
         this.databaseRun.strategy = "MTF_3in3";
