@@ -92,7 +92,7 @@ Controllerでは開始前・開始境界・開始後、保有や保存待ち時�
 
 SmokeTestは認証情報を持たない隔離したMT5で実行しました。判定比較には合成した波動・通貨強弱データを使い、実データからの再分析と通貨強弱DBの取得はfixtureによる検証範囲に含めていません。保存テストのDB配置は隔離先のFilesへ置き換え、SQL・transaction・復元処理は実装を使用しています。実口座での発注・約定・broker上のSL執行は未検証です。実データのバックテストは下記のRun 2で完走しました。空行整形後のEAも再コンパイルし、エラー0・警告0を確認しています。
 
-単一通貨の成績はStrategy Testerで確認しました。再起動復元は上記fixtureの検証範囲であり、この実データ試験中の再起動は検証していません。28通貨比較は未実施です。
+USDJPY・EURUSD・GBPJPYの成績と旧新版の同等性をStrategy Testerで確認しました。再起動復元は上記fixtureの検証範囲であり、この実データ試験中の再起動は検証していません。28通貨比較は未実施です。
 
 ## 最初の実データ検証: USDJPY・2026年9月7～11日
 
@@ -205,3 +205,37 @@ Run 4（v1.02）はRun 3と同じUSDJPY・M5・2021.12.01〜2026.09.12未満・�
 判定はID・Run/contextを除いた全列、取引とイベントは実行固有ID・brokerチケット・UID・それらを含む説明文などを除いた列を照合し、差分0でした。分析設定と分析ハッシュは同一です。実行設定は旧Timer/Heartbeat周期の2項目を`TESTER_WARMUP_DEFER_DB_TIMER=1`へ置き換えた分だけ変わり、設定ハッシュも変わります。履歴確認ログ19,223件も、時刻・7時間足の状態・本数・必要本数・始点がすべて一致しました。
 
 [比較結果JSON](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-WarmupDeferred-v102-comparison.json)に比較列と除外列を保存し、[監査結果](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-WarmupDeferred-v102-audit.json)・[標準レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-USDJPY-20260907-20260911-WarmupDeferred-v102.html)も保存しました。v1.01用プリセットは比較基準として残し、現在の標準は[WarmupDeferred.ini](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.USDJPY.20260907_20260911.WarmupDeferred.ini)です。入力SETは共用できます。今回の同等性確認はUSDJPYの対象週に限ります。
+
+## 追加比較: EURUSD・GBPJPY
+
+円以外の通貨と別の円クロスについて、売買開始2026.09.07・終了2026.09.12未満・ウォームアップ開始2021.12.01で旧版と短縮版を比較します。M5・リアルティック・10,000 JPY・100倍・固定0.01ロットと13入力はUSDJPY試験から維持し、同じ通貨の旧新版プリセット間ではEA選択とレポート名だけを変えています。
+
+| 通貨 | 旧版用 | 短縮版用 |
+|---|---|---|
+| EURUSD | [WarmupBaseline.ini](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.EURUSD.20260907_20260911.WarmupBaseline.ini) | [WarmupDeferred.ini](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.EURUSD.20260907_20260911.WarmupDeferred.ini) |
+| GBPJPY | [WarmupBaseline.ini](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.GBPJPY.20260907_20260911.WarmupBaseline.ini) | [WarmupDeferred.ini](../../Scripts/Mstng/ExpertAdvisor/BacktestPresets/MstngM5Ea.GBPJPY.20260907_20260911.WarmupDeferred.ini) |
+
+事前確認では両通貨の価格履歴と2026年9月のティックファイルがあり、テスターと同じサーバー・口座の加重LIVE通貨強弱データ1,440枠・8通貨結果11,520件を確認しました。各枠28ペア・196票、全通貨の長中期・中短期順位は1〜8の範囲内です。[事前確認結果](../../output/MstngM5Ea/Backtests/AdditionalPairs-preflight.json)に参照データのハッシュを保存しています。4実行とも同期・完走を確認し、ネイティブテスターログの欠損・不一致・失敗・エラーに該当する警告は0件でした。対象週の欠損警告もありませんが、これは全ティックの完全性を直接証明する検査ではありません。
+
+旧版は`d23f680`のソースを隔離した出力先へ展開し、[MetaEditorの/include指定](https://www.metatrader5.com/en/metaeditor/help/beginning/integration_ide)でコンパイルしました。Gitの改行変換を除き、対象ソース519ファイルがコミットと一致することを確認しています。ビルドはエラー0・警告0で、検証用実行ファイルを`Experts/BacktestBaselines/MstngM5Ea-v101.ex5`へ配置しました。現行の`Experts/MstngM5Ea.ex5`は短縮版v1.02です。生成物はGit管理対象外で、別環境で旧版比較を再現する場合はこの旧版ビルドが必要です。[ビルド記録](../../output/MstngM5Ea/Builds/d23f680-v101/manifest.json)にソース世代と実行ファイルのハッシュを残しています。
+
+GUIではINIを読み込んでもEA選択が切り替わらないため、先に対象EAを選択し、その後に対応するINIを読み込みます。開始前にEA名・銘柄・期間・入力を確認し、開始後もDBの`program_version`・`symbol_name`・`config_text`を照合します。
+
+EURUSDはRun 5（v1.01）とRun 6（v1.02）、GBPJPYはRun 7（v1.01）とRun 8（v1.02）で完走・監査・旧新版の照合を完了しました。
+
+| 通貨 | 旧版時間 | 短縮版時間 | 短縮率 | M5判定／取引／イベント | SL変更 | 純損益 | 比較列の差分 |
+|---|---|---|---|---|---|---|---|
+| EURUSD | 27分40.992秒 | 1分11.055秒 | 95.7% | 1,440／4／1,294 | 6回 | −457円 | 0 |
+| GBPJPY | 28分7.520秒 | 2分15.000秒 | 92.0% | 1,440／5／1,269 | 8回 | 2,098円 | 0 |
+
+EURUSDはBUY・SELL各2取引、すべてCLOSEDで、PFは0.02でした。初期SL・約定価格・決済・SL変更・判定理由・分析スナップショットを含む比較列が一致し、未完了取引・重複・監査エラー・DB整合性違反は0件です。除外列と設定ハッシュの扱いはUSDJPY比較と同じです。履歴ログ19,223件、生成Tick 122,100,107件、M5バー357,279本も一致しました。新版の通常管理開始は2026.09.07 00:00:00、終了は2026.09.11 23:59:58です。
+
+EURUSDの保存済み標準レポートのヒストリー品質は両版とも14%でした。これはウォームアップを含む全期間の値です。価格履歴の始点はMN1が2020.01.01、W1が2019.12.29、その他が2020.01.02で、リアルティックの開始は2026.01.02です。対象週の結果の一致を、全期間のティック品質100%という意味には扱いません。
+
+EURUSDの[旧版レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-EURUSD-20260907-20260911-WarmupBaseline-v101.html)・[短縮版レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-EURUSD-20260907-20260911-WarmupDeferred-v102.html)、[旧版監査](../../output/MstngM5Ea/Backtests/MstngM5Ea-EURUSD-20260907-20260911-WarmupBaseline-v101-audit.json)・[短縮版監査](../../output/MstngM5Ea/Backtests/MstngM5Ea-EURUSD-20260907-20260911-WarmupDeferred-v102-audit.json)、[比較結果](../../output/MstngM5Ea/Backtests/MstngM5Ea-EURUSD-20260907-20260911-WarmupDeferred-v102-comparison.json)を保存しています。
+
+GBPJPYはSELL 5取引、すべてCLOSEDで、PFは3.45でした。初期SL・約定価格・決済・SL変更・判定理由・分析スナップショットを含む比較列の差分は0で、未完了取引・重複・監査エラー・DB整合性違反も0件です。履歴ログ19,223件、生成Tick 267,755,923件、M5バー357,197本も一致しました。新版の通常管理開始は2026.09.07 00:00:00、終了は2026.09.11 23:59:58です。価格履歴とリアルティックの開始日はEURUSDと同じで、保存済み標準レポートのヒストリー品質は両版とも14%でした。
+
+GBPJPYの[旧版レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupBaseline-v101.html)・[短縮版レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupDeferred-v102.html)、[旧版監査](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupBaseline-v101-audit.json)・[短縮版監査](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupDeferred-v102-audit.json)、[比較結果](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupDeferred-v102-comparison.json)を保存しています。[EURUSDのテスターログ確認](../../output/MstngM5Ea/Backtests/MstngM5Ea-EURUSD-20260907-20260911-native-log-checks.json)と[GBPJPYのテスターログ確認](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-native-log-checks.json)も保存しました。
+
+処理時間は各版1回の実測で、環境同期を除く`Test passed in`を比較しています。準備期間も含めた同一のテスト期間と入力で測定し、キャッシュ・端末負荷による変動は分離していません。今回の確認でUSDJPY・EURUSD・GBPJPYの対象週は同等でしたが、他通貨・他期間や実運用での同等性まで保証するものではありません。今回追加したGit管理対象は比較用INI 4ファイルと本資料で、現行EAのロジック変更はありません。
