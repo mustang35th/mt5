@@ -6,6 +6,28 @@
 
 M5固有の設定・Controller・Strategy・保存処理は `Include/MstngM5Ea` に置きます。既存H1・M15 EAの注文処理と保存形式は変更しません。既存基盤と同じhedging口座を対象とし、最適化は未対応です。
 
+## 判定用分析を採用できない理由（2026-11-27追加）
+
+M5の分析選択で拒否された理由を、既存の `m5_ea_decisions.reason_code` に分けて保存します。売買条件・補正条件・回数管理は変更していません。
+
+| reason_code | 内容 |
+|---|---|
+| `M5_D1_DIRECTION_MISMATCH` | 通常版M5ポリシーでD1とM5の方向が不一致 |
+| `M5_CORRECTION_NOT_APPLICABLE` | 通常版ではH4・H1・M15のうち2足以上がM5と逆方向。従来ポリシーではH4・H1の両方が逆方向 |
+| `M5_JUDGMENT_INPUT_INVALID` | 分析選択に渡された時間足・銘柄・分析状態・方向情報が不正 |
+| `M5_CORRECTION_ANALYSIS_FAILED` | 補正対象を決めた後、補正分析の生成または再分析に失敗 |
+| `JUDGMENT_ANALYSIS_UNAVAILABLE` | 詳細理由を取得できない場合の従来の代替理由 |
+
+`ExpertAdvisorMtf3In3M5` が既存の判定順で最初に拒否した理由を保持し、`M5EaStrategyDecision::evaluate()` が戦略オブジェクトを破棄する前に取得します。理由は分析開始時に初期化し、分析選択成功時も空にします。DBの列・形式は追加せず、保存済みの過去データも書き換えません。理由を含む既存の分析スナップショットとそのSHA-256も、新しい理由に合わせて保存されます。
+
+検証ではEA・通常版・List・Monitor・`MstngM5StrategySmokeTest`をMetaEditorでコンパイルし、すべてエラー0・警告0でした。SmokeTestは既存のBUY・SELL計46ケースに加え、入力不正・補正分析失敗・理由の優先順位・成功時と早期終了時のリセット・従来ポリシーの分類を確認し、`failures=0`でした。補正分析失敗のテストは価格取得前に失敗する入力を使用するため、意図したERRORログがBUY・SELLそれぞれ2行出ます。
+
+EURUSDの2026.09.07～11を同じ入力で再テストしました（変更前Run 16、変更後Run 37）。1,440判定のうち、従来の `JUDGMENT_ANALYSIS_UNAVAILABLE` 984件がD1方向不一致699件・補正対象外285件になりました。入力不正・補正分析失敗は0件です。実行ごとのID等を除く比較では、差分はこの984件の理由と、理由を埋め込むスナップショット・ハッシュだけでした。全スナップショットのハッシュも再計算して照合しています。
+
+4取引（すべてCLOSED）・1,294イベント・SL変更6回・純損益−457円は変更前と一致し、DB整合性・重複・未完了取引・EAログのエラーは0件でした。テスター完走ログは `Test passed in 0:01:11.446`、終了時刻は2026.09.11 23:59:58です。今回はEURUSDのみ再実行し、28ペア全体の再テストはしていません。EAの表示バージョンは1.02のままなので、検証成果物には変更前後のバイナリハッシュを保存します。
+
+[比較結果](../../output/MstngM5Ea/JudgmentReasons/verified-comparison.json)、[比較列・除外列の詳細](../../output/MstngM5Ea/JudgmentReasons/compare_gui_cli.json)、[DB監査](../../output/MstngM5Ea/JudgmentReasons/audit_run.json)、コンパイル・実行ログは `output/MstngM5Ea/JudgmentReasons/` に保存しています（Git管理対象外）。
+
 ## 入力
 
 | 入力 | 初期値 | 内容 |

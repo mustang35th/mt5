@@ -44,6 +44,7 @@ public:
         this.currencyStrengthMinimumRankDifference = fromCurrencyStrengthMinimumRankDifference;
         this.correctedElliotAll = NULL;
         this.correctedTimeFrame = PERIOD_CURRENT;
+        this.judgmentAnalysisRejectReason = "";
     }
 
     /**
@@ -65,6 +66,15 @@ public:
         }
 
         return PERIOD_CURRENT;
+    }
+
+    /**
+     * 直近の判定用分析の選択で確定した拒否理由を取得する。
+     *
+     * @return 方向不一致、補正対象外、分析失敗の理由。選択成功時は空文字列。
+     */
+    virtual string getJudgmentAnalysisRejectReason() override {
+        return this.judgmentAnalysisRejectReason;
     }
 
 protected:
@@ -160,6 +170,7 @@ protected:
     virtual void resetStrategySpecificAnalysisOutcome() override {
         ExpertAdvisorMTF_3in3::resetStrategySpecificAnalysisOutcome();
         this.releaseCorrectedElliotAll();
+        this.judgmentAnalysisRejectReason = "";
     }
 
     /**
@@ -173,6 +184,7 @@ protected:
      * @return 採用する分析への非所有参照。判定対象外の場合はNULL。
      */
     virtual ElliotAll *selectJudgmentElliotAll(ElliotAll *fromOriginal) override {
+        this.judgmentAnalysisRejectReason = "M5_JUDGMENT_INPUT_INVALID";
         if (this.marketContext.timeFrame != PERIOD_M5
                 || fromOriginal == NULL || !fromOriginal.isAnalysisSucceeded
                 || fromOriginal.marketContext.timeFrame != PERIOD_M5
@@ -189,6 +201,8 @@ protected:
             }
 
             if (correctionTimeFrame == PERIOD_CURRENT) {
+                this.judgmentAnalysisRejectReason = "";
+
                 return fromOriginal;
             }
         } else {
@@ -204,10 +218,14 @@ protected:
             bool isH4Matched = originalH4.isBuy == originalCurrent.isBuy;
             bool isH1Matched = originalH1.isBuy == originalCurrent.isBuy;
             if (isH4Matched && isH1Matched) {
+                this.judgmentAnalysisRejectReason = "";
+
                 return fromOriginal;
             }
 
             if (!isH4Matched && !isH1Matched) {
+                this.judgmentAnalysisRejectReason = "M5_CORRECTION_NOT_APPLICABLE";
+
                 return NULL;
             }
 
@@ -223,10 +241,13 @@ protected:
                     fromOriginal, correctionTimeFrame, originalCurrent.isBuy)) {
             this.logger.error(__FUNCTION__, "M5 corrected analysis failed");
             this.releaseCorrectedElliotAll();
+            this.judgmentAnalysisRejectReason = "M5_CORRECTION_ANALYSIS_FAILED";
+
             return NULL;
         }
 
         this.correctedTimeFrame = correctionTimeFrame;
+        this.judgmentAnalysisRejectReason = "";
 
         return this.correctedElliotAll;
     }
@@ -501,6 +522,9 @@ protected:
     }
 
 private:
+    /** 直近の判定用分析を採用できなかった理由。売買条件には使用しない。 */
+    string judgmentAnalysisRejectReason;
+
     /** 通常版M5の順位差基準。長中期・中短期はそれぞれ方向に合う1位・8位でも通過。 */
     int currencyStrengthMinimumRankDifference;
 
@@ -546,6 +570,8 @@ private:
 
             if (elliot.isBuy != originalCurrent.isBuy) {
                 if (timeFrames[i] == PERIOD_D1) {
+                    this.judgmentAnalysisRejectReason = "M5_D1_DIRECTION_MISMATCH";
+
                     return false;
                 }
 
@@ -555,6 +581,8 @@ private:
         }
 
         if (mismatchCount > 1) {
+            this.judgmentAnalysisRejectReason = "M5_CORRECTION_NOT_APPLICABLE";
+
             return false;
         }
 

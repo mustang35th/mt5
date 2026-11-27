@@ -324,6 +324,14 @@ void verifyParityMatrix(const bool fromIsBuy) {
                 label + " failed strength never consumes first signal");
         }
 
+        if (i == 18) {
+            verify(actual.reasonCode == "M5_D1_DIRECTION_MISMATCH",
+                label + " D1 direction reason");
+        } else if (i == 19) {
+            verify(actual.reasonCode == "M5_CORRECTION_NOT_APPLICABLE",
+                label + " multiple correction reason");
+        }
+
         delete analysis;
     }
 }
@@ -379,6 +387,65 @@ void verifyCorrectedSnapshot() {
 }
 
 /**
+ * Exercise rejection diagnostics through the real selection and adapter paths.
+ * Correction failure uses an invalid MN1 symbol, before any market history read.
+ */
+void verifyJudgmentReasons(const bool fromIsBuy) {
+    for (int i = 0; i < 3; i++) {
+        ElliotAll *analysis = createAnalysis(fromIsBuy);
+        string expectedReason = "M5_JUDGMENT_INPUT_INVALID";
+        if (i == 0) {
+            analysis.getElliot(PERIOD_H4).oscillator.isBuy = !fromIsBuy;
+        } else if (i == 1) {
+            setDirection(analysis.getElliot(PERIOD_H1), !fromIsBuy);
+            analysis.getElliot(PERIOD_MN1).marketContext.symbolName = "INVALID_FIXTURE";
+            expectedReason = "M5_CORRECTION_ANALYSIS_FAILED";
+        } else {
+            setDirection(analysis.getElliot(PERIOD_D1), !fromIsBuy);
+            setDirection(analysis.getElliot(PERIOD_H4), !fromIsBuy);
+            setDirection(analysis.getElliot(PERIOD_H1), !fromIsBuy);
+            expectedReason = "M5_D1_DIRECTION_MISMATCH";
+        }
+
+        M5EaStrategyDecision decision;
+        M5EaStrategySnapshot snapshot;
+        verify(decision.prepare(analysis, D'2026.09.01 01:00', snapshot)
+            && decision.evaluate(analysis, 0, snapshot), "reason fixture evaluated");
+        verify(snapshot.reasonCode == expectedReason && !snapshot.isJudgmentAnalysisAvailable,
+            "rejection reason copied before strategy deletion");
+        verify(!snapshot.isJudge && !snapshot.isStrategyEntry && !snapshot.isSignalConsumed
+            && snapshot.signalCount == 0, "rejection preserves signal count and no entry");
+        delete analysis;
+    }
+
+    ElliotAll *analysis = createAnalysis(fromIsBuy);
+    MarketContext context = analysis.marketContext;
+    SignalCount count(context);
+    ExpertAdvisorMtf3In3M5 strategy(context, false, false, true);
+    verify(strategy.getJudgmentAnalysisRejectReason() == "", "initial reason empty");
+    setDirection(analysis.getElliot(PERIOD_D1), !fromIsBuy);
+    strategy.analyze(analysis, GetPointer(count), 1);
+    verify(strategy.getJudgmentAnalysisRejectReason() == "M5_D1_DIRECTION_MISMATCH",
+        "reused strategy first rejection");
+    setDirection(analysis.getElliot(PERIOD_D1), fromIsBuy);
+    strategy.analyze(analysis, GetPointer(count), 1);
+    verify(strategy.getJudgmentAnalysisRejectReason() == ""
+        && strategy.getAlertResult().isEntry, "success clears prior reason");
+    setDirection(analysis.getElliot(PERIOD_D1), !fromIsBuy);
+    strategy.analyze(analysis, GetPointer(count), 1);
+    strategy.analyze(NULL, GetPointer(count), 1);
+    verify(strategy.getJudgmentAnalysisRejectReason() == "", "early guard clears prior reason");
+
+    ExpertAdvisorMtf3In3M5 legacy(context, false, false, false);
+    setDirection(analysis.getElliot(PERIOD_H4), !fromIsBuy);
+    setDirection(analysis.getElliot(PERIOD_H1), !fromIsBuy);
+    legacy.analyze(analysis, GetPointer(count), 1);
+    verify(legacy.getJudgmentAnalysisRejectReason() == "M5_CORRECTION_NOT_APPLICABLE",
+        "legacy multiple reverse frames classified");
+    delete analysis;
+}
+
+/**
  * Use actual strategy decisions and synthetic analysis; never send orders.
  */
 void OnStart() {
@@ -391,5 +458,7 @@ void OnStart() {
     verifyParityMatrix(false);
     verifyRestoredCount();
     verifyCorrectedSnapshot();
+    verifyJudgmentReasons(true);
+    verifyJudgmentReasons(false);
     Print("MstngM5StrategySmokeTest failures=", failureCount);
 }

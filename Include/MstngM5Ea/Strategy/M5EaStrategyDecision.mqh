@@ -112,6 +112,7 @@ public:
 
         fromSnapshot.alertResult = strategy.getAlertResult();
         fromSnapshot.correctionTimeFrame = strategy.getCorrectionTimeFrame();
+        string judgmentRejectReason = strategy.getJudgmentAnalysisRejectReason();
         ElliotAll *judgment = strategy.getJudgmentElliotAll();
         fromSnapshot.isJudgmentAnalysisAvailable = this.isAnalysisAvailable(judgment);
         if (fromSnapshot.isJudgmentAnalysisAvailable) {
@@ -140,6 +141,9 @@ public:
         fromSnapshot.isSignalConsumed = fromSnapshot.isJudge && fromSnapshot.signalCount == 1;
         if (!fromSnapshot.isJudgmentAnalysisAvailable) {
             fromSnapshot.reasonCode = "JUDGMENT_ANALYSIS_UNAVAILABLE";
+            if (judgmentRejectReason != "") {
+                fromSnapshot.reasonCode = judgmentRejectReason;
+            }
         } else if (!fromSnapshot.isJudge) {
             fromSnapshot.reasonCode = "JUDGE_REJECTED";
         } else if (fromSnapshot.signalCount > 1) {
