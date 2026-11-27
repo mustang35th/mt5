@@ -79,6 +79,15 @@ public:
 
 protected:
     /**
+     * 通常版M5でD1の方向一致を必須にする。比較専用クラスだけが上書きする。
+     *
+     * @return 通常版ではtrue。
+     */
+    virtual bool isD1DirectionRequired() {
+        return true;
+    }
+
+    /**
      * 通常版M5の順位差基準を取得する。従来ポリシーは方向一致のみとする。
      *
      * @return 長中期・中短期の各OR判定に使用する最低順位差。
@@ -316,8 +325,10 @@ protected:
                             elliot, sourceAnalysis.getElliot(timeFrames[i]), timeFrames[i], this.isBuy)) {
                         return false;
                     }
-                } else if (!decision.isDirectionStateValid(elliot, timeFrames[i])
-                        || elliot.isBuy != this.isBuy) {
+                } else if (!decision.isDirectionStateValid(elliot, timeFrames[i])) {
+                    return false;
+                } else if (elliot.isBuy != this.isBuy
+                        && (timeFrames[i] != PERIOD_D1 || this.isD1DirectionRequired())) {
                     return false;
                 }
             }
@@ -570,6 +581,10 @@ private:
 
             if (elliot.isBuy != originalCurrent.isBuy) {
                 if (timeFrames[i] == PERIOD_D1) {
+                    if (!this.isD1DirectionRequired()) {
+                        continue;
+                    }
+
                     this.judgmentAnalysisRejectReason = "M5_D1_DIRECTION_MISMATCH";
 
                     return false;

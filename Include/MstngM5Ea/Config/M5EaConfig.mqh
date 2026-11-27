@@ -322,6 +322,10 @@ public:
             + "|LIVE_FIRST_EVALUATION_SECONDS=1|LIVE_EVALUATION_INTERVAL_SECONDS=30"
             + "|TESTER_WARMUP_DEFER_DB_TIMER=1"
             + "|TESTER_EVALUATION_TRIGGER=TICK|TESTER_TRADE_START_TIME=" + IntegerToString(this.testerTradeStartTime);
+#ifdef MSTNG_M5_D1_RELAXED_COMPARISON
+        StringReplace(text, "DIRECTION_ALIGNMENT_MODE=D1_REQUIRED_H4_H1_M15_ONE_CORRECTION",
+            "DIRECTION_ALIGNMENT_MODE=D1_OPTIONAL_H4_H1_M15_ONE_CORRECTION");
+#endif
         EaTextUtil::appendField(text, "CURRENCY_STRENGTH_DATABASE_FILE_NAME", this.currencyStrengthDatabaseFileName);
 
         return text;
@@ -350,7 +354,13 @@ public:
     /**
      * 通常版M5判定・通貨強弱・確定ZigZag SLを含む戦略世代を返す。
      */
-    static string getStrategyVersion() { return "M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_V1"; }
+    static string getStrategyVersion() {
+#ifdef MSTNG_M5_D1_RELAXED_COMPARISON
+        return "M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_D1_OPTIONAL_TEST_V1";
+#else
+        return "M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_V1";
+#endif
+    }
 
 private:
     /**
