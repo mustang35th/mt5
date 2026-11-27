@@ -92,7 +92,7 @@ Controllerでは開始前・開始境界・開始後、保有や保存待ち時�
 
 SmokeTestは認証情報を持たない隔離したMT5で実行しました。判定比較には合成した波動・通貨強弱データを使い、実データからの再分析と通貨強弱DBの取得はfixtureによる検証範囲に含めていません。保存テストのDB配置は隔離先のFilesへ置き換え、SQL・transaction・復元処理は実装を使用しています。実口座での発注・約定・broker上のSL執行は未検証です。実データのバックテストは下記のRun 2で完走しました。空行整形後のEAも再コンパイルし、エラー0・警告0を確認しています。
 
-USDJPY・EURUSD・GBPJPYの成績と旧新版の同等性をStrategy Testerで確認しました。再起動復元は上記fixtureの検証範囲であり、この実データ試験中の再起動は検証していません。28通貨比較は未実施です。
+USDJPY・EURUSD・GBPJPYの成績と旧新版の同等性をStrategy Testerで確認しました。再起動復元は上記fixtureの検証範囲であり、この実データ試験中の再起動は検証していません。現行v1.02の28通貨テストは[結果資料](MstngM5EaBatch28Results.md)にまとめました。旧新版の28通貨比較は未実施です。
 
 ## 最初の実データ検証: USDJPY・2026年9月7～11日
 
@@ -116,7 +116,7 @@ USDJPY・EURUSD・GBPJPYの成績と旧新版の同等性をStrategy Testerで�
 
 終了日が含まれないこととModelの値は、MT5公式の[テスター説明](https://www.metatrader5.com/en/terminal/help/algotrading/testing)および[起動設定仕様](https://www.metatrader5.com/en/terminal/help/start_advanced/start)に従います。INIのレポート名は `MstngM5Ea-USDJPY-20260907-20260911`、既存レポートの上書きは無効です。INIには口座番号や認証情報を保存していません。
 
-INIは `Leverage=100` とし、GUIの「設定読み込み」で100倍になることを確認しました。確認したbuildでは `Leverage=1:100` が10倍として読み込まれたため、この表記は使用しません。`/config`による起動方式は今回未検証です。
+INIは `Leverage=100` とし、GUIの「設定読み込み」で100倍になることを確認しました。確認したbuildでは `Leverage=1:100` が10倍として読み込まれたため、この表記は使用しません。後続の28通貨試験ではUSDJPYを`/config`方式で完走しました。再起動時に再認証が必要だったため、以降はログインを維持したGUIで実行しています。
 
 2026-11-27の事前確認では、Common Filesの2026年通貨強弱DBに対象週の加重LIVE記録が1,440枠あり、各枠で28ペア・196票・8通貨結果とUSD/JPYの有効順位を確認しました。同週の加重TESTER記録は0件なので、参照元をTESTER専用やAUTOへ変更すると利用できません。DBのサーバー・口座は、確認時の端末設定と一致しています。
 
@@ -239,3 +239,41 @@ GBPJPYはSELL 5取引、すべてCLOSEDで、PFは3.45でした。初期SL・約
 GBPJPYの[旧版レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupBaseline-v101.html)・[短縮版レポート](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupDeferred-v102.html)、[旧版監査](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupBaseline-v101-audit.json)・[短縮版監査](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupDeferred-v102-audit.json)、[比較結果](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-WarmupDeferred-v102-comparison.json)を保存しています。[EURUSDのテスターログ確認](../../output/MstngM5Ea/Backtests/MstngM5Ea-EURUSD-20260907-20260911-native-log-checks.json)と[GBPJPYのテスターログ確認](../../output/MstngM5Ea/Backtests/MstngM5Ea-GBPJPY-20260907-20260911-native-log-checks.json)も保存しました。
 
 処理時間は各版1回の実測で、環境同期を除く`Test passed in`を比較しています。準備期間も含めた同一のテスト期間と入力で測定し、キャッシュ・端末負荷による変動は分離していません。今回の確認でUSDJPY・EURUSD・GBPJPYの対象週は同等でしたが、他通貨・他期間や実運用での同等性まで保証するものではありません。今回追加したGit管理対象は比較用INI 4ファイルと本資料で、現行EAのロジック変更はありません。
+
+## 28通貨ペアの実行準備（2026-11-27）
+
+[準備スクリプト](../../Scripts/Mstng/Analysis/m5_ea_batch_prepare.py)は、`SymbolNameInfoAll::setAll()`の28ペアを読み、上記USDJPYのv1.02標準INIから銘柄・レポート名だけを変えた28件のINIと`manifest.json`を生成します。期間は今回の比較に合わせて固定し、EAの入力13項目はそのまま複製します。MT5の起動やバックテストの開始は行いません。
+
+MQL5フォルダで次を実行します。`--reference-run`には、使用するサーバー・口座で完走したM5 v1.02のTester Run IDを指定します。下記の8は今回のGBPJPY検証です。`--stopped-tester-db`はテスター停止中かつ取引DBのWAL/SHMがない場合だけ使用できます。稼働中の通貨強弱DBはWALを含む読み取り専用接続で、同一トランザクションから検査します。
+
+```powershell
+python -X utf8 Scripts/Mstng/Analysis/m5_ea_batch_prepare.py --common-files "../../Common/Files" --reference-run 8 --stopped-tester-db --tag Batch28-01
+```
+
+生成先は`output/MstngM5Ea/Backtests/<tag>/`です。既存フォルダは上書きせず、再準備時は新しいtagを指定します。生成INIはUTF-16 BOM・CRLFです。今回のbuild 6230ではUTF-8 BOMのINIがGUIに反映されず、UTF-16で読込を確認したため出力形式を合わせました。生成したINI・実行記録はGit管理対象外で、スクリプトと本資料から再生成できます。準備スクリプトは口座番号・認証情報を出力しません。参照Runの口座情報との一致確認であり、現在の端末ログイン状態は検査していないため、実行前に端末側も照合します。
+
+今回の[実行準備記録](../../output/MstngM5Ea/Backtests/Batch28-01/manifest.json)は次の結果でした。
+
+| 確認対象 | 結果 |
+|---|---|
+| 28ペアの組み合わせ | 8通貨の全28組・重複なし |
+| 加重LIVE通貨強弱 | 対象週1,440枠、欠損・不正枠0 |
+| 通貨別順位 | 11,520行、全枠で8通貨、長中期・中短期とも1〜8 |
+| 票の実データ | 282,240行、全枠で28ペア×7時間足、銘柄名一致 |
+| ローカル価格ファイル | 全28ペアで2020〜2026年のHCCと2026年9月の非空TKCあり |
+| 生成プリセット | 28件、全入力・銘柄とレポート名以外の設定が標準INIと一致 |
+| バッチ実行 | 準備時は全28件PENDING。その後Run 9〜36で完走・監査済み |
+
+週明け開始の直前300秒枠は存在しません。現在順位の欠損とは分けて`previousSlotAvailable=false`で記録し、長中期増減の取得待ちは既存仕様どおり扱います。通貨強弱の検査失敗時は終了コード1となり、失敗内容をmanifestへ保存します。失敗したバッチは実行前にデータを確認してください。
+
+HCC/TKCの存在確認は内部の本数・欠損・同期成功の検証ではありません。準備時のmanifestでは`testerSynchronization`・`targetWeekTickCoverage`を`NOT_CHECKED`とします。今回の実行後はネイティブログの完走と、未判定10ペアの価格診断結果を追記しました。他18ペアの全ティック完全性は未検査です。対象期間の順位と票の識別列をハッシュ化しており、従来の追加2通貨比較とはハッシュの対象列・形式が異なります。
+
+各通貨を独立した単一通貨テストとして順番に処理します。今回もこの手順で実行しました。
+
+1. EAに現行`MstngM5Ea.ex5`を選び、該当INIを読み込む。口座・銘柄・期間・リアルティック・13入力を確認する。INI読込だけではEA選択は切り替わらない。
+2. 1通貨ずつ開始し、作成されたRunの銘柄・v1.02・設定を照合してRun IDを記録する。同じCommon DBを使う複数テストの同時実行は今回の手順に含めない。
+3. 完走後に標準HTMLと監査結果を保存する。STOPPED、判定期間、未完了取引・重複・DBエラー、約定・SL変更を照合する。欠損等で1,440判定に届かない場合は理由を調査し、件数だけで成功にしない。
+4. ネイティブログの履歴同期・対象週のティック欠損警告を確認する。全期間のヒストリー品質と対象週の確認結果は別々に記録する。
+5. 通貨別に取引数・純損益・PF・DD・判定理由・所要時間をまとめる。独立した28口座の結果として扱い、同時運用ポートフォリオのDDには換算しない。
+
+現行v1.02の28ペアを実行・集計し、102取引、純損益の単純合計2,556円、整合性監査エラー0件でした。未判定47枠は10ペアのM5足・ティック欠損と一致しています。成績表、注文拒否、欠損時刻、検証範囲は[28通貨ペアの結果](MstngM5EaBatch28Results.md)を参照してください。旧版との28ペア比較と再認証を含む無人連続実行は未実装です。[検査テスト](../../Scripts/Mstng/Analysis/test_m5_ea_batch_prepare.py)7件、および新形式で生成した28プリセットの文字コード・設定・入力維持を確認しました。現行EA・Includeのソースに変更はありません。
