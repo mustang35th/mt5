@@ -346,6 +346,45 @@ class M5ObservationHistorySqlTests(unittest.TestCase):
         self.assertEqual(self.resolve_run(requested=1), 1)
         self.assertEqual(len(self.rows(run=1)), 7)
 
+    def test_display_refresh_follows_restarted_collector_only_for_automatic_run(self):
+        # Bind the actual controller call argument, so querying Run0 directly
+        # cannot hide a regression that passes the previously resolved Run.
+        source = DISPLAY.read_text(encoding="utf-8-sig")
+        call = re.search(r"this\.reader\.selectRecords\(([^()]*)\)", method(source, "update"))
+        self.assertIsNotNone(call)
+        requested_path = call[1].split(",")[3].strip().split(".")
+        self.assertEqual(requested_path[0], "this")
+
+        def refresh(configured, resolved):
+            requested = {"config": {"m5ObservationDisplayRunId": configured},
+                         "resolvedRunId": resolved}
+            for field in requested_path[1:]:
+                requested = requested[field]
+            return self.resolve_run(requested=requested)
+
+        add_observation(self.database)
+        selected = {configured: refresh(configured, configured) for configured in (0, 1)}
+        self.assertEqual(selected, {0: 1, 1: 1})
+
+        # A restarted collector may not have saved its first observation yet;
+        # another strategy's newer Run must not displace a compatible Run.
+        add_run(self.database, 2)
+        add_run(self.database, 3, strategy="MTF_3in3")
+        add_observation(self.database, run=3, bar=BASE_TIME + 300)
+        selected = {configured: refresh(configured, resolved)
+                    for configured, resolved in selected.items()}
+        self.assertEqual(selected, {0: 1, 1: 1})
+
+        identifier = add_observation(self.database, run=2, bar=BASE_TIME + 300)
+        selected = {configured: refresh(configured, resolved)
+                    for configured, resolved in selected.items()}
+        self.assertEqual(selected, {0: 2, 1: 1})
+        automatic_rows = self.rows(run=selected[0], start=BASE_TIME + 300, end=BASE_TIME + 600)
+        self.assertEqual(len(automatic_rows), 7)
+        self.assertEqual({row[0] for row in automatic_rows}, {identifier})
+        self.assertEqual(self.rows(run=selected[1], start=BASE_TIME + 300, end=BASE_TIME + 600), [])
+        self.assertEqual(len(self.rows(run=selected[1])), 7)
+
     def test_chart_detail_columns_preserve_saved_values(self):
         migrate(self.database)
         add_observation(self.database)

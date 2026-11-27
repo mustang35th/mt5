@@ -189,7 +189,7 @@ input(name="M5観測DBのCommonフォルダを使用") bool m5ObservationDisplay
 /** 通常チャートでもTESTERの記録を選択する場合true。 */
 input(name="TESTERのM5記録を表示（通常チャート）") bool m5ObservationDisplayTesterData = false;
 
-/** 0は銘柄・サーバー・モードが一致する最新Runを保持する。 */
+/** 0は銘柄・サーバー・モードが一致する最新Runへ読込ごとに追従する。 */
 input(name="M5観測Run ID（0=最新Run）") long m5ObservationDisplayRunId = 0;
 
 /** ZigZagElliot全体制御。 */

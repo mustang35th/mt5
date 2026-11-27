@@ -87,7 +87,7 @@ public:
     /** 通常チャートでTESTERのM5観測を読む場合true。 */
     bool m5ObservationDisplayTesterData;
 
-    /** 表示するM5観測Run。0は最初に一致した最新Runを保持する。 */
+    /** 表示するM5観測Run。0は一致する最新Runへ読込ごとに追従する。 */
     long m5ObservationDisplayRunId;
 
     /** H1はD1・H4、M15はD1・H4・H1の片足方向補正を使用する場合true。 */

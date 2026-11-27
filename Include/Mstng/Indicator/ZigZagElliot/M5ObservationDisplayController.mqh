@@ -13,7 +13,7 @@
 
 /**
  * 表示範囲内の保存波動と、同M5時刻の通貨強弱履歴を目印・詳細パネルへ渡す。
- * 表示Runを保持し、マウス操作ではDBを参照せずキャッシュを使用する。
+ * Run未指定時は最新Runへ追従し、マウス操作ではDBを参照せずキャッシュを使用する。
  */
 class M5ObservationDisplayController {
 public:
@@ -153,7 +153,7 @@ public:
         M5ObservationHistoryRecord saved[];
         long selectedRunId = this.resolvedRunId;
         if (!this.connected || !this.reader.selectRecords(this.marketContext.symbolName,
-                this.sourceMode, this.sourceServer, this.resolvedRunId, startTime, endTime,
+                this.sourceMode, this.sourceServer, this.config.m5ObservationDisplayRunId, startTime, endTime,
                 knownTime, selectedRunId, saved, error)) {
             this.reader.close();
             this.connected = false;
@@ -292,7 +292,7 @@ private:
     /** 通貨強弱DBの参照口座。切替時に別口座のキャッシュを破棄する。 */
     long sourceLogin;
 
-    /** 最初に解決した一つのRun ID。 */
+    /** 最後の読込で解決した一つのRun ID。 */
     long resolvedRunId;
 
     /** 最後の読込開始時刻。 */
