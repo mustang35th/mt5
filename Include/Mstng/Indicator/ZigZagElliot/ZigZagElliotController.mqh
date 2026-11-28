@@ -374,7 +374,7 @@ public:
 
         if (this.m5ObservationDisplayController != NULL) {
             if (fromId == CHARTEVENT_CHART_CHANGE) {
-                this.m5ObservationDisplayController.update(true);
+                this.updateM5ObservationDisplay(true);
             } else if (fromId == CHARTEVENT_OBJECT_CLICK
                     && this.m5ObservationDisplayController.onObjectClick(fromObjectName)) {
                 this.m5ObservationDisplayController.redraw();
@@ -467,7 +467,7 @@ public:
             const datetime fromCurrentBarTime = 0) {
         ZigZagElliotDrawBatch drawBatch(this.elliotPanel);
         if (this.m5ObservationDisplayController != NULL) {
-            this.m5ObservationDisplayController.update();
+            this.updateM5ObservationDisplay();
         }
 
         this.prepareDatabaseAlertDisplay();
@@ -525,7 +525,7 @@ public:
         ulong timerEntryTick = GetTickCount64();
 
         if (this.m5ObservationDisplayController != NULL) {
-            this.m5ObservationDisplayController.update();
+            this.updateM5ObservationDisplay();
         }
 
         this.prepareDatabaseAlertDisplay();
@@ -942,7 +942,11 @@ private:
      */
     void completeAnalysisDraw(const datetime fromBarTime) {
         if (this.databaseAlertDisplayController != NULL) {
+            ulong displayStartMicroseconds = GetMicrosecondCount();
             this.databaseAlertDisplayController.update(fromBarTime, TimeCurrent(), AccountInfoString(ACCOUNT_SERVER));
+            if (this.chartController != NULL) {
+                this.chartController.completeSlowOperation(stageAlertDatabaseDisplay, displayStartMicroseconds);
+            }
         }
 
         if (this.currencyStrengthController != NULL) {
@@ -1190,7 +1194,11 @@ private:
         this.beginCurrencyStrengthRedrawBatch();
 
         if (this.currencyStrengthController != NULL) {
+            ulong strengthStartMicroseconds = GetMicrosecondCount();
             this.currencyStrengthController.update();
+            if (this.chartController != NULL) {
+                this.chartController.completeSlowOperation(stageStrengthUpdate, strengthStartMicroseconds);
+            }
         }
 
         bool isDebugOutputEnabled = this.logger.isDebugOutputEnabled();
@@ -1243,9 +1251,13 @@ private:
             this.gapWaitingM5BarTime = (datetime)((long)targetTime - (long)targetTime % 300);
         }
 
-        if (!this.analysisController.analyze(
-                executionInfo,
-                this.timerSeconds)) {
+        ulong analysisStartMicroseconds = GetMicrosecondCount();
+        bool analysisSucceeded = this.analysisController.analyze(executionInfo, this.timerSeconds);
+        if (this.chartController != NULL) {
+            this.chartController.completeSlowOperation(stageElliotAnalysis, analysisStartMicroseconds);
+        }
+
+        if (!analysisSucceeded) {
             this.logger.info(
                 __FUNCTION__,
                 "Elliott analysis is not ready. retry on next execution."
@@ -1409,6 +1421,21 @@ private:
         this.gapWaitingM5BarTime = fromM5BarTime;
 
         return true;
+    }
+
+    /**
+     * M5保存情報の取得・整形・描画全体を、更新省略と失敗も含めて計測する。
+     */
+    void updateM5ObservationDisplay(bool fromViewChanged = false) {
+        if (this.m5ObservationDisplayController == NULL) {
+            return;
+        }
+
+        ulong startMicroseconds = GetMicrosecondCount();
+        this.m5ObservationDisplayController.update(fromViewChanged);
+        if (this.chartController != NULL) {
+            this.chartController.completeSlowOperation(stageM5ObservationUpdate, startMicroseconds);
+        }
     }
 };
 

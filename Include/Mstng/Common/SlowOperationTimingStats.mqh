@@ -19,6 +19,11 @@ enum SlowOperationTimingStage {
     stageChartEvent,
     stageLogOutput,
     stageTimerGap,
+    stageElliotAnalysis,
+    stageWaveDraw,
+    stageStrengthUpdate,
+    stageM5ObservationUpdate,
+    stageAlertDatabaseDisplay,
     stageTimingCount
 };
 
@@ -184,6 +189,11 @@ private:
             case stageChartEvent: return "OnChartEvent";
             case stageLogOutput: return "LogOutput";
             case stageTimerGap: return "TimerGap";
+            case stageElliotAnalysis: return "ElliotAnalysis";
+            case stageWaveDraw: return "WaveDraw";
+            case stageStrengthUpdate: return "StrengthUpdate";
+            case stageM5ObservationUpdate: return "M5ObservationUpdate";
+            case stageAlertDatabaseDisplay: return "AlertDatabaseDisplay";
         }
 
         return "Unknown";

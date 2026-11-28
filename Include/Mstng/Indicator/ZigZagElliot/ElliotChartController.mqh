@@ -414,6 +414,7 @@ public:
             return;
         }
 
+        ulong startMicroseconds = this.startSlowOperation();
         this.updateVerticalFit(fromElliotAll, true);
         this.applyInitialVerticalFit(fromElliotAll);
 
@@ -426,6 +427,7 @@ public:
             !this.m1EntryBackgroundEnabled
         );
         this.updateHorizontalView(this.getHorizontalViewKey());
+        this.completeSlowOperation(stageWaveDraw, startMicroseconds);
     }
 
     /**
@@ -1084,6 +1086,7 @@ private:
             return;
         }
 
+        ulong startMicroseconds = this.startSlowOperation();
         this.draw.drawAll(
             fromElliotAll,
             this.elliotInfoVisible && this.elliotPanel == NULL,
@@ -1093,6 +1096,7 @@ private:
             !this.m1EntryBackgroundEnabled
         );
         this.updateHorizontalView(this.getHorizontalViewKey());
+        this.completeSlowOperation(stageWaveDraw, startMicroseconds);
     }
 
     /**

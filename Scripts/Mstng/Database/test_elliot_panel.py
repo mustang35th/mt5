@@ -507,6 +507,7 @@ public class EventFixture : MqlApi {
         rankDeltaRibbon=m5ObservationDisplayController=chartController=analysisController=currencyStrengthController=dependency;
     }
     void prepareDatabaseAlertDisplay() {}
+    void updateM5ObservationDisplay(bool fromViewChanged=false) { m5ObservationDisplayController.update(fromViewChanged); }
     void beginCurrencyStrengthRedrawBatch() {}
     void endCurrencyStrengthRedrawBatch() {}
     void drawRankDeltaBand() { DrawChartRedrawBatch.request(); }
