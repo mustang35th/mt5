@@ -21,6 +21,7 @@
 #include <Mstng\Elliot\ZigZagElliotAnalysisProfile.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Config.mqh>
 #include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3Factory.mqh>
+#include <Mstng\ExpertAdvisor\ExpertAdvisorMtf3In3M5Indicator.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertCsvWriter.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertSnapshot.mqh>
 #include <Mstng\ExpertAdvisor\Mtf3In3AlertSnapshotBuilder.mqh>
@@ -126,10 +127,12 @@ public:
 
         if (this.marketContext.timeFrame == PERIOD_M5 && this.config.m5D1ToM5EntryPolicyEnabled) {
             Mtf3In3M5Policy::apply(strategyConfig, true, this.config.m5CurrencyStrengthMinimumRankDifference);
+            this.expertAdvisorMtf3In3 = new ExpertAdvisorMtf3In3M5Indicator(
+                this.marketContext, strategyConfig.isDrawArrow);
+        } else {
+            this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
+                this.marketContext, strategyConfig);
         }
-
-        this.expertAdvisorMtf3In3 = ExpertAdvisorMtf3In3Factory::create(
-            this.marketContext, strategyConfig);
 
         if (this.expertAdvisorMtf3In3 == NULL) {
             this.logger.error(
@@ -625,7 +628,7 @@ private:
                 this.databaseRun.strategyVersion = "MTF3IN3_M5_MN1_W1_AND_V21";
             }
             if (this.config.m5D1ToM5EntryPolicyEnabled) {
-                this.databaseRun.strategyVersion = "MTF3IN3_M5_D1_CORRECTION_EMA_H1_STRENGTH_DIRECTION_V31";
+                this.databaseRun.strategyVersion = "MTF3IN3_M5_D1_CORRECTION_NO_EMA_FE_WAVES135_V33";
             }
         }
         if (this.marketContext.timeFrame == PERIOD_M15) {
@@ -720,8 +723,9 @@ private:
                 + (string)this.config.m5D1ToM5EntryPolicyEnabled;
             if (this.config.m5D1ToM5EntryPolicyEnabled) {
                 inputText += "|m5DirectionCorrectionCondition=D1_OR_H4_OR_H1_OR_M15_ONE";
-                inputText += "|m5Ema200ConfirmationMode=H1_ONLY";
-                inputText += "|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";
+                inputText += "|m5Ema200ConfirmationMode=NONE";
+                inputText += "|m5Wave3FibonacciExpansionLimitEnabled=false";
+                inputText += "|m5MainWaveCondition=M15_1_OR_3_OR_5_AND_M5_1_OR_3_OR_5";
                 inputText += "|m5LongMediumStrengthCondition=DIRECTION_ONLY";
                 inputText += "|m5MediumShortStrengthCondition=DIRECTION_ONLY";
                 inputText += "|m5CurrencyStrengthMinimumRankDifference=1";

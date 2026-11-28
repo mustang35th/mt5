@@ -275,7 +275,7 @@ void verifyParityMatrix(const bool fromIsBuy) {
 
         setStrength(analysis, fromIsBuy);
         int minimumGap = 4;
-        bool expectedEntry = i == 0 || i == 9 || i == 10 || i == 11 || i == 15 || i == 16
+        bool expectedEntry = i == 0 || i == 1 || i == 2 || i == 9 || i == 10 || i == 11 || i == 15 || i == 16
             || i == 17 || i == 20 || i == 21 || i == 22 || i == 23 || i == 29;
         switch (i) {
             case 1: analysis.getElliot(PERIOD_M15).getLatestPoint().elliotLabel = "5"; break;
@@ -460,6 +460,10 @@ void verifyCorrectedSnapshot(const ENUM_TIMEFRAMES fromCorrectionTimeFrame, cons
     setEma200Direction(selected.getElliot(PERIOD_H1), fromIsBuy);
     selected.elliotCurrent.getLatestPoint().elliotLabel = "5";
     verify(decision.prepare(original, D'2026.09.01 01:15', snapshot)
+        && decision.evaluate(original, 0, snapshot) && snapshot.isStrategyEntry,
+        "corrected analysis permits M5 wave 5");
+    selected.elliotCurrent.getLatestPoint().elliotLabel = "2";
+    verify(decision.prepare(original, D'2026.09.01 01:20', snapshot)
         && decision.evaluate(original, 0, snapshot) && !snapshot.isStrategyEntry,
         "corrected analysis still requires allowed M5 wave");
     selectedFixture = NULL;

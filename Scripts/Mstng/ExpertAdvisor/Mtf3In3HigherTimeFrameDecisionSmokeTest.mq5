@@ -644,7 +644,7 @@ void validateD1ToM5Entry(int &fromFailures) {
 }
 
 /**
- * 主波の全4通り、対象外ラベルでの待機・回復、FE境界と従来ポリシーを確認する。
+ * 主波の全9通り、対象外ラベルでの待機・回復、FE境界と従来ポリシーを確認する。
  */
 void validateM15AndM5MainWaves(int &fromFailures) {
     MarketContext context("EURUSD", PERIOD_M5);
@@ -655,25 +655,22 @@ void validateM15AndM5MainWaves(int &fromFailures) {
     check(!waveProbe.evaluateWaves(missingWaves), "main waves missing points", fromFailures);
     delete missingWaves;
 
-    string rejectedLabels[] = {"", "0", "2", "4", "5", "A", "B", "C"};
+    string acceptedLabels[] = {"1", "3", "5"};
+    string rejectedLabels[] = {"", "0", "2", "4", "A", "B", "C"};
     ENUM_TIMEFRAMES frames[] = {PERIOD_M15, PERIOD_M5};
     for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 4; j++) {
+        for (int j = 0; j < 9; j++) {
             ElliotAll *analysis = createEntryAll(i == 0);
             ZigZagPoint *m15Point = analysis.getElliot(PERIOD_M15).getLatestPoint();
             ZigZagPoint *m5Point = analysis.elliotCurrent.getLatestPoint();
-            if (j < 2) {
-                m15Point.elliotLabel = "1";
-            }
-            if (j % 2 == 0) {
-                m5Point.elliotLabel = "1";
-            }
+            m15Point.elliotLabel = acceptedLabels[j / 3];
+            m5Point.elliotLabel = acceptedLabels[j % 3];
 
             m15Point.subElliotLabel = "2";
             m5Point.subElliotLabel = "2";
             m15Point.fibonacciExpansionPercent = 200.0;
             m5Point.fibonacciExpansionPercent = 161.8;
-            if (m5Point.elliotLabel == "1") {
+            if (m5Point.elliotLabel != "3") {
                 m5Point.fibonacciExpansionPercent = 200.0;
             }
 
@@ -691,7 +688,7 @@ void validateM15AndM5MainWaves(int &fromFailures) {
                 ElliotAll *analysis = createEntryAll(i == 0);
                 ZigZagPoint *point = analysis.getElliot(frames[j]).getLatestPoint();
                 point.elliotLabel = rejectedLabels[k];
-                point.subElliotLabel = "3";
+                point.subElliotLabel = "5";
                 SignalCount signalCount(context);
                 ExpertAdvisorMtf3In3M5 probe(context, false, false, true);
                 probe.analyze(analysis, GetPointer(signalCount));
@@ -717,6 +714,8 @@ void validateM15AndM5MainWaves(int &fromFailures) {
         check(legacyProbe.evaluateWaves(analysis), "legacy A preserved", fromFailures);
         analysis.elliotCurrent.getLatestPoint().elliotLabel = "C";
         check(legacyProbe.evaluateWaves(analysis), "legacy C preserved", fromFailures);
+        analysis.elliotCurrent.getLatestPoint().elliotLabel = "5";
+        check(!legacyProbe.evaluateWaves(analysis), "legacy 5 remains excluded", fromFailures);
         delete analysis;
 
         analysis = createEntryAll(i == 0);

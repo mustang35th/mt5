@@ -20,6 +20,13 @@ public:
 
 protected:
     /**
+     * 過去のD1緩和比較と同じM15・M5の主波1・3条件を維持する。
+     */
+    virtual bool isFifthWaveEntryAllowed() override {
+        return false;
+    }
+
+    /**
      * D1の有効性確認は維持し、M5との方向一致だけを任意にする。
      */
     virtual bool isD1DirectionRequired() override {

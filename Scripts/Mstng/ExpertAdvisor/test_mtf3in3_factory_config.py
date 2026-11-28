@@ -86,6 +86,9 @@ public class ExpertAdvisorMtf3In3M15 : ExpertAdvisorMTF_3in3 {
 public class ExpertAdvisorMtf3In3M5 : ExpertAdvisorMTF_3in3 {
     public ExpertAdvisorMtf3In3M5(MarketContext context,params object[] args) : base(context,args) {}
 }
+public class ExpertAdvisorMtf3In3M5Indicator : ExpertAdvisorMtf3In3M5 {
+    public ExpertAdvisorMtf3In3M5Indicator(MarketContext context,bool draw) : base(context,draw) {}
+}
 public class ExpertAdvisorMtf3In3M1 : ExpertAdvisorMTF_3in3 {
     public ExpertAdvisorMtf3In3M1(MarketContext context,params object[] args) : base(context,args) {}
 }
@@ -103,6 +106,10 @@ def configuration_block(source):
     start = re.search(r"\bExpertAdvisorMtf3In3Config\s+strategyConfig\s*;", source).start()
     call = source.index("ExpertAdvisorMtf3In3Factory::create(", start)
     end = source.index(";", call) + 1
+    # The normal caller now selects its dedicated M5 class in an if/else.
+    guard = re.search(r"if\s*\(this\.expertAdvisorMtf3In3\s*==\s*NULL\)", source[end:])
+    if guard is not None:
+        end += guard.start()
     return syntax(source[start:end])
 
 
@@ -235,8 +242,11 @@ class Mtf3In3FactoryConfigTests(unittest.TestCase):
                 MarketContext context=new MarketContext(frame);
                 ExpertAdvisorMtf3In3Config input=Config(mask),expected=Config(mask);
                 expected.isDrawArrow=true;expected.m1M5AndM1WavePolicyEnabled=frame==PERIOD_M1;
-                if(frame==PERIOD_M5 && input.m5D1ToM5EntryPolicyEnabled) expected.m5Mn1AndW1Ema200Required=false;
-                Check(normal.Run(context,input).Signature()==ExpertAdvisorMtf3In3Factory.create(context,expected).Signature(),"normal caller copies settings and selects M1 only on M1");
+                if(frame==PERIOD_M5 && input.m5D1ToM5EntryPolicyEnabled) {
+                    CheckArgs(normal.Run(context,input),"ExpertAdvisorMtf3In3M5Indicator",context,true);
+                } else {
+                    Check(normal.Run(context,input).Signature()==ExpertAdvisorMtf3In3Factory.create(context,expected).Signature(),"normal caller keeps factory outside dedicated M5 policy");
+                }
                 expected=Config(mask);expected.isDrawArrow=false;expected.m1M5AndM1WavePolicyEnabled=true;
                 Check(monitor.Run(context,input).Signature()==ExpertAdvisorMtf3In3Factory.create(context,expected).Signature(),"monitor caller disables arrows and enables M1 policy");
             }

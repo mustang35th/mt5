@@ -1,5 +1,13 @@
 # ZigZagElliotアラートデータベース仕様書
 
+## M5のEMA200・FE条件除外時のRun識別（ZigZagElliot v3.09）
+
+通常版M5だけ、`strategy_version=MTF3IN3_M5_D1_CORRECTION_NO_EMA_FE_WAVES135_V33`で保存します。Canonical Textに`m5Ema200ConfirmationMode=NONE`と`m5Wave3FibonacciExpansionLimitEnabled=false`を記録し、`input_hash`にも反映します。実測EMA200方向・FE値の保存、DBスキーマ、CSV列、既存Runは変更しません。EAの戦略世代と条件も維持します。
+
+## M5の第5波追加時のRun識別（ZigZagElliot v3.08）
+
+通常版M5のM15・M5主波条件を1・3・5へ拡張したRunは、`strategy_version=MTF3IN3_M5_D1_CORRECTION_EMA_H1_STRENGTH_DIRECTION_WAVES135_V32`で記録します。Canonical Textの`m5MainWaveCondition=M15_1_OR_3_OR_5_AND_M5_1_OR_3_OR_5`を`input_text`・`input_hash`へ反映します。既存Run、スキーマ、CSV列は変更しません。
+
 ## 1. 文書情報
 
 | 項目 | 内容 |

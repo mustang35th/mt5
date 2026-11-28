@@ -15,7 +15,7 @@
 /**
  * M5を現在足としてMTF_3in3エントリーを判定する。
  *
- * 通常版はM15・M5の主波1・3、従来ポリシーはM5の1・3・A・C波を対象とし、M5固有の
+ * 通常版はM15・M5の主波1・3・5、従来ポリシーはM5の1・3・A・C波を対象とし、M5固有の
  * FE上限、H1表示波の重複制限および成立時のメール送信を管理する。
  * 通常版M5ではD1・H4・H1・M15のうち、M5と逆方向の1足を補正する。
  * 補正後のD1からM5の方向一致と、実測のH1のEMA200一致を使用する。
@@ -398,7 +398,7 @@ protected:
     }
 
     /**
-     * 通常版はM15・M5両方の主波1・3を、初回回数の加算前に確認する。
+     * 通常版はM15・M5両方の主波1・3・5を、初回回数の加算前に確認する。
      * 従来ポリシーではM5の主波だけを判定する。
      *
      * @return M5用の波動条件を満たす場合true。
@@ -423,14 +423,15 @@ protected:
                 return false;
             }
 
-            return latestPoint.elliotLabel == "1" || latestPoint.elliotLabel == "3";
+            return latestPoint.elliotLabel == "1" || latestPoint.elliotLabel == "3"
+                || (this.isFifthWaveEntryAllowed() && latestPoint.elliotLabel == "5");
         }
 
         return true;
     }
 
     /**
-     * M5の最新主波を判定する。通常版は1・3、従来ポリシーは1・3・A・Cを許可する。
+     * M5の最新主波を判定する。通常版は1・3・5、従来ポリシーは1・3・A・Cを許可する。
      *
      * @param fromElliot 判定対象。副次波ラベルは使用しない。
      * @return M5の主波がエントリー対象の場合true。
@@ -448,11 +449,19 @@ protected:
         string elliotLabel = latestPoint.elliotLabel;
 
         if (this.isD1ToM5EntryPolicyEnabled) {
-            return elliotLabel == "1" || elliotLabel == "3";
+            return elliotLabel == "1" || elliotLabel == "3"
+                || (this.isFifthWaveEntryAllowed() && elliotLabel == "5");
         }
 
         return elliotLabel == "1" || elliotLabel == "3"
             || elliotLabel == "A" || elliotLabel == "C";
+    }
+
+    /**
+     * 通常版のM15・M5で主波5を許可する。過去比較版だけ従来条件を保持できる。
+     */
+    virtual bool isFifthWaveEntryAllowed() {
+        return true;
     }
 
     /**

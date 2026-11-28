@@ -773,8 +773,9 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                         '+(string)this.config.m5D1ToM5EntryPolicyEnabled;'
                         'if(this.config.m5D1ToM5EntryPolicyEnabled){'
                         'inputText+="|m5DirectionCorrectionCondition=D1_OR_H4_OR_H1_OR_M15_ONE";'
-                        'inputText+="|m5Ema200ConfirmationMode=H1_ONLY";'
-                        'inputText+="|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";'
+                        'inputText+="|m5Ema200ConfirmationMode=NONE";'
+                        'inputText+="|m5Wave3FibonacciExpansionLimitEnabled=false";'
+                        'inputText+="|m5MainWaveCondition=M15_1_OR_3_OR_5_AND_M5_1_OR_3_OR_5";'
                         'inputText+="|m5LongMediumStrengthCondition=DIRECTION_ONLY";'
                         'inputText+="|m5MediumShortStrengthCondition=DIRECTION_ONLY";'
                         'inputText+="|m5CurrencyStrengthMinimumRankDifference=1";'
@@ -793,7 +794,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 if name == "Mtf3In3AlertController":
                     self.assertIn(
                         'if(this.config.m5D1ToM5EntryPolicyEnabled){'
-                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_CORRECTION_EMA_H1_STRENGTH_DIRECTION_V31";}',
+                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_CORRECTION_NO_EMA_FE_WAVES135_V33";}',
                         re.sub(r"\s+", "", method(source, "setDatabaseRun")),
                     )
 

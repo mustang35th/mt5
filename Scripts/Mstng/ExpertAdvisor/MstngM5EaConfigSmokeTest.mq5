@@ -104,9 +104,9 @@ void OnStart() {
     verify(StringFind(canonical, "M5_EA_CONFIG_V1|") == 0, "M5 configuration identity");
     verify(StringFind(canonical, "DIRECTION_ALIGNMENT_MODE=D1_H4_H1_M15_ONE_CORRECTION") >= 0,
         "D1 correction policy identity");
-    verify(M5EaConfig::getStrategyVersion() == "M5_ZIGZAG_ELLIOT_STRENGTH_DIRECTION_ZIGZAG_SL_D1_CORRECTION_EMA_H1_V4",
+    verify(M5EaConfig::getStrategyVersion() == "M5_ZIGZAG_ELLIOT_STRENGTH_DIRECTION_ZIGZAG_SL_D1_CORRECTION_EMA_H1_WAVES135_V5",
         "D1 correction strategy version");
-    verify(StringFind(canonical, "|MAIN_WAVE_CONDITION=M15_1_OR_3_AND_M5_1_OR_3|") >= 0,
+    verify(StringFind(canonical, "|MAIN_WAVE_CONDITION=M15_1_OR_3_OR_5_AND_M5_1_OR_3_OR_5|") >= 0,
         "normal M5 wave contract recorded");
     verify(StringFind(canonical, "|EMA200_CONFIRMATION_MODE=H1_ONLY|EMA200_DISTANCE_REQUIRED=0") >= 0,
         "normal M5 EMA direction without distance limit");
