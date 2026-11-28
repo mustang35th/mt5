@@ -3,7 +3,7 @@
 //|                                            Copyright 2026, Mstng |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Mstng"
-#property version "1.04"
+#property version "1.05"
 #property strict
 #property description "通常版ZigZagElliot M5判定 / 通貨強弱 / ZigZag SL / 専用SQLite"
 
@@ -17,10 +17,17 @@ input(name="M5トレーリングの余白（pips）") double trailStopLossBuffer
 
 input group "M5通貨強弱"
 input(name="通貨強弱をエントリー条件に使用") bool currencyStrengthEnabled = true;
+#ifdef MSTNG_M5_D1_RELAXED_COMPARISON
 input(name="順位差基準（1～7、各期間は端順位でも可）")
 int currencyStrengthMinimumRankDifference = 4;
 input(name="長中期の増減方向を条件に追加（横ばいは維持）")
 bool longMediumGapDirectionEnabled = true;
+#else
+/** 通常版M5は両期間の方向一致だけを使用する。 */
+const int currencyStrengthMinimumRankDifference = 1;
+/** 通常版M5は順位差の増減方向を要求しない。 */
+const bool longMediumGapDirectionEnabled = false;
+#endif
 input(name="通貨強弱DB名") string currencyStrengthDatabaseFileName = "mstng-currency-strength.sqlite";
 input(name="通貨強弱DBを年別に参照") bool currencyStrengthDatabaseSplitByYear = true;
 input(name="通貨強弱DBでCommonフォルダを使用") bool currencyStrengthDatabaseUseCommonFolder = true;

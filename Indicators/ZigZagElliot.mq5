@@ -43,8 +43,8 @@
  *   採用分析ではD1・H4・H1・M15・M5が同方向。
  * - 波動：[固定] M15・M5の主波がそれぞれ第1・3波。第5波・A波・C波は対象外。
  * - EMA200：[固定] H1のみ売買方向に一致（NONE不可）。M15・M5のEMA200方向と距離は条件外。
- * - 通貨強弱：[input: ON、順位差基準4] 長中期・中短期とも売買方向に一致し、
- *   各期間で順位差4以上または方向に合う端順位。[input: ON] 長中期の増減方向も一致。
+ * - 通貨強弱：[input: ON] 長中期・中短期とも売買方向に一致することだけを要求。
+ *   同順位・欠損・不正・対象時刻不一致は不可。順位差の大きさ・端順位・増減方向は条件外。
  * - その他：[固定] M5最新ポイントは追加点を除外。スプレッド5pips以下。
  *   M5第3波のFEは小数1桁に丸めて161.8%以下。元M5ポイント時刻・方向ごとの初回シグナルが対象。
  *   [input: OFF] H1表示波ごとの回数制限。
@@ -66,7 +66,7 @@
  */
 #property copyright "Copyright 2025, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "3.06"
+#property version   "3.07"
 #property indicator_chart_window
 
 #property indicator_buffers 7
@@ -146,17 +146,15 @@ M1CurrencyStrengthGapDirectionMode m1CurrencyStrengthGapDirectionMode =
 input(name="M15エントリー条件に使用（長中期差2または端順位）")
 bool m15CurrencyStrengthEntryFilterEnabled = true;
 
-/** M5で両期間方向一致と、各期間の順位差または端順位を必須にする場合true。 */
+/** M5で長中期・中短期の方向一致だけを必須にする場合true。 */
 input(name="M5エントリー条件に使用")
 bool m5CurrencyStrengthEntryFilterEnabled = true;
 
-/** M5の順位差基準。長中期・中短期はそれぞれ方向に合う1位・8位でも通過。 */
-input(name="M5順位差基準（1～7、各期間は端順位でも可）")
-int m5CurrencyStrengthMinimumRankDifference = 4;
+/** M5は方向一致のみ。同順位を除外する最小差を保存用に固定する。 */
+const int m5CurrencyStrengthMinimumRankDifference = 1;
 
-/** M5で長中期順位差の直近増減方向をエントリー条件へ追加する場合true。 */
-input(name="M5長中期の増減方向を条件に追加（横ばいは維持）")
-bool m5LongMediumGapDirectionEnabled = true;
+/** M5の増減方向はENTRY条件に使用しない。表示・メール用の集計は独立して継続する。 */
+const bool m5LongMediumGapDirectionEnabled = false;
 
 /** M15でM5履歴による長中期順位差の直近増減方向を追加する場合true。 */
 input(name="M15長中期の増減方向を条件に追加（M5履歴）")
@@ -267,15 +265,6 @@ int OnInit() {
                 || m1CurrencyStrengthGapDirectionMode > M1_CURRENCY_STRENGTH_GAP_BOTH)) {
         Logger logger(LOG_ERROR);
         logger.error(__FUNCTION__, "invalid M1 currency strength gap direction mode");
-
-        return INIT_PARAMETERS_INCORRECT;
-    }
-
-    if (_Period == PERIOD_M5
-            && (m5CurrencyStrengthMinimumRankDifference < 1
-                || m5CurrencyStrengthMinimumRankDifference > 7)) {
-        Logger logger(LOG_ERROR);
-        logger.error(__FUNCTION__, "invalid M5 currency strength minimum rank difference: use 1 to 7");
 
         return INIT_PARAMETERS_INCORRECT;
     }

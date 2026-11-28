@@ -266,7 +266,7 @@ void setStrength(ElliotAll *fromAnalysis, const bool fromIsBuy, const int fromGa
  * Compare the adapter with explicit normal-indicator settings and known outcomes.
  */
 void verifyParityMatrix(const bool fromIsBuy) {
-    for (int i = 0; i < 23; i++) {
+    for (int i = 0; i < 32; i++) {
         ElliotAll *analysis = createAnalysis(fromIsBuy);
         if (analysis == NULL) {
             verify(false, "matrix allocation");
@@ -275,7 +275,8 @@ void verifyParityMatrix(const bool fromIsBuy) {
 
         setStrength(analysis, fromIsBuy);
         int minimumGap = 4;
-        bool expectedEntry = i == 0 || i == 10 || i == 17 || i == 20 || i == 21 || i == 22;
+        bool expectedEntry = i == 0 || i == 9 || i == 10 || i == 11 || i == 15 || i == 16
+            || i == 17 || i == 20 || i == 21 || i == 22 || i == 23 || i == 29;
         switch (i) {
             case 1: analysis.getElliot(PERIOD_M15).getLatestPoint().elliotLabel = "5"; break;
             case 2: analysis.elliotCurrent.getLatestPoint().elliotLabel = "5"; break;
@@ -324,6 +325,33 @@ void verifyParityMatrix(const bool fromIsBuy) {
                 analysis.elliotCurrent.getLatestPoint().elliotLabel = "1";
                 analysis.elliotCurrent.getLatestPoint().fibonacciExpansionPercent = 200.0;
                 break;
+            case 23: minimumGap = 7; setStrength(analysis, fromIsBuy, 1); break;
+            case 24:
+                analysis.currencyStrengthExecutionInfo.pairRankInfo.quoteLongMediumTermAverageRank =
+                    analysis.currencyStrengthExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank;
+                break;
+            case 25:
+                analysis.currencyStrengthExecutionInfo.pairRankInfo.quoteMediumShortTermAverageRank =
+                    analysis.currencyStrengthExecutionInfo.pairRankInfo.baseMediumShortTermAverageRank;
+                break;
+            case 26:
+                analysis.currencyStrengthExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank = 6;
+                analysis.currencyStrengthExecutionInfo.pairRankInfo.quoteLongMediumTermAverageRank = 2;
+                if (!fromIsBuy) {
+                    analysis.currencyStrengthExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank = 2;
+                    analysis.currencyStrengthExecutionInfo.pairRankInfo.quoteLongMediumTermAverageRank = 6;
+                }
+                break;
+            case 27: analysis.currencyStrengthExecutionInfo.pairRankInfo.baseLongMediumTermAverageRank = 0; break;
+            case 28: analysis.currencyStrengthExecutionInfo.pairRankInfo.quoteMediumShortTermAverageRank = 9; break;
+            case 29:
+                setStrength(analysis, fromIsBuy, 1);
+                analysis.currencyStrengthExecutionInfo.longMediumGapDirection.reset();
+                analysis.currencyStrengthExecutionInfo.mediumShortGapDirectionFilterEnabled = true;
+                analysis.currencyStrengthExecutionInfo.mediumShortGapDirection.reset();
+                break;
+            case 30: analysis.currencyStrengthExecutionInfo.pairRankInfo.baseCurrency = ""; break;
+            case 31: setStrength(analysis, !fromIsBuy, 1); break;
         }
 
         MarketContext context = analysis.marketContext;
@@ -344,13 +372,16 @@ void verifyParityMatrix(const bool fromIsBuy) {
         verify(decision.prepare(analysis, D'2026.09.01 01:00', actual)
             && decision.evaluate(analysis, 0, actual, minimumGap), label + " evaluated");
         verify(actual.isStrategyEntry == expectedEntry, label + " known entry outcome");
+        verify(StringFind(actual.analysisSnapshotText, "STRENGTH_CONDITION#19=BOTH_DIRECTION_ONLY") >= 0
+            && StringFind(actual.analysisSnapshotText, "MINIMUM_RANK_DIFFERENCE#1=1") >= 0,
+            label + " actual direction-only condition persisted");
         verify(actual.alertResult.isJudge == expected.isJudge
             && actual.alertResult.isEntry == expected.isEntry
             && actual.alertResult.signalCount == expected.signalCount
             && actual.alertResult.entryResult == expected.entryResult
             && actual.alertResult.currentElliotLabel == expected.currentElliotLabel,
             label + " indicator adapter parity");
-        if (i >= 9 && i <= 16 && i != 10) {
+        if (!expectedEntry && ((i >= 9 && i <= 16) || i >= 23)) {
             verify(actual.signalCount == 0 && !actual.isSignalConsumed,
                 label + " failed strength never consumes first signal");
         }

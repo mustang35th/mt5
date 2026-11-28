@@ -1,5 +1,6 @@
 ﻿#property strict
 
+#include <Mstng\Indicator\ZigZagElliot\ZigZagElliotConfig.mqh>
 #include <MstngM5Ea\Config\M5EaConfig.mqh>
 
 /** Number of failed checks. */
@@ -31,7 +32,7 @@ void verifyHashCoverage() {
             case 4: changed.testerTradeStartTime = D'2026.01.01'; break;
             case 5: changed.currencyStrengthEnabled = false; break;
             case 6: changed.currencyStrengthMinimumRankDifference = 3; break;
-            case 7: changed.longMediumGapDirectionEnabled = false; break;
+            case 7: changed.longMediumGapDirectionEnabled = true; break;
             case 8: changed.currencyStrengthDatabaseFileName = "smoke-alternative.sqlite"; break;
             case 9: changed.currencyStrengthDatabaseSplitByYear = false; break;
             case 10: changed.currencyStrengthDatabaseUseCommonFolder = false; break;
@@ -39,8 +40,13 @@ void verifyHashCoverage() {
             case 12: changed.currencyStrengthVoteWeightMode = CURRENCY_STRENGTH_VOTE_WEIGHT_UNIFORM; break;
         }
 
-        verify(EaTextUtil::hash(changed.createCanonicalText()) != originalHash,
-            "setting changes hash " + IntegerToString(i));
+        if (i == 6 || i == 7) {
+            verify(EaTextUtil::hash(changed.createCanonicalText()) == originalHash,
+                "obsolete strength settings do not alter effective policy hash");
+        } else {
+            verify(EaTextUtil::hash(changed.createCanonicalText()) != originalHash,
+                "setting changes hash " + IntegerToString(i));
+        }
     }
 }
 
@@ -63,10 +69,12 @@ void verifyInputGuards() {
         "zero maximum initial risk rejected");
     settings.maxInitialStopLossPips = 100.0;
     settings.currencyStrengthMinimumRankDifference = 8;
-    verify(!config.initialize("EURUSD", settings)
-        && config.lastError == "INVALID_CURRENCY_STRENGTH_RANK_DIFFERENCE", "rank difference range checked");
-    settings.currencyStrengthMinimumRankDifference = 4;
+    settings.longMediumGapDirectionEnabled = true;
     settings.currencyStrengthDatabaseFileName = "";
+    verify(!config.initialize("EURUSD", settings)
+        && config.lastError == "INVALID_CURRENCY_STRENGTH_SOURCE"
+        && config.currencyStrengthMinimumRankDifference == 1 && !config.longMediumGapDirectionEnabled,
+        "obsolete strength settings normalized before validation");
     verify(!config.initialize("EURUSD", settings) && config.lastError == "INVALID_CURRENCY_STRENGTH_SOURCE",
         "enabled strength requires a database name");
 }
@@ -77,15 +85,15 @@ void verifyInputGuards() {
 void OnStart() {
     M5EaSettings settings;
     M5EaConfig config;
-    verify(settings.currencyStrengthEnabled && settings.longMediumGapDirectionEnabled
-        && settings.currencyStrengthMinimumRankDifference == 4, "normal M5 strength defaults");
+    verify(settings.currencyStrengthEnabled && !settings.longMediumGapDirectionEnabled
+        && settings.currencyStrengthMinimumRankDifference == 1, "normal M5 strength defaults");
     verify(settings.initialStopLossBufferPips == 10.0 && settings.trailStopLossBufferPips == 10.0,
         "independent initial and trail buffer defaults");
     verify(settings.currencyStrengthDatabaseProfile == CURRENCY_STRENGTH_RANK_DATABASE_PROFILE_LIVE_THEN_TESTER
         && settings.currencyStrengthVoteWeightMode == CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED,
         "normal indicator source and weighting defaults");
     verify(config.databaseFileName == "mstng-m5-ea.sqlite", "dedicated M5 database");
-    verify(M5EaConfig::getProgramVersion() == "1.04", "program version");
+    verify(M5EaConfig::getProgramVersion() == "1.05", "program version");
     MarketContext m5Context("GBPAUD", PERIOD_M5, "M5", 5);
     MarketContext m15Context("GBPAUD", PERIOD_M15, "M15", 5);
     MarketContext h1Context("GBPAUD", PERIOD_H1, "H1", 5);
@@ -96,7 +104,7 @@ void OnStart() {
     verify(StringFind(canonical, "M5_EA_CONFIG_V1|") == 0, "M5 configuration identity");
     verify(StringFind(canonical, "DIRECTION_ALIGNMENT_MODE=D1_H4_H1_M15_ONE_CORRECTION") >= 0,
         "D1 correction policy identity");
-    verify(M5EaConfig::getStrategyVersion() == "M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_D1_CORRECTION_EMA_H1_V3",
+    verify(M5EaConfig::getStrategyVersion() == "M5_ZIGZAG_ELLIOT_STRENGTH_DIRECTION_ZIGZAG_SL_D1_CORRECTION_EMA_H1_V4",
         "D1 correction strategy version");
     verify(StringFind(canonical, "|MAIN_WAVE_CONDITION=M15_1_OR_3_AND_M5_1_OR_3|") >= 0,
         "normal M5 wave contract recorded");
@@ -113,6 +121,22 @@ void OnStart() {
         && !config.isBeforeTesterTradeStart(startTime), "tester boundary inclusive");
     config.isTester = false;
     verify(!config.isBeforeTesterTradeStart(startTime - 1), "live ignores tester start");
+    verify(StringFind(canonical, "CURRENCY_STRENGTH_RANK_CONDITION=BOTH_DIRECTION_ONLY") >= 0
+        && StringFind(canonical, "LONG_MEDIUM_GAP_DIRECTION_ENABLED=0") >= 0,
+        "normal strength direction-only condition recorded");
+    ZigZagElliotConfig indicatorConfig;
+    indicatorConfig.currencyStrengthEnabled = true;
+    indicatorConfig.currencyStrengthEntryFilterEnabled = true;
+    indicatorConfig.m5D1ToM5EntryPolicyEnabled = true;
+    indicatorConfig.m5LongMediumGapDirectionEnabled = true;
+    indicatorConfig.m15LongMediumGapDirectionEnabled = true;
+    indicatorConfig.m1CurrencyStrengthGapDirectionMode = M1_CURRENCY_STRENGTH_GAP_BOTH;
+    verify(!indicatorConfig.isGapDirectionEnabled(PERIOD_M5), "normal M5 does not wait for gap history");
+    verify(indicatorConfig.isGapDirectionEnabled(PERIOD_M15)
+        && indicatorConfig.isLongMediumGapDirectionEnabled(PERIOD_M1)
+        && indicatorConfig.isMediumShortGapDirectionEnabled(PERIOD_M1), "M1 and M15 gap policy unchanged");
+    indicatorConfig.m5D1ToM5EntryPolicyEnabled = false;
+    verify(indicatorConfig.isGapDirectionEnabled(PERIOD_M5), "legacy M5 gap policy retained");
     verifyHashCoverage();
     if (_Period == PERIOD_M5) {
         verifyInputGuards();

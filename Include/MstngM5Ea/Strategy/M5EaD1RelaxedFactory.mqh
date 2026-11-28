@@ -5,7 +5,7 @@
 #include <Mstng\Util\Util.mqh>
 
 /**
- * D1方向一致だけを外す比較用M5判定。波動・補正・通貨強弱は通常版を継承する。
+ * D1方向一致を外す比較用M5判定。EMA200と通貨強弱は過去の比較条件を維持する。
  */
 class M5EaD1RelaxedStrategy : public ExpertAdvisorMtf3In3M5 {
 public:
@@ -30,6 +30,13 @@ protected:
      * 過去のD1緩和比較と同じH1・M15・M5のEMA200確認を維持する。
      */
     virtual bool isH1OnlyEma200Required() override {
+        return false;
+    }
+
+    /**
+     * 過去の比較と同じ順位差・端順位・増減方向条件を維持する。
+     */
+    virtual bool isCurrencyStrengthDirectionOnly() override {
         return false;
     }
 };

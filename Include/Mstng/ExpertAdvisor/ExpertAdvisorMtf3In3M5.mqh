@@ -19,6 +19,7 @@
  * FE上限、H1表示波の重複制限および成立時のメール送信を管理する。
  * 通常版M5ではD1・H4・H1・M15のうち、M5と逆方向の1足を補正する。
  * 補正後のD1からM5の方向一致と、実測のH1のEMA200一致を使用する。
+ * 通貨強弱は有効な同時刻の長中期・中短期が売買方向に一致することだけを要求する。
  * その他の呼び出し元では従来の上位足条件と片足方向補正を維持する。
  */
 class ExpertAdvisorMtf3In3M5 : public ExpertAdvisorMTF_3in3 {
@@ -30,7 +31,7 @@ public:
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
      * @param fromD1ToM5EntryPolicyEnabled D1/H4/H1/M15片足補正とH1のEMA200一致を使用する場合true。
-     * @param fromCurrencyStrengthMinimumRankDifference 通常版M5の順位差基準。各期間は方向に合う1位・8位でも通過。
+     * @param fromCurrencyStrengthMinimumRankDifference 比較用M5の順位差基準。通常版の方向一致判定では使用しない。
      */
     ExpertAdvisorMtf3In3M5(
         MarketContext &fromMarketContext,
@@ -95,12 +96,20 @@ protected:
     }
 
     /**
-     * 通常版M5の順位差基準を取得する。従来ポリシーは方向一致のみとする。
+     * 通常版M5は長中期・中短期の方向一致だけを要求する。
+     * 比較専用クラスは従来の順位差・端順位・増減方向条件を維持する。
+     */
+    virtual bool isCurrencyStrengthDirectionOnly() override {
+        return this.isD1ToM5EntryPolicyEnabled;
+    }
+
+    /**
+     * 比較用M5の順位差基準を取得する。通常版・従来ポリシーは方向一致のみとする。
      *
      * @return 長中期・中短期の各OR判定に使用する最低順位差。
      */
     virtual int getCurrencyStrengthMinimumRankDifference() override {
-        if (this.isD1ToM5EntryPolicyEnabled) {
+        if (this.isD1ToM5EntryPolicyEnabled && !this.isCurrencyStrengthDirectionOnly()) {
             return this.currencyStrengthMinimumRankDifference;
         }
 
@@ -108,7 +117,7 @@ protected:
     }
 
     /**
-     * 通常版M5の長中期は、順位差または方向に合う1位・8位で通過させる。
+     * 比較用M5の長中期は、順位差または方向に合う1位・8位で通過させる。
      *
      * BUYは基軸1位または決済8位、SELLは基軸8位または決済1位を許可する。
      * 中短期の順位条件と両期間の方向一致は共通の呼び出し元で必須とする。
@@ -140,7 +149,7 @@ protected:
     }
 
     /**
-     * 通常版M5の中短期は、順位差または方向に合う1位・8位で通過させる。
+     * 比較用M5の中短期は、順位差または方向に合う1位・8位で通過させる。
      *
      * BUYは基軸1位または決済8位、SELLは基軸8位または決済1位を許可する。
      * 長中期の順位条件と両期間の方向一致は共通の呼び出し元で必須とする。

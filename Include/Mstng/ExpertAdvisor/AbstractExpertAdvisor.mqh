@@ -279,6 +279,14 @@ protected:
     }
 
     /**
+     * 有効な同時刻の順位について、方向一致だけを条件とする場合true。
+     * 標準では順位差・増減方向の追加条件も適用する。
+     */
+    virtual bool isCurrencyStrengthDirectionOnly() {
+        return false;
+    }
+
+    /**
      * 通貨強弱フィルタの順位差判定に使用する最低値を取得する。
      *
      * @return 従来の方向一致を表す1。
@@ -657,6 +665,10 @@ private:
         // 古い順位を使用しないように、DBと今回の判定対象M5時刻を照合する。
         if (!executionInfo.isExactM5Bar()) {
             return false;
+        }
+
+        if (this.isCurrencyStrengthDirectionOnly()) {
+            return this.isCurrencyStrengthDirectionConditionMatched(executionInfo);
         }
 
         // 増減条件も初回シグナルを数える前に確認し、同じ分析対象時刻だけを使う。

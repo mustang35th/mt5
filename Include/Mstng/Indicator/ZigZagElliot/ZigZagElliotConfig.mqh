@@ -266,7 +266,7 @@ public:
         }
 
         if (fromTimeFrame == PERIOD_M5) {
-            return this.m5LongMediumGapDirectionEnabled;
+            return !this.m5D1ToM5EntryPolicyEnabled && this.m5LongMediumGapDirectionEnabled;
         }
 
         if (fromTimeFrame == PERIOD_M15) {

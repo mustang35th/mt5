@@ -703,7 +703,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
     def test_m5_explicit_policies_use_own_flags_and_keep_legacy_defaults(self):
         indicator = re.sub(r"\s+", "", code_only(self.read("Indicators/ZigZagElliot.mq5")))
         self.assertIn("boolm5CurrencyStrengthEntryFilterEnabled=true;", indicator)
-        self.assertIn("intm5CurrencyStrengthMinimumRankDifference=4;", indicator)
+        self.assertIn("constintm5CurrencyStrengthMinimumRankDifference=1;", indicator)
         self.assertIn(
             "if(_Period==PERIOD_M5){"
             "config.currencyStrengthEntryFilterEnabled=m5CurrencyStrengthEntryFilterEnabled;"
@@ -775,10 +775,10 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                         'inputText+="|m5DirectionCorrectionCondition=D1_OR_H4_OR_H1_OR_M15_ONE";'
                         'inputText+="|m5Ema200ConfirmationMode=H1_ONLY";'
                         'inputText+="|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";'
-                        'inputText+="|m5LongMediumStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME";'
-                        'inputText+="|m5MediumShortStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME";'
-                        'inputText+="|m5CurrencyStrengthMinimumRankDifference="'
-                        '+(string)this.config.m5CurrencyStrengthMinimumRankDifference;}}',
+                        'inputText+="|m5LongMediumStrengthCondition=DIRECTION_ONLY";'
+                        'inputText+="|m5MediumShortStrengthCondition=DIRECTION_ONLY";'
+                        'inputText+="|m5CurrencyStrengthMinimumRankDifference=1";'
+                        'inputText+="|m5StrengthGapDirectionRequired=false";}}',
                         re.sub(r"\s+", "", text),
                     )
                 for suffix in ("DirectionAlignmentMode", "W1ConfirmationMode", "Ema200ConfirmationMode"):
@@ -793,7 +793,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 if name == "Mtf3In3AlertController":
                     self.assertIn(
                         'if(this.config.m5D1ToM5EntryPolicyEnabled){'
-                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_CORRECTION_EMA_H1_WAVES13_V30";}',
+                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_CORRECTION_EMA_H1_STRENGTH_DIRECTION_V31";}',
                         re.sub(r"\s+", "", method(source, "setDatabaseRun")),
                     )
 

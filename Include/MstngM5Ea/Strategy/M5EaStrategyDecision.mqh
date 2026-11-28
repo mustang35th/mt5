@@ -70,7 +70,11 @@ public:
             return false;
         }
 
-        if (fromMinimumRankDifference < 1 || fromMinimumRankDifference > 7) {
+        int minimumRankDifference = 1;
+#ifdef MSTNG_M5_D1_RELAXED_COMPARISON
+        minimumRankDifference = fromMinimumRankDifference;
+#endif
+        if (minimumRankDifference < 1 || minimumRankDifference > 7) {
             fromSnapshot.reasonCode = "RANK_DIFFERENCE_INVALID";
 
             return false;
@@ -101,7 +105,7 @@ public:
         }
 
         ExpertAdvisorMtf3In3Config config;
-        Mtf3In3M5Policy::apply(config, false, fromMinimumRankDifference);
+        Mtf3In3M5Policy::apply(config, false, minimumRankDifference);
         ExpertAdvisorMTF_3in3 *strategy = ExpertAdvisorMtf3In3Factory::create(context, config);
         if (strategy == NULL) {
             fromSnapshot.reasonCode = "STRATEGY_UNAVAILABLE";
@@ -130,14 +134,16 @@ public:
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "DIRECTION_ALIGNMENT_MODE",
             "D1_OPTIONAL_H4_H1_M15_ONE_CORRECTION");
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "EMA200_CONFIRMATION_MODE", "H1_M15_M5_REQUIRED");
+        EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "STRENGTH_CONDITION", "BOTH_DIRECTION_AND_EACH_GAP_OR_END_RANK");
 #else
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "D1_DIRECTION_REQUIRED", "1");
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "DIRECTION_ALIGNMENT_MODE",
             "D1_H4_H1_M15_ONE_CORRECTION");
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "EMA200_CONFIRMATION_MODE", "H1_ONLY");
+        EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "STRENGTH_CONDITION", "BOTH_DIRECTION_ONLY");
 #endif
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "MINIMUM_RANK_DIFFERENCE",
-            IntegerToString(fromMinimumRankDifference));
+            IntegerToString(minimumRankDifference));
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "CORRECTION_TIME_FRAME",
             EnumToString(fromSnapshot.correctionTimeFrame));
         this.appendAnalysisSnapshot(fromSnapshot.analysisSnapshotText, "SELECTED", judgment);
