@@ -174,6 +174,7 @@ public:
 
         int savedIndex = 0;
         int matched = 0;
+        int supplemented = 0;
         for (int i = 0; i < count; i++) {
             this.records[i].clear();
             this.records[i].barTime = barTimes[i];
@@ -185,13 +186,17 @@ public:
             if (savedIndex < ArraySize(saved) && saved[savedIndex].barTime == barTimes[i]) {
                 this.records[i] = saved[savedIndex];
                 matched++;
+                if (this.records[i].isPreviousRun) {
+                    supplemented++;
+                }
             }
         }
 
         this.updateStrength(startTime, endTime, knownTime);
 
         this.status = "M5保存 " + this.sourceMode + " Run " + IntegerToString(this.resolvedRunId)
-            + " / " + IntegerToString(matched) + "件 ●詳細・?記録なし";
+            + " / " + IntegerToString(matched) + "件（補完" + IntegerToString(supplemented)
+            + "件） ●対象Run・○過去Run・?記録なし";
         if (this.resolvedRunId <= 0) {
             this.status = "M5観測：銘柄・サーバー・モードが一致する記録なし";
         }

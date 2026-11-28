@@ -346,6 +346,123 @@ class M5ObservationHistorySqlTests(unittest.TestCase):
         self.assertEqual(self.resolve_run(requested=1), 1)
         self.assertEqual(len(self.rows(run=1)), 7)
 
+    def allow_legacy_overlaps(self):
+        # Current writer schemas deduplicate the same profile/M5 across Runs.
+        # Relax only this disposable fixture to exercise defensive selection
+        # when imported/legacy databases contain overlapping Run observations.
+        self.database.commit()
+        self.database.execute("PRAGMA foreign_keys=OFF")
+        schema = self.database.execute("SELECT sql FROM sqlite_master WHERE name=?", (OBS,)).fetchone()[0]
+        schema, removed = re.subn(r",\s*UNIQUE\([^)]*\)", "", schema, flags=re.I)
+        self.assertEqual(removed, 1)
+        self.database.execute(schema.replace(OBS, "legacy_observations", 1))
+        self.database.execute(f"INSERT INTO legacy_observations SELECT * FROM {OBS}")
+        self.database.execute(f"DROP TABLE {OBS}")
+        self.database.execute(f"ALTER TABLE legacy_observations RENAME TO {OBS}")
+        self.database.commit()
+        self.database.execute("PRAGMA foreign_keys=ON")
+
+    def test_current_schema_deduplicates_across_runs_and_history_fills_gap(self):
+        previous = add_observation(self.database)
+        add_run(self.database, 2, analysis_input_hash="hash-1")
+        with self.assertRaises(sqlite3.IntegrityError):
+            add_observation(self.database, run=2)
+        target = add_observation(self.database, run=2, bar=BASE_TIME + 300)
+        rows = self.rows(run=2, end=BASE_TIME + 600)
+        self.assertEqual({(row[0], row[1]) for row in rows}, {(previous, 1), (target, 2)})
+        self.assertEqual(len(rows), 14)
+
+    def test_matching_previous_runs_fill_only_exact_missing_times(self):
+        self.allow_legacy_overlaps()
+        oldest = add_observation(self.database)
+        add_run(self.database, 2, analysis_input_hash="hash-1")
+        newer = add_observation(self.database, run=2)
+        add_run(self.database, 3, analysis_input_hash="hash-1")
+        current = add_observation(self.database, run=3, bar=BASE_TIME + 300)
+        self.assertEqual(self.resolve_run(), 3)
+        rows = self.rows(run=3, end=BASE_TIME + 900)
+        self.assertEqual({row[0] for row in rows}, {newer, current})
+        self.assertNotIn(oldest, {row[0] for row in rows})
+        self.assertEqual({(row[1], row[2]) for row in rows}, {(2, BASE_TIME), (3, BASE_TIME + 300)})
+        self.assertEqual(len(rows), 14)
+        self.assertEqual(self.rows(run=3, start=BASE_TIME + 600, end=BASE_TIME + 900), [])
+        # A later capture in the target Run replaces the supplemented record.
+        replacement = add_observation(self.database, run=3)
+        self.assertEqual({row[0] for row in self.rows(run=3)}, {replacement})
+
+    def test_explicit_run_can_fill_from_older_runs_but_never_newer_runs(self):
+        self.allow_legacy_overlaps()
+        previous = add_observation(self.database)
+        add_run(self.database, 2, analysis_input_hash="hash-1")
+        add_observation(self.database, run=2, bar=BASE_TIME + 300)
+        add_run(self.database, 3, analysis_input_hash="hash-1")
+        add_observation(self.database, run=3)
+        add_observation(self.database, run=3, bar=BASE_TIME + 600)
+        self.assertEqual(self.resolve_run(requested=2), 2)
+        self.assertEqual({row[0] for row in self.rows(run=2)}, {previous})
+        self.assertEqual(self.rows(run=2, start=BASE_TIME + 600, end=BASE_TIME + 900), [])
+
+    def test_fallback_excludes_incompatible_run_metadata_even_with_same_hash(self):
+        self.allow_legacy_overlaps()
+        previous = add_observation(self.database)
+        incompatible = (
+            dict(analysis_input_hash="different"), dict(analysis_version="OTHER"),
+            dict(analysis_input_text="M5_OBSERVATION_PROFILE_V1|different"),
+            dict(source_mode="TESTER"), dict(source_server="Other-Server"),
+            dict(schema_version=2), dict(strategy="OTHER"), dict(strategy_version="OTHER"),
+        )
+        for identifier, changes in enumerate(incompatible, 2):
+            add_run(self.database, identifier, **(dict(analysis_input_hash="hash-1") | changes))
+            add_observation(self.database, run=identifier)
+        add_run(self.database, 20, analysis_input_hash="hash-1")
+        add_observation(self.database, run=20, bar=BASE_TIME + 300)
+        self.assertEqual({row[0] for row in self.rows(run=20)}, {previous})
+        self.assertEqual({row[1] for row in self.rows(run=20)}, {1})
+
+    def test_fallback_excludes_other_symbols_and_observation_sources(self):
+        previous = add_observation(self.database)
+        add_run(self.database, 2, analysis_input_hash="hash-1")
+        add_observation(self.database, run=2, symbol="USDJPY")
+        add_run(self.database, 3, analysis_input_hash="hash-1")
+        add_observation(self.database, run=3, source_mode="TESTER")
+        add_run(self.database, 4, analysis_input_hash="hash-1")
+        add_observation(self.database, run=4, source_server="Other-Server")
+        add_run(self.database, 5, analysis_input_hash="hash-1")
+        add_observation(self.database, run=5, bar=BASE_TIME + 300)
+        self.assertEqual({row[0] for row in self.rows(run=5)}, {previous})
+
+    def test_fallback_obeys_known_capture_time_before_choosing_latest_run(self):
+        self.allow_legacy_overlaps()
+        previous = add_observation(self.database, capture=BASE_TIME + 1)
+        add_run(self.database, 2, analysis_input_hash="hash-1")
+        later = add_observation(self.database, run=2, capture=BASE_TIME + 20)
+        add_run(self.database, 3, analysis_input_hash="hash-1")
+        add_observation(self.database, run=3, bar=BASE_TIME - 300)
+        self.assertEqual(self.rows(run=3, known=BASE_TIME), [])
+        self.assertEqual({row[0] for row in self.rows(run=3, known=BASE_TIME + 19)}, {previous})
+        self.assertEqual({row[0] for row in self.rows(run=3, known=BASE_TIME + 20)}, {later})
+
+    def test_target_partial_observation_is_not_mixed_with_older_frames(self):
+        self.allow_legacy_overlaps()
+        add_observation(self.database)
+        add_run(self.database, 2, analysis_input_hash="hash-1")
+        target = add_observation(self.database, run=2)
+        self.database.execute(f"DELETE FROM {FRAMES} WHERE observation_id=? AND time_frame=15", (target,))
+        rows = self.rows(run=2)
+        self.assertEqual(len(rows), 6)
+        self.assertEqual({row[0] for row in rows}, {target})
+        self.assertNotIn(15, {row[7] for row in rows})
+
+    def test_duplicate_records_in_winning_run_remain_visible_for_validation(self):
+        self.allow_legacy_overlaps()
+        first = add_observation(self.database)
+        second = add_observation(self.database)
+        add_run(self.database, 2, analysis_input_hash="hash-1")
+        add_observation(self.database, run=2, bar=BASE_TIME + 300)
+        rows = self.rows(run=2)
+        self.assertEqual({row[0] for row in rows}, {first, second})
+        self.assertEqual(len(rows), 14)
+
     def test_display_refresh_follows_restarted_collector_only_for_automatic_run(self):
         # Bind the actual controller call argument, so querying Run0 directly
         # cannot hide a regression that passes the previously resolved Run.

@@ -60,7 +60,7 @@ public:
     }
 
     /**
-     * 指定した通貨・実行元の一つのRunから、開始を含み終了を含まない範囲を取得する。
+     * 指定Runを優先し、同じ分析設定の過去Runで欠損時刻を補った半開区間を取得する。
      * Run0は表示範囲によらず既知時刻までに記録がある最新Runを選ぶ。
      * 同一バーの重複、形式不整合、2000件超過は一部表示せずエラーにする。
      */
@@ -238,17 +238,28 @@ private:
     }
 
     /**
-     * 親2001件を上限検査用に選び、最新7足を一括取得するSQLを生成する。
+     * 同じ設定の対象Run以前からM5時刻ごとに最新Runを選び、保存7足を一括取得する。
+     * 同じRun・時刻の重複は残して検査し、2001件目で表示上限超過を検出する。
      */
     string buildRecordsSql(const string fromObservationColumns, const string fromFrameColumns,
             const string fromMetricsColumns) {
         string capture = this.captureExpression(fromMetricsColumns);
-        string sql = "WITH selected AS (SELECT o.*," + capture + " AS recorded_capture_time,";
+        string sql = "WITH compatible_runs AS (SELECT r.id FROM zigzag_elliot_alert_runs r ";
+        sql += "JOIN zigzag_elliot_alert_runs target ON target.id=?1 ";
+        sql += "WHERE r.id<=target.id AND r.source_mode=?3 AND r.source_server=?4 ";
+        sql += "AND r.schema_version=target.schema_version AND r.strategy=target.strategy ";
+        sql += "AND r.strategy_version=target.strategy_version AND r.analysis_version=target.analysis_version ";
+        sql += "AND r.analysis_input_hash=target.analysis_input_hash ";
+        sql += "AND r.analysis_input_text=target.analysis_input_text), ";
+        sql += "candidates AS (SELECT o.*," + capture + " AS recorded_capture_time,";
         sql += this.metricsCountExpression(fromMetricsColumns) + " AS recorded_metric_count ";
-        sql += "FROM zigzag_elliot_observations o ";
-        sql += "WHERE o.run_id=?1 AND o.symbol_name=?2 AND o.source_mode=?3 AND o.source_server=?4 ";
+        sql += "FROM zigzag_elliot_observations o JOIN compatible_runs r ON r.id=o.run_id ";
+        sql += "WHERE o.symbol_name=?2 AND o.source_mode=?3 AND o.source_server=?4 ";
         sql += "AND o.anchor_bar_time>=?5 AND o.anchor_bar_time<?6 AND o.anchor_bar_time<=?7 ";
-        sql += "AND (" + capture + " IS NULL OR " + capture + "<=?7) ";
+        sql += "AND (" + capture + " IS NULL OR " + capture + "<=?7)), ";
+        sql += "preferred AS (SELECT anchor_bar_time,MAX(run_id) AS run_id FROM candidates GROUP BY anchor_bar_time), ";
+        sql += "selected AS (SELECT o.* FROM candidates o JOIN preferred p ";
+        sql += "ON p.anchor_bar_time=o.anchor_bar_time AND p.run_id=o.run_id ";
         sql += "ORDER BY o.anchor_bar_time,o.id LIMIT 2001) ";
         sql += "SELECT o.id,o.run_id,o.anchor_bar_time,";
         sql += this.optionalColumn(fromObservationColumns, "anchor_jst_time", "o.");
@@ -318,7 +329,7 @@ private:
     }
 
     /**
-     * 選択Runの親観測と子7足を一つの要求で取得する。
+     * 対象Runと互換の過去Runから、時刻ごとの親観測と子7足を一つの要求で取得する。
      */
     bool loadRecords(const string fromSymbol, const string fromSourceMode, const string fromSourceServer,
             const long fromRunId, const datetime fromStartTime, const datetime fromEndTime,
@@ -421,7 +432,8 @@ private:
         string analysisVersion = "";
         string analysisHash = "";
         if (!this.readLongValue(fromRequest, 0, fromRecord.id)
-                || !this.readLongValue(fromRequest, 1, fromRecord.runId) || fromRecord.runId != fromRunId
+                || !this.readLongValue(fromRequest, 1, fromRecord.runId)
+                || fromRecord.runId <= 0 || fromRecord.runId > fromRunId
                 || !this.readTimeValue(fromRequest, 2, fromRecord.barTime) || fromRecord.barTime <= 0
                 || fromRecord.barTime > fromKnownTime
                 || !this.readOptionalTime(fromRequest, 3, fromRecord.jstTime)
@@ -449,6 +461,8 @@ private:
 
             return false;
         }
+
+        fromRecord.isPreviousRun = fromRecord.runId < fromRunId;
 
         return true;
     }

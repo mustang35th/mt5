@@ -239,6 +239,9 @@ struct M5ObservationHistoryRecord {
     /** 保存Run ID。 */
     long runId;
 
+    /** 対象Runにない同時刻の観測を、設定が一致する過去Runから補完したか。 */
+    bool isPreviousRun;
+
     /** 観測基準M5足のサーバー開始時刻。 */
     datetime barTime;
 
@@ -260,6 +263,7 @@ struct M5ObservationHistoryRecord {
     void clear() {
         this.id = 0;
         this.runId = 0;
+        this.isPreviousRun = false;
         this.barTime = 0;
         this.jstTime = 0;
         this.captureTime = 0;

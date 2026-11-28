@@ -30,8 +30,8 @@ public:
             fromData.headerTime = "観測 JST " + timeText(fromRecord.jstTime);
         }
 
-        fromData.metadata = "取得 SRV " + timeText(fromRecord.captureTime)
-            + " / Run " + IntegerToString(fromRecord.runId)
+        fromData.metadata = sourceText(fromRecord)
+            + " / 取得 SRV " + timeText(fromRecord.captureTime)
             + " / ID " + IntegerToString(fromRecord.id);
         fromData.hint = "前・次：表示範囲内 / 行選択で詳細 / M1は未収録";
         if (fromRecord.id <= 0) {
@@ -47,6 +47,18 @@ public:
 
             fillPanelStrength(fromRecord.strength, fromData.strength);
         }
+    }
+
+    /**
+     * 実際の取得元Runと過去Run補完の区別を、詳細とホバーで共通表示する。
+     */
+    static string sourceText(const M5ObservationHistoryRecord &fromRecord) {
+        string text = "Run " + IntegerToString(fromRecord.runId);
+        if (fromRecord.id > 0 && fromRecord.isPreviousRun) {
+            text = "過去Run補完 / " + text;
+        }
+
+        return text;
     }
 
     /**

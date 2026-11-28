@@ -1123,6 +1123,7 @@ class ElliotPanelSavedTests(unittest.TestCase):
         source += r'''
 public class M5ObservationHistoryRecord {
     public long id=1,runId=17,barTime=1795500000,jstTime=1795525200,captureTime=1795500012;
+    public bool isPreviousRun;
     public M5ObservationHistoryFrame[] frames=new M5ObservationHistoryFrame[7];
     public M5ObservationHistoryStrength strength=new M5ObservationHistoryStrength();
     public M5ObservationHistoryRecord() {
@@ -1169,7 +1170,7 @@ public class SavedPanelFixture : MqlApi {
         ElliotPanelData shown=panel.shown;
         Check(panel.shows==1 && shown.symbolName=="USDJPY" && shown.digits==3 && shown.savedTime==record.barTime,"selected saved record reaches the shared panel");
         Check(shown.rowCount==7 && shown.frames[6].timeFrame==PERIOD_M5 && shown.frames[6].row.timeFrameLabel=="M5","seven saved frames retain timeframe identity without a fabricated M1");
-        Check(shown.headerTime.StartsWith("観測 JST ") && shown.metadata.StartsWith("取得 SRV ") && shown.metadata.Contains("Run 17") && shown.metadata.Contains("ID 1"),"observation and capture timestamps are distinct and source metadata retained");
+        Check(shown.headerTime.StartsWith("観測 JST ") && shown.metadata.StartsWith("Run 17 / 取得 SRV ") && shown.metadata.Contains("Run 17") && shown.metadata.Contains("ID 1"),"observation and capture timestamps are distinct and source metadata retained");
         Check(shown.frames[6].pointTime==record.frames[6].pointTime && shown.frames[6].pointJstTime==record.frames[6].pointJstTime,"saved point timestamps are copied without conversion or reanalysis");
         Check(shown.frames[6].row.hasPointRate && shown.frames[6].row.pointRate==0,"saved zero price remains recorded");
         Check(shown.frames[6].row.hasGmmaTrendCount && shown.frames[6].row.gmmaTrendCount==-1 && shown.frames[6].row.hasGmmaCrossCount && shown.frames[6].row.gmmaCrossCount==0,"saved adapter preserves negative-one and recorded-zero GMMA values with availability");
@@ -1178,6 +1179,12 @@ public class SavedPanelFixture : MqlApi {
         Check(shown.strength.longMedium.valid && shown.strength.longMedium.comparable && shown.strength.longMedium.gap==5 && shown.strength.longMedium.delta==-2,"saved ranks preserve independent gap and delta");
         Check(shown.canPrevious && shown.canNext && shown.hint.Contains("前まで 15分"),"visible navigation availability and gaps copied");
         Check(selectedTime==record.barTime && hoverTime==0,"opening panel updates marker selection and dismisses compact hover");
+        record.isPreviousRun=true;record.runId=12;showRecord(records,1,3);
+        Check(panel.shown.metadata.StartsWith("過去Run補完 / Run 12 / "),"supplemented record displays actual source Run before capture details");
+        Check(panel.shown.rowCount==7 && panel.shown.canPrevious && panel.shown.canNext,"previous Run remains fully viewable and navigable");
+        Check(ElliotPanelSavedAdapter.sourceText(record)=="過去Run補完 / Run 12","hover and details share source label");
+        record.isPreviousRun=false;record.runId=17;showRecord(records,1,3);
+        Check(!panel.shown.metadata.Contains("補完") && panel.shown.metadata.StartsWith("Run 17 / "),"replacement with target Run removes stale supplement label");
         record.frames[6].hasPointRate=false;record.frames[5].hasData=false;
         record.frames[6].hasGmmaCrossCount=false;
         record.jstTime=0;record.captureTime=0;showRecord(records,1,3);
@@ -1196,7 +1203,7 @@ public class SavedPanelFixture : MqlApi {
         ))
         source += methods + "}\npublic class ElliotPanelSavedAdapter : MqlApi {\n"
         source += extracted_methods(SAVED_ADAPTER.read_text(encoding="utf-8-sig"), (
-            "build",
+            "build", "sourceText",
             "fillPanelStrength", "fillPanelStrengthPeriod", "strengthTitle", "strengthStatusText",
             "fillTableRow", "frameName", "timeText",
         )) + "}\n"

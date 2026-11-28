@@ -138,6 +138,11 @@ public:
             this.panel.requestBringToFront();
             if (this.panel.isSavedMode()
                     && this.savedPanelData.savedTime == this.panel.getSavedTime()) {
+                if (selectedIndex >= 0) {
+                    ElliotPanelSavedAdapter::build(fromRecords[selectedIndex], ChartSymbol(this.chartId),
+                        fromDigits, this.savedPanelData);
+                }
+
                 this.savedPanelData.hint = "前・次：表示範囲内 / 行選択で詳細 / M1は未収録";
                 this.updatePanelNavigation(fromRecords);
                 if (selectedIndex < 0) {
@@ -431,6 +436,10 @@ private:
             text = "?";
             markerColor = clrDimGray;
         } else {
+            if (fromRecord.isPreviousRun) {
+                text = "○";
+            }
+
             markerColor = waveColor(fromRecord.frames[6]);
         }
         if (fromRecord.barTime == this.selectedTime) {
@@ -495,8 +504,9 @@ private:
         bool previousSucceeded = this.drawingSucceeded;
         this.drawingSucceeded = true;
         this.drawBackground(left, top, panelWidth, panelHeight, "HoverBackground", 30);
-        this.drawLabel("HoverTitle", "M5保存波動", left + 10, top + 8,
-            9, clrWhiteSmoke, "\n", 31);
+        string title = "M5保存波動 / " + ElliotPanelSavedAdapter::sourceText(fromRecord);
+        this.drawLabel("HoverTitle", shorten(title, textLimit), left + 10, top + 8,
+            9, clrWhiteSmoke, title, 31);
         string stamp = "SRV " + ElliotPanelSavedAdapter::timeText(fromRecord.barTime);
         if (fromRecord.jstTime > 0) {
             stamp = "JST " + ElliotPanelSavedAdapter::timeText(fromRecord.jstTime);
