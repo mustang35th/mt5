@@ -110,9 +110,9 @@ public:
                 fromExpectedPairCount
             );
             if (fromValidPairCount == fromExpectedPairCount) {
-                displayText = "集計対象：—（取得待ち）";
+                displayText = "現在集計：—（取得待ち）";
                 if (fromSnapshotTime > 0) {
-                    displayText = "集計対象："
+                    displayText = "現在集計："
                         + TimeUtil::formatYyyymmddhhmiss(
                             TimeJapanUtil::getJapanTime(fromSnapshotTime)
                         )

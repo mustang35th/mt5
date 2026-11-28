@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.12"
+#property version   "1.14"
 #property indicator_separate_window
 #property indicator_buffers 16
 #property indicator_plots   16
@@ -100,6 +100,8 @@
 #include <Mstng\Strength\CurrencyStrengthAllRankPoint.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculationProfile.mqh>
 #include <Mstng\Strength\CurrencyStrengthRankDatabaseProfile.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankHistoryNavigation.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankHistorySelection.mqh>
 #include <Mstng\Util\Util.mqh>
 
 /**
@@ -155,6 +157,9 @@ DrawCurrencyStrengthAllRankSummaryLabel *gRankSummaryLabelDraw = NULL;
 DrawCurrencyStrengthRankPeriodLabel *gRankPeriodLabelDraw = NULL;
 DrawCurrencyStrengthRankSourceLabel *gRankSourceLabelDraw = NULL;
 CurrencyStrengthAllRankPoint gRankPoints[];
+
+/** この履歴インスタンスへ前後移動を返すための識別子。 */
+int gRankHistorySourceId = 0;
 
 /** 期限切れの先頭部分を除いた、参照対象の開始位置。 */
 int gRankPointStartIndex = 0;
@@ -305,6 +310,14 @@ int OnInit() {
         return INIT_FAILED;
     }
 
+    gRankHistorySourceId = CurrencyStrengthRankHistoryNavigation::nextId();
+    if (gRankHistorySourceId == 0) {
+        gLogger.error(__FUNCTION__, "rank history source ID allocation failed");
+        releaseResources();
+
+        return INIT_FAILED;
+    }
+
     ArrayResize(gRankPoints, 0);
     gRankPointStartIndex = 0;
     gLastQueryTargetM5BarTime = 0;
@@ -329,6 +342,12 @@ int OnInit() {
  * @param fromReason 終了理由。
  */
 void OnDeinit(const int fromReason) {
+    if (gRankHistorySourceId > 0) {
+        EventChartCustom(ChartID(), CurrencyStrengthRankHistorySelection::sourceClosedEventId(),
+            gRankHistorySourceId, (double)voteWeightMode, "CSRH_CLOSE");
+        gRankHistorySourceId = 0;
+    }
+
     releaseResources();
     ArrayFree(gRankPoints);
     gRankPointStartIndex = 0;
@@ -485,6 +504,18 @@ void OnChartEvent(
     const double &fromDoubleParameter,
     const string &fromStringParameter
 ) {
+    if (fromEventId == CHARTEVENT_CUSTOM + CurrencyStrengthRankHistorySelection::navigationEventId()) {
+        handleRankHistoryNavigation(fromLongParameter, fromDoubleParameter, fromStringParameter);
+
+        return;
+    }
+
+    if (fromEventId == CHARTEVENT_CLICK) {
+        sendRankHistorySelection((int)fromLongParameter, (int)fromDoubleParameter);
+
+        return;
+    }
+
     if (fromEventId != CHARTEVENT_CHART_CHANGE) {
         gChartRedrawRequest.flush(ChartID());
 
@@ -505,6 +536,97 @@ void OnChartEvent(
     gLatestRankLabelsDirty = true;
     drawCachedLatestRankLabels();
     gChartRedrawRequest.flush(ChartID());
+}
+
+/**
+ * 自身のサブウィンドウのクリック時刻に一致する保存順位を送る。
+ * 他の窓・未来・履歴欠損を最近傍の順位で補完せず、DBの追加検索もしない。
+ */
+void sendRankHistorySelection(const int fromX, const int fromY) {
+    int subWindow = -1;
+    datetime clickedTime = 0;
+    double clickedPrice = 0;
+    if (!ChartXYToTimePrice(ChartID(), fromX, fromY, subWindow, clickedTime, clickedPrice)
+            || subWindow <= 0 || subWindow != ChartWindowFind() || clickedTime <= 0) {
+        return;
+    }
+
+    publishRankHistorySelection(floorToM5(clickedTime));
+}
+
+/**
+ * 選択時刻の保存順位と、キャッシュ内で前後に移動できる時刻を一括送信する。
+ * fromRequestIdが0の場合は新規クリック、それ以外は対応する移動要求への応答。
+ */
+void publishRankHistorySelection(const datetime fromTime, const int fromRequestId = 0) {
+    CurrencyStrengthAllRankPoint point;
+    point.reset();
+    datetime previousTime = 0;
+    datetime nextTime = 0;
+    if (gRankPointCacheReady) {
+        int pointIndex = findRankPointIndex(fromTime);
+        if (pointIndex >= 0) {
+            point = gRankPoints[pointIndex];
+        }
+
+        int previousIndex = CurrencyStrengthRankHistoryNavigation::findAdjacentIndex(
+            gRankPoints, gRankPointStartIndex, fromTime, -1);
+        int nextIndex = CurrencyStrengthRankHistoryNavigation::findAdjacentIndex(
+            gRankPoints, gRankPointStartIndex, fromTime, 1);
+        if (previousIndex >= 0) {
+            previousTime = gRankPoints[previousIndex].m5BarTime;
+        }
+
+        if (nextIndex >= 0) {
+            nextTime = gRankPoints[nextIndex].m5BarTime;
+        }
+    }
+
+    string payload = CurrencyStrengthRankHistorySelection::encodeNavigation(
+        point, gRankHistorySourceId, fromTime, previousTime, nextTime);
+    ushort eventId = CurrencyStrengthRankHistorySelection::eventId();
+    double eventValue = (double)voteWeightMode;
+    if (fromRequestId > 0) {
+        eventId = CurrencyStrengthRankHistorySelection::navigationReplyEventId();
+        eventValue = (double)fromRequestId;
+    }
+
+    if (StringLen(payload) > 63 || !EventChartCustom(ChartID(), eventId,
+            (long)fromTime, eventValue, payload)) {
+        gLogger.error(__FUNCTION__, "rank history selection event failed");
+    }
+}
+
+/**
+ * 自身宛ての要求だけを受け、指定時刻より前／後の保存済み順位へ移動する。
+ * キャッシュ更新で端へ達していた場合も同じ時刻を返してボタン状態を更新する。
+ */
+void handleRankHistoryNavigation(const long fromTime, const double fromDirection,
+        const string fromPayload) {
+    string fields[];
+    if (gRankHistorySourceId <= 0 || fromTime <= 0 || fromTime % 300 != 0
+            || (fromDirection != -1 && fromDirection != 1)
+            || StringSplit(fromPayload, '|', fields) != 3 || fields[0] != "CSRN1"
+            || fields[1] != IntegerToString(gRankHistorySourceId)) {
+        return;
+    }
+
+    long requestId = StringToInteger(fields[2]);
+    if (requestId <= 0 || requestId > 2147483647
+            || fields[2] != StringFormat("%I64d", requestId)) {
+        return;
+    }
+
+    datetime selectedTime = (datetime)fromTime;
+    if (gRankPointCacheReady) {
+        int pointIndex = CurrencyStrengthRankHistoryNavigation::findAdjacentIndex(
+            gRankPoints, gRankPointStartIndex, selectedTime, (int)fromDirection);
+        if (pointIndex >= 0) {
+            selectedTime = gRankPoints[pointIndex].m5BarTime;
+        }
+    }
+
+    publishRankHistorySelection(selectedTime, (int)requestId);
 }
 
 /**

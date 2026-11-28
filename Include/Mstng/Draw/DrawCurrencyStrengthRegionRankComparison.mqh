@@ -144,6 +144,12 @@ public:
             return false;
         }
 
+        string title = "地域順位比較［現在］";
+        if (fromComparison != NULL && fromComparison.isHistoryMode()) {
+            title = "地域順位比較［履歴］";
+        }
+
+        ObjectSetString(this.chartId, this.objectPrefix + "Title", OBJPROP_TEXT, title);
         this.render();
 
         return true;

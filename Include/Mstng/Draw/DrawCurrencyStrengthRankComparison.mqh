@@ -15,6 +15,9 @@
 #include <Mstng\Constant\ConstantCurrency.mqh>
 #include <Mstng\Draw\DrawChartRedrawBatch.mqh>
 #include <Mstng\Strength\CurrencyStrengthCalculator.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankHistorySelection.mqh>
+#include <Mstng\Util\TimeJapanUtil.mqh>
+#include <Mstng\Util\TimeUtil.mqh>
 
 /**
  * 同一時点の長中期と中短期の通貨順位を、固定位置の接続線で比較する。
@@ -53,6 +56,8 @@ public:
         this.panelBackgroundColor = C'18,18,18';
         this.headerBackgroundColor = C'56,74,104';
         this.mutedColor = C'130,130,130';
+        this.historyMode = false;
+        this.historyNavigationPending = false;
         this.created = false;
         this.rankingReady = false;
         this.comparisonDirty = true;
@@ -109,6 +114,14 @@ public:
      * @return パネル更新に成功した場合true。集計待ちは正常表示としてtrue。
      */
     bool draw(CurrencyStrengthCalculator *fromCalculator, datetime fromSnapshotTime = 0) {
+        if (this.historyMode) {
+            if (!this.created || this.historyKey == "") {
+                return this.drawHistory(this.historySelection, this.historyVoteWeightMode);
+            }
+
+            return true;
+        }
+
         if (fromCalculator == NULL) {
             this.resetReadyHighlight(true);
 
@@ -116,48 +129,8 @@ public:
         }
 
         bool ranksReady = this.readRanks(fromCalculator);
-        if (this.rankingReady != ranksReady) {
-            this.comparisonDirty = true;
-        }
-
-        string previousSelection = this.selectedCurrency;
-        string previousSecondSelection = this.selectedSecondCurrency;
-        string previousPairSelection = this.selectedPair;
-        bool previousReadyHighlight = this.readyHighlightEnabled;
-        int previousReadyCurrencyCount = this.readyCurrencyCount;
-        bool previousReadyCurrencyMask[8];
-        ArrayCopy(previousReadyCurrencyMask, this.readyCurrencyMask);
-        string previousRegion = this.selectedRegion;
-        bool previousRegionCurrencyMask[8];
-        ArrayCopy(previousRegionCurrencyMask, this.regionCurrencyMask);
-        if (!this.created || (ranksReady && this.displayRowCount != this.requiredRowCount)) {
-            if (ranksReady) {
-                this.displayRowCount = this.requiredRowCount;
-            }
-
-            this.canvasHeight = this.displayRowCount * this.rowHeight;
-            this.panelHeight = this.firstRowYDistance + this.canvasHeight + 60;
-            if (!this.create()) {
-                return false;
-            }
-
-            this.selectedCurrency = previousSelection;
-            this.selectedSecondCurrency = previousSecondSelection;
-            this.selectedPair = previousPairSelection;
-            this.readyHighlightEnabled = previousReadyHighlight;
-            this.readyCurrencyCount = previousReadyCurrencyCount;
-            ArrayCopy(this.readyCurrencyMask, previousReadyCurrencyMask);
-            this.selectedRegion = previousRegion;
-            ArrayCopy(this.regionCurrencyMask, previousRegionCurrencyMask);
-        }
-
-        this.rankingReady = ranksReady;
-        if (!this.rankingReady) {
-            this.selectedCurrency = "";
-            this.selectedSecondCurrency = "";
-            this.selectedPair = "";
-            this.resetReadyHighlight();
-            this.resetRegionHighlight();
+        if (!this.preparePanel(ranksReady)) {
+            return false;
         }
 
         this.updateTitle(fromCalculator);
@@ -170,6 +143,212 @@ public:
         DrawChartRedrawBatch::request(this.chartId);
 
         return true;
+    }
+
+    /**
+     * 受信した保存順位を表示する。現在の計算結果は参照しない。
+     * 同じ選択内容の再受信ではオブジェクト更新を省く。
+     */
+    bool drawHistory(const CurrencyStrengthRankHistorySelection &fromSelection,
+            const CurrencyStrengthVoteWeightMode fromMode) {
+        string selectionKey = StringFormat("%I64d|%I64d|%d|", (long)fromSelection.m5BarTime,
+            fromSelection.runId, (int)fromMode) + fromSelection.sourceMode
+            + StringFormat("|%d|%I64d|%I64d|", fromSelection.sourceId,
+                (long)fromSelection.previousTime, (long)fromSelection.nextTime);
+        for (int i = 0; i < 8; i++) {
+            selectionKey += IntegerToString(fromSelection.longMediumRanks[i]);
+            selectionKey += IntegerToString(fromSelection.mediumShortRanks[i]);
+        }
+
+        if (this.historyMode && this.created && this.historyKey == selectionKey) {
+            return true;
+        }
+
+        this.historyMode = true;
+        this.historyNavigationPending = false;
+        this.historySelection = fromSelection;
+        this.historyVoteWeightMode = fromMode;
+        this.historyKey = "";
+        this.selectedCurrency = "";
+        this.selectedSecondCurrency = "";
+        this.selectedPair = "";
+        this.resetReadyHighlight();
+        this.resetRegionHighlight();
+        bool ranksReady = fromSelection.hasRanks();
+        if (ranksReady) {
+            ArrayCopy(this.leftRanks, fromSelection.longMediumRanks);
+            ArrayCopy(this.rightRanks, fromSelection.mediumShortRanks);
+            this.buildRankBands();
+            this.buildRows(this.leftRanks, this.leftRows);
+            this.buildRows(this.rightRanks, this.rightRows);
+        }
+
+        this.comparisonDirty = true;
+        if (!this.preparePanel(ranksReady)) {
+            return false;
+        }
+
+        string modeText = "均等";
+        if (fromMode == CURRENCY_STRENGTH_VOTE_WEIGHT_WEIGHTED) {
+            modeText = "加重";
+        }
+
+        ObjectSetString(this.chartId, this.objectPrefix + "Title", OBJPROP_TEXT,
+            "通貨順位比較［履歴・" + modeText + "］");
+        this.statusText = "記録なし";
+        this.statusColor = clrGold;
+        if (ranksReady) {
+            this.statusText = "保存順位 " + fromSelection.sourceMode;
+            this.statusColor = clrAqua;
+        }
+
+        string timestamp = TimeUtil::formatYyyymmddhhmiss(
+            TimeJapanUtil::getJapanTime(fromSelection.m5BarTime)) + " JST";
+        ObjectSetString(this.chartId, this.objectPrefix + "Footer", OBJPROP_TEXT, timestamp);
+        ObjectSetString(this.chartId, this.objectPrefix + "Footer", OBJPROP_TOOLTIP,
+            TimeUtil::formatYyyymmddhhmiss(fromSelection.m5BarTime) + " SRV / RUN "
+            + StringFormat("%I64d", fromSelection.runId));
+        ObjectSetString(this.chartId, this.objectPrefix + "Hint", OBJPROP_TEXT,
+            "順位比較以外は現在値・集計は継続");
+        ObjectSetString(this.chartId, this.objectPrefix + "ClearSelection", OBJPROP_TEXT, "現在へ");
+        ObjectSetString(this.chartId, this.objectPrefix + "ClearSelection", OBJPROP_TOOLTIP,
+            "最新の集計順位へ戻ります");
+        this.renderComparison();
+        if (!this.updateHistoryNavigationButtons()) {
+            return false;
+        }
+
+        string markerName = this.objectPrefix + "HistoryTime";
+        if (!ObjectCreate(this.chartId, markerName, OBJ_VLINE, 0, fromSelection.m5BarTime, 0)
+                || !ObjectMove(this.chartId, markerName, 0, fromSelection.m5BarTime, 0)) {
+            return false;
+        }
+
+        ObjectSetInteger(this.chartId, markerName, OBJPROP_COLOR, clrGold);
+        ObjectSetInteger(this.chartId, markerName, OBJPROP_STYLE, STYLE_DOT);
+        ObjectSetInteger(this.chartId, markerName, OBJPROP_RAY, true);
+        ObjectSetInteger(this.chartId, markerName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(this.chartId, markerName, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(this.chartId, markerName, OBJPROP_BACK, true);
+        ObjectSetString(this.chartId, markerName, OBJPROP_TOOLTIP, "順位履歴 " + timestamp);
+        this.historyKey = selectionKey;
+        DrawChartRedrawBatch::request(this.chartId);
+
+        return true;
+    }
+
+    /**
+     * 履歴表示を固定中か取得する。
+     */
+    bool isHistoryMode() const { return this.historyMode; }
+
+    /**
+     * 同じ方式・時刻・取得元・集計ID・順位を既に描画済みか判定する。
+     */
+    bool isSameHistorySelection(const CurrencyStrengthRankHistorySelection &fromSelection,
+            const CurrencyStrengthVoteWeightMode fromMode) const {
+        if (!this.historyMode || !this.created || this.historyKey == ""
+                || this.historyVoteWeightMode != fromMode
+                || this.historySelection.m5BarTime != fromSelection.m5BarTime
+                || this.historySelection.runId != fromSelection.runId
+                || this.historySelection.sourceMode != fromSelection.sourceMode
+                || this.historySelection.sourceId != fromSelection.sourceId
+                || this.historySelection.previousTime != fromSelection.previousTime
+                || this.historySelection.nextTime != fromSelection.nextTime) {
+            return false;
+        }
+
+        for (int i = 0; i < 8; i++) {
+            if (this.historySelection.longMediumRanks[i] != fromSelection.longMediumRanks[i]
+                    || this.historySelection.mediumShortRanks[i] != fromSelection.mediumShortRanks[i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * 移動要求を返す履歴インスタンスID。
+     */
+    int getHistorySourceId() const { return this.historySelection.sourceId; }
+
+    /**
+     * 現在表示している保存M5時刻。
+     */
+    datetime getHistoryTime() const { return this.historySelection.m5BarTime; }
+
+    /**
+     * 前次ボタンの押下を消費する。端・応答待ちは方向0で返す。
+     */
+    bool handleHistoryNavigationClick(const string fromName, int &fromDirection) {
+        fromDirection = 0;
+        if (!this.historyMode || !this.created
+                || (fromName != this.objectPrefix + "HistoryPrevious"
+                    && fromName != this.objectPrefix + "HistoryNext")) {
+            return false;
+        }
+
+        ObjectSetInteger(this.chartId, fromName, OBJPROP_STATE, false);
+        if (!this.historyNavigationPending && this.historySelection.sourceId > 0) {
+            if (fromName == this.objectPrefix + "HistoryPrevious" && this.historySelection.previousTime > 0) {
+                fromDirection = -1;
+            } else if (fromName == this.objectPrefix + "HistoryNext" && this.historySelection.nextTime > 0) {
+                fromDirection = 1;
+            }
+        }
+
+        DrawChartRedrawBatch::request(this.chartId);
+
+        return true;
+    }
+
+    /**
+     * 応答待ち中は前次を灰色にする。現在へ戻る操作は常に使用できる。
+     */
+    void setHistoryNavigationPending(const bool fromPending) {
+        if (this.historyNavigationPending == fromPending) {
+            return;
+        }
+
+        this.historyNavigationPending = fromPending;
+        if (this.historyMode && this.created) {
+            this.updateHistoryNavigationButtons();
+            DrawChartRedrawBatch::request(this.chartId);
+        }
+    }
+
+    /**
+     * クリック元が終了した場合は保存表示を保ち、移動だけを無効にする。
+     */
+    void disableHistoryNavigation() {
+        this.historySelection.previousTime = 0;
+        this.historySelection.nextTime = 0;
+        this.historyKey = "";
+        this.setHistoryNavigationPending(false);
+        if (this.historyMode && this.created) {
+            this.updateHistoryNavigationButtons();
+            DrawChartRedrawBatch::request(this.chartId);
+        }
+    }
+
+    /**
+     * 履歴表示中の「現在へ」ボタンを判定する。
+     */
+    bool isReturnToCurrentClick(const string fromObjectName) const {
+        return this.historyMode && fromObjectName == this.objectPrefix + "ClearSelection";
+    }
+
+    /**
+     * 履歴固定を解除し、現在の集計結果で同じパネルを描き直す。
+     */
+    bool returnToCurrent(CurrencyStrengthCalculator *fromCalculator) {
+        this.historyMode = false;
+        this.historyNavigationPending = false;
+        this.historyKey = "";
+        this.destroyObjects();
+
+        return this.draw(fromCalculator);
     }
 
     /**
@@ -559,6 +738,21 @@ public:
     }
 
 private:
+    /** 保存順位を表示中ならtrue。通常のdrawでは上書きしない。 */
+    bool historyMode;
+
+    /** 移動要求に対する応答を待っている場合true。 */
+    bool historyNavigationPending;
+
+    /** 再受信した同一順位の描画省略キー。 */
+    string historyKey;
+
+    /** 描画再生成時にも保持する選択順位。 */
+    CurrencyStrengthRankHistorySelection historySelection;
+
+    /** 選択順位の計算方式。 */
+    CurrencyStrengthVoteWeightMode historyVoteWeightMode;
+
     /** 描画対象チャートID。 */
     long chartId;
 
@@ -758,6 +952,63 @@ private:
     }
 
     /**
+     * 現在・履歴共通の順位帯に合わせてパネルを準備する。
+     */
+    bool preparePanel(const bool fromRanksReady) {
+        if (this.rankingReady != fromRanksReady) {
+            this.comparisonDirty = true;
+        }
+
+        string previousSelection = this.selectedCurrency;
+        string previousSecondSelection = this.selectedSecondCurrency;
+        string previousPairSelection = this.selectedPair;
+        bool previousReadyHighlight = this.readyHighlightEnabled;
+        int previousReadyCurrencyCount = this.readyCurrencyCount;
+        bool previousReadyCurrencyMask[8];
+        ArrayCopy(previousReadyCurrencyMask, this.readyCurrencyMask);
+        string previousRegion = this.selectedRegion;
+        bool previousRegionCurrencyMask[8];
+        ArrayCopy(previousRegionCurrencyMask, this.regionCurrencyMask);
+        int footerHeight = 60;
+        if (this.historyMode) {
+            footerHeight += 30;
+        }
+
+        if (!this.created || (fromRanksReady && this.displayRowCount != this.requiredRowCount)
+                || this.panelHeight != this.firstRowYDistance + this.canvasHeight + footerHeight) {
+            if (fromRanksReady) {
+                this.displayRowCount = this.requiredRowCount;
+            }
+
+            this.canvasHeight = this.displayRowCount * this.rowHeight;
+            this.panelHeight = this.firstRowYDistance + this.canvasHeight + footerHeight;
+            if (!this.create()) {
+                return false;
+            }
+
+            this.selectedCurrency = previousSelection;
+            this.selectedSecondCurrency = previousSecondSelection;
+            this.selectedPair = previousPairSelection;
+            this.readyHighlightEnabled = previousReadyHighlight;
+            this.readyCurrencyCount = previousReadyCurrencyCount;
+            ArrayCopy(this.readyCurrencyMask, previousReadyCurrencyMask);
+            this.selectedRegion = previousRegion;
+            ArrayCopy(this.regionCurrencyMask, previousRegionCurrencyMask);
+        }
+
+        this.rankingReady = fromRanksReady;
+        if (!this.rankingReady) {
+            this.selectedCurrency = "";
+            this.selectedSecondCurrency = "";
+            this.selectedPair = "";
+            this.resetReadyHighlight();
+            this.resetRegionHighlight();
+        }
+
+        return true;
+    }
+
+    /**
      * 全28ペアが揃った場合だけ、既存APIから8通貨の実順位を取得する。
      * 全件を確認してから保持値へ反映し、同じ順位の帯・行計算を省く。
      *
@@ -938,7 +1189,7 @@ private:
         ObjectSetInteger(this.chartId, this.objectPrefix + "Status", OBJPROP_COLOR, displayColor);
 
         color clearButtonColor = this.mutedColor;
-        if (hasSelection) {
+        if (hasSelection || this.historyMode) {
             clearButtonColor = clrWhite;
         }
 
@@ -1202,6 +1453,70 @@ private:
         ObjectSetInteger(this.chartId, objectName, OBJPROP_COLOR, fromColor);
         ObjectSetString(this.chartId, objectName, OBJPROP_FONT, this.fontName);
         ObjectSetString(this.chartId, objectName, OBJPROP_TEXT, fromText);
+
+        return true;
+    }
+
+    /**
+     * 履歴フッターの前次を更新し、5分より大きい記録間隔を表示する。
+     */
+    bool updateHistoryNavigationButtons() {
+        int footerTop = this.firstRowYDistance + this.canvasHeight + 7;
+        ObjectSetInteger(this.chartId, this.objectPrefix + "Hint", OBJPROP_YDISTANCE,
+            this.yDistance + footerTop + 60);
+        if (!this.createHistoryNavigationButton("HistoryPrevious", 14, footerTop + 30,
+                "◀ 前", this.historySelection.previousTime, -1)
+                || !this.createHistoryNavigationButton("HistoryNext", this.panelWidth - 140,
+                    footerTop + 30, "次 ▶", this.historySelection.nextTime, 1)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 履歴移動ボタンを再利用する。移動先なし・応答待ちは灰色とする。
+     */
+    bool createHistoryNavigationButton(const string fromSuffix, const int fromLeft,
+            const int fromTop, const string fromCaption, const datetime fromTargetTime,
+            const int fromDirection) {
+        string name = this.objectPrefix + fromSuffix;
+        if (!ObjectCreate(this.chartId, name, OBJ_BUTTON, 0, 0, 0)) {
+            return false;
+        }
+
+        this.configureObject(name, 3);
+        string caption = fromCaption;
+        color textColor = this.mutedColor;
+        string tooltip = "キャッシュ内に移動先がありません";
+        if (fromTargetTime > 0 && this.historySelection.sourceId > 0) {
+            long minutes = ((long)fromTargetTime - (long)this.historySelection.m5BarTime) * fromDirection / 60;
+            if (minutes > 5) {
+                caption += " " + StringFormat("%I64d分", minutes);
+            }
+
+            tooltip = TimeUtil::formatYyyymmddhhmiss(TimeJapanUtil::getJapanTime(fromTargetTime)) + " JST";
+            if (!this.historyNavigationPending) {
+                textColor = clrWhite;
+            }
+        }
+
+        if (this.historyNavigationPending) {
+            tooltip = "履歴の応答待ち";
+        }
+
+        ObjectSetInteger(this.chartId, name, OBJPROP_XDISTANCE, this.xDistance + fromLeft);
+        ObjectSetInteger(this.chartId, name, OBJPROP_YDISTANCE, this.yDistance + fromTop);
+        ObjectSetInteger(this.chartId, name, OBJPROP_XSIZE, 126);
+        ObjectSetInteger(this.chartId, name, OBJPROP_YSIZE, 24);
+        ObjectSetInteger(this.chartId, name, OBJPROP_FONTSIZE, 9);
+        ObjectSetInteger(this.chartId, name, OBJPROP_COLOR, textColor);
+        ObjectSetInteger(this.chartId, name, OBJPROP_BGCOLOR, C'35,35,35');
+        ObjectSetInteger(this.chartId, name, OBJPROP_BORDER_COLOR, clrDimGray);
+        ObjectSetInteger(this.chartId, name, OBJPROP_STATE, false);
+        ObjectSetString(this.chartId, name, OBJPROP_FONT, this.fontName);
+        ObjectSetString(this.chartId, name, OBJPROP_TEXT, caption);
+        ObjectSetString(this.chartId, name, OBJPROP_TOOLTIP, tooltip);
 
         return true;
     }

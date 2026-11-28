@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
-#property version   "1.36"
+#property version   "1.38"
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_plots   1
@@ -32,6 +32,8 @@
 #include <Mstng\Strength\CurrencyStrengthEntryGapDirectionProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthH1EmaProvider.mqh>
 #include <Mstng\Strength\CurrencyStrengthM1EmaProvider.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankHistoryNavigation.mqh>
+#include <Mstng\Strength\CurrencyStrengthRankHistorySelection.mqh>
 #include <Mstng\Strength\CurrencyStrengthSortType.mqh>
 #include <Mstng\Strength\CurrencyStrengthTrendContinuationProvider.mqh>
 #include <Mstng\Util\TimeUtil.mqh>
@@ -138,6 +140,13 @@ const int stackedPanelGap = 4;
 double gHiddenBuffer[];
 
 Logger gLogger;
+
+/** 未完了の前後移動要求。0は応答待ちなし。 */
+int gRankHistoryRequestId = 0;
+
+/** 前後移動要求を送信した単調増加時刻。 */
+ulong gRankHistoryRequestTick = 0;
+
 DrawCurrencyStrengthEntryCandidateList *gDrawCurrencyStrengthEntryCandidateList = NULL;
 DrawCurrencyStrengthList *gDrawCurrencyStrengthList;
 DrawCurrencyStrengthRankComparison *gDrawCurrencyStrengthRankComparison = NULL;
@@ -532,6 +541,7 @@ void OnDeinit(const int reason) {
  * タイマーごとに通貨強弱を更新する。
  */
 void OnTimer() {
+    expireRankHistoryNavigation();
     if (Util::isStrategyTester()) {
         return;
     }
@@ -587,12 +597,60 @@ void OnChartEvent(
     const double &fromDoubleValue,
     const string &fromStringValue
 ) {
+    expireRankHistoryNavigation();
+    if (fromEventId == CHARTEVENT_CUSTOM + CurrencyStrengthRankHistorySelection::navigationReplyEventId()) {
+        receiveRankHistoryNavigation(fromLongValue, fromDoubleValue, fromStringValue);
+
+        return;
+    }
+
+    if (fromEventId == CHARTEVENT_CUSTOM + CurrencyStrengthRankHistorySelection::sourceClosedEventId()) {
+        if (fromStringValue == "CSRH_CLOSE" && fromDoubleValue == (double)voteWeightMode
+                && gDrawCurrencyStrengthRankComparison != NULL
+                && gDrawCurrencyStrengthRankComparison.isHistoryMode()
+                && fromLongValue == gDrawCurrencyStrengthRankComparison.getHistorySourceId()) {
+            DrawChartRedrawBatch redrawBatch;
+            cancelRankHistoryNavigation();
+            gDrawCurrencyStrengthRankComparison.disableHistoryNavigation();
+        }
+
+        return;
+    }
+
+    if (fromEventId == CHARTEVENT_CUSTOM + CurrencyStrengthRankHistorySelection::eventId()) {
+        receiveRankHistorySelection(fromLongValue, fromDoubleValue, fromStringValue);
+
+        return;
+    }
+
     if (fromEventId != CHARTEVENT_OBJECT_CLICK) {
         return;
     }
 
     DrawChartRedrawBatch redrawBatch;
     bool clearedOtherScoreInstances = cleanupOrphanedScorePanels();
+    int historyDirection = 0;
+    if (gDrawCurrencyStrengthRankComparison != NULL
+            && gDrawCurrencyStrengthRankComparison.handleHistoryNavigationClick(fromStringValue, historyDirection)) {
+        requestRankHistoryNavigation(historyDirection);
+
+        return;
+    }
+
+    if (gDrawCurrencyStrengthRankComparison != NULL
+            && gDrawCurrencyStrengthRankComparison.isReturnToCurrentClick(fromStringValue)) {
+        cancelRankHistoryNavigation();
+        if (!gDrawCurrencyStrengthRankComparison.returnToCurrent(gCurrencyStrengthCalculator)) {
+            gLogger.error(__FUNCTION__, "current rank comparison draw failed");
+        }
+
+        drawSelectedRegionRanks();
+        synchronizePairSelection(gCurrencyStrengthEntryCandidateList != NULL
+            && gCurrencyStrengthEntryCandidateList.isRankingReady());
+
+        return;
+    }
+
     if (gDrawCurrencyStrengthList != NULL
             && gDrawCurrencyStrengthList.handleToggleClick(fromStringValue, clearedOtherScoreInstances)) {
         updateSnapshotHeaderWidth();
@@ -675,6 +733,20 @@ void OnChartEvent(
         return;
     }
 
+    if (gDrawCurrencyStrengthRankComparison.isHistoryMode()) {
+        // 現在の候補から保存順位への強調を止め、押下状態だけを解除する。
+        if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.isReadyHighlightClick(fromStringValue);
+        }
+
+        if (gDrawCurrencyStrengthRankComparison.handleObjectClick(fromStringValue)
+                && gDrawCurrencyStrengthRegionRankComparison != NULL) {
+            gDrawCurrencyStrengthRegionRankComparison.clearSelection();
+        }
+
+        return;
+    }
+
     if (gDrawCurrencyStrengthRankComparison.handleObjectClick(fromStringValue)) {
         gReadyHighlightRequested = false;
         saveEntryDisplaySettings();
@@ -724,6 +796,128 @@ void OnChartEvent(
             gDrawCurrencyStrengthRankComparison.getSelectedPair()
         );
     }
+}
+
+/**
+ * 同一チャート・同じ計算方式の履歴選択を表示へ反映する。
+ * 集計・候補判定・DB保存に使用する現在の計算結果は変更しない。
+ */
+void receiveRankHistorySelection(const long fromTime, const double fromMode,
+        const string fromPayload) {
+    if (gDrawCurrencyStrengthRankComparison == NULL) {
+        return;
+    }
+
+    CurrencyStrengthRankHistorySelection selection;
+    if (!selection.decode(fromTime, fromMode, fromPayload, voteWeightMode)) {
+        return;
+    }
+
+    DrawChartRedrawBatch redrawBatch;
+    cancelRankHistoryNavigation();
+    if (gDrawCurrencyStrengthRankComparison.isSameHistorySelection(selection, voteWeightMode)) {
+        return;
+    }
+
+    cleanupOrphanedScorePanels();
+    if (!gDrawCurrencyStrengthRankComparison.drawHistory(selection, voteWeightMode)) {
+        gLogger.error(__FUNCTION__, "saved rank comparison draw failed");
+    }
+
+    if (gDrawCurrencyStrengthRegionRankComparison != NULL) {
+        gDrawCurrencyStrengthRegionRankComparison.clearSelection();
+    }
+
+    drawSelectedRegionRanks();
+    synchronizePairSelection(gEntryCandidateSnapshotReady);
+}
+
+/**
+ * 待機中の要求を無効にする。遅れて届いた応答は要求IDで除外される。
+ */
+void cancelRankHistoryNavigation() {
+    gRankHistoryRequestId = 0;
+    if (gDrawCurrencyStrengthRankComparison != NULL) {
+        gDrawCurrencyStrengthRankComparison.setHistoryNavigationPending(false);
+    }
+}
+
+/**
+ * 応答が10秒以上ない場合は再操作可能にする。既存のTimer周期は変更しない。
+ */
+void expireRankHistoryNavigation() {
+    if (gRankHistoryRequestId > 0 && GetTickCount64() - gRankHistoryRequestTick >= 10000) {
+        DrawChartRedrawBatch redrawBatch;
+        cancelRankHistoryNavigation();
+        gLogger.info(__FUNCTION__, "rank history navigation response timeout");
+    }
+}
+
+/**
+ * 最初に選んだ履歴インスタンスへ、現在の保存時刻からの前後移動を要求する。
+ * 応答待ちの連打は追加要求にしない。
+ */
+void requestRankHistoryNavigation(const int fromDirection) {
+    if ((fromDirection != -1 && fromDirection != 1) || gRankHistoryRequestId != 0
+            || gDrawCurrencyStrengthRankComparison == NULL
+            || !gDrawCurrencyStrengthRankComparison.isHistoryMode()
+            || gDrawCurrencyStrengthRankComparison.getHistorySourceId() <= 0) {
+        return;
+    }
+
+    int requestId = CurrencyStrengthRankHistoryNavigation::nextId();
+    if (requestId == 0) {
+        gLogger.error(__FUNCTION__, "rank history request ID allocation failed");
+
+        return;
+    }
+
+    string payload = "CSRN1|" + IntegerToString(gDrawCurrencyStrengthRankComparison.getHistorySourceId())
+        + "|" + IntegerToString(requestId);
+    if (!EventChartCustom(ChartID(), CurrencyStrengthRankHistorySelection::navigationEventId(),
+            (long)gDrawCurrencyStrengthRankComparison.getHistoryTime(), (double)fromDirection, payload)) {
+        gLogger.error(__FUNCTION__, "rank history navigation request failed");
+
+        return;
+    }
+
+    gRankHistoryRequestId = requestId;
+    gRankHistoryRequestTick = GetTickCount64();
+    gDrawCurrencyStrengthRankComparison.setHistoryNavigationPending(true);
+}
+
+/**
+ * 自身が待っている要求IDと移動元が一致する応答だけを反映する。
+ */
+void receiveRankHistoryNavigation(const long fromTime, const double fromRequestId,
+        const string fromPayload) {
+    if (gRankHistoryRequestId <= 0 || fromRequestId != (double)gRankHistoryRequestId
+            || gDrawCurrencyStrengthRankComparison == NULL
+            || !gDrawCurrencyStrengthRankComparison.isHistoryMode()) {
+        return;
+    }
+
+    CurrencyStrengthRankHistorySelection selection;
+    if (!selection.decode(fromTime, (double)voteWeightMode, fromPayload, voteWeightMode)
+            || selection.sourceId != gDrawCurrencyStrengthRankComparison.getHistorySourceId()) {
+        return;
+    }
+
+    receiveRankHistorySelection(fromTime, (double)voteWeightMode, fromPayload);
+}
+
+/**
+ * 通貨順位と同じ現在・履歴モードで地域順位を描く。
+ */
+void drawSelectedRegionRanks() {
+    if (gDrawCurrencyStrengthRegionRankComparison != NULL
+            && !gDrawCurrencyStrengthRegionRankComparison.draw(gDrawCurrencyStrengthRankComparison)) {
+        gLogger.error(__FUNCTION__, "currency strength region rank comparison draw failed");
+        gDrawCurrencyStrengthRegionRankComparison.clear();
+        clearRegionSelection();
+    }
+
+    DrawChartRedrawBatch::request(0);
 }
 
 /**
@@ -1364,6 +1558,18 @@ void clearRegionSelection() {
  * @param fromCandidatesReady 最新候補一覧の構築と描画に成功した場合true。
  */
 void synchronizePairSelection(const bool fromCandidatesReady) {
+    if (gDrawCurrencyStrengthRankComparison != NULL
+            && gDrawCurrencyStrengthRankComparison.isHistoryMode()) {
+        gEntryCandidateSnapshotReady = fromCandidatesReady;
+        if (gDrawCurrencyStrengthEntryCandidateList != NULL) {
+            gDrawCurrencyStrengthEntryCandidateList.setPairSelectionEnabled(false);
+            gDrawCurrencyStrengthEntryCandidateList.setReadyHighlightEnabled(false);
+            gDrawCurrencyStrengthEntryCandidateList.setSelectedSymbol("");
+        }
+
+        return;
+    }
+
     bool canSelectPair = fromCandidatesReady
         && gDrawCurrencyStrengthRankComparison != NULL
         && gDrawCurrencyStrengthRankComparison.isRankingReady();
