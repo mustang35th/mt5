@@ -157,6 +157,15 @@ struct ElliotPanelStrength {
  * 選択・開閉状態は含めず、パネル側が現在値と保存値を別々に保持する。
  */
 struct ElliotPanelData {
+    /** 見出しの指定。空の場合は現在・保存の標準見出し。 */
+    string title;
+
+    /** 現在値へ戻れる場合true。履歴専用表示ではfalse。 */
+    bool allowLive;
+
+    /** 履歴専用の切替ボタン。空の場合は非表示。 */
+    string alternateLabel;
+
     /** 対象通貨ペア。 */
     string symbolName;
 
@@ -208,6 +217,9 @@ struct ElliotPanelData {
      */
     void clear() {
         this.symbolName = "";
+        this.title = "";
+        this.allowLive = true;
+        this.alternateLabel = "";
         this.headerTime = "";
         this.metadata = "";
         this.hint = "";

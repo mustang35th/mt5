@@ -25,6 +25,7 @@ public:
         }
         this.logger.setLevel(LOG_INFO);
         this.hasDrawingError = false;
+        this.behindSharedPanel = false;
     }
 
     /**
@@ -56,6 +57,7 @@ public:
      * @param fromShowTable 7足の情報表の表示有無。
      * @param fromPanelTop 保存情報パネルの上端座標。
      * @param fromShowAlertLabels 選択ラベルも描く場合true。全件表示ではfalse。
+     * @param fromShowPanel 従来の保存情報欄を描く場合true。falseなら共通パネルの背面へ描く。
      */
     void draw(
         ZigZagElliotAlertHistorySnapshot &fromSnapshot,
@@ -64,10 +66,12 @@ public:
         const bool fromShowPrices,
         const bool fromShowTable,
         const int fromPanelTop = 8,
-        const bool fromShowAlertLabels = true
+        const bool fromShowAlertLabels = true,
+        const bool fromShowPanel = true
     ) {
         this.clear();
         this.hasDrawingError = false;
+        this.behindSharedPanel = !fromShowPanel;
 
         int higherCount = 2;
         if (fromHigherCount == 3) {
@@ -104,12 +108,17 @@ public:
         if (fromShowAlertLabels) {
             this.drawAlertLabels(fromSnapshot, showOriginal, showCorrected);
         }
-        this.drawPanel(fromSnapshot, showOriginal, showCorrected, fromShowTable, fromPanelTop);
+        if (fromShowPanel) {
+            this.drawPanel(fromSnapshot, showOriginal, showCorrected, fromShowTable, fromPanelTop);
+        }
 
         ChartRedraw(this.chartId);
     }
 
 private:
+    /** 共通パネルを使う場合、波動・価格・番号を背景へ配置する。 */
+    bool behindSharedPanel;
+
     /** 描画先チャートID。 */
     long chartId;
 
@@ -295,6 +304,7 @@ private:
         ObjectSetInteger(this.chartId, fromName, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(this.chartId, fromName, OBJPROP_SELECTED, false);
         ObjectSetInteger(this.chartId, fromName, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(this.chartId, fromName, OBJPROP_BACK, this.behindSharedPanel);
 
         return true;
     }

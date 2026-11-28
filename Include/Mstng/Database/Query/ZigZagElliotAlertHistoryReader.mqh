@@ -1205,6 +1205,10 @@ private:
             return false;
         }
 
+        if (!this.loadStrength(fromSnapshot, fromError)) {
+            return false;
+        }
+
         if (!this.loadAnalysis(fromAlertId, false, fromSnapshot.originalTimeFrames, fromSnapshot.originalPoints,
                 fromSnapshot.originalReason, fromError)) {
             return false;
@@ -1330,6 +1334,102 @@ private:
      */
     string getAlertColumns() {
         return "id,run_id,server_time,server_time_text,jst_time,jst_time_text,current_bar_time,current_bar_time_text,signal_reference_point_time,signal_reference_point_time_text,symbol_name,time_frame,time_frame_text,side,is_alert,is_entry,entry_result,signal_count,entry_count,is_entry_evaluated,current_elliot_label,reference_price,is_stop_loss_available,stop_loss,risk_pips,spread_pips,alert_title,alert_text,wave_summary_text";
+    }
+
+    /**
+     * アラート時に保存した通貨強弱を同じ読取トランザクションで取得する。
+     * 旧DBの列不足と不正値は状態として返し、保存波動の読取を妨げない。
+     */
+    bool loadStrength(ZigZagElliotAlertHistorySnapshot &fromSnapshot, string &fromError) {
+        fromSnapshot.strengthState = "未記録";
+        string columns = "";
+        if (!this.tableColumns("zigzag_elliot_alerts", columns, fromError)) {
+            return false;
+        }
+
+        string fields = "is_currency_strength_enabled,is_currency_strength_available,currency_strength_status,"
+            + "currency_strength_calculation_version,currency_strength_run_id,currency_strength_source_mode,"
+            + "currency_strength_target_m5_bar_time,currency_strength_m5_bar_time,base_currency,quote_currency,"
+            + "base_long_medium_rank,quote_long_medium_rank,base_medium_short_rank,quote_medium_short_rank,"
+            + "long_medium_rank_difference,medium_short_rank_difference";
+        string names[];
+        int count = StringSplit(fields, ',', names);
+        for (int i = 0; i < count; i++) {
+            if (StringFind(columns, "," + names[i] + ",") < 0) {
+                return true;
+            }
+        }
+
+        int request = this.prepareIdQuery("SELECT " + fields + " FROM zigzag_elliot_alerts WHERE id=?",
+            fromSnapshot.alert.id, fromError);
+        if (request == INVALID_HANDLE) {
+            return false;
+        }
+
+        bool hasRow = false;
+        bool success = this.readNext(request, hasRow, fromError);
+        if (success && hasRow) {
+            this.readStrength(request, fromSnapshot);
+        }
+
+        DatabaseFinalize(request);
+
+        return success;
+    }
+
+    /**
+     * 有効フラグ・順位・順位差・参照時刻を検証し、未取得を順位0で表示しない。
+     */
+    void readStrength(const int fromRequest, ZigZagElliotAlertHistorySnapshot &fromSnapshot) {
+        ZigZagElliotAlertEntity value = fromSnapshot.alert;
+        fromSnapshot.strengthState = "取得不可（保存値不正）";
+        if (!this.readIntValue(fromRequest, 0, value.isCurrencyStrengthEnabled, true)
+                || !this.readIntValue(fromRequest, 1, value.isCurrencyStrengthAvailable, true)) {
+            return;
+        }
+
+        if (value.isCurrencyStrengthEnabled == 0) {
+            fromSnapshot.strengthState = "フィルターOFF";
+            return;
+        }
+
+        if (value.isCurrencyStrengthAvailable == 0) {
+            fromSnapshot.strengthState = "取得不可";
+            return;
+        }
+
+        if (!this.readIntValue(fromRequest, 2, value.currencyStrengthStatus)
+                || !this.readTextValue(fromRequest, 3, value.currencyStrengthCalculationVersion)
+                || !this.readLongValue(fromRequest, 4, value.currencyStrengthRunId)
+                || !this.readTextValue(fromRequest, 5, value.currencyStrengthSourceMode)
+                || !this.readTimeValue(fromRequest, 6, value.currencyStrengthTargetM5BarTime)
+                || !this.readTimeValue(fromRequest, 7, value.currencyStrengthM5BarTime)
+                || !this.readTextValue(fromRequest, 8, value.baseCurrency)
+                || !this.readTextValue(fromRequest, 9, value.quoteCurrency)
+                || !this.readIntValue(fromRequest, 10, value.baseLongMediumRank)
+                || !this.readIntValue(fromRequest, 11, value.quoteLongMediumRank)
+                || !this.readIntValue(fromRequest, 12, value.baseMediumShortRank)
+                || !this.readIntValue(fromRequest, 13, value.quoteMediumShortRank)
+                || !this.readIntValue(fromRequest, 14, value.longMediumRankDifference)
+                || !this.readIntValue(fromRequest, 15, value.mediumShortRankDifference)) {
+            return;
+        }
+
+        if (value.baseCurrency == "" || value.quoteCurrency == "" || value.baseCurrency == value.quoteCurrency
+                || value.baseLongMediumRank < 1 || value.baseLongMediumRank > 8
+                || value.quoteLongMediumRank < 1 || value.quoteLongMediumRank > 8
+                || value.baseMediumShortRank < 1 || value.baseMediumShortRank > 8
+                || value.quoteMediumShortRank < 1 || value.quoteMediumShortRank > 8
+                || value.longMediumRankDifference != value.quoteLongMediumRank - value.baseLongMediumRank
+                || value.mediumShortRankDifference != value.quoteMediumShortRank - value.baseMediumShortRank
+                || value.currencyStrengthM5BarTime <= 0
+                || value.currencyStrengthM5BarTime > value.currencyStrengthTargetM5BarTime
+                || value.currencyStrengthTargetM5BarTime > value.serverTime) {
+            return;
+        }
+
+        fromSnapshot.alert = value;
+        fromSnapshot.strengthState = "取得済み";
     }
 
     /**

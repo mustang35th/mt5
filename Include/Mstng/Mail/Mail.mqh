@@ -480,7 +480,8 @@ private:
         if (fromCorrectionTimeFrame != higherTimeFrame
                 && fromCorrectionTimeFrame != lowerTimeFrame
                 && (currentTimeFrame != PERIOD_M15 || fromCorrectionTimeFrame != PERIOD_H1)
-                && (currentTimeFrame != PERIOD_M5 || fromCorrectionTimeFrame != PERIOD_M15)) {
+                && (currentTimeFrame != PERIOD_M5
+                    || (fromCorrectionTimeFrame != PERIOD_D1 && fromCorrectionTimeFrame != PERIOD_M15))) {
             return false;
         }
 

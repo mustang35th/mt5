@@ -14,7 +14,8 @@ enum ENUM_ELLIOT_PANEL_ACTION {
     ELLIOT_PANEL_ACTION_HANDLED,
     ELLIOT_PANEL_ACTION_PREVIOUS,
     ELLIOT_PANEL_ACTION_NEXT,
-    ELLIOT_PANEL_ACTION_CLOSED
+    ELLIOT_PANEL_ACTION_CLOSED,
+    ELLIOT_PANEL_ACTION_ALTERNATE
 };
 
 /**
@@ -44,6 +45,7 @@ public:
         this.selectedTimeFrame = PERIOD_M5;
         this.panelLeft = 0;
         this.panelTop = 0;
+        this.topOffset = 12;
         this.panelWidth = 0;
         this.panelHeight = 0;
         this.drawingSucceeded = true;
@@ -138,6 +140,11 @@ public:
      * 保存表示中の場合trueを返す。
      */
     bool isSavedMode() { return this.savedMode; }
+
+    /**
+     * 呼び出し元の操作欄と重ならない上端を指定する。描画は次回更新時に行う。
+     */
+    void setTopOffset(const int fromTop) { this.topOffset = MathMax(12, fromTop); }
 
     /**
      * 選択された保存時刻を返す。現在表示中は0。
@@ -249,7 +256,7 @@ public:
         int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS, 0);
         int chartHeight = (int)ChartGetInteger(this.chartId, CHART_HEIGHT_IN_PIXELS, 0);
         ElliotPanelLayout layout;
-        bool sizeAvailable = layout.setChartSize(chartWidth, chartHeight);
+        bool sizeAvailable = layout.setChartSize(chartWidth, chartHeight, this.topOffset);
         this.panelLeft = layout.panelLeft;
         this.panelTop = layout.panelTop;
         this.panelWidth = layout.panelWidth;
@@ -336,6 +343,14 @@ public:
         }
 
         if (fromName == this.objectPrefix + "Live") {
+            if (this.savedMode && !this.savedData.allowLive) {
+                if (this.savedData.alternateLabel != "") {
+                    return ELLIOT_PANEL_ACTION_ALTERNATE;
+                }
+
+                return ELLIOT_PANEL_ACTION_HANDLED;
+            }
+
             this.showLive();
 
             return ELLIOT_PANEL_ACTION_HANDLED;
@@ -381,6 +396,9 @@ public:
     }
 
 private:
+    /** 他の操作欄を避ける上端位置。標準は12px。 */
+    int topOffset;
+
     /** 描画先チャート。 */
     long chartId;
 
@@ -564,7 +582,12 @@ private:
             modeColor = clrGold;
         }
 
-        this.drawText("Title", "Elliot / " + fromData.symbolName + " / " + mode,
+        string title = fromData.title;
+        if (title == "") {
+            title = "Elliot / " + fromData.symbolName + " / " + mode;
+        }
+
+        this.drawText("Title", title,
             fromLayout.contentLeft, fromLayout.getTitleTop(), fromLayout.titleWidth, 12, modeColor);
         this.drawButton("Close", "×", "パネルを閉じる",
             fromLayout.closeLeft, fromLayout.getButtonTop(), 24, true);
@@ -583,8 +606,13 @@ private:
             this.drawButton("Next", "次 ▶", "表示範囲内の新しい保存データへ移動します。",
                 fromLayout.getNavigationLeft(1), fromLayout.navigationTop,
                 fromLayout.navigationWidth, fromData.canNext);
-            this.drawButton("Live", "現在へ", "最新の分析結果へ戻ります。",
-                fromLayout.getNavigationLeft(2), fromLayout.navigationTop, 78, true);
+            if (fromData.allowLive) {
+                this.drawButton("Live", "現在へ", "最新の分析結果へ戻ります。",
+                    fromLayout.getNavigationLeft(2), fromLayout.navigationTop, 78, true);
+            } else if (fromData.alternateLabel != "") {
+                this.drawButton("Live", fromData.alternateLabel, "波動線の前後比較を保ち、表の補正前後を切り替えます。",
+                    fromLayout.getNavigationLeft(2), fromLayout.navigationTop, 78, true);
+            }
         }
 
         this.drawText("Time", fromData.headerTime, fromLayout.contentLeft, fromLayout.timeTop,

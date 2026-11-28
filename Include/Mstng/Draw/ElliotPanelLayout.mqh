@@ -120,11 +120,11 @@ public:
      *
      * @return パネルの最小幅・高さを確保できる場合true。
      */
-    bool setChartSize(const int fromWidth, const int fromHeight) {
+    bool setChartSize(const int fromWidth, const int fromHeight, const int fromTop = 12) {
         this.panelLeft = 12;
-        this.panelTop = 12;
+        this.panelTop = MathMax(12, fromTop);
         this.panelWidth = MathMin(960, fromWidth - 24);
-        this.availableHeight = fromHeight - 24;
+        this.availableHeight = fromHeight - this.panelTop - 12;
 
         return this.panelWidth >= 160 && this.availableHeight >= 80;
     }

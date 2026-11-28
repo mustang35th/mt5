@@ -6,6 +6,7 @@
 #include <Mstng\Database\Query\ZigZagElliotAlertHistoryReader.mqh>
 #include <Mstng\Database\Service\ZigZagElliotAlertPersistenceService.mqh>
 #include <Mstng\Database\SqliteDatabase.mqh>
+#include <Mstng\Draw\ElliotPanelAlertAdapter.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryConfig.mqh>
 #include <Mstng\Log\Logger.mqh>
 
@@ -624,7 +625,47 @@ void testRunScopes(ZigZagElliotAlertHistoryReader &fromReader) {
 }
 
 /**
- * current schemaと旧EMA列なしschemaを、書込側を閉じた後で読み取る。
+ * 保存アラートの共通パネル変換と通貨強弱の正常・欠損・不正状態を検証する。
+ */
+void testAlertPanel(ZigZagElliotAlertHistoryReader &fromReader, const bool fromLegacy) {
+    ZigZagElliotAlertHistorySnapshot snapshot;
+    string error = "";
+    expect(fromReader.loadSnapshot(1, snapshot, error), "panel snapshot loads " + error);
+    ElliotPanelData selected;
+    ElliotPanelData original;
+    ElliotPanelAlertAdapter::build(snapshot, false, 3, selected);
+    ElliotPanelAlertAdapter::build(snapshot, true, 3, original);
+    expect(selected.rowCount == 7 && !selected.allowLive && selected.savedTime == snapshot.alert.currentBarTime,
+        "alert adapter has seven saved rows and cannot switch to live values");
+    if (fromLegacy) {
+        expect(snapshot.strengthState == "未記録" && selected.strength.status == "未記録"
+            && !selected.strength.longMedium.valid, "legacy strength columns remain unrecorded");
+        return;
+    }
+
+    expect(snapshot.strengthState == "取得済み" && selected.strength.longMedium.baseRank == 2
+        && selected.strength.longMedium.quoteRank == 6 && selected.strength.longMedium.gap == 4
+        && selected.strength.mediumShort.baseRank == 3 && selected.strength.mediumShort.quoteRank == 7
+        && selected.strength.mediumShort.gap == 4 && !selected.strength.longMedium.comparable,
+        "saved strength ranks preserved without invented previous-bar comparison");
+    expect(original.strength.longMedium.gap == selected.strength.longMedium.gap
+        && original.strength.mediumShort.baseRank == selected.strength.mediumShort.baseRank,
+        "original and corrected views retain the same decision-time strength");
+    expect(selected.frames[6].row.pointRate != original.frames[6].row.pointRate,
+        "original and corrected points remain separate");
+    expect(fromReader.loadSnapshot(2, snapshot, error) && snapshot.strengthState == "取得不可（保存値不正）"
+        && snapshot.originalAvailable, "invalid rank does not discard valid wave data");
+    ElliotPanelAlertAdapter::build(snapshot, false, 3, selected);
+    expect(!selected.strength.longMedium.valid && selected.strength.status == "取得不可（保存値不正）",
+        "invalid selection clears previously displayed strength");
+    expect(fromReader.loadSnapshot(3, snapshot, error) && snapshot.strengthState == "取得不可",
+        "unavailable strength remains unavailable");
+    expect(fromReader.loadSnapshot(4, snapshot, error) && snapshot.strengthState == "フィルターOFF",
+        "disabled strength is distinct from missing data");
+}
+
+/**
+ * 専用fixtureの現行・旧保存形式を検証する。
  */
 void testFile(const string fromFileName, const bool fromLegacy) {
     if (!expect(isUnusedFixtureName(fromFileName), "unused fixture path")) {
@@ -721,6 +762,16 @@ void testFile(const string fromFileName, const bool fromLegacy) {
         executeSql(databaseHandle, "DROP TABLE zigzag_elliot_alert_corrections");
         executeSql(databaseHandle, "ALTER TABLE zigzag_elliot_alert_timeframes DROP COLUMN is_ema200_buy");
         executeSql(databaseHandle, "ALTER TABLE zigzag_elliot_alert_timeframes DROP COLUMN is_ema200_sell");
+        executeSql(databaseHandle, "ALTER TABLE zigzag_elliot_alerts DROP COLUMN currency_strength_source_mode");
+    } else {
+        executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET is_currency_strength_enabled=1,"
+            "is_currency_strength_available=1,currency_strength_source_mode='TESTER',"
+            "currency_strength_target_m5_bar_time=900,currency_strength_m5_bar_time=900,"
+            "base_currency='USD',quote_currency='JPY',base_long_medium_rank=2,quote_long_medium_rank=6,"
+            "base_medium_short_rank=3,quote_medium_short_rank=7,"
+            "long_medium_rank_difference=4,medium_short_rank_difference=4 WHERE id IN (1,2,3)");
+        executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET base_long_medium_rank=9 WHERE id=2");
+        executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET is_currency_strength_available=0 WHERE id=3");
     }
     expectText(databaseHandle, "PRAGMA journal_mode=DELETE", "delete");
     database.close();
@@ -741,6 +792,7 @@ void testFile(const string fromFileName, const bool fromLegacy) {
         testMarkers(reader, fromLegacy);
         testDisplayFilters(reader);
         testRunScopes(reader);
+        testAlertPanel(reader, fromLegacy);
         if (fromLegacy) {
             ZigZagElliotAlertHistorySnapshot snapshot;
             bool isLoaded = reader.loadSnapshot(3, snapshot, error);

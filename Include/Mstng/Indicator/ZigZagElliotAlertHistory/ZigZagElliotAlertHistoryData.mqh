@@ -114,6 +114,9 @@ public:
     /** 保存元Run。 */
     ZigZagElliotAlertRunEntity run;
 
+    /** 通貨強弱の保存状態。取得済み・未記録・取得不可・フィルターOFF。 */
+    string strengthState;
+
     /** 補正メタデータ。 */
     ZigZagElliotAlertCorrectionEntity correction;
 
@@ -154,6 +157,7 @@ public:
     void clear() {
         ZeroMemory(this.alert);
         ZeroMemory(this.run);
+        this.strengthState = "未記録";
         ZeroMemory(this.correction);
         this.correctionStatus = "UNRECORDED";
         this.correctionReason = "";

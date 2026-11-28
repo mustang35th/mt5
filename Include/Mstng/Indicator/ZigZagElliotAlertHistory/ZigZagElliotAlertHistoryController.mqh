@@ -2,8 +2,10 @@
 #define MSTNG_ZIGZAG_ELLIOT_ALERT_HISTORY_CONTROLLER_MQH
 
 #include <Mstng\Database\Query\ZigZagElliotAlertHistoryReader.mqh>
+#include <Mstng\Draw\DrawElliotPanel.mqh>
 #include <Mstng\Draw\DrawZigZagElliotAlertHistory.mqh>
 #include <Mstng\Draw\DrawZigZagElliotAlertMarkers.mqh>
+#include <Mstng\Draw\ElliotPanelAlertAdapter.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryConfig.mqh>
 #include <Mstng\Indicator\ZigZagElliotAlertHistory\ZigZagElliotAlertHistoryData.mqh>
 #include <Mstng\Log\Logger.mqh>
@@ -21,6 +23,9 @@ public:
         this.chartId = 0;
         this.drawer = NULL;
         this.markerDrawer = NULL;
+        this.elliotPanel = NULL;
+        this.panelReopen = true;
+        this.comparisonOriginal = false;
         this.selectedIndex = -1;
         this.resolvedRunId = 0;
         this.snapshotLoaded = false;
@@ -84,6 +89,13 @@ public:
             return INIT_FAILED;
         }
 
+        if (this.config.showTable) {
+            this.elliotPanel = new DrawElliotPanel(this.chartId, this.prefix + "Panel-");
+            if (this.elliotPanel == NULL) {
+                return INIT_FAILED;
+            }
+        }
+
         this.originalAutoScroll = (bool)ChartGetInteger(this.chartId, CHART_AUTOSCROLL);
         this.autoScrollCaptured = true;
 
@@ -105,6 +117,23 @@ public:
         if (fromEventId == CHARTEVENT_CHART_CHANGE) {
             this.needsRedraw = true;
             return;
+        }
+
+        if (fromEventId == CHARTEVENT_OBJECT_CLICK && this.elliotPanel != NULL) {
+            ENUM_ELLIOT_PANEL_ACTION action = this.elliotPanel.onObjectClick(fromObjectName);
+            if (action != ELLIOT_PANEL_ACTION_NONE) {
+                if (action == ELLIOT_PANEL_ACTION_PREVIOUS) {
+                    this.select(this.selectedIndex - 1);
+                } else if (action == ELLIOT_PANEL_ACTION_NEXT) {
+                    this.select(this.selectedIndex + 1);
+                } else if (action == ELLIOT_PANEL_ACTION_ALTERNATE && this.view == ALERT_HISTORY_COMPARISON) {
+                    this.comparisonOriginal = !this.comparisonOriginal;
+                    this.renderPanel();
+                }
+
+                ChartRedraw(this.chartId);
+                return;
+            }
         }
 
         if (fromEventId == CHARTEVENT_OBJECT_CLICK
@@ -142,9 +171,11 @@ public:
                 this.view = ALERT_HISTORY_ORIGINAL;
             } else if (action == "Comparison" && canCompare) {
                 this.view = ALERT_HISTORY_COMPARISON;
+                this.comparisonOriginal = false;
             }
         }
 
+        this.panelReopen = true;
         this.render();
     }
 
@@ -168,6 +199,10 @@ public:
     void destroy() {
         EventKillTimer();
         this.reader.close();
+        if (this.elliotPanel != NULL) {
+            delete this.elliotPanel;
+            this.elliotPanel = NULL;
+        }
         if (this.drawer != NULL) {
             delete this.drawer;
             this.drawer = NULL;
@@ -195,6 +230,15 @@ public:
     }
 
 private:
+    /** 通常版と共有する保存分析パネル。 */
+    DrawElliotPanel *elliotPanel;
+
+    /** 選択・操作で閉じたパネルを再表示する場合true。 */
+    bool panelReopen;
+
+    /** 前後比較中の表で補正前を表示する場合true。 */
+    bool comparisonOriginal;
+
     /** 履歴表示設定。 */
     ZigZagElliotAlertHistoryConfig config;
 
@@ -339,6 +383,8 @@ private:
         this.loadError = "";
         this.selectedIndex = fromIndex;
         this.view = ALERT_HISTORY_SELECTED;
+        this.comparisonOriginal = false;
+        this.panelReopen = true;
 
         if (!this.reader.loadSnapshot(this.alertIds[fromIndex], this.snapshot, this.loadError)) {
             this.logger.error(__FUNCTION__, this.loadError);
@@ -490,7 +536,7 @@ private:
             }
 
             this.drawer.draw(this.snapshot, this.view, this.config.higherCount,
-                this.config.showPrices, this.config.showTable, panelTop, false);
+                this.config.showPrices, false, panelTop, false, !this.config.showTable);
         } else {
             this.drawer.clear();
         }
@@ -500,7 +546,57 @@ private:
             this.markerDrawer.draw(this.markers);
         }
 
+        this.renderPanel();
         ChartRedraw(this.chartId);
+    }
+
+    /**
+     * 保存値を共通パネルへ渡す。描画変更で選択時間足・折り畳み・非表示を戻さない。
+     */
+    void renderPanel() {
+        if (this.elliotPanel == NULL) {
+            return;
+        }
+
+        int chartWidth = (int)ChartGetInteger(this.chartId, CHART_WIDTH_IN_PIXELS);
+        int panelTop = 12;
+        if (chartWidth < 1368) {
+            panelTop = 204;
+        }
+
+        this.elliotPanel.setTopOffset(panelTop);
+        ElliotPanelData data;
+        data.symbolName = this.symbolName;
+        data.title = "保存アラート / " + this.symbolName;
+        data.allowLive = false;
+        data.status = this.loadError;
+        if (this.snapshotLoaded) {
+            bool original = this.view == ALERT_HISTORY_ORIGINAL
+                || (this.view == ALERT_HISTORY_COMPARISON && this.comparisonOriginal);
+            ElliotPanelAlertAdapter::build(this.snapshot, original,
+                (int)SymbolInfoInteger(this.symbolName, SYMBOL_DIGITS), data);
+            if (this.view == ALERT_HISTORY_COMPARISON) {
+                data.alternateLabel = "表：前へ";
+                if (this.comparisonOriginal) {
+                    data.alternateLabel = "表：後へ";
+                }
+
+                data.hint = "前後比較：後は実線・前は破線 / 表：前へ・後へで表示分析を切替";
+            }
+        }
+
+        data.canPrevious = this.selectedIndex > 0;
+        data.canNext = this.selectedIndex >= 0 && this.selectedIndex + 1 < ArraySize(this.alertIds);
+        this.elliotPanel.beginDrawBatch();
+        if (this.panelReopen) {
+            this.elliotPanel.showSaved(data);
+            this.panelReopen = false;
+        } else {
+            this.elliotPanel.updateSaved(data);
+        }
+
+        this.elliotPanel.requestBringToFront();
+        this.elliotPanel.endDrawBatch();
     }
 
     /**
@@ -618,10 +714,9 @@ private:
      */
     string correctionLabel() {
         if (this.snapshot.correctionStatus == "APPLIED") {
-            string timeFrame = "H1";
-            if (this.snapshot.correction.correctionTimeFrame == PERIOD_H4) {
-                timeFrame = "H4";
-            }
+            string timeFrame = EnumToString((ENUM_TIMEFRAMES)this.snapshot.correction.correctionTimeFrame);
+            StringReplace(timeFrame, "PERIOD_", "");
+
             return timeFrame + "補正 " + this.snapshot.correction.originalDirection
                 + "→" + this.snapshot.correction.correctedDirection;
         }
