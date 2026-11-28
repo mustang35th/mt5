@@ -129,10 +129,12 @@ public:
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "D1_DIRECTION_REQUIRED", "0");
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "DIRECTION_ALIGNMENT_MODE",
             "D1_OPTIONAL_H4_H1_M15_ONE_CORRECTION");
+        EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "EMA200_CONFIRMATION_MODE", "H1_M15_M5_REQUIRED");
 #else
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "D1_DIRECTION_REQUIRED", "1");
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "DIRECTION_ALIGNMENT_MODE",
             "D1_H4_H1_M15_ONE_CORRECTION");
+        EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "EMA200_CONFIRMATION_MODE", "H1_ONLY");
 #endif
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "MINIMUM_RANK_DIFFERENCE",
             IntegerToString(fromMinimumRankDifference));

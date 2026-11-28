@@ -49,6 +49,31 @@ protected:
 };
 
 /**
+ * Exercise the EMA gate directly for missing data and legacy policy boundaries.
+ */
+class M5EmaGateFixture : public ExpertAdvisorMtf3In3M5 {
+public:
+    /**
+     * Select normal or legacy M5 policy without drawing or trade operations.
+     */
+    M5EmaGateFixture(MarketContext &fromContext, const bool fromNormalPolicy)
+        : ExpertAdvisorMtf3In3M5(fromContext, false, false, fromNormalPolicy) {
+    }
+
+    /**
+     * Check the production gate without retaining the caller-owned analysis.
+     */
+    bool evaluate(ElliotAll *fromAnalysis, const bool fromIsBuy) {
+        this.elliotAll = fromAnalysis;
+        this.isBuy = fromIsBuy;
+        bool result = this.isTimeFrameEma200ConditionMatched();
+        this.elliotAll = NULL;
+
+        return result;
+    }
+};
+
+/**
  * Preserve factory configuration and substitute only correction reanalysis.
  */
 class M5EaFixtureFactory {
@@ -395,6 +420,13 @@ void verifyCorrectedSnapshot(const ENUM_TIMEFRAMES fromCorrectionTimeFrame, cons
         && decision.evaluate(original, 0, snapshot) && !snapshot.isJudge,
         "correction cannot change measured oscillator direction");
     selected.getElliot(fromCorrectionTimeFrame).oscillator.isBuy = !fromIsBuy;
+    setEma200Direction(original.getElliot(PERIOD_H1), !fromIsBuy);
+    setEma200Direction(selected.getElliot(PERIOD_H1), !fromIsBuy);
+    verify(decision.prepare(original, D'2026.09.01 01:10', snapshot)
+        && decision.evaluate(original, 0, snapshot) && !snapshot.isJudge,
+        "direction correction cannot bypass opposite measured H1 EMA");
+    setEma200Direction(original.getElliot(PERIOD_H1), fromIsBuy);
+    setEma200Direction(selected.getElliot(PERIOD_H1), fromIsBuy);
     selected.elliotCurrent.getLatestPoint().elliotLabel = "5";
     verify(decision.prepare(original, D'2026.09.01 01:15', snapshot)
         && decision.evaluate(original, 0, snapshot) && !snapshot.isStrategyEntry,
@@ -523,6 +555,90 @@ void verifyD1ReanalysisScope() {
 }
 
 /**
+ * Check all H1/M15/M5 NONE/BUY/SELL combinations through the real EA adapter.
+ */
+void verifyH1OnlyEmaMatrix(const bool fromIsBuy) {
+    ENUM_TIMEFRAMES timeFrames[] = {PERIOD_H1, PERIOD_M15, PERIOD_M5};
+    for (int i = 0; i < 27; i++) {
+        ElliotAll *analysis = createAnalysis(fromIsBuy);
+        int combination = i;
+        bool expected = false;
+        for (int j = 0; j < 3; j++) {
+            int state = combination % 3;
+            combination /= 3;
+            Elliot *elliot = analysis.getElliot(timeFrames[j]);
+            setEma200Direction(elliot, state == 1);
+            if (state == 0) {
+                elliot.oscillator.ema200.isBuy = false;
+                elliot.oscillator.ema200.isSell = false;
+                elliot.oscillator.ema200.buySellLabel = "NONE";
+            }
+            if (j == 0) {
+                expected = (fromIsBuy && state == 1) || (!fromIsBuy && state == 2);
+            }
+        }
+
+        M5EaStrategyDecision decision;
+        M5EaStrategySnapshot snapshot;
+        verify(decision.prepare(analysis, D'2026.09.01 01:00', snapshot)
+            && decision.evaluate(analysis, 0, snapshot), "EMA matrix evaluated");
+        verify(snapshot.isStrategyEntry == expected, "only H1 controls EMA eligibility");
+        verify(StringFind(snapshot.analysisSnapshotText, "EMA200_CONFIRMATION_MODE#7=H1_ONLY") >= 0,
+            "H1-only EMA mode persisted");
+        for (int j = 1; j < 3; j++) {
+            string label = analysis.getElliot(timeFrames[j]).oscillator.ema200.getBuySellLabel();
+            string field = "SELECTED_" + EnumToString(timeFrames[j]) + "_EMA200#"
+                + IntegerToString(StringLen(label)) + "=" + label;
+            verify(StringFind(snapshot.analysisSnapshotText, field) >= 0,
+                "lower EMA remains available in saved analysis");
+        }
+
+        if (!expected) {
+            verify(!snapshot.isJudge && !snapshot.isSignalConsumed && snapshot.signalCount == 0,
+                "H1 rejection does not consume signal");
+        }
+
+        delete analysis;
+    }
+}
+
+/**
+ * Reject missing and contradictory H1 EMA values while preserving the legacy gate.
+ */
+void verifyH1EmaInvalidStates(const bool fromIsBuy) {
+    MarketContext context("EURUSD", PERIOD_M5);
+    M5EmaGateFixture normal(context, true);
+    M5EmaGateFixture legacy(context, false);
+    verify(!normal.evaluate(NULL, fromIsBuy), "missing analysis rejected");
+    for (int i = 0; i < 5; i++) {
+        ElliotAll *analysis = createAnalysis(fromIsBuy);
+        Elliot *h1 = analysis.getElliot(PERIOD_H1);
+        if (i == 0) {
+            h1.oscillator.ema200.isBuy = true;
+            h1.oscillator.ema200.isSell = true;
+        } else if (i == 1) {
+            h1.oscillator.ema200.buySellLabel = "NONE";
+        } else if (i == 2) {
+            h1.oscillator.ema200.marketContext.timeFrame = PERIOD_M15;
+        } else if (i == 3) {
+            h1.oscillator.marketContext.timeFrame = PERIOD_M15;
+        } else {
+            analysis.elliotList.Delete(4);
+        }
+
+        verify(!normal.evaluate(analysis, fromIsBuy), "invalid or missing H1 EMA rejected");
+        delete analysis;
+    }
+
+    ElliotAll *analysis = createAnalysis(fromIsBuy);
+    setEma200Direction(analysis.getElliot(PERIOD_M15), !fromIsBuy);
+    setEma200Direction(analysis.getElliot(PERIOD_M5), !fromIsBuy);
+    verify(normal.evaluate(analysis, fromIsBuy), "normal policy ignores opposite lower EMAs");
+    verify(!legacy.evaluate(analysis, fromIsBuy), "legacy policy retains lower EMA requirements");
+    delete analysis;
+}
+
+/**
  * Use actual strategy decisions and synthetic analysis; never send orders.
  */
 void OnStart() {
@@ -533,6 +649,10 @@ void OnStart() {
     verify(strategy.getWave() == NULL, "unprepared strategy has no wave");
     verifyParityMatrix(true);
     verifyParityMatrix(false);
+    verifyH1OnlyEmaMatrix(true);
+    verifyH1OnlyEmaMatrix(false);
+    verifyH1EmaInvalidStates(true);
+    verifyH1EmaInvalidStates(false);
     verifyRestoredCount();
     verifyCorrectedSnapshot(PERIOD_H1, true);
     verifyCorrectedSnapshot(PERIOD_H1, false);

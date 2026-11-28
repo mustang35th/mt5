@@ -25,6 +25,13 @@ protected:
     virtual bool isD1DirectionRequired() override {
         return false;
     }
+
+    /**
+     * 過去のD1緩和比較と同じH1・M15・M5のEMA200確認を維持する。
+     */
+    virtual bool isH1OnlyEma200Required() override {
+        return false;
+    }
 };
 
 /**

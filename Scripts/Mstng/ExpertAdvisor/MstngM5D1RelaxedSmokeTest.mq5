@@ -129,6 +129,8 @@ void verifyD1Comparison(const bool fromIsBuy) {
         verify(result.isStrategyEntry == (i == 0 || i == 18), label + " known outcome");
         verify(StringFind(result.analysisSnapshotText, "|D1_DIRECTION_REQUIRED#1=0") >= 0,
             label + " comparison snapshot identity");
+        verify(StringFind(result.analysisSnapshotText, "EMA200_CONFIRMATION_MODE#18=H1_M15_M5_REQUIRED") >= 0,
+            label + " comparison EMA snapshot identity");
         if (i == 0) {
             verify(result.isJudge && result.isJudgmentAnalysisAvailable
                 && result.correctionTimeFrame == PERIOD_CURRENT && result.signalCount == 1,
@@ -171,6 +173,8 @@ void OnStart() {
     verify(StringFind(config.createCanonicalText(),
         "DIRECTION_ALIGNMENT_MODE=D1_OPTIONAL_H4_H1_M15_ONE_CORRECTION") >= 0,
         "comparison config identity");
+    verify(StringFind(config.createCanonicalText(), "EMA200_CONFIRMATION_MODE=H1_M15_M5_REQUIRED") >= 0,
+        "comparison keeps three EMA timeframes");
     verify(M5EaConfig::getStrategyVersion()
         == "M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_D1_OPTIONAL_TEST_V1", "comparison strategy identity");
     verifyD1Comparison(true);

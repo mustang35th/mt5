@@ -1,5 +1,5 @@
 #property strict
-#property version "1.03"
+#property version "1.04"
 #property description "テスター専用 / D1方向一致なし / その他はMstngM5Eaと共通"
 
 #include <MstngM5Ea\Strategy\M5EaD1RelaxedFactory.mqh>

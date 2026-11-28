@@ -306,7 +306,7 @@ public:
             + "|TRAIL_SL_BUFFER_PIPS=" + DoubleToString(this.trailStopLossBufferPips, 1)
             + "|MAX_SPREAD_PIPS=5.0|ANALYSIS_START_TIME_FRAME=MN1"
             + "|DIRECTION_ALIGNMENT_MODE=D1_H4_H1_M15_ONE_CORRECTION"
-            + "|EMA200_CONFIRMATION_MODE=H1_M15_M5_REQUIRED|EMA200_DISTANCE_REQUIRED=0"
+            + "|EMA200_CONFIRMATION_MODE=H1_ONLY|EMA200_DISTANCE_REQUIRED=0"
             + "|MAIN_WAVE_CONDITION=M15_1_OR_3_AND_M5_1_OR_3|M5_WAVE3_MAX_FE_PERCENT=161.8"
             + "|GMMA_TIME_FRAME=M5|ZIGZAG_CONFIRMED_REQUIRED=1|H1_DISPLAY_WAVE_ENTRY_LIMIT_ENABLED=0"
             + "|CURRENCY_STRENGTH_ENTRY_FILTER_ENABLED=" + IntegerToString((int)this.currencyStrengthEnabled)
@@ -325,6 +325,8 @@ public:
 #ifdef MSTNG_M5_D1_RELAXED_COMPARISON
         StringReplace(text, "DIRECTION_ALIGNMENT_MODE=D1_H4_H1_M15_ONE_CORRECTION",
             "DIRECTION_ALIGNMENT_MODE=D1_OPTIONAL_H4_H1_M15_ONE_CORRECTION");
+        StringReplace(text, "EMA200_CONFIRMATION_MODE=H1_ONLY",
+            "EMA200_CONFIRMATION_MODE=H1_M15_M5_REQUIRED");
 #endif
         EaTextUtil::appendField(text, "CURRENCY_STRENGTH_DATABASE_FILE_NAME", this.currencyStrengthDatabaseFileName);
 
@@ -349,7 +351,7 @@ public:
     /**
      * M5単一通貨EAのプログラム世代を返す。
      */
-    static string getProgramVersion() { return "1.03"; }
+    static string getProgramVersion() { return "1.04"; }
 
     /**
      * 通常版M5判定・通貨強弱・確定ZigZag SLを含む戦略世代を返す。
@@ -358,7 +360,7 @@ public:
 #ifdef MSTNG_M5_D1_RELAXED_COMPARISON
         return "M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_D1_OPTIONAL_TEST_V1";
 #else
-        return "M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_D1_CORRECTION_V2";
+        return "M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_D1_CORRECTION_EMA_H1_V3";
 #endif
     }
 

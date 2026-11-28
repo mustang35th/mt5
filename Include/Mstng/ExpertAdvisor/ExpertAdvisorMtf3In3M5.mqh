@@ -18,7 +18,7 @@
  * 通常版はM15・M5の主波1・3、従来ポリシーはM5の1・3・A・C波を対象とし、M5固有の
  * FE上限、H1表示波の重複制限および成立時のメール送信を管理する。
  * 通常版M5ではD1・H4・H1・M15のうち、M5と逆方向の1足を補正する。
- * 補正後のD1からM5の方向一致と、実測のH1・M15・M5のEMA200一致を使用する。
+ * 補正後のD1からM5の方向一致と、実測のH1のEMA200一致を使用する。
  * その他の呼び出し元では従来の上位足条件と片足方向補正を維持する。
  */
 class ExpertAdvisorMtf3In3M5 : public ExpertAdvisorMTF_3in3 {
@@ -29,7 +29,7 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
-     * @param fromD1ToM5EntryPolicyEnabled D1/H4/H1/M15片足補正とH1～M5のEMA200一致を使用する場合true。
+     * @param fromD1ToM5EntryPolicyEnabled D1/H4/H1/M15片足補正とH1のEMA200一致を使用する場合true。
      * @param fromCurrencyStrengthMinimumRankDifference 通常版M5の順位差基準。各期間は方向に合う1位・8位でも通過。
      */
     ExpertAdvisorMtf3In3M5(
@@ -84,6 +84,13 @@ protected:
      * @return 通常版ではtrue。
      */
     virtual bool isD1DirectionRequired() {
+        return true;
+    }
+
+    /**
+     * 通常版M5のEMA200確認をH1に限定する。比較専用クラスは従来の3足確認を維持する。
+     */
+    virtual bool isH1OnlyEma200Required() {
         return true;
     }
 
@@ -272,7 +279,7 @@ protected:
 
     /**
      * ポリシーに応じた対象足のEMA200がM5分析方向と一致するか判定する。
-     * 通常版はH1・M15・M5、従来ポリシーはD1・H4も確認する。
+     * 通常版はH1だけ、D1緩和比較版はH1・M15・M5、従来ポリシーはD1・H4も確認する。
      *
      * @return 対象足すべてが有効かつ同方向の場合true。NONEは許可しない。
      */
@@ -282,6 +289,11 @@ protected:
         }
 
         Mtf3In3HigherTimeFrameDecision decision;
+        if (this.isD1ToM5EntryPolicyEnabled && this.isH1OnlyEma200Required()) {
+            return decision.isEma200DirectionMatched(this.elliotAll.getElliot(PERIOD_H1),
+                PERIOD_H1, this.isBuy);
+        }
+
         ENUM_TIMEFRAMES timeFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15, PERIOD_M5};
         int firstTimeFrameIndex = 0;
         if (this.isD1ToM5EntryPolicyEnabled) {
@@ -542,7 +554,7 @@ private:
     /** MN1方向とW1 EMA200の両方を必須にする場合true。 */
     bool isMn1AndW1Ema200Required;
 
-    /** D1/H4/H1/M15片足補正とH1・M15・M5のEMA200一致を使用する場合true。 */
+    /** D1/H4/H1/M15片足補正とH1のEMA200一致を使用する場合true。 */
     bool isD1ToM5EntryPolicyEnabled;
 
     /** 全エントリー条件の判定に使用する補正分析。本クラスが所有する。 */
