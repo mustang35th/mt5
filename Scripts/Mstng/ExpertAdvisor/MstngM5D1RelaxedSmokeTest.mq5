@@ -138,10 +138,11 @@ void verifyD1Comparison(const bool fromIsBuy) {
             ExpertAdvisorMtf3In3Config config;
             Mtf3In3M5Policy::apply(config, false, 4);
             ExpertAdvisorMTF_3in3 *normal = ExpertAdvisorMtf3In3Factory::create(context, config);
+            analysis.getElliot(PERIOD_MN1).marketContext.symbolName = "INVALID_FIXTURE";
             normal.analyze(analysis, GetPointer(count), 1);
             verify(!normal.getAlertResult().isEntry
-                && normal.getJudgmentAnalysisRejectReason() == "M5_D1_DIRECTION_MISMATCH",
-                label + " ordinary factory still requires D1");
+                && normal.getJudgmentAnalysisRejectReason() == "M5_CORRECTION_ANALYSIS_FAILED",
+                label + " ordinary factory attempts D1 correction");
             delete normal;
         } else if (i == 13) {
             verify(result.reasonCode == "M5_CORRECTION_NOT_APPLICABLE", label + " multiple correction rejected");

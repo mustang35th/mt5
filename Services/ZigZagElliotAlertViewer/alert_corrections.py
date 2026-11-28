@@ -22,7 +22,7 @@ ORIGINAL_TIME_FRAME_TABLE = "zigzag_elliot_alert_timeframes"
 ORIGINAL_POINT_TABLE = "zigzag_elliot_alert_points"
 TIME_FRAMES = ((49153, "MN1"), (32769, "W1"), (16408, "D1"),
                (16388, "H4"), (16385, "H1"), (15, "M15"), (5, "M5"))
-CORRECTION_TARGETS = {5: {16388, 16385}, 15: {16408, 16388, 16385}, 16385: {16408, 16388}}
+CORRECTION_TARGETS = {5: {16408, 16388, 16385}, 15: {16408, 16388, 16385}, 16385: {16408, 16388}}
 ANALYSIS_TIME_FRAMES = {5: TIME_FRAMES, 15: TIME_FRAMES[:6], 16385: TIME_FRAMES[:5]}
 SNAPSHOT_TIME_FRAME_LABELS = {**dict(TIME_FRAMES), 1: "M1"}
 
@@ -538,8 +538,13 @@ def _load_alert_correction(session: Session | Connection, alert: Mapping[str, An
                      and after["buy_sell_label"] == metadata["corrected_direction"])
         else:
             valid = before["is_buy"] == after["is_buy"]
-            if (before["time_frame"] in CORRECTION_TARGETS[alert["time_frame"]]
-                    or (alert["time_frame"] == 15 and before["time_frame"] == 16385)):
+            # Preserve historical M5 H4/H1 records whose original D1 could oppose.
+            required_frames = CORRECTION_TARGETS[alert["time_frame"]]
+            if alert["time_frame"] == 5:
+                required_frames = {16388, 16385}
+                if metadata["correction_time_frame"] == 16408:
+                    required_frames = required_frames | {15}
+            if before["time_frame"] in required_frames:
                 valid = valid and before["buy_sell_label"] == alert["side"]
         if not valid:
             return _response("INCOMPLETE", "指定した補正時間足以外にも方向変更または方向不一致があります。", rendered)

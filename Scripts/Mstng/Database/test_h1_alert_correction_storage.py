@@ -29,7 +29,7 @@ READER = source("Database/Query/ZigZagElliotAlertHistoryReader.mqh")
 BUILDER = source("ExpertAdvisor/Mtf3In3AlertSnapshotBuilder.mqh")
 TABLE = "zigzag_elliot_alert_corrections"
 CONSTANTS = dict(PERIOD_MN1=49153, PERIOD_W1=32769, PERIOD_D1=16408,
-                 PERIOD_H4=16388, PERIOD_H1=16385, PERIOD_M15=15, PERIOD_M5=5)
+                 PERIOD_H4=16388, PERIOD_H1=16385, PERIOD_M15=15, PERIOD_M5=5, PERIOD_M1=1)
 FRAMES = list(CONSTANTS.values())
 
 
@@ -243,7 +243,7 @@ class DirectionContractTests(unittest.TestCase):
         return original, corrected, metadata
 
     def test_m5_m15_and_h1_both_sides_and_allowed_single_corrections(self):
-        for current, corrections in ((CONSTANTS["PERIOD_M5"], ("PERIOD_H4", "PERIOD_H1", "PERIOD_M15")),
+        for current, corrections in ((CONSTANTS["PERIOD_M5"], ("PERIOD_D1", "PERIOD_H4", "PERIOD_H1", "PERIOD_M15")),
                                      (CONSTANTS["PERIOD_M15"], ("PERIOD_D1", "PERIOD_H4", "PERIOD_H1")),
                                      (CONSTANTS["PERIOD_H1"], ("PERIOD_D1", "PERIOD_H4"))):
             for correction in corrections:
@@ -267,7 +267,7 @@ class DirectionContractTests(unittest.TestCase):
 
     def test_cross_profile_corrections_are_rejected(self):
         self.assertFalse(self.profile(CONSTANTS["PERIOD_H1"], CONSTANTS["PERIOD_H1"]))
-        self.assertFalse(self.profile(CONSTANTS["PERIOD_M5"], CONSTANTS["PERIOD_D1"]))
+        self.assertFalse(self.profile(CONSTANTS["PERIOD_M5"], CONSTANTS["PERIOD_W1"]))
         self.assertFalse(self.profile(CONSTANTS["PERIOD_M15"], CONSTANTS["PERIOD_M15"]))
 
     def test_m5_rejects_second_opposing_leg_for_every_correction(self):
@@ -284,6 +284,15 @@ class DirectionContractTests(unittest.TestCase):
                             rows[index].isBuy = int(not buy)
                             rows[index].buySellLabel = "SELL" if buy else "BUY"
                         self.assertFalse(self.direction(original, corrected, metadata, 5))
+
+    def test_m5_d1_correction_rejects_another_opposing_lower_leg(self):
+        for other in (3, 4, 5):
+            for buy in (False, True):
+                original, corrected, metadata = self.fixture(5, CONSTANTS["PERIOD_D1"], buy)
+                for rows in (original, corrected):
+                    rows[other].isBuy = int(not buy)
+                    rows[other].buySellLabel = "SELL" if buy else "BUY"
+                self.assertFalse(self.direction(original, corrected, metadata, 5))
 
     def test_m15_rejects_second_opposing_leg_for_every_correction(self):
         targets = (CONSTANTS["PERIOD_D1"], CONSTANTS["PERIOD_H4"], CONSTANTS["PERIOD_H1"])

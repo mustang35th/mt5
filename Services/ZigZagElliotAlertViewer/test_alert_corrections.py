@@ -57,7 +57,7 @@ def insert_row(connection: sqlite3.Connection, table: str, row: dict[str, object
     connection.execute(f"INSERT INTO {table} ({fields}) VALUES ({','.join('?' for _ in row)})", tuple(row.values()))
 
 
-def create_correction_database(path: Path, include_corrections: bool = True) -> None:
+def create_correction_database(path: Path, include_corrections: bool = True, m5_d1: bool = False) -> None:
     """Build M5, M15 and H1 alert variants for the viewer and browser QA."""
     columns = {table: production_columns(dao) for table, dao in TABLE_DAOS.items()}
     with closing(sqlite3.connect(path)) as connection, connection:
@@ -90,7 +90,10 @@ def create_correction_database(path: Path, include_corrections: bool = True) -> 
             (13, "APPLIED", "BUY", 16388), (14, "APPLIED", "SELL", 16388),
             (15, "NONE", "BUY", 0),
             (16, "APPLIED", "BUY", 16385), (17, "APPLIED", "SELL", 16385),
+            (18, "APPLIED", "BUY", 16408), (19, "APPLIED", "SELL", 16408),
         ):
+            if alert_id >= 18 and not m5_d1:
+                continue
             is_buy = int(side == "BUY")
             is_applied = state in {"APPLIED", "INCOMPLETE"}
             current_frame = 5
@@ -101,6 +104,9 @@ def create_correction_database(path: Path, include_corrections: bool = True) -> 
             if alert_id >= 11:
                 current_frame = 15
                 frame_list = TIME_FRAMES[:6]
+            if alert_id >= 18:
+                current_frame = 5
+                frame_list = TIME_FRAMES
             reference_time = 1789819200 + alert_id * 300
             original_lc0 = 1.08
             original_lc5 = 1.0795
@@ -239,6 +245,29 @@ class AlertCorrectionsTest(unittest.TestCase):
                 self.assertEqual("1", result["timeframes"][-1]["latest_elliot_label"])
                 self.assertEqual("3", self.database.timeframes(alert_id)["items"][-1]["latest_elliot_label"])
                 self.assertIs(True, result["timeframes"][-1]["is_ema200_available"])
+
+    def test_m5_d1_correction_both_sides_and_lower_direction_rejection(self) -> None:
+        path = Path(self.temporary.name) / "m5-d1.sqlite"
+        create_correction_database(path, m5_d1=True)
+        database = AlertDatabase(path)
+        self.addCleanup(database.close)
+        database.validate()
+        for identifier, side in ((18, "BUY"), (19, "SELL")):
+            result = database.alert_detail(identifier)["correction"]
+            self.assertEqual("APPLIED", result["status"])
+            self.assertEqual(16408, result["metadata"]["correction_time_frame"])
+            self.assertIn("[D1補正]", result["metadata"]["selected_alert_text"])
+            self.assertEqual(7, len(result["timeframes"]))
+            self.assertEqual(side, result["timeframes"][2]["buy_sell_label"])
+        with closing(sqlite3.connect(path)) as connection, connection:
+            for table in (ORIGINAL_TIME_FRAME_TABLE, TIME_FRAME_TABLE):
+                connection.execute(f"UPDATE {table} SET is_buy=0,buy_sell_label='SELL' WHERE alert_id=18 AND time_frame=15")
+        self.assertEqual("INCOMPLETE", database.alert_detail(18)["correction"]["status"])
+
+    def test_legacy_m5_h1_correction_can_keep_opposing_d1(self) -> None:
+        for table in (ORIGINAL_TIME_FRAME_TABLE, TIME_FRAME_TABLE):
+            self.update(f"UPDATE {table} SET is_buy=0,buy_sell_label='SELL' WHERE alert_id=1 AND time_frame=16408")
+        self.assertEqual("APPLIED", self.correction(1)["status"])
 
     def test_none_legacy_and_incomplete_are_distinct(self) -> None:
         for alert_id, expected in ((3, "NONE"), (4, "UNRECORDED"), (5, "INCOMPLETE"), (6, "NONE")):

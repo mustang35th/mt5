@@ -9,6 +9,9 @@ int failureCount = 0;
 /** Selected analysis injected only for the market-dependent correction test. */
 ElliotAll *selectedFixture = NULL;
 
+/** Explicit correction target for the supplied selected analysis. */
+ENUM_TIMEFRAMES selectedFixtureTimeFrame = PERIOD_H1;
+
 /**
  * Replace market reanalysis while keeping the actual M5 criteria.
  */
@@ -26,7 +29,7 @@ public:
      */
     virtual ENUM_TIMEFRAMES getCorrectionTimeFrame() override {
         if (selectedFixture != NULL && this.elliotAll == selectedFixture) {
-            return PERIOD_H1;
+            return selectedFixtureTimeFrame;
         }
 
         return ExpertAdvisorMtf3In3M5::getCorrectionTimeFrame();
@@ -281,7 +284,10 @@ void verifyParityMatrix(const bool fromIsBuy) {
             case 15: analysis.currencyStrengthExecutionInfo.longMediumGapDirection.direction = 0; break;
             case 16: analysis.currencyStrengthExecutionInfo.longMediumGapDirection.waiting = true; break;
             case 17: analysis.elliotCurrent.oscillator.ema200.closeEma200DiffPips = 10000.0; break;
-            case 18: setDirection(analysis.getElliot(PERIOD_D1), !fromIsBuy); break;
+            case 18:
+                setDirection(analysis.getElliot(PERIOD_D1), !fromIsBuy);
+                analysis.getElliot(PERIOD_MN1).marketContext.symbolName = "INVALID_FIXTURE";
+                break;
             case 19:
                 setDirection(analysis.getElliot(PERIOD_H4), !fromIsBuy);
                 setDirection(analysis.getElliot(PERIOD_H1), !fromIsBuy);
@@ -325,7 +331,7 @@ void verifyParityMatrix(const bool fromIsBuy) {
         }
 
         if (i == 18) {
-            verify(actual.reasonCode == "M5_D1_DIRECTION_MISMATCH",
+            verify(actual.reasonCode == "M5_CORRECTION_ANALYSIS_FAILED",
                 label + " D1 direction reason");
         } else if (i == 19) {
             verify(actual.reasonCode == "M5_CORRECTION_NOT_APPLICABLE",
@@ -358,22 +364,23 @@ void verifyRestoredCount() {
 /**
  * Corrected SL selection must not replace the original signal identity.
  */
-void verifyCorrectedSnapshot() {
-    ElliotAll *original = createAnalysis(true);
-    ElliotAll *selected = createAnalysis(true);
-    setDirection(original.getElliot(PERIOD_H1), false);
-    original.getElliot(PERIOD_H1).getLatestWave().isUptrend = false;
-    selected.getElliot(PERIOD_H1).oscillator.isBuy = false;
+void verifyCorrectedSnapshot(const ENUM_TIMEFRAMES fromCorrectionTimeFrame, const bool fromIsBuy) {
+    ElliotAll *original = createAnalysis(fromIsBuy);
+    ElliotAll *selected = createAnalysis(fromIsBuy);
+    setDirection(original.getElliot(fromCorrectionTimeFrame), !fromIsBuy);
+    original.getElliot(fromCorrectionTimeFrame).getLatestWave().isUptrend = !fromIsBuy;
+    selected.getElliot(fromCorrectionTimeFrame).oscillator.isBuy = !fromIsBuy;
     ZigZagPoint *sourcePivot = original.elliotCurrent.getLatestPoint2();
     ZigZagPoint *selectedPivot = selected.elliotCurrent.getLatestPoint2();
     selectedPivot.barTime += 300;
     selectedPivot.rate -= 0.001;
+    selectedFixtureTimeFrame = fromCorrectionTimeFrame;
     selectedFixture = selected;
     M5EaStrategyDecision decision;
     M5EaStrategySnapshot snapshot;
     verify(decision.prepare(original, D'2026.09.01 01:00', snapshot)
         && decision.evaluate(original, 0, snapshot) && snapshot.isStrategyEntry
-        && snapshot.correctionTimeFrame == PERIOD_H1, "selected correction enters");
+        && snapshot.correctionTimeFrame == fromCorrectionTimeFrame, "selected correction enters");
     verify(snapshot.signalReferenceTime == sourcePivot.barTime
         && snapshot.signalReferencePrice == sourcePivot.rate, "original count key preserved");
     verify(snapshot.initialStopLossPivotTime == selectedPivot.barTime
@@ -381,7 +388,19 @@ void verifyCorrectedSnapshot() {
     verify(decision.prepare(original, D'2026.09.01 01:05', snapshot)
         && decision.evaluate(original, 1, snapshot) && !snapshot.isStrategyEntry,
         "correction cannot bypass consumed original key");
+    verify(StringFind(snapshot.analysisSnapshotText, "D1_H4_H1_M15_ONE_CORRECTION") >= 0,
+        "new direction policy recorded in snapshot");
+    selected.getElliot(fromCorrectionTimeFrame).oscillator.isBuy = fromIsBuy;
+    verify(decision.prepare(original, D'2026.09.01 01:10', snapshot)
+        && decision.evaluate(original, 0, snapshot) && !snapshot.isJudge,
+        "correction cannot change measured oscillator direction");
+    selected.getElliot(fromCorrectionTimeFrame).oscillator.isBuy = !fromIsBuy;
+    selected.elliotCurrent.getLatestPoint().elliotLabel = "5";
+    verify(decision.prepare(original, D'2026.09.01 01:15', snapshot)
+        && decision.evaluate(original, 0, snapshot) && !snapshot.isStrategyEntry,
+        "corrected analysis still requires allowed M5 wave");
     selectedFixture = NULL;
+    selectedFixtureTimeFrame = PERIOD_H1;
     delete selected;
     delete original;
 }
@@ -404,7 +423,7 @@ void verifyJudgmentReasons(const bool fromIsBuy) {
             setDirection(analysis.getElliot(PERIOD_D1), !fromIsBuy);
             setDirection(analysis.getElliot(PERIOD_H4), !fromIsBuy);
             setDirection(analysis.getElliot(PERIOD_H1), !fromIsBuy);
-            expectedReason = "M5_D1_DIRECTION_MISMATCH";
+            expectedReason = "M5_CORRECTION_NOT_APPLICABLE";
         }
 
         M5EaStrategyDecision decision;
@@ -424,14 +443,17 @@ void verifyJudgmentReasons(const bool fromIsBuy) {
     ExpertAdvisorMtf3In3M5 strategy(context, false, false, true);
     verify(strategy.getJudgmentAnalysisRejectReason() == "", "initial reason empty");
     setDirection(analysis.getElliot(PERIOD_D1), !fromIsBuy);
+    setDirection(analysis.getElliot(PERIOD_H4), !fromIsBuy);
     strategy.analyze(analysis, GetPointer(count), 1);
-    verify(strategy.getJudgmentAnalysisRejectReason() == "M5_D1_DIRECTION_MISMATCH",
+    verify(strategy.getJudgmentAnalysisRejectReason() == "M5_CORRECTION_NOT_APPLICABLE",
         "reused strategy first rejection");
     setDirection(analysis.getElliot(PERIOD_D1), fromIsBuy);
+    setDirection(analysis.getElliot(PERIOD_H4), fromIsBuy);
     strategy.analyze(analysis, GetPointer(count), 1);
     verify(strategy.getJudgmentAnalysisRejectReason() == ""
         && strategy.getAlertResult().isEntry, "success clears prior reason");
     setDirection(analysis.getElliot(PERIOD_D1), !fromIsBuy);
+    setDirection(analysis.getElliot(PERIOD_H4), !fromIsBuy);
     strategy.analyze(analysis, GetPointer(count), 1);
     strategy.analyze(NULL, GetPointer(count), 1);
     verify(strategy.getJudgmentAnalysisRejectReason() == "", "early guard clears prior reason");
@@ -446,6 +468,61 @@ void verifyJudgmentReasons(const bool fromIsBuy) {
 }
 
 /**
+ * Exercise all 16 D1/H4/H1/M15 combinations without reading market history.
+ */
+void verifyCorrectionSelectionMatrix(const bool fromIsBuy) {
+    ENUM_TIMEFRAMES timeFrames[] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M15};
+    for (int i = 0; i < 16; i++) {
+        ElliotAll *analysis = createAnalysis(fromIsBuy);
+        analysis.getElliot(PERIOD_MN1).marketContext.symbolName = "INVALID_FIXTURE";
+        int mismatchCount = 0;
+        for (int j = 0; j < 4; j++) {
+            if ((i & (1 << j)) != 0) {
+                setDirection(analysis.getElliot(timeFrames[j]), !fromIsBuy);
+                mismatchCount++;
+            }
+        }
+
+        M5EaStrategyDecision decision;
+        M5EaStrategySnapshot snapshot;
+        verify(decision.prepare(analysis, D'2026.09.01 01:00', snapshot)
+            && decision.evaluate(analysis, 0, snapshot), "direction matrix evaluated");
+        if (mismatchCount == 0) {
+            verify(snapshot.isStrategyEntry && snapshot.correctionTimeFrame == PERIOD_CURRENT,
+                "all aligned uses original analysis");
+        } else {
+            string reason = "M5_CORRECTION_NOT_APPLICABLE";
+            if (mismatchCount == 1) {
+                reason = "M5_CORRECTION_ANALYSIS_FAILED";
+            }
+
+            verify(snapshot.reasonCode == reason && snapshot.signalCount == 0
+                && !snapshot.isSignalConsumed, "one correction attempted; multiple corrections rejected");
+        }
+
+        delete analysis;
+    }
+}
+
+/**
+ * Verify M5 accepts the D1 reanalysis route while M1 keeps its former scope.
+ * Invalid MN1 input stops the accepted route before any market data access.
+ */
+void verifyD1ReanalysisScope() {
+    ElliotAll *original = createAnalysis(true);
+    original.getElliot(PERIOD_MN1).marketContext.symbolName = "INVALID_FIXTURE";
+    ElliotAll corrected("EURUSD", PERIOD_M1);
+    verify(!corrected.analyzeWithDirectionCorrection(original, PERIOD_D1, true)
+        && corrected.marketContext.timeFrame == PERIOD_M5,
+        "M5 D1 route accepted then invalid snapshot rejected");
+    original.marketContext.timeFrame = PERIOD_M1;
+    ElliotAll unsupported("EURUSD", PERIOD_H1);
+    verify(!unsupported.analyzeWithDirectionCorrection(original, PERIOD_D1, true)
+        && unsupported.marketContext.timeFrame == PERIOD_H1, "M1 D1 route remains unsupported");
+    delete original;
+}
+
+/**
  * Use actual strategy decisions and synthetic analysis; never send orders.
  */
 void OnStart() {
@@ -457,7 +534,13 @@ void OnStart() {
     verifyParityMatrix(true);
     verifyParityMatrix(false);
     verifyRestoredCount();
-    verifyCorrectedSnapshot();
+    verifyCorrectedSnapshot(PERIOD_H1, true);
+    verifyCorrectedSnapshot(PERIOD_H1, false);
+    verifyCorrectedSnapshot(PERIOD_D1, true);
+    verifyCorrectedSnapshot(PERIOD_D1, false);
+    verifyCorrectionSelectionMatrix(true);
+    verifyCorrectionSelectionMatrix(false);
+    verifyD1ReanalysisScope();
     verifyJudgmentReasons(true);
     verifyJudgmentReasons(false);
     Print("MstngM5StrategySmokeTest failures=", failureCount);

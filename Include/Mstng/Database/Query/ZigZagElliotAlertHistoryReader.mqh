@@ -1096,7 +1096,7 @@ private:
         }
 
         return fromCurrentTimeFrame == PERIOD_M5
-            && (fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1
+            && (fromCorrectionTimeFrame == PERIOD_D1 || fromCorrectionTimeFrame == PERIOD_H4 || fromCorrectionTimeFrame == PERIOD_H1
                 || fromCorrectionTimeFrame == PERIOD_M15);
     }
 
@@ -1306,7 +1306,8 @@ private:
             if (original.timeFrame == fromSnapshot.correction.correctionTimeFrame) {
                 valid = original.buySellLabel == fromSnapshot.correction.originalDirection
                     && corrected.buySellLabel == fromSnapshot.correction.correctedDirection;
-            } else if (this.isCorrectionTimeFrameValid(fromSnapshot.alert.timeFrame, original.timeFrame)
+            } else if ((this.isCorrectionTimeFrameValid(fromSnapshot.alert.timeFrame, original.timeFrame)
+                        && !(fromSnapshot.alert.timeFrame == PERIOD_M5 && original.timeFrame == PERIOD_D1))
                     || (fromSnapshot.alert.timeFrame == PERIOD_M15 && original.timeFrame == PERIOD_H1)) {
                 valid = valid && original.buySellLabel == fromSnapshot.alert.side;
             }

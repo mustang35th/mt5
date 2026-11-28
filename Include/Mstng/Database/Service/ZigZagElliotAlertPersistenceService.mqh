@@ -664,6 +664,9 @@ private:
         bool isCorrectionTimeFrameValid = (fromAlert.timeFrame == PERIOD_M5 || fromAlert.timeFrame == PERIOD_M1)
             && (fromCorrection.correctionTimeFrame == PERIOD_H4 || fromCorrection.correctionTimeFrame == PERIOD_H1
                 || fromCorrection.correctionTimeFrame == PERIOD_M15);
+        if (fromAlert.timeFrame == PERIOD_M5 && fromCorrection.correctionTimeFrame == PERIOD_D1) {
+            isCorrectionTimeFrameValid = true;
+        }
         if (fromAlert.timeFrame == PERIOD_H1 || fromAlert.timeFrame == PERIOD_M15) {
             isCorrectionTimeFrameValid = fromCorrection.correctionTimeFrame == PERIOD_D1
                 || fromCorrection.correctionTimeFrame == PERIOD_H4
@@ -795,7 +798,7 @@ private:
     }
 
     /**
-     * M1は8足・H4/H1/M15、M5は7足・H4/H1/M15、H1は5足・D1/H4、
+     * M1は8足・H4/H1/M15、M5は7足・D1/H4/H1/M15、H1は5足・D1/H4、
      * M15は6足・D1/H4/H1の指定片足だけの方向変更を確認する。
      * M1ではD1からM1までの未補正足の元方向も現在足と一致させる。
      */

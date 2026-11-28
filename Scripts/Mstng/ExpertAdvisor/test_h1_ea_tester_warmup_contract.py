@@ -184,7 +184,7 @@ class TesterWarmupWiringTests(unittest.TestCase):
             self.assertIn(guard, compact)
         self.assertIn("isIdleForTesterWarmup(const bool fromAllowSuspendedAuthority = false)", self.executor)
         self.assertIn("boolauthorityKnown=this.knownLeaseExpires>0;", compact)
-        self.assertIn("if(fromAllowSuspendedAuthority&&MQLInfoInteger(MQL_TESTER)"
+        self.assertIn("if(fromAllowSuspendedAuthority&&Util::isStrategyTester()"
                       "&&this.knownLeaseExpires==0){authorityKnown=true;}", compact)
         self.assertLess(compact.index("authorityKnown=true;"), compact.index("!authorityKnown"))
         for forbidden in ("OrderSend(", "Database", "this.reconcile(", "this.readPosition("):
@@ -369,7 +369,7 @@ class TesterWarmupWiringTests(unittest.TestCase):
         for forbidden in ("CopyRates", "Bars(", "SERIES_SYNCHRONIZED", "206", "61"):
             self.assertNotIn(forbidden, body)
         initialize = code_only(method(self.strategy, "initialize"))
-        self.assertIn("this.historyPreparation.initialize(fromSymbol, PERIOD_H1, (bool)MQLInfoInteger(MQL_TESTER))", initialize)
+        self.assertIn("this.historyPreparation.initialize(fromSymbol, PERIOD_H1, Util::isStrategyTester())", initialize)
         destroy = code_only(method(self.strategy, "destroy"))
         self.assertIn("this.historyPreparation.reset()", destroy)
         history = (ROOT / "Include/Mstng/Util/ElliotHistoryPreparation.mqh").read_text(encoding="utf-8-sig")
@@ -772,7 +772,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                         'inputText+="|m5D1ToM5EntryPolicyEnabled="'
                         '+(string)this.config.m5D1ToM5EntryPolicyEnabled;'
                         'if(this.config.m5D1ToM5EntryPolicyEnabled){'
-                        'inputText+="|m5DirectionCorrectionCondition=H4_OR_H1_OR_M15_ONE_WITH_D1_REQUIRED";'
+                        'inputText+="|m5DirectionCorrectionCondition=D1_OR_H4_OR_H1_OR_M15_ONE";'
                         'inputText+="|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";'
                         'inputText+="|m5LongMediumStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME";'
                         'inputText+="|m5MediumShortStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME";'
@@ -792,7 +792,7 @@ class H1PolicyConfigurationWiringTests(unittest.TestCase):
                 if name == "Mtf3In3AlertController":
                     self.assertIn(
                         'if(this.config.m5D1ToM5EntryPolicyEnabled){'
-                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_EMA3_WAVES13_BOTH_EXTREME_OR_V28";}',
+                        'this.databaseRun.strategyVersion="MTF3IN3_M5_D1_CORRECTION_EMA3_WAVES13_V29";}',
                         re.sub(r"\s+", "", method(source, "setDatabaseRun")),
                     )
 

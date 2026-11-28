@@ -17,7 +17,7 @@
  *
  * 通常版はM15・M5の主波1・3、従来ポリシーはM5の1・3・A・C波を対象とし、M5固有の
  * FE上限、H1表示波の重複制限および成立時のメール送信を管理する。
- * 通常版M5ではD1とM5の元方向一致を必須にし、H4・H1・M15の逆方向1足を補正する。
+ * 通常版M5ではD1・H4・H1・M15のうち、M5と逆方向の1足を補正する。
  * 補正後のD1からM5の方向一致と、実測のH1・M15・M5のEMA200一致を使用する。
  * その他の呼び出し元では従来の上位足条件と片足方向補正を維持する。
  */
@@ -29,7 +29,7 @@ public:
      * @param fromMarketContext 分析対象の市場コンテキスト。
      * @param fromIsDrawArrow シグナル矢印を描画する場合true。
      * @param fromRequireMn1AndW1Ema200 MN1方向とW1 EMA200の両方を必須にする場合true。
-     * @param fromD1ToM5EntryPolicyEnabled D1必須・H4/H1/M15片足補正とH1～M5のEMA200一致を使用する場合true。
+     * @param fromD1ToM5EntryPolicyEnabled D1/H4/H1/M15片足補正とH1～M5のEMA200一致を使用する場合true。
      * @param fromCurrencyStrengthMinimumRankDifference 通常版M5の順位差基準。各期間は方向に合う1位・8位でも通過。
      */
     ExpertAdvisorMtf3In3M5(
@@ -57,7 +57,7 @@ public:
     /**
      * 直近の判定に採用した補正時間足を取得する。
      *
-     * @return 補正分析の採用時はH4・H1・M15。それ以外はPERIOD_CURRENT。
+     * @return 補正分析の採用時はD1・H4・H1・M15。それ以外はPERIOD_CURRENT。
      */
     virtual ENUM_TIMEFRAMES getCorrectionTimeFrame() override {
         if (this.correctedElliotAll != NULL
@@ -79,7 +79,7 @@ public:
 
 protected:
     /**
-     * 通常版M5でD1の方向一致を必須にする。比較専用クラスだけが上書きする。
+     * 通常版M5ではD1を補正対象と補正後の方向一致判定に含める。比較専用クラスだけが除外する。
      *
      * @return 通常版ではtrue。
      */
@@ -185,7 +185,7 @@ protected:
     /**
      * 元方向から、今回の全エントリー条件へ使用する分析を選択する。
      *
-     * 通常版はD1とM5の一致を必須とし、H4・H1・M15の逆方向1足だけを補正する。
+     * 通常版はD1・H4・H1・M15の逆方向1足だけを補正する。
      * 従来ポリシーの補正対象はH4・H1とする。全足一致なら元分析を採用し、
      * 逆方向が2足以上、入力不正または補正失敗の場合は判定対象外とする。
      *
@@ -542,7 +542,7 @@ private:
     /** MN1方向とW1 EMA200の両方を必須にする場合true。 */
     bool isMn1AndW1Ema200Required;
 
-    /** D1必須・H4/H1/M15片足補正とH1・M15・M5のEMA200一致を使用する場合true。 */
+    /** D1/H4/H1/M15片足補正とH1・M15・M5のEMA200一致を使用する場合true。 */
     bool isD1ToM5EntryPolicyEnabled;
 
     /** 全エントリー条件の判定に使用する補正分析。本クラスが所有する。 */
@@ -556,7 +556,7 @@ private:
      *
      * @param fromOriginal 補正前のM5分析。
      * @param fromCorrectionTimeFrame 補正対象。全足一致または拒否時はPERIOD_CURRENT。
-     * @return D1とM5が一致し、H4・H1・M15の逆方向が1足以下の場合true。
+     * @return D1・H4・H1・M15の逆方向が1足以下の場合true。比較専用クラスはD1を数えない。
      */
     bool resolveD1ToM5CorrectionTimeFrame(
         ElliotAll *fromOriginal,
@@ -580,14 +580,8 @@ private:
             }
 
             if (elliot.isBuy != originalCurrent.isBuy) {
-                if (timeFrames[i] == PERIOD_D1) {
-                    if (!this.isD1DirectionRequired()) {
-                        continue;
-                    }
-
-                    this.judgmentAnalysisRejectReason = "M5_D1_DIRECTION_MISMATCH";
-
-                    return false;
+                if (timeFrames[i] == PERIOD_D1 && !this.isD1DirectionRequired()) {
+                    continue;
                 }
 
                 mismatchCount++;

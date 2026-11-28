@@ -930,6 +930,10 @@ void testH1Corrections(const string fromFileName) {
     long laterRun = saveRun(service, 2);
     expect(saveAlert(service, laterRun, 13, 1600, "NONE", true, PERIOD_H1, true,
         "M15MARKERS", PERIOD_M15) == 13, "save M15 later TESTER Run");
+    expect(saveAlert(service, runId, 14, 1700, "APPLIED", true, PERIOD_D1, true,
+        "M5D1MARKERS", PERIOD_M5) == 14, "save M5 D1 BUY correction");
+    expect(saveAlert(service, runId, 15, 2000, "APPLIED", false, PERIOD_D1, true,
+        "M5D1MARKERS", PERIOD_M5) == 15, "save M5 D1 SELL correction");
     executeSql(databaseHandle, "UPDATE zigzag_elliot_alerts SET server_time=1250 WHERE id=9");
     database.close();
     ZigZagElliotAlertHistoryReader reader;
@@ -961,6 +965,22 @@ void testH1Corrections(const string fromFileName) {
         }
 
         testM15Markers(reader);
+        for (int i = 14; i <= 15; i++) {
+            ZigZagElliotAlertHistorySnapshot snapshot;
+            expect(reader.loadSnapshot(i, snapshot, error) && snapshot.correctionStatus == "APPLIED"
+                && snapshot.correction.correctionTimeFrame == PERIOD_D1
+                && ArraySize(snapshot.correctedTimeFrames) == 7,
+                "M5 D1 correction round trip " + error);
+        }
+
+        bool m5Selected = reader.selectMarkers("M5D1MARKERS", runId, 0, 0, false, resolvedRun,
+            ids, markers, error, "", "", 0, PERIOD_M5);
+        if (expect(m5Selected && ArraySize(markers) == 2, "M5 D1 marker count " + error)) {
+            expect(markers[0].available && markers[0].correctionText == "D1 SELL→BUY"
+                && markers[0].waves[2].direction == "B", "M5 D1 BUY marker");
+            expect(markers[1].available && markers[1].correctionText == "D1 BUY→SELL"
+                && markers[1].waves[2].direction == "S", "M5 D1 SELL marker");
+        }
     }
     reader.close();
     removeFixture(fromFileName, true);

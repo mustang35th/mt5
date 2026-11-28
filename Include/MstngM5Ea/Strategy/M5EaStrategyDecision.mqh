@@ -127,6 +127,12 @@ public:
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "M5_D1_TO_M5_POLICY", "1");
 #ifdef MSTNG_M5_D1_RELAXED_COMPARISON
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "D1_DIRECTION_REQUIRED", "0");
+        EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "DIRECTION_ALIGNMENT_MODE",
+            "D1_OPTIONAL_H4_H1_M15_ONE_CORRECTION");
+#else
+        EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "D1_DIRECTION_REQUIRED", "1");
+        EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "DIRECTION_ALIGNMENT_MODE",
+            "D1_H4_H1_M15_ONE_CORRECTION");
 #endif
         EaTextUtil::appendField(fromSnapshot.analysisSnapshotText, "MINIMUM_RANK_DIFFERENCE",
             IntegerToString(fromMinimumRankDifference));

@@ -1,5 +1,13 @@
 # MstngM5Ea
 
+## D1を含む上位足片足補正（v1.03）
+
+通常版ZigZagElliot v3.05と共通で、D1・H4・H1・M15の逆方向を最大1足まで補正対象にします。D1の方向条件を省略する方式ではなく、D1だけが逆方向ならD1を補正して下位波動を再分析し、採用分析で既存の全エントリー条件を確認します。D1と他の上位足が同時に逆方向なら対象外です。再分析失敗時は回数を消費せず`M5_CORRECTION_ANALYSIS_FAILED`、2足以上逆方向は`M5_CORRECTION_NOT_APPLICABLE`で記録します。
+
+Runの戦略世代は`M5_ZIGZAG_ELLIOT_STRENGTH_ZIGZAG_SL_D1_CORRECTION_V2`、設定・判定スナップショットの`DIRECTION_ALIGNMENT_MODE`は`D1_H4_H1_M15_ONE_CORRECTION`です。回数キーは元M5の基準点、初期SL候補は採用分析の基準点を使い、補正前後の分析と`CORRECTION_TIME_FRAME`を保持します。
+
+比較用`MstngM5D1Relaxed`はD1の方向一致を省略する従来条件を維持し、補正対象もH4/H1/M15のままです。以下のD1緩和比較は旧通常版との検証記録であり、今回のD1補正版の成績を示しません。今回の条件による損益バックテストは未実施です。
+
 ## 対象と構成
 
 `Experts/MstngM5Ea.mq5` はM5チャートに設置する単一通貨EAです。通常版 `ZigZagElliot` のM5設定を `Mtf3In3M5Policy` で共用し、既存の `ExpertAdvisorMtf3In3M5` を直接呼び出します。発注・broker照合・SL保護・取引状態復元は `MstngEaCommon` の `EaTradeExecutor`、初期SLは `EaInitialStopLossDecision`、回数管理は `EaEntryState` を使います。

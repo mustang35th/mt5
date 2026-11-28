@@ -625,7 +625,7 @@ private:
                 this.databaseRun.strategyVersion = "MTF3IN3_M5_MN1_W1_AND_V21";
             }
             if (this.config.m5D1ToM5EntryPolicyEnabled) {
-                this.databaseRun.strategyVersion = "MTF3IN3_M5_D1_EMA3_WAVES13_BOTH_EXTREME_OR_V28";
+                this.databaseRun.strategyVersion = "MTF3IN3_M5_D1_CORRECTION_EMA3_WAVES13_V29";
             }
         }
         if (this.marketContext.timeFrame == PERIOD_M15) {
@@ -719,7 +719,7 @@ private:
             inputText += "|m5D1ToM5EntryPolicyEnabled="
                 + (string)this.config.m5D1ToM5EntryPolicyEnabled;
             if (this.config.m5D1ToM5EntryPolicyEnabled) {
-                inputText += "|m5DirectionCorrectionCondition=H4_OR_H1_OR_M15_ONE_WITH_D1_REQUIRED";
+                inputText += "|m5DirectionCorrectionCondition=D1_OR_H4_OR_H1_OR_M15_ONE";
                 inputText += "|m5MainWaveCondition=M15_1_OR_3_AND_M5_1_OR_3";
                 inputText += "|m5LongMediumStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME";
                 inputText += "|m5MediumShortStrengthCondition=RANK_DIFFERENCE_OR_DIRECTIONAL_EXTREME";
